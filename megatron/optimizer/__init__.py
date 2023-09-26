@@ -1,6 +1,7 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 from apex.optimizers import FusedAdam as Adam
+# from torch.optim import AdamW as Adam
 from apex.optimizers import FusedSGD as SGD
 
 from megatron import get_args
@@ -9,11 +10,18 @@ from .distrib_optimizer import DistributedOptimizer
 from .grad_scaler import ConstantGradScaler, DynamicGradScaler
 from .optimizer import Float16OptimizerWithFloat16Params, FP32Optimizer
 
+try:
+    from mup import MuAdamW, MuSGD
+except ImportError:
+    MuAdamW = None
+    MuSGD = None
+
 
 def get_param_groups(modules,
                      no_weight_decay_cond,
                      scale_lr_cond,
-                     lr_mult):
+                     lr_mult,
+                     args):
     """creates param groups based on weight decay condition (regularized vs non regularized)
        and learning rate scale condition (args.lr vs lr_mult * args.lr)
        scale_lr_cond is used during finetuning where head of the network requires a scaled
@@ -31,8 +39,11 @@ def get_param_groups(modules,
             if no_weight_decay_cond is not None:
                 no_wd = no_weight_decay_cond(name, param)
             else:
-                # do not regularize biases nor Norm parameters
-                no_wd = name.endswith(".bias") or len(param.shape) == 1
+                if args.mup is None:
+                    # do not regularize biases nor Norm parameters
+                    no_wd = name.endswith(".bias") or len(param.shape) == 1
+                else:
+                    no_wd = False
 
             if scale_lr_cond is not None:
                 scale_lr = scale_lr_cond(name, param)
@@ -70,19 +81,42 @@ def get_megatron_optimizer(model,
     param_groups = get_param_groups(model,
                                     no_weight_decay_cond,
                                     scale_lr_cond,
-                                    lr_mult)
+                                    lr_mult,
+                                    args)
 
     if args.optimizer == 'adam':
-        optimizer = Adam(param_groups,
-                         lr=args.lr,
-                         weight_decay=args.weight_decay,
-                         betas=(args.adam_beta1, args.adam_beta2),
-                         eps=args.adam_eps)
+        if args.mup == "apply":
+            assert MuAdamW is not None, 'Please install mup first'
+            optimizer = MuAdamW(param_groups,
+                                lr=args.lr,
+                                weight_decay=args.weight_decay,
+                                betas=(args.adam_beta1, args.adam_beta2),
+                                eps=args.adam_eps)
+        else:
+            optimizer = Adam(param_groups,
+                             lr=args.lr,
+                             weight_decay=args.weight_decay,
+                             betas=(args.adam_beta1, args.adam_beta2),
+                             eps=args.adam_eps)
     elif args.optimizer == 'sgd':
-        optimizer = SGD(param_groups,
-                        lr=args.lr,
-                        weight_decay=args.weight_decay,
-                        momentum=args.sgd_momentum)
+        if args.mup == "apply":
+            assert MuSGD is not None, 'Please install mup first'
+            optimizer = MuSGD(param_groups,
+                              lr=args.lr,
+                              weight_decay=args.weight_decay,
+                              betas=(args.adam_beta1, args.adam_beta2),
+                              eps=args.adam_eps)
+        else:
+            optimizer = SGD(param_groups,
+                            lr=args.lr,
+                            weight_decay=args.weight_decay,
+                            momentum=args.sgd_momentum)
+    elif args.optimizer == 'adan':
+        # https://github.com/sail-sg/Adan
+        from adan import Adan
+        optimizer = Adan(param_groups, lr=args.lr, weight_decay=args.weight_decay,
+                         betas=(args.adan_beta1, args.adan_beta2, args.adan_beta3),
+                         eps=args.adan_eps)
     else:
         raise Exception('{} optimizer is not supported.'.format(
             args.optimizer))

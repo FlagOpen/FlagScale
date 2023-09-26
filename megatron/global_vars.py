@@ -16,6 +16,7 @@ _GLOBAL_RETRO_ARGS = None
 _GLOBAL_NUM_MICROBATCHES_CALCULATOR = None
 _GLOBAL_TOKENIZER = None
 _GLOBAL_TENSORBOARD_WRITER = None
+_GLOBAL_WANDB_WRITER = None
 _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
 _GLOBAL_SIGNAL_HANDLER = None
@@ -56,6 +57,12 @@ def get_tensorboard_writer():
     return _GLOBAL_TENSORBOARD_WRITER
 
 
+def get_wandb_writer():
+    """Return wandb writer. It can be None so no need
+    to check if it is initialized."""
+    return _GLOBAL_WANDB_WRITER
+
+
 def get_adlr_autoresume():
     """ADLR autoresume object. It can be None so no need
     to check if it is initialized."""
@@ -79,7 +86,6 @@ def _set_signal_handler():
     _GLOBAL_SIGNAL_HANDLER = dist_signal_handler.DistributedSignalHandler().__enter__()
 
 
-
 def set_global_variables(args, build_tokenizer=True):
     """Set args, tokenizer, tensorboard-writer, adlr-autoresume, and timers."""
 
@@ -92,6 +98,7 @@ def set_global_variables(args, build_tokenizer=True):
     if build_tokenizer:
         _ = _build_tokenizer(args)
     _set_tensorboard_writer(args)
+    _set_wandb_writer(args)
     _set_adlr_autoresume(args)
     _set_timers(args)
 
@@ -151,6 +158,25 @@ def _set_tensorboard_writer(args):
             print('WARNING: TensorBoard writing requested but is not '
                   'available (are you using PyTorch 1.1.0 or later?), '
                   'no TensorBoard logs will be written.', flush=True)
+
+
+def _set_wandb_writer(args):
+    """Set wandb writer."""
+    global _GLOBAL_WANDB_WRITER
+    _ensure_var_is_not_initialized(_GLOBAL_WANDB_WRITER,
+                                   'wandb writer')
+
+    if hasattr(args, 'wandb_dir') and \
+       args.wandb_dir and args.rank == (args.world_size - 1):
+        try:
+            import wandb
+            print('> setting wandb ...')
+            wandb.init(dir=args.wandb_dir, mode='offline')
+            _GLOBAL_WANDB_WRITER = 'wandb_writer'
+        except ModuleNotFoundError:
+            print('WARNING: Wandb writing requested but is not available, '
+                  'no Wandb logs will be written. Please install wandb '
+                  'first, e.g., with pip install wandb', flush=True)
 
 
 def _set_adlr_autoresume(args):

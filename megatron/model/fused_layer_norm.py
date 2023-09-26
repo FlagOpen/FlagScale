@@ -19,6 +19,7 @@ except:
     HAVE_PERSIST_LAYER_NORM = False
 
 from apex.normalization.fused_layer_norm import FusedLayerNormAffineFunction
+from apex.normalization.fused_layer_norm import FusedRMSNormAffineFunction
 
 
 global fused_layer_norm_cuda
@@ -30,10 +31,21 @@ class MixedFusedLayerNorm(torch.nn.Module):
   def __init__(self, normalized_shape, eps=1e-5,
                no_persist_layer_norm=True,
                sequence_parallel=False,
-               apply_layernorm_1p=False):
+               apply_layernorm_1p=False,
+               apply_layernorm_rms=False,
+               init_weight=None):
         super(MixedFusedLayerNorm, self).__init__()
 
         self.apply_layernorm_1p = apply_layernorm_1p
+        self.apply_layernorm_rms = apply_layernorm_rms
+        assert not (self.apply_layernorm_1p and self.apply_layernorm_rms), \
+            "Cannot apply both 1p and rms layernorm"
+
+        self.init_weight = init_weight
+        assert self.init_weight is None or isinstance(self.init_weight, float), \
+            "Cannot init_weight of None or of non-float"
+        assert not (self.init_weight is not None and self.apply_layernorm_1p), \
+            "Cannot float init_weight and 1p layernorm"
 
         global fused_layer_norm_cuda
         fused_layer_norm_cuda = importlib.import_module("fused_layer_norm_cuda")
@@ -53,14 +65,17 @@ class MixedFusedLayerNorm(torch.nn.Module):
         self.normalized_shape = torch.Size(normalized_shape)
         self.eps = eps
         self.weight = Parameter(torch.Tensor(*normalized_shape))
-        self.bias = Parameter(torch.Tensor(*normalized_shape))
+        # no bias parameter when using rms layernorm
+        if not self.apply_layernorm_rms:
+            self.bias = Parameter(torch.Tensor(*normalized_shape))
         self.reset_parameters()
         self.no_persist_layer_norm = no_persist_layer_norm
         self.sequence_parallel = sequence_parallel
 
         # set sequence parallelism flag on weight and bias parameters
         setattr(self.weight, 'sequence_parallel', self.sequence_parallel)
-        setattr(self.bias, 'sequence_parallel', self.sequence_parallel)
+        if not self.apply_layernorm_rms:
+            setattr(self.bias, 'sequence_parallel', self.sequence_parallel)
 
 
   def reset_parameters(self):
@@ -69,14 +84,20 @@ class MixedFusedLayerNorm(torch.nn.Module):
         init.zeros_(self.weight)
         init.zeros_(self.bias)
     else:
-        init.ones_(self.weight)
-        init.zeros_(self.bias)
+        if self.init_weight:
+            init.constant_(self.weight, self.init_weight)
+        else:
+            init.ones_(self.weight)
+        if not self.apply_layernorm_rms:
+            init.zeros_(self.bias)
 
   def forward(self, input):
 
     weight = self.weight + 1 if self.apply_layernorm_1p else self.weight
 
-    if self.no_persist_layer_norm:
+    if self.apply_layernorm_rms:
+        return FusedRMSNormAffineFunction.apply(input, weight, self.normalized_shape, self.eps)
+    elif self.no_persist_layer_norm:
         return FusedLayerNormAffineFunction.apply(input, weight, self.bias, self.normalized_shape, self.eps)
     else:
         output = FastLayerNormFN.apply(input, weight, self.bias, self.eps)

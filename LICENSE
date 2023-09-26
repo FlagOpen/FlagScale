@@ -1,4 +1,15 @@
-The following applies to all files unless otherwise noted:
+FlagScale is developed by BAAI and mainly based on the Megatron-LM project.
+# Copyright (c) 2023 BAAI. All rights reserved.
+# Licensed under the Apache License, Version 2.0
+
+This repository also contains code from Hugging Face Inc., Google Research,
+Facebook (from their Fairseq and Dino projects), Microsoft(from their 
+Swin-Transformer project)and Philip Popien. Files from these 
+organizations have notices at  the top of each file. Below are 
+licenses used in those files, as indicated.
+
+
+----------------- LICENSE FOR original Megatron-LM code ---------------
 
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 #
@@ -25,14 +36,6 @@ The following applies to all files unless otherwise noted:
 # OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
---
-
-This repository also contains code from Hugging Face Inc., Google Research,
-Facebook (from their Fairseq and Dino projects), Microsoft(from their 
-Swin-Transformer project)and Philip Popien. Files from these 
-organizations have notices at  the top of each file. Below are 
-licenses used in those files, as indicated.
 
 
 ------------- LICENSE FOR Facebook, huggingface and Google Research code  --------------

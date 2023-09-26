@@ -158,6 +158,14 @@ class Embedding(MegatronModule):
             vocab_size, self.hidden_size, config=config, init_method=config.init_method)
         self._word_embeddings_key = 'word_embeddings'
 
+        # TODO
+        if args.apply_init_customized:
+            init_method = init_method_normal(args.init_method_std_scaled_embed)
+            with tensor_parallel.get_cuda_rng_tracker().fork():
+                init_method(self.word_embeddings.weight)
+                if torch.distributed.get_rank() == 0:
+                    print('Override Embedding init_method.', flush=True)
+
         # Position embedding (serial).
         self.add_position_embedding = args.position_embedding_type == 'learned_absolute'
         if self.add_position_embedding:
@@ -358,6 +366,7 @@ class TransformerLanguageModel(MegatronModule):
         self.encoder_hidden_state = None
         self.add_retriever = args.retro_add_retriever
         self.untie_embeddings_and_output_weights = args.untie_embeddings_and_output_weights
+        self.rotary_position_embeddings_in_fp32 = args.rotary_position_embeddings_in_fp32
 
         # Embeddings.
         if self.pre_process:
@@ -425,13 +434,30 @@ class TransformerLanguageModel(MegatronModule):
                 self._pooler_key = 'pooler'
 
             if self.untie_embeddings_and_output_weights:
-                self.output_layer = tensor_parallel.ColumnParallelLinear(
-                    args.hidden_size,
-                    args.padded_vocab_size,
-                    config=config,
-                    init_method=self.init_method,
-                    bias=False) # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
-                self._output_layer_key = 'output_layer'
+                if args.mup != "apply":
+                    self.output_layer = tensor_parallel.ColumnParallelLinear(
+                        args.hidden_size,
+                        args.padded_vocab_size,
+                        config=config,
+                        init_method=self.init_method,
+                        bias=False) # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
+                    self._output_layer_key = 'output_layer'
+
+                    # TODO
+                    if args.apply_init_customized:
+                        init_method = init_method_normal(args.init_method_std_scaled_output)
+                        with tensor_parallel.get_cuda_rng_tracker().fork():
+                            init_method(self.output_layer.weight)
+                            print('Override output_layer init_method.', flush=True)
+                else:
+                    self.output_layer = tensor_parallel.MuReadoutColumnParallelLinear(
+                        args.hidden_size,
+                        args.padded_vocab_size,
+                        config=config,
+                        init_method=self.init_method,
+                        bias=False, # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
+                        output_mult=args.mup_output_multiplier)
+                    self._output_layer_key = 'output_layer'
 
     def set_input_tensor(self, input_tensor):
         """ See megatron.model.transformer.set_input_tensor()"""
@@ -491,9 +517,12 @@ class TransformerLanguageModel(MegatronModule):
         if self.use_rotary_position_embeddings:
             if inference_params is not None:
                 rotary_pos_emb = \
-                    self.rotary_pos_emb(inference_params.max_sequence_length)
+                    self.rotary_pos_emb(inference_params.max_sequence_length,
+                                        self.rotary_position_embeddings_in_fp32)
             else:
-                rotary_pos_emb = self.rotary_pos_emb(self.seq_length)
+                rotary_pos_emb = self.rotary_pos_emb(
+                    self.seq_length,
+                    self.rotary_position_embeddings_in_fp32)
 
         # Run encoder.
         if enc_hidden_states is None:

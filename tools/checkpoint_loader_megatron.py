@@ -26,7 +26,7 @@ def _load_checkpoint(queue, args):
         sys.path.insert(0, args.megatron_path)
 
     try:
-        from megatron.arguments import parse_args, validate_args
+        from megatron.arguments import parse_args, validate_args, _print_args
         from megatron.global_vars import set_args, set_global_variables
         from megatron.checkpointing import load_args_from_checkpoint, load_checkpoint
         from megatron.model import module
@@ -194,6 +194,7 @@ def _load_checkpoint(queue, args):
     md.true_vocab_size = true_vocab_size
     md.make_vocab_size_divisible_by = margs.make_vocab_size_divisible_by
     md.checkpoint_args = checkpoint_args
+    md.apply_layernorm_rms = margs.apply_layernorm_rms
 
     # Get first pipe stage
     mpu.set_pipeline_model_parallel_rank(0)
@@ -237,9 +238,11 @@ def _load_checkpoint(queue, args):
                 # Get non-parallel tensors from tp_rank 0
                 layer = models[0].language_model.encoder.layers[layer_num]
                 message["input layernorm weight"] = layer.input_layernorm.weight.data
-                message["input layernorm bias"] = layer.input_layernorm.bias.data
+                if not md.apply_layernorm_rms:
+                    message["input layernorm bias"] = layer.input_layernorm.bias.data
                 message["post layernorm weight"] = layer.post_attention_layernorm.weight.data
-                message["post layernorm bias"] = layer.post_attention_layernorm.bias.data
+                if not md.apply_layernorm_rms:
+                    message["post layernorm bias"] = layer.post_attention_layernorm.bias.data
                 if md.linear_bias:
                     message["dense bias"] = layer.self_attention.dense.bias.data
                     message["mlp l1 bias"] = layer.mlp.dense_4h_to_h.bias.data
@@ -290,10 +293,15 @@ def _load_checkpoint(queue, args):
                 total_layer_num = total_layer_num + 1
 
     # Send final layernorm from tp_rank 0
-    message = {
-        "weight": models[0].language_model.encoder.final_layernorm.weight.data,
-        "bias": models[0].language_model.encoder.final_layernorm.bias.data
-    }
+    if not md.apply_layernorm_rms:
+        message = {
+            "weight": models[0].language_model.encoder.final_layernorm.weight.data,
+            "bias": models[0].language_model.encoder.final_layernorm.bias.data
+        }
+    else:
+        message = {
+            "weight": models[0].language_model.encoder.final_layernorm.weight.data,
+        }
     queue_put("final layernorm", message)
 
     if md.output_layer:
@@ -313,12 +321,19 @@ def _load_checkpoint(queue, args):
         }
         queue_put("pooler", message)
 
-        message = {
-            "dense weight": models[0].lm_head.dense.weight.data,
-            "dense bias": models[0].lm_head.dense.bias.data,
-            "layernorm weight": models[0].lm_head.layernorm.weight.data,
-            "layernorm bias": models[0].lm_head.layernorm.bias.data
-        }
+        if not md.apply_layernorm_rms:
+            message = {
+                "dense weight": models[0].lm_head.dense.weight.data,
+                "dense bias": models[0].lm_head.dense.bias.data,
+                "layernorm weight": models[0].lm_head.layernorm.weight.data,
+                "layernorm bias": models[0].lm_head.layernorm.bias.data
+            }
+        else:
+            message = {
+                "dense weight": models[0].lm_head.dense.weight.data,
+                "dense bias": models[0].lm_head.dense.bias.data,
+                "layernorm weight": models[0].lm_head.layernorm.weight.data,
+            }
         queue_put("lm head", message)
 
         if md.bert_binary_head:

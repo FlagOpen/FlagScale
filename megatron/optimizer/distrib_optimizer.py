@@ -4,6 +4,7 @@
 
 
 from apex.optimizers import FusedAdam as Adam
+# from torch.optim import AdamW as Adam
 import math
 import torch
 
@@ -704,6 +705,15 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
                     # Scatter tensor list.
                     if data_parallel_rank == 0:
                         world_tensor = loaded_state[model_idx][dtype][key]
+
+                        if world_tensor.nelement() < gbuf_world_numel:
+                            world_tensor = torch.nn.functional.pad(world_tensor,
+                                                                   (0, gbuf_world_numel - world_tensor.nelement()),
+                                                                   "constant", 0)
+                        elif world_tensor.nelement() > gbuf_world_numel:
+                            world_tensor = world_tensor[:gbuf_world_numel]
+                        assert world_tensor.nelement() == gbuf_world_numel, "world_tensor.nelement() != gbuf_world_numel"
+
                         gbuf_start_idxs = \
                             list(range(0, gbuf_world_numel, gbuf_local_numel))
                         send_tensors = [world_tensor[i:(i+gbuf_local_numel)]

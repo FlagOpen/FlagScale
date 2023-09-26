@@ -2,6 +2,13 @@
 
 """Pretrain GPT"""
 
+import os
+import sys
+
+# Add mup package to sys.path
+sys.path.append(os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), 'mup/'))
+
 import torch
 from functools import partial
 from megatron import get_args
@@ -16,6 +23,7 @@ from megatron.training import pretrain
 from megatron.utils import get_ltor_masks_and_position_ids
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron.arguments import core_transformer_config_from_args
+
 
 def model_provider(pre_process=True, post_process=True):
     """Build the model."""
@@ -46,6 +54,17 @@ def get_batch(data_iterator):
         data = next(data_iterator)
     else:
         data = None
+
+    # Extra items
+    if args.return_doc_ids and data is not None:
+        _key = 'doc_ids'
+        if _key in data.keys():
+            keys.append(_key)
+        _key = 'dataset_idx'
+        if _key in data.keys():
+            data[_key] = data[_key].long()
+            keys.append(_key)
+
     data_b = tensor_parallel.broadcast_data(keys, data, datatype)
 
     # Unpack.
@@ -61,7 +80,18 @@ def get_batch(data_iterator):
         args.reset_attention_mask,
         args.eod_mask_loss)
 
-    return tokens, labels, loss_mask, attention_mask, position_ids
+    if args.data_searching_save is not None and args.return_doc_ids:
+        doc_ids = None
+        _key = 'doc_ids'
+        if _key in keys:
+            doc_ids = data_b['doc_ids'].long()
+        dataset_idx = None
+        _key = 'dataset_idx'
+        if _key in keys:
+            dataset_idx = data_b['dataset_idx'].long()
+        return tokens, labels, loss_mask, attention_mask, position_ids, dataset_idx
+    else:
+        return tokens, labels, loss_mask, attention_mask, position_ids
 
 def loss_func(loss_mask, output_tensor):
     losses = output_tensor.float()
@@ -108,6 +138,7 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
         train_data_prefix=args.train_data_path,
         valid_data_prefix=args.valid_data_path,
         test_data_prefix=args.test_data_path,
+        return_doc_ids=args.return_doc_ids,
         data_cache_path=args.data_cache_path)
     print_rank_0("> finished creating GPT datasets ...")
 
@@ -120,4 +151,5 @@ if __name__ == "__main__":
              model_provider,
              ModelType.encoder_or_decoder,
              forward_step,
-             args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})
+             args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
+             get_batch_fn=get_batch)

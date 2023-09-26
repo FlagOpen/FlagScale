@@ -34,6 +34,9 @@ def get_tasks_args(parser):
                        help='Sliding window for overlapping evaluation.')
     group.add_argument('--strict-lambada', action='store_true',
                        help='Use more difficult formulation of lambada.')
+    group.add_argument('--eval-metric', type=str, default='loss',
+                       choices=['loss', 'accuracy'],
+                       help='Metric for evaluation tasks')
     # Retriever args
     group.add_argument('--qa-data-dev', type=str, default=None,
                        help='Path to the QA dataset dev file.')
@@ -91,6 +94,8 @@ if __name__ == '__main__':
         from glue.finetune import main
     elif args.task in ['LAMBADA', 'WIKITEXT103']:
         from zeroshot_gpt.evaluate import main
+    elif args.task in ['AQUILA']:
+        from aquila.evaluate import main
     elif args.task in ['ICT-ZEROSHOT-NQ', 'RETRIEVER-EVAL']:
         from orqa.evaluate_orqa import main
     elif args.task in ['RET-FINETUNE-NQ']:

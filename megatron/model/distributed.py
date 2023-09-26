@@ -155,6 +155,13 @@ class DistributedDataParallel(DistributedDataParallelBase):
                         type_num_elements[dtype],
                         type_num_elements[dtype] + param.data.nelement(),
                     )
+            
+            # Store the param name to index map for repartitioning the distributed optimizer state.
+            self.param_name_to_index_map = {}
+            for name, param in self.module.named_parameters():
+                if param.requires_grad:
+                    dtype = _get_buffer_type(param)
+                    self.param_name_to_index_map[name] = (tuple(param.shape), self._grad_buffer_param_index_map[dtype][param])
 
             # Backward hook.
             # Accumalation function for the gradients. We need

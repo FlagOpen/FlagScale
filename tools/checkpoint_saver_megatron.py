@@ -132,7 +132,6 @@ def save_checkpoint(queue, args):
 
     margs = parse_args()
 
-
     if hasattr (md, 'checkpoint_args'):
         # These are arguments that we are either changing, or cause problems for validation if they are set
         # Note that some of these deal with T5 so will need to be changed if we support T5.
@@ -262,9 +261,11 @@ def save_checkpoint(queue, args):
 
             # duplicated tensors
             input_layernorm_weight = msg.pop("input layernorm weight")
-            input_layernorm_bias = msg.pop("input layernorm bias")
+            if not md.apply_layernorm_rms:
+                input_layernorm_bias = msg.pop("input layernorm bias")
             post_layernorm_weight = msg.pop("post layernorm weight")
-            post_layernorm_bias = msg.pop("post layernorm bias")
+            if not md.apply_layernorm_rms:
+                post_layernorm_bias = msg.pop("post layernorm bias")
             if md.linear_bias:
                 dense_bias = msg.pop("dense bias")
                 mlp_l1_bias = msg.pop("mlp l1 bias")
@@ -295,11 +296,13 @@ def save_checkpoint(queue, args):
             for tp_rank in range(args.target_tensor_parallel_size):
                 l = models[tp_rank].language_model.encoder.layers[layer]
                 l.input_layernorm.weight.data.copy_(input_layernorm_weight)
-                l.input_layernorm.bias.data.copy_(input_layernorm_bias)
+                if not md.apply_layernorm_rms:
+                    l.input_layernorm.bias.data.copy_(input_layernorm_bias)
                 l.self_attention.query_key_value.weight.data.copy_(qkv_weight[tp_rank])
                 l.self_attention.dense.weight.data.copy_(dense_weight[tp_rank])
                 l.post_attention_layernorm.weight.data.copy_(post_layernorm_weight)
-                l.post_attention_layernorm.bias.data.copy_(post_layernorm_bias)
+                if not md.apply_layernorm_rms:
+                    l.post_attention_layernorm.bias.data.copy_(post_layernorm_bias)
                 l.mlp.dense_h_to_4h.weight.data.copy_(mlp_l0_weight[tp_rank])
                 l.mlp.dense_4h_to_h.weight.data.copy_(mlp_l1_weight[tp_rank])
                 if md.linear_bias:
@@ -315,15 +318,18 @@ def save_checkpoint(queue, args):
         if post_process:
             msg = queue_get("final layernorm")
             final_layernorm_weight = msg.pop("weight")
-            final_layernorm_bias = msg.pop("bias")
+            if not md.apply_layernorm_rms:
+                final_layernorm_bias = msg.pop("bias")
             for tp_rank in range(args.target_tensor_parallel_size):
                 models[tp_rank].language_model.encoder.final_layernorm.weight.data.copy_(final_layernorm_weight)
-                models[tp_rank].language_model.encoder.final_layernorm.bias.data.copy_(final_layernorm_bias)
+                if not md.apply_layernorm_rms:
+                    models[tp_rank].language_model.encoder.final_layernorm.bias.data.copy_(final_layernorm_bias)
                 if pp_rank != 0 and not md.output_layer:
                     # Copy word embeddings to final pipeline rank
                     models[tp_rank].word_embeddings.weight.data.copy_(out_word_embed[tp_rank])
             del final_layernorm_weight
-            del final_layernorm_bias
+            if not md.apply_layernorm_rms:
+                del final_layernorm_bias
             check_message(msg)
 
             if md.output_layer:
@@ -331,7 +337,35 @@ def save_checkpoint(queue, args):
                 if not hasattr(models[0].language_model, 'output_layer'):
                     print("ERROR: got an output layer, but model does not have one")
                     exit(1)
-                output_layer_weight = torch.chunk(msg.pop("weight"), args.target_tensor_parallel_size, dim=0)
+                # Deal with padding
+                orig_output_layer_weight = msg.pop("weight")
+                if md.true_vocab_size is not None:
+                    # figure out what our padded vocab size is
+                    orig_output_layer_size = orig_output_layer_weight.shape[0]
+                    margs.padded_vocab_size = _vocab_size_with_padding(md.true_vocab_size, margs)
+
+                    # Cut out extra padding we don't need
+                    if orig_output_layer_size > margs.padded_vocab_size:
+                        full_output_layer_weight = orig_output_layer_weight[0:margs.padded_vocab_size,:]
+
+                    # Expanding embedding to larger size by replicating final entry
+                    elif orig_output_layer_size < margs.padded_vocab_size:
+                        padding_size = margs.padded_vocab_size - orig_output_layer_size
+
+                        full_output_layer_weight = torch.cat((
+                            orig_output_layer_weight,
+                            orig_output_layer_weight[-1].unsqueeze(0).expand(padding_size, -1)))
+
+                    # Same size!
+                    else:
+                        full_output_layer_weight = orig_output_layer_weight
+                else:
+                    print("Original vocab size not specified, leaving embedding table as-is. "
+                          "If you've changed the tensor parallel size this could cause problems.")
+                    margs.padded_vocab_size = orig_output_layer_weight.shape[0]
+                    full_output_layer_weight = orig_output_layer_weight
+
+                output_layer_weight = torch.chunk(full_output_layer_weight, args.target_tensor_parallel_size, dim=0)
                 for tp_rank in range(args.target_tensor_parallel_size):
                     models[tp_rank].language_model.output_layer.weight.data.copy_(output_layer_weight[tp_rank])
                 del output_layer_weight
@@ -361,12 +395,14 @@ def save_checkpoint(queue, args):
                 lm_head_dense_weight = msg.pop("dense weight")
                 lm_head_dense_bias = msg.pop("dense bias")
                 lm_head_layernorm_weight = msg.pop("layernorm weight")
-                lm_head_layernorm_bias = msg.pop("layernorm bias")
+                if not md.apply_layernorm_rms:
+                    lm_head_layernorm_bias = msg.pop("layernorm bias")
                 for tp_rank in range(args.target_tensor_parallel_size):
                     models[tp_rank].lm_head.dense.weight.data.copy_(lm_head_dense_weight)
                     models[tp_rank].lm_head.dense.bias.data.copy_(lm_head_dense_bias)
                     models[tp_rank].lm_head.layernorm.weight.data.copy_(lm_head_layernorm_weight)
-                    models[tp_rank].lm_head.layernorm.bias.data.copy_(lm_head_layernorm_bias)
+                    if not md.apply_layernorm_rms:
+                        models[tp_rank].lm_head.layernorm.bias.data.copy_(lm_head_layernorm_bias)
                 check_message(msg)
                 msg = queue_get()
 

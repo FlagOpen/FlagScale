@@ -14,13 +14,19 @@ class RotaryEmbedding(nn.Module):
         self.seq_len_interpolation_factor = seq_len_interpolation_factor
         inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2).float() / dim))
         self.register_buffer('inv_freq', inv_freq, persistent=False)
+        self.dim = dim
 
-    def forward(self, max_seq_len, offset=0):
-        seq = torch.arange(max_seq_len, device=self.inv_freq.device) + offset
+    def forward(self, max_seq_len, offset=0, use_rotary_in_fp32=False):
+        seq = torch.arange(max_seq_len, device=self.inv_freq.device, dtype=torch.float32) + offset
         if self.seq_len_interpolation_factor is not None:
             seq = seq.type_as(self.inv_freq)
             seq *= 1 / self.seq_len_interpolation_factor
-        freqs = einsum('i , j -> i j', seq.type_as(self.inv_freq), self.inv_freq)
+        if use_rotary_in_fp32 and self.inv_freq.dtype is not torch.float32:
+            self.inv_freq = 1.0 / (10000 ** (torch.arange(0, self.dim, 2, dtype=torch.float32, device=self.inv_freq.device).float() / self.dim))
+            freqs = torch.outer(seq, self.inv_freq)
+        else:
+            freqs = einsum('i , j -> i j', seq.type_as(self.inv_freq), self.inv_freq)
+
         # first part even vector components, second part odd vector components,
         #  2 * dim in dimension size
         emb = torch.cat((freqs, freqs), dim=-1)

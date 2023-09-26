@@ -9,7 +9,7 @@ import time
 import numpy as np
 import torch
 
-from megatron import print_rank_0
+from megatron import print_rank_0, get_args
 from megatron.core import mpu
 from megatron.data.blendable_dataset import BlendableDataset
 from megatron.data.dataset_utils import get_datasets_weights_and_num_samples
@@ -362,8 +362,21 @@ def _build_index_mappings(name, data_prefix, documents, sizes,
     data_cache_dir = os.path.dirname(idx_path['desc'])
     data_cache_success = True
 
+    # Build on rank 0 or first rank of each nodes 
+    # if the global file system is not use
+    args = get_args()
+    build_on_cur_rank = False
+    if not args.no_global_file_system \
+        and torch.distributed.get_rank() == 0:
+        build_on_cur_rank = True 
+    elif args.no_global_file_system \
+        and torch.distributed.get_rank() % args.num_devices_per_node == 0:
+        build_on_cur_rank = True 
+    else:
+        build_on_cur_rank = False
+
     # Build the indexed mapping if not exist.
-    if build_indices and torch.distributed.get_rank() == 0:
+    if build_indices and build_on_cur_rank:
         print_rank_0(' > WARNING: could not find index map files, building '
                      'the indices on rank 0 ...')
 
@@ -454,6 +467,7 @@ def _build_index_mappings(name, data_prefix, documents, sizes,
             data_cache_success = False
 
     counts = torch.cuda.LongTensor([data_cache_success])
+
     torch.distributed.all_reduce(counts, group=mpu.get_data_parallel_group())
     torch.distributed.all_reduce(counts, group=mpu.get_pipeline_model_parallel_group())
     if counts[0].item() != (

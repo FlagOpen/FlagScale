@@ -20,6 +20,7 @@ from megatron.checkpointing import load_args_from_checkpoint
 from megatron.global_vars import set_global_variables
 from megatron.model.transformer import bias_dropout_add_fused_train
 from megatron.model.fused_bias_gelu import bias_gelu
+from megatron.utils import save_checkpoint_info
 
 
 def initialize_megatron(
@@ -84,6 +85,8 @@ def initialize_megatron(
 
         # Compile dependencies.
         _compile_dependencies()
+
+        save_checkpoint_info(args.save)
 
         # No continuation function
         return None

@@ -2,10 +2,22 @@
 
 """Pretrain utilities."""
 
+import os
 from datetime import datetime
 import math
 import sys
 import time
+import pickle
+import json
+from collections import defaultdict
+
+try:
+    import mup
+    from mup import coord_check
+except ImportError:
+    mup = None
+    coord_check = None
+
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
 import torch
@@ -15,6 +27,7 @@ from megatron import get_args
 from megatron import get_signal_handler
 from megatron import get_timers
 from megatron import get_tensorboard_writer
+from megatron import get_wandb_writer
 from megatron import get_current_global_batch_size
 from megatron import get_num_microbatches
 from megatron import is_last_rank
@@ -25,6 +38,7 @@ from megatron import print_rank_0
 from megatron import print_rank_last
 from megatron.checkpointing import load_checkpoint
 from megatron.checkpointing import save_checkpoint
+from megatron.checkpointing import get_checkpoint_name
 from megatron.model import Float16Module
 from megatron.model import GPTModel
 from megatron.core.enums import ModelType
@@ -36,11 +50,13 @@ from megatron.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.model import DistributedDataParallel as LocalDDP
 from megatron.utils import check_adlr_autoresume_termination
 from megatron.utils import unwrap_model
+from megatron.utils import get_host_ip 
 from megatron.data.data_samplers import build_pretraining_data_loader
 from megatron.utils import calc_params_l2_norm
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.utils import report_memory
 from megatron.model.vision.knn_monitor import compute_feature_bank
+from megatron.model.transformer import ParallelAttention
 
 
 def print_datetime(string):
@@ -56,7 +72,8 @@ def pretrain(train_valid_test_dataset_provider,
              forward_step_func,
              process_non_loss_data_func=None,
              extra_args_provider=None,
-             args_defaults={}):
+             args_defaults={},
+             get_batch_fn=None,):
     """Main training program.
 
     This function will run the followings in the order provided:
@@ -106,6 +123,15 @@ def pretrain(train_valid_test_dataset_provider,
 
     args = get_args()
     timers = get_timers()
+
+    if args.data_searching_save is not None:
+        search_data(train_valid_test_dataset_provider, get_batch_fn)
+        return
+
+    if args.mup == "prepare":
+        assert mup is not None, 'Please install mup first'
+        mup_prepare(model_provider, model_type)
+        return
 
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
@@ -159,7 +185,7 @@ def pretrain(train_valid_test_dataset_provider,
 
         print_datetime('after training is done')
 
-        if args.save and iteration != 0:
+        if args.save and iteration != 0 and not args.mup_coord_check:
             save_checkpoint(iteration, model, optimizer, opt_param_scheduler)
     else:
         print_rank_0('skipping training (--skip-train is on) ...')
@@ -288,6 +314,27 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
             sum([sum([p.nelement() for p in model_module.parameters()])
                  for model_module in model])), flush=True)
 
+    if args.mup == "prepare":
+        return model 
+
+    if args.load is not None:
+        if args.format_ckpt:
+            args.no_load_optim = True
+            args.no_load_rng = True
+            args.no_save_optim = True
+            args.no_save_rng = True
+
+            timers = get_timers()
+            timers('format-checkpoint', log_level=0).start(barrier=True)
+
+            args.iteration = load_checkpoint(model, None, None)
+            save_checkpoint(args.iteration, model, None, None)
+
+            timers('format-checkpoint').stop(barrier=True)
+            timers.log(['format-checkpoint'])
+            print_rank_0("Saved checkpoint from other frameworks in Megatron-LM format")
+            sys.exit(0)
+
     # GPU allocation.
     for model_module in model:
         model_module.cuda(torch.cuda.current_device())
@@ -312,6 +359,24 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
             if args.data_parallel_random_init:
                 for model_module in model:
                     model_module.broadcast_params()
+
+            if args.save_param_index_maps_only:
+                if not torch.distributed.is_initialized() \
+                   or mpu.get_data_parallel_rank() == 0:
+                    # Save param_name_to_index_map
+                    param_name_to_index_maps = [] 
+                    for model_module in model:
+                        param_name_to_index_maps.append(model_module.param_name_to_index_map)
+                    # We use iteration 0 to save the param_name_to_index_map
+                    index_map_dir = os.path.dirname(get_checkpoint_name(args.save, 0))
+                    if not os.path.exists(index_map_dir):
+                        os.makedirs(index_map_dir)
+                    index_map_file = os.path.join(index_map_dir, "param_name_to_index_maps.json")
+                    with open(index_map_file, "w") as f:
+                        json.dump(param_name_to_index_maps, f)
+                if torch.distributed.is_initialized():
+                    torch.distributed.barrier()
+                exit(0)
         else:
             raise NotImplementedError('Unknown DDP implementation specified: '
                                       '{}. Exiting.'.format(args.DDP_impl))
@@ -364,7 +429,8 @@ def get_optimizer_param_scheduler(optimizer):
         wd_incr_steps=wd_incr_steps,
         wd_incr_style=args.weight_decay_incr_style,
         use_checkpoint_opt_param_scheduler=args.use_checkpoint_opt_param_scheduler,
-        override_opt_param_scheduler=args.override_opt_param_scheduler)
+        override_opt_param_scheduler=args.override_opt_param_scheduler,
+        use_mup=args.mup)
 
     return opt_param_scheduler
 
@@ -381,16 +447,34 @@ def setup_model_and_optimizer(model_provider_func,
     unwrapped_model = unwrap_model(model,
                                    (torchDDP, LocalDDP, Float16Module))
 
+    if args.mup == "apply":
+        assert mup is not None, 'Please install mup first'
+        for i, m in enumerate(unwrapped_model):
+            savefile = os.path.join(args.mup_save, "mup_base_shapes_{}.bsh".format(i))
+            mup.set_base_shapes(m, savefile)
+            mup_apply(m)
+
     optimizer = get_megatron_optimizer(model, no_wd_decay_cond,
                                        scale_lr_cond, lr_mult)
     opt_param_scheduler = get_optimizer_param_scheduler(optimizer)
 
     if args.load is not None:
+        if args.format_ckpt:
+            args.no_load_optim = True
+            args.no_load_rng = True
+
         timers = get_timers()
         timers('load-checkpoint', log_level=0).start(barrier=True)
         args.iteration = load_checkpoint(model, optimizer, opt_param_scheduler)
         timers('load-checkpoint').stop(barrier=True)
         timers.log(['load-checkpoint'])
+
+        if args.format_ckpt:
+            args.no_save_optim = True
+            args.no_save_rng = True
+            save_checkpoint(args.iteration, model, optimizer, opt_param_scheduler)
+            print_rank_0("Saved checkpoint from other frameworks in Megatron-LM format")
+            sys.exit(0)
     else:
         args.iteration = 0
 
@@ -408,6 +492,105 @@ def setup_model_and_optimizer(model_provider_func,
 
     return model, optimizer, opt_param_scheduler
 
+
+def mup_refresh_args(args):
+    # Refresh all dependent args when on args.hidden_size is changed
+    args.kv_channels = args.hidden_size // args.num_attention_heads
+
+    # Checks.
+    args.ffn_hidden_size = 4 * args.hidden_size
+
+    if args.swiglu:
+        # Ref: https://github.com/facebookresearch/llama/blob/main/llama/model.py#L161-L162
+        if args.multiple_of is not None:
+            hidden_dim = int(4 * args.hidden_size * 2 / 3)
+            args.ffn_hidden_size = args.multiple_of * \
+                ((hidden_dim + args.multiple_of - 1) // args.multiple_of)
+        else:
+            # reduce the dimnesion for MLP since projections happens on
+            # two linear layers. this keeps the number of paramters in
+            # the same ballpark as the counterpart with 4*h size
+            # we keep it a multiple of 64, which means the actual tensor size
+            # will be a multiple of 64 / tp_size
+            args.ffn_hidden_size = int((4 * args.hidden_size * 2 / 3) / 64) * 64
+
+
+def mup_prepare(model_provider_func,
+                model_type,
+                no_wd_decay_cond=None,
+                scale_lr_cond=None,
+                lr_mult=1.0):
+    """Setup model and optimizer."""
+    args = get_args()
+
+    based_model = get_model(model_provider_func, model_type)
+    unwrapped_based_model = unwrap_model(based_model,
+                                         (torchDDP, LocalDDP, Float16Module))
+
+    args.hidden_size = args.mup_delta_hidden_size
+    mup_refresh_args(args)
+    delta_model = get_model(model_provider_func, model_type)
+    unwrapped_delta_model = unwrap_model(delta_model,
+                                         (torchDDP, LocalDDP, Float16Module))
+
+    os.makedirs(args.mup_save, exist_ok = True)
+    for i, (based, delta) in enumerate(zip(unwrapped_based_model, unwrapped_delta_model)):
+        savefile = os.path.join(args.mup_save, "mup_base_shapes_{}.bsh".format(i))
+        # TODO: Need a more elegant way to do this
+        if torch.distributed.get_rank() % 8 == 0:
+            print("Saving base shapes to {}".format(savefile))
+            mup.make_base_shapes(based, delta, savefile=savefile)
+
+
+def mup_apply(model):
+    args = get_args()
+
+    def _init_weights(module):
+        """Initialize the weights.
+
+           This function is implemented based on `_init_wights` 
+           (https://github.com/microsoft/mutransformers/blob/main/mutransformers/models/gpt2/modeling_gpt2.py#L475)
+
+            muP swap constant std normal init with normal_ from `mup.init`.
+            Because `_init_weights` is called in `__init__`, before `infshape` is set,
+            we need to manually call `self.apply(self._init_weights)` after calling
+            `set_base_shape(model, base)`
+        """
+        if isinstance(module, tensor_parallel.MuReadoutColumnParallelLinear) \
+                and args.readout_zero_init:
+            module.weight.data.zero_()
+        elif isinstance(module, (tensor_parallel.ColumnParallelLinear, tensor_parallel.RowParallelLinear)):
+            if hasattr(module.weight, 'infshape'):
+                mup.normal_(module.weight, mean=0.0, std=args.init_method_std)
+
+        if isinstance(module, ParallelAttention):
+            if args.query_zero_init:
+                # new_tensor_shape = (module.num_attention_heads_per_partition,
+                #                     3, module.hidden_size_per_attention_head,
+                #                     module.query_key_value.weight.size()[-1])
+                # module.query_key_value.weight.view(
+                #     new_tensor_shape).data[:, 0, :, :] = 0
+                module.query.weight.data.zero_()
+
+        scaled_std = args.init_method_std / math.sqrt(2.0 * args.num_layers)
+        for name, p in module.named_parameters():
+            if "self_attention.dense.weight" in name \
+                or "mlp.dense_4h_to_h.weight" in name:
+                # Special Scaled Initialization --> There are 2 Layer Norms per Transformer Block
+                if hasattr(p, 'infshape'):
+                    mup.normal_(p, mean=0.0, std=scaled_std)
+    
+    model.apply(_init_weights)
+
+    if args.mup_rescale_params:
+        for name, module in model.named_modules():
+            if isinstance(module, tensor_parallel.MuReadoutColumnParallelLinear):
+                module._rescale_parameters()
+            elif isinstance(module, (tensor_parallel.ColumnParallelLinear, tensor_parallel.RowParallelLinear)):
+                mup.rescale_linear_bias(module)
+
+    # for name, p in model.named_parameters():
+    #     p.new_name = name
 
 
 def train_step(forward_step_func, data_iterator,
@@ -479,7 +662,9 @@ def train_step(forward_step_func, data_iterator,
         increment = get_num_microbatches() * \
                     args.micro_batch_size * \
                     args.data_parallel_size
-        opt_param_scheduler.step(increment=increment)
+        # TODO: For now, we only support constant LR scheduler.
+        if args.mup is None:
+            opt_param_scheduler.step(increment=increment)
         skipped_iter = 0
     else:
         skipped_iter = 1
@@ -505,6 +690,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
     args = get_args()
     timers = get_timers()
     writer = get_tensorboard_writer()
+    wandb_writer = get_wandb_writer()
 
     # Advanced, skipped, and Nan iterations.
     advanced_iters_key = 'advanced iterations'
@@ -642,6 +828,21 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
             elapsed_time_per_iteration * 1000.0)
         log_string += ' learning rate: {:.3E} |'.format(learning_rate)
         log_string += ' global batch size: {:5d} |'.format(batch_size)
+
+        # wandb values
+        wandb_metrics = dict()
+        if wandb_writer:
+            wandb_metrics['learning-rate'] = learning_rate
+            wandb_metrics['consumed-samples'] = args.consumed_train_samples
+            wandb_metrics['consumed-tokens'] = \
+                args.consumed_train_samples * args.seq_length / 1000. / 1000 / 1000
+            wandb_metrics['batch-size'] = batch_size
+            for key in loss_dict:
+                wandb_metrics[key] = loss_dict[key]
+            wandb_metrics['loss-scale'] = loss_scale
+            wandb_metrics['iteration-time'] = elapsed_time_per_iteration
+            wandb_metrics['world-size'] = args.world_size
+
         for key in total_loss_dict:
             if key not in [advanced_iters_key, skipped_iters_key,
                            nan_iters_key]:
@@ -653,10 +854,16 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
         log_string += ' loss scale: {:.1f} |'.format(loss_scale)
         if grad_norm is not None:
             log_string += ' grad norm: {:.3f} |'.format(grad_norm)
+            if wandb_writer:
+                wandb_metrics['grad-norm'] = grad_norm
         if num_zeros_in_grad is not None:
             log_string += ' num zeros: {:.1f} |'.format(num_zeros_in_grad)
+            if wandb_writer:
+                wandb_metrics['num-zeros'] = num_zeros_in_grad
         if params_norm is not None:
             log_string += ' params norm: {:.3f} |'.format(params_norm)
+            if wandb_writer:
+                wandb_metrics['params-norm'] = params_norm
         log_string += ' number of skipped iterations: {:3d} |'.format(
             total_loss_dict[skipped_iters_key])
         log_string += ' number of nan iterations: {:3d} |'.format(
@@ -671,15 +878,37 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
             report_memory_flag = False
         timers.log(timers_to_log, normalizer=args.log_interval)
 
+        # wandb
+        if wandb_writer:
+            import wandb
+            wandb.log(wandb_metrics, step=iteration)
+
     return report_memory_flag
 
 
 def save_checkpoint_and_time(iteration, model, optimizer, opt_param_scheduler):
+    args = get_args()
     timers = get_timers()
     # Extra barrier is added to make sure
     # all ranks report the max time.
     timers('save-checkpoint', log_level=0).start(barrier=True)
     save_checkpoint(iteration, model, optimizer, opt_param_scheduler)
+
+    if not torch.distributed.is_initialized() \
+       or mpu.get_data_parallel_rank() == 0:
+        # Save param_name_to_index_map
+        param_name_to_index_maps = [] 
+        for model_module in model:
+            param_name_to_index_maps.append(model_module.param_name_to_index_map)
+        index_map_dir = os.path.dirname(get_checkpoint_name(args.save, iteration))
+        if not os.path.exists(index_map_dir):
+            os.makedirs(index_map_dir)
+        index_map_file = os.path.join(index_map_dir, "param_name_to_index_maps.json")
+        with open(index_map_file, "w") as f:
+            json.dump(param_name_to_index_maps, f)
+    if torch.distributed.is_initialized():
+        torch.distributed.barrier()
+
     timers('save-checkpoint').stop(barrier=True)
     timers.log(['save-checkpoint'])
 
@@ -711,12 +940,28 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')
     report_memory_flag = True
+    if args.mup_coord_check:
+        data_frame = []
+        coord_check_modules = args.mup_coord_check_modules
     while iteration < args.train_iters:
         if args.profile and \
            iteration == args.profile_step_start and \
            torch.distributed.get_rank() in args.profile_ranks:
             torch.cuda.cudart().cudaProfilerStart()
             torch.autograd.profiler.emit_nvtx(record_shapes=True).__enter__()
+
+        # Add hooks of coordination check
+        if args.mup_coord_check:
+            remove_hooks = []
+            # add hooks
+            for m in model:
+                for name, module in m.named_modules():
+                    if len(coord_check_modules) > 0 and \
+                       not any(ele in name for ele in coord_check_modules):
+                        continue
+                    remove_hooks.append(module.register_forward_hook(
+                        coord_check._record_coords(
+                            data_frame, args.hidden_size, name, iteration + 1)))
 
         update_num_microbatches(args.consumed_train_samples)
         args.curr_iteration = iteration
@@ -731,6 +976,11 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
                                        args.micro_batch_size * \
                                        get_num_microbatches()
+
+        # remove hooks of coordination check
+        if args.mup_coord_check:
+            for handle in remove_hooks:
+                handle.remove()
 
         # Logging.
         loss_scale = optimizer.get_loss_scale().item()
@@ -768,8 +1018,26 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                 print_datetime('exiting program after receiving SIGTERM.')
                 sys.exit()
 
-        if args.save and args.save_interval and \
-           iteration % args.save_interval == 0:
+        need_save = False
+        if args.rampup_batch_size is not None \
+            and args.rampup_save_interval is not None:
+            rampup_samples = int(args.rampup_batch_size[2])
+            if args.consumed_train_samples < rampup_samples: 
+                if args.save and args.rampup_save_interval and \
+                   iteration % args.rampup_save_interval == 0:
+                    need_save = True
+            else:
+                if args.save and args.save_interval and \
+                   iteration % args.save_interval == 0:
+                    need_save = True
+        else:
+            if args.save and args.save_interval and \
+               iteration % args.save_interval == 0:
+                need_save = True
+    
+        # if args.save and args.save_interval and \
+        #    iteration % args.save_interval == 0:
+        if need_save:
             save_checkpoint_and_time(iteration, model, optimizer,
                                      opt_param_scheduler)
             saved_checkpoint = True
@@ -798,13 +1066,82 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             print_datetime('exiting program at iteration {}'.format(iteration))
             sys.exit()
 
+        if args.mup_coord_check and iteration >= args.mup_coord_check_steps:
+            print_datetime('mup coord check early stop at iteration {}'.format(iteration))
+            break
+
         if args.profile and \
            iteration == args.profile_step_end and \
            torch.distributed.get_rank() in args.profile_ranks:
             torch.cuda.cudart().cudaProfilerStop()
 
+    if args.mup_coord_check:
+        data_frame.append({'optimizer': args.optimizer, 'lr': args.lr}) 
+        savefile = os.path.join(args.mup_save, "coord_data_{}".format(time.time()))
+        with open(savefile, 'wb') as f:
+            pickle.dump(data_frame, f)
+
     return iteration
 
+
+def search_data(train_valid_test_dataset_provider, get_batch):
+    """Search the specific data."""
+    args = get_args()
+
+    search_range = args.data_searching_range
+    search_start = int(search_range[0])
+    search_end = int(search_range[1])
+
+    # Get the consumed train samples.
+    iteration = 0
+    while iteration < search_start:
+        update_num_microbatches(args.consumed_train_samples)
+        iteration += 1
+        if iteration % 10000 == 0:
+            print_rank_0(f'Data searching at iteration {iteration}...')
+        args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
+                                       args.micro_batch_size * \
+                                       get_num_microbatches()
+    
+    # Build the dataloader
+    args.iteration = iteration 
+    update_train_iters(args)
+    if args.virtual_pipeline_model_parallel_size is not None:
+        all_data_iterators = [
+            build_train_valid_test_data_iterators(
+                train_valid_test_dataset_provider)
+            for _ in range(len(args.virtual_pipeline_model_parallel_size))
+        ]
+        train_data_iterator = [data_iterators[0]
+                               for data_iterators in all_data_iterators]
+        valid_data_iterator = [data_iterators[1]
+                               for data_iterators in all_data_iterators]
+        test_data_iterator = [data_iterators[2]
+                              for data_iterators in all_data_iterators]
+    else:
+        train_data_iterator, valid_data_iterator, test_data_iterator \
+            = build_train_valid_test_data_iterators(
+                train_valid_test_dataset_provider)
+    data_iterator = train_data_iterator
+
+    searched_data = defaultdict(dict)
+    # Get the searched data.
+    while iteration < search_end:
+        update_num_microbatches(args.consumed_train_samples)
+        for microbatch_num in range(get_num_microbatches()):
+            tokens, labels, loss_mask, attention_mask, position_ids, dataset_idx = get_batch(data_iterator) 
+            cur_key = str(iteration) + "_" + str(microbatch_num)
+            searched_data[cur_key]["tokens"] = tokens
+            searched_data[cur_key]["labels"] = labels
+            searched_data[cur_key]["dataset_idx"] = dataset_idx
+        iteration += 1
+        args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
+                                       args.micro_batch_size * \
+                                       get_num_microbatches()
+    if not os.path.exists(args.data_searching_save):
+        raise ValueError("searched data save path does not exist")
+    searched_data_file = os.path.join(args.data_searching_save, "searched_data_{}_to_{}".format(search_start, search_end))
+    torch.save(searched_data, searched_data_file)
 
 def evaluate(forward_step_func,
              data_iterator,
@@ -898,6 +1235,10 @@ def evaluate_and_print_results(prefix, forward_step_func,
     else:
         writer = None
 
+    # wandb
+    wandb_writer = get_wandb_writer()
+    wandb_metrics = dict()
+
     total_loss_dict, collected_non_loss_data = evaluate(
         forward_step_func, data_iterator, model,
         process_non_loss_data_func, config, verbose)
@@ -918,6 +1259,15 @@ def evaluate_and_print_results(prefix, forward_step_func,
                                   iteration)
                 writer.add_scalar('{} validation ppl vs samples'.format(key),
                                   ppl, args.consumed_train_samples)
+
+        if wandb_writer:
+            wandb_metrics['{} validation'.format(key)] = total_loss_dict[key].item()
+            wandb_metrics['{} validation vs samples'.format(key)] = args.consumed_train_samples
+            wandb_metrics['{} validation ppl'.format(key)] = ppl
+
+    if wandb_writer:
+        import wandb
+        wandb.log(wandb_metrics, step=iteration)
 
     if process_non_loss_data_func is not None and writer and is_last_rank():
         process_non_loss_data_func(collected_non_loss_data, iteration, writer)
