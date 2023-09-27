@@ -1,23 +1,26 @@
 #!/bin/bash
 
+# Please change the following envrioment variables
+# base on the cluster configuration
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 export NCCL_SOCKET_IFNAME=eth0
 export NCCL_IB_DISABLE=0
 export NCCL_IB_CUDA_SUPPORT=1
 export NCCL_IB_GID_INDEX=0
 export NCCL_IB_HCA=mlx5_2,mlx5_5
+export NCCL_IB_TIMEOUT=23
+export NCCL_IB_RETRY_CNT=7
 export NCCL_DEBUG=DEBUG
 export OMP_NUM_THREADS=4
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 export GLOO_SOCKET_IFNAME=eth0
+
 set -u
   PROJ_HOME=$1
   EXPNAME=$2
-  DATA_PATH=$3
+  HOSTFILE=$3
+  DATA_PATH=$4
 set +u
-
-HOSTFILE=$PROJ_HOME/config/hostfile
-echo $HOSTFILE
 
 CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$EXPNAME
 mkdir -p $CHECKPOINT_PATH
@@ -32,13 +35,12 @@ mkdir -p $TB_PATH
 WB_PATH=$PROJ_HOME/wandb/$EXPNAME
 mkdir -p $WB_PATH
 
-# Change for multinode config
 export NODE_ADDR=$(ifconfig -a|grep inet|grep -v 127.0.0.1|grep -v inet6|awk '{print $2;}'|tr -d "addr:"|head -n 1)
 export GPUS_PER_NODE=$(awk '{$1=$1;print}' $HOSTFILE|awk -F" |=" '{ranks[$1]=$NF;}END{print ranks["'$NODE_ADDR'"];}')
 export NNODES=$(cat $HOSTFILE | wc -l)
 export MASTER_ADDR=$(head -n1 $HOSTFILE | awk '{print $1;}')
 export NODE_RANK=$(awk '{ranks[$1]=(FNR-1);}END{print ranks["'$NODE_ADDR'"];}' $HOSTFILE)
-export MASTER_PORT=23456
+export MASTER_PORT=12345
 WORLD_SIZE=$(($GPUS_PER_NODE * $NNODES))
 
 DISTRIBUTED_ARGS="

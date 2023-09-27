@@ -1,73 +1,145 @@
 ## Introduction
 
-[FlagScale](https://github.com/FlagOpen/FlagScale.git) is a Large Language Model (LLM) toolkit based on the [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) project, which supports the Aquila LLMs from BAAI. Our primary goal is to utilize the computation resources efficiently for LLMs without sacrificing the numerical stability and model effectiveness. In the future, we will support **different LLMs on various hardware architectures**. 
+[FlagScale](https://github.com/FlagOpen/FlagScale.git) is a Large Language Model (LLM) toolkit based on the [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) project, which supports the LLMs from Beijing Academy of Artificial Intelligence (BAAI). Our primary goal is to utilize the computation resources efficiently for LLMs without sacrificing the numerical stability and model effectiveness. In the future, we will support different LLMs on various hardware architectures. 
 
 The reason why we start from Megatron-LM is that it can achieve a very high-level resource utilization by combining the most comprehensive distributed training and accelerating techniques, especially for training LLMs beyond ten-billions of parameters. 
 
 ## Highlights
-FlagScale provides developers with the actual configurations, optimization schemes and hyper-parameter settings for LLM training from BAAI. It also assists developers in rapidly establishing a fundamental yet complete pipeline for LLM, including training, fine-tuning, inference and serving. It has several features as follows:
+FlagScale provides developers with the actual configurations, optimization schemes and hyper-parameter settings for LLM training from BAAI. It also assists developers in rapidly establishing a basic yet complete pipeline for LLM, including training, fine-tuning, inference and serving. It has several features as follows:
 
-- Support pre-training, fine-tuning, inference and serving scripts for the Aquila LLMs
-- Provide the training schemes of the Aquila model which can guaranteed training convergence
-- Support model weight conversion to Huggingface and repartition distributed optimizer
-- Ensure timely synchronization with the upstream Megatron-LM project
+- Provide the training schemes of the Aquila model form BAAI which can guaranteed training convergence
+- Support the model weight conversion to Huggingface and the distributed optimizer repartition
+- Keep timely synchronization with the upstream Megatron-LM project
 
 ## Quick Start
 
-We highly recommend developers to follow the [Megatron-LM Usage](./README_original.md#contents). Here we provide instructions for Aquila-33b model: 
+We highly recommend developers to follow the [Megatron-LM Usage](./README_original.md#contents). Here we provide instructions for Aquila LLMs:
 
-### Launch a training task
+### Setup 
 
+1. Install the Megatron-LM dependencies as the [original link](./README_original.md#setup)
+
+2. Install the requirements for FlagScale
 ```
-bash examples/aquila/dist_start.sh
-```
-
-### Stop a training task
-
-```
-bash examples/aquila/dist_stop.sh
-```
-
-### Convert a checkpoint before the inference and serving
-
-```
-python tools/checkpoint_util.py  --model-type GPT --load-dir <training_ckpt_dir>  --save-dir <inference_ckpt_dir> \
-    --true-vocab-size 100008 --vocab-file examples/aquila/tokenizer/vocab.json --megatron-path <FlagScale_dir> \
-    --target-tensor-parallel-size 1 --target-pipeline-parallel-size 1
+git clone git@gitee.com:baai-opensp/FlagScale.git 
+cd FlagScale
+pip install -r requirements.txt
 ```
 
-### Launch a inference and serving task
+### Pretrain the aquila model
+
+1. Change to the aquila directory 
+
+```
+cd FlagScale/examples/aquila
+```
+2. Start a distributed training 
+
+```
+bash dist_start.sh
+```
+Before running `dist_start.sh`, you should provide the required information: 
+  * `FlagScale_HOME`: the directory of the FlagScale
+  * `PROJ_HOME`: the directory for saving checkpoints, tensorboards and other information
+  * `EXPNAME`: the name of the current training experiment
+  * `DATA_PATH`: the path of the training datasets following the [Megatron-LM format](./README_original.md#data-preprocessing)
+  * `HOSTFILE`: the hostfile of the nodes for the current training 
+
+3. Stop a distributed training
+
+```
+bash dist_stop.sh
+```
+Before running `examples/aquila/dist_start.sh`, you should provide the required information: 
+  * `HOSTFILE`: the hostfile of the nodes for the current training 
+
+
+### From FlagScale to HuggingFace
+
+1. Change to the FlagScale directory
+
+```
+cd FlagScale 
+```
+
+2. Merge the multiple checkpoints to a single checkpoint (if needed)
+```
+python tools/checkpoint_util.py --model-type GPT \
+        --load-dir ${LOAD_DIR} --save-dir ${SAVE_DIR} \
+        --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json \
+        --megatron-path ${FlagScale_HOME} --target-tensor-parallel-size 1 --target-pipeline-parallel-size 1
+```
+Please set the following variables before running the command:
+  * `LOAD_DIR`: the directory for loading the original checkpoint
+  * `SAVE_DIR`: the directory for saving the merged checkpoint
+  * `FlagScale_HOME`: the directory of FlagScale
 
 ```
 python examples/aquila/33B/inference_auto.py --server-port <server_port> --master-process <master_port> --device "0" \
     --iteration <iter_num> --checkpoint-path <inference_ckpt_dir> --model-info "Aquila-33b"
 ```
 
-### Repartition the distributed optimizer
+3. Convert the merged checkpoint to the Huggingface format 
+```
+export PYTHONPATH=${FlagScale_HOME}:$PYTHONPATH
 
-When using the distributed optimzier, you can use the following tool to repartition the distributed optimizer if the data parallel degree is changed.
+python scripts/convert_megatron_unsharded_to_huggingface.py \
+        --input-dir ${SAVE_DIR}/iter_${ITERATION}/mp_rank_00/ \
+        --output-dir ${SAVE_DIR}/iter_${ITERATION}_hf \
+        --num-layers 64 --hidden-size 6144 \
+        --num-attention-heads 48 --group-query-attention --num-query-groups 8 \
+        --data-type bf16 --multiple-of 4096 --hidden-dim-multiplier 1.3
+```
+Please set the following variables before running the command:
+  * `FlagScale_HOME`: the directory of FlagScale
+  * `SAVE_DIR`: the directory for loading the merged checkpoint
+  * `ITERATION`: the iteration number from `latest_checkpointed_iteration.txt` in `SAVE_DIR` and need to be padded zeros to 7 digits.
+Besides, you may need to change the model configurations such as `num_layers`, `hidden_size` and so on. 
+
+### Repartition the distributed optimizer [optional] 
+
+When using the distributed optimizer, you can use the following tool to repartition the distributed optimizer if the parallel schemes is changed during the training.
+
+1. Change to the FlagScale directory
 
 ```
-python tools/checkpoint_util_lite.py --conversion-type weight --model-type GPT --load-dir <load_ckpt_dir> --save-dir <save_ckpt_dir> \ 
-    --true-vocab-size 100008 --vocab-file examples/aquila/tokenizer/vocab.json --megatron-path <FlagScale_dir> \
-    --target-tensor-parallel-size <tp_degree> --target-pipeline-parallel-size <pp_degree>
-
-python tools/checkpoint_util_lite.py --conversion-type optimizer --model-type GPT --load-dir <load_ckpt_dir> --save-dir <save_ckpt_dir> \
-    --true-vocab-size 100008 --vocab-file examples/aquila/tokenizer/vocab.json --megatron-path <FlagScale_dir> \
-    --target-tensor-parallel-size <tp_degree> --target-pipeline-parallel-size <pp_degree>
+cd FlagScale 
 ```
 
-### From FlagScale to HuggingFace
+2. Repartition the model weight
 
 ```
-python scripts/convert_megatron_unsharded_to_huggingface.py
+python tools/checkpoint_util_lite.py --conversion-type weight --model-type GPT --load-dir ${LOAD_DIR} --save-dir ${SAVE_DIR} \ 
+    --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json --megatron-path  ${FlagScale_HOME} \
+    --target-tensor-parallel-size ${TP} --target-pipeline-parallel-size ${PP} 
 ```
+Please set the following variables before running the command:
+  * `LOAD_DIR`: the directory for loading the original checkpoint
+  * `SAVE_DIR`: the directory for saving the converted checkpoint
+  * `FlagScale_HOME`: the directory of FlagScale
+  * `TP`: the target tensor parallel size
+  * `PP`: the target pipeline parallel size 
+
+
+3. Repartition the distributed optimizer 
+```
+python tools/checkpoint_util_lite.py --conversion-type optimizer --model-type GPT --load-dir ${LOAD_DIR} --save-dir ${SAVE_DIR} \ 
+    --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json --megatron-path  ${FlagScale_HOME} \
+    --target-tensor-parallel-size ${TP} --target-pipeline-parallel-size ${PP} 
+```
+Please set the following variables before running the command **as these used in the model weight conversion**:
+  * `LOAD_DIR`: the directory for loading the original checkpoint
+  * `SAVE_DIR`: the directory for saving the converted checkpoint
+  * `FlagScale_HOME`: the directory of FlagScale
+  * `TP`: the target tensor parallel size
+  * `PP`: the target pipeline parallel size 
+
 
 ## Future work
 
 We will work with the community together on the following items:
 
-* Release the actual used training schemes for the larger Aquila models 
+* Release the actual used training schemes for more models from BAAI 
 * Add customized optimizations and integrate techniques from other excellent open-source projects like DeepSpeed and vLLM etc. 
 * Support LLMs with different model structures 
 * Support the model training with more hardware architectures

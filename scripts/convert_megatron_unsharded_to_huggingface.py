@@ -176,7 +176,7 @@ def convert_checkpoint(args):
     del loaded
     gc.collect()
 
-    print("Loading the checkpoint in a Llama model.")
+    print("Loading the checkpoint.")
     model = LlamaForCausalLM.from_pretrained(tmp_model_path, low_cpu_mem_usage=True, torch_dtype=params_dtype)
     # Avoid saving this as part of the config.
     del model.config._name_or_path
