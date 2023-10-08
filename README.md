@@ -7,9 +7,13 @@ The reason why we start from Megatron-LM is that it can achieve a very high-leve
 ## Highlights
 FlagScale provides developers with the actual configurations, optimization schemes and hyper-parameter settings for LLM training from BAAI. It also assists developers in rapidly establishing a basic yet complete pipeline for LLM, including training, fine-tuning, inference and serving. It has several features as follows:
 
-- Provide the training schemes of the Aquila model form BAAI which can guaranteed training convergence
+- Provide the training schemes of the Aquila models form BAAI which can guaranteed training convergence
 - Support the model weight conversion to Huggingface and the distributed optimizer repartition
 - Keep timely synchronization with the upstream Megatron-LM project
+
+## News and Updates
+
+* 2023.10.11 We release the initial version by supporting the Aquila models, and also provide the used training schemes for [Aquila-7B](./examples/aquila/7B/pretrain_aquila_7b_distributed_A800_12n_80g.sh) and [Aquila-34B](./examples/aquila/33B/pretrain_aquila_33b_distributed_A100_64n_40g.sh).
 
 ## Quick Start
 
@@ -33,7 +37,7 @@ pip install -r requirements.txt
 ```
 cd FlagScale/examples/aquila
 ```
-2. Start a distributed training 
+2. Start a distributed training job 
 
 ```
 bash dist_start.sh
@@ -45,12 +49,12 @@ Before running `dist_start.sh`, you should provide the required information:
   * `DATA_PATH`: the path of the training datasets following the [Megatron-LM format](./README_original.md#data-preprocessing)
   * `HOSTFILE`: the hostfile of the nodes for the current training 
 
-3. Stop a distributed training
+3. Stop a distributed training job
 
 ```
 bash dist_stop.sh
 ```
-Before running `examples/aquila/dist_start.sh`, you should provide the required information: 
+Before running `dist_stop.sh`, you should provide the required information: 
   * `HOSTFILE`: the hostfile of the nodes for the current training 
 
 
@@ -74,11 +78,6 @@ Please set the following variables before running the command:
   * `SAVE_DIR`: the directory for saving the merged checkpoint
   * `FlagScale_HOME`: the directory of FlagScale
 
-```
-python examples/aquila/33B/inference_auto.py --server-port <server_port> --master-process <master_port> --device "0" \
-    --iteration <iter_num> --checkpoint-path <inference_ckpt_dir> --model-info "Aquila-33b"
-```
-
 3. Convert the merged checkpoint to the Huggingface format 
 ```
 export PYTHONPATH=${FlagScale_HOME}:$PYTHONPATH
@@ -94,6 +93,7 @@ Please set the following variables before running the command:
   * `FlagScale_HOME`: the directory of FlagScale
   * `SAVE_DIR`: the directory for loading the merged checkpoint
   * `ITERATION`: the iteration number from `latest_checkpointed_iteration.txt` in `SAVE_DIR` and need to be padded zeros to 7 digits.
+
 Besides, you may need to change the model configurations such as `num_layers`, `hidden_size` and so on. 
 
 ### Repartition the distributed optimizer [optional] 
