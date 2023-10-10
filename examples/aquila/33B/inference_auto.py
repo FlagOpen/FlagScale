@@ -46,7 +46,6 @@ CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_g
        --make-vocab-size-divisible-by 64 \
        --use-flash-attn \
        --apply-layernorm-rms \
-       --sequence-parallel \
        --tensor-model-parallel-size 1  \
        --pipeline-model-parallel-size 1  \
        --num-layers 60  \

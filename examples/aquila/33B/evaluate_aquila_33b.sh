@@ -23,6 +23,7 @@ VALID_DATA=<Specify lambada path>
 VOCAB_FILE=<Specify vocab.json path>
 MERGE_FILE=<Specify merges.txt path>
 CHECKPOINT=<Specify checkpoints path>
+SPECIAL_TOKENS_FILE=<Specify special_tokens.txt path>
 
 python -m torch.distributed.launch $DISTRIBUTED_ARGS ./tasks/main.py \
                --task $TASK \
@@ -31,7 +32,9 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS ./tasks/main.py \
     	       --tokenizer-type AquilaTokenizer \
                --vocab-file $VOCAB_FILE \
                --merge-file $MERGE_FILE \
+               --special-tokens-file $SPECIAL_TOKENS_FILE  \
                --load $CHECKPOINT \
+               --use-flash-attn \
                --tensor-model-parallel-size 1 \
                --pipeline-model-parallel-size 1 \
                --num-layers 60 \
