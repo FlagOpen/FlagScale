@@ -1,6 +1,6 @@
 ## Introduction
 
-[FlagScale](https://github.com/FlagOpen/FlagScale.git) is a Large Language Model (LLM) toolkit based on the [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) project, which supports the LLMs from Beijing Academy of Artificial Intelligence (BAAI). Our primary goal is to utilize the computation resources efficiently for LLMs without sacrificing the numerical stability and model effectiveness. In the future, we will support different LLMs on various hardware architectures. 
+[FlagScale](https://github.com/FlagOpen/FlagScale.git) is a Large Language Model (LLM) toolkit based on the [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) project, which supports the LLMs from Beijing Academy of Artificial Intelligence (BAAI). Our primary goal is to utilize the computation resources efficiently for LLMs without sacrificing the numerical stability and model effectiveness. For now, FlagScale is still in its early stage and we will work with the community together to support different LLMs on various hardware architectures. 
 
 The reason why we start from Megatron-LM is that it can achieve a very high-level resource utilization by combining the most comprehensive distributed training and accelerating techniques, especially for training LLMs beyond ten-billions of parameters. 
 
@@ -13,7 +13,7 @@ FlagScale provides developers with the actual configurations, optimization schem
 
 ## News and Updates
 
-* 2023.10.11 We release the initial version by supporting the Aquila models, and also provide the used training schemes for [Aquila-7B](./examples/aquila/7B/pretrain_aquila_7b_distributed_A800_12n_80g.sh) and [Aquila-34B](./examples/aquila/33B/pretrain_aquila_33b_distributed_A100_64n_40g.sh).
+* 2023.10.11 We release the initial version by supporting the Aquila models, and also provide our actually used training schemes for [Aquila2-7B](./examples/aquila/7B/pretrain_aquila_7b_distributed_A800_12n_80g.sh) and [Aquila2-34B](./examples/aquila/34B/pretrain_aquila_34b_distributed_A100_64n_40g.sh), including the parallel strategies, optimizations and hyper-parameter settings.
 
 ## Quick Start
 
@@ -43,11 +43,17 @@ cd FlagScale/examples/aquila
 bash dist_start.sh
 ```
 Before running `dist_start.sh`, you should provide the required information: 
-  * `FlagScale_HOME`: the directory of the FlagScale
-  * `PROJ_HOME`: the directory for saving checkpoints, tensorboards and other information
-  * `EXPNAME`: the name of the current training experiment
-  * `DATA_PATH`: the path of the training datasets following the [Megatron-LM format](./README_original.md#data-preprocessing)
-  * `HOSTFILE`: the hostfile of the nodes for the current training 
+  * `FlagScale_HOME`: the directory of the FlagScale.
+  * `PROJ_HOME`: the directory for saving checkpoints, tensorboards and other information.
+  * `EXPNAME`: the name of the current training experiment.
+  * `DATA_PATH`: the path of the training datasets following the [Megatron-LM format](./README_original.md#data-preprocessing). For quickly running the pretraining process, we also provide a small processed data ([bin](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.bin) and [idx](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.idx)) from the [Pile](https://pile.eleuther.ai/) dataset.
+  * `HOSTFILE`: the hostfile of the nodes for the current training, which consists of a list of hostnames and slot counts. For example:
+    ```
+    hostnames-1/IP-1 slots=8
+    hostnames-2/IP-2 slots=8
+    ```
+    These hostnames or IPs represent machines accessible via passwordless SSH and the slots specify the number of GPUs available on that machine.
+
 
 3. Stop a distributed training job
 
@@ -55,7 +61,7 @@ Before running `dist_start.sh`, you should provide the required information:
 bash dist_stop.sh
 ```
 Before running `dist_stop.sh`, you should provide the required information: 
-  * `HOSTFILE`: the hostfile of the nodes for the current training 
+  * `HOSTFILE`: the hostfile of the nodes for the current training. 
 
 
 ### From FlagScale to HuggingFace
@@ -74,9 +80,9 @@ python tools/checkpoint_util.py --model-type GPT \
         --megatron-path ${FlagScale_HOME} --target-tensor-parallel-size 1 --target-pipeline-parallel-size 1
 ```
 Please set the following variables before running the command:
-  * `LOAD_DIR`: the directory for loading the original checkpoint
-  * `SAVE_DIR`: the directory for saving the merged checkpoint
-  * `FlagScale_HOME`: the directory of FlagScale
+  * `LOAD_DIR`: the directory for loading the original checkpoint.
+  * `SAVE_DIR`: the directory for saving the merged checkpoint.
+  * `FlagScale_HOME`: the directory of FlagScale.
 
 3. Convert the merged checkpoint to the Huggingface format 
 ```
@@ -90,8 +96,8 @@ python scripts/convert_megatron_unsharded_to_huggingface.py \
         --data-type bf16 --multiple-of 4096 --hidden-dim-multiplier 1.3
 ```
 Please set the following variables before running the command:
-  * `FlagScale_HOME`: the directory of FlagScale
-  * `SAVE_DIR`: the directory for loading the merged checkpoint
+  * `FlagScale_HOME`: the directory of FlagScale.
+  * `SAVE_DIR`: the directory for loading the merged checkpoint.
   * `ITERATION`: the iteration number from `latest_checkpointed_iteration.txt` in `SAVE_DIR` and need to be padded zeros to 7 digits.
 
 Besides, you may need to change the model configurations such as `num_layers`, `hidden_size` and so on. 
@@ -114,11 +120,11 @@ python tools/checkpoint_util_lite.py --conversion-type weight --model-type GPT -
     --target-tensor-parallel-size ${TP} --target-pipeline-parallel-size ${PP} 
 ```
 Please set the following variables before running the command:
-  * `LOAD_DIR`: the directory for loading the original checkpoint
-  * `SAVE_DIR`: the directory for saving the converted checkpoint
-  * `FlagScale_HOME`: the directory of FlagScale
-  * `TP`: the target tensor parallel size
-  * `PP`: the target pipeline parallel size 
+  * `LOAD_DIR`: the directory for loading the original checkpoint.
+  * `SAVE_DIR`: the directory for saving the converted checkpoint.
+  * `FlagScale_HOME`: the directory of FlagScale.
+  * `TP`: the target tensor parallel size.
+  * `PP`: the target pipeline parallel size. 
 
 
 3. Repartition the distributed optimizer 
@@ -128,11 +134,11 @@ python tools/checkpoint_util_lite.py --conversion-type optimizer --model-type GP
     --target-tensor-parallel-size ${TP} --target-pipeline-parallel-size ${PP} 
 ```
 Please set the following variables before running the command **as these used in the model weight conversion**:
-  * `LOAD_DIR`: the directory for loading the original checkpoint
-  * `SAVE_DIR`: the directory for saving the converted checkpoint
-  * `FlagScale_HOME`: the directory of FlagScale
-  * `TP`: the target tensor parallel size
-  * `PP`: the target pipeline parallel size 
+  * `LOAD_DIR`: the directory for loading the original checkpoint.
+  * `SAVE_DIR`: the directory for saving the converted checkpoint.
+  * `FlagScale_HOME`: the directory of FlagScale.
+  * `TP`: the target tensor parallel size.
+  * `PP`: the target pipeline parallel size. 
 
 
 ## Future work
