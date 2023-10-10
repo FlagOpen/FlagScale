@@ -3,8 +3,9 @@ import argparse
 import os 
 
 parser = argparse.ArgumentParser(
-        prog='33b-base-server',
+        prog='34b-base-server',
     )
+
 parser.add_argument('--server-port', required=True, type=int)
 parser.add_argument('--master-process', required=True, type=int)
 parser.add_argument('--device', default='0', type=str)
@@ -27,7 +28,7 @@ if model_iteration != -1:
 
 sh_content = """#!/bin/bash
 
-DISTRIBUTED_ARGS="--nproc_per_node 8 \
+DISTRIBUTED_ARGS="--nproc_per_node 2 \
                   --nnodes 1 \
                   --node_rank 0 \
                   --master_addr localhost \
@@ -40,13 +41,13 @@ SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
 
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 
-CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_generation_uvicorn_server_single_thread.py \
+CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_generation_uvicorn_server.py \
        --server-port {server_port} \
        --model-info {model_info} \
        --make-vocab-size-divisible-by 64 \
        --use-flash-attn \
        --apply-layernorm-rms \
-       --tensor-model-parallel-size 8  \
+       --tensor-model-parallel-size 2  \
        --pipeline-model-parallel-size 1  \
        --num-layers 60  \
        --hidden-size 6144  \
