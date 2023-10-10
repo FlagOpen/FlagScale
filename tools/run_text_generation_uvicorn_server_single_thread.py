@@ -24,6 +24,8 @@ import random
 import sys 
 from fastapi.responses import StreamingResponse
 import asyncio
+from tools.stream_conversation.conversation_convo_v2 import covert_prompt_to_input_ids_with_history
+
 
 def get_tokenizer():
     from megatron.tokenizer.tokenizer import _AquilaTokenizer
@@ -75,13 +77,18 @@ class UvicornServer:
             sft = config.get("sft", False)
             max_length=config['max_new_tokens']
 
-            print(f"model info is {self.model_info}")
-            
-            if not isinstance(prompts, list):
-                prompts = [prompts,]
+            history = config.get("history", [])
 
+            if seed == 0:
+                seed = random.randint(0, 429496729)
+                
+            print(f"model info is {self.model_info}")
+
+            assert type(prompts) is str
             if sft:
-                prompts = make_sft_prompts(prompts)
+                prompts = covert_prompt_to_input_ids_with_history(prompts, history, tokenizer, 2048)
+            
+            prompts = [prompts,]
 
             await lock_stream.acquire()
             choice = torch.cuda.LongTensor([1])
@@ -115,12 +122,15 @@ class UvicornServer:
 
                         break
 
-            return StreamingResponse(trans(), media_type="text/plain")
+            return StreamingResponse(trans(), media_type="text/plain", lock=lock_stream)
         
 
         return app
 
     def run(self):
+        with open("./disconnected.txt", "w") as f:
+            f.write("")
+        
         app = self.init_flask()
         uvicorn.run(app, host='0.0.0.0', port=self.server_port, workers=1)
 

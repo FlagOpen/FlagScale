@@ -24,6 +24,8 @@ import random
 import sys 
 from fastapi.responses import StreamingResponse
 
+from tools.stream_conversation.conversation_convo_v2 import covert_prompt_to_input_ids_with_history
+
 def get_tokenizer():
     from megatron.tokenizer.tokenizer import _AquilaTokenizer
     vocab_file = "examples/aquila/tokenizer/vocab.json"
@@ -244,13 +246,18 @@ class UvicornServer:
             max_length=config['max_new_tokens']
             gene_time = config.get("time", 15)
 
-            print(f"model info is {self.model_info}")
-            
-            if not isinstance(prompts, list):
-                prompts = [prompts,]
+            history = config.get("history", [])
 
+            if seed == 0:
+                seed = random.randint(0, 429496729)
+
+            print(f"model info is {self.model_info}")
+
+            assert type(prompts) is str
             if sft:
-                prompts = make_sft_prompts(prompts)
+                prompts = covert_prompt_to_input_ids_with_history(prompts, history, tokenizer, 2048)
+            
+            prompts = [prompts,]
 
             with lock:  # Need to get lock to keep multiple threads from hitting code
                 choice = torch.cuda.LongTensor([1])

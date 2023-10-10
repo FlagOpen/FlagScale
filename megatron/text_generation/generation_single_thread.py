@@ -94,6 +94,7 @@ def generate_tokens_probs_and_return_on_first_stage_stream_sub_process(
         stop_on_double_eol=False,
         stop_on_eol=False,
         prevent_newline_after_colon=True,
+        seed=1234,
         ):
     """Main token generation function.
     Arguments:
@@ -199,7 +200,8 @@ def generate_tokens_probs_and_return_on_first_stage_stream_sub_process(
                                     top_k=top_k,
                                     top_p=top_p,
                                     temperature=temperature,
-                                    vocab_size=tokenizer.vocab_size)
+                                    vocab_size=tokenizer.vocab_size,
+                                    seed=seed)
                 if top_p > 0.0 and top_p_decay > 0.0:
                     top_p = top_p * top_p_decay
                     if top_p_bound > 0.0:
@@ -211,7 +213,19 @@ def generate_tokens_probs_and_return_on_first_stage_stream_sub_process(
                 if done2[0].item() == 1:
                     print(f"Receive the stop signal")
                     break
+                
+                return_list.append(new_sample[0].cpu().item())
+                content_1 = tokenizer.detokenize(return_list)
+                if (len(return_list) > 5 and "�" not in content_1) or context_length == max_sequence_length-1 or len(return_list) > 10:
+                    content = tokenizer.detokenize(return_list)
+                    done3 = torch.cuda.LongTensor([2])
+                    torch.distributed.broadcast(done3, 0)
+                    if done3[0].item() == 1:
+                        print(f"sub-process 3 received stop signal")
+                        break
 
+                    return_list = []
+                    
                 # If a prompt length is smaller or equal th current context
                 # length, it means we have started generating tokens
                 started = lengths <= context_length
@@ -304,6 +318,7 @@ def generate_tokens_probs_and_return_on_first_stage_stream_main_process(
         stop_on_double_eol=False,
         stop_on_eol=False,
         prevent_newline_after_colon=True,
+        seed=1234,
         ):
     """Main token generation function.
     Arguments:
@@ -410,17 +425,21 @@ def generate_tokens_probs_and_return_on_first_stage_stream_main_process(
                                     top_k=top_k,
                                     top_p=top_p,
                                     temperature=temperature,
-                                    vocab_size=tokenizer.vocab_size)
+                                    vocab_size=tokenizer.vocab_size,
+                                    seed=seed)
                 print(f"new sample is {new_sample}")
 
                 if new_sample[0] == 100007:
                     # send stop signal
                     choice = torch.cuda.LongTensor([1])
                     torch.distributed.broadcast(choice, 0)
+                    if len(return_list) != 0:
+                        content = tokenizer.detokenize(return_list)
+                        yield content 
+                        return_list = []
+                        print(content) 
                     raise StopIteration
 
-                
-            
                 tmp = tokenizer.detokenize([new_sample[0].cpu().item(), ])
                 if tmp == "###" or tmp == "[UNK]" or tmp == "</s>":
                     content = tokenizer.detokenize(return_list)
@@ -436,11 +455,30 @@ def generate_tokens_probs_and_return_on_first_stage_stream_main_process(
                 torch.distributed.broadcast(choice, 0)
 
                 return_list.append(new_sample[0].cpu().item())
-                if len(return_list) > 3 or context_length == max_sequence_length-1:
+                content_1 = tokenizer.detokenize(return_list)
+                ## to solve the shengpizi problem
+                if (len(return_list) > 5 and "�" not in content_1) or context_length == max_sequence_length-1 or len(return_list) > 10:
                     content = tokenizer.detokenize(return_list)
+                    print(content) 
+                    
+                    # to solve the stuck problem. 
+                    # When the main process find that it should stop at this time,
+                    # it will send the stop signal to all the other sub-processes.
+                    f = open("disconnected.txt", "r")
+                    disconnect_content = f.readlines()
+                    print("content333:", disconnect_content)
+                    if 'disconnected' in disconnect_content:
+                        f2 = open("disconnected.txt", "w")
+                        f2.close()
+                        f.close()
+                        done3 = torch.cuda.LongTensor([1])
+                        torch.distributed.broadcast(done3, 0)
+                    else:
+                        done3 = torch.cuda.LongTensor([2])
+                        torch.distributed.broadcast(done3, 0)
+
                     yield content 
                     return_list = []
-                    print(content) 
 
                 if top_p > 0.0 and top_p_decay > 0.0:
                     top_p = top_p * top_p_decay

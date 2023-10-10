@@ -87,7 +87,7 @@ DATA_ARGS="
 "
 
 NETWORK_ARGS="
-    --num-layers 60 \
+    --num-layers 8 \
     --hidden-size 6144 \
     --num-attention-heads 48 \
     --group-query-attention \

@@ -94,6 +94,7 @@ def generate_tokens_probs_and_return_on_first_stage(
         stop_on_double_eol=False,
         stop_on_eol=False,
         prevent_newline_after_colon=True,
+        seed=1234,
         ):
     """Main token generation function.
     Arguments:
@@ -199,7 +200,8 @@ def generate_tokens_probs_and_return_on_first_stage(
                                     top_k=top_k,
                                     top_p=top_p,
                                     temperature=temperature,
-                                    vocab_size=tokenizer.vocab_size)
+                                    vocab_size=tokenizer.vocab_size,
+                                    seed=seed)
                 if top_p > 0.0 and top_p_decay > 0.0:
                     top_p = top_p * top_p_decay
                     if top_p_bound > 0.0:
@@ -294,6 +296,7 @@ def generate_tokens_probs_and_return_on_first_stage_stream(
         stop_on_double_eol=False,
         stop_on_eol=False,
         prevent_newline_after_colon=True,
+        seed=1234,
         ):
     """Main token generation function.
     Arguments:
@@ -399,10 +402,16 @@ def generate_tokens_probs_and_return_on_first_stage_stream(
                                     top_k=top_k,
                                     top_p=top_p,
                                     temperature=temperature,
-                                    vocab_size=tokenizer.vocab_size)
+                                    vocab_size=tokenizer.vocab_size,
+                                    seed=seed)
                 print(f"new sample is {new_sample}")
 
                 if new_sample[0] == 100007:
+                    if len(return_list) != 0:
+                        content = tokenizer.detokenize(return_list)
+                        yield content 
+                        return_list = []
+                        print(content) 
                     raise StopIteration
             
                 tmp = tokenizer.detokenize([new_sample[0].cpu().item(), ])
@@ -413,7 +422,8 @@ def generate_tokens_probs_and_return_on_first_stage_stream(
                     raise StopIteration
         
                 return_list.append(new_sample[0].cpu().item())
-                if len(return_list) > 3 or context_length == max_sequence_length-1:
+                content_1 = tokenizer.detokenize(return_list)
+                if (len(return_list) > 5 and "�" not in content_1) or context_length == max_sequence_length-1 or len(return_list) > 10:
                     content = tokenizer.detokenize(return_list)
                     yield content 
                     return_list = []

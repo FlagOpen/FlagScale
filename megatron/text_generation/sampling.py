@@ -42,7 +42,8 @@ def modify_logits_for_top_p_filtering(logits, top_p):
 
 
 
-def sample(logits, top_k=0, top_p=0.0, temperature=1.0, vocab_size=None):
+def sample(logits, top_k=0, top_p=0.0, temperature=1.0, vocab_size=None,
+           seed=123):
     """ Sample and generate a token.
     Note: logits has the dimension [b, v] where b is the batch size
           and v is the vocabulary size.
@@ -51,6 +52,8 @@ def sample(logits, top_k=0, top_p=0.0, temperature=1.0, vocab_size=None):
     generations due to padding.
     """
 
+    generator = torch.Generator(device=logits.device)
+    generator.manual_seed(seed)
     # Check logits for consistency.
     assert logits.ndim == 2, 'expected the logits to be of [b, v] shape.'
     assert logits.type() == 'torch.cuda.FloatTensor', \
@@ -82,7 +85,7 @@ def sample(logits, top_k=0, top_p=0.0, temperature=1.0, vocab_size=None):
 
         # After filtering, we need to recalculate the distribution.
         probs = logits.softmax(dim=-1)
-        samples = torch.multinomial(probs, num_samples=1).view(-1)
+        samples = torch.multinomial(probs, num_samples=1, generator=generator).view(-1)
 
     # If vocab size is provided, make sure the samples are in
     # in the range [0, vocab-size).

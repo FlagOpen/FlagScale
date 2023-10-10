@@ -144,9 +144,6 @@ def generate(model,
     prevent_newline_after_colon = bool(values_float_tensor[11].item())
     random_seed = int(values_float_tensor[12].item())
 
-    if random_seed != -1:
-        torch.random.manual_seed(random_seed)
-
     # Tokenize prompts and get the batch.
     # Note that these tensors are broadcaseted to all ranks.
     if torch.distributed.get_rank() == 0:
@@ -173,6 +170,7 @@ def generate(model,
         stop_on_double_eol=stop_on_double_eol,
         stop_on_eol=stop_on_eol,
         prevent_newline_after_colon=prevent_newline_after_colon,
+        seed=random_seed,
         )
 
 def generate_stream(model,
@@ -223,9 +221,6 @@ def generate_stream(model,
     prevent_newline_after_colon = bool(values_float_tensor[11].item())
     random_seed = int(values_float_tensor[12].item())
 
-    if random_seed != -1:
-        torch.random.manual_seed(random_seed)
-
     # Tokenize prompts and get the batch.
     # Note that these tensors are broadcaseted to all ranks.
     if torch.distributed.get_rank() == 0:
@@ -252,6 +247,7 @@ def generate_stream(model,
         stop_on_double_eol=stop_on_double_eol,
         stop_on_eol=stop_on_eol,
         prevent_newline_after_colon=prevent_newline_after_colon,
+        seed=random_seed,
         )
 
 def beam_search_and_post_process(model,
