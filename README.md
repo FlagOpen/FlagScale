@@ -53,7 +53,7 @@ Before running `dist_start.sh`, you should provide the required information:
     hostnames-2/IP-2 slots=8
     ```
     These hostnames or IPs represent machines accessible via passwordless SSH and the slots specify the number of GPUs available on that machine.
-
+  * `SCRIPT_FILE`: the actually used training script of the current job where you can change the specific configurations as needed. For example, you should change `--train-samples` to match the small demo dataset we provided above. 
 
 3. Stop a distributed training job
 
@@ -91,7 +91,7 @@ export PYTHONPATH=${FlagScale_HOME}:$PYTHONPATH
 python scripts/convert_megatron_unsharded_to_huggingface.py \
         --input-dir ${SAVE_DIR}/iter_${ITERATION}/mp_rank_00/ \
         --output-dir ${SAVE_DIR}/iter_${ITERATION}_hf \
-        --num-layers 64 --hidden-size 6144 \
+        --num-layers 60 --hidden-size 6144 \
         --num-attention-heads 48 --group-query-attention --num-query-groups 8 \
         --data-type bf16 --multiple-of 4096 --hidden-dim-multiplier 1.3
 ```
@@ -100,7 +100,7 @@ Please set the following variables before running the command:
   * `SAVE_DIR`: the directory for loading the merged checkpoint.
   * `ITERATION`: the iteration number from `latest_checkpointed_iteration.txt` in `SAVE_DIR` and need to be padded zeros to 7 digits.
 
-Besides, you may need to change the model configurations such as `num_layers`, `hidden_size` and so on. 
+Note that the above configuration is for converting Aquila-34B and you may need to change the model configurations such as `num_layers` and`hidden_size` as needed.  
 
 ### Repartition the distributed optimizer [optional] 
 
