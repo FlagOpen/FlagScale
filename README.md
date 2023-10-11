@@ -102,6 +102,43 @@ Please set the following variables before running the command:
 
 Note that the above configuration is for converting Aquila-34B and you may need to change the model configurations such as `num_layers` and`hidden_size` as needed.  
 
+### Serve a model
+
+1. Change to the FlagScale directory
+
+``` python
+cd FlagScale
+```
+
+2. Merge the multiple checkpoints to a single checkpoint (as needed)
+```
+python tools/checkpoint_util.py --model-type GPT \
+        --load-dir ${LOAD_DIR} --save-dir ${SAVE_DIR} \
+        --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json \
+        --megatron-path ${FlagScale_HOME} --target-tensor-parallel-size 1 --target-pipeline-parallel-size 1
+```
+Please set the following variables before running the command:
+  * `LOAD_DIR`: the directory for loading the original checkpoint.
+  * `SAVE_DIR`: the directory for saving the merged checkpoint.
+  * `FlagScale_HOME`: the directory of FlagScale.
+
+3. Serve the Aquila2 model by the below script. Here we take the Aquila2-34B as an example and assume you have an A800-80G GPU.
+``` 
+python examples/aquila/34B/inference_auto.py \
+       --server-port ${SERVER_PORT} --master-process ${MASTER_PORT} \
+       --device "0" --iteration -1 --checkpoint-path "${CKPT_DIR}" \
+       --model-info "Aquila-34b"
+```
+Please set the following variables before running the command:
+  * `SERVER_PORT`: the server port for serving the model.
+  * `MASTER_PORT`: the port of the master process.
+  * `CKPT_DIR`: the directory for loading the merged checkpoint.
+
+4. After you have served an Aquila model successfully, you can send a request to do the testing. 
+```
+python tools/test/test_api_flask.py
+```
+
 ### Repartition the distributed optimizer [optional] 
 
 When using the distributed optimizer, you can use the following tool to repartition the distributed optimizer if the parallel schemes is changed during the training.

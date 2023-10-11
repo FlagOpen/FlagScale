@@ -16,7 +16,8 @@ raw_request = {
             "sft": True,
         }
 
-url = "http://120.92.91.62:9654/batch_func"
+# Please specify the following url of your server
+url = "xxxx"
 
 data_json = json.dumps(raw_request)
 response = requests.post(url, json=data_json)
