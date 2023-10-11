@@ -6,7 +6,9 @@ set -u
   DATA_PATH=<xxxx>
   HOSTFILE=<xxxx>
   LOG_FILE="examples/aquila/$EXPNAME.log"
-  SCRIPT_FILE="examples/aquila/33B/pretrain_aquila_33b_distributed_A100_64n_40g.sh"
+  # If trarining 7B, SCRIPT_FILE="examples/aquila/7B/pretrain_aquila_7b_distributed_A800_12n_80g.sh"
+  # If trarining 34B, SCRIPT_FILE="examples/aquila/34B/pretrain_aquila_34b_distributed_A100_64n_40g.sh"
+  SCRIPT_FILE=<xxxx>
 set +u
 
 COUNT=0
