@@ -190,7 +190,7 @@ def stop_signal(model_info, request_model_name, engine, prompt, server_port):
     previous_data = prompt
 
 class UvicornServer:
-    def __init__(self, model, server_port, model_info="aquila-33b") -> None:
+    def __init__(self, model, server_port, model_info="aquila-34b") -> None:
         self.model = model
         self.server_port = server_port
         self.model_info = model_info

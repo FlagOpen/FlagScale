@@ -223,8 +223,8 @@ if __name__ == "__main__":
         'examples/aquila/tokenizer/vocab.json',
         'examples/aquila/tokenizer/merges.txt')
     print(f"{dir(tokenizer)}")
-    train_data_prefix = ['/data/ldwang/sft_datasets/convo_v2/sft_v0.9.1_train.jsonl']
-    valid_data_prefix = ['/data/ldwang/sft_datasets/convo_v2/sft_v0.9.1_val.jsonl']
+    train_data_prefix = ['path/to/train/set']
+    valid_data_prefix = ['path/to/valid/set']
     train_dataset, valid_dataset, test_dataset = build_train_valid_test_datasets(
         train_valid_test_num_samples,
         seq_length, seed, tokenizer,

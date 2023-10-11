@@ -77,7 +77,7 @@ CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_g
        --seed 42
 """
 
-sh_dir = "./examples/aquila/33B/server"
+sh_dir = "./examples/aquila/34B/server"
 os.makedirs(sh_dir, exist_ok=True)
 
 sh_filename = os.path.join(sh_dir, f"{model_info}.sh")

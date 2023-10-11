@@ -53,7 +53,7 @@ def make_sft_prompts(prompts):
     return new_prompts
 
 class UvicornServer:
-    def __init__(self, model, server_port, model_info="aquila-33b") -> None:
+    def __init__(self, model, server_port, model_info="aquila-34b") -> None:
         self.model = model
         self.server_port = server_port
         self.model_info = model_info
