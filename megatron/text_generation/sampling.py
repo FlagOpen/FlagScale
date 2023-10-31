@@ -69,19 +69,20 @@ def sample(logits, top_k=0, top_p=0.0, temperature=1.0, vocab_size=None,
     else:
         # Clone so we do not modify the inputs,
         logits = logits.clone()
-        # Apply temperature in place.
-        if temperature != 1.0:
-            logits.div_(temperature)
+        
+        if top_p > 0.0:
+            assert top_p <= 1.0, 'top-p should be in (0, 1].'
+            modify_logits_for_top_p_filtering(logits, top_p)
 
         if top_k > 1:
             assert top_k <= logits.size(1), 'top-k is larger than logit size.'
             if vocab_size:
                 assert top_k < vocab_size, 'top-k is larger than vocab size.'
             modify_logits_for_top_k_filtering(logits, top_k)
-
-        if top_p > 0.0:
-            assert top_p <= 1.0, 'top-p should be in (0, 1].'
-            modify_logits_for_top_p_filtering(logits, top_p)
+            
+         # Apply temperature in place.
+        if temperature != 1.0:
+            logits.div_(temperature)
 
         # After filtering, we need to recalculate the distribution.
         probs = logits.softmax(dim=-1)

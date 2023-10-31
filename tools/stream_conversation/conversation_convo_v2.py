@@ -147,4 +147,4 @@ def covert_prompt_to_input_ids_with_history(text, history, tokenizer, max_token)
         conv.messages.pop()
     conv.messages = conv.messages[::-1]
 
-    return conv.get_prompt()
+    return f"{conv.get_prompt()} "
