@@ -6,7 +6,10 @@
 import torch
 
 from megatron.core import mpu
-
+try:
+    import torch_xmlir
+except:
+    torch_xmlir = None
 
 
 # TODO: use functions from megatron/p2p
@@ -22,7 +25,10 @@ def recv_from_prev_pipeline_rank_(recv_buffer=None):
         for req in reqs:
             req.wait()
         # To protect against race condition when using batch_isend_irecv().
-        torch.cuda.synchronize()
+        if torch_xmlir:
+            torch_xmlir.xpu.xpu_synchonize_default_stream()
+        else:
+            torch.cuda.synchronize()
 
 
 
@@ -38,14 +44,17 @@ def send_to_next_pipeline_rank(tensor=None):
         for req in reqs:
             req.wait()
         # To protect against race condition when using batch_isend_irecv().
-        torch.cuda.synchronize()
+        if torch_xmlir:
+            torch_xmlir.xpu.xpu_synchonize_default_stream()
+        else:
+            torch.cuda.synchronize()
 
 
 
 def _is_cuda(tensor):
     """Check if a tensor is not none and is cuda."""
     assert tensor is not None
-    assert tensor.is_cuda
+    # assert tensor.is_cuda
 
 
 
@@ -149,9 +158,10 @@ def broadcast_tensor(size, dtype, tensor=None, rank=0):
     if torch.distributed.get_rank() == rank:
         _is_cuda_contiguous(tensor)
     else:
+        device = 'xpu:' + str(torch_xmlir.xpu.current_device()) if torch_xmlir else torch.cuda.current_device()
         tensor = torch.empty(size,
                              dtype=dtype,
-                             device=torch.cuda.current_device())
+                             device=device)
 
     torch.distributed.broadcast(tensor, rank)
 
@@ -164,8 +174,9 @@ def broadcast_list(size, dtype, list_values=None, rank=0):
 
     tensor = None
     if torch.distributed.get_rank() == rank:
+        device = 'xpu:' + str(torch_xmlir.xpu.current_device()) if torch_xmlir else torch.cuda.current_device()
         tensor = torch.tensor(list_values, dtype=dtype,
-                              device=torch.cuda.current_device())
+                              device=device)
 
     return broadcast_tensor(size, dtype, tensor=tensor, rank=rank)
 

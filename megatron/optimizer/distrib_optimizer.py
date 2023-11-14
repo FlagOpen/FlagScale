@@ -3,8 +3,18 @@
 """Megatron distributed optimizer."""
 
 
-from apex.optimizers import FusedAdam as Adam
-# from torch.optim import AdamW as Adam
+try:
+    from apex.optimizers import FusedAdam as Adam
+except Exception:
+    print('WARNING: APEX is not installed and is not supported in KL yet')
+    from torch.optim import AdamW as Adam
+
+try:
+    import torch_xmlir
+    from torch_xmlir.optimizer.fused_adamw import FusedAdamW as Adam
+except ImportError:
+    torch_xmlir = None
+
 import math
 import torch
 

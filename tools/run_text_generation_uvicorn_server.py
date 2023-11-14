@@ -42,15 +42,14 @@ vocab = tokenizer.vocab
 
 id2word = {v:k for k, v in vocab.items()}
 
-from tools.conversation import get_prompt
-def make_sft_prompts(prompts):
+def make_sft_prompts(prompts, template):
     new_prompts = []
     for p in prompts:
-        p = get_prompt(p)
+        p = covert_prompt_to_input_ids_with_history(p, [], tokenizer, max_token=4096, template=template)
         new_prompts.append(p)
     return new_prompts
 
-def predict(model, prompts, seed, max_length, topk, topp, t, sft):
+def predict(model, prompts, seed, max_length, topk, topp, t, sft, template):
     
     if not isinstance(prompts, list):
         prompts = [prompts,]
@@ -65,7 +64,7 @@ def predict(model, prompts, seed, max_length, topk, topp, t, sft):
     completions = [{} for _ in range(len(prompts))]
 
     if sft:
-        prompts = make_sft_prompts(prompts)
+        prompts = make_sft_prompts(prompts, template)
 
     input_length = max([len(tokenizer.tokenize(prompts[j])) for j in range(len(prompts))])
 
@@ -213,6 +212,10 @@ class UvicornServer:
             seed = config.get("seed", 123)
             sft = config.get("sft", False)
 
+            template = config.get("template", "aquila-legacy")
+            if template not in ["v1", "bair", "aquila-legacy"]:
+                template = "aquila-legacy"
+
             ## determine if we need to stop the server
             stop_signal(self.model_info, request_model_name=config.get("model_name", ""), 
                         engine=config.get("engine", ""), prompt=contexts,
@@ -220,7 +223,7 @@ class UvicornServer:
             
             print(f"model info is {self.model_info}")
             s = time.time()
-            res, input_length = await sync_to_async(predict)(self.model, contexts, seed, max_length=config['max_new_tokens'], topk=topk, topp=topp, t= t, sft=sft)
+            res, input_length = await sync_to_async(predict)(self.model, contexts, seed, max_length=config['max_new_tokens'], topk=topk, topp=topp, t= t, sft=sft, template=template)
             e = time.time()
             print(f"spend time is {e - s}")
           
@@ -241,22 +244,26 @@ class UvicornServer:
             topk= config.get("top_k_per_token", 20)
             topp = config.get("top_p", 0.9)
             t = config.get("temperature", 0.9)
-            seed = config.get("seed", 123)
+            seed = config.get("seed", 0)
             sft = config.get("sft", False)
             max_length=config['max_new_tokens']
             gene_time = config.get("time", 15)
 
             history = config.get("history", [])
+            template = config.get("template", "aquila-legacy")
+            if template not in ["v1", "bair", "aquila-legacy"]:
+                template = "aquila-legacy"
 
-            if seed == 0:
-                seed = random.randint(0, 429496729)
+            if seed > 0:
+                torch.random.manual_seed(seed)
 
             print(f"model info is {self.model_info}")
 
             assert type(prompts) is str
             if sft:
-                prompts = covert_prompt_to_input_ids_with_history(prompts, history, tokenizer, 2048)
+                prompts = covert_prompt_to_input_ids_with_history(prompts, history, tokenizer, 2048, template)
             
+            print(f"input is {prompts}")
             prompts = [prompts,]
 
             with lock:  # Need to get lock to keep multiple threads from hitting code

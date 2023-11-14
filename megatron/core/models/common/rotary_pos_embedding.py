@@ -5,6 +5,13 @@ import importlib.util
 import torch
 from torch import einsum, nn
 
+import os
+
+try:
+    import torch_xmlir
+except Exception:
+    torch_xmlir = None
+
 __all__ = ['RotaryEmbedding', 'apply_rotary_pos_emb']
 
 
@@ -37,6 +44,23 @@ class RotaryEmbedding(nn.Module):
         state_dict.pop(f'{prefix}inv_freq', None)
         return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
+class RotaryPositionalEmbeddingWithFreqFunction(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, t, freqs):
+        t_ = t.contiguous()
+        freqs_ = freqs.contiguous()
+        output = t_.new_empty(t_.shape)
+        torch.ops.custom_ops.rotary_pos_emb(t_, freqs_, out = output)
+        ctx.freqs = freqs_
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        freqs_ = ctx.freqs
+        grad_t = grad_output.new_empty(grad_output.shape)
+        torch.ops.custom_ops.rotary_pos_emb_backward(grad_output, freqs_, out = grad_t)
+        return grad_t, None
 
 def _rotate_half(x):
     """
@@ -58,5 +82,9 @@ def apply_rotary_pos_emb(t, freqs):
 
     # first part is cosine component
     # second part is sine component, need to change signs with _rotate_half method
-    t = (t * freqs.cos()) + (_rotate_half(t) * freqs.sin())
+    inference_flag = (os.getenv("AQUILA_INFERENCE_ROTARY_EMBEDDING", "false").lower() == "true")
+    if torch_xmlir is not None and inference_flag:
+        t = RotaryPositionalEmbeddingWithFreqFunction.apply(t, freqs)
+    else:
+        t = (t * freqs.cos()) + (_rotate_half(t) * freqs.sin())
     return torch.cat((t, t_pass), dim=-1)

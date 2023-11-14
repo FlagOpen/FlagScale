@@ -8,7 +8,10 @@ import torch
 
 from megatron import get_tokenizer, get_args
 from .communication import broadcast_int_list, broadcast_tensor
-
+try:
+    import torch_xmlir
+except:
+    torch_xmlir = None
 
 def detokenize_generations(tokens_gpu_tensor,
                            lengths_gpu_tensor,
@@ -126,7 +129,11 @@ def _tokenize_prompts_and_batch(prompts, tokens_to_generate, add_BOS):
         prompt_tokens.extend([tokenizer.eod] * padding_size)
 
     # Now we are in a structured format, we can convert to tensors.
-    prompts_tokens_tensor = torch.cuda.LongTensor(prompts_tokens)
-    prompts_length_tensor = torch.cuda.LongTensor(prompts_length)
+    if torch_xmlir:
+        prompts_tokens_tensor = torch_xmlir.xpu.LongTensor(prompts_tokens)
+        prompts_length_tensor = torch_xmlir.xpu.LongTensor(prompts_length)
+    else:
+        prompts_tokens_tensor = torch.cuda.LongTensor(prompts_tokens)
+        prompts_length_tensor = torch.cuda.LongTensor(prompts_length)
 
     return prompts_tokens_tensor, prompts_length_tensor

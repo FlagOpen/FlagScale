@@ -9,8 +9,11 @@ import socket
 import torch
 from torch.nn.parallel import DistributedDataParallel as torchDDP
 
-from apex.multi_tensor_apply import multi_tensor_applier
-import amp_C
+try:
+    from apex.multi_tensor_apply import multi_tensor_applier
+    import amp_C
+except Exception:
+    print('WARNING: APEX is not installed and is not supported in KL yet')
 
 from megatron import (
     get_args,
@@ -20,6 +23,11 @@ from megatron.core import mpu
 from megatron.core.tensor_parallel import param_is_not_tensor_parallel_duplicate
 from megatron.model.module import param_is_not_shared
 
+try:
+    import torch_xmlir
+except ImportError:
+    torch_xmlir = None
+AQUILA_TRAIN = (os.getenv("AQUILA_TRAIN_XPU", "false").lower() == "true")
 
 def unwrap_model(model, module_instances=(torchDDP)):
     return_list = True
@@ -189,7 +197,12 @@ def get_ltor_masks_and_position_ids(data,
                     prev_index = i + 1
 
     # Convert attention mask to binary:
-    attention_mask = (attention_mask < 0.5)
+    if AQUILA_TRAIN:
+        attention_mask = torch.full((micro_batch_size, seq_length, seq_length), -10000.0, device=data.device)
+        attention_mask.triu_(1)
+        attention_mask.unsqueeze_(1)
+    else:
+        attention_mask = (attention_mask < 0.5)
 
     return attention_mask, loss_mask, position_ids
 

@@ -1,8 +1,18 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
-from apex.optimizers import FusedAdam as Adam
-# from torch.optim import AdamW as Adam
-from apex.optimizers import FusedSGD as SGD
+try:
+    from apex.optimizers import FusedAdam as Adam
+    from apex.optimizers import FusedSGD as SGD
+except Exception:
+    print('WARNING: APEX is not installed and is not supported in KL yet')
+    from torch.optim import AdamW as Adam
+    from torch.optim import SGD
+
+try:
+    import torch_xmlir
+    from torch_xmlir.optimizer.fused_adamw import FusedAdamW as Adam
+except ImportError:
+    torch_xmlir = None
 
 from megatron import get_args
 

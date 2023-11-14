@@ -21,6 +21,18 @@ from megatron.model.utils import attention_mask_func, openai_gelu, erf_gelu
 from megatron.model.utils import init_method_normal
 
 try:
+    import torch_xmlir
+    from torch_xmlir.nn.rms_norm import RMSNormLayer
+    from torch_xmlir.nn.swiglu import SwiGLU as SwiGLUXPU
+    from torch_xmlir.nn.bmm import bmm as xpu_bmm
+    from torch_xmlir.nn.baddbmm import baddbmm as xpu_baddbmm
+except Exception:
+    torch_xmlir = None
+import os
+
+AQUILA_TRAIN = (os.getenv("AQUILA_TRAIN_XPU", "false").lower() == "true")
+
+try:
     from einops import rearrange
 except ImportError:
     rearrange = None
@@ -143,10 +155,13 @@ class ParallelMLP(MegatronModule):
         elif args.onnx_safe:
             self.activation_func = erf_gelu
         elif args.swiglu:
-            if args.mup is None: 
-                def swiglu(x):
-                    x = torch.chunk(x, 2, dim=-1)
-                    return F.silu(x[0]) * x[1]
+            if args.mup is None:
+                if torch_xmlir is not None:
+                    swiglu = SwiGLUXPU()
+                else:
+                    def swiglu(x):
+                        x = torch.chunk(x, 2, dim=-1)
+                        return F.silu(x[0]) * x[1]
             else:
                 def swiglu(x1, x2):
                     return F.silu(x1) * x2
@@ -327,87 +342,109 @@ class CoreAttention(MegatronModule):
         # Raw attention scores. [b, np, s, s]
         # ===================================
 
-        # [b, np, sq, sk]
-        output_size = (query_layer.size(1),
-                       query_layer.size(2),
-                       query_layer.size(0),
-                       key_layer.size(0))
-
-        # [sq, b, np, hn] -> [sq, b * np, hn]
-        query_layer = query_layer.reshape(output_size[2],
-                                          output_size[0] * output_size[1], -1)
-        # [sk, b, np, hn] -> [sk, b * np, hn]
-        key_layer = key_layer.view(output_size[3],
-                                   output_size[0] * output_size[1], -1)
-
-        # preallocting input tensor: [b * np, sq, sk]
-        matmul_input_buffer = mpu.get_global_memory_buffer().get_tensor(
-            (output_size[0]*output_size[1], output_size[2], output_size[3]),
-            query_layer.dtype, "mpu")
-
-        # Raw attention scores. [b * np, sq, sk]
-        matmul_result = torch.baddbmm(
-            matmul_input_buffer,
-            query_layer.transpose(0, 1),   # [b * np, sq, hn]
-            key_layer.transpose(0, 1).transpose(1, 2),  # [b * np, hn, sk]
-            beta=0.0, alpha=(1.0/self.norm_factor))
-
-        # change view to [b, np, sq, sk]
-        attention_scores = matmul_result.view(*output_size)
-
-        if self.mup_coord_check:
-            attention_scores = self.attn_score_no_op(attention_scores)
-
-        # ===========================
-        # Attention probs and dropout
-        # ===========================
-
-        # attention scores and attention mask [b, np, sq, sk]
-        attention_probs = self.scale_mask_softmax(attention_scores,
-                                                  attention_mask)
-
-        # This is actually dropping out entire tokens to attend to, which might
-        # seem a bit unusual, but is taken from the original Transformer paper.
-        if not self.sequence_parallel:
-            with tensor_parallel.get_cuda_rng_tracker().fork():
-                attention_probs = self.attention_dropout(attention_probs)
+        inference_flag = (os.getenv("AQUILA_INFERENCE_CORE_ATTENTION", "false").lower() == "true")
+        if (inference_flag):
+            b, np, sq, sk, hn = query_layer.size(1), query_layer.size(2), query_layer.size(0), key_layer.size(0), value_layer.size(3)
+            context_layer = torch.empty((sq, b, np * hn), dtype=query_layer.dtype, device=query_layer.device)
+            matmul_input_buffer = mpu.get_global_memory_buffer().get_tensor((b * np, sq, sk), query_layer.dtype, "mpu")
+            torch.ops.custom_ops.megatron_core_attention(query_layer, key_layer, value_layer, matmul_input_buffer, attention_mask,
+                                                 self.layer_number, self.apply_query_key_layer_scaling, self.norm_factor,
+                                                 -1000, -1,
+                                                 (1.0/self.norm_factor), 0.0, out=context_layer)
         else:
-            attention_probs = self.attention_dropout(attention_probs)
+            # [b, np, sq, sk]
+            output_size = (query_layer.size(1),
+                        query_layer.size(2),
+                        query_layer.size(0),
+                        key_layer.size(0))
 
-        # =========================
-        # Context layer. [sq, b, hp]
-        # =========================
+            # [sq, b, np, hn] -> [sq, b * np, hn]
+            query_layer = query_layer.reshape(output_size[2],
+                                            output_size[0] * output_size[1], -1)
+            # [sk, b, np, hn] -> [sk, b * np, hn]
+            key_layer = key_layer.view(output_size[3],
+                                    output_size[0] * output_size[1], -1)
 
-        # value_layer -> context layer.
-        # [sk, b, np, hn] --> [b, np, sq, hn]
+            # preallocting input tensor: [b * np, sq, sk]
+            matmul_input_buffer = mpu.get_global_memory_buffer().get_tensor(
+                (output_size[0]*output_size[1], output_size[2], output_size[3]),
+                query_layer.dtype, "mpu")
 
-        # context layer shape: [b, np, sq, hn]
-        output_size = (value_layer.size(1),
-                       value_layer.size(2),
-                       query_layer.size(0),
-                       value_layer.size(3))
+            # Raw attention scores. [b * np, sq, sk]
+            inference_flag = (os.getenv("AQUILA_INFERENCE_BADBMM", "false").lower() == "true")
+            if torch_xmlir is not None and inference_flag:
+                matmul_result = xpu_baddbmm(
+                    matmul_input_buffer,
+                    (query_layer.transpose(0, 1)),   # [b * np, sq, hn]
+                    (key_layer.transpose(0, 1).transpose(1, 2)),  # [b * np, hn, sk]
+                    beta=0.0, alpha=(1.0/self.norm_factor))
+            else:
+                matmul_result = torch.baddbmm(
+                    matmul_input_buffer,
+                    query_layer.transpose(0, 1),   # [b * np, sq, hn]
+                    key_layer.transpose(0, 1).transpose(1, 2),  # [b * np, hn, sk]
+                    beta=0.0, alpha=(1.0/self.norm_factor))
 
-        # change view [sk, b * np, hn]
-        value_layer = value_layer.view(value_layer.size(0),
-                                       output_size[0] * output_size[1], -1)
+            # change view to [b, np, sq, sk]
+            attention_scores = matmul_result.view(*output_size)
 
-        # change view [b * np, sq, sk]
-        attention_probs = attention_probs.view(output_size[0] * output_size[1],
-                                               output_size[2], -1)
+            if self.mup_coord_check:
+                attention_scores = self.attn_score_no_op(attention_scores)
 
-        # matmul: [b * np, sq, hn]
-        context_layer = torch.bmm(attention_probs, value_layer.transpose(0, 1))
+            # ===========================
+            # Attention probs and dropout
+            # ===========================
 
-        # change view [b, np, sq, hn]
-        context_layer = context_layer.view(*output_size)
+            # attention scores and attention mask [b, np, sq, sk]
+            attention_probs = self.scale_mask_softmax(attention_scores,
+                                                    attention_mask)
 
-        # [b, np, sq, hn] --> [sq, b, np, hn]
-        context_layer = context_layer.permute(2, 0, 1, 3).contiguous()
+            # This is actually dropping out entire tokens to attend to, which might
+            # seem a bit unusual, but is taken from the original Transformer paper.
+            if not self.sequence_parallel:
+                with tensor_parallel.get_cuda_rng_tracker().fork():
+                    attention_probs = self.attention_dropout(attention_probs)
+            else:
+                attention_probs = self.attention_dropout(attention_probs)
 
-        # [sq, b, np, hn] --> [sq, b, hp]
-        new_context_layer_shape = context_layer.size()[:-2] + \
-            (self.hidden_size_per_partition,)
-        context_layer = context_layer.view(*new_context_layer_shape)
+            # =========================
+            # Context layer. [sq, b, hp]
+            # =========================
+
+            # value_layer -> context layer.
+            # [sk, b, np, hn] --> [b, np, sq, hn]
+
+            # context layer shape: [b, np, sq, hn]
+            output_size = (value_layer.size(1),
+                        value_layer.size(2),
+                        query_layer.size(0),
+                        value_layer.size(3))
+
+            # change view [sk, b * np, hn]
+            value_layer = value_layer.view(value_layer.size(0),
+                                        output_size[0] * output_size[1], -1)
+
+            # change view [b * np, sq, sk]
+            attention_probs = attention_probs.view(output_size[0] * output_size[1],
+                                                output_size[2], -1)
+
+            # matmul: [b * np, sq, hn]
+            inference_flag = (os.getenv("AQUILA_INFERENCE_BMM", "false").lower() == "true")
+            if torch_xmlir is not None and inference_flag:
+                context_layer = xpu_bmm(attention_probs, value_layer.transpose(0, 1))
+            else:
+                context_layer = torch.bmm(attention_probs, value_layer.transpose(0, 1))
+
+            # change view [b, np, sq, hn]
+            context_layer = context_layer.view(*output_size)
+
+            # [b, np, sq, hn] --> [sq, b, np, hn]
+            context_layer = context_layer.permute(2, 0, 1, 3).contiguous()
+
+            # [sq, b, np, hn] --> [sq, b, hp]
+            new_context_layer_shape = context_layer.size()[:-2] + \
+                (self.hidden_size_per_partition,)
+            context_layer = context_layer.view(*new_context_layer_shape)
 
         return context_layer
 
@@ -639,11 +676,11 @@ class ParallelAttention(MegatronModule):
             bias=args.add_bias_linear,
             input_is_parallel=True,
             skip_bias_add=True)
-        
+
         if args.mup_coord_check:
             self.query_no_op = torch.nn.Identity() # just for coordcheck
             self.key_no_op = torch.nn.Identity() # just for coordcheck
-            self.value_no_op = torch.nn.Identity() # just for coordcheck 
+            self.value_no_op = torch.nn.Identity() # just for coordcheck
             self.mup_coord_check = True
         else:
             self.mup_coord_check = False
@@ -672,13 +709,14 @@ class ParallelAttention(MegatronModule):
         return hidden_states
 
     def _allocate_memory(self, inference_max_sequence_len, batch_size, num_attention_heads):
+        device = 'xpu:' + str(torch_xmlir.xpu.current_device()) if torch_xmlir else torch.cuda.current_device()
         return torch.empty(
             inference_max_sequence_len,
             batch_size,
             num_attention_heads,
             self.hidden_size_per_attention_head,
             dtype=self.params_dtype,
-            device=torch.cuda.current_device())
+            device=device)
 
     def forward(self, hidden_states, attention_mask,
                 encoder_output=None, inference_params=None,
@@ -740,7 +778,7 @@ class ParallelAttention(MegatronModule):
                     ],
                     dim=3)
                 # [sq, b, ng, np/ng * hn] -> [sq, b, np, hn] -
-                query_layer = query_layer.reshape(query_layer.size(0), query_layer.size(1), -1, self.hidden_size_per_attention_head) 
+                query_layer = query_layer.reshape(query_layer.size(0), query_layer.size(1), -1, self.hidden_size_per_attention_head)
             else:
                 query_layer, _ = self.query(hidden_states)
                 key_layer, _ = self.key(hidden_states)
@@ -833,16 +871,17 @@ class ParallelAttention(MegatronModule):
         # ==================================
         # core attention computation
         # ==================================
-        
+
         # expand the key_layer and value_layer [sk, b, ng, hn] -> [sk, b, np, hn]
-        key_layer = key_layer.repeat_interleave(
-            self.num_attention_heads_per_partition // self.num_query_groups_per_partition,
-            dim = 2
-        )
-        value_layer = value_layer.repeat_interleave(
-            self.num_attention_heads_per_partition // self.num_query_groups_per_partition,
-            dim = 2
-        )
+        if self.num_attention_heads_per_partition // self.num_query_groups_per_partition > 1:
+            key_layer = key_layer.repeat_interleave(
+                self.num_attention_heads_per_partition // self.num_query_groups_per_partition,
+                dim=2
+            )
+            value_layer = value_layer.repeat_interleave(
+                self.num_attention_heads_per_partition // self.num_query_groups_per_partition,
+                dim=2
+            )
 
         # apply relative positional encoding (rotary embedding)
         if rotary_pos_emb is not None:
@@ -891,6 +930,13 @@ class ParallelAttention(MegatronModule):
 
 
 def bias_dropout_add(x, bias, residual, prob, training):
+    if torch_xmlir is not None:
+        from torch_xmlir.nn.dropout_add import DropoutAddFunction
+        if bias is not None:
+            x = x + bias
+        out = DropoutAddFunction.apply(x.view(x.shape[0], -1), residual.view(x.shape[0], -1), prob, not training, 0)
+        return out.view(x.shape)
+
     # type: (Tensor, Optional[Tensor], Tensor, float, bool) -> Tensor
     if bias is not None:
         x = x + bias
@@ -905,7 +951,6 @@ def get_bias_dropout_add(training):
     return _bias_dropout_add
 
 
-@torch.jit.script
 def bias_dropout_add_fused_train(x: torch.Tensor,
                                  bias: Optional[torch.Tensor],
                                  residual: torch.Tensor,
@@ -913,7 +958,6 @@ def bias_dropout_add_fused_train(x: torch.Tensor,
     return bias_dropout_add(x, bias, residual, prob, True)
 
 
-@torch.jit.script
 def bias_dropout_add_fused_inference(x: torch.Tensor,
                                      bias: Optional[torch.Tensor],
                                      residual: torch.Tensor,
@@ -952,15 +996,23 @@ class ParallelTransformerLayer(MegatronModule):
         self.bf16 = config.bf16
         self.fp32_residual_connection = config.fp32_residual_connection
 
-        # Layernorm on the input data.
-        self.input_layernorm = LayerNorm(
-            config.hidden_size,
-            eps=config.layernorm_epsilon,
-            no_persist_layer_norm=args.no_persist_layer_norm,
-            sequence_parallel=config.sequence_parallel,
-            apply_layernorm_1p=args.apply_layernorm_1p,
-            apply_layernorm_rms=args.apply_layernorm_rms,
-            init_weight=self.init_weight_attn_norm)
+        #for xpu train
+        if (AQUILA_TRAIN and args.apply_layernorm_rms):
+            self.input_layernorm = RMSNormLayer(
+                config.hidden_size,
+                eps=config.layernorm_epsilon,
+                sequence_parallel=config.sequence_parallel)
+        else:
+            self.input_layernorm = LayerNorm(
+                config.hidden_size,
+                eps=config.layernorm_epsilon,
+                no_persist_layer_norm=args.no_persist_layer_norm,
+                sequence_parallel=config.sequence_parallel,
+                apply_layernorm_1p=args.apply_layernorm_1p,
+                apply_layernorm_rms=args.apply_layernorm_rms,
+                init_weight=self.init_weight_attn_norm)
+
+
 
         # Self attention.
         self.self_attention = ParallelAttention(
@@ -968,19 +1020,26 @@ class ParallelTransformerLayer(MegatronModule):
             layer_number,
             attention_type=AttnType.self_attn,
             attn_mask_type=self_attn_mask_type)
+
         self.hidden_dropout = config.hidden_dropout
         self.bias_dropout_fusion = config.bias_dropout_fusion
         self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0.0 else None
 
         # Layernorm on the attention output
-        self.post_attention_layernorm = LayerNorm(
-            config.hidden_size,
-            eps=config.layernorm_epsilon,
-            no_persist_layer_norm=not config.persist_layer_norm,
-            sequence_parallel=config.sequence_parallel,
-            apply_layernorm_1p=args.apply_layernorm_1p,
-            apply_layernorm_rms=args.apply_layernorm_rms,
-            init_weight=self.init_weight_ffn_norm)
+        if AQUILA_TRAIN and args.apply_layernorm_rms:
+            self.post_attention_layernorm = RMSNormLayer(
+                config.hidden_size,
+                eps=config.layernorm_epsilon,
+                sequence_parallel=config.sequence_parallel)
+        else:
+            self.post_attention_layernorm = LayerNorm(
+                config.hidden_size,
+                eps=config.layernorm_epsilon,
+                no_persist_layer_norm=not config.persist_layer_norm,
+                sequence_parallel=config.sequence_parallel,
+                apply_layernorm_1p=args.apply_layernorm_1p,
+                apply_layernorm_rms=args.apply_layernorm_rms,
+                init_weight=self.init_weight_ffn_norm)
 
         # Cross attention.
         if self.layer_type in (LayerType.decoder,
@@ -992,12 +1051,18 @@ class ParallelTransformerLayer(MegatronModule):
                 layer_number,
                 attention_type=AttnType.cross_attn)
             # Layernorm on the attention output.
-            self.post_inter_attention_layernorm = LayerNorm(
-                config.hidden_size,
-                eps=config.layernorm_epsilon,
-                no_persist_layer_norm=not config.persist_layer_norm,
-                sequence_parallel=config.sequence_parallel,
-                apply_layernorm_1p=args.apply_layernorm_1p)
+            if AQUILA_TRAIN and args.apply_layernorm_rms:
+                self.post_inter_attention_layernorm = RMSNormLayer(
+                    config.hidden_size,
+                    eps=config.layernorm_epsilon,
+                    sequence_parallel=config.sequence_parallel)
+            else:
+                self.post_inter_attention_layernorm = LayerNorm(
+                    config.hidden_size,
+                    eps=config.layernorm_epsilon,
+                    no_persist_layer_norm=not config.persist_layer_norm,
+                    sequence_parallel=config.sequence_parallel,
+                    apply_layernorm_1p=args.apply_layernorm_1p)
 
         # MLP
         if args.num_experts is not None:
@@ -1686,14 +1751,21 @@ class ParallelTransformer(MegatronModule):
 
         if self.post_process and self.post_layer_norm:
             # Final layer norm before output.
-            self.final_layernorm = LayerNorm(
-                config.hidden_size,
-                eps=config.layernorm_epsilon,
-                no_persist_layer_norm=args.no_persist_layer_norm,
-                sequence_parallel=config.sequence_parallel,
-                apply_layernorm_1p=args.apply_layernorm_1p,
-                apply_layernorm_rms=args.apply_layernorm_rms,
-                init_weight=self.init_weight_output_norm)
+            if AQUILA_TRAIN and args.apply_layernorm_rms:
+                self.final_layernorm = RMSNormLayer(
+                    config.hidden_size,
+                    eps=config.layernorm_epsilon,
+                    sequence_parallel=config.sequence_parallel)
+
+            else:
+                self.final_layernorm = LayerNorm(
+                    config.hidden_size,
+                    eps=config.layernorm_epsilon,
+                    no_persist_layer_norm=args.no_persist_layer_norm,
+                    sequence_parallel=config.sequence_parallel,
+                    apply_layernorm_1p=args.apply_layernorm_1p,
+                    apply_layernorm_rms=args.apply_layernorm_rms,
+                    init_weight=self.init_weight_output_norm)
 
     def _get_layer(self, layer_number):
         return self.layers[layer_number]

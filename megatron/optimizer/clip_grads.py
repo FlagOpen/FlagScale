@@ -4,9 +4,19 @@
 
 import torch
 from torch import inf
+from megatron import get_args
 
-from apex.multi_tensor_apply import multi_tensor_applier
-import amp_C
+
+try:
+    from apex.multi_tensor_apply import multi_tensor_applier
+    import amp_C
+except Exception:
+    print('WARNING: APEX is not installed and is not supported in KL yet')
+
+try:
+    import torch_xmlir
+except ImportError:
+    torch_xmlir = None
 
 from megatron.model.module import param_is_not_shared
 from megatron.core.tensor_parallel import param_is_not_tensor_parallel_duplicate
@@ -46,7 +56,7 @@ def clip_grad_norm_fp32(parameters, grads_for_norm,
     grads = []
     for param in parameters:
         if param.grad is not None:
-            assert param.grad.type() == 'torch.cuda.FloatTensor'
+            assert param.grad.type() in ['torch.cuda.FloatTensor', 'torch.xpu.FloatTensor']
             grads.append(param.grad.detach())
 
     # Norm parameters.
@@ -71,12 +81,18 @@ def clip_grad_norm_fp32(parameters, grads_for_norm,
             # Multi-tensor applier takes a function and a list of list
             # and performs the operation on that list all in one kernel.
             if grads_for_norm:
-                grad_norm, _ = multi_tensor_applier(
-                    amp_C.multi_tensor_l2norm,
-                    dummy_overflow_buf,
-                    [grads_for_norm],
-                    False # no per-parameter norm
-                )
+                if torch_xmlir is None:
+                    grad_norm, _ = multi_tensor_applier(
+                        amp_C.multi_tensor_l2norm,
+                        dummy_overflow_buf,
+                        [grads_for_norm],
+                        False # no per-parameter norm
+                    )
+                else:
+                    if not get_args().memory_saving:
+                        grad_norm = torch.cat([item.reshape(1, -1) for item in grads_for_norm], 1).to('xpu').norm()
+                    else:
+                        grad_norm = sum([item.square().sum() for item in grads_for_norm]).sqrt()
             else:
                 grad_norm = torch.cuda.FloatTensor([0])
             # Since we will be summing across data parallel groups,
@@ -98,10 +114,13 @@ def clip_grad_norm_fp32(parameters, grads_for_norm,
     clip_coeff = max_norm / (total_norm + 1.0e-6)
     if clip_coeff < 1.0:
         dummy_overflow_buf = torch.cuda.IntTensor([0])
-        multi_tensor_applier(amp_C.multi_tensor_scale,
-                             dummy_overflow_buf,
-                             [grads, grads],
-                             clip_coeff)
+        if torch_xmlir is None:
+            multi_tensor_applier(amp_C.multi_tensor_scale,
+                                 dummy_overflow_buf,
+                                 [grads, grads],
+                                 clip_coeff)
+        else:
+            _ = [grad.mul_(clip_coeff) for grad in grads]
 
     return total_norm
 

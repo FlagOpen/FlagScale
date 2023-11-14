@@ -1,3 +1,5 @@
+# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+
 """Sample Generate GPT"""
 import os
 import sys
@@ -14,18 +16,29 @@ from megatron.training import get_model
 from megatron.arguments import core_transformer_config_from_args
 import os
 import uvicorn, json, datetime
-import json 
+import json
 from asgiref.sync import sync_to_async
 from megatron.text_generation.api_single_thread import generate_and_post_process_single_thread
-import time 
-import torch 
+import time
+import torch
 import threading
 import random
-import sys 
+import sys
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 import asyncio
 from tools.stream_conversation.conversation_convo_v2 import covert_prompt_to_input_ids_with_history
 
+
+from datetime import timedelta
+
+try:
+    import torch_xmlir
+    from hyperparameter import param_scope
+except:
+    torch_xmlir = None
+
+gloo_group = None
 
 def get_tokenizer():
     from megatron.tokenizer.tokenizer import _AquilaTokenizer
@@ -53,10 +66,11 @@ def make_sft_prompts(prompts):
     return new_prompts
 
 class UvicornServer:
-    def __init__(self, model, server_port, model_info="aquila-34b") -> None:
+    def __init__(self, model, server_port, gloo_group, model_info="aquila-34b") -> None:
         self.model = model
         self.server_port = server_port
         self.model_info = model_info
+        self.gloo_group = gloo_group
 
     def init_flask(self):
         from fastapi import FastAPI, Request
@@ -69,6 +83,7 @@ class UvicornServer:
             config = json.loads(json_post_raw)
 
             print("request come in")
+            print("json_post_raw:", json_post_raw)
             prompts = config["prompt"]
             topk= config.get("top_k_per_token", 20)
             topp = config.get("top_p", 0.9)
@@ -78,21 +93,28 @@ class UvicornServer:
             max_length=config['max_new_tokens']
 
             history = config.get("history", [])
+            template = config.get("template", "aquila-legacy")
+            if template not in ["v1", "bair", "aquila-legacy"]:
+                template = "aquila-legacy"
 
             if seed == 0:
                 seed = random.randint(0, 429496729)
-                
             print(f"model info is {self.model_info}")
 
             assert type(prompts) is str
             if sft:
-                prompts = covert_prompt_to_input_ids_with_history(prompts, history, tokenizer, 2048)
+                prompts = covert_prompt_to_input_ids_with_history(prompts, history, tokenizer, 2048, template)
             
             prompts = [prompts,]
 
             await lock_stream.acquire()
-            choice = torch.cuda.LongTensor([1])
-            torch.distributed.broadcast(choice, 0)
+            f = open("disconnected.txt", "w")
+            f.close()
+            if torch_xmlir:
+                torch.distributed.barrier(self.gloo_group)
+            else:
+                choice = torch.cuda.LongTensor([1])
+                torch.distributed.broadcast(choice, 0)
             fun = generate_and_post_process_single_thread(
                                         model,
                                         prompts=prompts,
@@ -109,28 +131,49 @@ class UvicornServer:
                                         stop_on_eol=False,
                                         prevent_newline_after_colon=False,
                                         random_seed=seed,
-                                        stream=True)
-            torch.cuda.empty_cache()
+                                        stream=True,
+                                        lock_stream=lock_stream)
+            if torch_xmlir:
+                if param_scope.xacc.eager("false") == "true":
+                    torch_xmlir.xpu.empty_cache()
+                else:
+                    pass
+            else:
+                torch.cuda.empty_cache()
 
             def trans():
                 while True:
                     try:
+                        start_time = time.time()
+                        print("start time:", datetime.datetime.now())
                         yield next(fun)
+                        print("end time:", datetime.datetime.now())
+                        print(f"spend time is {time.time() - start_time}\n")
                     except Exception as e:
                         print(f"e is {e}")
-                        lock_stream.release()
+                        #lock_stream.release()
 
                         break
 
-            return StreamingResponse(trans(), media_type="text/plain", lock=lock_stream)
-        
+            def postprocessing(fun):
+                f = open("disconnected.txt", "r")
+                disconnect_content = f.readlines()
+                if 'disconnected' in disconnect_content:
+                    print("!!!!!!!!! is disconected")
+                    try:
+                        next(fun)
+                    except Exception as e:
+                        print(f"e is {e}")
+                print("in postprocessing", flush=True)
+
+
+            return StreamingResponse(trans(), media_type="text/plain",
+                                background=BackgroundTask(postprocessing, fun), lock=lock_stream)
+
 
         return app
 
     def run(self):
-        with open("./disconnected.txt", "w") as f:
-            f.write("")
-        
         app = self.init_flask()
         uvicorn.run(app, host='0.0.0.0', port=self.server_port, workers=1)
 
@@ -159,10 +202,30 @@ def add_text_generate_args(parser):
 
 
 if __name__ == "__main__":
+
+    if torch_xmlir:
+        from hyperparameter import param_scope
+        ps = param_scope(**{"xacc":{"eager":"true"}})
+        ps.__enter__()
+        param_scope.frozen()
+
+    import os
+    rank = os.getenv("RANK", "0")
+    os.makedirs("log_file", exist_ok=True)
+    fd = os.open(f"log_file/{rank}.log", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    os.dup2(fd, 1)
+    os.dup2(fd, 2)
+    
+    f = open("disconnected.txt", "w")
+    f.close()
+
     initialize_megatron(extra_args_provider=add_text_generate_args,
                         args_defaults={'tokenizer_type': 'GPT2BPETokenizer',
                                        'no_load_rng': True,
                                        'no_load_optim': True})
+    if torch_xmlir:
+        xpu_to_cpu_mapping = {0:0, 1:1, 2:2, 3:3, 4:32, 5:33, 6:34, 7:35}
+        os.sched_setaffinity(os.getpid(), [xpu_to_cpu_mapping[torch_xmlir.xpu.current_device()]])
 
     args = get_args()
     print(f"args is {args}")
@@ -183,20 +246,42 @@ if __name__ == "__main__":
 
     assert len(model) == 1, "Above condition should have caught this"
     model = model[0]
+    if torch_xmlir:
+        # global gloo_group
+        gloo_group = torch.distributed.new_group(backend='gloo', timeout=timedelta(days=365))
+    else:
+        gloo_group = None
 
     if mpu.is_pipeline_first_stage() and mpu.get_tensor_model_parallel_rank() == 0:
-        server_ins = UvicornServer(model, server_port=int(args.server_port), model_info=args.model_info)
+        server_ins = UvicornServer(model, server_port=int(args.server_port), gloo_group=gloo_group, model_info=args.model_info)
         server_ins.run()
 
     while True:
-        choice = torch.cuda.LongTensor(1)
-        torch.distributed.broadcast(choice, 0)
-        if choice[0].item() == 1:
+        if torch_xmlir:
+            torch.distributed.barrier(gloo_group)
             try:
-                generate_and_post_process_single_thread(model, 
-                                          )
-                torch.cuda.empty_cache()
+                print("start time:", datetime.datetime.now())
+                generate_and_post_process_single_thread(model)
+                if torch_xmlir:
+                    if param_scope.xacc.eager("false") == "true":
+                        torch_xmlir.xpu.empty_cache()
+                    else:
+                        pass
+                else:
+                    torch.cuda.empty_cache()
+                print("end time:", datetime.datetime.now(), '\n')
 
-            except Exception as ve:
-                print(f"value error is {ve}")
+            except ValueError as ve:
                 pass
+        else:
+            choice = torch.cuda.LongTensor(1)
+            torch.distributed.broadcast(choice, 0)
+            if choice[0].item() == 1:
+                try:
+                    generate_and_post_process_single_thread(model, 
+                                            )
+                    torch.cuda.empty_cache()
+
+                except Exception as ve:
+                    print(f"value error is {ve}")
+                    pass

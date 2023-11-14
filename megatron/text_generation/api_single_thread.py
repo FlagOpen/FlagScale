@@ -1,9 +1,13 @@
-# This file is modified from megatron/text_generation/api.py
+# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 """Inference API."""
 
 
 import torch
+try:
+    import torch_xmlir
+except:
+    torch_xmlir = None
 
 from megatron.core import mpu
 from .communication import broadcast_float_list
@@ -32,7 +36,8 @@ def generate_and_post_process_single_thread(model,
                               stop_on_eol=False,
                               prevent_newline_after_colon=False,
                               random_seed=-1,
-                              stream=False):
+                              stream=False,
+                              lock_stream=None):
     """Run inference and post-process outputs, i.e., detokenize,
     move to cpu and convert to list."""
 
@@ -87,6 +92,7 @@ def generate_and_post_process_single_thread(model,
             stop_on_eol=stop_on_eol,
             prevent_newline_after_colon=prevent_newline_after_colon,
             random_seed=random_seed,
+            lock_stream=lock_stream,
             )
 
         # Only post-process on first stage.
@@ -144,6 +150,11 @@ def generate(model,
     prevent_newline_after_colon = bool(values_float_tensor[11].item())
     random_seed = int(values_float_tensor[12].item())
 
+    if random_seed != -1:
+        torch.random.manual_seed(random_seed)
+        if torch_xmlir:
+            torch_xmlir.xpu.manual_seed(random_seed)
+
     # Tokenize prompts and get the batch.
     # Note that these tensors are broadcaseted to all ranks.
     if torch.distributed.get_rank() == 0:
@@ -170,8 +181,6 @@ def generate(model,
         stop_on_double_eol=stop_on_double_eol,
         stop_on_eol=stop_on_eol,
         prevent_newline_after_colon=prevent_newline_after_colon,
-        seed=random_seed,
-
         )
 
 def generate_stream(model,
@@ -188,7 +197,8 @@ def generate_stream(model,
              stop_on_double_eol=False,
              stop_on_eol=False,
              prevent_newline_after_colon=False,
-             random_seed=-1, 
+             random_seed=-1,
+             lock_stream=None,
              ):
     """Given prompts and input parameters, run inference and return:
        tokens: prompts plus the generated tokens.
@@ -222,6 +232,11 @@ def generate_stream(model,
     prevent_newline_after_colon = bool(values_float_tensor[11].item())
     random_seed = int(values_float_tensor[12].item())
 
+    if random_seed != -1:
+        torch.random.manual_seed(random_seed)
+        if torch_xmlir:
+            torch_xmlir.xpu.manual_seed(random_seed)
+
     # Tokenize prompts and get the batch.
     # Note that these tensors are broadcaseted to all ranks.
     if torch.distributed.get_rank() == 0:
@@ -248,7 +263,6 @@ def generate_stream(model,
         stop_on_double_eol=stop_on_double_eol,
         stop_on_eol=stop_on_eol,
         prevent_newline_after_colon=prevent_newline_after_colon,
-        seed=random_seed,
-
+        lock_stream=lock_stream,
         )
 

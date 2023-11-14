@@ -1,8 +1,14 @@
+# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+
 """GPT zero-shot evaluation."""
 
 import math
 
 import torch
+try:
+    import torch_xmlir
+except:
+    torch_xmlir = None
 
 from megatron import get_args
 from megatron import print_rank_0, is_last_rank
