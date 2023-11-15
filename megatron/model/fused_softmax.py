@@ -151,10 +151,9 @@ class FusedScaleMaskSoftmax(nn.Module):
         if self.is_kernel_available(mask, *input.size()):
             return self.forward_fused_softmax(input, mask)
         elif torch_xmlir is not None and self.scaled_masked_softmax_fusion:
-            if self.scale is None or self.scale == 1:
-                return SoftmaxWithMaskFunction.apply(input, mask)
-            else:
-                return SoftmaxWithMaskFunction.apply(input.mul_(self.scale), mask)
+            if self.scale is None:
+                self.scale = 1
+            return SoftmaxWithMaskFunction.apply(input, mask, self.scale)
         else:
             return self.forward_torch_softmax(input, mask)
 
