@@ -41,8 +41,7 @@ export NCCL_IB_DISABLE=0
 export NCCL_IB_CUDA_SUPPORT=1
 export NCCL_IB_GID_INDEX=0
 export NCCL_IB_TIMEOUT=12
-# export NCCL_IB_RETRY_CNT=7
-# export NCCL_DEBUG=INFO
+export NCCL_IB_RETRY_CNT=7
 export OMP_NUM_THREADS=4
 export GLOO_SOCKET_IFNAME=eth0
 if [ "$NODE_TYPE" == "A100" ]; then
