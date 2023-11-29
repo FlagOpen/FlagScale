@@ -36,7 +36,7 @@ torchrun $DISTRIBUTED_ARGS -m xacc -L linear -- tools/run_text_generation_uvicor
        --apply-layernorm-rms \
        --tensor-model-parallel-size 8  \
        --pipeline-model-parallel-size 1  \
-       --load /workspace/ckpts2/ \
+       --load /workspace/ckpt1031/ \
        --num-layers 60  \
        --hidden-size 6144  \
        --hidden-dim-multiplier 1.3 \
@@ -65,4 +65,5 @@ torchrun $DISTRIBUTED_ARGS -m xacc -L linear -- tools/run_text_generation_uvicor
        --seed 42 \
        --no-gradient-accumulation-fusion \
        --no-bias-gelu-fusion \
-       --disable-bias-linear
+       --disable-bias-linear \
+       --server-port 5060

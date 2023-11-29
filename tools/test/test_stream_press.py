@@ -157,11 +157,11 @@ tasks_dic = [
 
 
 def process(prompt):
-    temperature = random.random()
-    top_p = random.random()
-    top_k_per_token = random.randint(0, 150)
-    seed = random.randint(0, 429496729)
-    max_new_tokens = random.randint(32, 512)
+    temperature = random.uniform(0.1, 2)
+    top_p = random.uniform(0.1, 1)
+    top_k_per_token = random.randint(1, 5000)
+    seed = random.randint(0, 5000)
+    max_new_tokens = random.randint(100, 20000)
     print("temperature:", temperature)
     print("top_p:", top_p)
     print("top_k_per_token:", top_k_per_token)

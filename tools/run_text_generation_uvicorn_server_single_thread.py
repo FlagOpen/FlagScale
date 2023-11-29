@@ -19,6 +19,8 @@ import uvicorn, json, datetime
 import json
 from asgiref.sync import sync_to_async
 from megatron.text_generation.api_single_thread import generate_and_post_process_single_thread
+import re
+import shutil
 import time
 import torch
 import threading
@@ -64,6 +66,16 @@ def make_sft_prompts(prompts):
         p = get_prompt(p)
         new_prompts.append(p)
     return new_prompts
+
+def check_error(e):
+    if not isinstance(e, StopIteration) and str(e) != "generator raised StopIteration":
+        realtime = datetime.datetime.now()
+        realtime_str = re.sub(r'\D', '-', str(realtime))
+        shutil.copytree("log_file", realtime_str + "log_file")
+        f = open("error.txt", "w")
+        f.write("error")
+        f.close()
+    return
 
 class UvicornServer:
     def __init__(self, model, server_port, gloo_group, model_info="aquila-34b") -> None:
@@ -131,8 +143,7 @@ class UvicornServer:
                                         stop_on_eol=False,
                                         prevent_newline_after_colon=False,
                                         random_seed=seed,
-                                        stream=True,
-                                        lock_stream=lock_stream)
+                                        stream=True)
             if torch_xmlir:
                 if param_scope.xacc.eager("false") == "true":
                     torch_xmlir.xpu.empty_cache()
@@ -151,8 +162,7 @@ class UvicornServer:
                         print(f"spend time is {time.time() - start_time}\n")
                     except Exception as e:
                         print(f"e is {e}")
-                        #lock_stream.release()
-
+                        check_error(e)
                         break
 
             def postprocessing(fun):
@@ -164,8 +174,9 @@ class UvicornServer:
                         next(fun)
                     except Exception as e:
                         print(f"e is {e}")
+                        check_error(e)
                 print("in postprocessing", flush=True)
-
+                lock_stream.release()
 
             return StreamingResponse(trans(), media_type="text/plain",
                                 background=BackgroundTask(postprocessing, fun), lock=lock_stream)
@@ -217,6 +228,8 @@ if __name__ == "__main__":
     os.dup2(fd, 2)
     
     f = open("disconnected.txt", "w")
+    f.close()
+    f = open("error.txt", "w")
     f.close()
 
     initialize_megatron(extra_args_provider=add_text_generate_args,
@@ -271,8 +284,9 @@ if __name__ == "__main__":
                     torch.cuda.empty_cache()
                 print("end time:", datetime.datetime.now(), '\n')
 
-            except ValueError as ve:
-                pass
+            except Exception as e:
+                print(f"error is {e}")
+                check_error(e)
         else:
             choice = torch.cuda.LongTensor(1)
             torch.distributed.broadcast(choice, 0)
@@ -282,6 +296,6 @@ if __name__ == "__main__":
                                             )
                     torch.cuda.empty_cache()
 
-                except Exception as ve:
-                    print(f"value error is {ve}")
-                    pass
+                except Exception as e:
+                    print(f"error is {e}")
+                    check_error(e)

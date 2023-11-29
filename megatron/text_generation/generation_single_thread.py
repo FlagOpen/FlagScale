@@ -135,9 +135,12 @@ def generate_tokens_probs_and_return_on_first_stage_stream_sub_process(
     max_sequence_length = tokens.size(1)
 
     if max_sequence_length > args.max_position_embeddings:
-        raise ValueError("Length of prompt + tokens_to_generate longer than allowed")
+        print("Length of prompt + tokens_to_generate longer than allowed")
+        print("max_sequence_length:", max_sequence_length)
+        max_sequence_length = args.max_position_embeddings
 
     if max_sequence_length * batch_size > args.max_tokens_to_oom:
+        print("Too many tokens.  " + str(max_sequence_length*batch_size)+ " is greater than "+str(args.max_tokens_to_oom))
         raise ValueError("Too many tokens.  " + str(max_sequence_length*batch_size)+ " is greater than "+str(args.max_tokens_to_oom))
 
     # forward step.
@@ -201,34 +204,26 @@ def generate_tokens_probs_and_return_on_first_stage_stream_sub_process(
 
                 # Sample.
                 last_token_logits = logits[:, -1, :]
-                new_sample = sample_single_thread(last_token_logits,
-                                    top_k=top_k,
-                                    top_p=top_p,
-                                    temperature=temperature,
-                                    vocab_size=tokenizer.vocab_size)
-                if top_p > 0.0 and top_p_decay > 0.0:
-                    top_p = top_p * top_p_decay
-                    if top_p_bound > 0.0:
-                        top_p = max(top_p, top_p_bound)
+                new_sample = torch.tensor([0], device=logits.device)
+                torch.distributed.broadcast(new_sample, 0)
+                print(f"new sample is {new_sample}")
+                print("context_length:", context_length)
 
-                # receive stop signal
-                done2 = torch.cuda.LongTensor([2])
-                print("broadcast4 start:", done2)
-                torch.distributed.broadcast(done2, 0)
-                print("broadcast4 end:", done2)
-                if done2[0].item() == 1:
-                    print(f"子进程接收到停止信号。")
+                
+                tmp = tokenizer.detokenize([new_sample[0].cpu().item(), ])
+                if tmp == "###" or tmp == "[UNK]" or tmp == "</s>":
+                    print(f"sub proc receive stop flag")
                     break
+
                 return_list.append(new_sample[0].cpu().item())
                 content_1 = tokenizer.detokenize(return_list)
                 if (len(return_list) > 5 and "�" not in content_1) or context_length == max_sequence_length-1 or len(return_list) > 10:
-                    content = tokenizer.detokenize(return_list)
-                    done3 = torch.cuda.LongTensor([2])
-                    print("broadcast7 start:", done3)
-                    torch.distributed.broadcast(done3, 0)
-                    print("broadcast7 end:", done3)
-                    if done3[0].item() == 1:
-                        print(f"子进程3接收到停止信号。")
+                    done_disconnected = torch.cuda.LongTensor([2])
+                    print("broadcast start:", done_disconnected)
+                    torch.distributed.broadcast(done_disconnected, 0)
+                    print("broadcast end:", done_disconnected)
+                    if done_disconnected[0].item() == 1:
+                        print(f"sub proc receive disconnected flag")
                         break
                     return_list = []
 
@@ -241,22 +236,6 @@ def generate_tokens_probs_and_return_on_first_stage_stream_sub_process(
                 if started:
                     tokens[0, context_length] = new_sample[0]
 
-                # Calculate the log probabilities.
-                if return_output_log_probs:
-                    log_probs = F.softmax(logits, dim=2)
-                    if return_output_log_probs:
-                        # Pick the tokens that we need to get the log
-                        # probabilities for. Note that next input token is
-                        # the token which we selected in the current logits,
-                        # so shift by 1.
-                        indices = torch.unsqueeze(
-                            tokens[
-                                :,
-                                (prev_context_length + 1):(context_length + 1)],
-                            2)
-                        output_log_probs[:,
-                                         prev_context_length:context_length] = \
-                            torch.gather(log_probs, 2, indices).squeeze(2)
 
             # Update the tokens on the first stage so the next input to
             # the network is correct.
@@ -266,66 +245,8 @@ def generate_tokens_probs_and_return_on_first_stage_stream_sub_process(
             # Update the context length for the next token generation.
             prev_context_length = context_length
 
-            # Check if all the sequences have hit the termination_id.
-            done = None
-            if mpu.is_pipeline_last_stage():
-                # TODO(rprenger) These stopping methods are tokenizer dependent
-                # instead tokenization should be in the inference loop so stop sequences can be used
-                if stop_on_double_eol:
-                    hit_double_eol = (new_sample == 628).bool() & started.bool()
-                    hit_two_eols = (new_sample == 198).bool() &  \
-                                   (tokens[:, context_length - 1] == 198).bool() & started.bool()
-                    done_token = (hit_double_eol | hit_two_eols).byte()
-                    print("done_token1:", done_token)
-                elif stop_on_eol:
-                    hit_double_eol = (new_sample == 628).bool() & started.bool()
-                    hit_eol = (new_sample == 198).bool() & started.bool()
-                    done_token = (hit_double_eol | hit_eol).byte()
-                    print("done_token2:", done_token)
-                else:
-                    done_token = ((new_sample == termination_id).bool() & \
-                        started.bool()).byte()
-                    print("\n new_sample:", new_sample)
-                    print("done_token3:", done_token)
-
-                just_finished = done_token.bool() & ~(is_generation_done.bool())
-                generated_sequence_lengths[just_finished.view(-1)] = \
-                    context_length + 1
-                is_generation_done = is_generation_done.bool() | done_token.bool()
-                print("is_generation_done:", is_generation_done)
-                done = torch.all(is_generation_done).byte()
-            done = broadcast_from_last_pipeline_stage(1, torch.uint8,
-                                                        tensor=done)
-            print("broadcast8 start:", done)
-            torch.distributed.broadcast(done, 0)
-            print("broadcast8 end:", done)
-            print("start break!!:", done, " ", use_eod_token_for_early_termination)
-            if use_eod_token_for_early_termination and done:
-                print("break")
-                break
-
-    # ===================================================
-    # Update the length of based on max generated length.
-    # ===================================================
-
-    tokens = tokens[:, :(context_length + 1)]
-    if mpu.is_pipeline_last_stage():
-        if return_output_log_probs:
-            output_log_probs = output_log_probs[:, :context_length]
-
-    # ======================================
-    # Broadcast to the first pipeline stage.
-    # ======================================
-
-    generated_sequence_lengths = broadcast_from_last_to_first_pipeline_stage(
-        batch_size, torch.int64, generated_sequence_lengths)
-    if return_output_log_probs:
-        output_log_probs_size = (batch_size, context_length)
-        output_log_probs = broadcast_from_last_to_first_pipeline_stage(
-            output_log_probs_size, torch.float32, output_log_probs)
-
-    print("final")
-    return tokens, generated_sequence_lengths, output_log_probs
+    # fake output
+    return None, None, None
 
 def generate_tokens_probs_and_return_on_first_stage_stream_main_process(
         model, tokens, lengths,
@@ -336,7 +257,6 @@ def generate_tokens_probs_and_return_on_first_stage_stream_main_process(
         stop_on_double_eol=False,
         stop_on_eol=False,
         prevent_newline_after_colon=True,
-        lock_stream=None
         ):
     """Main token generation function.
     Arguments:
@@ -373,9 +293,12 @@ def generate_tokens_probs_and_return_on_first_stage_stream_main_process(
     max_sequence_length = tokens.size(1)
 
     if max_sequence_length > args.max_position_embeddings:
-        raise ValueError("Length of prompt + tokens_to_generate longer than allowed")
+        print("Length of prompt + tokens_to_generate longer than allowed")
+        print("max_sequence_length:", max_sequence_length)
+        max_sequence_length = args.max_position_embeddings
 
     if max_sequence_length * batch_size > args.max_tokens_to_oom:
+        print("Too many tokens.  " + str(max_sequence_length*batch_size)+ " is greater than "+str(args.max_tokens_to_oom))
         raise ValueError("Too many tokens.  " + str(max_sequence_length * batch_size)+ \
                          " is greater than " + str(args.max_tokens_to_oom))
 
@@ -447,42 +370,20 @@ def generate_tokens_probs_and_return_on_first_stage_stream_main_process(
                                     top_p=top_p,
                                     temperature=temperature,
                                     vocab_size=tokenizer.vocab_size)
+                torch.distributed.broadcast(new_sample, 0)
                 print(f"new sample is {new_sample}")
                 print("context_length:", context_length)
-                if new_sample[0] == 100007:
-                    # send stop signal
-                    print("end!")
-                    done2 = torch.cuda.LongTensor([1])
-                    print("broadcast1 start:", done2)
-                    torch.distributed.broadcast(done2, 0)
-                    print("broadcast1 end:", done2)
-                    if len(return_list) != 0:
-                        print("len(return_list) != 0")
-                        content = tokenizer.detokenize(return_list)
-                        print("content end:", content)
-                        lock_stream.release()
-                        yield content
-                        return_list = []
-                    else:
-                        lock_stream.release()
-                    raise StopIteration
-
+                
                 tmp = tokenizer.detokenize([new_sample[0].cpu().item(), ])
                 if tmp == "###" or tmp == "[UNK]" or tmp == "</s>":
-                    content = tokenizer.detokenize(return_list)
-                    print("content1:", content)
-                    done2 = torch.cuda.LongTensor([1])
-                    print("broadcast2 start:", done2)
-                    torch.distributed.broadcast(done2, 0)
-                    print("broadcast2 end:", done2)
-                    lock_stream.release()
-                    yield content
+                    print("end!")
+                    if tmp != "</s>" or len(return_list) != 0:
+                        content = tokenizer.detokenize(return_list)
+                        print("content end1:", content)
+                        yield content
+                        print("content end2:", content)
+                        return_list = []
                     raise StopIteration
-
-                done2 = torch.cuda.LongTensor([2])
-                print("broadcast3 start:", done2)
-                torch.distributed.broadcast(done2, 0)
-                print("broadcast3 end:", done2)
 
                 return_list.append(new_sample[0].cpu().item())
                 content_1 = tokenizer.detokenize(return_list)
@@ -495,24 +396,25 @@ def generate_tokens_probs_and_return_on_first_stage_stream_main_process(
                     # it will send the stop signal to all the other sub-processes.
                     f = open("disconnected.txt", "r")
                     disconnect_content = f.readlines()
-                    print("content333:", disconnect_content)
+                    print("disconnect_content:", disconnect_content)
                     if 'disconnected' in disconnect_content:
                         f2 = open("disconnected.txt", "w")
                         f2.close()
                         f.close()
-                        done3 = torch.cuda.LongTensor([1])
-                        print("broadcast5 start:", done3)
-                        torch.distributed.broadcast(done3, 0)
-                        print("broadcast5 end:", done3)
-                        lock_stream.release()
+                        done_disconnected = torch.cuda.LongTensor([1])
+                        print("broadcast1 start:", done_disconnected)
+                        torch.distributed.broadcast(done_disconnected, 0)
+                        print("broadcast1 end:", done_disconnected)
                         yield content
+                        print("broadcast1 end2:", done_disconnected)
                         raise StopIteration
                     else:
-                        done3 = torch.cuda.LongTensor([2])
-                        print("broadcast6 start:", done3)
-                        torch.distributed.broadcast(done3, 0)
-                        print("broadcast6 end:", done3)
+                        done_disconnected = torch.cuda.LongTensor([2])
+                        print("broadcast2 start:", done_disconnected)
+                        torch.distributed.broadcast(done_disconnected, 0)
+                        print("broadcast2 end:", done_disconnected)
                     yield content
+                    print("yield back")
                     return_list = []
 
                 if top_p > 0.0 and top_p_decay > 0.0:
@@ -551,65 +453,8 @@ def generate_tokens_probs_and_return_on_first_stage_stream_main_process(
             # Update the context length for the next token generation.
             prev_context_length = context_length
 
-            # Check if all the sequences have hit the termination_id.
-            done = None
-            if mpu.is_pipeline_last_stage():
-                # TODO(rprenger) These stopping methods are tokenizer dependent
-                # instead tokenization should be in the inference loop so stop sequences can be used
-                if stop_on_double_eol:
-                    hit_double_eol = (new_sample == 628).bool() & started.bool()
-                    hit_two_eols = (new_sample == 198).bool() & \
-                                   (tokens[:, context_length - 1] == 198).bool() & started.bool()
-                    done_token = (hit_double_eol | hit_two_eols).byte()
-                    print("done_token1:", done_token)
-                elif stop_on_eol:
-                    hit_double_eol = (new_sample == 628).bool() & started.bool()
-                    hit_eol = (new_sample == 198).bool() & started.bool()
-                    done_token = (hit_double_eol | hit_eol).byte()
-                    print("done_token2:", done_token)
-                else:
-                    done_token = ((new_sample == termination_id).bool() & \
-                        started.bool()).byte()
-                    print("\n new_sample:", new_sample)
-                    print("done_token3:", done_token)
 
-                just_finished = done_token.bool() & ~(is_generation_done.bool())
-                generated_sequence_lengths[just_finished.view(-1)] = \
-                    context_length + 1
-                is_generation_done = is_generation_done.bool() | done_token.bool()
-                print("is_generation_done:", is_generation_done)
-                done = torch.all(is_generation_done).byte()
-            done = broadcast_from_last_pipeline_stage(1, torch.uint8,
-                                                        tensor=done)
-            print("broadcast9 start:", done)
-            torch.distributed.broadcast(done, 0)
-            print("broadcast9 end:", done)
-            print("start break!!:", done, " ", use_eod_token_for_early_termination)
-            if use_eod_token_for_early_termination and done:
-                print("break")
-                break
-
-    # ===================================================
-    # Update the length of based on max generated length.
-    # ===================================================
-
-    tokens = tokens[:, :(context_length + 1)]
-    if mpu.is_pipeline_last_stage():
-        if return_output_log_probs:
-            output_log_probs = output_log_probs[:, :context_length]
-
-    # ======================================
-    # Broadcast to the first pipeline stage.
-    # ======================================
-
-    generated_sequence_lengths = broadcast_from_last_to_first_pipeline_stage(
-        batch_size, torch.int64, generated_sequence_lengths)
-    if return_output_log_probs:
-        output_log_probs_size = (batch_size, context_length)
-        output_log_probs = broadcast_from_last_to_first_pipeline_stage(
-            output_log_probs_size, torch.float32, output_log_probs)
-    print("final")
-    lock_stream.release()
+    # fake output
     return tokens, generated_sequence_lengths, output_log_probs
 
 

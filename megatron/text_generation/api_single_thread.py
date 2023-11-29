@@ -36,8 +36,7 @@ def generate_and_post_process_single_thread(model,
                               stop_on_eol=False,
                               prevent_newline_after_colon=False,
                               random_seed=-1,
-                              stream=False,
-                              lock_stream=None):
+                              stream=False):
     """Run inference and post-process outputs, i.e., detokenize,
     move to cpu and convert to list."""
 
@@ -61,19 +60,6 @@ def generate_and_post_process_single_thread(model,
             random_seed=random_seed,
             )
 
-        # Only post-process on first stage.
-        if mpu.is_pipeline_first_stage():
-            tokens, prompts_plus_generations, prompts_plus_generations_segments = \
-                detokenize_generations(tokens, lengths, True)
-
-            if return_output_log_probs:
-                output_log_probs = output_log_probs.cpu().numpy().tolist()
-                for i, (prob, seg) in enumerate(zip(output_log_probs, prompts_plus_generations_segments)):
-                    output_log_probs[i] = prob[:len(seg)-1]
-
-            return prompts_plus_generations, prompts_plus_generations_segments, \
-                output_log_probs, tokens
-
         return None
     else:
         tokens = generate_stream(
@@ -91,8 +77,7 @@ def generate_and_post_process_single_thread(model,
             stop_on_double_eol=stop_on_double_eol,
             stop_on_eol=stop_on_eol,
             prevent_newline_after_colon=prevent_newline_after_colon,
-            random_seed=random_seed,
-            lock_stream=lock_stream,
+            random_seed=random_seed
             )
 
         # Only post-process on first stage.
@@ -197,8 +182,7 @@ def generate_stream(model,
              stop_on_double_eol=False,
              stop_on_eol=False,
              prevent_newline_after_colon=False,
-             random_seed=-1,
-             lock_stream=None,
+             random_seed=-1
              ):
     """Given prompts and input parameters, run inference and return:
        tokens: prompts plus the generated tokens.
@@ -263,6 +247,5 @@ def generate_stream(model,
         stop_on_double_eol=stop_on_double_eol,
         stop_on_eol=stop_on_eol,
         prevent_newline_after_colon=prevent_newline_after_colon,
-        lock_stream=lock_stream,
         )
 
