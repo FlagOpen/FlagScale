@@ -5,7 +5,6 @@ EXPNAME=$2
 HOSTFILE=$3
 DATA_PATH=$4
 
-
 # Preapre the environment related configuration
 source examples/aquila/env.sh
 
@@ -18,7 +17,6 @@ SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
 CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$EXPNAME
 mkdir -p $CHECKPOINT_PATH
 LOG_PATH=$PROJ_HOME/logs/$EXPNAME
-rm -rf $LOG_PATH
 mkdir -p $LOG_PATH
 cp $0 $LOG_PATH/
 TB_PATH=$PROJ_HOME/tboard/$EXPNAME
@@ -27,42 +25,42 @@ WB_PATH=$PROJ_HOME/wandb/$EXPNAME
 mkdir -p $WB_PATH
 
 DISTRIBUTED_ARGS="
+    --nproc_per_node $NODE_DEVICES \
     --nnodes $NUM_NODES \
     --node_rank $NODE_RANK \
-    --nproc_per_node $NODE_DEVICES \
     --master_addr $MASTER_ADDR \
-    --master_port $MASTER_PORT \
+    --master_port $MASTER_PORT 
 "
-    # --log_dir $LOG_PATH --redirects 3 --tee 3
-
-# DISTRIBUTED_ARGS="
-#     --nnodes $NUM_NODES \
-#     --rdzv_id "hetero" \
-#     --nproc_per_node $NODE_DEVICES \
-#     --rdzv-backend=c10d \
-#     --rdzv-endpoint=$MASTER_ADDR:$MASTER_PORT
-# "
 
 HETERO_ARGS="
-    --hetero-mode dp \
-    --hetero-device-types A800 A100 \
+    --hetero-mode pp \
     --hetero-current-device-type $NODE_TYPE \
-    --hetero-micro-batch-sizes 2 3 2 1 \
+    --hetero-device-types A800 A100 \
+    --hetero-pipeline-stages 1 15 3 15 15 15 \
 "
 
 TRAINING_ARGS="
-    --train-samples 40000 \
+    --train-samples 488281250 \
+    --rampup-batch-size 32 32 2000000 \
     --eval-iters 0 \
-    --tensor-model-parallel-size 2 \
-    --pipeline-model-parallel-size 2 \
-    --global-batch-size 32  \
-    --disable-bias-linear
+    --eval-interval 2000 \
+    --tensor-model-parallel-size 4 \
+    --pipeline-model-parallel-size 4 \
+    --make-vocab-size-divisible-by 64 \
+    --micro-batch-size 1 \
+    --global-batch-size 1024 \
+    --disable-bias-linear \
+    --recompute-granularity 'full' \
+    --recompute-method 'uniform' \
+    --sequence-parallel \
+    --use-distributed-optimizer
 "
 
 MIXED_PRECISION_ARGS="
     --bf16 \
-    --embedding-weights-in-fp32 \
     --attention-softmax-in-fp32 \
+    --embedding-weights-in-fp32 \
+    --rotary-position-embeddings-in-fp32 \
     --accumulate-allreduce-grads-in-fp32
 "
 
@@ -78,24 +76,27 @@ DATA_ARGS="
 "
 
 NETWORK_ARGS="
-    --num-layers 8 \
-    --hidden-size 4096 \
-    --num-attention-heads 32 \
-    --seq-length 2048 \
-    --max-position-embeddings 2048 \
+    --num-layers 60 \
+    --hidden-size 6144 \
+    --num-attention-heads 48 \
+    --group-query-attention \
+    --num-query-groups 8 \
+    --hidden-dim-multiplier 1.3 \
+    --seq-length 4096 \
+    --max-position-embeddings 4096 \
     --layernorm-epsilon 1e-5 \
+    --layernorm-init-weight 0.3 \
     --use-rotary-position-embeddings \
-    --rotary-position-embeddings-in-fp32 \
     --no-position-embedding \
     --swiglu \
-    --multiple-of 256 \
+    --multiple-of 4096 \
     --apply-layernorm-rms \
     --untie-embeddings-and-output-weights
 "
 
 INITIALIZATION_ARGS="
-    --init-method-std 0.02 \
-    --seed 1234 
+    --init-method-std 0.0165 \
+    --seed 42
 "
 
 REGULARIZATION_ARGS="
@@ -104,32 +105,31 @@ REGULARIZATION_ARGS="
     --weight-decay 0.1 \
     --adam-beta1 0.9 \
     --adam-beta2 0.95 \
-    --clip-grad 0.0
+    --clip-grad 1.0
 "
 
 LEARNING_RATE_ARGS="
-    --lr 2.0e-3 \
+    --lr 1.5e-4 \
+    --lr-decay-style cosine \
+    --lr-warmup-samples 500000 \
+    --min-lr 1.5e-5
 "
-    # --min-lr 2.0e-6 \
-    # --lr-decay-style cosine \
-    # --lr-warmup-samples 1000 
 
 CHECKPOINTING_ARGS="
+    --save-interval 1000 \
+    --rampup-save-interval 5000 \
+    --save $CHECKPOINT_PATH \
     --load $CHECKPOINT_PATH
 "
-    # --save-interval 200000 \
-    # --save $CHECKPOINT_PATH \
 
 LOGGING_ARGS="
     --log-interval 1 \
+    --tensorboard-dir $TB_PATH \
+    --tensorboard-log-interval 1 \
+    --wandb-dir $WB_PATH
 "
-    # --wandb-dir $WB_PATH \
-    # --tensorboard-dir $TB_PATH \
-    # --tensorboard-log-interval 1 
 
-ENV_ARGS=""
-
-cmd="$ENV_ARGS torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
+cmd="torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
               $HETERO_ARGS \
               $TRAINING_ARGS \
               $MIXED_PRECISION_ARGS \
