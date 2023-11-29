@@ -46,6 +46,8 @@ try:
 except Exception:
     torch_xmlir = None
 
+gemm_type = os.getenv("XDNN_FC_GEMM_DTYPE")
+
 _MODEL_PARALLEL_ATTRIBUTE_DEFAULTS = {
     'tensor_model_parallel': False,
     'partition_dim': -1,
@@ -365,11 +367,14 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         else:
             if args.findmax_opt:
                 device = total_input.device
-                input_max = torch.empty((64), dtype=torch.float, device=device)
-                torch.ops.custom_ops.findmax(total_input, max=input_max)
+                if gemm_type == "float32":
+                    input_max, weight_max = None, None
+                else:
+                    input_max = torch.empty((64), dtype=torch.float, device=device)
+                    torch.ops.custom_ops.findmax(total_input, max=input_max)
 
-                weight_max = torch.empty((64), dtype=torch.float, device=device)
-                torch.ops.custom_ops.findmax(weight, max=weight_max)
+                    weight_max = torch.empty((64), dtype=torch.float, device=device)
+                    torch.ops.custom_ops.findmax(weight, max=weight_max)
 
                 ctx.input_max = input_max
                 ctx.weight_max = weight_max
@@ -383,7 +388,7 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
                     out=output
                 )
             else:
-                output = linear(total_input, weight, bias)
+                output = linear(total_input, weight, bias, weight_max=weight_max)
         return output
 
     @staticmethod
@@ -413,14 +418,18 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
             grad_input = grad_output.matmul(weight)
         else:
             if args.findmax_opt:
-                device = grad_output.device
-                grad_output_max = torch.empty((64), dtype=torch.float, device=device)
-                torch.ops.custom_ops.findmax(grad_output, max=grad_output_max)
+
+                if gemm_type == "float32":
+                    grad_output_max = None
+                else:
+                    device = grad_output.device
+                    grad_output_max = torch.empty((64), dtype=torch.float, device=device)
+                    torch.ops.custom_ops.findmax(grad_output, max=grad_output_max)
 
                 grad_input = grad_output.new_empty(grad_output.shape[:-1] + (weight.shape[-1],))
                 # dims compression for mat1 and mat2 dims not same
                 tmp_grad_output = grad_output.view(
-                            grad_output.shape[0] * grad_output.shape[1], grad_output.shape[-1]) #ok
+                            grad_output.shape[0] * grad_output.shape[1], grad_output.shape[-1])
 
                 torch.ops.custom_ops.fc_fusion(
                     tmp_grad_output,

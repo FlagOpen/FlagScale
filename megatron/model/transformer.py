@@ -22,15 +22,12 @@ from megatron.model.utils import init_method_normal
 
 try:
     import torch_xmlir
-    from torch_xmlir.nn.rms_norm import RMSNormLayer
     from torch_xmlir.nn.swiglu import SwiGLU as SwiGLUXPU
     from torch_xmlir.nn.bmm import bmm as xpu_bmm
     from torch_xmlir.nn.baddbmm import baddbmm as xpu_baddbmm
 except Exception:
     torch_xmlir = None
 import os
-
-AQUILA_TRAIN = (os.getenv("AQUILA_TRAIN_XPU", "false").lower() == "true")
 
 try:
     from einops import rearrange
@@ -930,13 +927,6 @@ class ParallelAttention(MegatronModule):
 
 
 def bias_dropout_add(x, bias, residual, prob, training):
-    if torch_xmlir is not None:
-        from torch_xmlir.nn.dropout_add import DropoutAddFunction
-        if bias is not None:
-            x = x + bias
-        out = DropoutAddFunction.apply(x.view(x.shape[0], -1), residual.view(x.shape[0], -1), prob, not training, 0)
-        return out.view(x.shape)
-
     # type: (Tensor, Optional[Tensor], Tensor, float, bool) -> Tensor
     if bias is not None:
         x = x + bias
@@ -996,21 +986,14 @@ class ParallelTransformerLayer(MegatronModule):
         self.bf16 = config.bf16
         self.fp32_residual_connection = config.fp32_residual_connection
 
-        #for xpu train
-        if (AQUILA_TRAIN and args.apply_layernorm_rms):
-            self.input_layernorm = RMSNormLayer(
-                config.hidden_size,
-                eps=config.layernorm_epsilon,
-                sequence_parallel=config.sequence_parallel)
-        else:
-            self.input_layernorm = LayerNorm(
-                config.hidden_size,
-                eps=config.layernorm_epsilon,
-                no_persist_layer_norm=args.no_persist_layer_norm,
-                sequence_parallel=config.sequence_parallel,
-                apply_layernorm_1p=args.apply_layernorm_1p,
-                apply_layernorm_rms=args.apply_layernorm_rms,
-                init_weight=self.init_weight_attn_norm)
+        self.input_layernorm = LayerNorm(
+            config.hidden_size,
+            eps=config.layernorm_epsilon,
+            no_persist_layer_norm=args.no_persist_layer_norm,
+            sequence_parallel=config.sequence_parallel,
+            apply_layernorm_1p=args.apply_layernorm_1p,
+            apply_layernorm_rms=args.apply_layernorm_rms,
+            init_weight=self.init_weight_attn_norm)
 
 
 
@@ -1026,20 +1009,14 @@ class ParallelTransformerLayer(MegatronModule):
         self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0.0 else None
 
         # Layernorm on the attention output
-        if AQUILA_TRAIN and args.apply_layernorm_rms:
-            self.post_attention_layernorm = RMSNormLayer(
-                config.hidden_size,
-                eps=config.layernorm_epsilon,
-                sequence_parallel=config.sequence_parallel)
-        else:
-            self.post_attention_layernorm = LayerNorm(
-                config.hidden_size,
-                eps=config.layernorm_epsilon,
-                no_persist_layer_norm=not config.persist_layer_norm,
-                sequence_parallel=config.sequence_parallel,
-                apply_layernorm_1p=args.apply_layernorm_1p,
-                apply_layernorm_rms=args.apply_layernorm_rms,
-                init_weight=self.init_weight_ffn_norm)
+        self.post_attention_layernorm = LayerNorm(
+            config.hidden_size,
+            eps=config.layernorm_epsilon,
+            no_persist_layer_norm=not config.persist_layer_norm,
+            sequence_parallel=config.sequence_parallel,
+            apply_layernorm_1p=args.apply_layernorm_1p,
+            apply_layernorm_rms=args.apply_layernorm_rms,
+            init_weight=self.init_weight_ffn_norm)
 
         # Cross attention.
         if self.layer_type in (LayerType.decoder,
@@ -1051,18 +1028,12 @@ class ParallelTransformerLayer(MegatronModule):
                 layer_number,
                 attention_type=AttnType.cross_attn)
             # Layernorm on the attention output.
-            if AQUILA_TRAIN and args.apply_layernorm_rms:
-                self.post_inter_attention_layernorm = RMSNormLayer(
-                    config.hidden_size,
-                    eps=config.layernorm_epsilon,
-                    sequence_parallel=config.sequence_parallel)
-            else:
-                self.post_inter_attention_layernorm = LayerNorm(
-                    config.hidden_size,
-                    eps=config.layernorm_epsilon,
-                    no_persist_layer_norm=not config.persist_layer_norm,
-                    sequence_parallel=config.sequence_parallel,
-                    apply_layernorm_1p=args.apply_layernorm_1p)
+            self.post_inter_attention_layernorm = LayerNorm(
+                config.hidden_size,
+                eps=config.layernorm_epsilon,
+                no_persist_layer_norm=not config.persist_layer_norm,
+                sequence_parallel=config.sequence_parallel,
+                apply_layernorm_1p=args.apply_layernorm_1p)
 
         # MLP
         if args.num_experts is not None:
@@ -1751,21 +1722,14 @@ class ParallelTransformer(MegatronModule):
 
         if self.post_process and self.post_layer_norm:
             # Final layer norm before output.
-            if AQUILA_TRAIN and args.apply_layernorm_rms:
-                self.final_layernorm = RMSNormLayer(
-                    config.hidden_size,
-                    eps=config.layernorm_epsilon,
-                    sequence_parallel=config.sequence_parallel)
-
-            else:
-                self.final_layernorm = LayerNorm(
-                    config.hidden_size,
-                    eps=config.layernorm_epsilon,
-                    no_persist_layer_norm=args.no_persist_layer_norm,
-                    sequence_parallel=config.sequence_parallel,
-                    apply_layernorm_1p=args.apply_layernorm_1p,
-                    apply_layernorm_rms=args.apply_layernorm_rms,
-                    init_weight=self.init_weight_output_norm)
+            self.final_layernorm = LayerNorm(
+                config.hidden_size,
+                eps=config.layernorm_epsilon,
+                no_persist_layer_norm=args.no_persist_layer_norm,
+                sequence_parallel=config.sequence_parallel,
+                apply_layernorm_1p=args.apply_layernorm_1p,
+                apply_layernorm_rms=args.apply_layernorm_rms,
+                init_weight=self.init_weight_output_norm)
 
     def _get_layer(self, layer_number):
         return self.layers[layer_number]
