@@ -425,18 +425,24 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
             for dtype, grad_buffer in model._grad_buffers.items():
 
                 # Handle older/newer method for getting untyped storage.
-                try:
-                    storage = grad_buffer.data.storage()._untyped()
-                except:
-                    storage = grad_buffer.data.storage().untyped()
+                if torch_xmlir is None:
+                    try:
+                        storage = grad_buffer.data.storage()._untyped()
+                    except:
+                        storage = grad_buffer.data.storage().untyped()
 
-                # Typed param buffer.
-                param_buffer = torch.tensor(
-                    storage,
-                    dtype = params_dtype,
-                    device = grad_buffer.data.device)
-                param_buffer = param_buffer[:grad_buffer.numel_padded]
-                current_param_buffers[dtype] = param_buffer
+                    # Typed param buffer.
+                    param_buffer = torch.tensor(
+                        storage,
+                        dtype = params_dtype,
+                        device = grad_buffer.data.device)
+                    param_buffer = param_buffer[:grad_buffer.numel_padded]
+                    current_param_buffers[dtype] = param_buffer
+                else:
+                    param_buffer = torch.frombuffer(grad_buffer.data.cpu().numpy(), \
+                    dtype=params_dtype).to(grad_buffer.data.device)
+                    param_buffer = param_buffer[:grad_buffer.numel_padded]
+                    current_param_buffers[dtype] = param_buffer
             self.param_buffers.append(current_param_buffers)
 
         # Update optimizer groups.
