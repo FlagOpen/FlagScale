@@ -9,6 +9,7 @@ import torch.multiprocessing as mp
 import os
 import sys
 import torch
+import itertools
 
 
 def load_plugin(plugin_type, name):
@@ -274,23 +275,37 @@ def get_num_layers_from_args(
     total_num_layers,
     pp_size,
     pp_rank,
+    hetero_pipeline_stages=None,
     is_decoder=False,
     standalone_embedding_stage=False,
 ):
+    assert standalone_embedding_stage == False, "standalone_embedding_stage is not supported"
+    def _compute_num_layers():
+        pipeline_stages = [item for sublist in hetero_pipeline_stages for item in sublist]
+        num_layers = pipeline_stages[pp_rank] 
+        return num_layers
+
     if pp_size > 1:
         assert (
             total_num_layers % pp_size == 0
         ), "num_layers must be divisible by transformer_pipeline_model_parallel_size"
 
-        # When a standalone embedding stage is used, all transformer layers
-        # are divided among pipeline rank >= 1, while on pipeline rank 0,
-        # ranks either contain the input embedding layer (virtual pp rank 0),
-        # or no layers at all (virtual pp rank >= 1).
-        num_layers = (
-            0
-            if standalone_embedding_stage and pp_rank == 0
-            else total_num_layers // pp_size
-        )
+        if hetero_pipeline_stages is not None:
+            num_layers = _compute_num_layers()
+            if standalone_embedding_stage and pp_rank == 0:
+                return 0
+            else:
+                return num_layers
+        else:
+            # When a standalone embedding stage is used, all transformer layers
+            # are divided among pipeline rank >= 1, while on pipeline rank 0,
+            # ranks either contain the input embedding layer (virtual pp rank 0),
+            # or no layers at all (virtual pp rank >= 1).
+            num_layers = (
+                0
+                if standalone_embedding_stage and pp_rank == 0
+                else total_num_layers // pp_size
+            )
     else:
         if not is_decoder:
             num_layers = total_num_layers
@@ -347,10 +362,9 @@ def main():
         dest="checking",
     )
     parser.add_argument(
-        "--del-tmp",
+        "--no-del-tmp",
         action="store_true",
-        help="Delete temporary files after conversion",
-        default=False,
+        help="Do not delete temporary files after conversion",
     )
     parser.add_argument(
         "--loader-mapping-from-start",
@@ -363,6 +377,12 @@ def main():
         action="store_true",
         help="Get param index mapping file from iteration 0 for saver",
         default=True,
+    )
+    parser.add_argument(
+        '--hetero-pipeline-stages', nargs='*', type=int, default=None,
+        help='Incompatible with --num-layers-per-virtual-pipeline-stage.'
+             'hetero-pipeline-stages must be in the form:'
+             'n0 layers_0_0 layers_0_1 ... n1 nlayers_1_0 nlayers_1_1 ...'
     )
 
     known_args, _ = parser.parse_known_args()

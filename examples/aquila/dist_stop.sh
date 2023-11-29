@@ -3,11 +3,11 @@
 set -u
     HOSTFILE=<xxxx>
 set +u
-NODES_NUM=$(awk '{$1=$1;print}' $HOSTFILE | wc -l)
-echo "NODES_NUM": $NODES_NUM
+NUM_NODES=$(grep -v '^#\|^$' $HOSTFILE | wc -l)
+echo "NUM_NODES: $NUM_NODES"
 
-for ((i=1;i<=$NODES_NUM;i++ )); do
-    ip=`sed -n $i,1p $HOSTFILE|cut -f 1 -d" "`
-    echo "IP": $ip
-    ssh $ip "pkill -f '/usr/bin/python /usr/local/bin/torchrun'" 
+hostlist=$(grep -v '^#\|^$' $HOSTFILE | awk '{print $1}' | xargs)
+for host in ${hostlist[@]}; do
+    ssh $host "pkill -f '/usr/local/bin/torchrun'" 
+    echo "$host is killed."
 done

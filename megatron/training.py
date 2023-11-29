@@ -52,6 +52,7 @@ from megatron.utils import check_adlr_autoresume_termination
 from megatron.utils import unwrap_model
 from megatron.utils import get_host_ip 
 from megatron.data.data_samplers import build_pretraining_data_loader
+from megatron.data.data_samplers_hetero import build_pretraining_data_loader_hetero
 from megatron.utils import calc_params_l2_norm
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.utils import report_memory
@@ -667,9 +668,16 @@ def train_step(forward_step_func, data_iterator,
 
     # Update learning rate.
     if update_successful:
-        increment = get_num_microbatches() * \
-                    args.micro_batch_size * \
-                    args.data_parallel_size
+        if args.hetero_mode != "dp":
+            increment = get_num_microbatches() * \
+                        args.micro_batch_size * \
+                        args.data_parallel_size
+        else:
+            micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                        args.hetero_micro_batch_sizes,
+                                                        args.hetero_data_parallel_splits))
+            increment = get_num_microbatches() * \
+                        micro_batch_for_all_data_parallel
         # TODO: For now, we only support constant LR scheduler.
         if args.mup is None:
             opt_param_scheduler.step(increment=increment)
@@ -758,8 +766,14 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
         'optimizer']
 
     # Calculate batch size.
-    batch_size = args.micro_batch_size * args.data_parallel_size * \
-        get_num_microbatches()
+    if args.hetero_mode != "dp":
+        batch_size = args.micro_batch_size * args.data_parallel_size * \
+            get_num_microbatches()
+    else:
+        micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                    args.hetero_micro_batch_sizes,
+                                                    args.hetero_data_parallel_splits))
+        batch_size = micro_batch_for_all_data_parallel * get_num_microbatches()
 
     total_iterations = total_loss_dict[advanced_iters_key] + \
                        total_loss_dict[skipped_iters_key]
@@ -981,9 +995,15 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                        opt_param_scheduler,
                        config)
         iteration += 1
-        args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
-                                       args.micro_batch_size * \
-                                       get_num_microbatches()
+        if args.hetero_mode != "dp":
+            args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
+                                           args.micro_batch_size * \
+                                           get_num_microbatches()
+        else:
+            micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                        args.hetero_micro_batch_sizes,
+                                                        args.hetero_data_parallel_splits))
+            args.consumed_train_samples += get_num_microbatches() * micro_batch_for_all_data_parallel
 
         # remove hooks of coordination check
         if args.mup_coord_check:
@@ -1107,9 +1127,15 @@ def search_data(train_valid_test_dataset_provider, get_batch):
         iteration += 1
         if iteration % 10000 == 0:
             print_rank_0(f'Data searching at iteration {iteration}...')
-        args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
-                                       args.micro_batch_size * \
-                                       get_num_microbatches()
+        if args.hetero_mode != "dp":
+            args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
+                                           args.micro_batch_size * \
+                                           get_num_microbatches()
+        else:
+            micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                        args.hetero_micro_batch_sizes,
+                                                        args.hetero_data_parallel_splits))
+            args.consumed_train_samples += get_num_microbatches() * micro_batch_for_all_data_parallel
     
     # Build the dataloader
     args.iteration = iteration 
@@ -1143,9 +1169,15 @@ def search_data(train_valid_test_dataset_provider, get_batch):
             searched_data[cur_key]["labels"] = labels
             searched_data[cur_key]["dataset_idx"] = dataset_idx
         iteration += 1
-        args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
-                                       args.micro_batch_size * \
-                                       get_num_microbatches()
+        if args.hetero_mode != "dp":
+            args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
+                                           args.micro_batch_size * \
+                                           get_num_microbatches()
+        else:
+            micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                        args.hetero_micro_batch_sizes,
+                                                        args.hetero_data_parallel_splits))
+            args.consumed_train_samples += get_num_microbatches() * micro_batch_for_all_data_parallel
     if not os.path.exists(args.data_searching_save):
         raise ValueError("searched data save path does not exist")
     searched_data_file = os.path.join(args.data_searching_save, "searched_data_{}_to_{}".format(search_start, search_end))
@@ -1171,8 +1203,14 @@ def evaluate(forward_step_func,
 
     # make validation batch size independent from training batch size
     eval_batch_size = args.global_batch_size
-    eval_num_microbatches = eval_batch_size // \
-        (args.micro_batch_size * args.data_parallel_size)
+    if args.hetero_mode != "dp":
+        eval_num_microbatches = eval_batch_size // \
+            (args.micro_batch_size * args.data_parallel_size)
+    else:
+        micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                    args.hetero_micro_batch_sizes,
+                                                    args.hetero_data_parallel_splits))
+        eval_num_microbatches = eval_batch_size // micro_batch_for_all_data_parallel 
 
     with torch.no_grad():
         iteration = 0
@@ -1345,14 +1383,24 @@ def build_train_valid_test_data_loaders(
             build_train_valid_test_datasets_provider)
 
         # Build dataloders.
-        train_dataloader = build_pretraining_data_loader(
-            train_ds, args.consumed_train_samples)
-        if args.skip_train:
-            valid_dataloader = build_pretraining_data_loader(valid_ds, 0)
+        if args.hetero_mode != "dp":
+            train_dataloader = build_pretraining_data_loader(
+                train_ds, args.consumed_train_samples)
+            if args.skip_train:
+                valid_dataloader = build_pretraining_data_loader(valid_ds, 0)
+            else:
+                valid_dataloader = build_pretraining_data_loader(
+                    valid_ds, args.consumed_valid_samples)
+            test_dataloader = build_pretraining_data_loader(test_ds, 0)
         else:
-            valid_dataloader = build_pretraining_data_loader(
-                valid_ds, args.consumed_valid_samples)
-        test_dataloader = build_pretraining_data_loader(test_ds, 0)
+            train_dataloader = build_pretraining_data_loader_hetero(
+                train_ds, args.consumed_train_samples)
+            if args.skip_train:
+                valid_dataloader = build_pretraining_data_loader_hetero(valid_ds, 0)
+            else:
+                valid_dataloader = build_pretraining_data_loader_hetero(
+                    valid_ds, args.consumed_valid_samples)
+            test_dataloader = build_pretraining_data_loader_hetero(test_ds, 0)
 
         # Flags to know if we need to do training/validation/testing.
         do_train = train_dataloader is not None and args.train_iters > 0

@@ -120,7 +120,6 @@ def save_checkpoint(queue, args):
         os.environ[
             "WORLD_SIZE"
         ] = f"{args.target_tensor_parallel_size * args.target_pipeline_parallel_size}"
-
     # We want all arguments to come from us
     sys.argv = [
         "script.py",
@@ -175,6 +174,10 @@ def save_checkpoint(queue, args):
 
     margs = parse_args()
 
+    margs.hetero_pipeline_stages = args.hetero_pipeline_stages
+    if args.hetero_pipeline_stages is not None:
+        margs.hetero_mode = "pp"
+
     if hasattr(md, "checkpoint_args"):
         # These are arguments that we are either changing, or cause problems for validation if they are set
         # Note that some of these deal with T5 so will need to be changed if we support T5.
@@ -209,6 +212,9 @@ def save_checkpoint(queue, args):
             "lr_warmup_fraction",
             "start_weight_decay",
             "end_weight_decay",
+            "hetero_mode",
+            "hetero_pipeline_stages",
+            "hetero_pipeline_stage_splits",
         ]
 
         for arg, value in vars(md.checkpoint_args).items():
@@ -450,7 +456,8 @@ def save_checkpoint(queue, args):
         # For later pipeline parallel ranks, make the new models
         if pp_rank > 0:
             post_process = pp_rank == args.target_pipeline_parallel_size - 1
-        num_layers = get_num_layers_from_args(md.num_layers, pp_size, pp_rank)
+        num_layers = get_num_layers_from_args(md.num_layers, pp_size, pp_rank,
+                                              margs.hetero_pipeline_stages)
         for layer in range(num_layers):
             # weight
             msg = queue_get(f"transformer layer {total_layer_num}")

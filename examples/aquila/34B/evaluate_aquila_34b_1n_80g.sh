@@ -10,20 +10,18 @@ export NCCL_DEBUG=debug
 export OMP_NUM_THREADS=4
 
 WORLD_SIZE=1
+TASK="AQUILA"
+VALID_DATA=<Specify lambada path>
+CHECKPOINT=<Specify checkpoints path>
+VOCAB_FILE=examples/aquila/tokenizer/vocab.json
+MERGE_FILE=examples/aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
 
 DISTRIBUTED_ARGS="--nproc_per_node $WORLD_SIZE \
                   --nnodes 1 \
                   --node_rank 0 \
                   --master_addr localhost \
                   --master_port 6000"
-
-TASK="AQUILA"
-
-VALID_DATA=<Specify lambada path>
-VOCAB_FILE=<Specify vocab.json path>
-MERGE_FILE=<Specify merges.txt path>
-CHECKPOINT=<Specify checkpoints path>
-SPECIAL_TOKENS_FILE=<Specify special_tokens.txt path>
 
 python -m torch.distributed.launch $DISTRIBUTED_ARGS ./tasks/main.py \
                --task $TASK \
@@ -52,7 +50,7 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS ./tasks/main.py \
                --swiglu \
                --multiple-of 4096 \
                --apply-layernorm-rms \
-               --untie-embeddings-and-output-weights
+               --untie-embeddings-and-output-weights \
                --disable-bias-linear \
                --log-interval 1 \
                --bf16 \

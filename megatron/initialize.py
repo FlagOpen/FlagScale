@@ -20,10 +20,12 @@ except ImportError:
 from megatron import get_adlr_autoresume
 from megatron import get_args
 from megatron import get_tensorboard_writer
+from megatron import get_hetero_context
 from megatron.core import mpu, tensor_parallel
 from megatron.arguments import parse_args, validate_args
 from megatron.checkpointing import load_args_from_checkpoint
 from megatron.global_vars import set_global_variables
+from megatron.global_vars import set_hetero_context
 from megatron.model.transformer import bias_dropout_add_fused_train
 from megatron.model.fused_bias_gelu import bias_gelu
 from megatron.utils import save_checkpoint_info
@@ -219,19 +221,47 @@ def _initialize_distributed():
         timeout=timedelta(minutes=args.distributed_timeout_minutes),
     )
 
+    if args.hetero_mode is not None:
+        # Build the heterogenous context after torch.distributed is initialized and
+        # before model parallel is initialized.
+        set_hetero_context(args)
+        if torch.distributed.get_rank() == 0:
+            print(get_hetero_context(), flush=True)
+
     # Set the tensor model-parallel, pipeline model-parallel, and
     # data-parallel communicators.
     if device_count > 0:
         if mpu.model_parallel_is_initialized():
             print("model parallel is already initialized")
         else:
-            mpu.initialize_model_parallel(
-                args.tensor_model_parallel_size,
-                args.pipeline_model_parallel_size,
-                args.virtual_pipeline_model_parallel_size,
-                args.pipeline_model_parallel_split_rank,
-                args.fp8 is not None,
-            )
+            if args.hetero_mode is None:
+                mpu.initialize_model_parallel(
+                    args.tensor_model_parallel_size,
+                    args.pipeline_model_parallel_size,
+                    args.virtual_pipeline_model_parallel_size,
+                    args.pipeline_model_parallel_split_rank,
+                    args.fp8 is not None,
+                )
+            elif args.hetero_mode == "dp":
+                mpu.initialize_model_parallel_hetero_dp(
+                    args.tensor_model_parallel_size,
+                    args.pipeline_model_parallel_size,
+                    args.virtual_pipeline_model_parallel_size,
+                    args.pipeline_model_parallel_split_rank,
+                    args.fp8 is not None,
+                )
+            elif args.hetero_mode == "pp":
+                mpu.initialize_model_parallel_hetero_pp(
+                    args.tensor_model_parallel_size,
+                    args.pipeline_model_parallel_size,
+                    args.virtual_pipeline_model_parallel_size,
+                    args.pipeline_model_parallel_split_rank,
+                    args.fp8 is not None,
+                )
+            else:
+                raise ValueError(
+                    "Hetero mode {} not supported".format(args.hetero_mode)
+                )
             if args.rank == 0:
                 print(
                     f"> initialized tensor model parallel with size "

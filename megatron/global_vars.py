@@ -9,7 +9,9 @@ import torch
 from megatron import dist_signal_handler
 from megatron.tokenizer import build_tokenizer
 from .microbatches import build_num_microbatches_calculator
+from .microbatches_hetero import build_num_microbatches_calculator_hetero
 from .timers import Timers
+from .hetero_context import HeteroContext
 
 _GLOBAL_ARGS = None
 _GLOBAL_RETRO_ARGS = None
@@ -20,6 +22,7 @@ _GLOBAL_WANDB_WRITER = None
 _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
 _GLOBAL_SIGNAL_HANDLER = None
+_GLOBAL_HETERO_CONTEXT = None
 
 def get_args():
     """Return arguments."""
@@ -80,6 +83,12 @@ def get_signal_handler():
     return _GLOBAL_SIGNAL_HANDLER
 
 
+def get_hetero_context():
+    """Return heterogenous context."""
+    _ensure_var_is_initialized(_GLOBAL_HETERO_CONTEXT, 'hetero context')
+    return _GLOBAL_HETERO_CONTEXT
+
+
 def _set_signal_handler():
     global _GLOBAL_SIGNAL_HANDLER
     _ensure_var_is_not_initialized(_GLOBAL_SIGNAL_HANDLER, 'signal handler')
@@ -122,8 +131,12 @@ def _build_num_microbatches_calculator(args):
     _ensure_var_is_not_initialized(_GLOBAL_NUM_MICROBATCHES_CALCULATOR,
                                    'num microbatches calculator')
 
-    _GLOBAL_NUM_MICROBATCHES_CALCULATOR = build_num_microbatches_calculator(
-        args)
+    if args.hetero_mode != "dp":
+        _GLOBAL_NUM_MICROBATCHES_CALCULATOR = build_num_microbatches_calculator(
+            args)
+    else:
+        _GLOBAL_NUM_MICROBATCHES_CALCULATOR = build_num_microbatches_calculator_hetero(
+            args)
 
 
 def _build_tokenizer(args):
@@ -202,6 +215,13 @@ def _set_timers(args):
     global _GLOBAL_TIMERS
     _ensure_var_is_not_initialized(_GLOBAL_TIMERS, 'timers')
     _GLOBAL_TIMERS = Timers(args.timing_log_level, args.timing_log_option)
+
+
+def set_hetero_context(args):
+    """Initialize heterogenous context."""
+    global _GLOBAL_HETERO_CONTEXT
+    _ensure_var_is_not_initialized(_GLOBAL_HETERO_CONTEXT, 'hetero context')
+    _GLOBAL_HETERO_CONTEXT = HeteroContext(args)
 
 
 def _ensure_var_is_initialized(var, name):

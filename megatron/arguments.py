@@ -45,6 +45,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_transformer_engine_args(parser)
     parser = _add_retro_args(parser)
     parser = _add_mup_args(parser)
+    parser = _add_hetero_args(parser)
 
     # Custom arguments.
     if extra_args_provider is not None:
@@ -139,6 +140,81 @@ def validate_args(args, defaults={}):
                                                flush=True)
         else:
             setattr(args, key, defaults[key])
+
+    # Heterogeneous Training
+    if args.hetero_mode:
+        assert args.global_batch_size is not None, "global_batch_size should be specified when hetero_mode is not None"
+        assert args.hetero_current_device_type, "hetero_current_device_type should be specified when hetero_mode is not None"
+        assert args.hetero_device_types, "hetero_device_types should be specified when hetero_mode is not None"
+        assert len(args.hetero_device_types) == len(set(args.hetero_device_types)), \
+            "hetero_device_types should not contain duplicate device types"
+    else:
+        args.hetero_data_parallel_splits = None
+        args.hetero_pipeline_stage_splits = None 
+
+    if args.hetero_mode == "dp":
+        assert args.hetero_micro_batch_sizes, \
+            "hetero_micro_batch_sizes should be specified when hetero_mode is dp"
+        assert args.hetero_pipeline_stages is None, \
+            "hetero_pipeline_stages should be None when hetero_mode is dp"
+        assert args.micro_batch_size is None, \
+            "micro_batch_size should be None when hetero_mode is dp"
+        args.hetero_pipeline_stage_splits = None 
+        
+        hetero_micro_batch_sizes = args.hetero_micro_batch_sizes[1::2] 
+        hetero_data_parallel_splits = args.hetero_micro_batch_sizes[::2] 
+        args.hetero_micro_batch_sizes = hetero_micro_batch_sizes
+        args.hetero_data_parallel_splits = hetero_data_parallel_splits
+
+        # Different device types have different micro batch sizes
+        args.micro_batch_size = hetero_micro_batch_sizes[args.hetero_device_types.index(args.hetero_current_device_type)]
+
+        assert len(args.hetero_micro_batch_sizes) == len(args.hetero_device_types), \
+            f"length of hetero_micro_batch_sizes {args.hetero_micro_batch_sizes} should be equal to the length of hetero_device_types {args.hetero_device_types}"
+        data_parallel_size = sum(args.hetero_data_parallel_splits)
+        assert data_parallel_size == args.data_parallel_size, \
+            f"sum of hetero_data_parallel_splits {args.hetero_data_parallel_splits} should be equal to data_parallel_size {args.data_parallel_size}"
+        micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                      args.hetero_micro_batch_sizes,
+                                                      args.hetero_data_parallel_splits))
+        assert args.global_batch_size % micro_batch_for_all_data_parallel == 0, \
+            f"global batch size {args.global_batch_size} is not divisible by micro_batch_for_all_data_parallel {micro_batch_for_all_data_parallel}, "\
+            f"which is the sum of hetero_micro_batch_sizes {args.hetero_micro_batch_sizes} and hetero_data_parallel_splits {args.hetero_data_parallel_splits}"
+        
+    if args.hetero_mode == "pp":
+        assert args.hetero_pipeline_stages, \
+            "hetero_pipeline_stages should be specified when hetero_mode is pp"
+        assert args.hetero_micro_batch_sizes is None, \
+            "hetero_micro_batch_sizes should be None when hetero_mode is pp"
+        args.hetero_data_parallel_splits = None 
+
+        stages = []
+        hetero_pipeline_stages = []
+        hetero_pipeline_stage_splits = []
+        counter = 0
+        num_layers = 0
+        for item in args.hetero_pipeline_stages:
+            if counter == 0:
+                hetero_pipeline_stage_splits.append(item)
+                counter = item 
+            else:
+                stages.append(item)
+                num_layers += item
+                counter -= 1
+                if counter == 0:
+                    hetero_pipeline_stages.append(stages)
+                    stages = []
+        args.hetero_pipeline_stages = hetero_pipeline_stages
+        args.hetero_pipeline_stage_splits = hetero_pipeline_stage_splits
+
+        for split, stages in zip(args.hetero_pipeline_stage_splits, args.hetero_pipeline_stages):
+            assert split == len(stages), \
+                f"hetero_pipeline_stage_split {split} should be equal to the length of hetero_pipeline_stage {stages}"
+        assert num_layers == args.num_layers, f"sum of hetero_pipeline_stages {sum} should be equal to num_layers {args.num_layers}" 
+        assert args.pipeline_model_parallel_size == sum(args.hetero_pipeline_stage_splits), \
+            f"pipeline_model_parallel_size {args.pipeline_model_parallel_size} should be equal to the sum of hetero_pipeline_stage_splits {args.hetero_pipeline_stage_splits}"
+        assert len(args.hetero_pipeline_stage_splits) == len(args.hetero_device_types), \
+            f"length of hetero_pipeline_stage_splits {args.hetero_pipeline_stage_splits} should be equal to the length of hetero_device_types {args.hetero_device_types}"
 
     # Batch size.
     assert args.micro_batch_size is not None
@@ -1473,5 +1549,26 @@ def _add_vision_args(parser):
                        help='teacher temperature')
     group.add_argument('--dino-warmup-teacher-temp-epochs', type=int, default=30,
                        help='warmup teacher temperaure epochs')
+
+    return parser
+
+def _add_hetero_args(parser):
+    group = parser.add_argument_group(title="heterogeneous training")
+
+    group.add_argument('--hetero-mode', choices=['dp', 'pp'], default=None, 
+                       help='the mode of heterogeneous training')
+    group.add_argument('--hetero-device-types', nargs='*', type=str, default=None, 
+                       help='the list of device types: device_type_0 device_type_1 ...')
+    group.add_argument('--hetero-current-device-type', type=str, default=None, 
+                       help='the current device type')
+    group.add_argument('--hetero-micro-batch-sizes', nargs='*', type=int, default=None,
+                       help='heteor-micro-batch-sizes must be in the form: n0 mbs0 n1 mbs1 ...'
+                       'The order should be consistent with --hetero-device-types.'
+                       'The sum of n0, n1 ... should be equal to data-parallel-size.')
+    group.add_argument('--hetero-pipeline-stages', nargs='*', type=int, default=None,
+                       help='Incompatible with --num-layers-per-virtual-pipeline-stage.'
+                       'hetero-pipeline-stages must be in the form:'
+                       'n0 layers_0_0 layers_0_1 ... n1 nlayers_1_0 nlayers_1_1 ...'
+                       'The order should be consistent with --hetero-device-types.')
 
     return parser
