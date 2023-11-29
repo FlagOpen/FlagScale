@@ -13,7 +13,12 @@ FlagScale provides developers with the actual configurations, optimization schem
 
 ## News and Updates
 
-* 2023.10.11 We release the initial version by supporting the Aquila models, and also provide our actually used training schemes for [Aquila2-7B](./examples/aquila/7B/pretrain_aquila_7b_distributed_A800_12n_80g.sh) and [Aquila2-34B](./examples/aquila/34B/pretrain_aquila_34b_distributed_A100_64n_40g.sh), including the parallel strategies, optimizations and hyper-parameter settings.
+* 2023.11.30 We release the new version (v0.2): 
+  * Provide the actually used training scheme for [Aquila2-70B-Expr](./examples/aquila/70B), including the parallel strategies, optimizations and hyper-parameter settings.
+  * Support heterogeneous training on chips of different generations with the same architecture or compatible architectures, including NVIDIA GPUs and Iluvatar CoreX chips. 
+  * Support training on chinese domestic hardwares, including Iluvatar CoreX and Baidu KUNLUN chips.
+
+* 2023.10.11 We release the initial version (v0.1) by supporting the Aquila models, and also provide our actually used training schemes for [Aquila2-7B](./examples/aquila/7B/pretrain_aquila_7b_distributed_A800_12n_80g.sh) and [Aquila2-34B](./examples/aquila/34B/pretrain_aquila_34b_distributed_A100_64n_40g.sh), including the parallel strategies, optimizations and hyper-parameter settings.
 
 ## Quick Start
 
@@ -30,7 +35,7 @@ cd FlagScale
 pip install -r requirements.txt
 ```
 
-### Pretrain the aquila model
+### Pretrain the Aquila model
 
 1. Change to the aquila directory 
 
@@ -63,6 +68,32 @@ bash dist_stop.sh
 Before running `dist_stop.sh`, you should provide the required information: 
   * `HOSTFILE`: the hostfile of the nodes for the current training. 
 
+### Do the heterogenous training 
+
+It is very simple to do the heterogeneous training on chips of different generations with the same architecture or compatible architectures. You only need to follow the steps below and everything else just remains the same as the above homogeneous training. In addition, you can also refer to the examples [1](./examples/aquila/34B/pretrain_aquila_34b_distributed_A800_16n_80g_A100_48n_40g_hetero_pp.sh), [2](./examples/aquila/34B/pretrain_aquila_34b_distributed_A800_16n_80g_A100_48n_40g_hetero_dp.sh), [3](./examples/aquila/70B/pretrain_aquila_70b_distributed_A800_16n_80g_A100_48n_40g_hetero_pp.sh) for better understanding.
+
+1. Extend the hostfile
+
+   Before doing the heterogenous training, you should extend the hostfile by adding the device types. You are free to choose the identifier strings for these device types, but please ensure they are not duplicated. 
+
+    ```
+    hostnames-1/IP-1 slots=8 typeA
+    hostnames-2/IP-2 slots=8 typeB
+    ```
+
+2. Add the heterogeneous configuration
+   * If you choose the heterogenous pipeline parallelism mode, please set the following configurations: 
+      * `hetero-mode`: specify the heterogenous training mode `pp`.
+      * `hetero-current-device-type`: specify the device type of the current node.
+      * `hetero-device-types`: specify all the device types used in this training.
+      * `hetero-pipeline-stages`: specify the stage splitting configuration. For example, given `2 4 4 3 5 5 5`, the total pipeline parallel size is `2 + 3 = 5`, the total number of the model layers is `4 + 4 + 5 + 5 + 5 = 23`, the pipeline parallel size for the first device type in the `hetero-device-types` list is `2` and the pipeline parallel size for the second device type in the `hetero-device-types` is list `3`. 
+
+   * If you choose the heterogenous data parallelism mode, please set the following configurations:
+      * `hetero-mode`: specify the heterogenous training mode `dp`.
+      * `hetero-current-device-type`: specify the device type of the current node.
+      * `hetero-device-types`: specify all the device types used in this training.
+      * `hetero-micro-batch-sizes`: specify the micro batch size splitting configuration. For example, given `2 1 3 2`, the total data parallel size is `2 + 3 = 5` and the micro batch size for each training iteration is `2 * 1 + 3 * 2 = 8`, the data parallel size for the first device type in the `hetero-device-types` list is `2` and the data parallel size for the second device type in the `hetero-device-types` is `3` list. 
+      * **Remove** the `micro-batch-size` configuration because `hetero-micro-batch-sizes` works as the same purpose.  
 
 ### From FlagScale to HuggingFace
 
