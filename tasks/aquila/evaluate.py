@@ -24,10 +24,6 @@ from tasks.finetune_utils import build_data_loader
 
 from .datasets import build_dataset
 
-# These are needed to unwrap the model, would be nice to put these in megatron.utils if possible?
-from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
-from megatron.model import DistributedDataParallel as LocalDDP
-from megatron.model import Float16Module
 
 def get_model_provider(eval_metric):
     """Based on evaluation metric set the parallel-output flag and
@@ -91,8 +87,7 @@ def forward_step(batch, model, eval_metric, config):
     input_tensor = recv_forward(tensor_shape, config)
 
     # Forward pass through the model.
-    unwrapped_model = unwrap_model(
-        model, (torchDDP, LocalDDP, Float16Module))
+    unwrapped_model = unwrap_model(model)
     unwrapped_model.set_input_tensor(input_tensor)
     output = model(tokens, position_ids, attention_mask)
 
@@ -158,9 +153,16 @@ def evaluate_and_print_results(task, data_loader, model, eval_metric):
     string = ' validation results on {} | '.format(task)
     if is_last_rank():
         if eval_metric == 'loss':
-            num_examples = len(data_loader.dataset)
-            val_loss = output / num_examples
+            num_tokenized_tokens = data_loader.dataset.num_tokenized_tokens
+            num_original_tokens = data_loader.dataset.num_original_tokens
+            val_loss = output / (num_tokenized_tokens - 1)
+            ppl = math.exp(min(20, val_loss))
+            token_ratio = (num_tokenized_tokens - 1) / (num_original_tokens - 1)
+            adjusted_ppl = math.exp(min(20, val_loss * token_ratio))
             string += 'avg loss: {:.4E} | '.format(val_loss)
+            string += 'ppl: {:.4E} | '.format(ppl)
+            string += 'adjusted ppl: {:.4E} | '.format(adjusted_ppl)
+            string += 'token ratio: {} |'.format(token_ratio)
 
         elif eval_metric == 'accuracy':
             num_examples = len(data_loader.dataset)

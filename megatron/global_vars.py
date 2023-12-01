@@ -12,6 +12,7 @@ from .microbatches import build_num_microbatches_calculator
 from .microbatches_hetero import build_num_microbatches_calculator_hetero
 from .timers import Timers
 from .hetero_context import HeteroContext
+from .utils import is_last_rank
 
 _GLOBAL_ARGS = None
 _GLOBAL_RETRO_ARGS = None
@@ -106,14 +107,28 @@ def set_global_variables(args, build_tokenizer=True):
     _build_num_microbatches_calculator(args)
     if build_tokenizer:
         _ = _build_tokenizer(args)
-    _set_tensorboard_writer(args)
-    _set_wandb_writer(args)
     _set_adlr_autoresume(args)
     _set_timers(args)
 
     if args.exit_signal_handler:
         _set_signal_handler()
-    
+
+
+def set_global_writers(args):
+    """Set tensorboard-writer and wandb writer.
+
+    Note that this function should be called after calling finish_mpu_init.
+    This is because we can know which rank is the last one after the rank mapping in finish_mpu_init.
+    """
+
+    assert args is not None
+
+    _ensure_var_is_initialized(_GLOBAL_ARGS, 'args')
+
+    if is_last_rank(): 
+        _set_tensorboard_writer(args)
+        _set_wandb_writer(args)
+
 
 def set_args(args):
     global _GLOBAL_ARGS
@@ -160,7 +175,7 @@ def _set_tensorboard_writer(args):
                                    'tensorboard writer')
 
     if hasattr(args, 'tensorboard_dir') and \
-       args.tensorboard_dir and args.rank == (args.world_size - 1):
+       args.tensorboard_dir:
         try:
             from torch.utils.tensorboard import SummaryWriter
             print('> setting tensorboard ...')
@@ -174,22 +189,27 @@ def _set_tensorboard_writer(args):
 
 
 def _set_wandb_writer(args):
-    """Set wandb writer."""
     global _GLOBAL_WANDB_WRITER
     _ensure_var_is_not_initialized(_GLOBAL_WANDB_WRITER,
                                    'wandb writer')
+    if getattr(args, 'wandb_project', ''):
+        if args.wandb_exp_name == '':
+            raise ValueError("Please specify the wandb experiment name!")
 
-    if hasattr(args, 'wandb_dir') and \
-       args.wandb_dir and args.rank == (args.world_size - 1):
-        try:
-            import wandb
-            print('> setting wandb ...')
-            wandb.init(dir=args.wandb_dir, mode='offline')
-            _GLOBAL_WANDB_WRITER = 'wandb_writer'
-        except ModuleNotFoundError:
-            print('WARNING: Wandb writing requested but is not available, '
-                  'no Wandb logs will be written. Please install wandb '
-                  'first, e.g., with pip install wandb', flush=True)
+        import wandb
+        if args.wandb_save_dir:
+            save_dir = args.wandb_save_dir
+        else:
+            # Defaults to the save dir.
+            save_dir = os.path.join(args.save, 'wandb')
+        wandb_kwargs = {
+            'dir': save_dir,
+            'name': args.wandb_exp_name,
+            'project': args.wandb_project,
+            'config': vars(args)}
+        os.makedirs(wandb_kwargs['dir'], exist_ok=True)
+        wandb.init(**wandb_kwargs)
+        _GLOBAL_WANDB_WRITER = wandb
 
 
 def _set_adlr_autoresume(args):

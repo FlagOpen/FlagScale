@@ -146,6 +146,13 @@ def _load_checkpoint(queue, args):
     if vp_size is None:
         vp_size = 1
 
+    # norm has bias; RMSNorm does not.
+    if hasattr(checkpoint_args, 'normalization'):
+        norm_has_bias = checkpoint_args.normalization == "norm"
+    else:
+        # older models only supported norm
+        norm_has_bias = True
+
     # metadata
     md = types.SimpleNamespace()
     md.load = margs.load
@@ -162,13 +169,13 @@ def _load_checkpoint(queue, args):
     md.output_layer = margs.untie_embeddings_and_output_weights
     md.position_embedding_type = margs.position_embedding_type
     md.linear_bias = margs.add_bias_linear
+    md.norm_has_bias = norm_has_bias
     md.swiglu = margs.swiglu
     md.previous_tensor_parallel_size = margs.tensor_model_parallel_size
     md.previous_pipeline_parallel_size = margs.pipeline_model_parallel_size
     md.true_vocab_size = true_vocab_size
     md.make_vocab_size_divisible_by = margs.make_vocab_size_divisible_by
     md.checkpoint_args = checkpoint_args
-    md.apply_layernorm_rms = margs.apply_layernorm_rms
 
     consumed_train_samples = None
     consumed_valid_samples = None
@@ -203,7 +210,7 @@ def _load_checkpoint(queue, args):
             return model_ckpt[model_key]["language_model"]["embedding"][
                 "word_embeddings"
             ]["weight"]
-        elif key == "input_layernorm":
+        elif key == "input_norm":
             if not bias:
                 full_key = "layers." + str(layer_num) + "." + key + ".weight"
             else:
@@ -229,7 +236,7 @@ def _load_checkpoint(queue, args):
                     "layers." + str(layer_num) + ".self_attention." + key + ".bias"
                 )
             return model_ckpt[model_key]["language_model"]["encoder"][full_key]
-        elif key == "post_attention_layernorm":
+        elif key == "post_attention_norm":
             if not bias:
                 full_key = "layers." + str(layer_num) + "." + key + ".weight"
             else:
@@ -247,14 +254,14 @@ def _load_checkpoint(queue, args):
             else:
                 full_key = "layers." + str(layer_num) + ".mlp." + key + ".bias"
             return model_ckpt[model_key]["language_model"]["encoder"][full_key]
-        elif key == "final_layernorm":
+        elif key == "final_norm":
             if not bias:
                 return model_ckpt[model_key]["language_model"]["encoder"][
-                    "final_layernorm.weight"
+                    "final_norm.weight"
                 ]
             else:
                 return model_ckpt[model_key]["language_model"]["encoder"][
-                    "final_layernorm.bias"
+                    "final_norm.bias"
                 ]
         elif key == "output_layer":
             return model_ckpt[model_key]["language_model"]["output_layer"]["weight"]
@@ -308,23 +315,23 @@ def _load_checkpoint(queue, args):
 
                 # Get non-parallel tensors from tp_rank 0
                 model_ckpt = get_model_ckpt(model_ckpts, model_ckpt_paths, 0, pp_rank)
-                message["input layernorm weight"] = get_weight_or_bias(
-                    model_ckpt, layer_num, vp_size, vp_rank, "input_layernorm"
+                message["input norm weight"] = get_weight_or_bias(
+                    model_ckpt, layer_num, vp_size, vp_rank, "input_norm"
                 )
-                if not md.apply_layernorm_rms:
-                    message["input layernorm bias"] = get_weight_or_bias(
-                        model_ckpt, layer_num, vp_size, vp_rank, "input_layernorm", True
+                if norm_has_bias:
+                    message["input norm bias"] = get_weight_or_bias(
+                        model_ckpt, layer_num, vp_size, vp_rank, "input_norm", True
                     )
-                message["post layernorm weight"] = get_weight_or_bias(
-                    model_ckpt, layer_num, vp_size, vp_rank, "post_attention_layernorm"
+                message["post norm weight"] = get_weight_or_bias(
+                    model_ckpt, layer_num, vp_size, vp_rank, "post_attention_norm"
                 )
-                if not md.apply_layernorm_rms:
-                    message["post layernorm bias"] = get_weight_or_bias(
+                if norm_has_bias:
+                    message["post norm bias"] = get_weight_or_bias(
                         model_ckpt,
                         layer_num,
                         vp_size,
                         vp_rank,
-                        "post_attention_layernorm",
+                        "post_attention_norm",
                         True,
                     )
                 if md.linear_bias:
@@ -430,23 +437,16 @@ def _load_checkpoint(queue, args):
                 total_layer_num = total_layer_num + 1
 
     model_ckpt = get_model_ckpt(model_ckpts, model_ckpt_paths, 0, pp_rank)
-    # Send final layernorm from tp_rank 0
-    if not md.apply_layernorm_rms:
-        message = {
-            "weight": get_weight_or_bias(
-                model_ckpt, None, vp_size, vp_rank, "final_layernorm"
-            ),
-            "bias": get_weight_or_bias(
-                model_ckpt, None, vp_size, vp_rank, "final_layernorm", True
-            ),
-        }
-    else:
-        message = {
-            "weight": get_weight_or_bias(
-                model_ckpt, None, vp_size, vp_rank, "final_layernorm"
-            ),
-        }
-    queue_put("final layernorm", message)
+    # Send final norm from tp_rank 0
+    message = {
+        "weight": get_weight_or_bias(
+            model_ckpt, None, vp_size, vp_rank, "final_norm"
+        )}
+    if norm_has_bias:
+        message["bias"] = get_weight_or_bias(
+            model_ckpt, None, vp_size, vp_rank, "final_norm", True
+        )
+    queue_put("final norm", message)
 
     if md.output_layer:
         # Send output_layer weight tp_rank 0
