@@ -48,7 +48,6 @@ T5_ARGS="
 DATA_ARGS="
     --data-path $DATA_PATH \
     --vocab-file $VOCAB_FILE \
-    --data-impl mmap \
     --split 949,50,1
 "
 
@@ -59,7 +58,7 @@ OUTPUT_ARGS="
     --eval-iters 10
 "
 
-torchrun $DISTRIBUTED_ARGS pretrain_t5.py \
+torchrun $DISTRIBUTED_ARGS pretrain_t5_core.py \
     $T5_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \

@@ -31,13 +31,14 @@ def generate_and_post_process(model,
                               stop_on_eol=False,
                               prevent_newline_after_colon=False,
                               random_seed=-1,
-                              stream=False):
+                              stream=False,
+                              return_logits=False):
     """Run inference and post-process outputs, i.e., detokenize,
     move to cpu and convert to list."""
 
     if not stream:
-    # Main inference.
-        tokens, lengths, output_log_probs = generate(
+        # Main inference.
+        tokens, lengths, output_log_probs, logits = generate(
             model,
             prompts=prompts,
             tokens_to_generate=tokens_to_generate,
@@ -52,8 +53,7 @@ def generate_and_post_process(model,
             stop_on_double_eol=stop_on_double_eol,
             stop_on_eol=stop_on_eol,
             prevent_newline_after_colon=prevent_newline_after_colon,
-            random_seed=random_seed,
-            )
+            random_seed=random_seed)
 
         # Only post-process on first stage.
         if mpu.is_pipeline_first_stage():
@@ -65,8 +65,14 @@ def generate_and_post_process(model,
                 for i, (prob, seg) in enumerate(zip(output_log_probs, prompts_plus_generations_segments)):
                     output_log_probs[i] = prob[:len(seg)-1]
 
+        if return_logits:
+            assert(tokens_to_generate == 0)
+            assert(mpu.get_pipeline_model_parallel_world_size() == 1)
             return prompts_plus_generations, prompts_plus_generations_segments, \
-                output_log_probs, tokens
+            output_log_probs, tokens, logits
+        else:
+            return prompts_plus_generations, prompts_plus_generations_segments, \
+            output_log_probs, tokens
 
         return None
     else:

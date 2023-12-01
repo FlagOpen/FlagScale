@@ -58,9 +58,6 @@ def add_retro_args(parser):
     group.add_argument('--retro-gpt-seed', type=int, default=1234,
                        help='Random seed used for python, numpy, '
                        'pytorch, and cuda.')
-    group.add_argument('--retro-gpt-data-impl', type=str, default='infer',
-                       choices=['lazy', 'cached', 'mmap', 'infer'],
-                       help='Implementation of indexed datasets.')
     group.add_argument('--retro-gpt-data-path', nargs='*', required=True,
                        help='Path to the training dataset. Accepted format:'
                        '1) a single data path, 2) multiple datasets in the'
@@ -74,8 +71,6 @@ def add_retro_args(parser):
                        ' validation, and test split. For example the split '
                        '`90,5,5` will use 90%% of data for training, 5%% for '
                        'validation and 5%% for test.')
-    group.add_argument('--retro-gpt-mmap-warmup', action='store_true',
-                       help='Warm up mmap files.')
     group.add_argument("--retro-gpt-eval-interval", type=int, required=True,
                        help="GPT evaluation interval.")
     group.add_argument("--retro-gpt-eval-iters", type=int, required=True,

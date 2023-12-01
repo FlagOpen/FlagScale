@@ -13,6 +13,7 @@ from torch.utils.checkpoint import detach_variable
 
 from megatron.core.parallel_state import (
     get_data_parallel_rank,
+    get_expert_model_parallel_rank,
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
@@ -28,6 +29,8 @@ except Exception:
 
 # Default name for the model parallel rng tracker.
 _MODEL_PARALLEL_RNG_TRACKER_NAME = 'model-parallel-rng'
+_EXPERT_PARALLEL_RNG_TRACKER_NAME = 'expert-parallel-rng'
+_DATA_PARALLEL_RNG_TRACKER_NAME = 'data-parallel-rng'
 
 
 def _set_cuda_rng_state(new_state, device=-1):
@@ -72,7 +75,17 @@ def _set_cuda_rng_state(new_state, device=-1):
             default_generator = torch.cuda.default_generators[idx]
             default_generator.set_state(new_state)
 
-        _lazy_call(cb)
+    _lazy_call(cb)
+
+
+def get_expert_parallel_rng_tracker_name():
+    global _EXPERT_PARALLEL_RNG_TRACKER_NAME
+    return _EXPERT_PARALLEL_RNG_TRACKER_NAME
+
+
+def get_data_parallel_rng_tracker_name():
+    global _DATA_PARALLEL_RNG_TRACKER_NAME
+    return _DATA_PARALLEL_RNG_TRACKER_NAME
 
 
 class CudaRNGStatesTracker:
@@ -195,8 +208,15 @@ def model_parallel_cuda_manual_seed(seed):
         torch_xmlir.xpu.manual_seed(data_parallel_seed)
     else:
         torch.cuda.manual_seed(data_parallel_seed)
+    _CUDA_RNG_STATE_TRACKER.add(_DATA_PARALLEL_RNG_TRACKER_NAME, data_parallel_seed)
+
     # and model parallel state.
     _CUDA_RNG_STATE_TRACKER.add(_MODEL_PARALLEL_RNG_TRACKER_NAME, tensor_model_parallel_seed)
+
+    expert_parallel_seed = (
+        seed + 1024 + 100 * get_expert_model_parallel_rank() + get_tensor_model_parallel_rank()
+    )
+    _CUDA_RNG_STATE_TRACKER.add(_EXPERT_PARALLEL_RNG_TRACKER_NAME, expert_parallel_seed)
 
 
 class CheckpointFunction(torch.autograd.Function):
