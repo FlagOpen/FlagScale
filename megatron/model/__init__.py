@@ -1,7 +1,8 @@
-# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 
 try:
     from .fused_layer_norm import MixedFusedLayerNorm as LayerNorm
+    from .rms_norm import RMSNorm
 except Exception as e:
     # from torch.nn import LayerNorm
     print('WARNING: APEX is not installed and is not supported in KL yet')
@@ -18,7 +19,6 @@ except Exception as e:
                 setattr(self.weight, 'sequence_parallel', self.sequence_parallel)
                 setattr(self.bias, 'sequence_parallel', self.sequence_parallel)
 
-from .distributed import DistributedDataParallel
 from .bert_model import BertModel
 from .gpt_model import GPTModel
 from .t5_model import T5Model

@@ -7,7 +7,6 @@ import sys
 import socket
 
 import torch
-from torch.nn.parallel import DistributedDataParallel as torchDDP
 
 try:
     from apex.multi_tensor_apply import multi_tensor_applier
@@ -19,8 +18,10 @@ from megatron import (
     get_args,
     get_adlr_autoresume,
 )
+from megatron.core import DistributedDataParallel as DDP
 from megatron.core import mpu
 from megatron.core.tensor_parallel import param_is_not_tensor_parallel_duplicate
+from megatron.model import Float16Module
 from megatron.model.module import param_is_not_shared
 
 try:
@@ -29,7 +30,10 @@ except ImportError:
     torch_xmlir = None
 AQUILA_TRAIN = (os.getenv("AQUILA_TRAIN_XPU", "false").lower() == "true")
 
-def unwrap_model(model, module_instances=(torchDDP)):
+ALL_MODULE_WRAPPER_CLASSNAMES = (DDP, Float16Module)
+
+
+def unwrap_model(model, module_instances=ALL_MODULE_WRAPPER_CLASSNAMES):
     return_list = True
     if not isinstance(model, list):
         model = [model]
@@ -53,13 +57,20 @@ def calc_params_l2_norm(model):
     params_data = []
     for model_ in model:
         for param in model_.parameters():
-            is_not_shared = param_is_not_shared(param)
             is_not_tp_duplicate = param_is_not_tensor_parallel_duplicate(param)
-            if is_not_shared and is_not_tp_duplicate:
-                if args.bf16:
-                    params_data.append(param.data.float())
-                else:
-                    params_data.append(param.data)
+            if mpu.get_expert_model_parallel_rank() > 0:
+                if not getattr(param, 'allreduce', True) and is_not_tp_duplicate:
+                    assert param_is_not_shared(param)
+                    params_data.append(param.data.float() if args.bf16 else param.data)
+            else:
+                is_not_shared = param_is_not_shared(param)
+                if is_not_shared and is_not_tp_duplicate:
+                    params_data.append(param.data.float() if args.bf16 else param.data)
+
+    # Check the availability of apex
+    assert multi_tensor_applier is not None and amp_C is not None, \
+        "apex is not available, please install it from https://github.com/NVIDIA/apex"
+
     # Calculate norm
     dummy_overflow_buf = torch.cuda.IntTensor([0])
     norm, _ = multi_tensor_applier(
@@ -69,10 +80,19 @@ def calc_params_l2_norm(model):
         False # no per-parameter norm
     )
     norm_2 = norm * norm
-    # Sum across all model-parallel GPUs.
-    torch.distributed.all_reduce(norm_2,
-                                 op=torch.distributed.ReduceOp.SUM,
-                                 group=mpu.get_model_parallel_group())
+    if mpu.get_expert_model_parallel_world_size() == 1:
+        # Sum across all model-parallel GPUs(tensor + pipeline).
+        torch.distributed.all_reduce(norm_2,
+                                     op=torch.distributed.ReduceOp.SUM,
+                                     group=mpu.get_model_parallel_group())
+    else:
+        # Sum across tensor, pipeline and expert model-parallel GPUs.
+        torch.distributed.all_reduce(norm_2,
+                                     op=torch.distributed.ReduceOp.SUM,
+                                     group=mpu.get_tensor_and_expert_parallel_group())
+        torch.distributed.all_reduce(norm_2,
+                                     op=torch.distributed.ReduceOp.SUM,
+                                     group=mpu.get_pipeline_model_parallel_group())
     return norm_2.item() ** 0.5
 
 
@@ -205,6 +225,37 @@ def get_ltor_masks_and_position_ids(data,
         attention_mask = (attention_mask < 0.5)
 
     return attention_mask, loss_mask, position_ids
+
+
+def get_batch_on_this_cp_rank(batch):
+    """ Slice batch input along sequence dimension into multiple chunks,
+        which are parallelized across GPUs in a context parallel group.
+    """
+
+    # With causal masking, each token only attends to its prior tokens. Simply split
+    # sequence into CP chunks can result in severe load imbalance. That's to say, chunks
+    # at the end of sequence have bigger workload than others. To address this issue,
+    # we split sequence into 2*CP ranks. Assuming CP=2, we then get 4 chunks, chunk_0
+    # and chunk_3 are assigned to GPU0, chunk_1 and chunk_2 are assigned to GPU1, so
+    # that we can get balanced workload among GPUs in a context parallel group.
+    args = get_args()
+    cp_size = args.context_parallel_size
+    if cp_size > 1:
+        cp_rank = mpu.get_context_parallel_rank()
+        for key, val in batch.items():
+            seq_dim = 1 if key != 'attention_mask' else 2
+            val = val.view(
+                *val.shape[0:seq_dim],
+                2 * cp_size,
+                val.shape[seq_dim] // (2 * cp_size),
+                *val.shape[(seq_dim + 1) :],
+            )
+            index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device=val.device)
+            val = val.index_select(seq_dim, index)
+            val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
+            batch[key] = val
+
+    return batch
 
 
 def print_rank_0(message):

@@ -5,9 +5,7 @@ from typing import Callable, Iterator, List, Optional, Union
 
 import torch
 from torch.autograd.variable import Variable
-from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 
-from megatron import core
 from megatron.core import parallel_state
 from megatron.core.enums import ModelType
 from megatron.core.pipeline_parallel import p2p_communication
@@ -313,10 +311,10 @@ def forward_backward_no_pipelining(
         data_iterator = data_iterator[0]
 
     config = get_model_config(model)
+    if config.timers is not None:
+        config.timers('forward-backward', log_level=1).start(barrier=config.barrier_with_L1_time)
 
     no_sync_func = config.no_sync_func
-    if no_sync_func is None and isinstance(model, torchDDP):
-        no_sync_func = model.no_sync
     if no_sync_func is None:
         no_sync_func = contextlib.nullcontext
 
@@ -355,6 +353,14 @@ def forward_backward_no_pipelining(
     if not forward_only:
         backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, config)
 
+    if config.timers is not None:
+        config.timers('forward-backward').stop()
+
+    if config.finalize_model_grads_func is not None and not forward_only:
+        # Finalize model grads (perform full grad all-reduce / reduce-scatter for
+        # data parallelism and layernorm all-reduce for sequence parallelism).
+        config.finalize_model_grads_func([model])
+
     return forward_data_store
 
 
@@ -384,20 +390,29 @@ def forward_backward_pipelining_with_interleaving(
     if config.overlap_p2p_comm and config.batch_p2p_comm:
         raise ValueError("Can not use both overlap_p2p_comm and batch_p2p_comm")
 
+    if config.timers is not None:
+        config.timers('forward-backward', log_level=1).start(barrier=config.barrier_with_L1_time)
+
     # Disable async grad reductions
     no_sync_func = config.no_sync_func
-    if no_sync_func is None and all(isinstance(chunk, torchDDP) for chunk in model):
+    if isinstance(no_sync_func, list):
 
         def multi_no_sync():
             stack = contextlib.ExitStack()
-            for chunk in model:
-                stack.enter_context(chunk.no_sync())
+            for model_chunk_no_sync_func in config.no_sync_func:
+                stack.enter_context(model_chunk_no_sync_func())
             return stack
 
         no_sync_func = multi_no_sync
     if no_sync_func is None:
         no_sync_func = contextlib.nullcontext
     no_sync_context = None
+
+    if config.grad_sync_func is not None and not isinstance(config.grad_sync_func, list):
+        config.grad_sync_func = [config.grad_sync_func for _ in model]
+
+    if config.param_sync_func is not None and not isinstance(config.param_sync_func, list):
+        config.param_sync_func = [config.param_sync_func for _ in model]
 
     def disable_grad_sync():
         """Disable asynchronous grad reductions"""
@@ -482,8 +497,8 @@ def forward_backward_pipelining_with_interleaving(
 
     # Synchronize params for first two model chunks
     if config.param_sync_func is not None:
-        config.param_sync_func(model[0].parameters())
-        config.param_sync_func(model[1].parameters())
+        config.param_sync_func[0](model[0].parameters())
+        config.param_sync_func[1](model[1].parameters())
 
     def get_model_chunk_id(microbatch_id, forward):
         """Helper method to get the model chunk ID given the iteration number."""
@@ -535,7 +550,9 @@ def forward_backward_pipelining_with_interleaving(
             ):
                 param_sync_chunk_id = get_model_chunk_id(param_sync_microbatch_id, forward=True) + 1
                 if 1 < param_sync_chunk_id < num_model_chunks:
-                    config.param_sync_func(model[param_sync_chunk_id].parameters())
+                    config.param_sync_func[param_sync_chunk_id](
+                        model[param_sync_chunk_id].parameters()
+                    )
 
         # forward step
         if parallel_state.is_pipeline_first_stage():
@@ -596,7 +613,7 @@ def forward_backward_pipelining_with_interleaving(
             ):
                 grad_sync_chunk_id = get_model_chunk_id(grad_sync_microbatch_id, forward=False)
                 enable_grad_sync()
-                config.grad_sync_func(model[grad_sync_chunk_id].parameters())
+                config.grad_sync_func[grad_sync_chunk_id](model[grad_sync_chunk_id].parameters())
                 synchronized_model_chunks.add(grad_sync_chunk_id)
         disable_grad_sync()
 
@@ -902,16 +919,22 @@ def forward_backward_pipelining_with_interleaving(
                 )
             )
 
-    # Launch any remaining grad reductions
-    enable_grad_sync()
-    if config.grad_sync_func is not None:
-        params = []
-        for model_chunk_id in range(num_model_chunks):
-            if model_chunk_id not in synchronized_model_chunks:
-                params.extend(model[model_chunk_id].parameters())
-                synchronized_model_chunks.add(model_chunk_id)
-        if params:
-            config.grad_sync_func(params)
+        # Launch any remaining grad reductions.
+        enable_grad_sync()
+        if config.grad_sync_func is not None:
+            for model_chunk_id in range(num_model_chunks):
+                if model_chunk_id not in synchronized_model_chunks:
+                    config.grad_sync_func[model_chunk_id](model[model_chunk_id].parameters())
+                    synchronized_model_chunks.add(model_chunk_id)
+
+    if config.timers is not None:
+        config.timers('forward-backward').stop()
+
+    if config.finalize_model_grads_func is not None and not forward_only:
+        # Finalize model grads (perform full grad all-reduce / reduce-scatter for
+        # data parallelism, layernorm all-reduce for sequence parallelism, and
+        # embedding all-reduce for pipeline parallelism).
+        config.finalize_model_grads_func(model)
 
     return forward_data_store
 
@@ -1055,10 +1078,11 @@ def forward_backward_pipelining_without_interleaving(
             "Non-interleaved pipeline parallelism does not support overlapping p2p communication"
         )
 
+    if config.timers is not None:
+        config.timers('forward-backward', log_level=1).start(barrier=config.barrier_with_L1_time)
+
     # Disable async grad reductions
     no_sync_func = config.no_sync_func
-    if no_sync_func is None and isinstance(model, torchDDP):
-        no_sync_func = model.no_sync
     if no_sync_func is None:
         no_sync_func = contextlib.nullcontext
     no_sync_context = None
@@ -1209,6 +1233,12 @@ def forward_backward_pipelining_without_interleaving(
             input_tensor = input_tensors.pop(0)
             output_tensor = output_tensors.pop(0)
 
+            # Enable grad sync for the last microbatch in the batch if the full
+            # backward pass completes in the 1F1B stage.
+            if num_warmup_microbatches == 0 and last_iteration:
+                if config.grad_sync_func is None or rank == 0:
+                    enable_grad_sync()
+
             input_tensor_grad = backward_step(
                 input_tensor, output_tensor, output_tensor_grad, model_type, config
             )
@@ -1245,10 +1275,19 @@ def forward_backward_pipelining_without_interleaving(
 
             send_backward(input_tensor_grad, recv_tensor_shapes, config)
 
-    # Launch any remaining grad reductions
-    if no_sync_context is not None:
-        enable_grad_sync()
-        if config.grad_sync_func is not None:
-            config.grad_sync_func(model.parameters())
+        # Launch any remaining grad reductions.
+        if no_sync_context is not None:
+            enable_grad_sync()
+            if config.grad_sync_func is not None:
+                config.grad_sync_func(model.parameters())
+
+    if config.timers is not None:
+        config.timers('forward-backward').stop()
+
+    if config.finalize_model_grads_func is not None and not forward_only:
+        # Finalize model grads (perform full grad all-reduce / reduce-scatter for
+        # data parallelism, layernorm all-reduce for sequence parallelism, and
+        # embedding all-reduce for pipeline parallelism).
+        config.finalize_model_grads_func([model])
 
     return forward_data_store

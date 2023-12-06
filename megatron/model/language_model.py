@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from megatron import get_args
 from megatron.core import mpu, tensor_parallel
 from megatron.core.enums import ModelType
-from megatron.core.models.common.rotary_pos_embedding import RotaryEmbedding
+from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 
 from .enums import AttnMaskType, LayerType
 from .module import MegatronModule
@@ -130,10 +130,6 @@ class Embedding(MegatronModule):
         init_method: weight initialization method
         num_tokentypes: size of the token-type embeddings. 0 value
                         will ignore this embedding
-        embedding_weights_in_fp32: casts word embedding weights to
-                                   fp32 before sampling. Required to
-                                   maintain reproducibility when
-                                   training in bf16.
     """
 
     def __init__(self,
@@ -142,8 +138,7 @@ class Embedding(MegatronModule):
                  max_sequence_length,
                  embedding_dropout_prob,
                  config,
-                 num_tokentypes=0,
-                 embedding_weights_in_fp32=False):
+                 num_tokentypes=0):
         super(Embedding, self).__init__()
 
         self.hidden_size = hidden_size
@@ -153,15 +148,13 @@ class Embedding(MegatronModule):
         args = get_args()
 
         # Word embeddings (parallel).
-        self.embedding_weights_in_fp32 = embedding_weights_in_fp32
         self.params_dtype = args.params_dtype
         self.word_embeddings = tensor_parallel.VocabParallelEmbedding(
             vocab_size, self.hidden_size, config=config, init_method=config.init_method)
         self._word_embeddings_key = 'word_embeddings'
 
-        # TODO
         if args.apply_init_customized:
-            init_method = init_method_normal(args.init_method_std_scaled_embed)
+            init_method = config.init_method(args.init_method_std_scaled_embed)
             with tensor_parallel.get_cuda_rng_tracker().fork():
                 init_method(self.word_embeddings.weight)
                 if torch.distributed.get_rank() == 0:
@@ -193,6 +186,7 @@ class Embedding(MegatronModule):
 
         self.fp32_residual_connection = args.fp32_residual_connection
         self.sequence_parallel = args.sequence_parallel
+        self.clone_scatter_output_in_embedding = args.clone_scatter_output_in_embedding
         # Embeddings dropout
         self.embedding_dropout = torch.nn.Dropout(embedding_dropout_prob)
 
@@ -226,12 +220,7 @@ class Embedding(MegatronModule):
 
     def forward(self, input_ids, position_ids, tokentype_ids=None):
         # Embeddings.
-        if self.embedding_weights_in_fp32:
-            self.word_embeddings = self.word_embeddings.to(torch.float32)
         words_embeddings = self.word_embeddings(input_ids)
-        if self.embedding_weights_in_fp32:
-            words_embeddings = words_embeddings.to(self.params_dtype)
-            self.word_embeddings = self.word_embeddings.to(self.params_dtype)
         if self.add_position_embedding:
             position_embeddings = self.position_embeddings(position_ids)
             embeddings = words_embeddings + position_embeddings
@@ -254,6 +243,11 @@ class Embedding(MegatronModule):
         # Dropout.
         if self.sequence_parallel:
             embeddings = tensor_parallel.scatter_to_sequence_parallel_region(embeddings)
+            # `scatter_to_sequence_parallel_region` returns a view, which prevents
+            # the original tensor from being garbage collected. Clone to facilitate GC.
+            # Has a small runtime cost (~0.5%).
+            if self.clone_scatter_output_in_embedding:
+                embeddings = embeddings.clone()
             with tensor_parallel.get_cuda_rng_tracker().fork():
                 embeddings = self.embedding_dropout(embeddings)
         else:
@@ -367,7 +361,6 @@ class TransformerLanguageModel(MegatronModule):
         self.encoder_hidden_state = None
         self.add_retriever = args.retro_add_retriever
         self.untie_embeddings_and_output_weights = args.untie_embeddings_and_output_weights
-        self.rotary_position_embeddings_in_fp32 = args.rotary_position_embeddings_in_fp32
 
         # Embeddings.
         if self.pre_process:
@@ -376,8 +369,7 @@ class TransformerLanguageModel(MegatronModule):
                                        args.max_position_embeddings,
                                        args.hidden_dropout,
                                        config,
-                                       self.num_tokentypes,
-                                       args.embedding_weights_in_fp32)
+                                       self.num_tokentypes)
             self._embedding_key = 'embedding'
 
         # Rotary positional embeddings
@@ -388,14 +380,12 @@ class TransformerLanguageModel(MegatronModule):
             rotary_dim = args.hidden_size // args.num_attention_heads \
                 if args.kv_channels is None else args.kv_channels
 
-            if args.rotary_percent < 1.0:
-                rotary_dim = int(rotary_dim * args.rotary_percent)
-
             # partial rotary embeddings, which is better than full rotary
             # Wang and Komatsuzaki et al
             # https://github.com/kingoflolz/mesh-transformer-jax/
             self.rotary_pos_emb = RotaryEmbedding(
                 rotary_dim,
+                args.rotary_percent,
                 seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor
             )
 
@@ -444,9 +434,8 @@ class TransformerLanguageModel(MegatronModule):
                         bias=False) # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
                     self._output_layer_key = 'output_layer'
 
-                    # TODO
                     if args.apply_init_customized:
-                        init_method = init_method_normal(args.init_method_std_scaled_output)
+                        init_method = self.init_method(args.init_method_std_scaled_output)
                         with tensor_parallel.get_cuda_rng_tracker().fork():
                             init_method(self.output_layer.weight)
                             print('Override output_layer init_method.', flush=True)
@@ -518,12 +507,10 @@ class TransformerLanguageModel(MegatronModule):
         if self.use_rotary_position_embeddings:
             if inference_params is not None:
                 rotary_pos_emb = \
-                    self.rotary_pos_emb(inference_params.max_sequence_length,
-                                        self.rotary_position_embeddings_in_fp32)
+                    self.rotary_pos_emb(inference_params.max_sequence_length)
             else:
                 rotary_pos_emb = self.rotary_pos_emb(
-                    self.seq_length,
-                    self.rotary_position_embeddings_in_fp32)
+                    self.seq_length)
 
         # Run encoder.
         if enc_hidden_states is None:
