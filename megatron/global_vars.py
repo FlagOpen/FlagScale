@@ -12,7 +12,6 @@ from .microbatches import build_num_microbatches_calculator
 from .microbatches_hetero import build_num_microbatches_calculator_hetero
 from .timers import Timers
 from .hetero_context import HeteroContext
-from .utils import is_last_rank
 
 _GLOBAL_ARGS = None
 _GLOBAL_RETRO_ARGS = None
@@ -125,6 +124,7 @@ def set_global_writers(args):
 
     _ensure_var_is_initialized(_GLOBAL_ARGS, 'args')
 
+    from .utils import is_last_rank
     if is_last_rank(): 
         _set_tensorboard_writer(args)
         _set_wandb_writer(args)

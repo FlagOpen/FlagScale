@@ -119,6 +119,7 @@ def initialize_model_parallel(
     context_parallel_size: int = 1,
     expert_model_parallel_size: int = 1,
     nccl_communicator_config_path: Optional[str] = None,
+    hetero_mode: Optional[str] = None,
 ) -> None:
     """Initialize model data parallel groups.
 
@@ -211,7 +212,8 @@ def initialize_model_parallel(
 
     """
 
-    hetero_context = get_hetero_context()
+    if hetero_mode:
+        hetero_context = get_hetero_context()
 
     # Get world size and rank. Ensure some consistencies.
     assert torch.distributed.is_initialized()
@@ -255,7 +257,8 @@ def initialize_model_parallel(
         _VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK = 0
         _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = virtual_pipeline_model_parallel_size
 
-    pipeline_model_parallel_split_rank = hetero_context.to_physical_ranks([pipeline_model_parallel_split_rank])[0]
+    if hetero_mode:
+        pipeline_model_parallel_split_rank = hetero_context.to_physical_ranks([pipeline_model_parallel_split_rank])[0]
     if pipeline_model_parallel_split_rank is not None:
         global _PIPELINE_MODEL_PARALLEL_SPLIT_RANK
         _PIPELINE_MODEL_PARALLEL_SPLIT_RANK = pipeline_model_parallel_split_rank
@@ -291,8 +294,9 @@ def initialize_model_parallel(
             ranks = range(
                 start_rank + j, end_rank, context_parallel_size * tensor_model_parallel_size
             )
-            # Build the group based on the physical ranks 
-            ranks = hetero_context.to_physical_ranks(ranks)
+            if hetero_mode:
+                # Build the group based on the physical ranks 
+                ranks = hetero_context.to_physical_ranks(ranks)
             group = torch.distributed.new_group(
                 ranks, pg_options=get_nccl_options('dp', nccl_comm_cfgs)
             )
@@ -304,8 +308,9 @@ def initialize_model_parallel(
         for j in range(tensor_model_parallel_size):
             ranks_with_cp = range(start_rank + j, end_rank, tensor_model_parallel_size)
             all_data_parallel_group_ranks_with_cp.append(list(ranks_with_cp))
-            # Build the group based on the physical ranks 
-            ranks_with_cp = hetero_context.to_physical_ranks(ranks_with_cp)
+            if hetero_mode:
+                # Build the group based on the physical ranks 
+                ranks_with_cp = hetero_context.to_physical_ranks(ranks_with_cp)
             group_with_cp = torch.distributed.new_group(
                 ranks_with_cp, pg_options=get_nccl_options('dp_cp', nccl_comm_cfgs)
             )
@@ -351,8 +356,9 @@ def initialize_model_parallel(
             )
             for k in range(tensor_model_parallel_size):
                 ranks = range(start_rank + k, end_rank, tensor_model_parallel_size)
-                # Build the group based on the physical ranks 
-                ranks = hetero_context.to_physical_ranks(ranks)
+                if hetero_mode:
+                    # Build the group based on the physical ranks 
+                    ranks = hetero_context.to_physical_ranks(ranks)
                 group = torch.distributed.new_group(
                     ranks, pg_options=get_nccl_options('cp', nccl_comm_cfgs)
                 )
@@ -369,8 +375,9 @@ def initialize_model_parallel(
             data_parallel_group_ranks_with_cp[i]
             for data_parallel_group_ranks_with_cp in all_data_parallel_group_ranks_with_cp
         ]
-        # Build the group based on the physical ranks 
-        ranks = hetero_context.to_physical_ranks(ranks)
+        if hetero_mode:
+            # Build the group based on the physical ranks 
+            ranks = hetero_context.to_physical_ranks(ranks)
         group = torch.distributed.new_group(
             ranks, pg_options=get_nccl_options('mp', nccl_comm_cfgs)
         )
@@ -386,8 +393,9 @@ def initialize_model_parallel(
     ), 'tensor model parallel group is already initialized'
     for i in range(num_tensor_model_parallel_groups):
         ranks = range(i * tensor_model_parallel_size, (i + 1) * tensor_model_parallel_size)
-        # Build the group based on the physical ranks 
-        ranks = hetero_context.to_physical_ranks(ranks)
+        if hetero_mode:
+            # Build the group based on the physical ranks 
+            ranks = hetero_context.to_physical_ranks(ranks)
         group = torch.distributed.new_group(
             ranks, pg_options=get_nccl_options('tp', nccl_comm_cfgs)
         )
@@ -412,8 +420,9 @@ def initialize_model_parallel(
     assert _LAST_RANK_WHEN_USING_PIPELINE is None, 'last rank when using pipeline is already initialized'
     for i in range(num_pipeline_model_parallel_groups):
         ranks = range(i, world_size, num_pipeline_model_parallel_groups)
-        # Build the group based on the physical ranks 
-        ranks = hetero_context.to_physical_ranks(ranks)
+        if hetero_mode:
+            # Build the group based on the physical ranks 
+            ranks = hetero_context.to_physical_ranks(ranks)
         group = torch.distributed.new_group(
             ranks, pg_options=get_nccl_options('pp', nccl_comm_cfgs)
         )
@@ -471,8 +480,9 @@ def initialize_model_parallel(
         start_rank = i * tensor_and_data_group_size_with_cp
         end_rank = start_rank + tensor_and_data_group_size_with_cp
         ranks = range(start_rank, end_rank)
-        # Build the group based on the physical ranks 
-        ranks = hetero_context.to_physical_ranks(ranks)
+        if hetero_mode:
+            # Build the group based on the physical ranks 
+            ranks = hetero_context.to_physical_ranks(ranks)
         group = torch.distributed.new_group(
             ranks, pg_options=get_nccl_options('tp_dp_cp', nccl_comm_cfgs)
         )
@@ -517,8 +527,9 @@ def initialize_model_parallel(
             start_rank = i * tensor_and_data_group_size + j * tensor_and_expert_group_size
             end_rank = i * tensor_and_data_group_size + (j + 1) * tensor_and_expert_group_size
             ranks = range(start_rank, end_rank)
-            # Build the group based on the physical ranks 
-            ranks = hetero_context.to_physical_ranks(ranks)
+            if hetero_mode:
+                # Build the group based on the physical ranks 
+                ranks = hetero_context.to_physical_ranks(ranks)
             group = torch.distributed.new_group(
                 ranks, pg_options=get_nccl_options('tp_exp', nccl_comm_cfgs)
             )
@@ -531,8 +542,9 @@ def initialize_model_parallel(
         end_rank = (i + 1) * tensor_and_data_group_size
         for j in range(tensor_and_expert_group_size):
             ranks = range(start_rank + j, end_rank, tensor_and_expert_group_size)
-            # Build the group based on the physical ranks 
-            ranks = hetero_context.to_physical_ranks(ranks)
+            if hetero_mode:
+                # Build the group based on the physical ranks 
+                ranks = hetero_context.to_physical_ranks(ranks)
             group = torch.distributed.new_group(
                 ranks, pg_options=get_nccl_options('dp_modulo_exp', nccl_comm_cfgs)
             )
@@ -952,7 +964,7 @@ def get_data_parallel_rank(with_context_parallel=False):
 def get_context_parallel_world_size():
     """Return world size for the context parallel group."""
     if torch.distributed.is_available() and torch.distributed.is_initialized():
-        len(_CONTEXT_PARALLEL_GLOBAL_RANKS)
+        return len(_CONTEXT_PARALLEL_GLOBAL_RANKS)
     else:
         return 0
 

@@ -4,7 +4,7 @@ try:
     from .fused_layer_norm import MixedFusedLayerNorm as LayerNorm
     #TODO: @aoyulong need to choose RMSNorm impl
     # from .rms_norm import RMSNorm
-    from .fused_rms_norm import MixedFusedLayerNorm as RMSNorm
+    from .fused_rms_norm import MixedFusedRMSNorm as RMSNorm
 except Exception as e:
     # from torch.nn import LayerNorm
     print('WARNING: APEX is not installed and is not supported in KL yet')
