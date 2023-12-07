@@ -41,7 +41,6 @@ TRAINING_ARGS="
 MIXED_PRECISION_ARGS="
     --bf16 \
     --attention-softmax-in-fp32 \
-    --embedding-weights-in-fp32
 "
 
 DATA_ARGS="
@@ -63,14 +62,13 @@ NETWORK_ARGS="
     --hidden-dim-multiplier 1.3 \
     --seq-length 4096 \
     --max-position-embeddings 4096 \
-    --layernorm-epsilon 1e-5 \
-    --layernorm-init-weight 0.25 \
+    --norm-epsilon 1e-5 \
+    --norm-init-weight 0.25 \
     --use-rotary-position-embeddings \
-    --rotary-position-embeddings-in-fp32 \
     --no-position-embedding \
     --swiglu \
     --multiple-of 4096 \
-    --apply-layernorm-rms \
+    --normalization RMSNorm \
     --untie-embeddings-and-output-weights
 "
 

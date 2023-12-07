@@ -1,13 +1,14 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 
+import types
 from dataclasses import dataclass
 from typing import Callable
 
 import torch
 import torch.nn.functional as F
 
-from megatron.core import ModelParallelConfig
-from megatron.core.utils import init_method_normal, scaled_init_method_normal
+from ..model_parallel_config import ModelParallelConfig
+from ..utils import init_method_normal, scaled_init_method_normal
 
 
 @dataclass
@@ -43,6 +44,9 @@ class TransformerConfig(ModelParallelConfig):
         gated_linear_unit (bool): Use a gated linear unit for the first linear layer in the MLP. Defaults to False.
 
         activation_func (Callable): Activation function to use for the non-linearity in the MLP. Defaults to F.gelu.
+
+        num_moe_experts (int): Number of experts to use for Mixture of Experts. 
+                               When set, it replaces MLP with Switch MLP. Defaults to None (no MoE).
 
         # initialization
         init_method (Callable): Method to initialize weights. Note that bias is always set to
@@ -119,6 +123,10 @@ class TransformerConfig(ModelParallelConfig):
         fp8_wgrad (bool): When set to False, override FP8 config options and do the wgrad computation in higher precision.
                           Defaults to True.
 
+        # Miscellaneous
+        clone_scatter_output_in_embedding (bool): When set to true, clone the output of scatter_to_sequence_parallel_region
+                                                  in embedding layer to facilitate garbage collection of input.
+
         # Experimental
         normalization (str): Swtich b/w `LayerNorm` and `RMSNorm` as normalization layers. For now, these are primarily
                              used by Transformer-Engine's layers like `LayerNormLinear`. Default value is `LayerNorm`.
@@ -144,6 +152,7 @@ class TransformerConfig(ModelParallelConfig):
     add_bias_linear: bool = True
     gated_linear_unit: bool = False
     activation_func: Callable = F.gelu
+    num_moe_experts: int = None
 
     # initialization
     init_method: Callable = None
@@ -151,7 +160,7 @@ class TransformerConfig(ModelParallelConfig):
     init_method_std: float = 0.02
 
     # mixed-precision
-    apply_query_key_layer_scaling: bool = True
+    apply_query_key_layer_scaling: bool = False
     attention_softmax_in_fp32: bool = True
 
     # communication
@@ -175,6 +184,9 @@ class TransformerConfig(ModelParallelConfig):
     fp8_amax_history_len: int = 1
     fp8_amax_compute_algo: str = "most_recent"
     fp8_wgrad: bool = True
+
+    # miscellaneous
+    clone_scatter_output_in_embedding: bool = True
 
     # experimental section (TODO: move to apt. section above once stable)
     normalization: bool = "LayerNorm"  # alt value supported by TE: "RMSNorm"
@@ -212,6 +224,9 @@ class TransformerConfig(ModelParallelConfig):
 
         if self.apply_query_key_layer_scaling:
             self.attention_softmax_in_fp32 = True
+
+        if self.expert_model_parallel_size > 1 and self.num_moe_experts is None:
+            raise ValueError(f'num_moe_experts must be non None to use expert-parallel.')
 
         if self.recompute_granularity is not None:
             if not self.recompute_granularity in ['full', 'selective']:

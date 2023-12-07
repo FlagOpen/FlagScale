@@ -56,6 +56,7 @@ class retro:
             cls.args.rank = 0 # override env
             cls.args.world_size = 1 # override env
             cls.args.params_dtype = cls.parse_dtype_str(cls.args.params_dtype)
+            cls.args.retro_verify_neighbor_count = False
 
         set_global_variables(cls.args)
         set_retro_args(cls.args)
@@ -114,7 +115,7 @@ class retro:
 
     @classmethod
     def get_db_num_indexed_datasets(cls):
-        '''Number of indexed datasets within blendable dataset.'''
+        '''Number of indexed datasets within blended dataset.'''
         return len(cls.db_indexed_dataset_infos)
 
     @classmethod

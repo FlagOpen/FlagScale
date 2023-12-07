@@ -45,7 +45,7 @@ CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_g
        --model-info {model_info} \
        --make-vocab-size-divisible-by 64 \
        --use-flash-attn \
-       --apply-layernorm-rms \
+       --normalization RMSNorm \
        --tensor-model-parallel-size 2  \
        --pipeline-model-parallel-size 1  \
        --num-layers 60  \
@@ -53,8 +53,8 @@ CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_g
        --hidden-dim-multiplier 1.3 \
        --load ${CHECKPOINT}  \
        --disable-bias-linear \
-       --layernorm-epsilon 1e-5 \
-       --layernorm-init-weight 0.3 \
+       --norm-epsilon 1e-5 \
+       --norm-init-weight 0.3 \
        --num-attention-heads 48  \
        --group-query-attention \
        --num-query-groups 8 \

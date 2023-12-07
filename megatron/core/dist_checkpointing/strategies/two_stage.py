@@ -17,8 +17,8 @@ import torch
 from ..dict_utils import dict_list_map_inplace, map_reduce, nested_values
 from ..mapping import ShardedStateDict, ShardedTensor, StateDict
 from .base import LoadShardedStrategy
-from .tensorstore import _load_from_array
-from .zarr import flatten_range
+from .tensorstore import TensorStoreLoadShardedStrategy, _load_from_array, open_ts_array
+from .zarr import flatten_range, load_zarr_based_sharded_metadata
 
 _import_trigger = None
 
@@ -101,6 +101,7 @@ class TwoStageDataParallelLoadShardedStrategy(LoadShardedStrategy):
         self.dp_group_ranks = tuple(
             sorted(torch.distributed.get_process_group_ranks(data_parallel_group))
         )
+        # TODO: @aoyulong need to fix this for heterogeneous training
         self.dp_group_rank = torch.distributed.get_rank(self.data_parallel_group_orig)
         self.global_rank = torch.distributed.get_rank()
 
@@ -147,6 +148,7 @@ class TwoStageDataParallelLoadShardedStrategy(LoadShardedStrategy):
             gloo_pg = torch.distributed.new_group(ranks=group_ranks, backend='gloo')
             if self.global_rank in group_ranks:
                 self.data_parallel_group = gloo_pg
+                # TODO: @aoyulong need to fix this for heterogeneous training
                 assert self.dp_group_rank == torch.distributed.get_rank(self.data_parallel_group)
 
     def check_backend_compatibility(self, loaded_version):
@@ -247,3 +249,10 @@ class TwoStageDataParallelLoadShardedStrategy(LoadShardedStrategy):
             return sharded_tensor.data
 
         dict_list_map_inplace(_fill_in_data, sharded_state_dict)
+
+    def load_tensors_metadata(self, checkpoint_dir: Path):
+        def get_ts_shape_dtype(path):
+            arr = open_ts_array(path)
+            return arr.shape, arr.dtype.numpy_dtype
+
+        return load_zarr_based_sharded_metadata(checkpoint_dir, get_ts_shape_dtype)

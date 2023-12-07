@@ -83,7 +83,7 @@ def score_and_return_on_first_stage(model, tokens, lengths):
     output_log_probs = broadcast_from_last_to_first_pipeline_stage(
         output_log_probs_size, torch.float32, output_log_probs)
     
-    return tokens, lengths, output_log_probs
+    return tokens, lengths, output_log_probs, logits
 
 def generate_tokens_probs_and_return_on_first_stage(
         model, tokens, lengths,
@@ -285,7 +285,7 @@ def generate_tokens_probs_and_return_on_first_stage(
         output_log_probs = broadcast_from_last_to_first_pipeline_stage(
             output_log_probs_size, torch.float32, output_log_probs)
 
-    return tokens, generated_sequence_lengths, output_log_probs
+    return tokens, generated_sequence_lengths, output_log_probs, None
 
 def generate_tokens_probs_and_return_on_first_stage_stream(
         model, tokens, lengths,

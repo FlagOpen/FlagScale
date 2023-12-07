@@ -15,6 +15,8 @@ class ModelParallelConfig:
 
     tensor_model_parallel_size (int): Intra-layer model parallelism. Splits tensors across GPU ranks. Defaults to 1.
 
+    context_parallel_size (int): Splits network input along sequence dimension across GPU ranks. Defaults to 1.
+
     pipeline_model_parallel_size (int): Inter-layer model parallelism. Splits transformer layers across GPU
         ranks. Defaults to 1.
 
@@ -27,6 +29,8 @@ class ModelParallelConfig:
     sequence_parallel (bool): Makes tensor parallelism more memory efficient for LLMs (20B+) by
         parallelizing layer norms and dropout sequentially.  See Reducing Activation Recomputation in Large Transformer
         Models: https://arxiv.org/abs/2205.05198 for more details. Defaults to False.
+
+    expert_model_parallel_size (int): Distributes Moe Experts across sub data parallel dimension. Defaults to False.
 
     Initialization
     --------------
@@ -60,6 +64,28 @@ class ModelParallelConfig:
     async_tensor_model_parallel_allreduce (bool, default=True): If true, enables asynchronous execution of
         tensor-model-parallel all-reduce with weight gradient compuation of a column-linear layer.  Defaults to False.
 
+    tp_comm_overlap (bool, default=False): If true, allows overlapping of Linear layer execution with tensor parallel
+        communication collectives like AllGather/ReduceScatter. Overlapping is done for the linear layers wherever possible
+        during the forward and the backward pass.  Defaults to False.
+
+    tp_comm_split_ag (bool, default=True): If true, allows All-Gather overlap with Fprop GEMM. Don't care if tp_comm_overlap 
+        is False.
+
+    tp_comm_split_rs (bool, default=True): If true, allows Reduce-Scatter overlap with Fprop GEMM. Don't care if 
+        tp_comm_overlap is False.
+
+    tp_comm_bulk_dgrad (bool, default=True): If true, allows All-Gather overlap with Bprop activation gradient GEMM. Don't 
+        care if tp_comm_overlap is False.
+
+    tp_comm_bulk_wgrad (bool, default=True): If true, allows Reduce-Scatter overlap with Bprop weight gradient GEMM. Don't 
+        care if tp_comm_overlap is False.
+
+    Parallelism
+    -----------
+
+    finalize_model_grads_func (optional): Function that finalizes gradients on all workers. Could include ensuring that
+        grads are all-reduced across data parallelism, pipeline parallelism, and sequence parallelism dimensions.
+
     Pipeline Parallelism
     --------------------
 
@@ -90,15 +116,15 @@ class ModelParallelConfig:
     batch_p2p_sync (bool, default=True): When using batch_isend_irecv, do a cuda.device.synchronize afterward to work
         around a bug in older version of PyTorch.
 
-    use_ring_exchange_p2p (bool, default = False): Use custom ring_exchange kernel instead of
+    use_ring_exchange_p2p (bool, default=False): Use custom ring_exchange kernel instead of
         torch.distributed.batch_isend_irecv(). Requires custom built torch with torch.distributed.ring_exchange.
 
     deallocate_pipeline_outputs (optional, default=False): If True, output data is deallocated after the tensor is sent
         to the next pipeline stage.  Helps with saving memory, does nothing when pipeline parallel is not used.
 
     no_sync_func (optional): Function that creates a context that suppresses asynchronous data-parallel
-        communication. If the model is an instance of torch.nn.DistributedDataParallel, the default is to use
-        torch.nn.DistributedDataParallel.no_sync.
+        communication. If the model is an instance of core.distributed.DistributedDataParallel, the default is to use
+        core.distributed.DistributedDataParallel.no_sync.
 
     grad_sync_func (optional): Function that launches asynchronous gradient reductions (e.g. distributed optimizer
         gradient reduce-scatters). The function should take one argument: an iterable of parameters whose gradients are
@@ -108,13 +134,22 @@ class ModelParallelConfig:
         optimizer parameter all-gathers). The function should take one argument: an iterable of parameters to be
         synchronized.
 
+    pipeline_model_parallel_split_rank (int, default=None): If int, rank where encoder and decoder should be split in
+        cases where the model has both an encoder and decoder (e.g., T5). Ignored if None.
+
+    barrier_with_L1_time (bool, default=True): If true, use barrier with level 1 time measurements. It is up to the user
+        to make sure calling barrier with their timers will not result in hangs. This can happen if for example the user
+        adds a level 1 timer that is not called by all ranks.
+
     """
 
     # Model parallelism
     tensor_model_parallel_size: int = 1
+    context_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
     virtual_pipeline_model_parallel_size: Optional[int] = None
     sequence_parallel: bool = False
+    expert_model_parallel_size: int = 1
 
     # Initialization
     perform_initialization: bool = True
@@ -129,6 +164,16 @@ class ModelParallelConfig:
     # Optimizations
     gradient_accumulation_fusion: bool = False
     async_tensor_model_parallel_allreduce: bool = False
+    tp_comm_overlap: bool = False
+
+    # Debug Options
+    tp_comm_split_ag: bool = True
+    tp_comm_split_rs: bool = True
+    tp_comm_bulk_wgrad: bool = True
+    tp_comm_bulk_dgrad: bool = True
+
+    # Parallelism
+    finalize_model_grads_func: Callable = None
 
     # Pipeline Parallel
     pipeline_dtype: torch.dtype = None
@@ -145,6 +190,10 @@ class ModelParallelConfig:
     no_sync_func: Callable = None
     grad_sync_func: Callable = None
     param_sync_func: Callable = None
+    pipeline_model_parallel_split_rank: Optional[int] = None
+
+    # Timing
+    barrier_with_L1_time: bool = True
 
     def __post_init__(self):
         """ Python dataclass method that is used to modify attributes after initialization.
@@ -165,3 +214,9 @@ class ModelParallelConfig:
 
         if self.autocast_dtype is None:
             self.autocast_dtype = self.params_dtype
+
+        if self.expert_model_parallel_size > 1 and self.tensor_model_parallel_size > 1:
+            if self.sequence_parallel is False:
+                raise ValueError(
+                    "When using expert parallelism and tensor parallelism, sequence parallelism must be used"
+                )

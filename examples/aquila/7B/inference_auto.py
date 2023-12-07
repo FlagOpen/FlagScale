@@ -51,14 +51,14 @@ CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_g
        --model-info {model_info} \
        --use-flash-attn \
        --rotary-interleaved-patch \
-       --apply-layernorm-rms \
+       --normalization RMSNorm \
        --tensor-model-parallel-size 1  \
        --pipeline-model-parallel-size 1  \
        --num-layers 32  \
        --hidden-size 4096  \
        --load ${CHECKPOINT}  \
        --disable-bias-linear \
-       --layernorm-epsilon 1e-5 \
+       --norm-epsilon 1e-5 \
        --num-attention-heads 32  \
        --max-position-embeddings 2048  \
        --use-rotary-position-embeddings \

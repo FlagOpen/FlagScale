@@ -145,6 +145,9 @@ def unflatten_optimizer_ckpt(flatten_ckpt, param_name_to_index_map, vp_size, key
         model_unflatten_ckpt = {}
         dtype_unflatten_ckpt = {}
         ckpt = dtype_flatten_ckpt[key]
+        if isinstance(ckpt, list):
+            assert len(ckpt) == 1, "len(ckpt) != 1"
+            ckpt = ckpt[0]
         key_unflatten_ckpt = {}
         for param_name, index_map in dtype_param_name_to_index_map.items():
             shape, index_range = index_map
@@ -205,7 +208,9 @@ def split_optimizer_ckpt(ckpt_path, vp_size):
     print(f"Splitting from {ckpt_path} ...")
     ckpt_name, ckpt_ext = os.path.splitext(ckpt_path)
     merged_ckpt = torch.load(ckpt_path, map_location="cpu")
-    assert len(merged_ckpt) == vp_size
+    print(merged_ckpt.keys())
+    assert sum(key != "per_bucket_numel" for key in merged_ckpt) == vp_size, \
+        f"len(merged_ckpt)={len(merged_ckpt)} != vp_size={vp_size}"
     for key in ["param", "exp_avg", "exp_avg_sq"]:
         splitted_ckpt = {}
         for model_idx in range(vp_size):

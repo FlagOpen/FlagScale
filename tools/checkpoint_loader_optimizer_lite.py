@@ -152,6 +152,13 @@ def _load_checkpoint(queue, args):
     if vp_size is None:
         vp_size = 1
 
+    # norm has bias; RMSNorm does not.
+    if hasattr(checkpoint_args, 'normalization'):
+        norm_has_bias = checkpoint_args.normalization == "norm"
+    else:
+        # older models only supported norm
+        norm_has_bias = True
+
     # metadata
     md = types.SimpleNamespace()
     md.load = margs.load
@@ -168,13 +175,13 @@ def _load_checkpoint(queue, args):
     md.output_layer = margs.untie_embeddings_and_output_weights
     md.position_embedding_type = margs.position_embedding_type
     md.linear_bias = margs.add_bias_linear
+    md.norm_has_bias = norm_has_bias
     md.swiglu = margs.swiglu
     md.previous_tensor_parallel_size = margs.tensor_model_parallel_size
     md.previous_pipeline_parallel_size = margs.pipeline_model_parallel_size
     md.true_vocab_size = true_vocab_size
     md.make_vocab_size_divisible_by = margs.make_vocab_size_divisible_by
     md.checkpoint_args = checkpoint_args
-    md.apply_layernorm_rms = margs.apply_layernorm_rms
 
     if not args.loader_mapping_from_start:
         param_index_map_paths = get_param_index_map_paths(
@@ -234,13 +241,16 @@ def _load_checkpoint(queue, args):
         dtype=torch.float32,
     ):
         assert state_key in ["param", "exp_avg", "exp_avg_sq"]
+        old_full_key = None
         if param_key == "word_embeddings":
             full_key = "module.language_model.embedding.word_embeddings.weight"
-        elif param_key == "input_layernorm":
+        elif param_key == "input_norm":
             if not bias:
-                full_key = f"module.language_model.encoder.layers.{layer_num}.input_layernorm.weight"
+                full_key = f"module.language_model.encoder.layers.{layer_num}.input_norm.weight"
+                old_full_key = f"module.language_model.encoder.layers.{layer_num}.input_layernorm.weight"
             else:
-                full_key = f"module.language_model.encoder.layers.{layer_num}.input_layernorm.bias"
+                full_key = f"module.language_model.encoder.layers.{layer_num}.input_norm.bias"
+                old_full_key = f"module.language_model.encoder.layers.{layer_num}.input_layernorm.bias"
         elif param_key == "query_key_value":
             if not bias:
                 full_key = f"module.language_model.encoder.layers.{layer_num}.self_attention.query_key_value.weight"
@@ -251,11 +261,13 @@ def _load_checkpoint(queue, args):
                 full_key = f"module.language_model.encoder.layers.{layer_num}.self_attention.dense.weight"
             else:
                 full_key = f"module.language_model.encoder.layers.{layer_num}.self_attention.dense.bias"
-        elif param_key == "post_attention_layernorm":
+        elif param_key == "post_attention_norm":
             if not bias:
-                full_key = f"module.language_model.encoder.layers.{layer_num}.post_attention_layernorm.weight"
+                full_key = f"module.language_model.encoder.layers.{layer_num}.post_attention_norm.weight"
+                old_full_key = f"module.language_model.encoder.layers.{layer_num}.post_attention_layernorm.weight"
             else:
-                full_key = f"module.language_model.encoder.layers.{layer_num}.post_attention_layernorm.bias"
+                full_key = f"module.language_model.encoder.layers.{layer_num}.post_attention_norm.bias"
+                old_full_key = f"module.language_model.encoder.layers.{layer_num}.post_attention_layernorm.bias"
         elif param_key == "dense_h_to_4h":
             if not bias:
                 full_key = f"module.language_model.encoder.layers.{layer_num}.mlp.dense_h_to_4h.weight"
@@ -266,11 +278,13 @@ def _load_checkpoint(queue, args):
                 full_key = f"module.language_model.encoder.layers.{layer_num}.mlp.dense_4h_to_h.weight"
             else:
                 full_key = f"module.language_model.encoder.layers.{layer_num}.mlp.dense_4h_to_h.bias"
-        elif param_key == "final_layernorm":
+        elif param_key == "final_norm":
             if not bias:
-                full_key = f"module.language_model.encoder.final_layernorm.weight"
+                full_key = f"module.language_model.encoder.final_norm.weight"
+                old_full_key = f"module.language_model.encoder.final_layernorm.weight"
             else:
-                full_key = f"module.language_model.encoder.final_layernorm.bias"
+                full_key = f"module.language_model.encoder.final_norm.bias"
+                old_full_key = f"module.language_model.encoder.final_layernorm.bias"
         elif param_key == "output_layer":
             full_key = f"module.language_model.output_layer.weight"
         else:
@@ -281,7 +295,13 @@ def _load_checkpoint(queue, args):
                 + param_key
             )
             exit(1)
-        return optimizer_ckpt[vp_rank][dtype][state_key][full_key]
+        if full_key in optimizer_ckpt[vp_rank][dtype][state_key]:
+            return optimizer_ckpt[vp_rank][dtype][state_key][full_key]
+        elif old_full_key and \
+            old_full_key in optimizer_ckpt[vp_rank][dtype][state_key]:
+            return optimizer_ckpt[vp_rank][dtype][state_key][old_full_key]
+        else:
+            raise Exception(f"key {full_key} or {old_full_key} not found in optimizer checkpoint")
 
     # ------- split optimizer ckpts -------
     for tp_rank in range(tp_size):
@@ -341,37 +361,37 @@ def _load_checkpoint(queue, args):
                         vp_size,
                     )
                     message[
-                        f"input layernorm weight {state_key}"
+                        f"input norm weight {state_key}"
                     ] = get_optimizer_state(
-                        optimizer_ckpt, layer_num, vp_rank, state_key, "input_layernorm"
+                        optimizer_ckpt, layer_num, vp_rank, state_key, "input_norm"
                     )
-                    if not md.apply_layernorm_rms:
+                    if md.norm_has_bias:
                         message[
-                            f"input layernorm bias {state_key}"
+                            f"input norm bias {state_key}"
                         ] = get_optimizer_state(
                             optimizer_ckpt,
                             layer_num,
                             vp_rank,
                             state_key,
-                            "input_layernorm",
+                            "input_norm",
                             True,
                         )
-                    message[f"post layernorm weight {state_key}"] = get_optimizer_state(
+                    message[f"post norm weight {state_key}"] = get_optimizer_state(
                         optimizer_ckpt,
                         layer_num,
                         vp_rank,
                         state_key,
-                        "post_attention_layernorm",
+                        "post_attention_norm",
                     )
-                    if not md.apply_layernorm_rms:
+                    if md.norm_has_bias:
                         message[
-                            f"post layernorm bias {state_key}"
+                            f"post norm bias {state_key}"
                         ] = get_optimizer_state(
                             optimizer_ckpt,
                             layer_num,
                             vp_rank,
                             state_key,
-                            "post_attention_layernorm",
+                            "post_attention_norm",
                             True,
                         )
                     if md.linear_bias:
@@ -505,7 +525,7 @@ def _load_checkpoint(queue, args):
 
                     total_layer_num = total_layer_num + 1
 
-        # Send final layernorm main weight from tp_rank 0
+        # Send final norm main weight from tp_rank 0
         optimizer_ckpt = get_optimizer_ckpt(
             optimizer_ckpts,
             optimizer_ckpt_paths,
@@ -514,22 +534,22 @@ def _load_checkpoint(queue, args):
             pp_rank,
             vp_size,
         )
-        if not md.apply_layernorm_rms:
+        if md.norm_has_bias:
             message = {
                 f"weight {state_key}": get_optimizer_state(
-                    optimizer_ckpt, None, vp_rank, state_key, "final_layernorm"
+                    optimizer_ckpt, None, vp_rank, state_key, "final_norm"
                 ),
                 f"bias {state_key}": get_optimizer_state(
-                    optimizer_ckpt, vp_rank, state_key, "final_layernorm", True
+                    optimizer_ckpt, vp_rank, state_key, "final_norm", True
                 ),
             }
         else:
             message = {
                 f"weight {state_key}": get_optimizer_state(
-                    optimizer_ckpt, None, vp_rank, state_key, "final_layernorm"
+                    optimizer_ckpt, None, vp_rank, state_key, "final_norm"
                 ),
             }
-        queue_put(f"final layernorm {state_key}", message)
+        queue_put(f"final norm {state_key}", message)
 
         if md.output_layer:
             # Send output_layer main weight tp_rank 0

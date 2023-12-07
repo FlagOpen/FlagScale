@@ -29,6 +29,7 @@ CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$EXPNAME
 mkdir -p $CHECKPOINT_PATH
 VOCAB_FILE=examples/aquila/tokenizer/vocab.json
 MERGE_FILE=examples/aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
 LOG_PATH=$PROJ_HOME/logs/$EXPNAME
 mkdir -p $LOG_PATH
 cp $0 $LOG_PATH/
@@ -70,7 +71,6 @@ MIXED_PRECISION_ARGS="
     --fp16 \
     --initial-loss-scale 522893 \
     --min-loss-scale 1.0 \
-    --embedding-weights-in-fp32 \
     --attention-softmax-in-fp32 \
     --accumulate-allreduce-grads-in-fp32
 "
@@ -81,7 +81,7 @@ DATA_ARGS="
     --vocab-file $VOCAB_FILE \
     --vocab-size 100008\
     --merge-file $MERGE_FILE \
-    --data-impl mmap \
+    --special-tokens-file $SPECIAL_TOKENS_FILE \
     --split 1
 "
 
@@ -91,13 +91,12 @@ NETWORK_ARGS="
     --num-attention-heads 32 \
     --seq-length 2048 \
     --max-position-embeddings 2048 \
-    --layernorm-epsilon 1e-5 \
+    --norm-epsilon 1e-5 \
     --use-rotary-position-embeddings \
-    --rotary-position-embeddings-in-fp32 \
     --no-position-embedding \
     --swiglu \
     --multiple-of 256 \
-    --apply-layernorm-rms \
+    --normalization RMSNorm \
     --rotary-interleaved-patch \
     --untie-embeddings-and-output-weights
 "
@@ -131,7 +130,7 @@ CHECKPOINTING_ARGS="
 
 LOGGING_ARGS="
     --log-interval 1 \
-    --wandb-dir $WB_PATH \
+    --wandb-save-dir $WB_PATH \
     --tensorboard-dir $TB_PATH \
     --tensorboard-log-interval 1 
 "

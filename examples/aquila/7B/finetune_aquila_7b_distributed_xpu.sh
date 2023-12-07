@@ -78,7 +78,6 @@ TRAINING_ARGS="
 MIXED_PRECISION_ARGS="
     --loss-scale 0 \
     --initial-loss-scale 16 \
-    --embedding-weights-in-fp32 \
     --attention-softmax-in-fp32 \
     --no-gradient-accumulation-fusion \
     --no-async-tensor-model-parallel-allreduce \
@@ -88,7 +87,6 @@ MIXED_PRECISION_ARGS="
 DATA_ARGS="
     --train-data-path $DATA_PATH/train_convo_samples.jsonl \
     --valid-data-path $DATA_PATH/val_convo_samples.jsonl \
-    --data-impl mmap \
     --tokenizer-type AquilaTokenizer \
     --vocab-file $VOCAB_FILE \
     --merge-file $MERGE_FILE \
@@ -103,15 +101,14 @@ NETWORK_ARGS="
     --seq-length 2048 \
     --ffn-hidden-size 11008 \
     --max-position-embeddings 2048 \
-    --layernorm-epsilon 1e-5 \
+    --norm-epsilon 1e-5 \
     --use-rotary-position-embeddings \
-    --rotary-position-embeddings-in-fp32 \
     --no-position-embedding \
     --no-bias-gelu-fusion \
     --disable-bias-linear \
     --swiglu \
     --multiple-of 256 \
-    --apply-layernorm-rms \
+    --normalization RMSNorm \
     --sequence-parallel \
     --distributed-backend nccl \
     --no-query-key-layer-scaling \

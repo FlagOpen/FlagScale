@@ -2,6 +2,8 @@
 
 """Gradient clipping."""
 
+import os
+
 import torch
 from torch import inf
 from megatron import get_args
@@ -23,8 +25,8 @@ from megatron.core.tensor_parallel import param_is_not_tensor_parallel_duplicate
 
 
 def clip_grad_norm_fp32(parameters, grads_for_norm,
-                        max_norm, norm_type=2,
-                        model_parallel_group=None):
+                        max_norm, check_for_nan_in_grad,
+                        norm_type=2, model_parallel_group=None):
     """Clips gradient norm of an iterable of parameters whose gradients
        are in fp32.
 
@@ -37,7 +39,8 @@ def clip_grad_norm_fp32(parameters, grads_for_norm,
             single Tensor that will have gradients normalized
         grads_for_norm (Iterable[Tensor]): an iterable of Tensors or a single
             Tensor that will be used for calculating the grad norm.
-        max_norm (float or int): max norm of the gradients
+        max_norm (float or int): max norm of the gradients.
+        check_for_nan_in_grad (bool): check if gradients have a NaN.
         norm_type (float or int): type of the used p-norm. Can be ``'inf'`` for
             infinity norm.
         model_parallel_group (group): given the nature of the distributed
@@ -103,6 +106,16 @@ def clip_grad_norm_fp32(parameters, grads_for_norm,
             for grad in grads_for_norm:
                 grad_norm = torch.norm(grad, norm_type)
                 total_norm += grad_norm ** norm_type
+
+        # Check individual rank grad norms are not NaN
+        # prior to model-parallel all-reduce.
+        if check_for_nan_in_grad:
+            global_rank = torch.distributed.get_rank()
+            assert not total_norm.isnan(), (
+                f'Rank {global_rank}: found NaN in local grad norm in '
+                f'backwards pass. Device: {torch.cuda.current_device()}, '
+                f'node: {os.uname()[1]}'
+            )
 
         # Sum across all model-parallel GPUs.
         torch.distributed.all_reduce(total_norm,

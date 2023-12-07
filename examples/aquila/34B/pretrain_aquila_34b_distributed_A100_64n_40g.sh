@@ -70,8 +70,6 @@ TRAINING_ARGS="
 MIXED_PRECISION_ARGS="
     --bf16 \
     --attention-softmax-in-fp32 \
-    --embedding-weights-in-fp32 \
-    --rotary-position-embeddings-in-fp32 \
     --accumulate-allreduce-grads-in-fp32
 "
 
@@ -82,7 +80,6 @@ DATA_ARGS="
     --vocab-size 100008\
     --merge-file $MERGE_FILE \
     --special-tokens-file $SPECIAL_TOKENS_FILE \
-    --data-impl mmap \
     --split 1
 "
 
@@ -95,13 +92,13 @@ NETWORK_ARGS="
     --hidden-dim-multiplier 1.3 \
     --seq-length 4096 \
     --max-position-embeddings 4096 \
-    --layernorm-epsilon 1e-5 \
-    --layernorm-init-weight 0.3 \
+    --norm-epsilon 1e-5 \
+    --norm-init-weight 0.3 \
     --use-rotary-position-embeddings \
     --no-position-embedding \
     --swiglu \
     --multiple-of 4096 \
-    --apply-layernorm-rms \
+    --normalization RMSNorm \
     --untie-embeddings-and-output-weights
 "
 
@@ -137,7 +134,7 @@ LOGGING_ARGS="
     --log-interval 1 \
     --tensorboard-dir $TB_PATH \
     --tensorboard-log-interval 1 \
-    --wandb-dir $WB_PATH
+    --wandb-save-dir $WB_PATH
 "
 
 cmd="torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
