@@ -213,9 +213,16 @@ def _load_checkpoint(queue, args):
         elif key == "input_norm":
             if not bias:
                 full_key = "layers." + str(layer_num) + "." + key + ".weight"
+                old_full_key = "layers." + str(layer_num) + "." + "input_layernorm" + ".weight"
             else:
                 full_key = "layers." + str(layer_num) + "." + key + ".bias"
-            return model_ckpt[model_key]["language_model"]["encoder"][full_key]
+                old_full_key = "layers." + str(layer_num) + "." + "input_layernorm" + ".bias"
+            if full_key in model_ckpt[model_key]["language_model"]["encoder"]:
+                return model_ckpt[model_key]["language_model"]["encoder"][full_key]
+            elif old_full_key in model_ckpt[model_key]["language_model"]["encoder"]:
+                return model_ckpt[model_key]["language_model"]["encoder"][old_full_key]
+            else:
+                raise Exception(f"key {full_key} or {old_full_key} not found in model checkpoint")
         elif key == "query_key_value":
             if not bias:
                 full_key = (
@@ -239,9 +246,16 @@ def _load_checkpoint(queue, args):
         elif key == "post_attention_norm":
             if not bias:
                 full_key = "layers." + str(layer_num) + "." + key + ".weight"
+                old_full_key = "layers." + str(layer_num) + "." + "post_attention_layernorm" + ".weight"
             else:
                 full_key = "layers." + str(layer_num) + "." + key + ".bias"
-            return model_ckpt[model_key]["language_model"]["encoder"][full_key]
+                old_full_key = "layers." + str(layer_num) + "." + "post_attention_layernorm" + ".bias"
+            if full_key in model_ckpt[model_key]["language_model"]["encoder"]:
+                return model_ckpt[model_key]["language_model"]["encoder"][full_key]
+            elif old_full_key in model_ckpt[model_key]["language_model"]["encoder"]:
+                return model_ckpt[model_key]["language_model"]["encoder"][old_full_key]
+            else:
+                raise Exception(f"key {full_key} or {old_full_key} not found in model checkpoint")
         elif key == "dense_h_to_4h":
             if not bias:
                 full_key = "layers." + str(layer_num) + ".mlp." + key + ".weight"
@@ -256,13 +270,17 @@ def _load_checkpoint(queue, args):
             return model_ckpt[model_key]["language_model"]["encoder"][full_key]
         elif key == "final_norm":
             if not bias:
-                return model_ckpt[model_key]["language_model"]["encoder"][
-                    "final_norm.weight"
-                ]
+                full_key = "final_norm.weight"
+                old_full_key = "final_layernorm.weight"
             else:
-                return model_ckpt[model_key]["language_model"]["encoder"][
-                    "final_norm.bias"
-                ]
+                full_key = "final_norm.bias"
+                old_full_key = "final_layernorm.bias"
+            if full_key in model_ckpt[model_key]["language_model"]["encoder"]:
+                return model_ckpt[model_key]["language_model"]["encoder"][full_key ]
+            elif old_full_key in model_ckpt[model_key]["language_model"]["encoder"]:
+                return model_ckpt[model_key]["language_model"]["encoder"][old_full_key]
+            else:
+                raise Exception(f"key {full_key} or {old_full_key} not found in model checkpoint")
         elif key == "output_layer":
             return model_ckpt[model_key]["language_model"]["output_layer"]["weight"]
         else:

@@ -241,13 +241,16 @@ def _load_checkpoint(queue, args):
         dtype=torch.float32,
     ):
         assert state_key in ["param", "exp_avg", "exp_avg_sq"]
+        old_full_key = None
         if param_key == "word_embeddings":
             full_key = "module.language_model.embedding.word_embeddings.weight"
         elif param_key == "input_norm":
             if not bias:
                 full_key = f"module.language_model.encoder.layers.{layer_num}.input_norm.weight"
+                old_full_key = f"module.language_model.encoder.layers.{layer_num}.input_layernorm.weight"
             else:
                 full_key = f"module.language_model.encoder.layers.{layer_num}.input_norm.bias"
+                old_full_key = f"module.language_model.encoder.layers.{layer_num}.input_layernorm.bias"
         elif param_key == "query_key_value":
             if not bias:
                 full_key = f"module.language_model.encoder.layers.{layer_num}.self_attention.query_key_value.weight"
@@ -261,8 +264,10 @@ def _load_checkpoint(queue, args):
         elif param_key == "post_attention_norm":
             if not bias:
                 full_key = f"module.language_model.encoder.layers.{layer_num}.post_attention_norm.weight"
+                old_full_key = f"module.language_model.encoder.layers.{layer_num}.post_attention_layernorm.weight"
             else:
                 full_key = f"module.language_model.encoder.layers.{layer_num}.post_attention_norm.bias"
+                old_full_key = f"module.language_model.encoder.layers.{layer_num}.post_attention_layernorm.bias"
         elif param_key == "dense_h_to_4h":
             if not bias:
                 full_key = f"module.language_model.encoder.layers.{layer_num}.mlp.dense_h_to_4h.weight"
@@ -276,8 +281,10 @@ def _load_checkpoint(queue, args):
         elif param_key == "final_norm":
             if not bias:
                 full_key = f"module.language_model.encoder.final_norm.weight"
+                old_full_key = f"module.language_model.encoder.final_layernorm.weight"
             else:
                 full_key = f"module.language_model.encoder.final_norm.bias"
+                old_full_key = f"module.language_model.encoder.final_layernorm.bias"
         elif param_key == "output_layer":
             full_key = f"module.language_model.output_layer.weight"
         else:
@@ -288,7 +295,13 @@ def _load_checkpoint(queue, args):
                 + param_key
             )
             exit(1)
-        return optimizer_ckpt[vp_rank][dtype][state_key][full_key]
+        if full_key in optimizer_ckpt[vp_rank][dtype][state_key]:
+            return optimizer_ckpt[vp_rank][dtype][state_key][full_key]
+        elif old_full_key and \
+            old_full_key in optimizer_ckpt[vp_rank][dtype][state_key]:
+            return optimizer_ckpt[vp_rank][dtype][state_key][old_full_key]
+        else:
+            raise Exception(f"key {full_key} or {old_full_key} not found in optimizer checkpoint")
 
     # ------- split optimizer ckpts -------
     for tp_rank in range(tp_size):
