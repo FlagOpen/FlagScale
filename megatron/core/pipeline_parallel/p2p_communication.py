@@ -104,6 +104,7 @@ def _communicate_shapes(tensor_send_next, tensor_send_prev, recv_prev, recv_next
             ops.append(recv_next_op)
         if len(ops) > 0:
             if torch_xmlir is not None:
+                # TODO: @aoyulong need to fix this for hetero training
                 pipeline_rank = torch.distributed.get_rank(group=get_pipeline_model_parallel_group())
                 if pipeline_rank % 2 != 0:
                     ops.reverse()
@@ -169,6 +170,7 @@ def _batched_p2p_ops(
         ops.append(recv_next_op)
     if len(ops) > 0:
         if torch_xmlir is not None:
+            # TODO: @aoyulong need to fix this for hetero training
             pipeline_rank = torch.distributed.get_rank(group=get_pipeline_model_parallel_group())
             if pipeline_rank % 2 != 0:
                 ops.reverse()
