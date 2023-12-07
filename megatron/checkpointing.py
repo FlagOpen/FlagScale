@@ -484,6 +484,10 @@ def load_args_from_checkpoint(args, load_arg='load'):
     if hasattr(checkpoint_args, 'disable_bias_linear'):
         setattr(checkpoint_args, 'add_bias_linear', not getattr(checkpoint_args, 'disable_bias_linear'))
 
+    # For backward compatibility.
+    if hasattr(checkpoint_args, 'apply_layernorm_rms'):
+        checkpoint_args.normalization = 'RMSNorm'
+
     def _set_arg(arg_name, old_arg_name=None, force=False):
         if not force and getattr(args, arg_name, None) is not None:
             return
@@ -531,6 +535,7 @@ def load_args_from_checkpoint(args, load_arg='load'):
         _set_arg('pipeline_model_parallel_size', force=True)
         _set_arg('virtual_pipeline_model_parallel_size', force=True)
         _set_arg('num_layers_per_virtual_pipeline_stage')
+    
     return args, checkpoint_args
 
 
