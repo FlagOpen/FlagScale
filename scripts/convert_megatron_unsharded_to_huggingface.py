@@ -238,7 +238,7 @@ def main():
         help='Custom Multiplier for setting Feed-Forward Network hidden dim when swiglu.'
     )
     parser.add_argument(
-        '--layernorm-epsilon', type=float, default=1e-5,
+        '--norm-epsilon', type=float, default=1e-5,
         help='Layer norm epsilon.'
     )
     parser.add_argument(

@@ -43,13 +43,13 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS ./tasks/main.py \
                --hidden-dim-multiplier 1.3 \
                --seq-length 4096 \
                --max-position-embeddings 4096 \
-               --layernorm-epsilon 1e-5 \
-               --layernorm-init-weight 0.3 \
+               --norm-epsilon 1e-5 \
+               --norm-init-weight 0.3 \
                --use-rotary-position-embeddings \
                --no-position-embedding \
                --swiglu \
                --multiple-of 4096 \
-               --apply-layernorm-rms \
+               --normalization RMSNorm \
                --untie-embeddings-and-output-weights \
                --disable-bias-linear \
                --log-interval 1 \

@@ -70,7 +70,6 @@ MIXED_PRECISION_ARGS="
     --fp16 \
     --initial-loss-scale 522893 \
     --min-loss-scale 1.0 \
-    --embedding-weights-in-fp32 \
     --attention-softmax-in-fp32 \
     --accumulate-allreduce-grads-in-fp32
 "
@@ -91,13 +90,12 @@ NETWORK_ARGS="
     --num-attention-heads 32 \
     --seq-length 2048 \
     --max-position-embeddings 2048 \
-    --layernorm-epsilon 1e-5 \
+    --norm-epsilon 1e-5 \
     --use-rotary-position-embeddings \
-    --rotary-position-embeddings-in-fp32 \
     --no-position-embedding \
     --swiglu \
     --multiple-of 256 \
-    --apply-layernorm-rms \
+    --normalization RMSNorm \
     --rotary-interleaved-patch \
     --untie-embeddings-and-output-weights
 "
@@ -131,7 +129,7 @@ CHECKPOINTING_ARGS="
 
 LOGGING_ARGS="
     --log-interval 1 \
-    --wandb-dir $WB_PATH \
+    --wandb-save-dir $WB_PATH \
     --tensorboard-dir $TB_PATH \
     --tensorboard-log-interval 1 
 "

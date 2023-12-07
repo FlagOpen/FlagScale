@@ -49,7 +49,7 @@ CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_g
        --make-vocab-size-divisible-by 64 \
        --vocab-size 100008 \
        --use-flash-attn \
-       --apply-layernorm-rms \
+       --normalization RMSNorm \
        --tensor-model-parallel-size 4  \
        --pipeline-model-parallel-size 1  \
        --num-layers 80  \
@@ -57,14 +57,13 @@ CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_g
        --hidden-dim-multiplier 1.3 \
        --load ${CHECKPOINT}  \
        --disable-bias-linear \
-       --layernorm-epsilon 1e-5 \
-       --layernorm-init-weight 0.25 \
+       --norm-epsilon 1e-5 \
+       --norm-init-weight 0.25 \
        --num-attention-heads 64  \
        --group-query-attention \
        --num-query-groups 8 \
        --max-position-embeddings 4096  \
        --use-rotary-position-embeddings \
-       --rotary-position-embeddings-in-fp32 \
        --no-position-embedding \
        --swiglu \
        --multiple-of 4096 \
@@ -72,7 +71,6 @@ CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_g
        --tokenizer-type AquilaTokenizer  \
        --bf16  \
        --attention-softmax-in-fp32 \
-       --embedding-weights-in-fp32 \
        --micro-batch-size 1  \
        --seq-length 4096  \
        --out-seq-length 3000  \
