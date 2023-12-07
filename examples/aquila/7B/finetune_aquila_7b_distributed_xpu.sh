@@ -87,7 +87,6 @@ MIXED_PRECISION_ARGS="
 DATA_ARGS="
     --train-data-path $DATA_PATH/train_convo_samples.jsonl \
     --valid-data-path $DATA_PATH/val_convo_samples.jsonl \
-    --data-impl mmap \
     --tokenizer-type AquilaTokenizer \
     --vocab-file $VOCAB_FILE \
     --merge-file $MERGE_FILE \

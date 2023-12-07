@@ -69,7 +69,6 @@ DATA_ARGS="
     --make-vocab-size-divisible-by 64 \
     --merge-file $MERGE_FILE \
     --special-tokens-file $SPECIAL_TOKENS_FILE \
-    --data-impl mmap \
     --split 1
 "
 

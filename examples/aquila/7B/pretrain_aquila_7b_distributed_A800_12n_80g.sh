@@ -29,6 +29,7 @@ CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$EXPNAME
 mkdir -p $CHECKPOINT_PATH
 VOCAB_FILE=examples/aquila/tokenizer/vocab.json
 MERGE_FILE=examples/aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
 LOG_PATH=$PROJ_HOME/logs/$EXPNAME
 mkdir -p $LOG_PATH
 cp $0 $LOG_PATH/
@@ -80,7 +81,7 @@ DATA_ARGS="
     --vocab-file $VOCAB_FILE \
     --vocab-size 100008\
     --merge-file $MERGE_FILE \
-    --data-impl mmap \
+    --special-tokens-file $SPECIAL_TOKENS_FILE \
     --split 1
 "
 

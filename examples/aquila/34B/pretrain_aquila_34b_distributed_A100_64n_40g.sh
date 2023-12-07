@@ -80,7 +80,6 @@ DATA_ARGS="
     --vocab-size 100008\
     --merge-file $MERGE_FILE \
     --special-tokens-file $SPECIAL_TOKENS_FILE \
-    --data-impl mmap \
     --split 1
 "
 
