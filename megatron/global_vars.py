@@ -12,6 +12,8 @@ from .microbatches import build_num_microbatches_calculator
 from .microbatches_hetero import build_num_microbatches_calculator_hetero
 from .timers import Timers
 from .hetero_context import HeteroContext
+from . import device_init
+
 
 _GLOBAL_ARGS = None
 _GLOBAL_RETRO_ARGS = None
@@ -23,6 +25,8 @@ _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
 _GLOBAL_SIGNAL_HANDLER = None
 _GLOBAL_HETERO_CONTEXT = None
+_GLOBAL_DEVICE_TYPE = None
+
 
 def get_args():
     """Return arguments."""
@@ -87,6 +91,11 @@ def get_hetero_context():
     """Return heterogenous context."""
     _ensure_var_is_initialized(_GLOBAL_HETERO_CONTEXT, 'hetero context')
     return _GLOBAL_HETERO_CONTEXT
+
+
+def get_device_type():
+    """Return customized device type."""
+    return _GLOBAL_DEVICE_TYPE
 
 
 def _set_signal_handler():
@@ -222,6 +231,29 @@ def set_hetero_context(args):
     global _GLOBAL_HETERO_CONTEXT
     _ensure_var_is_not_initialized(_GLOBAL_HETERO_CONTEXT, 'hetero context')
     _GLOBAL_HETERO_CONTEXT = HeteroContext(args)
+
+
+def set_device_type(args):
+    """Initialize customized device type."""
+    global _GLOBAL_DEVICE_TYPE
+    _ensure_var_is_not_initialized(_GLOBAL_DEVICE_TYPE, 'device type')
+    assert args.device_type is not None
+    _GLOBAL_DEVICE_TYPE = args.device_type
+
+    # Add patches package of device_type to sys.path
+    path = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), args.device_type)
+    assert os.path.exists(path), "Path {} does not exist.".format(path) 
+    assert os.path.isdir(path), "Path {} is not a directory.".format(path)
+    sys.path.append(path)
+    
+    # Apply the following patch during the import time
+    import patches
+
+    # Call customized device_init to do some other things
+    device_init_func = getattr(device_init, args.device_type + '_init', None)
+    if device_init_func is not None:
+        device_init_func()
 
 
 def _ensure_var_is_initialized(var, name):

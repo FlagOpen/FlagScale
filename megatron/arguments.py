@@ -11,6 +11,7 @@ import types
 
 import torch.nn.functional as F
 from megatron.global_vars import set_retro_args, get_retro_args
+from megatron.global_vars import set_device_type
 from tools.retro.utils import get_args_path as get_retro_args_path
 
 from megatron.core.transformer import TransformerConfig
@@ -46,6 +47,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_retro_args(parser)
     parser = _add_mup_args(parser)
     parser = _add_hetero_args(parser)
+    parser = _add_customized_device_args(parser)
 
     # Custom arguments.
     if extra_args_provider is not None:
@@ -56,6 +58,10 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
         args, _ = parser.parse_known_args()
     else:
         args = parser.parse_args()
+    
+    # Set customized device type
+    if args.device_type:
+        set_device_type(args)
 
     # Args from environment
     args.rank = int(os.getenv('RANK', '0'))
@@ -1552,6 +1558,7 @@ def _add_vision_args(parser):
 
     return parser
 
+
 def _add_hetero_args(parser):
     group = parser.add_argument_group(title="heterogeneous training")
 
@@ -1570,5 +1577,14 @@ def _add_hetero_args(parser):
                        'hetero-pipeline-stages must be in the form:'
                        'n0 layers_0_0 layers_0_1 ... n1 nlayers_1_0 nlayers_1_1 ...'
                        'The order should be consistent with --hetero-device-types.')
+
+    return parser
+
+
+def _add_customized_device_args(parser):
+    group = parser.add_argument_group(title="Customized device")
+
+    group.add_argument('--device-type', type=str, default=None, 
+                       help='Specify customized device type')
 
     return parser
