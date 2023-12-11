@@ -17,12 +17,6 @@ import pickle
 import json
 from collections import defaultdict
 
-try:
-    import mup
-    from mup import coord_check
-except ImportError:
-    mup = None
-    coord_check = None
 
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
@@ -158,11 +152,6 @@ def pretrain(train_valid_test_dataset_provider,
         search_data(train_valid_test_dataset_provider, get_batch_fn)
         return
 
-    if args.mup == "prepare":
-        assert mup is not None, 'Please install mup first'
-        mup_prepare(model_provider, model_type)
-        return
-
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
     model, optimizer, opt_param_scheduler = setup_model_and_optimizer(
@@ -214,7 +203,7 @@ def pretrain(train_valid_test_dataset_provider,
 
         print_datetime('after training is done')
 
-        if args.save and iteration != 0 and not args.mup_coord_check:
+        if args.save and iteration != 0:
             save_checkpoint(iteration, model, optimizer, opt_param_scheduler)
     else:
         print_rank_0('skipping training (--skip-train is on) ...')
@@ -343,9 +332,6 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
             sum([sum([p.nelement() for p in model_module.parameters()])
                  for model_module in model])), flush=True)
 
-    if args.mup == "prepare":
-        return model 
-
     if args.load is not None:
         if args.format_ckpt:
             args.no_load_optim = True
@@ -459,8 +445,7 @@ def get_optimizer_param_scheduler(optimizer):
         wd_incr_steps=wd_incr_steps,
         wd_incr_style=args.weight_decay_incr_style,
         use_checkpoint_opt_param_scheduler=args.use_checkpoint_opt_param_scheduler,
-        override_opt_param_scheduler=args.override_opt_param_scheduler,
-        use_mup=args.mup)
+        override_opt_param_scheduler=args.override_opt_param_scheduler)
 
     return opt_param_scheduler
 
@@ -475,13 +460,6 @@ def setup_model_and_optimizer(model_provider_func,
 
     model = get_model(model_provider_func, model_type)
     unwrapped_model = unwrap_model(model)
-
-    if args.mup == "apply":
-        assert mup is not None, 'Please install mup first'
-        for i, m in enumerate(unwrapped_model):
-            savefile = os.path.join(args.mup_save, "mup_base_shapes_{}.bsh".format(i))
-            mup.set_base_shapes(m, savefile)
-            mup_apply(m)
 
     optimizer = get_megatron_optimizer(model, no_wd_decay_cond,
                                        scale_lr_cond, lr_mult)
@@ -517,105 +495,6 @@ def setup_model_and_optimizer(model_provider_func,
 
     return model, optimizer, opt_param_scheduler
 
-
-def mup_refresh_args(args):
-    # Refresh all dependent args when on args.hidden_size is changed
-    args.kv_channels = args.hidden_size // args.num_attention_heads
-
-    # Checks.
-    args.ffn_hidden_size = 4 * args.hidden_size
-
-    if args.swiglu:
-        # Ref: https://github.com/facebookresearch/llama/blob/main/llama/model.py#L161-L162
-        if args.multiple_of is not None:
-            hidden_dim = int(4 * args.hidden_size * 2 / 3)
-            args.ffn_hidden_size = args.multiple_of * \
-                ((hidden_dim + args.multiple_of - 1) // args.multiple_of)
-        else:
-            # reduce the dimnesion for MLP since projections happens on
-            # two linear layers. this keeps the number of paramters in
-            # the same ballpark as the counterpart with 4*h size
-            # we keep it a multiple of 64, which means the actual tensor size
-            # will be a multiple of 64 / tp_size
-            args.ffn_hidden_size = int((4 * args.hidden_size * 2 / 3) / 64) * 64
-
-
-def mup_prepare(model_provider_func,
-                model_type,
-                no_wd_decay_cond=None,
-                scale_lr_cond=None,
-                lr_mult=1.0):
-    """Setup model and optimizer."""
-    args = get_args()
-
-    based_model = get_model(model_provider_func, model_type)
-    unwrapped_based_model = unwrap_model(based_model,
-                                         (torchDDP, LocalDDP, Float16Module))
-
-    args.hidden_size = args.mup_delta_hidden_size
-    mup_refresh_args(args)
-    delta_model = get_model(model_provider_func, model_type)
-    unwrapped_delta_model = unwrap_model(delta_model,
-                                         (torchDDP, LocalDDP, Float16Module))
-
-    os.makedirs(args.mup_save, exist_ok = True)
-    for i, (based, delta) in enumerate(zip(unwrapped_based_model, unwrapped_delta_model)):
-        savefile = os.path.join(args.mup_save, "mup_base_shapes_{}.bsh".format(i))
-        # TODO: Need a more elegant way to do this
-        if torch.distributed.get_rank() % 8 == 0:
-            print("Saving base shapes to {}".format(savefile))
-            mup.make_base_shapes(based, delta, savefile=savefile)
-
-
-def mup_apply(model):
-    args = get_args()
-
-    def _init_weights(module):
-        """Initialize the weights.
-
-           This function is implemented based on `_init_wights` 
-           (https://github.com/microsoft/mutransformers/blob/main/mutransformers/models/gpt2/modeling_gpt2.py#L475)
-
-            muP swap constant std normal init with normal_ from `mup.init`.
-            Because `_init_weights` is called in `__init__`, before `infshape` is set,
-            we need to manually call `self.apply(self._init_weights)` after calling
-            `set_base_shape(model, base)`
-        """
-        if isinstance(module, tensor_parallel.MuReadoutColumnParallelLinear) \
-                and args.readout_zero_init:
-            module.weight.data.zero_()
-        elif isinstance(module, (tensor_parallel.ColumnParallelLinear, tensor_parallel.RowParallelLinear)):
-            if hasattr(module.weight, 'infshape'):
-                mup.normal_(module.weight, mean=0.0, std=args.init_method_std)
-
-        if isinstance(module, ParallelAttention):
-            if args.query_zero_init:
-                # new_tensor_shape = (module.num_attention_heads_per_partition,
-                #                     3, module.hidden_size_per_attention_head,
-                #                     module.query_key_value.weight.size()[-1])
-                # module.query_key_value.weight.view(
-                #     new_tensor_shape).data[:, 0, :, :] = 0
-                module.query.weight.data.zero_()
-
-        scaled_std = args.init_method_std / math.sqrt(2.0 * args.num_layers)
-        for name, p in module.named_parameters():
-            if "self_attention.dense.weight" in name \
-                or "mlp.dense_4h_to_h.weight" in name:
-                # Special Scaled Initialization --> There are 2 Layer Norms per Transformer Block
-                if hasattr(p, 'infshape'):
-                    mup.normal_(p, mean=0.0, std=scaled_std)
-    
-    model.apply(_init_weights)
-
-    if args.mup_rescale_params:
-        for name, module in model.named_modules():
-            if isinstance(module, tensor_parallel.MuReadoutColumnParallelLinear):
-                module._rescale_parameters()
-            elif isinstance(module, (tensor_parallel.ColumnParallelLinear, tensor_parallel.RowParallelLinear)):
-                mup.rescale_linear_bias(module)
-
-    # for name, p in model.named_parameters():
-    #     p.new_name = name
 
 
 def train_step(forward_step_func, data_iterator,
@@ -675,9 +554,7 @@ def train_step(forward_step_func, data_iterator,
                                                         args.hetero_data_parallel_splits))
             increment = get_num_microbatches() * \
                         micro_batch_for_all_data_parallel
-        # TODO: For now, we only support constant LR scheduler.
-        if args.mup is None:
-            opt_param_scheduler.step(increment=increment)
+        opt_param_scheduler.step(increment=increment)
         skipped_iter = 0
     else:
         skipped_iter = 1
@@ -880,7 +757,6 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
                     wandb_writer.log({'throughput': throughput}, iteration)
         log_string += ' learning rate: {:.3E} |'.format(learning_rate)
         log_string += ' global batch size: {:5d} |'.format(batch_size)
-
         for key in total_loss_dict:
             if key not in [advanced_iters_key, skipped_iters_key,
                            nan_iters_key]:
@@ -918,7 +794,6 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
             report_memory('(after {} iterations)'.format(iteration))
             report_memory_flag = False
         timers.log(timers_to_log, normalizer=args.log_interval)
-
 
     return report_memory_flag
 
@@ -994,9 +869,6 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')
     report_memory_flag = True
-    if args.mup_coord_check:
-        data_frame = []
-        coord_check_modules = args.mup_coord_check_modules
     exit = False
 
     if args.manual_gc:
@@ -1013,19 +885,6 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
            torch.distributed.get_rank() in args.profile_ranks:
             torch.cuda.cudart().cudaProfilerStart()
             torch.autograd.profiler.emit_nvtx(record_shapes=True).__enter__()
-
-        # Add hooks of coordination check
-        if args.mup_coord_check:
-            remove_hooks = []
-            # add hooks
-            for m in model:
-                for name, module in m.named_modules():
-                    if len(coord_check_modules) > 0 and \
-                       not any(ele in name for ele in coord_check_modules):
-                        continue
-                    remove_hooks.append(module.register_forward_hook(
-                        coord_check._record_coords(
-                            data_frame, args.hidden_size, name, iteration + 1)))
 
         update_num_microbatches(args.consumed_train_samples)
         args.curr_iteration = iteration
@@ -1046,11 +905,6 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                                                         args.hetero_micro_batch_sizes,
                                                         args.hetero_data_parallel_splits))
             args.consumed_train_samples += get_num_microbatches() * micro_batch_for_all_data_parallel
-
-        # remove hooks of coordination check
-        if args.mup_coord_check:
-            for handle in remove_hooks:
-                handle.remove()
 
         # Logging.
         loss_scale = optimizer.get_loss_scale().item()
@@ -1149,20 +1003,11 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             exit = True
             break
 
-        if args.mup_coord_check and iteration >= args.mup_coord_check_steps:
-            print_datetime('mup coord check early stop at iteration {}'.format(iteration))
-            break
-
         if args.profile and \
            iteration == args.profile_step_end and \
            torch.distributed.get_rank() in args.profile_ranks:
             torch.cuda.cudart().cudaProfilerStop()
 
-    if args.mup_coord_check:
-        data_frame.append({'optimizer': args.optimizer, 'lr': args.lr}) 
-        savefile = os.path.join(args.mup_save, "coord_data_{}".format(time.time()))
-        with open(savefile, 'wb') as f:
-            pickle.dump(data_frame, f)
         if args.manual_gc:
             if args.manual_gc_interval != 0 and iteration % args.manual_gc_interval == 0:
                 gc.collect()

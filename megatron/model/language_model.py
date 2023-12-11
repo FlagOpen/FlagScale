@@ -425,29 +425,19 @@ class TransformerLanguageModel(MegatronModule):
                 self._pooler_key = 'pooler'
 
             if self.untie_embeddings_and_output_weights:
-                if args.mup != "apply":
-                    self.output_layer = tensor_parallel.ColumnParallelLinear(
-                        args.hidden_size,
-                        args.padded_vocab_size,
-                        config=config,
-                        init_method=self.init_method,
-                        bias=False) # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
-                    self._output_layer_key = 'output_layer'
+                self.output_layer = tensor_parallel.ColumnParallelLinear(
+                    args.hidden_size,
+                    args.padded_vocab_size,
+                    config=config,
+                    init_method=self.init_method,
+                    bias=False) # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
+                self._output_layer_key = 'output_layer'
 
-                    if args.apply_init_customized:
-                        init_method = self.init_method(args.init_method_std_scaled_output)
-                        with tensor_parallel.get_cuda_rng_tracker().fork():
-                            init_method(self.output_layer.weight)
-                            print('Override output_layer init_method.', flush=True)
-                else:
-                    self.output_layer = tensor_parallel.MuReadoutColumnParallelLinear(
-                        args.hidden_size,
-                        args.padded_vocab_size,
-                        config=config,
-                        init_method=self.init_method,
-                        bias=False, # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
-                        output_mult=args.mup_output_multiplier)
-                    self._output_layer_key = 'output_layer'
+                if args.apply_init_customized:
+                    init_method = self.init_method(args.init_method_std_scaled_output)
+                    with tensor_parallel.get_cuda_rng_tracker().fork():
+                        init_method(self.output_layer.weight)
+                        print('Override output_layer init_method.', flush=True)
 
     def set_input_tensor(self, input_tensor):
         """ See megatron.model.transformer.set_input_tensor()"""

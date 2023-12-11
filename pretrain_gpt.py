@@ -2,12 +2,6 @@
 """Pretrain GPT"""
 
 import os
-import sys
-
-# Add mup package to sys.path
-sys.path.append(os.path.join(os.path.dirname(
-    os.path.abspath(__file__)), 'mup/'))
-
 import torch
 from torch import Tensor
 from functools import partial
@@ -109,7 +103,6 @@ def get_batch(data_iterator):
         data = next(data_iterator)
     else:
         data = None
-
     data_b = tensor_parallel.broadcast_data(keys, data, datatype)
 
     # Unpack.
@@ -218,7 +211,6 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
     print_rank_0("> building train, validation, and test datasets for GPT ...")
 
-    #TODO: @aoyulong checking this
     train_ds, valid_ds, test_ds = BlendedMegatronDatasetBuilder(
         GPTDataset,
         train_val_test_num_samples,

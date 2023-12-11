@@ -13,8 +13,7 @@ class OptimizerParamScheduler(object):
                  lr_warmup_steps, lr_decay_steps, lr_decay_style,
                  start_wd, end_wd, wd_incr_steps, wd_incr_style,
                  use_checkpoint_opt_param_scheduler=True,
-                 override_opt_param_scheduler=False,
-                 use_mup=None):
+                 override_opt_param_scheduler=False):
 
         # Class values.
         self.optimizer = optimizer
@@ -47,9 +46,8 @@ class OptimizerParamScheduler(object):
             assert not self.use_checkpoint_opt_param_scheduler, 'both override and '\
                 'use-checkpoint are set.'
 
-        if use_mup is None:
-            # Set the learning rate
-            self.step(0)
+        # Set the learning rate
+        self.step(0)
         print_rank_0('> learning rate decay style: {}'.format(self.lr_decay_style))
 
 
