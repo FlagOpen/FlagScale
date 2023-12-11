@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from typing import Optional
 from itertools import chain
 
-from megatron import get_timers, get_args, get_retro_args, core, get_num_microbatches, get_hetero_context
+from megatron import get_timers, get_args, get_retro_args, core, get_num_microbatches
 from .module import MegatronModule
 from megatron.core import mpu, tensor_parallel
 from megatron.core.enums import ModelType
@@ -115,41 +115,17 @@ class ParallelMLP(MegatronModule):
             init_method_ffn_w3 = config.init_method(
                 args.init_method_std_scaled_ffn_w3[self.layer_number-1])
 
-        if args.mup is None:
-            # Project to 4h. If using swiglu double the output width, see https://arxiv.org/pdf/2002.05202.pdf
-            self.dense_h_to_4h = tensor_parallel.ColumnParallelLinear(
-                config.hidden_size,
-                ffn_hidden_size,
-                config=config,
-                init_method=config.init_method,
-                bias=self.add_bias,
-                gather_output=False,
-                skip_bias_add=True,
-                is_expert=is_expert,
-            )
-        else:
-            assert args.swiglu == True, "Only support for ParallelMLP using swiglu."
-            self.dense_h_to_4h1 = tensor_parallel.ColumnParallelLinear(
-                config.hidden_size,
-                config.ffn_hidden_size,
-                config=config,
-                init_method=config.init_method,
-                bias=self.add_bias,
-                gather_output=False,
-                skip_bias_add=True,
-                is_expert=is_expert,
-            )
-            self.dense_h_to_4h2 = tensor_parallel.ColumnParallelLinear(
-                config.hidden_size,
-                config.ffn_hidden_size,
-                config=config,
-                init_method=config.init_method,
-                bias=self.add_bias,
-                gather_output=False,
-                skip_bias_add=True,
-                is_expert=is_expert,
-            )
-        self.mup = args.mup
+        # Project to 4h. If using swiglu double the output width, see https://arxiv.org/pdf/2002.05202.pdf
+        self.dense_h_to_4h = tensor_parallel.ColumnParallelLinear(
+            config.hidden_size,
+            ffn_hidden_size,
+            config=config,
+            init_method=config.init_method,
+            bias=self.add_bias,
+            gather_output=False,
+            skip_bias_add=True,
+            is_expert=is_expert,
+        )
 
         self.bias_gelu_fusion = False
         self.activation_func = None
@@ -160,16 +136,12 @@ class ParallelMLP(MegatronModule):
         elif args.onnx_safe:
             self.activation_func = erf_gelu
         elif args.swiglu:
-            if args.mup is None:
-                if torch_xmlir is not None:
-                    swiglu = SwiGLUXPU()
-                else:
-                    def swiglu(x):
-                        x = torch.chunk(x, 2, dim=-1)
-                        return F.silu(x[0]) * x[1]
+            if torch_xmlir is not None:
+                swiglu = SwiGLUXPU()
             else:
-                def swiglu(x1, x2):
-                    return F.silu(x1) * x2
+                def swiglu(x):
+                    x = torch.chunk(x, 2, dim=-1)
+                    return F.silu(x[0]) * x[1]
             self.activation_func = swiglu
         elif args.squared_relu:
             def squared_relu(x):
@@ -202,28 +174,17 @@ class ParallelMLP(MegatronModule):
 
     def forward(self, hidden_states):
 
-        if self.mup is None:
-            # [s, b, 4hp]
-            intermediate_parallel, bias_parallel = self.dense_h_to_4h(hidden_states)
+        # [s, b, 4hp]
+        intermediate_parallel, bias_parallel = self.dense_h_to_4h(hidden_states)
 
-            if self.bias_gelu_fusion:
-                assert self.add_bias is True
-                assert self.activation_func == F.gelu
-                intermediate_parallel = bias_gelu_impl(intermediate_parallel, bias_parallel)
-            else:
-                if bias_parallel is not None:
-                    intermediate_parallel = intermediate_parallel + bias_parallel
-                intermediate_parallel = self.activation_func(intermediate_parallel)
+        if self.bias_gelu_fusion:
+            assert self.add_bias is True
+            assert self.activation_func == F.gelu
+            intermediate_parallel = bias_gelu_impl(intermediate_parallel, bias_parallel)
         else:
-            assert self.swiglu == True, "Only support for ParallelMLP using swiglu."
-            intermediate_parallel1, bias_parallel1 = self.dense_h_to_4h1(hidden_states)
-            intermediate_parallel2, bias_parallel2 = self.dense_h_to_4h2(hidden_states)
-            if bias_parallel1 is not None :
-                intermediate_parallel1 = intermediate_parallel1 + bias_parallel1
-            if bias_parallel2 is not None :
-                intermediate_parallel2 = intermediate_parallel2 + bias_parallel2
-            intermediate_parallel = self.activation_func(intermediate_parallel1,
-                                                         intermediate_parallel2)
+            if bias_parallel is not None:
+                intermediate_parallel = intermediate_parallel + bias_parallel
+            intermediate_parallel = self.activation_func(intermediate_parallel)
 
         # [s, b, h]
         output, output_bias = self.dense_4h_to_h(intermediate_parallel)
@@ -371,9 +332,6 @@ class CoreAttention(MegatronModule):
     def __init__(self, layer_number, config,
                  attn_mask_type=AttnMaskType.padding):
         super(CoreAttention, self).__init__()
-
-        args = get_args()
-
         self.fp16 = config.fp16
         self.bf16 = config.bf16
 
@@ -397,12 +355,7 @@ class CoreAttention(MegatronModule):
             config.num_attention_heads, world_size)
 
         coeff = None
-
-        if args.mup != "apply":
-            self.norm_factor = math.sqrt(self.hidden_size_per_attention_head)
-        else:
-            self.norm_factor = args.mup_attn_multiplier / float(self.hidden_size_per_attention_head)
-
+        self.norm_factor = math.sqrt(self.hidden_size_per_attention_head)
         if self.apply_query_key_layer_scaling:
             coeff = self.layer_number
             self.norm_factor *= coeff
@@ -419,12 +372,6 @@ class CoreAttention(MegatronModule):
         # different outputs on different number of parallel partitions but
         # on average it should not be partition dependent.
         self.attention_dropout = torch.nn.Dropout(config.attention_dropout)
-
-        if args.mup_coord_check:
-            self.attn_score_no_op = torch.nn.Identity() # just for coordcheck
-            self.mup_coord_check = True
-        else:
-            self.mup_coord_check = False
 
     def forward(self, query_layer, key_layer,
                 value_layer, attention_mask):
@@ -478,9 +425,6 @@ class CoreAttention(MegatronModule):
 
             # change view to [b, np, sq, sk]
             attention_scores = matmul_result.view(*output_size)
-
-            if self.mup_coord_check:
-                attention_scores = self.attn_score_no_op(attention_scores)
 
             # ===========================
             # Attention probs and dropout
@@ -670,55 +614,31 @@ class ParallelAttention(MegatronModule):
 
         # Strided linear layer.
         if attention_type == AttnType.self_attn:
-            if args.mup is None:
-                self.query_key_value = tensor_parallel.ColumnParallelLinear(
-                    config.hidden_size,
-                    query_projection_size + 2 * kv_projection_size,
-                    config=config,
-                    init_method=config.init_method,
-                    bias=args.add_bias_linear,
-                    gather_output=False)
-                if args.apply_init_customized:
-                    with tensor_parallel.get_cuda_rng_tracker().fork():
-                        # [ng, (np/ng + 2), hn, h]
-                        tmp =  self.num_attention_heads_per_partition // self.num_query_groups_per_partition
-                        new_tensor_shape = (self.num_query_groups_per_partition,
-                                            tmp + 2,
-                                            self.hidden_size_per_attention_head,
-                                            self.query_key_value.weight.size()[-1])
+            self.query_key_value = tensor_parallel.ColumnParallelLinear(
+                config.hidden_size,
+                query_projection_size + 2 * kv_projection_size,
+                config=config,
+                init_method=config.init_method,
+                bias=args.add_bias_linear,
+                gather_output=False)
+            if args.apply_init_customized:
+                with tensor_parallel.get_cuda_rng_tracker().fork():
+                    # [ng, (np/ng + 2), hn, h]
+                    tmp =  self.num_attention_heads_per_partition // self.num_query_groups_per_partition
+                    new_tensor_shape = (self.num_query_groups_per_partition,
+                                        tmp + 2,
+                                        self.hidden_size_per_attention_head,
+                                        self.query_key_value.weight.size()[-1])
 
-                        wq = self.query_key_value.weight.view(new_tensor_shape)[:, 0:tmp        :, :]
-                        wk = self.query_key_value.weight.view(new_tensor_shape)[:, tmp:tmp+1    :, :]
-                        wv = self.query_key_value.weight.view(new_tensor_shape)[:, tmp+1:tmp+2, :, :]
+                    wq = self.query_key_value.weight.view(new_tensor_shape)[:, 0:tmp        :, :]
+                    wk = self.query_key_value.weight.view(new_tensor_shape)[:, tmp:tmp+1    :, :]
+                    wv = self.query_key_value.weight.view(new_tensor_shape)[:, tmp+1:tmp+2, :, :]
 
-                        init_method_attn_q(wq)
-                        init_method_attn_k(wk)
-                        init_method_attn_v(wv)
-                    if torch.distributed.get_rank() == 0:
-                        print('Override ParallelAttention init_method.', flush=True)
-            else:
-                self.query = tensor_parallel.ColumnParallelLinear(
-                    config.hidden_size,
-                    query_projection_size,
-                    config=config,
-                    init_method=config.init_method,
-                    bias=args.add_bias_linear,
-                    gather_output=False)
-                self.key = tensor_parallel.ColumnParallelLinear(
-                    config.hidden_size,
-                    kv_projection_size,
-                    config=config,
-                    init_method=config.init_method,
-                    bias=args.add_bias_linear,
-                    gather_output=False)
-                self.value = tensor_parallel.ColumnParallelLinear(
-                    config.hidden_size,
-                    kv_projection_size,
-                    config=config,
-                    init_method=config.init_method,
-                    bias=args.add_bias_linear,
-                    gather_output=False)
-            self.mup = args.mup
+                    init_method_attn_q(wq)
+                    init_method_attn_k(wk)
+                    init_method_attn_v(wv)
+                if torch.distributed.get_rank() == 0:
+                    print('Override ParallelAttention init_method.', flush=True)
         else:
             assert attention_type == AttnType.cross_attn
 
@@ -747,15 +667,9 @@ class ParallelAttention(MegatronModule):
         self.checkpoint_core_attention = config.recompute_granularity == 'selective'
 
         if self.use_flash_attn:
-            if args.mup != "apply":
-                self.core_attention_flash = FlashSelfAttention(
-                    causal=True, attention_dropout=config.attention_dropout
-                )
-            else:
-                softmax_scale =  args.mup_attn_multiplier / float(self.hidden_size_per_attention_head)
-                self.core_attention_flash = FlashSelfAttention(
-                    causal=True, softmax_scale=softmax_scale, attention_dropout=config.attention_dropout
-                )
+            self.core_attention_flash = FlashSelfAttention(
+                causal=True, attention_dropout=config.attention_dropout
+            )
 
         # Output.
         self.dense = tensor_parallel.RowParallelLinear(
@@ -766,14 +680,6 @@ class ParallelAttention(MegatronModule):
             bias=args.add_bias_linear,
             input_is_parallel=True,
             skip_bias_add=True)
-
-        if args.mup_coord_check:
-            self.query_no_op = torch.nn.Identity() # just for coordcheck
-            self.key_no_op = torch.nn.Identity() # just for coordcheck
-            self.value_no_op = torch.nn.Identity() # just for coordcheck
-            self.mup_coord_check = True
-        else:
-            self.mup_coord_check = False
 
     def _checkpointed_attention_forward(self, query_layer, key_layer,
                                         value_layer, attention_mask,
@@ -839,54 +745,36 @@ class ParallelAttention(MegatronModule):
         # Query, Key, and Value
         # =====================
         if self.attention_type == AttnType.self_attn:
-            if self.mup is None:
-                # Attention heads [sq, b, h] --> [sq, b, ng * (np/ng + 2) * hn)]
-                mixed_x_layer, _ = self.query_key_value(hidden_states)
 
-                # [sq, b, hp] --> [sq, b, ng, (np/ng + 2) * hn]
-                new_tensor_shape = mixed_x_layer.size()[:-1] + (
-                    self.num_query_groups_per_partition,
+            # Attention heads [sq, b, h] --> [sq, b, ng * (np/ng + 2) * hn)]
+            mixed_x_layer, _ = self.query_key_value(hidden_states)
+
+            # [sq, b, hp] --> [sq, b, ng, (np/ng + 2) * hn]
+            new_tensor_shape = mixed_x_layer.size()[:-1] + (
+                self.num_query_groups_per_partition,
+                (
+                    (self.num_attention_heads_per_partition // self.num_query_groups_per_partition + 2)
+                    * self.hidden_size_per_attention_head
+                ),
+            )
+            mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
+
+            # [sq, b, ng, (np/ng + 2) * hn] --> [sq, b, ng, np/ng * hn], [sq, b, ng, hn], [sq, b, ng, hn]
+            (query_layer,
+            key_layer,
+            value_layer) = torch.split(
+                mixed_x_layer,
+                [
                     (
-                        (self.num_attention_heads_per_partition // self.num_query_groups_per_partition + 2)
+                        self.num_attention_heads_per_partition // self.num_query_groups_per_partition
                         * self.hidden_size_per_attention_head
                     ),
-                )
-                mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
-
-                # [sq, b, ng, (np/ng + 2) * hn] --> [sq, b, ng, np/ng * hn], [sq, b, ng, hn], [sq, b, ng, hn]
-                (query_layer,
-                key_layer,
-                value_layer) = torch.split(
-                    mixed_x_layer,
-                    [
-                        (
-                            self.num_attention_heads_per_partition // self.num_query_groups_per_partition
-                            * self.hidden_size_per_attention_head
-                        ),
-                        self.hidden_size_per_attention_head,
-                        self.hidden_size_per_attention_head
-                    ],
-                    dim=3)
-                # [sq, b, ng, np/ng * hn] -> [sq, b, np, hn] -
-                query_layer = query_layer.reshape(query_layer.size(0), query_layer.size(1), -1, self.hidden_size_per_attention_head)
-            else:
-                query_layer, _ = self.query(hidden_states)
-                key_layer, _ = self.key(hidden_states)
-                value_layer, _ = self.value(hidden_states)
-                new_tensor_shape1 = query_layer.size()[:-1] + \
-                    (self.num_attention_heads_per_partition,
-                     self.hidden_size_per_attention_head)
-                query_layer = query_layer.view(new_tensor_shape1)
-                new_tensor_shape2 = key_layer.size()[:-1] + \
-                    (self.num_query_groups_per_partition,
-                     self.hidden_size_per_attention_head)
-                key_layer = key_layer.view(new_tensor_shape2)
-                value_layer = value_layer.view(new_tensor_shape2)
-
-            if self.mup_coord_check:
-                query_layer = self.query_no_op(query_layer)
-                key_layer = self.key_no_op(key_layer)
-                value_layer = self.value_no_op(value_layer)
+                    self.hidden_size_per_attention_head,
+                    self.hidden_size_per_attention_head
+                ],
+                dim=3)
+            # [sq, b, ng, np/ng * hn] -> [sq, b, np, hn] -
+            query_layer = query_layer.reshape(query_layer.size(0), query_layer.size(1), -1, self.hidden_size_per_attention_head)
         else:
             # Attention heads [sk, b, h] --> [sk, b, (np * 2 * hn)]
             mixed_kv_layer, _ = self.key_value(encoder_output)

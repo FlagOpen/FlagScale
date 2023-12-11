@@ -45,7 +45,6 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_inference_args(parser)
     parser = _add_transformer_engine_args(parser)
     parser = _add_retro_args(parser)
-    parser = _add_mup_args(parser)
     parser = _add_hetero_args(parser)
     parser = _add_experimental_args(parser)
 
@@ -335,7 +334,7 @@ def validate_args(args, defaults={}):
 
     # Checks.
     if args.ffn_hidden_size is None:
-        if args.swiglu and args.mup is None:
+        if args.swiglu:
             # Ref: https://github.com/facebookresearch/llama/blob/main/llama/model.py#L161-L162
             if args.multiple_of is not None:
                 hidden_dim = int(4 * args.hidden_size * 2 / 3)
@@ -500,10 +499,6 @@ def validate_args(args, defaults={}):
     retro_args = get_retro_args()
     if retro_args and args != retro_args:
         _print_args("retro arguments", types.SimpleNamespace(**{k:v for k,v in vars(retro_args).items() if k.startswith("retro")}, rank=args.rank))
-
-    # Mup
-    if args.mup is None:
-        args.mup_coord_check = False
 
     # Check for scaled init_method
     if args.apply_init_customized:
@@ -1093,35 +1088,6 @@ def _add_training_args(parser):
                        'garbage collection at the start and the end of each '
                        'evaluation run.', dest='manual_gc_eval')
 
-    return parser
-
-
-def _add_mup_args(parser):
-    group = parser.add_argument_group(title='mup hyperparameter search')
-    group.add_argument('--mup', default=None,
-                       choices=['prepare', 'apply'],
-                       help='which state of mup search to use.')
-    group.add_argument('--mup-attn-multiplier', type=float, default=None,
-                       help='Set the attention multiplier for mup.')
-    group.add_argument('--mup-output-multiplier', type=float, default=1.0,
-                       help='Set the attention multiplier for mup.')
-    group.add_argument('--query-zero-init', action='store_true',
-                       help='Initialize query weights to zero.')
-    group.add_argument('--readout-zero-init', action='store_true',
-                       help='Initialize readout weights to zero.')
-    group.add_argument('--mup-coord-check', default=False, action='store_true', 
-                       help='Enable coordination check.')
-    group.add_argument('--mup-coord-check-steps', type=int, default=10,
-                       help='Set steps for mup coordination check.')
-    group.add_argument('--mup-rescale-params', default=True, action='store_true', 
-                       help='Rescale the parameters for fresh training.')
-    group.add_argument('--mup-save', type=str, default=None,
-                       help='Output directory to save base shapes for mup.')
-    group.add_argument('--mup-delta-hidden-size', type=int, default=128,
-                       help='Set hidden size for mup delta.')
-    group.add_argument('--mup-coord-check-modules', nargs='+',
-                        default=[], help="Which modules to report "
-                        "(e.g. 'self_attention.query_key_value self_attention.dense')")
     return parser
 
 
