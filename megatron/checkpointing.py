@@ -199,7 +199,7 @@ def read_metadata(tracker_filename):
         if torch_xmlir:
             iters_cuda = torch_xmlir.xpu.LongTensor([iteration])
         else:
-            iters_cuda = torch.cuda.LongTensor([iteration])
+            iters_cuda = torch.tensor([iteration], dtype=torch.long, device='cuda')
         torch.distributed.all_reduce(iters_cuda, op=torch.distributed.ReduceOp.MAX)
         max_iter = iters_cuda[0].item()
 
@@ -511,8 +511,6 @@ def load_args_from_checkpoint(args, load_arg='load'):
     _set_arg('num_query_groups', force=True)
     _set_arg('group_query_attention', force=True)
     _set_arg('kv_channels')
-    _set_arg('group_query_attention', force=True)
-    _set_arg('num_query_groups', force=True)
     _set_arg('max_position_embeddings')
     _set_arg('position_embedding_type', force=True)
     _set_arg('add_position_embedding', force=True)
@@ -597,6 +595,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
         print_rank_0('could not find arguments in the checkpoint ...')
 
     # Model.
+    strict = False if args.retro_add_retriever else strict
     if len(model) == 1:
         model[0].load_state_dict(state_dict['model'], strict=strict)
     else:

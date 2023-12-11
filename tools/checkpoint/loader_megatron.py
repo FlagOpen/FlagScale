@@ -28,7 +28,7 @@ def _load_checkpoint(queue, args):
         sys.path.insert(0, args.megatron_path)
 
     try:
-        from megatron.arguments import parse_args, validate_args, _print_args
+        from megatron.arguments import parse_args, validate_args
         from megatron.global_vars import set_args, set_global_variables
         from megatron.checkpointing import load_args_from_checkpoint, load_checkpoint
         from megatron.model import module
@@ -246,7 +246,6 @@ def _load_checkpoint(queue, args):
 
                 # Get non-parallel tensors from tp_rank 0
                 layer = models[0].language_model.encoder.layers[layer_num]
-                #TODO: @aoyulong update this to use the new norm
                 message["input norm weight"] = layer.input_norm.weight.data
                 if norm_has_bias:
                     message["input norm bias"] = layer.input_norm.bias.data
@@ -302,7 +301,6 @@ def _load_checkpoint(queue, args):
 
                 total_layer_num = total_layer_num + 1
 
-    #TODO: @aoyulong update this to use the new norm
     # Send final norm from tp_rank 0
     message = {
         "weight": models[0].language_model.encoder.final_norm.weight.data,
@@ -328,7 +326,6 @@ def _load_checkpoint(queue, args):
         }
         queue_put("pooler", message)
 
-        #TODO: @aoyulong update this to use the new norm
         message = {
             "dense weight": models[0].lm_head.dense.weight.data,
             "dense bias": models[0].lm_head.dense.bias.data,

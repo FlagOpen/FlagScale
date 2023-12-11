@@ -136,6 +136,7 @@ def save_checkpoint(queue, args):
 
     margs = parse_args()
 
+
     if hasattr (md, 'checkpoint_args'):
         # These are arguments that we are either changing, or cause problems for validation if they are set
         # Note that some of these deal with T5 so will need to be changed if we support T5.
@@ -265,7 +266,6 @@ def save_checkpoint(queue, args):
             msg = queue_get(f"transformer layer {total_layer_num}")
 
             # duplicated tensors
-            #TODO: @aoyulong update this to use the new norm
             input_norm_weight = msg.pop("input norm weight")
             if md.norm_has_bias:
                 input_norm_bias = msg.pop("input norm bias")
@@ -300,7 +300,6 @@ def save_checkpoint(queue, args):
 
             # Save them to the model
             for tp_rank in range(args.target_tensor_parallel_size):
-                #TODO: @aoyulong update this to use the new norm
                 l = models[tp_rank].language_model.encoder.layers[layer]
                 l.input_norm.weight.data.copy_(input_norm_weight)
                 if md.norm_has_bias:
@@ -323,7 +322,6 @@ def save_checkpoint(queue, args):
 
 
         if post_process:
-            #TODO: @aoyulong update this to use the new norm
             msg = queue_get("final norm")
             final_norm_weight = msg.pop("weight")
             if md.norm_has_bias:
@@ -402,7 +400,6 @@ def save_checkpoint(queue, args):
                 print("received lm head")
                 lm_head_dense_weight = msg.pop("dense weight")
                 lm_head_dense_bias = msg.pop("dense bias")
-                #TODO: @aoyulong update this to use the new norm
                 lm_head_norm_weight = msg.pop("norm weight")
                 if md.norm_has_bias:
                     lm_head_norm_bias = msg.pop("norm bias")
