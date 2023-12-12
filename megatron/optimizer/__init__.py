@@ -20,12 +20,10 @@ from .distrib_optimizer import DistributedOptimizer
 from .grad_scaler import ConstantGradScaler, DynamicGradScaler
 from .optimizer import Float16OptimizerWithFloat16Params, FP32Optimizer
 
-
 def get_param_groups(modules,
                      no_weight_decay_cond,
                      scale_lr_cond,
-                     lr_mult,
-                     args):
+                     lr_mult):
     """creates param groups based on weight decay condition (regularized vs non regularized)
        and learning rate scale condition (args.lr vs lr_mult * args.lr)
        scale_lr_cond is used during finetuning where head of the network requires a scaled

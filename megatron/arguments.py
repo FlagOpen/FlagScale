@@ -457,7 +457,8 @@ def validate_args(args, defaults={}):
         assert args.pipeline_model_parallel_size == 1, \
             "retro currently does not support pipeline parallelism."
 
-        # Load retro args.
+    # Load retro args (used by both Retro & GPT).
+    if args.retro_workdir:
         retro_args_path = get_retro_args_path(args.retro_workdir)
         assert os.path.exists(retro_args_path), "retro workdir missing args.json"
         with open(retro_args_path) as f:
@@ -679,6 +680,8 @@ def _add_retro_args(parser):
                        'database.')
     group.add_argument("--retro-return-doc-ids", action="store_true",
                        help="Turn this on when preprocessing retro data.")
+    group.add_argument("--retro-attention-gate", type=float, default=1,
+                       help="Gated cross attention.")
     group.add_argument("--retro-no-verify-neighbor-count", action="store_false",
                        dest="retro_verify_neighbor_count",
                        help="Skip verifying that len(GPT dataset) == len(saved "
@@ -1333,6 +1336,7 @@ def _add_distributed_args(parser):
                        'affects the encoder embedding.)')
     group.add_argument('--use-distributed-optimizer', action='store_true',
                        help='Use distributed optimizer.')
+    #TODO: @aoyulong need to improve this new flag
     group.add_argument('--no-global-file-system', action='store_true', 
                        default=False, help='If set, the trianing wonnot use the global file system.')
     group.add_argument('--num-devices-per-node', type=int, default=8,

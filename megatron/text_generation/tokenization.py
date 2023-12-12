@@ -134,7 +134,7 @@ def _tokenize_prompts_and_batch(prompts, tokens_to_generate, add_BOS):
         prompts_tokens_tensor = torch_xmlir.xpu.LongTensor(prompts_tokens)
         prompts_length_tensor = torch_xmlir.xpu.LongTensor(prompts_length)
     else:
-        prompts_tokens_tensor = torch.cuda.LongTensor(prompts_tokens)
-        prompts_length_tensor = torch.cuda.LongTensor(prompts_length)
+        prompts_tokens_tensor = torch.tensor(prompts_tokens, dtype=torch.long, device='cuda')
+        prompts_length_tensor = torch.tensor(prompts_length, dtype=torch.long, device='cuda')
 
     return prompts_tokens_tensor, prompts_length_tensor

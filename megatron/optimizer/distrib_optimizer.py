@@ -444,9 +444,12 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
                     #TODO: @aoyulong add support for kunlun chip
                     # Handle older/newer method for getting untyped storage.
                     try:
-                        storage = bucket.data.storage()._untyped()
+                        storage = bucket.data.untyped_storage()
                     except:
-                        storage = bucket.data.storage().untyped()
+                        try:
+                            storage = bucket.data.storage()._untyped()
+                        except:
+                            storage = bucket.data.storage().untyped()
 
                     # Typed param buffer.
                     param_buffer = torch.tensor(
