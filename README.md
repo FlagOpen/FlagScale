@@ -22,7 +22,7 @@ FlagScale provides developers with the actual configurations, optimization schem
 
 ## Quick Start
 
-We highly recommend developers to follow the [Megatron-LM Usage](./README_original.md#contents). Here we provide instructions for Aquila LLMs:
+We highly recommend developers to follow the [Megatron-LM Usage](./megatron/README.md#contents). Here we provide instructions for Aquila LLMs:
 
 ### Setup 
 
