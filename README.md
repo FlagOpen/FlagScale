@@ -40,7 +40,7 @@ pip install -r requirements.txt
 1. Change to the aquila directory 
 
 ```
-cd FlagScale/examples/aquila
+cd FlagScale/aquila
 ```
 2. Start a distributed training job 
 
@@ -107,7 +107,7 @@ cd FlagScale
 ```
 python tools/checkpoint_util.py --model-type GPT \
         --load-dir ${LOAD_DIR} --save-dir ${SAVE_DIR} \
-        --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json \
+        --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/aquila/tokenizer/vocab.json \
         --megatron-path ${FlagScale_HOME} --target-tensor-parallel-size 1 --target-pipeline-parallel-size 1
 ```
 Please set the following variables before running the command:
@@ -145,7 +145,7 @@ cd FlagScale
 ```
 python tools/checkpoint_util.py --model-type GPT \
         --load-dir ${LOAD_DIR} --save-dir ${SAVE_DIR} \
-        --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json \
+        --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/aquila/tokenizer/vocab.json \
         --megatron-path ${FlagScale_HOME} --target-tensor-parallel-size 1 --target-pipeline-parallel-size 1
 ```
 Please set the following variables before running the command:
@@ -184,7 +184,7 @@ cd FlagScale
 
 ```
 python tools/checkpoint_util_lite.py --conversion-type weight --model-type GPT --load-dir ${LOAD_DIR} --save-dir ${SAVE_DIR} \ 
-    --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json --megatron-path  ${FlagScale_HOME} \
+    --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/aquila/tokenizer/vocab.json --megatron-path  ${FlagScale_HOME} \
     --target-tensor-parallel-size ${TP} --target-pipeline-parallel-size ${PP} 
 ```
 Please set the following variables before running the command:
@@ -198,7 +198,7 @@ Please set the following variables before running the command:
 3. Repartition the distributed optimizer 
 ```
 python tools/checkpoint_util_lite.py --conversion-type optimizer --model-type GPT --load-dir ${LOAD_DIR} --save-dir ${SAVE_DIR} \ 
-    --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json --megatron-path  ${FlagScale_HOME} \
+    --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/aquila/tokenizer/vocab.json --megatron-path  ${FlagScale_HOME} \
     --target-tensor-parallel-size ${TP} --target-pipeline-parallel-size ${PP} 
 ```
 Please set the following variables before running the command **as these used in the model weight conversion**:

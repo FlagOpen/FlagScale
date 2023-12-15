@@ -27,26 +27,26 @@ if model_iteration != -1:
 
 sh_content = """#!/bin/bash
 
-DISTRIBUTED_ARGS="--nproc_per_node 1 \
+DISTRIBUTED_ARGS="--nproc_per_node 8 \
                   --nnodes 1 \
                   --node_rank 0 \
                   --master_addr localhost \
                   --master_port {master_port}"
 
 CHECKPOINT={checkpoint_path}
-VOCAB_FILE=examples/aquila/tokenizer/vocab.json
-MERGE_FILE=examples/aquila/tokenizer/merges.txt
-SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
+VOCAB_FILE=../aquila/tokenizer/vocab.json
+MERGE_FILE=../aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=../aquila/tokenizer/special_tokens.txt
 
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 
-CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_generation_uvicorn_server.py \
+CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_generation_uvicorn_server_single_thread.py \
        --server-port {server_port} \
        --model-info {model_info} \
        --make-vocab-size-divisible-by 64 \
        --use-flash-attn \
        --apply-layernorm-rms \
-       --tensor-model-parallel-size 1  \
+       --tensor-model-parallel-size 8  \
        --pipeline-model-parallel-size 1  \
        --num-layers 60  \
        --hidden-size 6144  \

@@ -1,15 +1,15 @@
 #!/bin/bash
 
 export CUDA_DEVICE_MAX_CONNECTIONS=1
-export NCCL_SOCKET_IFNAME=eth0
+export NCCL_SOCKET_IFNAME=bond0
 export NCCL_IB_DISABLE=0
 export NCCL_IB_CUDA_SUPPORT=1
 export NCCL_IB_GID_INDEX=0
-export NCCL_IB_HCA=mlx5_2,mlx5_5
+export NCCL_IB_HCA=mlx5_0,mlx5_1
 export NCCL_DEBUG=INFO
 export OMP_NUM_THREADS=4
 export CUDA_DEVICE_MAX_CONNECTIONS=1
-export GLOO_SOCKET_IFNAME=eth0
+export GLOO_SOCKET_IFNAME=bond0
 
 # The format of train and valid data for finetuning is jsonl. 
 set -u
@@ -25,9 +25,9 @@ CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$EXPNAME
 LOAD_CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$LOAD_EXPNAME
 echo "LOAD_CHECKPOINT_PATH", $LOAD_CHECKPOINT_PATH
 mkdir -p $CHECKPOINT_PATH
-VOCAB_FILE=examples/aquila/tokenizer/vocab.json
-MERGE_FILE=examples/aquila/tokenizer/merges.txt
-SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
+VOCAB_FILE=../aquila/tokenizer/vocab.json
+MERGE_FILE=../aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=../aquila/tokenizer/special_tokens.txt
 LOG_PATH=$PROJ_HOME/logs/$EXPNAME
 mkdir -p $LOG_PATH
 cp $0 $LOG_PATH/
@@ -37,12 +37,12 @@ WB_PATH=$PROJ_HOME/wandb/$EXPNAME
 mkdir -p $WB_PATH
 
 # Change for multinode config
-export NODE_ADDR=$(ifconfig -a|grep inet|grep -v 127.0.0.1|grep -v inet6|awk '{print $2;}'|tr -d "addr:"|head -n 1)
+export NODE_ADDR=$(ifconfig bond0|grep inet|grep -v 127.0.0.1|grep -v inet6|awk '{print $2;}'|tr -d "addr:"|head -n 1)
 export GPUS_PER_NODE=$(awk '{$1=$1;print}' $HOSTFILE|awk -F" |=" '{ranks[$1]=$NF;}END{print ranks["'$NODE_ADDR'"];}')
 export NNODES=$(cat $HOSTFILE | wc -l)
 export MASTER_ADDR=$(head -n1 $HOSTFILE | awk '{print $1;}')
 export NODE_RANK=$(awk '{ranks[$1]=(FNR-1);}END{print ranks["'$NODE_ADDR'"];}' $HOSTFILE)
-export MASTER_PORT=12345
+export MASTER_PORT=23456
 WORLD_SIZE=$(($GPUS_PER_NODE * $NNODES))
 
 DISTRIBUTED_ARGS="
@@ -55,26 +55,26 @@ DISTRIBUTED_ARGS="
 
 # Change iters based on dataset size, epoch num and global bsz
 TRAINING_ARGS="
-    --train-iters 14700 \
+    --train-iters 5000 \
     --dataloader-type cyclic \
     --eval-iters 0 \
     --eval-interval 20 \
-    --tensor-model-parallel-size 1 \
-    --pipeline-model-parallel-size 1 \
+    --tensor-model-parallel-size 8 \
+    --pipeline-model-parallel-size 4 \
     --make-vocab-size-divisible-by 64 \
     --micro-batch-size 1 \
-    --global-batch-size 128 \
+    --global-batch-size 256 \
     --disable-bias-linear \
-    --use-distributed-optimizer \
-    --use-flash-attn
+    --sequence-parallel \
+    --recompute-granularity 'full' \
+    --recompute-method 'uniform' \
+    --use-distributed-optimizer
 "
 
 MIXED_PRECISION_ARGS="
-    --fp16 \
-    --initial-loss-scale 65536 \
-    --min-loss-scale 1.0 \
-    --embedding-weights-in-fp32 \
+    --bf16 \
     --attention-softmax-in-fp32 \
+    --embedding-weights-in-fp32 \
     --rotary-position-embeddings-in-fp32 \
     --accumulate-allreduce-grads-in-fp32
 "
@@ -90,19 +90,21 @@ DATA_ARGS="
 "
 
 NETWORK_ARGS="
-    --num-layers 32 \
-    --hidden-size 4096 \
-    --num-attention-heads 32 \
-    --seq-length 2048 \
-    --max-position-embeddings 2048 \
+    --num-layers 80 \
+    --hidden-size 8192 \
+    --num-attention-heads 64 \
+    --group-query-attention \
+    --num-query-groups 8 \
+    --hidden-dim-multiplier 1.3 \
+    --seq-length 4096 \
+    --max-position-embeddings 4096 \
     --layernorm-epsilon 1e-5 \
+    --layernorm-init-weight 0.25 \
     --use-rotary-position-embeddings \
-    --rotary-position-embeddings-in-fp32 \
     --no-position-embedding \
     --swiglu \
-    --multiple-of 256 \
+    --multiple-of 4096 \
     --apply-layernorm-rms \
-    --rotary-interleaved-patch \
     --untie-embeddings-and-output-weights
 "
 
@@ -128,7 +130,7 @@ LEARNING_RATE_ARGS="
 "
 
 CHECKPOINTING_ARGS="
-    --save-interval 2000 \
+    --save-interval 1000 \
     --save $CHECKPOINT_PATH \
     --load $LOAD_CHECKPOINT_PATH
     --no-load-optim \
@@ -156,5 +158,3 @@ cmd="torchrun $DISTRIBUTED_ARGS finetune_aquila.py \
     "
 echo $cmd
 eval $cmd
-
-

@@ -1,33 +1,21 @@
 #!/bin/bash
 
-export CUDA_DEVICE_MAX_CONNECTIONS=1
-export NCCL_SOCKET_IFNAME=bond0
-export NCCL_IB_DISABLE=0
-export NCCL_IB_CUDA_SUPPORT=1
-export NCCL_IB_GID_INDEX=0
-export NCCL_IB_HCA=mlx5_0,mlx5_1
-export NCCL_DEBUG=INFO
-export OMP_NUM_THREADS=4
-export CUDA_DEVICE_MAX_CONNECTIONS=1
-export GLOO_SOCKET_IFNAME=bond0
+PROJ_HOME=$1
+EXPNAME=$2
+HOSTFILE=$3
+DATA_PATH=$4
 
-# The format of train and valid data for finetuning is jsonl. 
-set -u
-  PROJ_HOME=$1
-  EXPNAME=$2
-  LOAD_EXPNAME=$3
-  HOSTFILE=$4
-  TRAIN_DATA_PATH=$5
-  VALID_DATA_PATH=$6
-set +u
+# Preapre the environment related configuration
+source examples/aquila/env.sh
 
+# Define files related to tokenizer
+VOCAB_FILE=../aquila/tokenizer/vocab.json
+MERGE_FILE=../aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=../aquila/tokenizer/special_tokens.txt
+
+# Build some paths for the current training
 CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$EXPNAME
-LOAD_CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$LOAD_EXPNAME
-echo "LOAD_CHECKPOINT_PATH", $LOAD_CHECKPOINT_PATH
 mkdir -p $CHECKPOINT_PATH
-VOCAB_FILE=examples/aquila/tokenizer/vocab.json
-MERGE_FILE=examples/aquila/tokenizer/merges.txt
-SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
 LOG_PATH=$PROJ_HOME/logs/$EXPNAME
 mkdir -p $LOG_PATH
 cp $0 $LOG_PATH/
@@ -36,38 +24,35 @@ mkdir -p $TB_PATH
 WB_PATH=$PROJ_HOME/wandb/$EXPNAME
 mkdir -p $WB_PATH
 
-# Change for multinode config
-export NODE_ADDR=$(ifconfig bond0|grep inet|grep -v 127.0.0.1|grep -v inet6|awk '{print $2;}'|tr -d "addr:"|head -n 1)
-export GPUS_PER_NODE=$(awk '{$1=$1;print}' $HOSTFILE|awk -F" |=" '{ranks[$1]=$NF;}END{print ranks["'$NODE_ADDR'"];}')
-export NNODES=$(cat $HOSTFILE | wc -l)
-export MASTER_ADDR=$(head -n1 $HOSTFILE | awk '{print $1;}')
-export NODE_RANK=$(awk '{ranks[$1]=(FNR-1);}END{print ranks["'$NODE_ADDR'"];}' $HOSTFILE)
-export MASTER_PORT=23456
-WORLD_SIZE=$(($GPUS_PER_NODE * $NNODES))
-
 DISTRIBUTED_ARGS="
-    --nproc_per_node $GPUS_PER_NODE \
-    --nnodes $NNODES \
+    --nproc_per_node $NODE_DEVICES \
+    --nnodes $NUM_NODES \
     --node_rank $NODE_RANK \
     --master_addr $MASTER_ADDR \
-    --master_port $MASTER_PORT
+    --master_port $MASTER_PORT 
 "
 
-# Change iters based on dataset size, epoch num and global bsz
+HETERO_ARGS="
+    --hetero-mode pp \
+    --hetero-current-device-type $NODE_TYPE \
+    --hetero-device-types A800 A100 \
+    --hetero-pipeline-stages 1 15 3 15 15 15 \
+"
+
 TRAINING_ARGS="
-    --train-iters 5000 \
-    --dataloader-type cyclic \
+    --train-samples 488281250 \
+    --rampup-batch-size 32 32 2000000 \
     --eval-iters 0 \
-    --eval-interval 20 \
-    --tensor-model-parallel-size 8 \
+    --eval-interval 2000 \
+    --tensor-model-parallel-size 4 \
     --pipeline-model-parallel-size 4 \
     --make-vocab-size-divisible-by 64 \
     --micro-batch-size 1 \
-    --global-batch-size 256 \
+    --global-batch-size 1024 \
     --disable-bias-linear \
-    --sequence-parallel \
     --recompute-granularity 'full' \
     --recompute-method 'uniform' \
+    --sequence-parallel \
     --use-distributed-optimizer
 "
 
@@ -80,26 +65,27 @@ MIXED_PRECISION_ARGS="
 "
 
 DATA_ARGS="
-    --train-data-path $TRAIN_DATA_PATH \
-    --valid-data-path $VALID_DATA_PATH \
+    --data-path $DATA_PATH \
     --tokenizer-type AquilaTokenizer \
     --vocab-file $VOCAB_FILE \
     --vocab-size 100008\
+    --merge-file $MERGE_FILE \
     --special-tokens-file $SPECIAL_TOKENS_FILE \
-    --merge-file $MERGE_FILE
+    --data-impl mmap \
+    --split 1
 "
 
 NETWORK_ARGS="
-    --num-layers 80 \
-    --hidden-size 8192 \
-    --num-attention-heads 64 \
+    --num-layers 60 \
+    --hidden-size 6144 \
+    --num-attention-heads 48 \
     --group-query-attention \
     --num-query-groups 8 \
     --hidden-dim-multiplier 1.3 \
     --seq-length 4096 \
     --max-position-embeddings 4096 \
     --layernorm-epsilon 1e-5 \
-    --layernorm-init-weight 0.25 \
+    --layernorm-init-weight 0.3 \
     --use-rotary-position-embeddings \
     --no-position-embedding \
     --swiglu \
@@ -109,7 +95,7 @@ NETWORK_ARGS="
 "
 
 INITIALIZATION_ARGS="
-    --init-method-std 0.02 \
+    --init-method-std 0.0165 \
     --seed 42
 "
 
@@ -123,19 +109,17 @@ REGULARIZATION_ARGS="
 "
 
 LEARNING_RATE_ARGS="
-    --lr 9.65e-6 \
-    --lr-decay-style linear \
-    --lr-warmup-fraction 0.1 \
-    --min-lr 0.0
+    --lr 1.5e-4 \
+    --lr-decay-style cosine \
+    --lr-warmup-samples 500000 \
+    --min-lr 1.5e-5
 "
 
 CHECKPOINTING_ARGS="
     --save-interval 1000 \
+    --rampup-save-interval 5000 \
     --save $CHECKPOINT_PATH \
-    --load $LOAD_CHECKPOINT_PATH
-    --no-load-optim \
-    --no-load-rng \
-    --finetune
+    --load $CHECKPOINT_PATH
 "
 
 LOGGING_ARGS="
@@ -145,7 +129,8 @@ LOGGING_ARGS="
     --wandb-dir $WB_PATH
 "
 
-cmd="torchrun $DISTRIBUTED_ARGS finetune_aquila.py \
+cmd="torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
+              $HETERO_ARGS \
               $TRAINING_ARGS \
               $MIXED_PRECISION_ARGS \
               $DATA_ARGS \

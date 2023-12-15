@@ -9,9 +9,9 @@ DATA_PATH=$4
 source examples/aquila/env.sh
 
 # Define files related to tokenizer
-VOCAB_FILE=examples/aquila/tokenizer/vocab.json
-MERGE_FILE=examples/aquila/tokenizer/merges.txt
-SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
+VOCAB_FILE=../aquila/tokenizer/vocab.json
+MERGE_FILE=../aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=../aquila/tokenizer/special_tokens.txt
 
 # Build some paths for the current training
 CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$EXPNAME
@@ -23,6 +23,7 @@ TB_PATH=$PROJ_HOME/tboard/$EXPNAME
 mkdir -p $TB_PATH
 WB_PATH=$PROJ_HOME/wandb/$EXPNAME
 mkdir -p $WB_PATH
+
 
 DISTRIBUTED_ARGS="
     --nproc_per_node $NODE_DEVICES \
@@ -36,7 +37,7 @@ HETERO_ARGS="
     --hetero-mode pp \
     --hetero-current-device-type $NODE_TYPE \
     --hetero-device-types A800 A100 \
-    --hetero-pipeline-stages 1 15 3 15 15 15 \
+    --hetero-pipeline-stages 1 20 3 20 20 20 \
 "
 
 TRAINING_ARGS="
@@ -44,14 +45,12 @@ TRAINING_ARGS="
     --rampup-batch-size 32 32 2000000 \
     --eval-iters 0 \
     --eval-interval 2000 \
-    --tensor-model-parallel-size 4 \
+    --tensor-model-parallel-size 8 \
     --pipeline-model-parallel-size 4 \
-    --make-vocab-size-divisible-by 64 \
     --micro-batch-size 1 \
     --global-batch-size 1024 \
     --disable-bias-linear \
-    --recompute-granularity 'full' \
-    --recompute-method 'uniform' \
+    --use-flash-attn \
     --sequence-parallel \
     --use-distributed-optimizer
 "
@@ -69,6 +68,7 @@ DATA_ARGS="
     --tokenizer-type AquilaTokenizer \
     --vocab-file $VOCAB_FILE \
     --vocab-size 100008\
+    --make-vocab-size-divisible-by 64 \
     --merge-file $MERGE_FILE \
     --special-tokens-file $SPECIAL_TOKENS_FILE \
     --data-impl mmap \
@@ -76,16 +76,16 @@ DATA_ARGS="
 "
 
 NETWORK_ARGS="
-    --num-layers 60 \
-    --hidden-size 6144 \
-    --num-attention-heads 48 \
+    --num-layers 80 \
+    --hidden-size 8192 \
+    --num-attention-heads 64 \
     --group-query-attention \
     --num-query-groups 8 \
     --hidden-dim-multiplier 1.3 \
     --seq-length 4096 \
     --max-position-embeddings 4096 \
     --layernorm-epsilon 1e-5 \
-    --layernorm-init-weight 0.3 \
+    --layernorm-init-weight 0.25 \
     --use-rotary-position-embeddings \
     --no-position-embedding \
     --swiglu \
@@ -95,7 +95,7 @@ NETWORK_ARGS="
 "
 
 INITIALIZATION_ARGS="
-    --init-method-std 0.0165 \
+    --init-method-std 0.0149 \
     --seed 42
 "
 
@@ -116,7 +116,7 @@ LEARNING_RATE_ARGS="
 "
 
 CHECKPOINTING_ARGS="
-    --save-interval 1000 \
+    --save-interval 500 \
     --rampup-save-interval 5000 \
     --save $CHECKPOINT_PATH \
     --load $CHECKPOINT_PATH

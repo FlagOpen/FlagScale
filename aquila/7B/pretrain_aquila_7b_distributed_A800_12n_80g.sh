@@ -27,8 +27,8 @@ set +u
 
 CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$EXPNAME
 mkdir -p $CHECKPOINT_PATH
-VOCAB_FILE=examples/aquila/tokenizer/vocab.json
-MERGE_FILE=examples/aquila/tokenizer/merges.txt
+VOCAB_FILE=../aquila/tokenizer/vocab.json
+MERGE_FILE=../aquila/tokenizer/merges.txt
 LOG_PATH=$PROJ_HOME/logs/$EXPNAME
 mkdir -p $LOG_PATH
 cp $0 $LOG_PATH/

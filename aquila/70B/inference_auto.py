@@ -1,22 +1,17 @@
 
-######
-# Note that this script is used to serve the checkpoints from the continuous training of the Aquila-7B model,
-# which was first trained by BMTrain. So if you want to start from scratch, please remove the
-# "--rotary-interleaved-patch" arguments.
-######
-
 import argparse
 import os 
 
 parser = argparse.ArgumentParser(
-        prog='7b-base-server',
+        prog='70b-base-server', 
     )
+
 parser.add_argument('--server-port', required=True, type=int)
 parser.add_argument('--master-process', required=True, type=int)
-parser.add_argument('--device', default='0', type=str)
+parser.add_argument('--device', default='0,1,2,3', type=str)
 parser.add_argument('--iteration', required=False, type=int, default=-1)
 parser.add_argument('--checkpoint-path', required=True, type=str)
-parser.add_argument('--model-info', required=True, type=str)
+parser.add_argument('--model-info', required=True, type=str, default="")
 
 args = parser.parse_args()
 
@@ -32,55 +27,64 @@ if model_iteration != -1:
         f.write(str(model_iteration))
 
 sh_content = """#!/bin/bash
+WORLD_SIZE=4
 
-DISTRIBUTED_ARGS="--nproc_per_node 1 \
+DISTRIBUTED_ARGS="--nproc_per_node $WORLD_SIZE \
                   --nnodes 1 \
                   --node_rank 0 \
                   --master_addr localhost \
                   --master_port {master_port}"
 
+VOCAB_FILE=../aquila/tokenizer/vocab.json
+MERGE_FILE=../aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=../aquila/tokenizer/special_tokens.txt
+
 CHECKPOINT={checkpoint_path}
-VOCAB_FILE=examples/aquila/tokenizer/vocab.json
-MERGE_FILE=examples/aquila/tokenizer/merges.txt
-SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
 
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 
 CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_generation_uvicorn_server.py \
        --server-port {server_port} \
        --model-info {model_info} \
+       --make-vocab-size-divisible-by 64 \
+       --vocab-size 100008 \
        --use-flash-attn \
-       --rotary-interleaved-patch \
        --apply-layernorm-rms \
-       --tensor-model-parallel-size 1  \
+       --tensor-model-parallel-size 4  \
        --pipeline-model-parallel-size 1  \
-       --num-layers 32  \
-       --hidden-size 4096  \
+       --num-layers 80  \
+       --hidden-size 8192  \
+       --hidden-dim-multiplier 1.3 \
        --load ${CHECKPOINT}  \
        --disable-bias-linear \
        --layernorm-epsilon 1e-5 \
-       --num-attention-heads 32  \
-       --max-position-embeddings 2048  \
+       --layernorm-init-weight 0.25 \
+       --num-attention-heads 64  \
+       --group-query-attention \
+       --num-query-groups 8 \
+       --max-position-embeddings 4096  \
        --use-rotary-position-embeddings \
+       --rotary-position-embeddings-in-fp32 \
        --no-position-embedding \
        --swiglu \
-       --multiple-of 256 \
+       --multiple-of 4096 \
        --untie-embeddings-and-output-weights \
        --tokenizer-type AquilaTokenizer  \
-       --fp16  \
+       --bf16  \
+       --attention-softmax-in-fp32 \
+       --embedding-weights-in-fp32 \
        --micro-batch-size 1  \
-       --seq-length 2048  \
-       --out-seq-length 2048  \
+       --seq-length 4096  \
+       --out-seq-length 3000  \
        --temperature 1.0  \
        --vocab-file $VOCAB_FILE  \
        --merge-file $MERGE_FILE  \
+       --special-tokens-file $SPECIAL_TOKENS_FILE  \
        --top_p 0.9  \
-       --seed 42   \
-       --special-tokens-file $SPECIAL_TOKENS_FILE 
-       
+       --seed 42
 """
 
-sh_dir = "./examples/aquila/7B/server"
+sh_dir = "./examples/aquila/70b/server"
 os.makedirs(sh_dir, exist_ok=True)
 
 sh_filename = os.path.join(sh_dir, f"{model_info}.sh")

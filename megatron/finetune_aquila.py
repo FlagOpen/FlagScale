@@ -14,7 +14,12 @@ from megatron.utils import get_ltor_masks_and_position_ids
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron.arguments import core_transformer_config_from_args
 
-from examples.aquila.utils.convo_dataset import build_train_valid_test_datasets
+import sys 
+import os
+# Add aquila to sys.path
+sys.path.append(os.path.join(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))), 'aquila/'))
+from aquila.utils.convo_dataset import build_train_valid_test_datasets
 
 def model_provider(pre_process=True, post_process=True):
     """Build the model."""
