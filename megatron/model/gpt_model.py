@@ -12,6 +12,20 @@ from .enums import AttnMaskType
 from .language_model import parallel_lm_logits
 from .language_model import get_language_model
 
+# This is used for monkey-patching demonstration.
+from megatron import get_device_type
+
+
+# This is used for monkey-patching demonstration.
+def print_device_type():
+    from megatron import print_rank_0
+    device_type = get_device_type()
+    if device_type:
+        print_rank_0("=== Original Device Type: {} ===".format(device_type))
+    else:
+        print_rank_0("=== Original Device Type: None ===")
+
+
 
 def post_language_model_processing(lm_output, labels, logit_weights,
                                    parallel_output,
@@ -70,6 +84,9 @@ class GPTModel(MegatronModule):
         
         if not args.untie_embeddings_and_output_weights:
             self.initialize_word_embeddings()
+        
+        # This is used for monkey-patching demonstration.
+        print_device_type()
 
     def set_input_tensor(self, input_tensor):
         """See megatron.model.transformer.set_input_tensor()"""
