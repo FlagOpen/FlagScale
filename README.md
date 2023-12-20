@@ -14,11 +14,11 @@ FlagScale provides developers with the actual configurations, optimization schem
 ## News and Updates
 
 * 2023.11.30 We release the new version (v0.2): 
-  * Provide the actually used training scheme for [Aquila2-70B-Expr](./examples/aquila/70B), including the parallel strategies, optimizations and hyper-parameter settings.
+  * Provide the actually used training scheme for [Aquila2-70B-Expr](./aquila/70B), including the parallel strategies, optimizations and hyper-parameter settings.
   * Support heterogeneous training on chips of different generations with the same architecture or compatible architectures, including NVIDIA GPUs and Iluvatar CoreX chips. 
   * Support training on chinese domestic hardwares, including Iluvatar CoreX and Baidu KUNLUN chips.
 
-* 2023.10.11 We release the initial version (v0.1) by supporting the Aquila models, and also provide our actually used training schemes for [Aquila2-7B](./examples/aquila/7B/pretrain_aquila_7b_distributed_A800_12n_80g.sh) and [Aquila2-34B](./examples/aquila/34B/pretrain_aquila_34b_distributed_A100_64n_40g.sh), including the parallel strategies, optimizations and hyper-parameter settings.
+* 2023.10.11 We release the initial version (v0.1) by supporting the Aquila models, and also provide our actually used training schemes for [Aquila2-7B](./aquila/7B/pretrain_aquila_7b_distributed_A800_12n_80g.sh) and [Aquila2-34B](./aquila/34B/pretrain_aquila_34b_distributed_A100_64n_40g.sh), including the parallel strategies, optimizations and hyper-parameter settings.
 
 ## Quick Start
 
@@ -26,7 +26,7 @@ We highly recommend developers to follow the [Megatron-LM Usage](./megatron/READ
 
 ### Setup 
 
-1. Install the Megatron-LM dependencies as the [original link](./README_original.md#setup)
+1. Install the Megatron-LM dependencies as the [original link](./megatron/README.md#setup)
 
 2. Install the requirements for FlagScale
 ```
@@ -35,7 +35,60 @@ cd FlagScale
 pip install -r requirements.txt
 ```
 
-### Pretrain the Aquila model
+### Pretrain the Aquila model (new)
+1. Change to the aquila directory 
+
+```
+cd FlagScale
+```
+2. Start a distributed training job 
+
+```
+python run.py --config <config_path> --extra_config <extra_config_path> --action <action> --stop-key <stop_key>
+```
+
+* `--config <config_path>`: This argument is used to specify the path to the main configuration JSON file. This file contains key-value pairs configuration of the experiment. The key-value pairs are exact same as the original Megatron-LM arguments (only by replacing `_` with `-`). You can refer to the [source file](./megatron/megatron/arguments.py) for more configurations. The [pre-defined configuration](predefined_args_megatron.json) need to be provided for the experiment:
+  * `experiment`: This section contains configuration options related to the experiment setup.
+    * `log_dir`: The directory where the log files of the experiment will be stored. If `null`, the logs may be saved in `logs` of the current directory.
+    * `hostfile`: The file that contains a list of hosts where the experiment will be run. If `null`, the experiment will be run on the local machine.
+    * `no_shared_fs`: A boolean value that indicates whether the file system is shared between the hosts. The default value is `false`. 
+    * `ssh_port`: The port to use for SSH connections when distributing the experiment across multiple hosts. If `null`, the default SSH port 22 will be used.
+    * `shell_cmds`: Shell commands to be executed before running the experiment.
+  * `launch`: This section contains launch configuration options for the `torchrun` of the experiment.
+  * `env_vars`: This section contains environment variables that will be set for the experiment.
+
+* `--extra_config <extra_config_path>`: This argument is used to specify the path to an extra configuration file. This file should also be a JSON file and can contain additional configuration options that are not in the main configuration file. The options in this file will override the options in the main configuration file if they have the same keys.
+
+* `--action <action>`: This argument is used to specify the action to perform. The default value is `run` if none is specified. The possible values are:
+  * `generate`: This will generate the experiment shell script based on the provided configuration files and stop. The generated script will be saved to `log_dir`. You can use this action to check if the configuration is correct.
+  * `run`: This will generate the experiment shell script and run the experiment immediately. Both the generated script and the log for the experiment will be saved to `log_dir`. The experiment will be run in the background.
+  * `stop`: This will stop the experiment. You also need to provide the `--stop-key` argument with this action. The `stop_key` should be the PID of the experiment process that you want to stop.
+
+* `--stop_key <stop_key>`: This argument is used with the `stop` action to matching the process name of the experiment process that you want to stop. The default value is `torchrun` if none is specified.
+
+Here's an example of how to use these arguments:
+
+```shell
+# Generate the experiment script
+python run.py \
+  --config aquila/7B/pretrain_aquila_7b_distributed.json \
+  --extra_config apu_demo/scripts/pretrain_aquila_7b_distributed_extra.json \
+  --action generate 
+
+# Run the experiment
+python run.py \
+  --config aquila/7B/pretrain_aquila_7b_distributed.json \
+  --extra_config apu_demo/scripts/pretrain_aquila_7b_distributed_extra.json \
+  --action run
+
+# Stop the experiment
+python run.py \
+  --config aquila/7B/pretrain_aquila_7b_distributed.json \
+  --extra_config apu_demo/scripts/pretrain_aquila_7b_distributed_extra.json \
+  --action stop 
+```
+
+### Pretrain the Aquila model (old)
 
 1. Change to the aquila directory 
 
