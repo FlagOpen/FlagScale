@@ -104,7 +104,7 @@ def diff_dict(d1, d2):
             modified.update(m)
         else:
             if d2[k] != d1[k]:
-                modified[k] = (d2[k], d1[k])
+                modified[k] = (d1[k], d2[k])
 
     return added, deleted, modified
 
@@ -227,6 +227,8 @@ def generate_command(config):
     entry_script = "pretrain_gpt.py"
 
     def _config_to_arg(key, value):
+        if key.startswith("__comment__") or value is None or value is False:
+            return ""
         key = key.replace("_", "-")
         return f"    --{key} {value}"
 
@@ -276,6 +278,7 @@ def run_experiment(config, generate_only=False):
     """
     expr_config = config["experiment"]
     hostfile = expr_config.get("hostfile", None)
+    no_shared_fs = expr_config.get("no_shared_fs")
     ssh_port = expr_config.get("ssh_port", 22)
     log_dir = expr_config["log_dir"]
     if log_dir is None:
@@ -313,6 +316,10 @@ def run_experiment(config, generate_only=False):
         bash_file = os.path.abspath(bash_file)
         with open(bash_file, "w") as f:
             f.write(bash_script)
+        
+        if no_shared_fs:
+            subprocess.run(["scp", "-P", str(ssh_port), bash_file, f"{host}:{bash_file}"], check=True)
+            print(f"scp -P {ssh_port} {bash_file} {host}:{bash_file}")
 
         cmd = f"cd {os.path.join(expr_config['home_dir'], 'megatron')}; nohup bash {bash_file} 2>&1 &"
         wrapped_cmd = f"'bash -c \"{cmd}\"'"
