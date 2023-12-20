@@ -1,0 +1,20 @@
+
+{
+    "experiment": {
+        "log_dir": null,
+        "hostfile": null,
+        "ssh_port": 22,
+        "shell_cmds": "pwd" 
+    },
+    "launch": {
+        "nnodes": 1,
+        "nproc_per_node": 1,
+        "node_rank": 0,
+        "master_addr": "localhost",
+        "master_port": 1234
+    },
+    "env_vars": {
+        "CUDA_DEVICE_MAX_CONNECTIONS": 1,
+        "OMP_NUM_THREADS": 4
+    }
+}

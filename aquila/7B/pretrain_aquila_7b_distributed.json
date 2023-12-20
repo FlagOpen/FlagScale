@@ -1,0 +1,118 @@
+{
+    "experiment": {
+        "home_dir": "path-to-FlagScale", 
+        "log_dir": null, 
+        "hostfile": "path-to-hostfile",
+        "ssh_port": 22
+    },
+    "launch": {
+        "nnodes": 1,
+        "nproc_per_node": 1,
+        "node_rank": 0,
+        "master_addr": "localhost",
+        "master_port": 1234
+    },
+    "env_vars": {
+        "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+        "NCCL_SOCKET_IFNAME": "eth0",
+        "NCCL_IB_DISABLE": "0",
+        "NCCL_IB_CUDA_SUPPORT": "1",
+        "NCCL_IB_GID_INDEX": "0",
+        "NCCL_IB_TIMEOUT": "12",
+        "NCCL_IB_RETRY_CNT": "7",
+        "OMP_NUM_THREADS": "4",
+        "GLOO_SOCKET_IFNAME": "eth0",
+        "NCCL_IB_HCA": "mlx5_2,mlx5_5"
+    },
+    "distributed": {
+        "tensor_model_parallel_size": 2,
+        "pipeline_model_parallel_size": 2,
+        "distributed_backend": "nccl",
+        "DDP_impl": "local",
+        "use_distributed_optimizer": true
+    },
+    "training": {
+        "micro_batch_size": 1,
+        "global_batch_size": 64,
+        "rampup_batch_size": null,
+        "train_samples": 100000,
+        "log_interval": 1,
+        "tensorboard_dir": "path-to-tensorboard-dir",
+        "wandb_dir": "path-to-wandb-dir",
+        "use_flash_attn": true,
+        "disable_bias_linear": true,
+        "optimizer": "adam",
+        "sequence_parallel": false
+    },
+    "validation": {
+        "eval_iters": 0
+    },
+    "network": {
+        "num_layers": 32,
+        "hidden_size": 4096,
+        "num_attention_heads": 32,
+        "group_query_attention": false,
+        "num_query_groups": 1,
+        "max_position_embeddings": 2048,
+        "position_embedding_type": "learned_absolute",
+        "use_rotary_position_embeddings": true,
+        "rotary_position_embeddings_in_fp32": true,
+        "make_vocab_size_divisible_by": 128,
+        "layernorm_epsilon": 1e-05,
+        "apply_layernorm_rms": true,
+        "swiglu": true,
+        "multiple_of": 256,
+        "hidden_dim_multiplier": null,
+        "untie_embeddings_and_output_weights": true,
+        "embedding_weights_in_fp32": true
+    },
+    "mixed_precision": {
+        "fp16": false,
+        "bf16": true,
+        "loss_scale": null,
+        "initial_loss_scale": 522893,
+        "min_loss_scale": 1.0,
+        "attention_softmax_in_fp32": true,
+        "accumulate_allreduce_grads_in_fp32": true
+    },
+    "data": {
+        "data_path": [
+            "path-to-data"
+        ],
+        "split": "1",
+        "vocab_size": 100008,
+        "vocab_file": "../aquila/tokenizer/vocab.json",
+        "merge_file": "../aquila/tokenizer/merges.txt",
+        "special_tokens_file": "../aquila/tokenizer/special_tokens.txt",
+        "seq_length": 2048,
+        "tokenizer_type": "AquilaTokenizer"
+    },
+    "regularization": {
+        "attention_dropout": 0.0,
+        "hidden_dropout": 0.0,
+        "weight_decay": 0.1,
+        "clip_grad": 1.0,
+        "adam_beta1": 0.9,
+        "adam_beta2": 0.95,
+        "adam_eps": 1e-08
+    },
+    "initialization": {
+        "seed": 1234,
+        "init_method_std": 0.02
+    },
+    "learning_rate": {
+        "lr": 2e-05,
+        "min_lr": 2e-06,
+        "lr_decay_style": "cosine",
+        "lr_warmup_samples": 1000 
+    },
+    "checkpoint": {
+        "save": null,
+        "load": null,
+        "save_interval": 2000
+    },
+    "logging": {
+        "timing_log_level": 0,
+        "tensorboard_log_interval": 1
+    }
+}
