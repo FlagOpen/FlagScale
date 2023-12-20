@@ -24,7 +24,10 @@ def parse_args():
         help="Action to perform: generate the bash script, run the experiment, or stop the experiment",
     )
     parser.add_argument(
-        "--stop-key", default="torchrun", type=str, help="Key to match the process name to stop the experiment"
+        "--stop-key",
+        default="torchrun",
+        type=str,
+        help="Key to match the process name to stop the experiment",
     )
 
     return parser.parse_args()
@@ -73,7 +76,11 @@ def deep_update(source, overrides):
 
 def remove_comments(config):
     if isinstance(config, dict):
-        return {k: remove_comments(v) for k, v in config.items() if not k.startswith('__comment__')}
+        return {
+            k: remove_comments(v)
+            for k, v in config.items()
+            if not k.startswith("__comment__")
+        }
     elif isinstance(config, list):
         return [remove_comments(v) for v in config]
     else:
@@ -113,7 +120,7 @@ def generate_config(
 
     This function takes paths to predefined and user-provided configuration files, merges them, and
     returns a final configuration. If a user-provided extra configuration file path is given, it is
-    also merged into the final configuration. If the `print_config` flag is set to True, the final 
+    also merged into the final configuration. If the `print_config` flag is set to True, the final
     configuration is printed to the console.
 
     Args:
@@ -219,8 +226,12 @@ def generate_command(config):
     launch_args = 'LAUNCH_ARGS="\n' + config_to_args(config["launch"]) + '\n"'
     entry_script = "pretrain_gpt.py"
 
+    def _config_to_arg(key, value):
+        key = key.replace("_", "-")
+        return f"    --{key} {value}"
+
     other_args_groups = [
-        f'{key.upper()}_ARGS="\n{config_to_args(value)}\n"'
+        f'{key.upper()}_ARGS="\n{config_to_args(value) if isinstance(value, dict) else _config_to_arg(key, value)}\n"'
         for key, value in config.items()
         if key not in ["experiment", "env_vars", "launch", "shell_cmds"]
     ]
@@ -330,8 +341,8 @@ def stop_experiment(config, stop_key):
     """
     Stops an ongoing experiment based on the provided configuration and stop key.
 
-    This function takes a configuration object and a stop key, and stops the experiment accordingly. 
-    The configuration object should contain all the necessary information to stop the experiment, 
+    This function takes a configuration object and a stop key, and stops the experiment accordingly.
+    The configuration object should contain all the necessary information to stop the experiment,
     and the stop key is used to match the process name of the experiment to be stopped.
 
     Args:
