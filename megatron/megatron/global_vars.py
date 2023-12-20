@@ -12,7 +12,6 @@ from .microbatches import build_num_microbatches_calculator
 from .microbatches_hetero import build_num_microbatches_calculator_hetero
 from .timers import Timers
 from .hetero_context import HeteroContext
-from . import device_init
 
 
 _GLOBAL_ARGS = None
@@ -249,11 +248,6 @@ def set_device_type(args):
     
     # Apply the following patch during the import time
     import patches
-
-    # Call customized device_init to do some other things
-    device_init_func = getattr(device_init, args.device_type + '_init', None)
-    if device_init_func is not None:
-        device_init_func()
 
 
 def _ensure_var_is_initialized(var, name):

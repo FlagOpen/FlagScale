@@ -1,6 +1,6 @@
 {
     "experiment": {
-        "__comment__hostfile": "path-to-hostfile",
+        "hostfile": "path-to-hostfile"
     },
     "launch": {
         "nnodes": 1,
@@ -11,5 +11,6 @@
     },
     "env_vars": {
         "CUDA_VSIBLE_DEVICES": "0,1,2,3,4,5,6,7"
-    }
+    },
+    "device_type": "apu_demo"
 }
