@@ -366,11 +366,11 @@ def _build_index_mappings(name, data_prefix, documents, sizes,
     # if the global file system is not use
     args = get_args()
     build_on_cur_rank = False
-    if not args.no_global_file_system \
+    if not args.no_shared_fs \
         and torch.distributed.get_rank() == 0:
         build_on_cur_rank = True 
-    elif args.no_global_file_system \
-        and torch.distributed.get_rank() % args.num_devices_per_node == 0:
+    elif args.no_shared_fs \
+        and int(os.environ["LOCAL_RANK"]) == 0:
         build_on_cur_rank = True 
     else:
         build_on_cur_rank = False

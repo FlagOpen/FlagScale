@@ -1,6 +1,7 @@
 {
     "experiment": {
-        "hostfile": "path-to-hostfile"
+        "hostfile": "path-to-hostfile",
+        "log_dir": "./my-log"
     },
     "launch": {
         "nnodes": 1,

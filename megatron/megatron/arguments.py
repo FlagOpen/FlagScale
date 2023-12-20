@@ -1300,10 +1300,8 @@ def _add_distributed_args(parser):
                        'affects the encoder embedding.)')
     group.add_argument('--use-distributed-optimizer', action='store_true',
                        help='Use distributed optimizer.')
-    group.add_argument('--no-global-file-system', action='store_true', 
-                       default=False, help='If set, the trianing wonnot use the global file system.')
-    group.add_argument('--num-devices-per-node', type=int, default=8,
-                       help='Number of devices per node.')
+    group.add_argument('--no-shared-fs', action='store_true', 
+                       help='Indicate whether not running on a shared file system.')
 
     return parser
 

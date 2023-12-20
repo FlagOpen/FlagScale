@@ -3,6 +3,7 @@
     "experiment": {
         "log_dir": null,
         "hostfile": null,
+        "no_shared_fs": false,
         "ssh_port": 22,
         "shell_cmds": "pwd" 
     },
