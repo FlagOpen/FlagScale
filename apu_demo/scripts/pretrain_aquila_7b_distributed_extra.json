@@ -1,0 +1,15 @@
+{
+    "experiment": {
+        "__comment__hostfile": "path-to-hostfile",
+    },
+    "launch": {
+        "nnodes": 1,
+        "nproc_per_node": 8,
+        "node_rank": 0,
+        "master_addr": "localhost",
+        "master_port": 12345 
+    },
+    "env_vars": {
+        "CUDA_VSIBLE_DEVICES": "0,1,2,3,4,5,6,7"
+    }
+}
