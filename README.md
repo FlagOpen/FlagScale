@@ -64,7 +64,7 @@ python run.py --config <config_path> --extra_config <extra_config_path> --action
 * `--action <action>`: Specifies the action to perform. Default is `run` if none is specified. Possible values are:
   * `generate`: Generates the experiment shell script based on the provided configuration files and stops. The generated script is saved to `log_dir`.
   * `run`: Generates the experiment shell script and runs the experiment immediately. Both the generated script and the experiment log are saved to `log_dir`. The experiment runs in the background.
-  * `stop`: Stops the experiment. The `--stop-key` argument must be provided with this action. The `stop_key` should be the PID of the experiment process to be stopped.
+  * `stop`: Stops the experiment. The `--stop-key` argument need be provided with this action.
 
 * `--stop_key <stop_key>`: Used with the `stop` action to specify the process name of the experiment process to be stopped. Default is `torchrun` if none is specified.
 
@@ -88,6 +88,7 @@ python run.py \
   --config aquila/7B/pretrain_aquila_7b_distributed.json \
   --extra-config apu_demo/scripts/pretrain_aquila_7b_distributed_extra.json \
   --action stop 
+```
 
 ### Pretrain the Aquila model (old)
 

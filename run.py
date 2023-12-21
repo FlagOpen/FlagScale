@@ -237,10 +237,12 @@ def print_cmd(host, cmd):
 def generate_mkdir_cmds(config):
     auto_mkdir = get_config(config, 'auto_mkdir')
     log_dir = get_config(config, 'log_dir')
+    log_dir = os.path.abspath(log_dir)
     assert os.path.exists(log_dir), f"Log directory {log_dir} does not exist."
 
     exp_name = get_config(config, 'exp_name')
     base_dir = os.path.join(log_dir, exp_name)
+    base_dir = os.path.abspath(base_dir)
 
     load_dir = get_config(config, 'load')
     if not load_dir and auto_mkdir:
@@ -335,8 +337,8 @@ def create_scp_cmd(ssh_port, source_file, host, destination_file):
 
 
 def get_valid_hostfile_lines(hostfile):
-    if not os.path.exists(hostfile):
-        return ['localhost slots=1'] 
+    if hostfile is None or not os.path.exists(hostfile):
+        return ['localhost'] 
 
     valid_lines = []
     with open(hostfile, 'r') as file:
@@ -385,8 +387,13 @@ def run_experiment(config, generate_only=False):
         log_dir = 'logs'
         set_config(exp_config, 'log_dir', log_dir)
     exp_dir = os.path.join(log_dir, exp_name)
+    exp_dir = os.path.abspath(exp_dir)
     os.makedirs(exp_dir, exist_ok=True)
 
+    if os.path.exists(hostfile):
+        hostfile = os.path.abspath(hostfile)
+    else:
+        hostfile = None
     lines = get_valid_hostfile_lines(hostfile)
 
     node_rank = 0
@@ -426,6 +433,7 @@ def run_experiment(config, generate_only=False):
         # Execute the bash script background 
         home_dir = os.path.dirname(os.path.realpath(__file__))
         log_file = f"{exp_dir}/{node_rank}_{host}.log.txt"
+        log_file = os.path.abspath(log_file)
         cmd = f"cd {os.path.join(home_dir, 'megatron')}; nohup bash {bash_file} > {log_file} 2>&1 &"
         ssh_cmd = create_ssh_cmd(host, ssh_port, cmd, remote=hostfile is not None)
 
@@ -435,7 +443,6 @@ def run_experiment(config, generate_only=False):
             subprocess.run(ssh_cmd, shell=True, check=True)
 
         node_rank += 1
-        set_config(exp_config, 'node_rank', node_rank)
 
 
 def stop_experiment(config, stop_key):
@@ -455,6 +462,10 @@ def stop_experiment(config, stop_key):
     """
     hostfile = get_config(config, "hostfile", None)
     ssh_port = get_config(config, "ssh_port", 22)
+    if os.path.exists(hostfile):
+        hostfile = os.path.abspath(hostfile)
+    else:
+        hostfile = None
     if hostfile is not None and os.path.exists(hostfile):
         with open(hostfile, "r") as file:
             lines = file.read().splitlines()
