@@ -1,17 +1,31 @@
 {
     "experiment": {
-        "hostfile": "path-to-hostfile",
         "log_dir": "./my-log"
     },
     "launch": {
         "nnodes": 1,
         "nproc_per_node": 8,
         "node_rank": 0,
-        "master_addr": "localhost",
-        "master_port": 12345 
+        "master_addr": "localhost"
     },
     "env_vars": {
         "CUDA_VSIBLE_DEVICES": "0,1,2,3,4,5,6,7"
     },
-    "device_type": "apu_demo"
+    "device_type": "apu_demo",
+    "distributed": {
+        "tensor_model_parallel_size": 2,
+        "pipeline_model_parallel_size": 2
+    },
+    "training": {
+        "micro_batch_size": 1,
+        "global_batch_size": 64, 
+        "train_samples": 100000
+    },
+    "learning_rate": {
+        "lr_warmup_samples": 256 
+    },
+    "checkpoint": {
+        "save": null,
+        "load": null
+    }
 }
