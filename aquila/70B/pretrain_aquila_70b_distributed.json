@@ -1,61 +1,66 @@
 {
     "experiment": {
-        "hostfile": "path-to-hostfile"
+        "log_dir": null, 
+        "hostfile": "path-to-hostfile",
+        "ssh_port": 22
     },
     "launch": {
-        "nnodes": 12,
+        "nnodes": 96,
         "nproc_per_node": 8
     },
     "env_vars": {
         "CUDA_DEVICE_MAX_CONNECTIONS": "1",
-        "NCCL_SOCKET_IFNAME": "eth0",
+        "NCCL_SOCKET_IFNAME": "bond0",
         "NCCL_IB_DISABLE": "0",
         "NCCL_IB_CUDA_SUPPORT": "1",
         "NCCL_IB_GID_INDEX": "0",
         "NCCL_IB_TIMEOUT": "23",
         "NCCL_IB_RETRY_CNT": "7",
         "OMP_NUM_THREADS": "4",
-        "GLOO_SOCKET_IFNAME": "eth0",
-        "NCCL_IB_HCA": "mlx5_2,mlx5_5"
+        "GLOO_SOCKET_IFNAME": "bond0",
+        "NCCL_IB_HCA": "mlx5_0,mlx5_1"
     },
     "distributed": {
-        "tensor_model_parallel_size": 1,
-        "pipeline_model_parallel_size": 1,
+        "tensor_model_parallel_size": 8,
+        "pipeline_model_parallel_size": 4,
         "use_distributed_optimizer": true
     },
     "training": {
         "micro_batch_size": 2,
-        "global_batch_size": 1728,
-        "rampup_batch_size": null,
-        "train_samples": 1002539063,
+        "global_batch_size": 1056,
+        "rampup_batch_size": [48, 48, 2000000],
+        "train_samples": 488281250,
         "log_interval": 1,
         "use_flash_attn": true,
         "disable_bias_linear": true,
-        "sequence_parallel": false
+        "sequence_parallel": true 
     },
     "validation": {
-        "eval_iters": 0
+        "eval_iters": 0,
+        "eval_interval": 2000
     },
     "network": {
-        "num_layers": 32,
-        "hidden_size": 4096,
-        "num_attention_heads": 32,
-        "max_position_embeddings": 2048,
+        "num_layers": 80,
+        "hidden_size": 8192,
+        "num_attention_heads": 64,
+        "group_query_attention": true,
+        "num_query_groups": 8,
+        "max_position_embeddings": 4096,
         "use_rotary_position_embeddings": true,
         "rotary_position_embeddings_in_fp32": true,
         "no_position_embedding": true,
+        "make_vocab_size_divisible-by": 64,
         "layernorm_epsilon": 1e-05,
+        "layernorm_init_weight": 0.25,
         "apply_layernorm_rms": true,
         "swiglu": true,
-        "multiple_of": 256,
-        "hidden_dim_multiplier": null,
+        "multiple_of": 4096,
+        "hidden_dim_multiplier": 1.3,
         "untie_embeddings_and_output_weights": true,
         "embedding_weights_in_fp32": true
     },
     "mixed_precision": {
-        "fp16": true,
-        "initial_loss_scale": 522893,
-        "min_loss_scale": 1.0,
+        "bf16": true,
         "attention_softmax_in_fp32": true,
         "accumulate_allreduce_grads_in_fp32": true
     },
@@ -69,7 +74,7 @@
         "vocab_file": "../aquila/tokenizer/vocab.json",
         "merge_file": "../aquila/tokenizer/merges.txt",
         "special_tokens_file": "../aquila/tokenizer/special_tokens.txt",
-        "seq_length": 2048,
+        "seq_length": 4096,
         "tokenizer_type": "AquilaTokenizer"
     },
     "regularization": {
@@ -81,19 +86,20 @@
         "adam_beta2": 0.95
     },
     "initialization": {
-        "seed": 1234,
-        "init_method_std": 0.02
+        "seed": 42,
+        "init_method_std": 0.0149
     },
     "learning_rate": {
-        "lr": 2.0e-05,
-        "min_lr": 2.0e-06,
+        "lr": 1.5e-4,
+        "min_lr": 1.5e-5,
         "lr_decay_style": "cosine",
-        "lr_warmup_samples": 3076172 
+        "lr_warmup_samples": 500000 
     },
     "checkpoint": {
         "save": "path-to-save",
         "load": "path-to-load",
-        "save_interval": 2000
+        "save_interval": 500,
+        "rampup_save_interval": 5000
     },
     "logging": {
         "tensorboard_log_interval": 1

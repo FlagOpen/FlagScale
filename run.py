@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import copy
 import argparse
@@ -33,10 +34,53 @@ def parse_args():
     return parser.parse_args()
 
 
-def print_config_changes(config, added, deleted, modified):
-    print(f"\n{' Config ':=^40}")
+def get_config(config, key, default=None):
+    for k, v in config.items():
+        if k == key:
+            return v
+        elif isinstance(v, dict):
+            item = get_config(v, key)
+            if item is not None:
+                return item
+    return default
+
+
+def set_config(config, key, value, override=True):
+    def _set_config_recursive(config, key, value, override):
+        if key in config:
+            if override:
+                config[key] = value
+                return True
+            else:
+                return False
+        else:
+            for v in config.values():
+                if isinstance(v, dict):
+                    if _set_config_recursive(v, key, value, override):
+                        return True
+            return False
+    
+    has_set = _set_config_recursive(config, key, value, override)
+
+    if not has_set:
+        config[key] = value
+
+
+def merge_config(base_config, extra_config):
+    for key, value in extra_config.items():
+        if isinstance(value, dict):
+            # Get node or create one
+            node = base_config.setdefault(key, {})
+            merge_config(node, value)
+        else:
+            base_config[key] = value
+    return base_config
+
+
+def print_config(config, added=None, deleted=None, modified=None):
     print(f"\n{' Final Config ':-^40}")
     print(json.dumps(config, indent=4))
+    print('-' * 40)
 
     print(f"\n{' Added Config ':-^40}")
     if added:
@@ -44,6 +88,7 @@ def print_config_changes(config, added, deleted, modified):
             print(f"{key} (+): {value}")
     else:
         print("No added config.")
+    print('-' * 40)
 
     print(f"\n{' Deleted Config ':-^40}")
     if deleted:
@@ -51,6 +96,7 @@ def print_config_changes(config, added, deleted, modified):
             print(f"{key} (-): {value}")
     else:
         print("No deleted config.")
+    print('-' * 40)
 
     print(f"\n{' Modified Config ':-^40}")
     if modified:
@@ -59,30 +105,18 @@ def print_config_changes(config, added, deleted, modified):
             print(f"{key}: {old_value} => {new_value}")
     else:
         print("No modified config.")
-
-    print(f"\n{'='*40}")
-
-
-def deep_update(source, overrides):
-    for key, value in overrides.items():
-        if isinstance(value, dict):
-            # Get node or create one
-            node = source.setdefault(key, {})
-            deep_update(node, value)
-        else:
-            source[key] = value
-    return source
+    print('-' * 40)
 
 
-def remove_comments(config):
+def remove_config_comment(config):
     if isinstance(config, dict):
         return {
-            k: remove_comments(v)
+            k: remove_config_comment(v)
             for k, v in config.items()
             if not k.startswith("__comment__")
         }
     elif isinstance(config, list):
-        return [remove_comments(v) for v in config]
+        return [remove_config_comment(v) for v in config]
     else:
         return config
 
@@ -112,24 +146,20 @@ def diff_dict(d1, d2):
 def generate_config(
     predefined_config_path,
     user_base_config_path,
-    user_extra_config_path=None,
-    print_config=False,
+    user_extra_config_path=None
 ):
     """
     Generates a configuration based on predefined and user-provided configurations.
 
     This function takes paths to predefined and user-provided configuration files, merges them, and
     returns a final configuration. If a user-provided extra configuration file path is given, it is
-    also merged into the final configuration. If the `print_config` flag is set to True, the final
-    configuration is printed to the console.
+    also merged into the final configuration.
 
     Args:
         predefined_config_path (str): A string representing the path to the predefined configuration file.
         user_base_config_path (str): A string representing the path to the user-provided base configuration file.
         user_extra_config_path (str, optional): A string representing the path to the user-provided extra
                                                  configuration file. Defaults to None.
-        print_config (bool, optional): A flag indicating whether to print the final configuration to the console.
-                                        Defaults to False.
 
     Returns:
         dict: A dictionary representing the final merged configuration.
@@ -137,13 +167,13 @@ def generate_config(
     # Load default config
     with open(predefined_config_path, "r") as f:
         config = json.load(f)
-        config = remove_comments(config)
+        config = remove_config_comment(config)
 
     # Load and merge user base config
     with open(user_base_config_path, "r") as f:
         user_base_config = json.load(f)
-        user_base_config = remove_comments(user_base_config)
-        deep_update(config, user_base_config)
+        user_base_config = remove_config_comment(user_base_config)
+        merge_config(config, user_base_config)
 
     # Backup for comparison later
     base_config = copy.deepcopy(config)
@@ -152,18 +182,10 @@ def generate_config(
     if user_extra_config_path:
         with open(user_extra_config_path, "r") as f:
             user_extra_config = json.load(f)
-            user_extra_config = remove_comments(user_extra_config)
-            deep_update(config, user_extra_config)
+            user_extra_config = remove_config_comment(user_extra_config)
+            merge_config(config, user_extra_config)
 
-    # print(json.dumps(base_config, indent=4))
-    # print(json.dumps(config, indent=4))
-    # Call the function
-    added, deleted, modified = diff_dict(base_config, config)
-
-    if print_config:
-        print_config_changes(config, added, deleted, modified)
-
-    return config
+    return config, base_config
 
 
 def config_to_args(config, is_env=False):
@@ -208,6 +230,46 @@ def config_to_args(config, is_env=False):
     return "\n".join(recurse_config(config))
 
 
+def print_cmd(host, cmd):
+    print(f"\n{ 'run on ' + host + ' ':-^40}\n{cmd}\n{'-'*40}\n")
+
+
+def generate_mkdir_cmds(config):
+    auto_mkdir = get_config(config, 'auto_mkdir')
+    log_dir = get_config(config, 'log_dir')
+    assert os.path.exists(log_dir), f"Log directory {log_dir} does not exist."
+
+    exp_name = get_config(config, 'exp_name')
+    base_dir = os.path.join(log_dir, exp_name)
+
+    load_dir = get_config(config, 'load')
+    if not load_dir and auto_mkdir:
+        load_dir = os.path.join(base_dir, 'ckpt')
+        set_config(config, 'load', load_dir)
+
+    save_dir = get_config(config, 'save')
+    if not save_dir and auto_mkdir:
+        # Use the same directory as load_dir if not specified
+        save_dir = os.path.join(base_dir, 'ckpt')
+        set_config(config, 'save', save_dir)
+
+    tensorboard_dir = get_config(config, 'tensorboard_dir')
+    if not tensorboard_dir and auto_mkdir:
+        tensorboard_dir = os.path.join(base_dir, 'tensorboard')
+        set_config(config, 'tensorboard_dir', tensorboard_dir)
+
+    wandb_dir = get_config(config, 'wandb_dir')
+    if not wandb_dir and auto_mkdir:
+        wandb_dir = os.path.join(base_dir, 'wandb')
+        set_config(config, 'wandb_dir', wandb_dir)
+
+    mkdir_cmds = f"mkdir -p {load_dir}\n" \
+                 f"mkdir -p {save_dir}\n" \
+                 f"mkdir -p {tensorboard_dir}\n" \
+                 f"mkdir -p {wandb_dir}\n"
+    return mkdir_cmds
+
+
 def generate_command(config):
     """
     Generates a command based on the provided configuration.
@@ -221,40 +283,74 @@ def generate_command(config):
     Returns:
         str: A string representing the command to be executed.
     """
-    shell_cmds = config["experiment"]["shell_cmds"]
-    env_args = 'ENV_ARGS="\n' + config_to_args(config["env_vars"], is_env=True) + '\n"'
-    launch_args = 'LAUNCH_ARGS="\n' + config_to_args(config["launch"]) + '\n"'
+    mkdir_cmds = generate_mkdir_cmds(config)
+    shell_cmds = get_config(config, "shell_cmds")
+    env_args = 'ENV_ARGS="\n' + config_to_args(get_config(config, "env_vars"), is_env=True) + '\n"'
+    launch_args = 'LAUNCH_ARGS="\n' + config_to_args(get_config(config, "launch")) + '\n"'
     entry_script = "pretrain_gpt.py"
 
-    def _config_to_arg(key, value):
-        if key.startswith("__comment__") or value is None or value is False:
-            return ""
-        key = key.replace("_", "-")
-        return f"    --{key} {value}"
-
-    other_args_groups = [
-        f'{key.upper()}_ARGS="\n{config_to_args(value) if isinstance(value, dict) else _config_to_arg(key, value)}\n"'
-        for key, value in config.items()
-        if key not in ["experiment", "env_vars", "launch", "shell_cmds"]
-    ]
+    args_groups = []
+    other_conifg = {} 
+    for key, value in config.items():
+        if key not in ["experiment", "env_vars", "launch", "shell_cmds"]:
+            if isinstance(value, dict):
+                args_groups.append(
+                    f'{key.upper()}_ARGS="\n{config_to_args(value)}\n"'
+                )
+            else:
+                other_conifg[key] = value
+    other_group = f'OTHER_ARGS="\n{config_to_args(other_conifg)}\n"'
+    args_groups.append(other_group)
 
     cmd = f'cmd="\n    $ENV_ARGS \\\n    torchrun $LAUNCH_ARGS \\\n    {entry_script}'
-    for other_args in other_args_groups:
-        cmd += f" \\\n    ${other_args.split('=')[0]}"
+    for args in args_groups:
+        cmd += f" \\\n    ${args.split('=')[0]}"
     cmd += '\n"'
 
-    bash_script = f"#!/bin/bash\n\n{shell_cmds}\n\n{env_args}\n\n{launch_args}\n\n"
-    for other_args in other_args_groups:
-        bash_script += f"{other_args}\n\n"
+    bash_script = f"#!/bin/bash\n\n{shell_cmds}\n\n{mkdir_cmds}\n\n{env_args}\n\n{launch_args}\n\n"
+    for args in args_groups:
+        bash_script += f"{args}\n\n"
     bash_script += f"{cmd}\n\necho $cmd\neval $cmd"
 
     return bash_script
 
 
-def print_cmd(host, cmd):
-    print(f"\n{ host + ' ':=^40}")
-    print(f"{cmd}")
-    print(f"{'='*40}\n")
+def create_ssh_cmd(host, ssh_port, cmd, remote=False):
+    wrapped_cmd = f"'bash -c \"{cmd}\"'"
+    ssh_cmd_parts = (
+        ["ssh", "-f", "-n", "-p", str(ssh_port), host, wrapped_cmd]
+        if remote
+        else [cmd]
+    )
+    ssh_cmd = " ".join(ssh_cmd_parts)
+    print_cmd(host, ssh_cmd)
+    return ssh_cmd
+
+
+def create_scp_cmd(ssh_port, source_file, host, destination_file):
+    scp_cmd_parts = ["scp", "-P", str(ssh_port), source_file, f"{host}:{destination_file}"]
+    scp_cmd = " ".join(scp_cmd_parts)
+    print_cmd(host, scp_cmd)
+    return scp_cmd
+
+
+def get_valid_hostfile_lines(hostfile):
+    if not os.path.exists(hostfile):
+        return ['localhost slots=1'] 
+
+    valid_lines = []
+    with open(hostfile, 'r') as file:
+        for line in file:
+            line = line.strip()
+            # Skip empty lines and comment lines
+            if line == "" or line.startswith("#"):
+                continue
+            # Check if the line matches the format "a slots=b c"
+            if re.match(r'^\S+(\s+slots=\d+)?(\s+\S+)?$', line):
+                valid_lines.append(line)
+            else:
+                raise ValueError(f"Invalid line in {hostfile}: {line}")
+    return valid_lines
 
 
 def run_experiment(config, generate_only=False):
@@ -276,72 +372,70 @@ def run_experiment(config, generate_only=False):
     Returns:
         None
     """
-    expr_config = config["experiment"]
-    hostfile = expr_config.get("hostfile", None)
-    no_shared_fs = expr_config.get("no_shared_fs")
-    ssh_port = expr_config.get("ssh_port", 22)
-    log_dir = expr_config["log_dir"]
-    if log_dir is None:
-        log_dir = "logs"
-    os.makedirs(log_dir, exist_ok=True)
+    exp_config = get_config(config, "experiment")
+    exp_name = get_config(exp_config, "exp_name")
+    if exp_name is None:
+        exp_name = "default"
+        set_config(exp_config, "exp_name", "default")
+    hostfile = get_config(exp_config, "hostfile", None)
+    no_shared_fs = get_config(exp_config, "no_shared_fs")
+    ssh_port = get_config(exp_config, "ssh_port", 22)
+    log_dir = get_config(exp_config, "log_dir")
+    if not log_dir:
+        log_dir = 'logs'
+        set_config(exp_config, 'log_dir', log_dir)
+    exp_dir = os.path.join(log_dir, exp_name)
+    os.makedirs(exp_dir, exist_ok=True)
 
-    if hostfile is not None:
-        with open(hostfile, "r") as file:
-            lines = file.read().splitlines()
-    else:
-        lines = ["localhost"]
+    lines = get_valid_hostfile_lines(hostfile)
 
-    procs = []
     node_rank = 0
     for line in lines:
+        launch_config = get_config(config, "launch")
+
         host = line.split()[0]
-        if node_rank == 0:
-            master_addr = host
-        launch_config = config["launch"]
-        launch_config["nnodes"] = len(lines)
-        launch_config["node_rank"] = node_rank
-        if hostfile is not None:
-            nproc_per_node = int(line.split()[1].split("=")[1])
-        else:
-            nproc_per_node = (
-                1
-                if launch_config["nproc_per_node"] is None
-                else launch_config["nproc_per_node"]
-            )
-        launch_config["nproc_per_node"] = nproc_per_node
-        launch_config["master_addr"] = master_addr
+        master_addr = get_config(launch_config, "master_addr")
+        if master_addr is None:
+            if node_rank == 0:
+                master_addr = host
+            set_config(launch_config, "master_addr", master_addr)
+
+        set_config(launch_config, "nnodes", len(lines))
+        set_config(launch_config, "node_rank", node_rank)
+
+        slots = None
+        if 'slots=' in line:
+            slots = int(line.split()[1].split("=")[1])
+        nproc_per_node = get_config(launch_config, "nproc_per_node")
+        if slots is None and nproc_per_node is None:
+            slots = 1
+        elif slots is None:
+            slots = nproc_per_node
+        set_config(launch_config, "nproc_per_node", slots)
+
 
         bash_script = generate_command(config)
-        bash_file = f"{log_dir}/{node_rank}_{host}.sh"
+        bash_file = f"{exp_dir}/{node_rank}_{host}.sh"
         bash_file = os.path.abspath(bash_file)
         with open(bash_file, "w") as f:
             f.write(bash_script)
-        
+
         if no_shared_fs:
-            subprocess.run(["scp", "-P", str(ssh_port), bash_file, f"{host}:{bash_file}"], check=True)
-            print(f"scp -P {ssh_port} {bash_file} {host}:{bash_file}")
+            scp_cmd = create_scp_cmd(ssh_port, bash_file, host, bash_file)
+        
+        # Execute the bash script background 
+        home_dir = os.path.dirname(os.path.realpath(__file__))
+        log_file = f"{exp_dir}/{node_rank}_{host}.log.txt"
+        cmd = f"cd {os.path.join(home_dir, 'megatron')}; nohup bash {bash_file} > {log_file} 2>&1 &"
+        ssh_cmd = create_ssh_cmd(host, ssh_port, cmd, remote=hostfile is not None)
 
-        cmd = f"cd {os.path.join(expr_config['home_dir'], 'megatron')}; nohup bash {bash_file} 2>&1 &"
-        wrapped_cmd = f"'bash -c \"{cmd}\"'"
-        ssh_cmd_parts = (
-            ["ssh", "-f", "-n", "-p", str(ssh_port), host, wrapped_cmd]
-            if hostfile is not None
-            else [cmd]
-        )
-        ssh_cmd = " ".join(ssh_cmd_parts)
+        if not generate_only:
+            if no_shared_fs:
+                subprocess.run(scp_cmd, shell=True, check=True)
+            subprocess.run(ssh_cmd, shell=True, check=True)
 
-        log_file = f"{log_dir}/{node_rank}_{host}.log.txt"
-        with open(log_file, "w") as f:
-            print_cmd(host, ssh_cmd)
-            if not generate_only:
-                p = subprocess.Popen(
-                    ssh_cmd, shell=True, stdout=f, stderr=subprocess.STDOUT
-                )
-                procs.append(p)
         node_rank += 1
-
-    for p in procs:
-        p.wait()
+        set_config(exp_config, 'node_rank', node_rank)
 
 
 def stop_experiment(config, stop_key):
@@ -359,10 +453,9 @@ def stop_experiment(config, stop_key):
     Returns:
         None
     """
-    expr_config = config["experiment"]
-    hostfile = expr_config.get("hostfile", None)
-    ssh_port = expr_config.get("ssh_port", 22)
-    if hostfile is not None:
+    hostfile = get_config(config, "hostfile", None)
+    ssh_port = get_config(config, "ssh_port", 22)
+    if hostfile is not None and os.path.exists(hostfile):
         with open(hostfile, "r") as file:
             lines = file.read().splitlines()
     else:
@@ -382,14 +475,14 @@ def stop_experiment(config, stop_key):
 def main():
     args = parse_args()
 
-    print_config = True if args.action != "stop" else False
+    is_print_config = True if args.action != "stop" else False
 
     # Step1: generate config
     predefined_config_path = os.path.join(
         os.path.dirname(__file__), "predefined_args_megatron.json"
     )
-    config = generate_config(
-        predefined_config_path, args.config, args.extra_config, print_config
+    config, base_config = generate_config(
+        predefined_config_path, args.config, args.extra_config
     )
 
     # Step2: perform action based on args.action
@@ -399,6 +492,11 @@ def main():
         run_experiment(config, generate_only=False)
     elif args.action == "stop":
         stop_experiment(config, stop_key=args.stop_key)
+    
+    # Step3: print final config
+    if is_print_config:
+        added, deleted, modified = diff_dict(base_config, config)
+        print_config(config, added, deleted, modified)
 
 
 if __name__ == "__main__":

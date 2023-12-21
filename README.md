@@ -47,24 +47,26 @@ cd FlagScale
 python run.py --config <config_path> --extra_config <extra_config_path> --action <action> --stop-key <stop_key>
 ```
 
-* `--config <config_path>`: This argument is used to specify the path to the main configuration JSON file. This file contains key-value pairs configuration of the experiment. The key-value pairs are exact same as the original Megatron-LM arguments (only by replacing `_` with `-`). You can refer to the [source file](./megatron/megatron/arguments.py) for more configurations. The [pre-defined configuration](predefined_args_megatron.json) need to be provided for the experiment:
-  * `experiment`: This section contains configuration options related to the experiment setup.
-    * `log_dir`: The directory where the log files of the experiment will be stored. If `null`, the logs may be saved in `logs` of the current directory.
-    * `hostfile`: The file that contains a list of hosts where the experiment will be run. If `null`, the experiment will be run on the local machine.
-    * `no_shared_fs`: A boolean value that indicates whether the file system is shared between the hosts. The default value is `false`. 
-    * `ssh_port`: The port to use for SSH connections when distributing the experiment across multiple hosts. If `null`, the default SSH port 22 will be used.
-    * `shell_cmds`: Shell commands to be executed before running the experiment.
-  * `launch`: This section contains launch configuration options for the `torchrun` of the experiment.
-  * `env_vars`: This section contains environment variables that will be set for the experiment.
+* `--config <config_path>`: Specifies the path to the main configuration JSON file. This file contains key-value pairs that configure the experiment. These pairs mirror the arguments used in Megatron-LM, with underscores (`_`) replaced by hyphens (`-`). For a comprehensive list of configurations, refer to the [source file](./megatron/megatron/arguments.py). The key-value pairs can be organized into different sections as needed. These [pre-defined configuration](predefined_args_megatron.json) should be provided for the experiment:
+  * `experiment`: Contains configuration options for the experiment setup.
+    * `exp_name`: Defines the experiment's name. A directory with this name will be created under `log_dir` to store all experiment artifacts. If set to `null`, the experiment name `default` will be used.
+    * `log_dir`: Specifies the directory for storing experiment logs. If set to `null`, logs will be saved in the `logs` directory of the current working directory.
+    * `hostfile`: Specifies a file containing a list of hosts for running the experiment. If set to `null`, the experiment will run on the local machine.
+    * `no_shared_fs`: A boolean flag indicating whether the file system is shared between hosts. Default is `false`.
+    * `ssh_port`: Specifies the port for SSH connections when running the experiment across multiple hosts. If set to `null`, the default SSH port (22) will be used.
+    * `auto_mkdir`: A boolean flag indicating whether directories (for save, load, tensorboard, and wandb) should be automatically created. Default is `true`.
+    * `shell_cmds`: Specifies shell commands to be executed before running the experiment.
+  * `launch`: Contains configuration options for launching the experiment using `torchrun`.
+  * `env_vars`: Contains environment variables to be set for the experiment.
 
-* `--extra_config <extra_config_path>`: This argument is used to specify the path to an extra configuration file. This file should also be a JSON file and can contain additional configuration options that are not in the main configuration file. The options in this file will override the options in the main configuration file if they have the same keys.
+* `--extra_config <extra_config_path>`: Specifies the path to an additional configuration file. This JSON file can contain additional configuration options not present in the main configuration file. Options in this file will override those in the main configuration file if they have the same keys.
 
-* `--action <action>`: This argument is used to specify the action to perform. The default value is `run` if none is specified. The possible values are:
-  * `generate`: This will generate the experiment shell script based on the provided configuration files and stop. The generated script will be saved to `log_dir`. You can use this action to check if the configuration is correct.
-  * `run`: This will generate the experiment shell script and run the experiment immediately. Both the generated script and the log for the experiment will be saved to `log_dir`. The experiment will be run in the background.
-  * `stop`: This will stop the experiment. You also need to provide the `--stop-key` argument with this action. The `stop_key` should be the PID of the experiment process that you want to stop.
+* `--action <action>`: Specifies the action to perform. Default is `run` if none is specified. Possible values are:
+  * `generate`: Generates the experiment shell script based on the provided configuration files and stops. The generated script is saved to `log_dir`.
+  * `run`: Generates the experiment shell script and runs the experiment immediately. Both the generated script and the experiment log are saved to `log_dir`. The experiment runs in the background.
+  * `stop`: Stops the experiment. The `--stop-key` argument must be provided with this action. The `stop_key` should be the PID of the experiment process to be stopped.
 
-* `--stop_key <stop_key>`: This argument is used with the `stop` action to matching the process name of the experiment process that you want to stop. The default value is `torchrun` if none is specified.
+* `--stop_key <stop_key>`: Used with the `stop` action to specify the process name of the experiment process to be stopped. Default is `torchrun` if none is specified.
 
 Here's an example of how to use these arguments:
 
@@ -72,21 +74,20 @@ Here's an example of how to use these arguments:
 # Generate the experiment script
 python run.py \
   --config aquila/7B/pretrain_aquila_7b_distributed.json \
-  --extra_config apu_demo/scripts/pretrain_aquila_7b_distributed_extra.json \
+  --extra-config apu_demo/scripts/pretrain_aquila_7b_distributed_extra.json \
   --action generate 
 
 # Run the experiment
 python run.py \
   --config aquila/7B/pretrain_aquila_7b_distributed.json \
-  --extra_config apu_demo/scripts/pretrain_aquila_7b_distributed_extra.json \
+  --extra-config apu_demo/scripts/pretrain_aquila_7b_distributed_extra.json \
   --action run
 
 # Stop the experiment
 python run.py \
   --config aquila/7B/pretrain_aquila_7b_distributed.json \
-  --extra_config apu_demo/scripts/pretrain_aquila_7b_distributed_extra.json \
+  --extra-config apu_demo/scripts/pretrain_aquila_7b_distributed_extra.json \
   --action stop 
-```
 
 ### Pretrain the Aquila model (old)
 
