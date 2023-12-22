@@ -7,7 +7,7 @@
         "no_shared_fs": false,
         "auto_mkdir": true,
         "ssh_port": 22,
-        "shell_cmds": "pwd" 
+        "shell_cmds": "" 
     },
     "launch": {
         "nnodes": 1,
