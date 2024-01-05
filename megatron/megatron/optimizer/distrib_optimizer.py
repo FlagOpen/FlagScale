@@ -3,18 +3,7 @@
 """Megatron distributed optimizer."""
 
 
-try:
-    from apex.optimizers import FusedAdam as Adam
-except Exception:
-    print('WARNING: APEX is not installed and is not supported in KL yet')
-    from torch.optim import AdamW as Adam
-
-try:
-    import torch_xmlir
-    from torch_xmlir.optimizer.fused_adamw import FusedAdamW as Adam
-except ImportError:
-    torch_xmlir = None
-
+from apex.optimizers import FusedAdam as Adam
 import math
 import torch
 
@@ -310,9 +299,7 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
 
                 # fp16, bf16 params.
                 if model_param.type() in ['torch.cuda.HalfTensor',
-                                          'torch.cuda.BFloat16Tensor',
-                                          'torch.xpu.HalfTensor',
-                                          'torch.xpu.BFloat16Tensor']:
+                                          'torch.cuda.BFloat16Tensor']:
 
                     # Clone model -> main.
                     shard_model_param = model_param.detach().view(-1) \
@@ -332,8 +319,7 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
                     shard_fp32_from_float16_params_this_group.append(shard_main_param)
 
                 # fp32 params.
-                elif model_param.type() in ['torch.cuda.FloatTensor',
-                                            'torch.xpu.FloatTensor']:
+                elif model_param.type() == 'torch.cuda.FloatTensor':
                     shard_model_param = model_param.view(-1) \
                         [param_range.start:param_range.end]
                     model_fp32_params_this_group.append(model_param)
@@ -347,10 +333,7 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
                     raise TypeError('Wrapped parameters must be one of '
                                     'torch.cuda.FloatTensor,  '
                                     'torch.cuda.HalfTensor, or '
-                                    'torch.cuda.BFloat16Tensor, or'
-                                    'torch.xpu.FloatTensor, or '
-                                    'torch.xpu.HalfTensor, or '
-                                    'torch.xpu.BFloat16Tensor. '
+                                    'torch.cuda.BFloat16Tensor. '
                                     'Received {}'.format(model_param.type()))
 
             # Update optimizer's params.
@@ -425,24 +408,18 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
             for dtype, grad_buffer in model._grad_buffers.items():
 
                 # Handle older/newer method for getting untyped storage.
-                if torch_xmlir is None:
-                    try:
-                        storage = grad_buffer.data.storage()._untyped()
-                    except:
-                        storage = grad_buffer.data.storage().untyped()
+                try:
+                    storage = grad_buffer.data.storage()._untyped()
+                except:
+                    storage = grad_buffer.data.storage().untyped()
 
-                    # Typed param buffer.
-                    param_buffer = torch.tensor(
-                        storage,
-                        dtype = params_dtype,
-                        device = grad_buffer.data.device)
-                    param_buffer = param_buffer[:grad_buffer.numel_padded]
-                    current_param_buffers[dtype] = param_buffer
-                else:
-                    param_buffer = torch.frombuffer(grad_buffer.data.cpu().numpy(), \
-                    dtype=params_dtype).to(grad_buffer.data.device)
-                    param_buffer = param_buffer[:grad_buffer.numel_padded]
-                    current_param_buffers[dtype] = param_buffer
+                # Typed param buffer.
+                param_buffer = torch.tensor(
+                    storage,
+                    dtype = params_dtype,
+                    device = grad_buffer.data.device)
+                param_buffer = param_buffer[:grad_buffer.numel_padded]
+                current_param_buffers[dtype] = param_buffer
             self.param_buffers.append(current_param_buffers)
 
         # Update optimizer groups.

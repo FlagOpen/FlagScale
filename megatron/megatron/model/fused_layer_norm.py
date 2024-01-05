@@ -18,28 +18,9 @@ try:
 except:
     HAVE_PERSIST_LAYER_NORM = False
 
+from apex.normalization.fused_layer_norm import FusedLayerNormAffineFunction
+from apex.normalization.fused_layer_norm import FusedRMSNormAffineFunction
 
-try:
-    from apex.normalization.fused_layer_norm import FusedLayerNormAffineFunction
-except Exception as e:
-    print('WARNING: APEX is not installed and is not supported in KL yet')
-    class FusedLayerNormAffineFunction(object):
-        """Fake ApexFusedRMSNorm"""
-        def __init__(self, normalized_shape, eps, elementwise_affine):
-            pass
-try:
-    from apex.normalization.fused_layer_norm import FusedRMSNormAffineFunction
-except Exception as e:
-    print('WARNING: APEX is not installed and is not supported in KL yet')
-    class FusedRMSNormAffineFunction(object):
-        """Fake ApexFusedRMSNorm"""
-        def __init__(self, normalized_shape, eps, elementwise_affine):
-            pass
-
-try:
-    import torch_xmlir
-except Exception:
-    torch_xmlir = None
 
 global fused_layer_norm_cuda
 fused_layer_norm_cuda = None
@@ -67,8 +48,7 @@ class MixedFusedLayerNorm(torch.nn.Module):
             "Cannot float init_weight and 1p layernorm"
 
         global fused_layer_norm_cuda
-        if torch_xmlir is None:
-            fused_layer_norm_cuda = importlib.import_module("fused_layer_norm_cuda")
+        fused_layer_norm_cuda = importlib.import_module("fused_layer_norm_cuda")
 
         # List of hiddens sizes supported in the persistent layer norm kernel
         # If the hidden size is not supported, fall back to the non-persistent
@@ -116,11 +96,7 @@ class MixedFusedLayerNorm(torch.nn.Module):
     weight = self.weight + 1 if self.apply_layernorm_1p else self.weight
 
     if self.apply_layernorm_rms:
-        if torch_xmlir is None:
-            return FusedRMSNormAffineFunction.apply(input, weight, self.normalized_shape, self.eps)
-        else:
-            from torch_xmlir.nn.rms_norm import RMSNormFunction
-            return RMSNormFunction.apply(input, self.eps, weight)
+        return FusedRMSNormAffineFunction.apply(input, weight, self.normalized_shape, self.eps)
     elif self.no_persist_layer_norm:
         return FusedLayerNormAffineFunction.apply(input, weight, self.bias, self.normalized_shape, self.eps)
     else:

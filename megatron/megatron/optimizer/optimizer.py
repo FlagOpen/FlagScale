@@ -4,16 +4,11 @@
 
 from abc import ABC
 from abc import abstractmethod
-
+from apex.multi_tensor_apply import multi_tensor_applier
+import amp_C
 import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
-
-try:
-    from apex.multi_tensor_apply import multi_tensor_applier
-    import amp_C
-except Exception:
-    print('WARNING: APEX is not installed and is not supported in KL yet')
 
 from megatron import get_timers
 from megatron import print_rank_0
@@ -527,9 +522,7 @@ class Float16OptimizerWithFloat16Params(MixedPrecisionOptimizer):
 
                     # float16 params:
                     if param.type() in ['torch.cuda.HalfTensor',
-                                        'torch.cuda.BFloat16Tensor',
-                                        'torch.xpu.HalfTensor',
-                                        'torch.xpu.BFloat16Tensor']:
+                                        'torch.cuda.BFloat16Tensor']:
                         float16_params_this_group.append(param)
                         # Create a copy
                         main_param = param.detach().clone().float()
@@ -547,19 +540,15 @@ class Float16OptimizerWithFloat16Params(MixedPrecisionOptimizer):
                             self.optimizer.state[main_param] \
                                 = self.optimizer.state.pop(param)
                     # fp32 params.
-                    elif param.type() in ['torch.cuda.FloatTensor',
-                                          'torch.xpu.FloatTensor']:
+                    elif param.type() == 'torch.cuda.FloatTensor':
                         fp32_params_this_group.append(param)
                         param_group['params'][i] = param
 
                     else:
                         raise TypeError('Wrapped parameters must be one of '
-                                        'torch.cuda.FloatTensor, or '
+                                        'torch.cuda.FloatTensor,  '
                                         'torch.cuda.HalfTensor, or '
-                                        'torch.cuda.BFloat16Tensor, or '
-                                        'torch.xpu.FloatTensor, or '
-                                        'torch.xpu.HalfTensor, or '
-                                        'torch.xpu.BFloat16Tensor. '
+                                        'torch.cuda.BFloat16Tensor. '
                                         'Received {}'.format(param.type()))
 
             self.float16_groups.append(float16_params_this_group)

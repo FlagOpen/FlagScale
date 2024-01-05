@@ -144,13 +144,7 @@ class UvicornServer:
                                         prevent_newline_after_colon=False,
                                         random_seed=seed,
                                         stream=True)
-            if torch_xmlir:
-                if param_scope.xacc.eager("false") == "true":
-                    torch_xmlir.xpu.empty_cache()
-                else:
-                    pass
-            else:
-                torch.cuda.empty_cache()
+            torch.cuda.empty_cache()
 
             def trans():
                 while True:
@@ -179,7 +173,7 @@ class UvicornServer:
                 lock_stream.release()
 
             return StreamingResponse(trans(), media_type="text/plain",
-                                background=BackgroundTask(postprocessing, fun), lock=lock_stream)
+                                background=BackgroundTask(postprocessing, fun))
 
 
         return app
@@ -214,11 +208,11 @@ def add_text_generate_args(parser):
 
 if __name__ == "__main__":
 
-    if torch_xmlir:
-        from hyperparameter import param_scope
-        ps = param_scope(**{"xacc":{"eager":"true"}})
-        ps.__enter__()
-        param_scope.frozen()
+    # if torch_xmlir:
+    #     from hyperparameter import param_scope
+    #     ps = param_scope(**{"xacc":{"eager":"true"}})
+    #     ps.__enter__()
+    #     param_scope.frozen()
 
     import os
     rank = os.getenv("RANK", "0")
@@ -275,13 +269,7 @@ if __name__ == "__main__":
             try:
                 print("start time:", datetime.datetime.now())
                 generate_and_post_process_single_thread(model)
-                if torch_xmlir:
-                    if param_scope.xacc.eager("false") == "true":
-                        torch_xmlir.xpu.empty_cache()
-                    else:
-                        pass
-                else:
-                    torch.cuda.empty_cache()
+                torch.cuda.empty_cache()
                 print("end time:", datetime.datetime.now(), '\n')
 
             except Exception as e:
