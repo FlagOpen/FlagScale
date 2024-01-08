@@ -40,13 +40,6 @@ try:
 except ImportError:
     _grad_accum_fusion_available = False
 
-try:
-    import torch_xmlir
-    from torch_xmlir.nn.linear import linear
-except Exception:
-    torch_xmlir = None
-
-gemm_type = os.getenv("XDNN_FC_GEMM_DTYPE")
 
 _MODEL_PARALLEL_ATTRIBUTE_DEFAULTS = {
     'tensor_model_parallel': False,
@@ -254,12 +247,9 @@ class LinearWithFrozenWeight(torch.autograd.Function):
         ctx, input, weight, bias, weight_max
     ):
         ctx.save_for_backward(weight)
-        if torch_xmlir is None:
-            output = torch.matmul(input, weight.t())
-            if bias is not None:
-                output = output + bias
-        else:
-            output = linear(input, weight, bias, weight_max=weight_max)
+        output = torch.matmul(input, weight.t())
+        if bias is not None:
+            output = output + bias
         return output
 
     @staticmethod
@@ -360,35 +350,9 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         else:
             total_input = input
 
-        if torch_xmlir is None:
-            output = torch.matmul(total_input, weight.t())
-            if bias is not None:
-                output = output + bias
-        else:
-            if args.findmax_opt:
-                device = total_input.device
-                if gemm_type == "float32":
-                    input_max, weight_max = None, None
-                else:
-                    input_max = torch.empty((64), dtype=torch.float, device=device)
-                    torch.ops.custom_ops.findmax(total_input, max=input_max)
-
-                    weight_max = torch.empty((64), dtype=torch.float, device=device)
-                    torch.ops.custom_ops.findmax(weight, max=weight_max)
-
-                ctx.input_max = input_max
-                ctx.weight_max = weight_max
-                output = total_input.new_empty(total_input.shape[0], total_input.shape[1], weight.shape[0])
-                torch.ops.custom_ops.fc_fusion(
-                    total_input.view(total_input.shape[0] * total_input.shape[1], total_input.shape[-1]),
-                    weight,
-                    other_trans=True,
-                    self_max=input_max,
-                    other_max=weight_max,
-                    out=output
-                )
-            else:
-                output = linear(total_input, weight, bias, weight_max=weight_max)
+        output = torch.matmul(total_input, weight.t())
+        if bias is not None:
+            output = output + bias
         return output
 
     @staticmethod
@@ -414,33 +378,7 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         else:
             total_input = input
 
-        if torch_xmlir is None:
-            grad_input = grad_output.matmul(weight)
-        else:
-            if args.findmax_opt:
-
-                if gemm_type == "float32":
-                    grad_output_max = None
-                else:
-                    device = grad_output.device
-                    grad_output_max = torch.empty((64), dtype=torch.float, device=device)
-                    torch.ops.custom_ops.findmax(grad_output, max=grad_output_max)
-
-                grad_input = grad_output.new_empty(grad_output.shape[:-1] + (weight.shape[-1],))
-                # dims compression for mat1 and mat2 dims not same
-                tmp_grad_output = grad_output.view(
-                            grad_output.shape[0] * grad_output.shape[1], grad_output.shape[-1])
-
-                torch.ops.custom_ops.fc_fusion(
-                    tmp_grad_output,
-                    weight,
-                    self_max=grad_output_max,
-                    other_max=ctx.weight_max,
-                    out=grad_input
-                )
-
-            else:
-                grad_input = grad_output.matmul(weight)
+        grad_input = grad_output.matmul(weight)
 
         if ctx.sequence_parallel:
             handle.wait()
@@ -492,19 +430,7 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
                 raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
             grad_weight = None
         else:
-            if torch_xmlir is None:
-                grad_weight = grad_output.t().matmul(total_input)
-            else:
-                grad_weight = grad_output.new_empty(grad_output.shape[1], total_input.shape[1])
-                if args.findmax_opt:
-                    torch.ops.custom_ops.fc_fusion(
-                        grad_output, total_input, self_trans=True,
-                        self_max=grad_output_max, other_max=ctx.input_max, out=grad_weight
-                    )
-                else:
-                    torch.ops.custom_ops.fc_fusion(
-                       grad_output, total_input, self_trans=True, out=grad_weight
-                    )
+            grad_weight = grad_output.t().matmul(total_input)
 
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 
