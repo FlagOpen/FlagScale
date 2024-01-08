@@ -208,11 +208,6 @@ def add_text_generate_args(parser):
 
 if __name__ == "__main__":
 
-    # if torch_xmlir:
-    #     from hyperparameter import param_scope
-    #     ps = param_scope(**{"xacc":{"eager":"true"}})
-    #     ps.__enter__()
-    #     param_scope.frozen()
 
     import os
     rank = os.getenv("RANK", "0")
