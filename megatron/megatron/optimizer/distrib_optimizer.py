@@ -4,6 +4,7 @@
 
 
 from apex.optimizers import FusedAdam as Adam
+
 import math
 import torch
 
@@ -320,6 +321,7 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
 
                 # fp32 params.
                 elif model_param.type() == 'torch.cuda.FloatTensor':
+
                     shard_model_param = model_param.view(-1) \
                         [param_range.start:param_range.end]
                     model_fp32_params_this_group.append(model_param)

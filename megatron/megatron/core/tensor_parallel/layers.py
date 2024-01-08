@@ -39,6 +39,7 @@ try:
 except ImportError:
     _grad_accum_fusion_available = False
 
+
 _MODEL_PARALLEL_ATTRIBUTE_DEFAULTS = {
     'tensor_model_parallel': False,
     'partition_dim': -1,
@@ -366,6 +367,7 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
             total_input = all_gather_buffer
         else:
             total_input = input
+
         grad_input = grad_output.matmul(weight)
 
         if ctx.sequence_parallel:
@@ -419,6 +421,7 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
             grad_weight = None
         else:
             grad_weight = grad_output.t().matmul(total_input)
+
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 
         if ctx.sequence_parallel:

@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 from megatron.model.enums import AttnMaskType
 
-
 class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
     """
     Fused operation which performs following three operations in sequence
