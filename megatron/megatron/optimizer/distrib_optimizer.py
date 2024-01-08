@@ -320,7 +320,8 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
                     shard_fp32_from_float16_params_this_group.append(shard_main_param)
 
                 # fp32 params.
-                elif model_param.type() in ['torch.cuda.FloatTensor']:
+                elif model_param.type() == 'torch.cuda.FloatTensor':
+
                     shard_model_param = model_param.view(-1) \
                         [param_range.start:param_range.end]
                     model_fp32_params_this_group.append(model_param)
@@ -334,7 +335,7 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
                     raise TypeError('Wrapped parameters must be one of '
                                     'torch.cuda.FloatTensor,  '
                                     'torch.cuda.HalfTensor, or '
-                                    'torch.cuda.BFloat16Tensor.'
+                                    'torch.cuda.BFloat16Tensor. '
                                     'Received {}'.format(model_param.type()))
 
             # Update optimizer's params.

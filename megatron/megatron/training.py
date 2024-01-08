@@ -59,10 +59,6 @@ from megatron.utils import report_memory
 from megatron.model.vision.knn_monitor import compute_feature_bank
 from megatron.model.transformer import ParallelAttention
 
-try:
-    import torch_xmlir
-except:
-    torch_xmlir = None
 
 def print_datetime(string):
     """Note that this call will sync across all ranks."""
@@ -342,8 +338,7 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
 
     # GPU allocation.
     for model_module in model:
-        device = 'xpu:' + str(torch_xmlir.xpu.current_device()) if torch_xmlir else torch.cuda.current_device()
-        model_module.to(device)
+        model_module.cuda(torch.cuda.current_device())
 
     # Fp16 conversion.
     if args.fp16 or args.bf16:
@@ -351,10 +346,7 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
 
     if wrap_with_ddp:
         if args.DDP_impl == 'torch':
-            if torch_xmlir is None:
-                i = torch.cuda.current_device()
-            else:
-                i = torch_xmlir.xpu.current_device()
+            i = torch.cuda.current_device()
             model = [torchDDP(model_module, device_ids=[i], output_device=i,
                               process_group=mpu.get_data_parallel_group())
                      for model_module in model]

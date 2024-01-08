@@ -16,10 +16,6 @@ from tools.retro.utils import get_args_path as get_retro_args_path
 
 from megatron.core.transformer import TransformerConfig
 
-try:
-    import torch_xmlir
-except Exception:
-    torch_xmlir = None
 
 def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     """Parse all arguments."""
@@ -438,17 +434,17 @@ def validate_args(args, defaults={}):
     # model parallel memory optimization is enabled
     if args.sequence_parallel:
         args.async_tensor_model_parallel_allreduce = False
+    
+    if os.environ.get('CUDA_DEVICE_MAX_CONNECTIONS') != "1":
+        if args.sequence_parallel:
+            raise RuntimeError(
+                "Using sequence parallelism requires setting the environment variable "
+                "CUDA_DEVICE_MAX_CONNECTIONS to 1")
+        if args.async_tensor_model_parallel_allreduce:
+            raise RuntimeError(
+                "Using async gradient all reduce requires setting the environment "
+                "variable CUDA_DEVICE_MAX_CONNECTIONS to 1")
 
-    if torch_xmlir is None:
-        if os.environ.get('CUDA_DEVICE_MAX_CONNECTIONS') != "1":
-            if args.sequence_parallel:
-                raise RuntimeError(
-                    "Using sequence parallelism requires setting the environment variable "
-                    "CUDA_DEVICE_MAX_CONNECTIONS to 1")
-            if args.async_tensor_model_parallel_allreduce:
-                raise RuntimeError(
-                    "Using async gradient all reduce requires setting the environment "
-                    "variable CUDA_DEVICE_MAX_CONNECTIONS to 1")
 
     # Disable bias gelu fusion if we are disabling bias altogether
     if not args.add_bias_linear:
@@ -548,10 +544,7 @@ def core_transformer_config_from_args(args):
             kw_args[f.name] = getattr(args, f.name)
     kw_args['persist_layer_norm'] = not args.no_persist_layer_norm
     kw_args['layernorm_zero_centered_gamma'] = args.apply_layernorm_1p
-    if torch_xmlir is None:
-        kw_args['deallocate_pipeline_outputs'] = True
-    else:
-        kw_args['deallocate_pipeline_outputs'] = False
+    kw_args['deallocate_pipeline_outputs'] = True
     kw_args['pipeline_dtype'] = args.params_dtype
     kw_args['batch_p2p_comm'] = not args.overlap_p2p_comm
     if args.swiglu:
@@ -1258,7 +1251,7 @@ def _add_distributed_args(parser):
                        help='overlap pipeline parallel communication with forward and backward chunks',
                        dest='overlap_p2p_comm')
     group.add_argument('--distributed-backend', default='nccl',
-                       choices=['nccl', 'gloo', 'xccl'],
+                       choices=['nccl', 'gloo'],
                        help='Which backend to use for distributed training.')
     group.add_argument('--distributed-timeout-minutes', type=int, default=10,
                        help='Timeout minutes for torch.distributed.')

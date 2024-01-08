@@ -149,7 +149,6 @@ class FusedScaleMaskSoftmax(nn.Module):
             return self.forward_torch_softmax(input, mask)
 
     def is_kernel_available(self, mask, b, np, sq, sk):
-
         attn_batches = b * np
 
         if (

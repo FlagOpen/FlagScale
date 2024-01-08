@@ -1,7 +1,7 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 
 """GPT-2 model."""
-import os
+
 import torch
 
 from megatron import get_args
@@ -29,15 +29,13 @@ def print_device_type():
 
 def post_language_model_processing(lm_output, labels, logit_weights,
                                    parallel_output,
-                                   fp16_lm_cross_entropy,
-                                   logit_weights_max=None):
+                                   fp16_lm_cross_entropy):
 
     # Output. Format [s b h]
     output = parallel_lm_logits(
         lm_output,
         logit_weights,
-        parallel_output,
-        word_embeddings_weight_max=logit_weights_max)
+        parallel_output)
 
     if labels is None:
         # [s b h] => [b s h]
@@ -108,22 +106,11 @@ class GPTModel(MegatronModule):
             inference_params=inference_params)
 
         if self.post_process:
-            weight = self.language_model.output_layer.weight \
-                     if self.untie_embeddings_and_output_weights \
-                     else self.shared_embedding_or_output_weight()
-            inference_flag = (os.getenv("AQUILA_INFERENCE", "false").lower() == "true")
-            if inference_flag:
-                if not hasattr(self, "output_weight_max"):
-                    device = weight.device
-                    self.output_weight_max = torch.empty((64), dtype=torch.float).to(device)
-                    torch.ops.custom_ops.findmax(weight, max=self.output_weight_max)
-            output_weight_max = self.output_weight_max if hasattr(self, "output_weight_max") else None
             return post_language_model_processing(
                 lm_output, labels,
-                weight,
+                self.language_model.output_layer.weight if self.untie_embeddings_and_output_weights else self.shared_embedding_or_output_weight(),
                 self.parallel_output,
-                self.fp16_lm_cross_entropy,
-                logit_weights_max=output_weight_max)
+                self.fp16_lm_cross_entropy)
         else:
             return lm_output
 

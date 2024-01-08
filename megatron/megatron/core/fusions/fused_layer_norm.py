@@ -23,10 +23,6 @@ try:
 except:
     HAVE_FUSED_LAYER_NORM = False
 
-try:
-    import torch_xmlir
-except Exception:
-    torch_xmlir = None
 
 class FusedLayerNorm(torch.nn.Module):
     def __init__(

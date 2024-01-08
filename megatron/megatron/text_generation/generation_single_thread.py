@@ -16,11 +16,6 @@ from .forward_step import ForwardStep
 from .sampling import sample_single_thread
 from .beam_utils import BeamHypotheses
 
-try:
-    import torch_xmlir
-except:
-    torch_xmlir = None
-
 def score_and_return_on_first_stage(model, tokens, lengths):
     """Function for just scoring.
     Arguments:
@@ -163,18 +158,16 @@ def generate_tokens_probs_and_return_on_first_stage_stream_sub_process(
     # Lengths of generated seuquence including including prompts.
     generated_sequence_lengths = None
     if mpu.is_pipeline_last_stage():
-        device = 'xpu:' + str(torch_xmlir.xpu.current_device()) if torch_xmlir else torch.cuda.current_device()
         if return_output_log_probs:
             output_log_probs = torch.empty(output_log_probs_size,
                                            dtype=torch.float32,
-                                           device=device)
+                                           device=torch.cuda.current_device())
         generated_sequence_lengths = torch.ones(
                 batch_size, dtype=torch.int64,
-                device=device) * max_sequence_length
-    device = 'xpu:' + str(torch_xmlir.xpu.current_device()) if torch_xmlir else torch.cuda.current_device()
+                device=torch.cuda.current_device()) * max_sequence_length
     # Whether we have reached a termination id.
     is_generation_done = torch.zeros(batch_size, dtype=torch.uint8,
-                                     device=device)
+                                     device=torch.cuda.current_device())
 
     # =============
     # Run infernece
@@ -322,19 +315,17 @@ def generate_tokens_probs_and_return_on_first_stage_stream_main_process(
     # Lengths of generated seuquence including including prompts.
     generated_sequence_lengths = None
     if mpu.is_pipeline_last_stage():
-        device = 'xpu:' + str(torch_xmlir.xpu.current_device()) if torch_xmlir else torch.cuda.current_device()
         if return_output_log_probs:
             output_log_probs = torch.empty(output_log_probs_size,
                                            dtype=torch.float32,
-                                           device=device)
+                                           device=torch.cuda.current_device())
         generated_sequence_lengths = torch.ones(
                 batch_size, dtype=torch.int64,
-                device=device) * max_sequence_length
+                device=torch.cuda.current_device()) * max_sequence_length
 
     # Whether we have reached a termination id.
-    device = 'xpu:' + str(torch_xmlir.xpu.current_device()) if torch_xmlir else torch.cuda.current_device()
     is_generation_done = torch.zeros(batch_size, dtype=torch.uint8,
-                                     device=device)
+                                     device=torch.cuda.current_device())
 
     # =============
     # Run infernece
