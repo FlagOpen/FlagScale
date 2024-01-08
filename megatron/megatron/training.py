@@ -346,10 +346,7 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
 
     if wrap_with_ddp:
         if args.DDP_impl == 'torch':
-            if torch_xmlir is None:
-                i = torch.cuda.current_device()
-            else:
-                i = torch_xmlir.xpu.current_device()
+            i = torch.cuda.current_device()
             model = [torchDDP(model_module, device_ids=[i], output_device=i,
                               process_group=mpu.get_data_parallel_group())
                      for model_module in model]

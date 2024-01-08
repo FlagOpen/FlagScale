@@ -4,10 +4,6 @@
 
 
 import torch
-try:
-    import torch_xmlir
-except:
-    torch_xmlir = None
 
 from megatron.core import mpu
 from .communication import broadcast_float_list
@@ -137,9 +133,6 @@ def generate(model,
 
     if random_seed != -1:
         torch.random.manual_seed(random_seed)
-        print("!!!!!!!!!!!!! torch_xmlir.xpu.manual_seed")
-        # if torch_xmlir:
-        #     torch_xmlir.xpu.manual_seed(random_seed)
 
     # Tokenize prompts and get the batch.
     # Note that these tensors are broadcaseted to all ranks.
@@ -219,9 +212,6 @@ def generate_stream(model,
 
     if random_seed != -1:
         torch.random.manual_seed(random_seed)
-        print("!!!!!!!!!!!!! torch_xmlir.xpu.manual_seed")
-        # if torch_xmlir:
-        #     torch_xmlir.xpu.manual_seed(random_seed)
 
     # Tokenize prompts and get the batch.
     # Note that these tensors are broadcaseted to all ranks.
