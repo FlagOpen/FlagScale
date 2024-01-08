@@ -226,7 +226,8 @@ def generate_tokens_probs_and_return_on_first_stage_stream_sub_process(
                 # length, it means we have started generating tokens
                 started = lengths <= context_length
                 # Update the tokens.
-                tokens[started, context_length] = new_sample[started]
+                if started:
+                    tokens[0, context_length] = new_sample[0]
 
 
             # Update the tokens on the first stage so the next input to
