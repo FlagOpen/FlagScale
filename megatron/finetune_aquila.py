@@ -18,7 +18,7 @@ import sys
 import os
 # Add aquila to sys.path
 sys.path.append(os.path.join(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))), 'aquila/'))
+    os.path.dirname(os.path.abspath(__file__))), './'))
 from aquila.utils.convo_dataset import build_train_valid_test_datasets
 
 def model_provider(pre_process=True, post_process=True):
