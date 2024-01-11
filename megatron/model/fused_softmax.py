@@ -4,11 +4,6 @@
 import torch
 import torch.nn as nn
 from megatron.model.enums import AttnMaskType
-try:
-    import torch_xmlir
-    from torch_xmlir.nn.softmax_with_mask import SoftmaxWithMaskFunction
-except ImportError:
-    torch_xmlir = None
 
 class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
     """
@@ -150,17 +145,10 @@ class FusedScaleMaskSoftmax(nn.Module):
 
         if self.is_kernel_available(mask, *input.size()):
             return self.forward_fused_softmax(input, mask)
-        elif torch_xmlir is not None and self.scaled_masked_softmax_fusion:
-            if self.scale is None:
-                self.scale = 1
-            return SoftmaxWithMaskFunction.apply(input, mask, self.scale)
         else:
             return self.forward_torch_softmax(input, mask)
 
     def is_kernel_available(self, mask, b, np, sq, sk):
-
-        if torch_xmlir is not None:
-            return False
 
         attn_batches = b * np
 

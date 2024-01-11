@@ -9,10 +9,6 @@ import torch
 
 from megatron.core import parallel_state
 from megatron.core.dist_checkpointing.mapping import ShardedTensor
-try:
-    import torch_xmlir
-except:
-    torch_xmlir = None
 
 def ensure_divisibility(numerator, denominator):
     """Ensure that numerator is divisible by the denominator."""
@@ -76,9 +72,8 @@ class GlobalMemoryBuffer:
             self.buffer.get((name, dtype), None) is None
             or self.buffer[(name, dtype)].numel() < required_len
         ):
-            device = 'xpu:' + str(torch_xmlir.xpu.current_device()) if torch_xmlir else torch.cuda.current_device()
             self.buffer[(name, dtype)] = torch.empty(
-                required_len, dtype=dtype, device=device, requires_grad=False
+                required_len, dtype=dtype, device=torch.cuda.current_device(), requires_grad=False
             )
 
         return self.buffer[(name, dtype)][0:required_len].view(*tensor_shape)

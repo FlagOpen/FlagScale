@@ -18,10 +18,6 @@ from megatron.core.parallel_state import (
 # Types
 Shape = Union[List[int], torch.Size]
 
-try:
-    import torch_xmlir
-except Exception:
-    torch_xmlir = None
 
 
 def _communicate_shapes(tensor_send_next, tensor_send_prev, recv_prev, recv_next, config):
@@ -103,11 +99,6 @@ def _communicate_shapes(tensor_send_next, tensor_send_prev, recv_prev, recv_next
             )
             ops.append(recv_next_op)
         if len(ops) > 0:
-            if torch_xmlir is not None:
-                # TODO: @aoyulong need to fix this for hetero training
-                pipeline_rank = torch.distributed.get_rank(group=get_pipeline_model_parallel_group())
-                if pipeline_rank % 2 != 0:
-                    ops.reverse()
             reqs = torch.distributed.batch_isend_irecv(ops)
             for req in reqs:
                 req.wait()
@@ -169,11 +160,6 @@ def _batched_p2p_ops(
         )
         ops.append(recv_next_op)
     if len(ops) > 0:
-        if torch_xmlir is not None:
-            # TODO: @aoyulong need to fix this for hetero training
-            pipeline_rank = torch.distributed.get_rank(group=get_pipeline_model_parallel_group())
-            if pipeline_rank % 2 != 0:
-                ops.reverse()
         reqs = torch.distributed.batch_isend_irecv(ops)
     else:
         reqs = []

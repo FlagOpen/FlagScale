@@ -11,11 +11,6 @@ import torch
 from datetime import timedelta
 
 from megatron import fused_kernels
-try:
-    import torch_xmlir
-except ImportError:
-    torch_xmlir = None
-    from megatron import fused_kernels
 
 from megatron import get_adlr_autoresume
 from megatron import get_args
@@ -48,10 +43,7 @@ def initialize_megatron(
     """
     if not allow_no_cuda:
         # Make sure cuda is available.
-        if torch_xmlir:
-            assert torch_xmlir.xpu.is_available()
-        else:
-            assert torch.cuda.is_available(), "Megatron requires CUDA."
+        assert torch.cuda.is_available(), "Megatron requires CUDA."
 
     # Parse arguments
     args = parse_args(extra_args_provider, ignore_unknown_args)
@@ -166,15 +158,14 @@ def _compile_dependencies():
             )
 
     # Always build on rank zero first.
-    if torch_xmlir is None:
-        if torch.distributed.get_rank() == 0:
-            start_time = time.time()
-            print("> compiling and loading fused kernels ...", flush=True)
-            fused_kernels.load(args)
-            torch.distributed.barrier()
-        else:
-            torch.distributed.barrier()
-            fused_kernels.load(args)
+    if torch.distributed.get_rank() == 0:
+        start_time = time.time()
+        print("> compiling and loading fused kernels ...", flush=True)
+        fused_kernels.load(args)
+        torch.distributed.barrier()
+    else:
+        torch.distributed.barrier()
+        fused_kernels.load(args)
     # Simple barrier to make sure all ranks have passed the
     # compilation phase successfully before moving on to the
     # rest of the program. We think this might ensure that
@@ -222,10 +213,7 @@ def _initialize_distributed():
     """Initialize torch.distributed and core model parallel."""
     args = get_args()
 
-    if torch_xmlir:
-        device_count = torch_xmlir.xpu.xpu_device_count()
-    else:
-        device_count = torch.cuda.device_count()
+    device_count = torch.cuda.device_count()
     if torch.distributed.is_initialized():
 
         if args.rank == 0:
@@ -250,10 +238,7 @@ def _initialize_distributed():
                 ), "expected local-rank to be the same as rank % device-count."
             else:
                 args.local_rank = device
-            if torch_xmlir:
-                torch_xmlir.xpu.xpu_set_device(device)
-            else:
-                torch.cuda.set_device(device)
+            torch.cuda.set_device(device)
         # Call the init process
         torch.distributed.init_process_group(
             backend=args.distributed_backend,
@@ -316,12 +301,8 @@ def _set_random_seed(seed_, data_parallel_random_init=False):
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
-        if torch_xmlir:
-            if torch_xmlir.xpu.device_count() > 0:
-                tensor_parallel.model_parallel_cuda_manual_seed(seed)
-        else:
-            if torch.cuda.device_count() > 0:
-                tensor_parallel.model_parallel_cuda_manual_seed(seed)
+        if torch.cuda.device_count() > 0:
+            tensor_parallel.model_parallel_cuda_manual_seed(seed)
     else:
         raise ValueError("Seed ({}) should be a positive integer.".format(seed))
 
@@ -347,8 +328,7 @@ def set_jit_fusion_options():
         torch._C._jit_override_can_fuse_on_cpu(False)
         torch._C._jit_override_can_fuse_on_gpu(False)
         torch._C._jit_set_texpr_fuser_enabled(False)
-        if torch_xmlir is None:
-            torch._C._jit_set_nvfuser_enabled(True)
+        torch._C._jit_set_nvfuser_enabled(True)
         torch._C._debug_set_autodiff_subgraph_inlining(False)
     else:
         # legacy pytorch fuser

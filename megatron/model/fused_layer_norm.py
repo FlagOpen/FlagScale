@@ -18,15 +18,7 @@ try:
 except:
     HAVE_PERSIST_LAYER_NORM = False
 
-try:
-    from apex.normalization.fused_layer_norm import FusedLayerNormAffineFunction
-except:
-    FusedLayerNormAffineFunction = None
-
-try:
-    import torch_xmlir
-except Exception:
-    torch_xmlir = None
+from apex.normalization.fused_layer_norm import FusedLayerNormAffineFunction
 
 global fused_layer_norm_cuda
 fused_layer_norm_cuda = None
@@ -50,8 +42,7 @@ class MixedFusedLayerNorm(torch.nn.Module):
             "Cannot float init_weight and 1p layernorm"
 
         global fused_layer_norm_cuda
-        if torch_xmlir is None:
-            fused_layer_norm_cuda = importlib.import_module("fused_layer_norm_cuda")
+        fused_layer_norm_cuda = importlib.import_module("fused_layer_norm_cuda")
 
         # List of hiddens sizes supported in the persistent layer norm kernel
         # If the hidden size is not supported, fall back to the non-persistent

@@ -13,7 +13,6 @@ import torch.nn.functional as F
 import torch.nn.init as init
 from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.nn.parameter import Parameter
-from megatron import get_args
 
 from megatron.core.model_parallel_config import ModelParallelConfig
 from megatron.core.parallel_state import (
@@ -39,12 +38,6 @@ try:
     import fused_weight_gradient_mlp_cuda
 except ImportError:
     _grad_accum_fusion_available = False
-
-try:
-    import torch_xmlir
-    from torch_xmlir.nn.linear import linear
-except Exception:
-    torch_xmlir = None
 
 gemm_type = os.getenv("XDNN_FC_GEMM_DTYPE")
 
@@ -199,12 +192,11 @@ class VocabParallelEmbedding(torch.nn.Module):
                     params_dtype=config.params_dtype,
                 )
         else:
-            device = 'xpu:' + str(torch_xmlir.xpu.current_device()) if torch_xmlir else torch.cuda.current_device()
             self.weight = Parameter(
                 torch.empty(
                     self.num_embeddings_per_partition,
                     self.embedding_dim,
-                    device=device,
+                    device=torch.cuda.current_device(),
                     dtype=config.params_dtype,
                 )
             )
@@ -245,15 +237,12 @@ class LinearWithFrozenWeight(torch.autograd.Function):
     @staticmethod
     @custom_fwd
     def forward(
-        ctx, input, weight, bias, weight_max
+        ctx, input, weight, bias,
     ):
         ctx.save_for_backward(weight)
-        if torch_xmlir is None:
-            output = torch.matmul(input, weight.t())
-            if bias is not None:
-                output = output + bias
-        else:
-            output = linear(input, weight, bias, weight_max=weight_max)
+        output = torch.matmul(input, weight.t())
+        if bias is not None:
+            output = output + bias
         return output
 
     @staticmethod
@@ -271,7 +260,6 @@ def linear_with_frozen_weight(
     gradient_accumulation_fusion: bool,
     async_grad_allreduce: bool,
     sequence_parallel: bool,
-    weight_max,
 ) -> torch.Tensor:
     """Linear layer execution with weight.requires_grad == False.
 
@@ -309,7 +297,6 @@ def linear_with_frozen_weight(
         input,
         weight,
         bias,
-        weight_max,
     ]
 
     return LinearWithFrozenWeight.apply(*args)
@@ -328,7 +315,6 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         gradient_accumulation_fusion,
         async_grad_allreduce,
         sequence_parallel,
-        weight_max=None,
     ):
         ctx.save_for_backward(input, weight)
         ctx.use_bias = bias is not None
@@ -336,8 +322,6 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         ctx.async_grad_allreduce = async_grad_allreduce
         ctx.sequence_parallel = sequence_parallel
 
-        args = get_args()
-        ctx.args = args
 
         if sequence_parallel:
             world_size = get_tensor_model_parallel_world_size()
@@ -351,35 +335,9 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         else:
             total_input = input
 
-        if torch_xmlir is None:
-            output = torch.matmul(total_input, weight.t())
-            if bias is not None:
-                output = output + bias
-        else:
-            if args.findmax_opt:
-                device = total_input.device
-                if gemm_type == "float32":
-                    input_max, weight_max = None, None
-                else:
-                    input_max = torch.empty((64), dtype=torch.float, device=device)
-                    torch.ops.custom_ops.findmax(total_input, max=input_max)
-
-                    weight_max = torch.empty((64), dtype=torch.float, device=device)
-                    torch.ops.custom_ops.findmax(weight, max=weight_max)
-
-                ctx.input_max = input_max
-                ctx.weight_max = weight_max
-                output = total_input.new_empty(total_input.shape[0], total_input.shape[1], weight.shape[0])
-                torch.ops.custom_ops.fc_fusion(
-                    total_input.view(total_input.shape[0] * total_input.shape[1], total_input.shape[-1]),
-                    weight,
-                    other_trans=True,
-                    self_max=input_max,
-                    other_max=weight_max,
-                    out=output
-                )
-            else:
-                output = linear(total_input, weight, bias, weight_max=weight_max)
+        output = torch.matmul(total_input, weight.t())
+        if bias is not None:
+            output = output + bias
         return output
 
     @staticmethod
@@ -387,7 +345,6 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
     def backward(ctx, grad_output):
         input, weight = ctx.saved_tensors
         use_bias = ctx.use_bias
-        args = ctx.args
 
         if ctx.sequence_parallel:
             world_size = get_tensor_model_parallel_world_size()
@@ -405,33 +362,7 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         else:
             total_input = input
 
-        if torch_xmlir is None:
-            grad_input = grad_output.matmul(weight)
-        else:
-            if args.findmax_opt:
-
-                if gemm_type == "float32":
-                    grad_output_max = None
-                else:
-                    device = grad_output.device
-                    grad_output_max = torch.empty((64), dtype=torch.float, device=device)
-                    torch.ops.custom_ops.findmax(grad_output, max=grad_output_max)
-
-                grad_input = grad_output.new_empty(grad_output.shape[:-1] + (weight.shape[-1],))
-                # dims compression for mat1 and mat2 dims not same
-                tmp_grad_output = grad_output.view(
-                            grad_output.shape[0] * grad_output.shape[1], grad_output.shape[-1])
-
-                torch.ops.custom_ops.fc_fusion(
-                    tmp_grad_output,
-                    weight,
-                    self_max=grad_output_max,
-                    other_max=ctx.weight_max,
-                    out=grad_input
-                )
-
-            else:
-                grad_input = grad_output.matmul(weight)
+        grad_input = grad_output.matmul(weight)
 
         if ctx.sequence_parallel:
             handle.wait()
@@ -505,19 +436,7 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
             else:
                 grad_weight = None
         else:
-            if torch_xmlir is None:
-                grad_weight = grad_output.t().matmul(total_input)
-            else:
-                grad_weight = grad_output.new_empty(grad_output.shape[1], total_input.shape[1])
-                if args.findmax_opt:
-                    torch.ops.custom_ops.fc_fusion(
-                        grad_output, total_input, self_trans=True,
-                        self_max=grad_output_max, other_max=ctx.input_max, out=grad_weight
-                    )
-                else:
-                    torch.ops.custom_ops.fc_fusion(
-                       grad_output, total_input, self_trans=True, out=grad_weight
-                    )
+            grad_weight = grad_output.t().matmul(total_input)
 
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 
@@ -538,7 +457,6 @@ def linear_with_grad_accumulation_and_async_allreduce(
     gradient_accumulation_fusion: bool,
     async_grad_allreduce: bool,
     sequence_parallel: bool,
-    weight_max: torch.Tensor = None,
 ) -> torch.Tensor:
     """Linear layer execution with asynchronous communication and
     gradient accumulation fusion in backprop.
@@ -599,7 +517,6 @@ def linear_with_grad_accumulation_and_async_allreduce(
         gradient_accumulation_fusion,
         async_grad_allreduce,
         sequence_parallel,
-        weight_max,
     ]
 
     if not linear_with_grad_accumulation_and_async_allreduce.warned:
@@ -700,12 +617,11 @@ class ColumnParallelLinear(torch.nn.Module):
                         return_master_weight=keep_master_weight_for_test,
                     )
             else:
-                device = 'xpu:' + str(torch_xmlir.xpu.current_device()) if torch_xmlir else torch.cuda.current_device()
                 self.weight = Parameter(
                     torch.empty(
                         self.output_size_per_partition,
                         self.input_size,
-                        device=device,
+                        device=torch.cuda.current_device(),
                         dtype=config.params_dtype,
                     )
                 )
@@ -825,12 +741,6 @@ class ColumnParallelLinear(torch.nn.Module):
             self._forward_impl = linear_with_frozen_weight
         else:
             self._forward_impl = linear_with_grad_accumulation_and_async_allreduce
-        inference_flag = (os.getenv("AQUILA_INFERENCE", "false").lower() == "true")
-        if inference_flag:
-            if not hasattr(self, "weight_max"):
-                device = weight.device
-                self.weight_max = torch.empty((64), dtype=torch.float).to(device)
-                torch.ops.custom_ops.findmax(weight, max=self.weight_max)
         output_parallel = self._forward_impl(
             input=input_parallel,
             weight=weight,
@@ -929,12 +839,11 @@ class RowParallelLinear(torch.nn.Module):
                     params_dtype=config.params_dtype,
                 )
         else:
-            device = 'xpu:' + str(torch_xmlir.xpu.current_device()) if torch_xmlir else torch.cuda.current_device()
             self.weight = Parameter(
                 torch.empty(
                     self.output_size,
                     self.input_size_per_partition,
-                    device=device,
+                    device=torch.cuda.current_device(),
                     dtype=config.params_dtype,
                 )
             )
@@ -995,12 +904,6 @@ class RowParallelLinear(torch.nn.Module):
             self._forward_impl = linear_with_frozen_weight
         else:
             self._forward_impl = linear_with_grad_accumulation_and_async_allreduce
-        inference_flag = (os.getenv("AQUILA_INFERENCE", "false").lower() == "true")
-        if inference_flag:
-            if not hasattr(self, "weight_max"):
-                device = self.weight.device
-                self.weight_max = torch.empty((64), dtype=torch.float).to(device)
-                torch.ops.custom_ops.findmax(self.weight, max=self.weight_max)
         output_parallel = self._forward_impl(
             input=input_parallel,
             weight=self.weight,
@@ -1008,7 +911,6 @@ class RowParallelLinear(torch.nn.Module):
             gradient_accumulation_fusion=self.gradient_accumulation_fusion,
             async_grad_allreduce=False,
             sequence_parallel=False,
-            weight_max=self.weight_max if hasattr(self, "weight_max") else None,
         )
 
         # All-reduce across all the partitions.
