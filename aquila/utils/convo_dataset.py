@@ -97,8 +97,8 @@ class ConversationDatasetV2(torch.utils.data.Dataset):
 
 
     def __getitem__(self, i):
-        from examples.aquila.utils.convo_prompt import _add_speaker_and_signal
-        from examples.aquila.utils.convo_prompt import header
+        from aquila.utils.convo_prompt import _add_speaker_and_signal
+        from aquila.utils.convo_prompt import header
 
         #source = self.conversations[self.sample_idx[i]]
         source = self.conversations[i]
