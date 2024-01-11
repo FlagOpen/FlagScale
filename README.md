@@ -50,6 +50,7 @@ python run.py --config <config_path> --extra_config <extra_config_path> --action
 * `--config <config_path>`: Specifies the path to the main configuration JSON file. This file contains key-value pairs that configure the experiment. These pairs mirror the arguments used in Megatron-LM, with hyphens (`-`) replaced by underscores (`_`). For a comprehensive list of configurations, refer to the [source file](./megatron/megatron/arguments.py). The key-value pairs can be organized into different sections as needed. These [pre-defined configuration](predefined_args_megatron.json) also should be provided for the experiment:
   * `experiment`: Contains configuration options for the experiment setup.
     * `exp_name`: Defines the experiment's name. A directory with this name will be created under `log_dir` to store all experiment artifacts. Default is `default`.
+    * `entry_point`: Defines the experiment's entry script under the `megatron` folder. Default is `pretrain_gpt.py`.
     * `log_dir`: Specifies the directory for storing experiment logs. Default is the `logs` directory of the current working directory.
     * `hostfile`: Specifies a file containing a list of hosts for running the experiment. Default is `localhost`.
     * `no_shared_fs`: A boolean flag indicating whether the file system is shared between hosts. Default is `false`.
@@ -59,7 +60,7 @@ python run.py --config <config_path> --extra_config <extra_config_path> --action
   * `launch`: Contains configuration options for launching the experiment using `torchrun`.
   * `env_vars`: Contains environment variables to be set for the experiment.
 
-* `--extra_config <extra_config_path>` (optional): Specifies the path to an additional configuration file. This JSON file can contain additional configuration options not present in the main configuration file. Options in this file will override those in the main configuration file if they have the same keys.
+* `--extra-config <extra_config_path>` (optional): Specifies the path to an additional configuration file. This JSON file can contain additional configuration options not present in the main configuration file. Options in this file will override those in the main configuration file if they have the same keys.
 
 * `--action <action>` (optional): Specifies the action to perform. Default is `run` if none is specified. Possible values are:
   * `generate`: Generates the experiment shell script based on the provided configuration files and stops. The generated script is saved to `log_dir`.

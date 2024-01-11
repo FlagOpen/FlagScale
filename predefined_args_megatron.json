@@ -2,6 +2,7 @@
 {
     "experiment": {
         "exp_name": null,
+        "entry_point": "pretrain_gpt.py",
         "log_dir": null,
         "hostfile": null,
         "no_shared_fs": false,
