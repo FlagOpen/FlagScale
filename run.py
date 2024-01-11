@@ -289,7 +289,7 @@ def generate_command(config):
     shell_cmds = get_config(config, "shell_cmds")
     env_args = 'ENV_ARGS="\n' + config_to_args(get_config(config, "env_vars"), is_env=True) + '\n"'
     launch_args = 'LAUNCH_ARGS="\n' + config_to_args(get_config(config, "launch")) + '\n"'
-    entry_script = "pretrain_gpt.py"
+    entry_point = get_config(config, "entry_point")
 
     args_groups = []
     other_conifg = {} 
@@ -304,7 +304,7 @@ def generate_command(config):
     other_group = f'OTHER_ARGS="\n{config_to_args(other_conifg)}\n"'
     args_groups.append(other_group)
 
-    cmd = f'cmd="\n    $ENV_ARGS \\\n    torchrun $LAUNCH_ARGS \\\n    {entry_script}'
+    cmd = f'cmd="\n    $ENV_ARGS \\\n    torchrun $LAUNCH_ARGS \\\n    {entry_point}'
     for args in args_groups:
         cmd += f" \\\n    ${args.split('=')[0]}"
     cmd += '\n"'
