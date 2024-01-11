@@ -9,16 +9,9 @@ from torch.nn.parameter import Parameter
 from megatron import get_args
 from megatron.core import mpu, tensor_parallel
 
-try:
-    import torch_xmlir
-    _FLOAT_TYPES = ("torch.FloatTensor", "torch.cuda.FloatTensor", "torch.xpu.FloatTensor")
-    _HALF_TYPES = ("torch.HalfTensor", "torch.cuda.HalfTensor", "torch.xpu.HalfTensor")
-    _BF16_TYPES = ("torch.BFloat16Tensor", "torch.cuda.BFloat16Tensor", "torch.xpu.BFloat16Tensor")
-except ImportError:
-    torch_xmlir = None
-    _FLOAT_TYPES = ("torch.FloatTensor", "torch.cuda.FloatTensor")
-    _HALF_TYPES = ("torch.HalfTensor", "torch.cuda.HalfTensor")
-    _BF16_TYPES = ("torch.BFloat16Tensor", "torch.cuda.BFloat16Tensor")
+_FLOAT_TYPES = (torch.FloatTensor, torch.cuda.FloatTensor)
+_HALF_TYPES = (torch.HalfTensor, torch.cuda.HalfTensor)
+_BF16_TYPES = (torch.BFloat16Tensor, torch.cuda.BFloat16Tensor)
 
 
 
@@ -143,7 +136,7 @@ def fp32_to_float16(val, float16_convertor):
         val_typecheck = val
         if isinstance(val_typecheck, (Parameter, Variable)):
             val_typecheck = val.data
-        if val_typecheck.type() in _FLOAT_TYPES:
+        if isinstance(val_typecheck, _FLOAT_TYPES):
             val = float16_convertor(val)
         return val
     return conversion_helper(val, half_conversion)
@@ -155,7 +148,7 @@ def float16_to_fp32(val):
         val_typecheck = val
         if isinstance(val_typecheck, (Parameter, Variable)):
             val_typecheck = val.data
-        if val_typecheck.type() in _BF16_TYPES or val_typecheck.type() in _HALF_TYPES:
+        if isinstance(val_typecheck, (_BF16_TYPES, _HALF_TYPES)):
             val = val.float()
         return val
     return conversion_helper(val, float_conversion)

@@ -14,10 +14,6 @@ from megatron.core import mpu, tensor_parallel
 from .global_vars import get_args
 from .utils import (unwrap_model,
                     print_rank_0)
-try:
-    import torch_xmlir
-except:
-    torch_xmlir = None
 
 _CHECKPOINT_VERSION = None
 
@@ -196,10 +192,7 @@ def read_metadata(tracker_filename):
 
     # Get the max iteration retrieved across the ranks.
     if torch.distributed.is_initialized():
-        if torch_xmlir:
-            iters_cuda = torch_xmlir.xpu.LongTensor([iteration])
-        else:
-            iters_cuda = torch.tensor([iteration], dtype=torch.long, device='cuda')
+        iters_cuda = torch.tensor([iteration], dtype=torch.long, device='cuda')
         torch.distributed.all_reduce(iters_cuda, op=torch.distributed.ReduceOp.MAX)
         max_iter = iters_cuda[0].item()
 

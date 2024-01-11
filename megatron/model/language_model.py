@@ -18,7 +18,7 @@ from .utils import init_method_normal, scaled_init_method_normal
 
 
 def parallel_lm_logits(input_, word_embeddings_weight, parallel_output,
-                       bias=None, word_embeddings_weight_max=None):
+                       bias=None):
     """LM logits using word embedding weights."""
     args = get_args()
     # Parallel logits.
@@ -39,8 +39,7 @@ def parallel_lm_logits(input_, word_embeddings_weight, parallel_output,
         bias=bias,
         gradient_accumulation_fusion=args.gradient_accumulation_fusion,
         async_grad_allreduce=async_grad_allreduce,
-        sequence_parallel=args.sequence_parallel,
-        weight_max=word_embeddings_weight_max)
+        sequence_parallel=args.sequence_parallel)
     # Gather if needed.
 
     if parallel_output:
