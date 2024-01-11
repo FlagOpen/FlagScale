@@ -80,8 +80,7 @@ def get_megatron_optimizer(model,
     param_groups = get_param_groups(model,
                                     no_weight_decay_cond,
                                     scale_lr_cond,
-                                    lr_mult,
-                                    args)
+                                    lr_mult)
 
     if args.optimizer == 'adam':
         optimizer = Adam(param_groups,
