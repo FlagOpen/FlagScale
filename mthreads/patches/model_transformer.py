@@ -4,6 +4,7 @@ import megatron
 from megatron.model.enums import AttnMaskType, LayerType, AttnType
 from megatron.model.module import MegatronModule, bias_dropout_add
 
+
 class FlashSelfAttention(MegatronModule):
     def __init__(self, layer_number, config,
                  attn_mask_type=AttnMaskType.padding):
@@ -47,11 +48,13 @@ class FlashSelfAttention(MegatronModule):
         attn_output = attn_output.permute(2, 0, 1, 3).reshape(*output_size).contiguous()
         return attn_output
 
+
 def bias_dropout_add_fused_train(x: torch.Tensor,
                                  bias: Optional[torch.Tensor],
                                  residual: torch.Tensor,
                                  prob: float) -> torch.Tensor:
     return bias_dropout_add(x, bias, residual, prob, True)
+
 
 megatron.model.transformer.FlashSelfAttention = FlashSelfAttention
 megatron.model.transformer.bias_dropout_add_fused_train = bias_dropout_add_fused_train
