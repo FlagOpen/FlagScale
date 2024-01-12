@@ -29,4 +29,4 @@ class MemoryBuffer:
         return buffer_tensor
     
 
-megatron.model.distribhuted.MemoryBuffer = MemoryBuffer
+megatron.model.distributed.MemoryBuffer = MemoryBuffer

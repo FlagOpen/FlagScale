@@ -2,7 +2,8 @@ from typing import Optional
 import torch
 import megatron
 from megatron.model.enums import AttnMaskType, LayerType, AttnType
-from megatron.model.module import MegatronModule, bias_dropout_add
+from megatron.model.module import MegatronModule
+from megatron.model.transformer import bias_dropout_add
 
 
 class FlashSelfAttention(MegatronModule):
@@ -53,7 +54,7 @@ def bias_dropout_add_fused_train(x: torch.Tensor,
                                  bias: Optional[torch.Tensor],
                                  residual: torch.Tensor,
                                  prob: float) -> torch.Tensor:
-    return bias_dropout_add(x, bias, residual, prob, True)
+    return bias_dropout_add(x, bias, residual, prob, True) # TODO(mthreads)
 
 
 megatron.model.transformer.FlashSelfAttention = FlashSelfAttention

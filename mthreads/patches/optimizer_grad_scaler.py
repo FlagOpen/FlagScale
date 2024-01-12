@@ -104,5 +104,5 @@ class DynamicGradScaler(MegatronGradScaler):
         self._growth_tracker = state_dict['growth_tracker']
         self._hysteresis_tracker = state_dict['hysteresis_tracker']
 
-megatron.optimizer.optimizer_grad_scaler.MegatronGradScaler = MegatronGradScaler
-megatron.optimizer.optimizer_grad_scaler.DynamicGradScaler = DynamicGradScaler
+megatron.optimizer.grad_scaler.MegatronGradScaler = MegatronGradScaler
+megatron.optimizer.grad_scaler.DynamicGradScaler = DynamicGradScaler

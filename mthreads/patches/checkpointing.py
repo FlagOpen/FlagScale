@@ -8,7 +8,7 @@ import megatron
 from megatron.core import mpu, tensor_parallel
 from megatron.global_vars import get_args
 from megatron.utils import print_rank_0
-from megatron.checkpoint import find_checkpoint_rank_0, get_checkpoint_tracker_filename, get_checkpoint_name
+from megatron.checkpointing import find_checkpoint_rank_0, get_checkpoint_tracker_filename, get_checkpoint_name
 
 
 def read_metadata(tracker_filename):
@@ -133,5 +133,5 @@ def _load_base_checkpoint(load_dir, rank0=False):
     return state_dict, checkpoint_name, release
 
 megatron.checkpointing._load_base_checkpoint = _load_base_checkpoint
-megatron.checkpoint.get_rng_state = get_rng_state
-megatron.checkpoint.read_metadata = read_metadata
+megatron.checkpointing.get_rng_state = get_rng_state
+megatron.checkpointing.read_metadata = read_metadata

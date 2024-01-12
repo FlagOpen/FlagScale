@@ -23,6 +23,6 @@ from . import model_distributed
 from . import model_fused_layer_norm
 from . import model_module
 from . import optimizer_clip_grads
-from . import optimizer_distrb_optimizer
+from . import optimizer_distrib_optimizer
 from . import optimizer_grad_scaler
 from . import optimizer_optimizer

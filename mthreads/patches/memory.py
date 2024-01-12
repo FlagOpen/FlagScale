@@ -1,5 +1,6 @@
 import torch
 import megatron
+from megatron.memory import MemoryBuffer
 
 class MemoryBuffer:
     """Contiguous memory buffer.

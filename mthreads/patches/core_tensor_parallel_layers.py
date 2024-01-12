@@ -22,7 +22,7 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
-from megatron.core.tensor_parallel.layers.utils import VocabUtility, divide
+from megatron.core.tensor_parallel.utils import VocabUtility, divide
 _grad_accum_fusion_available = True
 try:
     import fused_weight_gradient_mlp_cuda

@@ -12,6 +12,11 @@ from datetime import timedelta
 
 from megatron import fused_kernels
 
+try:
+    import torch_musa
+except ImportError:
+    torch_musa = None
+
 from megatron import get_adlr_autoresume
 from megatron import get_args
 from megatron import get_tensorboard_writer
@@ -42,7 +47,12 @@ def initialize_megatron(
     """
     if not allow_no_cuda:
         # Make sure cuda is available.
-        assert torch.cuda.is_available(), "Megatron requires CUDA."
+        if torch_xmlir:
+            assert torch_xmlir.xpu.is_available()
+        elif torch_musa:
+            assert torch.musa.is_available(), "Megatron requires MUSA"
+        else:
+            assert torch.cuda.is_available(), "Megatron requires CUDA."
 
     # Parse arguments
     args = parse_args(extra_args_provider, ignore_unknown_args)
