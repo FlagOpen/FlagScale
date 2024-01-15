@@ -11,7 +11,6 @@ import torch
 from datetime import timedelta
 
 from megatron import fused_kernels
-
 from megatron import get_adlr_autoresume
 from megatron import get_args
 from megatron import get_tensorboard_writer

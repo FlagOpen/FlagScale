@@ -91,8 +91,7 @@ def generate_and_post_process(model,
             stop_on_double_eol=stop_on_double_eol,
             stop_on_eol=stop_on_eol,
             prevent_newline_after_colon=prevent_newline_after_colon,
-            random_seed=random_seed,
-            )
+            random_seed=random_seed)
 
         # Only post-process on first stage.
         if mpu.is_pipeline_first_stage():
@@ -116,8 +115,7 @@ def generate(model,
              stop_on_double_eol=False,
              stop_on_eol=False,
              prevent_newline_after_colon=False,
-             random_seed=-1, 
-             ):
+             random_seed=-1):
     """Given prompts and input parameters, run inference and return:
        tokens: prompts plus the generated tokens.
        lengths: length of the prompt + generations. Note that we can
@@ -176,8 +174,7 @@ def generate(model,
         stop_on_double_eol=stop_on_double_eol,
         stop_on_eol=stop_on_eol,
         prevent_newline_after_colon=prevent_newline_after_colon,
-        seed=random_seed,
-        )
+        seed=random_seed)
 
 def generate_stream(model,
              prompts=None,
@@ -253,8 +250,7 @@ def generate_stream(model,
         stop_on_double_eol=stop_on_double_eol,
         stop_on_eol=stop_on_eol,
         prevent_newline_after_colon=prevent_newline_after_colon,
-        seed=random_seed,
-        )
+        seed=random_seed)
 
 def beam_search_and_post_process(model,
                                  prompts=None,

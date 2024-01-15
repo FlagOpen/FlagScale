@@ -19,7 +19,6 @@ from megatron.core.parallel_state import (
 Shape = Union[List[int], torch.Size]
 
 
-
 def _communicate_shapes(tensor_send_next, tensor_send_prev, recv_prev, recv_next, config):
     """Communicate tensor shapes between stages. Used to communicate
     tensor shapes before the actual tensor communication happens.

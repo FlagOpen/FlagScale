@@ -9,6 +9,7 @@ from torch.nn.parameter import Parameter
 from megatron import get_args
 from megatron.core import mpu, tensor_parallel
 
+
 _FLOAT_TYPES = (torch.FloatTensor, torch.cuda.FloatTensor)
 _HALF_TYPES = (torch.HalfTensor, torch.cuda.HalfTensor)
 _BF16_TYPES = (torch.BFloat16Tensor, torch.cuda.BFloat16Tensor)

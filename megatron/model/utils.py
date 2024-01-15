@@ -72,7 +72,7 @@ def get_norm(config, init_weight=None):
         if args.apply_layernorm_1p:
             raise NotImplementedError('RMSNorm does not currently support the layernorm_1p formulation.')
 
-        #TODO: @aoyulong need to choose RMSNorm impl
+        # TODO: @aoyulong need to choose RMSNorm impl
         return RMSNorm(
             config.hidden_size,
             eps=config.layernorm_epsilon,

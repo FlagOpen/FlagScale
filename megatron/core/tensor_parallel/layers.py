@@ -39,8 +39,6 @@ try:
 except ImportError:
     _grad_accum_fusion_available = False
 
-gemm_type = os.getenv("XDNN_FC_GEMM_DTYPE")
-
 _MODEL_PARALLEL_ATTRIBUTE_DEFAULTS = {
     'tensor_model_parallel': False,
     'partition_dim': -1,
@@ -322,7 +320,6 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         ctx.async_grad_allreduce = async_grad_allreduce
         ctx.sequence_parallel = sequence_parallel
 
-
         if sequence_parallel:
             world_size = get_tensor_model_parallel_world_size()
             dim_size = list(input.size())
@@ -330,7 +327,8 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
 
             all_gather_buffer = get_global_memory_buffer().get_tensor(dim_size, input.dtype, "mpu")
             torch.distributed._all_gather_base(
-                all_gather_buffer, input, group=get_tensor_model_parallel_group())
+                all_gather_buffer, input, group=get_tensor_model_parallel_group()
+            )
             total_input = all_gather_buffer
         else:
             total_input = input
@@ -361,7 +359,6 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
             total_input = all_gather_buffer
         else:
             total_input = input
-
         grad_input = grad_output.matmul(weight)
 
         if ctx.sequence_parallel:
@@ -373,12 +370,13 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         # https://github.com/pytorch/pytorch/blob/c47cf9bc7f9e02f649ab4ed53fe4d35732c92ab6/torch/_refs/__init__.py#L2761
         grad_output = grad_output.contiguous()
         # Convert the tensor shapes to 2D for execution compatibility
-        grad_output = grad_output.view(
-            grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2]
-        )
-        total_input = total_input.view(
-            total_input.shape[0] * total_input.shape[1], total_input.shape[2]
-        )
+        if grad_output.dim() == 3:
+            grad_output = grad_output.view(
+                grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2]
+            )
+            total_input = total_input.view(
+                total_input.shape[0] * total_input.shape[1], total_input.shape[2]
+            )
 
         if ctx.async_grad_allreduce:
             # Asynchronous all-reduce
@@ -437,17 +435,16 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
                 grad_weight = None
         else:
             grad_weight = grad_output.t().matmul(total_input)
-
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 
         if ctx.sequence_parallel:
             handle.wait()
-            return sub_grad_input, grad_weight, grad_bias, None, None, None, None
+            return sub_grad_input, grad_weight, grad_bias, None, None, None
 
         if ctx.async_grad_allreduce:
             handle.wait()
 
-        return grad_input, grad_weight, grad_bias, None, None, None, None
+        return grad_input, grad_weight, grad_bias, None, None, None
 
 
 def linear_with_grad_accumulation_and_async_allreduce(
@@ -750,7 +747,6 @@ class ColumnParallelLinear(torch.nn.Module):
             if self.explicit_expert_comm
             else self.async_tensor_model_parallel_allreduce,
             sequence_parallel=False if self.explicit_expert_comm else self.sequence_parallel,
-            weight_max=self.weight_max if hasattr(self, "weight_max") else None,
         )
         if self.gather_output:
             # All-gather across the partitions.

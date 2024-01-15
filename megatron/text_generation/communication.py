@@ -8,6 +8,7 @@ import torch
 from megatron.core import mpu
 
 
+
 # TODO: use functions from megatron/p2p
 def recv_from_prev_pipeline_rank_(recv_buffer=None):
     """Receive from previous pipeline stage and update the

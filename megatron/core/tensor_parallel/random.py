@@ -22,7 +22,6 @@ from megatron.core.utils import safely_set_viewless_tensor_data
 
 from .utils import gather_split_1d_tensor, split_tensor_into_1d_equal_chunks
 
-
 # Default name for the model parallel rng tracker.
 _MODEL_PARALLEL_RNG_TRACKER_NAME = 'model-parallel-rng'
 _EXPERT_PARALLEL_RNG_TRACKER_NAME = 'expert-parallel-rng'
@@ -45,6 +44,7 @@ def _set_cuda_rng_state(new_state, device=-1):
                 _C._cuda_setRNGState(new_state)
 
     else:
+        # newer PyTorch
         if device == -1:
             device = torch.device('cuda')
         elif isinstance(device, str):

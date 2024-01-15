@@ -110,11 +110,11 @@ def clip_grad_norm_fp32(parameters, grads_for_norm,
     # Scale.
     clip_coeff = max_norm / (total_norm + 1.0e-6)
     if clip_coeff < 1.0:
-        dummy_overflow_buf = torch.cuda.IntTensor([0])
+        dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device='cuda')
         multi_tensor_applier(amp_C.multi_tensor_scale,
-                                dummy_overflow_buf,
-                                [grads, grads],
-                                clip_coeff)
+                             dummy_overflow_buf,
+                             [grads, grads],
+                             clip_coeff)
 
     return total_norm
 

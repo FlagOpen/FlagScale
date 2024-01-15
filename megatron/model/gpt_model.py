@@ -1,6 +1,7 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 
 """GPT-2 model."""
+
 import torch
 
 from megatron import get_args
