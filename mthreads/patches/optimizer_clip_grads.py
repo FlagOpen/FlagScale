@@ -131,3 +131,10 @@ def count_zeros_fp32(parameters, model_parallel_group):
 
 megatron.optimizer.clip_grads.clip_grad_norm_fp32 = clip_grad_norm_fp32
 megatron.optimizer.clip_grads.count_zeros_fp32 = count_zeros_fp32
+import sys
+for k in sys.modules:
+    if k.startswith('megatron.optimizer'):
+        if getattr(sys.modules[k], 'clip_grad_norm_fp32', None):
+            setattr(sys.modules[k], 'clip_grad_norm_fp32', clip_grad_norm_fp32)
+        if getattr(sys.modules[k], ' count_zeros_fp32', None):
+            setattr(sys.modules[k], ' count_zeros_fp32', count_zeros_fp32)

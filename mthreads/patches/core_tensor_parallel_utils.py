@@ -56,5 +56,5 @@ def gather_split_1d_tensor(tensor):
     )
     return gathered
 
-megatron.core.tensor_parallel.utils.split_tensor_into_1d_equal_chunks = split_tensor_into_1d_equal_chunks
-megatron.core.tensor_parallel.utils.gather_split_1d_tensor = gather_split_1d_tensor
+# megatron.core.tensor_parallel.utils.split_tensor_into_1d_equal_chunks = split_tensor_into_1d_equal_chunks
+# megatron.core.tensor_parallel.utils.gather_split_1d_tensor = gather_split_1d_tensor

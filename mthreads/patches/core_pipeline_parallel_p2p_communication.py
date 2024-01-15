@@ -227,5 +227,5 @@ def _communicate(
 
     return tensor_recv_prev, tensor_recv_next, reqs
 
-megatron.core.pipeline_parallel.p2p_communication._communicate = _communicate
-megatron.core.pipeline_parallel.p2p_communication._communicate_shapes = _communicate_shapes
+# megatron.core.pipeline_parallel.p2p_communication._communicate = _communicate
+# megatron.core.pipeline_parallel.p2p_communication._communicate_shapes = _communicate_shapes

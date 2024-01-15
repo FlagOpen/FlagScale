@@ -44,5 +44,5 @@ def _reduce_scatter_along_first_dim(input_):
     )
     return output
 
-megatron.core.tensor_parallel.mappings._gather_along_first_dim = _gather_along_first_dim
-megatron.core.tensor_parallel.mappings._reduce_scatter_along_first_dim = _reduce_scatter_along_first_dim
+# megatron.core.tensor_parallel.mappings._gather_along_first_dim = _gather_along_first_dim
+# megatron.core.tensor_parallel.mappings._reduce_scatter_along_first_dim = _reduce_scatter_along_first_dim

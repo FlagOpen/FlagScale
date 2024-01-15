@@ -1,13 +1,14 @@
 import torch
+import torch_musa
 import megatron
 
 class MixedFusedLayerNorm(torch.nn.Module):  # for cpu
     def __init__(self, hidden_size, eps=1e-6,
                  no_persist_layer_norm=True,
-               sequence_parallel=False,
-               apply_layernorm_1p=False,
-               apply_layernorm_rms=False,
-               init_weight=None):
+                 sequence_parallel=False,
+                 apply_layernorm_1p=False,
+                 apply_layernorm_rms=False,
+                 init_weight=None):
         """
         LlamaRMSNorm is equivalent to T5LayerNorm
         """
@@ -30,4 +31,9 @@ class MixedFusedLayerNorm(torch.nn.Module):  # for cpu
         hidden_states = self.weight * hidden_states
         return hidden_states
     
-megatron.model.MixedFusedLayerNorm_kernel = MixedFusedLayerNorm
+import sys
+for k in sys.modules:
+    if k.startswith('megatron.model'):
+        for target in ['LayerNorm', 'MixedFusedLayerNorm']:
+            if getattr(sys.modules[k], target, None):
+                setattr(sys.modules[k], target, MixedFusedLayerNorm)

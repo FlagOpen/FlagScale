@@ -627,7 +627,12 @@ def _add_distributed_args(parser):
 
     return parser
 
+import sys
 megatron.arguments.validate_args = validate_args
-megatron.arguments._add_training_args = _add_training_args
 megatron.arguments.core_transformer_config_from_args = core_transformer_config_from_args
-megatron.arguments._add_distributed_args = _add_distributed_args
+for k in sys.modules:
+    if getattr(sys.modules[k], 'core_transformer_config_from_args', None):
+        setattr(sys.modules[k], 'core_transformer_config_from_args', core_transformer_config_from_args)
+    # if k.startswith('megatron'):
+    #     if getattr(sys.modules[k], 'validate_args', None):
+    #         setattr(sys.modules[k], 'validate_args', validate_args)

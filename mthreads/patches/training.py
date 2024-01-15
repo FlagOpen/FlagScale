@@ -311,5 +311,5 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
 
     return model
 
-megatron.training.pretrain = pretrain
+#megatron.training.pretrain = pretrain
 megatron.training.get_model = get_model

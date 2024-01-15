@@ -5,7 +5,7 @@ from megatron.core import tensor_parallel
 from megatron import print_rank_0
 
 @classmethod
-def DistributedOptimizer_build_model_and_main_param_groups(cls,
+def build_model_and_main_param_groups(cls,
                                         model_gbuf_ranges,
                                         param_gbuf_map,
                                         opt_group_ranges):
@@ -111,6 +111,7 @@ def DistributedOptimizer_build_model_and_main_param_groups(cls,
     )
 
 
+# TODO(mthreads)
 def DistributedOptimizer_load_state_dict(self, state_dict):
         """Load the state dict.
 
@@ -203,5 +204,5 @@ def DistributedOptimizer_load_state_dict(self, state_dict):
                              'Skipping loading grad scaler ...')
                 
 
-megatron.optimizer.distrib_optimizer.DistributedOptimizer.build_model_and_main_param_groups = DistributedOptimizer_build_model_and_main_param_groups
-megatron.optimizer.distrib_optimizer.DistributedOptimizer.load_state_dict = DistributedOptimizer_load_state_dict
+megatron.optimizer.distrib_optimizer.DistributedOptimizer.build_model_and_main_param_groups = build_model_and_main_param_groups
+megatron.optimizer.DistributedOptimizer.build_model_and_main_param_groups = build_model_and_main_param_groups

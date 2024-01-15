@@ -3,10 +3,10 @@ import torch_musa
 import random
 import os
 import numpy as np
-
 import time
-from datetime import timedelta
+
 import megatron
+from datetime import timedelta
 from megatron import get_args
 from megatron.core import mpu, tensor_parallel
 
@@ -123,16 +123,38 @@ def _initialize_distributed():
     # Set the tensor model-parallel, pipeline model-parallel, and
     # data-parallel communicators.
     if device_count > 0:
+        print("####################################", args.hetero_mode, mpu.model_parallel_is_initialized())
         if mpu.model_parallel_is_initialized():
             print("model parallel is already initialized")
         else:
-            mpu.initialize_model_parallel(
-                args.tensor_model_parallel_size,
-                args.pipeline_model_parallel_size,
-                args.virtual_pipeline_model_parallel_size,
-                args.pipeline_model_parallel_split_rank,
-                args.fp8 is not None,
-            )
+            if args.hetero_mode is None:
+                mpu.initialize_model_parallel(
+                    args.tensor_model_parallel_size,
+                    args.pipeline_model_parallel_size,
+                    args.virtual_pipeline_model_parallel_size,
+                    args.pipeline_model_parallel_split_rank,
+                    args.fp8 is not None,
+                )
+            elif args.hetero_mode == "dp":
+                mpu.initialize_model_parallel_hetero_dp(
+                    args.tensor_model_parallel_size,
+                    args.pipeline_model_parallel_size,
+                    args.virtual_pipeline_model_parallel_size,
+                    args.pipeline_model_parallel_split_rank,
+                    args.fp8 is not None,
+                )
+            elif args.hetero_mode == "pp":
+                mpu.initialize_model_parallel_hetero_pp(
+                    args.tensor_model_parallel_size,
+                    args.pipeline_model_parallel_size,
+                    args.virtual_pipeline_model_parallel_size,
+                    args.pipeline_model_parallel_split_rank,
+                    args.fp8 is not None,
+                )
+            else:
+                raise ValueError(
+                    "Hetero mode {} not supported".format(args.hetero_mode)
+                )
             if args.rank == 0:
                 print(
                     f"> initialized tensor model parallel with size "
@@ -142,6 +164,22 @@ def _initialize_distributed():
                     f"> initialized pipeline model parallel with size "
                     f"{mpu.get_pipeline_model_parallel_world_size()}"
                 )
+            # mpu.initialize_model_parallel(
+            #     args.tensor_model_parallel_size,
+            #     args.pipeline_model_parallel_size,
+            #     args.virtual_pipeline_model_parallel_size,
+            #     args.pipeline_model_parallel_split_rank,
+            #     args.fp8 is not None,
+            # )
+            # if args.rank == 0:
+            #     print(
+            #         f"> initialized tensor model parallel with size "
+            #         f"{mpu.get_tensor_model_parallel_world_size()}"
+            #     )
+            #     print(
+            #         f"> initialized pipeline model parallel with size "
+            #         f"{mpu.get_pipeline_model_parallel_world_size()}"
+            #     )
 
 def _set_random_seed(seed_, data_parallel_random_init=False):
     """Set random seed for reproducability."""
@@ -158,8 +196,16 @@ def _set_random_seed(seed_, data_parallel_random_init=False):
             tensor_parallel.model_parallel_cuda_manual_seed(seed)
     else:
         raise ValueError("Seed ({}) should be a positive integer.".format(seed))
+
+def set_jit_fusion_options():
+    pass
     
 megatron.initialize._compile_dependencies = _compile_dependencies
-megatron.initialize._initialize_distributed = _initialize_distributed
-megatron.initialize._set_random_seed = _set_random_seed
+# megatron.initialize._initialize_distributed = _initialize_distributed
+# megatron.initialize._set_random_seed = _set_random_seed
 
+import sys
+for k in sys.modules:
+    if k.startswith('megatron'):
+        if getattr(sys.modules[k], 'set_jit_fusion_options', None):
+            setattr(sys.modules[k], 'set_jit_fusion_options', set_jit_fusion_options)

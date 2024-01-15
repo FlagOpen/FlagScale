@@ -377,7 +377,7 @@ def RowParallelLinear_init(
         self._forward_impl = linear_with_grad_accumulation_and_async_allreduce
 
 
-megatron.core.tensor_parallel.layers.VocabParallelEmbedding.__init__ = VocabParallelEmbedding_init
-megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.backward = LinearWithGradAccumulationAndAsyncCommunication_backward
-megatron.core.tensor_parallel.layers.ColumnParallelLinear.__init__ = ColumnParallelLinear_init
-megatron.core.tensor_parallel.layers.RowParallelLinear.__init__ = RowParallelLinear_init
+# megatron.core.tensor_parallel.layers.VocabParallelEmbedding.__init__ = VocabParallelEmbedding_init
+# megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.backward = LinearWithGradAccumulationAndAsyncCommunication_backward
+# megatron.core.tensor_parallel.layers.ColumnParallelLinear.__init__ = ColumnParallelLinear_init
+# megatron.core.tensor_parallel.layers.RowParallelLinear.__init__ = RowParallelLinear_init

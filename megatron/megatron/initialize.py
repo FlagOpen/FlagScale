@@ -47,9 +47,7 @@ def initialize_megatron(
     """
     if not allow_no_cuda:
         # Make sure cuda is available.
-        if torch_xmlir:
-            assert torch_xmlir.xpu.is_available()
-        elif torch_musa:
+        if torch_musa:
             assert torch.musa.is_available(), "Megatron requires MUSA"
         else:
             assert torch.cuda.is_available(), "Megatron requires CUDA."

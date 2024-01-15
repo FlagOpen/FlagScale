@@ -65,6 +65,14 @@ def _get_elapsed_time_all_ranks(self, names, reset, barrier):
 
         return rank_name_to_time
 
-megatron.timers.Timer.start = start
-megatron.timers.Timer.stop = stop
-megatron.timers._get_elapsed_time_all_ranks = _get_elapsed_time_all_ranks
+# megatron.timers.Timer.start = start # TODO(mthreads)
+# megatron.timers.Timer.stop = stop # TODO(mthreads)
+# megatron.timers.Timer._get_elapsed_time_all_ranks = _get_elapsed_time_all_ranks # TODO(mthreads)
+# import sys
+# for k in sys.modules:
+#     if k.startswith('megatron'):
+#         # print(k)
+#         if getattr(sys.modules[k], 'Timer', None):
+#             print(k)
+#             getattr(sys.modules[k], 'Timer', None)._get_elapsed_time_all_ranks = _get_elapsed_time_all_ranks
+#             # setattr(sys.modules[k], '_get_elapsed_time_all_ranks', _get_elapsed_time_all_ranks)

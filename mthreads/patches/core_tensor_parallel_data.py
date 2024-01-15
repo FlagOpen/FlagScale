@@ -89,5 +89,5 @@ def broadcast_data(keys, data, datatype):
 
     return output
 
-megatron.core.tensor_parallel.data._build_key_size_numel_dictionaries = _build_key_size_numel_dictionaries
-megatron.core.tensor_parallel.data.broadcast_data = broadcast_data
+# megatron.core.tensor_parallel.data._build_key_size_numel_dictionaries = _build_key_size_numel_dictionaries
+# megatron.core.tensor_parallel.data.broadcast_data = broadcast_data

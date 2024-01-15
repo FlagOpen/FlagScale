@@ -24,4 +24,4 @@ class GlobalMemoryBuffer:
 
         return self.buffer[(name, dtype)][0:required_len].view(*tensor_shape)
     
-megatron.core.utils.GlobalMemoryBuffer = GlobalMemoryBuffer
+# megatron.core.utils.GlobalMemoryBuffer = GlobalMemoryBuffer

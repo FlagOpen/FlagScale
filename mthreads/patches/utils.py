@@ -1,5 +1,5 @@
 import megatron
-import megatron.utils
+# import megatron.utils
 from megatron.core import mpu
 import torch
 
@@ -79,4 +79,7 @@ def get_ltor_masks_and_position_ids(data,
     return attention_mask, loss_mask, position_ids
 
 megatron.utils.report_memory = report_memory
-megatron.utils.get_ltor_masks_and_position_ids = get_ltor_masks_and_position_ids
+import sys
+for k in sys.modules:
+    if getattr(sys.modules[k], 'get_ltor_masks_and_position_ids', None):
+        setattr(sys.modules[k], 'get_ltor_masks_and_position_ids', get_ltor_masks_and_position_ids)

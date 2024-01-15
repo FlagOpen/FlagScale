@@ -43,6 +43,7 @@ def _set_cuda_rng_state(new_state, device=-1):
             idx = device.index
             if idx is None:
                 idx = torch.musa.current_device()
+            print("##################################### idx", idx)
             default_generator = torch.cuda.default_generators[idx]
             default_generator.set_state(new_state)
 
@@ -161,7 +162,7 @@ class CheckpointFunction(torch.autograd.Function):
         grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else inp for inp in detached_inputs)
         return (None, None) + grads
 
-megatron.core.tensor_parallel.random._set_cuda_rng_state = _set_cuda_rng_state
-megatron.core.tensor_parallel.random.CudaRNGStatesTracker.add = CudaRNGStatesTracker_add
-megatron.core.tensor_parallel.random.CudaRNGStatesTracker.fork = CudaRNGStatesTracker_fork
-megatron.core.tensor_parallel.random.CheckpointFunction = CheckpointFunction
+# megatron.core.tensor_parallel.random._set_cuda_rng_state = _set_cuda_rng_state
+# megatron.core.tensor_parallel.random.CudaRNGStatesTracker.add = CudaRNGStatesTracker_add
+# megatron.core.tensor_parallel.random.CudaRNGStatesTracker.fork = CudaRNGStatesTracker_fork
+# megatron.core.tensor_parallel.random.CheckpointFunction = CheckpointFunction

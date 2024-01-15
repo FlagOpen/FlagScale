@@ -92,4 +92,4 @@ class MemoryBuffer:
                 self.name, self.in_use_value * 100.0 / self.total_value),
                   flush=True)
             
-megatron.memory.MemoryBuffer = MemoryBuffer
+# megatron.memory.MemoryBuffer = MemoryBuffer

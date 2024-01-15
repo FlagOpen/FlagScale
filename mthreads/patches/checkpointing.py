@@ -132,6 +132,6 @@ def _load_base_checkpoint(load_dir, rank0=False):
 
     return state_dict, checkpoint_name, release
 
-megatron.checkpointing._load_base_checkpoint = _load_base_checkpoint
-megatron.checkpointing.get_rng_state = get_rng_state
-megatron.checkpointing.read_metadata = read_metadata
+# megatron.checkpointing._load_base_checkpoint = _load_base_checkpoint
+# megatron.checkpointing.get_rng_state = get_rng_state
+# megatron.checkpointing.read_metadata = read_metadata
