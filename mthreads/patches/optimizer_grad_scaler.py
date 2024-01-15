@@ -104,8 +104,6 @@ class DynamicGradScaler(MegatronGradScaler):
         self._growth_tracker = state_dict['growth_tracker']
         self._hysteresis_tracker = state_dict['hysteresis_tracker']
 
-# megatron.optimizer.grad_scaler.MegatronGradScaler = MegatronGradScaler
-# megatron.optimizer.grad_scaler.DynamicGradScaler = DynamicGradScaler
 import sys
 for k in sys.modules:
     if k.startswith('megatron.optimizer'):

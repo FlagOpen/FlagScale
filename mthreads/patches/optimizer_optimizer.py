@@ -50,7 +50,6 @@ def Float16OptimizerWithFloat16Params_init(self, optimizer, clip_grad, log_num_z
         optimizer, clip_grad, log_num_zeros_in_grad,
         params_have_main_grad, use_contiguous_buffers_in_local_ddp,
         fp16, bf16, params_dtype, grad_scaler, models)
-    print("Float16OptimizerWithFloat16Params init self define ##################")
 
     # ======================
     # main parameter stuff
@@ -124,12 +123,6 @@ def FP32Optimizer_init(self, optimizer, clip_grad,
         self._scale = torch.musa.FloatTensor([1.0])
 
 
-# import sys
-# for k in sys.modules:
-#     if getattr(sys.modules[k], 'Float16OptimizerWithFloat16Params', None):
-#         print(k)
+# TODO(mthreads): aquila won't call this function.
 megatron.optimizer.optimizer.Float16OptimizerWithFloat16Params.__init__ = Float16OptimizerWithFloat16Params_init
 megatron.optimizer.Float16OptimizerWithFloat16Params.__init__ = Float16OptimizerWithFloat16Params_init
-# megatron.optimizer.optimizer.MixedPrecisionOptimizer.__init__ = MixedPrecisionOptimizer_init
-# megatron.optimizer.optimizer.Float16OptimizerWithFloat16Params.__init__ = Float16OptimizerWithFloat16Params_init
-# megatron.optimizer.optimizer.FP32Optimizer.__init__ = FP32Optimizer_init

@@ -107,6 +107,7 @@ def bias_dropout_add_fused_train(x: torch.Tensor,
     return bias_dropout_add(x, bias, residual, prob, True) # TODO(mthreads)
 
 
+# TODO(mthreads): reuser flash-attn switch
 megatron.model.transformer.CoreAttention = CoreAttention
 megatron.model.transformer.FlashSelfAttention = FlashSelfAttention
 megatron.model.transformer.bias_dropout_add_fused_train = bias_dropout_add_fused_train
