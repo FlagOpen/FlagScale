@@ -1228,6 +1228,8 @@ def _add_checkpointing_args(parser):
                        help='Format checkpoint into the Megatron-LM format and save it')
     group.add_argument('--save-param-index-maps-only', action='store_true',
                        help='Save param name to index maps only')
+    group.add_argument('--save-when-num-microbatches-change', action='store_true',
+                       help='Save param name to index maps only')
     group.add_argument('--exit-on-missing-checkpoint', action='store_true',
                        help="If '--load' is set, but checkpoint is not found "
                        "(e.g., path typo), then exit instead of random "

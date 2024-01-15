@@ -885,7 +885,8 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         # from the previous iteration, save a checkpoint. Then run consistency check
         # to make sure training configuration is still valid.
         update_num_microbatches(args.consumed_train_samples, consistency_check=False)
-        if get_num_microbatches() != num_microbatches and iteration != 0:
+        if get_num_microbatches() != num_microbatches and iteration != 0 \
+            and args.save_when_num_microbatches_change:
             assert get_num_microbatches() > num_microbatches, \
                 "number of microbatches should be increasing due to batch size rampup"
             save_checkpoint_and_time(iteration, model, optimizer,
