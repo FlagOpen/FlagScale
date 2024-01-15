@@ -94,8 +94,7 @@ def generate_tokens_probs_and_return_on_first_stage(
         stop_on_double_eol=False,
         stop_on_eol=False,
         prevent_newline_after_colon=True,
-        seed=1234,
-        ):
+        seed=1234):
     """Main token generation function.
     Arguments:
         model: no interleaving is supported.

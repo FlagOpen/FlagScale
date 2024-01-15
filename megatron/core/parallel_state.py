@@ -77,6 +77,7 @@ _DATA_PARALLEL_GROUP_WITH_CP = None
 _DATA_PARALLEL_GROUP_WITH_CP_GLOO = None
 _DATA_PARALLEL_GLOBAL_RANKS_WITH_CP = None
 
+# combined parallel group of TP, DP, and CP used for fp8
 _TENSOR_AND_DATA_PARALLEL_GROUP_WITH_CP = None
 
 _TENSOR_AND_DATA_PARALLEL_GLOBAL_RANKS_WITH_CP = None
@@ -978,10 +979,21 @@ def get_context_parallel_rank():
 
 
 def get_expert_model_parallel_world_size():
-    """Return my rank for the expert parallel group"""
+    """Return world size for the expert model parallel group"""
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         tensor_and_expert_parallel_world_size = len(_TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS)
         return tensor_and_expert_parallel_world_size // get_tensor_model_parallel_world_size()
+    else:
+        return 0
+
+
+def get_tensor_and_expert_parallel_world_size():
+    """Return world size for the expert model parallel group times model parallel group.
+       Currently, each expert will also be distributed across TP group by default.
+    """
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        tensor_and_expert_parallel_world_size = len(_TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS)
+        return tensor_and_expert_parallel_world_size
     else:
         return 0
 
@@ -990,6 +1002,7 @@ def get_expert_model_parallel_rank():
     """Return my rank for the expert parallel group"""
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         tensor_and_expert_parallel_rank = _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS.index(torch.distributed.get_rank())
+
         return tensor_and_expert_parallel_rank // get_tensor_model_parallel_world_size()
     else:
         return 0

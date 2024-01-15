@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from megatron.model.enums import AttnMaskType
 
+
 class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
     """
     Fused operation which performs following three operations in sequence
@@ -149,7 +150,6 @@ class FusedScaleMaskSoftmax(nn.Module):
             return self.forward_torch_softmax(input, mask)
 
     def is_kernel_available(self, mask, b, np, sq, sk):
-
         attn_batches = b * np
 
         if (

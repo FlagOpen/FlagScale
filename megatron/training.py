@@ -13,7 +13,6 @@ from .log_handler import CustomHandler
 logging.basicConfig(handlers=[CustomHandler()], level=logging.INFO)
 from .theoretical_memory_usage import report_theoretical_memory
 import time
-import pickle
 import json
 from collections import defaultdict
 
@@ -50,14 +49,12 @@ from megatron.initialize import set_jit_fusion_options
 from megatron.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.utils import check_adlr_autoresume_termination
 from megatron.utils import unwrap_model
-from megatron.utils import get_host_ip 
 from megatron.data.data_samplers import build_pretraining_data_loader
 from megatron.data.data_samplers_hetero import build_pretraining_data_loader_hetero
 from megatron.utils import calc_params_l2_norm
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.utils import report_memory
 from megatron.model.vision.knn_monitor import compute_feature_bank
-from megatron.model.transformer import ParallelAttention
 
 
 def print_datetime(string):
@@ -357,7 +354,6 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
         model = [Float16Module(model_module, args) for model_module in model]
 
     if wrap_with_ddp:
-        #TODO: @aoyulong add support for kunlun chips 
         config = get_model_config(model[0])
         model = [DDP(config,
                      model_chunk,
@@ -876,6 +872,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         gc.disable()
         gc.collect()
 
+    num_microbatches = get_num_microbatches()
     while iteration < args.train_iters:
         if args.profile and \
            iteration == args.profile_step_start and \
@@ -883,7 +880,20 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             torch.cuda.cudart().cudaProfilerStart()
             torch.autograd.profiler.emit_nvtx(record_shapes=True).__enter__()
 
-        update_num_microbatches(args.consumed_train_samples)
+        # Update number of microbatches first without consistency check to decide if a
+        # checkpoint should be saved. If the number of microbatches is different
+        # from the previous iteration, save a checkpoint. Then run consistency check
+        # to make sure training configuration is still valid.
+        update_num_microbatches(args.consumed_train_samples, consistency_check=False)
+        if get_num_microbatches() != num_microbatches and iteration != 0 \
+            and args.save_when_num_microbatches_change:
+            assert get_num_microbatches() > num_microbatches, \
+                "number of microbatches should be increasing due to batch size rampup"
+            save_checkpoint_and_time(iteration, model, optimizer,
+                                     opt_param_scheduler)
+        num_microbatches = get_num_microbatches()
+        update_num_microbatches(args.consumed_train_samples, consistency_check=True)
+
         args.curr_iteration = iteration
         loss_dict, skipped_iter, grad_norm, num_zeros_in_grad = \
             train_step(forward_step_func,

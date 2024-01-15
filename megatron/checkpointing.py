@@ -15,6 +15,7 @@ from .global_vars import get_args
 from .utils import (unwrap_model,
                     print_rank_0)
 
+
 _CHECKPOINT_VERSION = None
 
 
@@ -526,7 +527,6 @@ def load_args_from_checkpoint(args, load_arg='load'):
         _set_arg('pipeline_model_parallel_size', force=True)
         _set_arg('virtual_pipeline_model_parallel_size', force=True)
         _set_arg('num_layers_per_virtual_pipeline_stage')
-    
     return args, checkpoint_args
 
 
@@ -588,7 +588,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
         print_rank_0('could not find arguments in the checkpoint ...')
 
     # Model.
-    strict = False if args.retro_add_retriever else strict
+    strict = False if args.retro_add_retriever or args.transformer_impl == 'transformer_engine' else strict
     if len(model) == 1:
         model[0].load_state_dict(state_dict['model'], strict=strict)
     else:

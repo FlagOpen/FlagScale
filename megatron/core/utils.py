@@ -10,6 +10,7 @@ import torch
 from megatron.core import parallel_state
 from megatron.core.dist_checkpointing.mapping import ShardedTensor
 
+
 def ensure_divisibility(numerator, denominator):
     """Ensure that numerator is divisible by the denominator."""
     assert numerator % denominator == 0, "{} is not divisible by {}".format(numerator, denominator)
@@ -193,7 +194,7 @@ def make_tp_sharded_tensor_for_checkpoint(
     prepend_axis_num = len(prepend_offsets)
 
     if replica_id is None:
-        replica_id = (0, 0, parallel_state.get_data_parallel_rank())
+        replica_id = (0, 0, parallel_state.get_data_parallel_rank(with_context_parallel=True))
 
     return ShardedTensor.from_rank_offsets(
         key,
@@ -222,7 +223,7 @@ def make_sharded_tensor_for_checkpoint(tensor, key, prepend_offsets=(), replica_
         replica_id = (
             0,
             parallel_state.get_tensor_model_parallel_rank(),
-            parallel_state.get_data_parallel_rank(),
+            parallel_state.get_data_parallel_rank(with_context_parallel=True),
         )
 
     return ShardedTensor.from_rank_offsets(

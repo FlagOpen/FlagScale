@@ -10,6 +10,7 @@ Part of this code is inspired by:
 import torch
 
 
+
 def modify_logits_for_top_k_filtering(logits, top_k):
     """Set the logits for none top-k values to -inf."""
 
