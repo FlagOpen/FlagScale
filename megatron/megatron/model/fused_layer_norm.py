@@ -18,9 +18,12 @@ try:
 except:
     HAVE_PERSIST_LAYER_NORM = False
 
-from apex.normalization.fused_layer_norm import FusedLayerNormAffineFunction
-from apex.normalization.fused_layer_norm import FusedRMSNormAffineFunction
-
+try:
+    from apex.normalization.fused_layer_norm import FusedLayerNormAffineFunction
+    from apex.normalization.fused_layer_norm import FusedRMSNormAffineFunction
+except:
+    FusedLayerNormAffineFunction = None
+    FusedRMSNormAffineFunction = None
 
 global fused_layer_norm_cuda
 fused_layer_norm_cuda = None

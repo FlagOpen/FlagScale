@@ -1,31 +1,12 @@
-# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
-
-"""Megatron initialization."""
-
-import random
-import os
+import sys
 import time
-
-import numpy as np
 import torch
-from datetime import timedelta
-
-from megatron import fused_kernels
-
-try:
-    import torch_musa
-except ImportError:
-    torch_musa = None
-
-try:
-    import torch_mlu
-except ImportError:
-    torch_mlu = None
-
-from megatron import get_adlr_autoresume
+import torch_mlu
+import megatron
+import random
+import numpy as np
 from megatron import get_args
-from megatron import get_tensorboard_writer
-from megatron import get_hetero_context
+from datetime import timedelta
 from megatron.core import mpu, tensor_parallel
 from megatron.arguments import parse_args, validate_args
 from megatron.checkpointing import load_args_from_checkpoint
@@ -34,81 +15,6 @@ from megatron.global_vars import set_hetero_context
 from megatron.model.transformer import bias_dropout_add_fused_train
 from megatron.model.fused_bias_gelu import bias_gelu
 from megatron.utils import save_checkpoint_info
-
-
-def initialize_megatron(
-    extra_args_provider=None,
-    args_defaults={},
-    ignore_unknown_args=False,
-    allow_no_cuda=False,
-):
-    """Set global variables, initialize distributed, and
-    set autoresume and random seeds.
-    `allow_no_cuda` should not be set unless using megatron for cpu only
-    data processing. In general this arg should not be set unless you know
-    what you are doing.
-    Returns a function to finalize distributed env initialization
-    (optionally, only when args.lazy_mpu_init == True)
-    """
-    if not allow_no_cuda:
-        # Make sure cuda is available.
-        if torch_musa:
-            assert torch.musa.is_available(), "Megatron requires MUSA"
-        elif torch_mlu:
-            assert torch.mlu.is_available(), "Megatron requires MLU."
-        else:
-            assert torch.cuda.is_available(), "Megatron requires CUDA."
-
-    # Parse arguments
-    args = parse_args(extra_args_provider, ignore_unknown_args)
-
-    if args.use_checkpoint_args or args_defaults.get("use_checkpoint_args", False):
-        assert args.load is not None, "--use-checkpoints-args requires --load argument"
-        load_args_from_checkpoint(args)
-
-    validate_args(args, args_defaults)
-
-    # set global args, build tokenizer, and set adlr-autoresume,
-    # tensorboard-writer, and timers.
-    set_global_variables(args)
-
-    # torch.distributed initialization
-    def finish_mpu_init():
-        args = get_args()
-        # Pytorch distributed.
-        _initialize_distributed()
-
-        # Random seeds for reproducibility.
-        if args.rank == 0:
-            print("> setting random seeds to {} ...".format(args.seed))
-        _set_random_seed(args.seed, args.data_parallel_random_init)
-
-    args = get_args()
-    if args.lazy_mpu_init:
-        # TODO is this still a necessary option?
-        args.use_cpu_initialization = True
-        # delayed initialization of DDP-related stuff
-        # We only set basic DDP globals
-        mpu.set_tensor_model_parallel_world_size(args.tensor_model_parallel_size)
-        # and return function for external DDP manager
-        # to call when it has DDP initialized
-        mpu.set_tensor_model_parallel_rank(args.rank)
-        return finish_mpu_init
-    else:
-        # Megatron's MPU is the master. Complete initialization right away.
-        finish_mpu_init()
-
-        # Autoresume.
-        _init_autoresume()
-
-        # Compile dependencies.
-        _compile_dependencies()
-
-        save_checkpoint_info(args.save)
-
-        # No continuation function
-        return None
-
 
 def _compile_dependencies():
 
@@ -165,11 +71,11 @@ def _compile_dependencies():
     if torch.distributed.get_rank() == 0:
         start_time = time.time()
         print("> compiling and loading fused kernels ...", flush=True)
-        fused_kernels.load(args)
+        # fused_kernels.load(args)
         torch.distributed.barrier()
     else:
         torch.distributed.barrier()
-        fused_kernels.load(args)
+        # fused_kernels.load(args)
     # Simple barrier to make sure all ranks have passed the
     # compilation phase successfully before moving on to the
     # rest of the program. We think this might ensure that
@@ -183,11 +89,31 @@ def _compile_dependencies():
         )
 
 
+def set_jit_fusion_options():
+    """Set PyTorch JIT layer fusion options."""
+    # flags required to enable jit fusion kernels
+    TORCH_MAJOR = int(torch.__version__.split(".")[0])
+    TORCH_MINOR = int(torch.__version__.split(".")[1])
+    if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR >= 10):
+        # nvfuser
+        torch._C._jit_set_profiling_executor(True)
+        torch._C._jit_set_profiling_mode(True)
+        torch._C._jit_override_can_fuse_on_cpu(False)
+        torch._C._jit_override_can_fuse_on_gpu(False)
+        torch._C._jit_set_texpr_fuser_enabled(False)
+        torch._C._debug_set_autodiff_subgraph_inlining(False)
+    else:
+        # legacy pytorch fuser
+        torch._C._jit_set_profiling_mode(False)
+        torch._C._jit_set_profiling_executor(False)
+        torch._C._jit_override_can_fuse_on_cpu(True)
+        torch._C._jit_override_can_fuse_on_gpu(True)
+
 def _initialize_distributed():
     """Initialize torch.distributed and core model parallel."""
     args = get_args()
 
-    device_count = torch.cuda.device_count()
+    device_count = torch.mlu.device_count()
     if torch.distributed.is_initialized():
 
         if args.rank == 0:
@@ -212,7 +138,7 @@ def _initialize_distributed():
                 ), "expected local-rank to be the same as rank % device-count."
             else:
                 args.local_rank = device
-            torch.cuda.set_device(device)
+            torch.mlu.set_device(device)
     # Call the init process
     torch.distributed.init_process_group(
         backend=args.distributed_backend,
@@ -272,16 +198,6 @@ def _initialize_distributed():
                     f"{mpu.get_pipeline_model_parallel_world_size()}"
                 )
 
-
-def _init_autoresume():
-    """Set autoresume start time."""
-    autoresume = get_adlr_autoresume()
-    if autoresume:
-        torch.distributed.barrier()
-        autoresume.init()
-        torch.distributed.barrier()
-
-
 def _set_random_seed(seed_, data_parallel_random_init=False):
     """Set random seed for reproducability."""
     if seed_ is not None and seed_ > 0:
@@ -293,44 +209,10 @@ def _set_random_seed(seed_, data_parallel_random_init=False):
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
-        if torch.cuda.device_count() > 0:
+        if torch.mlu.device_count() > 0:
             tensor_parallel.model_parallel_cuda_manual_seed(seed)
     else:
         raise ValueError("Seed ({}) should be a positive integer.".format(seed))
-
-
-def write_args_to_tensorboard():
-    """Write arguments to tensorboard."""
-    args = get_args()
-    writer = get_tensorboard_writer()
-    if writer:
-        for arg in vars(args):
-            writer.add_text(arg, str(getattr(args, arg)), global_step=args.iteration)
-
-
-def set_jit_fusion_options():
-    """Set PyTorch JIT layer fusion options."""
-    # flags required to enable jit fusion kernels
-    TORCH_MAJOR = int(torch.__version__.split(".")[0])
-    TORCH_MINOR = int(torch.__version__.split(".")[1])
-    if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR >= 10):
-        # nvfuser
-        torch._C._jit_set_profiling_executor(True)
-        torch._C._jit_set_profiling_mode(True)
-        torch._C._jit_override_can_fuse_on_cpu(False)
-        torch._C._jit_override_can_fuse_on_gpu(False)
-        torch._C._jit_set_texpr_fuser_enabled(False)
-        torch._C._jit_set_nvfuser_enabled(True)
-        torch._C._debug_set_autodiff_subgraph_inlining(False)
-    else:
-        # legacy pytorch fuser
-        torch._C._jit_set_profiling_mode(False)
-        torch._C._jit_set_profiling_executor(False)
-        torch._C._jit_override_can_fuse_on_cpu(True)
-        torch._C._jit_override_can_fuse_on_gpu(True)
-
-    _warmup_jit_function()
-
 
 def _warmup_jit_function():
     """Compilie JIT functions before the main training steps"""
@@ -346,7 +228,7 @@ def _warmup_jit_function():
     bias = torch.rand(
         args.ffn_hidden_size // args.tensor_model_parallel_size,
         dtype=dtype,
-        device="cuda",
+        device="mlu",
     )
     input = torch.rand(
         (
@@ -355,7 +237,7 @@ def _warmup_jit_function():
             args.ffn_hidden_size // args.tensor_model_parallel_size,
         ),
         dtype=dtype,
-        device="cuda",
+        device="mlu",
     )
     # Warmup JIT fusions with the input grad_enable state of both forward
     # prop and recomputation
@@ -373,14 +255,14 @@ def _warmup_jit_function():
     input = torch.rand(
         (seq_length, args.micro_batch_size, args.hidden_size),
         dtype=dtype,
-        device="cuda",
+        device="mlu",
     )
     residual = torch.rand(
         (seq_length, args.micro_batch_size, args.hidden_size),
         dtype=dtype,
-        device="cuda",
+        device="mlu",
     )
-    bias = torch.rand((args.hidden_size), dtype=dtype, device="cuda").expand_as(
+    bias = torch.rand((args.hidden_size), dtype=dtype, device="mlu").expand_as(
         residual
     )
     dropout_rate = 0.1
@@ -395,4 +277,13 @@ def _warmup_jit_function():
         for _ in range(5):
             output = bias_dropout_add_fused_train(input, bias, residual, dropout_rate)
     del bias, input, residual, output
-    torch.cuda.empty_cache()
+    torch.mlu.empty_cache()
+
+megatron.initialize._compile_dependencies = _compile_dependencies
+megatron.initialize._initialize_distributed = _initialize_distributed 
+#megatron.initialize._set_random_seed = _set_random_seed 
+megatron.initialize._warmup_jit_function= _warmup_jit_function
+
+for k, v in sys.modules.items():
+    if 'megatron' in k and hasattr(v, 'set_jit_fusion_options'):
+        setattr(v, 'set_jit_fusion_options', set_jit_fusion_options)

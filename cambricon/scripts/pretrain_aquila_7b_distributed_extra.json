@@ -1,0 +1,33 @@
+{
+    "experiment": {
+        "log_dir": "./my-log"
+    },
+    "launch": {
+        "nnodes": 1,
+        "nproc_per_node": 8,
+        "node_rank": 0,
+        "master_addr": "127.0.0.1",
+        "master_port": 20123 
+    },
+    "env_vars": {
+        "MLU_VSIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+        "CUDA_DEVICE_MAX_CONNECTIONS": "1"
+    },
+    "device_type": "cambricon",
+    "distributed": {
+        "tensor_model_parallel_size": 4,
+        "pipeline_model_parallel_size": 2
+    },
+    "training": {
+        "micro_batch_size": 1,
+        "global_batch_size": 64, 
+        "train_samples": 100000
+    },
+    "learning_rate": {
+        "lr_warmup_samples": 256 
+    },
+    "checkpoint": {
+        "save": null,
+        "load": null
+    }
+}
