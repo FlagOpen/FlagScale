@@ -14,20 +14,16 @@ With instruction tuning on Retro, InstructRetro demonstrates significant improve
 This README provides an end-to-end tutorial to reproduce Retro and InstructRetro.
 
 # Contents
-- [Retro and InstructRetro](#retro-and-instructretro)
-- [Contents](#contents)
-- [End-to-end Reproduction Guide](#end-to-end-reproduction-guide)
-  - [Step 0: Prepare the environment](#step-0-prepare-the-environment)
-    - [Docker image](#docker-image)
-    - [Install dependencies](#install-dependencies)
-  - [Step 1: Build retrieval database](#step-1-build-retrieval-database)
-  - [Step 2: Pretraining](#step-2-pretraining)
-  - [Step 3: Perplexity evaluation](#step-3-perplexity-evaluation)
-  - [Step 4: Instruction tuning](#step-4-instruction-tuning)
-    - [Instruction Tuning Dataset Breakdown](#instruction-tuning-dataset-breakdown)
-    - [Instruction tuning script](#instruction-tuning-script)
-  - [Step 5: Downstream task evaluation](#step-5-downstream-task-evaluation)
-- [Citations](#citations)
+  * [End-to-end Reproduction Guide](#end-to-end-reproduction-guide)
+     * [Step 0: Prepare the environment](#step-0-prepare-the-environment)
+        * [Docker image](#docker-image)
+        * [Install dependencies](#install-dependencies)
+     * [Step 1: Build retrieval database](#step-1-build-retrieval-database)
+     * [Step 2: Pretraining](#step-2-pretraining)
+     * [Step 3: Perplexity evaluation](#step-3-perplexity-evaluation)
+     * [Step 4: Instruction tuning](#step-4-instruction-tuning)
+     * [Step 5: Downstream task evaluation](#step-5-downstream-task-evaluation)
+  * [Citations](#citations)
 
 # End-to-end Reproduction Guide
 

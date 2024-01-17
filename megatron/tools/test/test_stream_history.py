@@ -8,9 +8,9 @@ history = [["USER", "你好"], ["SYSTEM", "你好！有什么我可以帮助你�
 
 def get_tokenizer():
     from megatron.tokenizer.tokenizer import _AquilaTokenizer
-    vocab_file = "examples/aquila/tokenizer/vocab.json"
-    merge_file = "examples/aquila/tokenizer/merges.txt"
-    special = "examples/aquila/tokenizer/special_tokens.txt"
+    vocab_file = "../examples/aquila/tokenizer/vocab.json"
+    merge_file = "../examples/aquila/tokenizer/merges.txt"
+    special = "../examples/aquila/tokenizer/special_tokens.txt"
     tokenizer = _AquilaTokenizer(vocab_file, merge_file, special)
 
     return tokenizer

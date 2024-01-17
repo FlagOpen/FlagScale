@@ -25,9 +25,9 @@ CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$EXPNAME
 LOAD_CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$LOAD_EXPNAME
 echo "LOAD_CHECKPOINT_PATH", $LOAD_CHECKPOINT_PATH
 mkdir -p $CHECKPOINT_PATH
-VOCAB_FILE=examples/aquila/tokenizer/vocab.json
-MERGE_FILE=examples/aquila/tokenizer/merges.txt
-SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
+VOCAB_FILE=../examples/aquila/tokenizer/vocab.json
+MERGE_FILE=../examples/aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=../examples/aquila/tokenizer/special_tokens.txt
 LOG_PATH=$PROJ_HOME/logs/$EXPNAME
 mkdir -p $LOG_PATH
 cp $0 $LOG_PATH/

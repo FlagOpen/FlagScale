@@ -220,8 +220,8 @@ if __name__ == "__main__":
     seed = 1234
     from megatron.tokenizer.tokenizer import _AquilaTokenizer
     tokenizer = _AquilaTokenizer(
-        'examples/aquila/tokenizer/vocab.json',
-        'examples/aquila/tokenizer/merges.txt')
+        '../examples/aquila/tokenizer/vocab.json',
+        '../examples/aquila/tokenizer/merges.txt')
     print(f"{dir(tokenizer)}")
     train_data_prefix = ['path/to/train/set']
     valid_data_prefix = ['path/to/valid/set']

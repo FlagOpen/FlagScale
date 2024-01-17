@@ -28,9 +28,9 @@ from tools.stream_conversation.conversation_convo_v2 import covert_prompt_to_inp
 
 def get_tokenizer():
     from megatron.tokenizer.tokenizer import _AquilaTokenizer
-    vocab_file = "examples/aquila/tokenizer/vocab.json"
-    merge_file = "examples/aquila/tokenizer/merges.txt"
-    special = "examples/aquila/tokenizer/special_tokens.txt"
+    vocab_file = "../examples/aquila/tokenizer/vocab.json"
+    merge_file = "../examples/aquila/tokenizer/merges.txt"
+    special = "../examples/aquila/tokenizer/special_tokens.txt"
     tokenizer = _AquilaTokenizer(vocab_file, merge_file, special)
 
     return tokenizer

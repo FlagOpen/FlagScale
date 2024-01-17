@@ -35,9 +35,9 @@ DISTRIBUTED_ARGS="--nproc_per_node $WORLD_SIZE \
                   --master_addr localhost \
                   --master_port {master_port}"
 
-VOCAB_FILE=examples/aquila/tokenizer/vocab.json
-MERGE_FILE=examples/aquila/tokenizer/merges.txt
-SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
+VOCAB_FILE=../examples/aquila/tokenizer/vocab.json
+MERGE_FILE=../examples/aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=../examples/aquila/tokenizer/special_tokens.txt
 
 CHECKPOINT={checkpoint_path}
 
@@ -82,7 +82,7 @@ CUDA_VISIBLE_DEVICES={device_number} torchrun $DISTRIBUTED_ARGS tools/run_text_g
        --seed 42
 """
 
-sh_dir = "./examples/aquila/70b/server"
+sh_dir = "./../examples/aquila/70b/server"
 os.makedirs(sh_dir, exist_ok=True)
 
 sh_filename = os.path.join(sh_dir, f"{model_info}.sh")

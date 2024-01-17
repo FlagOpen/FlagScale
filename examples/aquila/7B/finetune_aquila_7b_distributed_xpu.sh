@@ -32,9 +32,9 @@ DATA_PATH=${ROOT_DIR}/../../../megatron/data
 CHECKPOINT_PATH=/XMLIR/zhiyuan/baidu/xpu/XMLIR/baidu/hac-aiacc/Megatron/checkpoints/aquilaChat-7b-tp8-pp1-dp1-fp32_random
 CHECKPOINT_SAVE_PATH=${ROOT_DIR}/checkpoints/megatron_aquila_7b_checkpoint_tp8_pp1_fp32_save
 mkdir -p $CHECKPOINT_SAVE_PATH
-VOCAB_FILE=${ROOT_DIR}/../../../examples/aquila/tokenizer/vocab.json
-MERGE_FILE=${ROOT_DIR}/../../../examples/aquila/tokenizer/merges.txt
-SPECIAL_TOKENS_FILE=${ROOT_DIR}/../../../examples/aquila/tokenizer/special_tokens.txt
+VOCAB_FILE=${ROOT_DIR}/../../../../examples/aquila/tokenizer/vocab.json
+MERGE_FILE=${ROOT_DIR}/../../../../examples/aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=${ROOT_DIR}/../../../../examples/aquila/tokenizer/special_tokens.txt
 TENSORBOARD_PATH='./aquila7b_tp8_pp1_fp32_tensorboard'
 LOG_PATH=$PROJ_HOME/logs/$EXPNAME
 mkdir -p $LOG_PATH
