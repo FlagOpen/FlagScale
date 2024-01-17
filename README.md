@@ -100,7 +100,7 @@ It is very simple to do the heterogeneous training on chips of different generat
 1. Change to the FlagScale directory
 
 ```
-cd FlagScale 
+cd FlagScale/megatron 
 ```
 
 2. Merge the multiple checkpoints to a single checkpoint (if needed)
@@ -138,7 +138,7 @@ Note that the above configuration is for converting Aquila-34B and you may need 
 1. Change to the FlagScale directory
 
 ``` python
-cd FlagScale
+cd FlagScale/megatron
 ```
 
 2. Merge the multiple checkpoints to a single checkpoint (as needed)
@@ -155,7 +155,7 @@ Please set the following variables before running the command:
 
 3. Serve the Aquila2 model by the below script. Here we take the Aquila2-34B as an example and assume you have an A800-80G GPU.
 ``` 
-python examples/aquila/34B/inference_auto.py \
+python ../examples/aquila/34B/inference_auto.py \
        --server-port ${SERVER_PORT} --master-process ${MASTER_PORT} \
        --device "0" --iteration -1 --checkpoint-path "${CKPT_DIR}" \
        --model-info "Aquila-34b"
@@ -177,7 +177,7 @@ When using the distributed optimizer, you can use the following tool to repartit
 1. Change to the FlagScale directory
 
 ```
-cd FlagScale 
+cd FlagScale/megatron
 ```
 
 2. Repartition the model weight

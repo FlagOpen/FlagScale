@@ -13,9 +13,9 @@ WORLD_SIZE=1
 TASK="AQUILA"
 VALID_DATA=<Specify lambada path>
 CHECKPOINT=<Specify checkpoints path>
-VOCAB_FILE=examples/aquila/tokenizer/vocab.json
-MERGE_FILE=examples/aquila/tokenizer/merges.txt
-SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
+VOCAB_FILE=../examples/aquila/tokenizer/vocab.json
+MERGE_FILE=../examples/aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=../examples/aquila/tokenizer/special_tokens.txt
 
 DISTRIBUTED_ARGS="--nproc_per_node $WORLD_SIZE \
                   --nnodes 1 \

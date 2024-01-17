@@ -5,7 +5,7 @@ set -u
   EXPNAME=<xxxx>
   DATA_PATH=<xxxx>
   HOSTFILE=<xxxx>
-  LOG_FILE="examples/aquila/$EXPNAME.log"
+  LOG_FILE="../examples/aquila/$EXPNAME.log"
   SCRIPT_FILE=<xxxx>
 set +u
 

@@ -6,12 +6,12 @@ HOSTFILE=$3
 DATA_PATH=$4
 
 # Preapre the environment related configuration
-source examples/aquila/env.sh
+source ../examples/aquila/env.sh
 
 # Define files related to tokenizer
-VOCAB_FILE=examples/aquila/tokenizer/vocab.json
-MERGE_FILE=examples/aquila/tokenizer/merges.txt
-SPECIAL_TOKENS_FILE=examples/aquila/tokenizer/special_tokens.txt
+VOCAB_FILE=../examples/aquila/tokenizer/vocab.json
+MERGE_FILE=../examples/aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=../examples/aquila/tokenizer/special_tokens.txt
 
 # Build some paths for the current training
 CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$EXPNAME
