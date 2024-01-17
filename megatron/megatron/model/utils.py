@@ -58,7 +58,7 @@ def erf_gelu(x):
     return x * 0.5 * (torch.erf(x / 1.41421).to(dtype=x.dtype)+torch.ones_like(x).to(dtype=x.dtype))
 
 
-def get_norm(config):
+def get_norm(config, init_weight=None):
     args = get_args()
     if args.normalization == "LayerNorm":
         return LayerNorm(
@@ -66,13 +66,24 @@ def get_norm(config):
             eps=config.layernorm_epsilon,
             no_persist_layer_norm=not config.persist_layer_norm,
             sequence_parallel=config.sequence_parallel,
-            apply_layernorm_1p=args.apply_layernorm_1p)
+            apply_layernorm_1p=args.apply_layernorm_1p,
+            init_weight=init_weight)
     elif args.normalization == "RMSNorm":
         if args.apply_layernorm_1p:
             raise NotImplementedError('RMSNorm does not currently support the layernorm_1p formulation.')
 
-        return RMSNorm(dim=config.hidden_size,
-                       eps=config.layernorm_epsilon,
-                       sequence_parallel=config.sequence_parallel)
+        # TODO: @aoyulong need to choose RMSNorm impl
+        return RMSNorm(
+            config.hidden_size,
+            eps=config.layernorm_epsilon,
+            no_persist_layer_norm=not config.persist_layer_norm,
+            sequence_parallel=config.sequence_parallel,
+            apply_layernorm_1p=args.apply_layernorm_1p,
+            init_weight=init_weight)
+
+        # return RMSNorm(dim=config.hidden_size,
+        #                eps=config.layernorm_epsilon,
+        #                sequence_parallel=config.sequence_parallel,
+        #                init_weight=init_weight)
     else:
         raise Exception(f"unsupported norm type '{args.normalization}'.")

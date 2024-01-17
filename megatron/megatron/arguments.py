@@ -23,6 +23,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
                                      allow_abbrev=False)
 
     # Standard arguments.
+    parser = _add_server_args(parser)
     parser = _add_network_size_args(parser)
     parser = _add_regularization_args(parser)
     parser = _add_training_args(parser)
@@ -40,6 +41,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_inference_args(parser)
     parser = _add_transformer_engine_args(parser)
     parser = _add_retro_args(parser)
+    parser = _add_hetero_args(parser)
     parser = _add_experimental_args(parser)
 
     # Custom arguments.
@@ -138,6 +140,81 @@ def validate_args(args, defaults={}):
                                                flush=True)
         else:
             setattr(args, key, defaults[key])
+
+    # Heterogeneous Training
+    if args.hetero_mode:
+        assert args.global_batch_size is not None, "global_batch_size should be specified when hetero_mode is not None"
+        assert args.hetero_current_device_type, "hetero_current_device_type should be specified when hetero_mode is not None"
+        assert args.hetero_device_types, "hetero_device_types should be specified when hetero_mode is not None"
+        assert len(args.hetero_device_types) == len(set(args.hetero_device_types)), \
+            "hetero_device_types should not contain duplicate device types"
+    else:
+        args.hetero_data_parallel_splits = None
+        args.hetero_pipeline_stage_splits = None 
+
+    if args.hetero_mode == "dp":
+        assert args.hetero_micro_batch_sizes, \
+            "hetero_micro_batch_sizes should be specified when hetero_mode is dp"
+        assert args.hetero_pipeline_stages is None, \
+            "hetero_pipeline_stages should be None when hetero_mode is dp"
+        assert args.micro_batch_size is None, \
+            "micro_batch_size should be None when hetero_mode is dp"
+        args.hetero_pipeline_stage_splits = None 
+        
+        hetero_micro_batch_sizes = args.hetero_micro_batch_sizes[1::2] 
+        hetero_data_parallel_splits = args.hetero_micro_batch_sizes[::2] 
+        args.hetero_micro_batch_sizes = hetero_micro_batch_sizes
+        args.hetero_data_parallel_splits = hetero_data_parallel_splits
+
+        # Different device types have different micro batch sizes
+        args.micro_batch_size = hetero_micro_batch_sizes[args.hetero_device_types.index(args.hetero_current_device_type)]
+
+        assert len(args.hetero_micro_batch_sizes) == len(args.hetero_device_types), \
+            f"length of hetero_micro_batch_sizes {args.hetero_micro_batch_sizes} should be equal to the length of hetero_device_types {args.hetero_device_types}"
+        data_parallel_size = sum(args.hetero_data_parallel_splits)
+        assert data_parallel_size == args.data_parallel_size, \
+            f"sum of hetero_data_parallel_splits {args.hetero_data_parallel_splits} should be equal to data_parallel_size {args.data_parallel_size}"
+        micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                      args.hetero_micro_batch_sizes,
+                                                      args.hetero_data_parallel_splits))
+        assert args.global_batch_size % micro_batch_for_all_data_parallel == 0, \
+            f"global batch size {args.global_batch_size} is not divisible by micro_batch_for_all_data_parallel {micro_batch_for_all_data_parallel}, "\
+            f"which is the sum of hetero_micro_batch_sizes {args.hetero_micro_batch_sizes} and hetero_data_parallel_splits {args.hetero_data_parallel_splits}"
+        
+    if args.hetero_mode == "pp":
+        assert args.hetero_pipeline_stages, \
+            "hetero_pipeline_stages should be specified when hetero_mode is pp"
+        assert args.hetero_micro_batch_sizes is None, \
+            "hetero_micro_batch_sizes should be None when hetero_mode is pp"
+        args.hetero_data_parallel_splits = None 
+
+        stages = []
+        hetero_pipeline_stages = []
+        hetero_pipeline_stage_splits = []
+        counter = 0
+        num_layers = 0
+        for item in args.hetero_pipeline_stages:
+            if counter == 0:
+                hetero_pipeline_stage_splits.append(item)
+                counter = item 
+            else:
+                stages.append(item)
+                num_layers += item
+                counter -= 1
+                if counter == 0:
+                    hetero_pipeline_stages.append(stages)
+                    stages = []
+        args.hetero_pipeline_stages = hetero_pipeline_stages
+        args.hetero_pipeline_stage_splits = hetero_pipeline_stage_splits
+
+        for split, stages in zip(args.hetero_pipeline_stage_splits, args.hetero_pipeline_stages):
+            assert split == len(stages), \
+                f"hetero_pipeline_stage_split {split} should be equal to the length of hetero_pipeline_stage {stages}"
+        assert num_layers == args.num_layers, f"sum of hetero_pipeline_stages {sum} should be equal to num_layers {args.num_layers}" 
+        assert args.pipeline_model_parallel_size == sum(args.hetero_pipeline_stage_splits), \
+            f"pipeline_model_parallel_size {args.pipeline_model_parallel_size} should be equal to the sum of hetero_pipeline_stage_splits {args.hetero_pipeline_stage_splits}"
+        assert len(args.hetero_pipeline_stage_splits) == len(args.hetero_device_types), \
+            f"length of hetero_pipeline_stage_splits {args.hetero_pipeline_stage_splits} should be equal to the length of hetero_device_types {args.hetero_device_types}"
 
     # Batch size.
     assert args.micro_batch_size is not None
@@ -256,12 +333,22 @@ def validate_args(args, defaults={}):
     # Checks.
     if args.ffn_hidden_size is None:
         if args.swiglu:
-            # reduce the dimnesion for MLP since projections happens on
-            # two linear layers. this keeps the number of paramters in
-            # the same ballpark as the counterpart with 4*h size
-            # we keep it a multiple of 64, which means the actual tensor size
-            # will be a multiple of 64 / tp_size
-            args.ffn_hidden_size = int((4 * args.hidden_size * 2 / 3) / 64) * 64
+            # Ref: https://github.com/facebookresearch/llama/blob/main/llama/model.py#L161-L162
+            if args.multiple_of is not None:
+                hidden_dim = int(4 * args.hidden_size * 2 / 3)
+                if args.hidden_dim_multiplier is not None:
+                    assert args.hidden_dim_multiplier > 0, \
+                        'multiplier for hidden dim should be greater than zero'
+                    hidden_dim = int(hidden_dim * args.hidden_dim_multiplier)
+                args.ffn_hidden_size = args.multiple_of * \
+                    ((hidden_dim + args.multiple_of - 1) // args.multiple_of)
+            else:
+                # reduce the dimnesion for MLP since projections happens on
+                # two linear layers. this keeps the number of paramters in
+                # the same ballpark as the counterpart with 4*h size
+                # we keep it a multiple of 64, which means the actual tensor size
+                # will be a multiple of 64 / tp_size
+                args.ffn_hidden_size = int((4 * args.hidden_size * 2 / 3) / 64) * 64
         else:
             args.ffn_hidden_size = 4 * args.hidden_size
 
@@ -415,6 +502,28 @@ def validate_args(args, defaults={}):
     retro_args = get_retro_args()
     if retro_args and args != retro_args:
         _print_args("retro arguments", types.SimpleNamespace(**{k:v for k,v in vars(retro_args).items() if k.startswith("retro")}, rank=args.rank))
+
+    # Check for scaled init_method
+    if args.apply_init_customized:
+        assert args.init_method_std_scaled_embed is not None
+        assert args.num_layers == len(args.init_method_std_scaled_attn_q)
+        assert args.num_layers == len(args.init_method_std_scaled_attn_k)
+        assert args.num_layers == len(args.init_method_std_scaled_attn_v)
+        assert args.num_layers == len(args.init_method_std_scaled_ffn_w1)
+        assert args.num_layers == len(args.init_method_std_scaled_ffn_w2)
+        assert args.num_layers == len(args.init_method_std_scaled_ffn_w3)
+        assert args.init_method_std_scaled_output is not None
+
+    # Check for norm init_weight
+    if args.apply_init_norm_customized:
+        assert args.num_layers == len(args.init_weight_attn_norm)
+        assert args.num_layers == len(args.init_weight_ffn_norm)
+        assert args.init_weight_output_norm is not None
+
+    # Data Searching
+    if args.data_searching_save:
+        assert args.world_size == 1, \
+            "World size {args.world_size} should be one when data searching."
 
     return args
 
@@ -620,6 +729,8 @@ def _add_network_size_args(parser):
                        help='Percent of rotary dimension to use, default 100%%')
     group.add_argument('--rotary-seq-len-interpolation-factor', type=int, default=None,
                        help='Sequence length interpolation factor for rotary embeddings.')
+    group.add_argument('--rotary-interleaved-patch', action='store_true',
+                       help='Patch for loading models using interleaved rotary position embeddings.')
     group.add_argument('--no-position-embedding',
                        action='store_false',
                        help='Disable position embedding. Deprecated: use --position-embedding-type',
@@ -632,6 +743,8 @@ def _add_network_size_args(parser):
                        help='Which normalization technique to use.')
     group.add_argument('--norm-epsilon', type=float, default=1e-5,
                        help='Epsilon for layer norm and RMS norm.')
+    group.add_argument('--norm-init-weight', type=float, default=None,
+                       help="Norm weight initialization.")
     group.add_argument('--apply-layernorm-1p', action='store_true',
                        help='Adjust LayerNorm weights such that they are centered '
                        'around zero. This improves numerical stability.')
@@ -647,6 +760,10 @@ def _add_network_size_args(parser):
                        help='Use squared relu activation instead of default gelu')
     group.add_argument('--swiglu', action='store_true',
                        help='Use gated linear units and SiLU activation instead of default gelu')
+    group.add_argument('--multiple-of', type=int, default=None,
+                       help='Multiplier for setting Feed-Forward Network hidden size when swiglu.')
+    group.add_argument('--hidden-dim-multiplier', type=float, default=None,
+                       help='Custom Multiplier for setting Feed-Forward Network hidden dim when swiglu.')
     group.add_argument('--onnx-safe', type=bool, required=False,
                        help='Use workarounds for known problems with '
                        'Torch ONNX exporter')
@@ -665,6 +782,14 @@ def _add_network_size_args(parser):
                        help='Untie embeddings and output weights.'),
     return parser
 
+def _add_server_args(parser):
+    group = parser.add_argument_group(title='server')
+
+    group.add_argument('--server-port', type=int, default=5060,
+                       help='server port.')
+    group.add_argument('--model-info', type=str, default="none",
+                       help='model infomation')
+    return parser
 
 def _add_logging_args(parser):
     group = parser.add_argument_group(title='logging')
@@ -767,6 +892,21 @@ def _add_regularization_args(parser):
                        'numerical stability')
     group.add_argument('--sgd-momentum', type=float, default=0.9,
                        help='Momentum factor for sgd')
+
+    # beta3 is for the optimizer Adan, but not used in Adam.
+    group.add_argument('--adan-beta1', type=float, default=0.98,
+                       help='First coefficient for computing running averages '
+                       'of gradient and its square')
+    group.add_argument('--adan-beta2', type=float, default=0.92,
+                       help='Second coefficient for computing running averages '
+                       'of gradient and its square')
+    group.add_argument('--adan-beta3', type=float, default=0.99,
+                       help='Second coefficient for computing running averages '
+                       'of gradient and its square')
+    group.add_argument('--adan-eps', type=float, default=1e-08,
+                       help='Term added to the denominator to improve'
+                       'numerical stability')
+
     return parser
 
 
@@ -901,13 +1041,15 @@ def _add_training_args(parser):
                        help='Disable bias and dropout fusion.',
                        dest='bias_dropout_fusion')
     group.add_argument('--use-flash-attn', action='store_true',
-                       help='use FlashAttention implementation of attention. '
-                       'https://arxiv.org/abs/2205.14135')
+                       help='use FlashAttention implementation of attention, '
+                       'FlashAttention v2 implementation as higher priority. '
+                       'v1: https://arxiv.org/abs/2205.14135, '
+                       'v2: https://tridao.me/publications/flash2/flash2.pdf')
     group.add_argument('--disable-bias-linear', action='store_false',
                        help='Disable bias in the linear layers',
                        dest='add_bias_linear')
     group.add_argument('--optimizer', type=str, default='adam',
-                       choices=['adam', 'sgd'],
+                       choices=['adam', 'sgd', 'adan'],
                        help='Optimizer function')
     group.add_argument('--dataloader-type', type=str, default=None,
                        choices=['single', 'cyclic'],
@@ -967,6 +1109,34 @@ def _add_initialization_args(parser):
     group.add_argument('--init-method-xavier-uniform', action='store_true',
                        help='Enable Xavier uniform parameter initialization')
 
+    # TODO: Temporary usage for Aquila models
+    group.add_argument('--apply-init-customized', action='store_true', default=None,
+                       help='Enable customized for weight initialization.')
+    group.add_argument('--init-method-std-scaled-embed', type=float, default=None,
+                       help="Scaled Standard deviation for weights of the embedding module.")
+    group.add_argument('--init-method-std-scaled-attn-q', type=float, nargs='+', default=[],
+                       help="Scaled Standard deviation for Q weights of each attention module.")
+    group.add_argument('--init-method-std-scaled-attn-k', type=float, nargs='+', default=[],
+                       help="Scaled Standard deviation for K weights of each attention module.")
+    group.add_argument('--init-method-std-scaled-attn-v', type=float, nargs='+', default=[],
+                       help="Scaled Standard deviation for V weights of each attention module.")
+    group.add_argument('--init-method-std-scaled-ffn-w1', type=float, nargs='+', default=[],
+                       help="Scaled Standard deviation for W1 weights of each feedforward module.")
+    group.add_argument('--init-method-std-scaled-ffn-w2', type=float, nargs='+', default=[],
+                       help="Scaled Standard deviation for W2 weights of each feedforward module.")
+    group.add_argument('--init-method-std-scaled-ffn-w3', type=float, nargs='+', default=[],
+                       help="Scaled Standard deviation for W3 weights of each feedforward module.")
+    group.add_argument('--init-method-std-scaled-output', type=float, default=None,
+                       help="Scaled Standard deviation for weights of final feedforward module.")
+    group.add_argument('--apply-init-norm-customized', action='store_true', default=None,
+                       help='Enable customized for norm weight initialization.')
+    group.add_argument('--init-weight-attn-norm', type=float, nargs='+', default=[],
+                       help="Weight initialization for each attention norm.")
+    group.add_argument('--init-weight-ffn-norm', type=float, nargs='+', default=[],
+                       help="Weight initialization for each feedforward norm.")
+    group.add_argument('--init-weight-output-norm', type=float, default=None,
+                       help="Weight initialization for final feedforward norm.")
+
     return parser
 
 
@@ -1024,8 +1194,14 @@ def _add_checkpointing_args(parser):
 
     group.add_argument('--save', type=str, default=None,
                        help='Output directory to save checkpoints to.')
+    group.add_argument('--data-searching-save', type=str, default=None,
+                       help='Output directory to save searched data to.')
+    group.add_argument('--data-searching-range', nargs='+', default=None,
+                       help='The iteration range for searching data.')
     group.add_argument('--save-interval', type=int, default=None,
                        help='Number of iterations between checkpoint saves.')
+    group.add_argument('--rampup-save-interval', type=int, default=None,
+                       help='Number of iterations between checkpoint saves.in the ramup phase.')
     group.add_argument('--no-save-optim', action='store_true', default=None,
                        help='Do not save current optimizer.')
     group.add_argument('--no-save-rng', action='store_true', default=None,
@@ -1048,6 +1224,12 @@ def _add_checkpointing_args(parser):
     group.add_argument('--use-checkpoint-args', action='store_true',
                        help='Override any command line arguments with arguments '
                        'from the checkpoint')
+    group.add_argument('--format-ckpt', action='store_true',
+                       help='Format checkpoint into the Megatron-LM format and save it')
+    group.add_argument('--save-param-index-maps-only', action='store_true',
+                       help='Save param name to index maps only')
+    group.add_argument('--save-when-num-microbatches-change', action='store_true',
+                       help='Save param name to index maps only')
     group.add_argument('--exit-on-missing-checkpoint', action='store_true',
                        help="If '--load' is set, but checkpoint is not found "
                        "(e.g., path typo), then exit instead of random "
@@ -1156,6 +1338,12 @@ def _add_distributed_args(parser):
                        'affects the encoder embedding.)')
     group.add_argument('--use-distributed-optimizer', action='store_true',
                        help='Use distributed optimizer.')
+    #TODO: @aoyulong need to improve this new flag
+    group.add_argument('--no-global-file-system', action='store_true', 
+                       default=False, help='If set, the trianing wonnot use the global file system.')
+    group.add_argument('--num-devices-per-node', type=int, default=8,
+                       help='Number of devices per node.')
+
     group.add_argument('--expert-model-parallel-size', type=int, default=1,
                        help='Degree of expert model parallelism.')
     group.add_argument('--context-parallel-size', type=int, default=1,
@@ -1224,6 +1412,8 @@ def _add_data_args(parser):
                        help='Path to the vocab file.')
     group.add_argument('--merge-file', type=str, default=None,
                        help='Path to the BPE merge file.')
+    group.add_argument('--special-tokens-file', type=str, default=None,
+                       help='Path to the BPE special tokens file.')
     group.add_argument('--vocab-extra-ids', type=int, default=0,
                        help='Number of additional vocabulary tokens. '
                             'They are used for span masking in the T5 model')
@@ -1253,6 +1443,7 @@ def _add_data_args(parser):
                                 'GPT2BPETokenizer',
                                 'SentencePieceTokenizer',
                                 'GPTSentencePieceTokenizer',
+                                'AquilaTokenizer',
                                 'Llama2Tokenizer',
                                 'NullTokenizer'],
                        help='What type of tokenizer to use.')
@@ -1265,6 +1456,9 @@ def _add_data_args(parser):
                        'end-of-document token.')
     group.add_argument('--eod-mask-loss', action='store_true',
                        help='Mask loss for the end of document tokens.')
+    group.add_argument('--finetune-dataset-type', type=str, default=None,
+                       choices=['CPT', None],
+                       help='datasets type during finetunning.')
 
     return parser
 
@@ -1406,6 +1600,26 @@ def _add_vision_args(parser):
 
     return parser
 
+def _add_hetero_args(parser):
+    group = parser.add_argument_group(title="heterogeneous training")
+
+    group.add_argument('--hetero-mode', choices=['dp', 'pp'], default=None, 
+                       help='the mode of heterogeneous training')
+    group.add_argument('--hetero-device-types', nargs='*', type=str, default=None, 
+                       help='the list of device types: device_type_0 device_type_1 ...')
+    group.add_argument('--hetero-current-device-type', type=str, default=None, 
+                       help='the current device type')
+    group.add_argument('--hetero-micro-batch-sizes', nargs='*', type=int, default=None,
+                       help='heteor-micro-batch-sizes must be in the form: n0 mbs0 n1 mbs1 ...'
+                       'The order should be consistent with --hetero-device-types.'
+                       'The sum of n0, n1 ... should be equal to data-parallel-size.')
+    group.add_argument('--hetero-pipeline-stages', nargs='*', type=int, default=None,
+                       help='Incompatible with --num-layers-per-virtual-pipeline-stage.'
+                       'hetero-pipeline-stages must be in the form:'
+                       'n0 layers_0_0 layers_0_1 ... n1 nlayers_1_0 nlayers_1_1 ...'
+                       'The order should be consistent with --hetero-device-types.')
+
+    return parser
 def _add_experimental_args(parser):
     group = parser.add_argument_group(title='experimental')
 

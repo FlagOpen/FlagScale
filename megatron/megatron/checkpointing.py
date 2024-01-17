@@ -186,7 +186,9 @@ def read_metadata(tracker_filename):
                 print_rank_0('ERROR: Invalid metadata file {}. Exiting'.format(
                     tracker_filename))
                 sys.exit()
-    assert iteration > 0 or release, 'error parsing metadata file {}'.format(
+    # TODO: we use iteration 0 to load checkpoint from other framework.  
+    # We should remove this after we have a better way to load checkpoint from other framework.
+    assert iteration >= 0 or release, 'error parsing metadata file {}'.format(
         tracker_filename)
 
     # Get the max iteration retrieved across the ranks.
@@ -476,6 +478,10 @@ def load_args_from_checkpoint(args, load_arg='load'):
     if hasattr(checkpoint_args, 'disable_bias_linear'):
         setattr(checkpoint_args, 'add_bias_linear', not getattr(checkpoint_args, 'disable_bias_linear'))
 
+    # For backward compatibility.
+    if hasattr(checkpoint_args, 'apply_layernorm_rms'):
+        checkpoint_args.normalization = 'RMSNorm'
+
     def _set_arg(arg_name, old_arg_name=None, force=False):
         if not force and getattr(args, arg_name, None) is not None:
             return
@@ -506,6 +512,8 @@ def load_args_from_checkpoint(args, load_arg='load'):
     _set_arg('rotary_percent', force=True)
     _set_arg('add_bias_linear', force=True)
     _set_arg('swiglu', force=True)
+    _set_arg('multiple_of', force=True)
+    _set_arg('hidden_dim_multiplier', force=True)
     _set_arg('untie_embeddings_and_output_weights', force=True)
     _set_arg('apply_layernorm_1p', force=True)
     _set_arg('normalization', force=True)
@@ -568,7 +576,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
     # Check arguments.
     assert args.consumed_train_samples == 0
     assert args.consumed_valid_samples == 0
-    if 'args' in state_dict and not args.finetune:
+    if 'args' in state_dict and not args.finetune and not args.format_ckpt:
         checkpoint_args = state_dict['args']
         check_checkpoint_args(checkpoint_args)
         args.consumed_train_samples = getattr(checkpoint_args,

@@ -102,6 +102,13 @@ class DistributedDataParallel(MegatronModule):
             self.grad_buffer_param_index_map[dtype] = self.grad_buffers[dtype].param_index_map
             for param in params:
                 self.param_to_grad_buffer[param] = self.grad_buffers[dtype]
+        
+        # Store the param name to index map for repartitioning the distributed optimizer state.
+        self.param_name_to_index_map = {}
+        for name, param in self.module.named_parameters():
+            if param.requires_grad:
+                dtype = torch.float if accumulate_allreduce_grads_in_fp32 else param.dtype
+                self.param_name_to_index_map[name] = (tuple(param.shape), self.grad_buffer_param_index_map[dtype][param])
 
         # Allocate separate buffer for MoE params' grads.
         for param in self.module.parameters():

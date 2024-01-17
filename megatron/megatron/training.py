@@ -2,6 +2,7 @@
 
 """Pretrain utilities."""
 
+import os
 import gc
 from datetime import datetime
 import math
@@ -12,6 +13,10 @@ from .log_handler import CustomHandler
 logging.basicConfig(handlers=[CustomHandler()], level=logging.INFO)
 from .theoretical_memory_usage import report_theoretical_memory
 import time
+import json
+from collections import defaultdict
+
+
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
 import torch
@@ -31,6 +36,7 @@ from megatron import print_rank_0
 from megatron import print_rank_last
 from megatron.checkpointing import load_checkpoint
 from megatron.checkpointing import save_checkpoint
+from megatron.checkpointing import get_checkpoint_name
 from megatron.model import Float16Module
 from megatron.model import GPTModel
 from megatron.core.distributed import DistributedDataParallel as DDP
@@ -44,6 +50,7 @@ from megatron.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.utils import check_adlr_autoresume_termination
 from megatron.utils import unwrap_model
 from megatron.data.data_samplers import build_pretraining_data_loader
+from megatron.data.data_samplers_hetero import build_pretraining_data_loader_hetero
 from megatron.utils import calc_params_l2_norm
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.utils import report_memory
@@ -82,7 +89,8 @@ def pretrain(train_valid_test_dataset_provider,
              forward_step_func,
              process_non_loss_data_func=None,
              extra_args_provider=None,
-             args_defaults={}):
+             args_defaults={},
+             get_batch_fn=None,):
     """Main training program.
 
     This function will run the followings in the order provided:
@@ -134,6 +142,10 @@ def pretrain(train_valid_test_dataset_provider,
 
     args = get_args()
     timers = get_timers()
+
+    if args.data_searching_save is not None:
+        search_data(train_valid_test_dataset_provider, get_batch_fn)
+        return
 
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
@@ -315,6 +327,24 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
             sum([sum([p.nelement() for p in model_module.parameters()])
                  for model_module in model])), flush=True)
 
+    if args.load is not None:
+        if args.format_ckpt:
+            args.no_load_optim = True
+            args.no_load_rng = True
+            args.no_save_optim = True
+            args.no_save_rng = True
+
+            timers = get_timers()
+            timers('format-checkpoint', log_level=0).start(barrier=True)
+
+            args.iteration = load_checkpoint(model, None, None)
+            save_checkpoint(args.iteration, model, None, None)
+
+            timers('format-checkpoint').stop(barrier=True)
+            timers.log(['format-checkpoint'])
+            print_rank_0("Saved checkpoint from other frameworks in Megatron-LM format")
+            sys.exit(0)
+
     # GPU allocation.
     for model_module in model:
         model_module.cuda(torch.cuda.current_device())
@@ -340,6 +370,25 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
         if args.data_parallel_random_init:
             for model_module in model:
                 model_module.broadcast_params()
+
+        if args.save_param_index_maps_only:
+            if not torch.distributed.is_initialized() \
+               or mpu.get_data_parallel_rank() == 0:
+                # Save param_name_to_index_map
+                param_name_to_index_maps = [] 
+                for model_module in model:
+                    param_name_to_index_maps.append(model_module.param_name_to_index_map)
+                # We use iteration 0 to save the param_name_to_index_map
+                index_map_dir = os.path.dirname(get_checkpoint_name(args.save, 0))
+                if not os.path.exists(index_map_dir):
+                    os.makedirs(index_map_dir)
+                index_map_file = os.path.join(index_map_dir, "param_name_to_index_maps.json")
+                with open(index_map_file, "w") as f:
+                    json.dump(param_name_to_index_maps, f)
+            if torch.distributed.is_initialized():
+                torch.distributed.barrier()
+            exit(0)
+
 
     return model
 
@@ -410,11 +459,22 @@ def setup_model_and_optimizer(model_provider_func,
     opt_param_scheduler = get_optimizer_param_scheduler(optimizer)
 
     if args.load is not None:
+        if args.format_ckpt:
+            args.no_load_optim = True
+            args.no_load_rng = True
+
         timers = get_timers()
         timers('load-checkpoint', log_level=0).start(barrier=True)
         args.iteration = load_checkpoint(model, optimizer, opt_param_scheduler)
         timers('load-checkpoint').stop(barrier=True)
         timers.log(['load-checkpoint'])
+
+        if args.format_ckpt:
+            args.no_save_optim = True
+            args.no_save_rng = True
+            save_checkpoint(args.iteration, model, optimizer, opt_param_scheduler)
+            print_rank_0("Saved checkpoint from other frameworks in Megatron-LM format")
+            sys.exit(0)
     else:
         args.iteration = 0
 
@@ -477,9 +537,16 @@ def train_step(forward_step_func, data_iterator,
 
     # Update learning rate.
     if update_successful:
-        increment = get_num_microbatches() * \
-                    args.micro_batch_size * \
-                    args.data_parallel_size
+        if args.hetero_mode != "dp":
+            increment = get_num_microbatches() * \
+                        args.micro_batch_size * \
+                        args.data_parallel_size
+        else:
+            micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                        args.hetero_micro_batch_sizes,
+                                                        args.hetero_data_parallel_splits))
+            increment = get_num_microbatches() * \
+                        micro_batch_for_all_data_parallel
         opt_param_scheduler.step(increment=increment)
         skipped_iter = 0
     else:
@@ -565,8 +632,14 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
         'optimizer']
 
     # Calculate batch size.
-    batch_size = args.micro_batch_size * args.data_parallel_size * \
-        get_num_microbatches()
+    if args.hetero_mode != "dp":
+        batch_size = args.micro_batch_size * args.data_parallel_size * \
+            get_num_microbatches()
+    else:
+        micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                    args.hetero_micro_batch_sizes,
+                                                    args.hetero_data_parallel_splits))
+        batch_size = micro_batch_for_all_data_parallel * get_num_microbatches()
 
     total_iterations = total_loss_dict[advanced_iters_key] + \
                        total_loss_dict[skipped_iters_key]
@@ -663,6 +736,9 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
             iteration, args.train_iters)
         log_string += ' consumed samples: {:12d} |'.format(
             args.consumed_train_samples)
+        if wandb_writer:
+            wandb_writer.log({'consumed-samples': args.consumed_train_samples}, iteration)
+            wandb_writer.log({'consumed-tokens': args.consumed_train_samples * args.seq_length / 1000. / 1000 / 1000}, iteration)
         log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(
             elapsed_time_per_iteration * 1000.0)
         if args.log_throughput:
@@ -685,10 +761,16 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
         log_string += ' loss scale: {:.1f} |'.format(loss_scale)
         if grad_norm is not None:
             log_string += ' grad norm: {:.3f} |'.format(grad_norm)
+            if wandb_writer:
+                wandb_writer.log({'grad-norm': grad_norm}, iteration)
         if num_zeros_in_grad is not None:
             log_string += ' num zeros: {:.1f} |'.format(num_zeros_in_grad)
+            if wandb_writer:
+                wandb_writer.log({'num-zeros': num_zeros_in_grad}, iteration)
         if params_norm is not None:
             log_string += ' params norm: {:.3f} |'.format(params_norm)
+            if wandb_writer:
+                wandb_writer.log({'params-norm': params_norm}, iteration)
         log_string += ' number of skipped iterations: {:3d} |'.format(
             total_loss_dict[skipped_iters_key])
         log_string += ' number of nan iterations: {:3d} |'.format(
@@ -710,11 +792,28 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
 
 
 def save_checkpoint_and_time(iteration, model, optimizer, opt_param_scheduler):
+    args = get_args()
     timers = get_timers()
     # Extra barrier is added to make sure
     # all ranks report the max time.
     timers('save-checkpoint', log_level=0).start(barrier=True)
     save_checkpoint(iteration, model, optimizer, opt_param_scheduler)
+
+    if not torch.distributed.is_initialized() \
+       or mpu.get_data_parallel_rank() == 0:
+        # Save param_name_to_index_map
+        param_name_to_index_maps = [] 
+        for model_module in model:
+            param_name_to_index_maps.append(model_module.param_name_to_index_map)
+        index_map_dir = os.path.dirname(get_checkpoint_name(args.save, iteration))
+        if not os.path.exists(index_map_dir):
+            os.makedirs(index_map_dir)
+        index_map_file = os.path.join(index_map_dir, "param_name_to_index_maps.json")
+        with open(index_map_file, "w") as f:
+            json.dump(param_name_to_index_maps, f)
+    if torch.distributed.is_initialized():
+        torch.distributed.barrier()
+
     timers('save-checkpoint').stop(barrier=True)
     timers.log(['save-checkpoint'])
 
@@ -786,7 +885,8 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         # from the previous iteration, save a checkpoint. Then run consistency check
         # to make sure training configuration is still valid.
         update_num_microbatches(args.consumed_train_samples, consistency_check=False)
-        if get_num_microbatches() != num_microbatches and iteration != 0:
+        if get_num_microbatches() != num_microbatches and iteration != 0 \
+            and args.save_when_num_microbatches_change:
             assert get_num_microbatches() > num_microbatches, \
                 "number of microbatches should be increasing due to batch size rampup"
             save_checkpoint_and_time(iteration, model, optimizer,
@@ -803,9 +903,15 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                        opt_param_scheduler,
                        config)
         iteration += 1
-        args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
-                                       args.micro_batch_size * \
-                                       get_num_microbatches()
+        if args.hetero_mode != "dp":
+            args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
+                                           args.micro_batch_size * \
+                                           get_num_microbatches()
+        else:
+            micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                        args.hetero_micro_batch_sizes,
+                                                        args.hetero_data_parallel_splits))
+            args.consumed_train_samples += get_num_microbatches() * micro_batch_for_all_data_parallel
 
         # Logging.
         loss_scale = optimizer.get_loss_scale().item()
@@ -852,8 +958,26 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                 exit = True
                 break
 
-        if args.save and args.save_interval and \
-           iteration % args.save_interval == 0:
+        need_save = False
+        if args.rampup_batch_size is not None \
+            and args.rampup_save_interval is not None:
+            rampup_samples = int(args.rampup_batch_size[2])
+            if args.consumed_train_samples < rampup_samples: 
+                if args.save and args.rampup_save_interval and \
+                   iteration % args.rampup_save_interval == 0:
+                    need_save = True
+            else:
+                if args.save and args.save_interval and \
+                   iteration % args.save_interval == 0:
+                    need_save = True
+        else:
+            if args.save and args.save_interval and \
+               iteration % args.save_interval == 0:
+                need_save = True
+    
+        # if args.save and args.save_interval and \
+        #    iteration % args.save_interval == 0:
+        if need_save:
             timers('interval-time').stop()
             save_checkpoint_and_time(iteration, model, optimizer,
                                      opt_param_scheduler)
@@ -911,6 +1035,76 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     return iteration
 
 
+def search_data(train_valid_test_dataset_provider, get_batch):
+    """Search the specific data."""
+    args = get_args()
+
+    search_range = args.data_searching_range
+    search_start = int(search_range[0])
+    search_end = int(search_range[1])
+
+    # Get the consumed train samples.
+    iteration = 0
+    while iteration < search_start:
+        update_num_microbatches(args.consumed_train_samples)
+        iteration += 1
+        if iteration % 10000 == 0:
+            print_rank_0(f'Data searching at iteration {iteration}...')
+        if args.hetero_mode != "dp":
+            args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
+                                           args.micro_batch_size * \
+                                           get_num_microbatches()
+        else:
+            micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                        args.hetero_micro_batch_sizes,
+                                                        args.hetero_data_parallel_splits))
+            args.consumed_train_samples += get_num_microbatches() * micro_batch_for_all_data_parallel
+    
+    # Build the dataloader
+    args.iteration = iteration 
+    update_train_iters(args)
+    if args.virtual_pipeline_model_parallel_size is not None:
+        all_data_iterators = [
+            build_train_valid_test_data_iterators(
+                train_valid_test_dataset_provider)
+            for _ in range(len(args.virtual_pipeline_model_parallel_size))
+        ]
+        train_data_iterator = [data_iterators[0]
+                               for data_iterators in all_data_iterators]
+        valid_data_iterator = [data_iterators[1]
+                               for data_iterators in all_data_iterators]
+        test_data_iterator = [data_iterators[2]
+                              for data_iterators in all_data_iterators]
+    else:
+        train_data_iterator, valid_data_iterator, test_data_iterator \
+            = build_train_valid_test_data_iterators(
+                train_valid_test_dataset_provider)
+    data_iterator = train_data_iterator
+
+    searched_data = defaultdict(dict)
+    # Get the searched data.
+    while iteration < search_end:
+        update_num_microbatches(args.consumed_train_samples)
+        for microbatch_num in range(get_num_microbatches()):
+            tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data_iterator) 
+            cur_key = str(iteration) + "_" + str(microbatch_num)
+            searched_data[cur_key]["tokens"] = tokens
+            searched_data[cur_key]["labels"] = labels
+        iteration += 1
+        if args.hetero_mode != "dp":
+            args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
+                                           args.micro_batch_size * \
+                                           get_num_microbatches()
+        else:
+            micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                        args.hetero_micro_batch_sizes,
+                                                        args.hetero_data_parallel_splits))
+            args.consumed_train_samples += get_num_microbatches() * micro_batch_for_all_data_parallel
+    if not os.path.exists(args.data_searching_save):
+        raise ValueError("searched data save path does not exist")
+    searched_data_file = os.path.join(args.data_searching_save, "searched_data_{}_to_{}".format(search_start, search_end))
+    torch.save(searched_data, searched_data_file)
+
 def evaluate(forward_step_func,
              data_iterator,
              model,
@@ -934,8 +1128,14 @@ def evaluate(forward_step_func,
 
     # make validation batch size independent from training batch size
     eval_batch_size = args.global_batch_size
-    eval_num_microbatches = eval_batch_size // \
-        (args.micro_batch_size * args.data_parallel_size)
+    if args.hetero_mode != "dp":
+        eval_num_microbatches = eval_batch_size // \
+            (args.micro_batch_size * args.data_parallel_size)
+    else:
+        micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
+                                                    args.hetero_micro_batch_sizes,
+                                                    args.hetero_data_parallel_splits))
+        eval_num_microbatches = eval_batch_size // micro_batch_for_all_data_parallel 
 
     with torch.no_grad():
         iteration = 0
@@ -1041,15 +1241,25 @@ def evaluate_and_print_results(prefix, forward_step_func,
             writer.add_scalar('{} validation vs samples'.format(key),
                               total_loss_dict[key].item(),
                               args.consumed_train_samples)
+            if wandb_writer:
+                wandb_writer.log({
+                    '{} validation'.format(key): total_loss_dict[key].item()},
+                    iteration)
+                wandb_writer.log({
+                    '{} validation vs samples'.format(key): args.consumed_train_samples},
+                    iteration)
             if args.log_validation_ppl_to_tensorboard:
                 writer.add_scalar('{} validation ppl'.format(key), ppl,
                                   iteration)
                 writer.add_scalar('{} validation ppl vs samples'.format(key),
                                   ppl, args.consumed_train_samples)
-            if wandb_writer and is_last_rank():
-                wandb_writer.log({
-                    '{} validation'.format(key): total_loss_dict[key].item()},
-                    iteration)
+                if wandb_writer:
+                    wandb_writer.log({
+                        '{} validation ppl'.format(key): ppl},
+                        iteration)
+                    wandb_writer.log({
+                        '{} validation ppl vs samples'.format(key): args.consumed_train_samples},
+                        iteration)
 
     if process_non_loss_data_func is not None and writer and is_last_rank():
         process_non_loss_data_func(collected_non_loss_data, iteration, writer)
@@ -1121,14 +1331,24 @@ def build_train_valid_test_data_loaders(
         train_ds, valid_ds, test_ds = build_train_valid_test_datasets(
             build_train_valid_test_datasets_provider)
         # Build dataloders.
-        train_dataloader = build_pretraining_data_loader(
-            train_ds, args.consumed_train_samples)
-        if args.skip_train:
-            valid_dataloader = build_pretraining_data_loader(valid_ds, 0)
+        if args.hetero_mode != "dp":
+            train_dataloader = build_pretraining_data_loader(
+                train_ds, args.consumed_train_samples)
+            if args.skip_train:
+                valid_dataloader = build_pretraining_data_loader(valid_ds, 0)
+            else:
+                valid_dataloader = build_pretraining_data_loader(
+                    valid_ds, args.consumed_valid_samples)
+            test_dataloader = build_pretraining_data_loader(test_ds, 0)
         else:
-            valid_dataloader = build_pretraining_data_loader(
-                valid_ds, args.consumed_valid_samples)
-        test_dataloader = build_pretraining_data_loader(test_ds, 0)
+            train_dataloader = build_pretraining_data_loader_hetero(
+                train_ds, args.consumed_train_samples)
+            if args.skip_train:
+                valid_dataloader = build_pretraining_data_loader_hetero(valid_ds, 0)
+            else:
+                valid_dataloader = build_pretraining_data_loader_hetero(
+                    valid_ds, args.consumed_valid_samples)
+            test_dataloader = build_pretraining_data_loader_hetero(test_ds, 0)
 
         # Flags to know if we need to do training/validation/testing.
         do_train = train_dataloader is not None and args.train_iters > 0

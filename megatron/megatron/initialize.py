@@ -14,12 +14,16 @@ from megatron import fused_kernels
 from megatron import get_adlr_autoresume
 from megatron import get_args
 from megatron import get_tensorboard_writer
+from megatron import get_hetero_context
 from megatron.core import mpu, tensor_parallel
 from megatron.arguments import parse_args, validate_args
 from megatron.checkpointing import load_args_from_checkpoint
 from megatron.global_vars import set_global_variables
+from megatron.global_vars import set_global_writers
+from megatron.global_vars import set_hetero_context
 from megatron.model.transformer import bias_dropout_add_fused_train
 from megatron.model.fused_bias_gelu import bias_gelu
+from megatron.utils import save_checkpoint_info
 
 def initialize_megatron(
     extra_args_provider=None,
@@ -64,6 +68,10 @@ def initialize_megatron(
             print("> setting random seeds to {} ...".format(args.seed))
         _set_random_seed(args.seed, args.data_parallel_random_init)
 
+        # Set tensorboard writer and wandb writer.
+        set_global_writers(args)
+
+
     if skip_mpu_initialization:
         return None
 
@@ -87,6 +95,8 @@ def initialize_megatron(
 
         # Compile dependencies.
         _compile_dependencies()
+
+        save_checkpoint_info(args.save)
 
         if args.tp_comm_overlap:
            _initialize_tp_communicators()
@@ -236,6 +246,13 @@ def _initialize_distributed():
             timeout=timedelta(minutes=args.distributed_timeout_minutes),
         )
 
+    if args.hetero_mode is not None:
+        # Build the heterogenous context after torch.distributed is initialized and
+        # before model parallel is initialized.
+        set_hetero_context(args)
+        if torch.distributed.get_rank() == 0:
+            print(get_hetero_context(), flush=True)
+
     # Set the tensor model-parallel, pipeline model-parallel, and
     # data-parallel communicators.
     if device_count > 0:
@@ -250,6 +267,7 @@ def _initialize_distributed():
                 context_parallel_size=args.context_parallel_size,
                 expert_model_parallel_size=args.expert_model_parallel_size,
                 nccl_communicator_config_path=args.nccl_communicator_config_path,
+                hetero_mode=args.hetero_mode
             )
             if args.rank == 0:
                 print(

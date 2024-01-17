@@ -2,7 +2,9 @@
 
 """General utilities."""
 
+import os
 import sys
+import socket
 
 import torch
 
@@ -260,8 +262,11 @@ def print_rank_0(message):
         print(message, flush=True)
 
 def is_last_rank():
-    return torch.distributed.get_rank() == (
-        torch.distributed.get_world_size() - 1)
+    if mpu.get_pipeline_model_parallel_world_size() > 1:
+        return torch.distributed.get_rank() == mpu.get_last_rank_when_using_pipeline() 
+    else:
+        return torch.distributed.get_rank() == (
+            torch.distributed.get_world_size() - 1)
 
 def print_rank_last(message):
     """If distributed is initialized, print only on last rank."""
@@ -351,3 +356,54 @@ def get_batch_on_this_tp_rank(data_iterator):
        }
 
     return batch
+
+
+def get_host_ip():
+    """Get the IP address of the current host."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0)
+    try:
+        # doesn't even have to be reachable
+        s.connect(('10.254.254.254', 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
+    
+
+def save_checkpoint_info(dir, rank0=False):
+    if not dir:
+        return
+
+    def get_checkpoint_dir():
+        pipeline_parallel = (mpu.get_pipeline_model_parallel_world_size() > 1)
+        tensor_rank = mpu.get_tensor_model_parallel_rank()
+        pipeline_rank = mpu.get_pipeline_model_parallel_rank()
+
+        if not pipeline_parallel:
+            ckpt_dir= f'mp_rank_{tensor_rank:02d}'
+        else:
+            ckpt_dir = f'mp_rank_{tensor_rank:02d}_{pipeline_rank:03d}'
+
+        return ckpt_dir 
+    
+    host = get_host_ip()
+    cur_ckpt_dir = get_checkpoint_dir()
+    rank = torch.distributed.get_rank()
+    world_size = torch.distributed.get_world_size()
+    all_ckpts_info = [None for _ in range(world_size)]
+    existed = True if mpu.get_data_parallel_rank() == 0 else False
+    cur_ckpt_info = {'rank': rank, 'host': host, 'ckpt_dir': cur_ckpt_dir, 'existed': existed}
+
+    torch.distributed.all_gather_object(all_ckpts_info, cur_ckpt_info)
+
+    local_rank = os.environ.get('LOCAL_RANK')
+    if int(local_rank) == 0:
+        import json
+        path = os.path.join(dir, 'ckpt_info.json')
+        with open(path, 'w') as f:
+            json.dump(all_ckpts_info, f)
+    torch.distributed.barrier()
+    print_rank_0("Save checkpoint info done")

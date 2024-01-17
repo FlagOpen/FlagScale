@@ -9,7 +9,9 @@ import torch
 from megatron import dist_signal_handler
 from megatron.tokenizer import build_tokenizer
 from .microbatches import build_num_microbatches_calculator
+from .microbatches_hetero import build_num_microbatches_calculator_hetero
 from .timers import Timers
+from .hetero_context import HeteroContext
 
 _GLOBAL_ARGS = None
 _GLOBAL_RETRO_ARGS = None
@@ -20,6 +22,7 @@ _GLOBAL_WANDB_WRITER = None
 _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
 _GLOBAL_SIGNAL_HANDLER = None
+_GLOBAL_HETERO_CONTEXT = None
 
 def get_args():
     """Return arguments."""
@@ -58,7 +61,7 @@ def get_tensorboard_writer():
 
 
 def get_wandb_writer():
-    """Return tensorboard writer. It can be None so no need
+    """Return wandb writer. It can be None so no need
     to check if it is initialized."""
     return _GLOBAL_WANDB_WRITER
 
@@ -80,11 +83,16 @@ def get_signal_handler():
     return _GLOBAL_SIGNAL_HANDLER
 
 
+def get_hetero_context():
+    """Return heterogenous context."""
+    _ensure_var_is_initialized(_GLOBAL_HETERO_CONTEXT, 'hetero context')
+    return _GLOBAL_HETERO_CONTEXT
+
+
 def _set_signal_handler():
     global _GLOBAL_SIGNAL_HANDLER
     _ensure_var_is_not_initialized(_GLOBAL_SIGNAL_HANDLER, 'signal handler')
     _GLOBAL_SIGNAL_HANDLER = dist_signal_handler.DistributedSignalHandler().__enter__()
-
 
 
 def set_global_variables(args, build_tokenizer=True):
@@ -98,13 +106,28 @@ def set_global_variables(args, build_tokenizer=True):
     _build_num_microbatches_calculator(args)
     if build_tokenizer:
         _ = _build_tokenizer(args)
-    _set_tensorboard_writer(args)
-    _set_wandb_writer(args)
     _set_adlr_autoresume(args)
     _set_timers(args)
 
     if args.exit_signal_handler:
         _set_signal_handler()
+
+
+def set_global_writers(args):
+    """Set tensorboard-writer and wandb writer.
+
+    Note that this function should be called after calling finish_mpu_init.
+    This is because we can know which rank is the last one after the rank mapping in finish_mpu_init.
+    """
+
+    assert args is not None
+
+    _ensure_var_is_initialized(_GLOBAL_ARGS, 'args')
+
+    from .utils import is_last_rank
+    if is_last_rank(): 
+        _set_tensorboard_writer(args)
+        _set_wandb_writer(args)
 
 
 def set_args(args):
@@ -123,8 +146,12 @@ def _build_num_microbatches_calculator(args):
     _ensure_var_is_not_initialized(_GLOBAL_NUM_MICROBATCHES_CALCULATOR,
                                    'num microbatches calculator')
 
-    _GLOBAL_NUM_MICROBATCHES_CALCULATOR = build_num_microbatches_calculator(
-        args)
+    if args.hetero_mode != "dp":
+        _GLOBAL_NUM_MICROBATCHES_CALCULATOR = build_num_microbatches_calculator(
+            args)
+    else:
+        _GLOBAL_NUM_MICROBATCHES_CALCULATOR = build_num_microbatches_calculator_hetero(
+            args)
 
 
 def _build_tokenizer(args):
@@ -148,7 +175,7 @@ def _set_tensorboard_writer(args):
                                    'tensorboard writer')
 
     if hasattr(args, 'tensorboard_dir') and \
-       args.tensorboard_dir and args.rank == (args.world_size - 1):
+       args.tensorboard_dir:
         try:
             from torch.utils.tensorboard import SummaryWriter
             print('> setting tensorboard ...')
@@ -165,7 +192,7 @@ def _set_wandb_writer(args):
     global _GLOBAL_WANDB_WRITER
     _ensure_var_is_not_initialized(_GLOBAL_WANDB_WRITER,
                                    'wandb writer')
-    if getattr(args, 'wandb_project', '') and args.rank == (args.world_size - 1):
+    if getattr(args, 'wandb_project', ''):
         if args.wandb_exp_name == '':
             raise ValueError("Please specify the wandb experiment name!")
 
@@ -208,6 +235,13 @@ def _set_timers(args):
     global _GLOBAL_TIMERS
     _ensure_var_is_not_initialized(_GLOBAL_TIMERS, 'timers')
     _GLOBAL_TIMERS = Timers(args.timing_log_level, args.timing_log_option)
+
+
+def set_hetero_context(args):
+    """Initialize heterogenous context."""
+    global _GLOBAL_HETERO_CONTEXT
+    _ensure_var_is_not_initialized(_GLOBAL_HETERO_CONTEXT, 'hetero context')
+    _GLOBAL_HETERO_CONTEXT = HeteroContext(args)
 
 
 def _ensure_var_is_initialized(var, name):

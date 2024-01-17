@@ -786,6 +786,7 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
                     # Scatter local shards from DP rank 0.
                     for key, recv_tensor in local_shards.items():
 
+                        #TODO: @aoyulong support the changing of the dp degree 
                         # Scatter tensor list.
                         if data_parallel_rank == 0:
                             world_tensor_for_all_buckets = loaded_state[model_idx][dtype][key]

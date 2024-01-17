@@ -7,6 +7,7 @@ from abc import abstractmethod
 
 from .bert_tokenization import FullTokenizer as FullBertTokenizer
 from .gpt2_tokenization import GPT2Tokenizer
+from .gpt2_tokenization import AquilaTokenizer
 
 def build_tokenizer(args):
     """Initialize tokenizer."""
@@ -41,6 +42,12 @@ def build_tokenizer(args):
     elif args.tokenizer_type == 'NullTokenizer':
         assert args.vocab_size is not None
         tokenizer = _NullTokenizer(args.vocab_size)
+    elif args.tokenizer_type == 'AquilaTokenizer':
+        assert args.vocab_file is not None
+        assert args.merge_file is not None
+        assert args.special_tokens_file is not None
+        tokenizer = _AquilaTokenizer(args.vocab_file, args.merge_file,
+                                     args.special_tokens_file)
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(args.tokenizer_type))
@@ -586,3 +593,53 @@ class _NullTokenizer:
     @property
     def additional_special_tokens_ids(self):
         return None
+
+
+class _AquilaTokenizer(AbstractTokenizer):
+    """Aquila tokenizer."""
+
+    def __init__(self, vocab_file, merge_file, special_tokens_file):
+        name = 'Aquila'
+        super().__init__(name)
+
+        special_tokens = []
+        if special_tokens_file:
+            special_tokens = open(special_tokens_file, encoding='utf-8').read().split('\n')[:-1]
+
+        self.tokenizer = AquilaTokenizer(vocab_file, merge_file, errors='replace',
+                                         special_tokens=special_tokens, max_len=None)
+        self.eod_id = self.tokenizer.encoder['</s>']
+        self.cls_id = self.tokenizer.encoder['[CLS]']
+        self.pad_id = self.tokenizer.encoder['<|endoftext|>']
+
+    @property
+    def vocab_size(self):
+        return len(self.tokenizer.encoder)
+
+    @property
+    def vocab(self):
+        return self.tokenizer.encoder
+
+    @property
+    def inv_vocab(self):
+        return self.tokenizer.decoder
+
+    def tokenize(self, text):
+        return self.tokenizer.encode(text)
+
+    def detokenize(self, token_ids):
+        return self.tokenizer.decode(token_ids)
+
+    @property
+    def eod(self):
+        return self.eod_id
+
+    @property
+    def cls(self):
+        return self.cls_id
+
+    @property
+    def pad(self):
+        return self.pad_id
+
+
