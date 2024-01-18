@@ -13,6 +13,7 @@ from megatron.core.datasets.blended_megatron_dataset_config import BlendedMegatr
 from megatron.core.datasets.indexed_dataset import MMapIndexedDataset
 from megatron.core.datasets.megatron_dataset import MegatronDataset
 from megatron.core.datasets.utils import Split, log_single_rank
+from megatron import get_args
 
 logger = logging.getLogger(__name__)
 
@@ -243,7 +244,20 @@ class GPTDataset(MegatronDataset):
         num_tokens_per_epoch = self._get_num_tokens_per_epoch()
         num_epochs = self._get_num_epochs(num_tokens_per_epoch)
 
-        if not cache_hit and torch.distributed.get_rank() == 0:
+        # Build on rank 0 or first rank of each nodes 
+        # if there is no shared file system
+        args = get_args()
+        build_on_cur_rank = False
+        if not args.no_shared_fs \
+            and torch.distributed.get_rank() == 0:
+            build_on_cur_rank = True 
+        elif args.no_shared_fs \
+            and int(os.environ["LOCAL_RANK"]) == 0:
+            build_on_cur_rank = True 
+        else:
+            build_on_cur_rank = False
+
+        if not cache_hit and build_on_cur_rank:
             log_single_rank(
                 logger,
                 logging.INFO,

@@ -685,8 +685,21 @@ def get_samples_mapping(indexed_dataset,
     indexmap_filename += '_{}s'.format(seed)
     indexmap_filename += '.npy'
 
+    # Build on rank 0 or first rank of each nodes 
+    # if there is no shared file system
+    args = get_args()
+    build_on_cur_rank = False
+    if not args.no_shared_fs \
+        and torch.distributed.get_rank() == 0:
+        build_on_cur_rank = True 
+    elif args.no_shared_fs \
+        and int(os.environ["LOCAL_RANK"]) == 0:
+        build_on_cur_rank = True 
+    else:
+        build_on_cur_rank = False
+
     # Build the indexed mapping if not exist.
-    if torch.distributed.get_rank() == 0 and \
+    if build_on_cur_rank == 0 and \
        not os.path.isfile(indexmap_filename):
         print(' > WARNING: could not find index map file {}, building '
               'the indices on rank 0 ...'.format(indexmap_filename))

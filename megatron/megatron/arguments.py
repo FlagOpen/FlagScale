@@ -23,7 +23,6 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
                                      allow_abbrev=False)
 
     # Standard arguments.
-    parser = _add_server_args(parser)
     parser = _add_network_size_args(parser)
     parser = _add_regularization_args(parser)
     parser = _add_training_args(parser)
@@ -41,8 +40,9 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_inference_args(parser)
     parser = _add_transformer_engine_args(parser)
     parser = _add_retro_args(parser)
-    parser = _add_hetero_args(parser)
     parser = _add_experimental_args(parser)
+    parser = _add_serving_args(parser)
+    parser = _add_hetero_args(parser)
 
     # Custom arguments.
     if extra_args_provider is not None:
@@ -782,15 +782,6 @@ def _add_network_size_args(parser):
                        help='Untie embeddings and output weights.'),
     return parser
 
-def _add_server_args(parser):
-    group = parser.add_argument_group(title='server')
-
-    group.add_argument('--server-port', type=int, default=5060,
-                       help='server port.')
-    group.add_argument('--model-info', type=str, default="none",
-                       help='model infomation')
-    return parser
-
 def _add_logging_args(parser):
     group = parser.add_argument_group(title='logging')
 
@@ -1338,11 +1329,8 @@ def _add_distributed_args(parser):
                        'affects the encoder embedding.)')
     group.add_argument('--use-distributed-optimizer', action='store_true',
                        help='Use distributed optimizer.')
-    #TODO: @aoyulong need to improve this new flag
-    group.add_argument('--no-global-file-system', action='store_true', 
-                       default=False, help='If set, the trianing wonnot use the global file system.')
-    group.add_argument('--num-devices-per-node', type=int, default=8,
-                       help='Number of devices per node.')
+    group.add_argument('--no-shared-fs', action='store_true', 
+                       help='Indicate whether not running on a shared file system.')
 
     group.add_argument('--expert-model-parallel-size', type=int, default=1,
                        help='Degree of expert model parallelism.')
@@ -1600,6 +1588,30 @@ def _add_vision_args(parser):
 
     return parser
 
+
+def _add_experimental_args(parser):
+    group = parser.add_argument_group(title='experimental')
+
+    group.add_argument('--spec', type=str, default=None, nargs=2,
+                       help='Specify the <module_location function_name> pair '
+                       'that returns a spec to customize a model, transformer '
+                       'block, or transformer layer, depending on the use case. '
+                       'For more details, see the model class, '
+                       '`transformer_block.py`, or `transformer_layer.py`')
+
+    return parser
+
+
+def _add_serving_args(parser):
+    group = parser.add_argument_group(title='server')
+
+    group.add_argument('--server-port', type=int, default=5060,
+                       help='server port.')
+    group.add_argument('--model-info', type=str, default="none",
+                       help='model infomation')
+    return parser
+
+
 def _add_hetero_args(parser):
     group = parser.add_argument_group(title="heterogeneous training")
 
@@ -1618,16 +1630,5 @@ def _add_hetero_args(parser):
                        'hetero-pipeline-stages must be in the form:'
                        'n0 layers_0_0 layers_0_1 ... n1 nlayers_1_0 nlayers_1_1 ...'
                        'The order should be consistent with --hetero-device-types.')
-
-    return parser
-def _add_experimental_args(parser):
-    group = parser.add_argument_group(title='experimental')
-
-    group.add_argument('--spec', type=str, default=None, nargs=2,
-                       help='Specify the <module_location function_name> pair '
-                       'that returns a spec to customize a model, transformer '
-                       'block, or transformer layer, depending on the use case. '
-                       'For more details, see the model class, '
-                       '`transformer_block.py`, or `transformer_layer.py`')
 
     return parser
