@@ -48,6 +48,12 @@ def build_tokenizer(args):
         assert args.special_tokens_file is not None
         tokenizer = _AquilaTokenizer(args.vocab_file, args.merge_file,
                                      args.special_tokens_file)
+    elif args.tokenizer_type == "HFTokenizer":
+        assert args.hf_tokenizer is not None
+        tokenizer = _HFTokenizer(args.hf_tokenizer)
+    elif args.tokenizer_type == "QwenTokenizer":
+        assert args.hf_tokenizer is not None
+        tokenizer = _QwenTokenizer(args.hf_tokenizer)
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(args.tokenizer_type))
@@ -643,3 +649,56 @@ class _AquilaTokenizer(AbstractTokenizer):
         return self.pad_id
 
 
+class _HFTokenizer(AbstractTokenizer):
+    """Huggingface tokenizer."""
+
+    def __init__(self, hf_tokenizer):
+        name = 'HFTokenizer'
+        super().__init__(name)
+        
+        from transformers import AutoTokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(hf_tokenizer, trust_remote_code=True)
+
+        self.eod_id = self.tokenizer.eos_token_id
+        self.cls_id = self.tokenizer.bos_token_id
+        self.pad_id = self.tokenizer.pad_token_id
+        
+    @property
+    def vocab_size(self):
+        return self.tokenizer.vocab_size
+
+    @property
+    def vocab(self):
+        return self.tokenizer.get_vocab()
+
+    @property
+    def inv_vocab(self):
+        vocab = self.vocab()
+        return {v: k for k, v in vocab.items()}
+    
+    def tokenize(self, text):
+        return self.tokenizer.encode(text)
+
+    def detokenize(self, token_ids):
+        return self.tokenizer.decode(token_ids)
+
+    @property
+    def eod(self):
+        return self.eod_id
+
+    @property
+    def cls(self):
+        return self.cls_id
+
+    @property
+    def pad(self):
+        return self.pad_id
+
+class _QwenTokenizer(_HFTokenizer):
+    """Adapted Qwen tokenizer."""
+    
+    def __init__(self, hf_tokenizer):
+        super().__init__(hf_tokenizer)
+        self.eod_id = self.tokenizer.encode('<|extra_204|>')[0]
+        self.cls_id = self.tokenizer.encode('<|extra_203|>')[0]
+        self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]

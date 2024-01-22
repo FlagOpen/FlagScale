@@ -1433,8 +1433,12 @@ def _add_data_args(parser):
                                 'GPTSentencePieceTokenizer',
                                 'AquilaTokenizer',
                                 'Llama2Tokenizer',
-                                'NullTokenizer'],
+                                'NullTokenizer', 
+                                'HFTokenizer', 
+                                'QwenTokenizer'],
                        help='What type of tokenizer to use.')
+    group.add_argument('--hf-tokenizer', type=str, default=None,
+                       help='Path to the huggingface tokenizer.')
     group.add_argument('--tokenizer-model', type=str, default=None,
                        help='Sentencepiece tokenizer model.')
     group.add_argument('--reset-position-ids', action='store_true',
