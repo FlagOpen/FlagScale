@@ -51,6 +51,9 @@ def build_tokenizer(args):
     elif args.tokenizer_type == "HFTokenizer":
         assert args.hf_tokenizer is not None
         tokenizer = _HFTokenizer(args.hf_tokenizer)
+    elif args.tokenizer_type == "QwenTokenizer":
+        assert args.hf_tokenizer is not None
+        tokenizer = _QwenTokenizer(args.hf_tokenizer)
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(args.tokenizer_type))
@@ -690,4 +693,12 @@ class _HFTokenizer(AbstractTokenizer):
     @property
     def pad(self):
         return self.pad_id
+
+class _QwenTokenizer(_HFTokenizer):
+    """Adapted Qwen tokenizer."""
     
+    def __init__(self, hf_tokenizer):
+        super().__init__(hf_tokenizer)
+        self.eod_id = self.tokenizer.encode('<|extra_204|>')[0]
+        self.cls_id = self.tokenizer.encode('<|extra_203|>')[0]
+        self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]

@@ -1434,7 +1434,8 @@ def _add_data_args(parser):
                                 'AquilaTokenizer',
                                 'Llama2Tokenizer',
                                 'NullTokenizer', 
-                                'HFTokenizer'],
+                                'HFTokenizer', 
+                                'QwenTokenizer'],
                        help='What type of tokenizer to use.')
     group.add_argument('--hf-tokenizer', type=str, default=None,
                        help='Path to the huggingface tokenizer.')
