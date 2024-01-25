@@ -206,6 +206,7 @@ def _set_wandb_writer(args):
             'dir': save_dir,
             'name': args.wandb_exp_name,
             'project': args.wandb_project,
+            'mode': 'offline',
             'config': vars(args)}
         os.makedirs(wandb_kwargs['dir'], exist_ok=True)
         wandb.init(**wandb_kwargs)
