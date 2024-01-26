@@ -1039,8 +1039,8 @@ def _add_training_args(parser):
     group.add_argument('--disable-bias-linear', action='store_false',
                        help='Disable bias in the linear layers',
                        dest='add_bias_linear')
-    group.add_argument('--enable-bias-linear-qkv', action='store_true',
-                       help='Enable bias in the linear layers of QKV',
+    group.add_argument('--disable-bias-linear-qkv', action='store_false',
+                       help='Disable bias in the linear layers from QKV',
                        dest='add_bias_linear_qkv')
     group.add_argument('--optimizer', type=str, default='adam',
                        choices=['adam', 'sgd', 'adan'],
