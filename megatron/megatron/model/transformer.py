@@ -586,7 +586,7 @@ class ParallelAttention(MegatronModule):
                 query_projection_size + 2 * kv_projection_size,
                 config=config,
                 init_method=config.init_method,
-                bias=args.add_bias_linear,
+                bias=(args.add_bias_linear_qkv or args.add_bias_linear),
                 gather_output=False)
             if args.apply_init_customized:
                 with tensor_parallel.get_cuda_rng_tracker().fork():
@@ -618,7 +618,7 @@ class ParallelAttention(MegatronModule):
                 query_projection_size,
                 config=config,
                 init_method=config.init_method,
-                bias=config.add_bias_linear,
+                bias=(config.add_bias_linear_qkv or config.add_bias_linear),
                 gather_output=False)
 
             self.key_value = tensor_parallel.ColumnParallelLinear(
@@ -626,7 +626,7 @@ class ParallelAttention(MegatronModule):
                 2 * kv_projection_size,
                 config=config,
                 init_method=config.init_method,
-                bias=config.add_bias_linear,
+                bias=(config.add_bias_linear_qkv or config.add_bias_linear),
                 gather_output=False)
 
         self.core_attention = CoreAttention(self.layer_number, config,
