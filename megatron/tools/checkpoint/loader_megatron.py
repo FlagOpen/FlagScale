@@ -197,6 +197,7 @@ def _load_checkpoint(queue, args):
     md.output_layer = margs.untie_embeddings_and_output_weights
     md.position_embedding_type = margs.position_embedding_type
     md.linear_bias = margs.add_bias_linear
+    md.linear_bias_qkv = margs.add_bias_linear_qkv
     md.norm_has_bias = norm_has_bias
     md.swiglu = margs.swiglu
     md.previous_tensor_parallel_size = margs.tensor_model_parallel_size
@@ -269,8 +270,9 @@ def _load_checkpoint(queue, args):
                     dense_weight.append(layer.self_attention.dense.weight.data)
                     mlp_l0_weight.append(layer.mlp.dense_h_to_4h.weight.data)
                     mlp_l1_weight.append(layer.mlp.dense_4h_to_h.weight.data)
-                    if md.linear_bias:
+                    if md.linear_bias or md.linear_bias_qkv:
                         qkv_bias.append(layer.self_attention.query_key_value.bias.data)
+                    if md.linear_bias:
                         mlp_l0_bias.append(layer.mlp.dense_h_to_4h.bias.data)
 
                 # Handle gated linear units
@@ -287,8 +289,9 @@ def _load_checkpoint(queue, args):
                 message["qkv weight"] = torch.cat(qkv_weight, dim=0)
                 message["dense weight"] = torch.cat(dense_weight, dim=1)
                 message["mlp l1 weight"] = torch.cat(mlp_l1_weight, dim=1)
-                if md.linear_bias:
+                if md.linear_bias or md.linear_bias_qkv:
                     message["qkv bias"] = torch.cat(qkv_bias, dim=0)
+                if md.linear_bias:
                     if md.swiglu:
                         for tp_rank in range(tp_size):
                             mlp_l0_bias[tp_rank] = torch.chunk(mlp_l0_bias[tp_rank], 2, dim=0)
