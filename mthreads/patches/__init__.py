@@ -11,7 +11,7 @@ from . import model_transformer
 # from . import core_pipeline_parallel_p2p_communication
 # from . import core_tensor_parallel_data
 from . import training
-# from . import core_tensor_parallel_layers
+from . import core_tensor_parallel_layers
 # from . import core_tensor_parallel_mappings
 # from . import core_tensor_parallel_utils
 # from . import core_tensor_parallel_random
