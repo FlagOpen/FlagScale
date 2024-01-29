@@ -8,6 +8,7 @@ import json
 import shutil
 import warnings
 from copy import deepcopy
+from math import ceil
 
 from transformers import LlamaConfig, LlamaForCausalLM
 
@@ -41,12 +42,12 @@ def reverse_checkpoint(args):
     n_heads = args.num_attention_heads
     dim = args.hidden_size
     dim_per_head = dim // n_heads
-    base = 10000.0
+    base = args.rotary_base
 
     if args.group_query_attention:
         num_key_value_heads = args.num_query_groups  # for GQA / MQA
         key_value_dim = dim // num_key_value_heads
-    else:  # compatibility with other checkpoints
+    else:  
         num_key_value_heads = n_heads
         key_value_dim = dim
 
@@ -61,11 +62,16 @@ def reverse_checkpoint(args):
     model = LlamaForCausalLM.from_pretrained(input_base_path, low_cpu_mem_usage=True, torch_dtype=params_dtype)
 
     print(f"Load ref model at {ref_model_path}")
-    ref = torch.load(os.path.join(ref_model_path, "model_optim_rng.pt"), map_location="cpu")
+    ref = torch.load(ref_model_path, map_location="cpu")
 
     # load args from another megatron ckpt
     out_model = deepcopy(ref)
+    out_model['model'] = {}
+    out_model['model']['language_model'] = {}
     out_model['model']['language_model']['encoder'] = {}
+    out_model['model']['language_model']['output_layer'] = {}
+    out_model['model']['language_model']['embedding'] = {}
+    out_model['model']['language_model']['embedding']['word_embeddings'] = {}
 
     for layer_i in range(n_layers):
         Wqkv = reverse_qkv(model.model.layers[layer_i].self_attn.q_proj.weight, model.model.layers[layer_i].self_attn.k_proj.weight, model.model.layers[layer_i].self_attn.v_proj.weight, num_key_value_heads, n_heads, dim_per_head)
@@ -85,14 +91,16 @@ def reverse_checkpoint(args):
         del Wqkv, fc1, fc2, norm1, norm2, Wo
         print(f"[INFO] Layer {layer_i} is converted.")
 
-    if args.vocab_size > model.model.embed_tokens.weight.size(0):
-        pad_size = args.vocab_size - model.model.embed_tokens.weight.size(0)
+    vocab_size = ceil(model.model.embed_tokens.weight.size(0) / args.make_vocab_size_divisible_by) * args.make_vocab_size_divisible_by
+    vocab_size = int(vocab_size)
+    if vocab_size > model.model.embed_tokens.weight.size(0):
+        pad_size = vocab_size - model.model.embed_tokens.weight.size(0)
         pad_weight = torch.zeros([pad_size, model.model.embed_tokens.weight.size(1)]).to(params_dtype)
         out_model['model']['language_model']['embedding']['word_embeddings']['weight'] = torch.cat([model.model.embed_tokens.weight.to(params_dtype), pad_weight], dim=0)
         out_model['model']['language_model']['output_layer']['weight'] = torch.cat([model.lm_head.weight.to(params_dtype), pad_weight], dim=0)
     else:
-        out_model['model']['language_model']['embedding']['word_embeddings']['weight'] = model.model.embed_tokens.weight[:args.vocab_size].to(params_dtype)
-        out_model['model']['language_model']['output_layer']['weight'] = model.lm_head.weight[:args.vocab_size].to(params_dtype)
+        out_model['model']['language_model']['embedding']['word_embeddings']['weight'] = model.model.embed_tokens.weight[:vocab_size].to(params_dtype)
+        out_model['model']['language_model']['output_layer']['weight'] = model.lm_head.weight[:vocab_size].to(params_dtype)
 
     out_model['model']['language_model']['encoder']['final_layernorm.weight'] = model.model.norm.weight.to(params_dtype)
 
@@ -147,8 +155,14 @@ def main():
         default=1000
     )
     parser.add_argument(
-        '--vocab-size', type=int, default=100032,
-        help='size of vocab, if specified will add padding from embedding table.'
+        '--make-vocab-size-divisible-by', type=int, default=64,
+        help='Pad the vocab size to be divisible by this value for efficient training.'
+    )
+    parser.add_argument(
+        '--rotary-base',
+        type=float,
+        default=10000.0,
+        help = "Base number for ROPE."
     )
 
 
