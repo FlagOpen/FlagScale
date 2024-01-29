@@ -240,7 +240,8 @@ def get_rng_state():
     return rng_state_list
 
 
-def save_checkpoint(iteration, model, optimizer, opt_param_scheduler):
+def save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
+                    num_floating_point_operations_so_far):
     """Save a model checkpoint."""
     args = get_args()
 
@@ -272,6 +273,7 @@ def save_checkpoint(iteration, model, optimizer, opt_param_scheduler):
         state_dict['args'] = args
         state_dict['checkpoint_version'] = 3.0
         state_dict['iteration'] = iteration
+        state_dict['num_floating_point_operations_so_far'] = num_floating_point_operations_so_far
         if len(model) == 1:
             state_dict['model'] = model[0].state_dict_for_save_checkpoint()
         else:
@@ -477,6 +479,8 @@ def load_args_from_checkpoint(args, load_arg='load'):
     # One-off conversion for foundation models
     if hasattr(checkpoint_args, 'disable_bias_linear'):
         setattr(checkpoint_args, 'add_bias_linear', not getattr(checkpoint_args, 'disable_bias_linear'))
+    if hasattr(checkpoint_args, 'disable_bias_linear_qkv'):
+        setattr(checkpoint_args, 'add_bias_linear_qkv', not getattr(checkpoint_args, 'disable_bias_linear_qkv'))
 
     # For backward compatibility.
     if hasattr(checkpoint_args, 'apply_layernorm_rms'):
@@ -511,6 +515,7 @@ def load_args_from_checkpoint(args, load_arg='load'):
     _set_arg('use_rotary_position_embeddings', force=True)
     _set_arg('rotary_percent', force=True)
     _set_arg('add_bias_linear', force=True)
+    _set_arg('add_bias_linear_qkv', force=True)
     _set_arg('swiglu', force=True)
     _set_arg('multiple_of', force=True)
     _set_arg('hidden_dim_multiplier', force=True)
@@ -552,8 +557,8 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
             torch.distributed.barrier()
             sys.exit()
 
-        # Iteration defaults to 0.
-        return 0
+        # Iteration and num_floating_point_operations_so_far default to 0.
+        return 0, 0
 
     # Set checkpoint version.
     set_checkpoint_version(state_dict.get('checkpoint_version', 0))
@@ -572,6 +577,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
                              'iteration from checkpoint {}, exiting'.format(
                                  checkpoint_name))
                 sys.exit()
+    num_floating_point_operations_so_far = state_dict.get('num_floating_point_operations_so_far', 0)
 
     # Check arguments.
     assert args.consumed_train_samples == 0
@@ -677,7 +683,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
     print_rank_0(f'  successfully loaded checkpoint from {args.load} '
                  f'at iteration {iteration}')
 
-    return iteration
+    return iteration, num_floating_point_operations_so_far
 
 
 def load_biencoder_checkpoint(model, only_query_model=False,

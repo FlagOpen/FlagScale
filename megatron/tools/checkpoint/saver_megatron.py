@@ -130,6 +130,8 @@ def save_checkpoint(queue, args):
         sys.argv.append('--untie-embeddings-and-output-weights')
     if not md.linear_bias:
         sys.argv.append('--disable-bias-linear')
+    if not md.linear_bias_qkv:
+        sys.argv.append('--disable-bias-linear-qkv')
 
     if md.model_type == 'BERT' and not md.bert_binary_head:
         sys.argv.append('--bert-no-binary-head')
@@ -289,8 +291,9 @@ def save_checkpoint(queue, args):
             else:
                 mlp_l0_weight = torch.chunk(msg.pop("mlp l0 weight"), args.target_tensor_parallel_size, dim=0)
 
-            if md.linear_bias:
+            if md.linear_bias or md.linear_bias_qkv:
                 qkv_bias = torch.chunk(msg.pop("qkv bias"), args.target_tensor_parallel_size, dim=0)
+            if md.linear_bias:
                 if md.swiglu:
                     mlp_l0_bias_W = torch.chunk(msg.pop("mlp l0 bias W"), args.target_tensor_parallel_size, dim=0)
                     mlp_l0_bias_V = torch.chunk(msg.pop("mlp l0 bias V"), args.target_tensor_parallel_size, dim=0)
@@ -311,8 +314,9 @@ def save_checkpoint(queue, args):
                     l.post_attention_norm.bias.data.copy_(post_norm_bias)
                 l.mlp.dense_h_to_4h.weight.data.copy_(mlp_l0_weight[tp_rank])
                 l.mlp.dense_4h_to_h.weight.data.copy_(mlp_l1_weight[tp_rank])
-                if md.linear_bias:
+                if md.linear_bias or md.linear_bias_qkv:
                     l.self_attention.query_key_value.bias.data.copy_(qkv_bias[tp_rank])
+                if md.linear_bias:
                     l.self_attention.dense.bias.data.copy_(dense_bias)
                     l.mlp.dense_h_to_4h.bias.data.copy_(mlp_l0_bias[tp_rank])
                     l.mlp.dense_4h_to_h.bias.data.copy_(mlp_l1_bias)
@@ -430,5 +434,6 @@ def save_checkpoint(queue, args):
 
         for tp_rank in range(args.target_tensor_parallel_size):
             mpu.set_tensor_model_parallel_rank(tp_rank)
-            save_checkpoint(md.iteration, [models[tp_rank]], None, None)
+            save_checkpoint(md.iteration, [models[tp_rank]], None, None,
+                            num_floating_point_operations_so_far=0)
     print("Done!")

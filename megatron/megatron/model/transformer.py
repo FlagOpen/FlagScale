@@ -26,6 +26,7 @@ from megatron.core.tensor_parallel import (
     get_data_parallel_rng_tracker_name
 )
 from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_and_expert_parallel_group
+from megatron.core.jit import jit_fuser
 
 try:
     from einops import rearrange
@@ -586,7 +587,7 @@ class ParallelAttention(MegatronModule):
                 query_projection_size + 2 * kv_projection_size,
                 config=config,
                 init_method=config.init_method,
-                bias=args.add_bias_linear,
+                bias=(args.add_bias_linear_qkv or args.add_bias_linear),
                 gather_output=False)
             if args.apply_init_customized:
                 with tensor_parallel.get_cuda_rng_tracker().fork():
@@ -618,7 +619,7 @@ class ParallelAttention(MegatronModule):
                 query_projection_size,
                 config=config,
                 init_method=config.init_method,
-                bias=config.add_bias_linear,
+                bias=(config.add_bias_linear_qkv or config.add_bias_linear),
                 gather_output=False)
 
             self.key_value = tensor_parallel.ColumnParallelLinear(
@@ -626,7 +627,7 @@ class ParallelAttention(MegatronModule):
                 2 * kv_projection_size,
                 config=config,
                 init_method=config.init_method,
-                bias=config.add_bias_linear,
+                bias=(config.add_bias_linear_qkv or config.add_bias_linear),
                 gather_output=False)
 
         self.core_attention = CoreAttention(self.layer_number, config,
@@ -889,7 +890,7 @@ def get_bias_dropout_add(training):
     return _bias_dropout_add
 
 
-@torch.jit.script
+@jit_fuser
 def bias_dropout_add_fused_train(x: torch.Tensor,
                                  bias: Optional[torch.Tensor],
                                  residual: torch.Tensor,
@@ -897,7 +898,7 @@ def bias_dropout_add_fused_train(x: torch.Tensor,
     return bias_dropout_add(x, bias, residual, prob, True)
 
 
-@torch.jit.script
+@jit_fuser
 def bias_dropout_add_fused_inference(x: torch.Tensor,
                                      bias: Optional[torch.Tensor],
                                      residual: torch.Tensor,

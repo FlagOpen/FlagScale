@@ -16,16 +16,27 @@ from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
 from megatron.core.datasets.gpt_dataset import GPTDataset
 from megatron.model import LLaMAModel
 from megatron.training import pretrain
-from megatron.utils import (
-    get_ltor_masks_and_position_ids,
+from megatron.utils import (    
     get_batch_on_this_cp_rank,
+    get_batch_on_this_tp_rank,
     average_losses_across_data_parallel_group
 )
 from megatron.arguments import core_transformer_config_from_args
 
 
 def model_provider(pre_process=True, post_process=True):
-    """Build the model."""
+    """Builds the model.
+
+    If you set the use_mcore_models to True, it will return the mcore GPT model and if not the legacy GPT model.
+
+    Args:
+        pre_process (bool, optional): Set to true if you need to compute embedings. Defaults to True.
+        post_process (bool, optional): Set to true if you need to want to compute output logits/loss. Defaults to True.
+
+
+    Returns:
+        Union[GPTModel, megatron.model.GPTModel]: The returned model
+    """
     args = get_args()
     config = core_transformer_config_from_args(args)
     print_rank_0('building LLaMA model ...')
@@ -46,40 +57,8 @@ def get_batch(data_iterator):
     if (not mpu.is_pipeline_first_stage()) and (not mpu.is_pipeline_last_stage()):
         return None, None, None, None, None
 
-    args = get_args()
-    tokenizer = get_tokenizer()
-
-    # Items and their type.
-    keys = ['text']
-    datatype = torch.int64
-
-    # Broadcast data.
-    if data_iterator is not None:
-        data = next(data_iterator)
-    else:
-        data = None
-    data_b = tensor_parallel.broadcast_data(keys, data, datatype)
-
-    # Unpack.
-    tokens_ = data_b['text'].long()
-    labels = tokens_[:, 1:].contiguous()
-    tokens = tokens_[:, :-1].contiguous()
-
-    # Get the masks and postition ids.
-    attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
-        tokens,
-        tokenizer.eod,
-        args.reset_position_ids,
-        args.reset_attention_mask,
-        args.eod_mask_loss)
-
-    batch = {
-        'tokens': tokens,
-        'labels': labels,
-        'loss_mask': loss_mask,
-        'attention_mask': attention_mask,
-        'position_ids': position_ids
-    }
+    # get batches based on the TP rank you are on
+    batch = get_batch_on_this_tp_rank(data_iterator) 
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
 
@@ -152,6 +131,11 @@ def core_llama_dataset_config_from_args(args):
         blend_per_split=[args.train_data_path, args.valid_data_path, args.test_data_path],
         split=args.split,
         path_to_cache=args.data_cache_path,
+        return_document_ids=args.retro_return_doc_ids,
+        reset_position_ids=args.reset_position_ids,
+        reset_attention_mask=args.reset_attention_mask,
+        eod_mask_loss=args.eod_mask_loss,
+        eod_id=get_tokenizer().eod
     )
 
 
