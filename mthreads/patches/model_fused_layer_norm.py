@@ -22,14 +22,15 @@ class MixedFusedLayerNorm(torch.nn.Module):  # for cpu
             setattr(self.bias, 'sequence_parallel', self.sequence_parallel)
 
     def forward(self, hidden_states):
-        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        return torch.rms_norm(hidden_states, (hidden_states.size(-1),), self.weight, self.variance_epsilon)
+        # variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+        # hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
 
-        # convert into half-precision if necessary
-        if self.weight.dtype in [torch.float16, torch.bfloat16]:
-            hidden_states = hidden_states.to(self.weight.dtype)
-        hidden_states = self.weight * hidden_states
-        return hidden_states
+        # # convert into half-precision if necessary
+        # if self.weight.dtype in [torch.float16, torch.bfloat16]:
+        #     hidden_states = hidden_states.to(self.weight.dtype)
+        # hidden_states = self.weight * hidden_states
+        # return hidden_states
     
 import sys
 for k in sys.modules:
