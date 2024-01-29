@@ -2,9 +2,11 @@ import torch
 import torch_musa
 
 from . import utils
+from . import core_transformer_transformer_config
 from . import arguments
 # from . import checkpointing
 from . import initialize
+from . import model_fused_layer_norm
 from . import model_transformer
 # from . import memory
 # from . import core_utils
@@ -17,7 +19,6 @@ from . import core_tensor_parallel_layers
 # from . import core_tensor_parallel_random
 # from . import data_gpt_dataset
 # from . import model_distributed
-from . import model_fused_layer_norm
 # from . import model_module
 from . import optimizer_clip_grads
 from . import optimizer_distrib_optimizer

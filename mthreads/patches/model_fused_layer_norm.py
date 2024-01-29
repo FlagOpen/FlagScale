@@ -2,7 +2,7 @@ import torch
 import torch_musa
 import megatron
 
-class MixedFusedLayerNorm(torch.nn.Module):  # for cpu
+class MixedFusedLayerNorm(torch.nn.Module):
     def __init__(self, hidden_size, eps=1e-6,
                  no_persist_layer_norm=True,
                  sequence_parallel=False,
