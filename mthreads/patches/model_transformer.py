@@ -1,3 +1,5 @@
+import numpy as np
+from contextlib import nullcontext
 import torch
 import megatron
 from megatron.model.enums import AttnMaskType, AttnType
