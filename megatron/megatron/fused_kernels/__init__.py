@@ -17,16 +17,17 @@ os.environ["TORCH_CUDA_ARCH_LIST"] = ""
 def load(args):
 
     # Check if cuda 11 is installed for compute capability 8.0
-    cc_flag = []
-    _, bare_metal_major, bare_metal_minor = _get_cuda_bare_metal_version(
-        cpp_extension.CUDA_HOME
-    )
-    if int(bare_metal_major) >= 11:
-        cc_flag.append('-gencode')
-        cc_flag.append('arch=compute_80,code=sm_80')
-        if int(bare_metal_minor) >= 8:
-            cc_flag.append('-gencode')
-            cc_flag.append('arch=compute_90,code=sm_90')
+    # From DCU
+    # cc_flag = []
+    # _, bare_metal_major, bare_metal_minor = _get_cuda_bare_metal_version(
+    #     cpp_extension.CUDA_HOME
+    # )
+    # if int(bare_metal_major) >= 11:
+    #     cc_flag.append('-gencode')
+    #     cc_flag.append('arch=compute_80,code=sm_80')
+    #     if int(bare_metal_minor) >= 8:
+    #         cc_flag.append('-gencode')
+    #         cc_flag.append('arch=compute_90,code=sm_90')
 
     # Build path
     srcpath = pathlib.Path(__file__).parent.absolute()
@@ -34,32 +35,29 @@ def load(args):
     _create_build_dir(buildpath)
 
     # Helper function to build the kernels.
+    # From DCU
     def _cpp_extention_load_helper(name, sources, extra_cuda_flags):
         return cpp_extension.load(
             name=name,
             sources=sources,
             build_directory=buildpath,
             extra_cflags=[
-                "-O3",
+                "-O3",'-D__HIP_PLATFORM_AMD__',
             ],
             extra_cuda_cflags=[
-                "-O3",
-                "-gencode",
-                "arch=compute_70,code=sm_70",
-                "--use_fast_math",
+                "-O3",'-D__HIP_PLATFORM_AMD__'
             ]
-            + extra_cuda_flags
-            + cc_flag,
+            + extra_cuda_flags,
             verbose=(args.rank == 0),
         )
 
-
+# From DCU
 def _get_cuda_bare_metal_version(cuda_dir):
     raw_output = subprocess.check_output(
-        [cuda_dir + "/bin/nvcc", "-V"], universal_newlines=True
+        [cuda_dir + "/bin/hipcc", "-V"], universal_newlines=True
     )
     output = raw_output.split()
-    release_idx = output.index("release") + 1
+    release_idx = output.index("version:") + 1
     release = output[release_idx].split(".")
     bare_metal_major = release[0]
     bare_metal_minor = release[1][0]
