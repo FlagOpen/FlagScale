@@ -722,6 +722,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
         if wandb_writer:
             wandb_writer.log({'samples vs steps': args.consumed_train_samples},
                              iteration)
+            wandb_writer.log({'consumed-tokens': args.consumed_train_samples * args.seq_length / 1000. / 1000 / 1000}, iteration)
         if args.log_learning_rate_to_tensorboard:
             writer.add_scalar('learning-rate', learning_rate, iteration)
             writer.add_scalar('learning-rate vs samples', learning_rate,
@@ -804,9 +805,6 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
             iteration, args.train_iters)
         log_string += ' consumed samples: {:12d} |'.format(
             args.consumed_train_samples)
-        if wandb_writer:
-            wandb_writer.log({'consumed-samples': args.consumed_train_samples}, iteration)
-            wandb_writer.log({'consumed-tokens': args.consumed_train_samples * args.seq_length / 1000. / 1000 / 1000}, iteration)
         log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(
             elapsed_time_per_iteration * 1000.0)
         if args.log_throughput:
@@ -829,16 +827,10 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
         log_string += ' loss scale: {:.1f} |'.format(loss_scale)
         if grad_norm is not None:
             log_string += ' grad norm: {:.3f} |'.format(grad_norm)
-            if wandb_writer:
-                wandb_writer.log({'grad-norm': grad_norm}, iteration)
         if num_zeros_in_grad is not None:
             log_string += ' num zeros: {:.1f} |'.format(num_zeros_in_grad)
-            if wandb_writer:
-                wandb_writer.log({'num-zeros': num_zeros_in_grad}, iteration)
         if params_norm is not None:
             log_string += ' params norm: {:.3f} |'.format(params_norm)
-            if wandb_writer:
-                wandb_writer.log({'params-norm': params_norm}, iteration)
         log_string += ' number of skipped iterations: {:3d} |'.format(
             total_loss_dict[skipped_iters_key])
         log_string += ' number of nan iterations: {:3d} |'.format(
