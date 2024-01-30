@@ -39,8 +39,10 @@ _PIPELINE_MODEL_PARALLEL_SPLIT_RANK = None
 # These values enable us to change the mpu sizes on the fly.
 _MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = None
 _MPU_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = None
+_MPU_EXPERT_MODEL_PARALLEL_WORLD_SIZE = None
 _MPU_TENSOR_MODEL_PARALLEL_RANK = None
 _MPU_PIPELINE_MODEL_PARALLEL_RANK = None
+_MPU_EXPERT_MODEL_PARALLEL_RANK = None
 
 # A list of ranks that have a copy of the embedding.
 _EMBEDDING_GLOBAL_RANKS = None
@@ -707,6 +709,11 @@ def get_data_modulo_expert_parallel_group():
     return _DATA_MODULO_EXPERT_PARALLEL_GROUP
 
 
+def set_expert_model_parallel_world_size(world_size):
+    global _MPU_EXPERT_MODEL_PARALLEL_WORLD_SIZE
+    _MPU_EXPERT_MODEL_PARALLEL_WORLD_SIZE = world_size
+
+
 def set_tensor_model_parallel_world_size(world_size):
     """Set the tensor model parallel size"""
     global _MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE
@@ -741,6 +748,12 @@ def get_pipeline_model_parallel_world_size():
     return len(_PIPELINE_GLOBAL_RANKS) 
 
 
+def set_expert_model_parallel_rank(rank):
+    """Set expert model parallel rank."""
+    global _MPU_EXPERT_MODEL_PARALLEL_RANK
+    _MPU_EXPERT_MODEL_PARALLEL_RANK = rank
+
+
 def set_tensor_model_parallel_rank(rank):
     """Set tensor model parallel rank."""
     global _MPU_TENSOR_MODEL_PARALLEL_RANK
@@ -757,6 +770,14 @@ def set_pipeline_model_parallel_split_rank(rank):
     """Set pipeline model parallel split rank."""
     global _PIPELINE_MODEL_PARALLEL_SPLIT_RANK
     _PIPELINE_MODEL_PARALLEL_SPLIT_RANK = rank
+
+
+def get_expert_model_parallel_rank():
+    """Return my rank for the tensor model parallel group."""
+    global _MPU_EXPERT_MODEL_PARALLEL_RANK
+    if _MPU_EXPERT_MODEL_PARALLEL_RANK is not None:
+        return _MPU_EXPERT_MODEL_PARALLEL_RANK
+    return torch.distributed.get_rank(group=get_tensor_and_expert_parallel_group())
 
 
 def get_tensor_model_parallel_rank():
@@ -980,6 +1001,8 @@ def get_context_parallel_rank():
 
 def get_expert_model_parallel_world_size():
     """Return world size for the expert model parallel group"""
+    if _MPU_EXPERT_MODEL_PARALLEL_WORLD_SIZE:
+        return _MPU_EXPERT_MODEL_PARALLEL_WORLD_SIZE
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         tensor_and_expert_parallel_world_size = len(_TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS)
         return tensor_and_expert_parallel_world_size // get_tensor_model_parallel_world_size()
@@ -1000,6 +1023,8 @@ def get_tensor_and_expert_parallel_world_size():
 
 def get_expert_model_parallel_rank():
     """Return my rank for the expert parallel group"""
+    if _MPU_EXPERT_MODEL_PARALLEL_RANK:
+        return _MPU_EXPERT_MODEL_PARALLEL_RANK
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         tensor_and_expert_parallel_rank = _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS.index(torch.distributed.get_rank())
 
@@ -1077,3 +1102,7 @@ def destroy_model_parallel():
     _MPU_PIPELINE_MODEL_PARALLEL_RANK = None
     global _GLOBAL_MEMORY_BUFFER
     _GLOBAL_MEMORY_BUFFER = None
+    global _MPU_EXPERT_MODEL_PARALLEL_WORLD_SIZE
+    _MPU_EXPERT_MODEL_PARALLEL_WORLD_SIZE = None
+    global _MPU_EXPERT_MODEL_PARALLEL_RANK
+    _MPU_EXPERT_MODEL_PARALLEL_RANK = None
