@@ -496,7 +496,6 @@ class ParallelTransformerLayer(MegatronModule):
         super(ParallelTransformerLayer, self).__init__()
         self.layer_number = layer_number
         self.layer_type = layer_type
-        self.recompute_attention_layernorm = config.recompute_attention_layernorm
         self.recompute_granularity = config.recompute_granularity
         self.recompute_method = config.recompute_method
         self.recompute_num_layers = config.recompute_num_layers
@@ -506,7 +505,7 @@ class ParallelTransformerLayer(MegatronModule):
         self.pp_layer_num = self.layer_number - self.pipeline_offset
         if torch.distributed.get_rank() % 8 == 0:
             print('self.pipeline_offset', self.pipeline_offset, 'self.pp_layer_num', self.pp_layer_num, 'self.num_layers', \
-                self.num_layers, 'self.recompute_num_layers', self.recompute_num_layers, 'self.recompute_attention_layernorm', self.recompute_attention_layernorm, \
+                self.num_layers, 'self.recompute_num_layers', self.recompute_num_layers, \
                     'config.recompute_granularity', config.recompute_granularity, 'config.recompute-method', config.recompute_method, flush=True)
        
         # TODO
