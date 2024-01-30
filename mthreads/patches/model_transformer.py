@@ -1,3 +1,5 @@
+import numpy as np
+from contextlib import nullcontext
 import torch
 import megatron
 from megatron.model.enums import AttnMaskType, AttnType
@@ -6,6 +8,22 @@ from megatron import get_args, core
 from megatron.core import mpu, tensor_parallel
 from megatron.core.models.common.rotary_pos_embedding import apply_rotary_pos_emb
 from megatron.model.transformer import CoreAttention
+from megatron.core import mpu, tensor_parallel
+from megatron.model.transformer import (
+                                        DropPath,
+                                        ParallelMLP,
+                                        SwitchMLP,
+                                        ParallelTransformer)
+
+from megatron.model.module import MegatronModule                                        
+from megatron.model.transformer import (_get_num_layers,
+                                        bias_dropout_add_fused_train,
+                                        bias_dropout_add_fused_inference,
+                                        get_bias_dropout_add)
+from megatron.model.enums import AttnMaskType, LayerType, AttnType
+from megatron.core.enums import ModelType
+from megatron import  get_args, get_retro_args, core
+from megatron.model import LayerNorm
 try:
     from einops import rearrange
 except ImportError:
@@ -461,4 +479,576 @@ class ParallelAttention(MegatronModule):
 
         return output, bias
 
+class ParallelTransformerLayer(MegatronModule):
+    """A single transformer layer.
+
+    Transformer layer takes input with size [s, b, h] and returns an
+    output of the same size.
+    """
+
+    def __init__(self, config,
+                 layer_number, layer_type=LayerType.encoder,
+                 self_attn_mask_type=AttnMaskType.padding,
+                 drop_path_rate=0.):
+                 # retriever=None):
+        args = get_args()
+
+        super(ParallelTransformerLayer, self).__init__()
+        self.layer_number = layer_number
+        self.layer_type = layer_type
+        self.recompute_granularity = config.recompute_granularity
+        self.recompute_method = config.recompute_method
+        self.recompute_num_layers = config.recompute_num_layers
+        self.num_layers = _get_num_layers(args, ModelType.encoder_or_decoder,
+                                          layer_type==LayerType.decoder)
+        self.pipeline_offset = mpu.get_pipeline_model_parallel_rank() * self.num_layers
+        self.pp_layer_num = self.layer_number - self.pipeline_offset
+        if torch.distributed.get_rank() % 8 == 0:
+            print('self.pipeline_offset', self.pipeline_offset, 'self.pp_layer_num', self.pp_layer_num, 'self.num_layers', \
+                self.num_layers, 'self.recompute_num_layers', self.recompute_num_layers, \
+                    'config.recompute_granularity', config.recompute_granularity, 'config.recompute-method', config.recompute_method, flush=True)
+       
+        # TODO
+        self.init_weight_attn_norm = args.layernorm_init_weight
+        self.init_weight_ffn_norm = args.layernorm_init_weight
+        if args.apply_init_norm_customized:
+            self.init_weight_attn_norm = args.init_weight_attn_norm[self.layer_number-1];
+            self.init_weight_ffn_norm = args.init_weight_ffn_norm[self.layer_number-1];
+
+        self.apply_residual_connection_post_layernorm \
+            = config.apply_residual_connection_post_layernorm
+
+        self.bf16 = config.bf16
+        self.fp32_residual_connection = config.fp32_residual_connection
+
+        # Layernorm on the input data.
+        self.input_layernorm = LayerNorm(
+            config.hidden_size,
+            eps=config.layernorm_epsilon,
+            no_persist_layer_norm=args.no_persist_layer_norm,
+            sequence_parallel=config.sequence_parallel,
+            apply_layernorm_1p=args.apply_layernorm_1p,
+            apply_layernorm_rms=args.apply_layernorm_rms,
+            init_weight=self.init_weight_attn_norm)
+
+        # Self attention.
+        self.self_attention = ParallelAttention(
+            config,
+            layer_number,
+            attention_type=AttnType.self_attn,
+            attn_mask_type=self_attn_mask_type)
+        self.hidden_dropout = config.hidden_dropout
+        self.bias_dropout_fusion = config.bias_dropout_fusion
+        self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0.0 else None
+
+        # Layernorm on the attention output
+        self.post_attention_layernorm = LayerNorm(
+            config.hidden_size,
+            eps=config.layernorm_epsilon,
+            no_persist_layer_norm=not config.persist_layer_norm,
+            sequence_parallel=config.sequence_parallel,
+            apply_layernorm_1p=args.apply_layernorm_1p,
+            apply_layernorm_rms=args.apply_layernorm_rms,
+            init_weight=self.init_weight_ffn_norm)
+
+        # Cross attention.
+        if self.layer_type in (LayerType.decoder,
+                               LayerType.retro_decoder,
+                               LayerType.retro_decoder_with_retriever,
+                               LayerType.retro_encoder):
+            self.inter_attention = ParallelAttention(
+                config,
+                layer_number,
+                attention_type=AttnType.cross_attn)
+            # Layernorm on the attention output.
+            self.post_inter_attention_layernorm = LayerNorm(
+                config.hidden_size,
+                eps=config.layernorm_epsilon,
+                no_persist_layer_norm=not config.persist_layer_norm,
+                sequence_parallel=config.sequence_parallel,
+                apply_layernorm_1p=args.apply_layernorm_1p)
+
+        # MLP
+        if args.num_experts is not None:
+            self.mlp = SwitchMLP(config, layer_number)
+        else:
+            self.mlp = ParallelMLP(config, layer_number)
+
+        # Set bias+dropout+add fusion grad_enable execution handler.
+        TORCH_MAJOR = int(torch.__version__.split('.')[0])
+        TORCH_MINOR = int(torch.__version__.split('.')[1])
+        use_nvfuser = TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 10)
+        self.bias_dropout_add_exec_handler = \
+                nullcontext if use_nvfuser else torch.enable_grad
+
+        if args.retro_add_retriever:
+            retro_args = get_retro_args()
+            self.retro_num_neighbors = args.retro_num_neighbors
+            self.retro_chunk_length = retro_args.retro_gpt_chunk_length
+            self.retro_retrieved_length = retro_args.retro_gpt_retrieved_length
+
+        # Retriever (bi-directional transformer with cross attention)
+        if layer_type == LayerType.retro_decoder_with_retriever:
+            self.retriever = ParallelTransformer(
+                config=config,
+                model_type=ModelType.retro_encoder,
+                self_attn_mask_type=AttnMaskType.padding,
+                pre_process=True,
+                post_process=False,
+            )
+            self._retriever_key = 'retriever'
+        else:
+            self.retriever = None
+
+    def default_decoder_cross_attention(self,
+                                        encoder_output,
+                                        enc_dec_attn_mask,
+                                        layernorm_input,
+                                        layernorm_output,
+                                        bias_dropout_add_func):
+        '''Cross attention for a standard encoder-decoder model.'''
+
+        # Attention.
+        attention_output, attention_bias = \
+            self.inter_attention(layernorm_output,
+                                 enc_dec_attn_mask,
+                                 encoder_output=encoder_output)
+
+        # Residual connection.
+        if self.apply_residual_connection_post_layernorm:
+            residual = layernorm_output
+        else:
+            residual = layernorm_input
+
+        if attention_bias is not None:
+            attention_bias = attention_bias.expand_as(residual)
+
+        # Bias-dropout-add.
+        with self.bias_dropout_add_exec_handler():
+            layernorm_input = bias_dropout_add_func(
+                attention_output,
+                attention_bias,
+                residual,
+                self.hidden_dropout)
+
+        # Layer norm.
+        layernorm_output = self.post_inter_attention_layernorm(layernorm_input)
+
+        return layernorm_input, layernorm_output
+
+    def retro_encoder_cross_attention(self,
+                                      retriever_output,
+                                      layernorm_input,
+                                      layernorm_output,
+                                      bias_dropout_add_func):
+        """Cross attention for Retro encoder.
+
+        Notation:
+            ns : Sequence length.
+            bs : Batch size.
+            d  : Hidden size.
+            l  : Number of chunks per sample (i.e., seq_length/chunk_length).
+            k  : Number of neighbors.
+            r  : Number of retrieved tokens (neighbors + continuation).
+        """
+
+        ns, bs, d = layernorm_output.shape # [r, bs * l * k, d]
+
+        # Divide sequence dimension into chunks.
+        chunked_outputs = layernorm_output.reshape(self.retro_retrieved_length,
+                                                   -1,
+                                                   self.retro_num_neighbors,
+                                                   d)
+        chunked_outputs_before_layer_norm = \
+            layernorm_input.reshape(self.retro_retrieved_length, -1,
+                                    self.retro_num_neighbors, d) # [r, bs*l, k, d]
+
+        # Per-chunk attention.
+        layernorm_inputs = []
+        layernorm_outputs = []
+        for k in range(self.retro_num_neighbors):
+
+            # Attention.
+            chunked_output = chunked_outputs[:,:,k].contiguous()
+            attention_output, attention_bias = \
+                self.inter_attention(
+                    chunked_output, # Q (neighbor embedding)
+                    None,
+                    encoder_output=retriever_output) # K, V (hidden act)
+
+            # Residual connection.
+            if self.apply_residual_connection_post_layernorm:
+                residual = chunked_output
+            else:
+                residual = chunked_outputs_before_layer_norm[:,:,k]
+
+            # Re-enable torch grad to enable fused optimization.
+            with torch.enable_grad():
+                layernorm_input = bias_dropout_add_func(
+                    attention_output,
+                    None if attention_bias is None else attention_bias.expand_as(residual),
+                    residual,
+                    self.hidden_dropout)
+                layernorm_inputs.append(layernorm_input)
+
+            # Layer norm.
+            layernorm_output = \
+                self.post_inter_attention_layernorm(layernorm_input)
+            layernorm_outputs.append(layernorm_output)
+
+        # Concatenate layer norms.
+        # layernorm_input : [r, k * bs * l, d]
+        # layernorm_output : [r, k * bs * l, d]
+        layernorm_input = \
+            torch.stack(layernorm_inputs, dim=1).reshape(ns, bs, d)
+        layernorm_output = \
+            torch.stack(layernorm_outputs, dim=1).reshape(ns, bs, d)
+
+        return layernorm_input, layernorm_output
+
+    def retro_decoder_cross_attention(self,
+                                      retriever_input,
+                                      retriever_output,
+                                      retriever_attn_mask,
+                                      layernorm_input,
+                                      layernorm_output,
+                                      inference_params,
+                                      bias_dropout_add_func):
+        """Cross attention for Retro decoder.
+
+        Notation:
+            ns : Sequence length.
+            bs : Batch size.
+            d  : Hidden size.
+            l  : Number of chunks per sample (i.e., seq_length/chunk_length).
+            m  : Number of tokens per chunk.
+            k  : Number of neighbors.
+            r  : Number of retrieved tokens (neighbors + continuation).
+        """
+
+        ns, bs, d = layernorm_output.shape
+        l = int(np.ceil(ns / self.retro_chunk_length))
+
+        # Retrieve neighbors.
+        if self.layer_type == LayerType.retro_decoder_with_retriever:
+            first_ns = ns % self.retro_chunk_length
+            if first_ns > 0:
+                raise Exception("test this case.")
+                first_chunk, rest_chunk = \
+                    layernorm_output[:first_ns], layernorm_output[first_ns:]
+                first_chunk = torch.nn.functional.pad(
+                    first_chunk,
+                    (0, 0, 0, 0, 0, self.retro_chunk_length - first_ns),
+                    'constant',
+                    0)
+                chunked_output = \
+                    torch.cat((first_chunk, rest_chunk), dim=0) # [l * m, bs, d]
+            else:
+                chunked_output = layernorm_output # [l * m, bs, d]
+            chunked_output = chunked_output \
+                .reshape(l, self.retro_chunk_length, bs, d) \
+                .permute(1, 2, 0, 3) \
+                .reshape(self.retro_chunk_length, bs * l, d) \
+                .contiguous()
+
+            # Get Encoder Output
+            retriever_output = self.retriever(
+                hidden_states=retriever_input,
+                attention_mask=retriever_attn_mask,
+                retriever_output=chunked_output,
+                retriever_attn_mask=retriever_attn_mask,
+                inference_params=inference_params) # [r, k * bs * l , d]
+            retriever_output = retriever_output.reshape(
+                self.retro_retrieved_length * self.retro_num_neighbors, bs * l, d) # [r * k, bs * l, d]
+
+        # Chunks.
+        pad = (ns - 1) % self.retro_chunk_length
+        attending_chunks = layernorm_output[pad:]
+        padded_chunks = torch.nn.functional.pad(
+            attending_chunks,
+            (0, 0, 0, 0, 0, self.retro_chunk_length - 1),
+            'constant', 0)
+        padded_chunked_output = padded_chunks \
+            .reshape(l, self.retro_chunk_length, bs, d) \
+            .permute(1, 2, 0, 3)
+        padded_chunked_output = padded_chunked_output.reshape(
+            self.retro_chunk_length, bs * l, d).contiguous()
+
+        # Encoder output.
+        attention_output, attention_bias = \
+            self.inter_attention(padded_chunked_output,
+                                 None,
+                                 encoder_output=retriever_output)
+
+        # Residual connection.
+        if self.apply_residual_connection_post_layernorm:
+            residual = layernorm_output
+        else:
+            residual = layernorm_input
+
+        # Re-enable torch grad to enable fused optimization.
+        with torch.enable_grad():
+            layernorm_input = bias_dropout_add_func(
+                attention_output,
+                None if attention_bias is None else attention_bias.expand_as(attention_output),
+                torch.zeros_like(attention_output),
+                self.hidden_dropout)
+            layernorm_input = layernorm_input \
+                .reshape(self.retro_chunk_length, bs, l, d) \
+                .permute(2, 0, 1, 3) # [l, m, bs, d]
+            layernorm_input = layernorm_input.reshape(self.retro_chunk_length * l, bs, d)
+            layernorm_input = torch.nn.functional.pad(
+                layernorm_input,
+                (0, 0, 0, 0, pad, 0),
+                'constant', 0)[:ns] # [ns, b, d]
+            layernorm_input = layernorm_input + residual
+
+        # Layer norm post the decoder attention
+        layernorm_output = self.post_inter_attention_layernorm(layernorm_input)
+
+        return retriever_output, layernorm_input, layernorm_output
+
+    
+    def _checkpointed_layer_norm(self, hidden_states, layrnorm_func):
+        """Forward method with activation checkpointing."""
+        def custom_forward(*inputs):
+            hidden_states = inputs[0]
+            layrnorm_function = inputs[1]
+            output_ = layrnorm_function(hidden_states)
+            return output_
+
+        hidden_states = tensor_parallel.checkpoint(
+            custom_forward,
+            False, hidden_states, layrnorm_func)
+
+        return hidden_states
+    
+    def _checkpointed_attention(self, query_layer, key_layer,
+                                        value_layer, attention_mask,
+                                        rotary_pos_emb=None):
+        """Forward method with activation checkpointing."""
+        def custom_forward(*inputs):
+            query_layer = inputs[0]
+            key_layer = inputs[1]
+            value_layer = inputs[2]
+            attention_mask = inputs[3]
+            output_ = self.core_attention(query_layer, key_layer,
+                                          value_layer, attention_mask)
+            return output_
+
+        q_pos_emb, k_pos_emb = (None, None) if rotary_pos_emb is None \
+            else rotary_pos_emb
+
+        hidden_states = tensor_parallel.checkpoint(
+            custom_forward,
+            False, query_layer, key_layer, value_layer, attention_mask,
+            q_pos_emb, k_pos_emb)
+
+        return hidden_states
+
+    def checkpoint_attention_layernorm(self, hidden_states, attention_mask,
+                encoder_output=None, enc_dec_attn_mask=None,
+                retriever_input=None,
+                retriever_output=None,
+                retriever_attn_mask=None,
+                inference_params=None,
+                rotary_pos_emb=None):
+        def custom_forward(*inputs):
+            hidden_states = inputs[0]
+            attention_mask = inputs[1]
+            rotary_pos_emb = inputs[-1]
+            layernorm_output = self.input_layernorm(hidden_states)
+
+            # Self attention.
+            attention_output, attention_bias = \
+                self.self_attention(
+                    layernorm_output,
+                    attention_mask,
+                    inference_params=inference_params,
+                    rotary_pos_emb=rotary_pos_emb)
+
+            # Residual connection.
+            if self.apply_residual_connection_post_layernorm:
+                residual = layernorm_output
+            else:
+                residual = hidden_states
+
+            if self.drop_path is None:
+                # jit scripting for a nn.module (with dropout) is not
+                # trigerring the fusion kernel. For now, we use two
+                # different nn.functional routines to account for varying
+                # dropout semantics during training and inference phases.
+                if self.bias_dropout_fusion:
+                    if self.training:
+                        bias_dropout_add_func = bias_dropout_add_fused_train
+                    else:
+                        bias_dropout_add_func = bias_dropout_add_fused_inference
+                else:
+                    bias_dropout_add_func = get_bias_dropout_add(self.training)
+
+                if attention_bias is not None:
+                    attention_bias = attention_bias.expand_as(residual)
+                with self.bias_dropout_add_exec_handler():
+                    layernorm_input = bias_dropout_add_func(
+                        attention_output,
+                        attention_bias,
+                        residual,
+                        self.hidden_dropout)
+            else:
+                out = torch.nn.functional.dropout(attention_output + attention_bias,
+                                                p=self.hidden_dropout,
+                                                training=self.training)
+                layernorm_input = residual + self.drop_path(out)
+
+            # Layer norm post the self attention.
+            layernorm_output = self.post_attention_layernorm(layernorm_input)
+            return layernorm_input, layernorm_output
+
+        hidden_states = tensor_parallel.checkpoint(
+            custom_forward,
+            False, hidden_states, attention_mask, encoder_output, enc_dec_attn_mask, retriever_input, retriever_output, retriever_attn_mask,
+            inference_params, rotary_pos_emb)
+
+        return hidden_states
+            
+    def forward(self, hidden_states, attention_mask,
+                encoder_output=None, enc_dec_attn_mask=None,
+                retriever_input=None,
+                retriever_output=None,
+                retriever_attn_mask=None,
+                inference_params=None,
+                rotary_pos_emb=None):
+        # hidden_states: [s, b, h]
+        if self.recompute_num_layers > 1 and self.pp_layer_num > self.recompute_num_layers:
+            layernorm_input, layernorm_output = self.checkpoint_attention_layernorm(hidden_states, attention_mask,
+                encoder_output, enc_dec_attn_mask,
+                retriever_input, retriever_output,
+                retriever_attn_mask, inference_params,
+                rotary_pos_emb)
+            bias_dropout_add_func = bias_dropout_add_fused_train
+        else:
+
+            # Layer norm at the beginning of the transformer layer.
+            layernorm_output = self.input_layernorm(hidden_states)
+
+            # Self attention.
+            attention_output, attention_bias = \
+                self.self_attention(
+                    layernorm_output,
+                    attention_mask,
+                    inference_params=inference_params,
+                    rotary_pos_emb=rotary_pos_emb)
+
+            # Residual connection.
+            if self.apply_residual_connection_post_layernorm:
+                residual = layernorm_output
+            else:
+                residual = hidden_states
+
+            if self.drop_path is None:
+                # jit scripting for a nn.module (with dropout) is not
+                # trigerring the fusion kernel. For now, we use two
+                # different nn.functional routines to account for varying
+                # dropout semantics during training and inference phases.
+                if self.bias_dropout_fusion:
+                    if self.training:
+                        bias_dropout_add_func = bias_dropout_add_fused_train
+                    else:
+                        bias_dropout_add_func = bias_dropout_add_fused_inference
+                else:
+                    bias_dropout_add_func = get_bias_dropout_add(self.training)
+
+                if attention_bias is not None:
+                    attention_bias = attention_bias.expand_as(residual)
+                with self.bias_dropout_add_exec_handler():
+                    layernorm_input = bias_dropout_add_func(
+                        attention_output,
+                        attention_bias,
+                        residual,
+                        self.hidden_dropout)
+            else:
+                out = torch.nn.functional.dropout(attention_output + attention_bias,
+                                                p=self.hidden_dropout,
+                                                training=self.training)
+                layernorm_input = residual + self.drop_path(out)
+
+            # Layer norm post the self attention.
+            layernorm_output = self.post_attention_layernorm(layernorm_input)
+
+        # Cross attention.
+        if self.layer_type == LayerType.encoder:
+            pass
+        elif self.layer_type == LayerType.decoder:
+            layernorm_input, layernorm_output = \
+                self.default_decoder_cross_attention(
+                    encoder_output,
+                    enc_dec_attn_mask,
+                    layernorm_input,
+                    layernorm_output,
+                    bias_dropout_add_func)
+        elif self.layer_type == LayerType.retro_encoder:
+            layernorm_input, layernorm_output = \
+                self.retro_encoder_cross_attention(
+                    retriever_output,
+                    layernorm_input,
+                    layernorm_output,
+                    bias_dropout_add_func)
+        elif self.layer_type in (LayerType.retro_decoder,
+                                 LayerType.retro_decoder_with_retriever):
+            retriever_output, layernorm_input, layernorm_output = \
+                self.retro_decoder_cross_attention(
+                    retriever_input,
+                    retriever_output,
+                    retriever_attn_mask,
+                    layernorm_input,
+                    layernorm_output,
+                    inference_params,
+                    bias_dropout_add_func)
+        else:
+            raise Exception("Unsupported layer type, '%s'." %
+                            self.layer_type.name)
+
+        # MLP.
+        mlp_output, mlp_bias = self.mlp(layernorm_output)
+
+        # Second residual connection.
+        if self.apply_residual_connection_post_layernorm:
+            residual = layernorm_output
+        else:
+            residual = layernorm_input
+
+        if self.drop_path is None:
+            if mlp_bias is not None:
+                mlp_bias = mlp_bias.expand_as(residual)
+            with self.bias_dropout_add_exec_handler():
+                output = bias_dropout_add_func(
+                    mlp_output,
+                    mlp_bias,
+                    residual,
+                    self.hidden_dropout)
+
+            # Jit compiled function creates 'view' tensor. This tensor
+            # potentially gets saved in the MPU checkpoint function context,
+            # which rejects view tensors. While making a viewless tensor here
+            # won't result in memory savings (like the data loader, or
+            # p2p_communication), it serves to document the origin of this
+            # 'view' tensor.
+            output = core.utils.make_viewless_tensor(inp = output,
+                                                     requires_grad = output.requires_grad,
+                                                     keep_graph = True)
+
+        else:
+            if mlp_bias is not None:
+                mlp_output = mlp_output + mlp_bias
+            out = torch.nn.functional.dropout(mlp_output,
+                                              p=self.hidden_dropout,
+                                              training=self.training)
+            output = residual + self.drop_path(out)
+
+        if self.layer_type == LayerType.retro_decoder_with_retriever:
+            return output, retriever_output
+        else:
+            return output
+        
 megatron.model.transformer.ParallelAttention = ParallelAttention
+megatron.model.transformer.ParallelTransformerLayer = ParallelTransformerLayer
