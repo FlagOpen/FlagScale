@@ -9,7 +9,6 @@ import torch
 
 from .utils import GlobalMemoryBuffer
 
-from megatron import get_hetero_context 
 
 # Intra-layer model parallel group that the current rank belongs to.
 _TENSOR_MODEL_PARALLEL_GROUP = None
@@ -216,6 +215,8 @@ def initialize_model_parallel(
     """
 
     if hetero_mode:
+        # TODO: @aoyulong fix the circular import
+        from megatron import get_hetero_context 
         hetero_context = get_hetero_context()
 
     # Get world size and rank. Ensure some consistencies.
@@ -777,7 +778,7 @@ def get_expert_model_parallel_rank():
     global _MPU_EXPERT_MODEL_PARALLEL_RANK
     if _MPU_EXPERT_MODEL_PARALLEL_RANK is not None:
         return _MPU_EXPERT_MODEL_PARALLEL_RANK
-    return torch.distributed.get_rank(group=get_tensor_and_expert_parallel_group())
+    return _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS.index(torch.distributed.get_rank())
 
 
 def get_tensor_model_parallel_rank():

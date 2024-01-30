@@ -543,12 +543,11 @@ class _NullTokenizer:
         return None
 
 
-class _AquilaTokenizer(AbstractTokenizer):
+class _AquilaTokenizer(MegatronTokenizer):
     """Aquila tokenizer."""
 
     def __init__(self, vocab_file, merge_file, special_tokens_file):
-        name = 'Aquila'
-        super().__init__(name)
+        super().__init__(vocab_file, merge_file, special_tokens_file)
 
         special_tokens = []
         if special_tokens_file:
@@ -591,7 +590,7 @@ class _AquilaTokenizer(AbstractTokenizer):
         return self.pad_id
 
 
-class _HFTokenizer(AbstractTokenizer):
+class _HFTokenizer(MegatronTokenizer):
     """Huggingface tokenizer."""
 
     def __init__(self, hf_tokenizer):
