@@ -919,7 +919,7 @@ class ParallelTransformerLayer(MegatronModule):
                 inference_params=None,
                 rotary_pos_emb=None):
         # hidden_states: [s, b, h]
-        if self.recompute_num_layers > 1 and self.pp_layer_num > self.recompute_num_layers:
+        if self.recompute_num_layers != 1 and self.pp_layer_num > self.recompute_num_layers:
             layernorm_input, layernorm_output = self.checkpoint_attention_layernorm(hidden_states, attention_mask,
                 encoder_output, enc_dec_attn_mask,
                 retriever_input, retriever_output,
