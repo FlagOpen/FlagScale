@@ -44,6 +44,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_mup_args(parser)
     parser = _add_hetero_args(parser)
     parser = _add_customized_device_args(parser)
+    parser = _add_ascend_args(parser)
 
     # Custom arguments.
     if extra_args_provider is not None:
@@ -1578,4 +1579,21 @@ def _add_customized_device_args(parser):
     group.add_argument('--device-type', type=str, default=None, 
                        help='Specify customized device type')
 
+    return parser
+
+
+def _add_ascend_args(parser):
+    group = parser.add_argument_group(title="Ascend")
+
+    group.add_argument('--use-npu-mc2', action='store_true',
+                       help='Use matmul and hccl communication fusion implementation for Ascend NPU.')
+    group.add_argument('--use-npu-swiglu', action='store_true',
+                       help='Use swiglu fusion implementation for Ascend NPU.')
+    group.add_argument('--npu-fa-pre-tokens', type=int, default=None,
+                       help='pre-tokens used by Ascend NPU Flash attention')
+    group.add_argument('--npu-fa-next-tokens', type=int, default=None,
+                       help='next-tokens used by Ascend NPU Flash attention')
+    group.add_argument('--npu-fa-shape-order', type=str, default='SBH',
+                       choices=['SBH', 'BSH', 'BNSD', 'BSND'],
+                       help='input shape order used by Ascend NPU Flash attention')
     return parser

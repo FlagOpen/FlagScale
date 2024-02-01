@@ -5,7 +5,10 @@
 from abc import ABC
 from abc import abstractmethod
 from apex.multi_tensor_apply import multi_tensor_applier
-import amp_C
+try:
+    import amp_C
+except ImportError:
+    amp_C = None
 import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors

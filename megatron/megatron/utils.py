@@ -10,7 +10,10 @@ import torch
 from torch.nn.parallel import DistributedDataParallel as torchDDP
 
 from apex.multi_tensor_apply import multi_tensor_applier
-import amp_C
+try:
+    import amp_C
+except ImportError:
+    amp_C = None
 
 from megatron import (
     get_args,
