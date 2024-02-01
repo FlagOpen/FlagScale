@@ -663,6 +663,9 @@ class _HFTokenizer(AbstractTokenizer):
         self.cls_id = self.tokenizer.bos_token_id
         self.pad_id = self.tokenizer.pad_token_id
         
+        self._vocab = self.tokenizer.get_vocab()
+        self._inv_vocab = {v: k for k, v in self._vocab.items()}
+        
     @property
     def vocab_size(self):
         return self.tokenizer.vocab_size
@@ -694,6 +697,14 @@ class _HFTokenizer(AbstractTokenizer):
     def pad(self):
         return self.pad_id
 
+    @property
+    def decoder(self):
+        return self._inv_vocab
+
+    @property
+    def encoder(self):
+        return self._vocab
+
 class _QwenTokenizer(_HFTokenizer):
     """Adapted Qwen tokenizer."""
     
@@ -702,3 +713,6 @@ class _QwenTokenizer(_HFTokenizer):
         self.eod_id = self.tokenizer.encode('<|extra_204|>')[0]
         self.cls_id = self.tokenizer.encode('<|extra_203|>')[0]
         self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]
+        
+        self._vocab = {**self.tokenizer.get_vocab(), **self.tokenizer.special_tokens}
+        self._inv_vocab = {v: k for k, v in self._vocab.items()}
