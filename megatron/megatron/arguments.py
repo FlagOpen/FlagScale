@@ -848,6 +848,10 @@ def _add_logging_args(parser):
                        help='The wandb experiment name.')
     group.add_argument('--wandb-save-dir', type=str, default='',
                        help='Path to save the wandb results locally.')
+    group.add_argument('--wandb-log-model', action='store_true',
+                       help='If set, write model to wandb.')
+    group.add_argument('--wandb-log-model-interval', type=int, default=1000,
+                       help='The interval to save the model to wandb.')
     return parser
 
 
