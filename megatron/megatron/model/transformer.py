@@ -26,6 +26,7 @@ from megatron.core.tensor_parallel import (
     get_data_parallel_rng_tracker_name
 )
 from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_and_expert_parallel_group
+from megatron.core.jit import jit_fuser
 
 try:
     from einops import rearrange
@@ -524,6 +525,7 @@ class ParallelAttention(MegatronModule):
                  attention_type=AttnType.self_attn,
                  attn_mask_type=AttnMaskType.padding):
         super(ParallelAttention, self).__init__()
+        self.config = config
         args = get_args()
         self.layer_number = max(1, layer_number)
         self.attention_type = attention_type
@@ -831,8 +833,8 @@ class ParallelAttention(MegatronModule):
         # apply relative positional encoding (rotary embedding)
         if rotary_pos_emb is not None:
             q_pos_emb, k_pos_emb = rotary_pos_emb
-            query_layer = apply_rotary_pos_emb(query_layer, q_pos_emb)
-            key_layer = apply_rotary_pos_emb(key_layer, k_pos_emb)
+            query_layer = apply_rotary_pos_emb(query_layer, q_pos_emb, self.config)
+            key_layer = apply_rotary_pos_emb(key_layer, k_pos_emb, self.config)
             if self.rotary_interleaved_patch:
                 # TODO, better ops to reduce overhead
                 assert rearrange is not None, 'Please install einops first, e.g., with pip install einops'
@@ -889,7 +891,7 @@ def get_bias_dropout_add(training):
     return _bias_dropout_add
 
 
-@torch.jit.script
+@jit_fuser
 def bias_dropout_add_fused_train(x: torch.Tensor,
                                  bias: Optional[torch.Tensor],
                                  residual: torch.Tensor,
@@ -897,7 +899,7 @@ def bias_dropout_add_fused_train(x: torch.Tensor,
     return bias_dropout_add(x, bias, residual, prob, True)
 
 
-@torch.jit.script
+@jit_fuser
 def bias_dropout_add_fused_inference(x: torch.Tensor,
                                      bias: Optional[torch.Tensor],
                                      residual: torch.Tensor,
