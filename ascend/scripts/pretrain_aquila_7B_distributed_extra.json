@@ -1,0 +1,96 @@
+{
+    "experiment": {
+        "log_dir": "./ascend-log"
+    },
+    "device_type": "ascend",
+    "shell_cmds": "source /usr/local/Ascend/ascend-toolkit/set_env.sh",
+    "launch": {
+        "nnodes": 1,
+        "nproc_per_node": 8,
+        "node_rank": 0,
+        "master_addr": "localhost"
+    },
+    "env_vars": {
+        "HCCL_CONNECT_TIMEOUT": "3600",
+        "HCCL_EXEC_TIMEOUT": "0"
+    },
+    "training": {
+        "train-samples": 360000,
+        "eval-iters": 0,
+        "micro-batch-size": 8,
+        "global-batch-size": 72
+    },
+    "distributed": {
+        "tensor-model-parallel-size": 8,
+        "pipeline-model-parallel-size": 1,
+        "make-vocab-size-divisible-by": 8,
+        "sequence-parallel": true,
+        "use-distributed-optimizer": true
+    },
+    "mixed_precision": {
+        "bf16": true,
+        "embedding-weights-in-fp32": true,
+        "attention-softmax-in-fp32": true,
+        "accumulate-allreduce-grads-in-fp32": true
+    },
+    "data": {
+        "data-path": "../wudao_pretrain/wudao_pretrain_text_document",
+        "tokenizer-type": "AquilaTokenizer",
+        "vocab-file": "../aquila/tokenizer/vocab.json",
+        "vocab-size": 100008,
+        "merge-file": "../aquila/tokenizer/merges.txt",
+        "special-tokens-file": "../aquila/tokenizer/special_tokens.txt",
+        "data-impl": "mmap",
+        "split": 1,
+        "distributed-timeout-minutes": 120
+    },
+    "network": {
+        "num-layers": 32,
+        "hidden-size": 4096,
+        "num-attention-heads": 32,
+        "seq-length": 2048,
+        "max-position-embeddings": 2048,
+        "layernorm-epsilon": 1e-5,
+        "use-rotary-position-embeddings": true,
+        "rotary-position-embeddings-in-fp32": true,
+        "no-position-embedding": true,
+        "swiglu": true,
+        "multiple-of": 256,
+        "apply-layernorm-rms": true,
+        "untie-embeddings-and-output-weights": true,
+        "disable-bias-linear": true,
+        "no-gradient-accumulation-fusion": true,
+        "use-flash-attn": true,
+        "npu-fa-pre-tokens": 2048,
+        "npu-fa-next-tokens": 0,
+        "npu-fa-shape-order": "SBH",
+        "use-npu-mc2": true,
+        "use-npu-swiglu": true
+    },
+    "initialization": {
+        "init-method-std": 0.02,
+        "seed": 1234
+    },
+    "regularization": {
+        "attention-dropout": 0.0,
+        "hidden-dropout": 0.0,
+        "weight-decay": 0.1,
+        "adam-beta1": 0.9,
+        "adam-beta2": 0.95,
+        "clip-grad": 1.0
+    },
+    "learning_rate": {
+        "lr": 2.0e-5,
+        "min-lr": 2.0e-6,
+        "lr-decay-style": "cosine",
+        "lr-warmup-samples": 7200 
+    },
+    "checkpoint": {
+        "save_interval": 5000,
+        "save": null,
+        "load": null
+    },
+    "logging": {
+        "log-interval": 1
+    }
+}

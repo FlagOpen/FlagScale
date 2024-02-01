@@ -6,7 +6,10 @@ import torch
 from torch import inf
 
 from apex.multi_tensor_apply import multi_tensor_applier
-import amp_C
+try:
+    import amp_C
+except ImportError:
+    amp_C = None
 
 from megatron.model.module import param_is_not_shared
 from megatron.core.tensor_parallel import param_is_not_tensor_parallel_duplicate

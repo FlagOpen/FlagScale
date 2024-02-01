@@ -1,0 +1,4 @@
+transformers==4.32.0
+uvicorn
+fastapi
+wandb>=0.15.7

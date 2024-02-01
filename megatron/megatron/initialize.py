@@ -22,6 +22,12 @@ try:
 except ImportError:
     torch_mlu = None
 
+try:
+    import torch_npu
+    from torch_npu.contrib import transfer_to_npu
+except ImportError:
+    pass
+
 from megatron import get_adlr_autoresume
 from megatron import get_args
 from megatron import get_tensorboard_writer

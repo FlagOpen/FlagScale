@@ -1,0 +1,3 @@
+commit_id=20ecb9d913bb1659d3942954b0b6e0e4a3c293aa
+
+注：由于Ascend NPU上无法安装flash_attn包，安装依赖时按照ascend/requirements.txt安装即可
