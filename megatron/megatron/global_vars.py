@@ -127,6 +127,16 @@ def set_global_writers(args):
     from .utils import is_last_rank
     if is_last_rank(): 
         _set_tensorboard_writer(args)
+
+    # build wandb writers for all processes in the dp group of the last rank 
+    from megatron.core import mpu 
+    size = torch.distributed.get_world_size(mpu.get_model_parallel_group())
+    ranks_tensor = torch.tensor([0 for _ in range(size)], dtype=torch.int, device='cuda')
+    if is_last_rank():
+        ranks_list = torch.distributed.get_process_group_ranks(mpu.get_model_parallel_group())
+        ranks_tensor = torch.tensor(ranks_list, dtype=torch.int, device='cuda') 
+    torch.distributed.all_reduce(ranks_tensor)
+    if torch.distributed.get_rank() in ranks_tensor.tolist(): 
         _set_wandb_writer(args)
 
 
@@ -202,9 +212,13 @@ def _set_wandb_writer(args):
         else:
             # Defaults to the save dir.
             save_dir = os.path.join(args.save, 'wandb')
+        rank = torch.distributed.get_rank()
+        name = 'rank-' + str(rank)
+        group = args.wandb_exp_name
         wandb_kwargs = {
             'dir': save_dir,
-            'name': args.wandb_exp_name,
+            'name': name,
+            'group': group,
             'project': args.wandb_project,
             'mode': 'offline',
             'config': vars(args)}
