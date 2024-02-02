@@ -1,0 +1,6 @@
+{
+    "experiment": {
+        "log_dir": "./my-log"
+    },
+    "device_type": "dcu"
+}
