@@ -1,0 +1,21 @@
+{
+    "experiment": {
+        "exp_name": "aquila_70B_32p",
+        "hostfile": "./hostfile_4n",
+        "no_shared_fs": true
+    },
+    "launch": {
+        "nnodes": 4,
+        "nproc_per_node": 8,
+        "master_addr": null
+    },
+    "training": {
+        "train_samples": 44000,
+        "micro_batch_size": 1,
+        "global_batch_size": 44
+    },
+    "distributed": {
+        "tensor_model_parallel_size": 8,
+        "pipeline_model_parallel_size": 4
+    }
+}

@@ -1,0 +1,21 @@
+{
+    "experiment": {
+        "exp_name": "aquila_7B_8p",
+        "no_shared_fs": true
+    },
+    "launch": {
+        "nnodes": 1,
+        "nproc_per_node": 8,
+        "node_rank": 0,
+        "master_addr": "localhost"
+    },
+    "training": {
+        "train_samples": 360000,
+        "micro_batch_size": 8,
+        "global_batch_size": 72
+    },
+    "distributed": {
+        "tensor_model_parallel_size": 8,
+        "pipeline_model_parallel_size": 1
+    }
+}

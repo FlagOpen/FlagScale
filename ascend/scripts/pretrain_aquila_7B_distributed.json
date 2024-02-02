@@ -1,0 +1,103 @@
+{
+    "experiment": {
+        "log_dir": "./ascend-log",
+        "hostfile": "path-to-hostfile",
+        "ssh_port": 22
+    },
+    "device_type": "ascend",
+    "shell_cmds": "source /usr/local/Ascend/ascend-toolkit/set_env.sh",
+    "launch": {
+        "nnodes": 1,
+        "nproc_per_node": 8
+    },
+    "env_vars": {
+        "HCCL_CONNECT_TIMEOUT": "3600",
+        "HCCL_EXEC_TIMEOUT": "0",
+        "GLOO_SOCKET_IFNAME": "bond0",
+        "HCCL_SOCKET_IFNAME":"bond0"
+    },
+    "distributed": {
+        "tensor_model_parallel_size": 1,
+        "pipeline_model_parallel_size": 1,
+        "use_distributed_optimizer": true,
+        "use_flash_attn": true
+    },
+    "training": {
+        "micro_batch_size": 1,
+        "global_batch_size": 72,
+        "train_samples": 1000000000,
+        "disable_bias_linear": true,
+        "sequence_parallel": true,
+        "no_gradient_accumulation_fusion": true,
+        "use_npu_swiglu": true,
+        "use_npu_mc2": true,
+        "npu_fa_pre_tokens": 2048,
+        "npu_fa_next_tokens": 0,
+        "npu_fa_shape_order": "SBH",
+        "no_shared_fs": true,
+        "make_vocab_size_divisible_by": 8
+    },
+    "validation": {
+        "eval_iters": 0
+    },
+    "network": {
+        "num_layers": 32,
+        "hidden_size": 4096,
+        "num_attention_heads": 32,
+        "seq_length": 2048,
+        "max_position_embeddings": 2048,
+        "layernorm_epsilon": 1e-05,
+        "use_rotary_position_embeddings": true,
+        "rotary_position_embeddings_in_fp32": true,
+        "no_position_embedding": true,
+        "swiglu": true,
+        "multiple_of": 256,
+        "apply_layernorm_rms": true,
+        "untie_embeddings_and_output_weights": true
+    },
+    "mixed_precision": {
+        "bf16": true,
+        "initial_loss_scale": 522893,
+        "min_loss_scale": 1.0,
+        "embedding_weights_in_fp32": true,
+        "attention_softmax_in_fp32": true,
+        "accumulate_allreduce_grads_in_fp32": true
+    },
+    "data": {
+        "data_path": "../wudao_pretrain/wudao_pretrain_text_document",
+        "tokenizer_type": "AquilaTokenizer",
+        "vocab_file": "../aquila/tokenizer/vocab.json",
+        "vocab_size": 100008,
+        "merge_file": "../aquila/tokenizer/merges.txt",
+        "special_tokens_file": "../aquila/tokenizer/special_tokens.txt",
+        "data_impl": "mmap",
+        "split": 1,
+        "distributed_timeout_minutes": 120
+    },
+    "regularization": {
+        "attention_dropout": 0.0,
+        "hidden_dropout": 0.0,
+        "weight_decay": 0.1,
+        "adam_beta1": 0.9,
+        "adam_beta2": 0.95,
+        "clip_grad": 1.0
+    },
+    "initialization": {
+        "init-method-std": 0.02,
+        "seed": 1234
+    },
+    "learning_rate": {
+        "lr": 2.0e-5,
+        "min_lr": 2.0e-6,
+        "lr_decay_style": "cosine",
+        "lr_warmup_samples": 7200 
+    },
+    "checkpoint": {
+        "save_interval": 5000,
+        "save": null,
+        "load": null
+    },
+    "logging": {
+        "log_interval": 1
+    }
+}
