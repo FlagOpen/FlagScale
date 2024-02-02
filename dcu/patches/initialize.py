@@ -78,4 +78,4 @@ def _compile_dependencies():
         )
 
 print("=== Monkey-patching initialize.py ===")
-megatron.initialize._compile_dependencies = _compile_dependencies 
+megatron.initialize._compile_dependencies = _compile_dependencies
