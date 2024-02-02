@@ -1,0 +1,21 @@
+{
+    "experiment": {
+        "exp_name": "aquila_34B_256p",
+        "hostfile": "./hostfile_32n",
+        "no_shared_fs": true
+    },
+    "launch": {
+        "nnodes": 32,
+        "nproc_per_node": 8,
+        "master_addr": null
+    },
+    "training": {
+        "train_samples": 2048000,
+        "micro_batch_size": 2,
+        "global_batch_size": 2048
+    },
+    "distributed": {
+        "tensor_model_parallel_size": 8,
+        "pipeline_model_parallel_size": 1
+    }
+}
