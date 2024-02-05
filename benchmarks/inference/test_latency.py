@@ -1,7 +1,9 @@
 import os
 import sys
 import torch
-pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir))
+from test_throughout import sampling_requests
+
+pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 sys.path.append(os.path.join(pardir, "megatron"))
 
 from megatron import get_tokenizer
@@ -36,7 +38,7 @@ def add_text_generate_args(parser):
     group = parser.add_argument_group(title='Benchmark latency for a single batch request')
 
     group.add_argument("--num-iters", type=int, default=1,
-                       help='Number of requests to process.')
+                       help='Number of iters to run generation for a single batch request.')
     group.add_argument("--temperature", type=float, default=1.0,
                        help='Sampling temperature.')
     group.add_argument("--top_p", type=float, default=0.0,
@@ -47,8 +49,8 @@ def add_text_generate_args(parser):
                        help='Length of prompt for each request.')
     group.add_argument("--generate-len", type=int, default=1024,
                        help='Length of generated text for each request.')
-    # group.add_argument("--dataset-path", type=str, default=None,
-    #                    help='Path to the requests data.')
+    group.add_argument("--dataset-path", type=str, default=None,
+                       help='Path to the requests data.')
 
     return parser
 
@@ -80,13 +82,24 @@ if __name__=="__main__":
 
     tokenizer = get_tokenizer()
 
-    prompt = ["我" * (args.prompt_len - 1)] * args.micro_batch_size
+    # prepare requests
+    if os.path.exists(args.dataset_path) and os.path.basename(args.dataset_path) == 'test.jsonl':
+        print_rank_0(f"loading data from {args.dataset_path} ...")
+        print_rank_0("'prompt_len' and 'generate_len' will be rewritten by real data")
+        requests = sampling_requests(args.dataset_path, tokenizer, args.micro_batch_size)
+    else:
+        print_rank_0("making fake data ...")
+        prompt = "我" * args.prompt_len
+        input_len = len(tokenizer.tokenize(prompt))
+        assert input_len == args.prompt_len
+        requests = [(prompt, args.prompt_len, args.generate_len)] * args.micro_batch_size
 
     print("warming up....")
+    prompt, input_len, output_len = requests[0]
     generate_and_post_process(
             model,
-            prompts=prompt,
-            tokens_to_generate=args.generate_len,
+            prompts=[prompt],
+            tokens_to_generate=output_len,
             return_output_log_probs=True,
             top_k_sampling=args.top_k,
             top_p_sampling=args.top_p,
@@ -101,13 +114,19 @@ if __name__=="__main__":
             random_seed=args.seed,
     )
 
+    prompts = []
+    max_output_len = 0
+    for prompt, _, output_len in requests:
+        prompts.append(prompt)
+        max_output_len = max(output_len, max_output_len)
+
     print("Benchmark....")
     timers("all_iters", log_level=0).start(barrier=True)
     for i in range(args.num_iters):
-        generate_and_post_process(
+        respose, _, _, _ = generate_and_post_process(
             model,
-            prompts=prompt,
-            tokens_to_generate=args.generate_len,
+            prompts=prompts,
+            tokens_to_generate=max_output_len,
             return_output_log_probs=True,
             top_k_sampling=args.top_k,
             top_p_sampling=args.top_p,
@@ -121,16 +140,22 @@ if __name__=="__main__":
             prevent_newline_after_colon=False,
             random_seed=args.seed,
         )
+        print(f"iter-{i}/{args.num_iters}")
+
     time = timers("all_iters").elapsed()
+    print(f"elapsed time: {time}")
 
     device = next(model.parameters()).device
     memory_used = torch.cuda.max_memory_allocated(device) / (1024 ** 3)
     memory_pct = memory_used / (torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)) * 100
 
-    print("="*30)
+    num_totol_tokens = sum([il + ol for _, il, ol in requests])
+
+    print("=" * 11 + "SUMMARY" + "="*12)
+    print(f"Num Request: {len(requests)}")
+    print(f"Num totol tokens: {num_totol_tokens}")
     print(f"Batch Size: {args.micro_batch_size}")
-    print(f"Prompt len: {args.prompt_len}")
-    print(f"Generate len: {args.generate_len}")
+    print(f"Num iters: {args.num_iters}")
     print(f"Avg Latency: {time / args.num_iters:.2f} seconds")
     print(f"Max Memory: {memory_used:.2f} GB ({memory_pct:.2f}%)")
     print("="*30)

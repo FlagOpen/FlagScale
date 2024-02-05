@@ -7,9 +7,9 @@ DEVICES=$4
 TYPE=$5
 
 # Define files related to tokenizer
-VOCAB_FILE=../examples/aquila/tokenizer/vocab.json
-MERGE_FILE=../examples/aquila/tokenizer/merges.txt
-SPECIAL_TOKENS_FILE=../examples/aquila/tokenizer/special_tokens.txt
+VOCAB_FILE=../../examples/aquila/tokenizer/vocab.json
+MERGE_FILE=../../examples/aquila/tokenizer/merges.txt
+SPECIAL_TOKENS_FILE=../../examples/aquila/tokenizer/special_tokens.txt
 
 nproc=$(awk -F',' '{print NF}' <<< "$DEVICES")
 DISTRIBUTED_ARGS="
@@ -70,13 +70,14 @@ if [[ "$TYPE" == "throughout" ]]; then
         --top_k 200 \
         --prompt-len 32 \
         --generate-len 128 \
+        --dataset-path 'test.jsonl' \
         --seed 42
     "
     cmd="
     export CUDA_DEVICE_MAX_CONNECTIONS=1;
     export CUDA_VISIBLE_DEVICES=$DEVICES;
 
-    torchrun $DISTRIBUTED_ARGS throughout.py \
+    torchrun $DISTRIBUTED_ARGS test_throughout.py \
                 $INFER_ARGS \
                 $MIXED_PRECISION_ARGS \
                 $DATA_ARGS \
@@ -87,19 +88,20 @@ if [[ "$TYPE" == "throughout" ]]; then
 elif [[ "$TYPE" == "latency" ]]; then
     BENCHMARK_ARGS="
         --micro-batch-size 2 \
-        --num-iters 20 \
+        --num-iters 10 \
         --temperature 0.9 \
         --top_p 0.9 \
         --top_k 200 \
         --prompt-len 32 \
         --generate-len 128 \
+        --dataset-path 'test.jsonl' \
         --seed 42
     "
     cmd="
     export CUDA_DEVICE_MAX_CONNECTIONS=1;
     export CUDA_VISIBLE_DEVICES=$DEVICES;
 
-    torchrun $DISTRIBUTED_ARGS latency.py \
+    torchrun $DISTRIBUTED_ARGS test_latency.py \
                   $INFER_ARGS \
                   $MIXED_PRECISION_ARGS \
                   $DATA_ARGS \

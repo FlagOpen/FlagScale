@@ -1,7 +1,10 @@
 import os
 import sys
 import torch
-pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir))
+import json
+import random
+
+pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 sys.path.append(os.path.join(pardir, "megatron"))
 
 from megatron import get_tokenizer
@@ -14,6 +17,22 @@ from megatron.model import GPTModel
 from megatron.training import get_model
 from megatron.arguments import core_transformer_config_from_args
 from megatron.text_generation import generate_and_post_process
+
+
+def sampling_requests(data_path, tokenizer, num_requests):
+    requests = []
+    with open(data_path) as f:
+        for line in f:
+            data = json.loads(line)
+
+            prompt = data["question"]
+            completion = data["answer"]
+
+            input_len = len(tokenizer.tokenize(prompt))
+            output_len = len(tokenizer.tokenize(completion))
+            requests.append((prompt, input_len, output_len))
+
+    return random.sample(requests, num_requests)
 
 
 def model_provider(pre_process=True, post_process=True):
@@ -37,6 +56,8 @@ def add_text_generate_args(parser):
 
     group.add_argument("--num-requests", type=int, default=1,
                        help='Number of requests to process.')
+    group.add_argument("--num-iters", type=int, default=1,
+                       help='Number of iters to run generation for a single batch request.')
     group.add_argument("--temperature", type=float, default=1.0,
                        help='Sampling temperature.')
     group.add_argument("--top_p", type=float, default=0.0,
@@ -44,11 +65,11 @@ def add_text_generate_args(parser):
     group.add_argument("--top_k", type=int, default=0,
                        help='Top k sampling.')
     group.add_argument("--prompt-len", type=int, default=32,
-                       help='Length of prompt for each request.')
+                       help='Length of each prompt')
     group.add_argument("--generate-len", type=int, default=1024,
-                       help='Length of generated text for each request.')
-    # group.add_argument("--dataset-path", type=str, default=None,
-    #                    help='Path to the requests data.')
+                       help='The maximum numbers of tokens to generate.')
+    group.add_argument("--dataset-path", type=str, default=None,
+                       help='Path to the requests data.')
 
     return parser
 
@@ -80,15 +101,27 @@ if __name__=="__main__":
 
     tokenizer = get_tokenizer()
 
-    # TODO(zhaoyingli): get requests from real dataset.
-    prompt = "我" * (args.prompt_len - 1)
-    requests = [(prompt, args.generate_len)] * args.num_requests
+    # validate args
+    assert args.num_requests % args.micro_batch_size == 0
+ 
+    # prepare requests
+    if os.path.exists(args.dataset_path) and os.path.basename(args.dataset_path) == 'test.jsonl':
+        print_rank_0(f"loading data from {args.dataset_path} ...")
+        print_rank_0("'prompt_len' and 'generate_len' will be rewritten by real data")
+        requests = sampling_requests(args.dataset_path, tokenizer, args.num_requests)
+    else:
+        print_rank_0("making fake data ...")
+        prompt = "我" * args.prompt_len
+        input_len = len(tokenizer.tokenize(prompt))
+        assert input_len == args.prompt_len
+        requests = [(prompt, args.prompt_len, args.generate_len)] * args.num_requests
 
     print("warming up....")
+    prompt, input_len, output_len = requests[0]
     generate_and_post_process(
             model,
-            prompts=prompt,
-            tokens_to_generate=args.generate_len,
+            prompts=[prompt],
+            tokens_to_generate=output_len,
             return_output_log_probs=True,
             top_k_sampling=args.top_k,
             top_p_sampling=args.top_p,
@@ -105,12 +138,20 @@ if __name__=="__main__":
 
     print("Benchmark....")
     timers("all_requests", log_level=0).start(barrier=True)
-    for idx, (promot, gen_len) in enumerate(requests):
-        timers(f"request_{idx}", log_level=0).start()
+    prompts = []
+    max_output_len = 0
+    generated_num = 0
+    for prompt, _, output_len in requests:
+        prompts.append(prompt)
+        max_output_len = max(output_len, max_output_len)
+
+        if len(prompts) < args.micro_batch_size:
+            continue
+
         generate_and_post_process(
             model,
-            prompts=prompt,
-            tokens_to_generate=gen_len,
+            prompts=prompts,
+            tokens_to_generate=max_output_len,
             return_output_log_probs=True,
             top_k_sampling=args.top_k,
             top_p_sampling=args.top_p,
@@ -124,19 +165,24 @@ if __name__=="__main__":
             prevent_newline_after_colon=False,
             random_seed=args.seed,
         )
-        print(f"request_{idx} elapsed time:", timers(f"request_{idx}").elapsed())
+        generated_num += len(prompts)
+        print(f"generated: {generated_num}/{len(requests)}")
+
+        prompts = []
+        max_output_len = 0
 
     time = timers("all_requests").elapsed()
-    total_num_tokens = (args.prompt_len + args.generate_len) * args.num_requests
+
+    num_totol_tokens = sum([il + ol for _, il, ol in requests])
 
     device = next(model.parameters()).device
     memory_used = torch.cuda.max_memory_allocated(device) / (1024 ** 3)
     memory_pct = memory_used / (torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)) * 100
 
-    print("="*30)
-    print(f"Requests num: {args.num_requests}")
-    print(f"Prompt len: {args.prompt_len}")
-    print(f"Generate len: {args.generate_len}")
-    print(f"Throughput: {args.num_requests / time:.2f} requests/s, {total_num_tokens / time:.2f} tokens/s")
+    print("=" * 11 + "SUMMARY" + "="*12)
+    print(f"Num Request: {len(requests)}")
+    print(f"Num totol tokens: {num_totol_tokens}")
+    print(f"Batch Size: {args.micro_batch_size}")
+    print(f"Throughput: {args.num_requests / time:.2f} requests/s, {num_totol_tokens / time:.2f} tokens/s")
     print(f"Max Memory: {memory_used:.2f} GB ({memory_pct:.2f}%)")
     print("="*30)
