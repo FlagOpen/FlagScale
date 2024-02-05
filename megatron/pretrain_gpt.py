@@ -2,6 +2,10 @@
 """Pretrain GPT."""
 
 import os
+import sys
+sys.path.append(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))
+
 import torch
 from torch import Tensor
 from functools import partial
@@ -14,10 +18,9 @@ from megatron.core import mpu, tensor_parallel
 from megatron.core.enums import ModelType
 from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
 from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
-from megatron.core.datasets.gpt_dataset import GPTDataset
+from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
 import megatron.model
 from megatron.core.models.gpt import GPTModel
-from megatron.training import pretrain
 from megatron.core.transformer.spec_utils import import_module
 from megatron.utils import (
     get_batch_on_this_cp_rank,
@@ -153,6 +156,8 @@ def is_dataset_built_on_rank():
 
 
 def core_gpt_dataset_config_from_args(args):
+    tokenizer = get_tokenizer()
+
     return GPTDatasetConfig(
         is_built_on_rank=is_dataset_built_on_rank,
         random_seed=args.seed,
@@ -161,11 +166,11 @@ def core_gpt_dataset_config_from_args(args):
         blend_per_split=[args.train_data_path, args.valid_data_path, args.test_data_path],
         split=args.split,
         path_to_cache=args.data_cache_path,
-        return_document_ids=args.retro_return_doc_ids,
+        mock=args.mock_data,
+        tokenizer=tokenizer,
         reset_position_ids=args.reset_position_ids,
         reset_attention_mask=args.reset_attention_mask,
         eod_mask_loss=args.eod_mask_loss,
-        eod_id=get_tokenizer().eod
     )
 
 
@@ -177,12 +182,19 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
     """
     args = get_args()
 
+    config = core_gpt_dataset_config_from_args(args)
+
+    if config.mock:
+        dataset_type = MockGPTDataset
+    else:
+        dataset_type = GPTDataset
+
     print_rank_0("> building train, validation, and test datasets for GPT ...")
 
     train_ds, valid_ds, test_ds = BlendedMegatronDatasetBuilder(
-        GPTDataset,
+        dataset_type,
         train_val_test_num_samples,
-        core_gpt_dataset_config_from_args(args)
+        config
     ).build()
 
     print_rank_0("> finished creating GPT datasets ...")
@@ -195,9 +207,16 @@ if __name__ == "__main__":
     # Temporary for transition to core datasets
     train_valid_test_datasets_provider.is_distributed = True
 
+    # To avoid the circular import
+    from flagscale.extra_valid import extra_valid_dataset_provider
+    extra_valid_dataset_provider.is_distributed = True
+
+    # To avoid the circular import
+    from megatron.training import pretrain
     pretrain(train_valid_test_datasets_provider,
              model_provider,
              ModelType.encoder_or_decoder,
              forward_step,
              args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
-             get_batch_fn=get_batch)
+             get_batch_fn=get_batch,
+             extra_valid_dataset_provider=extra_valid_dataset_provider)

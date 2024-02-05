@@ -56,6 +56,9 @@ from megatron.utils import calc_params_l2_norm
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.utils import report_memory
 from megatron.model.vision.knn_monitor import compute_feature_bank
+from megatron.utils import is_last_rank
+from flagscale.extra_valid import extra_evaluate_and_print_results
+from flagscale.extra_valid import build_extra_valid_data_iterators
 
 
 def print_datetime(string):
@@ -150,7 +153,8 @@ def pretrain(train_valid_test_dataset_provider,
              process_non_loss_data_func=None,
              extra_args_provider=None,
              args_defaults={},
-             get_batch_fn=None,):
+             get_batch_fn=None,
+             extra_valid_dataset_provider=None):
     """Main training program.
 
     This function will run the followings in the order provided:
@@ -259,7 +263,8 @@ def pretrain(train_valid_test_dataset_provider,
                 forward_step_func,
                 model, optimizer, opt_param_scheduler,
                 train_data_iterator, valid_data_iterator,
-                process_non_loss_data_func, config)
+                process_non_loss_data_func, config,
+                extra_valid_dataset_provider)
 
         print_datetime('after training is done')
 
@@ -557,7 +562,6 @@ def setup_model_and_optimizer(model_provider_func,
     return model, optimizer, opt_param_scheduler
 
 
-
 def train_step(forward_step_func, data_iterator,
                model, optimizer, opt_param_scheduler, config):
     """Single training step."""
@@ -718,75 +722,98 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
        (iteration % args.tensorboard_log_interval == 0):
         timers.write(timers_to_log, writer, iteration,
                      normalizer=total_iterations)
-    if writer and (iteration % args.tensorboard_log_interval == 0):
+    if is_last_rank() and (iteration % args.tensorboard_log_interval == 0):
         if wandb_writer:
             wandb_writer.log({'samples vs steps': args.consumed_train_samples},
                              iteration)
+            wandb_writer.log({'consumed-tokens': args.consumed_train_samples * args.seq_length / 1000. / 1000 / 1000}, iteration)
         if args.log_learning_rate_to_tensorboard:
-            writer.add_scalar('learning-rate', learning_rate, iteration)
-            writer.add_scalar('learning-rate vs samples', learning_rate,
+            if writer:
+                writer.add_scalar('learning-rate', learning_rate, iteration)
+                writer.add_scalar('learning-rate vs samples', learning_rate,
                               args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'learning-rate': learning_rate}, iteration)
         if args.log_batch_size_to_tensorboard:
-            writer.add_scalar('batch-size', batch_size, iteration)
-            writer.add_scalar('batch-size vs samples', batch_size,
+            if writer:
+                writer.add_scalar('batch-size', batch_size, iteration)
+                writer.add_scalar('batch-size vs samples', batch_size,
                               args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'batch-size': batch_size}, iteration)
         for key in loss_dict:
-            writer.add_scalar(key , loss_dict[key], iteration)
-            writer.add_scalar(key + ' vs samples', loss_dict[key],
-                              args.consumed_train_samples)
+            if writer:
+                writer.add_scalar(key , loss_dict[key], iteration)
+                writer.add_scalar(key + ' vs samples', loss_dict[key],
+                                  args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({key: loss_dict[key]}, iteration)
         if args.log_loss_scale_to_tensorboard:
-            writer.add_scalar('loss-scale', loss_scale, iteration)
-            writer.add_scalar('loss-scale vs samples', loss_scale,
-                              args.consumed_train_samples)
+            if writer:
+                writer.add_scalar('loss-scale', loss_scale, iteration)
+                writer.add_scalar('loss-scale vs samples', loss_scale,
+                                  args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'loss-scale': loss_scale}, iteration)
         if args.log_world_size_to_tensorboard:
-            writer.add_scalar('world-size', args.world_size, iteration)
-            writer.add_scalar('world-size vs samples', args.world_size,
-                              args.consumed_train_samples)
+            if writer:
+                writer.add_scalar('world-size', args.world_size, iteration)
+                writer.add_scalar('world-size vs samples', args.world_size,
+                                  args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'world-size': args.world_size}, iteration)
         if grad_norm is not None:
-            writer.add_scalar('grad-norm', grad_norm, iteration)
-            writer.add_scalar('grad-norm vs samples', grad_norm,
-                              args.consumed_train_samples)
+            if writer:
+                writer.add_scalar('grad-norm', grad_norm, iteration)
+                writer.add_scalar('grad-norm vs samples', grad_norm,
+                                  args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'grad-norm': grad_norm}, iteration)
         if num_zeros_in_grad is not None:
-            writer.add_scalar('num-zeros', num_zeros_in_grad, iteration)
-            writer.add_scalar('num-zeros vs samples', num_zeros_in_grad,
-                              args.consumed_train_samples)
+            if writer:
+                writer.add_scalar('num-zeros', num_zeros_in_grad, iteration)
+                writer.add_scalar('num-zeros vs samples', num_zeros_in_grad,
+                                  args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'num-zeros': num_zeros_in_grad}, iteration)
         if params_norm is not None:
-            writer.add_scalar('params-norm', params_norm, iteration)
-            writer.add_scalar('params-norm vs samples', params_norm,
-                              args.consumed_train_samples)
+            if writer:
+                writer.add_scalar('params-norm', params_norm, iteration)
+                writer.add_scalar('params-norm vs samples', params_norm,
+                                  args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'params-norm': params_norm}, iteration)
         if args.log_memory_to_tensorboard:
             mem_stats = torch.cuda.memory_stats()
-            writer.add_scalar(
-                "mem-reserved-bytes",
-                mem_stats["reserved_bytes.all.current"],
-                iteration,
-            )
-            writer.add_scalar(
-                "mem-allocated-bytes",
-                mem_stats["allocated_bytes.all.current"],
-                iteration,
-            )
-            writer.add_scalar(
-                "mem-allocated-count",
-                mem_stats["allocation.all.current"],
-                iteration,
-            )
+            if writer:
+                writer.add_scalar(
+                    "mem-reserved-bytes",
+                    mem_stats["reserved_bytes.all.current"],
+                    iteration,
+                )
+                writer.add_scalar(
+                    "mem-allocated-bytes",
+                    mem_stats["allocated_bytes.all.current"],
+                    iteration,
+                )
+                writer.add_scalar(
+                    "mem-allocated-count",
+                    mem_stats["allocation.all.current"],
+                    iteration,
+                )
+            if wandb_writer:
+                wandb_writer.log(
+                    {"mem-reserved-bytes": mem_stats["reserved_bytes.all.current"]},
+                    iteration,
+                )
+                wandb_writer.log(
+                    {"mem-allocated-bytes": mem_stats["allocated_bytes.all.current"]},
+                    iteration,
+                )
+                wandb_writer.log(
+                    {"mem-allocated-count": mem_stats["allocation.all.current"]},
+                    iteration,
+                )
 
     if iteration % args.log_interval == 0:
         elapsed_time = timers('interval-time').elapsed(barrier=True)
@@ -804,9 +831,6 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
             iteration, args.train_iters)
         log_string += ' consumed samples: {:12d} |'.format(
             args.consumed_train_samples)
-        if wandb_writer:
-            wandb_writer.log({'consumed-samples': args.consumed_train_samples}, iteration)
-            wandb_writer.log({'consumed-tokens': args.consumed_train_samples * args.seq_length / 1000. / 1000 / 1000}, iteration)
         log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(
             elapsed_time_per_iteration * 1000.0)
         if args.log_throughput:
@@ -829,16 +853,10 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
         log_string += ' loss scale: {:.1f} |'.format(loss_scale)
         if grad_norm is not None:
             log_string += ' grad norm: {:.3f} |'.format(grad_norm)
-            if wandb_writer:
-                wandb_writer.log({'grad-norm': grad_norm}, iteration)
         if num_zeros_in_grad is not None:
             log_string += ' num zeros: {:.1f} |'.format(num_zeros_in_grad)
-            if wandb_writer:
-                wandb_writer.log({'num-zeros': num_zeros_in_grad}, iteration)
         if params_norm is not None:
             log_string += ' params norm: {:.3f} |'.format(params_norm)
-            if wandb_writer:
-                wandb_writer.log({'params-norm': params_norm}, iteration)
         log_string += ' number of skipped iterations: {:3d} |'.format(
             total_loss_dict[skipped_iters_key])
         log_string += ' number of nan iterations: {:3d} |'.format(
@@ -927,7 +945,7 @@ def save_checkpoint_and_time(iteration, model, optimizer, opt_param_scheduler,
 
 def train(forward_step_func, model, optimizer, opt_param_scheduler,
           train_data_iterator, valid_data_iterator,
-          process_non_loss_data_func, config):
+          process_non_loss_data_func, config, extra_valid_dataset_provider=None):
     """Train the model function."""
     args = get_args()
     timers = get_timers()
@@ -981,6 +999,13 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         gc.collect()
 
     num_microbatches = get_num_microbatches()
+
+    wandb_writer = get_wandb_writer()
+    if wandb_writer and args.wandb_log_model:
+        # wandb.watch's log_freg needs to take the accumulated number of microbatches into account
+        log_freq = args.wandb_log_model_interval * num_microbatches 
+        wandb_writer.watch(unwrap_model(model), log="all", log_freq=log_freq)
+
     while iteration < args.train_iters:
         if args.profile and \
            iteration == args.profile_step_start and \
@@ -1062,6 +1087,39 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             if args.use_distributed_optimizer and args.overlap_param_gather:
                 optimizer.enable_pre_hook()
             timers('interval-time', log_level=0).start(barrier=True)
+
+        # Extra Evaluation
+        if args.extra_valid_interval and iteration % args.extra_valid_interval == 0:
+            # Need to rebuild the dataloaders for extra validation,
+            # but we don't need to rebuild the datasets
+            # TODO: refactor this code and test this in vp - @aoyulong 
+            if args.virtual_pipeline_model_parallel_size is not None:
+                extra_valid_data_iterators = []
+                for i in range(len(model)):
+                    mpu.set_virtual_pipeline_model_parallel_rank(i)
+                    extra_valid_data_iterators.append(
+                        build_extra_valid_data_iterators(extra_valid_dataset_provider))
+            else:
+                extra_valid_data_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
+            # do_extra_valid flag is used to indicate that we are doing extra validation
+            # and is set in the build_extra_valid_data_iterators function 
+            if args.do_extra_valid:
+                if args.use_distributed_optimizer and args.overlap_param_gather:
+                    optimizer.disable_pre_hook()
+                if args.manual_gc and args.manual_gc_eval:
+                    # Collect all objects.
+                    gc.collect()
+                prefix = 'iteration {}'.format(iteration)
+                for extra_valid_index, extra_valid_data_iterator in enumerate(extra_valid_data_iterators):
+                    extra_evaluate_and_print_results(extra_valid_index, prefix, forward_step_func,
+                                                     extra_valid_data_iterator, model,
+                                                     iteration, process_non_loss_data_func,
+                                                     config, False)
+                if args.manual_gc and args.manual_gc_eval:
+                    # Collect only the objects created and used in evaluation.
+                    gc.collect(generation=0)
+                if args.use_distributed_optimizer and args.overlap_param_gather:
+                    optimizer.enable_pre_hook()
 
         # Checkpointing
         saved_checkpoint = False
@@ -1229,12 +1287,14 @@ def search_data(train_valid_test_dataset_provider, get_batch):
     searched_data_file = os.path.join(args.data_searching_save, "searched_data_{}_to_{}".format(search_start, search_end))
     torch.save(searched_data, searched_data_file)
 
+
 def evaluate(forward_step_func,
              data_iterator,
              model,
              process_non_loss_data_func,
              config,
-             verbose=False):
+             verbose=False,
+             extra_valid_index=None):
     """Evaluation."""
     args = get_args()
     timers = get_timers()
@@ -1260,12 +1320,19 @@ def evaluate(forward_step_func,
                                                     args.hetero_micro_batch_sizes,
                                                     args.hetero_data_parallel_splits))
         eval_num_microbatches = eval_batch_size // micro_batch_for_all_data_parallel 
+    
+    if extra_valid_index is not None:
+        assert args.extra_valid_iters_list is not None, \
+            "extra_valid_iters_list must be provided if extra_valid_index is not None"
+        eval_iters = args.extra_valid_iters_list[extra_valid_index]
+    else:
+        eval_iters = args.eval_iters
 
     with torch.no_grad():
         iteration = 0
         if verbose:
-            print_rank_0(f'Evaluating on {args.eval_iters * eval_batch_size} samples')
-        while iteration < args.eval_iters:
+            print_rank_0(f'Evaluating on {eval_iters * eval_batch_size} samples')
+        while iteration < eval_iters:
             iteration += 1
             if verbose:
                 print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
@@ -1333,6 +1400,7 @@ def evaluate(forward_step_func,
     timers.log(['evaluate'])
 
     return total_loss_dict, collected_non_loss_data, False
+
 
 def evaluate_and_print_results(prefix, forward_step_func,
                                data_iterator, model,

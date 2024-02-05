@@ -848,6 +848,10 @@ def _add_logging_args(parser):
                        help='The wandb experiment name.')
     group.add_argument('--wandb-save-dir', type=str, default='',
                        help='Path to save the wandb results locally.')
+    group.add_argument('--wandb-log-model', action='store_true',
+                       help='If set, write model to wandb.')
+    group.add_argument('--wandb-log-model-interval', type=int, default=1000,
+                       help='The interval to save the model to wandb.')
     return parser
 
 
@@ -1358,6 +1362,9 @@ def _add_validation_args(parser):
     group.add_argument('--eval-interval', type=int, default=1000,
                        help='Interval between running evaluation on '
                        'validation set.')
+    group.add_argument('--extra-valid-interval', type=int, default=1000,
+                       help='Interval between running evaluation on '
+                       'extra validation sets.')
     group.add_argument('--skip-train', action='store_true',
                        default=False, help='If set, bypass the training loop, '
                        'optionally do evaluation for validation/test, and exit.')
@@ -1391,6 +1398,10 @@ def _add_data_args(parser):
                        '1) a single data path, 2) multiple datasets in the'
                        'form: dataset1-weight dataset1-path dataset2-weight '
                        'dataset2-path ...')
+    group.add_argument('--extra-valid-data-path', nargs='*', default=None,
+                       help='Path to the validation dataset. Accepted format:'
+                       'dataset1-weight dataset1-path dataset1-tag dataset2-weight '
+                       'dataset2-path dataset2-tag ...')
     group.add_argument('--test-data-path', nargs='*', default=None,
                        help='Path to the test dataset. Accepted format:'
                        '1) a single data path, 2) multiple datasets in the'
@@ -1398,6 +1409,9 @@ def _add_data_args(parser):
                        'dataset2-path ...')
     group.add_argument('--data-cache-path', default=None,
                        help='Path to a directory to hold cached index files.')
+    group.add_argument('--mock-data', action='store_true',
+                       help='Skip data loading and validation and opt for artificial '
+                       'generation of mock data when an implementation is available.')
 
     group.add_argument('--vocab-size', type=int, default=None,
                        help='Size of vocab before EOD or padding.')
@@ -1442,7 +1456,7 @@ def _add_data_args(parser):
                                 'HFTokenizer', 
                                 'QwenTokenizer'],
                        help='What type of tokenizer to use.')
-    group.add_argument('--hf-tokenizer', type=str, default=None,
+    group.add_argument('--tokenizer-path', type=str, default=None,
                        help='Path to the huggingface tokenizer.')
     group.add_argument('--tokenizer-model', type=str, default=None,
                        help='Sentencepiece tokenizer model.')
