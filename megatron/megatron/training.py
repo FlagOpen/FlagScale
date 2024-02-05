@@ -57,6 +57,8 @@ from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.utils import report_memory
 from megatron.model.vision.knn_monitor import compute_feature_bank
 from megatron.utils import is_last_rank
+from flagscale.extra_valid import extra_evaluate_and_print_results
+from flagscale.extra_valid import build_extra_valid_data_iterators
 
 
 def print_datetime(string):
@@ -151,7 +153,8 @@ def pretrain(train_valid_test_dataset_provider,
              process_non_loss_data_func=None,
              extra_args_provider=None,
              args_defaults={},
-             get_batch_fn=None,):
+             get_batch_fn=None,
+             extra_valid_dataset_provider=None):
     """Main training program.
 
     This function will run the followings in the order provided:
@@ -260,7 +263,8 @@ def pretrain(train_valid_test_dataset_provider,
                 forward_step_func,
                 model, optimizer, opt_param_scheduler,
                 train_data_iterator, valid_data_iterator,
-                process_non_loss_data_func, config)
+                process_non_loss_data_func, config,
+                extra_valid_dataset_provider)
 
         print_datetime('after training is done')
 
@@ -556,7 +560,6 @@ def setup_model_and_optimizer(model_provider_func,
             optimizer.reload_model_params()
 
     return model, optimizer, opt_param_scheduler
-
 
 
 def train_step(forward_step_func, data_iterator,
@@ -942,7 +945,7 @@ def save_checkpoint_and_time(iteration, model, optimizer, opt_param_scheduler,
 
 def train(forward_step_func, model, optimizer, opt_param_scheduler,
           train_data_iterator, valid_data_iterator,
-          process_non_loss_data_func, config):
+          process_non_loss_data_func, config, extra_valid_dataset_provider=None):
     """Train the model function."""
     args = get_args()
     timers = get_timers()
@@ -995,14 +998,14 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         gc.disable()
         gc.collect()
 
-    # Note: 1) we need to call at least one wandb.log to make sure the wandb.watch works.
-    # This is a workaround for a potential bug in wandb. 2) the log_freq seems to be wrong
-    # in some situations.
+    num_microbatches = get_num_microbatches()
+
     wandb_writer = get_wandb_writer()
     if wandb_writer and args.wandb_log_model:
-        wandb_writer.watch(unwrap_model(model), log="all", log_freq=args.wandb_log_model_interval)
+        # wandb.watch's log_freg needs to take the accumulated number of microbatches into account
+        log_freq = args.wandb_log_model_interval * num_microbatches 
+        wandb_writer.watch(unwrap_model(model), log="all", log_freq=log_freq)
 
-    num_microbatches = get_num_microbatches()
     while iteration < args.train_iters:
         if args.profile and \
            iteration == args.profile_step_start and \
@@ -1084,6 +1087,39 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             if args.use_distributed_optimizer and args.overlap_param_gather:
                 optimizer.enable_pre_hook()
             timers('interval-time', log_level=0).start(barrier=True)
+
+        # Extra Evaluation
+        if args.extra_valid_interval and iteration % args.extra_valid_interval == 0:
+            # Need to rebuild the dataloaders for extra validation,
+            # but we don't need to rebuild the datasets
+            # TODO: refactor this code and test this in vp - @aoyulong 
+            if args.virtual_pipeline_model_parallel_size is not None:
+                extra_valid_data_iterators = []
+                for i in range(len(model)):
+                    mpu.set_virtual_pipeline_model_parallel_rank(i)
+                    extra_valid_data_iterators.append(
+                        build_extra_valid_data_iterators(extra_valid_dataset_provider))
+            else:
+                extra_valid_data_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
+            # do_extra_valid flag is used to indicate that we are doing extra validation
+            # and is set in the build_extra_valid_data_iterators function 
+            if args.do_extra_valid:
+                if args.use_distributed_optimizer and args.overlap_param_gather:
+                    optimizer.disable_pre_hook()
+                if args.manual_gc and args.manual_gc_eval:
+                    # Collect all objects.
+                    gc.collect()
+                prefix = 'iteration {}'.format(iteration)
+                for extra_valid_index, extra_valid_data_iterator in enumerate(extra_valid_data_iterators):
+                    extra_evaluate_and_print_results(extra_valid_index, prefix, forward_step_func,
+                                                     extra_valid_data_iterator, model,
+                                                     iteration, process_non_loss_data_func,
+                                                     config, False)
+                if args.manual_gc and args.manual_gc_eval:
+                    # Collect only the objects created and used in evaluation.
+                    gc.collect(generation=0)
+                if args.use_distributed_optimizer and args.overlap_param_gather:
+                    optimizer.enable_pre_hook()
 
         # Checkpointing
         saved_checkpoint = False
@@ -1251,12 +1287,14 @@ def search_data(train_valid_test_dataset_provider, get_batch):
     searched_data_file = os.path.join(args.data_searching_save, "searched_data_{}_to_{}".format(search_start, search_end))
     torch.save(searched_data, searched_data_file)
 
+
 def evaluate(forward_step_func,
              data_iterator,
              model,
              process_non_loss_data_func,
              config,
-             verbose=False):
+             verbose=False,
+             extra_valid_index=None):
     """Evaluation."""
     args = get_args()
     timers = get_timers()
@@ -1282,12 +1320,19 @@ def evaluate(forward_step_func,
                                                     args.hetero_micro_batch_sizes,
                                                     args.hetero_data_parallel_splits))
         eval_num_microbatches = eval_batch_size // micro_batch_for_all_data_parallel 
+    
+    if extra_valid_index is not None:
+        assert args.extra_valid_iters_list is not None, \
+            "extra_valid_iters_list must be provided if extra_valid_index is not None"
+        eval_iters = args.extra_valid_iters_list[extra_valid_index]
+    else:
+        eval_iters = args.eval_iters
 
     with torch.no_grad():
         iteration = 0
         if verbose:
-            print_rank_0(f'Evaluating on {args.eval_iters * eval_batch_size} samples')
-        while iteration < args.eval_iters:
+            print_rank_0(f'Evaluating on {eval_iters * eval_batch_size} samples')
+        while iteration < eval_iters:
             iteration += 1
             if verbose:
                 print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
@@ -1355,6 +1400,7 @@ def evaluate(forward_step_func,
     timers.log(['evaluate'])
 
     return total_loss_dict, collected_non_loss_data, False
+
 
 def evaluate_and_print_results(prefix, forward_step_func,
                                data_iterator, model,
