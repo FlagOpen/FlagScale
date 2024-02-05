@@ -2,6 +2,10 @@
 """Pretrain GPT."""
 
 import os
+import sys
+sys.path.append(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))
+
 import torch
 from torch import Tensor
 from functools import partial
@@ -17,7 +21,6 @@ from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
 from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
 import megatron.model
 from megatron.core.models.gpt import GPTModel
-from megatron.training import pretrain
 from megatron.core.transformer.spec_utils import import_module
 from megatron.utils import (
     get_batch_on_this_cp_rank,
@@ -204,9 +207,16 @@ if __name__ == "__main__":
     # Temporary for transition to core datasets
     train_valid_test_datasets_provider.is_distributed = True
 
+    # To avoid the circular import
+    from flagscale.extra_valid import extra_valid_dataset_provider
+    extra_valid_dataset_provider.is_distributed = True
+
+    # To avoid the circular import
+    from megatron.training import pretrain
     pretrain(train_valid_test_datasets_provider,
              model_provider,
              ModelType.encoder_or_decoder,
              forward_step,
              args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
-             get_batch_fn=get_batch)
+             get_batch_fn=get_batch,
+             extra_valid_dataset_provider=extra_valid_dataset_provider)
