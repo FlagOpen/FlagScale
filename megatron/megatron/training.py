@@ -1335,7 +1335,7 @@ def evaluate(forward_step_func,
         while iteration < eval_iters:
             iteration += 1
             if verbose:
-                print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
+                print_rank_0(f'Evaluating iter {iteration}/{eval_iters}')
 
             forward_backward_func = get_forward_backward_func()
             # Don't care about timing during evaluation
@@ -1394,7 +1394,7 @@ def evaluate(forward_step_func,
         model_module.train()
 
     for key in total_loss_dict:
-        total_loss_dict[key] /= args.eval_iters * eval_num_microbatches
+        total_loss_dict[key] /= eval_iters * eval_num_microbatches
 
     timers('evaluate').stop()
     timers.log(['evaluate'])

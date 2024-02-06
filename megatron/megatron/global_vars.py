@@ -213,7 +213,7 @@ def _set_wandb_writer(args):
             # Defaults to the save dir.
             save_dir = os.path.join(args.save, 'wandb')
         rank = torch.distributed.get_rank()
-        name = 'rank-' + str(rank)
+        name = f'{args.wandb_exp_name}-rank{rank}'
         group = args.wandb_exp_name
         wandb_kwargs = {
             'dir': save_dir,
