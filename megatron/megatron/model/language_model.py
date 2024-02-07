@@ -385,7 +385,8 @@ class TransformerLanguageModel(MegatronModule):
             self.rotary_pos_emb = RotaryEmbedding(
                 rotary_dim,
                 args.rotary_percent,
-                seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor
+                seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor,
+                rotary_base=args.rotary_base
             )
 
         # Encoder (usually set to True, False if part of an encoder-decoder
