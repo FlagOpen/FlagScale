@@ -730,6 +730,8 @@ def _add_network_size_args(parser):
                        help='Percent of rotary dimension to use, default 100%%')
     group.add_argument('--rotary-seq-len-interpolation-factor', type=int, default=None,
                        help='Sequence length interpolation factor for rotary embeddings.')
+    group.add_argument('--rotary-base', type=float, default=1000000,
+                       help='Base of rotary to use, default 1000000.')
     group.add_argument('--rotary-interleaved-patch', action='store_true',
                        help='Patch for loading models using interleaved rotary position embeddings.')
     group.add_argument('--no-position-embedding',
