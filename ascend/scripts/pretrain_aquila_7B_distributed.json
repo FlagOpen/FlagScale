@@ -2,10 +2,10 @@
     "experiment": {
         "log_dir": "./ascend-log",
         "hostfile": "path-to-hostfile",
-        "ssh_port": 22
+        "ssh_port": 22,
+        "shell_cmds": "source /usr/local/Ascend/ascend-toolkit/set_env.sh"
     },
     "device_type": "ascend",
-    "shell_cmds": "source /usr/local/Ascend/ascend-toolkit/set_env.sh",
     "launch": {
         "nnodes": 1,
         "nproc_per_node": 8

@@ -43,9 +43,6 @@ class FlashSelfAttention(torch.nn.Module):
 
 
     def forward(self, q, k, v, n, attention_mask):
-        # print(f"FA input shape: q {q.shape}, k {k.shape}, v {v.shape}, n {n}, attention_mask {attention_mask.shape}")
-        # print(q.dtype, attention_mask.dtype)
-        # attention_mask = attention_mask.to(q.dtype)
         scale = 1.0/math.sqrt(q.size(2)/n) if self.softmax_scale is None else self.softmax_scale
         output = torch_npu.npu_fusion_attention(
             q, k, v, n, input_layout=self.shape_order,
@@ -379,11 +376,13 @@ def ParallelAttentionForward(self, hidden_states, attention_mask,
 
     # expand the key_layer and value_layer [sk, b, ng, hn] -> [sk, b, np, hn]
     if self.num_attention_heads_per_partition // self.num_query_groups_per_partition > 1:
-        key_layer = key_layer.repeat_interleave(
+        key_layer = repeat_interleave(
+            key_layer,
             self.num_attention_heads_per_partition // self.num_query_groups_per_partition,
             dim=2
         )
-        value_layer = value_layer.repeat_interleave(
+        value_layer = repeat_interleave(
+            value_layer,
             self.num_attention_heads_per_partition // self.num_query_groups_per_partition,
             dim=2
         )
@@ -456,6 +455,11 @@ def ParallelAttentionForward(self, hidden_states, attention_mask,
 
     return output, bias
 
+def repeat_interleave(inputs, repeats, dim):
+    shape = inputs.shape
+    new_shape = shape[:dim + 1] + (repeats,) + shape[dim + 1:]
+    out_shape = shape[:dim] + (shape[dim] * repeats,) + shape[dim + 1:]
+    return inputs.unsqueeze(dim + 1).expand(new_shape).reshape(out_shape)
 
 def CoreAttentionForward(self, query_layer, key_layer,
             value_layer, attention_mask):
