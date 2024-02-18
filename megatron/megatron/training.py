@@ -57,6 +57,9 @@ from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.utils import report_memory
 from megatron.model.vision.knn_monitor import compute_feature_bank
 from megatron.utils import is_last_rank
+
+pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+sys.path.append(pardir)
 from flagscale.extra_valid import extra_evaluate_and_print_results
 from flagscale.extra_valid import build_extra_valid_data_iterators
 

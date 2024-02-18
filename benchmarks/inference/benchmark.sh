@@ -109,6 +109,22 @@ elif [[ "$TYPE" == "latency" ]]; then
                   $CHECKPOINTING_ARGS \
                   $BENCHMARK_ARGS
     "
+elif [[ "$TYPE" == "serving" ]]; then
+    BENCHMARK_ARGS="
+        --micro-batch-size 2 \
+    "
+    cmd="
+    export CUDA_DEVICE_MAX_CONNECTIONS=1;
+    export CUDA_VISIBLE_DEVICES=$DEVICES;
+
+    torchrun $DISTRIBUTED_ARGS server.py \
+                  $INFER_ARGS \
+                  $MIXED_PRECISION_ARGS \
+                  $DATA_ARGS \
+                  $NETWORK_ARGS \
+                  $CHECKPOINTING_ARGS \
+                  $BENCHMARK_ARGS
+    "
 else
     cmd="
     echo 'Please set right benchmark TYPE.'

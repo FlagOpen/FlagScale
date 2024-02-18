@@ -8,11 +8,11 @@ MODEL_INFO=Aquila-1.8B
 CHECKPOINT=<xxxx>
 MASTER_PORT=8888
 DEVICES=0
-TYPE=throughout
+TYPE=throughout # throughout/latency/serving
 
 FlagScale_HOME=<xxxx>
 EXPNAME=$TYPE-test
-LOG_FILE=$FlagScale_HOME/benchmarks/inference/$EXPNAME.log
+LOG_FILE=$FlagScale_HOME/benchmarks/inference/log.$EXPNAME
 SCRIPT_FILE=$FlagScale_HOME/benchmarks/inference/benchmark.sh
 
 cd $FlagScale_HOME/benchmarks/inference
