@@ -11,7 +11,6 @@ from megatron.core import Timers
 from megatron.tokenizer import build_tokenizer
 from .microbatches import build_num_microbatches_calculator
 from .microbatches_hetero import build_num_microbatches_calculator_hetero
-from .timers import Timers
 from .hetero_context import HeteroContext
 
 _GLOBAL_ARGS = None
