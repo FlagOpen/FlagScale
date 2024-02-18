@@ -35,6 +35,10 @@ def _get_extra_te_kwargs(config: TransformerConfig):
     return extra_transformer_engine_kwargs
 
 
+def condition_init_method(config, init_method):
+    return init_method if config.perform_initialization else (lambda w: None)
+
+
 class TENorm:
     """
     A conditional wrapper to initialize an instance of Transformer-Engine's
@@ -129,7 +133,7 @@ class TELinear(te.pytorch.Linear):
             tp_group=get_tensor_model_parallel_group(check_initialized=False),
             tp_size=self.config.tensor_model_parallel_size,
             get_rng_state_tracker=get_cuda_rng_tracker,
-            init_method=init_method,
+            init_method=condition_init_method(config, init_method),
             bias=bias,
             return_bias=self.te_return_bias,
             parallel_mode=parallel_mode,
@@ -220,7 +224,7 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
             tp_group=get_tensor_model_parallel_group(check_initialized=False),
             tp_size=self.config.tensor_model_parallel_size,
             get_rng_state_tracker=get_cuda_rng_tracker,
-            init_method=init_method,
+            init_method=condition_init_method(config, init_method),
             bias=bias,
             return_bias=self.te_return_bias,
             parallel_mode="column",
@@ -279,7 +283,7 @@ class TEColumnParallelLinear(TELinear):
             output_size=output_size,
             parallel_mode="column",
             config=config,
-            init_method=init_method,
+            init_method=condition_init_method(config, init_method),
             bias=bias,
             skip_bias_add=skip_bias_add,
             skip_weight_param_allocation=skip_weight_param_allocation,
@@ -326,7 +330,7 @@ class TERowParallelLinear(TELinear):
             output_size=output_size,
             parallel_mode="row",
             config=config,
-            init_method=init_method,
+            init_method=condition_init_method(config, init_method),
             bias=bias,
             skip_bias_add=skip_bias_add,
             skip_weight_param_allocation=False,  # We don't currently use this for row parallel layers
@@ -394,9 +398,6 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
         if te_version > packaging.version.Version("0.12.0"):
             self.te_forward_mask_type = True
 
-        if self.config.apply_rope_fusion and te_version > packaging.version.Version("0.13.0"):
-            extra_kwargs["qkv_format"] = self.qkv_format = 'bshd'
-
         # Only Transformer-Engine version >= 1.0.0 supports context parallelism
         if te_version >= packaging.version.Version("1.0.0"):
             if getattr(TEDotProductAttention, "cp_stream") is None:
@@ -446,13 +447,19 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
             dataclasses.asdict(packed_seq_params) if packed_seq_params is not None else {}
         )
         te_version = packaging.version.Version(version("transformer-engine"))
+        # overwrite self.qkv_format depending on self.config.apply_rope_fusion, which can be set after init
+        if self.config.apply_rope_fusion and te_version > packaging.version.Version("0.13.0"):
+            self.qkv_format = 'bshd'
+
+        qkv_format = packed_seq_kwargs.get('qkv_format', self.qkv_format)
+
         if te_version < packaging.version.Version("1.3.0"):
             # TE 1.3.0 introduces precomputing max_seqlen to remove unnecessary kernels and D2H copies (#555)
             # These two arguments did not exist prior to 1.3.0
             packed_seq_kwargs.pop("max_seqlen_q", None)
             packed_seq_kwargs.pop("max_seqlen_kv", None)
 
-        if self.config.apply_rope_fusion and self.qkv_format == 'bshd':
+        if self.config.apply_rope_fusion and qkv_format == 'bshd':
             query, key, value = [x.transpose(0, 1).contiguous() for x in (query, key, value)]
 
         if self.te_forward_mask_type:
@@ -467,7 +474,7 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
         else:
             core_attn_out = super().forward(query, key, value, attention_mask, **packed_seq_kwargs,)
 
-        if self.config.apply_rope_fusion and self.qkv_format == 'bshd':
+        if self.config.apply_rope_fusion and qkv_format == 'bshd':
             return core_attn_out.transpose(0, 1)
         else:
             return core_attn_out

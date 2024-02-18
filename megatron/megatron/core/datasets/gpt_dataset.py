@@ -1,7 +1,8 @@
-# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 
 import logging
 import os
+import sys
 import time
 from dataclasses import dataclass
 from typing import Dict, Tuple
@@ -22,12 +23,15 @@ logger = logging.getLogger(__name__)
 class GPTDatasetConfig(BlendedMegatronDatasetConfig):
     """Configuration object for Megatron Core GPT datasets
 
-       Attributes:          
-           reset_position_ids (bool): Option to reset the position IDs in the dataset at an interval
+    Attributes:          
+        reset_position_ids (bool): Option to reset the position IDs in the dataset at an interval
 
-           reset_attention_mask (bool): Option to reset the attention mask from the dataset
+        reset_attention_mask (bool): Option to reset the attention mask from the dataset
 
-           eod_mask_loss (bool): Option to enable the EOD mask loss
+        eod_mask_loss (bool): Option to enable the EOD mask loss
+
+        vocab_size (int): Size of vocabulary
+      
     """
 
     reset_position_ids: bool = None
@@ -36,7 +40,11 @@ class GPTDatasetConfig(BlendedMegatronDatasetConfig):
 
     eod_mask_loss: bool = None
 
-    def __post_init__(self):
+    vocab_size: int = sys.maxsize
+
+    def __post_init__(self) -> None:
+        """Do asserts and set fields post init
+        """
         super().__post_init__()
 
         assert self.tokenizer is not None
@@ -109,7 +117,7 @@ class GPTDataset(MegatronDataset):
 
         index_split (Split): The indexed_indices Split
 
-        config (GPTDatasetConfig): The GPT-specific container for all config sourced parameters
+        config (GPTDatasetConfig): The config
     """
 
     def __init__(
@@ -124,6 +132,8 @@ class GPTDataset(MegatronDataset):
         super().__init__(
             indexed_dataset, dataset_path, indexed_indices, num_samples, index_split, config
         )
+
+        self.vocab_size = config.vocab_size
 
     def _finalize(self) -> None:
         """Abstract method implementation
@@ -187,6 +197,10 @@ class GPTDataset(MegatronDataset):
         text = torch.from_numpy(text).long()
         labels = text[1:].contiguous()
         tokens = text[:-1].contiguous()
+
+        assert not torch.any(
+            tokens >= self.vocab_size
+        ), "An input token is out of bounds of the tokenizer vocabulary"
 
         attention_mask, loss_mask, position_ids = _get_ltor_masks_and_position_ids(
             tokens,
