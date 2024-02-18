@@ -173,6 +173,8 @@ def validate_args(args, defaults={}):
             '--overlap-param-gather only supported with distributed optimizer'
         assert args.overlap_grad_reduce, \
             '--overlap-grad-reduce should be turned on when using --overlap-param-gather'
+        assert args.use_mcore_models, \
+            '--overlap-param-gather only supported with MCore models'
 
     # Parameters dtype.
     args.params_dtype = torch.float
@@ -388,6 +390,10 @@ def validate_args(args, defaults={}):
     # Legacy RoPE arguments
     if args.use_rotary_position_embeddings:
         args.position_embedding_type = 'rope'
+    if args.rotary_interleaved and args.apply_rope_fusion:
+        raise RuntimeError('--rotary-interleaved does not work with rope_fusion.')
+    if args.rotary_interleaved and not args.use_mcore_models:
+        raise RuntimeError('--rotary-interleaved only support Megatron Core, please add --use-mcore-models.')
 
     # Would just need to add 'NoPE' as a position_embedding_type to support this, but for now
     # don't allow it to keep things simple
@@ -448,8 +454,9 @@ def core_transformer_config_from_args(args):
     kw_args['layernorm_epsilon'] = args.norm_epsilon
     kw_args['deallocate_pipeline_outputs'] = True
     kw_args['pipeline_dtype'] = args.params_dtype
-    kw_args['batch_p2p_comm'] = not args.overlap_p2p_comm
+    kw_args['batch_p2p_comm'] = not args.overlap_p2p_comm 
     kw_args['num_moe_experts'] = args.num_experts
+    kw_args['rotary_interleaved'] = args.rotary_interleaved
     if args.swiglu:
         kw_args['activation_func'] = F.silu
         kw_args['gated_linear_unit'] = True
@@ -619,6 +626,8 @@ def _add_network_size_args(parser):
                        'Deprecated: use --position-embedding-type')
     group.add_argument('--rotary-percent', type=float, default=1.0,
                        help='Percent of rotary dimension to use, default 100%%')
+    group.add_argument('--rotary-interleaved', action='store_true',
+                          help='Use interleaved rotary embedding.')
     group.add_argument('--rotary-seq-len-interpolation-factor', type=int, default=None,
                        help='Sequence length interpolation factor for rotary embeddings.')
     group.add_argument('--no-position-embedding',
@@ -732,6 +741,22 @@ def _add_logging_args(parser):
                        help='The wandb experiment name.')
     group.add_argument('--wandb-save-dir', type=str, default='',
                        help='Path to save the wandb results locally.')
+    group.add_argument('--enable-one-logger', action='store_true',
+                       help='If set, use one_logger to track E2E metrics'
+                       'Note that one_logger is an internal tool and not available externally. '
+                       'For installation, please try command: `pip install '
+                       '--index-url=https://sc-hw-artf.nvidia.com/api/pypi/hwinf-ml-pypi/simple'
+                       ' one_logger` or go to https://gitlab-master.nvidia.com/hwinf-dcm/onelogger '
+                       'for more details')
+    group.add_argument('--one-logger-project', type=str, default='e2e-tracking',
+                       help='The one-logger project name. Will ignore if '
+                       '--enable-one-logger is not set')
+    group.add_argument('--one-logger-entity', type=str, default='hwinf_dcm',
+                       help='The one-logger username or team name. Will ignore if '
+                       '--enable-one-logger is not set')
+    group.add_argument('--one-logger-run-name', type=str, default=None,
+                       help='The one-logger run name displayed. Will ignore if '
+                       '--enable-one-logger is not set')
     return parser
 
 
@@ -911,6 +936,9 @@ def _add_training_args(parser):
     group.add_argument('--disable-bias-linear', action='store_false',
                        help='Disable bias in the linear layers',
                        dest='add_bias_linear')
+    group.add_argument('--add-qkv-bias', action='store_true',
+                       help='Enable bias only in the QKV linear layers',
+                       dest='add_qkv_bias')
     group.add_argument('--optimizer', type=str, default='adam',
                        choices=['adam', 'sgd'],
                        help='Optimizer function')
@@ -980,7 +1008,7 @@ def _add_learning_rate_args(parser):
 
     group.add_argument('--lr', type=float, default=None,
                        help='Initial learning rate. Depending on decay style '
-                       'and initial warmup, the learing rate at each '
+                       'and initial warmup, the learning rate at each '
                        'iteration would be different.')
     group.add_argument('--lr-decay-style', type=str, default='linear',
                        choices=['constant', 'linear', 'cosine', 'inverse-square-root'],
@@ -1075,7 +1103,7 @@ def _add_mixed_precision_args(parser):
     group.add_argument('--initial-loss-scale', type=float, default=2**32,
                        help='Initial loss-scale for dynamic loss scaling.')
     group.add_argument('--min-loss-scale', type=float, default=1.0,
-                       help='Minimum loss scale for dynamic loss scale.')
+                       help='Minimum loss scale for dynamic loss scaling.')
     group.add_argument('--loss-scale-window', type=float, default=1000,
                        help='Window over which to raise/lower dynamic scale.')
     group.add_argument('--hysteresis', type=int, default=2,
@@ -1418,9 +1446,9 @@ def _add_moe_args(parser):
     group.add_argument('--num-experts', type=int, default=None,
                        help='Number of Experts in MoE (None means no MoE)')
     group.add_argument('--moe-router-load-balancing-type', type=str,
-                       choices=['aux_loss', 'sinkhorn', None],
+                       choices=['aux_loss', 'sinkhorn', "none"],
                        default='aux_loss',
-                       help='Determines the load balancing strategy for the router. "aux_loss" corresponds to the load balancing loss used in GShard and SwitchTransformer, "sinkhorn" corresponds to the balancing algorithm used in S-BASE, and "None" implies no load balancing. The default is "aux_loss".')
+                       help='Determines the load balancing strategy for the router. "aux_loss" corresponds to the load balancing loss used in GShard and SwitchTransformer, "sinkhorn" corresponds to the balancing algorithm used in S-BASE, and "none" implies no load balancing. The default is "aux_loss".')
     group.add_argument('--moe-router-topk', type=int, default=2,
                        help='Number of experts to route to for each token. The default is 2.')
     group.add_argument('--moe-grouped-gemm', action='store_true',
@@ -1439,10 +1467,11 @@ def _add_moe_args(parser):
 def _add_experimental_args(parser):
     group = parser.add_argument_group(title='experimental')
 
-    group.add_argument('--spec', type=str, default=None, nargs=2,
+    group.add_argument('--spec', type=str, default=None, nargs='*',
                        help='Specify the <module_location function_name> pair '
                        'that returns a spec to customize a model, transformer '
-                       'block, or transformer layer, depending on the use case. '
+                       'block, or transformer layer, depending on the use case.'
+                       'To use local spec specify local as the argument.'
                        'For more details, see the model class, '
                        '`transformer_block.py`, or `transformer_layer.py`')
 

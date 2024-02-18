@@ -3,14 +3,13 @@
 
 import os
 import torch
-from torch import Tensor
 from functools import partial
 from typing import Union
 from megatron import get_args
 from megatron import print_rank_0
 from megatron import get_timers
 from megatron import get_tokenizer
-from megatron.core import mpu, tensor_parallel
+from megatron.core import mpu
 from megatron.core.enums import ModelType
 from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
 from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
@@ -63,7 +62,7 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
             parallel_output=True,
             share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
             position_embedding_type=args.position_embedding_type,
-            rotary_percent=args.rotary_percent
+            rotary_percent=args.rotary_percent,
         )
     else:
         assert(args.context_parallel_size == 1), "Context parallelism is only supported with Megatron Core!"
@@ -87,20 +86,20 @@ def get_batch(data_iterator):
         return None, None, None, None, None
 
     # get batches based on the TP rank you are on
-    batch = get_batch_on_this_tp_rank(data_iterator) 
+    batch = get_batch_on_this_tp_rank(data_iterator)
 
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
 
     return batch.values()
 
-def loss_func(loss_mask: Tensor, output_tensor: Tensor):
+def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
     """Loss function.
 
     Args:
-        loss_mask (Tensor): Used to mask out some portions of the loss
-        output_tensor (Tensor): The tensor with the losses
-    """    
+        loss_mask (torch.Tensor): Used to mask out some portions of the loss
+        output_tensor (torch.Tensor): The tensor with the losses
+    """
     args = get_args()
 
     losses = output_tensor.float()
@@ -168,6 +167,7 @@ def core_gpt_dataset_config_from_args(args):
         reset_position_ids=args.reset_position_ids,
         reset_attention_mask=args.reset_attention_mask,
         eod_mask_loss=args.eod_mask_loss,
+        vocab_size=get_tokenizer().vocab_size,
     )
 
 
