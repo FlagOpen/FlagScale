@@ -17,6 +17,7 @@ from megatron.model import GPTModel
 from megatron.training import get_model
 from megatron.arguments import core_transformer_config_from_args
 from megatron.text_generation import generate_and_post_process
+from megatron.theoretical_memory_usage import compute_weight_and_optimizer_memory
 
 
 def sampling_requests(data_path, tokenizer, num_requests):
@@ -48,7 +49,7 @@ def model_provider(pre_process=True, post_process=True):
         pre_process=pre_process,
         post_process=post_process
     )
-
+    compute_weight_and_optimizer_memory(get_args(), verbose=True)
     return model
 
 def add_text_generate_args(parser):

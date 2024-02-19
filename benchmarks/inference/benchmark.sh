@@ -19,11 +19,13 @@ DISTRIBUTED_ARGS="
     --master_port $MASTER_PORT
 "
 
+# 2GPUS-TensorParallel
 INFER_ARGS="
-    --tensor-model-parallel-size 1\
+    --tensor-model-parallel-size 2\
     --pipeline-model-parallel-size 1 \
-    --make-vocab-size-divisible-by 128 \
+    --make-vocab-size-divisible-by 64 \
     --disable-bias-linear \
+    --disable-bias-linear-qkv \
     --use-flash-attn
 "
 
@@ -38,38 +40,40 @@ DATA_ARGS="
     --special-tokens-file $SPECIAL_TOKENS_FILE \
 "
 
+# 33B CONFIG
 NETWORK_ARGS="
     --model-info $MODEL_INFO\
-    --num-layers 24 \
-    --hidden-size 2048 \
-    --hidden-dim-multiplier 1. \
-    --num-attention-heads 16 \
-    --seq-length 2048 \
-    --max-position-embeddings 2048 \
+    --num-layers 60 \
+    --hidden-size 6144 \
+    --hidden-dim-multiplier 1.3 \
+    --num-attention-heads 48 \
+    --group-query-attention \
+    --num-query-groups 8 \
+    --seq-length 4096 \
+    --max-position-embeddings 4096 \
     --normalization RMSNorm \
     --use-rotary-position-embeddings \
     --no-position-embedding \
     --swiglu \
-    --multiple-of 128 \
+    --multiple-of 4096 \
     --untie-embeddings-and-output-weights \
-    --norm-epsilon 1e-6 \
-    --norm-init-weight 0.8441 \
+    --norm-epsilon 1e-5 \
+    --norm-init-weight 0.3 \
 "
 
 CHECKPOINTING_ARGS="
     --load $CHECKPOINT
 "
 
-# TODO: add 'TYPE == serving'
 if [[ "$TYPE" == "throughout" ]]; then
     BENCHMARK_ARGS="
         --micro-batch-size 1 \
-        --num-requests 20 \
-        --temperature 0.9 \
+        --num-requests 10 \
+        --temperature 1.0 \
         --top_p 0.9 \
         --top_k 200 \
-        --prompt-len 32 \
-        --generate-len 128 \
+        --prompt-len 64 \
+        --generate-len 64 \
         --dataset-path 'test.jsonl' \
         --seed 42
     "
@@ -87,13 +91,13 @@ if [[ "$TYPE" == "throughout" ]]; then
     "
 elif [[ "$TYPE" == "latency" ]]; then
     BENCHMARK_ARGS="
-        --micro-batch-size 2 \
+        --micro-batch-size 1 \
         --num-iters 10 \
-        --temperature 0.9 \
+        --temperature 1.0 \
         --top_p 0.9 \
         --top_k 200 \
-        --prompt-len 32 \
-        --generate-len 128 \
+        --prompt-len 64 \
+        --generate-len 64 \
         --dataset-path 'test.jsonl' \
         --seed 42
     "
@@ -111,7 +115,7 @@ elif [[ "$TYPE" == "latency" ]]; then
     "
 elif [[ "$TYPE" == "serving" ]]; then
     BENCHMARK_ARGS="
-        --micro-batch-size 2 \
+        --micro-batch-size 1 \
     "
     cmd="
     export CUDA_DEVICE_MAX_CONNECTIONS=1;

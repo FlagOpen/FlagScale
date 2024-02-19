@@ -10,6 +10,7 @@ from collections import defaultdict
 from typing import Optional, Union
 from pydantic import BaseModel
 from abc import ABCMeta, abstractmethod
+from test_throughout import model_provider
 
 pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 sys.path.append(os.path.join(pardir, "megatron"))
@@ -154,9 +155,11 @@ class AquilaGenerationBatch(ModelGeneration):
 
         completions = defaultdict(dict)
         max_input_length = 0
+        max_output_length = 0
         if output["status"] == GenerateStatus.SUCCESS:
             for i, prompt in enumerate(output["prompts"]):
                 max_input_length = max(max_input_length, len(self._tokenizer.tokenize(prompt)))
+                max_output_length = max(max_output_length, len(self._tokenizer.tokenize(output["responses"][i])))
 
                 response = output["responses"][i]
                 response_logprob = output["response_logprobs"]
@@ -195,7 +198,7 @@ class AquilaGenerationBatch(ModelGeneration):
                 tld = [{k: v} for k, v in zip(convert_tokens, response_logprob)]
                 completions[i]['top_logprobs_dicts'] = tld
 
-        return {"completions": completions, "max_input_length": max_input_length, }
+        return {"completions": completions, "max_input_length": max_input_length, "max_output_length": max_output_length}
 
 
 class AquilaGenerationStream(ModelGeneration):
@@ -284,17 +287,6 @@ class UvicornServer:
 
         self._app.include_router(router)
         uvicorn.run(self._app, **kwargs)
-
-
-def model_provider(pre_process=True, post_process=True):
-    """Build the model."""
-
-    config = core_transformer_config_from_args(get_args())
-
-    print_rank_0('building GPT model ...')
-    model = GPTModel(config, num_tokentypes=0, parallel_output=False, pre_process=pre_process, post_process=post_process)
-
-    return model
 
 
 if __name__ == "__main__":

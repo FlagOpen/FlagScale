@@ -1,7 +1,7 @@
 import os
 import sys
 import torch
-from test_throughout import sampling_requests
+from test_throughout import sampling_requests, model_provider
 
 pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 sys.path.append(os.path.join(pardir, "megatron"))
@@ -17,22 +17,6 @@ from megatron.training import get_model
 from megatron.arguments import core_transformer_config_from_args
 from megatron.text_generation import generate_and_post_process
 
-
-def model_provider(pre_process=True, post_process=True):
-    """Build the model."""
-
-    config = core_transformer_config_from_args(get_args())
-
-    print_rank_0('building GPT model ...')
-    model = GPTModel(
-        config,
-        num_tokentypes=0,
-        parallel_output=False,
-        pre_process=pre_process,
-        post_process=post_process
-    )
-
-    return model
 
 def add_text_generate_args(parser):
     group = parser.add_argument_group(title='Benchmark latency for a single batch request')

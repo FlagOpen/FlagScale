@@ -23,7 +23,7 @@ raw_request = {
             "top_p": 0.9, # top p 
             "top_k_per_token": 200, # top k
             "seed": 1234,
-            "sft": True, # 测试base模型设置为False，测试sft模型时设置为True
+            "sft": False, # 测试base模型设置为False，测试sft模型时设置为True
             "template": "aquila-legacy",
             "history": [],
             "max_gen_time": 15, # for stream mode
@@ -37,4 +37,4 @@ url = f'http://{ip}:{port}/Aquila/Batch'# 模型调用地址
 s_time = time.time()
 response = requests.post(url, data=json.dumps(raw_request))
 print("response:", response.text)
-print("eslaped time:", time.time() - s_time)
+print(f"eslaped time: {time.time() - s_time:.2f} seconds")
