@@ -479,8 +479,6 @@ def load_args_from_checkpoint(args, load_arg='load'):
     # One-off conversion for foundation models
     if hasattr(checkpoint_args, 'disable_bias_linear'):
         setattr(checkpoint_args, 'add_bias_linear', not getattr(checkpoint_args, 'disable_bias_linear'))
-    if hasattr(checkpoint_args, 'disable_bias_linear_qkv'):
-        setattr(checkpoint_args, 'add_bias_linear_qkv', not getattr(checkpoint_args, 'disable_bias_linear_qkv'))
 
     # For backward compatibility.
     if hasattr(checkpoint_args, 'apply_layernorm_rms'):
@@ -514,8 +512,9 @@ def load_args_from_checkpoint(args, load_arg='load'):
     _set_arg('add_position_embedding', force=True)
     _set_arg('use_rotary_position_embeddings', force=True)
     _set_arg('rotary_percent', force=True)
+    _set_arg('rotary_interleaved', force=True)
     _set_arg('add_bias_linear', force=True)
-    _set_arg('add_bias_linear_qkv', force=True)
+    _set_arg('add_qkv_bias', force=True)
     _set_arg('swiglu', force=True)
     _set_arg('multiple_of', force=True)
     _set_arg('hidden_dim_multiplier', force=True)

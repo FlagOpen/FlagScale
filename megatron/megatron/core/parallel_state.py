@@ -773,14 +773,6 @@ def set_pipeline_model_parallel_split_rank(rank):
     _PIPELINE_MODEL_PARALLEL_SPLIT_RANK = rank
 
 
-def get_expert_model_parallel_rank():
-    """Return my rank for the tensor model parallel group."""
-    global _MPU_EXPERT_MODEL_PARALLEL_RANK
-    if _MPU_EXPERT_MODEL_PARALLEL_RANK is not None:
-        return _MPU_EXPERT_MODEL_PARALLEL_RANK
-    return _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS.index(torch.distributed.get_rank())
-
-
 def get_tensor_model_parallel_rank():
     """Return my rank for the tensor model parallel group."""
     global _MPU_TENSOR_MODEL_PARALLEL_RANK
@@ -1028,7 +1020,6 @@ def get_expert_model_parallel_rank():
         return _MPU_EXPERT_MODEL_PARALLEL_RANK
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         tensor_and_expert_parallel_rank = _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS.index(torch.distributed.get_rank())
-
         return tensor_and_expert_parallel_rank // get_tensor_model_parallel_world_size()
     else:
         return 0

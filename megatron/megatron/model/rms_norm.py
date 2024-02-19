@@ -23,8 +23,8 @@ class RMSNorm(torch.nn.Module):
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
 
-        if self.init_weight:
-            init.constant_(self.weight, self.init_weight)
+        if init_weight:
+            init.constant_(self.weight, init_weight)
         else:
             init.ones_(self.weight)
 
