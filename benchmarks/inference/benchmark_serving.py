@@ -36,5 +36,5 @@ url = f'http://{ip}:{port}/Aquila/Batch'# 模型调用地址
 
 s_time = time.time()
 response = requests.post(url, data=json.dumps(raw_request))
-print("response:", response.text)
-print(f"eslaped time: {time.time() - s_time:.2f} seconds")
+print(f"Response: {response.text}")
+print(f"Eslaped time: {time.time() - s_time:.8f} seconds")
