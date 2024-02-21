@@ -79,7 +79,7 @@ if [[ "$TYPE" == "throughout" ]]; then
     export CUDA_DEVICE_MAX_CONNECTIONS=1;
     export CUDA_VISIBLE_DEVICES=$DEVICES;
 
-    torchrun $DISTRIBUTED_ARGS benchmark_throughout.py \
+    torchrun $DISTRIBUTED_ARGS benchmark_megatron_throughout.py \
                 $INFER_ARGS \
                 $MIXED_PRECISION_ARGS \
                 $DATA_ARGS \
@@ -92,8 +92,8 @@ elif [[ "$TYPE" == "latency" ]]; then
         --micro-batch-size 1 \
         --num-iters 10 \
         --temperature 1.0 \
-        --top_p 0.9 \
-        --top_k 200 \
+        --top-p 0.9 \
+        --top-k 200 \
         --prompt-len 64 \
         --generate-len 64 \
         --seed 42
@@ -102,7 +102,7 @@ elif [[ "$TYPE" == "latency" ]]; then
     export CUDA_DEVICE_MAX_CONNECTIONS=1;
     export CUDA_VISIBLE_DEVICES=$DEVICES;
 
-    torchrun $DISTRIBUTED_ARGS benchmark_latency.py \
+    torchrun $DISTRIBUTED_ARGS benchmark_megatron_latency.py \
                   $INFER_ARGS \
                   $MIXED_PRECISION_ARGS \
                   $DATA_ARGS \

@@ -12,8 +12,8 @@ TYPE=throughout # throughout/latency/serving
 
 FlagScale_HOME=<xxxx>
 EXPNAME=$TYPE-test
-LOG_FILE=$FlagScale_HOME/benchmarks/inference/log.$EXPNAME
-SCRIPT_FILE=$FlagScale_HOME/benchmarks/inference/benchmark.sh
+LOG_FILE=log.$EXPNAME
+SCRIPT_FILE=benchmark_megatron.sh
 
 cd $FlagScale_HOME/benchmarks/inference
 nohup bash $SCRIPT_FILE $MODEL_INFO $CHECKPOINT $MASTER_PORT $DEVICES $TYPE > $LOG_FILE 2>&1 &

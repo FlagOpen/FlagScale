@@ -3,7 +3,7 @@ import sys
 import torch
 import time
 from tqdm import tqdm
-from benchmark_throughout import sampling_requests, model_provider
+from benchmark_megatron_throughout import sampling_requests, model_provider
 
 pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 sys.path.append(os.path.join(pardir, "megatron"))
@@ -69,7 +69,6 @@ if __name__=="__main__":
     tokenizer = get_tokenizer()
 
     # validate args
-    assert args.num_requests % args.micro_batch_size == 0
     if args.dataset_path is None:
         assert args.prompt_len is not None
         assert args.generate_len is not None
