@@ -25,7 +25,6 @@ INFER_ARGS="
     --pipeline-model-parallel-size 1 \
     --make-vocab-size-divisible-by 64 \
     --disable-bias-linear \
-    --disable-bias-linear-qkv \
     --use-flash-attn
 "
 
@@ -70,18 +69,17 @@ if [[ "$TYPE" == "throughout" ]]; then
         --micro-batch-size 1 \
         --num-requests 10 \
         --temperature 1.0 \
-        --top_p 0.9 \
-        --top_k 200 \
+        --top-p 0.9 \
+        --top-k 200 \
         --prompt-len 64 \
         --generate-len 64 \
-        --dataset-path 'test.jsonl' \
         --seed 42
     "
     cmd="
     export CUDA_DEVICE_MAX_CONNECTIONS=1;
     export CUDA_VISIBLE_DEVICES=$DEVICES;
 
-    torchrun $DISTRIBUTED_ARGS test_throughout.py \
+    torchrun $DISTRIBUTED_ARGS benchmark_megatron_throughout.py \
                 $INFER_ARGS \
                 $MIXED_PRECISION_ARGS \
                 $DATA_ARGS \
@@ -94,18 +92,17 @@ elif [[ "$TYPE" == "latency" ]]; then
         --micro-batch-size 1 \
         --num-iters 10 \
         --temperature 1.0 \
-        --top_p 0.9 \
-        --top_k 200 \
+        --top-p 0.9 \
+        --top-k 200 \
         --prompt-len 64 \
         --generate-len 64 \
-        --dataset-path 'test.jsonl' \
         --seed 42
     "
     cmd="
     export CUDA_DEVICE_MAX_CONNECTIONS=1;
     export CUDA_VISIBLE_DEVICES=$DEVICES;
 
-    torchrun $DISTRIBUTED_ARGS test_latency.py \
+    torchrun $DISTRIBUTED_ARGS benchmark_megatron_latency.py \
                   $INFER_ARGS \
                   $MIXED_PRECISION_ARGS \
                   $DATA_ARGS \
@@ -121,7 +118,7 @@ elif [[ "$TYPE" == "serving" ]]; then
     export CUDA_DEVICE_MAX_CONNECTIONS=1;
     export CUDA_VISIBLE_DEVICES=$DEVICES;
 
-    torchrun $DISTRIBUTED_ARGS server.py \
+    torchrun $DISTRIBUTED_ARGS megatron_server.py \
                   $INFER_ARGS \
                   $MIXED_PRECISION_ARGS \
                   $DATA_ARGS \

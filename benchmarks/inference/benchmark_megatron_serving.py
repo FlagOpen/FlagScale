@@ -1,6 +1,11 @@
 import time
 import json
 import requests
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--ip", type=str)
+args = parser.parse_args()
 
 prompt0 = "请用二百字回答生命的意义：我认为，生命的意义在于"
 
@@ -29,12 +34,11 @@ raw_request = {
             "max_gen_time": 15, # for stream mode
         }
 
-
-port = xxx # 部署服务对应的本机端口
-ip = xxx
-url = f'http://{ip}:{port}/Aquila/Batch'# 模型调用地址
+port = 5050 # 部署服务对应的本机端口
+url = f'http://{args.ip}:{port}/Aquila/Batch'# 模型调用地址
 
 s_time = time.time()
+print("Posting...")
 response = requests.post(url, data=json.dumps(raw_request))
-print("response:", response.text)
-print(f"eslaped time: {time.time() - s_time:.2f} seconds")
+print(f"Response: {response.text}")
+print(f"Eslaped time: {time.time() - s_time:.8f} seconds")
