@@ -3,7 +3,7 @@
 MODEL=BAAI/AquilaChat2-7B
 TYPE=latency #throughout/latency
 
-FlagScale_HOME=<XXX>
+FlagScale_HOME=<xxxx>
 LOG_FILE=./log.vllm.$TYPE
 
 cd $FlagScale_HOME/benchmarks/inference;

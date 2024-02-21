@@ -10,7 +10,7 @@ from collections import defaultdict
 from typing import Optional, Union
 from pydantic import BaseModel
 from abc import ABCMeta, abstractmethod
-from benchmark_throughout import model_provider
+from benchmark_megatron_throughout import model_provider
 
 pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 sys.path.append(os.path.join(pardir, "megatron"))
