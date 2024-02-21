@@ -3,6 +3,8 @@ import sys
 import torch
 import json
 import random
+import time
+from tqdm import tqdm
 
 pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 sys.path.append(os.path.join(pardir, "megatron"))
@@ -57,13 +59,11 @@ def add_text_generate_args(parser):
 
     group.add_argument("--num-requests", type=int, default=1,
                        help='Number of requests to process.')
-    group.add_argument("--num-iters", type=int, default=1,
-                       help='Number of iters to run generation for a single batch request.')
     group.add_argument("--temperature", type=float, default=1.0,
                        help='Sampling temperature.')
-    group.add_argument("--top_p", type=float, default=0.0,
+    group.add_argument("--top-p", type=float, default=0.0,
                        help='Top p sampling.')
-    group.add_argument("--top_k", type=int, default=0,
+    group.add_argument("--top-k", type=int, default=0,
                        help='Top k sampling.')
     group.add_argument("--prompt-len", type=int, default=32,
                        help='Length of each prompt')
@@ -104,9 +104,14 @@ if __name__=="__main__":
 
     # validate args
     assert args.num_requests % args.micro_batch_size == 0
- 
+    if args.dataset_path is None:
+        assert args.prompt_len is not None
+        assert args.generate_len is not None
+    else:
+        assert args.prompt_len is None
+
     # prepare requests
-    if os.path.exists(args.dataset_path) and os.path.basename(args.dataset_path) == 'test.jsonl':
+    if args.dataset_path is not None and os.path.exists(args.dataset_path):
         print_rank_0(f"loading data from {args.dataset_path} ...")
         print_rank_0("'prompt_len' and 'generate_len' will be rewritten by real data")
         requests = sampling_requests(args.dataset_path, tokenizer, args.num_requests)
@@ -138,10 +143,11 @@ if __name__=="__main__":
     )
 
     print("Benchmark....")
-    timers("all_requests", log_level=0).start(barrier=True)
+    start = time.perf_counter()
+    pbar = tqdm(total=args.num_requests, desc="Processed requests")
     prompts = []
+    results = []
     max_output_len = 0
-    generated_num = 0
     for prompt, _, output_len in requests:
         prompts.append(prompt)
         max_output_len = max(output_len, max_output_len)
@@ -149,7 +155,7 @@ if __name__=="__main__":
         if len(prompts) < args.micro_batch_size:
             continue
 
-        generate_and_post_process(
+        responses, _, _, _ = generate_and_post_process(
             model,
             prompts=prompts,
             tokens_to_generate=max_output_len,
@@ -166,24 +172,30 @@ if __name__=="__main__":
             prevent_newline_after_colon=False,
             random_seed=args.seed,
         )
-        generated_num += len(prompts)
-        print(f"generated: {generated_num}/{len(requests)}")
+        for i in range(len(prompts)):
+            results.append([prompts[i], responses[i]])
 
+        pbar.update(len(prompts))
         prompts = []
         max_output_len = 0
 
-    time = timers("all_requests").elapsed()
+    pbar.close()
+    end = time.perf_counter()
+
+    for res in results:
+        prompt = res[0]
+        generated_text = res[1][len(prompt):]
+        print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
 
     num_totol_tokens = sum([il + ol for _, il, ol in requests])
+    memory_used = torch.cuda.max_memory_allocated() / (1024 ** 3)
+    memory_pct = memory_used / (torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory / (1024 ** 3)) * 100
 
-    device = next(model.parameters()).device
-    memory_used = torch.cuda.max_memory_allocated(device) / (1024 ** 3)
-    memory_pct = memory_used / (torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)) * 100
-
-    print("=" * 11 + "SUMMARY" + "="*12)
+    print("------------ SUMMARY ------------")
     print(f"Num Request: {len(requests)}")
     print(f"Num totol tokens: {num_totol_tokens}")
     print(f"Batch Size: {args.micro_batch_size}")
-    print(f"Throughput: {args.num_requests / time:.2f} requests/s, {num_totol_tokens / time:.2f} tokens/s")
+    print(f"Elapsed time: {end - start}")
+    print(f"Throughput: {args.num_requests / (end - start):.2f} requests/s, {num_totol_tokens / (end - start):.2f} tokens/s")
     print(f"Max Memory: {memory_used:.2f} GB ({memory_pct:.2f}%)")
-    print("="*30)
+    print("---------------------------------")
