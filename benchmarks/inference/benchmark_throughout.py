@@ -22,7 +22,7 @@ from megatron.text_generation import generate_and_post_process
 from megatron.theoretical_memory_usage import compute_weight_and_optimizer_memory
 
 
-def sampling_requests(data_path, tokenizer, num_requests):
+def sampling_requests(data_path, tokenizer, num_requests, generate_len):
     requests = []
     with open(data_path) as f:
         for line in f:
@@ -33,6 +33,8 @@ def sampling_requests(data_path, tokenizer, num_requests):
 
             input_len = len(tokenizer.tokenize(prompt))
             output_len = len(tokenizer.tokenize(completion))
+            if generate_len is not None:
+                output_len = generate_len
             requests.append((prompt, input_len, output_len))
 
     return random.sample(requests, num_requests)
