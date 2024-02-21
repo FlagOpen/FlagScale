@@ -118,7 +118,7 @@ elif [[ "$TYPE" == "serving" ]]; then
     export CUDA_DEVICE_MAX_CONNECTIONS=1;
     export CUDA_VISIBLE_DEVICES=$DEVICES;
 
-    torchrun $DISTRIBUTED_ARGS server.py \
+    torchrun $DISTRIBUTED_ARGS megatron_server.py \
                   $INFER_ARGS \
                   $MIXED_PRECISION_ARGS \
                   $DATA_ARGS \

@@ -10,7 +10,7 @@ cd $FlagScale_HOME/benchmarks/inference;
 export CUDA_DEVICE_MAX_CONNECTIONS=1;
 export CUDA_VISIBLE_DEVICES=0;
 
-nohup python vllm_$TYPE.py \
+nohup python benchmark_vllm_$TYPE.py \
         --num-requests 10 \
         --temperature 0.9 \
         --top-p 0.9 \
