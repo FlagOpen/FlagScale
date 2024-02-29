@@ -28,6 +28,7 @@ elif [[ $command == "stop" ]]; then
         pid=$(ssh $host "cat $LOG_FILE.$COUNT.$host.pid")
         ssh $host "pkill -P $pid" 
         echo "Process on $host is killed."
+        ((COUNT++))
     done
 else
     echo "Invalid command. Use 'start' or 'stop'."
