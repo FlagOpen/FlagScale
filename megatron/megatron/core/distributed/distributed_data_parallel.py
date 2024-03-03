@@ -75,6 +75,10 @@ class DistributedDataParallel(MegatronModule):
         self.module = module
         self.param_to_grad_buffer = {}
 
+        # Store the param name to index map 
+        # for repartitioning the distributed optimizer state.
+        self.param_name_to_index_map = {}
+
         # Group parameters by their gradient type.
         param_to_name = {}
         dense_params = []
@@ -126,14 +130,13 @@ class DistributedDataParallel(MegatronModule):
                 )
                 for param in params:
                     self.param_to_grad_buffer[param] = grad_buffers[-1]
-                grad_buffer_param_index_map[dtype] = grad_buffers[dtype].param_index_map
+                grad_buffer_param_index_map[dtype] = grad_buffers[-1].param_index_map
 
-            # Store the param name to index map for repartitioning the distributed optimizer state.
-            self.param_name_to_index_map = {}
-            for name, param in self.module.named_parameters():
-                if param.requires_grad:
-                    dtype = torch.float if accumulate_allreduce_grads_in_fp32 else param.dtype
-                    self.param_name_to_index_map[name] = (tuple(param.shape), grad_buffer_param_index_map[dtype][param])
+            if grad_buffer_param_index_map:
+                for name, param in self.module.named_parameters():
+                    if param.requires_grad:
+                        dtype = torch.float if accumulate_allreduce_grads_in_fp32 else param.dtype
+                        self.param_name_to_index_map[name] = (tuple(param.shape), grad_buffer_param_index_map[dtype][param])
 
             return grad_buffers
 
