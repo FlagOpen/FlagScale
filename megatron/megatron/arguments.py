@@ -1396,7 +1396,7 @@ def _add_validation_args(parser):
     group.add_argument('--eval-interval', type=int, default=1000,
                        help='Interval between running evaluation on '
                        'validation set.')
-    group.add_argument('--extra-valid-interval', type=int, default=1000,
+    group.add_argument('--extra-valid-interval', type=int, default=None,
                        help='Interval between running evaluation on '
                        'extra validation sets.')
     group.add_argument('--skip-train', action='store_true',
