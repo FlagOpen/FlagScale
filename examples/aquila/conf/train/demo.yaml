@@ -1,0 +1,67 @@
+system:
+  tensor_model_parallel_size: 2
+  pipeline_model_parallel_size: 2
+  disable_bias_linear: True
+  use_flash_attn: True
+  sequence_parallel: True
+  use_distributed_optimizer: True
+  precision:
+    bf16: True
+    attention_softmax_in_fp32: True
+    accumulate_allreduce_grads_in_fp32: True
+  logging:
+    log_interval: 1
+    tensorboard_log_interval: 1
+    wandb_project: "aquila2" 
+    wandb_exp_name: "test" 
+  checkpoint:
+    save_interval: 1000 
+
+
+model:
+  num_layers: 12 
+  hidden_size: 4096
+  num_attention_heads: 32
+  seq_length: 2048
+  max_position_embeddings: 2048
+  norm_epsilon: 1e-5
+  use_rotary_position_embeddings: true
+  no_position_embedding: true
+  swiglu: true
+  multiple_of: 256
+  normalization: RMSNorm
+  rotary_interleaved_patch: true
+  untie_embeddings_and_output_weights: true
+  init_method_std: 0.0165
+  attention_dropout: 0.0
+  hidden_dropout: 0.0
+  weight_decay: 0.1
+  clip_grad: 1.0
+  train_samples: 100000 
+  global_batch_size: 32 
+  micro_batch_size: 1
+  # rampup_batch_size: [32, 32, 2000000]
+  seed: 42
+
+  optimizer:
+    lr: 2e-4
+    weight_decay: 0.01
+    adam_beta1: 0.9
+    adam_beta2: 0.95
+    lr_scheduler:
+      lr: 1.5e-4
+      min_lr: 1.5e-5
+      lr_warmup_samples: 500
+      lr_decay_style: cosine 
+
+data:
+  data_path: ${data_path:??}
+  split: 1
+  tokenizer:
+    tokenizer_type: null
+    tokenizer_path: null 
+    vocab_file: null 
+    merge_file: null 
+    special_tokens_file: null 
+    vocab_size: null
+    make_vocab_size_divisible_by: 64
