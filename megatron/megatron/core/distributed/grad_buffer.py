@@ -76,10 +76,7 @@ class Bucket:
         self.data_parallel_group = data_parallel_group
         self.data_parallel_world_size = data_parallel_world_size
         # Replace the following impl for support hetero training
-        # self.data_parallel_rank = torch.distributed.get_rank(group=data_parallel_group)
-        self.data_parallel_rank = parallel_state.get_data_parallel_rank(with_context_parallel=True)
-        assert torch.distributed.get_process_group_ranks(self.data_parallel_group) == \
-            torch.distributed.get_process_group_ranks(parallel_state.get_data_parallel_group(with_context_parallel=True))
+        self.data_parallel_rank = torch.distributed.get_rank(group=data_parallel_group)
         self.overlap_grad_reduce = overlap_grad_reduce
         self.use_distributed_optimizer = use_distributed_optimizer
         self.gradient_scaling_factor = gradient_scaling_factor
