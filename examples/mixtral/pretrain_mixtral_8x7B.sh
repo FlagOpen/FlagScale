@@ -10,7 +10,7 @@ DATA_PATH=$4
 VOCAB_FILE=../examples/aquila/tokenizer/vocab.json
 MERGE_FILE=../examples/aquila/tokenizer/merges.txt
 SPECIAL_TOKENS_FILE=../examples/aquila/tokenizer/special_tokens.txt
-TOKENIZER_PATH=/share/project/zhaoyingli/tokenizer/qwen
+TOKENIZER_PATH=<xxxx>
 
 CHECKPOINT_PATH=$PROJ_HOME/checkpoints/$EXPNAME
 mkdir -p $CHECKPOINT_PATH
