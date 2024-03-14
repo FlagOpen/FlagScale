@@ -7,4 +7,4 @@ python convert.py \
     --target-tensor-parallel-size 2 \
     --target-pipeline-parallel-size 2 \
     --target-expert-parallel-size 2 \
-    --megatron-path /share/project/zhaoyingli/FlagScale/megatron
+    --megatron-path <xxx>
