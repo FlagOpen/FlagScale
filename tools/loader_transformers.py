@@ -161,24 +161,7 @@ def _load_checkpoint(queue, args):
     queue.put(md)
 
     # load ckpt
-    model, hf_model = ckpt_plugin.load_checkpoint_hf2mg(margs)
-
-    # print("="*30)
-    # print("transformers:")
-    # hf_state_dict = hf_model.state_dict()
-    # for name, param in hf_state_dict.items():
-    #     print("name:", name)
-    #     print("param:", torch.sum(param), param.dtype)
-
-    # print("="*30)
-    # print("megatron:")
-    # mg_state_dict = model.state_dict()
-    # for name, param in mg_state_dict.items():
-    #     print("name:", name)
-    #     try:
-    #         print("param:", torch.sum(param), param.dtype)
-    #     except Exception as e:
-    #         print('Failed to sum: ', repr(e))
+    model = ckpt_plugin.load_checkpoint_hf2mg(margs)
 
     # Send embeddings.
     message = dict()

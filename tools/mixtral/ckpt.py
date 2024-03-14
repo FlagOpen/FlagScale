@@ -85,4 +85,4 @@ def load_checkpoint_hf2mg(args):
         _set_layer_state(args, model, hf_model, layer_idx)
     model.decoder.final_layernorm.weight.data.copy_(hf_model.model.norm.weight)
 
-    return model, hf_model
+    return model
