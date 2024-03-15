@@ -137,7 +137,7 @@ def save_checkpoint(queue, args):
         sys.argv.append('--add-qkv-bias')
     if md.model_type == 'BERT' and not md.bert_binary_head:
         sys.argv.append('--bert-no-binary-head')
-    if args.target_expert_parallel_size > 1:
+    if md.num_experts:
         sys.argv.append('--sequence-parallel')
         os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
     if md.params_dtype == torch.float16:

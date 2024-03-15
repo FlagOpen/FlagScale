@@ -77,7 +77,7 @@ def _load_checkpoint(queue, args):
     # Arguments do sanity checks on the world size, but we don't care,
     # so trick it into thinking we are plenty of processes
     margs.world_size = margs.tensor_model_parallel_size * margs.pipeline_model_parallel_size * margs.expert_model_parallel_size
-    if margs.expert_model_parallel_size > 1:
+    if margs.num_experts:
         os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
     margs = validate_args(margs)
 
