@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Runs Mixtral 8x7B model on 16 A100 GPUs
-
 PROJ_HOME=$1
 EXPNAME=$2
 HOSTFILE=$3
@@ -131,7 +129,7 @@ LOGGING_ARGS=(
 
 if [ -n "${WANDB_API_KEY}" ]; then
     LOGGING_ARGS+=(
-        --wandb-project ${WANDB_PROJECT:-"Mixtral-Finetuning"}
+        --wandb-project ${WANDB_PROJECT:-"Mixtral"}
         --wandb-exp-name ${WANDB_NAME:-"Mixtral_8x7B"} 
     )
 fi
