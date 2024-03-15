@@ -132,7 +132,7 @@ def _load_checkpoint(queue, args):
         models = [[] for _ in range(vp_size)]
         for rank_id in range(count):
             tp_rank = rank_id % tp_size
-            ep_rank = rank_id // ep_size
+            ep_rank = rank_id // tp_size
             mpu.set_tensor_model_parallel_rank(tp_rank)
             mpu.set_expert_model_parallel_rank(ep_rank)
             if pp_size > 1 and vp_size > 1:

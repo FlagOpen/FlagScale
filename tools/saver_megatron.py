@@ -419,7 +419,7 @@ def save_checkpoint(queue, args):
 
         for tp_ep_rank, model in enumerate(models):
             tp_rank = tp_ep_rank % tp_size
-            ep_rank = tp_ep_rank // ep_size
+            ep_rank = tp_ep_rank // tp_size
             mpu.set_tensor_model_parallel_rank(tp_rank)
             mpu.set_expert_model_parallel_rank(ep_rank)
             checkpoint_name = get_checkpoint_name(margs.save, md.iteration)
