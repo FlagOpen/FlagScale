@@ -214,7 +214,6 @@ def _load_checkpoint(queue, args):
     # md.tokenizer_type = margs.tokenizer_type
     md.iteration = margs.iteration
     md.params_dtype = margs.params_dtype
-    md.bert_binary_head = margs.bert_binary_head
     md.output_layer = margs.untie_embeddings_and_output_weights
     md.position_embedding_type = margs.position_embedding_type
     md.add_bias_linear = margs.add_bias_linear

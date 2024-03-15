@@ -23,7 +23,7 @@ def _load_checkpoint(queue, args):
         major, minor, _ = map(int, transformers.__version__.split('.'))
         assert major >= 4 and minor >= 31
     except:
-        raise ImportError("")
+        raise ImportError("transformers version >= 4.31.0 ")
 
     # Search in directory above this.
     root_path = os.path.abspath(
@@ -104,7 +104,6 @@ def _load_checkpoint(queue, args):
     check_for_arg('max_position_embeddings')
     check_for_arg('position_embedding_type')
     check_for_arg('iteration')
-    check_for_arg('bert_binary_head')
     check_for_arg('params_dtype')
     check_for_arg('swiglu', False)
     check_for_arg('disable_bias_linear', False)
@@ -142,7 +141,6 @@ def _load_checkpoint(queue, args):
     md.max_position_embeddings = margs.max_position_embeddings
     md.iteration = margs.iteration
     md.params_dtype = margs.params_dtype
-    md.bert_binary_head = margs.bert_binary_head
     md.output_layer = margs.untie_embeddings_and_output_weights
     md.position_embedding_type = margs.position_embedding_type
     md.add_bias_linear = margs.add_bias_linear

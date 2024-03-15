@@ -31,7 +31,6 @@ def load_args_hf2mg(args):
     args.moe_router_load_balancing_type = "aux_loss"
     args.moe_aux_loss_coeff = mixtral_args["router_aux_loss_coef"]
     args.untie_embeddings_and_output_weights = not mixtral_args["tie_word_embeddings"]
-    mixtral_args["torch_dtype"] = "float32"
     args.bf16 = mixtral_args["torch_dtype"] == "bfloat16"
     args.fp16 = mixtral_args["torch_dtype"] == "float16"
     args.vocab_size = mixtral_args["vocab_size"]
