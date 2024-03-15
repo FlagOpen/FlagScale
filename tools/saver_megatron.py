@@ -324,7 +324,7 @@ def save_checkpoint(queue, args):
                                 expert_l0_bias = torch.chunk(msg.pop(f"expert{global_expert_id} l0 bias"), tp_size, dim=0)
                         # copy
                         for tp_rank in range(tp_size):
-                            tp_ep_rank = ep_rank * ep_size + tp_rank
+                            tp_ep_rank = ep_rank * tp_size + tp_rank
                             layer = models[tp_ep_rank].decoder.layers[layer_id]
                             layer.mlp.router.weight.data.copy_(router_weight)
                             layer.pre_mlp_layernorm.weight.data.copy_(pre_mlp_layernorm)

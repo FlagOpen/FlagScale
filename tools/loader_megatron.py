@@ -317,7 +317,7 @@ def _load_checkpoint(queue, args):
                             l1_weight = []
                             l1_bias = None
                             for tp_rank in range(tp_size):
-                                tp_ep_rank = ep_rank * ep_size + tp_rank
+                                tp_ep_rank = ep_rank * tp_size + tp_rank
                                 layer = models[tp_ep_rank].decoder.layers[layer_id]
                                 expert = layer.mlp.experts.local_experts[expert_id]
 
