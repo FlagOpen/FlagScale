@@ -48,12 +48,19 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     # Custom arguments.
     if extra_args_provider is not None:
         parser = extra_args_provider(parser)
-
+    
     # Parse.
     if ignore_unknown_args:
         args, _ = parser.parse_known_args()
     else:
         args = parser.parse_args()
+
+    # Experimental yaml
+    if args.yaml_cfg is not None:
+        from .yaml_arguments import load_yaml
+        assert args.yaml_cfg and args.use_mcore_models, "To use yaml, mcore must be enabled"
+        args = load_yaml(args.yaml_cfg)
+        
 
     # Args from environment
     args.rank = int(os.getenv('RANK', '0'))
@@ -509,6 +516,10 @@ def validate_args(args, defaults={}):
         assert not args.fp16, \
             "Expert parallelism is not supported with fp16 training."
 
+    # Distributed checkpointing checks
+    if args.use_dist_ckpt and not args.use_mcore_models:
+        raise RuntimeError('--use-dist-ckpt only support Megatron Core, please add --use-mcore-models.')
+
     # Print arguments.
     _print_args("arguments", args)
     retro_args = get_retro_args()
@@ -919,20 +930,6 @@ def _add_regularization_args(parser):
     group.add_argument('--sgd-momentum', type=float, default=0.9,
                        help='Momentum factor for sgd')
 
-    # beta3 is for the optimizer Adan, but not used in Adam.
-    group.add_argument('--adan-beta1', type=float, default=0.98,
-                       help='First coefficient for computing running averages '
-                       'of gradient and its square')
-    group.add_argument('--adan-beta2', type=float, default=0.92,
-                       help='Second coefficient for computing running averages '
-                       'of gradient and its square')
-    group.add_argument('--adan-beta3', type=float, default=0.99,
-                       help='Second coefficient for computing running averages '
-                       'of gradient and its square')
-    group.add_argument('--adan-eps', type=float, default=1e-08,
-                       help='Term added to the denominator to improve'
-                       'numerical stability')
-
     return parser
 
 
@@ -1086,7 +1083,7 @@ def _add_training_args(parser):
                        help='Enable bias only in the QKV linear layers',
                        dest='add_qkv_bias')
     group.add_argument('--optimizer', type=str, default='adam',
-                       choices=['adam', 'sgd', 'adan'],
+                       choices=['adam', 'sgd'],
                        help='Optimizer function')
     group.add_argument('--dataloader-type', type=str, default=None,
                        choices=['single', 'cyclic'],
@@ -1271,6 +1268,15 @@ def _add_checkpointing_args(parser):
                        help="If '--load' is set, but checkpoint is not found "
                        "(e.g., path typo), then exit instead of random "
                        "initialization.")
+    group.add_argument('--use-dist-ckpt', action='store_true',
+                       help='Use distributed checkpoint format.')
+    group.add_argument('--auto-detect-ckpt-format', action='store_true',
+                       help='Determine if the checkpoint format is in legacy or distributed format.'
+                            ' If False, expects distributed checkpoint iff args.use_dist_ckpt.'
+                            ' Might slow down loading a bit (double rank0 ckpt load).')
+    group.add_argument('--dist-ckpt-format', type=str, default='torch_dist',
+                       choices=['zarr', 'torch_dist'],
+                       help='Distributed checkpoint format to use.')
 
     return parser
 
@@ -1443,6 +1449,9 @@ def _add_data_args(parser):
                        'dataset2-path ...')
     group.add_argument('--data-cache-path', default=None,
                        help='Path to a directory to hold cached index files.')
+    group.add_argument('--no-mmap-bin-files', action='store_false',
+                       help='Disable mmap-ing of .bin files.',
+                       dest='mmap_bin_files')
     group.add_argument('--mock-data', action='store_true',
                        help='Skip data loading and validation and opt for artificial '
                        'generation of mock data when an implementation is available.')
@@ -1679,6 +1688,8 @@ def _add_experimental_args(parser):
                        'To use local spec specify local as the argument.'
                        'For more details, see the model class, '
                        '`transformer_block.py`, or `transformer_layer.py`')
+    group.add_argument('--yaml-cfg', type=str, default=None, 
+                       help = 'Config file to add additional arguments')
 
     return parser
 
