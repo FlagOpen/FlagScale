@@ -46,12 +46,19 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     # Custom arguments.
     if extra_args_provider is not None:
         parser = extra_args_provider(parser)
-
+    
     # Parse.
     if ignore_unknown_args:
         args, _ = parser.parse_known_args()
     else:
         args = parser.parse_args()
+
+    # Experimental yaml
+    if args.yaml_cfg is not None:
+        from .yaml_arguments import load_yaml
+        assert args.yaml_cfg and args.use_mcore_models, "To use yaml, mcore must be enabled"
+        args = load_yaml(args.yaml_cfg)
+        
 
     # Args from environment
     args.rank = int(os.getenv('RANK', '0'))
@@ -421,6 +428,10 @@ def validate_args(args, defaults={}):
             "Number of experts should be a multiple of expert model parallel_size."
         assert not args.fp16, \
             "Expert parallelism is not supported with fp16 training."
+
+    # Distributed checkpointing checks
+    if args.use_dist_ckpt and not args.use_mcore_models:
+        raise RuntimeError('--use-dist-ckpt only support Megatron Core, please add --use-mcore-models.')
 
     # Print arguments.
     _print_args("arguments", args)
@@ -1092,6 +1103,15 @@ def _add_checkpointing_args(parser):
                        help="If '--load' is set, but checkpoint is not found "
                        "(e.g., path typo), then exit instead of random "
                        "initialization.")
+    group.add_argument('--use-dist-ckpt', action='store_true',
+                       help='Use distributed checkpoint format.')
+    group.add_argument('--auto-detect-ckpt-format', action='store_true',
+                       help='Determine if the checkpoint format is in legacy or distributed format.'
+                            ' If False, expects distributed checkpoint iff args.use_dist_ckpt.'
+                            ' Might slow down loading a bit (double rank0 ckpt load).')
+    group.add_argument('--dist-ckpt-format', type=str, default='torch_dist',
+                       choices=['zarr', 'torch_dist'],
+                       help='Distributed checkpoint format to use.')
 
     return parser
 
@@ -1255,6 +1275,9 @@ def _add_data_args(parser):
                        'dataset2-path ...')
     group.add_argument('--data-cache-path', default=None,
                        help='Path to a directory to hold cached index files.')
+    group.add_argument('--no-mmap-bin-files', action='store_false',
+                       help='Disable mmap-ing of .bin files.',
+                       dest='mmap_bin_files')
     group.add_argument('--mock-data', action='store_true',
                        help='Skip data loading and validation and opt for artificial '
                        'generation of mock data when an implementation is available.')
@@ -1481,5 +1504,7 @@ def _add_experimental_args(parser):
                        'To use local spec specify local as the argument.'
                        'For more details, see the model class, '
                        '`transformer_block.py`, or `transformer_layer.py`')
+    group.add_argument('--yaml-cfg', type=str, default=None, 
+                       help = 'Config file to add additional arguments')
 
     return parser
