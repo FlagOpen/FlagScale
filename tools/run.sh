@@ -7,4 +7,5 @@ python convert.py \
     --target-tensor-parallel-size 2 \
     --target-pipeline-parallel-size 2 \
     --target-expert-parallel-size 2 \
+    --target-params-dtype fp32 \
     --megatron-path <xxx>

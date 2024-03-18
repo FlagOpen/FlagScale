@@ -135,11 +135,19 @@ def save_checkpoint(queue, args):
         sys.argv.append('--disable-bias-linear')
     if md.add_qkv_bias:
         sys.argv.append('--add-qkv-bias')
-    if md.model_type == 'BERT' and not md.bert_binary_head:
-        sys.argv.append('--bert-no-binary-head')
     if md.num_experts:
         sys.argv.append('--sequence-parallel')
         os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
+
+    if args.target_params_dtype is not None:
+        assert args.target_params_dtype in ["fp32", "fp16", "bf16"]
+        if args.target_params_dtype == "fp32":
+            md.params_dtype = torch.float32
+        elif args.target_params_dtype == "fp16":
+            md.params_dtype = torch.float16
+        elif args.target_params_dtype == "bf16":
+            md.params_dtype = torch.bfloat16
+
     if md.params_dtype == torch.float16:
         sys.argv.append('--fp16')
     elif md.params_dtype == torch.bfloat16:
