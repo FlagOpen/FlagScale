@@ -10,8 +10,8 @@ system:
   logging:
     log_interval: 1
     tensorboard_log_interval: 1
-    wandb_project: "mixtral" 
-    wandb_exp_name: "mixtral-8x7b" 
+    wandb_project: mixtral
+    wandb_exp_name: mixtral-8x7b
   checkpoint:
     save_interval: 10000
     # no_load_optim: true

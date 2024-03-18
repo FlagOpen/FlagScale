@@ -56,7 +56,7 @@ MODEL_ARGS=(
     --disable-bias-linear
     --seq-length 2048
     --max-position-embeddings 32768
-    --num-layers 4
+    --num-layers 32
     --hidden-size 4096
     --ffn-hidden-size 14336
     --num-attention-heads 32
@@ -75,7 +75,7 @@ MODEL_ARGS=(
 
 MOE_ARGS=(
     --num-experts 8
-    --expert-model-parallel-size 2 # 4
+    --expert-model-parallel-size 4
     --moe-router-load-balancing-type aux_loss # options: aux_loss, sinkhorn, None. Default is aux_loss.
     --moe-router-topk 2
     --moe-aux-loss-coeff 1e-2
@@ -106,11 +106,12 @@ TRAINING_ARGS=(
     --lr-warmup-iters 500
     --clip-grad 1.0
     --bf16
+    # --seed 42
 )
 
 MODEL_PARALLEL_ARGS=(
-    --tensor-model-parallel-size 2
-    --pipeline-model-parallel-size 2
+    --tensor-model-parallel-size 4
+    --pipeline-model-parallel-size 1
     --sequence-parallel
     --use-distributed-optimizer
 )
@@ -123,14 +124,14 @@ LOGGING_ARGS=(
     --save $CHECKPOINT_PATH \
     --load $CHECKPOINT_PATH \
     --tensorboard-dir "${CHECKPOINT_PATH}/tensorboard" \
-    --no-load-optim \
-    --no-load-rng
+    # --no-load-optim \
+    # --no-load-rng
 )
 
 if [ -n "${WANDB_API_KEY}" ]; then
     LOGGING_ARGS+=(
         --wandb-project ${WANDB_PROJECT:-"Mixtral"}
-        --wandb-exp-name ${WANDB_NAME:-"Mixtral_8x7B"} 
+        --wandb-exp-name ${WANDB_NAME:-"Mixtral_8x7B"}
     )
 fi
 
