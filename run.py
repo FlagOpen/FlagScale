@@ -1,11 +1,10 @@
-import argparse
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from flagscale.logger import logger
 from flagscale.launcher.runner import SSHRunner 
 
 
-@hydra.main(version_base=None)
+@hydra.main(version_base=None, config_name="config")
 def main(config : DictConfig) -> None:
     runner = SSHRunner(config)
     

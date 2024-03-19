@@ -11,7 +11,7 @@ import numpy
 import torch
 
 from megatron.core.datasets.blended_megatron_dataset_config import BlendedMegatronDatasetConfig
-from megatron.core.datasets.indexed_dataset import MMapIndexedDataset
+from megatron.core.datasets.indexed_dataset import IndexedDataset
 from megatron.core.datasets.megatron_dataset import MegatronDataset, MockDataset
 from megatron.core.datasets.utils import Split, log_single_rank
 from megatron import get_args
@@ -75,7 +75,12 @@ class MockGPTDataset(MockDataset):
         pad = 2
         eod = 0
 
-        rng = numpy.random.default_rng(seed=[self.split.value, idx])
+        assert (
+            idx < self.num_samples,
+            "Exceeded the available number of samples ({self.num_samples})",
+        )
+
+        rng = numpy.random.default_rng(seed=[self.index_split.value, idx])
         length = rng.integers(low=0, high=self.config.sequence_length)
         sample_toks = numpy.zeros(length) + tok
         sample_pads = numpy.zeros(self.config.sequence_length - length - 1) + pad
@@ -106,7 +111,7 @@ class GPTDataset(MegatronDataset):
     """The base GPT dataset
 
     Args:
-        indexed_dataset (MMapIndexedDataset): The MMapIndexedDataset around which to build the
+        indexed_dataset (IndexedDataset): The IndexedDataset around which to build the
         MegatronDataset
 
         dataset_path (str): The real path on disk to the dataset, for bookkeeping
@@ -122,7 +127,7 @@ class GPTDataset(MegatronDataset):
 
     def __init__(
         self,
-        indexed_dataset: MMapIndexedDataset,
+        indexed_dataset: IndexedDataset,
         dataset_path: str,
         indexed_indices: numpy.ndarray,
         num_samples: int,
@@ -147,33 +152,33 @@ class GPTDataset(MegatronDataset):
         ) = self._build_document_sample_shuffle_indices()
 
     @staticmethod
-    def numel_low_level_dataset(low_level_dataset: MMapIndexedDataset) -> int:
+    def numel_low_level_dataset(low_level_dataset: IndexedDataset) -> int:
         """Abstract method implementation
 
-        For GPT, the underlying MMapIndexedDataset should be split by sequence, as opposed to, say,
+        For GPT, the underlying IndexedDataset should be split by sequence, as opposed to, say,
         BERT, which should be split by document
 
         Args:
-            low_level_dataset (MMapIndexedDataset): The underlying MMapIndexedDataset
+            low_level_dataset (IndexedDataset): The underlying IndexedDataset
 
         Returns:
-            int: The number of unique elements in the underlying MMapIndexedDataset
+            int: The number of unique elements in the underlying IndexedDataset
         """
         return low_level_dataset.sequence_lengths.shape[0]
 
     @staticmethod
-    def build_low_level_dataset(dataset_path: str, config: GPTDatasetConfig) -> MMapIndexedDataset:
+    def build_low_level_dataset(dataset_path: str, config: GPTDatasetConfig) -> IndexedDataset:
         """Abstract method implementation
 
         Args:
-            dataset_path (str): The real path prefix to the MMapIndexedDataset .bin and .idx files
+            dataset_path (str): The real path prefix to the IndexedDataset .bin and .idx files
 
             config (BlendedMegatronDatasetConfig): The dataset config
 
         Returns:
-            MMapIndexedDataset: The underlying MMapIndexedDataset
+            IndexedDataset: The underlying IndexedDataset
         """
-        return MMapIndexedDataset(dataset_path, False)
+        return IndexedDataset(dataset_path, multimodal=False, mmap=config.mmap_bin_files)
 
     def __len__(self) -> int:
         """Abstract method implementation
@@ -319,9 +324,6 @@ class GPTDataset(MegatronDataset):
             )
         )
 
-        num_tokens_per_epoch = self._get_num_tokens_per_epoch()
-        num_epochs = self._get_num_epochs(num_tokens_per_epoch)
-
         # Build on rank 0 or first rank of each nodes 
         # if there is no shared file system
         args = get_args()
@@ -343,6 +345,8 @@ class GPTDataset(MegatronDataset):
             )
 
             sequence_length = self.config.sequence_length
+            num_tokens_per_epoch = self._get_num_tokens_per_epoch()
+            num_epochs = self._get_num_epochs(num_tokens_per_epoch)
 
             if num_epochs == 1:
                 separate_final_epoch = False
@@ -487,7 +491,6 @@ class GPTDataset(MegatronDataset):
         log_single_rank(
             logger, logging.INFO, f"> total number of samples: {sample_index.shape[0] - 1}"
         )
-        log_single_rank(logger, logging.INFO, f"> total number of epochs: {num_epochs}")
 
         return document_index, sample_index, shuffle_index
 

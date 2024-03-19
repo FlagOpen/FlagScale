@@ -113,7 +113,6 @@ class DistributedDataParallel(MegatronModule):
 
             # Allocate the grad buffers and map the grads.
             grad_buffers = []
-            grad_buffer_param_index_map = {}
             for dtype, params in grad_dtype_to_params.items():
                 grad_buffers.append(
                     GradBuffer(
@@ -130,13 +129,13 @@ class DistributedDataParallel(MegatronModule):
                 )
                 for param in params:
                     self.param_to_grad_buffer[param] = grad_buffers[-1]
-                grad_buffer_param_index_map[dtype] = grad_buffers[-1].param_index_map
 
-            if grad_buffer_param_index_map:
-                for name, param in self.module.named_parameters():
-                    if param.requires_grad:
-                        dtype = torch.float if accumulate_allreduce_grads_in_fp32 else param.dtype
-                        self.param_name_to_index_map[name] = (tuple(param.shape), grad_buffer_param_index_map[dtype][param])
+                grad_buffer_param_index_map = grad_buffers[-1].param_index_map
+                for param in params:
+                    assert param.requires_grad
+                    param_name = param_to_name[param]
+                    param_index = grad_buffer_param_index_map[param]
+                    self.param_name_to_index_map[param_name] = (tuple(param.shape), param_index)
 
             return grad_buffers
 
