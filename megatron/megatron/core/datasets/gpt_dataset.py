@@ -1,7 +1,8 @@
-# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 
 import logging
 import os
+import sys
 import time
 from dataclasses import dataclass
 from typing import Dict, Tuple
@@ -10,7 +11,7 @@ import numpy
 import torch
 
 from megatron.core.datasets.blended_megatron_dataset_config import BlendedMegatronDatasetConfig
-from megatron.core.datasets.indexed_dataset import MMapIndexedDataset
+from megatron.core.datasets.indexed_dataset import IndexedDataset
 from megatron.core.datasets.megatron_dataset import MegatronDataset, MockDataset
 from megatron.core.datasets.utils import Split, log_single_rank
 from megatron import get_args
@@ -22,12 +23,15 @@ logger = logging.getLogger(__name__)
 class GPTDatasetConfig(BlendedMegatronDatasetConfig):
     """Configuration object for Megatron Core GPT datasets
 
-       Attributes:          
-           reset_position_ids (bool): Option to reset the position IDs in the dataset at an interval
+    Attributes:          
+        reset_position_ids (bool): Option to reset the position IDs in the dataset at an interval
 
-           reset_attention_mask (bool): Option to reset the attention mask from the dataset
+        reset_attention_mask (bool): Option to reset the attention mask from the dataset
 
-           eod_mask_loss (bool): Option to enable the EOD mask loss
+        eod_mask_loss (bool): Option to enable the EOD mask loss
+
+        vocab_size (int): Size of vocabulary
+      
     """
 
     reset_position_ids: bool = None
@@ -36,7 +40,11 @@ class GPTDatasetConfig(BlendedMegatronDatasetConfig):
 
     eod_mask_loss: bool = None
 
-    def __post_init__(self):
+    vocab_size: int = sys.maxsize
+
+    def __post_init__(self) -> None:
+        """Do asserts and set fields post init
+        """
         super().__post_init__()
 
         assert self.tokenizer is not None
@@ -50,7 +58,7 @@ class MockGPTDataset(MockDataset):
     """The mock GPT dataset
     """
 
-    def __getitem__(self, idx: int) -> Dict[str, numpy.ndarray]:
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """Return a sequence_length + 1 token sequence consisting of the following:
             - (1) S, the RNG length-sentinel in the range [0, sequence_length)
             - (S) tokens
@@ -67,7 +75,12 @@ class MockGPTDataset(MockDataset):
         pad = 2
         eod = 0
 
-        rng = numpy.random.default_rng(seed=[self.split.value, idx])
+        assert (
+            idx < self.num_samples,
+            "Exceeded the available number of samples ({self.num_samples})",
+        )
+
+        rng = numpy.random.default_rng(seed=[self.index_split.value, idx])
         length = rng.integers(low=0, high=self.config.sequence_length)
         sample_toks = numpy.zeros(length) + tok
         sample_pads = numpy.zeros(self.config.sequence_length - length - 1) + pad
@@ -98,7 +111,7 @@ class GPTDataset(MegatronDataset):
     """The base GPT dataset
 
     Args:
-        indexed_dataset (MMapIndexedDataset): The MMapIndexedDataset around which to build the
+        indexed_dataset (IndexedDataset): The IndexedDataset around which to build the
         MegatronDataset
 
         dataset_path (str): The real path on disk to the dataset, for bookkeeping
@@ -109,12 +122,12 @@ class GPTDataset(MegatronDataset):
 
         index_split (Split): The indexed_indices Split
 
-        config (GPTDatasetConfig): The GPT-specific container for all config sourced parameters
+        config (GPTDatasetConfig): The config
     """
 
     def __init__(
         self,
-        indexed_dataset: MMapIndexedDataset,
+        indexed_dataset: IndexedDataset,
         dataset_path: str,
         indexed_indices: numpy.ndarray,
         num_samples: int,
@@ -124,6 +137,8 @@ class GPTDataset(MegatronDataset):
         super().__init__(
             indexed_dataset, dataset_path, indexed_indices, num_samples, index_split, config
         )
+
+        self.vocab_size = config.vocab_size
 
     def _finalize(self) -> None:
         """Abstract method implementation
@@ -137,33 +152,33 @@ class GPTDataset(MegatronDataset):
         ) = self._build_document_sample_shuffle_indices()
 
     @staticmethod
-    def numel_low_level_dataset(low_level_dataset: MMapIndexedDataset) -> int:
+    def numel_low_level_dataset(low_level_dataset: IndexedDataset) -> int:
         """Abstract method implementation
 
-        For GPT, the underlying MMapIndexedDataset should be split by sequence, as opposed to, say,
+        For GPT, the underlying IndexedDataset should be split by sequence, as opposed to, say,
         BERT, which should be split by document
 
         Args:
-            low_level_dataset (MMapIndexedDataset): The underlying MMapIndexedDataset
+            low_level_dataset (IndexedDataset): The underlying IndexedDataset
 
         Returns:
-            int: The number of unique elements in the underlying MMapIndexedDataset
+            int: The number of unique elements in the underlying IndexedDataset
         """
         return low_level_dataset.sequence_lengths.shape[0]
 
     @staticmethod
-    def build_low_level_dataset(dataset_path: str, config: GPTDatasetConfig) -> MMapIndexedDataset:
+    def build_low_level_dataset(dataset_path: str, config: GPTDatasetConfig) -> IndexedDataset:
         """Abstract method implementation
 
         Args:
-            dataset_path (str): The real path prefix to the MMapIndexedDataset .bin and .idx files
+            dataset_path (str): The real path prefix to the IndexedDataset .bin and .idx files
 
             config (BlendedMegatronDatasetConfig): The dataset config
 
         Returns:
-            MMapIndexedDataset: The underlying MMapIndexedDataset
+            IndexedDataset: The underlying IndexedDataset
         """
-        return MMapIndexedDataset(dataset_path, False)
+        return IndexedDataset(dataset_path, multimodal=False, mmap=config.mmap_bin_files)
 
     def __len__(self) -> int:
         """Abstract method implementation
@@ -187,6 +202,10 @@ class GPTDataset(MegatronDataset):
         text = torch.from_numpy(text).long()
         labels = text[1:].contiguous()
         tokens = text[:-1].contiguous()
+
+        assert not torch.any(
+            tokens >= self.vocab_size
+        ), "An input token is out of bounds of the tokenizer vocabulary"
 
         attention_mask, loss_mask, position_ids = _get_ltor_masks_and_position_ids(
             tokens,
@@ -305,9 +324,6 @@ class GPTDataset(MegatronDataset):
             )
         )
 
-        num_tokens_per_epoch = self._get_num_tokens_per_epoch()
-        num_epochs = self._get_num_epochs(num_tokens_per_epoch)
-
         # Build on rank 0 or first rank of each nodes 
         # if there is no shared file system
         args = get_args()
@@ -329,6 +345,8 @@ class GPTDataset(MegatronDataset):
             )
 
             sequence_length = self.config.sequence_length
+            num_tokens_per_epoch = self._get_num_tokens_per_epoch()
+            num_epochs = self._get_num_epochs(num_tokens_per_epoch)
 
             if num_epochs == 1:
                 separate_final_epoch = False
@@ -473,7 +491,6 @@ class GPTDataset(MegatronDataset):
         log_single_rank(
             logger, logging.INFO, f"> total number of samples: {sample_index.shape[0] - 1}"
         )
-        log_single_rank(logger, logging.INFO, f"> total number of epochs: {num_epochs}")
 
         return document_index, sample_index, shuffle_index
 

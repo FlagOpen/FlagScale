@@ -22,11 +22,11 @@ FlagScale provides developers with the actual configurations, optimization schem
 
 ## Quick Start
 
-We highly recommend developers to follow the [Megatron-LM Usage](./README_original.md#contents). Here we provide instructions for Aquila LLMs:
+We highly recommend developers to follow the [Megatron-LM Usage](./megatron/README.md#contents). Here we provide instructions for Aquila LLMs:
 
 ### Setup 
 
-1. Install the Megatron-LM dependencies as the [original link](./README_original.md#setup)
+1. Install the Megatron-LM dependencies as the [original link](./megatron/README.md#setup)
 
 2. Install the requirements for FlagScale
 ```
@@ -51,7 +51,7 @@ Before running `dist_start.sh`, you should provide the required information:
   * `FlagScale_HOME`: the directory of the FlagScale.
   * `PROJ_HOME`: the directory for saving checkpoints, tensorboards and other information.
   * `EXPNAME`: the name of the current training experiment.
-  * `DATA_PATH`: the path of the training datasets following the [Megatron-LM format](./README_original.md#data-preprocessing). For quickly running the pretraining process, we also provide a small processed data ([bin](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.bin) and [idx](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.idx)) from the [Pile](https://pile.eleuther.ai/) dataset.
+  * `DATA_PATH`: the path of the training datasets following the [Megatron-LM format](./megatron/README.md#data-preprocessing). For quickly running the pretraining process, we also provide a small processed data ([bin](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.bin) and [idx](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.idx)) from the [Pile](https://pile.eleuther.ai/) dataset.
   * `HOSTFILE`: the hostfile of the nodes for the current training, which consists of a list of hostnames and slot counts. For example:
     ```
     hostnames-1/IP-1 slots=8

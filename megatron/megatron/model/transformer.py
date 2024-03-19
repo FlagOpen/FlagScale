@@ -525,7 +525,6 @@ class ParallelAttention(MegatronModule):
                  attention_type=AttnType.self_attn,
                  attn_mask_type=AttnMaskType.padding):
         super(ParallelAttention, self).__init__()
-        self.config = config
         args = get_args()
         self.layer_number = max(1, layer_number)
         self.attention_type = attention_type
@@ -534,6 +533,7 @@ class ParallelAttention(MegatronModule):
         self.sequence_parallel = config.sequence_parallel
         self.rotary_interleaved_patch = args.rotary_interleaved_patch
 
+        self.config = config
         self.group_query_attention = args.group_query_attention
         self.num_query_groups = args.num_query_groups
 
@@ -588,7 +588,7 @@ class ParallelAttention(MegatronModule):
                 query_projection_size + 2 * kv_projection_size,
                 config=config,
                 init_method=config.init_method,
-                bias=(args.add_bias_linear_qkv or args.add_bias_linear),
+                bias=args.add_bias_linear or args.add_qkv_bias,
                 gather_output=False)
             if args.apply_init_customized:
                 with tensor_parallel.get_cuda_rng_tracker().fork():
@@ -620,7 +620,7 @@ class ParallelAttention(MegatronModule):
                 query_projection_size,
                 config=config,
                 init_method=config.init_method,
-                bias=(config.add_bias_linear_qkv or config.add_bias_linear),
+                bias=args.add_bias_linear or args.add_qkv_bias,
                 gather_output=False)
 
             self.key_value = tensor_parallel.ColumnParallelLinear(
@@ -628,7 +628,7 @@ class ParallelAttention(MegatronModule):
                 2 * kv_projection_size,
                 config=config,
                 init_method=config.init_method,
-                bias=(config.add_bias_linear_qkv or config.add_bias_linear),
+                bias=args.add_bias_linear or args.add_qkv_bias,
                 gather_output=False)
 
         self.core_attention = CoreAttention(self.layer_number, config,

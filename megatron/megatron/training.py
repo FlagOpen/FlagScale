@@ -4,6 +4,7 @@
 
 import os
 import gc
+import dataclasses
 from datetime import datetime
 import math
 import logging
@@ -27,6 +28,7 @@ from megatron import get_signal_handler
 from megatron import get_timers
 from megatron import get_tensorboard_writer
 from megatron import get_wandb_writer
+from megatron import get_one_logger
 from megatron import get_current_global_batch_size
 from megatron import get_num_microbatches
 from megatron import is_last_rank
@@ -43,7 +45,7 @@ from megatron.model import GPTModel
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import finalize_model_grads
 from megatron.core.enums import ModelType
-from megatron.optimizer import get_megatron_optimizer
+from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig
 from megatron.initialize import initialize_megatron
 from megatron.initialize import write_args_to_tensorboard
 from megatron.initialize import set_jit_fusion_options
@@ -56,6 +58,12 @@ from megatron.utils import calc_params_l2_norm
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.utils import report_memory
 from megatron.model.vision.knn_monitor import compute_feature_bank
+from megatron.utils import is_last_rank
+
+pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+sys.path.append(pardir)
+from flagscale.extra_valid import extra_evaluate_and_print_results
+from flagscale.extra_valid import build_extra_valid_data_iterators
 
 
 def print_datetime(string):
@@ -66,10 +74,13 @@ def print_datetime(string):
 
 
 def num_floating_point_operations(args, batch_size):
+    # Group Query Attention.
     if not args.group_query_attention:
         args.num_query_groups = args.num_attention_heads
+    # MoE.
+    num_experts_routed_to = 1 if args.num_experts is None else args.moe_router_topk
     return (
-        60
+        12
         * batch_size
         * args.seq_length
         * args.num_layers
@@ -77,9 +88,10 @@ def num_floating_point_operations(args, batch_size):
         * args.hidden_size
         * (
             1
-            + (args.num_query_groups / (5 * args.num_attention_heads))
-            + (args.seq_length / (5 * args.hidden_size))
-            + (args.padded_vocab_size / (10 * args.num_layers * args.hidden_size))
+            + ((args.ffn_hidden_size / args.hidden_size) * num_experts_routed_to)
+            + (args.num_query_groups / args.num_attention_heads)
+            + (args.seq_length / args.hidden_size)
+            + (args.padded_vocab_size / (2 * args.num_layers * args.hidden_size))
         )
     )
 
@@ -150,7 +162,8 @@ def pretrain(train_valid_test_dataset_provider,
              process_non_loss_data_func=None,
              extra_args_provider=None,
              args_defaults={},
-             get_batch_fn=None,):
+             get_batch_fn=None,
+             extra_valid_dataset_provider=None):
     """Main training program.
 
     This function will run the followings in the order provided:
@@ -211,10 +224,17 @@ def pretrain(train_valid_test_dataset_provider,
         search_data(train_valid_test_dataset_provider, get_batch_fn)
         return
 
+    one_logger = get_one_logger()
+    if one_logger:
+        one_logger.log_metrics({
+            'train_iterations_warmup': 5
+        })
+
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
     model, optimizer, opt_param_scheduler = setup_model_and_optimizer(
         model_provider, model_type)
+
     timers('model-and-optimizer-setup').stop()
     print_datetime('after model, optimizer, and learning rate '
                    'scheduler are built')
@@ -259,11 +279,12 @@ def pretrain(train_valid_test_dataset_provider,
                 forward_step_func,
                 model, optimizer, opt_param_scheduler,
                 train_data_iterator, valid_data_iterator,
-                process_non_loss_data_func, config)
+                process_non_loss_data_func, config,
+                extra_valid_dataset_provider)
 
         print_datetime('after training is done')
 
-        if args.save and iteration != 0:
+        if args.save and iteration != 0 and iteration % args.save_interval != 0:
             save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
                             num_floating_point_operations_so_far)
     else:
@@ -284,6 +305,7 @@ def pretrain(train_valid_test_dataset_provider,
                                    test_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
                                    verbose=True, write_to_tensorboard=not args.skip_train)
+
 
 
 def update_train_iters(args):
@@ -424,12 +446,14 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
         model = [DDP(config,
                      model_chunk,
                      data_parallel_group=mpu.get_data_parallel_group(with_context_parallel=True),
+                     expert_data_parallel_group=mpu.get_data_modulo_expert_parallel_group(),
                      accumulate_allreduce_grads_in_fp32=args.accumulate_allreduce_grads_in_fp32,
                      overlap_grad_reduce=args.overlap_grad_reduce,
                      use_distributed_optimizer=args.use_distributed_optimizer,
                      # Turn off bucketing for model_chunk 2 onwards, since communication for these
                      # model chunks is overlapped with compute anyway.
-                     disable_bucketing=(model_chunk_idx > 0))
+                     disable_bucketing=(model_chunk_idx > 0),
+                     check_for_nan_in_grad=args.check_for_nan_in_loss_and_grad)
                  for (model_chunk_idx, model_chunk) in enumerate(model)]
 
         # Broadcast params from data parallel src rank to other data parallel ranks.
@@ -520,7 +544,12 @@ def setup_model_and_optimizer(model_provider_func,
     model = get_model(model_provider_func, model_type)
     unwrapped_model = unwrap_model(model)
 
-    optimizer = get_megatron_optimizer(model, no_wd_decay_cond,
+    kwargs = {}
+    for f in dataclasses.fields(OptimizerConfig):
+        if hasattr(args, f.name):
+            kwargs[f.name] = getattr(args, f.name)
+    config = OptimizerConfig(**kwargs)
+    optimizer = get_megatron_optimizer(config, model, no_wd_decay_cond,
                                        scale_lr_cond, lr_mult)
     opt_param_scheduler = get_optimizer_param_scheduler(optimizer)
 
@@ -557,7 +586,6 @@ def setup_model_and_optimizer(model_provider_func,
     return model, optimizer, opt_param_scheduler
 
 
-
 def train_step(forward_step_func, data_iterator,
                model, optimizer, opt_param_scheduler, config):
     """Single training step."""
@@ -589,7 +617,7 @@ def train_step(forward_step_func, data_iterator,
         torch.cuda.empty_cache()
 
     # Vision gradients.
-    if args.vision_pretraining and args.vision_pretraining_type == "dino":
+    if getattr(args, 'vision_pretraining', False) and args.vision_pretraining_type == "dino":
         unwrapped_model = unwrap_model(model[0])
         unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
 
@@ -599,7 +627,7 @@ def train_step(forward_step_func, data_iterator,
     timers('optimizer').stop()
 
     # Vision momentum.
-    if args.vision_pretraining and args.vision_pretraining_type == "dino":
+    if getattr(args, 'vision_pretraining', False) and args.vision_pretraining_type == "dino":
         unwrapped_model = unwrap_model(model[0])
         unwrapped_model.update_momentum(args.curr_iteration)
 
@@ -642,6 +670,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
     timers = get_timers()
     writer = get_tensorboard_writer()
     wandb_writer = get_wandb_writer()
+    one_logger = get_one_logger()
 
     # Advanced, skipped, and Nan iterations.
     advanced_iters_key = 'advanced iterations'
@@ -709,6 +738,12 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
                                                     args.hetero_data_parallel_splits))
         batch_size = micro_batch_for_all_data_parallel * get_num_microbatches()
 
+    # Track app tag & app tag ID
+    if one_logger:
+        job_name = os.environ.get('SLURM_JOB_NAME', None)
+        current_app_tag = f'{job_name}_{batch_size}_{args.world_size}'
+        one_logger.log_app_tag(current_app_tag)
+
     total_iterations = total_loss_dict[advanced_iters_key] + \
                        total_loss_dict[skipped_iters_key]
 
@@ -718,80 +753,103 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
        (iteration % args.tensorboard_log_interval == 0):
         timers.write(timers_to_log, writer, iteration,
                      normalizer=total_iterations)
-    if writer and (iteration % args.tensorboard_log_interval == 0):
+    if is_last_rank() and (iteration % args.tensorboard_log_interval == 0):
         if wandb_writer:
             wandb_writer.log({'samples vs steps': args.consumed_train_samples},
                              iteration)
             wandb_writer.log({'consumed-tokens': args.consumed_train_samples * args.seq_length / 1000. / 1000 / 1000}, iteration)
         if args.log_learning_rate_to_tensorboard:
-            writer.add_scalar('learning-rate', learning_rate, iteration)
-            writer.add_scalar('learning-rate vs samples', learning_rate,
+            if writer:
+                writer.add_scalar('learning-rate', learning_rate, iteration)
+                writer.add_scalar('learning-rate vs samples', learning_rate,
                               args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'learning-rate': learning_rate}, iteration)
         if args.log_batch_size_to_tensorboard:
-            writer.add_scalar('batch-size', batch_size, iteration)
-            writer.add_scalar('batch-size vs samples', batch_size,
+            if writer:
+                writer.add_scalar('batch-size', batch_size, iteration)
+                writer.add_scalar('batch-size vs samples', batch_size,
                               args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'batch-size': batch_size}, iteration)
         for key in loss_dict:
-            writer.add_scalar(key , loss_dict[key], iteration)
-            writer.add_scalar(key + ' vs samples', loss_dict[key],
-                              args.consumed_train_samples)
+            if writer:
+                writer.add_scalar(key , loss_dict[key], iteration)
+                writer.add_scalar(key + ' vs samples', loss_dict[key],
+                                  args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({key: loss_dict[key]}, iteration)
         if args.log_loss_scale_to_tensorboard:
-            writer.add_scalar('loss-scale', loss_scale, iteration)
-            writer.add_scalar('loss-scale vs samples', loss_scale,
-                              args.consumed_train_samples)
+            if writer:
+                writer.add_scalar('loss-scale', loss_scale, iteration)
+                writer.add_scalar('loss-scale vs samples', loss_scale,
+                                  args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'loss-scale': loss_scale}, iteration)
         if args.log_world_size_to_tensorboard:
-            writer.add_scalar('world-size', args.world_size, iteration)
-            writer.add_scalar('world-size vs samples', args.world_size,
-                              args.consumed_train_samples)
+            if writer:
+                writer.add_scalar('world-size', args.world_size, iteration)
+                writer.add_scalar('world-size vs samples', args.world_size,
+                                  args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'world-size': args.world_size}, iteration)
         if grad_norm is not None:
-            writer.add_scalar('grad-norm', grad_norm, iteration)
-            writer.add_scalar('grad-norm vs samples', grad_norm,
-                              args.consumed_train_samples)
+            if writer:
+                writer.add_scalar('grad-norm', grad_norm, iteration)
+                writer.add_scalar('grad-norm vs samples', grad_norm,
+                                  args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'grad-norm': grad_norm}, iteration)
         if num_zeros_in_grad is not None:
-            writer.add_scalar('num-zeros', num_zeros_in_grad, iteration)
-            writer.add_scalar('num-zeros vs samples', num_zeros_in_grad,
-                              args.consumed_train_samples)
+            if writer:
+                writer.add_scalar('num-zeros', num_zeros_in_grad, iteration)
+                writer.add_scalar('num-zeros vs samples', num_zeros_in_grad,
+                                  args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'num-zeros': num_zeros_in_grad}, iteration)
         if params_norm is not None:
-            writer.add_scalar('params-norm', params_norm, iteration)
-            writer.add_scalar('params-norm vs samples', params_norm,
-                              args.consumed_train_samples)
+            if writer:
+                writer.add_scalar('params-norm', params_norm, iteration)
+                writer.add_scalar('params-norm vs samples', params_norm,
+                                  args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'params-norm': params_norm}, iteration)
         if args.log_memory_to_tensorboard:
             mem_stats = torch.cuda.memory_stats()
-            writer.add_scalar(
-                "mem-reserved-bytes",
-                mem_stats["reserved_bytes.all.current"],
-                iteration,
-            )
-            writer.add_scalar(
-                "mem-allocated-bytes",
-                mem_stats["allocated_bytes.all.current"],
-                iteration,
-            )
-            writer.add_scalar(
-                "mem-allocated-count",
-                mem_stats["allocation.all.current"],
-                iteration,
-            )
+            if writer:
+                writer.add_scalar(
+                    "mem-reserved-bytes",
+                    mem_stats["reserved_bytes.all.current"],
+                    iteration,
+                )
+                writer.add_scalar(
+                    "mem-allocated-bytes",
+                    mem_stats["allocated_bytes.all.current"],
+                    iteration,
+                )
+                writer.add_scalar(
+                    "mem-allocated-count",
+                    mem_stats["allocation.all.current"],
+                    iteration,
+                )
+            if wandb_writer:
+                wandb_writer.log(
+                    {"mem-reserved-bytes": mem_stats["reserved_bytes.all.current"]},
+                    iteration,
+                )
+                wandb_writer.log(
+                    {"mem-allocated-bytes": mem_stats["allocated_bytes.all.current"]},
+                    iteration,
+                )
+                wandb_writer.log(
+                    {"mem-allocated-count": mem_stats["allocation.all.current"]},
+                    iteration,
+                )
 
     if iteration % args.log_interval == 0:
         elapsed_time = timers('interval-time').elapsed(barrier=True)
         elapsed_time_per_iteration = elapsed_time / total_iterations
+
         throughput = num_floating_point_operations(args, batch_size) / (
             elapsed_time_per_iteration * 10**12 * args.world_size)
         if args.log_timers_to_tensorboard:
@@ -919,7 +977,7 @@ def save_checkpoint_and_time(iteration, model, optimizer, opt_param_scheduler,
 
 def train(forward_step_func, model, optimizer, opt_param_scheduler,
           train_data_iterator, valid_data_iterator,
-          process_non_loss_data_func, config):
+          process_non_loss_data_func, config, extra_valid_dataset_provider=None):
     """Train the model function."""
     args = get_args()
     timers = get_timers()
@@ -936,6 +994,18 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
 
     # Iterations.
     iteration = args.iteration
+    one_logger = get_one_logger()
+    if one_logger:
+        iteration_start = iteration
+        train_samples_start = args.consumed_train_samples
+        train_samples_target = args.train_samples
+        one_logger.log_metrics({
+            'train_samples_start': args.consumed_train_samples,
+            'train_iterations_start': iteration,
+            'train_samples_target': train_samples_target,
+            'train_iterations_target': args.train_iters,
+        })
+
     num_floating_point_operations_so_far = args.num_floating_point_operations_so_far
 
     # Setup some training config params
@@ -973,6 +1043,36 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         gc.collect()
 
     num_microbatches = get_num_microbatches()
+
+    wandb_writer = get_wandb_writer()
+    if wandb_writer and args.wandb_log_model:
+        # wandb.watch's log_freg needs to take the accumulated number of microbatches into account
+        log_freq = args.wandb_log_model_interval * num_microbatches 
+        wandb_writer.watch(unwrap_model(model), log="all", log_freq=log_freq)
+
+    eval_duration = 0.0
+    eval_iterations = 0
+    def track_e2e_metrics():
+        # Nested function to track a bunch of E2E APP metrics
+        if one_logger:
+            train_duration = timers('interval-time').active_time()  # overall_elapsed
+            train_samples = args.consumed_train_samples - train_samples_start
+            train_iterations = iteration - iteration_start
+            train_iterations_time_msecs_avg = (train_duration * 1000.0) / train_iterations
+            if eval_iterations:
+                validation_iterations_time_msecs_avg = (eval_duration * 1000.0) / eval_iterations
+            else:
+                validation_iterations_time_msecs_avg = None
+
+            one_logger.log_metrics({
+                'train_iterations_end': iteration,
+                'train_samples_end': args.consumed_train_samples,
+                'train_iterations': train_iterations,
+                'train_samples': train_samples,
+                'train_iterations_time_msecs_avg': train_iterations_time_msecs_avg,
+                'validation_iterations_time_msecs_avg': validation_iterations_time_msecs_avg
+            })
+
     while iteration < args.train_iters:
         if args.profile and \
            iteration == args.profile_step_start and \
@@ -990,7 +1090,8 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             assert get_num_microbatches() > num_microbatches, \
                 "number of microbatches should be increasing due to batch size rampup"
             save_checkpoint_and_time(iteration, model, optimizer,
-                                     opt_param_scheduler)
+                                     opt_param_scheduler,
+                                     num_floating_point_operations_so_far)
         num_microbatches = get_num_microbatches()
         update_num_microbatches(args.consumed_train_samples, consistency_check=True)
 
@@ -1022,6 +1123,10 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         params_norm = None
         if args.log_params_norm:
             params_norm = calc_params_l2_norm(model)
+
+        if iteration % args.log_interval == 0:
+            track_e2e_metrics()
+
         report_memory_flag = training_log(loss_dict, total_loss_dict,
                                           optimizer.param_groups[0]['lr'],
                                           iteration, loss_scale,
@@ -1044,16 +1149,53 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                 # Collect all objects.
                 gc.collect()
             prefix = 'iteration {}'.format(iteration)
+            timers('eval-time', log_level=0).start(barrier=True)
             evaluate_and_print_results(prefix, forward_step_func,
                                        valid_data_iterator, model,
                                        iteration, process_non_loss_data_func,
                                        config, False)
+            eval_duration += timers('eval-time').elapsed()
+            eval_iterations += args.eval_iters
+            timers('eval-time').stop()
             if args.manual_gc and args.manual_gc_eval:
                 # Collect only the objects created and used in evaluation.
                 gc.collect(generation=0)
             if args.use_distributed_optimizer and args.overlap_param_gather:
                 optimizer.enable_pre_hook()
             timers('interval-time', log_level=0).start(barrier=True)
+
+        # Extra Evaluation
+        if args.extra_valid_interval and iteration % args.extra_valid_interval == 0:
+            # Need to rebuild the dataloaders for extra validation,
+            # but we don't need to rebuild the datasets
+            # TODO: refactor this code and test this in vp - @aoyulong 
+            if args.virtual_pipeline_model_parallel_size is not None:
+                extra_valid_data_iterators = []
+                for i in range(len(model)):
+                    mpu.set_virtual_pipeline_model_parallel_rank(i)
+                    extra_valid_data_iterators.append(
+                        build_extra_valid_data_iterators(extra_valid_dataset_provider))
+            else:
+                extra_valid_data_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
+            # do_extra_valid flag is used to indicate that we are doing extra validation
+            # and is set in the build_extra_valid_data_iterators function 
+            if args.do_extra_valid:
+                if args.use_distributed_optimizer and args.overlap_param_gather:
+                    optimizer.disable_pre_hook()
+                if args.manual_gc and args.manual_gc_eval:
+                    # Collect all objects.
+                    gc.collect()
+                prefix = 'iteration {}'.format(iteration)
+                for extra_valid_index, extra_valid_data_iterator in enumerate(extra_valid_data_iterators):
+                    extra_evaluate_and_print_results(extra_valid_index, prefix, forward_step_func,
+                                                     extra_valid_data_iterator, model,
+                                                     iteration, process_non_loss_data_func,
+                                                     config, False)
+                if args.manual_gc and args.manual_gc_eval:
+                    # Collect only the objects created and used in evaluation.
+                    gc.collect(generation=0)
+                if args.use_distributed_optimizer and args.overlap_param_gather:
+                    optimizer.enable_pre_hook()
 
         # Checkpointing
         saved_checkpoint = False
@@ -1131,6 +1273,8 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         if args.manual_gc:
             if args.manual_gc_interval != 0 and iteration % args.manual_gc_interval == 0:
                 gc.collect()
+
+    track_e2e_metrics()
 
     # Flush TensorBoard and WandB writers.
     writer = get_tensorboard_writer()
@@ -1221,12 +1365,14 @@ def search_data(train_valid_test_dataset_provider, get_batch):
     searched_data_file = os.path.join(args.data_searching_save, "searched_data_{}_to_{}".format(search_start, search_end))
     torch.save(searched_data, searched_data_file)
 
+
 def evaluate(forward_step_func,
              data_iterator,
              model,
              process_non_loss_data_func,
              config,
-             verbose=False):
+             verbose=False,
+             extra_valid_index=None):
     """Evaluation."""
     args = get_args()
     timers = get_timers()
@@ -1252,15 +1398,22 @@ def evaluate(forward_step_func,
                                                     args.hetero_micro_batch_sizes,
                                                     args.hetero_data_parallel_splits))
         eval_num_microbatches = eval_batch_size // micro_batch_for_all_data_parallel 
+    
+    if extra_valid_index is not None:
+        assert args.extra_valid_iters_list is not None, \
+            "extra_valid_iters_list must be provided if extra_valid_index is not None"
+        eval_iters = args.extra_valid_iters_list[extra_valid_index]
+    else:
+        eval_iters = args.eval_iters
 
     with torch.no_grad():
         iteration = 0
         if verbose:
-            print_rank_0(f'Evaluating on {args.eval_iters * eval_batch_size} samples')
-        while iteration < args.eval_iters:
+            print_rank_0(f'Evaluating on {eval_iters * eval_batch_size} samples')
+        while iteration < eval_iters:
             iteration += 1
             if verbose:
-                print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
+                print_rank_0(f'Evaluating iter {iteration}/{eval_iters}')
 
             forward_backward_func = get_forward_backward_func()
             # Don't care about timing during evaluation
@@ -1319,12 +1472,13 @@ def evaluate(forward_step_func,
         model_module.train()
 
     for key in total_loss_dict:
-        total_loss_dict[key] /= args.eval_iters * eval_num_microbatches
+        total_loss_dict[key] /= eval_iters * eval_num_microbatches
 
     timers('evaluate').stop()
     timers.log(['evaluate'])
 
     return total_loss_dict, collected_non_loss_data, False
+
 
 def evaluate_and_print_results(prefix, forward_step_func,
                                data_iterator, model,

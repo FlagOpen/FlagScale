@@ -24,8 +24,6 @@ class MixedFusedRMSNorm(torch.nn.Module):
                init_weight=None):
         super(MixedFusedRMSNorm, self).__init__()
 
-        assert apply_layernorm_1p == False, "1p layernorm not supported in mixed precision"
-
         self.init_weight = init_weight
         assert self.init_weight is None or isinstance(self.init_weight, float), \
             "Cannot init_weight of None or of non-float"

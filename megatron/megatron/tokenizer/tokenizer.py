@@ -52,11 +52,11 @@ def build_tokenizer(args):
         tokenizer = _AquilaTokenizer(args.vocab_file, args.merge_file,
                                      args.special_tokens_file)
     elif args.tokenizer_type == "HFTokenizer":
-        assert args.hf_tokenizer is not None
-        tokenizer = _HFTokenizer(args.hf_tokenizer)
+        assert args.tokenizer_path is not None
+        tokenizer = _HFTokenizer(args.tokenizer_path)
     elif args.tokenizer_type == "QwenTokenizer":
-        assert args.hf_tokenizer is not None
-        tokenizer = _QwenTokenizer(args.hf_tokenizer)
+        assert args.tokenizer_path is not None
+        tokenizer = _QwenTokenizer(args.tokenizer_path)
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(args.tokenizer_type))
@@ -178,6 +178,16 @@ class _BertWordPieceTokenizer(MegatronTokenizer):
         return self.mask_id
 
     @property
+    def bos(self):
+        """ Id of the beginning of sentence token in the vocabulary."""
+        return self._bos_token_id
+
+    @property
+    def eos(self):
+        """ Id of the end of sentence token in the vocabulary."""
+        return self._eos_token_id
+
+    @property
     def bos_token(self):
         """ Beginning of sentence token id """
         return self._bos_token
@@ -191,16 +201,6 @@ class _BertWordPieceTokenizer(MegatronTokenizer):
     def additional_special_tokens(self):
         """ All the additional special tokens you may want to use (list of strings)."""
         return self._additional_special_tokens
-
-    @property
-    def bos_token_id(self):
-        """ Id of the beginning of sentence token in the vocabulary."""
-        return self._bos_token_id
-
-    @property
-    def eos_token_id(self):
-        """ Id of the end of sentence token in the vocabulary."""
-        return self._eos_token_id
 
     @property
     def additional_special_tokens_ids(self):
@@ -391,20 +391,12 @@ class _SentencePieceTokenizer(MegatronTokenizer):
         return self._pad_id
 
     @property
-    def bos_token_id(self):
-        return self._bos_id
-
-    @property
     def bos(self):
         return self._bos_id
 
     @property
     def eod(self):
         return self._eod_id
-
-    @property
-    def eos_token_id(self):
-        return self._eos_id
 
     @property
     def eos(self):
@@ -593,12 +585,12 @@ class _AquilaTokenizer(MegatronTokenizer):
 class _HFTokenizer(MegatronTokenizer):
     """Huggingface tokenizer."""
 
-    def __init__(self, hf_tokenizer):
+    def __init__(self, tokenizer_path):
         name = 'HFTokenizer'
         super().__init__(name)
         
         from transformers import AutoTokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(hf_tokenizer, trust_remote_code=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
 
         self.eod_id = self.tokenizer.eos_token_id
         self.cls_id = self.tokenizer.bos_token_id
@@ -638,8 +630,8 @@ class _HFTokenizer(MegatronTokenizer):
 class _QwenTokenizer(_HFTokenizer):
     """Adapted Qwen tokenizer."""
     
-    def __init__(self, hf_tokenizer):
-        super().__init__(hf_tokenizer)
+    def __init__(self, tokenizer_path):
+        super().__init__(tokenizer_path)
         self.eod_id = self.tokenizer.encode('<|extra_204|>')[0]
         self.cls_id = self.tokenizer.encode('<|extra_203|>')[0]
         self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]

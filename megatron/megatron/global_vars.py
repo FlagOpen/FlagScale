@@ -7,10 +7,10 @@ import sys
 import torch
 
 from megatron import dist_signal_handler
+from megatron.core import Timers
 from megatron.tokenizer import build_tokenizer
 from .microbatches import build_num_microbatches_calculator
 from .microbatches_hetero import build_num_microbatches_calculator_hetero
-from .timers import Timers
 from .hetero_context import HeteroContext
 
 _GLOBAL_ARGS = None
@@ -19,6 +19,7 @@ _GLOBAL_NUM_MICROBATCHES_CALCULATOR = None
 _GLOBAL_TOKENIZER = None
 _GLOBAL_TENSORBOARD_WRITER = None
 _GLOBAL_WANDB_WRITER = None
+_GLOBAL_ONE_LOGGER = None
 _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
 _GLOBAL_SIGNAL_HANDLER = None
@@ -65,6 +66,11 @@ def get_wandb_writer():
     to check if it is initialized."""
     return _GLOBAL_WANDB_WRITER
 
+
+def get_one_logger():
+    """Return one logger. It can be None so no need
+    to check if it is initialized."""
+    return _GLOBAL_ONE_LOGGER
 
 def get_adlr_autoresume():
     """ADLR autoresume object. It can be None so no need
@@ -127,6 +133,17 @@ def set_global_writers(args):
     from .utils import is_last_rank
     if is_last_rank(): 
         _set_tensorboard_writer(args)
+        _set_one_logger(args)
+
+    # build wandb writers for all processes in the dp group of the last rank 
+    from megatron.core import mpu 
+    size = torch.distributed.get_world_size(mpu.get_model_parallel_group())
+    ranks_tensor = torch.tensor([0 for _ in range(size)], dtype=torch.int, device='cuda')
+    if is_last_rank():
+        ranks_list = torch.distributed.get_process_group_ranks(mpu.get_model_parallel_group())
+        ranks_tensor = torch.tensor(ranks_list, dtype=torch.int, device='cuda') 
+    torch.distributed.all_reduce(ranks_tensor)
+    if torch.distributed.get_rank() in ranks_tensor.tolist(): 
         _set_wandb_writer(args)
 
 
@@ -202,9 +219,13 @@ def _set_wandb_writer(args):
         else:
             # Defaults to the save dir.
             save_dir = os.path.join(args.save, 'wandb')
+        rank = torch.distributed.get_rank()
+        name = f'{args.wandb_exp_name}-rank{rank}'
+        group = args.wandb_exp_name
         wandb_kwargs = {
             'dir': save_dir,
-            'name': args.wandb_exp_name,
+            'name': name,
+            'group': group,
             'project': args.wandb_project,
             'mode': 'offline',
             'config': vars(args)}
@@ -212,6 +233,26 @@ def _set_wandb_writer(args):
         wandb.init(**wandb_kwargs)
         _GLOBAL_WANDB_WRITER = wandb
 
+
+def _set_one_logger(args):
+    global _GLOBAL_ONE_LOGGER
+    _ensure_var_is_not_initialized(_GLOBAL_ONE_LOGGER, 'one logger')
+
+    if args.enable_one_logger:
+        try:
+            from one_logger.core import OneLogger
+            config = {
+               'project': args.one_logger_project,
+               'entity': args.one_logger_entity,
+               'name': args.one_logger_run_name
+            }
+            one_logger = OneLogger(config=config)
+            _GLOBAL_ONE_LOGGER = one_logger
+        except BaseException:
+            print('WARNING: one_logger package is required to enable e2e metrics '
+                  'tracking. Try pip install '
+                  '--index-url=https://sc-hw-artf.nvidia.com/api/pypi/hwinf-ml-pypi/simple'
+                  ' one_logger to install it')
 
 def _set_adlr_autoresume(args):
     """Initialize ADLR autoresume."""
@@ -253,6 +294,5 @@ def _ensure_var_is_initialized(var, name):
 def _ensure_var_is_not_initialized(var, name):
     """Make sure the input variable is not None."""
     assert var is None, '{} is already initialized.'.format(name)
-
 
 

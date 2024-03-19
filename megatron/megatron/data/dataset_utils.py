@@ -31,7 +31,7 @@ from megatron import (
     print_rank_0
 )
 from megatron.core import mpu
-from megatron.core.datasets.indexed_dataset import MMapIndexedDataset
+from megatron.core.datasets.indexed_dataset import IndexedDataset
 
 
 DSET_TYPE_BERT = 'standard_bert'
@@ -535,10 +535,11 @@ def build_dataset(name, data_prefix, max_num_samples,
                   max_seq_length_dec, dataset_type='standard_bert',
                   indexed_dataset=None):
 
-    from megatron.data.bert_dataset import BertDataset
     from megatron.data.ict_dataset import ICTDataset
-    from megatron.data.t5_dataset import T5Dataset
     from megatron.data.multimodal_dataset import MultiModalDataset
+
+    if dataset_type == DSET_TYPE_BERT or dataset_type == DSET_TYPE_T5:
+        raise ValueError("The Megatron-LM BERT and T5 datasets are deprecated.")
 
     if dataset_type not in DSET_TYPES:
         raise ValueError("Invalid dataset_type: ", dataset_type)
@@ -571,24 +572,6 @@ def build_dataset(name, data_prefix, max_num_samples,
             binary_head=binary_head,
             **kwargs
         )
-    elif dataset_type == DSET_TYPE_T5:
-        args = get_args()
-        dataset = T5Dataset(
-            indexed_dataset=indexed_dataset,
-            masked_lm_prob=args.mask_prob,
-            max_seq_length_dec=max_seq_length_dec,
-            short_seq_prob=args.short_seq_prob,
-            **kwargs
-        )
-    elif dataset_type == DSET_TYPE_BERT:
-        args = get_args()
-        dataset = BertDataset(
-            indexed_dataset=indexed_dataset,
-            masked_lm_prob=args.mask_prob,
-            short_seq_prob=args.short_seq_prob,
-            binary_head=binary_head,
-            **kwargs
-        )
     elif dataset_type == DSET_TYPE_MULTIMODAL:
         args = get_args()
         dataset = MultiModalDataset(
@@ -613,7 +596,7 @@ def get_indexed_dataset_(data_prefix, dataset_type):
 
     start_time = time.time()
     multimodal = dataset_type == DSET_TYPE_MULTIMODAL
-    indexed_dataset = MMapIndexedDataset(data_prefix, multimodal)
+    indexed_dataset = IndexedDataset(data_prefix, multimodal)
     assert indexed_dataset.sequence_lengths.shape[0] == indexed_dataset.document_indices[-1]
     print_rank_0(' > finished creating indexed dataset in {:4f} '
                  'seconds'.format(time.time() - start_time))

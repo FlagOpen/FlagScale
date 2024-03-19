@@ -8,7 +8,11 @@ import torch.nn.functional as F
 
 from megatron.core import parallel_state
 from megatron.core.dist_checkpointing import ShardedTensor
-from megatron.core.dist_checkpointing.mapping import ShardedStateDict, ShardedTensorFactory
+from megatron.core.dist_checkpointing.mapping import (
+    ReplicaId,
+    ShardedStateDict,
+    ShardedTensorFactory,
+)
 from megatron.core.fusions.fused_bias_gelu import bias_gelu_impl
 from megatron.core.fusions.fused_bias_swiglu import bias_swiglu_impl
 from megatron.core.transformer.module import MegatronModule
@@ -41,11 +45,17 @@ class MLP(MegatronModule):
     """
 
     def __init__(
-        self, config: TransformerConfig, submodules: MLPSubmodules, is_expert: bool = False
+        self,
+        config: TransformerConfig,
+        submodules: MLPSubmodules,
+        is_expert: bool = False,
+        input_size: int = None,
     ):
         super().__init__(config=config)
 
         self.config: TransformerConfig = config
+
+        self.input_size = input_size if input_size != None else self.config.hidden_size
 
         # If this is a gated linear unit we double the output width, see https://arxiv.org/pdf/2002.05202.pdf
         ffn_hidden_size = self.config.ffn_hidden_size
@@ -54,7 +64,7 @@ class MLP(MegatronModule):
 
         self.linear_fc1 = build_module(
             submodules.linear_fc1,
-            self.config.hidden_size,
+            self.input_size,
             ffn_hidden_size,
             config=self.config,
             init_method=self.config.init_method,
@@ -144,10 +154,9 @@ class MLP(MegatronModule):
         tp_size = parallel_state.get_tensor_model_parallel_world_size()
 
         tp_shard_axis = 0
-        replica_id = prev_sh_ten.replica_id
         prepend_axis_num = len(sharded_offsets)
 
-        def sh_ten_build_fn(key: str, t: torch.Tensor):
+        def sh_ten_build_fn(key: str, t: torch.Tensor, replica_id: ReplicaId):
             offset_w = (tp_shard_axis + prepend_axis_num, tp_rank, tp_size * 2)
             offset_v = (tp_shard_axis + prepend_axis_num, tp_size + tp_rank, tp_size * 2)
             with torch.no_grad():
@@ -159,7 +168,7 @@ class MLP(MegatronModule):
                     *sharded_offsets,
                     offset_w,
                     replica_id=replica_id,
-                    prepend_axis_num=1,
+                    prepend_axis_num=prepend_axis_num,
                 ),
                 ShardedTensor.from_rank_offsets(
                     key,
@@ -167,7 +176,7 @@ class MLP(MegatronModule):
                     *sharded_offsets,
                     offset_v,
                     replica_id=replica_id,
-                    prepend_axis_num=1,
+                    prepend_axis_num=prepend_axis_num,
                 ),
             ]
 
@@ -176,6 +185,10 @@ class MLP(MegatronModule):
                 return torch.cat(sub_state_dict)
 
         sharded_state_dict[weight_key] = ShardedTensorFactory(
-            prev_sh_ten.key, prev_sh_ten.data, sh_ten_build_fn, sh_ten_merge_fn
+            prev_sh_ten.key,
+            prev_sh_ten.data,
+            sh_ten_build_fn,
+            sh_ten_merge_fn,
+            prev_sh_ten.replica_id,
         )
         return sharded_state_dict
