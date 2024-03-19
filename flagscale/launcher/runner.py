@@ -219,6 +219,8 @@ class SSHRunner(MultiNodeRunner):
             # Now, it always appends to the output file
             f.write(f"nohup bash -c \"$cmd\" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n")
             f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
         os.chmod(host_run_script_file, 0o755)
 
         return host_run_script_file
@@ -273,13 +275,13 @@ class SSHRunner(MultiNodeRunner):
         else:
             num_visible_devices = 1
 
-        print("resources", self.resources)
+        master_port = get_free_port()
         # If hostfile is not provided, run the command on localhost
         if self.resources is None:
             self._run_each(
                 host="localhost",
                 master_addr="localhost",
-                master_port=get_free_port(),
+                master_port=master_port,
                 nnodes=1,
                 node_rank=0,
                 nproc_per_node=num_visible_devices,
@@ -294,7 +296,6 @@ class SSHRunner(MultiNodeRunner):
                     f"Number of slots ({slots}) does not match the number of visible devices ({num_visible_devices})."
             type = resource_info['type']
             master_addr = host_list[0]
-            master_port = get_free_port()
             nproc_per_node = slots
             nnodes = len(self.resources)
             node_rank = host_list.index(host)
@@ -324,6 +325,8 @@ class SSHRunner(MultiNodeRunner):
             # TODO: This is a temporary fix. We need to find a better way to stop the job.
             f.write("    pkill -f 'torchrun'\n")
             f.write("fi\n")
+            f.flush()
+            os.fsync(f.fileno())
         os.chmod(host_stop_script_file, 0o755)
 
         return host_stop_script_file
