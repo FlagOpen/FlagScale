@@ -1,4 +1,5 @@
 import sys
+import copy
 import argparse
 import importlib
 import torch.multiprocessing as mp
@@ -25,9 +26,9 @@ def load_plugin(plugin_type, name):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert checkpoint")
     # convert args
-    parser.add_argument('--model-type', type=str, required=True,
-                        choices=['aquila', 'mixtral'],
-                        help='Type of the model')
+    parser.add_argument('--model-type', type=str, default=[], nargs="+", required=True,
+                        choices=['aquila', 'mistral', 'mixtral'],
+                        help='Type of the model.')
     parser.add_argument('--loader', type=str, default='megatron',
                         help='Module name to load checkpoint, should be on python path')
     parser.add_argument('--saver', type=str, default='megatron',
@@ -50,11 +51,27 @@ if __name__ == "__main__":
 
     queue = mp.Queue(maxsize=args.max_queue_size)
     print("Starting saver...")
-    saver_proc = mp.Process(target=saver.save_checkpoint, args=(queue, args))
+    saver_args = copy.deepcopy(args)
+    if len(args.model_type) == 1:
+        saver_args.model_type = args.model_type[0]
+    elif len(args.model_type) == 2:
+        assert args.model_type == ['mistral', 'mixtral'], "Only support convert dense model mistral to sparse model mixtral"
+        saver_args.model_type = args.model_type[1]
+    else:
+        raise ValueError("")
+    saver_proc = mp.Process(target=saver.save_checkpoint, args=(queue, saver_args))
     saver_proc.start()
 
     print("Starting loader...")
-    loader.load_checkpoint(queue, args)
+    loader_args = copy.deepcopy(args)
+    if len(args.model_type) == 1:
+        loader_args.model_type = args.model_type[0]
+    elif len(args.model_type) == 2:
+        assert args.model_type == ['mistral', 'mixtral'], "Only support convert dense model mistral to sparse model mixtral"
+        loader_args.model_type = args.model_type[0]
+    else:
+        raise ValueError("")
+    loader.load_checkpoint(queue, loader_args)
 
     print("Waiting for saver to complete...")
     saver_proc.join()
