@@ -37,36 +37,29 @@ pip install -r requirements.txt
 
 ### Pretrain the Aquila model
 
-1. Change to the aquila directory 
+1. Start a distributed training job 
 
 ```
-cd FlagScale/examples/aquila
+python run.py --config-path ./examples/aquila/conf --config-name config
 ```
-2. Start a distributed training job 
-
-```
-bash dist_start.sh
-```
-Before running `dist_start.sh`, you should provide the required information: 
-  * `FlagScale_HOME`: the directory of the FlagScale.
-  * `PROJ_HOME`: the directory for saving checkpoints, tensorboards and other information.
-  * `EXPNAME`: the name of the current training experiment.
-  * `DATA_PATH`: the path of the training datasets following the [Megatron-LM format](./megatron/README.md#data-preprocessing). For quickly running the pretraining process, we also provide a small processed data ([bin](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.bin) and [idx](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.idx)) from the [Pile](https://pile.eleuther.ai/) dataset.
-  * `HOSTFILE`: the hostfile of the nodes for the current training, which consists of a list of hostnames and slot counts. For example:
+Before running `config` in `./examples/aquila/conf`, you should provide the required information in `config`: 
+  * `- train`: YAML configuration file name used for pre-training.
+  * `exp_dir`: the directory for saving checkpoints, tensorboards and other information.
+  * `hostfile`: the hostfile of the nodes for the current training, which consists of a list of hostnames and slot counts. For example:
     ```
     hostnames-1/IP-1 slots=8
     hostnames-2/IP-2 slots=8
     ```
     These hostnames or IPs represent machines accessible via passwordless SSH and the slots specify the number of GPUs available on that machine.
-  * `SCRIPT_FILE`: the actually used training script of the current job where you can change the specific configurations as needed. For example, you should change `--train-samples` to match the small demo dataset we provided above. 
 
-3. Stop a distributed training job
+And you should provide the required information in YAML configuration file which was specific in `config`: 
+  * `data_path`: the path of the training datasets following the [Megatron-LM format](./megatron/README.md#data-preprocessing). For quickly running the pretraining process, we also provide a small processed data ([bin](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.bin) and [idx](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.idx)) from the [Pile](https://pile.eleuther.ai/) dataset.
+
+2. Stop a distributed training job
 
 ```
-bash dist_stop.sh
+python run.py --config-path ./examples/aquila/conf --config-name config action=stop
 ```
-Before running `dist_stop.sh`, you should provide the required information: 
-  * `HOSTFILE`: the hostfile of the nodes for the current training. 
 
 ### Do the heterogenous training 
 
