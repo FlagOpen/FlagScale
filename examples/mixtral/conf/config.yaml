@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - train: pretrain_mixtral-8x7b
+  - train: train_mixtral_8x7b
 
 experiment:
   exp_name: mixtral-8x7b
