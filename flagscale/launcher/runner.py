@@ -66,8 +66,9 @@ def _flatten_dict_to_args(config_dict, ignore_keys=[]):
             args.append(f'--{key}')
             for v in value:
                 args.append(f'{v}')
-        elif isinstance(value, bool) and value:
-            args.append(f'--{key}')
+        elif isinstance(value, bool):
+            if value:
+                args.append(f'--{key}')
         else:
             args.append(f'--{key}')
             args.append(f'{value}')
