@@ -35,37 +35,33 @@ cd FlagScale
 pip install -r requirements.txt
 ```
 
-### Pretrain the Aquila model by YAML
-
-#####  Which fields can you configure in YAML?
-
-  * `experiment`: Define the experiment name, output path, backend, hardware environment, and other basic configurations.
-  * `system`: Define running parameters, such as parallel strategies, running precision, etc.
-  * `model`: Define the model structure, such as model scale, optimization parameters, etc
-  * `data`: Specifies the data used by the model.
-
-#####  You can also directly copy, modify, and use existing YAML examples.
-
-  __NOTE__ : The parameters you define will be passed to Megatron and will be flattened. Please do not define parameters with the same name.
-
-#### Pretrain the Aquila model
+### Pretrain the Aquila model
 
 1. Start a distributed training job 
 
 ```
 python run.py --config-path ./examples/aquila/conf --config-name config
 ```
-Before running, you should provide the required information in `config`: 
-  * `- train`: YAML configuration file used for pre-training.
-  * `exp_dir`: the directory for saving checkpoints, tensorboards and other information.
-  * `hostfile`: the hostfile of the nodes for the current training, which consists of a list of hostnames and slot counts. For example:
+
+FlagScale leverages [Hydra](https://github.com/facebookresearch/hydra) for configuration management. The YAML configuration is structured into four key sections:
+
+  * `experiment`: Defines the experiment directory, backend, and other related environmental configurations.
+  * `system`: Details execution parameters, such as parallel strategies and precision of operations.
+  * `model`: Describes the model's architecture along with its associated hyperparameters.
+  * `data`: Specifies configurations related to the data used by the model.
+
+All valid configurations correspond to the arguments used in Megatron-LM, with hyphens (-) replaced by underscores (_). For a complete list of available configurations, please refer to the Megatron-LM arguments source [file](./megatron/megatron/arguments.py).
+
+To kickstart the training process, consider using the existing YAML files in the [examples](./examples/aquila/conf) folder as a template. Simply copy and modify these files to suit your needs. Please note the following important configurations:
+
+  * `exp_dir`: the directory for saving checkpoints, tensorboards and other logging information.
+  * `hostfile`: the hostfile file path for the current training, which consists of a list of hostnames and slot counts. For example:
     ```
     hostnames-1/IP-1 slots=8
     hostnames-2/IP-2 slots=8
     ```
     These hostnames or IPs represent machines accessible via passwordless SSH and the slots specify the number of GPUs available on that machine.
 
-And you should provide the required information in YAML configuration file which was specific in `config`: 
   * `data_path`: the path of the training datasets following the [Megatron-LM format](./megatron/README.md#data-preprocessing). For quickly running the pretraining process, we also provide a small processed data ([bin](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.bin) and [idx](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.idx)) from the [Pile](https://pile.eleuther.ai/) dataset.
 
 2. Stop a distributed training job
