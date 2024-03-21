@@ -21,7 +21,7 @@ def load_args_hf2mg(args):
     args.model_type = mixtral_args["model_type"]
     args.num_attention_heads = mixtral_args["num_attention_heads"]
     args.moe_router_topk = mixtral_args["num_experts_per_tok"]
-    args.num_layers = 4 #mixtral_args["num_hidden_layers"]
+    args.num_layers = mixtral_args["num_hidden_layers"]
     args.num_query_groups = mixtral_args["num_key_value_heads"]
     args.num_experts = mixtral_args["num_local_experts"]
     args.norm_epsilon = mixtral_args["rms_norm_eps"]

@@ -20,7 +20,7 @@ def load_args_hf2mg(args):
     args.max_position_embeddings = mistral_args["max_position_embeddings"]
     args.model_type = mistral_args["model_type"]
     args.num_attention_heads = mistral_args["num_attention_heads"]
-    args.num_layers = 4 #mistral_args["num_hidden_layers"]
+    args.num_layers = mistral_args["num_hidden_layers"]
     args.num_query_groups = mistral_args["num_key_value_heads"]
     args.norm_epsilon = mistral_args["rms_norm_eps"]
     args.rotary_seq_len_interpolation_factor = None if mistral_args["rope_scaling"] == 'null' else mistral_args["rope_scaling"]
