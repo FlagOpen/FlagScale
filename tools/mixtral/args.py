@@ -12,15 +12,16 @@ def load_args_hf2mg(args):
     # Update Megatron args.
     args.attention_dropout = mixtral_args["attention_dropout"]
     args.hidden_dropout = mixtral_args["attention_dropout"]
-    args.swiglu = mixtral_args["hidden_act"] == "silu"
     args.hidden_size = mixtral_args["hidden_size"]
+    args.add_qkv_bias = mixtral_args.get("attention_bias", True)
+    args.swiglu = mixtral_args["hidden_act"] == "silu"
     args.init_method_std = mixtral_args["initializer_range"]
     args.ffn_hidden_size = mixtral_args["intermediate_size"]
     args.max_position_embeddings = mixtral_args["max_position_embeddings"]
     args.model_type = mixtral_args["model_type"]
     args.num_attention_heads = mixtral_args["num_attention_heads"]
     args.moe_router_topk = mixtral_args["num_experts_per_tok"]
-    args.num_layers = mixtral_args["num_hidden_layers"]
+    args.num_layers = 4 #mixtral_args["num_hidden_layers"]
     args.num_query_groups = mixtral_args["num_key_value_heads"]
     args.num_experts = mixtral_args["num_local_experts"]
     args.norm_epsilon = mixtral_args["rms_norm_eps"]
@@ -41,7 +42,6 @@ def load_args_hf2mg(args):
     args.use_rotary_position_embeddings = True
     args.moe_router_load_balancing_type = "aux_loss"
     args.add_bias_linear = False
-    args.add_qkv_bias = False
     args.make_vocab_size_divisible_by = 64
     args.consumed_train_samples = 0
     args.consumed_valid_samples = 0

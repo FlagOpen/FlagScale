@@ -37,6 +37,19 @@ def _set_attn_state(args, layer, hf_layer):
     attn.linear_proj.weight.data.copy_(hf_attn.o_proj.weight)
     attn.linear_qkv.layer_norm_weight.data.copy_(hf_layer.post_attention_layernorm.weight)
 
+    # Copy bias
+    if args.add_qkv_bias or args.add_bias_linear:
+        attn.linear_qkv.bias.data.copy_(
+            torch.cat([
+                hf_attn.q_proj.bias.reshape((ng, dim*nh//ng, -1)),
+                hf_attn.k_proj.bias.reshape((ng, dim, -1)),
+                hf_attn.v_proj.bias.reshape((ng, dim, -1)),
+            ], dim=1).reshape((-1, 1))
+        )
+
+    if args.add_bias_linear:
+        attn.linear_proj.bias.data.copy_(hf_attn.o_proj.bias)
+
 
 def _set_mlp_state(args, layer, hf_layer):
     '''Set MLP params.'''
@@ -50,7 +63,7 @@ def _set_mlp_state(args, layer, hf_layer):
     for id in range(args.num_experts):
         expert = moe.experts.local_experts[id]
         hf_expert = hf_moe.experts[id]
-
+        # Copy weight
         expert.linear_fc1.weight.data.copy_(
             torch.cat([
                 hf_expert.w1.weight,
@@ -58,6 +71,15 @@ def _set_mlp_state(args, layer, hf_layer):
             ], dim=0)
         )
         expert.linear_fc2.weight.data.copy_(hf_expert.w2.weight)
+        # Copy bias
+        if args.add_bias_linear:
+            expert.linear_fc1.bias.data.copy_(
+                torch.cat([
+                        hf_expert.w1.bias,
+                        hf_expert.w3.bias,
+                ], dim=0)
+            )
+            expert.linear_fc2.bias.data.copy_(hf_expert.w2.bias)
 
 
 def _set_layer_state(args, model, hf_model, layer_idx):
@@ -132,6 +154,7 @@ def get_attn_ckpt(message, models, layer_id, margs):
             post_norm_bias = tf_layer.self_attention.linear_qkv.layer_norm_bias.data
         if margs.add_qkv_bias or margs.add_bias_linear:
             qkv_bias.append(tf_layer.self_attention.linear_qkv.bias.data)
+        if margs.add_bias_linear:
             proj_bias = tf_layer.self_attention.linear_proj.bias.data
 
     # weight
@@ -143,6 +166,7 @@ def get_attn_ckpt(message, models, layer_id, margs):
         message["post norm bias"] = post_norm_bias
     if margs.add_qkv_bias or margs.add_bias_linear:
         message["qkv bias"] = torch.cat(qkv_bias, dim=0)
+    if margs.add_bias_linear:
         message["proj bias"] = proj_bias
 
 
@@ -218,6 +242,7 @@ def set_attn_ckpt(message, models, layer_id, md, margs):
         post_norm_bias = message.pop("post norm bias")
     if md.add_qkv_bias or md.add_bias_linear:
         qkv_bias = torch.chunk(message.pop("qkv bias"), tp_size, dim=0)
+    if margs.add_bias_linear:
         proj_bias = message.pop("proj bias")
 
     # set data to transformer layer's self-attention
@@ -231,8 +256,8 @@ def set_attn_ckpt(message, models, layer_id, md, margs):
             layer.self_attention.linear_qkv.layer_norm_bias.data.copy_(post_norm_bias)
         if md.add_qkv_bias or md.add_bias_linear:
             layer.self_attention.linear_qkv.bias.data.copy_(qkv_bias[tp_rank])
+        if margs.add_bias_linear:
             layer.self_attention.linear_proj.bias.data.copy_(proj_bias)
-
 
 
 def set_mlp_ckpt(message, models, layer_id, md, margs):

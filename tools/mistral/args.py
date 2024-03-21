@@ -13,15 +13,14 @@ def load_args_hf2mg(args):
     args.attention_dropout = mistral_args["attention_dropout"]
     args.hidden_dropout = mistral_args["attention_dropout"]
     args.hidden_size = mistral_args["hidden_size"]
-    args.add_qkv_bias = mistral_args["attention_bias"]
+    args.add_qkv_bias = mistral_args.get("attention_bias", True)
     args.swiglu = mistral_args["hidden_act"] == "silu"
     args.init_method_std = mistral_args["initializer_range"]
     args.ffn_hidden_size = mistral_args["intermediate_size"]
-    args.norm_eposilon = mistral_args["layer_norm_epsilon"]
     args.max_position_embeddings = mistral_args["max_position_embeddings"]
     args.model_type = mistral_args["model_type"]
     args.num_attention_heads = mistral_args["num_attention_heads"]
-    args.num_layers = mistral_args["num_hidden_layers"]
+    args.num_layers = 4 #mistral_args["num_hidden_layers"]
     args.num_query_groups = mistral_args["num_key_value_heads"]
     args.norm_epsilon = mistral_args["rms_norm_eps"]
     args.rotary_seq_len_interpolation_factor = None if mistral_args["rope_scaling"] == 'null' else mistral_args["rope_scaling"]
