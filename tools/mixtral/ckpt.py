@@ -137,6 +137,7 @@ def get_attn_ckpt(message, models, layer_id, margs):
     post_norm_weight = None
     post_norm_bias = None
     proj_bias = None
+
     complete_tp_ranks = []
     for tp_ep_rank, model in enumerate(models):
         tp_rank = tp_ep_rank % tp_size
@@ -242,7 +243,7 @@ def set_attn_ckpt(message, models, layer_id, md, margs):
         post_norm_bias = message.pop("post norm bias")
     if md.add_qkv_bias or md.add_bias_linear:
         qkv_bias = torch.chunk(message.pop("qkv bias"), tp_size, dim=0)
-    if margs.add_bias_linear:
+    if md.add_bias_linear:
         proj_bias = message.pop("proj bias")
 
     # set data to transformer layer's self-attention
@@ -256,7 +257,7 @@ def set_attn_ckpt(message, models, layer_id, md, margs):
             layer.self_attention.linear_qkv.layer_norm_bias.data.copy_(post_norm_bias)
         if md.add_qkv_bias or md.add_bias_linear:
             layer.self_attention.linear_qkv.bias.data.copy_(qkv_bias[tp_rank])
-        if margs.add_bias_linear:
+        if md.add_bias_linear:
             layer.self_attention.linear_proj.bias.data.copy_(proj_bias)
 
 
