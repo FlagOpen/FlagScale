@@ -35,15 +35,32 @@ cd FlagScale
 pip install -r requirements.txt
 ```
 
-### Pretrain the Aquila model
+### Pretrain the Aquila model by YAML
+
+#### What is YAML?
+
+YAML, which stands for “YAML Ain’t Markup Language” or “Yet Another Markup Language”, is a human-readable data serialization language[[1]](https://www.freecodecamp.org/news/what-is-yaml-the-yml-file-format/)[[2]](https://www.redhat.com/en/topics/automation/what-is-yaml)[[3]](https://blog.postman.com/what-is-yaml/). It is commonly used for writing configuration files and data exchange between programming languages with different data structures[[3]](https://blog.postman.com/what-is-yaml/). YAML is designed to be easy to read and understand[[2]](https://www.redhat.com/en/topics/automation/what-is-yaml). It provides a standardized format for representing structured data in a way that is both easily understandable to humans and interpretable by machines[[4]](https://www.ibm.com/topics/yaml).
+
+#####  Which fields can you configure in YAML?
+
+  * `experiment`: Define the experiment name, output path, backend, hardware environment, and other basic configurations.
+  * `system`: Define running parameters, such as parallel strategies, running precision, etc.
+  * `model`: Define the model structure, such as model scale, optimization parameters, etc
+  * `data`: Specifies the data used by the model.
+
+#####  You can also directly copy, modify, and use existing YAML examples.
+
+  __NOTE__ :The parameters you define will be passed to Megatron and will be flattened. Please do not define parameters with the same name.
+
+#### Pretrain the Aquila model
 
 1. Start a distributed training job 
 
 ```
 python run.py --config-path ./examples/aquila/conf --config-name config
 ```
-Before running `config` in `./examples/aquila/conf`, you should provide the required information in `config`: 
-  * `- train`: YAML configuration file name used for pre-training.
+Before running, you should provide the required information in `config`: 
+  * `- train`: YAML configuration file used for pre-training.
   * `exp_dir`: the directory for saving checkpoints, tensorboards and other information.
   * `hostfile`: the hostfile of the nodes for the current training, which consists of a list of hostnames and slot counts. For example:
     ```
