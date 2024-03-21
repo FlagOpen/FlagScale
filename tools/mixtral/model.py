@@ -6,8 +6,8 @@ model_type = ModelType.encoder_or_decoder
 
 
 def get_hf_model(model_path):
-    from transformers import MixtralForCausalLM
-    model = MixtralForCausalLM.from_pretrained(model_path, device_map="cpu")
+    from transformers import AutoModelForCausalLM
+    model = AutoModelForCausalLM.from_pretrained(model_path, device_map="cpu", trust_remote_code=True)
     return model
 
 

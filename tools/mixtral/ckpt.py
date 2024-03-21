@@ -37,6 +37,19 @@ def _set_attn_state(args, layer, hf_layer):
     attn.linear_proj.weight.data.copy_(hf_attn.o_proj.weight)
     attn.linear_qkv.layer_norm_weight.data.copy_(hf_layer.post_attention_layernorm.weight)
 
+    # Copy bias
+    if args.add_qkv_bias or args.add_bias_linear:
+        attn.linear_qkv.bias.data.copy_(
+            torch.cat([
+                hf_attn.q_proj.bias.reshape((ng, dim*nh//ng, -1)),
+                hf_attn.k_proj.bias.reshape((ng, dim, -1)),
+                hf_attn.v_proj.bias.reshape((ng, dim, -1)),
+            ], dim=1).reshape((-1))
+        )
+
+    if args.add_bias_linear:
+        attn.linear_proj.bias.data.copy_(hf_attn.o_proj.bias)
+
 
 def _set_mlp_state(args, layer, hf_layer):
     '''Set MLP params.'''
@@ -50,7 +63,7 @@ def _set_mlp_state(args, layer, hf_layer):
     for id in range(args.num_experts):
         expert = moe.experts.local_experts[id]
         hf_expert = hf_moe.experts[id]
-
+        # Copy weight
         expert.linear_fc1.weight.data.copy_(
             torch.cat([
                 hf_expert.w1.weight,
@@ -58,6 +71,15 @@ def _set_mlp_state(args, layer, hf_layer):
             ], dim=0)
         )
         expert.linear_fc2.weight.data.copy_(hf_expert.w2.weight)
+        # Copy bias
+        if args.add_bias_linear:
+            expert.linear_fc1.bias.data.copy_(
+                torch.cat([
+                        hf_expert.w1.bias,
+                        hf_expert.w3.bias,
+                ], dim=0)
+            )
+            expert.linear_fc2.bias.data.copy_(hf_expert.w2.bias)
 
 
 def _set_layer_state(args, model, hf_model, layer_idx):
@@ -87,15 +109,6 @@ def load_checkpoint_hf2mg(args):
     return model
 
 
-def _norm_has_bias(margs):
-    # Layernorm has bias; RMSNorm does not.
-    if hasattr(margs, 'normalization'):
-        return margs.normalization == "LayerNorm"
-    else:
-        # older models only supported LayerNorm
-        return True
-
-
 def _get_parallel_size(args):
     return args.tensor_model_parallel_size, \
         args.pipeline_model_parallel_size, \
@@ -105,7 +118,6 @@ def _get_parallel_size(args):
 
 def get_attn_ckpt(message, models, layer_id, margs):
     tp_size, _, _, _ = _get_parallel_size(margs)
-    norm_has_bias = _norm_has_bias(margs)
 
     # parallel tensor
     qkv_weight = []
@@ -115,6 +127,7 @@ def get_attn_ckpt(message, models, layer_id, margs):
     post_norm_weight = None
     post_norm_bias = None
     proj_bias = None
+
     complete_tp_ranks = []
     for tp_ep_rank, model in enumerate(models):
         tp_rank = tp_ep_rank % tp_size
@@ -128,10 +141,11 @@ def get_attn_ckpt(message, models, layer_id, margs):
         proj_weight.append(tf_layer.self_attention.linear_proj.weight.data)
         post_norm_weight = tf_layer.self_attention.linear_qkv.layer_norm_weight.data
         # bias
-        if norm_has_bias:
+        if margs.norm_has_bias:
             post_norm_bias = tf_layer.self_attention.linear_qkv.layer_norm_bias.data
         if margs.add_qkv_bias or margs.add_bias_linear:
             qkv_bias.append(tf_layer.self_attention.linear_qkv.bias.data)
+        if margs.add_bias_linear:
             proj_bias = tf_layer.self_attention.linear_proj.bias.data
 
     # weight
@@ -139,16 +153,16 @@ def get_attn_ckpt(message, models, layer_id, margs):
     message["proj weight"] = torch.cat(proj_weight, dim=1)
     message["post norm weight"] = post_norm_weight
     # bias
-    if norm_has_bias:
+    if margs.norm_has_bias:
         message["post norm bias"] = post_norm_bias
     if margs.add_qkv_bias or margs.add_bias_linear:
         message["qkv bias"] = torch.cat(qkv_bias, dim=0)
+    if margs.add_bias_linear:
         message["proj bias"] = proj_bias
 
 
 def get_mlp_ckpt(message, models, layer_id, margs):
     tp_size, _, ep_size, _ = _get_parallel_size(margs)
-    norm_has_bias = _norm_has_bias(margs)
 
     assert margs.num_experts is not None and margs.num_experts % ep_size == 0
     num_local_experts = margs.num_experts // ep_size
@@ -175,7 +189,7 @@ def get_mlp_ckpt(message, models, layer_id, margs):
                 pre_norm_weight = tf_layer.pre_mlp_layernorm.weight.data
                 router_weight = tf_layer.mlp.router.weight.data
                 # bias
-                if norm_has_bias:
+                if margs.norm_has_bias:
                     pre_norm_bias = tf_layer.pre_mlp_layernorm.bias.data
                 if margs.add_bias_linear:
                     l0_bias.append(expert.linear_fc1.bias.data)
@@ -193,7 +207,7 @@ def get_mlp_ckpt(message, models, layer_id, margs):
             else:
                 message[f"expert{global_expert_id} l0 weight"] = torch.cat(l0_weight, dim=0)
             # bias
-            if norm_has_bias:
+            if margs.norm_has_bias:
                 message["pre norm bias"] = pre_norm_bias
             if margs.add_bias_linear:
                 message[f"expert{global_expert_id} l1 bias"] = l1_bias
@@ -218,6 +232,7 @@ def set_attn_ckpt(message, models, layer_id, md, margs):
         post_norm_bias = message.pop("post norm bias")
     if md.add_qkv_bias or md.add_bias_linear:
         qkv_bias = torch.chunk(message.pop("qkv bias"), tp_size, dim=0)
+    if md.add_bias_linear:
         proj_bias = message.pop("proj bias")
 
     # set data to transformer layer's self-attention
@@ -231,8 +246,8 @@ def set_attn_ckpt(message, models, layer_id, md, margs):
             layer.self_attention.linear_qkv.layer_norm_bias.data.copy_(post_norm_bias)
         if md.add_qkv_bias or md.add_bias_linear:
             layer.self_attention.linear_qkv.bias.data.copy_(qkv_bias[tp_rank])
+        if md.add_bias_linear:
             layer.self_attention.linear_proj.bias.data.copy_(proj_bias)
-
 
 
 def set_mlp_ckpt(message, models, layer_id, md, margs):
