@@ -105,15 +105,6 @@ def load_checkpoint_hf2mg(args):
     return model
 
 
-def _norm_has_bias(margs):
-    # Layernorm has bias; RMSNorm does not.
-    if hasattr(margs, 'normalization'):
-        return margs.normalization == "LayerNorm"
-    else:
-        # older models only supported LayerNorm
-        return True
-
-
 def _get_parallel_size(args):
     assert args.expert_model_parallel_size == 1
     return args.tensor_model_parallel_size, \
@@ -124,7 +115,6 @@ def _get_parallel_size(args):
 
 def get_attn_ckpt(message, models, layer_id, margs):
     tp_size, _, _, _ = _get_parallel_size(margs)
-    norm_has_bias = _norm_has_bias(margs)
 
     # parallel tensor
     qkv_weight = []
@@ -143,7 +133,7 @@ def get_attn_ckpt(message, models, layer_id, margs):
         proj_weight.append(tf_layer.self_attention.linear_proj.weight.data)
         post_norm_weight = tf_layer.self_attention.linear_qkv.layer_norm_weight.data
         # bias
-        if norm_has_bias:
+        if margs.norm_has_bias:
             post_norm_bias = tf_layer.self_attention.linear_qkv.layer_norm_bias.data
         if margs.add_qkv_bias or margs.add_bias_linear:
             qkv_bias.append(tf_layer.self_attention.linear_qkv.bias.data)
@@ -155,7 +145,7 @@ def get_attn_ckpt(message, models, layer_id, margs):
     message["proj weight"] = torch.cat(proj_weight, dim=1)
     message["post norm weight"] = post_norm_weight
     # bias
-    if norm_has_bias:
+    if margs.norm_has_bias:
         message["post norm bias"] = post_norm_bias
     if margs.add_qkv_bias or margs.add_bias_linear:
         message["qkv bias"] = torch.cat(qkv_bias, dim=0)
@@ -165,7 +155,6 @@ def get_attn_ckpt(message, models, layer_id, margs):
 
 def get_mlp_ckpt(message, models, layer_id, margs):
     tp_size, _, _, _ = _get_parallel_size(margs)
-    norm_has_bias = _norm_has_bias(margs)
 
     # parallel tensor
     l0_weight = []
@@ -184,7 +173,7 @@ def get_mlp_ckpt(message, models, layer_id, margs):
         l1_weight.append(tf_layer.mlp.linear_fc2.weight.data)
         pre_norm_weight = tf_layer.mlp.linear_fc1.layer_norm_weight.data
         # bias
-        if norm_has_bias:
+        if margs.norm_has_bias:
             pre_norm_bias = tf_layer.mlp.linear_fc1.layer_norm_bias.data
         if margs.add_bias_linear:
             l0_bias.append(tf_layer.mlp.linear_fc1.bias.data)

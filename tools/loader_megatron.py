@@ -106,10 +106,10 @@ def _load_checkpoint(queue, args):
 
     # Layernorm has bias; RMSNorm does not.
     if hasattr(checkpoint_args, 'normalization'):
-        norm_has_bias = checkpoint_args.normalization == "LayerNorm"
+        margs.norm_has_bias = checkpoint_args.normalization == "LayerNorm"
     else:
         # older models only supported LayerNorm
-        norm_has_bias = True
+        margs.norm_has_bias = True
 
     print("*"*20 + "validate loader arguments" + "*"*20)
     margs = validate_args(margs)
@@ -186,7 +186,7 @@ def _load_checkpoint(queue, args):
     md.position_embedding_type = margs.position_embedding_type
     md.add_bias_linear = margs.add_bias_linear
     md.add_qkv_bias = margs.add_qkv_bias
-    md.norm_has_bias = norm_has_bias
+    md.norm_has_bias = margs.norm_has_bias
     md.swiglu = margs.swiglu
     md.previous_num_experts = margs.num_experts
     md.previous_tensor_parallel_size = margs.tensor_model_parallel_size
