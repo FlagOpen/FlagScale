@@ -2,6 +2,8 @@
 """Pretrain GPT."""
 
 import os
+import sys
+
 import torch
 from functools import partial
 from typing import Union
@@ -16,7 +18,6 @@ from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
 from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
 import megatron.model
 from megatron.core.models.gpt import GPTModel
-from megatron.training import pretrain
 from megatron.core.transformer.spec_utils import import_module
 from megatron.utils import (
     get_batch_on_this_cp_rank,
@@ -45,26 +46,35 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
     print_rank_0('building GPT model ...')
     config = core_transformer_config_from_args(get_args())
 
-    assert args.use_mcore_models is True
+    if args.use_mcore_models:
+        if args.spec is not None:
+            transformer_layer_spec = import_module(args.spec)
+        else:
+            transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm)
 
-    if args.spec is not None:
-        transformer_layer_spec = import_module(args.spec)
+        model = GPTModel(
+            config=config,
+            transformer_layer_spec=transformer_layer_spec,
+            vocab_size=args.padded_vocab_size,
+            max_sequence_length=args.max_position_embeddings,
+            pre_process=pre_process,
+            post_process=post_process,
+            fp16_lm_cross_entropy=args.fp16_lm_cross_entropy,
+            parallel_output=True,
+            share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
+            position_embedding_type=args.position_embedding_type,
+            rotary_percent=args.rotary_percent,
+        )
     else:
-        transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm)
+        assert(args.context_parallel_size == 1), "Context parallelism is only supported with Megatron Core!"
 
-    model = GPTModel(
-        config=config,
-        transformer_layer_spec=transformer_layer_spec,
-        vocab_size=args.padded_vocab_size,
-        max_sequence_length=args.max_position_embeddings,
-        pre_process=pre_process,
-        post_process=post_process,
-        fp16_lm_cross_entropy=args.fp16_lm_cross_entropy,
-        parallel_output=True,
-        share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
-        position_embedding_type=args.position_embedding_type,
-        rotary_percent=args.rotary_percent,
-    )
+        model = megatron.model.GPTModel(
+            config,
+            num_tokentypes=0,
+            parallel_output=True,
+            pre_process=pre_process,
+            post_process=post_process
+        )
 
     return model
 
@@ -192,11 +202,20 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
 if __name__ == "__main__":
 
+
     # Temporary for transition to core datasets
     train_valid_test_datasets_provider.is_distributed = True
 
+    # To avoid the circular import
+    from flagscale.train.extra_valid import extra_valid_dataset_provider
+    extra_valid_dataset_provider.is_distributed = True
+
+    # To avoid the circular import
+    from megatron.training import pretrain
     pretrain(train_valid_test_datasets_provider,
              model_provider,
              ModelType.encoder_or_decoder,
              forward_step,
-             args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})
+             args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
+             get_batch_fn=get_batch,
+             extra_valid_dataset_provider=extra_valid_dataset_provider)
