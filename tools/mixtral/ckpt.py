@@ -44,7 +44,7 @@ def _set_attn_state(args, layer, hf_layer):
                 hf_attn.q_proj.bias.reshape((ng, dim*nh//ng, -1)),
                 hf_attn.k_proj.bias.reshape((ng, dim, -1)),
                 hf_attn.v_proj.bias.reshape((ng, dim, -1)),
-            ], dim=1).reshape((-1, 1))
+            ], dim=1).reshape((-1))
         )
 
     if args.add_bias_linear:
