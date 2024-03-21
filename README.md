@@ -37,10 +37,6 @@ pip install -r requirements.txt
 
 ### Pretrain the Aquila model by YAML
 
-#### What is YAML?
-
-YAML, which stands for “YAML Ain’t Markup Language” or “Yet Another Markup Language”, is a human-readable data serialization language[[1]](https://www.freecodecamp.org/news/what-is-yaml-the-yml-file-format/)[[2]](https://www.redhat.com/en/topics/automation/what-is-yaml)[[3]](https://blog.postman.com/what-is-yaml/). It is commonly used for writing configuration files and data exchange between programming languages with different data structures[[3]](https://blog.postman.com/what-is-yaml/). YAML is designed to be easy to read and understand[[2]](https://www.redhat.com/en/topics/automation/what-is-yaml). It provides a standardized format for representing structured data in a way that is both easily understandable to humans and interpretable by machines[[4]](https://www.ibm.com/topics/yaml).
-
 #####  Which fields can you configure in YAML?
 
   * `experiment`: Define the experiment name, output path, backend, hardware environment, and other basic configurations.
@@ -50,7 +46,7 @@ YAML, which stands for “YAML Ain’t Markup Language” or “Yet Another Mark
 
 #####  You can also directly copy, modify, and use existing YAML examples.
 
-  __NOTE__ :The parameters you define will be passed to Megatron and will be flattened. Please do not define parameters with the same name.
+  __NOTE__ : The parameters you define will be passed to Megatron and will be flattened. Please do not define parameters with the same name.
 
 #### Pretrain the Aquila model
 
