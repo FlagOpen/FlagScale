@@ -17,6 +17,7 @@ system:
 
 model:
   use_mcore_models: true
+  transformer_impl: transformer_engine
   num_layers: 32
   hidden_size: 4096
   ffn_hidden_size: 14336
