@@ -1,11 +1,12 @@
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
 import json
 import os
 import sys
+import torch
 import types
 
-import torch
+from utils import print_memory_usage
 
 
 def add_arguments(parser):
@@ -23,6 +24,7 @@ def add_arguments(parser):
                        default='learned_absolute',
                        choices=['learned_absolute', 'rope'],
                        help='Position embedding type.')
+
 
 def _load_checkpoint(queue, args):
 
@@ -160,7 +162,14 @@ def _load_checkpoint(queue, args):
                 consumed_valid_samples = margs.consumed_valid_samples
             for vp_rank in range(model_array_len):
                 models[vp_rank].append(model_[vp_rank])
+
+            # Print memory usage.
+            print_memory_usage("loader", rank, count)
+
         return models
+
+    margs.use_mcore_models = True
+    margs.transformer_impl = "transformer_engine"
 
     set_global_variables(margs, build_tokenizer=False)
     mpu.set_tensor_model_parallel_world_size(margs.tensor_model_parallel_size)
@@ -210,7 +219,6 @@ def _load_checkpoint(queue, args):
     md.output_layer = margs.untie_embeddings_and_output_weights
     md.position_embedding_type = margs.position_embedding_type
     md.linear_bias = margs.add_bias_linear
-    md.linear_bias_qkv = margs.add_qkv_bias
     md.norm_has_bias = norm_has_bias
     md.swiglu = margs.swiglu
     md.previous_tensor_parallel_size = margs.tensor_model_parallel_size
@@ -218,6 +226,7 @@ def _load_checkpoint(queue, args):
     md.true_vocab_size = true_vocab_size
     md.make_vocab_size_divisible_by = margs.make_vocab_size_divisible_by
     md.checkpoint_args = checkpoint_args
+    md.use_mcore_models = margs.use_mcore_models
 
     # Get first pipe stage
     mpu.set_pipeline_model_parallel_rank(0)
@@ -236,13 +245,13 @@ def _load_checkpoint(queue, args):
     # Send embeddings
     message = {
         "word embeddings": torch.cat(
-            [models[tp_rank].language_model.embedding.word_embeddings.weight.data for tp_rank in range(tp_size)],
+            [models[tp_rank].embedding.word_embeddings.weight.data for tp_rank in range(tp_size)],
             dim = 0)
     }
     if md.position_embedding_type == 'learned_absolute':
-        message["position embeddings"] = models[0].language_model.embedding.position_embeddings.weight.data
+        message["position embeddings"] = models[0].embedding.position_embeddings.weight.data
     else:
-        assert not hasattr(models[0].language_model.embedding, 'position_embeddings')
+        assert not hasattr(models[0].embedding, 'position_embeddings')
 
     queue_put("embeddings", message)
 
@@ -255,20 +264,20 @@ def _load_checkpoint(queue, args):
                 if vp_rank == 0:
                     all_models.append(get_models(tp_size, md.params_dtype))
             models = all_models[pp_rank][vp_rank]
-            for layer_num in range(len(models[0].language_model.encoder.layers)):
+            for layer_num in range(len(models[0].decoder.layers)):
                 message = {}
 
                 # Get non-parallel tensors from tp_rank 0
-                layer = models[0].language_model.encoder.layers[layer_num]
-                message["input norm weight"] = layer.input_norm.weight.data
+                layer = models[0].decoder.layers[layer_num]
+                message["input norm weight"] = layer.self_attention.linear_qkv.layer_norm_weight.data
                 if norm_has_bias:
-                    message["input norm bias"] = layer.input_norm.bias.data
-                message["post norm weight"] = layer.post_attention_norm.weight.data
+                    message["input norm bias"] = layer.self_attention.linear_qkv.layer_norm_bias.data
+                message["post norm weight"] = layer.mlp.linear_fc1.layer_norm_weight.data
                 if norm_has_bias:
-                    message["post norm bias"] = layer.post_attention_norm.bias.data
+                    message["post norm bias"] = layer.mlp.linear_fc1.layer_norm_bias.data
                 if md.linear_bias:
-                    message["dense bias"] = layer.self_attention.dense.bias.data
-                    message["mlp l1 bias"] = layer.mlp.dense_4h_to_h.bias.data
+                    message["dense bias"] = layer.self_attention.linear_proj.bias.data
+                    message["mlp l1 bias"] = layer.mlp.linear_fc2.bias.data
 
                 # Grab all parallel tensors for this layer
                 qkv_weight = []
@@ -278,15 +287,14 @@ def _load_checkpoint(queue, args):
                 mlp_l0_bias = []
                 mlp_l1_weight = []
                 for tp_rank, model in enumerate(models):
-                    layer = model.language_model.encoder.layers[layer_num]
-                    qkv_weight.append(layer.self_attention.query_key_value.weight.data)
-                    dense_weight.append(layer.self_attention.dense.weight.data)
-                    mlp_l0_weight.append(layer.mlp.dense_h_to_4h.weight.data)
-                    mlp_l1_weight.append(layer.mlp.dense_4h_to_h.weight.data)
-                    if md.linear_bias or md.linear_bias_qkv:
-                        qkv_bias.append(layer.self_attention.query_key_value.bias.data)
+                    layer = model.decoder.layers[layer_num]
+                    qkv_weight.append(layer.self_attention.linear_qkv.weight.data)
+                    dense_weight.append(layer.self_attention.linear_proj.weight.data)
+                    mlp_l0_weight.append(layer.mlp.linear_fc1.weight.data)
+                    mlp_l1_weight.append(layer.mlp.linear_fc2.weight.data)
                     if md.linear_bias:
-                        mlp_l0_bias.append(layer.mlp.dense_h_to_4h.bias.data)
+                        qkv_bias.append(layer.self_attention.linear_qkv.bias.data)
+                        mlp_l0_bias.append(layer.mlp.linear_fc1.bias.data)
 
                 # Handle gated linear units
                 if md.swiglu:
@@ -302,9 +310,8 @@ def _load_checkpoint(queue, args):
                 message["qkv weight"] = torch.cat(qkv_weight, dim=0)
                 message["dense weight"] = torch.cat(dense_weight, dim=1)
                 message["mlp l1 weight"] = torch.cat(mlp_l1_weight, dim=1)
-                if md.linear_bias or md.linear_bias_qkv:
-                    message["qkv bias"] = torch.cat(qkv_bias, dim=0)
                 if md.linear_bias:
+                    message["qkv bias"] = torch.cat(qkv_bias, dim=0)
                     if md.swiglu:
                         for tp_rank in range(tp_size):
                             mlp_l0_bias[tp_rank] = torch.chunk(mlp_l0_bias[tp_rank], 2, dim=0)
@@ -319,16 +326,16 @@ def _load_checkpoint(queue, args):
 
     # Send final norm from tp_rank 0
     message = {
-        "weight": models[0].language_model.encoder.final_norm.weight.data,
+        "weight": models[0].decoder.final_layernorm.weight.data,
     }
     if norm_has_bias:
-        message["bias"] = models[0].language_model.encoder.final_norm.bias.data
+        message["bias"] = models[0].decoder.final_layernorm.bias.data
     queue_put("final norm", message)
 
     if md.output_layer:
         message = {
             "weight": torch.cat(
-                [models[tp_rank].language_model.output_layer.weight.data for tp_rank in range(tp_size)],
+                [models[tp_rank].output_layer.weight.data for tp_rank in range(tp_size)],
                 dim = 0)
         }
         queue_put("output layer", message)
@@ -337,8 +344,8 @@ def _load_checkpoint(queue, args):
     # Send BERT lm head and binary head if it exists
     if md.model_type == 'BERT':
         message = {
-            "weight": models[0].language_model.pooler.dense.weight.data,
-            "bias": models[0].language_model.pooler.dense.bias.data
+            "weight": models[0].pooler.dense.weight.data,
+            "bias": models[0].pooler.dense.bias.data
         }
         queue_put("pooler", message)
 

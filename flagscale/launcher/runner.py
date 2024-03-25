@@ -234,6 +234,8 @@ class SSHRunner(MultiNodeRunner):
             export_cmd += [f"{k}={v}"]
 
         logging_config = self.config.train.system.logging
+        log_dir = os.path.join(logging_config.details_dir, f"host_{node_rank}_{host}")
+
         torchrun_cmd = ["torchrun",
                         "--rdzv-id", self.rdzv_id, 
                         "--master_addr", str(master_addr),
@@ -241,7 +243,7 @@ class SSHRunner(MultiNodeRunner):
                         "--nnodes", str(nnodes),
                         "--node_rank", str(node_rank), 
                         "--nproc_per_node", str(nproc_per_node),
-                        "--log_dir", str(logging_config.details_dir),
+                        "--log_dir", str(log_dir),
                         "--redirects", str(3),
                         "--tee", str(3),
                         ]
