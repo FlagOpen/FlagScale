@@ -1284,6 +1284,10 @@ def _add_checkpointing_args(parser):
     group.add_argument('--dist-ckpt-format', type=str, default='torch_dist',
                        choices=['zarr', 'torch_dist'],
                        help='Distributed checkpoint format to use.')
+    group.add_argument('--finetune-with-optim', action='store_true',
+                       help='Load model and optim for finetuning. Do not load'
+                       'rng state from checkpoint and set iteration to 0. '
+                       'Assumed when loading a release checkpoint.')
 
     return parser
 
@@ -1504,6 +1508,7 @@ def _add_data_args(parser):
                                 'Llama2Tokenizer',
                                 'NullTokenizer', 
                                 'HFTokenizer', 
+                                'HFTokenizersTokenizer', 
                                 'QwenTokenizer'],
                        help='What type of tokenizer to use.')
     group.add_argument('--tokenizer-path', type=str, default=None,
