@@ -57,6 +57,9 @@ def build_tokenizer(args):
     elif args.tokenizer_type == "QwenTokenizer":
         assert args.tokenizer_path is not None
         tokenizer = _QwenTokenizer(args.tokenizer_path)
+    elif args.tokenizer_type == "HFTokenizersTokenizer":
+        assert args.tokenizer_path is not None
+        tokenizer = _HFTokenizersTokenizer(args.tokenizer_path)
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(args.tokenizer_type))
@@ -595,6 +598,8 @@ class _HFTokenizer(MegatronTokenizer):
         self.eod_id = self.tokenizer.eos_token_id
         self.cls_id = self.tokenizer.bos_token_id
         self.pad_id = self.tokenizer.pad_token_id
+
+        self._inv_vocab = None
         
     @property
     def vocab_size(self):
@@ -607,7 +612,9 @@ class _HFTokenizer(MegatronTokenizer):
     @property
     def inv_vocab(self):
         vocab = self.vocab()
-        return {v: k for k, v in vocab.items()}
+        if self._inv_vocab is None:
+            self._inv_vocab = {v: k for k, v in vocab.items()}
+        return self._inv_vocab
     
     def tokenize(self, text):
         return self.tokenizer.encode(text)
@@ -627,6 +634,7 @@ class _HFTokenizer(MegatronTokenizer):
     def pad(self):
         return self.pad_id
 
+
 class _QwenTokenizer(_HFTokenizer):
     """Adapted Qwen tokenizer."""
     
@@ -635,3 +643,50 @@ class _QwenTokenizer(_HFTokenizer):
         self.eod_id = self.tokenizer.encode('<|extra_204|>')[0]
         self.cls_id = self.tokenizer.encode('<|extra_203|>')[0]
         self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]
+
+
+class _HFTokenizersTokenizer(MegatronTokenizer):
+    """Tokenizer from HuggingFace Tokenizers."""
+
+    def __init__(self, json_file):
+        super().__init__(json_file)
+
+        from tokenizers import Tokenizer
+        self.tokenizer = Tokenizer.from_file(json_file)
+
+        print(f"Vocab size: {self.tokenizer.get_vocab_size()}")
+
+        self.eod_id = self.tokenizer.token_to_id("<|endoftext|>")
+        self.pad_id = self.tokenizer.token_to_id("<|padding|>")
+
+        self._inv_vocab = None
+
+    @property
+    def vocab_size(self):
+        return self.tokenizer.get_vocab_size() 
+
+    @property
+    def vocab(self):
+        return self.tokenizer.get_vocab()
+
+    @property
+    def inv_vocab(self):
+        # return self.tokenizer.decoder
+        vocab = self.vocab()
+        if self._inv_vocab is None:
+            self._inv_vocab = {v: k for k, v in vocab.items()}
+        return self._inv_vocab 
+
+    def tokenize(self, text):
+        return self.tokenizer.encode(text)
+
+    def detokenize(self, token_ids):
+        return self.tokenizer.decode(token_ids)
+
+    @property
+    def eod(self):
+        return self.eod_id
+
+    @property
+    def pad(self):
+        return self.pad_id
