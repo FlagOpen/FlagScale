@@ -5,17 +5,14 @@ import importlib
 
 import torch
 
-
 def add_arguments(parser):
     group = parser.add_argument_group(title='Transformers loader')
 
     group.add_argument('--true-vocab-size', type=int, default=None,
                        help='original size of vocab, if specified will trim padding from embedding table.')
-    group.add_argument('--vocab-file', type=str, default=None,
-                       help='Path to the vocab file. If specified will use this to get vocab size and '
-                       'trim padding from the embedding table.')
     group.add_argument('--megatron-path', type=str, default=None,
                        help='Base directory of deepspeed repository')
+
 
 def _load_checkpoint(queue, args):
     try:
@@ -36,14 +33,6 @@ def _load_checkpoint(queue, args):
 
     try:
         from megatron.arguments import parse_args, validate_args
-        from megatron.global_vars import set_global_variables
-        from megatron.model import module
-        from megatron.core import mpu
-        from megatron import fused_kernels
-        from megatron.core.tensor_parallel.random import (
-                _CUDA_RNG_STATE_TRACKER, _DATA_PARALLEL_RNG_TRACKER_NAME, 
-                _EXPERT_PARALLEL_RNG_TRACKER_NAME, _MODEL_PARALLEL_RNG_TRACKER_NAME
-            )
     except ModuleNotFoundError:
         print("Unable to import Megatron, please specify the path to Megatron using --megatron-path. Exiting.")
         queue.put("exit")
@@ -81,10 +70,10 @@ def _load_checkpoint(queue, args):
 
     margs = parse_args()
     args_plugin.load_args_hf2mg(margs)
-    margs.world_size = margs.tensor_model_parallel_size * margs.pipeline_model_parallel_size * margs.expert_model_parallel_size
 
     print("*"*20 + "validate loader arguments" + "*"*20)
     margs = validate_args(margs)
+    margs.world_size = margs.tensor_model_parallel_size * margs.pipeline_model_parallel_size * margs.expert_model_parallel_size
 
     def check_for_arg(arg_name, default=None):
         if getattr(margs, arg_name, None) is None:
@@ -110,32 +99,6 @@ def _load_checkpoint(queue, args):
     check_for_arg('swiglu', False)
     check_for_arg('disable_bias_linear', not getattr(margs, "add_bias_linear", False))
     check_for_arg('add_qkv_bias', getattr(margs, "add_bias_linear_qkv", False))
-
-    # Determine how to make our models.
-    margs.model_type = model_plugin.model_type
-
-    # Suppress warning about torch.distributed not being initialized.
-    module.MegatronModule.embedding_warning_printed = True
-
-    # fake distributed env
-    assert margs.world_size == 1
-    set_global_variables(margs, build_tokenizer=False)
-    mpu.set_tensor_model_parallel_world_size(margs.tensor_model_parallel_size)
-    mpu.set_pipeline_model_parallel_world_size(margs.pipeline_model_parallel_size)
-    mpu.set_expert_model_parallel_world_size(margs.expert_model_parallel_size)
-    mpu.set_tensor_model_parallel_rank(0)
-    mpu.set_pipeline_model_parallel_rank(0)
-    mpu.set_expert_model_parallel_rank(0)
-
-    # fused kernel
-    fused_kernels.load(margs)
-
-    # random
-    _CUDA_RNG_STATE_TRACKER.reset()
-    torch.cuda.manual_seed(42)
-    _CUDA_RNG_STATE_TRACKER.add(_DATA_PARALLEL_RNG_TRACKER_NAME, 43)
-    _CUDA_RNG_STATE_TRACKER.add(_MODEL_PARALLEL_RNG_TRACKER_NAME, 44)
-    _CUDA_RNG_STATE_TRACKER.add(_EXPERT_PARALLEL_RNG_TRACKER_NAME, 45)
 
     # Metadata.
     md = types.SimpleNamespace()
@@ -165,35 +128,31 @@ def _load_checkpoint(queue, args):
     md.consumed_valid_samples = margs.consumed_valid_samples
     queue.put(md)
 
-    # load ckpt
-    model = ckpt_plugin.load_checkpoint_hf2mg(margs)
+    # get model
+    hf_model = model_plugin.get_hf_model(margs.params_dtype, margs.load)
 
     # Send embeddings.
     message = dict()
-    message["word embeddings"]= model.embedding.word_embeddings.weight.data
-    if md.position_embedding_type == 'learned_absolute':
-        message["position embeddings"] = model.embedding.position_embeddings.weight.data
-    else:
-        assert not hasattr(model.embedding, 'position_embeddings')
+    message["word embeddings"]= hf_model.model.embed_tokens.weight
     queue_put("embeddings", message)
 
     # Send transformer layers
     for layer_id in range(margs.num_layers):
         message = dict()
 
-        ckpt_plugin.get_attn_ckpt(message, [model], layer_id, margs)
-        ckpt_plugin.get_mlp_ckpt(message, [model], layer_id, margs)
+        ckpt_plugin.get_hf_attn_ckpt(message, hf_model, layer_id, margs)
+        ckpt_plugin.get_hf_mlp_ckpt(message, hf_model, layer_id, margs)
 
         queue_put(f"transformer layer {layer_id}", message)
 
     # Send final norm from tp_rank 0.
-    message = {"weight": model.decoder.final_layernorm.weight.data}
+    message = {"weight": hf_model.model.norm.weight.data}
     if md.norm_has_bias:
-        message["bias"] = model.decoder.final_layernorm.bias.data
+        message["bias"] = hf_model.model.norm.bias.data
     queue_put("final norm", message)
 
     if md.output_layer:
-        message = {"weight": model.output_layer.weight.data}
+        message = {"weight": hf_model.lm_head.weight.data}
         queue_put("output layer", message)
 
     queue.put("done")

@@ -44,4 +44,25 @@ def load_args_hf2mg(args):
     args.consumed_valid_samples = 0
     args.norm_has_bias = False
 
-    return args, args
+
+def save_args_mg2hf(args):
+    from transformers import MistralConfig
+
+    config = MistralConfig(
+        vocab_size = args.padded_vocab_size if hasattr(args, "padded_vocab_size") else args.vocab_size,
+        hidden_size = args.hidden_size,
+        intermediate_size = args.ffn_hidden_size,
+        num_hidden_layers = args.encoder_num_layers,
+        num_attention_heads = args.num_attention_heads,
+        num_key_value_heads = args.num_query_groups,
+        max_position_embeddings = args.max_position_embeddings,
+        rms_norm_eps = args.norm_epsilon,
+        tie_word_embeddings = not args.untie_embeddings_and_output_weights,
+        rope_theta = args.rotary_base,
+        attention_dropout = args.attention_dropout,
+        torch_dtype = args.params_dtype,
+        attention_bias= args.add_qkv_bias
+    )
+    config.save_pretrained(args.save)
+
+    return config
