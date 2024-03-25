@@ -69,6 +69,7 @@ def _load_checkpoint(queue, args):
         '--no-load-optim',
         '--no-load-rng',
         '--use-mcore-models',
+        '--transformer-impl', 'transformer_engine',
         '--no-save-optim',
         '--no-save-rng',
         '--no-initialization',
