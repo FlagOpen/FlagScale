@@ -656,7 +656,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
     set_checkpoint_version(state_dict.get('checkpoint_version', 0))
 
     # Set iteration.
-    if args.finetune or release:
+    if args.finetune or release or args.finetune_with_optim:
         iteration = 0
     else:
         try:
@@ -699,7 +699,8 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
     fix_query_key_value_ordering(model, checkpoint_version)
 
     # Optimizer.
-    if not release and not args.finetune and not args.no_load_optim:
+    if not release and not args.finetune and not args.no_load_optim \
+        and not args.finetune_with_optim:
         try:
             # Load state dict.
             if optimizer is not None:
@@ -730,8 +731,37 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
                          'exiting ...'.format(checkpoint_name))
             sys.exit()
     else:
-        if (args.fp16 or args.bf16) and optimizer is not None:
+        if (args.fp16 or args.bf16) and optimizer is not None \
+            and not args.finetune_with_optim:
             optimizer.reload_model_params()
+    
+    if args.finetune_with_optim:
+        try:
+            # Load state dict.
+            if optimizer is not None:
+                optimizer.load_state_dict(state_dict['optimizer'])
+
+            # Load distributed optimizer's custom parameter state.
+            # For distributed checkpoint it's already loaded in load_state_dict above
+            if args.use_distributed_optimizer and not is_dist_ckpt:
+                tracker_filename = get_checkpoint_tracker_filename(load_dir)
+                iteration, release = read_metadata(tracker_filename)
+                model_checkpoint_name = \
+                    get_checkpoint_name(load_dir, iteration, release)
+                optim_checkpoint_name = \
+                    get_distributed_optimizer_checkpoint_name(
+                        model_checkpoint_name)
+                optimizer.load_parameter_state(optim_checkpoint_name)
+            # Reset iteration to 0 after loading optimizer
+            # after making use of the iteration returned by read_metadata 
+            iteration = 0
+
+        except KeyError:
+            print_rank_0('Unable to load optimizer from checkpoint {}. '
+                         'Specify --no-load-optim or --finetune to prevent '
+                         'attempting to load the optimizer state, '
+                         'exiting ...'.format(checkpoint_name))
+            sys.exit()
 
     # rng states.
     if not release and not args.finetune and not args.no_load_rng:
