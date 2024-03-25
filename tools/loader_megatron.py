@@ -18,6 +18,7 @@ def add_arguments(parser):
     group.add_argument('--megatron-path', type=str, default=None,
                        help='Base directory of deepspeed repository')
 
+
 def _load_checkpoint(queue, args):
 
     # Search in directory above this
