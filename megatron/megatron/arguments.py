@@ -1504,6 +1504,7 @@ def _add_data_args(parser):
                                 'Llama2Tokenizer',
                                 'NullTokenizer', 
                                 'HFTokenizer', 
+                                'HFTokenizersTokenizer', 
                                 'QwenTokenizer'],
                        help='What type of tokenizer to use.')
     group.add_argument('--tokenizer-path', type=str, default=None,
