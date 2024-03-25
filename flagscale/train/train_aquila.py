@@ -3,6 +3,8 @@
 
 import os
 import sys
+sys.path.append(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))
 
 import torch
 from functools import partial
@@ -25,7 +27,11 @@ from megatron.utils import (
     average_losses_across_data_parallel_group
 )
 from megatron.arguments import core_transformer_config_from_args
-from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
+from megatron.yaml_arguments import core_transformer_config_from_yaml
+from megatron.core.models.gpt.gpt_layer_specs import (
+    get_gpt_layer_local_spec,
+    get_gpt_layer_with_transformer_engine_spec,
+)
 
 
 def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megatron.model.GPTModel]:
@@ -42,15 +48,23 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
         Union[GPTModel, megatron.model.GPTModel]: The returned model
     """
     args = get_args()
+    use_te = args.transformer_impl == "transformer_engine"
 
     print_rank_0('building GPT model ...')
-    config = core_transformer_config_from_args(get_args())
+    # Experimental loading arguments from yaml
+    if args.yaml_cfg is not None:
+        config = core_transformer_config_from_yaml(args, "language_model")
+    else:
+        config = core_transformer_config_from_args(args)
 
     if args.use_mcore_models:
         if args.spec is not None:
             transformer_layer_spec = import_module(args.spec)
         else:
-            transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm)
+            if use_te:
+                transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm)
+            else:
+                transformer_layer_spec = get_gpt_layer_local_spec(args.num_experts, args.moe_grouped_gemm)
 
         model = GPTModel(
             config=config,
@@ -64,6 +78,7 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
             share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
             position_embedding_type=args.position_embedding_type,
             rotary_percent=args.rotary_percent,
+            rotray_base=args.rotary_base,
         )
     else:
         assert(args.context_parallel_size == 1), "Context parallelism is only supported with Megatron Core!"
@@ -164,6 +179,7 @@ def core_gpt_dataset_config_from_args(args):
         split=args.split,
         path_to_cache=args.data_cache_path,
         mock=args.mock_data,
+        mmap_bin_files=args.mmap_bin_files,
         tokenizer=tokenizer,
         reset_position_ids=args.reset_position_ids,
         reset_attention_mask=args.reset_attention_mask,
@@ -201,7 +217,6 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
 
 if __name__ == "__main__":
-
 
     # Temporary for transition to core datasets
     train_valid_test_datasets_provider.is_distributed = True
