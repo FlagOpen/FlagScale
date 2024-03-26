@@ -7,12 +7,12 @@ On the server side, run one of the following commands:
         --disable-log-requests
 
     (TGI backend)
-    ./launch_hf_server.sh <your_model>
+    ./launch_tgi_server.sh <your_model> <max_batch_total_tokens>
 
 On the client side, run:
     python benchmarks/benchmark_serving.py \
         --backend <backend> \
-        --tokenizer <your_model> --dataset <target_dataset> \
+        --model <your_model> --dataset <target_dataset> \
         --request-rate <request_rate>
 """
 import argparse
@@ -25,15 +25,12 @@ from datetime import datetime
 from typing import AsyncGenerator, List, Tuple
 
 import numpy as np
+from backend_request_func import (ASYNC_REQUEST_FUNCS, RequestFuncInput,
+                                  RequestFuncOutput)
 from tqdm.asyncio import tqdm
 from transformers import PreTrainedTokenizerBase
-from vllm.transformers_utils.tokenizer import get_tokenizer
 
-from backend_request_func import (
-    ASYNC_REQUEST_FUNCS,
-    RequestFuncInput,
-    RequestFuncOutput,
-)
+from vllm.transformers_utils.tokenizer import get_tokenizer
 
 
 @dataclass
@@ -171,9 +168,9 @@ async def benchmark(
     else:
         raise ValueError(f"Unknown backend: {backend}")
 
-    pbar = None if disable_tqdm else tqdm(total=len(input_requests))
-
     print(f"Traffic request rate: {request_rate}")
+
+    pbar = None if disable_tqdm else tqdm(total=len(input_requests))
 
     benchmark_start_time = time.perf_counter()
     tasks = []
@@ -293,7 +290,9 @@ def main(args: argparse.Namespace):
 
         # Save to file
         base_model_id = model_id.split("/")[-1]
-        file_name = f"{backend}-{args.request_rate}qps-{base_model_id}-{current_dt}.json"
+        file_name = (
+            f"{backend}-{args.request_rate}qps-{base_model_id}-{current_dt}.json"
+        )
         with open(file_name, "w") as outfile:
             json.dump(result_json, outfile)
 
@@ -341,7 +340,7 @@ if __name__ == "__main__":
         "--tokenizer",
         type=str,
         help=
-        "Name or path of the tokenizer, if not using the default model tokenizer.",
+        "Name or path of the tokenizer, if not using the default tokenizer.",
     )
     parser.add_argument(
         "--best-of",
@@ -375,7 +374,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--disable-tqdm",
         action="store_true",
-        help="Specify to disbale tqdm progress bar.",
+        help="Specify to disable tqdm progress bar.",
     )
     parser.add_argument(
         "--save-result",
