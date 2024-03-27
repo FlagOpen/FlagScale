@@ -32,9 +32,9 @@ def main():
     parser.add_argument('--model-type', type=str, default=[], nargs="+", required=True,
                         choices=['aquila', 'mistral', 'mixtral'],
                         help='Type of the model.')
-    parser.add_argument('--loader', type=str, default='megatron',
+    parser.add_argument('--loader', type=str, default='mcore', choices=['mcore', 'transformers'],
                         help='Module name to load checkpoint, should be on python path')
-    parser.add_argument('--saver', type=str, default='megatron',
+    parser.add_argument('--saver', type=str, default='mcore', choices=['mcore', 'transformers'],
                         help='Module name to save checkpoint, shdoul be on python path')
     parser.add_argument('--load-dir', type=str, required=True,
                         help='Directory to load model checkpoint from')
