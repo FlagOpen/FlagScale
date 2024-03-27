@@ -27,6 +27,7 @@ def _load_checkpoint(queue, args):
     # Search in directory above this.
     root_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__),
+                     os.path.pardir,
                      os.path.pardir))
     sys.path.append(os.path.join(root_path, "megatron"))
 

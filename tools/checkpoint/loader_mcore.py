@@ -16,14 +16,14 @@ def add_arguments(parser):
                        help='Path to the vocab file. If specified will use this to get vocab size and '
                        'trim padding from the embedding table.')
     group.add_argument('--megatron-path', type=str, default=None,
-                       help='Base directory of deepspeed repository')
+                       help='Base directory of megatron repository')
 
 
 def _load_checkpoint(queue, args):
-
     # Search in directory above this
     root_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__),
+                     os.path.pardir,
                      os.path.pardir))
     sys.path.append(os.path.join(root_path, "megatron"))
 
