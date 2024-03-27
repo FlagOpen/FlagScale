@@ -2,7 +2,7 @@
 python convert.py \
     --model-type mixtral \
     --loader transformers \
-    --saver megatron \
+    --saver mcore \
     --load-dir Mixtral-8x7B-v0.1 \
     --save-dir output \
     --target-tensor-parallel-size 2 \
@@ -17,7 +17,7 @@ python convert.py \
 python convert.py \
     --model-type mistral mixtral \
     --loader transformers \
-    --saver megatron \
+    --saver mcore \
     --load-dir Mistral-7B-v0.1 \
     --save-dir output \
     --target-tensor-parallel-size 2 \

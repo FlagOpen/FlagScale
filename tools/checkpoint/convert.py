@@ -9,11 +9,13 @@ def load_plugin(plugin_type, name):
     module_name = f"{plugin_type}_{name}"
     try:
         plugin = importlib.import_module(module_name)
-    except ModuleNotFoundError:
+    except ModuleNotFoundError as e:
+        print(e)
         module_name = name
         try:
             plugin = importlib.import_module(module_name)
-        except ModuleNotFoundError:
+        except ModuleNotFoundError as e:
+            print(e)
             sys.exit(f"Unable to load {plugin_type} plugin {name}. Exiting.")
 
     if not hasattr(plugin, 'add_arguments'):
@@ -23,15 +25,16 @@ def load_plugin(plugin_type, name):
     return plugin
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Convert checkpoint")
+def main():
+    parser = argparse.ArgumentParser(description="Convert checkpoint",
+                                     allow_abbrev=False, conflict_handler='resolve')
     # convert args
     parser.add_argument('--model-type', type=str, default=[], nargs="+", required=True,
                         choices=['aquila', 'mistral', 'mixtral'],
                         help='Type of the model.')
-    parser.add_argument('--loader', type=str, default='megatron',
+    parser.add_argument('--loader', type=str, default='mcore', choices=['mcore', 'transformers'],
                         help='Module name to load checkpoint, should be on python path')
-    parser.add_argument('--saver', type=str, default='megatron',
+    parser.add_argument('--saver', type=str, default='mcore', choices=['mcore', 'transformers'],
                         help='Module name to save checkpoint, shdoul be on python path')
     parser.add_argument('--load-dir', type=str, required=True,
                         help='Directory to load model checkpoint from')
@@ -50,6 +53,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     queue = mp.Queue(maxsize=args.max_queue_size)
+
     print("Starting saver...")
     saver_args = copy.deepcopy(args)
     if len(args.model_type) == 1:
@@ -75,3 +79,7 @@ if __name__ == "__main__":
 
     print("Waiting for saver to complete...")
     saver_proc.join()
+
+
+if __name__ == '__main__':
+    main()
