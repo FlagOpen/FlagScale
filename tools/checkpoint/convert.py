@@ -30,7 +30,7 @@ def main():
                                      allow_abbrev=False, conflict_handler='resolve')
     # convert args
     parser.add_argument('--model-type', type=str, default=[], nargs="+", required=True,
-                        choices=['aquila', 'mistral', 'mixtral'],
+                        choices=['mistral', 'mixtral'],
                         help='Type of the model.')
     parser.add_argument('--loader', type=str, default='mcore', choices=['mcore', 'transformers'],
                         help='Module name to load checkpoint, should be on python path')
