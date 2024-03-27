@@ -197,12 +197,13 @@ def _load_checkpoint(queue, args):
     md.true_vocab_size = true_vocab_size
     md.make_vocab_size_divisible_by = margs.make_vocab_size_divisible_by
     md.checkpoint_args = checkpoint_args
-    md.consumed_train_samples = margs.consumed_train_samples
-    md.consumed_valid_samples = margs.consumed_valid_samples
-    queue.put(md)
 
+    consumed_train_samples = None
+    consumed_valid_samples = None
     def get_models(count, dtype):
         # for one pp stage
+        nonlocal consumed_train_samples
+        nonlocal consumed_valid_samples
         tp_size = margs.tensor_model_parallel_size
         pp_size = margs.pipeline_model_parallel_size
         vp_size = margs.virtual_pipeline_model_parallel_size or 1
@@ -227,7 +228,19 @@ def _load_checkpoint(queue, args):
                 post_process = mpu.is_pipeline_last_stage() 
                 model_ = [model_plugin.get_mg_model(dtype, pre_process, post_process)]
 
+            margs.consumed_train_samples = 0
+            margs.consumed_valid_samples = 0
             load_checkpoint(model_, None, None)
+
+            if consumed_train_samples is not None:
+                assert(margs.consumed_train_samples == consumed_train_samples)
+            else:
+                consumed_train_samples = margs.consumed_train_samples
+
+            if consumed_valid_samples is not None:
+                assert(margs.consumed_valid_samples == consumed_valid_samples)
+            else:
+                consumed_valid_samples = margs.consumed_valid_samples
 
             for vp_rank in range(vp_size):
                 models[vp_rank].append(model_[vp_rank])
@@ -238,6 +251,10 @@ def _load_checkpoint(queue, args):
     mpu.set_pipeline_model_parallel_rank(0)
     all_models = [get_models(tp_size * ep_size, md.params_dtype)]
     models = all_models[0][0] # pp0vpp0
+
+    md.consumed_train_samples = consumed_train_samples
+    md.consumed_valid_samples = consumed_valid_samples
+    queue.put(md)
 
     # Send embeddings
     word_embeddings = []
