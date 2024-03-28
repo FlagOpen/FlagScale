@@ -12,9 +12,18 @@ def get_hf_model(dtype, model_path=None, config=None):
             model_path, device_map="cpu", trust_remote_code=True, torch_dtype=dtype
         )
     elif model_path is None:
-        model = AutoModelForCausalLM.from_config(
-            config=config, trust_remote_code=True, torch_dtype=dtype
-        )
+        import torch
+        from accelerate import init_empty_weights
+        from accelerate.utils import set_module_tensor_to_device
+
+        with init_empty_weights():
+            model = AutoModelForCausalLM.from_config(
+                config=config, trust_remote_code=True, torch_dtype=dtype
+            )
+        for name, param in model.named_parameters():
+            set_module_tensor_to_device(
+                model, name, "cpu", torch.empty(*param.size(), dtype=dtype)
+            )
     else:
         raise ValueError("Build HF model must have path or config model_path.")
     print("> loading huggingface model elapsed time:", time.time() - s_time)
