@@ -26,6 +26,7 @@ def _load_checkpoint(queue, args):
                      os.path.pardir,
                      os.path.pardir))
     sys.path.append(os.path.join(root_path, "megatron"))
+    sys.path.append(root_path)
 
     if args.megatron_path is not None:
         sys.path.insert(0, args.megatron_path)
