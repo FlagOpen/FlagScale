@@ -25,7 +25,7 @@ def get_hf_model(dtype, model_path=None, config=None):
                 model, name, "cpu", torch.empty(*param.size(), dtype=dtype)
             )
     else:
-        raise ValueError("Build HF model must have path or config model_path.")
+        raise ValueError("Build HF model must have model_path or config.")
     print("> loading huggingface model elapsed time:", time.time() - s_time)
     return model
 
