@@ -5,14 +5,14 @@ import os
 import sys
 import time
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy
 import torch
 
 from megatron.core.datasets.blended_megatron_dataset_config import BlendedMegatronDatasetConfig
 from megatron.core.datasets.indexed_dataset import IndexedDataset
-from megatron.core.datasets.megatron_dataset import MegatronDataset, MockDataset
+from megatron.core.datasets.megatron_dataset import LowLevelDataset, MegatronDataset, MockDataset
 from megatron.core.datasets.utils import Split, log_single_rank
 
 logger = logging.getLogger(__name__)
@@ -22,12 +22,14 @@ logger = logging.getLogger(__name__)
 class GPTDatasetConfig(BlendedMegatronDatasetConfig):
     """Configuration object for Megatron Core GPT datasets
 
-    Attributes:          
+    Args:          
         reset_position_ids (bool): Option to reset the position IDs in the dataset at an interval
 
         reset_attention_mask (bool): Option to reset the attention mask from the dataset
 
         eod_mask_loss (bool): Option to enable the EOD mask loss
+
+        create_attention_mask (bool): Option to enable the attention masks generation. Can be disabled if attention kernel generates masks by itself.
 
         vocab_size (int): Size of vocabulary
       
@@ -38,6 +40,8 @@ class GPTDatasetConfig(BlendedMegatronDatasetConfig):
     reset_attention_mask: bool = None
 
     eod_mask_loss: bool = None
+
+    create_attention_mask: bool = True
 
     vocab_size: int = sys.maxsize
 
@@ -56,6 +60,29 @@ class GPTDatasetConfig(BlendedMegatronDatasetConfig):
 class MockGPTDataset(MockDataset):
     """The mock GPT dataset
     """
+
+    def __init__(
+        self,
+        dataset: Optional[LowLevelDataset],
+        dataset_path: Optional[str],
+        indices: Optional[numpy.ndarray],
+        num_samples: int,
+        index_split: Split,
+        config: BlendedMegatronDatasetConfig,
+    ) -> None:
+        super().__init__(dataset, dataset_path, indices, num_samples, index_split, config)
+
+        self.masks_and_position_ids_are_cacheable = not any(
+            [
+                self.config.reset_position_ids,
+                self.config.reset_attention_mask,
+                self.config.eod_mask_loss,
+            ]
+        )
+        self.masks_and_position_ids_are_cached = False
+        self.cached_attention_mask = None
+        self.cached_loss_mask = None
+        self.cached_position_ids = None
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """Return a sequence_length + 1 token sequence consisting of the following:
@@ -89,29 +116,50 @@ class MockGPTDataset(MockDataset):
         labels = text[1:].contiguous()
         tokens = text[:-1].contiguous()
 
-        attention_mask, loss_mask, position_ids = _get_ltor_masks_and_position_ids(
-            tokens,
-            eod,
-            self.config.reset_position_ids,
-            self.config.reset_attention_mask,
-            self.config.eod_mask_loss,
-        )
+        if (
+            not self.masks_and_position_ids_are_cacheable
+            or not self.masks_and_position_ids_are_cached
+        ):
+            attention_mask, loss_mask, position_ids = _get_ltor_masks_and_position_ids(
+                tokens,
+                eod,
+                self.config.reset_position_ids,
+                self.config.reset_attention_mask,
+                self.config.eod_mask_loss,
+                self.config.create_attention_mask,
+            )
+            if self.masks_and_position_ids_are_cacheable:
+                self.cached_attention_mask = attention_mask
+                self.cached_loss_mask = loss_mask
+                self.cached_position_ids = position_ids
+                self.masks_and_position_ids_are_cached = True
+        else:
+            attention_mask = self.cached_attention_mask
+            loss_mask = self.cached_loss_mask
+            position_ids = self.cached_position_ids
 
-        return {
-            "tokens": tokens,
-            "labels": labels,
-            "attention_mask": attention_mask,
-            "loss_mask": loss_mask,
-            "position_ids": position_ids,
-        }
+        if self.config.create_attention_mask:
+            return {
+                "tokens": tokens,
+                "labels": labels,
+                "attention_mask": attention_mask,
+                "loss_mask": loss_mask,
+                "position_ids": position_ids,
+            }
+        else:
+            return {
+                "tokens": tokens,
+                "labels": labels,
+                "loss_mask": loss_mask,
+                "position_ids": position_ids,
+            }
 
 
 class GPTDataset(MegatronDataset):
     """The base GPT dataset
 
     Args:
-        indexed_dataset (IndexedDataset): The IndexedDataset around which to build the
-        MegatronDataset
+        indexed_dataset (IndexedDataset): The IndexedDataset around which to build the MegatronDataset
 
         dataset_path (str): The real path on disk to the dataset, for bookkeeping
 
@@ -138,6 +186,18 @@ class GPTDataset(MegatronDataset):
         )
 
         self.vocab_size = config.vocab_size
+
+        self.masks_and_position_ids_are_cacheable = not any(
+            [
+                self.config.reset_position_ids,
+                self.config.reset_attention_mask,
+                self.config.eod_mask_loss,
+            ]
+        )
+        self.masks_and_position_ids_are_cached = False
+        self.cached_attention_mask = None
+        self.cached_loss_mask = None
+        self.cached_position_ids = None
 
     def _finalize(self) -> None:
         """Abstract method implementation
@@ -206,21 +266,43 @@ class GPTDataset(MegatronDataset):
             tokens >= self.vocab_size
         ), "An input token is out of bounds of the tokenizer vocabulary"
 
-        attention_mask, loss_mask, position_ids = _get_ltor_masks_and_position_ids(
-            tokens,
-            self.config.tokenizer.eod,
-            self.config.reset_position_ids,
-            self.config.reset_attention_mask,
-            self.config.eod_mask_loss,
-        )
+        if (
+            not self.masks_and_position_ids_are_cacheable
+            or not self.masks_and_position_ids_are_cached
+        ):
+            attention_mask, loss_mask, position_ids = _get_ltor_masks_and_position_ids(
+                tokens,
+                self.config.tokenizer.eod,
+                self.config.reset_position_ids,
+                self.config.reset_attention_mask,
+                self.config.eod_mask_loss,
+                self.config.create_attention_mask,
+            )
+            if self.masks_and_position_ids_are_cacheable:
+                self.cached_attention_mask = attention_mask
+                self.cached_loss_mask = loss_mask
+                self.cached_position_ids = position_ids
+                self.masks_and_position_ids_are_cached = True
+        else:
+            attention_mask = self.cached_attention_mask
+            loss_mask = self.cached_loss_mask
+            position_ids = self.cached_position_ids
 
-        return {
-            "tokens": tokens,
-            "labels": labels,
-            "attention_mask": attention_mask,
-            "loss_mask": loss_mask,
-            "position_ids": position_ids,
-        }
+        if self.config.create_attention_mask:
+            return {
+                "tokens": tokens,
+                "labels": labels,
+                "attention_mask": attention_mask,
+                "loss_mask": loss_mask,
+                "position_ids": position_ids,
+            }
+        else:
+            return {
+                "tokens": tokens,
+                "labels": labels,
+                "loss_mask": loss_mask,
+                "position_ids": position_ids,
+            }
 
     def _query_document_sample_shuffle_indices(
         self, idx: int
@@ -293,10 +375,7 @@ class GPTDataset(MegatronDataset):
             -- A random permutation of index range of the sample index
 
         Returns:
-            Tuple[numpy.ndarray, numpy.ndarray]: The document index, the sample index, and the
-            shuffle index
-
-        TODO: Explain the 80% threshold
+            Tuple[numpy.ndarray, numpy.ndarray]: The document index, the sample index, and the shuffle index
         """
         path_to_cache = self.config.path_to_cache
         if path_to_cache is None:
@@ -323,7 +402,10 @@ class GPTDataset(MegatronDataset):
             )
         )
 
-        if not cache_hit and torch.distributed.get_rank() == 0:
+        if not cache_hit and (
+            not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0
+        ):
+
             log_single_rank(
                 logger,
                 logging.INFO,
@@ -526,8 +608,6 @@ def _build_document_index(
 
     Returns:
         numpy.ndarray: The document index
-
-    TODO: Explain separate_final_epoch
     """
     if not separate_final_epoch or num_epochs == 1:
         document_index = numpy.mgrid[0:num_epochs, 0 : len(documents)][1]
@@ -546,20 +626,16 @@ def _build_shuffle_index(
     num_samples: int, total_size: int, numpy_random_state: numpy.random.RandomState
 ) -> numpy.ndarray:
     """Build the range [0, size) and shuffle
-
+    
     Args:
         num_samples (int): The size of the first shuffle range [0, num_samples)
 
-        total_size (int): The size of the entire index. If larger than 'num_samples', it defines
-
-        the second shuffle range [num_samples, total_size)
+        total_size (int): The size of the entire index. If larger than 'num_samples', it defines the second shuffle range [num_samples, total_size)
 
         numpy_random_state (numpy.random.RandomState): The NumPy random state
 
     Returns:
         numpy.ndarray: The shuffle index
-
-    TODO: Explain [0, num_samples) [num_samples, total_size) split
     """
     dtype_ = numpy.uint32
     if total_size >= (numpy.iinfo(numpy.uint32).max - 1):
@@ -582,6 +658,7 @@ def _get_ltor_masks_and_position_ids(
     reset_position_ids: bool,
     reset_attention_mask: bool,
     eod_mask_loss: bool,
+    create_attention_mask: bool,
 ):
     """Build masks and position id for left to right model.
 
@@ -596,18 +673,23 @@ def _get_ltor_masks_and_position_ids(
 
         eod_mask_loss (bool): Switch to enable the EOD mask loss
 
+        create_attention_mask (bool): Switch to enable the attention masks generation. Can be disabled if attention kernel generates masks by itself.
+
     Returns:
-        torch.Tensor : Attention mask needed to be used for Attention
+        torch.Tensor: Attention mask needed to be used for Attention
 
-        torch.Tensor : The mask used for loss value during training
+        torch.Tensor: The mask used for loss value during training
 
-        torch.Tensor : The position ID's of the token
+        torch.Tensor: The position ID's of the token
     """
     seq_length = data.numel()
 
-    attention_mask = torch.tril(torch.ones((seq_length, seq_length), device=data.device)).unsqueeze(
-        0
-    )
+    if create_attention_mask:
+        attention_mask = torch.tril(
+            torch.ones((seq_length, seq_length), device=data.device)
+        ).unsqueeze(0)
+    else:
+        attention_mask = None
 
     # Loss mask.
     loss_mask = torch.ones(seq_length, dtype=torch.float, device=data.device)
@@ -632,14 +714,15 @@ def _get_ltor_masks_and_position_ids(
         for j in range(eod_index.numel()):
             i = eod_index[j]
             # Mask attention loss.
-            if reset_attention_mask:
+            if reset_attention_mask and attention_mask is not None:
                 attention_mask[0, (i + 1) :, : (i + 1)] = 0
             # Reset positions.
             if reset_position_ids:
                 position_ids[(i + 1) :] -= i + 1 - prev_index
                 prev_index = i + 1
 
-    # Convert attention mask to binary:
-    attention_mask = attention_mask < 0.5
+    if attention_mask is not None:
+        # Convert attention mask to binary:
+        attention_mask = attention_mask < 0.5
 
     return attention_mask, loss_mask, position_ids
