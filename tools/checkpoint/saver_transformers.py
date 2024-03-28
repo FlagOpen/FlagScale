@@ -2,13 +2,14 @@ import os
 import sys
 import importlib
 
-
 import torch
-from transformers import AutoModelForCausalLM
 
 
 def add_arguments(parser):
     group = parser.add_argument_group(title='Transformers saver')
+
+    group.add_argument('--megatron-path', type=str, default=None,
+                       help='Base directory of Megatron repository')
 
     group.add_argument('--target-tensor-parallel-size', type=int,
                        help='Target tensor model parallel size, defaults to the tensor parallel size '
@@ -42,6 +43,7 @@ def save_checkpoint(queue, args):
                      os.path.pardir,
                      os.path.pardir))
     sys.path.append(os.path.join(root_path, "megatron"))
+    sys.path.append(root_path)
 
     if args.megatron_path is not None:
         sys.path.insert(0, args.megatron_path)
@@ -238,10 +240,11 @@ def save_checkpoint(queue, args):
         else:
             print("Original vocab size not specified, leaving embedding table as-is. "
                 "If you've changed the tensor parallel size this could cause problems.")
-            print("Warning: saver_transformers will slice embedding from padding_vocab_size to vocab_size.")
             margs.padded_vocab_size = orig_word_embed.shape[0]
-            full_word_embed = orig_word_embed[:margs.vocab_size, :]
-        return full_word_embed
+            full_word_embed = orig_word_embed
+
+        print("Warning: saver_transformers will slice embedding from padding_vocab_size to vocab_size.")
+        return full_word_embed[:margs.vocab_size, :]
 
     embeddings_msg = queue_get("embeddings")
     origin_embed = embeddings_msg.pop("word embeddings")

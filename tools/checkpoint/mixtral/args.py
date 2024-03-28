@@ -54,7 +54,7 @@ def save_args_mg2hf(args):
     from transformers import MixtralConfig
 
     config = MixtralConfig(
-        vocab_size = args.padded_vocab_size if hasattr(args, "padded_vocab_size") else args.vocab_size,
+        vocab_size = args.vocab_size,
         hidden_size = args.hidden_size,
         intermediate_size = args.ffn_hidden_size,
         num_hidden_layers = args.encoder_num_layers,
