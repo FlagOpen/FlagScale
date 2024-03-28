@@ -23,42 +23,41 @@ from collections import defaultdict
 _TRAIN_START_TIME = time.time()
 import torch
 
-from megatron import get_args
-from megatron import get_signal_handler
-from megatron import get_timers
-from megatron import get_tensorboard_writer
-from megatron import get_wandb_writer
-from megatron import get_one_logger
-from megatron import get_current_global_batch_size
-from megatron import get_num_microbatches
-from megatron import is_last_rank
-from megatron import update_num_microbatches
 from megatron.core import mpu, tensor_parallel
 from megatron.core.utils import get_model_config
-from megatron import print_rank_0
-from megatron import print_rank_last
-from megatron.checkpointing import load_checkpoint
-from megatron.checkpointing import save_checkpoint
-from megatron.checkpointing import get_checkpoint_name
-from megatron.model import Float16Module
-from megatron.model import GPTModel
+from megatron.training.checkpointing import load_checkpoint
+from megatron.training.checkpointing import save_checkpoint
+from megatron.legacy.model import Float16Module
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import finalize_model_grads
 from megatron.core.enums import ModelType
 from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig
-from megatron.initialize import initialize_megatron
-from megatron.initialize import write_args_to_tensorboard
-from megatron.initialize import set_jit_fusion_options
-from megatron.optimizer_param_scheduler import OptimizerParamScheduler
-from megatron.utils import check_adlr_autoresume_termination
-from megatron.utils import unwrap_model
-from megatron.data.data_samplers import build_pretraining_data_loader
-from megatron.data.data_samplers_hetero import build_pretraining_data_loader_hetero
-from megatron.utils import calc_params_l2_norm
+from megatron.training.initialize import initialize_megatron
+from megatron.training.initialize import write_args_to_tensorboard
+from megatron.training.initialize import set_jit_fusion_options
+from megatron.training.optimizer_param_scheduler import OptimizerParamScheduler
+from megatron.legacy.data.data_samplers import build_pretraining_data_loader
+from megatron.legacy.data.data_samplers_hetero import build_pretraining_data_loader_hetero
 from megatron.core.pipeline_parallel import get_forward_backward_func
-from megatron.utils import report_memory
-from megatron.model.vision.knn_monitor import compute_feature_bank
-from megatron.utils import is_last_rank
+
+from .utils import (
+    calc_params_l2_norm,
+    check_adlr_autoresume_termination,
+    is_last_rank,
+    print_rank_0,
+    print_rank_last,
+    report_memory,
+    unwrap_model)
+from .global_vars import (
+    get_args,
+    get_signal_handler,
+    get_timers,
+    get_tensorboard_writer,
+    get_wandb_writer,
+    get_one_logger,
+    get_current_global_batch_size,
+    get_num_microbatches,
+    update_num_microbatches)
 
 from flagscale.train.extra_valid import extra_evaluate_and_print_results
 from flagscale.train.extra_valid import build_extra_valid_data_iterators
@@ -72,10 +71,14 @@ def print_datetime(string):
 
 
 def num_floating_point_operations(args, batch_size):
+    # Group Query Attention.
     if not args.group_query_attention:
         args.num_query_groups = args.num_attention_heads
+    # MoE.
+    num_experts_routed_to = 1 if args.num_experts is None else args.moe_router_topk
+    gated_linear_multiplier = 3 / 2 if args.swiglu else 1
     return (
-        60
+        12
         * batch_size
         * args.seq_length
         * args.num_layers
@@ -83,9 +86,14 @@ def num_floating_point_operations(args, batch_size):
         * args.hidden_size
         * (
             1
-            + (args.num_query_groups / (5 * args.num_attention_heads))
-            + (args.seq_length / (5 * args.hidden_size))
-            + (args.padded_vocab_size / (10 * args.num_layers * args.hidden_size))
+            + (
+                (args.ffn_hidden_size / args.hidden_size)
+                * num_experts_routed_to
+                * gated_linear_multiplier
+            )
+            + (args.num_query_groups / args.num_attention_heads)
+            + (args.seq_length / args.hidden_size)
+            + (args.padded_vocab_size / (2 * args.num_layers * args.hidden_size))
         )
     )
 
@@ -263,7 +271,8 @@ def pretrain(train_valid_test_dataset_provider,
     if not args.skip_train:
         print_rank_0('training ...')
 
-        if args.dataloader_type == 'cyclic' and args.retro_add_retriever:
+        if args.dataloader_type == 'cyclic' and args.retro_project_dir:
+            assert args.retro_cyclic_train_iters is not None
             args.train_iters = args.retro_cyclic_train_iters
             print_rank_0("retro cyclic train iters : %d" % args.train_iters)
 
@@ -278,7 +287,7 @@ def pretrain(train_valid_test_dataset_provider,
 
         print_datetime('after training is done')
 
-        if args.save and iteration != 0:
+        if args.save and iteration != 0 and iteration % args.save_interval != 0:
             save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
                             num_floating_point_operations_so_far)
     else:
@@ -385,12 +394,6 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
 
     if not isinstance(model, list):
         model = [model]
-
-    # Disallow training and inference with Transformer Engine
-    # for non-GPT models
-    args.allow_transformer_engine = all([type(m) == GPTModel for m in model])
-    # assert args.allow_transformer_engine or args.transformer_impl == 'local', \
-    #     'Transformer Engine is only approved for GPT models'
 
     # Set tensor model parallel attributes if not set.
     # Only parameters that are already tensor model parallel have these
@@ -534,6 +537,7 @@ def setup_model_and_optimizer(model_provider_func,
                               lr_mult=1.0):
     """Setup model and optimizer."""
     args = get_args()
+    timers = get_timers()
 
     model = get_model(model_provider_func, model_type)
     unwrapped_model = unwrap_model(model)
@@ -543,6 +547,7 @@ def setup_model_and_optimizer(model_provider_func,
         if hasattr(args, f.name):
             kwargs[f.name] = getattr(args, f.name)
     config = OptimizerConfig(**kwargs)
+    config.timers = timers
     optimizer = get_megatron_optimizer(config, model, no_wd_decay_cond,
                                        scale_lr_cond, lr_mult)
     opt_param_scheduler = get_optimizer_param_scheduler(optimizer)
@@ -588,10 +593,7 @@ def train_step(forward_step_func, data_iterator,
 
     # Set grad to zero.
     for model_chunk in model:
-        # If using distributed optimizer, don't zero buffer here; zeroing of buffer is
-        # handled automatically by the optimizer after all-gathers finish.
-        # Otherwise, zero the buffer.
-        model_chunk.zero_grad_buffer(zero_buffer=(not args.use_distributed_optimizer))
+        model_chunk.zero_grad_buffer()
     optimizer.zero_grad()
 
     # Forward pass.
@@ -611,17 +613,17 @@ def train_step(forward_step_func, data_iterator,
         torch.cuda.empty_cache()
 
     # Vision gradients.
-    if args.vision_pretraining and args.vision_pretraining_type == "dino":
+    if getattr(args, 'vision_pretraining', False) and args.vision_pretraining_type == "dino":
         unwrapped_model = unwrap_model(model[0])
         unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
 
     # Update parameters.
     timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
-    update_successful, grad_norm, num_zeros_in_grad = optimizer.step(args, timers)
+    update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
     timers('optimizer').stop()
 
     # Vision momentum.
-    if args.vision_pretraining and args.vision_pretraining_type == "dino":
+    if getattr(args, 'vision_pretraining', False) and args.vision_pretraining_type == "dino":
         unwrapped_model = unwrap_model(model[0])
         unwrapped_model.update_momentum(args.curr_iteration)
 
@@ -853,7 +855,8 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
             if wandb_writer:
                 wandb_writer.log({'iteration-time': elapsed_time_per_iteration},
                                  iteration)
-        log_string = ' iteration {:8d}/{:8d} |'.format(
+        log_string = f" [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
+        log_string += ' iteration {:8d}/{:8d} |'.format(
             iteration, args.train_iters)
         log_string += ' consumed samples: {:12d} |'.format(
             args.consumed_train_samples)
@@ -1374,6 +1377,7 @@ def evaluate(forward_step_func,
     timers('evaluate', log_level=0).start(barrier=True)
 
     if args.vision_pretraining and args.vision_pretraining_type == "dino":
+        from megatron.legacy.model.vision.knn_monitor import compute_feature_bank
         compute_feature_bank(model)
 
     # Turn on evaluation mode which disables dropout.
@@ -1540,8 +1544,8 @@ def cyclic_iter(iter):
             yield x
 
 
-def build_train_valid_test_datasets(build_train_valid_test_datasets_provider):
-    """Build pretraining datasets."""
+def get_train_valid_test_num_samples():
+    """Train/valid/test num samples."""
 
     args = get_args()
 
@@ -1553,16 +1557,22 @@ def build_train_valid_test_datasets(build_train_valid_test_datasets_provider):
     eval_iters = (args.train_iters // args.eval_interval + 1) * \
                  args.eval_iters
     test_iters = args.eval_iters
-    train_val_test_num_samples = [train_samples,
-                                  eval_iters * args.global_batch_size,
-                                  test_iters * args.global_batch_size]
-    print_rank_0(' > datasets target sizes (minimum size):')
-    print_rank_0('    train:      {}'.format(train_val_test_num_samples[0]))
-    print_rank_0('    validation: {}'.format(train_val_test_num_samples[1]))
-    print_rank_0('    test:       {}'.format(train_val_test_num_samples[2]))
 
-    # Build the datasets.
-    return build_train_valid_test_datasets_provider(train_val_test_num_samples)
+    return (
+        train_samples,
+        eval_iters * args.global_batch_size,
+        test_iters * args.global_batch_size,
+    )
+
+
+def build_train_valid_test_datasets(build_train_valid_test_datasets_provider):
+    """Build pretraining datasets."""
+    train_valid_test_num_samples = get_train_valid_test_num_samples()
+    print_rank_0(' > datasets target sizes (minimum size):')
+    print_rank_0('    train:      {}'.format(train_valid_test_num_samples[0]))
+    print_rank_0('    validation: {}'.format(train_valid_test_num_samples[1]))
+    print_rank_0('    test:       {}'.format(train_valid_test_num_samples[2]))
+    return build_train_valid_test_datasets_provider(train_valid_test_num_samples)
 
 
 def build_train_valid_test_data_loaders(
@@ -1646,23 +1656,32 @@ def build_train_valid_test_data_iterators(
 
     # Build iterators.
     dl_type = args.dataloader_type
-    assert dl_type in ['single', 'cyclic']
+    assert dl_type in ['single', 'cyclic', 'external']
+
+    def _get_iterator(dataloader_type, dataloader):
+        """Return dataset iterator."""
+        if dataloader_type == "single":
+            return iter(dataloader)
+        elif dataloader_type == "cyclic":
+            return iter(cyclic_iter(dataloader))
+        elif dataloader_type == "external":
+            # External dataloader is passed through. User is expected to define how to iterate.
+            return dataloader
+        else:
+            raise RuntimeError("unexpected dataloader type")
 
     if train_dataloader is not None:
-        train_data_iterator = iter(train_dataloader) if dl_type == 'single' \
-                              else iter(cyclic_iter(train_dataloader))
+        train_data_iterator = _get_iterator(dl_type, train_dataloader)
     else:
         train_data_iterator = None
 
     if valid_dataloader is not None:
-        valid_data_iterator = iter(valid_dataloader) if dl_type == 'single' \
-                              else iter(cyclic_iter(valid_dataloader))
+        valid_data_iterator = _get_iterator(dl_type, valid_dataloader)
     else:
         valid_data_iterator = None
 
     if test_dataloader is not None:
-        test_data_iterator = iter(test_dataloader) if dl_type == 'single' \
-                             else iter(cyclic_iter(test_dataloader))
+        test_data_iterator = _get_iterator(dl_type, test_dataloader)
     else:
         test_data_iterator = None
 
