@@ -1,3 +1,5 @@
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+
 import dataclasses
 import os
 from importlib.metadata import version
@@ -256,7 +258,7 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
             return out
         return out, None
 
-    def sharded_state_dict(self, prefix='', sharded_offsets=()):
+    def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
         """ Sharding along axis 0, bias sharded """
         state_dict = self.state_dict(prefix='', keep_vars=True)
         return make_sharded_tensors_for_checkpoint(
@@ -302,7 +304,7 @@ class TEColumnParallelLinear(TELinear):
             tp_comm_buffer_name=tp_comm_buffer_name,
         )
 
-    def sharded_state_dict(self, prefix='', sharded_offsets=()):
+    def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
         """ Sharding along axis 0, bias sharded """
         state_dict = self.state_dict(prefix='', keep_vars=True)
         return make_sharded_tensors_for_checkpoint(
@@ -349,7 +351,7 @@ class TERowParallelLinear(TELinear):
             tp_comm_buffer_name=tp_comm_buffer_name,
         )
 
-    def sharded_state_dict(self, prefix='', sharded_offsets=()):
+    def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
         """ Sharding along axis 1, bias not sharded """
         state_dict = self.state_dict(prefix='', keep_vars=True)
         return make_sharded_tensors_for_checkpoint(
@@ -475,6 +477,14 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
 
         if self.config.apply_rope_fusion and qkv_format == 'bshd':
             query, key, value = [x.transpose(0, 1).contiguous() for x in (query, key, value)]
+            # In PyTorch, the following two tensors are in fact the same:
+            #   Tensor with shape (1, S, H, D) and stride (S*H*D, H*D, D, 1)
+            #   Tensor with shape (1, S, H, D) and stride (H*D, H*D, D, 1)
+            # Stride for a dimension that is 1 has no meaning, so tensors created two different ways
+            # can have same shape but different strides.
+            # We unify them to the first one to pass the stride check in TE
+            if value.shape == key.shape and value.shape[0] == 1 and value.stride() != key.stride():
+                value = value.as_strided(value.shape, key.stride())
 
         if self.te_forward_mask_type:
             core_attn_out = super().forward(

@@ -3,20 +3,19 @@ import sys
 import math
 import torch
 
-from megatron import get_args
-from megatron import print_rank_0 
-from megatron import print_rank_last 
-from megatron import get_tensorboard_writer
-from megatron import get_wandb_writer
-from megatron import is_last_rank
-from megatron import get_tokenizer
+from megatron.training.global_vars import get_args
+from megatron.training.global_vars import get_tensorboard_writer
+from megatron.training.global_vars import get_wandb_writer
+from megatron.training.global_vars import get_tokenizer
+from megatron.training.utils import print_rank_0 
+from megatron.training.utils import print_rank_last 
+from megatron.training.utils import is_last_rank
 from megatron.core import mpu
 from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
 from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
 from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
-from megatron.data.data_samplers import build_pretraining_data_loader
-from megatron.data.data_samplers_hetero import build_pretraining_data_loader_hetero
-from flagscale.train.train_aquila import is_dataset_built_on_rank
+from megatron.legacy.data.data_samplers import build_pretraining_data_loader
+from megatron.legacy.data.data_samplers_hetero import build_pretraining_data_loader_hetero
 
 
 _GLOBAL_EXTRA_VALID_DATASETS = None
@@ -31,6 +30,10 @@ def set_extra_valid_datasets(extra_valid_datasets):
     """Initialize heterogenous context."""
     global _GLOBAL_EXTRA_VALID_DATASETS
     _GLOBAL_EXTRA_VALID_DATASETS = extra_valid_datasets 
+
+
+def is_dataset_built_on_rank():
+    return (mpu.is_pipeline_first_stage() or mpu.is_pipeline_last_stage()) and mpu.get_tensor_model_parallel_rank() == 0
 
 
 def core_gpt_dataset_config_from_args(args, data_path):
