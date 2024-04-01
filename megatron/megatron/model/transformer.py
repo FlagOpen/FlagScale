@@ -1511,11 +1511,38 @@ class ParallelTransformer(MegatronModule):
         self.retro_add_retriever = args.retro_add_retriever
 
         # Store activation checkpoiting flag.
-        self.recompute_granularity = config.recompute_granularity
-        self.recompute_method = config.recompute_method
-        self.recompute_num_layers = config.recompute_num_layers
+        #self.recompute_granularity = config.recompute_granularity
+        #self.recompute_method = config.recompute_method
+        #self.recompute_num_layers = config.recompute_num_layers
+        if args.recompute_method_per_stage != None:
+            if args.virtual_pipeline_model_parallel_size != None:
+                if args.recompute_method_per_stage[mpu.get_virtual_pipeline_model_parallel_rank() * args.pipeline_model_parallel_size + mpu.get_pipeline_model_parallel_rank()] == 0:
+                    self.recompute_method = 'uniform'
+                elif args.recompute_method_per_stage[mpu.get_virtual_pipeline_model_parallel_rank() * args.pipeline_model_parallel_size + mpu.get_pipeline_model_parallel_rank()] == 1:
+                    self.recompute_method = 'block'
+            else:
+                if args.recompute_method_per_stage[mpu.get_pipeline_model_parallel_rank()] == 0:
+                    self.recompute_method = 'uniform'
+                elif args.recompute_method_per_stage[mpu.get_pipeline_model_parallel_rank()] == 1:
+                    self.recompute_method = 'block'
+        else:
+            self.recompute_method = config.recompute_method
+
+        if args.recompute_num_layers_per_stage != None:
+            if args.virtual_pipeline_model_parallel_size != None:
+                self.recompute_num_layers = args.recompute_num_layers_per_stage[mpu.get_virtual_pipeline_model_parallel_rank() * args.pipeline_model_parallel_size + mpu.get_pipeline_model_parallel_rank()]
+            else:
+                self.recompute_num_layers = args.recompute_num_layers_per_stage[mpu.get_pipeline_model_parallel_rank()]
+        else:
+            self.recompute_num_layers = config.recompute_num_layers
         self.distribute_saved_activations = \
             config.distribute_saved_activations and not config.sequence_parallel
+
+        if args.recompute_granularity_per_stage != None and args.recompute_granularity_per_stage[mpu.get_pipeline_model_parallel_rank()] == 0:
+            self.recompute_granularity = None
+            self.recompute_method = None
+        else:
+            self.recompute_granularity = config.recompute_granularity
 
         self.sequence_parallel = config.sequence_parallel
 
@@ -1688,6 +1715,7 @@ class ParallelTransformer(MegatronModule):
             # disconnect the input tensor from the output tensor.
             self.num_layers = 1
             self.layers = torch.nn.ModuleList([ NoopTransformerLayer(1) ])
+            self.recompute_granularity = None
         else:
             self.layers = torch.nn.ModuleList(
                 [build_layer(i + 1 + offset) for i in range(self.num_layers)])
