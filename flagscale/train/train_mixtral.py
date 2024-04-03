@@ -223,7 +223,7 @@ if __name__ == "__main__":
     train_valid_test_datasets_provider.is_distributed = True
 
     # To avoid the circular import
-    from flagscale.train.extra_valid import extra_valid_dataset_provider
+    from extra_valid import extra_valid_dataset_provider
     extra_valid_dataset_provider.is_distributed = True
 
     # To avoid the circular import

@@ -10,10 +10,10 @@ import math
 import logging
 import os
 import sys
-from .log_handler import CustomHandler
+from megatron.training.log_handler import CustomHandler
 # Make default logging level INFO, but filter out all log messages not from MCore.
 logging.basicConfig(handlers=[CustomHandler()], level=logging.INFO)
-from .theoretical_memory_usage import report_theoretical_memory
+from megatron.training.theoretical_memory_usage import report_theoretical_memory
 import time
 import json
 from collections import defaultdict
