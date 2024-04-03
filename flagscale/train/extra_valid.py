@@ -17,19 +17,7 @@ from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
 from megatron.legacy.data.data_samplers import build_pretraining_data_loader
 from megatron.legacy.data.data_samplers_hetero import build_pretraining_data_loader_hetero
 
-
-_GLOBAL_EXTRA_VALID_DATASETS = None
-
-
-def get_extra_valid_datasets():
-    """Return extra_valid datasets."""
-    return _GLOBAL_EXTRA_VALID_DATASETS
-
-
-def set_extra_valid_datasets(extra_valid_datasets):
-    """Initialize heterogenous context."""
-    global _GLOBAL_EXTRA_VALID_DATASETS
-    _GLOBAL_EXTRA_VALID_DATASETS = extra_valid_datasets 
+from flagscale.train import get_extra_valid_datasets, set_extra_valid_datasets
 
 
 def is_dataset_built_on_rank():
@@ -201,7 +189,6 @@ def extra_evaluate_and_print_results(index, prefix, forward_step_func,
     total_loss_dict, collected_non_loss_data, timelimit = evaluate(
         forward_step_func, data_iterator, model,
         process_non_loss_data_func, config, verbose, index)
-    
 
     # Timelimit hit during evaluation
     if timelimit:
