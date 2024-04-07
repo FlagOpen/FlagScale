@@ -93,10 +93,9 @@ class MockGPTDataset(MockDataset):
         pad = 2
         eod = 0
 
-        assert (
-            idx < self.num_samples,
-            "Exceeded the available number of samples ({self.num_samples})",
-        )
+        assert idx < self.num_samples, \
+            f"Exceeded the available number of samples ({self.num_samples})"
+        
 
         rng = numpy.random.default_rng(seed=[self.index_split.value, idx])
         length = rng.integers(low=0, high=self.config.sequence_length)

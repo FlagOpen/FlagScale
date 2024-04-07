@@ -38,6 +38,7 @@ from megatron.training.initialize import set_jit_fusion_options
 from megatron.training.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.legacy.data.data_samplers import build_pretraining_data_loader
 from megatron.legacy.data.data_samplers_hetero import build_pretraining_data_loader_hetero
+from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.pipeline_parallel import get_forward_backward_func
 
 from .utils import (
@@ -71,6 +72,9 @@ def print_datetime(string):
 
 
 def num_floating_point_operations(args, batch_size):
+    # Attention projection size.
+    query_projection_size = args.kv_channels * args.num_attention_heads
+    query_projection_to_hidden_size_ratio = query_projection_size / args.hidden_size
     # Group Query Attention.
     if not args.group_query_attention:
         args.num_query_groups = args.num_attention_heads
@@ -85,14 +89,21 @@ def num_floating_point_operations(args, batch_size):
         * args.hidden_size
         * args.hidden_size
         * (
-            1
+            # Attention.
+            (
+                (
+                    1
+                    + (args.num_query_groups / args.num_attention_heads)
+                    + (args.seq_length / args.hidden_size)
+                ) * query_projection_to_hidden_size_ratio
+            )
+            # MLP.
             + (
                 (args.ffn_hidden_size / args.hidden_size)
                 * num_experts_routed_to
                 * gated_linear_multiplier
             )
-            + (args.num_query_groups / args.num_attention_heads)
-            + (args.seq_length / args.hidden_size)
+            # Logit.
             + (args.padded_vocab_size / (2 * args.num_layers * args.hidden_size))
         )
     )
@@ -174,7 +185,7 @@ def pretrain(train_valid_test_dataset_provider,
         3) call train_val_test_data_provider to get train/val/test datasets.
         4) train the modle using the forward_step_func.
 
-    Arguments:
+    Args:
         train_valid_test_dataset_provider: a function that takes the size of
             train/valid/test dataset and returns `train, valid, test` datasets.
         model_provider: a function that returns a vanilla version of the
@@ -552,12 +563,11 @@ def setup_model_and_optimizer(model_provider_func,
                                        scale_lr_cond, lr_mult)
     opt_param_scheduler = get_optimizer_param_scheduler(optimizer)
 
-    if args.load is not None:
+    if args.load is not None or args.pretrained_checkpoint is not None:
         if args.format_ckpt:
             args.no_load_optim = True
             args.no_load_rng = True
 
-        timers = get_timers()
         timers('load-checkpoint', log_level=0).start(barrier=True)
         args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
             model, optimizer, opt_param_scheduler)
@@ -658,7 +668,7 @@ def train_step(forward_step_func, data_iterator,
     return {}, skipped_iter, grad_norm, num_zeros_in_grad
 
 
-def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
+def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration,
                  loss_scale, report_memory_flag, skipped_iter,
                  grad_norm, params_norm, num_zeros_in_grad):
     """Log training information such as losses, timing, ...."""
@@ -757,6 +767,8 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
         if args.log_learning_rate_to_tensorboard:
             if writer:
                 writer.add_scalar('learning-rate', learning_rate, iteration)
+                if args.decoupled_lr is not None:
+                    writer.add_scalar('decoupled-learning-rate', decoupled_learning_rate, iteration)
                 writer.add_scalar('learning-rate vs samples', learning_rate,
                               args.consumed_train_samples)
             if wandb_writer:
@@ -842,6 +854,10 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
                     iteration,
                 )
 
+    if args.num_experts is not None:
+        moe_loss_scale = 1 / get_num_microbatches()
+        track_moe_metrics(moe_loss_scale, iteration, writer, wandb_writer, total_loss_dict, args.moe_per_layer_logging)
+
     if iteration % args.log_interval == 0:
         elapsed_time = timers('interval-time').elapsed(barrier=True)
         elapsed_time_per_iteration = elapsed_time / total_iterations
@@ -869,7 +885,15 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
                     writer.add_scalar('throughput', throughput, iteration)
                 if wandb_writer:
                     wandb_writer.log({'throughput': throughput}, iteration)
-        log_string += ' learning rate: {:.3E} |'.format(learning_rate)
+        assert learning_rate is not None
+        # Decoupled_learning_rate should be not None only on first and last pipeline stage.
+        log_string += ' learning rate: {:.6E} |'.format(learning_rate)
+        if args.decoupled_lr is not None and (mpu.is_pipeline_first_stage(ignore_virtual=True) or
+                                              mpu.is_pipeline_last_stage(ignore_virtual=True)):
+            assert decoupled_learning_rate is not None
+            log_string += ' decoupled learning rate: {:.6E} |'.format(decoupled_learning_rate)
+        else:
+            assert decoupled_learning_rate is None
         log_string += ' global batch size: {:5d} |'.format(batch_size)
         for key in total_loss_dict:
             if key not in [advanced_iters_key, skipped_iters_key,
@@ -1124,8 +1148,16 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         if iteration % args.log_interval == 0:
             track_e2e_metrics()
 
+        learning_rate = None
+        decoupled_learning_rate = None
+        for param_group in optimizer.param_groups:
+            if param_group['is_decoupled_lr']:
+                decoupled_learning_rate = param_group['lr']
+            else:
+                learning_rate = param_group['lr']
         report_memory_flag = training_log(loss_dict, total_loss_dict,
-                                          optimizer.param_groups[0]['lr'],
+                                          learning_rate,
+                                          decoupled_learning_rate,
                                           iteration, loss_scale,
                                           report_memory_flag, skipped_iter,
                                           grad_norm, params_norm, num_zeros_in_grad)
