@@ -1,4 +1,4 @@
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
 import os
 import sys
@@ -17,6 +17,9 @@ def add_arguments(parser):
     group.add_argument('--target-pipeline-parallel-size', type=int,
                        help='Target tensor model parallel size, default to the pipeline parall size '
                        'in the input checkpoint if provided by the loader, otherwise to 1')
+    group.add_argument('--saver-transformer-impl', default='local',
+                       choices=['local', 'transformer_engine'],
+                       help='Which Transformer implementation to use.')
 
 def save_checkpoint(queue, args):
 
@@ -34,7 +37,7 @@ def save_checkpoint(queue, args):
         from megatron.training.global_vars import set_global_variables, get_args
         from megatron.core.enums import ModelType
         from megatron.training.tokenizer.tokenizer import _vocab_size_with_padding
-        from megatron.training import fused_kernels
+        from megatron.legacy import fused_kernels
         from megatron.core import mpu
     except ModuleNotFoundError:
         print("Unable to import Megatron, please specify the path to Megatron using --megatron-path. Exiting.")
@@ -162,6 +165,10 @@ def save_checkpoint(queue, args):
                 setattr(margs, arg, value)
 
     validate_args(margs)
+
+    # Use MLM models.
+    margs.use_mcore_models = False
+    margs.transformer_impl = args.saver_transformer_impl
 
     set_global_variables(margs, build_tokenizer=False)
 

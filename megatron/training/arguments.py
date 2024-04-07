@@ -193,9 +193,6 @@ def validate_args(args, defaults={}):
         assert args.sequence_parallel == True, 'Tensor parallel communication/GEMM overlap can happen only when sequence parallelism is enabled'
 
     # Deprecated arguments
-    if args.use_gpu_initialization:
-        del args.use_gpu_initialization
-        args.use_cpu_initialization = False
     assert args.batch_size is None, '--batch-size argument is no longer ' \
         'valid, use --micro-batch-size instead'
     del args.batch_size
@@ -477,6 +474,10 @@ def validate_args(args, defaults={}):
         assert args.pipeline_model_parallel_size == 1, \
             "retro currently does not support pipeline parallelism."
 
+    if args.decoupled_lr is not None or args.decoupled_min_lr is not None:
+        assert args.use_mcore_models, \
+            '--decoupled-lr and --decoupled-min-lr only supported by Megatron Core, please add --use-mcore-models.'
+
     # Legacy RoPE arguments
     if args.use_rotary_position_embeddings:
         args.position_embedding_type = 'rope'
@@ -598,7 +599,7 @@ def _add_transformer_engine_args(parser):
     group.add_argument('--no-fp8-wgrad', action='store_false',
                        help='Execute wgrad in higher precision even for FP8 runs',
                        dest='fp8_wgrad')
-    group.add_argument('--transformer-impl', default='local',
+    group.add_argument('--transformer-impl', default='transformer_engine',
                        choices=['local', 'transformer_engine'],
                        help='Which Transformer implementation to use.')
 
@@ -956,28 +957,34 @@ def _add_training_args(parser):
                        help='Global step to stop profiling.')
     group.add_argument('--profile-ranks', nargs='+', type=int, default=[0],
                        help='Global ranks to profile.')
-    group.add_argument('--tp-comm-overlap', action='store_true', help = 'Enables the '
+    group.add_argument('--tp-comm-overlap', action='store_true', help='Enables the '
                        ' overlap of Tensor parallel communication and GEMM kernels.')
     group.add_argument('--tp-comm-overlap-cfg', type=str, default=None,
-                       help = 'Config file when tp_comm_overlap is enabled.')
-    group.add_argument('--disable-tp-comm-split-ag', action='store_false',
-                       help = 'Disables the All-Gather overlap with fprop GEMM.',
-                       dest='tp_comm_split_ag')
-    group.add_argument('--disable-tp-comm-split-rs', action='store_false',
-                       help = 'Disables the Reduce-Scatter overlap with fprop GEMM.',
-                       dest='tp_comm_split_rs')
+                       help='Config file when tp_comm_overlap is enabled.')
+    group.add_argument('--disable-tp-comm-overlap-ag', action='store_false', 
+                       help=('Disables the All-Gather overlap with GEMM by '
+                             'pipelining the GEMM and All-Gather.'),
+                       dest='tp_comm_overlap_ag')
+    group.add_argument('--disable-tp-comm-overlap-rs', action='store_false',
+                       help=('Disables the Reduce-Scatter overlap with GEMM by '
+                             'pipelining the GEMM and Reduce-Scatter.'),
+                       dest='tp_comm_overlap_rs')
     group.add_argument('--disable-tp-comm-bulk-dgrad', action='store_false',
-                       help = 'Disables the All-Gather overlap with bprop activation gradient GEMM.',
+                       help='Disables the All-Gather overlap with bprop activation gradient GEMM.',
                        dest='tp_comm_bulk_dgrad')
     group.add_argument('--disable-tp-comm-bulk-wgrad', action='store_false',
-                       help = 'Disables the Reduce-Scatter overlap with bprop weight gradient GEMM.',
+                       help='Disables the Reduce-Scatter overlap with bprop weight gradient GEMM.',
                        dest='tp_comm_bulk_wgrad')
-
+    group.add_argument('--use-cpu-initialization', action='store_true',
+                       default=None,
+                       help='If set, initialize weights on the CPU. This eliminates init differences based on tensor parallelism.')
+    group.add_argument('--empty-unused-memory-level', default=0, type=int,
+                       choices=[0, 1, 2],
+                       help='Call torch.cuda.empty_cache() each iteration '
+                       '(training and eval), to reduce fragmentation.'
+                       '0=off, 1=moderate, 2=aggressive.')
 
     # deprecated
-    group.add_argument('--use-cpu-initialization', action='store_true', default=True,
-                       help=('If set, initialize all weights on the CPU. Deprecated because all init '
-                             'is done on the CPU, unless use-gpu-initialization is passed.'))
     group.add_argument('--checkpoint-activations', action='store_true',
                        help='Checkpoint activation to allow for training '
                        'with larger models, sequences, and batch sizes.')
@@ -1071,6 +1078,12 @@ def _add_training_args(parser):
                        help='When using manual garbage collection, disable '
                        'garbage collection at the start and the end of each '
                        'evaluation run.', dest='manual_gc_eval')
+    group.add_argument('--disable-tp-comm-split-ag', action='store_false',
+                       help='Disables the All-Gather overlap with fprop GEMM.',
+                       dest='tp_comm_split_ag')
+    group.add_argument('--disable-tp-comm-split-rs', action='store_false',
+                       help='Disables the Reduce-Scatter overlap with fprop GEMM.',
+                       dest='tp_comm_split_rs')
 
     return parser
 
@@ -1125,7 +1138,7 @@ def _add_learning_rate_args(parser):
                        help='Old lr warmup argument, do not use. Use one of the'
                        '--lr-warmup-* arguments above')
     group.add_argument('--min-lr', type=float, default=0.0,
-                       help='Minumum value for learning rate. The scheduler'
+                       help='Minimum value for learning rate. The scheduler'
                        'clip values below this threshold.')
     group.add_argument('--override-opt_param-scheduler', action='store_true',
                        help='Reset the values of the scheduler (learning rate,'
@@ -1138,6 +1151,11 @@ def _add_learning_rate_args(parser):
                        '(learning rate, warmup iterations, minimum learning '
                        'rate, maximum number of iterations, and decay style '
                        'from checkpoint and ignore input arguments.')
+    group.add_argument('--decoupled-lr', type=float, default=None,
+                       help='Separate learning rate for the input and output layer')
+    group.add_argument('--decoupled-min-lr', type=float, default=None,
+                       help='Minimum value for learning rate for the input and output layer. The scheduler'
+                       'clip values below this threshold')
 
     return parser
 
@@ -1163,6 +1181,10 @@ def _add_checkpointing_args(parser):
                        help='Load model for finetuning. Do not load optimizer '
                        'or rng state from checkpoint and set iteration to 0. '
                        'Assumed when loading a release checkpoint.')
+    group.add_argument('--pretrained-checkpoint', type=str, default=None,
+                       help='Directory containing a pretrained model checkpoint for finetuning.')
+    group.add_argument('--ckpt-step', type=int, default=None,
+                       help='Checkpoint step to load model from.')
     group.add_argument('--no-initialization', action='store_false',
                        help='Do not perform initialization when building model, '
                        'can reduce startup time when definitely loading from a '
@@ -1184,6 +1206,10 @@ def _add_checkpointing_args(parser):
     group.add_argument('--dist-ckpt-format', type=str, default='torch_dist',
                        choices=['zarr', 'torch_dist'],
                        help='Distributed checkpoint format to use.')
+    group.add_argument('--ckpt-fully-parallel-save', action='store_true',
+                       help='Apply full save parallelization across DP for'
+                            ' distributed checkpoints. Depending on ckpt format'
+                            ' might increase number of files in the checkpoint.')
 
     return parser
 
@@ -1273,14 +1299,6 @@ def _add_distributed_args(parser):
                        'complete it instead.Also turns on '
                        '--use-cpu-initialization flag. This is for '
                        'external DDP manager.' )
-    group.add_argument('--use-gpu-initialization', action='store_true',
-                       default=None,
-                       help='If set, initialize weights on the GPU')
-    group.add_argument('--empty-unused-memory-level', default=0, type=int,
-                       choices=[0, 1, 2],
-                       help='Call torch.cuda.empty_cache() each iteration '
-                       '(training and eval), to reduce fragmentation.'
-                       '0=off, 1=moderate, 2=aggressive.')
     group.add_argument('--standalone-embedding-stage', action='store_true',
                        default=False, help='If set, *input* embedding layer '
                        'is placed on its own pipeline stage, without any '
@@ -1571,6 +1589,12 @@ def _add_moe_args(parser):
                        help='Add noise to the input tensor by applying jitter with a specified epsilon value.')
     group.add_argument('--moe-token-dropping', action='store_true',
                        help='This feature involves selectively dropping and padding tokens for each expert to achieve a specified capacity, similar to GShard, Switch-Transformer, and DeepSpeed-MoE. Note: Currently unsupported.')
+    group.add_argument('--moe-token-dispatcher-type', type=str,
+                       choices=['allgather', 'alltoall'],
+                       default='allgather',
+                       help='.')
+    group.add_argument('--moe-per-layer-logging', action='store_true',
+                       help='Enable per-layer logging for MoE, currently supports auxiliary loss and z loss.')
 
     return parser
 

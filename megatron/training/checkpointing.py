@@ -1,4 +1,4 @@
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
 """Input/output checkpointing."""
 
@@ -183,6 +183,13 @@ def get_checkpoint_tracker_filename(checkpoints_path):
     return os.path.join(checkpoints_path, 'latest_checkpointed_iteration.txt')
 
 
+def checkpoint_exists(checkpoints_path):
+    if checkpoints_path is None:
+        return False
+    load_step = 'latest_checkpointed_iteration.txt'
+    return os.path.exists(os.path.join(checkpoints_path, load_step))
+
+
 def read_metadata(tracker_filename):
     # Read the tracker file and either set the iteration or
     # mark it as a release checkpoint.
@@ -288,8 +295,14 @@ def save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
             or mpu.get_data_modulo_expert_parallel_rank() == 0 \
             or args.use_dist_ckpt:
 
+        optim_sd_kwargs = {}
+        if args.use_dist_ckpt and args.use_distributed_optimizer:
+            optim_sd_kwargs['sharding_type'] = ('fully_sharded_bucket_space'
+                                                if args.ckpt_fully_parallel_save
+                                                else 'dp_zero_gather_scatter')
+            print_rank_0(f'Storing distributed optimizer sharded state of type {optim_sd_kwargs["sharding_type"]}')
         state_dict = generate_state_dict(args, model, optimizer, opt_param_scheduler, rng_state,
-                                         args.use_dist_ckpt, iteration)
+                                         args.use_dist_ckpt, iteration, optim_sd_kwargs=optim_sd_kwargs)
 
         state_dict['num_floating_point_operations_so_far'] = num_floating_point_operations_so_far
         if args.use_dist_ckpt:
@@ -324,7 +337,7 @@ def save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
 
 def generate_state_dict(args, model, optimizer, opt_param_scheduler,
                         rng_state, use_dist_ckpt=False, iteration=None,
-                        is_loading=False):
+                        optim_sd_kwargs=None):
     # Arguments, iteration, and model.
     state_dict = {}
     state_dict['args'] = args
@@ -346,7 +359,7 @@ def generate_state_dict(args, model, optimizer, opt_param_scheduler,
     # Optimizer stuff.
     if not args.no_save_optim:
         if optimizer is not None:
-            state_dict['optimizer'] = (optimizer.sharded_state_dict(state_dict, is_loading)
+            state_dict['optimizer'] = (optimizer.sharded_state_dict(state_dict, **(optim_sd_kwargs or {}))
                                        if use_dist_ckpt else
                                        optimizer.state_dict())
         if opt_param_scheduler is not None:
@@ -429,7 +442,7 @@ def fix_query_key_value_ordering(model, checkpoint_version):
 
 
 def _load_base_checkpoint(load_dir, rank0=False, sharded_state_dict=None,
-                          exit_on_missing_checkpoint=False):
+                          exit_on_missing_checkpoint=False, checkpoint_step = None):
     """ Load the base state_dict from the given directory
 
     If rank0 is true, just loads rank 0 checkpoint, ignoring arguments.
@@ -457,7 +470,11 @@ def _load_base_checkpoint(load_dir, rank0=False, sharded_state_dict=None,
 
     # Otherwise, read the tracker file and either set the iteration or
     # mark it as a release checkpoint.
-    iteration, release = read_metadata(tracker_filename)
+    if checkpoint_step is not None:
+        iteration = checkpoint_step
+        release = False
+    else:
+        iteration, release = read_metadata(tracker_filename)
 
     # Checkpoint.
     if rank0:
@@ -500,9 +517,11 @@ def _load_base_checkpoint(load_dir, rank0=False, sharded_state_dict=None,
             'megatron.legacy.fp16_deprecated.loss_scaler']
         sys.modules['megatron.fp16.loss_scaler'] = sys.modules[
             'megatron.legacy.fp16_deprecated.loss_scaler']
+        sys.modules['megatron.model'] = sys.modules['megatron.legacy.model']
         state_dict = torch.load(checkpoint_name, map_location='cpu')
         sys.modules.pop('fp16.loss_scaler', None)
         sys.modules.pop('megatron.fp16.loss_scaler', None)
+        sys.modules.pop('megatron.model', None)
     except BaseException as e:
         print_rank_0('could not load the checkpoint')
         print_rank_0(e)
@@ -535,6 +554,7 @@ def load_args_from_checkpoint(args, load_arg='load',
         load_dir,
         rank0=True,
         exit_on_missing_checkpoint=exit_on_missing_checkpoint,
+        checkpoint_step=args.ckpt_step
     )
 
     # Args.
@@ -591,6 +611,7 @@ def load_args_from_checkpoint(args, load_arg='load',
     _set_arg('normalization', force=True)
     _set_arg('tokenizer_type')
     _set_arg('padded_vocab_size')
+    _set_arg('apply_query_key_layer_scaling', force=True)
     if checkpoint_version < 3.0:
         _set_arg('tensor_model_parallel_size',
                  'model_parallel_size')
@@ -610,6 +631,16 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
     """
     args = get_args()
     load_dir = getattr(args, load_arg)
+
+    # Finetuning directories
+    pretrained_dir = getattr(args,'pretrained_checkpoint', None)
+    if pretrained_dir is not None and not checkpoint_exists(load_dir):
+        print_rank_0(f'Checkpoint file not found in load directory {load_dir} attempting to finetune with checkpoint in {pretrained_dir}')
+        load_dir = pretrained_dir
+        if not checkpoint_exists(load_dir):
+            raise FileNotFoundError("No checkpoint found in load directory or pretrained directory")
+        args.finetune = True
+
 
     model = unwrap_model(model)
 
@@ -633,8 +664,13 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
             if ckpt_tp_pp != run_tp_pp and not release and not args.finetune and not args.no_load_optim and args.use_distributed_optimizer:
                 raise RuntimeError("{}: not supported for DistributedOptimizer".format(mismatch_msg))
 
+            optim_sd_kwargs = dict(is_loading=True)
+            if args.use_distributed_optimizer:
+                optim_sd_kwargs['sharding_type'] = ('fully_sharded_bucket_space'
+                                                    if getattr(state_dict['args'], 'ckpt_fully_parallel_save', False)
+                                                    else 'dp_zero_gather_scatter')
             load_kwargs['sharded_state_dict'] = generate_state_dict(args, model, optimizer, opt_param_scheduler,
-                                                                    rng_state, args.use_dist_ckpt, is_loading=True)
+                                                                    rng_state, args.use_dist_ckpt, optim_sd_kwargs=optim_sd_kwargs)
             load_kwargs['exit_on_missing_checkpoint'] = args.exit_on_missing_checkpoint
 
     state_dict, checkpoint_name, release = _load_base_checkpoint(load_dir, rank0=False, **load_kwargs)
@@ -764,7 +800,9 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
     if torch.distributed.is_initialized():
         torch.distributed.barrier()
 
-    print_rank_0(f'  successfully loaded checkpoint from {args.load} [ t {mpu.get_tensor_model_parallel_rank()}, p {mpu.get_pipeline_model_parallel_rank()} ] '
+    print_rank_0(f'  successfully loaded checkpoint from {load_dir} '
+                 f'[ t {mpu.get_tensor_model_parallel_rank()}, '
+                 f'p {mpu.get_pipeline_model_parallel_rank()} ] '
                  f'at iteration {iteration}')
 
     return iteration, num_floating_point_operations_so_far

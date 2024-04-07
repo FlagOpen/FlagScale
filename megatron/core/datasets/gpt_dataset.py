@@ -20,30 +20,21 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class GPTDatasetConfig(BlendedMegatronDatasetConfig):
-    """Configuration object for Megatron Core GPT datasets
-
-    Args:          
-        reset_position_ids (bool): Option to reset the position IDs in the dataset at an interval
-
-        reset_attention_mask (bool): Option to reset the attention mask from the dataset
-
-        eod_mask_loss (bool): Option to enable the EOD mask loss
-
-        create_attention_mask (bool): Option to enable the attention masks generation. Can be disabled if attention kernel generates masks by itself.
-
-        vocab_size (int): Size of vocabulary
-      
-    """
+    """Configuration object for Megatron Core GPT datasets"""
 
     reset_position_ids: bool = None
+    """Option to reset the position IDs in the dataset at an interval"""
 
     reset_attention_mask: bool = None
+    """Option to reset the attention mask from the dataset"""
 
     eod_mask_loss: bool = None
+    """Option to enable the EOD mask loss"""
 
     create_attention_mask: bool = True
-
-    vocab_size: int = sys.maxsize
+    """Option to enable the attention masks generation. Can be disabled if attention kernel
+       generates masks by itself.
+    """
 
     def __post_init__(self) -> None:
         """Do asserts and set fields post init
@@ -184,9 +175,6 @@ class GPTDataset(MegatronDataset):
         super().__init__(
             indexed_dataset, dataset_path, indexed_indices, num_samples, index_split, config
         )
-
-        self.vocab_size = config.vocab_size
-
         self.masks_and_position_ids_are_cacheable = not any(
             [
                 self.config.reset_position_ids,
@@ -263,7 +251,7 @@ class GPTDataset(MegatronDataset):
         tokens = text[:-1].contiguous()
 
         assert not torch.any(
-            tokens >= self.vocab_size
+            tokens >= self.config.tokenizer.vocab_size
         ), "An input token is out of bounds of the tokenizer vocabulary"
 
         if (
