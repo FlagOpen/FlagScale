@@ -23,6 +23,9 @@ def add_arguments(parser):
                        default='learned_absolute',
                        choices=['learned_absolute', 'rope'],
                        help='Position embedding type.')
+    group.add_argument('--loader-transformer-impl', default='local',
+                       choices=['local', 'transformer_engine'],
+                       help='Which Transformer implementation to use.')
 
 def _load_checkpoint(queue, args):
 
@@ -40,7 +43,7 @@ def _load_checkpoint(queue, args):
         from megatron.legacy.model import module
         from megatron.core import mpu
         from megatron.core.enums import ModelType
-        from megatron.training import fused_kernels
+        from megatron.legacy import fused_kernels
     except ModuleNotFoundError:
         print("Unable to import Megatron, please specify the path to Megatron using --megatron-path. Exiting.")
         queue.put("exit")
@@ -76,6 +79,9 @@ def _load_checkpoint(queue, args):
 
     # Validate margs.
     margs = validate_args(margs)
+
+    margs.use_mcore_models = False
+    margs.transformer_impl = args.loader_transformer_impl
 
     def check_for_arg(arg_name, default=None):
         if getattr(margs, arg_name, None) is None:

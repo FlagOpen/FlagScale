@@ -294,7 +294,7 @@ class SSHRunner(MultiNodeRunner):
         host_list = list(self.resources.keys())
         for host, resource_info in self.resources.items():
             slots = resource_info['slots']
-            if visible_devices:
+            if num_visible_devices:
                 assert slots == num_visible_devices, \
                     f"Number of slots ({slots}) does not match the number of visible devices ({num_visible_devices})."
             type = resource_info['type']

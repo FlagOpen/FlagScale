@@ -34,7 +34,6 @@ class ModelParallelConfig:
     """Makes tensor parallelism more memory efficient for LLMs (20B+) by parallelizing layer norms
        and dropout sequentially.  See Reducing Activation Recomputation in Large Transformer Models
        (https://arxiv.org/abs/2205.05198) for more details.
-
     """
 
     context_parallel_size: int = 1
@@ -136,26 +135,6 @@ class ModelParallelConfig:
        possible during the forward and the backward pass.
     """
 
-    tp_comm_split_ag: bool = True
-    """If true, allows All-Gather overlap with Fprop GEMM by pipelining the GEMM and All-Gather
-       splits. Don't care if tp_comm_overlap is False.
-    """
-
-    tp_comm_atomic_ag: bool = False
-    """If true, allows All-Gather overlap with Fprop GEMM by pipelining the GEMM and All-Gather both
-       done atomically. Don't care if tp_comm_overlap is False.
-    """
-
-    tp_comm_split_rs: bool = True
-    """If true, allows Reduce-Scatter overlap with Fprop GEMM by pipelining the GEMM and
-       Reduce-Scatter splits. Don't care if tp_comm_overlap is False.
-    """
-
-    tp_comm_atomic_rs: bool = False
-    """If true, allows Reduce-Scatter overlap with Fprop GEMM by pipelining the GEMM and
-       Reduce-Scatter both done atomically. Don't care if tp_comm_overlap is False.
-    """
-
     tp_comm_bulk_wgrad: bool = True
     """If true, allows All-Gather overlap with Bprop activation gradient GEMM. Don't care if
        tp_comm_overlap is False.
@@ -164,6 +143,40 @@ class ModelParallelConfig:
     tp_comm_bulk_dgrad: bool = True
     """If true, allows Reduce-Scatter overlap with Bprop weight gradient GEMM. Don't care if
        tp_comm_overlap is False.
+    """
+
+    tp_comm_overlap_ag: bool = True
+    """If true, allows All-Gather overlap with GEMM by pipelining the GEMM and All-Gather.
+       Don't care if tp_comm_overlap is False.
+    """
+
+    tp_comm_overlap_rs: bool = True
+    """If true, allows Reduce-Scatter overlap with GEMM by pipelining the GEMM and Reduce-Scatter.
+       Don't care if tp_comm_overlap is False.
+    """
+
+    tp_comm_split_ag: bool = True
+    """Deprecated from TransformerEngine v1.6.0.
+       If true, allows All-Gather overlap with Fprop GEMM by pipelining the GEMM and All-Gather
+       splits. Don't care if tp_comm_overlap is False.
+    """
+
+    tp_comm_atomic_ag: bool = False
+    """Deprecated from TransformerEngine v1.6.0.
+        If true, allows All-Gather overlap with Fprop GEMM by pipelining the GEMM and All-Gather both
+       done atomically. Don't care if tp_comm_overlap is False.
+    """
+
+    tp_comm_split_rs: bool = True
+    """Deprecated from TransformerEngine v1.6.0.
+       If true, allows Reduce-Scatter overlap with Fprop GEMM by pipelining the GEMM and
+       Reduce-Scatter splits. Don't care if tp_comm_overlap is False.
+    """
+
+    tp_comm_atomic_rs: bool = False
+    """Deprecated from TransformerEngine v1.6.0.
+       If true, allows Reduce-Scatter overlap with Fprop GEMM by pipelining the GEMM and
+       Reduce-Scatter both done atomically. Don't care if tp_comm_overlap is False.
     """
 
     ###################
@@ -201,6 +214,11 @@ class ModelParallelConfig:
     deallocate_pipeline_outputs: bool = False
     """If True, output data is deallocated after the tensor is sent to the next pipeline stage.
        Helps with saving memory, does nothing when pipeline parallel is not used.
+    """
+
+    defer_embedding_wgrad_compute: bool = False
+    """If true, defers the embedding WGRAD GEMMs while pipeline flush is 
+       taking place enabling us to hide pipeline flush latency. Defaults to False.
     """
 
     pipeline_model_parallel_split_rank: Optional[int] = None
@@ -254,6 +272,16 @@ class ModelParallelConfig:
 
         if self.autocast_dtype is None:
             self.autocast_dtype = self.params_dtype
+
+        if self.defer_embedding_wgrad_compute and self.pipeline_model_parallel_size == 1:
+            raise ValueError(
+                "Cannot defer embedding wgrad compute when pipeline model parallel is not used"
+            )
+
+        if self.defer_embedding_wgrad_compute and not self.gradient_accumulation_fusion:
+            raise ValueError(
+                "Cannot defer embedding wgrad compute when gradient accumulation fusion is not used"
+            )
 
         if self.expert_model_parallel_size > 1 and self.tensor_model_parallel_size > 1:
             if self.sequence_parallel is False:
