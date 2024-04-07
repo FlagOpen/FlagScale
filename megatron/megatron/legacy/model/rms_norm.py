@@ -13,7 +13,7 @@ class RMSNorm(torch.nn.Module):
                  init_weight: float = None):
         """RMS Normaliation module
 
-        Arguments:
+        Args:
             dim (int): The width of input, i.e. hidden size
             eps (float): epsilon to use for the norm, default to 1e-6
             sequence_parallel (bool): Set to true if sequence parallelism is being used,
