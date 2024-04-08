@@ -233,7 +233,7 @@ def config_to_args(config, is_env=False, legacy_torchrun=False):
                         )
         return args
 
-    return "\n".join(recurse_config(config))
+    return "\n".join(recurse_config(config)) if config else ""
 
 
 def print_cmd(host, cmd):
@@ -296,6 +296,7 @@ def generate_command(config, legacy_torchrun=False):
     shell_cmds = get_config(config, "shell_cmds")
     env_args = 'ENV_ARGS="\n' + config_to_args(get_config(config, "env_vars"), is_env=True) + '\n"'
     launch_args = 'LAUNCH_ARGS="\n' + config_to_args(get_config(config, "launch"), legacy_torchrun=legacy_torchrun) + '\n"'
+    hetero_args = 'HETERO_ARGS="\n' + config_to_args(get_config(config, "hetero")) + '\n"'
     entry_point = get_config(config, "entry_point")
 
     args_groups = []
@@ -354,8 +355,8 @@ def get_valid_hostfile_lines(hostfile):
             # Skip empty lines and comment lines
             if line == "" or line.startswith("#"):
                 continue
-            # Check if the line matches the format "a slots=b c"
-            if re.match(r'^\S+(\s+slots=\d+)?(\s+\S+)?$', line):
+            # Check if the line matches the format "a slots=b type=c d"
+            if re.match(r'^\S+(\s+slots=\d+)?(\s+type=\S+)?(\s+\S+)?$', line):
                 valid_lines.append(line)
             else:
                 raise ValueError(f"Invalid line in {hostfile}: {line}")
@@ -419,7 +420,7 @@ def run_experiment(config, generate_only=False, legacy_torchrun=False):
 
         slots = None
         if 'slots=' in line:
-            slots = int(line.split()[1].split("=")[1])
+            slots = int(line[line.index("slots="):].split()[0].split("=")[1])
         nproc_per_node = get_config(launch_config, "nproc_per_node")
         if slots is None and nproc_per_node is None:
             slots = 1
@@ -427,6 +428,27 @@ def run_experiment(config, generate_only=False, legacy_torchrun=False):
             slots = nproc_per_node
         set_config(launch_config, "nproc_per_node", slots)
 
+        device_type = get_config(config, "device_type")
+        if 'type=' in line:
+            device_type = line[line.index("type="):].split()[0].split("=")[1]
+            device_type, *_sub_device_type = device_type.split(":")
+            set_config(config, "device_type", device_type)
+        else:
+            _sub_device_type = []
+
+        hetero_config = get_config(config, "hetero")
+        hetero_mode = get_config(hetero_config, "hetero_mode") if hetero_config else None
+        if hetero_mode is not None:
+            sub_device_type = _sub_device_type[0] if len(_sub_device_type) > 0 else None
+            hetero_device_types = get_config(hetero_config, "hetero_device_types").split()
+            hetero_current_device_type = get_config(hetero_config, "hetero_current_device_type")
+            if sub_device_type is None and hetero_current_device_type is None:
+                sub_device_type = hetero_device_types[0]
+            elif sub_device_type is None:
+                sub_device_type = hetero_current_device_type
+            if sub_device_type not in hetero_device_types:
+                raise ValueError(f"Invalid hetero device type for hostfile line: \"{line}\"")
+            set_config(hetero_config, "hetero_current_device_type", sub_device_type)
 
         bash_script = generate_command(config, legacy_torchrun=legacy_torchrun)
         bash_file = f"{exp_dir}/{node_rank}_{host}.sh"
