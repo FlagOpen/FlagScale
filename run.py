@@ -30,6 +30,11 @@ def parse_args():
         type=str,
         help="Key to match the process name to stop the experiment",
     )
+    parser.add_argument(
+        "--legacy-torchrun",
+        action="store_true",
+        help="Legacy torchrun uses '_' for some parameters instead of '-'",
+    )
 
     return parser.parse_args()
 
@@ -188,14 +193,15 @@ def generate_config(
     return config, base_config
 
 
-def config_to_args(config, is_env=False):
+def config_to_args(config, is_env=False, legacy_torchrun=False):
     def recurse_config(config):
         args = []
         for i, (key, value) in enumerate(config.items()):
             if key == "_comment" or value is None or value is False:
                 continue
             if not is_env:
-                key = key.replace("_", "-")
+                if not legacy_torchrun or key not in ["nproc_per_node", "node_rank", "master_addr", "master_port"]:
+                    key = key.replace("_", "-")
             if isinstance(value, dict):
                 args.append(f'{key.upper()}-ARGS="')
                 args.extend(recurse_config(value))
@@ -272,7 +278,7 @@ def generate_mkdir_cmds(config):
     return mkdir_cmds
 
 
-def generate_command(config):
+def generate_command(config, legacy_torchrun=False):
     """
     Generates a command based on the provided configuration.
 
@@ -281,6 +287,7 @@ def generate_command(config):
 
     Args:
         config (dict): A dictionary containing the configuration parameters.
+        legacy_torchrun: Legacy torchrun uses "_" instead of "-" in parameter name
 
     Returns:
         str: A string representing the command to be executed.
@@ -288,7 +295,7 @@ def generate_command(config):
     mkdir_cmds = generate_mkdir_cmds(config)
     shell_cmds = get_config(config, "shell_cmds")
     env_args = 'ENV_ARGS="\n' + config_to_args(get_config(config, "env_vars"), is_env=True) + '\n"'
-    launch_args = 'LAUNCH_ARGS="\n' + config_to_args(get_config(config, "launch")) + '\n"'
+    launch_args = 'LAUNCH_ARGS="\n' + config_to_args(get_config(config, "launch"), legacy_torchrun=legacy_torchrun) + '\n"'
     entry_point = get_config(config, "entry_point")
 
     args_groups = []
@@ -355,7 +362,7 @@ def get_valid_hostfile_lines(hostfile):
     return valid_lines
 
 
-def run_experiment(config, generate_only=False):
+def run_experiment(config, generate_only=False, legacy_torchrun=False):
     """
     Runs or generates an experiment based on the provided configuration.
 
@@ -421,7 +428,7 @@ def run_experiment(config, generate_only=False):
         set_config(launch_config, "nproc_per_node", slots)
 
 
-        bash_script = generate_command(config)
+        bash_script = generate_command(config, legacy_torchrun=legacy_torchrun)
         bash_file = f"{exp_dir}/{node_rank}_{host}.sh"
         bash_file = os.path.abspath(bash_file)
         with open(bash_file, "w") as f:
@@ -462,6 +469,7 @@ def stop_experiment(config, stop_key):
     """
     hostfile = get_config(config, "hostfile", None)
     ssh_port = get_config(config, "ssh_port", 22)
+    stop_cmds = get_config(config, "stop_cmds", "true")
     if os.path.exists(hostfile):
         hostfile = os.path.abspath(hostfile)
     else:
@@ -472,9 +480,10 @@ def stop_experiment(config, stop_key):
     else:
         lines = ["localhost"]
 
+    lines = get_valid_hostfile_lines(hostfile)
     for line in lines:
         host = line.split()[0]
-        cmd = f"pkill -f {stop_key}"
+        cmd = f"{{ {stop_cmds} ; }} && pkill -f {stop_key}"
         if hostfile is None:
             ssh_cmd = cmd
         else:
@@ -498,9 +507,9 @@ def main():
 
     # Step2: perform action based on args.action
     if args.action == "generate":
-        run_experiment(config, generate_only=True)
+        run_experiment(config, generate_only=True, legacy_torchrun=args.legacy_torchrun)
     elif args.action == "run":
-        run_experiment(config, generate_only=False)
+        run_experiment(config, generate_only=False, legacy_torchrun=args.legacy_torchrun)
     elif args.action == "stop":
         stop_experiment(config, stop_key=args.stop_key)
     
