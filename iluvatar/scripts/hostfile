@@ -1,0 +1,19 @@
+127.0.0.1 slots=8 type=iluvatar:bi100
+
+#10.31.12.41 slots=8 type=iluvatar:bi100
+#10.31.12.122 slots=8 type=iluvatar:bi100
+#10.31.12.196 slots=8 type=iluvatar:bi100
+
+#10.31.12.17 slots=16 type=iluvatar:bi150
+#10.31.12.21 slots=16 type=iluvatar:bi150
+#10.31.12.29 slots=16 type=iluvatar:bi150
+#10.31.12.30 slots=16 type=iluvatar:bi150
+#10.31.12.78 slots=16 type=iluvatar:bi150
+#10.31.12.79 slots=16 type=iluvatar:bi150
+#10.31.12.84 slots=16 type=iluvatar:bi150
+#10.31.12.139 slots=16 type=iluvatar:bi150
+
+#10.31.12.221 slots=8 type=nvidia:a800
+#10.31.12.222 slots=8 type=nvidia:a800
+#10.31.12.226 slots=8 type=nvidia:a800
+#10.31.12.227 slots=8 type=nvidia:a800
