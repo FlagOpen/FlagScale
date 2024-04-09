@@ -43,16 +43,8 @@
         "disable_bias_linear": true,
         "sequence_parallel": true,
         "recompute_granularity": "full",
-        "recompute_granularity_per_stage": "1 1 3 0",
         "recompute_method": "uniform",
-        "__comment__recompute_method_per_stage": "4 0",
-        "recompute_num_layers": 1,
-        "__comment__recompute_num_layers_per_stage": "4 0"
-    },
-    "hetero": {
-        "hetero_mode": "pp",
-        "hetero_device_types": "bi150",
-        "hetero_pipeline_stages": "4 7 9 9 7"
+        "recompute_num_layers": 1
     },
     "network": {
         "num_layers": 32
