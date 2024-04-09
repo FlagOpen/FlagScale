@@ -8,6 +8,7 @@
         "log_dir": "./aquila/logs"
     },
     "launch": {
+        "__comment__master_addr": "10.31.12.41",
         "master_port": 11234
     },
     "env_vars": {

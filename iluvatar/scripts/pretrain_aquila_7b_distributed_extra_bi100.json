@@ -8,6 +8,7 @@
         "log_dir": "./aquila/logs"
     },
     "launch": {
+        "__comment__master_addr": "10.31.12.41",
         "master_port": 11234
     },
     "env_vars": {
@@ -43,13 +44,13 @@
         "disable_bias_linear": true,
         "sequence_parallel": true,
         "recompute_granularity": "full",
-        "recompute_granularity_per_stage": "1 1 3 0",
+        "__comment__recompute_granularity_per_stage": "1 1 3 0",
         "recompute_method": "uniform",
         "__comment__recompute_method_per_stage": "4 0",
         "recompute_num_layers": 1,
         "__comment__recompute_num_layers_per_stage": "4 0"
     },
-    "hetero": {
+    "__comment__hetero": {
         "hetero_mode": "pp",
         "hetero_device_types": "bi100",
         "hetero_pipeline_stages": "4 7 9 9 7"
