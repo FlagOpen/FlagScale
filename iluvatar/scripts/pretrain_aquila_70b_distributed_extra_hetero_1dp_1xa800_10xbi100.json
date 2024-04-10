@@ -1,0 +1,67 @@
+{
+    "experiment": {
+        "shell_cmds": "true set -x; source ~/.venvs/corexBIr311py38/bin/activate || true;",
+        "stop_cmds": "bash ~/workspace/FlagScale/iluvatar/scripts/house_clean.sh || true",
+        "exp_name": "7b",
+        "ssh_port": "22",
+        "hostfile": "./aquila/hostfile",
+        "log_dir": "./aquila/logs"
+    },
+    "launch": {
+        "__comment__master_addr": "127.0.0.1",
+        "master_port": 11234
+    },
+    "env_vars": {
+        "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+        "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+        "GLOO_SOCKET_IFNAME": "`ifconfig | grep -B1 $(hostname -I | cut -d' ' -f1) | head -n1 | cut -d: -f1`",
+        "NCCL_SOCKET_IFNAME": "`ifconfig | grep -B1 $(hostname -I | cut -d' ' -f1) | head -n1 | cut -d: -f1`",
+        "NCCL_NET_SHARED_BUFFERS": "0",
+        "NCCL_DEBUG": "TRACE",
+        "NCCL_IB_DISABLE": "0",
+        "NCCL_IB_CUDA_SUPPORT": "1",
+        "NCCL_IB_GID_INDEX": "0",
+        "NCCL_IB_TIMEOUT": "23",
+        "NCCL_IB_RETRY_CNT": "7",
+        "NCCL_IB_HCA": "mlx5_0",
+        "OMP_NUM_THREADS": "4"
+    },
+    "data": {
+        "data_path": [
+            "~/workspace/FlagScale/aquila/datasets/wudao_pretrain_text_document"
+        ]
+    },
+    "distributed": {
+        "tensor_model_parallel_size": 4,
+        "pipeline_model_parallel_size": 22
+    },
+    "training": {
+        "micro_batch_size": 1,
+        "global_batch_size": 2048,
+        "log_interval": 1,
+        "use_flash_attn": true,
+        "train_samples": 100000,
+        "disable_bias_linear": true,
+        "sequence_parallel": true,
+        "recompute_granularity": "full",
+        "recompute_granularity_per_stage": "22 0",
+        "recompute_method": "uniform",
+        "recompute_num_layers": 1
+    },
+    "hetero": {
+        "hetero_mode": "pp",
+        "hetero_device_types": "bi100 a800",
+        "hetero_pipeline_stages": "20 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 20 20"
+    },
+    "mixed_precision": {
+        "fp16": false,
+        "bf16": true
+    },
+    "learning_rate": {
+        "lr_warmup_samples": 256
+    },
+    "checkpoint": {
+        "save": null,
+        "load": null
+    }
+}
