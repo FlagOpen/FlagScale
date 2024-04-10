@@ -1,6 +1,6 @@
 {
     "experiment": {
-        "shell_cmds": "true set -x; source ~/.venvs/corexBIr311py38/bin/activate;",
+        "shell_cmds": "true set -x; source ~/.venvs/corexBI150r340py310/bin/activate;",
         "stop_cmds": "bash ~/workspace/FlagScale/iluvatar/scripts/house_clean.sh",
         "exp_name": "7b",
         "ssh_port": "22",
@@ -8,7 +8,7 @@
         "log_dir": "./aquila/logs"
     },
     "launch": {
-        "__comment__master_addr": "10.31.12.41",
+        "__comment__master_addr": "127.0.0.1",
         "master_port": 11234
     },
     "env_vars": {
