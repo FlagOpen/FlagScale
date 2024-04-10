@@ -425,6 +425,68 @@ def validate_args(args, defaults={}):
             'recompute method is not yet supported for ' \
             'selective recomputing granularity'
 
+    if args.recompute_granularity_per_stage != None:
+        assert args.recompute_granularity == 'full', \
+            'recompute-granularity-per-stage is only'\
+            'application to full recompute granularity mode'
+        assert args.recompute_method is not None, \
+            'for distributed recompute activations to work you '\
+            'need to use a recompute method '
+
+        pipeline_size_split = args.recompute_granularity_per_stage[::2]
+        recompute_granularity_split = args.recompute_granularity_per_stage[1::2]
+
+        for i in recompute_granularity_split:
+            assert i == 1 or i == 0, 'element of recompute-granularity-per-stage must be 0 or 1.'
+        assert sum(pipeline_size_split) == args.pipeline_model_parallel_size, \
+            'recompute-granularity-per-stage setting:' \
+            'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size.'
+        args.recompute_granularity_per_stage = [recompute_granularity_split[i] for i,j in enumerate(pipeline_size_split) for _ in range(j)]
+
+    if args.recompute_num_layers_per_stage != None:
+        assert args.recompute_granularity == 'full', \
+            'recompute-num-layers-per-stage is only'\
+            'application to full recompute granularity'
+        assert args.recompute_method_per_stage is not None, \
+            'recompute_method_per_stage must be used with '\
+            'recompute_num_layers_per_stage '
+
+        recompute_num_layers_stage_split = args.recompute_num_layers_per_stage[::2]
+        recompute_num_layers_layer_split = args.recompute_num_layers_per_stage[1::2]
+        recompute_methods_stage_split = args.recompute_method_per_stage[::2]
+        recompute_methods_method_split = args.recompute_method_per_stage[1::2]
+
+        assert len(recompute_num_layers_stage_split) == len(recompute_num_layers_layer_split), \
+            'args.recompute_num_layers_per_stage setting must match form: n0, layers0, n1, layers1, ...'
+        assert len(recompute_methods_stage_split) == len(recompute_methods_method_split), \
+            'args.recompute_method_per_stage setting must match form: n0, layers0, n1, layers1, ...'
+        if args.virtual_pipeline_model_parallel_size != None:
+            assert args.pipeline_model_parallel_size * args.virtual_pipeline_model_parallel_size == sum(recompute_num_layers_stage_split), \
+                'args.recompute_num_layers_per_stage setting:' \
+                'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size * virtual_pipeline_model_parallel_size'
+            assert args.pipeline_model_parallel_size * args.virtual_pipeline_model_parallel_size == sum(recompute_methods_stage_split), \
+                'args.recompute_method_per_stage setting:' \
+                'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size * virtual_pipeline_model_parallel_size'
+        else:
+            assert args.pipeline_model_parallel_size == sum(recompute_num_layers_stage_split), \
+                'args.recompute_num_layers_per_stage setting:' \
+                'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size.'
+            assert args.pipeline_model_parallel_size == sum(recompute_methods_stage_split), \
+                'args.recompute_method_per_stage setting:' \
+                'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size.'
+
+        recompute_num_layers_per_stage = []
+        for i in range(len(recompute_num_layers_stage_split)):
+            for j in range(recompute_num_layers_stage_split[i]):
+                recompute_num_layers_per_stage.append(recompute_num_layers_layer_split[i])
+        recompute_method_per_stage = []
+        for i in range(len(recompute_methods_stage_split)):
+            for j in range(recompute_methods_stage_split[i]):
+                recompute_method_per_stage.append(recompute_methods_method_split[i])
+
+        args.recompute_num_layers_per_stage = recompute_num_layers_per_stage
+        args.recompute_method_per_stage = recompute_method_per_stage
+
     # disable sequence parallelism when tp=1
     # to avoid change in numerics when
     # sequence_parallelism is enabled.
@@ -936,6 +998,20 @@ def _add_training_args(parser):
                        'uniformly divided recompute unit, '
                        '2) block: the number of individual Transformer layers '
                        'to recompute within each pipeline stage.')
+    group.add_argument('--recompute-granularity-per-stage', nargs='*', type=int, default=None,
+                       help='used with recompute-granularity=full, setting recompute granularity'
+                       'of each stage. This argument must be in the form: n0, flag0, n1, flag1,...'
+                       'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size.'
+                       'granularity flag: 0 means turning off full recompute, 1 means turning on')
+    group.add_argument('--recompute-method-per-stage', nargs='*', type=int, default=None,
+                       help='used with recompute-granularity=full, setting recompute method '
+                       'of each stage. This argument must be in the form: n0, method0, n1, method1, ...'
+                       'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size.'
+                       'method: 0 means uniform, 1 means block')
+    group.add_argument('--recompute-num-layers-per-stage', nargs='*', type=int, default=None,
+                       help='used with recompute-granularity=full, setting recompute num layers '
+                       'of each stage. This argument must be in the form: n0, layers0, n1, layers1, ...'
+                       'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size.')
     group.add_argument('--profile', action='store_true',
                        help='Enable nsys profiling. When using this option, nsys '
                        'options should be specified in commandline. An example '

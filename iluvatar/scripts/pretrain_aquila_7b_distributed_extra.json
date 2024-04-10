@@ -1,0 +1,64 @@
+{
+    "experiment": {
+        "shell_cmds": "true set -x; source ~/.venvs/corexBI150r340py310/bin/activate;",
+        "stop_cmds": "bash ~/workspace/FlagScale/iluvatar/scripts/house_clean.sh",
+        "exp_name": "7b",
+        "ssh_port": "22",
+        "hostfile": "./aquila/hostfile",
+        "log_dir": "./aquila/logs"
+    },
+    "launch": {
+        "__comment__master_addr": "127.0.0.1",
+        "master_port": 11234
+    },
+    "env_vars": {
+        "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15",
+        "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+        "GLOO_SOCKET_IFNAME": "`ifconfig | grep -B1 $(hostname -I | cut -d' ' -f1) | head -n1 | cut -d: -f1`",
+        "NCCL_SOCKET_IFNAME": "`ifconfig | grep -B1 $(hostname -I | cut -d' ' -f1) | head -n1 | cut -d: -f1`",
+        "NCCL_NET_SHARED_BUFFERS": "0",
+        "NCCL_DEBUG": "TRACE",
+        "NCCL_IB_DISABLE": "1",
+        "NCCL_IB_CUDA_SUPPORT": "0",
+        "NCCL_IB_GID_INDEX": "0",
+        "NCCL_IB_TIMEOUT": "23",
+        "NCCL_IB_RETRY_CNT": "7",
+        "NCCL_IB_HCA": "mlx5_0",
+        "OMP_NUM_THREADS": "4"
+    },
+    "data": {
+        "data_path": [
+            "~/workspace/FlagScale/aquila/datasets/wudao_pretrain_text_document"
+        ]
+    },
+    "distributed": {
+        "tensor_model_parallel_size": 1,
+        "pipeline_model_parallel_size": 4
+    },
+    "training": {
+        "micro_batch_size": 1,
+        "global_batch_size": 32,
+        "log_interval": 1,
+        "use_flash_attn": true,
+        "train_samples": 100000,
+        "disable_bias_linear": true,
+        "sequence_parallel": true,
+        "recompute_granularity": "full",
+        "recompute_method": "uniform",
+        "recompute_num_layers": 1
+    },
+    "network": {
+        "num_layers": 32
+    },
+    "mixed_precision": {
+        "fp16": false,
+        "bf16": true
+    },
+    "learning_rate": {
+        "lr_warmup_samples": 256 
+    },
+    "checkpoint": {
+        "save": null,
+        "load": null
+    }
+}
