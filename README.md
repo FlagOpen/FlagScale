@@ -13,6 +13,10 @@ FlagScale provides developers with the actual configurations, optimization schem
 
 ## News and Updates
 
+* 2024.4.11 🔥 We release the new version (v0.3): 
+  * Accomplish the heterogeneous hybrid training of the Aquila2-70B-Expr model on a cluster utilizing a combination of NVIDIA and Iluvatar chips.
+  * Provide the training of the Aquila2 series across a variety of AI chips from six distinct manufacturers.
+
 * 2023.11.30 We release the new version (v0.2): 
   * Provide the actually used training scheme for [Aquila2-70B-Expr](./aquila/70B), including the parallel strategies, optimizations and hyper-parameter settings.
   * Support heterogeneous training on chips of different generations with the same architecture or compatible architectures, including NVIDIA GPUs and Iluvatar CoreX chips. 
