@@ -1,17 +1,21 @@
 ## Introduction
 
-[FlagScale](https://github.com/FlagOpen/FlagScale.git) is a Large Language Model (LLM) toolkit based on the [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) project, which supports the LLMs from Beijing Academy of Artificial Intelligence (BAAI). Our primary goal is to utilize the computation resources efficiently for LLMs without sacrificing the numerical stability and model effectiveness. For now, FlagScale is still in its early stage and we will work with the community together to support different LLMs on various hardware architectures. 
+[FlagScale](https://github.com/FlagOpen/FlagScale.git) is a comprehensive toolkit for large-scale models, developed with the support of the Beijing Academy of Artificial Intelligence (BAAI). It builds upon open-source projects such as [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) and [vllm](https://github.com/vllm-project/vllm). 
 
-The reason why we start from Megatron-LM is that it can achieve a very high-level resource utilization by combining the most comprehensive distributed training and accelerating techniques, especially for training LLMs beyond ten-billions of parameters. 
+Our primary objective with FlagScale is to optimize the use of computational resources for large models, while maintaining numerical stability and model effectiveness. Currently, FlagScale is in its early stages of development. We are actively collaborating with the community to enhance its capabilities, with the aim to support a variety of large models across diverse hardware architectures.
 
 ## Highlights
-FlagScale provides developers with the actual configurations, optimization schemes and hyper-parameter settings for LLM training from BAAI. It also assists developers in rapidly establishing a basic yet complete pipeline for LLM, including training, fine-tuning, inference and serving. It has several features as follows:
+FlagScale provides developers with the actual configurations, optimization schemes and hyper-parameter settings for the large model training from BAAI. It also assists developers in rapidly establishing a basic yet complete pipeline for LLM, including training, fine-tuning, inference and serving. It has several features as follows:
 
 - Provide the training schemes of the Aquila models form BAAI which can guaranteed training convergence
 - Support the model weight conversion to Huggingface and the distributed optimizer repartition
-- Keep timely synchronization with the upstream Megatron-LM project
+- Keep timely synchronization with the upstream projects
 
 ## News and Updates
+
+* 2024.4.11 🔥 We release the new version ([v0.3](https://github.com/FlagOpen/FlagScale/tree/release/v0.3)): 
+  * Accomplish the heterogeneous hybrid training of the Aquila2-70B-Expr model on a cluster utilizing a combination of NVIDIA and Iluvatar chips.
+  * Provide the training of the Aquila2 series across a variety of AI chips from six distinct manufacturers.
 
 * 2023.11.30 We release the new version (v0.2): 
   * Provide the actually used training scheme for [Aquila2-70B-Expr](./examples/aquila/70B), including the parallel strategies, optimizations and hyper-parameter settings.
@@ -71,6 +75,8 @@ python run.py --config-path ./examples/aquila/conf --config-name config action=s
 ```
 
 ### Do the heterogenous training 
+
+Please checkout the [v0.3](https://github.com/FlagOpen/FlagScale/tree/release/v0.3) branch first and follow the instructions below.
 
 It is very simple to do the heterogeneous training on chips of different generations with the same architecture or compatible architectures. You only need to follow the steps below and everything else just remains the same as the above homogeneous training. In addition, you can also refer to the examples [1](./examples/aquila/34B/pretrain_aquila_34b_distributed_A800_16n_80g_A100_48n_40g_hetero_pp.sh), [2](./examples/aquila/34B/pretrain_aquila_34b_distributed_A800_16n_80g_A100_48n_40g_hetero_dp.sh), [3](./examples/aquila/70B/pretrain_aquila_70b_distributed_A800_16n_80g_A100_48n_40g_hetero_pp.sh) for better understanding.
 
