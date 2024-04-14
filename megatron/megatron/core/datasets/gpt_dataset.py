@@ -13,8 +13,7 @@ import torch
 from megatron.core.datasets.blended_megatron_dataset_config import BlendedMegatronDatasetConfig
 from megatron.core.datasets.indexed_dataset import IndexedDataset
 from megatron.core.datasets.megatron_dataset import LowLevelDataset, MegatronDataset, MockDataset
-from megatron.core.datasets.utils import Split, log_single_rank
-from megatron.training import get_args
+from megatron.core.datasets.utils import Split, log_single_rank, is_built_on_zero_rank
 
 logger = logging.getLogger(__name__)
 
@@ -390,21 +389,8 @@ class GPTDataset(MegatronDataset):
             )
         )
 
-        # Build on rank 0 or first rank of each nodes 
-        # if there is no shared file system
-        args = get_args()
-        build_on_cur_rank = False
-        if not args.no_shared_fs \
-            and torch.distributed.get_rank() == 0:
-            build_on_cur_rank = True 
-        elif args.no_shared_fs \
-            and int(os.environ["LOCAL_RANK"]) == 0:
-            build_on_cur_rank = True 
-        else:
-            build_on_cur_rank = False
-
         if not cache_hit and (
-            not torch.distributed.is_initialized() or build_on_cur_rank):
+            not torch.distributed.is_initialized() or is_built_on_zero_rank()):
             log_single_rank(
                 logger,
                 logging.INFO,

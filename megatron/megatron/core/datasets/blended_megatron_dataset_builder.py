@@ -10,7 +10,7 @@ import torch
 from megatron.core.datasets.blended_dataset import BlendedDataset
 from megatron.core.datasets.blended_megatron_dataset_config import BlendedMegatronDatasetConfig
 from megatron.core.datasets.megatron_dataset import LowLevelDataset, MegatronDataset, MockDataset
-from megatron.core.datasets.utils import Split, normalize
+from megatron.core.datasets.utils import Split, normalize, is_built_on_zero_rank
 from megatron.core.parallel_state import get_virtual_pipeline_model_parallel_rank
 
 logger = logging.getLogger(__name__)
@@ -278,7 +278,7 @@ class BlendedMegatronDatasetBuilder(object):
             dataset = None
 
             # First, build on rank 0
-            if rank == 0 and is_built_on_rank():
+            if is_built_on_zero_rank() and is_built_on_rank():
                 try:
                     dataset = cls(*args)
                 except OSError as err:
@@ -293,7 +293,7 @@ class BlendedMegatronDatasetBuilder(object):
             torch.distributed.barrier()
 
             # After, build on other ranks
-            if rank != 0 and is_built_on_rank():
+            if not is_built_on_zero_rank() and is_built_on_rank():
                 dataset = cls(*args)
 
             return dataset
