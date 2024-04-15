@@ -1,0 +1,11 @@
+outputs_dir: tests/outputs
+
+unit_tests:
+  unit_test_megatron: true   
+  unit_test_megatron_dist: true 
+  unit_test_flagscale: true 
+
+functional_tests: 
+  functional_test_flagscale: ["aquila"]
+
+action: test
