@@ -101,6 +101,29 @@ def get_free_port():
         return s.getsockname()[1]
 
 
+def run_local_command(cmd):
+    logger.info(f"SSHRunner is running the local command: {cmd}")
+    subprocess.run(cmd, shell=True, check=True)
+
+
+def run_ssh_command(host, cmd, port=None):
+    if port:
+        ssh_cmd = f"ssh -f -n -p {port} {host} '{cmd}'"
+    else:
+        ssh_cmd = f"ssh -f -n {host} '{cmd}'"
+    logger.info(f"SSHRunner is running the ssh command: {ssh_cmd}")
+    subprocess.run(ssh_cmd, shell=True, check=True)
+
+
+def run_scp_command(host, src, dst, port=None):
+    if port:
+        scp_cmd = f"scp -P {port} -r {src} {host}:{dst} "
+    else:
+        scp_cmd = f"scp -r {src} {host}:{dst} "
+    logger.info(f"SHHRunner is running the scp command: {scp_cmd}")
+    subprocess.run(scp_cmd, shell=True, check=True)
+
+
 def _update_config(config: DictConfig):
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     assert os.path.isdir(exp_dir), f"Directory {exp_dir} does not exist."
@@ -110,27 +133,27 @@ def _update_config(config: DictConfig):
     config = config.train.system
 
     ckpt_save_dir = (
-        config.checkpoint.save
+        os.path.abspath(config.checkpoint.save)
         if getattr(config.checkpoint, 'save', None)
         else os.path.join(exp_dir, "checkpoints")
     )
     ckpt_load_dir = (
-        config.checkpoint.load
+        os.path.abspath(config.checkpoint.load)
         if getattr(config.checkpoint, 'load', None)
         else os.path.join(exp_dir, "checkpoints")
     )
     wandb_dir = (
-        config.logging.wandb_save_dir
+        os.path.abspath(config.logging.wandb_save_dir)
         if getattr(config.logging, 'wandb_save_dir', None)
         else os.path.join(exp_dir, "wandb")
     )
     tensorboard_dir = (
-        config.logging.tensorboard_dir
+        os.path.abspath(config.logging.tensorboard_dir)
         if getattr(config.logging, 'tensorboard_dir', None)
         else os.path.join(exp_dir, "tensorboard")
     )
     log_dir = (
-        config.logging.log_dir
+        os.path.abspath(config.logging.log_dir)
         if getattr(config.logging, 'log_dir', None)
         else os.path.join(exp_dir, "logs")
     )
@@ -194,10 +217,8 @@ class SSHRunner(MultiNodeRunner):
             f"host_{node_rank}_{host}.pid"
         )
 
-        # TODO: Implement the creation of the scripts_dir locally. 
-        # If there's no shared file system, we'll need to securely copy (scp) 
-        # the scripts_dir to the remote host.
         os.makedirs(logging_config.scripts_dir, exist_ok=True)
+
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         megatron_dir = os.path.join(root_dir, "megatron")
         with open(host_run_script_file, 'w') as f:
@@ -252,19 +273,20 @@ class SSHRunner(MultiNodeRunner):
 
         host_run_script_file = self._generate_run_script(host, node_rank, cmd)
 
-        cmd = f"bash {host_run_script_file}"
-
         if host != "localhost":
             ssh_port = self.config.experiment.ssh_port
-            if ssh_port:
-                ssh_cmd = f"ssh -f -n -p {ssh_port} {host} '{cmd}'"
-            else:
-                ssh_cmd = f"ssh -f -n {host} '{cmd}'"
-            logger.info(f"SSHRunner is running the command: {ssh_cmd}")
-            subprocess.run(ssh_cmd, shell=True, check=True)
+            # Step 1: make sure the scripts_dir exists on the remote host
+            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port)
+
+            # Step 2: copy the host_run_script_file to the remote host
+            no_shared_fs = getattr(self.config.experiment, "no_shared_fs", False)
+            if no_shared_fs:
+                run_scp_command(host, host_run_script_file, logging_config.scripts_dir, ssh_port)
+
+            # Step 3: run the host_run_script_file on the remote host
+            run_ssh_command(host, f"bash {host_run_script_file}", ssh_port)
         else:
-            logger.info(f"SSHRunner is running the command: {cmd}")
-            subprocess.run(cmd, shell=True, check=True)
+            run_local_command(f"bash {host_run_script_file}")
 
     def run(self):
         self._prepare()
@@ -319,6 +341,8 @@ class SSHRunner(MultiNodeRunner):
             f"host_{node_rank}_{host}.pid"
         )
 
+        os.makedirs(logging_config.scripts_dir, exist_ok=True)
+
         with open(host_stop_script_file, 'w') as f:
             f.write("#!/bin/bash\n\n")
             f.write("if [ -f " + host_pid_file + " ]; then\n")
@@ -336,20 +360,21 @@ class SSHRunner(MultiNodeRunner):
 
     def _stop_each(self, host, node_rank):
         host_stop_script_file = self._generate_stop_script(host, node_rank)
-
-        cmd = f"bash {host_stop_script_file}"
+        logging_config = self.config.train.system.logging
 
         if host != "localhost":
             ssh_port = self.config.experiment.ssh_port
-            if ssh_port:
-                ssh_cmd = f"ssh -f -n -p {ssh_port} {host} '{cmd}'"
-            else:
-                ssh_cmd = f"ssh {host} '{cmd}'"
-            logger.info(f"SSHRunner is stopping the job: {ssh_cmd}")
-            subprocess.run(ssh_cmd, shell=True, check=True)
+            ssh_port = self.config.experiment.ssh_port
+            # Step 1: make sure the scripts_dir exists on the remote host
+            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port)
+            # Step 2: copy the host_run_script_file to the remote host
+            no_shared_fs = getattr(self.config.experiment, "no_shared_fs", False)
+            if no_shared_fs:
+                run_scp_command(host, host_stop_script_file, logging_config.scripts_dir, ssh_port)
+            # Step 3: run the host_run_script_file on the remote host
+            run_ssh_command(host, f"bash {host_stop_script_file}", ssh_port)
         else:
-            logger.info(f"SSHRunner is stopping the job: {cmd}")
-            subprocess.run(cmd, shell=True, check=True)
+            run_local_command(f"bash {host_stop_script_file}")
 
     def stop(self):
         if self.resources is None:

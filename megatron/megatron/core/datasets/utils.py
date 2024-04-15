@@ -1,5 +1,6 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
+import os
 import logging
 from enum import Enum
 from typing import Any, List
@@ -62,3 +63,26 @@ def normalize(weights: List[float]) -> List[float]:
     w_sum = numpy.sum(w)
     w = (w / w_sum).tolist()
     return w
+
+
+def is_built_on_zero_rank():
+    """
+    Determines if the current distributed rank is the one responsible for building datasets. 
+
+    Returns:
+        bool: True if the current rank is responsible for building resources, False otherwise.
+    """
+    from megatron.training import get_args
+    args = get_args()
+
+    is_built = False
+    if not args.no_shared_fs \
+        and torch.distributed.get_rank() == 0:
+        is_built = True 
+    elif args.no_shared_fs \
+        and int(os.environ["LOCAL_RANK"]) == 0:
+        is_built = True 
+    else:
+        is_built = False
+    
+    return is_built
