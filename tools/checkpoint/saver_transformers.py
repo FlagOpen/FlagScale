@@ -49,8 +49,8 @@ def save_checkpoint(queue, args):
         sys.path.insert(0, args.megatron_path)
 
     try:
-        from megatron.arguments import parse_args, validate_args
-        from megatron.tokenizer.tokenizer import _vocab_size_with_padding
+        from megatron.training.arguments import parse_args, validate_args
+        from megatron.training.tokenizer.tokenizer import _vocab_size_with_padding
     except ModuleNotFoundError:
         print("Unable to import Megatron, please specify the path to Megatron using --megatron-path. Exiting.")
         queue.put("exit")
@@ -277,4 +277,7 @@ def save_checkpoint(queue, args):
         hf_model.lm_head.weight.data.copy_(full_output_layer_weight)
         check_message(msg)
 
+    print(f"hf model is saving to {args.save_dir} ...")
     hf_model.save_pretrained(args.save_dir)
+
+    print("SAVE DONE!!!")

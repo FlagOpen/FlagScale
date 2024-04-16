@@ -36,7 +36,7 @@ def _load_checkpoint(queue, args):
         sys.path.insert(0, args.megatron_path)
 
     try:
-        from megatron.arguments import parse_args, validate_args
+        from megatron.training.arguments import parse_args, validate_args
     except ModuleNotFoundError:
         print("Unable to import Megatron, please specify the path to Megatron using --megatron-path. Exiting.")
         queue.put("exit")
