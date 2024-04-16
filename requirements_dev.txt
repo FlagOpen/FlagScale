@@ -1,0 +1,10 @@
+flash-attn>=2.0.0
+transformers==4.32.0
+uvicorn
+fastapi
+wandb>=0.15.7
+
+nltk
+wrapt
+pip install git+https://github.com/fanshiqing/grouped_gemm@v1.0
+pytest_mock
