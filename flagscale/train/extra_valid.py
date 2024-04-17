@@ -7,8 +7,8 @@ from megatron.training.global_vars import get_args
 from megatron.training.global_vars import get_tensorboard_writer
 from megatron.training.global_vars import get_wandb_writer
 from megatron.training.global_vars import get_tokenizer
-from megatron.training.utils import print_rank_0 
-from megatron.training.utils import print_rank_last 
+from megatron.training.utils import print_rank_0
+from megatron.training.utils import print_rank_last
 from megatron.training.utils import is_last_rank
 from megatron.core import mpu
 from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
@@ -29,7 +29,6 @@ def core_gpt_dataset_config_from_args(args, data_path):
 
     # Only build the validation dataset
     return GPTDatasetConfig(
-        is_built_on_rank=is_dataset_built_on_rank,
         random_seed=args.seed,
         sequence_length=args.seq_length,
         blend=[data_path],
@@ -41,6 +40,7 @@ def core_gpt_dataset_config_from_args(args, data_path):
         reset_position_ids=args.reset_position_ids,
         reset_attention_mask=args.reset_attention_mask,
         eod_mask_loss=args.eod_mask_loss,
+        create_attention_mask=args.create_attention_mask_in_dataloader,
     )
 
 
@@ -64,6 +64,7 @@ def extra_valid_dataset_provider(data_path, num_samples, tag):
     extra_train_ds, extra_valid_ds, extra_test_ds = BlendedMegatronDatasetBuilder(
         dataset_type,
         [0, num_samples, 0],
+        is_dataset_built_on_rank,
         config
     ).build()
 
@@ -95,16 +96,16 @@ def build_extra_valid_datasets(build_extra_valid_dataset_provider):
         num_samples_list.append(num_samples)
         valid_iters_list.append(eval_iters)
     args.extra_valid_iters_list = valid_iters_list
-    
+
     assert len(paths) == len(num_samples_list), \
         f"Number of extra_valid data paths {len(paths)} does not match number of extra_valid data samples {len(num_samples_list)}"
-    
+
     extra_valid_datasets = []
     for path, num_samples, tag in zip(paths, num_samples_list, tags):
         assert os.path.exists(path + ".bin"), f"Path {path} does not exist"
         assert os.path.exists(path + ".idx"), f"Path {path} does not exist"
         extra_valid_datasets.append(build_extra_valid_dataset_provider(path, num_samples, tag))
-    
+
     return extra_valid_datasets
 
 
@@ -115,7 +116,7 @@ def build_extra_valid_data_loaders(build_extra_valid_dataset_provider):
 
     paths = args.extra_valid_data_path[1::3]
 
-    extra_valid_dataloaders = [None for _ in paths] 
+    extra_valid_dataloaders = [None for _ in paths]
 
     print_rank_0('> building extra validation datasets ...')
 
@@ -150,7 +151,7 @@ def build_extra_valid_data_loaders(build_extra_valid_dataset_provider):
 
     args.do_extra_valid = getattr(args, "do_extra_valid", False) or flags[0].item()
 
-    return extra_valid_dataloaders 
+    return extra_valid_dataloaders
 
 
 def build_extra_valid_data_iterators(build_extra_valid_dataset_provider):
@@ -164,7 +165,7 @@ def build_extra_valid_data_iterators(build_extra_valid_dataset_provider):
     if extra_valid_dataloaders[0] is not None:
         extra_valid_data_iterators = []
         for extra_valid_dataloader in extra_valid_dataloaders:
-            extra_valid_data_iterators.append(iter(extra_valid_dataloader)) 
+            extra_valid_data_iterators.append(iter(extra_valid_dataloader))
     else:
         extra_valid_data_iterators = [None for _ in extra_valid_dataloaders]
 
@@ -185,7 +186,7 @@ def extra_evaluate_and_print_results(index, prefix, forward_step_func,
     wandb_writer = get_wandb_writer()
 
     # To avoid the circular import.
-    from megatron.training import evaluate
+    from megatron.training.training import evaluate
     total_loss_dict, collected_non_loss_data, timelimit = evaluate(
         forward_step_func, data_iterator, model,
         process_non_loss_data_func, config, verbose, index)
@@ -196,7 +197,7 @@ def extra_evaluate_and_print_results(index, prefix, forward_step_func,
     extra_valid_data_path = args.extra_valid_data_path
     path = extra_valid_data_path[1::3][index]
     filename = os.path.basename(path)
-    tag = extra_valid_data_path[2::3][index] 
+    tag = extra_valid_data_path[2::3][index]
     label = f'{filename}-{tag}'
     string = ' extra_validation {} loss at {} | '.format(label, prefix)
     loss_section = 'validation loss'

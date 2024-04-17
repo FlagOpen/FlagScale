@@ -42,11 +42,11 @@ def save_checkpoint(queue, args):
         sys.path.insert(0, args.megatron_path)
 
     try:
-        from megatron.arguments import parse_args, validate_args
-        from megatron.checkpointing import save_checkpoint, get_checkpoint_name
-        from megatron.global_vars import set_global_variables
-        from megatron.tokenizer.tokenizer import _vocab_size_with_padding
-        from megatron import fused_kernels
+        from megatron.training.arguments import parse_args, validate_args
+        from megatron.training.checkpointing import save_checkpoint, get_checkpoint_name
+        from megatron.training.global_vars import set_global_variables
+        from megatron.training.tokenizer.tokenizer import _vocab_size_with_padding
+        from megatron.legacy import fused_kernels
         from megatron.core import mpu
         from megatron.core.tensor_parallel.random import (
                 _CUDA_RNG_STATE_TRACKER, _DATA_PARALLEL_RNG_TRACKER_NAME, 
@@ -358,8 +358,8 @@ def save_checkpoint(queue, args):
             mpu.set_tensor_model_parallel_rank(tp_rank)
             mpu.set_expert_model_parallel_rank(ep_rank)
             checkpoint_name = get_checkpoint_name(margs.save, md.iteration)
-            print("save to:", checkpoint_name)
+            print(f"megtron model is saving to {checkpoint_name} ...")
             save_checkpoint(md.iteration, [model], None, None,
                             num_floating_point_operations_so_far=0)
 
-    print("Done!!!")
+    print("SAVE DONE!!!")

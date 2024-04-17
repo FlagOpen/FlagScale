@@ -27,6 +27,7 @@ from megatron.core import mpu, tensor_parallel
 from megatron.core.utils import get_model_config
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint
+from megatron.training.checkpointing import get_checkpoint_name
 from megatron.legacy.model import Float16Module
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import finalize_model_grads
