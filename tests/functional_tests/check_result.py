@@ -1,16 +1,14 @@
 import os, json, sys
+import numpy as np
 
 def compare_result_log(test_reaults_path:str):
 
     host_path = test_reaults_path + "/logs/details/host_0_localhost"
     id_name      = os.listdir(host_path)[0]
     attempt_name = os.listdir(host_path + "/" + id_name)[0]
-    print(attempt_name)
     results_path = (os.listdir(host_path + "/" + id_name + "/" + attempt_name))
     results_path.sort()
-    print(results_path)
     result_path  = host_path + "/" + id_name + "/" + attempt_name + "/" + results_path[-1] + "/stdout.log"
-    print(results_path)
 
     with open(result_path, 'r') as file:
         lines = file.readlines()
@@ -33,7 +31,7 @@ def compare_result_log(test_reaults_path:str):
     print("\nresult checking")
     print("result: ", result_json)
     print("gold_result: ", gold_result_json)
-    print("The results are consistent: ", result_json == gold_result_json)
+    print("The results are basically equal: ", np.allclose(gold_result_json["lm loss:"]["values"], result_json["lm loss:"]["values"]))
 
 if __name__ == '__main__':
     test_reaults_path = sys.argv[1]

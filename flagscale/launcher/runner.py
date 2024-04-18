@@ -200,7 +200,7 @@ class SSHRunner(MultiNodeRunner):
         else:
             raise ValueError(f"Unsupported task: {self.config.experiment.task}")
 
-    def _generate_run_script(self, host, node_rank, cmd):
+    def _generate_run_script(self, host, node_rank, cmd, is_test = False):
         system_config = self.config.train.system
         logging_config = self.config.train.system.logging
 
@@ -239,7 +239,10 @@ class SSHRunner(MultiNodeRunner):
             f.write(f"\n")
             # TODO: need a option to control whether to append or overwrite the output file
             # Now, it always appends to the output file
-            f.write(f"nohup bash -c \"$cmd\" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n")
+            if is_test:
+                f.write(f"bash -c \"$cmd\" \n")
+            else:
+                f.write(f"nohup bash -c \"$cmd\" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n")
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
@@ -270,13 +273,22 @@ class SSHRunner(MultiNodeRunner):
                         ]
 
         if is_test:
-            cmd = shlex.join(export_cmd + torchrun_cmd + [self.user_script] + self.user_args)
-            test_cmd = ";python tests/functional_tests/check_result.py " + self.config.experiment.exp_dir
+            cmd = shlex.join(
+                export_cmd + torchrun_cmd + [self.user_script] + self.user_args
+            )
+            test_cmd = (
+                ";python tests/functional_tests/check_result.py "
+                + self.config.experiment.exp_dir
+                + ";rm -r "
+                + self.config.experiment.exp_dir
+            )
             cmd = cmd + test_cmd
         else:
-            cmd = shlex.join(export_cmd + torchrun_cmd + [self.user_script] + self.user_args)
+            cmd = shlex.join(
+                export_cmd + torchrun_cmd + [self.user_script] + self.user_args
+            )
 
-        host_run_script_file = self._generate_run_script(host, node_rank, cmd)
+        host_run_script_file = self._generate_run_script(host, node_rank, cmd, is_test)
 
         if host != "localhost":
             ssh_port = self.config.experiment.ssh_port
