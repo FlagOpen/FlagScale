@@ -200,7 +200,7 @@ class SSHRunner(MultiNodeRunner):
         else:
             raise ValueError(f"Unsupported task: {self.config.experiment.task}")
 
-    def _generate_run_script(self, host, node_rank, cmd):
+    def _generate_run_script(self, host, node_rank, cmd, is_test = False):
         system_config = self.config.train.system
         logging_config = self.config.train.system.logging
 
@@ -239,7 +239,10 @@ class SSHRunner(MultiNodeRunner):
             f.write(f"\n")
             # TODO: need a option to control whether to append or overwrite the output file
             # Now, it always appends to the output file
-            f.write(f"nohup bash -c \"$cmd\" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n")
+            if is_test:
+                f.write(f"bash -c \"$cmd\" \n")
+            else:
+                f.write(f"nohup bash -c \"$cmd\" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n")
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
@@ -248,7 +251,7 @@ class SSHRunner(MultiNodeRunner):
         return host_run_script_file
 
     def _run_each(
-        self, host, master_addr, master_port, nnodes, node_rank, nproc_per_node
+        self, host, master_addr, master_port, nnodes, node_rank, nproc_per_node, is_test = False
     ):
         export_cmd = []
         for k, v in self.user_envs.items():
@@ -269,9 +272,23 @@ class SSHRunner(MultiNodeRunner):
                         "--tee", str(3),
                         ]
 
-        cmd = shlex.join(export_cmd + torchrun_cmd + [self.user_script] + self.user_args)
+        if is_test:
+            cmd = shlex.join(
+                export_cmd + torchrun_cmd + [self.user_script] + self.user_args
+            )
+            test_cmd = (
+                ";python tests/functional_tests/check_result.py "
+                + self.config.experiment.exp_dir
+                + ";rm -r "
+                + self.config.experiment.exp_dir
+            )
+            cmd = cmd + test_cmd
+        else:
+            cmd = shlex.join(
+                export_cmd + torchrun_cmd + [self.user_script] + self.user_args
+            )
 
-        host_run_script_file = self._generate_run_script(host, node_rank, cmd)
+        host_run_script_file = self._generate_run_script(host, node_rank, cmd, is_test)
 
         if host != "localhost":
             ssh_port = self.config.experiment.ssh_port
@@ -288,7 +305,7 @@ class SSHRunner(MultiNodeRunner):
         else:
             run_local_command(f"bash {host_run_script_file}")
 
-    def run(self):
+    def run(self, is_test=False):
         self._prepare()
         logger.info("\n************** configuration ***********")
         logger.info(f'\n{OmegaConf.to_yaml(self.config)}')
@@ -310,6 +327,7 @@ class SSHRunner(MultiNodeRunner):
                 nnodes=1,
                 node_rank=0,
                 nproc_per_node=num_visible_devices,
+                is_test=is_test                
             )
             return
 
@@ -325,7 +343,7 @@ class SSHRunner(MultiNodeRunner):
             nnodes = len(self.resources)
             node_rank = host_list.index(host)
             self._run_each(
-                host, master_addr, master_port, nnodes, node_rank, nproc_per_node
+                host, master_addr, master_port, nnodes, node_rank, nproc_per_node, is_test
             )
 
     def _generate_stop_script(self, host, node_rank):

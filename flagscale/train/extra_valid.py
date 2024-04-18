@@ -55,8 +55,10 @@ def extra_valid_dataset_provider(data_path, num_samples, tag):
     config = core_gpt_dataset_config_from_args(args, data_path)
 
     if config.mock:
+        from megatron.core.datasets.gpt_dataset import MockGPTDataset
         dataset_type = MockGPTDataset
     else:
+        from megatron.core.datasets.gpt_dataset import GPTDataset
         dataset_type = GPTDataset
 
     print_rank_0(f"> building extra validation dataset ({data_path}, {num_samples}) for GPT ...")
