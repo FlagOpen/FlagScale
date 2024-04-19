@@ -64,8 +64,10 @@ from .global_vars import (
 
 pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 sys.path.append(pardir)
+
 from flagscale.train.extra_valid import extra_evaluate_and_print_results
 from flagscale.train.extra_valid import build_extra_valid_data_iterators
+from flagscale.train.stablelm2_scheduler import StableLM2SchedulerConfig
 
 
 def print_datetime(string):
@@ -527,6 +529,18 @@ def get_optimizer_param_scheduler(optimizer):
         raise Exception(
             'either train-iters or train-samples should be provided.')
 
+    stablelm2_scheduler_config = None
+    if args.lr_decay_style == 'stablelm2-scheduler':
+        stablelm2_scheduler_config = StableLM2SchedulerConfig(
+          args.global_batch_size,
+          args.lr_decay_stablelm2_cosine_samples,
+          args.lr_decay_stablelm2_rsqrt_samples,
+          args.lr_decay_stablelm2_alpha,
+          args.lr_decay_stablelm2_beta,
+          cosine_max_lr=args.lr_decay_stablelm2_cosine_max_lr,
+          cosine_period_samples=args.lr_decay_stablelm2_cosine_period_samples,
+          decay_samples=args.lr_decay_stablelm2_decay_samples)
+
     opt_param_scheduler = OptimizerParamScheduler(
         optimizer,
         init_lr=args.lr_warmup_init,
@@ -540,7 +554,8 @@ def get_optimizer_param_scheduler(optimizer):
         wd_incr_steps=wd_incr_steps,
         wd_incr_style=args.weight_decay_incr_style,
         use_checkpoint_opt_param_scheduler=args.use_checkpoint_opt_param_scheduler,
-        override_opt_param_scheduler=args.override_opt_param_scheduler)
+        override_opt_param_scheduler=args.override_opt_param_scheduler,
+        stablelm2_scheduler_config=stablelm2_scheduler_config)
 
     return opt_param_scheduler
 
