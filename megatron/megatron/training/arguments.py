@@ -1267,8 +1267,23 @@ def _add_learning_rate_args(parser):
                        'and initial warmup, the learning rate at each '
                        'iteration would be different.')
     group.add_argument('--lr-decay-style', type=str, default='linear',
-                       choices=['constant', 'linear', 'cosine', 'inverse-square-root'],
+                       choices=['constant', 'linear', 'cosine', 'inverse-square-root', 'warmup-stable-decay', 'stablelm2-scheduler'],
                        help='Learning rate decay function.')
+    ## stablelm2-scheduler consists of multiple stages
+    group.add_argument('--lr-decay-stablelm2-cosine-samples', type=int, default=0,
+                       help='Samples number of cosine scheduler including warmup samples, used in stablelm2 scheduler.')
+    group.add_argument('--lr-decay-stablelm2-cosine-max-lr', type=float, default=None,
+                       help='Maximum lr of cosine scheduler, used in stablelm2 scheduler.')
+    group.add_argument('--lr-decay-stablelm2-cosine-period-samples', type=int, default=0,
+                       help='Period of cosine scheduler, used in stablelm2 scheduler.')
+    group.add_argument('--lr-decay-stablelm2-rsqrt-samples', type=int, default=0,
+                       help='Samples number of rsqrt scheduler used in stablelm2 scheduler.')
+    group.add_argument('--lr-decay-stablelm2-decay-samples', type=int, default=0,
+                       help='Samples number of decay scheduler used in stablelm2 scheduler.')
+    group.add_argument('--lr-decay-stablelm2-alpha', type=float, default=1.0,
+                       help='Numerator used in stablelm2 scheduler.')
+    group.add_argument('--lr-decay-stablelm2-beta', type=float, default=0.0,
+                       help='Denominator used in stablelm2 scheduler.')
     group.add_argument('--lr-decay-iters', type=int, default=None,
                        help='number of iterations to decay learning rate over,'
                        ' If None defaults to `--train-iters`')
