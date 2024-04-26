@@ -4,6 +4,8 @@ import argparse
 import importlib
 import torch.multiprocessing as mp
 
+from utils import validate_args
+
 
 def load_plugin(plugin_type, name):
     module_name = f"{plugin_type}_{name}"
@@ -50,7 +52,16 @@ def main():
     loader.add_arguments(parser)
     saver.add_arguments(parser)
 
+    try:
+        for model_type in known_args.model_type:
+            args_plugin = importlib.import_module(model_type + ".args")
+            if getattr(args_plugin, "add_extra_arguments", None):
+                args_plugin.add_extra_arguments(parser)
+    except ModuleNotFoundError:
+        pass
+
     args = parser.parse_args()
+    validate_args(args)
 
     queue = mp.Queue(maxsize=args.max_queue_size)
 

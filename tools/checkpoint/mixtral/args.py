@@ -13,7 +13,6 @@ def load_args_hf2mg(args):
     args.attention_dropout = mixtral_args["attention_dropout"]
     args.hidden_dropout = mixtral_args["attention_dropout"]
     args.hidden_size = mixtral_args["hidden_size"]
-    args.add_qkv_bias = mixtral_args.get("attention_bias", True)
     args.swiglu = mixtral_args["hidden_act"] == "silu"
     args.init_method_std = mixtral_args["initializer_range"]
     args.ffn_hidden_size = mixtral_args["intermediate_size"]
@@ -42,6 +41,7 @@ def load_args_hf2mg(args):
     args.use_rotary_position_embeddings = True
     args.moe_router_load_balancing_type = "aux_loss"
     args.add_bias_linear = False
+    args.add_qkv_bias = False
     args.make_vocab_size_divisible_by = 64
     args.consumed_train_samples = 0
     args.consumed_valid_samples = 0

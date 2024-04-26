@@ -2,7 +2,16 @@ import torch
 
 import sys
 sys.path.append("..")
-from mixtral.ckpt import get_hf_attn_ckpt, set_hf_attn_ckpt
+from mixtral.ckpt import (
+    get_hf_attn_ckpt, 
+    set_hf_attn_ckpt,
+    get_embedding_ckpt,
+    get_final_norm_ckpt,
+    get_output_layer_ckpt,
+    set_embedding_ckpt,
+    set_final_norm_ckpt,
+    set_output_layer_ckpt,
+)
 
 
 def get_hf_mlp_ckpt(message, model, layer_id, args):

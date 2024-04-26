@@ -27,9 +27,15 @@ def add_arguments(parser):
     group.add_argument("--target-params-dtype", type=str, default=None,
                        help='The dtype of the converted checkpoint. '
                             'Only used when converting a Transformers checkpoint to a Megatron checkpoint.')
+    group.add_argument("--build-model-with-initialization", action="store_true")
 
 
 def save_checkpoint(queue, args):
+
+    """
+    prepare import module
+    """
+    
     # Search in directory above this
     root_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__),
@@ -83,6 +89,10 @@ def save_checkpoint(queue, args):
             for key in msg.keys():
                 print(f"   {key}")
             exit(1)
+
+    """
+    prepare megatron arguments (margs)
+    """
 
     md = queue_get()
 
@@ -149,12 +159,15 @@ def save_checkpoint(queue, args):
         '--no-load-rng',
         '--no-save-optim',
         '--no-save-rng',
-        '--no-initialization',
         '--save-interval', '1',
         '--save', args.save_dir
     ]
     if args.target_num_experts is not None:
+        os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
         sys.argv.extend(['--num-experts', str(args.target_num_experts)])
+        sys.argv.append('--sequence-parallel')
+    if not args.build_model_with_initialization:
+        sys.argv.append('--no-initialization')
     if md.make_vocab_size_divisible_by is not None:
         sys.argv.extend(['--make-vocab-size-divisible-by', str(md.make_vocab_size_divisible_by)])
     if md.output_layer:
@@ -163,9 +176,6 @@ def save_checkpoint(queue, args):
         sys.argv.append('--disable-bias-linear')
     if md.add_qkv_bias:
         sys.argv.append('--add-qkv-bias')
-    if args.target_num_experts:
-        sys.argv.append('--sequence-parallel')
-        os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
 
     if args.target_params_dtype is not None:
         assert args.target_params_dtype in ["fp32", "fp16", "bf16"]
@@ -225,7 +235,17 @@ def save_checkpoint(queue, args):
     # Determine how to make our models.
     margs.model_type = model_plugin.model_type
 
-    # megatron args
+    if md.true_vocab_size is not None:
+        margs.padded_vocab_size = _vocab_size_with_padding(md.true_vocab_size, margs)
+    else:
+        # margs.padded_vocab_size will be set in ckpt_plugin.set_embedding_ckpt func
+        margs.padded_vocab_size = None
+
+    """
+    use megatron args build object and init env
+    """
+
+    # build global variable (eg: tokenizer)
     set_global_variables(margs, build_tokenizer=False)
 
     # fake initializing distributed
@@ -258,55 +278,16 @@ def save_checkpoint(queue, args):
         models = [model_plugin.get_mg_model(dtype, pre_process, post_process) for _ in range(count)]
         return models
 
-    def padding_vocab_size(orig_word_embed):
-        if md.true_vocab_size is not None:
-            # figure out what our padded vocab size is
-            orig_vocab_size = orig_word_embed.shape[0]
-            margs.padded_vocab_size = _vocab_size_with_padding(md.true_vocab_size, margs)
+    """
+    start receive and process ckpt 
+    """
 
-            # Cut out extra padding we don't need
-            if orig_vocab_size > margs.padded_vocab_size:
-                full_word_embed = orig_word_embed[0:margs.padded_vocab_size, :]
-
-            # Expanding embedding to larger size by replicating final entry
-            elif orig_vocab_size < margs.padded_vocab_size:
-                padding_size = margs.padded_vocab_size - orig_vocab_size
-
-                full_word_embed = torch.cat((
-                    orig_word_embed,
-                    orig_word_embed[-1].unsqueeze(0).expand(padding_size, -1)
-                ))
-
-            # Same size!
-            else:
-                full_word_embed = orig_word_embed
-        else:
-            print("Original vocab size not specified, leaving embedding table as-is. "
-                "If you've changed the tensor parallel size this could cause problems.")
-            margs.padded_vocab_size = orig_word_embed.shape[0]
-            full_word_embed = orig_word_embed
-        return full_word_embed
-
-    # embedding
-    embeddings_msg = queue_get("embeddings")
-    pos_embed = None
-    if md.position_embedding_type == 'learned_absolute':
-        pos_embed = embeddings_msg.pop("position embeddings")
-    orig_word_embed = embeddings_msg.pop("word embeddings")
-    full_word_embed = padding_vocab_size(orig_word_embed)
-    check_message(embeddings_msg)
-
-    # process world embedding in first pp stage
+    # process embedding
+    msg = queue_get("embeddings")
     mpu.set_pipeline_model_parallel_rank(0)
     models = get_models(tp_size * ep_size, md.params_dtype)
-    out_word_embed = torch.chunk(full_word_embed, tp_size, dim=0)
-    for tp_ep_rank, model in enumerate(models):
-        tp_rank = tp_ep_rank % tp_size
-        model.embedding.word_embeddings.weight.data.copy_(out_word_embed[tp_rank])
-        if pos_embed is not None:
-            model.embedding.position_embeddings.weight.data.copy_(pos_embed)
-        else:
-            assert not hasattr(model.embedding, "position_embeddings")
+    ckpt_plugin.set_embedding_ckpt(msg, models, md, margs)
+    check_message(msg)
 
     # process transformer layer
     total_layer_num = 0
@@ -329,24 +310,13 @@ def save_checkpoint(queue, args):
         # process final layernorm and linear
         if pp_rank == pp_size - 1:
             msg = queue_get("final norm")
-            final_norm_weight = msg.pop("weight")
-            if md.norm_has_bias:
-                final_norm_bias = msg.pop("bias")
-            for tp_ep_rank, model in enumerate(models):
-                model.decoder.final_layernorm.weight.data.copy_(final_norm_weight)
-                if md.norm_has_bias:
-                    model.decoder.final_layernorm.bias.data.copy_(final_norm_bias)
+            ckpt_plugin.set_final_norm_ckpt(msg, models, md, margs)
             check_message(msg)
 
             if md.output_layer:
                 msg = queue_get("output layer")
                 assert hasattr(models[0], 'output_layer'), "ERROR: got an output layer, but model does not have one"
-                orig_output_layer_weight = msg.pop("weight")
-                full_output_layer_weight = padding_vocab_size(orig_output_layer_weight)
-                output_layer_weight = torch.chunk(full_output_layer_weight, tp_size, dim=0)
-                for tp_ep_rank, model in enumerate(models):
-                    tp_rank = tp_ep_rank % tp_size
-                    model.output_layer.weight.data.copy_(output_layer_weight[tp_rank])
+                ckpt_plugin.set_output_layer_ckpt(msg, models, md, margs)
 
             msg = queue_get()
             if msg != "done":

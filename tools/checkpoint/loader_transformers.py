@@ -9,14 +9,16 @@ def add_arguments(parser):
 
     group.add_argument('--true-vocab-size', type=int, default=None,
                        help='original size of vocab, if specified will trim padding from embedding table.')
-    group.add_argument('--vocab-file', type=str, default=None,
-                       help='Path to the vocab file. If specified will use this to get vocab size and '
-                       'trim padding from the embedding table.')
     group.add_argument('--megatron-path', type=str, default=None,
                        help='Base directory of deepspeed repository')
 
 
 def _load_checkpoint(queue, args):
+
+    """
+    prepare import module
+    """
+
     try:
         import transformers
         major, minor, _ = map(int, transformers.__version__.split('.'))
@@ -53,6 +55,10 @@ def _load_checkpoint(queue, args):
         print(f"sending {name}")
         msg["name"] = name
         queue.put(msg)
+
+    """
+    prepare megatron arguments (margs)
+    """
 
     # We want all arguments to come from us.
     sys.argv = [
@@ -105,6 +111,10 @@ def _load_checkpoint(queue, args):
     check_for_arg('disable_bias_linear', not getattr(margs, "add_bias_linear", False))
     check_for_arg('add_qkv_bias', getattr(margs, "add_bias_linear_qkv", False))
 
+    """
+    use megatron args build object and init env
+    """
+
     # Metadata.
     md = types.SimpleNamespace()
     md.model_type = args.model_type
@@ -133,8 +143,12 @@ def _load_checkpoint(queue, args):
     md.consumed_valid_samples = margs.consumed_valid_samples
     queue.put(md)
 
-    # get model
+    # get transformers model
     hf_model = model_plugin.get_hf_model(margs.params_dtype, margs.load)
+
+    """
+    start sending ckpt
+    """
 
     # Send embeddings.
     message = dict()

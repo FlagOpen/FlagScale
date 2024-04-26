@@ -13,7 +13,6 @@ def load_args_hf2mg(args):
     args.attention_dropout = mistral_args["attention_dropout"]
     args.hidden_dropout = mistral_args["attention_dropout"]
     args.hidden_size = mistral_args["hidden_size"]
-    args.add_qkv_bias = mistral_args.get("attention_bias", True)
     args.swiglu = mistral_args["hidden_act"] == "silu"
     args.init_method_std = mistral_args["initializer_range"]
     args.ffn_hidden_size = mistral_args["intermediate_size"]
@@ -39,6 +38,7 @@ def load_args_hf2mg(args):
     args.normalization = "RMSNorm"
     args.use_rotary_position_embeddings = True
     args.add_bias_linear = False
+    args.add_qkv_bias = False
     args.make_vocab_size_divisible_by = 64
     args.consumed_train_samples = 0
     args.consumed_valid_samples = 0

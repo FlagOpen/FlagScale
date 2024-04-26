@@ -30,6 +30,11 @@ def add_arguments(parser):
 
 
 def save_checkpoint(queue, args):
+
+    """
+    prepare import module
+    """
+
     try:
         import transformers
         major, minor, _ = map(int, transformers.__version__.split('.'))
@@ -51,6 +56,7 @@ def save_checkpoint(queue, args):
     try:
         from megatron.training.arguments import parse_args, validate_args
         from megatron.training.tokenizer.tokenizer import _vocab_size_with_padding
+        from utils import padding_vocab_size
     except ModuleNotFoundError:
         print("Unable to import Megatron, please specify the path to Megatron using --megatron-path. Exiting.")
         queue.put("exit")
@@ -83,6 +89,10 @@ def save_checkpoint(queue, args):
             for key in msg.keys():
                 print(f"   {key}")
             exit(1)
+
+    """
+    prepare megatron arguments (margs)
+    """
 
     md = queue.get()
 
@@ -154,12 +164,13 @@ def save_checkpoint(queue, args):
         '--no-load-rng',
         '--no-save-optim',
         '--no-save-rng',
-        '--no-initialization',
         '--save-interval', '1',
         '--save', args.save_dir
     ]
     if args.target_num_experts is not None:
         sys.argv.extend(['--num-experts', str(args.target_num_experts)])
+    if not args.build_model_with_initialization:
+        sys.argv.append('--no-initialization')
     if md.make_vocab_size_divisible_by is not None:
         sys.argv.extend(['--make-vocab-size-divisible-by', str(md.make_vocab_size_divisible_by)])
     if md.output_layer:
@@ -215,47 +226,33 @@ def save_checkpoint(queue, args):
     print("*"*20 + "validate saver arguments" + "*"*20)
     margs = validate_args(margs)
 
-    def padding_vocab_size(orig_word_embed):
-        if md.true_vocab_size is not None:
-            # figure out what our padded vocab size is
-            orig_vocab_size = orig_word_embed.shape[0]
-            margs.padded_vocab_size = _vocab_size_with_padding(md.true_vocab_size, margs)
+    if md.true_vocab_size is not None:
+        margs.padded_vocab_size = _vocab_size_with_padding(md.true_vocab_size, margs)
+    else:
+        # margs.padded_vocab_size will be set in ckpt_plugin.set_embedding_ckpt func
+        margs.padded_vocab_size = None
 
-            # Cut out extra padding we don't need
-            if orig_vocab_size > margs.padded_vocab_size:
-                full_word_embed = orig_word_embed[0:margs.padded_vocab_size, :]
+    """
+    use megatron args build object and init env
+    """
 
-            # Expanding embedding to larger size by replicating final entry
-            elif orig_vocab_size < margs.padded_vocab_size:
-                padding_size = margs.padded_vocab_size - orig_vocab_size
-
-                full_word_embed = torch.cat((
-                    orig_word_embed,
-                    orig_word_embed[-1].unsqueeze(0).expand(padding_size, -1)
-                ))
-
-            # Same size!
-            else:
-                full_word_embed = orig_word_embed
-        else:
-            print("Original vocab size not specified, leaving embedding table as-is. "
-                "If you've changed the tensor parallel size this could cause problems.")
-            margs.padded_vocab_size = orig_word_embed.shape[0]
-            full_word_embed = orig_word_embed
-
-        print("Warning: saver_transformers will slice embedding from padding_vocab_size to vocab_size.")
-        return full_word_embed[:margs.vocab_size, :]
-
-    embeddings_msg = queue_get("embeddings")
-    origin_embed = embeddings_msg.pop("word embeddings")
-    full_word_embed = padding_vocab_size(origin_embed)
-
+    # build transformers model
     hf_config = args_plugin.save_args_mg2hf(margs)
     hf_model = model_plugin.get_hf_model(margs.params_dtype, config=hf_config)
 
-    hf_model.model.embed_tokens.weight.data.copy_(full_word_embed)
-    check_message(embeddings_msg)
+    """
+    start receive and process ckpt 
+    """
 
+    # process embedding
+    msg = queue_get("embeddings")
+    origin_embed = msg.pop("word embeddings")
+    print("Warning: saver_transformers will change embedding to be no-padded .")
+    full_word_embed = padding_vocab_size(origin_embed, md, margs)[:margs.vocab_size, :]
+    hf_model.model.embed_tokens.weight.data.copy_(full_word_embed)
+    check_message(msg)
+
+    # process transformer layer
     for layer_id in range(md.num_layers):
         msg = queue_get(f"transformer layer {layer_id}")
 
@@ -264,16 +261,19 @@ def save_checkpoint(queue, args):
 
         check_message(msg)
 
+    # process final layernorm
     msg = queue_get("final norm")
     hf_model.model.norm.weight.data.copy_(msg.pop("weight"))
     if md.norm_has_bias:
         hf_model.model.norm.bias.data.copy_(msg.pop("bias"))
     check_message(msg)
 
+    # process final linear
     if md.output_layer:
         msg = queue_get("output layer")
         orig_output_layer_weight = msg.pop("weight")
-        full_output_layer_weight = padding_vocab_size(orig_output_layer_weight)
+        print("Warning: saver_transformers will change output_layer to be no-padded .")
+        full_output_layer_weight = padding_vocab_size(orig_output_layer_weight, md, margs)[:margs.vocab_size, :]
         hf_model.lm_head.weight.data.copy_(full_output_layer_weight)
         check_message(msg)
 
