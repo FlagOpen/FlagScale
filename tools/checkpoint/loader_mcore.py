@@ -12,14 +12,16 @@ def add_arguments(parser):
 
     group.add_argument('--true-vocab-size', type=int, default=None,
                        help='original size of vocab, if specified will trim padding from embedding table.')
-    group.add_argument('--vocab-file', type=str, default=None,
-                       help='Path to the vocab file. If specified will use this to get vocab size and '
-                       'trim padding from the embedding table.')
     group.add_argument('--megatron-path', type=str, default=None,
                        help='Base directory of megatron repository')
 
 
 def _load_checkpoint(queue, args):
+
+    """
+    prepare import module
+    """
+
     # Search in directory above this
     root_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__),
@@ -58,6 +60,10 @@ def _load_checkpoint(queue, args):
         msg["name"] = name
         queue.put(msg)
 
+    """
+    prepare megatron arguments (margs)
+    """
+
     # We want all arguments to come from us
     sys.argv = [
         'script.py',
@@ -94,18 +100,6 @@ def _load_checkpoint(queue, args):
     # set env for moe
     if margs.num_experts:
         os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
-    # Get true (non-padded) vocab size
-    if args.true_vocab_size is not None:
-        true_vocab_size = args.true_vocab_size
-    elif args.vocab_file is not None:
-        vocab = json.load(open(args.vocab_file))
-        true_vocab_size = len(vocab)
-        if args.true_vocab_size is not None and true_vocab_size != args.true_vocab_size:
-            print("Both --true-vocab-size and --vocab-file specified and the vocab size does not match, aborting.")
-            queue.put("exit")
-            exit(1)
-    else:
-        true_vocab_size = None
 
     # Layernorm has bias; RMSNorm does not.
     if hasattr(checkpoint_args, 'normalization'):
@@ -146,11 +140,17 @@ def _load_checkpoint(queue, args):
     # Determine how to make our models.
     margs.model_type = model_plugin.model_type
 
+    """
+    use megatron args build object and init env
+    """
+
+    # build global variable (eg: tokenizer)
+    set_global_variables(margs, build_tokenizer=False)
+
     # Suppress warning about torch.distributed not being initialized.
     module.MegatronModule.embedding_warning_printed = True
 
     # fake initializing distributed
-    set_global_variables(margs, build_tokenizer=False)
     tp_size = margs.tensor_model_parallel_size
     pp_size = margs.pipeline_model_parallel_size
     ep_size = margs.expert_model_parallel_size
@@ -195,7 +195,7 @@ def _load_checkpoint(queue, args):
     md.previous_tensor_parallel_size = margs.tensor_model_parallel_size
     md.previous_pipeline_parallel_size = margs.pipeline_model_parallel_size
     md.previous_expert_parallel_size = margs.expert_model_parallel_size
-    md.true_vocab_size = true_vocab_size
+    md.true_vocab_size = args.true_vocab_size # true (non-padded) vocab size
     md.make_vocab_size_divisible_by = margs.make_vocab_size_divisible_by
     md.checkpoint_args = checkpoint_args
 
@@ -250,27 +250,20 @@ def _load_checkpoint(queue, args):
 
     # Get first pipe stage and load ckpt
     mpu.set_pipeline_model_parallel_rank(0)
-    all_models = [get_models(tp_size * ep_size, md.params_dtype)]
+    all_models = [get_models(tp_size * ep_size, margs.params_dtype)]
     models = all_models[0][0] # pp0vpp0
 
     md.consumed_train_samples = consumed_train_samples
     md.consumed_valid_samples = consumed_valid_samples
     queue.put(md)
 
+    """
+    start sending ckpt
+    """
+
     # Send embeddings
-    word_embeddings = []
-    complete_tp_ranks = []
-    for tp_ep_rank, model in enumerate(models):
-        tp_rank = tp_ep_rank % tp_size
-        if tp_rank in complete_tp_ranks:
-            continue
-        complete_tp_ranks.append(tp_rank)
-        word_embeddings.append(model.embedding.word_embeddings.weight.data)
-    message = {"word embeddings": torch.cat(word_embeddings, dim=0)}
-    if md.position_embedding_type == 'learned_absolute':
-        message["position embeddings"] = models[0].embedding.position_embeddings.weight.data
-    else:
-        assert not hasattr(models[0].embedding, 'position_embeddings')
+    message = dict()
+    ckpt_plugin.get_embedding_ckpt(message, models, margs)
     queue_put("embeddings", message)
 
     # Send transformer layer
@@ -281,11 +274,11 @@ def _load_checkpoint(queue, args):
             mpu.set_pipeline_model_parallel_rank(pp_rank)
 
             if pp_rank > 0 and vp_rank == 0:
-                all_models.append(get_models(tp_size * ep_size, md.params_dtype))
+                all_models.append(get_models(tp_size * ep_size, margs.params_dtype))
 
             models = all_models[pp_rank][vp_rank]
             for layer_id in range(len(models[0].decoder.layers)):
-                message = {}
+                message = dict()
 
                 ckpt_plugin.get_attn_ckpt(message, models, layer_id, margs)
                 ckpt_plugin.get_mlp_ckpt(message, models, layer_id, margs)
@@ -294,21 +287,13 @@ def _load_checkpoint(queue, args):
                 total_layer_num = total_layer_num + 1
 
     # Send final norm from tp_rank 0
-    message = {"weight": models[0].decoder.final_layernorm.weight.data}
-    if md.norm_has_bias:
-        message["bias"] = models[0].decoder.final_layernorm.bias.data
+    message = dict()
+    ckpt_plugin.get_final_norm_ckpt(message, models, margs)
     queue_put("final norm", message)
 
     if md.output_layer:
-        output_layer_weight = []
-        complete_tp_ranks = []
-        for tp_ep_rank, model in enumerate(models):
-            tp_rank = tp_ep_rank % tp_size
-            if tp_rank in complete_tp_ranks:
-                continue
-            complete_tp_ranks.append(tp_rank)
-            output_layer_weight.append(model.output_layer.weight.data)
-        message = {"weight": torch.cat(output_layer_weight, dim=0)}
+        message = dict()
+        ckpt_plugin.get_output_layer_ckpt(message, models, margs)
         queue_put("output layer", message)
 
     queue.put("done")

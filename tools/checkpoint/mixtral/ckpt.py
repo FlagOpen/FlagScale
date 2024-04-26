@@ -1,4 +1,7 @@
+import sys
 import torch
+sys.path.append("..")
+from utils import padding_vocab_size
 
 
 def get_hf_attn_ckpt(message, model, layer_id, args):
@@ -139,6 +142,24 @@ def _get_parallel_size(args):
         args.virtual_pipeline_model_parallel_size or 1
 
 
+def get_embedding_ckpt(message, models, args):
+    tp_size, _, _, _ = _get_parallel_size(args)
+
+    word_embeddings = []
+    complete_tp_ranks = []
+    for tp_ep_rank, model in enumerate(models):
+        tp_rank = tp_ep_rank % tp_size
+        if tp_rank in complete_tp_ranks:
+            continue
+        complete_tp_ranks.append(tp_rank)
+        word_embeddings.append(model.embedding.word_embeddings.weight.data)
+    message["word embeddings"] = torch.cat(word_embeddings, dim=0)
+    if args.position_embedding_type == 'learned_absolute':
+        message["position embeddings"] = models[0].embedding.position_embeddings.weight.data
+    else:
+        assert not hasattr(models[0].embedding, 'position_embeddings')
+
+
 def get_attn_ckpt(message, models, layer_id, args):
     tp_size, _, _, _ = _get_parallel_size(args)
 
@@ -239,6 +260,45 @@ def get_mlp_ckpt(message, models, layer_id, args):
                     message[f"expert{global_expert_id} l0 bias V"] = torch.cat([b[1] for b in l0_bias],dim=0)
                 else:
                     message[f"expert{global_expert_id} l0 bias"] = torch.cat(l0_bias, dim=0)
+
+
+def get_final_norm_ckpt(message, models, args):
+    message["weight"] = models[0].decoder.final_layernorm.weight.data
+    if args.norm_has_bias:
+        message["bias"] = models[0].decoder.final_layernorm.bias.data
+
+
+def get_output_layer_ckpt(message, models, args):
+    tp_size, _, _, _ = _get_parallel_size(args)
+    output_layer_weight = []
+    complete_tp_ranks = []
+    for tp_ep_rank, model in enumerate(models):
+        tp_rank = tp_ep_rank % tp_size
+        if tp_rank in complete_tp_ranks:
+            continue
+        complete_tp_ranks.append(tp_rank)
+        output_layer_weight.append(model.output_layer.weight.data)
+    message["weight"] = torch.cat(output_layer_weight, dim=0)
+
+
+def set_embedding_ckpt(message, models, md, args):
+    tp_size, _, _, _ = _get_parallel_size(args)
+    # embedding
+    pos_embed = None
+    if md.position_embedding_type == 'learned_absolute':
+        pos_embed = message.pop("position embeddings")
+    orig_word_embed = message.pop("word embeddings")
+    full_word_embed = padding_vocab_size(orig_word_embed, md, args)
+
+    # process world embedding in first pp stage
+    out_word_embed = torch.chunk(full_word_embed, tp_size, dim=0)
+    for tp_ep_rank, model in enumerate(models):
+        tp_rank = tp_ep_rank % tp_size
+        model.embedding.word_embeddings.weight.data.copy_(out_word_embed[tp_rank])
+        if pos_embed is not None:
+            model.embedding.position_embeddings.weight.data.copy_(pos_embed)
+        else:
+            assert not hasattr(model.embedding, "position_embeddings")
 
 
 def set_attn_ckpt(message, models, layer_id, md, args):
@@ -348,3 +408,23 @@ def set_mlp_ckpt(message, models, layer_id, md, args):
                 if md.add_bias_linear:
                     expert.linear_fc1.bias.data.copy_(l0_bias[tp_rank])
                     expert.linear_fc2.bias.data.copy_(l1_bias)
+
+
+def set_final_norm_ckpt(message, models, md, args):
+    final_norm_weight = message.pop("weight")
+    if md.norm_has_bias:
+        final_norm_bias = message.pop("bias")
+    for model in models:
+        model.decoder.final_layernorm.weight.data.copy_(final_norm_weight)
+        if md.norm_has_bias:
+            model.decoder.final_layernorm.bias.data.copy_(final_norm_bias)
+
+
+def set_output_layer_ckpt(message, models, md, args):
+    tp_size, _, _, _ = _get_parallel_size(args)
+    orig_output_layer_weight = message.pop("weight")
+    full_output_layer_weight = padding_vocab_size(orig_output_layer_weight, md, args)
+    output_layer_weight = torch.chunk(full_output_layer_weight, tp_size, dim=0)
+    for tp_ep_rank, model in enumerate(models):
+        tp_rank = tp_ep_rank % tp_size
+        model.output_layer.weight.data.copy_(output_layer_weight[tp_rank])

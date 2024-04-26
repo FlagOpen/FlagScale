@@ -26,7 +26,7 @@ def get_hf_model(dtype, model_path=None, config=None):
             )
     else:
         raise ValueError("Need one args, model_path or config, to build HF model.")
-    print("> loading huggingface model elapsed time:", time.time() - s_time)
+    print("> build huggingface model elapsed time:", time.time() - s_time)
     return model
 
 
@@ -34,5 +34,5 @@ def get_mg_model(dtype, pre_process, post_process):
     from pretrain_gpt import model_provider
     s_time = time.time()
     model = model_provider(pre_process, post_process).to(dtype)
-    print("> loading megatron model elapsed time:", time.time() - s_time)
+    print("> build megatron model elapsed time:", time.time() - s_time)
     return model
