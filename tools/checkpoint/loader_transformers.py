@@ -9,9 +9,6 @@ def add_arguments(parser):
 
     group.add_argument('--true-vocab-size', type=int, default=None,
                        help='original size of vocab, if specified will trim padding from embedding table.')
-    group.add_argument('--vocab-file', type=str, default=None,
-                       help='Path to the vocab file. If specified will use this to get vocab size and '
-                       'trim padding from the embedding table.')
     group.add_argument('--megatron-path', type=str, default=None,
                        help='Base directory of deepspeed repository')
 
