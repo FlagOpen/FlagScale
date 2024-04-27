@@ -271,7 +271,8 @@ def _initialize_distributed():
                 expert_model_parallel_size=args.expert_model_parallel_size,
                 distributed_timeout_minutes=args.distributed_timeout_minutes,
                 nccl_communicator_config_path=args.nccl_communicator_config_path,
-                hetero_mode=args.hetero_mode
+                hetero_mode=args.hetero_mode,
+                order='tp-cp-ep-dp-pp' if not args.use_tp_pp_dp_mapping else 'tp-pp-dp',
             )
             if args.rank == 0:
                 print(

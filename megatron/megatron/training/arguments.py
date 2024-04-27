@@ -38,6 +38,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_vision_args(parser)
     parser = _add_moe_args(parser)
     parser = _add_logging_args(parser)
+    parser = _add_straggler_detector_args(parser)
     parser = _add_inference_args(parser)
     parser = _add_transformer_engine_args(parser)
     parser = _add_retro_args(parser)
@@ -231,6 +232,8 @@ def validate_args(args, defaults={}):
             setattr(args, key, defaults[key])
 
     # Heterogeneous Training
+    assert args.hetero_mode is None, \
+        "Hetero mode is not supported in this version. Please use the v0.3."
     if args.hetero_mode:
         assert args.global_batch_size is not None, "global_batch_size should be specified when hetero_mode is not None"
         assert args.hetero_current_device_type, "hetero_current_device_type should be specified when hetero_mode is not None"
@@ -597,6 +600,10 @@ def validate_args(args, defaults={}):
     if args.use_dist_ckpt and not args.use_mcore_models:
         raise RuntimeError('--use-dist-ckpt only support Megatron Core, please add --use-mcore-models.')
 
+    if args.use_tp_pp_dp_mapping:
+        assert args.context_parallel_size * args.expert_model_parallel_size <= 1, \
+            "context_parallel and expert_model_parallel can't be used with tp-pp-dp mapping."
+
     # Print arguments.
     _print_args("arguments", args)
 
@@ -670,6 +677,11 @@ def core_transformer_config_from_args(args, config_class=None):
         kw_args['bias_activation_fusion'] = args.bias_gelu_fusion
     if args.squared_relu:
         assert not args.swiglu
+        try:
+            jit_fuser = torch.compile
+        except:
+            jit_fuser = torch.jit.script
+        @jit_fuser
         def squared_relu(x):
             return torch.pow(F.relu(x), 2)
         kw_args['activation_func'] = squared_relu
@@ -872,6 +884,18 @@ def _add_network_size_args(parser):
                        dest='bert_binary_head')
     group.add_argument('--untie-embeddings-and-output-weights', action='store_true',
                        help='Untie embeddings and output weights.'),
+    return parser
+
+def _add_straggler_detector_args(parser):
+    group = parser.add_argument_group(title='straggler')
+    group.add_argument('--log-straggler', action='store_true',
+                       help='If set, tracks and logs straggler per GPU.')
+    group.add_argument('--disable-straggler-on-startup', action='store_true',
+                       help='If set, StragglerDetector is disabled on startup.')
+    group.add_argument('--straggler-ctrlr-port', type=int, default=65535,
+                       help='Port number to toggle StragglerDetector on/off at runtime')
+    group.add_argument('--straggler-minmax-count', type=int, default=1,
+                       help='Number of ranks to report with high/low estimated throughput')
     return parser
 
 def _add_logging_args(parser):
@@ -1092,6 +1116,9 @@ def _add_training_args(parser):
                        help=('Disables the Reduce-Scatter overlap with GEMM by '
                              'pipelining the GEMM and Reduce-Scatter.'),
                        dest='tp_comm_overlap_rs')
+    group.add_argument('--tp-comm-overlap-rs-dgrad', action='store_true',
+                       help = 'Enables the Reduce-Scatter overlap with dgrad GEMM.',
+                       dest='tp_comm_overlap_rs_dgrad')
     group.add_argument('--disable-tp-comm-bulk-dgrad', action='store_false',
                        help='Disables the All-Gather overlap with bprop activation gradient GEMM.',
                        dest='tp_comm_bulk_dgrad')
@@ -1106,6 +1133,8 @@ def _add_training_args(parser):
                        help='Call torch.cuda.empty_cache() each iteration '
                        '(training and eval), to reduce fragmentation.'
                        '0=off, 1=moderate, 2=aggressive.')
+    group.add_argument('--check-weight-hash-across-dp-replicas-interval', type=int, default=None,
+                       help='Interval to check weight hashes are same across DP replicas. If not specified, weight hashes not checked.')
 
     # deprecated
     group.add_argument('--checkpoint-activations', action='store_true',
@@ -1464,6 +1493,8 @@ def _add_distributed_args(parser):
     group.add_argument('--no-delay-grad-reduce', action='store_false',
                        help='If not set, delay / synchronize grad reductions in all but first PP stage.',
                        dest='delay_grad_reduce')
+    group.add_argument('--ddp-bucket-size', type=int, default=None,
+                       help='Bucket size for data-parallel communication')
     group.add_argument('--overlap-param-gather', action='store_true',
                        default=False, help='If set, overlap param all-gather in distributed optimizer.')
     group.add_argument('--delay-param-gather', action='store_true',
@@ -1499,6 +1530,10 @@ def _add_distributed_args(parser):
                        'configurations. The number of min/max thread groups and thread '
                        'group cluster size of each communicator can be configured by '
                        'setting `min_ctas`, `max_ctas`, and `cga_cluster_size`.')
+    group.add_argument('--use-tp-pp-dp-mapping', action='store_true', default=False,
+                        help='If set, distributed ranks initialize order is changed '
+                        'from tp-dp-pp to tp-pp-dp. Make sure EP and CP aren\'t used '
+                        'with this option enabled')
     return parser
 
 
@@ -1526,37 +1561,31 @@ def _add_data_args(parser):
     group = parser.add_argument_group(title='data and dataloader')
 
     group.add_argument('--data-path', nargs='*', default=None,
-                       help='Path to the training dataset. Accepted format:'
-                       '1) a single data path, 2) multiple datasets in the'
-                       'form: dataset1-weight dataset1-path dataset2-weight '
-                       'dataset2-path ... It is used with --split when a '
-                       'single dataset used for all three: train, valid '
-                       'and test. It is exclusive to the other '
-                       '--*-data-path args')
+                       help='The weight and prefix list for a set of train, validation, and test'
+                       'datasets which split according to --split. The accepted formats are: '
+                       '(1) a single prefix, '
+                       '(2) a list of weight prefix pairs e.g. weight1 prefix1 weight2 prefix2, '
+                       '(3) a list of prefixes e.g. prefix1 prefix2. '
+                       'For (3), weights are inferred from the lengths of the contributing datasets. '
+                       'This argument is exclusive to the other independent --*-data-path arguments.')
     group.add_argument('--split', type=str, default='969, 30, 1',
                        help='Comma-separated list of proportions for training,'
                        ' validation, and test split. For example the split '
                        '`90,5,5` will use 90%% of data for training, 5%% for '
                        'validation and 5%% for test.')
     group.add_argument('--train-data-path', nargs='*', default=None,
-                       help='Path to the training dataset. Accepted format:'
-                       '1) a single data path, 2) multiple datasets in the'
-                       'form: dataset1-weight dataset1-path dataset2-weight '
-                       'dataset2-path ...')
+                       help='The weight and prefix list for an independent train dataset. '
+                       'Follows the same pattern rules as --data-path.')
     group.add_argument('--valid-data-path', nargs='*', default=None,
-                       help='Path to the validation dataset. Accepted format:'
-                       '1) a single data path, 2) multiple datasets in the'
-                       'form: dataset1-weight dataset1-path dataset2-weight '
-                       'dataset2-path ...')
+                       help='The weight and prefix list for an independent validation dataset. '
+                       'Follows the same pattern rules as --data-path.')
     group.add_argument('--extra-valid-data-path', nargs='*', default=None,
                        help='Path to the validation dataset. Accepted format:'
                        'dataset1-weight dataset1-path dataset1-tag dataset2-weight '
                        'dataset2-path dataset2-tag ...')
     group.add_argument('--test-data-path', nargs='*', default=None,
-                       help='Path to the test dataset. Accepted format:'
-                       '1) a single data path, 2) multiple datasets in the'
-                       'form: dataset1-weight dataset1-path dataset2-weight '
-                       'dataset2-path ...')
+                       help='The weight and prefix list for an independent test dataset. '
+                       'Follows the same pattern rules as --data-path.')
     group.add_argument('--data-cache-path', default=None,
                        help='Path to a directory to hold cached index files.')
     group.add_argument('--no-mmap-bin-files', action='store_false',
@@ -1565,7 +1594,6 @@ def _add_data_args(parser):
     group.add_argument('--mock-data', action='store_true',
                        help='Skip data loading and validation and opt for artificial '
                        'generation of mock data when an implementation is available.')
-
     group.add_argument('--vocab-size', type=int, default=None,
                        help='Size of vocab before EOD or padding.')
     group.add_argument('--vocab-file', type=str, default=None,
