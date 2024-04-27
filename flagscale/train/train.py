@@ -2,12 +2,12 @@
 
 """Pretrain utilities."""
 
-import os
-import gc
 import dataclasses
 from datetime import datetime
-import math
+import os
+import gc
 import logging
+import math
 import os
 import sys
 from megatron.training.log_handler import CustomHandler
@@ -25,9 +25,12 @@ import torch
 
 from megatron.core import mpu, tensor_parallel
 from megatron.core.utils import get_model_config
+from megatron.core.utils import check_param_hashes_across_dp_replicas, get_model_config, StragglerDetector
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint
+from megatron.training.checkpointing import get_checkpoint_name
 from megatron.legacy.model import Float16Module
+from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import finalize_model_grads
 from megatron.core.enums import ModelType
@@ -62,7 +65,10 @@ from .global_vars import (
 
 from flagscale.train.extra_valid import extra_evaluate_and_print_results
 from flagscale.train.extra_valid import build_extra_valid_data_iterators
+from flagscale.train.stablelm2_scheduler import StableLM2SchedulerConfig
 
+
+stimer = StragglerDetector()
 
 def print_datetime(string):
     """Note that this call will sync across all ranks."""
@@ -451,17 +457,20 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
 
     if wrap_with_ddp:
         config = get_model_config(model[0])
+        ddp_config = DistributedDataParallelConfig(
+            grad_reduce_in_fp32=args.accumulate_allreduce_grads_in_fp32,
+            overlap_grad_reduce=args.overlap_grad_reduce,
+            use_distributed_optimizer=args.use_distributed_optimizer,
+            check_for_nan_in_grad=args.check_for_nan_in_loss_and_grad,
+            bucket_size=args.ddp_bucket_size)
         model = [DDP(config,
+                     ddp_config,
                      model_chunk,
                      data_parallel_group=mpu.get_data_parallel_group(with_context_parallel=True),
                      expert_data_parallel_group=mpu.get_data_modulo_expert_parallel_group(),
-                     accumulate_allreduce_grads_in_fp32=args.accumulate_allreduce_grads_in_fp32,
-                     overlap_grad_reduce=args.overlap_grad_reduce,
-                     use_distributed_optimizer=args.use_distributed_optimizer,
                      # Turn off bucketing for model_chunk 2 onwards, since communication for these
                      # model chunks is overlapped with compute anyway.
-                     disable_bucketing=(model_chunk_idx > 0),
-                     check_for_nan_in_grad=args.check_for_nan_in_loss_and_grad)
+                     disable_bucketing=(model_chunk_idx > 0))
                  for (model_chunk_idx, model_chunk) in enumerate(model)]
 
         # Broadcast params from data parallel src rank to other data parallel ranks.
@@ -523,6 +532,18 @@ def get_optimizer_param_scheduler(optimizer):
         raise Exception(
             'either train-iters or train-samples should be provided.')
 
+    stablelm2_scheduler_config = None
+    if args.lr_decay_style == 'stablelm2-scheduler':
+        stablelm2_scheduler_config = StableLM2SchedulerConfig(
+          args.global_batch_size,
+          args.lr_decay_stablelm2_cosine_samples,
+          args.lr_decay_stablelm2_rsqrt_samples,
+          args.lr_decay_stablelm2_alpha,
+          args.lr_decay_stablelm2_beta,
+          cosine_max_lr=args.lr_decay_stablelm2_cosine_max_lr,
+          cosine_period_samples=args.lr_decay_stablelm2_cosine_period_samples,
+          decay_samples=args.lr_decay_stablelm2_decay_samples)
+
     opt_param_scheduler = OptimizerParamScheduler(
         optimizer,
         init_lr=args.lr_warmup_init,
@@ -536,7 +557,8 @@ def get_optimizer_param_scheduler(optimizer):
         wd_incr_steps=wd_incr_steps,
         wd_incr_style=args.weight_decay_incr_style,
         use_checkpoint_opt_param_scheduler=args.use_checkpoint_opt_param_scheduler,
-        override_opt_param_scheduler=args.override_opt_param_scheduler)
+        override_opt_param_scheduler=args.override_opt_param_scheduler,
+        stablelm2_scheduler_config=stablelm2_scheduler_config)
 
     return opt_param_scheduler
 
@@ -567,7 +589,6 @@ def setup_model_and_optimizer(model_provider_func,
         if args.format_ckpt:
             args.no_load_optim = True
             args.no_load_rng = True
-
         timers('load-checkpoint', log_level=0).start(barrier=True)
         args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
             model, optimizer, opt_param_scheduler)
@@ -1063,6 +1084,18 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         gc.disable()
         gc.collect()
 
+    # Singleton Initialization
+    if args.log_straggler:
+        global stimer
+        world = torch.distributed.get_world_size()
+        rank = torch.distributed.get_rank()
+        mmcnt = args.straggler_minmax_count
+        stimer.configure(world, rank,
+                mmcnt = mmcnt,
+                enabled = not args.disable_straggler_on_startup,
+                port = args.straggler_ctrlr_port)
+    total_flops = 0.0
+
     num_microbatches = get_num_microbatches()
 
     wandb_writer = get_wandb_writer()
@@ -1130,14 +1163,18 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                          args.micro_batch_size * \
                          get_num_microbatches()
             args.consumed_train_samples += batch_size
-            num_floating_point_operations_so_far += num_floating_point_operations(args, batch_size)
+            num_fp_ops = num_floating_point_operations(args, batch_size)
+            num_floating_point_operations_so_far += num_fp_ops
+            total_flops += num_fp_ops
         else:
             micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
                                                         args.hetero_micro_batch_sizes,
                                                         args.hetero_data_parallel_splits))
             batch_size = get_num_microbatches() * micro_batch_for_all_data_parallel
             args.consumed_train_samples += batch_size 
-            num_floating_point_operations_so_far += num_floating_point_operations(args, batch_size)
+            num_fp_ops = num_floating_point_operations(args, batch_size)
+            num_floating_point_operations_so_far += num_fp_ops
+            total_flops += num_fp_ops
 
         # Logging.
         loss_scale = optimizer.get_loss_scale().item()
@@ -1161,6 +1198,21 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                                           iteration, loss_scale,
                                           report_memory_flag, skipped_iter,
                                           grad_norm, params_norm, num_zeros_in_grad)
+        # StragglerDetector
+        if iteration % args.log_interval == 0 and args.log_straggler:
+            stimer.report(total_flops, args.log_interval)
+            total_flops = 0.0
+
+        if args.check_weight_hash_across_dp_replicas_interval is not None and \
+                iteration % args.check_weight_hash_across_dp_replicas_interval == 0:
+            if args.use_distributed_optimizer and args.overlap_param_gather:
+                optimizer.disable_pre_hook()
+            assert check_param_hashes_across_dp_replicas(model), \
+                "Parameter hashes not matching across DP replicas"
+            torch.distributed.barrier()
+            print_rank_0(f">>> Weight hashes match after {iteration} iterations...")
+            if args.use_distributed_optimizer and args.overlap_param_gather:
+                optimizer.enable_pre_hook()
 
         # Autoresume
         if args.adlr_autoresume and \
