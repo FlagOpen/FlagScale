@@ -13,6 +13,7 @@ from megatron.training.utils import is_last_rank
 from megatron.core import mpu
 from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
 from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
+from megatron.core.datasets.utils import get_blend_from_list
 from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
 from megatron.legacy.data.data_samplers import build_pretraining_data_loader
 from megatron.legacy.data.data_samplers_hetero import build_pretraining_data_loader_hetero
@@ -31,11 +32,12 @@ def core_gpt_dataset_config_from_args(args, data_path):
     return GPTDatasetConfig(
         random_seed=args.seed,
         sequence_length=args.seq_length,
-        blend=[data_path],
+        blend=get_blend_from_list(args.data_path),
         blend_per_split=None,
         split="0,1,0",
         path_to_cache=args.data_cache_path,
         mock=args.mock_data,
+        mmap_bin_files=args.mmap_bin_files,
         tokenizer=tokenizer,
         reset_position_ids=args.reset_position_ids,
         reset_attention_mask=args.reset_attention_mask,
