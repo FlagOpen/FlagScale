@@ -90,8 +90,6 @@ class Bucket:
             self.data_parallel_rank = parallel_state.get_data_modulo_expert_parallel_rank()
             assert torch.distributed.get_process_group_ranks(self.data_parallel_group) == \
                 torch.distributed.get_process_group_ranks(parallel_state.get_data_modulo_expert_parallel_group())
-        self.overlap_grad_reduce = overlap_grad_reduce
-        self.use_distributed_optimizer = use_distributed_optimizer
         self.gradient_scaling_factor = gradient_scaling_factor
 
         self.reset()
