@@ -27,3 +27,18 @@ python convert.py \
     --target-num-experts 8 \
     --true-vocab-size 151851 \
     --megatron-path <xxx>
+
+
+python convert.py \
+    --model-type llama \
+    --loader transformers \
+    --saver mcore \
+    --load-dir Meta-Llama-3-8B \
+    --save-dir output \
+    --target-tensor-parallel-size 1 \
+    --target-pipeline-parallel-size 1 \
+    --target-expert-parallel-size 1 \
+    --target-params-dtype fp32 \
+    --true-vocab-size 128256 \
+    --megatron-path <xxx>
+    
