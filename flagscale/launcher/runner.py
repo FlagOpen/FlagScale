@@ -204,10 +204,17 @@ class SSHRunner(MultiNodeRunner):
         system_config = self.config.train.system
         logging_config = self.config.train.system.logging
 
-        host_output_file = os.path.join(
-            logging_config.log_dir,
-            f"host_{node_rank}_{host}.output"
-        )
+        no_shared_fs = getattr(self.config.experiment, "no_shared_fs", False)
+        if no_shared_fs:
+            host_output_file = os.path.join(
+                logging_config.log_dir,
+                f"host.output"
+            )
+        else:
+            host_output_file = os.path.join(
+                logging_config.log_dir,
+                f"host_{node_rank}_{host}.output"
+            )
         host_run_script_file = os.path.join(
             logging_config.scripts_dir,
             f"host_{node_rank}_{host}_run.sh"
@@ -258,7 +265,11 @@ class SSHRunner(MultiNodeRunner):
             export_cmd += [f"{k}={v}"]
 
         logging_config = self.config.train.system.logging
-        log_dir = os.path.join(logging_config.details_dir, f"host_{node_rank}_{host}")
+        no_shared_fs = getattr(self.config.experiment, "no_shared_fs", False)
+        if no_shared_fs:
+            log_dir = os.path.join(logging_config.details_dir, f"host")
+        else:
+            log_dir = os.path.join(logging_config.details_dir, f"host_{node_rank}_{host}")
 
         torchrun_cmd = ["torchrun",
                         "--rdzv-id", self.rdzv_id, 
