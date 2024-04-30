@@ -169,8 +169,6 @@ def save_checkpoint(queue, args):
     ]
     if args.target_num_experts is not None:
         sys.argv.extend(['--num-experts', str(args.target_num_experts)])
-    if not args.build_model_with_initialization:
-        sys.argv.append('--no-initialization')
     if md.make_vocab_size_divisible_by is not None:
         sys.argv.extend(['--make-vocab-size-divisible-by', str(md.make_vocab_size_divisible_by)])
     if md.output_layer:
