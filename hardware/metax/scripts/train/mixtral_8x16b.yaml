@@ -55,13 +55,13 @@ model:
       lr_decay_style: cosine 
 
 data:
-  data_path: ./pile_wikipedia_demo/pile_wikipedia_demo
+  data_path: <xx>
   split: 1
   tokenizer:
     tokenizer_type: AquilaTokenizer
-    vocab_file: ./hardware/metax/tokenizer/vocab.json
-    merge_file: ./hardware/metax/tokenizer/merges.txt
-    special_tokens_file: ./examples/aquila/tokenizer/special_tokens.txt
+    vocab_file: <xx>
+    merge_file: <xx>
+    special_tokens_file: <xx>
     vocab_size: 100008
 
 
