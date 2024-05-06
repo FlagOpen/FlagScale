@@ -1208,7 +1208,7 @@ def get_data_modulo_expert_parallel_rank():
 def get_tensor_and_expert_parallel_rank():
     """Return my rank for the tensor and expert parallel group"""
     if torch.distributed.is_available() and torch.distributed.is_initialized():
-        return torch.distributed.get_rank(group=get_tensor_and_expert_parallel_group())
+        return _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS.index(torch.distributed.get_rank())
     else:
         return 0
 
