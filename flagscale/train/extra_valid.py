@@ -36,7 +36,6 @@ def core_gpt_dataset_config_from_args(args, data_path):
         blend_per_split=None,
         split="0,1,0",
         path_to_cache=args.data_cache_path,
-        mock=args.mock_data,
         mmap_bin_files=args.mmap_bin_files,
         tokenizer=tokenizer,
         reset_position_ids=args.reset_position_ids,
@@ -56,7 +55,7 @@ def extra_valid_dataset_provider(data_path, num_samples, tag):
 
     config = core_gpt_dataset_config_from_args(args, data_path)
 
-    if config.mock:
+    if args.mock_data:
         from megatron.core.datasets.gpt_dataset import MockGPTDataset
         dataset_type = MockGPTDataset
     else:
