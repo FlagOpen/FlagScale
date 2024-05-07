@@ -1,5 +1,5 @@
 defaults:
-  - train: mixtral_8x16b 
+  - train: mixtral_8x7b 
   - _self_
 
 experiment:
@@ -7,7 +7,7 @@ experiment:
   exp_dir: ./outputs
   entrypoint: ./flagscale/train/train_mixtral.py 
   task: train
-  hostfile: /share/project/ayl/FlagScale/hostfile
+  hostfile: <xx>
   backend: megatron
   shell_cmds: null 
   ssh_port: null
