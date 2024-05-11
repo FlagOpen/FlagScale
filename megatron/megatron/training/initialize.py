@@ -116,7 +116,8 @@ def _compile_dependencies():
     # Compile dataset C++ code.
     # =========================
     # TODO: move this to ninja
-    if torch.distributed.get_rank() == 0:
+    from megatron.core.datasets.utils import is_built_on_zero_rank
+    if is_built_on_zero_rank():
         start_time = time.time()
         print("> compiling dataset index builder ...")
         from megatron.core.datasets.utils import compile_helpers

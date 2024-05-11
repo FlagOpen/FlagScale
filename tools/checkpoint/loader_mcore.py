@@ -41,7 +41,7 @@ def _load_checkpoint(queue, args):
         from megatron.core import mpu
         from megatron.legacy import fused_kernels
         from megatron.core.tensor_parallel.random import (
-                _CUDA_RNG_STATE_TRACKER, _DATA_PARALLEL_RNG_TRACKER_NAME, 
+                get_cuda_rng_tracker, _DATA_PARALLEL_RNG_TRACKER_NAME,
                 _EXPERT_PARALLEL_RNG_TRACKER_NAME, _MODEL_PARALLEL_RNG_TRACKER_NAME
             )
     except ModuleNotFoundError:
@@ -75,11 +75,11 @@ def _load_checkpoint(queue, args):
         '--micro-batch-size', '1',
         '--no-load-optim',
         '--no-load-rng',
-        '--use-mcore-models',
-        '--transformer-impl', 'transformer_engine',
         '--no-save-optim',
         '--no-save-rng',
         '--no-initialization',
+        '--use-mcore-models',
+        '--transformer-impl', 'transformer_engine',
         '--load', args.load_dir
     ]
 
@@ -97,9 +97,13 @@ def _load_checkpoint(queue, args):
     # Arguments do sanity checks on the world size, but we don't care,
     # so trick it into thinking we are plenty of processes
     margs.world_size = margs.tensor_model_parallel_size * margs.pipeline_model_parallel_size * margs.expert_model_parallel_size
+    
+    # Explicitly copy data types from checkpoint.
+    margs.fp16 = checkpoint_args.fp16
+    margs.bf16 = checkpoint_args.bf16
+
     # set env for moe
-    if margs.num_experts:
-        os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
+    os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
 
     # Layernorm has bias; RMSNorm does not.
     if hasattr(checkpoint_args, 'normalization'):
@@ -168,11 +172,11 @@ def _load_checkpoint(queue, args):
     fused_kernels.load(margs)
 
     # random
-    _CUDA_RNG_STATE_TRACKER.reset()
+    CUDA_RNG_STATE_TRACKER = get_cuda_rng_tracker()
     torch.cuda.manual_seed(42)
-    _CUDA_RNG_STATE_TRACKER.add(_DATA_PARALLEL_RNG_TRACKER_NAME, 43)
-    _CUDA_RNG_STATE_TRACKER.add(_MODEL_PARALLEL_RNG_TRACKER_NAME, 44)
-    _CUDA_RNG_STATE_TRACKER.add(_EXPERT_PARALLEL_RNG_TRACKER_NAME, 45)
+    CUDA_RNG_STATE_TRACKER.add(_DATA_PARALLEL_RNG_TRACKER_NAME, 43)
+    CUDA_RNG_STATE_TRACKER.add(_MODEL_PARALLEL_RNG_TRACKER_NAME, 44)
+    CUDA_RNG_STATE_TRACKER.add(_EXPERT_PARALLEL_RNG_TRACKER_NAME, 45)
 
     # metadata
     md = types.SimpleNamespace()

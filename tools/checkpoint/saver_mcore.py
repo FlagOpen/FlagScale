@@ -55,7 +55,7 @@ def save_checkpoint(queue, args):
         from megatron.legacy import fused_kernels
         from megatron.core import mpu
         from megatron.core.tensor_parallel.random import (
-                _CUDA_RNG_STATE_TRACKER, _DATA_PARALLEL_RNG_TRACKER_NAME, 
+                get_cuda_rng_tracker, _DATA_PARALLEL_RNG_TRACKER_NAME,
                 _EXPERT_PARALLEL_RNG_TRACKER_NAME, _MODEL_PARALLEL_RNG_TRACKER_NAME
             )
     except ModuleNotFoundError:
@@ -134,6 +134,7 @@ def save_checkpoint(queue, args):
             print(f"Warning: experts[{md.previous_num_experts}-{args.target_num_experts}] will be random initailized.")
 
     os.environ["WORLD_SIZE"] = f'{args.target_tensor_parallel_size * args.target_pipeline_parallel_size * args.target_expert_parallel_size}'
+    os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
 
     # We want all arguments to come from us
     sys.argv = [
@@ -163,7 +164,6 @@ def save_checkpoint(queue, args):
         '--save', args.save_dir
     ]
     if args.target_num_experts is not None:
-        os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
         sys.argv.extend(['--num-experts', str(args.target_num_experts)])
         sys.argv.append('--sequence-parallel')
     if not args.build_model_with_initialization:
@@ -266,11 +266,11 @@ def save_checkpoint(queue, args):
     fused_kernels.load(margs)
 
     # random
-    _CUDA_RNG_STATE_TRACKER.reset()
+    CUDA_RNG_STATE_TRACKER = get_cuda_rng_tracker()
     torch.cuda.manual_seed(42)
-    _CUDA_RNG_STATE_TRACKER.add(_DATA_PARALLEL_RNG_TRACKER_NAME, 43)
-    _CUDA_RNG_STATE_TRACKER.add(_MODEL_PARALLEL_RNG_TRACKER_NAME, 44)
-    _CUDA_RNG_STATE_TRACKER.add(_EXPERT_PARALLEL_RNG_TRACKER_NAME, 45)
+    CUDA_RNG_STATE_TRACKER.add(_DATA_PARALLEL_RNG_TRACKER_NAME, 43)
+    CUDA_RNG_STATE_TRACKER.add(_MODEL_PARALLEL_RNG_TRACKER_NAME, 44)
+    CUDA_RNG_STATE_TRACKER.add(_EXPERT_PARALLEL_RNG_TRACKER_NAME, 45)
 
     def get_models(count, dtype):
         pre_process = mpu.is_pipeline_first_stage()
