@@ -15,6 +15,7 @@ from megatron.core.models.retro.utils import (
     get_gpt_data_dir as get_retro_data_dir,
 )
 from megatron.core.transformer import TransformerConfig
+from megatron.training.activations import squared_relu
 
 
 def parse_args(extra_args_provider=None, ignore_unknown_args=False):
@@ -295,6 +296,9 @@ def validate_args(args, defaults={}):
     if args.dataloader_type is None:
         args.dataloader_type = 'single'
 
+    # data
+    assert args.num_dataset_builder_threads > 0
+
     # Consumed tokens.
     args.consumed_train_samples = 0
     args.consumed_valid_samples = 0
@@ -478,6 +482,7 @@ def validate_args(args, defaults={}):
     if args.decoupled_lr is not None or args.decoupled_min_lr is not None:
         assert args.use_mcore_models, \
             '--decoupled-lr and --decoupled-min-lr only supported by Megatron Core, please add --use-mcore-models.'
+        assert not args.use_dist_ckpt, "Distributed checkpointing does not work with decoupled LR yet."
 
     # Legacy RoPE arguments
     if args.use_rotary_position_embeddings:
@@ -515,11 +520,23 @@ def validate_args(args, defaults={}):
     assert args.mock_data + \
            bool(args.data_path) + \
            any([args.train_data_path, args.valid_data_path, args.test_data_path]) \
-           == 1, "A single data source must be provided"
+           <= 1, "A single data source must be provided in training mode, else None"
 
     if args.use_tp_pp_dp_mapping:
         assert args.context_parallel_size * args.expert_model_parallel_size <= 1, \
             "context_parallel and expert_model_parallel can't be used with tp-pp-dp mapping."
+
+    # Deterministic mode
+    if args.deterministic_mode:
+        assert not args.use_flash_attn, 'Flash attention can not be used in deterministic mode.'
+
+        all_reduce_choices = ["Tree", "Ring", "CollnetDirect", "CollnetChain", "^NVLS"]
+        assert os.getenv("NCCL_ALGO", -1) != -1 and os.getenv("NCCL_ALGO") in all_reduce_choices, \
+            f"NCCL_ALGO must be one of {all_reduce_choices}."
+
+    # Update the printed args to reflect that `apply_query_key_layer_scaling` also controls `attention_softmax_in_fp32`
+    if args.apply_query_key_layer_scaling:
+        args.attention_softmax_in_fp32 = True
 
     # Print arguments.
     _print_args("arguments", args)
@@ -572,13 +589,6 @@ def core_transformer_config_from_args(args, config_class=None):
         kw_args['bias_activation_fusion'] = args.bias_gelu_fusion
     if args.squared_relu:
         assert not args.swiglu
-        try:
-            jit_fuser = torch.compile
-        except:
-            jit_fuser = torch.jit.script
-        @jit_fuser
-        def squared_relu(x):
-            return torch.pow(F.relu(x), 2)
         kw_args['activation_func'] = squared_relu
     if args.init_method_xavier_uniform:
         kw_args['init_method'] = torch.nn.init.xavier_uniform_
@@ -1013,8 +1023,14 @@ def _add_training_args(parser):
                        help='Call torch.cuda.empty_cache() each iteration '
                        '(training and eval), to reduce fragmentation.'
                        '0=off, 1=moderate, 2=aggressive.')
+    group.add_argument('--deterministic-mode', action='store_true',
+                       help='Choose code that has deterministic execution. This usually '
+                       'means slower execution, but is good for debugging and testing.')
     group.add_argument('--check-weight-hash-across-dp-replicas-interval', type=int, default=None,
                        help='Interval to check weight hashes are same across DP replicas. If not specified, weight hashes not checked.')
+    group.add_argument('--calculate-per-token-loss', action='store_true',
+                       help=('Scale cross entropy loss by the number of non-padded tokens in the '
+                             'global batch, versus the default behavior of assuming all tokens are non-padded.'))
 
     # deprecated
     group.add_argument('--checkpoint-activations', action='store_true',
@@ -1240,6 +1256,9 @@ def _add_checkpointing_args(parser):
                        help='Apply full save parallelization across DP for'
                             ' distributed checkpoints. Depending on ckpt format'
                             ' might increase number of files in the checkpoint.')
+    group.add_argument('--async-save', action='store_true', default=None,
+                       help='Apply async checkpointing save. Currently works only with'
+                            '`torch_dist` distributed checkpoint format.')
     group.add_argument('--ckpt-fully-parallel-load', action='store_true',
                        help='Apply full load parallelization across DP for'
                             ' distributed checkpoints.')
@@ -1247,7 +1266,6 @@ def _add_checkpointing_args(parser):
                        help='If the model and optimizer state dict structure is'
                             'constant throughout a *single training job*, it allows for'
                             'different checkpointing performance optimizations.')
-
     return parser
 
 
@@ -1274,11 +1292,9 @@ def _add_mixed_precision_args(parser):
                        help='Move residual connections to fp32.')
     group.add_argument('--apply-query-key-layer-scaling', action='store_true',
                        help='Scale Q * K^T by 1 / layer-number. '
-                       'Useful for fp16 training.')
+                       'Useful for fp16 training. Also sets `attention_softmax_in_fp32` to True.')
     group.add_argument('--attention-softmax-in-fp32', action='store_true',
-                       help='Run attention masking and softmax in fp32. '
-                       'This flag is ignored unless '
-                       '--no-query-key-layer-scaling is specified.')
+                       help='Run attention masking and softmax in fp32.')
     group.add_argument('--accumulate-allreduce-grads-in-fp32',
                        action='store_true',
                        help='Gradient accumulation and all-reduce in fp32.')
@@ -1459,7 +1475,8 @@ def _add_data_args(parser):
     group.add_argument('--no-create-attention-mask-in-dataloader', action='store_false',
                        help='If set, do not create attention_masks in dataloader.',
                        dest='create_attention_mask_in_dataloader')
-
+    group.add_argument('--num-dataset-builder-threads', type=int, default=1,
+                       help='Number of parallel threads per rank for dataset builder')
     return parser
 
 
