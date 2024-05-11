@@ -8,6 +8,7 @@ sys.path.append(os.path.dirname(
 
 import torch
 from functools import partial
+
 from typing import Union
 from megatron.training import get_args
 from megatron.training import print_rank_0
@@ -124,8 +125,9 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
 
     Returns:
         the loss scalar for this micro-batch
-        the total number of tokens across all data parallel ranks and microbatches
-        a dict containing reporting metrics on the loss and number of tokens across the data parallel ranks
+        the number of non-padded tokens in this microbatch
+        a dict containing reporting metrics on the loss and number of tokens across
+            the data parallel ranks
     """
     args = get_args()
 
@@ -149,10 +151,10 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
     reporting_loss = loss.clone().detach()
     torch.distributed.all_reduce(reporting_loss, group=mpu.get_data_parallel_group())
 
-    num_tokens = reporting_loss[1].clone().detach().to(torch.int)
+    local_num_tokens = loss[1].clone().detach().to(torch.int)
     return (
         loss[0] * args.context_parallel_size,
-        num_tokens,
+        local_num_tokens,
         {'lm loss': (reporting_loss[0], reporting_loss[1])},
     )
 
@@ -201,6 +203,7 @@ def core_gpt_dataset_config_from_args(args):
             get_blend_from_list(args.test_data_path)
         ],
         split=args.split,
+        num_dataset_builder_threads=args.num_dataset_builder_threads,
         path_to_cache=args.data_cache_path,
         mmap_bin_files=args.mmap_bin_files,
         tokenizer=tokenizer,
