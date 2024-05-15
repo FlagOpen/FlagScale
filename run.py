@@ -10,8 +10,10 @@ def main(config : DictConfig) -> None:
 
     if config.action == "run":
         runner.run()
+    elif config.action == "dryrun":
+        runner.run(dryrun=True)
     elif config.action == "test":
-        runner.run(is_test=True)
+        runner.run(with_test=True)
     elif config.action == "stop":
         runner.stop()
     else:
