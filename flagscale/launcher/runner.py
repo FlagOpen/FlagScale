@@ -208,6 +208,11 @@ def _get_runner_cmd(
     runner_config = config.experiment.runner
     logging_config = config.train.system.logging
 
+    if runner_config.get("per_node_task", False):
+        nnodes = 1
+        node_rank = 0
+        master_addr = "localhost"
+
     rdzv_id = runner_config.get("rdzv_id", rdzv_id)
     log_dir = runner_config.get("log_dir", logging_config.details_dir)
     log_dir = os.path.abspath(log_dir)
@@ -226,12 +231,15 @@ def _get_runner_cmd(
     runner_args = OmegaConf.to_container(runner_config, resolve=True)
     if "backend" in runner_args:
         del runner_args["backend"]
+    if "per_node_task" in runner_args:
+        del runner_args["per_node_task"]
     if "hostfile" in runner_args:
         del runner_args["hostfile"]
     if "master_addr" in runner_args:
         del runner_args["master_addr"]
     if "master_port" in runner_args:
         del runner_args["master_port"]
+
     runner_args["rdzv_id"] = rdzv_id
     # runner_args["master_addr"] = master_addr
     # runner_args["master_port"] = master_port
