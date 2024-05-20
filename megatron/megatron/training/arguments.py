@@ -1662,6 +1662,7 @@ def _add_data_args(parser):
                                 'Llama2Tokenizer',
                                 'NullTokenizer', 
                                 'HFTokenizer', 
+                                'Llama3Tokenizer',
                                 'HFTokenizersTokenizer', 
                                 'QwenTokenizer'],
                        help='What type of tokenizer to use.')
