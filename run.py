@@ -2,11 +2,18 @@ import hydra
 from omegaconf import DictConfig
 from flagscale.logger import logger
 from flagscale.launcher.runner import SSHRunner 
+from flagscale.launcher.runner import CloudRunner 
 
 
 @hydra.main(version_base=None, config_name="config")
 def main(config : DictConfig) -> None:
-    runner = SSHRunner(config)
+
+    if config.experiment.runner.get("type", "ssh") == "ssh":
+        runner = SSHRunner(config)
+    elif config.experiment.runner.get("type") == "cloud":
+        runner = CloudRunner(config)
+    else:
+        raise ValueError(f"Unknown runner type {config.runner.type}")
 
     if config.action == "run":
         runner.run()

@@ -245,6 +245,9 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
 if __name__ == "__main__":
 
+    # import logging
+    # logging.basicConfig(level=logging.INFO)
+
     # Temporary for transition to core datasets
     train_valid_test_datasets_provider.is_distributed = True
 
@@ -253,7 +256,7 @@ if __name__ == "__main__":
     extra_valid_dataset_provider.is_distributed = True
 
     # To avoid the circular import
-    from megatron.training import pretrain
+    from train import pretrain
     pretrain(train_valid_test_datasets_provider,
              model_provider,
              ModelType.encoder_or_decoder,
