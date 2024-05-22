@@ -10,14 +10,10 @@ import numpy
 import torch
 
 from megatron.core.datasets.blended_megatron_dataset_config import BlendedMegatronDatasetConfig
-from megatron.core.datasets.indexed_dataset import IndexedDataset
+from megatron.core.datasets.indexed_dataset import IndexedDataset, get_bin_path, get_idx_path
 from megatron.core.datasets.megatron_dataset import MegatronDataset
 from megatron.core.datasets.megatron_tokenizer import MegatronTokenizer
 from megatron.core.datasets.utils import Split, log_single_rank, is_built_on_zero_rank
-from megatron.core.datasets.indexed_dataset import IndexedDataset, get_bin_path, get_idx_path
-from megatron.core.datasets.megatron_dataset import LowLevelDataset, MegatronDataset, MockDataset
-from megatron.core.datasets.utils import Split, log_single_rank
-from megatron.training import get_args
 
 logger = logging.getLogger(__name__)
 
