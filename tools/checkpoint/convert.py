@@ -52,14 +52,6 @@ def main():
     loader.add_arguments(parser)
     saver.add_arguments(parser)
 
-    try:
-        for model_type in known_args.model_type:
-            args_plugin = importlib.import_module(model_type + ".args")
-            if getattr(args_plugin, "add_extra_arguments", None):
-                args_plugin.add_extra_arguments(parser)
-    except ModuleNotFoundError:
-        pass
-
     args = parser.parse_args()
     validate_args(args)
 
