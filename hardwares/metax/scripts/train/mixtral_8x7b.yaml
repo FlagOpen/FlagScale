@@ -1,77 +1,64 @@
 system:
   tensor_model_parallel_size: 4
   pipeline_model_parallel_size: 1
-  expert_model_parallel_size: 4
-  sequence_parallel: true
-  use_distributed_optimizer: true
-  device_type: metax
+  disable_bias_linear: True
+  use_flash_attn: True
+  use_distributed_optimizer: True
   precision:
-    bf16: true
+    fp16: True
+    initial_loss_scale: 522893
+    min_loss_scale: 1.0
+    attention_softmax_in_fp32: True
+    accumulate_allreduce_grads_in_fp32: True
   logging:
     log_interval: 1
     tensorboard_log_interval: 1
-    wandb_project: mixtral
-    wandb_exp_name: mixtral-8x7b
+    wandb_project: "train-aquila-7B" 
+    wandb_exp_name: "train-test-7B" 
   checkpoint:
-    save_interval: 10000
-
+    save_interval: 2000 
 
 model:
-  use_mcore_models: true
-  transformer_impl: local
-  num_layers: 32
-  hidden_size: 4096
-  ffn_hidden_size: 14336
-  num_attention_heads: 32
-  seq_length: 2048
-  max_position_embeddings: 32768
+  num_layers: 32 
+  hidden_size: 4096 
+  num_attention_heads: 32 
+  seq_length: 2048 
+  max_position_embeddings: 2048
+  norm_epsilon: 1e-5
+  use_rotary_position_embeddings: true
+  no_position_embedding: true
   swiglu: true
+  multiple_of: 256
   normalization: RMSNorm
-  norm_epsilon: 1e-05
-  group_query_attention: true
-  num_query_groups: 8
+  rotary_interleaved_patch: true
+  untie_embeddings_and_output_weights: true
   init_method_std: 0.02
   attention_dropout: 0.0
   hidden_dropout: 0.0
-  disable_bias_linear: true
-  position_embedding_type: rope
-  rotary_base: 1000000.0
-  no_position_embedding: true
-  no_masked_softmax_fusion: true
-  untie_embeddings_and_output_weights: true
-  # moe args
-  num_experts: 8
-  moe_router_load_balancing_type: aux_loss
-  moe_router_topk: 2
-  moe_aux_loss_coeff: 0.02
-  # moe_grouped_gemm: true
-
-  # seed: 42
-  train_iters: 500000
-  micro_batch_size: 1
-  global_batch_size: 128
+  weight_decay: 0.1
   clip_grad: 1.0
-  eval_interval: 1000
-  eval_iters: 10
+  train_samples: 100000
+  eval_iters: 0
+  micro_batch_size: 1
+  global_batch_size: 128 
+  seed: 1234
 
   optimizer:
-    lr: 1e-4
     weight_decay: 0.1
+    adam_beta1: 0.9
+    adam_beta2: 0.95
     lr_scheduler:
-      min_lr: 1.0e-5
-      lr_warmup_iters: 500
-      lr_decay_iters: 320000
-      lr_decay_style: cosine
-
+      lr: 2.0e-5
+      min_lr: 2.0e-6
+      lr_warmup_samples: 500
+      lr_decay_style: cosine 
 
 data:
-  data_path: <xxxx>
+  data_path: ${data_path:??}
   split: 1
   tokenizer:
-    tokenizer_type: QwenTokenizer
-    tokenizer_path: <xxxx>
-    vocab_file:  <xxxx>
-    merge_file:  <xxxx>
-    special_tokens_file:  <xxxx>
-    vocab_size: 151851
-    make_vocab_size_divisible_by: 64
+    tokenizer_type: AquilaTokenizer
+    vocab_file: ./examples/aquila/tokenizer/vocab.json
+    merge_file: ./examples/aquila/tokenizer/merges.txt
+    special_tokens_file: ./examples/aquila/tokenizer/special_tokens.txt
+    vocab_size: 100008
