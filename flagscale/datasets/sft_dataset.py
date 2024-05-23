@@ -9,7 +9,7 @@ from typing import Dict, Optional, Tuple
 import numpy
 import torch
 
-from megatron.core.datasets.gpt_dataset import GPTDataset, GPTDatasetConfig
+from megatron.core.datasets.gpt_dataset import GPTDataset, GPTDatasetConfig, _get_ltor_masks_and_position_ids
 from megatron.core.datasets.indexed_dataset import IndexedDataset, get_bin_path, get_idx_path
 from megatron.core.datasets.utils import Split
 

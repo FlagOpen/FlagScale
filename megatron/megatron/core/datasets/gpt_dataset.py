@@ -204,14 +204,6 @@ class GPTDataset(MegatronDataset):
         if idx is None:
             loss_mask = torch.zeros_like(loss_mask)
 
-        # aux dataset
-        aux_loss_mask, _ = self._query_document_sample_shuffle_indices_aux_dataset(
-            self.loss_mask_dataset, idx)
-        if aux_loss_mask is not None:
-          if idx % 100 == 0:
-            print(f'> Used aux_loss_mask at current sample={idx} ...')
-          loss_mask = torch.from_numpy(aux_loss_mask).float()[1:].contiguous()
-
         if self.config.create_attention_mask:
             return {
                 "tokens": tokens,
