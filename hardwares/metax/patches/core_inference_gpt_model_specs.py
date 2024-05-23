@@ -23,9 +23,9 @@ def get_gpt_layer_ammo_spec() -> ModuleSpec:
     return ModuleSpec(
         module=TransformerLayer,
         submodules=TransformerLayerSubmodules(
-            # changes Norm is instead of TENorm 
+            # [metax] start of changes
             input_layernorm=Norm,
-            # end of changes
+            # [metax] end of changes
             self_attention=ModuleSpec(
                 module=SelfAttention,
                 params={"attn_mask_type": AttnMaskType.causal},
@@ -36,9 +36,9 @@ def get_gpt_layer_ammo_spec() -> ModuleSpec:
                 ),
             ),
             self_attn_bda=get_bias_dropout_add,
-            # changes Norm is instead of TENorm
+            # [metax] start of changes
             pre_mlp_layernorm=Norm,
-            # end of changes 
+            # [metax] end of changes
             mlp=ModuleSpec(
                 module=MLP,
                 submodules=MLPSubmodules(
