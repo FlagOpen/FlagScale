@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 class SFTDatasetConfig(GPTDatasetConfig):
     """Configuration object for Megatron Core SFT datasets"""
 
-    apply_loss_mask_dataset_if_existed: bool = None
-    """Option to apply the loss mask from the specific dataset"""
+    apply_sft_dataset_separated_loss_mask_if_existed: bool = None
+    """Option to apply separated loss mask files"""
 
 
 class SFTDataset(GPTDataset):
@@ -50,7 +50,7 @@ class SFTDataset(GPTDataset):
         config: SFTDatasetConfig,
     ) -> None:
         self.config = config
-        self.apply_loss_mask_dataset_if_existed = config.apply_loss_mask_dataset_if_existed
+        self.apply_sft_dataset_separated_loss_mask_if_existed = config.apply_sft_dataset_separated_loss_mask_if_existed
         self.loss_mask_dataset = None
 
         super().__init__(
@@ -68,7 +68,7 @@ class SFTDataset(GPTDataset):
         loss_mask_prefix = '_loss_mask_document'
         if self.dataset_path.endswith(base_prefix):
             path_prefix = self.dataset_path[:-len(base_prefix)] + loss_mask_prefix
-        if self.apply_loss_mask_dataset_if_existed and path_prefix:
+        if self.apply_sft_dataset_separated_loss_mask_if_existed and path_prefix:
             idx_path = get_idx_path(path_prefix)
             bin_path = get_bin_path(path_prefix)
             if os.path.exists(idx_path) and os.path.exists(bin_path):

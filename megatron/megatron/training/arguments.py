@@ -1684,8 +1684,8 @@ def _add_data_args(parser):
                        dest='create_attention_mask_in_dataloader')
     group.add_argument('--num-dataset-builder-threads', type=int, default=1,
                        help='Number of parallel threads per rank for dataset builder')
-    group.add_argument('--apply-loss-mask-dataset-if-existed', action='store_true',
-                       help='Using loss mask dataset '
+    group.add_argument('--apply-sft-dataset-separated-loss-mask-if-existed', action='store_true',
+                       help='If set, use sft dataset with separated loss mask files, '
                        'if _loss_mask_document.bin and _loss_mask_document.idx existed.')
 
     return parser

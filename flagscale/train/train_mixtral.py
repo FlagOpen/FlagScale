@@ -237,7 +237,7 @@ def core_sft_dataset_config_from_args(args):
         reset_attention_mask=args.reset_attention_mask,
         eod_mask_loss=args.eod_mask_loss,
         create_attention_mask=args.create_attention_mask_in_dataloader,
-        apply_loss_mask_dataset_if_existed=args.apply_loss_mask_dataset_if_existed,
+        apply_sft_dataset_separated_loss_mask_if_existed=args.apply_sft_dataset_separated_loss_mask_if_existed,
     )
 
 
@@ -249,14 +249,14 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
     """
     args = get_args()
 
-    if args.apply_loss_mask_dataset_if_existed:
+    if args.apply_sft_dataset_separated_loss_mask_if_existed:
         config = core_sft_dataset_config_from_args(args)
     else:
         config = core_gpt_dataset_config_from_args(args)
 
     if args.mock_data:
         dataset_type = MockGPTDataset
-    elif args.apply_loss_mask_dataset_if_existed:
+    elif args.apply_sft_dataset_separated_loss_mask_if_existed:
         dataset_type = SFTDataset
     else:
         dataset_type = GPTDataset
