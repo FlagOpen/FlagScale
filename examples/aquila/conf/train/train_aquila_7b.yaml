@@ -3,6 +3,7 @@ system:
   pipeline_model_parallel_size: 1
   disable_bias_linear: True
   use_flash_attn: True
+  device_type: metax
   use_distributed_optimizer: True
   precision:
     fp16: True
@@ -54,7 +55,7 @@ model:
       lr_decay_style: cosine 
 
 data:
-  data_path: ${data_path:??}
+  data_path: ./dataset/pile_wikipedia_demo 
   split: 1
   tokenizer:
     tokenizer_type: AquilaTokenizer

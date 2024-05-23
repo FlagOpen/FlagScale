@@ -7,6 +7,8 @@ from megatron.core import parallel_state, tensor_parallel
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.training import get_args
+from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.core.transformer.module import MegatronModule
 from flagscale.patches_utils import add_patches_module_
 # [metax] start of change
 try:
@@ -149,7 +151,6 @@ class FlashSelfAttention_unpacked(torch.nn.Module):
         output = rearrange(output, '(b s) ... -> b s ...', b=batch_size)
         return output
 # [metax] end of change
-
 
 class DotProductAttention(MegatronModule):
     """

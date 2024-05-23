@@ -6,7 +6,7 @@ from flagscale.launcher.runner import CloudRunner
 
 
 @hydra.main(version_base=None, config_name="config")
-def main(config : DictConfig) -> None:
+ef main(config : DictConfig) -> None:
 
     if config.experiment.runner.get("type", "ssh") == "ssh":
         runner = SSHRunner(config)
