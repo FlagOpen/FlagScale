@@ -217,6 +217,48 @@ def _update_config(config: DictConfig):
     OmegaConf.set_struct(config, True)
 
 
+def _get_nnodes(nnodes_from_hostfile=None, nnodes_from_args=None):
+    assert nnodes_from_hostfile is not None or nnodes_from_args is not None
+    if nnodes_from_hostfile is not None and nnodes_from_args is not None:
+        if isinstance(nnodes_from_args, str) and ":" in nnodes_from_args:
+            # Ignore the max nnodes from the args, no elastic support 
+            nnodes_from_args, _ = nnodes_from_args.split(":")
+        return min(nnodes_from_hostfile, int(nnodes_from_args))
+    elif nnodes_from_hostfile is not None:
+        return nnodes_from_hostfile
+    elif nnodes_from_args is not None:
+        if isinstance(nnodes_from_args, str) and ":" in nnodes_from_args:
+            # Ignore the max nnodes from the args, no elastic support 
+            nnodes_from_args, _ = nnodes_from_args.split(":")
+        return int(nnodes_from_args)
+
+
+def _get_nproc_per_node(
+    nproc_from_hostfile=None, nproc_from_args=None, num_visible_devices=None
+):
+    if nproc_from_hostfile is not None and nproc_from_args is not None:
+        nproc = min(nproc_from_hostfile, int(nproc_from_args))
+        if num_visible_devices:
+            return min(nproc, num_visible_devices)
+        else:
+            return nproc
+    elif nproc_from_hostfile is not None:
+        if num_visible_devices:
+            return min(nproc_from_hostfile, num_visible_devices)
+        else:
+            return nproc_from_hostfile
+    elif nproc_from_args is not None:
+        if num_visible_devices:
+            return min(int(nproc_from_args), num_visible_devices)
+        else:
+            return nproc_from_args
+    else:
+        if num_visible_devices:
+            return num_visible_devices
+        else:
+            return 1
+
+
 def _get_runner_cmd(
     host,
     master_addr,
@@ -288,46 +330,104 @@ def _get_runner_cmd(
     return runner_cmd
 
 
-def _get_nnodes(nnodes_from_hostfile=None, nnodes_from_args=None):
-    assert nnodes_from_hostfile is not None or nnodes_from_args is not None
-    if nnodes_from_hostfile is not None and nnodes_from_args is not None:
-        if isinstance(nnodes_from_args, str) and ":" in nnodes_from_args:
-            # Ignore the max nnodes from the args, no elastic support 
-            nnodes_from_args, _ = nnodes_from_args.split(":")
-        return min(nnodes_from_hostfile, int(nnodes_from_args))
-    elif nnodes_from_hostfile is not None:
-        return nnodes_from_hostfile
-    elif nnodes_from_args is not None:
-        if isinstance(nnodes_from_args, str) and ":" in nnodes_from_args:
-            # Ignore the max nnodes from the args, no elastic support 
-            nnodes_from_args, _ = nnodes_from_args.split(":")
-        return int(nnodes_from_args)
+def _generate_run_script(config, host, node_rank, cmd, background=True, with_test=False):
+    system_config = config.train.system
+    logging_config = config.train.system.logging
 
-
-def _get_nproc_per_node(
-    nproc_from_hostfile=None, nproc_from_args=None, num_visible_devices=None
-):
-    if nproc_from_hostfile is not None and nproc_from_args is not None:
-        nproc = min(nproc_from_hostfile, int(nproc_from_args))
-        if num_visible_devices:
-            return min(nproc, num_visible_devices)
-        else:
-            return nproc
-    elif nproc_from_hostfile is not None:
-        if num_visible_devices:
-            return min(nproc_from_hostfile, num_visible_devices)
-        else:
-            return nproc_from_hostfile
-    elif nproc_from_args is not None:
-        if num_visible_devices:
-            return min(int(nproc_from_args), num_visible_devices)
-        else:
-            return nproc_from_args
+    no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
+    if no_shared_fs:
+        host_output_file = os.path.join(logging_config.log_dir, f"host.output")
     else:
-        if num_visible_devices:
-            return num_visible_devices
+        host_output_file = os.path.join(
+            logging_config.log_dir, f"host_{node_rank}_{host}.output"
+        )
+    host_run_script_file = os.path.join(
+        logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
+    )
+    host_pid_file = os.path.join(
+        logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
+    )
+
+    os.makedirs(logging_config.scripts_dir, exist_ok=True)
+
+    root_dir = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    megatron_dir = os.path.join(root_dir, "megatron")
+    cmds_config = config.experiment.get("cmds", None)
+    if cmds_config:
+        before_start = cmds_config.get("before_start", "")
+    else:
+        before_start = ""
+    with open(host_run_script_file, "w") as f:
+        f.write("#!/bin/bash\n\n")
+        f.write(f"{before_start}\n")
+        f.write(f"mkdir -p {system_config.checkpoint.load}\n")
+        f.write(f"mkdir -p {system_config.checkpoint.save}\n")
+        f.write(f"mkdir -p {system_config.logging.log_dir}\n")
+        f.write(f"mkdir -p {system_config.logging.pids_dir}\n")
+        f.write(f"mkdir -p {system_config.logging.details_dir}\n")
+        f.write(f"mkdir -p {system_config.logging.tensorboard_dir}\n")
+        f.write(f"mkdir -p {system_config.logging.wandb_save_dir}\n")
+        f.write(f"\n")
+        f.write(f"cd {root_dir}\n")
+        f.write(f"\n")
+        f.write(f"export PYTHONPATH={megatron_dir}:{root_dir}\n")
+        f.write(f"\n")
+        f.write(f'cmd="{cmd}"\n')
+        f.write(f"\n")
+        if with_test:
+            f.write(f'bash -c "$cmd" \n')
         else:
-            return 1
+            # TODO: need a option to control whether to append or overwrite the output file
+            # Now, it always appends to the output file
+            if background:
+                f.write(
+                    f'nohup bash -c "$cmd" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
+                )
+            else:
+                f.write(f'bash -c "$cmd" >> {host_output_file} 2>&1\n')
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(host_run_script_file, 0o755)
+
+    return host_run_script_file
+
+
+def _generate_stop_script(config, host, node_rank):
+    logging_config = config.train.system.logging
+
+    host_stop_script_file = os.path.join(
+        logging_config.scripts_dir, f"host_{node_rank}_{host}_stop.sh"
+    )
+
+    host_pid_file = os.path.join(
+        logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
+    )
+
+    os.makedirs(logging_config.scripts_dir, exist_ok=True)
+
+    cmds_config = config.experiment.get("cmds", None)
+    if cmds_config:
+        after_stop = cmds_config.get("after_stop", "")
+    else:
+        after_stop = ""
+    with open(host_stop_script_file, "w") as f:
+        f.write("#!/bin/bash\n\n")
+        f.write("if [ -f " + host_pid_file + " ]; then\n")
+        f.write("    pid=$(cat " + host_pid_file + ")\n")
+        f.write("    pkill -P $pid\n")
+        f.write("else\n")
+        # TODO: This is a temporary fix. We need to find a better way to stop the job.
+        f.write("    pkill -f 'torchrun'\n")
+        f.write("fi\n")
+        f.write(f"{after_stop}\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(host_stop_script_file, 0o755)
+
+    return host_stop_script_file
 
 
 class MultiNodeRunner(ABC):
@@ -355,62 +455,6 @@ class SSHRunner(MultiNodeRunner):
             self.user_args = get_megatron_args(self.config)
         else:
             raise ValueError(f"Unsupported task type: {self.config.experiment.task.type}")
-
-    def _generate_run_script(self, host, node_rank, cmd, with_test=False):
-        system_config = self.config.train.system
-        logging_config = self.config.train.system.logging
-
-        no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
-        if no_shared_fs:
-            host_output_file = os.path.join(logging_config.log_dir, f"host.output")
-        else:
-            host_output_file = os.path.join(
-                logging_config.log_dir, f"host_{node_rank}_{host}.output"
-            )
-        host_run_script_file = os.path.join(
-            logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
-        )
-        host_pid_file = os.path.join(
-            logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-        )
-
-        os.makedirs(logging_config.scripts_dir, exist_ok=True)
-
-        root_dir = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
-        megatron_dir = os.path.join(root_dir, "megatron")
-        with open(host_run_script_file, "w") as f:
-            f.write("#!/bin/bash\n\n")
-            f.write('ulimit -n 1048576\n')
-            f.write(f"mkdir -p {system_config.checkpoint.load}\n")
-            f.write(f"mkdir -p {system_config.checkpoint.save}\n")
-            f.write(f"mkdir -p {system_config.logging.log_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.pids_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.details_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.tensorboard_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.wandb_save_dir}\n")
-            f.write(f"\n")
-            f.write(f"cd {root_dir}\n")
-            f.write(f"\n")
-            f.write(f"export PYTHONPATH={megatron_dir}:{root_dir}\n")
-            f.write(f"\n")
-            f.write(f'cmd="{cmd}"\n')
-            f.write(f"\n")
-            # TODO: need a option to control whether to append or overwrite the output file
-            # Now, it always appends to the output file
-            if with_test:
-                f.write(f'bash -c "$cmd" \n')
-            else:
-                f.write(
-                    f'nohup bash -c "$cmd" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
-                )
-            f.write("\n")
-            f.flush()
-            os.fsync(f.fileno())
-        os.chmod(host_run_script_file, 0o755)
-
-        return host_run_script_file
 
     def _run_each(
         self,
@@ -444,7 +488,9 @@ class SSHRunner(MultiNodeRunner):
             test_cmd = f";python tests/functional_tests/check_result.py {exp_dir};rm -r {exp_dir}"
             cmd = cmd + test_cmd
 
-        host_run_script_file = self._generate_run_script(host, node_rank, cmd, with_test)
+        host_run_script_file = _generate_run_script(
+            self.config, host, node_rank, cmd, background=True, with_test=with_test
+        )
 
         logging_config = self.config.train.system.logging
         if host != "localhost":
@@ -501,7 +547,7 @@ class SSHRunner(MultiNodeRunner):
                     nnodes,
                     node_rank,
                     nproc_per_node,
-                    with_test,
+                    with_test=with_test,
                     dryrun=dryrun,
                 )
         else:
@@ -511,46 +557,18 @@ class SSHRunner(MultiNodeRunner):
             avaliable_addr = runner_config.get("master_addr", "localhost")
             avaliable_port = runner_config.get("master_port", get_free_port())
             self._run_each(
-                host="localhost",
-                master_addr=avaliable_addr,
-                master_port=avaliable_port,
-                nnodes=1,
-                node_rank=0,
-                nproc_per_node=nproc_per_node,
+                "localhost",
+                avaliable_addr,
+                avaliable_port,
+                1,
+                0,
+                nproc_per_node,
                 with_test=with_test,
                 dryrun=dryrun,
             )
 
-    def _generate_stop_script(self, host, node_rank):
-        logging_config = self.config.train.system.logging
-
-        host_stop_script_file = os.path.join(
-            logging_config.scripts_dir, f"host_{node_rank}_{host}_stop.sh"
-        )
-
-        host_pid_file = os.path.join(
-            logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-        )
-
-        os.makedirs(logging_config.scripts_dir, exist_ok=True)
-
-        with open(host_stop_script_file, "w") as f:
-            f.write("#!/bin/bash\n\n")
-            f.write("if [ -f " + host_pid_file + " ]; then\n")
-            f.write("    pid=$(cat " + host_pid_file + ")\n")
-            f.write("    pkill -P $pid\n")
-            f.write("else\n")
-            # TODO: This is a temporary fix. We need to find a better way to stop the job.
-            f.write("    pkill -f 'torchrun'\n")
-            f.write("fi\n")
-            f.flush()
-            os.fsync(f.fileno())
-        os.chmod(host_stop_script_file, 0o755)
-
-        return host_stop_script_file
-
     def _stop_each(self, host, node_rank):
-        host_stop_script_file = self._generate_stop_script(host, node_rank)
+        host_stop_script_file = _generate_stop_script(self.config, host, node_rank)
         logging_config = self.config.train.system.logging
 
         if host != "localhost":
@@ -597,59 +615,6 @@ class CloudRunner(MultiNodeRunner):
         else:
             raise ValueError(f"Unsupported task type: {self.config.experiment.task.type}")
 
-    def _generate_run_script(self, host, node_rank, cmd, with_test=False):
-        system_config = self.config.train.system
-        logging_config = self.config.train.system.logging
-
-        no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
-        if no_shared_fs:
-            host_output_file = os.path.join(logging_config.log_dir, f"host.output")
-        else:
-            host_output_file = os.path.join(
-                logging_config.log_dir, f"host_{node_rank}_{host}.output"
-            )
-        host_run_script_file = os.path.join(
-            logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
-        )
-
-        os.makedirs(logging_config.scripts_dir, exist_ok=True)
-
-        root_dir = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
-        megatron_dir = os.path.join(root_dir, "megatron")
-        with open(host_run_script_file, "w") as f:
-            f.write("#!/bin/bash\n\n")
-            f.write('ulimit -n 1048576\n')
-            f.write(f"mkdir -p {system_config.checkpoint.load}\n")
-            f.write(f"mkdir -p {system_config.checkpoint.save}\n")
-            f.write(f"mkdir -p {system_config.logging.log_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.pids_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.details_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.tensorboard_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.wandb_save_dir}\n")
-            f.write(f"\n")
-            f.write(f"cd {root_dir}\n")
-            f.write(f"\n")
-            f.write(f"export PYTHONPATH={megatron_dir}:{root_dir}\n")
-            f.write(f"\n")
-            f.write(f'cmd="{cmd}"\n')
-            f.write(f"\n")
-            # TODO: need a option to control whether to append or overwrite the output file
-            # Now, it always appends to the output file
-            if with_test:
-                f.write(f'bash -c "$cmd" \n')
-            else:
-                f.write(
-                    f'bash -c "$cmd" >> {host_output_file} 2>&1\n'
-                )
-            f.write("\n")
-            f.flush()
-            os.fsync(f.fileno())
-        os.chmod(host_run_script_file, 0o755)
-
-        return host_run_script_file
-
     def _run_each(
         self,
         host,
@@ -682,7 +647,9 @@ class CloudRunner(MultiNodeRunner):
             test_cmd = f";python tests/functional_tests/check_result.py {exp_dir};rm -r {exp_dir}"
             cmd = cmd + test_cmd
 
-        host_run_script_file = self._generate_run_script(host, node_rank, cmd, with_test)
+        host_run_script_file = _generate_run_script(
+            self.config, host, node_rank, cmd, background=False, with_test=with_test
+        )
 
         run_local_command(f"bash {host_run_script_file}", dryrun)
 
@@ -718,9 +685,6 @@ class CloudRunner(MultiNodeRunner):
             nnodes,
             node_rank,
             nproc_per_node,
-            with_test,
+            with_test=with_test,
             dryrun=dryrun,
         )
-    
-    def stop(self):
-        pass
