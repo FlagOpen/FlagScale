@@ -1,16 +1,18 @@
 defaults:
-  - train: mixtral_8x7b 
+  - train: train_aquila_7b 
   - _self_
 
 experiment:
-  exp_name: unified-runner 
+  exp_name: aquila2
   exp_dir: ./outputs
-  entrypoint: ./flagscale/train/train_mixtral.py 
-  task: train
-  hostfile: <xx>
-  backend: megatron
-  shell_cmds: null 
-  ssh_port: null
+  task:
+    type: train
+    backend: megatron
+    entrypoint: ./flagscale/train/train_aquila.py
+  runner:
+    backend: torchrun
+    nnodes: 1 
+    nproc_per_node: 8 
   envs:
     MACA_PATH: /opt/maca
     MACA_SMALL_PAGESIZE_ENABLE: 1
