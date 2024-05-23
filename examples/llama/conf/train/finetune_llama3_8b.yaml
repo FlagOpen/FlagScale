@@ -15,7 +15,7 @@ system:
     wandb_project: "train-llama3-8B" 
     wandb_exp_name: "train-test-8B" 
   checkpoint:
-    load: ${ckpt_path:??}
+    load: outputs_llama3/checkpoint_mc
     save_interval: 10
     finetune: True
 
@@ -37,13 +37,14 @@ model:
   normalization: RMSNorm
   rotary_interleaved_patch: False
   position_embedding_type: rope
+  rotary_base: 500000.0
   untie_embeddings_and_output_weights: True
   init_method_std: 0.02
   attention_dropout: 0.0
   hidden_dropout: 0.0
   weight_decay: 0.01
   clip_grad: 1.0
-  train_samples: 200000
+  train_samples: 200000 
   eval_iters: 100
   eval_interval: 1000
   micro_batch_size: 1
@@ -54,13 +55,13 @@ model:
     adam_beta1: 0.9
     adam_beta2: 0.95
     lr_scheduler:
-      lr: 0.00015
-      min_lr: 1.0e-5
-      lr_warmup_fraction: .01
+      lr: 1.0e-5
+      min_lr: 1.0e-6
+      lr_warmup_fraction: .1
       lr_decay_style: cosine 
 
 data:
-  data_path: ${data_path:??}
+  data_path: examples/llama/pile-openwebtext_text_document/pile-openwebtext_text_document
   split: 1 
   tokenizer:
     tokenizer_type: Llama3Tokenizer
