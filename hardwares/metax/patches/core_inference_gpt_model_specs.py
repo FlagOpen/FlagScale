@@ -59,5 +59,3 @@ func_path = "megatron.core.inference.gpt.model_specs"
 func_dict = {"get_gpt_layer_ammo_spec",get_gpt_layer_ammo_spec}
 add_patches_func_(func_path,func_dict)
 
-#megatron.core.inference.gpt.model_specs.get_gpt_layer_ammo_spec = get_gpt_layer_ammo_spec
-
