@@ -350,8 +350,3 @@ module_path = "megatron.core.transformer"
 module_dict = {"Attention":Attention}
 add_patches_module_(module_path,module_dict)
 
-# import sys
-# for k in sys.modules:
-#     if k.startswith('megatron.core.transformer'):
-#         if getattr(sys.modules[k], 'Attention', None):
-#             setattr(sys.modules[k], 'Attention', Attention)

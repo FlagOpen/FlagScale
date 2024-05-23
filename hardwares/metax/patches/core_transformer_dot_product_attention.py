@@ -1,4 +1,3 @@
-
 import torch
 import megatron
 from torch import Tensor
@@ -65,8 +64,6 @@ class FlashSelfAttention_packed(torch.nn.Module):
 
         assert qkv.dtype in [torch.float16, torch.bfloat16]
         assert qkv.is_cuda
-        #batch_size, seqlen_q = q.shape[0], q.shape[1]
-        #seqlen_k = k.shape[1]
         seq_len = qkv.shape[0] // self.micro_batch_size
         cu_seqlens = torch.arange(0, (self.micro_batch_size + 1) * seq_len, step=seq_len, dtype=torch.int32,
                                     device=qkv.device)
@@ -413,25 +410,10 @@ class DotProductAttention(MegatronModule):
 
 
 
-
-
-
-
 module_path = "megatron.core.transformer"
 module_dict = {"DotProductAttention":DotProductAttention,
                "FlashSelfAttention_packed":FlashSelfAttention_packed,
                "FlashSelfAttention_unpacked":FlashSelfAttention_unpacked}
 add_patches_module_(module_path,module_dict)
-
-
-# megatron.core.transformer.dot_product_attention.DotProductAttention = DotProductAttention
-# import sys
-# for k in sys.modules:
-#     if k.startswith('megatron.core.transformer'):
-#         if getattr(sys.modules[k], 'FlashSelfAttention_packed', None):
-#             setattr(sys.modules[k], 'FlashSelfAttention_packed', FlashSelfAttention_packed)
-#         if getattr(sys.modules[k], 'FlashSelfAttention_unpacked', None):
-#             setattr(sys.modules[k], 'FlashSelfAttention_unpacked', FlashSelfAttention_unpacked)
-
 
 

@@ -1,3 +1,4 @@
+# [metax] start of change
 from __future__ import annotations
 
 
@@ -36,7 +37,6 @@ class ApplyRotaryEmbQKV_(torch.autograd.Function):
         """
         _, three, _, headdim = qkv.shape
         assert three == 3
-        # if torch.distributed.get_rank() == 1:
         print('cos_shape = ', cos.shape)
 
         rotary_seqlen, rotary_dim = cos.shape
@@ -123,10 +123,7 @@ class RotaryEmbedding(torch.nn.Module):
             self._seq_len_cached = seqlen
             t = torch.arange(seqlen, device=x.device, dtype=self.inv_freq.dtype)
             # Don't do einsum, it converts fp32 to fp16
-            # freqs = torch.einsum("i,j->ij", t, self.inv_freq)
             freqs = torch.outer(t, self.inv_freq.to(device=t.device))
-            # if torch.distributed.get_rank() == 1:
-            #     print('freqs = ', freqs.shape)
 
 
             if self.scale is None:
@@ -148,18 +145,9 @@ class RotaryEmbedding(torch.nn.Module):
         return self._forward(qkv,  kwargs.pop("indexes"))
 
 
-        # if kwargs.get("indexes", None) is not None:
-        #     return self._forward(qkv, kwargs.pop("indexes"))
-        # if kwargs.get("inference_params", None) is not None:
-        #     return self._eval_forward(qkv, seqlen_offset=kwargs.get("inference_params", None).sequence_len_offset)
-        # else:
-        #     return self._eval_forward(qkv)
 
     def _forward(self, qkv: torch.Tensor, indexes=0) -> Tuple[torch.Tensor, torch.Tensor]:
         self._update_cos_sin_cache(qkv, indexes)
-        # if torch.distributed.get_rank() == 1:
-        #     print('self.scale = ', self.scale)
-        #     print('indexes = ', indexes)
 
         if self.scale is None:
             return apply_rotary_emb_qkv_(qkv, self._cos_cached[indexes], self._sin_cached[indexes])
@@ -177,10 +165,6 @@ class RotaryEmbedding(torch.nn.Module):
         seqlen_offset: can be used in generation where the qkv being passed in is only the last
         token in the batch.
         """
-        # if torch.distributed.get_rank() == 1:
-        #     print('eval qkv = ', qkv)
-        #     print('eval seqlen_offset = ', seqlen_offset)
-        #     print('eval qkv.shape = ', qkv.shape)
         self._update_cos_sin_cache(qkv, seqlen_offset + qkv.shape[1])
         if self.scale is None:
             return legacy_apply_rotary_embed_qkv(
@@ -236,6 +220,7 @@ def apply_rotary_pos_emb(t, freqs):
     return torch.cat((t, t_pass), dim=-1)
 
 
+# [metax] end of change
 
 module_path ="megatron.core.models.common.embeddings.rotary_pos_embedding"
 module_dict ={"RotaryEmbedding":RotaryEmbedding}
@@ -245,3 +230,4 @@ add_patches_module_(module_path,module_dict)
 apply_rotary_emb_qkv_ = ApplyRotaryEmbQKV_.apply
 legacy_apply_rotary_embed_qkv = LegacyApplyRotaryEmbQKV_.apply
 legacy_apply_rotary_embed = LegacyApplyRotaryEmb.apply
+

@@ -1,4 +1,4 @@
-# all is change
+# [metax] start of change
 import megatron
 from megatron.training import get_args
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -40,16 +40,10 @@ class Norm:
 
         return instance
 
-# end of change
-
+# [metax] end of change
 module_path = "megatron.core.transformer.custom_layers"
 module_dict = {"Norm":Norm}
 add_patches_module_(module_path,module_dict)
 
 
-# import sys
-# for k in sys.modules:
-#     if k.startswith('megatron.core.transformer.custom_layers'):
-#         if getattr(sys.modules[k], 'Norm', None):
-#             setattr(sys.modules[k], 'Norm', Norm)
         

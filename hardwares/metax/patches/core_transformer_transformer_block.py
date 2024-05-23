@@ -35,4 +35,3 @@ func_path = "megatron.core.transformer.transformer_block.TransformerBlock"
 func_dict = {"_build_layers",_build_layers}
 add_patches_func_(func_path,func_dict)
 
-#megatron.core.transformer.transformer_block.TransformerBlock._build_layers = _build_layers

@@ -4,6 +4,7 @@ system:
   expert_model_parallel_size: 4
   sequence_parallel: true
   use_distributed_optimizer: true
+  device_type: metax
   precision:
     bf16: true
   logging:
