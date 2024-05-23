@@ -17,7 +17,11 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
-from megatron.core.transformer.custom_layers.transformer_engine import SplitAlongDim
+try:
+    from megatron.core.transformer.custom_layers.transformer_engine import SplitAlongDim
+except:
+    pass
+
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.identity_op import IdentityFuncOp, IdentityOp
 from megatron.core.transformer.module import MegatronModule
