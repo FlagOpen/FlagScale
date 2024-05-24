@@ -8,7 +8,7 @@ from megatron.core.transformer.enums import AttnMaskType
 from megatron.training import get_args
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.module import MegatronModule
-from flagscale.patches_utils import add_patches_module_
+from flagscale.patches_utils import add_patches_module
 # [metax] start of change
 try:
     from einops import rearrange
@@ -414,6 +414,6 @@ module_path = "megatron.core.transformer"
 module_dict = {"DotProductAttention":DotProductAttention,
                "FlashSelfAttention_packed":FlashSelfAttention_packed,
                "FlashSelfAttention_unpacked":FlashSelfAttention_unpacked}
-add_patches_module_(module_path,module_dict)
+add_patches_module(module_path,module_dict)
 
 

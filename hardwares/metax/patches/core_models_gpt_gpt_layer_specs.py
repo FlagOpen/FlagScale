@@ -10,7 +10,7 @@ from megatron.core.transformer.mlp import MLP, MLPSubmodules
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
-from flagscale.patches_utils import add_patches_func_
+from flagscale.patches_utils import add_patches_func
 
 # Use this spec to use lower level Transformer Engine modules (required for fp8 training)
 def get_gpt_layer_with_transformer_engine_spec(
@@ -123,10 +123,13 @@ def _get_mlp_module_spec(
             else None,
         )
 
-
-func_path = "megatron.core.models.gpt.gpt_layer_specs"
 func_dict = {"get_gpt_layer_with_transformer_engine_spec":get_gpt_layer_with_transformer_engine_spec,
-             "get_gpt_layer_local_spec":get_gpt_layer_local_spec,
-             "_get_mlp_module_spec":_get_mlp_module_spec}
-add_patches_func_(func_path,func_dict)
+              "get_gpt_layer_local_spec":get_gpt_layer_local_spec,
+              "_get_mlp_module_spec":_get_mlp_module_spec}
+func_path = "megatron.core.models.gpt.gpt_layer_specs"
+add_patches_func(func_path,func_dict)
+
+#megatron.core.models.gpt.gpt_layer_specs.get_gpt_layer_with_transformer_engine_spec = get_gpt_layer_with_transformer_engine_spec 
+#megatron.core.models.gpt.gpt_layer_specs.get_gpt_layer_local_spec = get_gpt_layer_local_spec
+#megatron.core.models.gpt.gpt_layer_specs._get_mlp_module_spec = _get_mlp_module_spec 
 

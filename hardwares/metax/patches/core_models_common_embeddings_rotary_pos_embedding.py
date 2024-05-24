@@ -14,7 +14,7 @@ from torch import Tensor, nn, einsum
 import numpy as np
 
 from megatron.core import parallel_state
-from flagscale.patches_utils import add_patches_func_ ,add_patches_module_
+from flagscale.patches_utils import add_patches_module
 
 __all__ = ['RotaryEmbedding', 'apply_rotary_pos_emb']
 
@@ -224,7 +224,7 @@ def apply_rotary_pos_emb(t, freqs):
 
 module_path ="megatron.core.models.common.embeddings.rotary_pos_embedding"
 module_dict ={"RotaryEmbedding":RotaryEmbedding}
-add_patches_module_(module_path,module_dict)
+add_patches_module(module_path,module_dict)
 
 
 apply_rotary_emb_qkv_ = ApplyRotaryEmbQKV_.apply

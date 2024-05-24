@@ -20,7 +20,7 @@ from megatron.core.parallel_state import (
 try:
     from megatron.core.transformer.custom_layers.transformer_engine import SplitAlongDim
 except:
-    pass
+    SplitAlongDim = None
 
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.identity_op import IdentityFuncOp, IdentityOp

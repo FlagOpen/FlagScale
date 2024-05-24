@@ -18,7 +18,7 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec, build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import divide
-from flagscale.patches_utils import add_patches_module_
+from flagscale.patches_utils import add_patches_module
 
 
 
@@ -348,5 +348,5 @@ class Attention(MegatronModule, ABC):
 
 module_path = "megatron.core.transformer"
 module_dict = {"Attention":Attention}
-add_patches_module_(module_path,module_dict)
+add_patches_module(module_path,module_dict)
 

@@ -10,7 +10,7 @@ from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.mlp import MLP, MLPSubmodules
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
-from flagscale.patches_utils import add_patches_func_
+from flagscale.patches_utils import add_patches_func
 
 # Use this spec for AMMO PTQ and TensorRT-LLM export
 def get_gpt_layer_ammo_spec() -> ModuleSpec:
@@ -57,5 +57,5 @@ def get_gpt_layer_ammo_spec() -> ModuleSpec:
 
 func_path = "megatron.core.inference.gpt.model_specs"
 func_dict = {"get_gpt_layer_ammo_spec",get_gpt_layer_ammo_spec}
-add_patches_func_(func_path,func_dict)
+add_patches_func(func_path,func_dict)
 

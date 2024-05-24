@@ -21,7 +21,8 @@ try:
         te_checkpoint,
     )
 except:
-    pass
+    get_cpu_offload_context = None
+    from megatron.training import get_args
 
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.module import MegatronModule

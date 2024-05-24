@@ -11,11 +11,9 @@ import types
 
 from .global_vars import set_device_type
 
+
+
 import torch.nn.functional as F
-from megatron.core.models.retro.utils import (
-    get_config_path as get_retro_config_path,
-    get_gpt_data_dir as get_retro_data_dir,
-)
 from megatron.core.transformer import TransformerConfig
 from megatron.training.activations import squared_relu
 
@@ -82,6 +80,7 @@ def load_retro_config(retro_project_dir):
     '''Load Retro's config.json.'''
 
     # Retro config path.
+    from megatron.core.models.retro.utils import get_config_path as get_retro_config_path
     retro_config_path = get_retro_config_path(retro_project_dir)
     assert os.path.exists(retro_config_path), \
         "Retro project dir missing config.json."
@@ -102,7 +101,7 @@ def load_retro_args(args):
     that was preprocessed using the Retro preprocessing pipeline (see
     `tools/retro/preprocess_data.py`).
     """
-
+    from megatron.core.models.retro.utils import get_gpt_data_dir as get_retro_data_dir
     # Return if no project directory is specified.
     if args.retro_project_dir is None:
         return

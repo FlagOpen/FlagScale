@@ -20,8 +20,8 @@ system:
     save_interval: 2000 
 
 model:
-  use_mcore_models: true
   num_layers: 32 
+  use_mcore_models: true
   hidden_size: 4096 
   num_attention_heads: 32 
   seq_length: 2048 
@@ -56,11 +56,11 @@ model:
       lr_decay_style: cosine 
 
 data:
-  data_path: ${data_path:??}
-  split: 1
+  data_path: /home/FlagScale/dataset/pile_wikipedia_demo 
+  split: 1 
   tokenizer:
     tokenizer_type: AquilaTokenizer
-    vocab_file: ./examples/aquila/tokenizer/vocab.json
-    merge_file: ./examples/aquila/tokenizer/merges.txt
+    vocab_file: /home/FlagScale/examples/aquila/tokenizer/vocab.json
+    merge_file: /home/FlagScale/examples/aquila/tokenizer/merges.txt
     special_tokens_file: ./examples/aquila/tokenizer/special_tokens.txt
     vocab_size: 100008

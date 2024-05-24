@@ -3,8 +3,6 @@ import megatron
 from megatron.training import get_args
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.legacy.model import LayerNorm, RMSNorm
-from flagscale.patches_utils import add_patches_module_
-
 
 class Norm:
     """
@@ -41,9 +39,6 @@ class Norm:
         return instance
 
 # [metax] end of change
-module_path = "megatron.core.transformer.custom_layers"
-module_dict = {"Norm":Norm}
-add_patches_module_(module_path,module_dict)
 
 
         
