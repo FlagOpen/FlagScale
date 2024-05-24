@@ -35,6 +35,10 @@ from megatron.core.models.gpt.gpt_layer_specs import (
     get_gpt_layer_with_transformer_engine_spec,
 )
 
+from flagscale.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
+from flagscale.train.extra_valid import extra_valid_dataset_provider
+from flagscale.train.train import pretrain
+
 
 stimer = StragglerDetector()
 
@@ -214,6 +218,31 @@ def core_gpt_dataset_config_from_args(args):
     )
 
 
+def core_sft_dataset_config_from_args(args):
+    tokenizer = get_tokenizer()
+
+    return SFTDatasetConfig(
+        random_seed=args.seed,
+        sequence_length=args.seq_length,
+        blend=get_blend_from_list(args.data_path),
+        blend_per_split=[
+            get_blend_from_list(args.train_data_path),
+            get_blend_from_list(args.valid_data_path),
+            get_blend_from_list(args.test_data_path)
+        ],
+        split=args.split,
+        num_dataset_builder_threads=args.num_dataset_builder_threads,
+        path_to_cache=args.data_cache_path,
+        mmap_bin_files=args.mmap_bin_files,
+        tokenizer=tokenizer,
+        reset_position_ids=args.reset_position_ids,
+        reset_attention_mask=args.reset_attention_mask,
+        eod_mask_loss=args.eod_mask_loss,
+        create_attention_mask=args.create_attention_mask_in_dataloader,
+        apply_sft_dataset_separated_loss_mask_if_existed=args.apply_sft_dataset_separated_loss_mask_if_existed,
+    )
+
+
 def train_valid_test_datasets_provider(train_val_test_num_samples):
     """Build the train test and validation datasets.
 
@@ -222,10 +251,15 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
     """
     args = get_args()
 
-    config = core_gpt_dataset_config_from_args(args)
+    if args.apply_sft_dataset_separated_loss_mask_if_existed:
+        config = core_sft_dataset_config_from_args(args)
+    else:
+        config = core_gpt_dataset_config_from_args(args)
 
     if args.mock_data:
         dataset_type = MockGPTDataset
+    elif args.apply_sft_dataset_separated_loss_mask_if_existed:
+        dataset_type = SFTDataset
     else:
         dataset_type = GPTDataset
 
@@ -245,18 +279,11 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
 if __name__ == "__main__":
 
-    # import logging
-    # logging.basicConfig(level=logging.INFO)
-
     # Temporary for transition to core datasets
     train_valid_test_datasets_provider.is_distributed = True
 
-    # To avoid the circular import
-    from extra_valid import extra_valid_dataset_provider
     extra_valid_dataset_provider.is_distributed = True
 
-    # To avoid the circular import
-    from train import pretrain
     pretrain(train_valid_test_datasets_provider,
              model_provider,
              ModelType.encoder_or_decoder,
