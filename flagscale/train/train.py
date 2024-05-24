@@ -117,20 +117,6 @@ def num_floating_point_operations(args, batch_size):
     )
 
 
-def append_to_progress_log(string):
-    args = get_args()
-    if args.save is None:
-        return
-    progress_log_filename = os.path.join(args.save, "progress.txt")
-    torch.distributed.barrier()
-    if torch.distributed.get_rank() == 0:
-        with open(progress_log_filename, 'a') as f:
-            job_id = os.getenv('SLURM_JOB_ID', '')
-            num_gpus = args.world_size
-            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\tJob ID: {job_id}\t"
-                    f"# GPUs: {num_gpus}\t{string}\n")
-
-
 def get_start_time_from_progress_log():
     """
     Gets start time of earliest job with same world size. Also returns the number
