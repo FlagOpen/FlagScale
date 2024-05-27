@@ -2,6 +2,7 @@ import megatron
 import torch
 from .core_transformer_custom_layers import Norm
 from megatron.core.transformer.transformer_block import build_module
+from flagscale.patches_utils import add_patches_module
 
 
 def _build_layers(self):
@@ -30,4 +31,6 @@ def _build_layers(self):
             # [metax] end of change
 
 
-megatron.core.transformer.transformer_block.TransformerBlock._build_layers = _build_layers
+func_path = "megatron.core.transformer.transformer_block"
+func_dict = {"TransformerBlock._build_layers":_build_layers}
+add_patches_module(func_path, func_dict)
