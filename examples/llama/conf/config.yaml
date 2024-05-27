@@ -26,7 +26,7 @@
 
 
 defaults:
-  - train: finetune_llama3_8b
+  - train: train_llama3_8b
   - _self_
 
 experiment:

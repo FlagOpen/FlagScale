@@ -42,7 +42,6 @@ model:
   init_method_std: 0.02
   attention_dropout: 0.0
   hidden_dropout: 0.0
-  weight_decay: 0.01
   clip_grad: 1.0
   train_samples: 200000 
   eval_iters: 100
