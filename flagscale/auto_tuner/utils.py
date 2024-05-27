@@ -28,7 +28,6 @@ def sort_by_memory(strategy):
     return (
         -strategy["tensor_model_parallel_size"],
         -strategy["pipeline_model_parallel_size"],
-        -strategy["num_layers_per_virtual_pipeline_stage"],
         -strategy["use_distributed_optimizer"],
         strategy["micro_batch_size"],
         -strategy["use_recompute"],
