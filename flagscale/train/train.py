@@ -43,8 +43,8 @@ from megatron.legacy.data.data_samplers import build_pretraining_data_loader
 from megatron.legacy.data.data_samplers_hetero import build_pretraining_data_loader_hetero
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.pipeline_parallel import get_forward_backward_func
-from .async_utils import maybe_finalize_async_save
-from .utils import (
+from megatron.training.async_utils import maybe_finalize_async_save
+from megatron.training.utils import (
     calc_params_l2_norm,
     check_adlr_autoresume_termination,
     is_last_rank,
@@ -54,7 +54,7 @@ from .utils import (
     unwrap_model,
     append_to_progress_log,
 )
-from .global_vars import (
+from megatron.training.global_vars import (
     get_args,
     get_signal_handler,
     get_timers,
@@ -115,20 +115,6 @@ def num_floating_point_operations(args, batch_size):
             + (args.padded_vocab_size / (2 * args.num_layers * args.hidden_size))
         )
     )
-
-
-def append_to_progress_log(string):
-    args = get_args()
-    if args.save is None:
-        return
-    progress_log_filename = os.path.join(args.save, "progress.txt")
-    torch.distributed.barrier()
-    if torch.distributed.get_rank() == 0:
-        with open(progress_log_filename, 'a') as f:
-            job_id = os.getenv('SLURM_JOB_ID', '')
-            num_gpus = args.world_size
-            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\tJob ID: {job_id}\t"
-                    f"# GPUs: {num_gpus}\t{string}\n")
 
 
 def get_start_time_from_progress_log():

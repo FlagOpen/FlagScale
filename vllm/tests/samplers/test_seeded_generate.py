@@ -1,6 +1,6 @@
 """Verify that seeded random sampling is deterministic.
 
-Run `pytest tests/samplers/test_seeded_generate.py --forked`.
+Run `pytest tests/samplers/test_seeded_generate.py`.
 """
 import copy
 import random
@@ -60,7 +60,7 @@ def test_random_sample_with_seed(
             llm._add_request(
                 prompt=prompt,
                 prompt_token_ids=None,
-                sampling_params=params,
+                params=params,
             )
 
     results = llm._run_engine(use_tqdm=False)
