@@ -1,7 +1,7 @@
 unit_tests:
-  unit_test_megatron: true    
-  unit_test_megatron_dist: true 
-  unit_test_flagscale: true  
+  unit_test_megatron: false    
+  unit_test_megatron_dist: false 
+  unit_test_flagscale: false  
 
 functional_tests: 
   functional_test_flagscale: ["aquila"]

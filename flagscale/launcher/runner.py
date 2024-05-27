@@ -83,17 +83,19 @@ def get_host_name_or_ip():
     return IP
 
 
-def run_local_command(cmd, dryrun=False):
+def run_local_command(cmd, dryrun=False, with_test=False):
     logger.info(f"Run the local command: {cmd}")
     if dryrun:
         return
-    result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+    if with_test:
+        result = subprocess.run(cmd, shell=True, check=True)
+    else:
+        result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"Command {cmd} failed with return code {result.returncode}.")
         print(f"Output: {result.stdout}")
         print(f"Error: {result.stderr}")
         sys.exit(result.returncode)
-
 
 def run_ssh_command(host, cmd, port=None, dryrun=False):
     if port:
@@ -508,7 +510,7 @@ class SSHRunner(MultiNodeRunner):
             # Step 3: run the host_run_script_file on the remote host
             run_ssh_command(host, f"bash {host_run_script_file}", ssh_port, dryrun)
         else:
-            run_local_command(f"bash {host_run_script_file}", dryrun)
+            run_local_command(f"bash {host_run_script_file}", dryrun, with_test=with_test)
 
     def run(self, with_test=False, dryrun=False):
         self._prepare()
@@ -584,7 +586,7 @@ class SSHRunner(MultiNodeRunner):
             # Step 3: run the host_run_script_file on the remote host
             run_ssh_command(host, f"bash {host_stop_script_file}", ssh_port)
         else:
-            run_local_command(f"bash {host_stop_script_file}")
+            run_local_command(f"bash {host_stop_script_file}", with_test=with_test)
 
     def stop(self):
         if self.resources is None:
@@ -651,7 +653,7 @@ class CloudRunner(MultiNodeRunner):
             self.config, host, node_rank, cmd, background=False, with_test=with_test
         )
 
-        run_local_command(f"bash {host_run_script_file}", dryrun)
+        run_local_command(f"bash {host_run_script_file}", dryrun, with_test=with_test)
 
     def run(self, with_test=False, dryrun=False):
         self._prepare()
