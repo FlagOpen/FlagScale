@@ -301,10 +301,10 @@ def pretrain(train_valid_test_dataset_provider,
                 extra_valid_dataset_provider)
 
         print_datetime('after training is done')
-
-        if args.save and iteration != 0 and iteration % args.save_interval != 0:
-            save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
-                            num_floating_point_operations_so_far, checkpointing_context)
+        if not os.environ.get("autotune", False):
+            if args.save and iteration != 0 and iteration % args.save_interval != 0:
+                save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
+                                num_floating_point_operations_so_far, checkpointing_context)
     else:
         print_rank_0('skipping training (--skip-train is on) ...')
 
@@ -952,13 +952,16 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
         total_loss_dict[skipped_iters_key] = 0
         total_loss_dict[nan_iters_key] = 0
         print_rank_last(log_string)
-        if report_memory_flag and learning_rate > 0.:
-            # Report memory after optimizer state has been initialized.
-            if torch.distributed.get_rank() == 0:
-                num_microbatches = get_num_microbatches()
-                report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
+        if not os.environ.get("autotune", False):
+            if report_memory_flag and learning_rate > 0.:
+                # Report memory after optimizer state has been initialized.
+                if torch.distributed.get_rank() == 0:
+                    num_microbatches = get_num_microbatches()
+                    report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
+                report_memory('(after {} iterations)'.format(iteration))
+                report_memory_flag = False
+        else:
             report_memory('(after {} iterations)'.format(iteration))
-            report_memory_flag = False
         timers.log(timers_to_log, normalizer=args.log_interval)
 
     return report_memory_flag

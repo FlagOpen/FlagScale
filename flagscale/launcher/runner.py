@@ -80,7 +80,9 @@ def get_host_name_or_ip():
     except Exception:
         IP = "127.0.0.1"
     finally:
-        if 'sock' in locals():  # Ensure 'sock' was successfully created before attempting to close it
+        if (
+            "sock" in locals()
+        ):  # Ensure 'sock' was successfully created before attempting to close it
             sock.close()
     return IP
 
@@ -89,20 +91,38 @@ def run_local_command(cmd, dryrun=False):
     logger.info(f"Run the local command: {cmd}")
     if dryrun:
         return
-    result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
-    return result
+    if query:
+        result = subprocess.run(
+            cmd, shell=True, check=True, capture_output=True, text=True
+        )
+        return result
+    else:
+        result = subprocess.run(
+            cmd, shell=True, check=True, capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            print(f"Command {cmd} failed with return code {result.returncode}.")
+            print(f"Output: {result.stdout}")
+            print(f"Error: {result.stderr}")
+            sys.exit(result.returncode)
 
 
-def run_ssh_command(host, cmd, port=None, dryrun=False):
+def run_ssh_command(host, cmd, port=None, dryrun=False, query=False):
     if port:
         ssh_cmd = f"ssh -f -n -p {port} {host} '{cmd}'"
     else:
         ssh_cmd = f"ssh -f -n {host} '{cmd}'"
-    logger.info(f"Run the ssh command: {ssh_cmd}")
+    if not query:
+        logger.info(f"SSHRunner is running the ssh command: {ssh_cmd}")
     if dryrun:
         return
-    result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
-    return result
+    if query:
+        result = subprocess.run(
+            ssh_cmd, shell=True, check=True, text=True, stdout=subprocess.PIPE
+        )
+        return result
+    else:
+        subprocess.run(ssh_cmd, shell=True, check=True)
 
 
 def run_scp_command(host, src, dst, port=None, dryrun=False):
@@ -160,6 +180,8 @@ def get_megatron_args(config: DictConfig):
 
 def _update_config(config: DictConfig):
     exp_dir = os.path.abspath(config.experiment.exp_dir)
+    if not os.path.isdir(exp_dir):
+        os.makedirs(exp_dir)
     assert os.path.isdir(exp_dir), f"Directory {exp_dir} does not exist."
 
     OmegaConf.set_struct(config, False)
@@ -213,7 +235,7 @@ def _update_config(config: DictConfig):
     config.logging.tensorboard_dir = tensorboard_dir
     config.logging.wandb_save_dir = wandb_dir
 
-    OmegaConf.set_struct(config, True)
+    OmegaConf.set_struct(config, False)
 
 
 def _get_nnodes(nnodes_from_hostfile=None, nnodes_from_args=None):
@@ -310,7 +332,7 @@ def _get_runner_cmd(
     runner_args["nnodes"] = nnodes
     runner_args["node_rank"] = node_rank
     runner_args["nproc_per_node"] = nproc_per_node
-    runner_args["rdzv_backend"] = rdzv_backend 
+    runner_args["rdzv_backend"] = rdzv_backend
     runner_args["rdzv_endpoint"] = rdzv_endpoint
     runner_args["log_dir"] = (
         log_dir if backend == "torchrun" else os.path.join(log_dir, rdzv_id)
@@ -329,7 +351,9 @@ def _get_runner_cmd(
     return runner_cmd
 
 
-def _generate_run_script(config, host, node_rank, cmd, background=True, with_test=False):
+def _generate_run_script(
+    config, host, node_rank, cmd, background=True, with_test=False
+):
     system_config = config.train.system
     logging_config = config.train.system.logging
 
@@ -459,62 +483,6 @@ class SSHRunner(MultiNodeRunner):
                 f"Unsupported task type: {self.config.experiment.task.type}"
             )
 
-    def _generate_run_script(self, host, node_rank, cmd, with_test=False):
-        system_config = self.config.train.system
-        logging_config = self.config.train.system.logging
-
-        no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
-        if no_shared_fs:
-            host_output_file = os.path.join(logging_config.log_dir, f"host.output")
-        else:
-            host_output_file = os.path.join(
-                logging_config.log_dir, f"host_{node_rank}_{host}.output"
-            )
-        host_run_script_file = os.path.join(
-            logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
-        )
-        host_pid_file = os.path.join(
-            logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-        )
-
-        os.makedirs(logging_config.scripts_dir, exist_ok=True)
-
-        root_dir = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
-        megatron_dir = os.path.join(root_dir, "megatron")
-        with open(host_run_script_file, "w") as f:
-            f.write("#!/bin/bash\n\n")
-            f.write("ulimit -n 1048576\n")
-            f.write(f"mkdir -p {system_config.checkpoint.load}\n")
-            f.write(f"mkdir -p {system_config.checkpoint.save}\n")
-            f.write(f"mkdir -p {system_config.logging.log_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.pids_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.details_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.tensorboard_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.wandb_save_dir}\n")
-            f.write(f"\n")
-            f.write(f"cd {root_dir}\n")
-            f.write(f"\n")
-            f.write(f"export PYTHONPATH={megatron_dir}:{root_dir}\n")
-            f.write(f"\n")
-            f.write(f'cmd="{cmd}"\n')
-            f.write(f"\n")
-            # TODO: need a option to control whether to append or overwrite the output file
-            # Now, it always appends to the output file
-            if with_test:
-                f.write(f'bash -c "$cmd" \n')
-            else:
-                f.write(
-                    f'nohup bash -c "$cmd" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
-                )
-            f.write("\n")
-            f.flush()
-            os.fsync(f.fileno())
-        os.chmod(host_run_script_file, 0o755)
-
-        return host_run_script_file
-
     def _run_each(
         self,
         host,
@@ -541,6 +509,11 @@ class SSHRunner(MultiNodeRunner):
         )
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
+
+        if with_test:
+            exp_dir = self.config.experiment.exp_dir
+            test_cmd = f";python tests/functional_tests/check_result.py {exp_dir};rm -r {exp_dir}"
+            cmd = cmd + test_cmd
 
         host_run_script_file = _generate_run_script(
             self.config, host, node_rank, cmd, background=True, with_test=with_test
@@ -670,10 +643,6 @@ class SSHRunner(MultiNodeRunner):
             logging_config.scripts_dir, f"host_{node_rank}_{host}_query.sh"
         )
 
-        # Check if the host_query_script_file exists
-        if os.path.exists(host_query_script_file):
-            return host_query_script_file
-
         host_pid_file = os.path.join(
             logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
         )
@@ -706,7 +675,9 @@ class SSHRunner(MultiNodeRunner):
         if host != "localhost":
             ssh_port = self.config.experiment.runner.get("ssh_port", 22)
             # Step 1: make sure the scripts_dir exists on the remote host
-            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port)
+            run_ssh_command(
+                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, query=True
+            )
             # Step 2: copy the host_run_script_file to the remote host
             no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
             if no_shared_fs:
@@ -716,7 +687,7 @@ class SSHRunner(MultiNodeRunner):
             # Step 3: run the host_run_script_file on the remote host
             try:
                 result = run_ssh_command(
-                    host, f"bash {host_query_script_file}", ssh_port
+                    host, f"bash {host_query_script_file}", ssh_port, query=True
                 )
             except Exception as e:
                 logger.error(f"Failed to query job status on {host}: {e}")
@@ -779,3 +750,92 @@ class SSHRunner(MultiNodeRunner):
                 logger.info(f"Job status: {job_status.name}")
                 time.sleep(interval)
                 cur_time = time.time()
+
+
+class CloudRunner(MultiNodeRunner):
+
+    def __init__(self, config: DictConfig):
+        self.config = config
+        _update_config(self.config)
+
+    def _prepare(self):
+        self.user_envs = self.config.experiment.get("envs", {})
+        self.user_script = self.config.experiment.task.entrypoint
+        if self.config.experiment.task.type == "train":
+            self.user_args = get_megatron_args(self.config)
+        else:
+            raise ValueError(
+                f"Unsupported task type: {self.config.experiment.task.type}"
+            )
+
+    def _run_each(
+        self,
+        host,
+        master_addr,
+        master_port,
+        nnodes,
+        node_rank,
+        nproc_per_node,
+        with_test=False,
+        dryrun=False,
+    ):
+        export_cmd = []
+        for k, v in self.user_envs.items():
+            export_cmd += [f"{k}={v}"]
+
+        runner_cmd = _get_runner_cmd(
+            host,
+            master_addr,
+            master_port,
+            nnodes,
+            node_rank,
+            nproc_per_node,
+            self.config,
+        )
+
+        cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
+
+        if with_test:
+            exp_dir = self.config.experiment.exp_dir
+            test_cmd = f";python tests/functional_tests/check_result.py {exp_dir};rm -r {exp_dir}"
+            cmd = cmd + test_cmd
+
+        host_run_script_file = _generate_run_script(
+            self.config, host, node_rank, cmd, background=False, with_test=with_test
+        )
+
+        run_local_command(f"bash {host_run_script_file}", dryrun)
+
+    def run(self, with_test=False, dryrun=False):
+        self._prepare()
+        logger.info("\n************** configuration ***********")
+        logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
+        if dryrun:
+            logger.info("Dryrun mode is not supported in CloudRunner.")
+            return
+
+        num_visible_devices = None
+        visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
+        if visible_devices:
+            visible_devices = visible_devices.split(",")
+            num_visible_devices = len(visible_devices)
+
+        runner_config = self.config.experiment.runner
+        nnodes_from_args = runner_config.get("nnodes", None)
+        nnodes = _get_nnodes(None, nnodes_from_args)
+        node_rank = runner_config.node_rank
+        nproc_from_args = runner_config.get("nproc_per_node", None)
+        nproc_per_node = _get_nproc_per_node(None, nproc_from_args, num_visible_devices)
+        master_addr = runner_config.master_addr
+        master_port = runner_config.master_port
+        host = get_host_name_or_ip()
+        self._run_each(
+            host,
+            master_addr,
+            master_port,
+            nnodes,
+            node_rank,
+            nproc_per_node,
+            with_test=with_test,
+            dryrun=dryrun,
+        )
