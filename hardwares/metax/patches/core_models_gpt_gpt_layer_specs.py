@@ -129,7 +129,3 @@ func_dict = {"get_gpt_layer_with_transformer_engine_spec":get_gpt_layer_with_tra
 func_path = "megatron.core.models.gpt.gpt_layer_specs"
 add_patches_func(func_path,func_dict)
 
-#megatron.core.models.gpt.gpt_layer_specs.get_gpt_layer_with_transformer_engine_spec = get_gpt_layer_with_transformer_engine_spec 
-#megatron.core.models.gpt.gpt_layer_specs.get_gpt_layer_local_spec = get_gpt_layer_local_spec
-#megatron.core.models.gpt.gpt_layer_specs._get_mlp_module_spec = _get_mlp_module_spec 
-
