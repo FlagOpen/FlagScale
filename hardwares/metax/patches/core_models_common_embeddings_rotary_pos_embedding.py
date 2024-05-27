@@ -230,4 +230,3 @@ add_patches_module(module_path,module_dict)
 apply_rotary_emb_qkv_ = ApplyRotaryEmbQKV_.apply
 legacy_apply_rotary_embed_qkv = LegacyApplyRotaryEmbQKV_.apply
 legacy_apply_rotary_embed = LegacyApplyRotaryEmb.apply
-

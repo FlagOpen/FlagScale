@@ -128,4 +128,3 @@ module_dict = {"get_gpt_layer_with_transformer_engine_spec":get_gpt_layer_with_t
               "_get_mlp_module_spec":_get_mlp_module_spec}
 module_path = "megatron.core.models.gpt.gpt_layer_specs"
 add_patches_module(module_path,module_dict)
-

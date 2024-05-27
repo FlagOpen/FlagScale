@@ -349,4 +349,3 @@ class Attention(MegatronModule, ABC):
 module_path = "megatron.core.transformer"
 module_dict = {"Attention":Attention}
 add_patches_module(module_path,module_dict)
-

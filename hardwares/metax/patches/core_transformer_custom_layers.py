@@ -37,8 +37,4 @@ class Norm:
             raise Exception('Only LayerNorm and RMSNorm are curently supported')
 
         return instance
-
 # [metax] end of change
-
-
-        
