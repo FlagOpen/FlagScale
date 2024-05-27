@@ -9,8 +9,9 @@ class Recorder:
     def __init__(self, config):
         self.config = config
         self.path = os.path.join(
-            os.path.dirname(config.experiment.exp_dir),
-            "autotune_history.csv",
+            config.experiment.exp_dir,
+            "AutoTuner",
+            "history.csv",
         )
         # Metric to grep in the last rank of last node log file
         if "auto_tuner" in self.config and "performance" in self.config.auto_tuner:
@@ -121,7 +122,11 @@ class Recorder:
             return None, logs
         outputs = os.listdir(os.path.join(details, max_host))
         assert len(outputs) == 1, f"the sub dir of {outputs} must be just one."
-        last_path = os.path.join(details, max_host, outputs[0], "attempt_0")
+        new_outputs = os.listdir(os.path.join(details, max_host, outputs[0]))
+        assert len(new_outputs) == 1, f"the sub dir of {new_outputs} must be just one."
+        last_path = os.path.join(
+            details, max_host, outputs[0], new_outputs[0], "attempt_0"
+        )
         last_dir = None
         last_dir_rank = 0
         for item in os.listdir(last_path):

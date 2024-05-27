@@ -21,15 +21,18 @@ class AutoTuner:
         OmegaConf.set_struct(config, False)
         logger = logging.getLogger("FlagScale-AutoTuner")
         logger.setLevel(logging.INFO)
+
+        dir_path = os.path.join(config.experiment.exp_dir, "AutoTuner")
         log_path = os.path.join(
-            os.path.dirname(config.experiment.exp_dir),
+            dir_path,
             "auto_tuner.log",
         )
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
         handler = logging.FileHandler(log_path, mode="w")
         handler.setLevel(logging.INFO)
         formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         self.logger = logger
@@ -68,8 +71,7 @@ class AutoTuner:
         # The max time per task, unit: second
         # NOTE: The task will be stopped if the time is reached or done.
         self.max_time_per_task = self.config.auto_tuner.control.get(
-            "max_time_per_task", 300
-        )
+            "max_time_per_task", 300)
 
         # The max time of auto tuner, if None, no limit.
         self.max_time = self.config.auto_tuner.control.get("max_time", None)
@@ -97,7 +99,8 @@ class AutoTuner:
         """
         while not self.need_stop():
             self.gen()
-            self.logger.info(f"Run AutoTuneTask_{self.idx}: {self.cur_strategy}")
+            self.logger.info(
+                f"Run AutoTuneTask_{self.idx}: {self.cur_strategy}")
             self.run()
             self.logger.info(f"Monitor AutoTuneTask_{self.idx}:")
             self.monitor()
@@ -174,12 +177,10 @@ class AutoTuner:
             time.sleep(self.interval)
 
         end_time = time.time()
-        self.cur_strategy["elapsed_time"] = round(end_time - self.task_start_time, 2)
-        self.logger.info(
-            "AutoTuneTask_{} monitor time: {:.2f}s".format(
-                self.cur_strategy["idx"], self.cur_strategy["elapsed_time"]
-            )
-        )
+        self.cur_strategy["elapsed_time"] = round(
+            end_time - self.task_start_time, 2)
+        self.logger.info("AutoTuneTask_{} monitor time: {:.2f}s".format(
+            self.cur_strategy["idx"], self.cur_strategy["elapsed_time"]))
 
     def record(self):
         """Record the task result to csv"""
