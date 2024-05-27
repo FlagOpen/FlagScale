@@ -32,7 +32,7 @@ jobs:
 
             # passed             
             # slow
-            # torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/data/test_preprocess_data.py
+            torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/data/test_preprocess_data.py
             pytest -q -x tests/unit_tests/data/test_preprocess_data.py
             torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/data/test_preprocess_mmdata.py
 
