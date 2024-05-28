@@ -1,11 +1,11 @@
 export PYTHONPATH=./megatron:$PYTHONPATH
-
-pytest -x megatron/tests/unit_tests/test_basic.py \
-       megatron/tests/unit_tests/test_imports.py \
-       megatron/tests/unit_tests/test_utils.py \
-       megatron/tests/unit_tests/data/test_mock_gpt_dataset.py  \
-       megatron/tests/unit_tests/data/test_multimodal_dataset.py \
-       megatron/tests/unit_tests/data/test_preprocess_mmdata.py \
-       megatron/tests/unit_tests/data/test_preprocess_data.py \
-       megatron/tests/unit_tests/fusions
-       
+export PYTHONPATH=./../../FlagScale/:$PYTHONPATH
+cd megatron
+# torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/data
+torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/dist_checkpointing
+torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/fusions
+torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/models
+torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/pipeline_parallel
+torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/tensor_parallel
+torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/transformer
+torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/*.py
