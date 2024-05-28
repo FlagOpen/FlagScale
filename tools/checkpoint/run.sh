@@ -27,3 +27,16 @@ python convert.py \
     --target-num-experts 8 \
     --true-vocab-size 151851 \
     --megatron-path <xxx>
+
+python convert.py \
+    --model-type llama \
+    --loader transformers \
+    --saver mcore \
+    --load-dir meta-llama3/Meta-Llama-3-8B \
+    --save-dir outputs_llama3/checkpoint_mc \
+    --target-tensor-parallel-size 4 \
+    --target-pipeline-parallel-size 2 \
+    --target-expert-parallel-size 1 \
+    --target-params-dtype bf16 \
+    --true-vocab-size 128256 \
+    --megatron-path <xxx>

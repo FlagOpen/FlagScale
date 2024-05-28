@@ -32,7 +32,7 @@ def main():
                                      allow_abbrev=False, conflict_handler='resolve')
     # convert args
     parser.add_argument('--model-type', type=str, default=[], nargs="+", required=True,
-                        choices=['mistral', 'mixtral'],
+                        choices=['mistral', 'mixtral', 'llama'],
                         help='Type of the model.')
     parser.add_argument('--loader', type=str, default='mcore', choices=['mcore', 'transformers'],
                         help='Module name to load checkpoint, should be on python path')
@@ -62,7 +62,7 @@ def main():
     if len(args.model_type) == 1:
         saver_args.model_type = args.model_type[0]
     elif len(args.model_type) == 2:
-        assert args.model_type == ['mistral', 'mixtral'], "Only support convert dense model mistral to sparse model mixtral"
+        assert args.model_type == ['mistral', 'mixtral', 'llama'], "Only support convert dense model mistral to sparse model mixtral"
         saver_args.model_type = args.model_type[1]
     else:
         raise ValueError("")
@@ -74,7 +74,7 @@ def main():
     if len(args.model_type) == 1:
         loader_args.model_type = args.model_type[0]
     elif len(args.model_type) == 2:
-        assert args.model_type == ['mistral', 'mixtral'], "Only support convert dense model mistral to sparse model mixtral"
+        assert args.model_type == ['mistral', 'mixtral', 'llama'], "Only support convert dense model mistral to sparse model mixtral"
         loader_args.model_type = args.model_type[0]
     else:
         raise ValueError("")

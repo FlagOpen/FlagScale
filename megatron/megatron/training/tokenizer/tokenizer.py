@@ -54,6 +54,9 @@ def build_tokenizer(args):
     elif args.tokenizer_type == "HFTokenizer":
         assert args.tokenizer_path is not None
         tokenizer = _HFTokenizer(args.tokenizer_path)
+    elif args.tokenizer_type == "Llama3Tokenizer":
+        assert args.tokenizer_path is not None
+        tokenizer = _Llama3Tokenizer(args.tokenizer_path)
     elif args.tokenizer_type == "QwenTokenizer":
         assert args.tokenizer_path is not None
         tokenizer = _QwenTokenizer(args.tokenizer_path)
@@ -646,6 +649,16 @@ class _HFTokenizer(MegatronTokenizer):
     def pad(self):
         return self.pad_id
 
+
+class _Llama3Tokenizer(_HFTokenizer):
+
+    def __init__(self, tokenizer_path):
+        super().__init__(tokenizer_path)
+
+    @property
+    def vocab_size(self):
+        return self.tokenizer.vocab_size + len(self.tokenizer.get_added_vocab())
+        
 
 class _QwenTokenizer(_HFTokenizer):
     """Adapted Qwen tokenizer."""
