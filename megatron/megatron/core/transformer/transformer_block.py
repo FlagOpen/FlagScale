@@ -13,12 +13,17 @@ from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 from megatron.core.dist_checkpointing.utils import replace_prefix_for_sharding
 from megatron.core.fusions.fused_layer_norm import FusedLayerNorm
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.transformer.custom_layers.transformer_engine import (
-    TEDelayedScaling,
-    TENorm,
-    get_cpu_offload_context,
-    te_checkpoint,
-)
+try:
+    from megatron.core.transformer.custom_layers.transformer_engine import (
+        TEDelayedScaling,
+        TENorm,
+        get_cpu_offload_context,
+        te_checkpoint,
+    )
+except:
+    get_cpu_offload_context = None
+    from megatron.training import get_args
+
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec, build_module

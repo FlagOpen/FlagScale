@@ -23,6 +23,7 @@ _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
 _GLOBAL_SIGNAL_HANDLER = None
 _GLOBAL_HETERO_CONTEXT = None
+_GLOBAL_DEVICE_TYPE = None
 
 def get_args():
     """Return arguments."""
@@ -283,5 +284,24 @@ def _ensure_var_is_initialized(var, name):
 def _ensure_var_is_not_initialized(var, name):
     """Make sure the input variable is not None."""
     assert var is None, '{} is already initialized.'.format(name)
+
+
+def set_device_type(args):
+    """Initialize customized device type."""
+    global _GLOBAL_DEVICE_TYPE
+    _ensure_var_is_not_initialized(_GLOBAL_DEVICE_TYPE, 'device type')
+    assert args.device_type is not None
+    _GLOBAL_DEVICE_TYPE = args.device_type
+
+    # Add patches package of device_type to sys.path
+    base_base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    path_hard = os.path.join(base_base_path,"hardwares") 
+    path = os.path.join(path_hard,args.device_type)
+    assert os.path.exists(path), "Path {} does not exist.".format(path) 
+    assert os.path.isdir(path), "Path {} is not a directory.".format(path)
+    sys.path.append(path)
+    
+    # Apply the following patch during the import time
+    import patches
 
 

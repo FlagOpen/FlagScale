@@ -1,18 +1,16 @@
-# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
-
+import megatron
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
-try:
-    from megatron.core.transformer.custom_layers.transformer_engine import TENorm
-except:
-    pass
+# [metax] start of changes
+from .core_transformer_custom_layers import Norm
+# [metax] end of changes
 from megatron.core.transformer.dot_product_attention import DotProductAttention
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.mlp import MLP, MLPSubmodules
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
-
+from flagscale.patches_utils import add_patches_module
 
 # Use this spec for AMMO PTQ and TensorRT-LLM export
 def get_gpt_layer_ammo_spec() -> ModuleSpec:
@@ -25,7 +23,9 @@ def get_gpt_layer_ammo_spec() -> ModuleSpec:
     return ModuleSpec(
         module=TransformerLayer,
         submodules=TransformerLayerSubmodules(
-            input_layernorm=TENorm,
+            # [metax] start of changes
+            input_layernorm=Norm,
+            # [metax] end of changes
             self_attention=ModuleSpec(
                 module=SelfAttention,
                 params={"attn_mask_type": AttnMaskType.causal},
@@ -36,7 +36,9 @@ def get_gpt_layer_ammo_spec() -> ModuleSpec:
                 ),
             ),
             self_attn_bda=get_bias_dropout_add,
-            pre_mlp_layernorm=TENorm,
+            # [metax] start of changes
+            pre_mlp_layernorm=Norm,
+            # [metax] end of changes
             mlp=ModuleSpec(
                 module=MLP,
                 submodules=MLPSubmodules(
@@ -51,3 +53,8 @@ def get_gpt_layer_ammo_spec() -> ModuleSpec:
             },
         ),
     )
+
+
+module_path = "megatron.core.inference.gpt.model_specs"
+module_dict = {"get_gpt_layer_ammo_spec",get_gpt_layer_ammo_spec}
+add_patches_module(module_path,module_dict)

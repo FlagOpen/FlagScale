@@ -203,8 +203,13 @@ def pretrain(train_valid_test_dataset_provider,
     """
 
     # Initalize and get arguments, timers, and Tensorboard writer.
-    initialize_megatron(extra_args_provider=extra_args_provider,
+    if not torch.cuda.is_available():
+        initialize_megatron(extra_args_provider=extra_args_provider,
+                        args_defaults=args_defaults,allow_no_cuda=True)
+    else:
+        initialize_megatron(extra_args_provider=extra_args_provider,
                         args_defaults=args_defaults)
+        
 
     args = get_args()
     timers = get_timers()

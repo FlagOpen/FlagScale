@@ -9,11 +9,11 @@ import os
 import torch
 import types
 
+from .global_vars import set_device_type
+
+
+
 import torch.nn.functional as F
-from megatron.core.models.retro.utils import (
-    get_config_path as get_retro_config_path,
-    get_gpt_data_dir as get_retro_data_dir,
-)
 from megatron.core.transformer import TransformerConfig
 from megatron.training.activations import squared_relu
 
@@ -45,11 +45,13 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_retro_args(parser)
     parser = _add_experimental_args(parser)
     parser = _add_serving_args(parser)
+    parser = _add_customized_device_args(parser)
     parser = _add_hetero_args(parser)
 
     # Custom arguments.
     if extra_args_provider is not None:
         parser = extra_args_provider(parser)
+
 
     # Parse.
     if ignore_unknown_args:
@@ -57,6 +59,9 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     else:
         args = parser.parse_args()
 
+    if args.device_type:
+        set_device_type(args)
+    
     # Experimental yaml
     if args.yaml_cfg is not None:
         from .yaml_arguments import load_yaml
@@ -75,6 +80,7 @@ def load_retro_config(retro_project_dir):
     '''Load Retro's config.json.'''
 
     # Retro config path.
+    from megatron.core.models.retro.utils import get_config_path as get_retro_config_path
     retro_config_path = get_retro_config_path(retro_project_dir)
     assert os.path.exists(retro_config_path), \
         "Retro project dir missing config.json."
@@ -95,7 +101,7 @@ def load_retro_args(args):
     that was preprocessed using the Retro preprocessing pipeline (see
     `tools/retro/preprocess_data.py`).
     """
-
+    from megatron.core.models.retro.utils import get_gpt_data_dir as get_retro_data_dir
     # Return if no project directory is specified.
     if args.retro_project_dir is None:
         return
@@ -849,6 +855,9 @@ def _add_network_size_args(parser):
     group.add_argument('--use-rotary-position-embeddings', action='store_true',
                        help='Use rotary positional embeddings or not. '
                        'Deprecated: use --position-embedding-type')
+    group.add_argument('--use-rotary-emb-implement', type=str, default='apex',
+                       choices=['apex', 'flash_attn'],
+                       help='Position embedding implement.')
     group.add_argument('--rotary-percent', type=float, default=1.0,
                        help='Percent of rotary dimension to use, default 100%%')
     group.add_argument('--rotary-interleaved', action='store_true',
@@ -1699,6 +1708,14 @@ def _add_autoresume_args(parser):
     group.add_argument('--adlr-autoresume-interval', type=int, default=1000,
                        help='Intervals over which check for autoresume'
                        'termination signal')
+
+    return parser
+
+def _add_customized_device_args(parser):
+    group = parser.add_argument_group(title="Customized device")
+
+    group.add_argument('--device-type', type=str, default=None, 
+                       help='Specify customized device type')
 
     return parser
 
