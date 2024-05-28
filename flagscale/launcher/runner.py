@@ -87,7 +87,7 @@ def get_host_name_or_ip():
     return IP
 
 
-def run_local_command(cmd, dryrun=False):
+def run_local_command(cmd, dryrun=False, query=False):
     logger.info(f"Run the local command: {cmd}")
     if dryrun:
         return
@@ -510,11 +510,6 @@ class SSHRunner(MultiNodeRunner):
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
 
-        if with_test:
-            exp_dir = self.config.experiment.exp_dir
-            test_cmd = f";python tests/functional_tests/check_result.py {exp_dir};rm -r {exp_dir}"
-            cmd = cmd + test_cmd
-
         host_run_script_file = _generate_run_script(
             self.config, host, node_rank, cmd, background=True, with_test=with_test
         )
@@ -693,7 +688,7 @@ class SSHRunner(MultiNodeRunner):
                 logger.error(f"Failed to query job status on {host}: {e}")
         else:
             try:
-                result = run_local_command(f"bash {host_query_script_file}")
+                result = run_local_command(f"bash {host_query_script_file}", query=True)
             except Exception as e:
                 logger.error(f"Failed to query job status on {host}: {e}")
         result = result.stdout.rstrip() if result else ""
@@ -794,11 +789,6 @@ class CloudRunner(MultiNodeRunner):
         )
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
-
-        if with_test:
-            exp_dir = self.config.experiment.exp_dir
-            test_cmd = f";python tests/functional_tests/check_result.py {exp_dir};rm -r {exp_dir}"
-            cmd = cmd + test_cmd
 
         host_run_script_file = _generate_run_script(
             self.config, host, node_rank, cmd, background=False, with_test=with_test

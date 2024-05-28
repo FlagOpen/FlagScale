@@ -30,7 +30,7 @@ def prune_by_micro_batch_size(config, strategy, history=[]):
                 logger.info(
                     f"The strategy {strategy} has been pruned by micro_batch_size performance."
                 )
-                strategy["performance"] = performance
+                strategy["performance"] = item["performance"]
                 strategy["max_mem"] = item["max_mem"]
                 strategy["pruned"] = True
                 return True
