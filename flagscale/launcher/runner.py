@@ -483,11 +483,6 @@ class SSHRunner(MultiNodeRunner):
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
 
-        if with_test:
-            exp_dir = self.config.experiment.exp_dir
-            test_cmd = f";python tests/functional_tests/check_result.py {exp_dir};rm -r {exp_dir}"
-            cmd = cmd + test_cmd
-
         host_run_script_file = _generate_run_script(
             self.config, host, node_rank, cmd, background=True, with_test=with_test
         )
@@ -641,11 +636,6 @@ class CloudRunner(MultiNodeRunner):
         )
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
-
-        if with_test:
-            exp_dir = self.config.experiment.exp_dir
-            test_cmd = f";python tests/functional_tests/check_result.py {exp_dir};rm -r {exp_dir}"
-            cmd = cmd + test_cmd
 
         host_run_script_file = _generate_run_script(
             self.config, host, node_rank, cmd, background=False, with_test=with_test

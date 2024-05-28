@@ -1,14 +1,16 @@
 defaults:
-  - train: test_train_aquila
   - _self_
-
+  - train: test_train_aquila
+  
 experiment:
-  exp_name: unified-runner 
+  exp_name: test_train_aquila
   exp_dir: ./tests/functional_tests/aquila/test_result
-  entrypoint: ./flagscale/train/train_aquila.py 
-  task: train
-  hostfile: 
-  backend: megatron
+  task:
+    type: train 
+    backend: megatron 
+    entrypoint: flagscale/train/train_aquila.py 
+  runner:
+    backend: torchrun 
   shell_cmds: null 
   ssh_port: null
   envs:
@@ -19,4 +21,4 @@ action: run
 
 hydra:
   run:
-    dir: ${experiment.exp_dir}/hydra 
+    dir: ${experiment.exp_dir}/hydra
