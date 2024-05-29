@@ -5,7 +5,7 @@ name: flagscale-test
 
 on:
   push:
-    branches: [ "main", "add_CICD" ]
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -28,7 +28,7 @@ jobs:
             export PYTHONPATH=./megatron:$PYTHONPATH
             export PYTHONPATH=./../../FlagScale/:$PYTHONPATH
             cd megatron
-            # torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/data
+            torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/data
             torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/dist_checkpointing
             torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/fusions
             torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/models
