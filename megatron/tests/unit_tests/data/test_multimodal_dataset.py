@@ -43,7 +43,7 @@ def test_mock_multimodal_dataset():
         tokenizer=_NullTokenizer(vocab_size=_MOCK_VOCAB_SIZE),
     )
 
-    from megatron.training.global_vars import set_mock_args
+    from tests.unit_tests.data import set_mock_args
     set_mock_args()
 
     datasets = BlendedMegatronDatasetBuilder(

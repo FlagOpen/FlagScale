@@ -53,7 +53,7 @@ def test_mock_gpt_dataset():
         tokenizer=tokenizer,
     )
 
-    from megatron.training.global_vars import set_mock_args
+    from tests.unit_tests.data import set_mock_args
     set_mock_args()
 
     datasets = BlendedMegatronDatasetBuilder(
