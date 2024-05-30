@@ -183,7 +183,11 @@ class AutoTuner:
         while True:
             # If the task timeout, stop monitoring
             end_time = time.time()
-            if end_time - self.task_start_time > self.max_time_per_task:
+            if self.idx == 1:
+                max_time_per_task = 600
+            else:
+                max_time_per_task = self.max_time_per_task
+            if end_time - self.task_start_time > max_time_per_task:
                 self.runner.stop()
                 self.cur_strategy["stopped_by_tuner"] = True
                 break
