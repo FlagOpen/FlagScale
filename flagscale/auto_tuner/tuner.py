@@ -25,7 +25,7 @@ class AutoTuner:
         dir_path = os.path.join(config.experiment.exp_dir, "auto_tuner")
         log_path = os.path.join(
             dir_path,
-            "auto_tuner.log",
+            "tuner.log",
         )
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
@@ -120,6 +120,12 @@ class AutoTuner:
                         "airs_switch", False) and not self.has_checkout:
                 self.checkout()
 
+            # get best strategy
+            best_strategy = self.get_best()
+            if best_strategy:
+                self.logger.info(f"Best strategy tuned so far: {best_strategy}, and performance is {best_strategy["performance"]}.")
+            else:
+                self.logger.info(f"No strategy can run so far.")
         tuner_end_time = time.time()
         self.logger.info(
             f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
@@ -213,3 +219,10 @@ class AutoTuner:
         """Record the task result to csv"""
         self.recorder.record(self.cur_task, self.cur_strategy)
         self.recorder.save(self.history)
+
+    def get_best(self):
+        sorted_history = self.recorder.sort(self.history)
+        if sorted_history and sorted_history[0] and sorted_history[0][
+                "performance"]:
+            return sorted_history[0]
+        return None

@@ -19,9 +19,7 @@ system:
     save_interval: 2000 
 
 model:
-  num_layers: 8
-  use_mcore_models: true
-  transformer_impl: transformer_engine
+  num_layers: 32 
   hidden_size: 4096 
   num_attention_heads: 32 
   seq_length: 2048 
@@ -32,22 +30,23 @@ model:
   swiglu: true
   multiple_of: 256
   normalization: RMSNorm
+  rotary_interleaved_patch: true
   untie_embeddings_and_output_weights: true
   init_method_std: 0.02
   attention_dropout: 0.0
   hidden_dropout: 0.0
   weight_decay: 0.1
   clip_grad: 1.0
+  train_samples: 1002539063
   eval_iters: 0
   micro_batch_size: 2
-  train_samples: 1002539063
-  global_batch_size: 16 
+  global_batch_size: 1728 
   seed: 1234
 
   optimizer:
     weight_decay: 0.1
     adam_beta1: 0.9
-    adam_beta2: 0.9
+    adam_beta2: 0.95
     lr_scheduler:
       lr: 2.0e-5
       min_lr: 2.0e-6
@@ -55,7 +54,7 @@ model:
       lr_decay_style: cosine 
 
 data:
-  data_path: /share/project/caozhou/autotuner/FlagScale/data/pile_wikipedia_demo
+  data_path: ${data_path:??}
   split: 1
   tokenizer:
     tokenizer_type: AquilaTokenizer
