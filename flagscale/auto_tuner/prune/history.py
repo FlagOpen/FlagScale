@@ -97,13 +97,25 @@ def prune_by_recompute(config, strategy, history=[]):
                 and item["performance"]):
             if recompute_num_layers > item["recompute_num_layers"]:
                 logger.info(
-                    f"The strategy {strategy} has been pruned by recompute_num_layers performance."
+                    f"The strategy {strategy} has been pruned by block recompute_num_layers performance."
                 )
                 strategy["performance"] = item["performance"]
                 strategy["max_mem"] = item["max_mem"]
                 strategy["pruned"] = True
                 return True
 
+        if (use_recompute and item["use_recompute"]
+                and recompute_method == "uniform"
+                and recompute_method == item["recompute_method"]
+                and item["performance"]):
+            if recompute_num_layers > item["recompute_num_layers"]:
+                logger.info(
+                    f"The strategy {strategy} has been pruned by uniform recompute_num_layers performance."
+                )
+                strategy["performance"] = item["performance"]
+                strategy["max_mem"] = item["max_mem"]
+                strategy["pruned"] = True
+                return True
         # memory prune
         if not use_recompute and item["use_recompute"] and item[
                 "max_mem"] == "OOM":

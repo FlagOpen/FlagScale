@@ -404,6 +404,11 @@ class Searcher:
                                 )
                                 if recompute_num_layers > layers_per_stage:
                                     continue
+                                if recompute_method == "uniform":
+                                    if not divisible(
+                                            config.train.model.num_layers,
+                                            recompute_num_layers):
+                                        continue
                                 product_dim["recompute_num_layers"] = (
                                     recompute_num_layers)
                             self._append(result, unique_result, product_dim)
