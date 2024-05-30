@@ -45,7 +45,7 @@ class Generator:
         config.train.system.logging.log_interval = 1
 
         # autotune should be true, it will not save ckpt when train ended and report memory every iteration
-        config.experiment.envs.autotune = True
+        config.experiment.envs.FLAGSCALE_AUTOTUNER = True
 
         # Del lr_warmup_samples and train_samples to run megatron.
         if "lr_warmup_samples" in config.train.model.optimizer.lr_scheduler:

@@ -32,7 +32,8 @@ class AutoTuner:
         handler = logging.FileHandler(log_path, mode="w")
         handler.setLevel(logging.INFO)
         formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         self.logger = logger
@@ -74,7 +75,8 @@ class AutoTuner:
         # The max time per task, unit: second
         # NOTE: The task will be stopped if the time is reached or done.
         self.max_time_per_task = self.config.auto_tuner.control.get(
-            "max_time_per_task", 300)
+            "max_time_per_task", 300
+        )
 
         # The max time of auto tuner, if None, no limit.
         self.max_time = self.config.auto_tuner.control.get("max_time", None)
@@ -115,20 +117,25 @@ class AutoTuner:
             self.logger.info(f"Record task_{self.idx}:")
             self.record()
 
-            if self.cur_strategy[
-                    "performance"] and self.config.auto_tuner.platform.get(
-                        "airs_switch", False) and not self.has_checkout:
+            if (
+                self.cur_strategy["performance"]
+                and self.config.auto_tuner.platform.get("airs_switch", False)
+                and not self.has_checkout
+            ):
                 self.checkout()
 
             # get best strategy
             best_strategy = self.get_best()
             if best_strategy:
-                self.logger.info(f"Best strategy tuned so far: {best_strategy}, and performance is {best_strategy['performance']}.")
+                self.logger.info(
+                    f"Best strategy tuned so far: {best_strategy}, and performance is {best_strategy['performance']}."
+                )
             else:
                 self.logger.info(f"No strategy can run so far.")
         tuner_end_time = time.time()
         self.logger.info(
-            f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
+            f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds."
+        )
         # TODO: Run the best task
 
     def need_stop(self):
@@ -201,7 +208,8 @@ class AutoTuner:
             try:
                 status = self.runner._query_status()
                 self.logger.info(
-                    f"task_{self.cur_strategy['idx']} status: {status.name}")
+                    f"task_{self.cur_strategy['idx']} status: {status.name}"
+                )
                 if status == JobStatus.COMPLETED_OR_IDLE:
                     break
             except Exception as e:
@@ -210,10 +218,12 @@ class AutoTuner:
             time.sleep(self.interval)
 
         end_time = time.time()
-        self.cur_strategy["elapsed_time"] = round(
-            end_time - self.task_start_time, 2)
-        self.logger.info("task_{} monitor time: {:.2f}s".format(
-            self.cur_strategy["idx"], self.cur_strategy["elapsed_time"]))
+        self.cur_strategy["elapsed_time"] = round(end_time - self.task_start_time, 2)
+        self.logger.info(
+            "task_{} monitor time: {:.2f}s".format(
+                self.cur_strategy["idx"], self.cur_strategy["elapsed_time"]
+            )
+        )
 
     def record(self):
         """Record the task result to csv"""
@@ -222,7 +232,6 @@ class AutoTuner:
 
     def get_best(self):
         sorted_history = self.recorder.sort(self.history)
-        if sorted_history and sorted_history[0] and sorted_history[0][
-                "performance"]:
+        if sorted_history and sorted_history[0] and sorted_history[0]["performance"]:
             return sorted_history[0]
         return None

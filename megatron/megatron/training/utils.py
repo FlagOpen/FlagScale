@@ -119,7 +119,7 @@ def report_memory(name):
         torch.cuda.memory_reserved() / mega_bytes)
     string += ' | max reserved: {}'.format(
         torch.cuda.max_memory_reserved() / mega_bytes)
-    if not os.environ.get("autotune", False):
+    if not os.environ.get("FLAGSCALE_AUTOTUNER", False):
         if mpu.get_data_parallel_rank() == 0:
             print("[Rank {}] {}".format(torch.distributed.get_rank(), string),
                 flush=True)
