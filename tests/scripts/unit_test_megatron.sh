@@ -1,5 +1,5 @@
 export PYTHONPATH=./megatron:$PYTHONPATH
-export PYTHONPATH=./../../FlagScale/:$PYTHONPATH
+export PYTHONPATH=./../:$PYTHONPATH
 
 cd megatron
 
