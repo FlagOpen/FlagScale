@@ -157,47 +157,124 @@ def validate_args(args, defaults={}):
     # Load saved args from Retro (if applicable).
     load_retro_args(args)
 
-    # Tensor model parallel size.
-    args.tensor_model_parallel_size = min(
-        args.tensor_model_parallel_size, args.world_size)
-    assert args.world_size % args.tensor_model_parallel_size == 0, 'world size'\
-        ' ({}) is not divisible by tensor model parallel size ({})'.format(
-            args.world_size, args.tensor_model_parallel_size)
+    if args.num_tensor_parallel_group != None:
+        assert args.hetero_mode == "pp", \
+            'hetero_mode should be set to pp with num_tensor_parallel_group not None!'
+        assert args.num_tensor_parallel_group == 2, \
+            'only support 2 tensor_parallel_group for now!'
+        tensor_parallel_group_TP = args.tensor_parallel_group[::3]
+        tensor_parallel_group_DP = args.tensor_parallel_group[1::3]
+        tensor_parallel_group_PP = args.tensor_parallel_group[2::3]
+        
+        assert args.untie_embeddings_and_output_weights, \
+            'not support shared embeddings and output weights'
 
-    # Pipeline model parallel size.
-    args.pipeline_model_parallel_size = min(
-        args.pipeline_model_parallel_size,
-        (args.world_size // args.tensor_model_parallel_size))
-    args.transformer_pipeline_model_parallel_size = (
-        args.pipeline_model_parallel_size - 1
-        if args.standalone_embedding_stage else
-        args.pipeline_model_parallel_size
-    )
+        assert args.num_tensor_parallel_group == len(tensor_parallel_group_TP), \
+            'num_tensor_parallel_group should match tensor_parallel_group_TP!'
 
-    # Checks.
-    model_parallel_size = args.pipeline_model_parallel_size * \
-                          args.tensor_model_parallel_size
-    assert args.world_size % (model_parallel_size * args.context_parallel_size) == 0, \
-        'world size ({}) is not divisible by tensor parallel size ({}) times ' \
-        'pipeline parallel size ({}) times context parallel size ({})'.format(
-        args.world_size, args.tensor_model_parallel_size,
-        args.pipeline_model_parallel_size, args.context_parallel_size)
-    args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size)
-    if args.rank == 0:
-        print('using world size: {}, data-parallel size: {}, '
-              'context-parallel size: {} '
-              'tensor-model-parallel size: {}, '
-              'pipeline-model-parallel size: {} '.format(
-                  args.world_size, args.data_parallel_size,
-                  args.context_parallel_size,
-                  args.tensor_model_parallel_size,
-                  args.pipeline_model_parallel_size), flush=True)
-    if args.pipeline_model_parallel_size > 1:
-        if args.pipeline_model_parallel_split_rank is not None:
-            assert args.pipeline_model_parallel_split_rank < \
-                    args.pipeline_model_parallel_size, 'split rank needs'\
-                    ' to be less than pipeline model parallel size ({})'.format(
-                            args.pipeline_model_parallel_size)
+        #Data parallel size.
+        assert all(x == tensor_parallel_group_DP[0] for x in tensor_parallel_group_DP), \
+            'all parallel group dp should be the same!'
+        args.data_parallel_size = tensor_parallel_group_DP[0]
+        
+        #Pipeline model paralle size.
+        assert args.pipeline_model_parallel_size == sum(tensor_parallel_group_PP), \
+            'pipeline_model_parallel_size should match sum of paralle_group_PP!'
+        assert args.standalone_embedding_stage == False, \
+            'standalone not supported with parallel_group_num set!'
+        args.transformer_pipeline_model_parallel_size = args.pipeline_model_parallel_size
+        assert args.pipeline_model_parallel_split_rank == None, \
+            'pipeline_model_parallel_split_rank not supported with parallel_group_num set!'
+
+        #Context parallel size.
+        assert args.context_parallel_size == 1, \
+            'cp!=1 not support now!'
+            
+        #Virtual parallel size.
+        assert args.num_layers_per_virtual_pipeline_stage == None, \
+            'virtual pipeline not support now!'
+            
+        #Expert parallel size.
+        assert args.expert_model_parallel_size == 1, \
+            'ep!=1 not support now!'
+
+        #Tensor model parallel size
+        num_device_of_each_pipeline_stage = []
+        tp_size_of_each_pipeline_stage = []
+        for i in range(len(tensor_parallel_group_PP)):
+            for j in range(tensor_parallel_group_PP[i]):
+                tp_size_of_each_pipeline_stage.append(tensor_parallel_group_TP[i])
+                num_device_of_each_pipeline_stage.append(tensor_parallel_group_TP[i] * args.data_parallel_size)
+            
+        # len = p + 1,  [0, sum(p0), sum(p0-p1), ..., sum(p0-pn-1)]
+        cumu_num_device_of_all_pipeline_stage = [sum(num_device_of_each_pipeline_stage[:i]) for i in range(args.pipeline_model_parallel_size + 1)]
+                
+        for i in range(args.pipeline_model_parallel_size):
+            if cumu_num_device_of_all_pipeline_stage[i] <= args.rank < cumu_num_device_of_all_pipeline_stage[i+1]:
+                args.tensor_model_parallel_size = tp_size_of_each_pipeline_stage[i]
+
+        assert args.world_size == sum(tp * dp * pp for tp, dp, pp in 
+                                      zip(tensor_parallel_group_TP, tensor_parallel_group_DP, tensor_parallel_group_PP)), \
+            'total world size should match sum of all tp x dp x pp!'
+            
+        args.parallel_group_TP = tensor_parallel_group_TP
+        args.parallel_group_DP = tensor_parallel_group_DP
+        args.parallel_group_PP = tensor_parallel_group_PP
+        args.cumu_num_device_of_all_pipeline_stage = cumu_num_device_of_all_pipeline_stage
+        args.tp_size_of_each_pipeline_stage = tp_size_of_each_pipeline_stage
+        
+        if args.rank == 0:
+            print('using world size: {}, data-parallel size: {}, '
+                'context-parallel size: {} '
+                'tensor-model-parallel size: {}, '
+                'pipeline-model-parallel size: {} '.format(
+                    args.world_size, args.data_parallel_size,
+                    args.context_parallel_size,
+                    args.tensor_model_parallel_size,
+                    args.pipeline_model_parallel_size), flush=True)            
+        
+    else:
+        # Tensor model parallel size.
+        args.tensor_model_parallel_size = min(
+            args.tensor_model_parallel_size, args.world_size)
+        assert args.world_size % args.tensor_model_parallel_size == 0, 'world size'\
+            ' ({}) is not divisible by tensor model parallel size ({})'.format(
+                args.world_size, args.tensor_model_parallel_size)
+
+        # Pipeline model parallel size.
+        args.pipeline_model_parallel_size = min(
+            args.pipeline_model_parallel_size,
+            (args.world_size // args.tensor_model_parallel_size))
+        args.transformer_pipeline_model_parallel_size = (
+            args.pipeline_model_parallel_size - 1
+            if args.standalone_embedding_stage else
+            args.pipeline_model_parallel_size
+        )
+
+        # Checks.
+        model_parallel_size = args.pipeline_model_parallel_size * \
+                            args.tensor_model_parallel_size
+        assert args.world_size % (model_parallel_size * args.context_parallel_size) == 0, \
+            'world size ({}) is not divisible by tensor parallel size ({}) times ' \
+            'pipeline parallel size ({}) times context parallel size ({})'.format(
+            args.world_size, args.tensor_model_parallel_size,
+            args.pipeline_model_parallel_size, args.context_parallel_size)
+        args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size)
+        if args.rank == 0:
+            print('using world size: {}, data-parallel size: {}, '
+                'context-parallel size: {} '
+                'tensor-model-parallel size: {}, '
+                'pipeline-model-parallel size: {} '.format(
+                    args.world_size, args.data_parallel_size,
+                    args.context_parallel_size,
+                    args.tensor_model_parallel_size,
+                    args.pipeline_model_parallel_size), flush=True)
+        if args.pipeline_model_parallel_size > 1:
+            if args.pipeline_model_parallel_split_rank is not None:
+                assert args.pipeline_model_parallel_split_rank < \
+                        args.pipeline_model_parallel_size, 'split rank needs'\
+                        ' to be less than pipeline model parallel size ({})'.format(
+                                args.pipeline_model_parallel_size)
 
     if args.tp_comm_overlap:
         assert args.sequence_parallel == True, 'Tensor parallel communication/GEMM overlap can happen only when sequence parallelism is enabled'
@@ -239,8 +316,8 @@ def validate_args(args, defaults={}):
             setattr(args, key, defaults[key])
 
     # Heterogeneous Training
-    assert args.hetero_mode is None, \
-        "Hetero mode is not supported in this version. Please use the v0.3."
+    #assert args.hetero_mode is None, \
+    #    "Hetero mode is not supported in this version. Please use the v0.3."
     if args.hetero_mode:
         assert args.global_batch_size is not None, "global_batch_size should be specified when hetero_mode is not None"
         assert args.hetero_current_device_type, "hetero_current_device_type should be specified when hetero_mode is not None"
@@ -537,8 +614,14 @@ def validate_args(args, defaults={}):
     # disable sequence parallelism when tp=1
     # to avoid change in numerics when
     # sequence_parallelism is enabled.
-    if args.tensor_model_parallel_size == 1:
-        args.sequence_parallel = False
+    if args.num_tensor_parallel_group != None:
+        if 1 in args.tp_size_of_each_pipeline_stage:
+            if args.rank == 0:
+                print("Set sequence_parallel false for some parallel group's tp size match 1")
+            args.sequence_parallel = False
+    else:
+        if args.tensor_model_parallel_size == 1:
+            args.sequence_parallel = False
 
     # disable async_tensor_model_parallel_allreduce when
     # model parallel memory optimization is enabled
@@ -1933,5 +2016,14 @@ def _add_hetero_args(parser):
                        'hetero-pipeline-stages must be in the form:'
                        'n0 layers_0_0 layers_0_1 ... n1 nlayers_1_0 nlayers_1_1 ...'
                        'The order should be consistent with --hetero-device-types.')
+    group.add_argument('--num-tensor-parallel-group', type=int, default=None,
+                       help='Number of different tensor parallel groups.'
+                       'Each parallel group consists of TP/PP/DP Setting,'
+                       'Different paralle groups can have different TP with same DP.')
+    group.add_argument('--tensor-parallel-group', nargs='*', type=int, default=None,
+                       help='When num-tensor-parallel-group is not None, use this arg to set TP/DP/PP'
+                       'of each group. This argument must be in the form: TP0, DP0, PP0, TP1, DP1, PP1'
+                       '...TPN, DPN, PPN. TP size can be different, sum of PP should match '
+                       'pipeline-model-parallel-size, DP size should be the same.')
 
     return parser
