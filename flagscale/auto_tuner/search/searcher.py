@@ -448,6 +448,10 @@ class Searcher:
                         product_dim[
                             "num_layers_per_virtual_pipeline_stage"] = (
                                 num_layers_per_virtual_pipeline_stage)
+                    if num_layers_per_virtual_pipeline_stage == 1:
+                        product_dim[
+                            "num_layers_per_virtual_pipeline_stage"] = None
+
                     self._append(result, unique_result, product_dim)
         return result
 

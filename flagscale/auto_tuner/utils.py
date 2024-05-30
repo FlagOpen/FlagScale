@@ -64,16 +64,14 @@ def sort_by_memory(strategy):
     return (
         -strategy["tensor_model_parallel_size"],
         -strategy["pipeline_model_parallel_size"],
-        -strategy["use_distributed_optimizer"],
-        strategy["micro_batch_size"],
         -strategy["use_recompute"],
+        strategy["micro_batch_size"]
     )
 
 
 def sort_by_performance(strategy):
-    return (
-        -strategy["micro_batch_size"],
-        strategy["use_recompute"],
-        strategy["tensor_model_parallel_size"],
-        strategy["pipeline_model_parallel_size"],
-    )
+    magic_number = 4
+    return (-strategy["use_recompute"],
+            (strategy["tensor_model_parallel_size"] % magic_number),
+            (strategy["micro_batch_size"] % magic_number),
+            strategy["pipeline_model_parallel_size"])

@@ -123,7 +123,7 @@ class AutoTuner:
             # get best strategy
             best_strategy = self.get_best()
             if best_strategy:
-                self.logger.info(f"Best strategy tuned so far: {best_strategy}, and performance is {best_strategy["performance"]}.")
+                self.logger.info(f"Best strategy tuned so far: {best_strategy}, and performance is {best_strategy['performance']}.")
             else:
                 self.logger.info(f"No strategy can run so far.")
         tuner_end_time = time.time()
