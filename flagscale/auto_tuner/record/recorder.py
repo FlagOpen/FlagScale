@@ -10,7 +10,7 @@ class Recorder:
         self.config = config
         self.path = os.path.join(
             config.experiment.exp_dir,
-            "AutoTuner",
+            "auto_tuner",
             "history.csv",
         )
         # Metric to grep in the last rank of last node log file
@@ -96,7 +96,7 @@ class Recorder:
                                 continue
                         assert value is not None, "Can't grep the max memory"
         self.logger.info(
-            f"AutoTuneTask_{self.cur_strategy['idx']} max_memory: {max_memory}"
+            f"task_{self.cur_strategy['idx']} max_memory: {max_memory}"
         )
         return max_memory
 
@@ -167,18 +167,18 @@ class Recorder:
                     assert value is not None, "Can't grep the performance"
         if not performance:
             self.logger.info(
-                f"AutoTuneTask_{self.cur_strategy['idx']} performance: {None}"
+                f"task_{self.cur_strategy['idx']} performance: {None}"
             )
             return None
         if len(performance) == 1:
             self.logger.info(
-                f"AutoTuneTask_{self.cur_strategy['idx']} performance: {performance[0]}"
+                f"task_{self.cur_strategy['idx']} performance: {performance[0]}"
             )
             return round(performance[0], 3)
         else:
             average = sum(performance[1:]) / (len(performance) - 1)
             self.logger.info(
-                f"AutoTuneTask_{self.cur_strategy['idx']} performance: {average}"
+                f"task_{self.cur_strategy['idx']} performance: {average}"
             )
             return round(average, 3)
 
@@ -208,7 +208,7 @@ class Recorder:
                             errors_info.add(line)
 
         self.logger.info(
-            f"AutoTuneTask_{self.cur_strategy['idx']} error: {errors_info}"
+            f"task_{self.cur_strategy['idx']} error: {errors_info}"
         )
         return errors_info
 

@@ -22,7 +22,7 @@ class AutoTuner:
         logger = logging.getLogger("FlagScale-AutoTuner")
         logger.setLevel(logging.INFO)
 
-        dir_path = os.path.join(config.experiment.exp_dir, "AutoTuner")
+        dir_path = os.path.join(config.experiment.exp_dir, "auto_tuner")
         log_path = os.path.join(
             dir_path,
             "auto_tuner.log",
@@ -52,6 +52,9 @@ class AutoTuner:
         self.config.auto_tuner.nproc_per_node = nproc_per_node
         self.config.auto_tuner.nnodes = nnodes
         self.config.auto_tuner.cards = nnodes * nproc_per_node
+        # TODO: Set platform envs
+        if "platform" not in self.config.auto_tuner:
+            self.config.auto_tuner.platform = {}
 
         # Build core sub modules, such as Searcher, Pruner, Generator and Recorder
         self.searcher = Searcher(self.config)
@@ -88,6 +91,9 @@ class AutoTuner:
         # Task id
         self.idx = 0
 
+        # Checkout search mode on the platform
+        self.has_checkout = False
+
     def tune(self):
         """
         Tune the model performance, the steps are:
@@ -97,16 +103,26 @@ class AutoTuner:
             Step4. Loop 1-3 until stop
             Step5. Run the best task
         """
+        tuner_start_time = time.time()
         while not self.need_stop():
             self.gen()
-            self.logger.info(
-                f"Run AutoTuneTask_{self.idx}: {self.cur_strategy}")
+            if not self.cur_strategy:
+                break
+            self.logger.info(f"Run task_{self.idx}: {self.cur_strategy}")
             self.run()
-            self.logger.info(f"Monitor AutoTuneTask_{self.idx}:")
+            self.logger.info(f"Monitor task_{self.idx}:")
             self.monitor()
-            self.logger.info(f"Record AutoTuneTask_{self.idx}:")
+            self.logger.info(f"Record task_{self.idx}:")
             self.record()
 
+            if self.cur_strategy[
+                    "performance"] and self.config.auto_tuner.platform.get(
+                        "airs_switch", False) and not self.has_checkout:
+                self.checkout()
+
+        tuner_end_time = time.time()
+        self.logger.info(
+            f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
         # TODO: Run the best task
 
     def need_stop(self):
@@ -125,22 +141,30 @@ class AutoTuner:
 
         return False
 
+    def checkout(self, mode="performance"):
+        if not self.has_checkout:
+            self.searcher.algo.checkout(mode)
+            self.has_checkout = True
+
     def gen(self):
         """Generate a task to run."""
         # 1. Get a strategy from searcher
         # 2. Whether prune by pruner
         # 3. If not pruned, generate the task by generator
-        srategy = self.searcher.search()
-        while srategy and self.pruner.prune(srategy, self.history):
-            srategy = self.searcher.search()
-        self.idx += 1
-        srategy["idx"] = self.idx
-        self.logger.info(
-            f"Searching {self.idx+self.pruner.pruned_count} / {len(self.searcher.strategies)} strategy, Pruned {self.pruner.pruned_count} strategy."
-        )
-        self.logger.info(f"Generate AutoTuneTask_{self.idx}")
-        self.cur_strategy = srategy
-        self.cur_task = self.generator.gen(srategy)
+        strategy = self.searcher.search()
+        while strategy and self.pruner.prune(strategy, self.history):
+            strategy = self.searcher.search()
+        if strategy:
+            self.idx += 1
+            strategy["idx"] = self.idx
+            self.logger.info(
+                f"Searching {self.idx+self.pruner.pruned_count} / {len(self.searcher.strategies)} strategy, Pruned {self.pruner.pruned_count} strategy."
+            )
+            self.logger.info(f"Generate task_{self.idx}")
+            self.cur_strategy = strategy
+            self.cur_task = self.generator.gen(strategy)
+        else:
+            self.cur_strategy = None
 
     def run(self, task=None):
         # Instantiate a runner and run the task
@@ -167,8 +191,7 @@ class AutoTuner:
             try:
                 status = self.runner._query_status()
                 self.logger.info(
-                    f"AutoTuneTask_{self.cur_strategy['idx']} Status: {status.name}"
-                )
+                    f"task_{self.cur_strategy['idx']} status: {status.name}")
                 if status == JobStatus.COMPLETED_OR_IDLE:
                     break
             except Exception as e:
@@ -179,7 +202,7 @@ class AutoTuner:
         end_time = time.time()
         self.cur_strategy["elapsed_time"] = round(
             end_time - self.task_start_time, 2)
-        self.logger.info("AutoTuneTask_{} monitor time: {:.2f}s".format(
+        self.logger.info("task_{} monitor time: {:.2f}s".format(
             self.cur_strategy["idx"], self.cur_strategy["elapsed_time"]))
 
     def record(self):

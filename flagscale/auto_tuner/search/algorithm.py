@@ -19,27 +19,20 @@ class GridAlgo(Algo):
 
     def __init__(self, strategies, config):
         super().__init__(strategies, config)
-
-        # Sort the strategies according to priority, the priorty can be memory or performance.
-        # If memeory, the strategies will be sorted by memory usage, otherwise by performance.
-        priority = self.config.auto_tuner.algo.get("priority", None)
-        if priority is not None:
-            if priority == "memory":
-                from ..utils import sort_by_memory
-
-                self.strategies.sort(key=sort_by_memory)
-            elif priority == "performance":
-                from ..utils import sort_by_performance
-
-                self.strategies.sort(key=sort_by_performance)
-            else:
-                raise ValueError(
-                    "Unknown priority: {}, priority only in [memory, performance]".format(
-                        priority
-                    )
-                )
-
         self.idx = 0
+
+    def checkout(self, mode):
+        if mode == "memory":
+            from ..utils import sort_by_memory
+            if self.idx > 0 and self.idx < len(self.strategies):
+                self.strategies = self.strategies[:self.idx] + sorted(
+                    self.strategies[self.idx:], key=sort_by_memory)
+
+        elif mode == "performance":
+            from ..utils import sort_by_performance
+            if self.idx > 0 and self.idx < len(self.strategies):
+                self.strategies = self.strategies[:self.idx] + sorted(
+                    self.strategies[self.idx:], key=sort_by_performance)
 
     def search(self):
         """Return a task iteratively."""

@@ -63,7 +63,7 @@ class Generator:
 
         # log dir
         config.experiment.exp_dir = os.path.join(
-            config.experiment.exp_dir, "AutoTuner", f"AutotuneTask_{strategy['idx']}"
+            config.experiment.exp_dir, "auto_tuner", f"task_{strategy['idx']}"
         )
 
         return config
