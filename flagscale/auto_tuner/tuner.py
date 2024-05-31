@@ -165,7 +165,18 @@ class AutoTuner:
         tuner_end_time = time.time()
         self.logger.info(
             f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
-        # TODO: Run the best task
+
+        # Run the best task
+        if self.config.auto_tuner.control.get("run_best", True):
+            best_strategy = self.get_best()
+            if best_strategy:
+                self.logger.info(f"Run best Strategy: {best_strategy}")
+            else:
+                raise ValueError(f"No strategy can run.")
+            best_task = self.generator.gen_best_task(best_strategy,
+                                                     self.orig_config)
+            runner = SSHRunner(best_task)
+            runner.run()
 
     def need_stop(self):
         """Judge whether need to stop tuning."""

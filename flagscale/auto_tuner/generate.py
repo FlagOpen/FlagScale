@@ -16,7 +16,8 @@ class Generator:
                 "tensor_model_parallel_size": "tensor_model_parallel_size",
                 "sequence_parallel": "sequence_parallel",
                 "pipeline_model_parallel_size": "pipeline_model_parallel_size",
-                "num_layers_per_virtual_pipeline_stage": "num_layers_per_virtual_pipeline_stage",
+                "num_layers_per_virtual_pipeline_stage":
+                "num_layers_per_virtual_pipeline_stage",
                 "recompute_method": "recompute_method",
                 "recompute_granularity": "recompute_granularity",
                 "recompute_num_layers": "recompute_num_layers",
@@ -25,8 +26,7 @@ class Generator:
                 "expert_model_parallel_size": "expert_model_parallel_size",
             }
 
-    def gen(self, strategy):
-        config = copy.deepcopy(self.config)
+    def _set_value(self, strategy, config):
         for key, value in self.args_mapping.items():
             if key in ["micro_batch_size"]:
                 config.train.model[value] = strategy[key]
@@ -38,6 +38,10 @@ class Generator:
                         del config.train.system[value]
                     continue
                 config.train.system[value] = strategy[key]
+
+    def gen(self, strategy):
+        config = copy.deepcopy(self.config)
+        self._set_value(strategy, config)
 
         # TODO: Just a temporary solution, need to be configurated by user
 
@@ -56,14 +60,17 @@ class Generator:
         # Set train_iters of each task
         if "control" in config.auto_tuner:
             config.train.model.train_iters = config.auto_tuner.control.get(
-                "train_iters", 10
-            )
+                "train_iters", 10)
         else:
             config.train.model.train_iters = 10
 
         # log dir
-        config.experiment.exp_dir = os.path.join(
-            config.experiment.exp_dir, "auto_tuner", f"task_{strategy['idx']}"
-        )
+        config.experiment.exp_dir = os.path.join(config.experiment.exp_dir,
+                                                 "auto_tuner",
+                                                 f"task_{strategy['idx']}")
 
+        return config
+
+    def gen_best_task(self, strategy, config):
+        self._set_value(strategy, config)
         return config
