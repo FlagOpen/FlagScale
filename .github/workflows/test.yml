@@ -5,7 +5,7 @@ name: flagscale-test
 
 on:
   push:
-    branches: [ "main", "add_CICD" ]
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -13,9 +13,7 @@ jobs:
   container-test-job:
       runs-on: self-hosted
       container:
-        image: localhost:5000/flagscale_cicd:v1.1
-        env:                                         
-          NODE_ENV: development
+        image: localhost:5000/flagscale_cicd:v1.2
         ports:
           - 80
         options: --gpus all --hostname flagscale_cicd 
@@ -28,7 +26,7 @@ jobs:
             export PYTHONPATH=./megatron:$PYTHONPATH
             export PYTHONPATH=./../../FlagScale/:$PYTHONPATH
             cd megatron
-            # torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/data
+            torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/data
             torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/dist_checkpointing
             torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/fusions
             torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/models
