@@ -351,9 +351,12 @@ def _get_runner_cmd(
     return runner_cmd
 
 
-def _generate_run_script(
-    config, host, node_rank, cmd, background=True, with_test=False
-):
+def _generate_run_script(config,
+                         host,
+                         node_rank,
+                         cmd,
+                         background=True,
+                         with_test=False):
     system_config = config.train.system
     logging_config = config.train.system.logging
 
@@ -361,21 +364,17 @@ def _generate_run_script(
     if no_shared_fs:
         host_output_file = os.path.join(logging_config.log_dir, f"host.output")
     else:
-        host_output_file = os.path.join(
-            logging_config.log_dir, f"host_{node_rank}_{host}.output"
-        )
-    host_run_script_file = os.path.join(
-        logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
-    )
-    host_pid_file = os.path.join(
-        logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-    )
+        host_output_file = os.path.join(logging_config.log_dir,
+                                        f"host_{node_rank}_{host}.output")
+    host_run_script_file = os.path.join(logging_config.scripts_dir,
+                                        f"host_{node_rank}_{host}_run.sh")
+    host_pid_file = os.path.join(logging_config.pids_dir,
+                                 f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
     root_dir = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     megatron_dir = os.path.join(root_dir, "megatron")
     cmds_config = config.experiment.get("cmds", None)
     if cmds_config:
@@ -385,13 +384,15 @@ def _generate_run_script(
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write(f"{before_start}\n")
-        f.write(f"mkdir -p {system_config.checkpoint.load}\n")
-        f.write(f"mkdir -p {system_config.checkpoint.save}\n")
+        if not os.environ.get("FLAGSCALE_AUTOTUNER", False):
+            f.write(f"mkdir -p {system_config.checkpoint.load}\n")
+            f.write(f"mkdir -p {system_config.checkpoint.save}\n")
         f.write(f"mkdir -p {system_config.logging.log_dir}\n")
         f.write(f"mkdir -p {system_config.logging.pids_dir}\n")
         f.write(f"mkdir -p {system_config.logging.details_dir}\n")
-        f.write(f"mkdir -p {system_config.logging.tensorboard_dir}\n")
-        f.write(f"mkdir -p {system_config.logging.wandb_save_dir}\n")
+        if not os.environ.get("FLAGSCALE_AUTOTUNER", False):
+            f.write(f"mkdir -p {system_config.logging.tensorboard_dir}\n")
+            f.write(f"mkdir -p {system_config.logging.wandb_save_dir}\n")
         f.write(f"\n")
         f.write(f"cd {root_dir}\n")
         f.write(f"\n")

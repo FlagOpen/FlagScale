@@ -43,19 +43,37 @@ class Generator:
         config = copy.deepcopy(self.config)
         self._set_value(strategy, config)
 
-        # TODO: Just a temporary solution, need to be configurated by user
-
-        # logging interval should be 1
+        # Logging interval should be 1
         config.train.system.logging.log_interval = 1
 
-        # autotune should be true, it will not save ckpt when train ended and report memory every iteration
+        # Set redict and tee
+        config.experiment.runner.tee = 3
+        config.experiment.runner.redirects = 3
+
+        # FLAGSCALE_AUTOTUNER should be true, it will not save ckpt when train ended and report memory every iteration
         config.experiment.envs.FLAGSCALE_AUTOTUNER = True
 
         # Del lr_warmup_samples and train_samples to run megatron.
+        assert "optimizer" in config.train.model
+        assert "lr_scheduler" in config.train.model.optimizer
         if "lr_warmup_samples" in config.train.model.optimizer.lr_scheduler:
             del config.train.model.optimizer.lr_scheduler.lr_warmup_samples
+        # Del lr_decay_samples and train_samples to run megatron.
+        if "lr_decay_samples" in config.train.model.optimizer.lr_scheduler:
+            del config.train.model.optimizer.lr_scheduler.lr_decay_samples
+        # Del rampup_batch_size and train_samples to run megatron.
+        if "rampup_batch_size" in config.train.model.optimizer.lr_scheduler:
+            del config.train.model.optimizer.lr_scheduler.rampup_batch_size
+        # Del lr_decay_samples and train_samples to run megatron.
+        if "lr_warmup_fraction" in config.train.model.optimizer.lr_scheduler:
+            del config.train.model.optimizer.lr_scheduler.lr_warmup_fraction
+
         if "train_samples" in config.train.model:
             del config.train.model.train_samples
+
+        # Del checkpoint save and load
+        if "checkpoint" in config.train.system:
+            del config.train.system.checkpoint
 
         # Set train_iters of each task
         if "control" in config.auto_tuner:
