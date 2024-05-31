@@ -71,9 +71,12 @@ class Generator:
         if "train_samples" in config.train.model:
             del config.train.model.train_samples
 
-        # Del checkpoint save and load
+        # Del checkpoint load
         if "checkpoint" in config.train.system:
-            del config.train.system.checkpoint
+            if "load" in config.train.system.checkpoint:
+                del config.train.system.checkpoint.load
+            if "save_interval" in config.train.system.checkpoint:
+                config.train.system.checkpoint.save_interval = 2000
 
         # Set train_iters of each task
         if "control" in config.auto_tuner:

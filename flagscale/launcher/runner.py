@@ -384,15 +384,13 @@ def _generate_run_script(config,
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write(f"{before_start}\n")
-        if not os.environ.get("FLAGSCALE_AUTOTUNER", False):
-            f.write(f"mkdir -p {system_config.checkpoint.load}\n")
-            f.write(f"mkdir -p {system_config.checkpoint.save}\n")
+        f.write(f"mkdir -p {system_config.checkpoint.load}\n")
+        f.write(f"mkdir -p {system_config.checkpoint.save}\n")
         f.write(f"mkdir -p {system_config.logging.log_dir}\n")
         f.write(f"mkdir -p {system_config.logging.pids_dir}\n")
         f.write(f"mkdir -p {system_config.logging.details_dir}\n")
-        if not os.environ.get("FLAGSCALE_AUTOTUNER", False):
-            f.write(f"mkdir -p {system_config.logging.tensorboard_dir}\n")
-            f.write(f"mkdir -p {system_config.logging.wandb_save_dir}\n")
+        f.write(f"mkdir -p {system_config.logging.tensorboard_dir}\n")
+        f.write(f"mkdir -p {system_config.logging.wandb_save_dir}\n")
         f.write(f"\n")
         f.write(f"cd {root_dir}\n")
         f.write(f"\n")
