@@ -1,0 +1,4 @@
+torch
+wandb
+deepspeed
+dlrover[torch]
