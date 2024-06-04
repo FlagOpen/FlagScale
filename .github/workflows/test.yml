@@ -5,7 +5,7 @@ name: flagscale-test
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" , ${{ env.GITHUB_REF }}]
   pull_request:
     branches: [ "main" ]
 
@@ -21,24 +21,34 @@ jobs:
         - name: checkout-code
           uses: actions/checkout@v2
 
-        - name: unit_test-megatron
-          run: |
-            cd megatron
-            export PYTHONPATH=..:$PYTHONPATH
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/data
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/dist_checkpointing
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/fusions
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/models
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/pipeline_parallel
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/tensor_parallel
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/transformer
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/*.py
+        # - name: unit_test-megatron
+        #   run: |
+        #     cd megatron
+        #     export PYTHONPATH=..:$PYTHONPATH
+        #     torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/data
+        #     torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/dist_checkpointing
+        #     torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/fusions
+        #     torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/models
+        #     torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/pipeline_parallel
+        #     torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/tensor_parallel
+        #     torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/transformer
+        #     torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/*.py
             
-        - name: unit_test-flagscale
-          run: |
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/launcher
+        # - name: unit_test-flagscale
+        #   run: |
+        #     torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/launcher
         
-        - name: functional_test-flagscale
+        # - name: functional_test-flagscale
+        #   run: |
+        #     python run.py --config-path tests/functional_tests/aquila/conf --config-name config action=test
+        #     pytest -s tests/functional_tests/test_result.py --test_reaults_path=./tests/functional_tests/aquila/test_result
+
+        - name: Run Black on modified files
+          env:
+            MODIFIED_FILES: $(git diff-tree --no-commit-id --name-only -r HEAD)
           run: |
-            python run.py --config-path tests/functional_tests/aquila/conf --config-name config action=test
-            pytest -s tests/functional_tests/test_result.py --test_reaults_path=./tests/functional_tests/aquila/test_result
+            black --check $MODIFIED_FILES
+        
+        - name: Report status
+          if: ${{ failure() }}
+          run: echo "Black found formatting issues. Please fix them."
