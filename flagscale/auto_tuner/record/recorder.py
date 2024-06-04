@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+import subprocess
 import pandas as pd
 
 
@@ -65,6 +66,81 @@ class Recorder:
             strategy["performance"] = performace
             strategy["error"] = None
 
+        # Pass back to platform if need
+        if (
+            "airs_switch" in self.config.auto_tuner.platform
+            and self.config.auto_tuner.platform.airs_switch
+            and strategy["performance"]
+        ):
+            self.pass_back_to_platform(strategy)
+
+    def pass_back_to_platform(self, strategy):
+        gbs = int(self.config.train.model.global_batch_size)
+        seq_len = int(self.config.train.model.seq_length)
+        throughput = gbs * seq_len / (strategy["performance"] / 1000)
+        day = round(
+            self.config.train.model.train_samples
+            * seq_len
+            / (throughput * 60 * 60 * 24),
+            2,
+        )
+        command = [
+            "airsctl job performance",
+            "-D",
+            f"{strategy['data_parallel_size']}",
+            "--distributed_optimizer",
+            (
+                f"{strategy['use_distributed_optimizer']}"
+                if strategy["use_distributed_optimizer"] is not None
+                else "False"
+            ),
+            "-E",
+            f"{strategy['expert_model_parallel_size']}",
+            "-M",
+            f"{strategy['micro_batch_size']}",
+            "-L",
+            f"{strategy['pipeline_model_parallel_size']}",
+            "-G",
+            (
+                f"{strategy['recompute_granularity']}"
+                if strategy["recompute_granularity"]
+                else ""
+            ),
+            "-R",
+            (
+                f"{strategy['recompute_method']}"
+                if strategy["recompute_granularity"]
+                else ""
+            ),
+            "-N",
+            (
+                f"{strategy['recompute_num_layers']}"
+                if strategy["recompute_num_layers"]
+                else "0"
+            ),
+            "-S",
+            (
+                f"{strategy['sequence_parallel']}"
+                if strategy["sequence_parallel"] is not None
+                else "False"
+            ),
+            "-T",
+            f"{strategy['tensor_model_parallel_size']}",
+            "-V",
+            (
+                f"{strategy['num_layers_per_virtual_pipeline_stage']}"
+                if strategy["num_layers_per_virtual_pipeline_stage"]
+                else "0"
+            ),
+            "--throughput",
+            f"{throughput}",
+            "--day",
+            f"{day}",
+            "--time",
+            f"{int(strategy['performance'])}",
+        ]
+        subprocess.run(command, shell=True, check=True)
+
     def grep_max_memory(self, path, pattern="max reserved"):
         """Read the log file and return the max memory."""
         if not os.path.exists(path):
@@ -95,9 +171,7 @@ class Recorder:
                             except:
                                 continue
                         assert value is not None, "Can't grep the max memory"
-        self.logger.info(
-            f"task_{self.cur_strategy['idx']} max_memory: {max_memory}"
-        )
+        self.logger.info(f"task_{self.cur_strategy['idx']} max_memory: {max_memory}")
         return max_memory
 
     def get_performance_and_host_path(self, task):
@@ -166,9 +240,7 @@ class Recorder:
                             continue
                     assert value is not None, "Can't grep the performance"
         if not performance:
-            self.logger.info(
-                f"task_{self.cur_strategy['idx']} performance: {None}"
-            )
+            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {None}")
             return None
         if len(performance) == 1:
             self.logger.info(
@@ -177,9 +249,7 @@ class Recorder:
             return round(performance[0], 3)
         else:
             average = sum(performance[1:]) / (len(performance) - 1)
-            self.logger.info(
-                f"task_{self.cur_strategy['idx']} performance: {average}"
-            )
+            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {average}")
             return round(average, 3)
 
     def grep_error(self, path, pattern="Error"):
@@ -207,9 +277,7 @@ class Recorder:
                         else:
                             errors_info.add(line)
 
-        self.logger.info(
-            f"task_{self.cur_strategy['idx']} error: {errors_info}"
-        )
+        self.logger.info(f"task_{self.cur_strategy['idx']} error: {errors_info}")
         return errors_info
 
     def sort(self, history):

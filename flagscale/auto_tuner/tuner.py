@@ -64,7 +64,7 @@ class AutoTuner:
         # Set platform envs
         if "platform" not in self.config.auto_tuner:
             self.config.auto_tuner.platform = {}
-        if os.environ.get("AIRS_SWITCH", False):
+        if os.environ.get("AIRS_SWITCH", None) != "False":
             self.config.auto_tuner.platform.airs_switch = True
 
             if os.environ.get("AIRS_SIZE", None):
@@ -85,6 +85,9 @@ class AutoTuner:
                 # Set config
                 self.config.experiment.runner.nproc_per_node = int(
                     os.environ["AIRS_ACCELERATOR_COUNT"])
+
+            if os.environ.get("AIRS_FBMEM", None):
+                self.config.auto_tuner.memory = int(os.environ["AIRS_FBMEM"])
 
             if os.environ.get("AIRS_HOSTFILE_PATH", None):
                 # Set original config
@@ -238,7 +241,7 @@ class AutoTuner:
             end_time = time.time()
             # To increase the time to 600s for the first task with data processing and cache.
             if self.idx == 1:
-                max_time_per_task = 600
+                max_time_per_task = 2 * self.max_time_per_task
             else:
                 max_time_per_task = self.max_time_per_task
             if end_time - self.task_start_time > max_time_per_task:

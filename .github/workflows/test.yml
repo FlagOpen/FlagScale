@@ -13,9 +13,7 @@ jobs:
   container-test-job:
       runs-on: self-hosted
       container:
-        image: localhost:5000/flagscale_cicd:v1.1
-        env:                                         
-          NODE_ENV: development
+        image: localhost:5000/flagscale_cicd:v1.2
         ports:
           - 80
         options: --gpus all --hostname flagscale_cicd 

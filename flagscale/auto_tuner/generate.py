@@ -81,9 +81,9 @@ class Generator:
         # Set train_iters of each task
         if "control" in config.auto_tuner:
             config.train.model.train_iters = config.auto_tuner.control.get(
-                "train_iters", 10)
+                "train_iters", 5)
         else:
-            config.train.model.train_iters = 10
+            config.train.model.train_iters = 5
 
         # log dir
         config.experiment.exp_dir = os.path.join(config.experiment.exp_dir,

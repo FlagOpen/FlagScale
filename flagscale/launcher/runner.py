@@ -351,12 +351,9 @@ def _get_runner_cmd(
     return runner_cmd
 
 
-def _generate_run_script(config,
-                         host,
-                         node_rank,
-                         cmd,
-                         background=True,
-                         with_test=False):
+def _generate_run_script(
+    config, host, node_rank, cmd, background=True, with_test=False
+):
     system_config = config.train.system
     logging_config = config.train.system.logging
 
@@ -364,17 +361,21 @@ def _generate_run_script(config,
     if no_shared_fs:
         host_output_file = os.path.join(logging_config.log_dir, f"host.output")
     else:
-        host_output_file = os.path.join(logging_config.log_dir,
-                                        f"host_{node_rank}_{host}.output")
-    host_run_script_file = os.path.join(logging_config.scripts_dir,
-                                        f"host_{node_rank}_{host}_run.sh")
-    host_pid_file = os.path.join(logging_config.pids_dir,
-                                 f"host_{node_rank}_{host}.pid")
+        host_output_file = os.path.join(
+            logging_config.log_dir, f"host_{node_rank}_{host}.output"
+        )
+    host_run_script_file = os.path.join(
+        logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
+    )
+    host_pid_file = os.path.join(
+        logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
+    )
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
     root_dir = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
     megatron_dir = os.path.join(root_dir, "megatron")
     cmds_config = config.experiment.get("cmds", None)
     if cmds_config:
@@ -706,10 +707,9 @@ class SSHRunner(MultiNodeRunner):
                 node_rank = host_list.index(host)
                 result = self._query_each(host, node_rank)
                 results.append(result)
-
-        if all(status != "" for status in results):
+        if all((status != "" and status != "Z") for status in results):
             job_status = JobStatus.RUNNING
-        elif all(status == "" for status in results):
+        elif all((status == "" or status == "Z") for status in results):
             job_status = JobStatus.COMPLETED_OR_IDLE
         else:
             job_status = JobStatus.TRANSITIONAL
