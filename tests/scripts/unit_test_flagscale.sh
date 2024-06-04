@@ -1,2 +1,1 @@
-export PYTHONPATH=./flagscale:$PYTHONPATH
-torchrun --nproc_per_node=8 -m pytest -q -x tests/unit_tests/launcher
+torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/launcher
