@@ -5,7 +5,7 @@ name: flagscale-test
 
 on:
   push:
-    branches: [ "main" , ${{ env.GITHUB_REF }}]
+    branches: [ "main" , "format_check"]
   pull_request:
     branches: [ "main" ]
 
