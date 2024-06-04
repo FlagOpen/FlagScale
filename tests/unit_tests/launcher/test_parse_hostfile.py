@@ -46,6 +46,7 @@ def test_parse_hostfile_incorrectly_formatted(mock_os_path_isfile, mock_open):
 def test_parse_hostfile_empty(mock_os_path_isfile, mock_open):
     hostfile_content = ""
 
+
     mock_open.return_value.readlines.return_value = hostfile_content
     with pytest.raises(ValueError):
         parse_hostfile("/path/to/hostfile.txt")
