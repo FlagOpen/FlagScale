@@ -38,7 +38,7 @@ jobs:
         
         - name: Access code coverage results megatron
           run: |
-            echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-megatron/index,html"
+            echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-megatron/index.html"
 
         - name: Archive code coverage results megatron
           uses: actions/upload-artifact@v4
@@ -52,7 +52,7 @@ jobs:
         
         - name: Access code coverage results flagscale
           run: |
-            echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-flagscale/index,html"
+            echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-flagscale/index.html"
         
         - name: Archive code coverage results flagscale
           uses: actions/upload-artifact@v4
