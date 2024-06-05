@@ -5,9 +5,9 @@ name: flagscale-test
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
     branches: [ "main" , "test_coverage"]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
   container-test-job:
