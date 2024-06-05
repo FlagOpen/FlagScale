@@ -16,7 +16,7 @@ jobs:
         image: localhost:5000/flagscale_cicd:v1.3
         ports:
           - 80
-        options: --gpus all --hostname flagscale_cicd -v ../../flask/static:/workspace/report
+        options: --gpus all --hostname flagscale_cicd -v $GITHUB_WORKSPACE/../../flask/static:/workspace/report
       steps:
         - name: checkout-code
           uses: actions/checkout@v2
