@@ -64,7 +64,9 @@ class AutoTuner:
         # Set platform envs
         if "platform" not in self.config.auto_tuner:
             self.config.auto_tuner.platform = {}
-        if os.environ.get("AIRS_SWITCH", None) != "False":
+
+        # As long as AIRS_SWITCH has value it means running on the platform
+        if os.environ.get("AIRS_SWITCH", None):
             self.config.auto_tuner.platform.airs_switch = True
 
             if os.environ.get("AIRS_SIZE", None):

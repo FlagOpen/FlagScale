@@ -1,3 +1,10 @@
+import re
+import os
+import socket
+import subprocess
+from flagscale.launcher.runner import parse_hostfile
+
+
 def divisible(x, y):
     if x % y == 0:
         return True
@@ -25,6 +32,7 @@ def beside(keys, strategy, history):
 
 
 def sort_by_memory(strategy):
+    """Sort strategy by memory."""
     return (
         -strategy["use_recompute"],
         -strategy["tensor_model_parallel_size"],
@@ -45,6 +53,7 @@ def sort_by_memory(strategy):
 
 
 def sort_by_performance(strategy):
+    """Sort strategy by performance potentially."""
     return (
         strategy["use_recompute"],
         -strategy["tensor_model_parallel_size"],
@@ -62,3 +71,65 @@ def sort_by_performance(strategy):
             else float("inf")
         ),
     )
+
+
+def is_ip_addr(master):
+    """Check if master is ip address."""
+
+    if not isinstance(master, str):
+        return False
+    pattern = r"^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$"
+    result = re.match(pattern, master)
+    if result:
+        return True
+    else:
+        return False
+
+def get_ip_addr():
+    """Get ip address."""
+    try:
+        hostname = socket.gethostname()
+        ip = socket.gethostbyname(socket.getfqdn(hostname))
+    except:
+        ip = '127.0.0.1'
+    return ip
+
+
+def is_master(config):
+    """Check if current node is master."""
+    multi_nodes = False
+    if config.experiment.runner.get("nnodes", 1) > 1:
+        multi_nodes = True
+
+    hostfile = None
+    if config.experiment.runner.get("hostfile", None):
+        hostfile = config.experiment.runner["hostfile"]
+    if os.environ.get("AIRS_SWITCH", None):
+        if os.environ.get("AIRS_HOSTFILE_PATH", None):
+            hostfile = os.environ["AIRS_HOSTFILE_PATH"]
+    resources = parse_hostfile(hostfile)
+
+    if resources and len(resources) > 1:
+        multi_nodes = True
+
+    if not resources and multi_nodes:
+        raise ValueError("In the multi-node mode, please set the hostfile")
+
+    # Local host scene
+    if not resources and not multi_nodes:
+        return True
+
+    if resources and multi_nodes:
+        master = resources.keys()[0]
+        if is_ip_addr(master):
+            return get_ip_addr() == master
+        else:
+            output = subprocess.run("hostname",
+                                    check=True,
+                                    shell=True,
+                                    text=True,
+                                    capture_output=True)
+            hostname = output.stdout.strip()
+            return hostname == master
+
+    return False

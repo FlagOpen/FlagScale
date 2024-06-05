@@ -9,9 +9,12 @@ from flagscale.launcher.runner import CloudRunner
 def main(config: DictConfig) -> None:
     if config.action == "auto_tune":
         from flagscale.auto_tuner import AutoTuner
-
-        tuner = AutoTuner(config)
-        tuner.tune()
+        # For MPIRUN scene, just one autotuner process.
+        # NOTE: This is a temporary solution and will be updated with cloud runner.
+        from flagscale.auto_tuner.utils import is_master
+        if is_master(config):
+            tuner = AutoTuner(config)
+            tuner.tune()
     else:
         if config.experiment.runner.get("type", "ssh") == "ssh":
             runner = SSHRunner(config)
