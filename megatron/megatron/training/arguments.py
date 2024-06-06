@@ -157,34 +157,35 @@ def validate_args(args, defaults={}):
     # Load saved args from Retro (if applicable).
     load_retro_args(args)
 
-    if args.num_tensor_parallel_group != None:
+    args.num_process_meshes = None
+    if args.process_meshes != None:
         assert args.hetero_mode == "pp", \
-            'hetero_mode should be set to pp with num_tensor_parallel_group not None!'
-        assert args.num_tensor_parallel_group == 2, \
-            'only support 2 tensor_parallel_group for now!'
-        tensor_parallel_group_TP = args.tensor_parallel_group[::3]
-        tensor_parallel_group_DP = args.tensor_parallel_group[1::3]
-        tensor_parallel_group_PP = args.tensor_parallel_group[2::3]
+            'hetero_mode should be set to pp with process_meshes not None!'
+
+        process_meshes_tp = args.process_meshes[::3]
+        process_meshes_dp = args.process_meshes[1::3]
+        process_meshes_pp = args.process_meshes[2::3]
         
         assert args.untie_embeddings_and_output_weights, \
             'not support shared embeddings and output weights'
 
-        assert args.num_tensor_parallel_group == len(tensor_parallel_group_TP), \
-            'num_tensor_parallel_group should match tensor_parallel_group_TP!'
+        args.num_process_meshes = len(process_meshes_tp)
+        assert args.num_process_meshes == 2, \
+            'only support 2 process_meshes for now!'
 
         #Data parallel size.
-        assert all(x == tensor_parallel_group_DP[0] for x in tensor_parallel_group_DP), \
+        assert all(x == process_meshes_dp[0] for x in process_meshes_dp), \
             'all parallel group dp should be the same!'
-        args.data_parallel_size = tensor_parallel_group_DP[0]
+        args.data_parallel_size = process_meshes_dp[0]
         
         #Pipeline model paralle size.
-        assert args.pipeline_model_parallel_size == sum(tensor_parallel_group_PP), \
-            'pipeline_model_parallel_size should match sum of paralle_group_PP!'
+        assert args.pipeline_model_parallel_size == sum(process_meshes_pp), \
+            'pipeline_model_parallel_size should match sum of process_meshes_pp!'
         assert args.standalone_embedding_stage == False, \
-            'standalone not supported with parallel_group_num set!'
+            'standalone not supported with process_meshes set!'
         args.transformer_pipeline_model_parallel_size = args.pipeline_model_parallel_size
         assert args.pipeline_model_parallel_split_rank == None, \
-            'pipeline_model_parallel_split_rank not supported with parallel_group_num set!'
+            'pipeline_model_parallel_split_rank not supported with process_meshes set!'
 
         #Context parallel size.
         assert args.context_parallel_size == 1, \
@@ -201,10 +202,10 @@ def validate_args(args, defaults={}):
         #Tensor model parallel size
         num_device_of_each_pipeline_stage = []
         tp_size_of_each_pipeline_stage = []
-        for i in range(len(tensor_parallel_group_PP)):
-            for j in range(tensor_parallel_group_PP[i]):
-                tp_size_of_each_pipeline_stage.append(tensor_parallel_group_TP[i])
-                num_device_of_each_pipeline_stage.append(tensor_parallel_group_TP[i] * args.data_parallel_size)
+        for i in range(len(process_meshes_pp)):
+            for j in range(process_meshes_pp[i]):
+                tp_size_of_each_pipeline_stage.append(process_meshes_tp[i])
+                num_device_of_each_pipeline_stage.append(process_meshes_tp[i] * args.data_parallel_size)
             
         # len = p + 1,  [0, sum(p0), sum(p0-p1), ..., sum(p0-pn-1)]
         cumu_num_device_of_all_pipeline_stage = [sum(num_device_of_each_pipeline_stage[:i]) for i in range(args.pipeline_model_parallel_size + 1)]
@@ -214,12 +215,12 @@ def validate_args(args, defaults={}):
                 args.tensor_model_parallel_size = tp_size_of_each_pipeline_stage[i]
 
         assert args.world_size == sum(tp * dp * pp for tp, dp, pp in 
-                                      zip(tensor_parallel_group_TP, tensor_parallel_group_DP, tensor_parallel_group_PP)), \
+                                      zip(process_meshes_tp, process_meshes_dp, process_meshes_pp)), \
             'total world size should match sum of all tp x dp x pp!'
             
-        args.parallel_group_TP = tensor_parallel_group_TP
-        args.parallel_group_DP = tensor_parallel_group_DP
-        args.parallel_group_PP = tensor_parallel_group_PP
+        args.process_meshes_tp = process_meshes_tp
+        args.process_meshes_dp = process_meshes_dp
+        args.process_meshes_pp = process_meshes_pp
         args.cumu_num_device_of_all_pipeline_stage = cumu_num_device_of_all_pipeline_stage
         args.tp_size_of_each_pipeline_stage = tp_size_of_each_pipeline_stage
         
@@ -614,7 +615,7 @@ def validate_args(args, defaults={}):
     # disable sequence parallelism when tp=1
     # to avoid change in numerics when
     # sequence_parallelism is enabled.
-    if args.num_tensor_parallel_group != None:
+    if args.num_process_meshes != None:
         if 1 in args.tp_size_of_each_pipeline_stage:
             if args.rank == 0:
                 print("Set sequence_parallel false for some parallel group's tp size match 1")
@@ -2016,13 +2017,9 @@ def _add_hetero_args(parser):
                        'hetero-pipeline-stages must be in the form:'
                        'n0 layers_0_0 layers_0_1 ... n1 nlayers_1_0 nlayers_1_1 ...'
                        'The order should be consistent with --hetero-device-types.')
-    group.add_argument('--num-tensor-parallel-group', type=int, default=None,
-                       help='Number of different tensor parallel groups.'
-                       'Each parallel group consists of TP/PP/DP Setting,'
-                       'Different paralle groups can have different TP with same DP.')
-    group.add_argument('--tensor-parallel-group', nargs='*', type=int, default=None,
-                       help='When num-tensor-parallel-group is not None, use this arg to set TP/DP/PP'
-                       'of each group. This argument must be in the form: TP0, DP0, PP0, TP1, DP1, PP1'
+    group.add_argument('--process-meshes', nargs='*', type=int, default=None,
+                       help='Use this arg to set TP/DP/PP of each process mesh group.'
+                       'This argument must be in the form: TP0, DP0, PP0, TP1, DP1, PP1'
                        '...TPN, DPN, PPN. TP size can be different, sum of PP should match '
                        'pipeline-model-parallel-size, DP size should be the same.')
 

@@ -6,7 +6,6 @@ from typing import Callable, Iterator, List, Optional, Union
 import torch
 from torch.autograd.variable import Variable
 
-#from flagscale.hetero import parallel_state
 from megatron.core import parallel_state
 from megatron.core.enums import ModelType
 from flagscale.hetero import p2p_communication

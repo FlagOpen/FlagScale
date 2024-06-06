@@ -747,9 +747,9 @@ def initialize_hetero_model_parallel(
     world_size: int = torch.distributed.get_world_size()
     
     data_parallel_size = args.data_parallel_size
-    parallel_group_TP = args.parallel_group_TP
-    parallel_group_PP = args.parallel_group_PP
-    parallel_group_DP = args.parallel_group_DP
+    process_meshes_tp = args.process_meshes_tp
+    process_meshes_pp = args.process_meshes_pp
+    process_meshes_dp = args.process_meshes_dp
     # len = p + 1,  [0, sum(p0), sum(p0-p1), ..., sum(p0-pn-1)]
     cumu_num_device_of_all_pipeline_stage = args.cumu_num_device_of_all_pipeline_stage
     tp_size_of_each_pipeline_stage = args.tp_size_of_each_pipeline_stage
@@ -955,27 +955,27 @@ def initialize_hetero_model_parallel(
     global _DIFF_TP_PIPELINE_GLOBAL_RANKS
     assert _SAME_TP_PIPELINE_MODEL_PARALLEL_GROUP is None, 'same tp pipeline group is already initialized'
     assert _DIFF_TP_PIPELINE_MODEL_PARALLEL_GROUP is None, 'diff tp pipeline group is already initialized'
-    num_parallel_groups = args.num_tensor_parallel_group
+    num_process_meshes = args.num_process_meshes
     num_device_of_each_parallel_group = [tp * dp * pp for tp, dp, pp in
-                                      zip(parallel_group_TP, parallel_group_DP, parallel_group_PP)]
-    cumu_num_device_of_all_parallel_group = [sum(num_device_of_each_parallel_group[:i]) for i in range(num_parallel_groups + 1)]
+                                      zip(process_meshes_tp, process_meshes_dp, process_meshes_pp)]
+    cumu_num_device_of_all_parallel_group = [sum(num_device_of_each_parallel_group[:i]) for i in range(num_process_meshes + 1)]
     num_same_tp_pipeline_model_parallel_groups = []
     num_diff_tp_pipeline_model_parallel_groups = []
-    assert num_parallel_groups == len(set(parallel_group_TP)), 'all parallel group tp should not be the same'
-    for i in range(num_parallel_groups):
-        num_same_tp_pipeline_model_parallel_groups.append(parallel_group_TP[i] * parallel_group_DP[i])
-    for i in range(num_parallel_groups - 1):
-        num_diff_tp_pipeline_model_parallel_groups.append(parallel_group_DP[i] * parallel_group_TP[i] \
-            if parallel_group_TP[i] > parallel_group_TP[i+1] else \
-            parallel_group_DP[i] * parallel_group_TP[i+1])
+    assert num_process_meshes == len(set(process_meshes_tp)), 'all parallel group tp should not be the same'
+    for i in range(num_process_meshes):
+        num_same_tp_pipeline_model_parallel_groups.append(process_meshes_tp[i] * process_meshes_dp[i])
+    for i in range(num_process_meshes - 1):
+        num_diff_tp_pipeline_model_parallel_groups.append(process_meshes_dp[i] * process_meshes_tp[i] \
+            if process_meshes_tp[i] > process_meshes_tp[i+1] else \
+            process_meshes_dp[i] * process_meshes_tp[i+1])
     
-    for i in range(num_parallel_groups):
+    for i in range(num_process_meshes):
         start_rank = cumu_num_device_of_all_parallel_group[i]
         end_rank = cumu_num_device_of_all_parallel_group[i+1]
-        for j in range(parallel_group_DP[i]):
-            for k in range(parallel_group_TP[i]):
+        for j in range(process_meshes_dp[i]):
+            for k in range(process_meshes_tp[i]):
                 ranks = [x for x in range(
-                    start_rank + j * parallel_group_TP[i] + k, end_rank, parallel_group_DP[i] * parallel_group_TP[i]
+                    start_rank + j * process_meshes_tp[i] + k, end_rank, process_meshes_dp[i] * process_meshes_tp[i]
                 )]
                 group = torch.distributed.new_group(
                     ranks, timeout=timeout, pg_options=get_nccl_options('same_tp_pp', nccl_comm_cfgs)
@@ -984,14 +984,14 @@ def initialize_hetero_model_parallel(
                     _SAME_TP_PIPELINE_MODEL_PARALLEL_GROUP = group
                     _SAME_TP_PIPELINE_GLOBAL_RANKS = ranks
 
-    for i in range(num_parallel_groups - 1):
-        prev_start_rank = cumu_num_device_of_all_parallel_group[i+1] - parallel_group_DP[i] * parallel_group_TP[i]
+    for i in range(num_process_meshes - 1):
+        prev_start_rank = cumu_num_device_of_all_parallel_group[i+1] - process_meshes_dp[i] * process_meshes_tp[i]
         next_start_rank = cumu_num_device_of_all_parallel_group[i+1]
-        if parallel_group_TP[i] > parallel_group_TP[i+1]:
-            for j in range(parallel_group_DP[i]):
-                for k in range(parallel_group_TP[i]):
-                    ranks = [prev_start_rank + j * parallel_group_TP[i] + k,
-                             next_start_rank + j * parallel_group_TP[i+1] + k // (parallel_group_TP[i] // parallel_group_TP[i+1])]
+        if process_meshes_tp[i] > process_meshes_tp[i+1]:
+            for j in range(process_meshes_dp[i]):
+                for k in range(process_meshes_tp[i]):
+                    ranks = [prev_start_rank + j * process_meshes_tp[i] + k,
+                             next_start_rank + j * process_meshes_tp[i+1] + k // (process_meshes_tp[i] // process_meshes_tp[i+1])]
                     group = torch.distributed.new_group(
                         ranks, timeout=timeout, pg_options=get_nccl_options('diff_tp_pp', nccl_comm_cfgs)
                     )
@@ -1003,10 +1003,10 @@ def initialize_hetero_model_parallel(
                             _DIFF_TP_PIPELINE_MODEL_PARALLEL_GROUP.append(group)
                             _DIFF_TP_PIPELINE_GLOBAL_RANKS.append(ranks)
         else:
-            for j in range(parallel_group_DP[i+1]):
-                for k in range(parallel_group_TP[i+1]):
-                    ranks = [prev_start_rank + j * parallel_group_TP[i] + k // (parallel_group_TP[i+1] // parallel_group_TP[i]),
-                             next_start_rank + j * parallel_group_TP[i+1] + k]
+            for j in range(process_meshes_dp[i+1]):
+                for k in range(process_meshes_tp[i+1]):
+                    ranks = [prev_start_rank + j * process_meshes_tp[i] + k // (process_meshes_tp[i+1] // process_meshes_tp[i]),
+                             next_start_rank + j * process_meshes_tp[i+1] + k]
                     group = torch.distributed.new_group(
                         ranks, timeout=timeout, pg_options=get_nccl_options('diff_tp_pp', nccl_comm_cfgs)
                     )
@@ -1236,7 +1236,7 @@ def get_pipeline_model_parallel_world_size():
     if isinstance(get_pipeline_model_parallel_group(), list):
         return torch.distributed.get_world_size(group=get_pipeline_model_parallel_group()[0])
     else:
-        return torch.distributed.get_world_size(group=get_pipeline_model_parallel_group())
+        return len(_PIPELINE_GLOBAL_RANKS)
 
 def get_same_tp_pipeline_model_parallel_world_size():
     return torch.distributed.get_world_size(group=get_same_tp_pipeline_model_parallel_group())
@@ -1284,18 +1284,18 @@ def get_pipeline_model_parallel_rank():
     if _MPU_PIPELINE_MODEL_PARALLEL_RANK is not None:
         return _MPU_PIPELINE_MODEL_PARALLEL_RANK
     if isinstance(get_pipeline_model_parallel_group(), list):
-        return torch.distributed.get_rank(group=get_pipeline_model_parallel_group()[0])
+        return _PIPELINE_GLOBAL_RANKS[0].index(torch.distributed.get_rank())
     else:
-        return torch.distributed.get_rank(group=get_pipeline_model_parallel_group())
+        return _PIPELINE_GLOBAL_RANKS.index(torch.distributed.get_rank())
 
 def get_same_tp_pipeline_model_parallel_rank():
-    return torch.distributed.get_rank(group=get_same_tp_pipeline_model_parallel_group())
+    return _SAME_TP_PIPELINE_GLOBAL_RANKS.index(torch.distributed.get_rank())
 
 def get_diff_tp_pipeline_model_parallel_rank():
     if isinstance(get_diff_tp_pipeline_model_parallel_group(), list):
-        return torch.distributed.get_rank(group=get_diff_tp_pipeline_model_parallel_group()[0])
+        return _DIFF_TP_PIPELINE_GLOBAL_RANKS[0].index(torch.distributed.get_rank())
     else:
-        return torch.distributed.get_rank(group=get_diff_tp_pipeline_model_parallel_group())
+        return _DIFF_TP_PIPELINE_GLOBAL_RANKS.index(torch.distributed.get_rank())
 
 def is_same_tp_pipeline_first_stage():
     return get_same_tp_pipeline_model_parallel_rank() == 0

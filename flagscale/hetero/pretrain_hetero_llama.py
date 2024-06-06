@@ -15,7 +15,6 @@ from megatron.training import print_rank_0
 from megatron.training import get_timers
 from megatron.training import get_tokenizer
 from megatron.core import parallel_state as mpu
-#from flagscale.hetero import parallel_state as mpu
 from megatron.core.enums import ModelType
 from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
 from megatron.core.datasets.utils import get_blend_from_list

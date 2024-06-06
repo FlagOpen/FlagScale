@@ -3,7 +3,6 @@
 import torch
 from datetime import timedelta
 from megatron.training import get_args
-#from flagscale.hetero import parallel_state as mpu
 from megatron.core import parallel_state as mpu
 from megatron.training.global_vars import set_hetero_context, get_hetero_context
 from megatron.training.arguments import parse_args, validate_args
@@ -134,7 +133,7 @@ def _initialize_distributed():
             timeout=timedelta(minutes=args.distributed_timeout_minutes),
         )
 
-    if args.num_tensor_parallel_group == None:
+    if args.num_process_meshes == None:
         if args.hetero_mode is not None:
             # Build the heterogenous context after torch.distributed is initialized and
             # before model parallel is initialized.
@@ -148,7 +147,7 @@ def _initialize_distributed():
         if mpu.model_parallel_is_initialized():
             print("model parallel is already initialized")
         else:
-            if args.num_tensor_parallel_group != None:
+            if args.num_process_meshes != None:
                 mpu.initialize_hetero_model_parallel(
                     args,
                     args.tensor_model_parallel_size,
