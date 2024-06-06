@@ -1,0 +1,35 @@
+name: flagscale-review
+
+on:
+  pull_request:
+    branches: [ "main" ]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-approver:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Get PR Approvals
+      id: get_approvals
+      run: |
+        PR_NUMBER=$(jq --raw-output .number "$GITHUB_EVENT_PATH")
+        APPROVERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" \
+          | jq -r '.[] | select(.state == "APPROVED") | .user.login')
+
+        echo "APPROVERS=$APPROVERS" >> $GITHUB_ENV
+
+    - name: Check for Specific Approver
+      id: check_approver
+      run: |
+        SPECIFIC_APPROVER="aoyulong"
+        if echo "$APPROVERS" | grep -q "$SPECIFIC_APPROVER"; then
+          echo "Specific approver has approved the PR."
+        else
+          echo "The PR has not been approved by the specific approver."
+          exit 1
+        fi
