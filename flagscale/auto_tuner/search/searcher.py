@@ -83,33 +83,33 @@ class Searcher:
     def build_space(self, config):
         """Set value of each dim and sort."""
         space = {}
-        cards = config.auto_tuner.cards
-        cards_per_node = config.auto_tuner.nproc_per_node
+        cards = config.experiment.auto_tuner.cards
+        cards_per_node = config.experiment.auto_tuner.nproc_per_node
         num_layers = config.train.model.num_layers
         gbs = config.train.model.global_batch_size
-        if "space" not in config.auto_tuner:
-            config.auto_tuner.space = {}
+        if "space" not in config.experiment.auto_tuner:
+            config.experiment.auto_tuner.space = {}
 
-        if "algo" not in self.config.auto_tuner:
-            self.config.auto_tuner.algo = {"name": "grid", "priority": None}
-        priority = config.auto_tuner.algo.get("priority", None)
-        if config.auto_tuner.platform.get("airs_switch", False):
+        if "algo" not in self.config.experiment.auto_tuner:
+            self.config.experiment.auto_tuner.algo = {"name": "grid", "priority": None}
+        priority = config.experiment.auto_tuner.algo.get("priority", None)
+        if config.experiment.auto_tuner.platform.get("airs_switch", False):
             priority = "memory"
         # Set data parallel degree
         space["data_parallel_size"] = (
             [i for i in range(1, cards + 1)]
-            if "data_parallel_size" not in config.auto_tuner.space
-            or config.auto_tuner.space.data_parallel_size == "auto"
-            else config.auto_tuner.space.data_parallel_size
+            if "data_parallel_size" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.data_parallel_size == "auto"
+            else config.experiment.auto_tuner.space.data_parallel_size
         )
         self._sort("data_parallel_size", space["data_parallel_size"], priority)
 
         # Set distributed optimizer
         space["use_distributed_optimizer"] = (
             [True, False]
-            if "use_distributed_optimizer" not in config.auto_tuner.space
-            or config.auto_tuner.space.use_distributed_optimizer == "auto"
-            else config.auto_tuner.space.use_distributed_optimizer
+            if "use_distributed_optimizer" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.use_distributed_optimizer == "auto"
+            else config.experiment.auto_tuner.space.use_distributed_optimizer
         )
         self._sort(
             "use_distributed_optimizer", space["use_distributed_optimizer"], priority
@@ -118,9 +118,9 @@ class Searcher:
         # Set tensor parallel degree
         space["tensor_model_parallel_size"] = (
             [i for i in range(1, cards_per_node + 1)]
-            if "tensor_model_parallel_size" not in config.auto_tuner.space
-            or config.auto_tuner.space.tensor_model_parallel_size == "auto"
-            else config.auto_tuner.space.tensor_model_parallel_size
+            if "tensor_model_parallel_size" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.tensor_model_parallel_size == "auto"
+            else config.experiment.auto_tuner.space.tensor_model_parallel_size
         )
         self._sort(
             "tensor_model_parallel_size", space["tensor_model_parallel_size"], priority
@@ -129,18 +129,18 @@ class Searcher:
         # Set sequence parallel
         space["sequence_parallel"] = (
             [True, False]
-            if "sequence_parallel" not in config.auto_tuner.space
-            or config.auto_tuner.space.sequence_parallel == "auto"
-            else config.auto_tuner.space.sequence_parallel
+            if "sequence_parallel" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.sequence_parallel == "auto"
+            else config.experiment.auto_tuner.space.sequence_parallel
         )
         self._sort("sequence_parallel", space["sequence_parallel"], priority)
 
         # Set pipeline parallel degree
         space["pipeline_model_parallel_size"] = (
             [i for i in range(1, cards + 1)]
-            if "pipeline_model_parallel_size" not in config.auto_tuner.space
-            or config.auto_tuner.space.pipeline_model_parallel_size == "auto"
-            else config.auto_tuner.space.pipeline_model_parallel_size
+            if "pipeline_model_parallel_size" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.pipeline_model_parallel_size == "auto"
+            else config.experiment.auto_tuner.space.pipeline_model_parallel_size
         )
         self._sort(
             "pipeline_model_parallel_size",
@@ -151,9 +151,9 @@ class Searcher:
         # Set virtual pipeline parallel degree
         space["num_layers_per_virtual_pipeline_stage"] = (
             [i for i in range(1, num_layers + 1)]
-            if "num_layers_per_virtual_pipeline_stage" not in config.auto_tuner.space
-            or config.auto_tuner.space.num_layers_per_virtual_pipeline_stage == "auto"
-            else config.auto_tuner.space.num_layers_per_virtual_pipeline_stage
+            if "num_layers_per_virtual_pipeline_stage" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.num_layers_per_virtual_pipeline_stage == "auto"
+            else config.experiment.auto_tuner.space.num_layers_per_virtual_pipeline_stage
         )
         self._sort(
             "num_layers_per_virtual_pipeline_stage",
@@ -164,53 +164,53 @@ class Searcher:
         # Set use recompute
         space["use_recompute"] = (
             [True, False]
-            if "use_recompute" not in config.auto_tuner.space
-            or config.auto_tuner.space.use_recompute == "auto"
-            else config.auto_tuner.space.use_recompute
+            if "use_recompute" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.use_recompute == "auto"
+            else config.experiment.auto_tuner.space.use_recompute
         )
         self._sort("use_recompute", space["use_recompute"], priority)
         # Set recompute method
         space["recompute_method"] = (
             ["uniform", "block"]
-            if "recompute_method" not in config.auto_tuner.space
-            or config.auto_tuner.space.recompute_method == "auto"
-            else config.auto_tuner.space.recompute_method
+            if "recompute_method" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.recompute_method == "auto"
+            else config.experiment.auto_tuner.space.recompute_method
         )
         self._sort("recompute_method", space["recompute_method"], priority)
 
         # Set recompute granularity
         space["recompute_granularity"] = (
             ["full", "selective"]
-            if "recompute_granularity" not in config.auto_tuner.space
-            or config.auto_tuner.space.recompute_granularity == "auto"
-            else config.auto_tuner.space.recompute_granularity
+            if "recompute_granularity" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.recompute_granularity == "auto"
+            else config.experiment.auto_tuner.space.recompute_granularity
         )
         self._sort("recompute_granularity", space["recompute_granularity"], priority)
 
         # Set recompute num layers
         space["recompute_num_layers"] = (
             [i for i in range(1, num_layers + 1)]
-            if "recompute_num_layers" not in config.auto_tuner.space
-            or config.auto_tuner.space.recompute_num_layers == "auto"
-            else config.auto_tuner.space.recompute_num_layers
+            if "recompute_num_layers" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.recompute_num_layers == "auto"
+            else config.experiment.auto_tuner.space.recompute_num_layers
         )
         self._sort("recompute_num_layers", space["recompute_num_layers"], priority)
 
         # Set micro batch size
         space["micro_batch_size"] = (
             [i for i in range(1, gbs + 1)]
-            if "micro_batch_size" not in config.auto_tuner.space
-            or config.auto_tuner.space.micro_batch_size == "auto"
-            else config.auto_tuner.space.micro_batch_size
+            if "micro_batch_size" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.micro_batch_size == "auto"
+            else config.experiment.auto_tuner.space.micro_batch_size
         )
         self._sort("micro_batch_size", space["micro_batch_size"], priority)
 
         # Set context parallel degree
         space["context_parallel_size"] = (
             [i for i in range(1, cards + 1)]
-            if "context_parallel_size" not in config.auto_tuner.space
-            or config.auto_tuner.space.context_parallel_size == "auto"
-            else config.auto_tuner.space.context_parallel_size
+            if "context_parallel_size" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.context_parallel_size == "auto"
+            else config.experiment.auto_tuner.space.context_parallel_size
         )
         self._sort("context_parallel_size", space["context_parallel_size"], priority)
 
@@ -218,9 +218,9 @@ class Searcher:
         # NOTE: Expert parallel degree is not supported now
         space["expert_model_parallel_size"] = (
             [1]
-            if "expert_model_parallel_size" not in config.auto_tuner.space
-            or config.auto_tuner.space.expert_model_parallel_size == "auto"
-            else config.auto_tuner.space.expert_model_parallel_size
+            if "expert_model_parallel_size" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.expert_model_parallel_size == "auto"
+            else config.experiment.auto_tuner.space.expert_model_parallel_size
         )
         self._sort(
             "expert_model_parallel_size", space["expert_model_parallel_size"], priority
@@ -240,7 +240,7 @@ class Searcher:
         return recompute_part
 
     def build_algo(self, strategies, config):
-        name = self.config.auto_tuner.algo.name
+        name = self.config.experiment.auto_tuner.algo.name
         if name == "grid":
             from .algorithm import GridAlgo
 
@@ -251,7 +251,7 @@ class Searcher:
     def _product_parallel_dims(self, space, config):
         # Avoid space explosion after product
         product_parallelism_dims = []
-        cards = config.auto_tuner.cards
+        cards = config.experiment.auto_tuner.cards
         for data_parallel_size in space["data_parallel_size"]:
             dims = {}
             if not divisible(cards, data_parallel_size):

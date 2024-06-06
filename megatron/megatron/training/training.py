@@ -301,7 +301,7 @@ def pretrain(train_valid_test_dataset_provider,
                 extra_valid_dataset_provider)
 
         print_datetime('after training is done')
-        if not os.environ.get("FLAGSCALE_AUTOTUNER", False):
+        if not args.auto_tune:
             if args.save and iteration != 0 and iteration % args.save_interval != 0:
                 save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
                                 num_floating_point_operations_so_far, checkpointing_context)
@@ -952,7 +952,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
         total_loss_dict[skipped_iters_key] = 0
         total_loss_dict[nan_iters_key] = 0
         print_rank_last(log_string)
-        if not os.environ.get("FLAGSCALE_AUTOTUNER", False):
+        if not args.auto_tune:
             if report_memory_flag and learning_rate > 0.:
                 # Report memory after optimizer state has been initialized.
                 if torch.distributed.get_rank() == 0:

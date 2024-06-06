@@ -15,15 +15,15 @@ class Recorder:
             "history.csv",
         )
         # Metric to grep in the last rank of last node log file
-        if "auto_tuner" in self.config and "performance" in self.config.auto_tuner:
-            self.metric = self.config.auto_tuner.performance.get(
+        if "auto_tuner" in self.config and "performance" in self.config.experiment.auto_tuner:
+            self.metric = self.config.experiment.auto_tuner.performance.get(
                 "name", "elapsed time per iteration \(ms\):")
         else:
             self.metric = "elapsed time per iteration \(ms\):"
 
         # Sort order of performance, order just in [ascend, and descend], default ascend
-        if "auto_tuner" in self.config and "performance" in self.config.auto_tuner:
-            self.sorted_order = self.config.auto_tuner.performance.get(
+        if "auto_tuner" in self.config and "performance" in self.config.experiment.auto_tuner:
+            self.sorted_order = self.config.experiment.auto_tuner.performance.get(
                 "order", "ascend")
         else:
             self.sorted_order = "ascend"
@@ -66,8 +66,8 @@ class Recorder:
             strategy["error"] = None
 
         # Pass back to platform if need
-        if ("airs_switch" in self.config.auto_tuner.platform
-                and self.config.auto_tuner.platform.airs_switch
+        if ("airs_switch" in self.config.experiment.auto_tuner.platform
+                and self.config.experiment.auto_tuner.platform.airs_switch
                 and strategy["performance"]):
             self.pass_back_to_platform(strategy)
 

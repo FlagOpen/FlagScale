@@ -7,8 +7,8 @@ class Generator:
     def __init__(self, config):
         self.config = config
         # TODO: Just a temporary solution, need to be configurated by user
-        if "args_mapping" in config.auto_tuner:
-            self.args_mapping = config.auto_tuner.args_mapping
+        if "args_mapping" in config.experiment.auto_tuner:
+            self.args_mapping = config.experiment.auto_tuner.args_mapping
         else:
             self.args_mapping = {
                 "data_parallel_size": "data_parallel_size",
@@ -50,8 +50,8 @@ class Generator:
         config.experiment.runner.tee = 3
         config.experiment.runner.redirects = 3
 
-        # FLAGSCALE_AUTOTUNER should be true, it will not save ckpt when train ended and report memory every iteration
-        config.experiment.envs.FLAGSCALE_AUTOTUNER = True
+        # auto_tune should be true, it will not save ckpt when train ended and report memory every iteration
+        config.train.system.auto_tune = True
 
         # Del lr_warmup_samples and train_samples to run megatron.
         assert "optimizer" in config.train.model
@@ -79,8 +79,8 @@ class Generator:
                 config.train.system.checkpoint.save_interval = 2000
 
         # Set train_iters of each task
-        if "control" in config.auto_tuner:
-            config.train.model.train_iters = config.auto_tuner.control.get(
+        if "control" in config.experiment.auto_tuner:
+            config.train.model.train_iters = config.experiment.auto_tuner.control.get(
                 "train_iters", 5)
         else:
             config.train.model.train_iters = 5

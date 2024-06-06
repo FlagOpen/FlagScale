@@ -47,6 +47,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_serving_args(parser)
     parser = _add_customized_device_args(parser)
     parser = _add_hetero_args(parser)
+    parser = _add_auto_tuner_args(parser)
 
     # Custom arguments.
     if extra_args_provider is not None:
@@ -1933,5 +1934,14 @@ def _add_hetero_args(parser):
                        'hetero-pipeline-stages must be in the form:'
                        'n0 layers_0_0 layers_0_1 ... n1 nlayers_1_0 nlayers_1_1 ...'
                        'The order should be consistent with --hetero-device-types.')
+
+    return parser
+
+
+def _add_auto_tuner_args(parser):
+    group = parser.add_argument_group(title="auto tuner")
+
+    group.add_argument('--auto-tune', action='store_true',
+                       help='use auto tuner')
 
     return parser

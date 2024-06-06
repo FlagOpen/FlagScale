@@ -44,33 +44,35 @@ class AutoTuner:
         self.config = copy.deepcopy(config)
 
         # Set config of auto tuner
-        if "auto_tuner" not in self.config:
-            self.config.auto_tuner = {}
+        if "auto_tuner" not in self.config.experiment:
+            self.config.experiment.auto_tuner = {}
 
         # Add nodes, nproc_per_node, cards to build search space or prune
         assert "experiment" in config, "experiment is not in yaml file."
         assert "runner" in config.experiment, "runner is not in yaml file."
         nnodes = config.experiment.runner.get("nnodes", 1)
         nproc_per_node = config.experiment.runner.get("nproc_per_node", 8)
-        self.config.auto_tuner.nproc_per_node = nproc_per_node
-        self.config.auto_tuner.nnodes = nnodes
+        self.config.experiment.auto_tuner.nproc_per_node = nproc_per_node
+        self.config.experiment.auto_tuner.nnodes = nnodes
 
         # Set tuner configs
         # The interval of task monitoring
-        if "control" not in self.config.auto_tuner:
-            self.config.auto_tuner.control = {}
-        self.interval = self.config.auto_tuner.control.get("interval", 10)
+        if "control" not in self.config.experiment.auto_tuner:
+            self.config.experiment.auto_tuner.control = {}
+        self.interval = self.config.experiment.auto_tuner.control.get(
+            "interval", 10)
 
         # Set platform envs
-        if "platform" not in self.config.auto_tuner:
-            self.config.auto_tuner.platform = {}
+        if "platform" not in self.config.experiment.auto_tuner:
+            self.config.experiment.auto_tuner.platform = {}
 
         # As long as AIRS_SWITCH has value it means running on the platform
         if os.environ.get("AIRS_SWITCH", None):
-            self.config.auto_tuner.platform.airs_switch = True
+            self.config.experiment.auto_tuner.platform.airs_switch = True
 
             if os.environ.get("AIRS_SIZE", None):
-                self.config.auto_tuner.nnodes = int(os.environ["AIRS_SIZE"])
+                self.config.experiment.auto_tuner.nnodes = int(
+                    os.environ["AIRS_SIZE"])
                 # Set original config
                 self.orig_config.experiment.runner.nnodes = int(
                     os.environ["AIRS_SIZE"])
@@ -79,7 +81,7 @@ class AutoTuner:
                     os.environ["AIRS_SIZE"])
 
             if os.environ.get("AIRS_ACCELERATOR_COUNT", None):
-                self.config.auto_tuner.nproc_per_node = int(
+                self.config.experiment.auto_tuner.nproc_per_node = int(
                     os.environ["AIRS_ACCELERATOR_COUNT"])
                 # Set original config
                 self.orig_config.experiment.runner.nproc_per_node = int(
@@ -89,7 +91,8 @@ class AutoTuner:
                     os.environ["AIRS_ACCELERATOR_COUNT"])
 
             if os.environ.get("AIRS_FBMEM", None):
-                self.config.auto_tuner.memory = int(os.environ["AIRS_FBMEM"])
+                self.config.experiment.auto_tuner.memory = int(
+                    os.environ["AIRS_FBMEM"])
 
             if os.environ.get("AIRS_HOSTFILE_PATH", None):
                 # Set original config
@@ -99,7 +102,7 @@ class AutoTuner:
                 self.config.experiment.runner.hostfile = os.environ[
                     "AIRS_HOSTFILE_PATH"]
 
-        self.config.auto_tuner.cards = self.config.auto_tuner.nnodes * self.config.auto_tuner.nproc_per_node
+        self.config.experiment.auto_tuner.cards = self.config.experiment.auto_tuner.nnodes * self.config.experiment.auto_tuner.nproc_per_node
 
         # Build core sub modules, such as Searcher, Pruner, Generator and Recorder
         self.searcher = Searcher(self.config)
@@ -112,11 +115,12 @@ class AutoTuner:
 
         # The max time per task, unit: second
         # NOTE: The task will be stopped if the time is reached or done.
-        self.max_time_per_task = self.config.auto_tuner.control.get(
+        self.max_time_per_task = self.config.experiment.auto_tuner.control.get(
             "max_time_per_task", 300)
 
         # The max time of auto tuner, if None, no limit.
-        self.max_time = self.config.auto_tuner.control.get("max_time", None)
+        self.max_time = self.config.experiment.auto_tuner.control.get(
+            "max_time", None)
 
         # The start time of each task, used to control each task when stop
         self.start_task_time = None
@@ -155,7 +159,7 @@ class AutoTuner:
             self.record()
 
             if (self.cur_strategy["performance"]
-                    and self.config.auto_tuner.platform.get(
+                    and self.config.experiment.auto_tuner.platform.get(
                         "airs_switch", False) and not self.has_checkout):
                 self.checkout()
 
@@ -172,7 +176,7 @@ class AutoTuner:
             f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
 
         # Run the best task
-        if self.config.auto_tuner.control.get("run_best", True):
+        if self.config.experiment.auto_tuner.control.get("run_best", True):
             best_strategy = self.get_best()
             if best_strategy:
                 self.logger.info(f"Run best Strategy: {best_strategy}")
@@ -180,6 +184,7 @@ class AutoTuner:
                 raise ValueError(f"No strategy can run.")
             best_task = self.generator.gen_best_task(best_strategy,
                                                      self.orig_config)
+            best_task.action = "run"
             runner = SSHRunner(best_task)
             runner.run()
 
