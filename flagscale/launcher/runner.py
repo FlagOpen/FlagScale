@@ -8,10 +8,12 @@ import shlex
 import subprocess
 import json
 import uuid
+import time
 from datetime import datetime
 from abc import ABC, abstractmethod
 from omegaconf import DictConfig, OmegaConf
 from ..logger import logger
+from .job_status import JobStatus
 
 
 def log_and_raise_error(message):
@@ -78,32 +80,49 @@ def get_host_name_or_ip():
     except Exception:
         IP = "127.0.0.1"
     finally:
-        if 'sock' in locals():  # Ensure 'sock' was successfully created before attempting to close it
+        if (
+            "sock" in locals()
+        ):  # Ensure 'sock' was successfully created before attempting to close it
             sock.close()
     return IP
 
 
-def run_local_command(cmd, dryrun=False):
+def run_local_command(cmd, dryrun=False, query=False):
     logger.info(f"Run the local command: {cmd}")
     if dryrun:
         return
-    result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"Command {cmd} failed with return code {result.returncode}.")
-        print(f"Output: {result.stdout}")
-        print(f"Error: {result.stderr}")
-        sys.exit(result.returncode)
+    if query:
+        result = subprocess.run(
+            cmd, shell=True, check=True, capture_output=True, text=True
+        )
+        return result
+    else:
+        result = subprocess.run(
+            cmd, shell=True, check=True, capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            print(f"Command {cmd} failed with return code {result.returncode}.")
+            print(f"Output: {result.stdout}")
+            print(f"Error: {result.stderr}")
+            sys.exit(result.returncode)
 
 
-def run_ssh_command(host, cmd, port=None, dryrun=False):
+def run_ssh_command(host, cmd, port=None, dryrun=False, query=False):
     if port:
         ssh_cmd = f"ssh -f -n -p {port} {host} '{cmd}'"
     else:
         ssh_cmd = f"ssh -f -n {host} '{cmd}'"
-    logger.info(f"Run the ssh command: {ssh_cmd}")
+    if not query:
+        logger.info(f"SSHRunner is running the ssh command: {ssh_cmd}")
     if dryrun:
         return
-    subprocess.run(ssh_cmd, shell=True, check=True)
+    if query:
+        result = subprocess.run(
+            ssh_cmd, shell=True, check=True, text=True, stdout=subprocess.PIPE
+        )
+        return result
+    else:
+        subprocess.run(ssh_cmd, shell=True, check=True)
 
 
 def run_scp_command(host, src, dst, port=None, dryrun=False):
@@ -161,6 +180,8 @@ def get_megatron_args(config: DictConfig):
 
 def _update_config(config: DictConfig):
     exp_dir = os.path.abspath(config.experiment.exp_dir)
+    if not os.path.isdir(exp_dir):
+        os.makedirs(exp_dir)
     assert os.path.isdir(exp_dir), f"Directory {exp_dir} does not exist."
 
     OmegaConf.set_struct(config, False)
@@ -172,7 +193,7 @@ def _update_config(config: DictConfig):
 
     if config.get("checkpoint", None) is None:
         config.checkpoint = DictConfig({})
-    
+
     if config.get("logging", None) is None:
         config.logging = DictConfig({})
 
@@ -214,21 +235,21 @@ def _update_config(config: DictConfig):
     config.logging.tensorboard_dir = tensorboard_dir
     config.logging.wandb_save_dir = wandb_dir
 
-    OmegaConf.set_struct(config, True)
+    OmegaConf.set_struct(config, False)
 
 
 def _get_nnodes(nnodes_from_hostfile=None, nnodes_from_args=None):
     assert nnodes_from_hostfile is not None or nnodes_from_args is not None
     if nnodes_from_hostfile is not None and nnodes_from_args is not None:
         if isinstance(nnodes_from_args, str) and ":" in nnodes_from_args:
-            # Ignore the max nnodes from the args, no elastic support 
+            # Ignore the max nnodes from the args, no elastic support
             nnodes_from_args, _ = nnodes_from_args.split(":")
         return min(nnodes_from_hostfile, int(nnodes_from_args))
     elif nnodes_from_hostfile is not None:
         return nnodes_from_hostfile
     elif nnodes_from_args is not None:
         if isinstance(nnodes_from_args, str) and ":" in nnodes_from_args:
-            # Ignore the max nnodes from the args, no elastic support 
+            # Ignore the max nnodes from the args, no elastic support
             nnodes_from_args, _ = nnodes_from_args.split(":")
         return int(nnodes_from_args)
 
@@ -311,7 +332,7 @@ def _get_runner_cmd(
     runner_args["nnodes"] = nnodes
     runner_args["node_rank"] = node_rank
     runner_args["nproc_per_node"] = nproc_per_node
-    runner_args["rdzv_backend"] = rdzv_backend 
+    runner_args["rdzv_backend"] = rdzv_backend
     runner_args["rdzv_endpoint"] = rdzv_endpoint
     runner_args["log_dir"] = (
         log_dir if backend == "torchrun" else os.path.join(log_dir, rdzv_id)
@@ -330,7 +351,9 @@ def _get_runner_cmd(
     return runner_cmd
 
 
-def _generate_run_script(config, host, node_rank, cmd, background=True, with_test=False):
+def _generate_run_script(
+    config, host, node_rank, cmd, background=True, with_test=False
+):
     system_config = config.train.system
     logging_config = config.train.system.logging
 
@@ -442,10 +465,13 @@ class MultiNodeRunner(ABC):
 
 
 class SSHRunner(MultiNodeRunner):
+
     def __init__(self, config: DictConfig):
         self.config = config
         _update_config(self.config)
-        self.resources = parse_hostfile(self.config.experiment.runner.get("hostfile", None))
+        self.resources = parse_hostfile(
+            self.config.experiment.runner.get("hostfile", None)
+        )
 
     def _prepare(self):
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
@@ -454,7 +480,9 @@ class SSHRunner(MultiNodeRunner):
         if self.config.experiment.task.type == "train":
             self.user_args = get_megatron_args(self.config)
         else:
-            raise ValueError(f"Unsupported task type: {self.config.experiment.task.type}")
+            raise ValueError(
+                f"Unsupported task type: {self.config.experiment.task.type}"
+            )
 
     def _run_each(
         self,
@@ -491,13 +519,19 @@ class SSHRunner(MultiNodeRunner):
         if host != "localhost":
             ssh_port = self.config.experiment.runner.get("ssh_port", 22)
             # Step 1: make sure the scripts_dir exists on the remote host
-            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, dryrun)
+            run_ssh_command(
+                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, dryrun
+            )
 
             # Step 2: copy the host_run_script_file to the remote host
             no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
             if no_shared_fs:
                 run_scp_command(
-                    host, host_run_script_file, logging_config.scripts_dir, ssh_port, dryrun
+                    host,
+                    host_run_script_file,
+                    logging_config.scripts_dir,
+                    ssh_port,
+                    dryrun,
                 )
 
             # Step 3: run the host_run_script_file on the remote host
@@ -505,7 +539,7 @@ class SSHRunner(MultiNodeRunner):
         else:
             run_local_command(f"bash {host_run_script_file}", dryrun)
 
-    def run(self, with_test=False, dryrun=False):
+    def run(self, with_test=False, dryrun=False, monitor=False, interval=10):
         self._prepare()
         logger.info("\n************** configuration ***********")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
@@ -548,7 +582,9 @@ class SSHRunner(MultiNodeRunner):
         else:
             # If hostfile is not provided, run the job on localhost
             nproc_from_args = runner_config.get("nproc_per_node", None)
-            nproc_per_node = _get_nproc_per_node(None, nproc_from_args, num_visible_devices)
+            nproc_per_node = _get_nproc_per_node(
+                None, nproc_from_args, num_visible_devices
+            )
             avaliable_addr = runner_config.get("master_addr", "localhost")
             avaliable_port = runner_config.get("master_port", get_free_port())
             self._run_each(
@@ -561,6 +597,20 @@ class SSHRunner(MultiNodeRunner):
                 with_test=with_test,
                 dryrun=dryrun,
             )
+        # If need monitor, query status continually
+        if monitor:
+            # sleep to wait task already started
+            time.sleep(interval)
+            try:
+                while True:
+                    status = self._query_status()
+                    logger.info(f"Job Status: {status.name}")
+                    if status == JobStatus.COMPLETED_OR_IDLE:
+                        break
+                    time.sleep(interval)
+                logger.info("Job Ended.")
+            except Exception as e:
+                logger.info(e)
 
     def _stop_each(self, host, node_rank):
         host_stop_script_file = _generate_stop_script(self.config, host, node_rank)
@@ -595,6 +645,121 @@ class SSHRunner(MultiNodeRunner):
                 break
             self._stop_each(host, node_rank)
 
+    def _generate_query_script(self, host, node_rank):
+        """Genetrate the query script for each host."""
+        logging_config = self.config.train.system.logging
+
+        host_query_script_file = os.path.join(
+            logging_config.scripts_dir, f"host_{node_rank}_{host}_query.sh"
+        )
+
+        host_pid_file = os.path.join(
+            logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
+        )
+
+        os.makedirs(logging_config.scripts_dir, exist_ok=True)
+
+        with open(host_query_script_file, "w") as f:
+            f.write("#!/bin/bash\n\n")
+            f.write("if [ -f " + host_pid_file + " ]; then\n")
+            f.write("    pid=$(cat " + host_pid_file + ")\n")
+            f.write("    ps -p $pid -o state --no-headers\n")
+            f.write("else\n")
+            # TODO: This is a temporary fix. We need to find a better way to query the job.
+            f.write(
+                "    pid=$(ps aux | grep 'torchrun' | grep -v grep | head -n 1 | awk '{print $2}')\n"
+            )
+            f.write("    ps -p $pid -o state --no-headers\n")
+            f.write("fi\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(host_query_script_file, 0o755)
+
+        return host_query_script_file
+
+    def _query_each(self, host, node_rank):
+        "Query each node status."
+        host_query_script_file = self._generate_query_script(host, node_rank)
+        logging_config = self.config.train.system.logging
+        result = ""
+        if host != "localhost":
+            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
+            # Step 1: make sure the scripts_dir exists on the remote host
+            run_ssh_command(
+                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, query=True
+            )
+            # Step 2: copy the host_run_script_file to the remote host
+            no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
+            if no_shared_fs:
+                run_scp_command(
+                    host, host_query_script_file, logging_config.scripts_dir, ssh_port
+                )
+            # Step 3: run the host_run_script_file on the remote host
+            try:
+                result = run_ssh_command(
+                    host, f"bash {host_query_script_file}", ssh_port, query=True
+                )
+            except Exception as e:
+                logger.error(f"Failed to query job status on {host}: {e}")
+        else:
+            try:
+                result = run_local_command(f"bash {host_query_script_file}", query=True)
+            except Exception as e:
+                logger.error(f"Failed to query job status on {host}: {e}")
+        result = result.stdout.rstrip() if result else ""
+        return result
+
+    def _query_status(self):
+        "Query Job status."
+        results = []
+        if self.resources is None:
+            result = self._query_each("localhost", 0)
+            results.append(result)
+
+        else:
+            host_list = list(self.resources.keys())
+            for host, _ in self.resources.items():
+                node_rank = host_list.index(host)
+                result = self._query_each(host, node_rank)
+                results.append(result)
+        if all((status != "" and status != "Z") for status in results):
+            job_status = JobStatus.RUNNING
+        elif all((status == "" or status == "Z") for status in results):
+            job_status = JobStatus.COMPLETED_OR_IDLE
+        else:
+            job_status = JobStatus.TRANSITIONAL
+        return job_status
+
+    def query(self, interval=10, timeout=None):
+        """
+        Query job status and log.
+        There are three kinds of status for a Job:
+            RUNNING: The job is running.
+            COMPLETED_OR_IDLE: The job is completed or idle.
+            TRANSITIONAL: The job is starting or stopping.
+
+        Args:
+            interval (int, optional): The interval of querying job status. Default: 10.
+            timeout (float, optional): The timeout of query job status, if None, the query will keep indefinitely. Default: None.
+
+        Returns:
+            None
+
+        """
+        if timeout is None:
+            while True:
+                job_status = self._query_status()
+                logger.info(f"Job status: {job_status.name}")
+                time.sleep(interval)
+        else:
+            start_time = time.time()
+            cur_time = time.time()
+            while cur_time - start_time < timeout:
+                job_status = self._query_status()
+                logger.info(f"Job status: {job_status.name}")
+                time.sleep(interval)
+                cur_time = time.time()
+
 
 class CloudRunner(MultiNodeRunner):
 
@@ -608,7 +773,9 @@ class CloudRunner(MultiNodeRunner):
         if self.config.experiment.task.type == "train":
             self.user_args = get_megatron_args(self.config)
         else:
-            raise ValueError(f"Unsupported task type: {self.config.experiment.task.type}")
+            raise ValueError(
+                f"Unsupported task type: {self.config.experiment.task.type}"
+            )
 
     def _run_each(
         self,
@@ -662,12 +829,10 @@ class CloudRunner(MultiNodeRunner):
         nnodes = _get_nnodes(None, nnodes_from_args)
         node_rank = runner_config.node_rank
         nproc_from_args = runner_config.get("nproc_per_node", None)
-        nproc_per_node = _get_nproc_per_node(
-            None, nproc_from_args, num_visible_devices
-        )
+        nproc_per_node = _get_nproc_per_node(None, nproc_from_args, num_visible_devices)
         master_addr = runner_config.master_addr
         master_port = runner_config.master_port
-        host = get_host_name_or_ip() 
+        host = get_host_name_or_ip()
         self._run_each(
             host,
             master_addr,
