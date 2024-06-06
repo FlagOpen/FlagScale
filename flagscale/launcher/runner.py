@@ -539,7 +539,7 @@ class SSHRunner(MultiNodeRunner):
         else:
             run_local_command(f"bash {host_run_script_file}", dryrun)
 
-    def run(self, with_test=False, dryrun=False, monitor=False):
+    def run(self, with_test=False, dryrun=False, monitor=False, interval=10):
         self._prepare()
         logger.info("\n************** configuration ***********")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
@@ -599,15 +599,15 @@ class SSHRunner(MultiNodeRunner):
             )
         # If need monitor, query status continually
         if monitor:
-            # sleep 10s to wait task already started
-            time.sleep(10)
+            # sleep to wait task already started
+            time.sleep(interval)
             try:
                 while True:
                     status = self._query_status()
                     logger.info(f"Job Status: {status.name}")
                     if status == JobStatus.COMPLETED_OR_IDLE:
                         break
-                    time.sleep(10)
+                    time.sleep(interval)
                 logger.info("Job Ended.")
             except Exception as e:
                 logger.info(e)
