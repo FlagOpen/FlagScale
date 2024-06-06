@@ -1,7 +1,7 @@
 # This workflow will install Python dependencies, run tests and lint with a single version of Python
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: flagscale-test
+name: test
 
 on:
   push:
@@ -10,35 +10,45 @@ on:
     branches: [ "main" ]
 
 jobs:
-  container-test-job:
+  test:
       runs-on: self-hosted
       container:
-        image: localhost:5000/flagscale_cicd:v1.2
+        image: localhost:5000/flagscale_cicd:v1.3
         ports:
           - 80
-        options: --gpus all --hostname flagscale_cicd 
+        volumes:
+          - /home/flagscale_cicd/flask/static:/workspace/report
+        options: --gpus all --hostname flagscale_cicd
       steps:
-        - name: checkout-code
+        - name: Checkout Code
           uses: actions/checkout@v2
 
-        - name: unit_test-megatron
+        - name: Megatron Unit Test
           run: |
             cd megatron
             export PYTHONPATH=..:$PYTHONPATH
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/data
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/dist_checkpointing
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/fusions
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/models
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/pipeline_parallel
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/tensor_parallel
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/transformer
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/*.py
-            
-        - name: unit_test-flagscale
-          run: |
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/launcher
+            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/data
+            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/dist_checkpointing
+            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/fusions
+            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/models
+            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/pipeline_parallel
+            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/tensor_parallel
+            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/transformer 
+            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/*.py 
         
-        - name: functional_test-flagscale
+        - name: Megatron Unit Test Coverage Online Report
+          run: |
+            echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-megatron/index.html"
+
+        - name: Flagscale Unit Test
+          run: |
+            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-flagscale --cov=flagscale -q -x tests/unit_tests/launcher
+        
+        - name: Flagscale Unit Test Coverage Online Report
+          run: |
+            echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-flagscale/index.html"
+
+        - name: Flagscale Functional Test
           run: |
             python run.py --config-path tests/functional_tests/aquila/conf --config-name config action=test
             pytest -s tests/functional_tests/test_result.py --test_reaults_path=./tests/functional_tests/aquila/test_result

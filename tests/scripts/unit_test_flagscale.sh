@@ -1,1 +1,1 @@
-torchrun --nproc_per_node=8 -m pytest --import-mode=importlib -q -x tests/unit_tests/launcher
+torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:./cov-report-flagscale --cov=flagscale -q -x tests/unit_tests/launcher
