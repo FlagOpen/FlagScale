@@ -8,7 +8,7 @@ from torch.autograd.variable import Variable
 
 from megatron.core import parallel_state
 from megatron.core.enums import ModelType
-from flagscale.hetero import p2p_communication
+from flagscale.train.hetero import p2p_communication
 from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler
 from megatron.core.utils import get_attr_wrapped_model, get_model_config, get_model_type
 from megatron.core.pipeline_parallel.schedules import (

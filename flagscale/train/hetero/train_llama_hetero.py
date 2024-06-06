@@ -37,7 +37,7 @@ from megatron.core.models.gpt.gpt_layer_specs import (
 
 from flagscale.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
 from flagscale.train.extra_valid import extra_valid_dataset_provider
-from flagscale.hetero.training import pretrain
+from flagscale.train.hetero.training import pretrain
 
 stimer = StragglerDetector()
 

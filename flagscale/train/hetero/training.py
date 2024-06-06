@@ -61,8 +61,8 @@ from megatron.training.training import (
 
 from flagscale.train.extra_valid import build_extra_valid_data_iterators
 from flagscale.train.extra_valid import extra_evaluate_and_print_results
-from flagscale.hetero.initialize import initialize_megatron
-from flagscale.hetero.schedules import get_forward_backward_func
+from flagscale.train.hetero.initialize import initialize_megatron
+from flagscale.train.hetero.schedules import get_forward_backward_func
 from megatron.core import parallel_state as mpu
 
 def pretrain(train_valid_test_dataset_provider,
