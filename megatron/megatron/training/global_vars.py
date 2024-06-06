@@ -304,4 +304,3 @@ def set_device_type(args):
     # Apply the following patch during the import time
     import patches
 
-
