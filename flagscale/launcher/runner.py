@@ -465,6 +465,7 @@ class MultiNodeRunner(ABC):
 
 
 class SSHRunner(MultiNodeRunner):
+
     def __init__(self, config: DictConfig):
         self.config = config
         _update_config(self.config)
@@ -538,7 +539,7 @@ class SSHRunner(MultiNodeRunner):
         else:
             run_local_command(f"bash {host_run_script_file}", dryrun)
 
-    def run(self, with_test=False, dryrun=False):
+    def run(self, with_test=False, dryrun=False, monitor=False):
         self._prepare()
         logger.info("\n************** configuration ***********")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
@@ -596,6 +597,20 @@ class SSHRunner(MultiNodeRunner):
                 with_test=with_test,
                 dryrun=dryrun,
             )
+        # If need monitor, query status continually
+        if monitor:
+            # sleep 10s to wait task already started
+            time.sleep(10)
+            try:
+                while True:
+                    status = self._query_status()
+                    logger.info(f"Job Status: {status.name}")
+                    if status == JobStatus.COMPLETED_OR_IDLE:
+                        break
+                    time.sleep(10)
+                logger.info("Job Ended.")
+            except Exception as e:
+                logger.info(e)
 
     def _stop_each(self, host, node_rank):
         host_stop_script_file = _generate_stop_script(self.config, host, node_rank)

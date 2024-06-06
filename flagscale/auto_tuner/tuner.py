@@ -186,7 +186,7 @@ class AutoTuner:
                                                      self.orig_config)
             best_task.action = "run"
             runner = SSHRunner(best_task)
-            runner.run()
+            runner.run(monitor=True)
 
     def need_stop(self):
         """Judge whether need to stop tuning."""
