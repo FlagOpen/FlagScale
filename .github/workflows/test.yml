@@ -5,12 +5,12 @@ name: flagscale-test
 
 on:
   push:
-    branches: [ "main" , "test_coverage"]
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
 jobs:
-  container-test-job:
+  test:
       runs-on: self-hosted
       container:
         image: localhost:5000/flagscale_cicd:v1.3
@@ -20,10 +20,10 @@ jobs:
           - /home/flagscale_cicd/flask/static:/workspace/report
         options: --gpus all --hostname flagscale_cicd
       steps:
-        - name: checkout-code
+        - name: Checkout Code
           uses: actions/checkout@v2
 
-        - name: unit_test-megatron
+        - name: Megatron Unit Test
           run: |
             cd megatron
             export PYTHONPATH=..:$PYTHONPATH
@@ -36,31 +36,19 @@ jobs:
             torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/transformer 
             torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/*.py 
         
-        - name: Access code coverage results megatron
+        - name: Megatron Unit Test Coverage Online Report
           run: |
             echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-megatron/index.html"
 
-        - name: Archive code coverage results megatron
-          uses: actions/upload-artifact@v4
-          with:
-            name: code-coverage-report-megatron
-            path: /workspace/report/${{github.sha}}/cov-report-megatron
-            
-        - name: unit_test-flagscale
+        - name: Flagscale Unit Test
           run: |
             torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-flagscale --cov=flagscale -q -x tests/unit_tests/launcher
         
-        - name: Access code coverage results flagscale
+        - name: Flagscale Unit Test Coverage Online Report
           run: |
             echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-flagscale/index.html"
-        
-        - name: Archive code coverage results flagscale
-          uses: actions/upload-artifact@v4
-          with:
-            name: code-coverage-report-flagscale
-            path: /workspace/report/${{github.sha}}/cov-report-flagscale
 
-        - name: functional_test-flagscale
+        - name: Flagscale Functional Test
           run: |
             python run.py --config-path tests/functional_tests/aquila/conf --config-name config action=test
             pytest -s tests/functional_tests/test_result.py --test_reaults_path=./tests/functional_tests/aquila/test_result

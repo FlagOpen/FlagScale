@@ -1,4 +1,4 @@
-name: flagscale-review
+name: approve
 
 on:
   pull_request:
@@ -6,15 +6,14 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  check-approver:
+  approve:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
+    - name: Checkout Code
       uses: actions/checkout@v2
 
     - name: Get PR Approvals
-      id: get_approvals
       run: |
         PR_NUMBER=$(jq --raw-output .number "$GITHUB_EVENT_PATH")
         APPROVERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
@@ -24,7 +23,6 @@ jobs:
         echo "APPROVERS=$APPROVERS" >> $GITHUB_ENV
 
     - name: Check for Specific Approver
-      id: check_approver
       run: |
         SPECIFIC_APPROVER="aoyulong"
         if echo "$APPROVERS" | grep -q "$SPECIFIC_APPROVER"; then
