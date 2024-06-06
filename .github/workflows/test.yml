@@ -23,6 +23,10 @@ jobs:
         - name: Checkout Code
           uses: actions/checkout@v2
 
+        - name: Check GPU is Free
+          run: |
+            ./scripts/gpu_check.sh
+
         - name: Megatron Unit Test
           run: |
             cd megatron
@@ -40,6 +44,10 @@ jobs:
           run: |
             echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-megatron/index.html"
 
+        - name: Check GPU is Free
+          run: |
+            ./scripts/gpu_check.sh
+
         - name: Flagscale Unit Test
           run: |
             torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-flagscale --cov=flagscale -q -x tests/unit_tests/launcher
@@ -47,6 +55,10 @@ jobs:
         - name: Flagscale Unit Test Coverage Online Report
           run: |
             echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-flagscale/index.html"
+
+        - name: Check GPU is Free
+          run: |
+            ./scripts/gpu_check.sh
 
         - name: Flagscale Functional Test
           run: |
