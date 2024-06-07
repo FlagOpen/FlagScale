@@ -20,7 +20,7 @@ jobs:
         pip install black
     - name: Run Black
       run: >-
-        black --check 
+        black --check --include
         flagscale/auto_tuner/.*\.py|
         flagscale/auto_tuner/prune/\..*\.py|
         flagscale/auto_tuner/record/\..*\.py|
