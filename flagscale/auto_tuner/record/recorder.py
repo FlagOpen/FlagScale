@@ -309,4 +309,4 @@ class Recorder:
         df = df.reindex(columns=cols)
         if "stopped_by_tuner" in df.columns:
             df = df.drop(columns=["stopped_by_tuner"])
-        df.to_csv(self.path, index=False)
+        df.to_csv(self.path, index=False, escapechar='\\')
