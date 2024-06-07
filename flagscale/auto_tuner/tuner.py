@@ -242,7 +242,7 @@ class AutoTuner:
         """Monitor the task until task timeout or completed."""
         # Sleep 3s to ensure the task is started
         time.sleep(3)
-
+        running = False
         while True:
             # If the task timeout, stop monitoring
             end_time = time.time()
@@ -262,6 +262,12 @@ class AutoTuner:
                     f"task_{self.cur_strategy['idx']} status: {status.name}")
                 if status == JobStatus.COMPLETED_OR_IDLE:
                     break
+                if status == JobStatus.RUNNING:
+                    running = True
+                if status == JobStatus.TRANSITIONAL:
+                    if running:
+                        self.runner.stop()
+                        break
             except Exception as e:
                 self.logger.info(e)
                 time.sleep(self.interval)
