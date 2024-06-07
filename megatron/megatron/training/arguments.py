@@ -47,6 +47,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_serving_args(parser)
     parser = _add_customized_device_args(parser)
     parser = _add_hetero_args(parser)
+    parser = _add_auto_tuner_args(parser)
 
     # Custom arguments.
     if extra_args_provider is not None:
@@ -2022,5 +2023,14 @@ def _add_hetero_args(parser):
                        'This argument must be in the form: TP0, DP0, PP0, TP1, DP1, PP1'
                        '...TPN, DPN, PPN. TP size can be different, sum of PP should match '
                        'pipeline-model-parallel-size, DP size should be the same.')
+
+    return parser
+
+
+def _add_auto_tuner_args(parser):
+    group = parser.add_argument_group(title="auto tuner")
+
+    group.add_argument('--auto-tune', action='store_true',
+                       help='use auto tuner')
 
     return parser

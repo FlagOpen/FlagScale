@@ -98,6 +98,9 @@ def test_builder():
         def __getitem__(self, idx: int) -> Dict[str, numpy.ndarray]:
             return {"text": self.dataset[self.sample_index[idx]]}
 
+    from tests.unit_tests.data import set_mock_args
+    set_mock_args()
+
     with tempfile.TemporaryDirectory() as temp_dir:
 
         paths = do_setup(temp_dir)
