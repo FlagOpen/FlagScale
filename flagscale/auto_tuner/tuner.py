@@ -33,7 +33,8 @@ class AutoTuner:
         handler = logging.FileHandler(log_path, mode="w")
         handler.setLevel(logging.INFO)
         formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         self.logger = logger
@@ -59,8 +60,7 @@ class AutoTuner:
         # The interval of task monitoring
         if "control" not in self.config.experiment.auto_tuner:
             self.config.experiment.auto_tuner.control = {}
-        self.interval = self.config.experiment.auto_tuner.control.get(
-            "interval", 10)
+        self.interval = self.config.experiment.auto_tuner.control.get("interval", 10)
 
         # Set platform envs
         if "platform" not in self.config.experiment.auto_tuner:
@@ -71,38 +71,42 @@ class AutoTuner:
             self.config.experiment.auto_tuner.platform.airs_switch = True
 
             if os.environ.get("AIRS_SIZE", None):
-                self.config.experiment.auto_tuner.nnodes = int(
-                    os.environ["AIRS_SIZE"])
+                self.config.experiment.auto_tuner.nnodes = int(os.environ["AIRS_SIZE"])
                 # Set original config
-                self.orig_config.experiment.runner.nnodes = int(
-                    os.environ["AIRS_SIZE"])
+                self.orig_config.experiment.runner.nnodes = int(os.environ["AIRS_SIZE"])
                 # Set config
-                self.config.experiment.runner.nnodes = int(
-                    os.environ["AIRS_SIZE"])
+                self.config.experiment.runner.nnodes = int(os.environ["AIRS_SIZE"])
 
             if os.environ.get("AIRS_ACCELERATOR_COUNT", None):
                 self.config.experiment.auto_tuner.nproc_per_node = int(
-                    os.environ["AIRS_ACCELERATOR_COUNT"])
+                    os.environ["AIRS_ACCELERATOR_COUNT"]
+                )
                 # Set original config
                 self.orig_config.experiment.runner.nproc_per_node = int(
-                    os.environ["AIRS_ACCELERATOR_COUNT"])
+                    os.environ["AIRS_ACCELERATOR_COUNT"]
+                )
                 # Set config
                 self.config.experiment.runner.nproc_per_node = int(
-                    os.environ["AIRS_ACCELERATOR_COUNT"])
+                    os.environ["AIRS_ACCELERATOR_COUNT"]
+                )
 
             if os.environ.get("AIRS_FBMEM", None):
-                self.config.experiment.auto_tuner.memory = int(
-                    os.environ["AIRS_FBMEM"])
+                self.config.experiment.auto_tuner.memory = int(os.environ["AIRS_FBMEM"])
 
             if os.environ.get("AIRS_HOSTFILE_PATH", None):
                 # Set original config
                 self.orig_config.experiment.runner.hostfile = os.environ[
-                    "AIRS_HOSTFILE_PATH"]
+                    "AIRS_HOSTFILE_PATH"
+                ]
                 # Set config
                 self.config.experiment.runner.hostfile = os.environ[
-                    "AIRS_HOSTFILE_PATH"]
+                    "AIRS_HOSTFILE_PATH"
+                ]
 
-        self.config.experiment.auto_tuner.cards = self.config.experiment.auto_tuner.nnodes * self.config.experiment.auto_tuner.nproc_per_node
+        self.config.experiment.auto_tuner.cards = (
+            self.config.experiment.auto_tuner.nnodes
+            * self.config.experiment.auto_tuner.nproc_per_node
+        )
 
         # Build core sub modules, such as Searcher, Pruner, Generator and Recorder
         self.searcher = Searcher(self.config)
@@ -116,11 +120,11 @@ class AutoTuner:
         # The max time per task, unit: second
         # NOTE: The task will be stopped if the time is reached or done.
         self.max_time_per_task = self.config.experiment.auto_tuner.control.get(
-            "max_time_per_task", 300)
+            "max_time_per_task", 300
+        )
 
         # The max time of auto tuner, if None, no limit.
-        self.max_time = self.config.experiment.auto_tuner.control.get(
-            "max_time", None)
+        self.max_time = self.config.experiment.auto_tuner.control.get("max_time", None)
 
         # The start time of each task, used to control each task when stop
         self.start_task_time = None
@@ -158,9 +162,11 @@ class AutoTuner:
             self.logger.info(f"Record task_{self.idx}:")
             self.record()
 
-            if (self.cur_strategy["performance"]
-                    and self.config.experiment.auto_tuner.platform.get(
-                        "airs_switch", False) and not self.has_checkout):
+            if (
+                self.cur_strategy["performance"]
+                and self.config.experiment.auto_tuner.platform.get("airs_switch", False)
+                and not self.has_checkout
+            ):
                 self.checkout()
 
             # get best strategy
@@ -173,7 +179,8 @@ class AutoTuner:
                 self.logger.info(f"No strategy can run so far.")
         tuner_end_time = time.time()
         self.logger.info(
-            f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
+            f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds."
+        )
 
         # Run the best task
         if self.config.experiment.auto_tuner.control.get("run_best", True):
@@ -182,8 +189,7 @@ class AutoTuner:
                 self.logger.info(f"Run best Strategy: {best_strategy}")
             else:
                 raise ValueError(f"No strategy can run.")
-            best_task = self.generator.gen_best_task(best_strategy,
-                                                     self.orig_config)
+            best_task = self.generator.gen_best_task(best_strategy, self.orig_config)
             best_task.action = "run"
             runner = SSHRunner(best_task)
             runner.run(monitor=True, interval=60)
@@ -259,7 +265,8 @@ class AutoTuner:
             try:
                 status = self.runner._query_status()
                 self.logger.info(
-                    f"task_{self.cur_strategy['idx']} status: {status.name}")
+                    f"task_{self.cur_strategy['idx']} status: {status.name}"
+                )
                 if status == JobStatus.COMPLETED_OR_IDLE:
                     break
             except Exception as e:
@@ -270,15 +277,18 @@ class AutoTuner:
         end_time = time.time()
 
         # Add elapsed time
-        self.cur_strategy["elapsed_time"] = round(
-            end_time - self.task_start_time, 2)
+        self.cur_strategy["elapsed_time"] = round(end_time - self.task_start_time, 2)
         # Add start time
         readable_task_start_time = datetime.datetime.fromtimestamp(
-            self.task_start_time).strftime("%Y-%m-%d %H:%M:%S")
+            self.task_start_time
+        ).strftime("%Y-%m-%d %H:%M:%S")
         self.cur_strategy["start_time"] = readable_task_start_time
 
-        self.logger.info("task_{} monitor time: {:.2f}s".format(
-            self.cur_strategy["idx"], self.cur_strategy["elapsed_time"]))
+        self.logger.info(
+            "task_{} monitor time: {:.2f}s".format(
+                self.cur_strategy["idx"], self.cur_strategy["elapsed_time"]
+            )
+        )
 
     def record(self):
         """Record the task result to csv"""
@@ -287,7 +297,6 @@ class AutoTuner:
 
     def get_best(self):
         sorted_history = self.recorder.sort(self.history)
-        if sorted_history and sorted_history[0] and sorted_history[0][
-                "performance"]:
+        if sorted_history and sorted_history[0] and sorted_history[0]["performance"]:
             return sorted_history[0]
         return None

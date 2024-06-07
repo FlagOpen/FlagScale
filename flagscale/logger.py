@@ -12,7 +12,9 @@ class Logger:
         for handler in self.logger.handlers[:]:
             self.logger.removeHandler(handler)
 
-        formatter = logging.Formatter('[%(asctime)s %(name)s %(filename)s %(levelname)s] %(message)s')
+        formatter = logging.Formatter(
+            "[%(asctime)s %(name)s %(filename)s %(levelname)s] %(message)s"
+        )
 
         stream_handler = logging.StreamHandler(sys.stdout)
         stream_handler.setFormatter(formatter)
@@ -34,12 +36,15 @@ class Logger:
     def debug(self, message):
         self.logger.debug(message)
 
+
 GLOBAL_LOGGER = None
+
 
 def get_logger():
     global GLOBAL_LOGGER
     if GLOBAL_LOGGER is None:
-        GLOBAL_LOGGER = Logger('FlagScale')
+        GLOBAL_LOGGER = Logger("FlagScale")
     return GLOBAL_LOGGER
+
 
 logger = get_logger()

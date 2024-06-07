@@ -26,8 +26,7 @@ def prune_by_micro_batch_size(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # performance prune
-            if item["micro_batch_size"] > micro_batch_size and item[
-                    "performance"]:
+            if item["micro_batch_size"] > micro_batch_size and item["performance"]:
                 logger.info(
                     f"The strategy {strategy} has been pruned by micro_batch_size performance."
                 )
@@ -36,8 +35,7 @@ def prune_by_micro_batch_size(config, strategy, history=[]):
                 strategy["pruned"] = True
                 return True
             # memory prune
-            if item["micro_batch_size"] < micro_batch_size and item[
-                    "max_mem"] == "OOM":
+            if item["micro_batch_size"] < micro_batch_size and item["max_mem"] == "OOM":
                 logger.info(
                     f"The strategy {strategy} has been pruned by micro_batch_size memory."
                 )
@@ -91,10 +89,13 @@ def prune_by_recompute(config, strategy, history=[]):
             strategy["pruned"] = True
             return True
 
-        if (use_recompute and item["use_recompute"]
-                and recompute_method == "block"
-                and recompute_method == item["recompute_method"]
-                and item["performance"]):
+        if (
+            use_recompute
+            and item["use_recompute"]
+            and recompute_method == "block"
+            and recompute_method == item["recompute_method"]
+            and item["performance"]
+        ):
             if recompute_num_layers > item["recompute_num_layers"]:
                 logger.info(
                     f"The strategy {strategy} has been pruned by block recompute_num_layers performance."
@@ -104,10 +105,13 @@ def prune_by_recompute(config, strategy, history=[]):
                 strategy["pruned"] = True
                 return True
 
-        if (use_recompute and item["use_recompute"]
-                and recompute_method == "uniform"
-                and recompute_method == item["recompute_method"]
-                and item["performance"]):
+        if (
+            use_recompute
+            and item["use_recompute"]
+            and recompute_method == "uniform"
+            and recompute_method == item["recompute_method"]
+            and item["performance"]
+        ):
             if recompute_num_layers > item["recompute_num_layers"]:
                 logger.info(
                     f"The strategy {strategy} has been pruned by uniform recompute_num_layers performance."
@@ -117,8 +121,7 @@ def prune_by_recompute(config, strategy, history=[]):
                 strategy["pruned"] = True
                 return True
         # memory prune
-        if not use_recompute and item["use_recompute"] and item[
-                "max_mem"] == "OOM":
+        if not use_recompute and item["use_recompute"] and item["max_mem"] == "OOM":
             logger.info(
                 f"The strategy {strategy} has been pruned by use_recompute memory."
             )
@@ -127,11 +130,16 @@ def prune_by_recompute(config, strategy, history=[]):
             strategy["pruned"] = True
             return True
 
-        if (use_recompute and item["use_recompute"]
-                and recompute_method == "uniform"
-                and recompute_method == item["recompute_method"]):
-            if (recompute_num_layers > item["recompute_num_layers"]
-                    and item["max_mem"] == "OOM"):
+        if (
+            use_recompute
+            and item["use_recompute"]
+            and recompute_method == "uniform"
+            and recompute_method == item["recompute_method"]
+        ):
+            if (
+                recompute_num_layers > item["recompute_num_layers"]
+                and item["max_mem"] == "OOM"
+            ):
                 logger.info(
                     f"The strategy {strategy} has been pruned by uniform recompute_num_layers memory."
                 )
@@ -140,11 +148,16 @@ def prune_by_recompute(config, strategy, history=[]):
                 strategy["pruned"] = True
                 return True
 
-        if (use_recompute and item["use_recompute"]
-                and recompute_method == "block"
-                and recompute_method == item["recompute_method"]):
-            if (recompute_num_layers < item["recompute_num_layers"]
-                    and item["max_mem"] == "OOM"):
+        if (
+            use_recompute
+            and item["use_recompute"]
+            and recompute_method == "block"
+            and recompute_method == item["recompute_method"]
+        ):
+            if (
+                recompute_num_layers < item["recompute_num_layers"]
+                and item["max_mem"] == "OOM"
+            ):
                 logger.info(
                     f"The strategy {strategy} has been pruned by block recompute_num_layers memory."
                 )
@@ -163,8 +176,11 @@ def prune_by_sequence_parallel(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # performance prune
-            if item["sequence_parallel"] and item[
-                    "performance"] and not sequence_parallel:
+            if (
+                item["sequence_parallel"]
+                and item["performance"]
+                and not sequence_parallel
+            ):
                 logger.info(
                     f"The strategy {strategy} has been pruned by sequence_parallel performance."
                 )
@@ -173,8 +189,11 @@ def prune_by_sequence_parallel(config, strategy, history=[]):
                 strategy["pruned"] = True
                 return True
             # memory prune
-            if item["sequence_parallel"] and item[
-                    "max_mem"] == "OOM" and not sequence_parallel:
+            if (
+                item["sequence_parallel"]
+                and item["max_mem"] == "OOM"
+                and not sequence_parallel
+            ):
                 logger.info(
                     f"The strategy {strategy} has been pruned by sequence_parallel memory."
                 )

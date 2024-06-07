@@ -16,8 +16,7 @@ class Generator:
                 "tensor_model_parallel_size": "tensor_model_parallel_size",
                 "sequence_parallel": "sequence_parallel",
                 "pipeline_model_parallel_size": "pipeline_model_parallel_size",
-                "num_layers_per_virtual_pipeline_stage":
-                "num_layers_per_virtual_pipeline_stage",
+                "num_layers_per_virtual_pipeline_stage": "num_layers_per_virtual_pipeline_stage",
                 "recompute_method": "recompute_method",
                 "recompute_granularity": "recompute_granularity",
                 "recompute_num_layers": "recompute_num_layers",
@@ -81,14 +80,15 @@ class Generator:
         # Set train_iters of each task
         if "control" in config.experiment.auto_tuner:
             config.train.model.train_iters = config.experiment.auto_tuner.control.get(
-                "train_iters", 5)
+                "train_iters", 5
+            )
         else:
             config.train.model.train_iters = 5
 
         # log dir
-        config.experiment.exp_dir = os.path.join(config.experiment.exp_dir,
-                                                 "auto_tuner",
-                                                 f"task_{strategy['idx']}")
+        config.experiment.exp_dir = os.path.join(
+            config.experiment.exp_dir, "auto_tuner", f"task_{strategy['idx']}"
+        )
 
         return config
 
