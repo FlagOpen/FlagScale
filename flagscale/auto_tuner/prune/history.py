@@ -271,7 +271,7 @@ def prune_by_mbs_sp(_spconfig, strategy, history=[]):
 @register
 def prune_by_recompute_sp(config, strategy, history=[]):
     """Prune strategy by recompute and sequence parallel."""
-    sp = strategy["sp"]
+    sp = strategy["sequence_parallel"]
     retrieval = beside(
         [
             "sequence_parallel",
@@ -305,7 +305,7 @@ def prune_by_recompute_sp(config, strategy, history=[]):
 @register
 def prune_by_mbs_recompute_sp(config, strategy, history=[]):
     """Prune strategy by micro batch size, recompute and sequence parallel."""
-    sp = strategy["sp"]
+    sp = strategy["sequence_parallel"]
     mbs = strategy["micro_batch_size"]
     retrieval = beside(
         [
@@ -453,7 +453,7 @@ def prune_by_tp_pp_mbs(_spconfig, strategy, history=[]):
 
 @register
 def prune_by_tp_pp_recompute(_spconfig, strategy, history=[]):
-    """Prune strategy by tp, pp, recomute."""
+    """Prune strategy by tp, pp, recompute."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
     retrieval = beside(
@@ -580,7 +580,7 @@ def prune_by_tp_pp_mbs_recompute(_spconfig, strategy, history=[]):
 
 @register
 def prune_by_tp_pp_recompute_sp(_spconfig, strategy, history=[]):
-    """Prune strategy by tp, pp, mbs and recompute."""
+    """Prune strategy by tp, pp, sp and recompute."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
     sp = strategy["sequence_parallel"]
@@ -613,7 +613,7 @@ def prune_by_tp_pp_recompute_sp(_spconfig, strategy, history=[]):
                     and item["max_mem"] == "OOM"
                 ):
                     logger.info(
-                        f"The strategy {strategy} has been pruned by tp_pp_mbs_recompute memory."
+                        f"The strategy {strategy} has been pruned by tp_pp_recompute_sp memory."
                     )
                     strategy["max_mem"] = "OOM"
                     strategy["performance"] = None
@@ -662,6 +662,638 @@ def prune_by_tp_pp_mbs_recompute_sp(_spconfig, strategy, history=[]):
                 ):
                     logger.info(
                         f"The strategy {strategy} has been pruned by tp_pp_mbs_recompute_sp memory."
+                    )
+                    strategy["max_mem"] = "OOM"
+                    strategy["performance"] = None
+                    strategy["pruned"] = True
+                    return True
+    return False
+
+
+@register
+def prune_by_distopt(config, strategy, history=[]):
+    """Prune strategy by dist_opt"""
+    dist_opt = strategy["use_distributed_optimizer"]
+    retrieval = beside(["use_distributed_optimizer"], strategy, history)
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                not dist_opt
+                and item["use_distributed_optimizer"]
+                and item["max_mem"] == "OOM"
+            ):
+                logger.info(
+                    f"The strategy {strategy} has been pruned by distopt memory."
+                )
+                strategy["max_mem"] = "OOM"
+                strategy["performance"] = None
+                strategy["pruned"] = True
+                return True
+    return False
+
+
+@register
+def prune_by_distopt_mbs(config, strategy, history=[]):
+    """Prune strategy by distopt_mbs"""
+    dist_opt = strategy["use_distributed_optimizer"]
+    mbs = strategy["micro_batch_size"]
+    retrieval = beside(
+        ["use_distributed_optimizer", "micro_batch_size", "acc_step"], strategy, history
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                not dist_opt
+                and item["use_distributed_optimizer"]
+                and item["micro_batch_size"] < mbs
+                and item["max_mem"] == "OOM"
+            ):
+                logger.info(
+                    f"The strategy {strategy} has been pruned by distopt_mbs memory."
+                )
+                strategy["max_mem"] = "OOM"
+                strategy["performance"] = None
+                strategy["pruned"] = True
+                return True
+    return False
+
+
+@register
+def prune_by_distopt_recompute(config, strategy, history=[]):
+    """Prune strategy by distopt and recompute"""
+    dist_opt = strategy["use_distributed_optimizer"]
+    retrieval = beside(
+        [
+            "use_distributed_optimizer",
+            "use_recompute",
+            "recompute_method",
+            "recompute_granularity",
+            "recompute_num_layers",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                not dist_opt
+                and item["use_distributed_optimizer"]
+                and compare_by_recompute(strategy, item)
+                and item["max_mem"] == "OOM"
+            ):
+                logger.info(
+                    f"The strategy {strategy} has been pruned by distopt_recompute memory."
+                )
+                strategy["max_mem"] = "OOM"
+                strategy["performance"] = None
+                strategy["pruned"] = True
+                return True
+    return False
+
+
+@register
+def prune_by_distopt_sp(config, strategy, history=[]):
+    """Prune strategy by distopt and sp"""
+    dist_opt = strategy["use_distributed_optimizer"]
+    sp = strategy["sequence_parallel"]
+    retrieval = beside(
+        ["use_distributed_optimizer", "sequence_parallel"],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                not dist_opt
+                and item["use_distributed_optimizer"]
+                and not sp
+                and item["sequence_parallel"]
+                and item["max_mem"] == "OOM"
+            ):
+                logger.info(
+                    f"The strategy {strategy} has been pruned by distopt_sp memory."
+                )
+                strategy["max_mem"] = "OOM"
+                strategy["performance"] = None
+                strategy["pruned"] = True
+                return True
+    return False
+
+
+@register
+def prune_by_distopt_tp_pp(_spconfig, strategy, history=[]):
+    """Prune strategy by distopt, tp and pp"""
+    tp = strategy["tensor_model_parallel_size"]
+    pp = strategy["pipeline_model_parallel_size"]
+    dist_opt = strategy["use_distributed_optimizer"]
+    retrieval = beside(
+        [
+            "tensor_model_parallel_size",
+            "pipeline_model_parallel_size",
+            "use_distributed_optimizer",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                tp * pp
+                == item["tensor_model_parallel_size"]
+                * item["pipeline_model_parallel_size"]
+            ):
+                if (
+                    tp < item["tensor_model_parallel_size"]
+                    and not dist_opt
+                    and item["use_distributed_optimizer"]
+                    and item["max_mem"] == "OOM"
+                ):
+                    logger.info(
+                        f"The strategy {strategy} has been pruned by distopt_tp_pp memory."
+                    )
+                    strategy["max_mem"] = "OOM"
+                    strategy["performance"] = None
+                    strategy["pruned"] = True
+                    return True
+    return False
+
+
+@register
+def prune_by_distopt_mbs_recompute(config, strategy, history=[]):
+    """Prune strategy by distopt, mbs and recompute"""
+    dist_opt = strategy["use_distributed_optimizer"]
+    mbs = strategy["micro_batch_size"]
+    retrieval = beside(
+        [
+            "use_distributed_optimizer",
+            "use_recompute",
+            "recompute_method",
+            "recompute_granularity",
+            "recompute_num_layers",
+            "micro_batch_size",
+            "acc_step",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                not dist_opt
+                and item["use_distributed_optimizer"]
+                and compare_by_recompute(strategy, item)
+                and item["micro_batch_size"] < mbs
+                and item["max_mem"] == "OOM"
+            ):
+                logger.info(
+                    f"The strategy {strategy} has been pruned by distopt_mbs_recompute memory."
+                )
+                strategy["max_mem"] = "OOM"
+                strategy["performance"] = None
+                strategy["pruned"] = True
+                return True
+    return False
+
+
+@register
+def prune_by_distopt_mbs_sp(config, strategy, history=[]):
+    """Prune strategy by distopt, mbs and sp"""
+    dist_opt = strategy["use_distributed_optimizer"]
+    sp = strategy["sequence_parallel"]
+    mbs = strategy["micro_batch_size"]
+    retrieval = beside(
+        [
+            "use_distributed_optimizer",
+            "sequence_parallel",
+            "micro_batch_size",
+            "acc_step",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                not dist_opt
+                and item["use_distributed_optimizer"]
+                and not sp
+                and item["sequence_parallel"]
+                and item["micro_batch_size"] < mbs
+                and item["max_mem"] == "OOM"
+            ):
+                logger.info(
+                    f"The strategy {strategy} has been pruned by distopt_mbs_sp memory."
+                )
+                strategy["max_mem"] = "OOM"
+                strategy["performance"] = None
+                strategy["pruned"] = True
+                return True
+    return False
+
+
+@register
+def prune_by_distopt_mbs_tp_pp(_spconfig, strategy, history=[]):
+    """Prune strategy by distopt, mbs, tp and pp"""
+    tp = strategy["tensor_model_parallel_size"]
+    pp = strategy["pipeline_model_parallel_size"]
+    dist_opt = strategy["use_distributed_optimizer"]
+    mbs = strategy["micro_batch_size"]
+    retrieval = beside(
+        [
+            "tensor_model_parallel_size",
+            "pipeline_model_parallel_size",
+            "use_distributed_optimizer",
+            "micro_batch_size",
+            "acc_step",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                tp * pp
+                == item["tensor_model_parallel_size"]
+                * item["pipeline_model_parallel_size"]
+            ):
+                if (
+                    tp < item["tensor_model_parallel_size"]
+                    and not dist_opt
+                    and item["use_distributed_optimizer"]
+                    and item["micro_batch_size"] < mbs
+                    and item["max_mem"] == "OOM"
+                ):
+                    logger.info(
+                        f"The strategy {strategy} has been pruned by distopt_mbs_tp_pp memory."
+                    )
+                    strategy["max_mem"] = "OOM"
+                    strategy["performance"] = None
+                    strategy["pruned"] = True
+                    return True
+    return False
+
+
+@register
+def prune_by_distopt_recompute_sp(config, strategy, history=[]):
+    """Prune strategy by distopt, recompute and sp"""
+    dist_opt = strategy["use_distributed_optimizer"]
+    sp = strategy["sequence_parallel"]
+    retrieval = beside(
+        [
+            "use_distributed_optimizer",
+            "use_recompute",
+            "recompute_method",
+            "recompute_granularity",
+            "recompute_num_layers",
+            "sequence_parallel",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                not dist_opt
+                and item["use_distributed_optimizer"]
+                and compare_by_recompute(strategy, item)
+                and not sp
+                and item["sequence_parallel"]
+                and item["max_mem"] == "OOM"
+            ):
+                logger.info(
+                    f"The strategy {strategy} has been pruned by distopt_recompute_sp memory."
+                )
+                strategy["max_mem"] = "OOM"
+                strategy["performance"] = None
+                strategy["pruned"] = True
+                return True
+    return False
+
+
+@register
+def prune_by_distopt_recompute_tp_pp(_spconfig, strategy, history=[]):
+    """Prune strategy by distopt, tp, pp and recompute."""
+    tp = strategy["tensor_model_parallel_size"]
+    pp = strategy["pipeline_model_parallel_size"]
+    dist_opt = strategy["use_distributed_optimizer"]
+    retrieval = beside(
+        [
+            "use_distributed_optimizer",
+            "tensor_model_parallel_size",
+            "pipeline_model_parallel_size",
+            "use_recompute",
+            "recompute_method",
+            "recompute_granularity",
+            "recompute_num_layers",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                tp * pp
+                == item["tensor_model_parallel_size"]
+                * item["pipeline_model_parallel_size"]
+            ):
+                if (
+                    not dist_opt
+                    and item["use_distributed_optimizer"]
+                    and tp < item["tensor_model_parallel_size"]
+                    and compare_by_recompute(strategy, item)
+                    and item["max_mem"] == "OOM"
+                ):
+                    logger.info(
+                        f"The strategy {strategy} has been pruned by distopt_recompute_tp_pp memory."
+                    )
+                    strategy["max_mem"] = "OOM"
+                    strategy["performance"] = None
+                    strategy["pruned"] = True
+                    return True
+    return False
+
+
+@register
+def prune_by_distopt_sp_tp_pp(_spconfig, strategy, history=[]):
+    """Prune strategy by distopt, tp, pp and sp."""
+    tp = strategy["tensor_model_parallel_size"]
+    pp = strategy["pipeline_model_parallel_size"]
+    dist_opt = strategy["use_distributed_optimizer"]
+    sp = strategy["sequence_parallel"]
+    retrieval = beside(
+        [
+            "use_distributed_optimizer",
+            "tensor_model_parallel_size",
+            "pipeline_model_parallel_size",
+            "sequence_parallel",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                tp * pp
+                == item["tensor_model_parallel_size"]
+                * item["pipeline_model_parallel_size"]
+            ):
+                if (
+                    not dist_opt
+                    and item["use_distributed_optimizer"]
+                    and tp < item["tensor_model_parallel_size"]
+                    and not sp
+                    and item["sequence_parallel"]
+                    and item["max_mem"] == "OOM"
+                ):
+                    logger.info(
+                        f"The strategy {strategy} has been pruned by distopt_sp_tp_pp memory."
+                    )
+                    strategy["max_mem"] = "OOM"
+                    strategy["performance"] = None
+                    strategy["pruned"] = True
+                    return True
+    return False
+
+
+@register
+def prune_by_distopt_mbs_recompute_sp(config, strategy, history=[]):
+    """Prune strategy by distopt, mbs, sp and recompute"""
+    dist_opt = strategy["use_distributed_optimizer"]
+    mbs = strategy["micro_batch_size"]
+    sp = strategy["sequence_parallel"]
+    retrieval = beside(
+        [
+            "use_distributed_optimizer",
+            "use_recompute",
+            "recompute_method",
+            "recompute_granularity",
+            "recompute_num_layers",
+            "micro_batch_size",
+            "acc_step",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                not dist_opt
+                and item["use_distributed_optimizer"]
+                and not sp
+                and item["sequence_parallel"]
+                and compare_by_recompute(strategy, item)
+                and item["micro_batch_size"] < mbs
+                and item["max_mem"] == "OOM"
+            ):
+                logger.info(
+                    f"The strategy {strategy} has been pruned by distopt_mbs_recompute_sp memory."
+                )
+                strategy["max_mem"] = "OOM"
+                strategy["performance"] = None
+                strategy["pruned"] = True
+                return True
+    return False
+
+
+@register
+def prune_by_distopt_mbs_recompute_tp_pp(_spconfig, strategy, history=[]):
+    """Prune strategy by distopt, mbs, tp, pp and recompute."""
+    tp = strategy["tensor_model_parallel_size"]
+    pp = strategy["pipeline_model_parallel_size"]
+    dist_opt = strategy["use_distributed_optimizer"]
+    mbs = strategy["micro_batch_size"]
+    retrieval = beside(
+        [
+            "use_distributed_optimizer",
+            "tensor_model_parallel_size",
+            "pipeline_model_parallel_size",
+            "use_recompute",
+            "recompute_method",
+            "recompute_granularity",
+            "recompute_num_layers",
+            "micro_batch_size",
+            "acc_step",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                tp * pp
+                == item["tensor_model_parallel_size"]
+                * item["pipeline_model_parallel_size"]
+            ):
+                if (
+                    not dist_opt
+                    and item["use_distributed_optimizer"]
+                    and tp < item["tensor_model_parallel_size"]
+                    and compare_by_recompute(strategy, item)
+                    and item["micro_batch_size"] < mbs
+                    and item["max_mem"] == "OOM"
+                ):
+                    logger.info(
+                        f"The strategy {strategy} has been pruned by distopt_mbs_recompute_tp_pp memory."
+                    )
+                    strategy["max_mem"] = "OOM"
+                    strategy["performance"] = None
+                    strategy["pruned"] = True
+                    return True
+    return False
+
+
+@register
+def prune_by_distopt_mbs_sp_tp_pp(_spconfig, strategy, history=[]):
+    """Prune strategy by distopt, mbs, tp, pp and sp."""
+    tp = strategy["tensor_model_parallel_size"]
+    pp = strategy["pipeline_model_parallel_size"]
+    dist_opt = strategy["use_distributed_optimizer"]
+    mbs = strategy["micro_batch_size"]
+    sp = strategy["sequence_parallel"]
+    retrieval = beside(
+        [
+            "use_distributed_optimizer",
+            "tensor_model_parallel_size",
+            "pipeline_model_parallel_size",
+            "micro_batch_size",
+            "acc_step",
+            "sequence_parallel",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                tp * pp
+                == item["tensor_model_parallel_size"]
+                * item["pipeline_model_parallel_size"]
+            ):
+                if (
+                    not dist_opt
+                    and item["use_distributed_optimizer"]
+                    and tp < item["tensor_model_parallel_size"]
+                    and not sp
+                    and item["sequence_parallel"]
+                    and item["micro_batch_size"] < mbs
+                    and item["max_mem"] == "OOM"
+                ):
+                    logger.info(
+                        f"The strategy {strategy} has been pruned by distopt_mbs_sp_tp_pp memory."
+                    )
+                    strategy["max_mem"] = "OOM"
+                    strategy["performance"] = None
+                    strategy["pruned"] = True
+                    return True
+    return False
+
+
+@register
+def prune_by_distopt_recompute_sp_tp_pp(_spconfig, strategy, history=[]):
+    """Prune strategy by distopt, sp, tp, pp and recompute."""
+    tp = strategy["tensor_model_parallel_size"]
+    pp = strategy["pipeline_model_parallel_size"]
+    dist_opt = strategy["use_distributed_optimizer"]
+    sp = strategy["sequence_parallel"]
+    retrieval = beside(
+        [
+            "use_distributed_optimizer",
+            "tensor_model_parallel_size",
+            "pipeline_model_parallel_size",
+            "use_recompute",
+            "recompute_method",
+            "recompute_granularity",
+            "recompute_num_layers",
+            "sequence_parallel",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                tp * pp
+                == item["tensor_model_parallel_size"]
+                * item["pipeline_model_parallel_size"]
+            ):
+                if (
+                    not dist_opt
+                    and item["use_distributed_optimizer"]
+                    and tp < item["tensor_model_parallel_size"]
+                    and compare_by_recompute(strategy, item)
+                    and not sp
+                    and item["sequence_parallel"]
+                    and item["max_mem"] == "OOM"
+                ):
+                    logger.info(
+                        f"The strategy {strategy} has been pruned by distopt_recompute_sp_tp_pp memory."
+                    )
+                    strategy["max_mem"] = "OOM"
+                    strategy["performance"] = None
+                    strategy["pruned"] = True
+                    return True
+    return False
+
+
+@register
+def prune_by_distopt_mbs_recompute_sp_tp_pp(_spconfig, strategy, history=[]):
+    """Prune strategy by distopt, mbs, sp, tp, pp and recompute."""
+    tp = strategy["tensor_model_parallel_size"]
+    pp = strategy["pipeline_model_parallel_size"]
+    dist_opt = strategy["use_distributed_optimizer"]
+    sp = strategy["sequence_parallel"]
+    mbs = strategy["micro_batch_size"]
+    retrieval = beside(
+        [
+            "use_distributed_optimizer",
+            "tensor_model_parallel_size",
+            "pipeline_model_parallel_size",
+            "use_recompute",
+            "recompute_method",
+            "recompute_granularity",
+            "recompute_num_layers",
+            "sequence_parallel",
+            "micro_batch_size",
+            "acc_step",
+        ],
+        strategy,
+        history,
+    )
+    if retrieval:
+        for item in retrieval:
+            # memory prune
+            if (
+                tp * pp
+                == item["tensor_model_parallel_size"]
+                * item["pipeline_model_parallel_size"]
+            ):
+                if (
+                    not dist_opt
+                    and item["use_distributed_optimizer"]
+                    and tp < item["tensor_model_parallel_size"]
+                    and compare_by_recompute(strategy, item)
+                    and not sp
+                    and item["sequence_parallel"]
+                    and item["micro_batch_size"] < mbs
+                    and item["max_mem"] == "OOM"
+                ):
+                    logger.info(
+                        f"The strategy {strategy} has been pruned by distopt_mbs_recompute_sp_tp_pp memory."
                     )
                     strategy["max_mem"] = "OOM"
                     strategy["performance"] = None
