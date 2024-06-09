@@ -131,7 +131,7 @@ def compare_by_recompute(strategy1, strategy2):
     """Compare two strategies by recompute. If strategy1 is larger memory, return True."""
     result = False
     # Strategy1 not use recompute, Strategy2 use recompute
-    if not strateg1["use_recompute"] and strategy2["use_recompute"]:
+    if not strategy1["use_recompute"] and strategy2["use_recompute"]:
         result = True
     # Strategy1 use recompute, Strategy2 use recompute
     elif strategy1["use_recompute"] and strategy2["use_recompute"]:
