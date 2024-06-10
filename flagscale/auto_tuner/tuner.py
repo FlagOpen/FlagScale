@@ -279,6 +279,7 @@ class AutoTuner:
                     if sub_process_running:
                         self.logger.info("Sub process not working, stop the task.")
                         self.runner.stop()
+                        self.cur_strategy["stopped_by_tuner"] = True
                         break
 
             except Exception as e:

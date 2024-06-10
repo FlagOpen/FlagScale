@@ -240,7 +240,7 @@ def prune_by_mbs_recompute(config, strategy, history=[]):
 
 
 @register
-def prune_by_mbs_sp(_spconfig, strategy, history=[]):
+def prune_by_mbs_sp(config, strategy, history=[]):
     """Prune strategy by sequence parallel and micro batch size."""
     sp = strategy["sequence_parallel"]
     mbs = strategy["micro_batch_size"]
@@ -341,7 +341,7 @@ def prune_by_mbs_recompute_sp(config, strategy, history=[]):
 
 
 @register
-def prune_by_tp_pp(_spconfig, strategy, history=[]):
+def prune_by_tp_pp(config, strategy, history=[]):
     """Prune strategy by tp and pp"""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -373,7 +373,7 @@ def prune_by_tp_pp(_spconfig, strategy, history=[]):
 
 
 @register
-def prune_by_tp_pp_sp(_spconfig, strategy, history=[]):
+def prune_by_tp_pp_sp(config, strategy, history=[]):
     """Prune strategy by tp, pp and sp."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -412,7 +412,7 @@ def prune_by_tp_pp_sp(_spconfig, strategy, history=[]):
 
 
 @register
-def prune_by_tp_pp_mbs(_spconfig, strategy, history=[]):
+def prune_by_tp_pp_mbs(config, strategy, history=[]):
     """Prune strategy by tp, pp, mbs."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -452,7 +452,7 @@ def prune_by_tp_pp_mbs(_spconfig, strategy, history=[]):
 
 
 @register
-def prune_by_tp_pp_recompute(_spconfig, strategy, history=[]):
+def prune_by_tp_pp_recompute(config, strategy, history=[]):
     """Prune strategy by tp, pp, recompute."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -492,7 +492,7 @@ def prune_by_tp_pp_recompute(_spconfig, strategy, history=[]):
 
 
 @register
-def prune_by_tp_pp_mbs_sp(_spconfig, strategy, history=[]):
+def prune_by_tp_pp_mbs_sp(config, strategy, history=[]):
     """Prune strategy by tp, pp, sp, mbs."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -535,7 +535,7 @@ def prune_by_tp_pp_mbs_sp(_spconfig, strategy, history=[]):
 
 
 @register
-def prune_by_tp_pp_mbs_recompute(_spconfig, strategy, history=[]):
+def prune_by_tp_pp_mbs_recompute(config, strategy, history=[]):
     """Prune strategy by tp, pp, mbs and recompute."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -579,7 +579,7 @@ def prune_by_tp_pp_mbs_recompute(_spconfig, strategy, history=[]):
 
 
 @register
-def prune_by_tp_pp_recompute_sp(_spconfig, strategy, history=[]):
+def prune_by_tp_pp_recompute_sp(config, strategy, history=[]):
     """Prune strategy by tp, pp, sp and recompute."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -623,7 +623,7 @@ def prune_by_tp_pp_recompute_sp(_spconfig, strategy, history=[]):
 
 
 @register
-def prune_by_tp_pp_mbs_recompute_sp(_spconfig, strategy, history=[]):
+def prune_by_tp_pp_mbs_recompute_sp(config, strategy, history=[]):
     """Prune strategy by tp, pp, mbs and recompute."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -785,7 +785,7 @@ def prune_by_distopt_sp(config, strategy, history=[]):
 
 
 @register
-def prune_by_distopt_tp_pp(_spconfig, strategy, history=[]):
+def prune_by_distopt_tp_pp(config, strategy, history=[]):
     """Prune strategy by distopt, tp and pp"""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -899,7 +899,7 @@ def prune_by_distopt_mbs_sp(config, strategy, history=[]):
 
 
 @register
-def prune_by_distopt_mbs_tp_pp(_spconfig, strategy, history=[]):
+def prune_by_distopt_mbs_tp_pp(config, strategy, history=[]):
     """Prune strategy by distopt, mbs, tp and pp"""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -980,7 +980,7 @@ def prune_by_distopt_recompute_sp(config, strategy, history=[]):
 
 
 @register
-def prune_by_distopt_recompute_tp_pp(_spconfig, strategy, history=[]):
+def prune_by_distopt_recompute_tp_pp(config, strategy, history=[]):
     """Prune strategy by distopt, tp, pp and recompute."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -1024,7 +1024,7 @@ def prune_by_distopt_recompute_tp_pp(_spconfig, strategy, history=[]):
 
 
 @register
-def prune_by_distopt_sp_tp_pp(_spconfig, strategy, history=[]):
+def prune_by_distopt_sp_tp_pp(config, strategy, history=[]):
     """Prune strategy by distopt, tp, pp and sp."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -1108,7 +1108,7 @@ def prune_by_distopt_mbs_recompute_sp(config, strategy, history=[]):
 
 
 @register
-def prune_by_distopt_mbs_recompute_tp_pp(_spconfig, strategy, history=[]):
+def prune_by_distopt_mbs_recompute_tp_pp(config, strategy, history=[]):
     """Prune strategy by distopt, mbs, tp, pp and recompute."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -1156,7 +1156,7 @@ def prune_by_distopt_mbs_recompute_tp_pp(_spconfig, strategy, history=[]):
 
 
 @register
-def prune_by_distopt_mbs_sp_tp_pp(_spconfig, strategy, history=[]):
+def prune_by_distopt_mbs_sp_tp_pp(config, strategy, history=[]):
     """Prune strategy by distopt, mbs, tp, pp and sp."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -1203,7 +1203,7 @@ def prune_by_distopt_mbs_sp_tp_pp(_spconfig, strategy, history=[]):
 
 
 @register
-def prune_by_distopt_recompute_sp_tp_pp(_spconfig, strategy, history=[]):
+def prune_by_distopt_recompute_sp_tp_pp(config, strategy, history=[]):
     """Prune strategy by distopt, sp, tp, pp and recompute."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
@@ -1251,7 +1251,7 @@ def prune_by_distopt_recompute_sp_tp_pp(_spconfig, strategy, history=[]):
 
 
 @register
-def prune_by_distopt_mbs_recompute_sp_tp_pp(_spconfig, strategy, history=[]):
+def prune_by_distopt_mbs_recompute_sp_tp_pp(config, strategy, history=[]):
     """Prune strategy by distopt, mbs, sp, tp, pp and recompute."""
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]

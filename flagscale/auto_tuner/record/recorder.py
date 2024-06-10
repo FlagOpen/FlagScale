@@ -216,6 +216,10 @@ class Recorder:
         )
         last_dir = None
         last_dir_rank = 0
+        if not os.path.exists(last_path):
+            self.logger.info(f"The performance file path does not exist: {last_path}")
+            return None, logs
+
         for item in os.listdir(last_path):
             try:
                 rank = int(item)
