@@ -1,6 +1,6 @@
 engine:
-  model: /share/project/zhaoyingli/github/BAAI/Aquila-7B/
-  tokenizer: /share/project/zhaoyingli/github/BAAI/Aquila-7B/
+  model: BAAI/Aquila-7B/
+  tokenizer: BAAI/Aquila-7B/
   trust_remote_code: true
   tensor_parallel_size: 1
   pipeline_parallel_size: 1
