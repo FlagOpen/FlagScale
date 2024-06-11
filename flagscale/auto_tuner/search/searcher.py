@@ -1,8 +1,8 @@
-import time
 import copy
 import logging
-from ..utils import divisible
+import time
 
+from ..utils import divisible
 
 __BUILT_IN_STRATEGY_DIMS__ = [
     "data_parallel_size",
@@ -151,8 +151,10 @@ class Searcher:
         # Set virtual pipeline parallel degree
         space["num_layers_per_virtual_pipeline_stage"] = (
             [i for i in range(1, num_layers + 1)]
-            if "num_layers_per_virtual_pipeline_stage" not in config.experiment.auto_tuner.space
-            or config.experiment.auto_tuner.space.num_layers_per_virtual_pipeline_stage == "auto"
+            if "num_layers_per_virtual_pipeline_stage"
+            not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.num_layers_per_virtual_pipeline_stage
+            == "auto"
             else config.experiment.auto_tuner.space.num_layers_per_virtual_pipeline_stage
         )
         self._sort(

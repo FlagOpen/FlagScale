@@ -1,7 +1,8 @@
-import re
 import os
+import re
 import socket
 import subprocess
+
 from flagscale.launcher.runner import parse_hostfile
 
 
