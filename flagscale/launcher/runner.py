@@ -972,3 +972,6 @@ class CloudRunner(MultiNodeRunner):
             with_test=with_test,
             dryrun=dryrun,
         )
+
+    def stop(self):
+        raise ValueError("the stop method is not necessary in CloudRunner")
