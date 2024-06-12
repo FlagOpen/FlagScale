@@ -24,31 +24,16 @@ jobs:
           uses: actions/checkout@v2
 
         - name: Megatron Unit Test
-          run: |
-            cd megatron
-            export PYTHONPATH=..:$PYTHONPATH
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/data
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/dist_checkpointing
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/fusions
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/models
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/pipeline_parallel
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/tensor_parallel
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/transformer 
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-megatron --cov=megatron/core -q -x tests/unit_tests/*.py 
+          run: tests/scripts/unit_test_megatron.sh
         
         - name: Megatron Unit Test Coverage Online Report
-          run: |
-            echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-megatron/index.html"
+          run: echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-megatron/index.html"
 
         - name: Flagscale Unit Test
-          run: |
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/${{github.sha}}/cov-report-flagscale --cov=flagscale -q -x tests/unit_tests/launcher
+          run: tests/scripts/unit_test_flagscale.sh
         
         - name: Flagscale Unit Test Coverage Online Report
-          run: |
-            echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-flagscale/index.html"
+          run: echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-flagscale/index.html"
 
         - name: Flagscale Functional Test
-          run: |
-            python run.py --config-path tests/functional_tests/aquila/conf --config-name config action=test
-            pytest -s tests/functional_tests/test_result.py --test_reaults_path=./tests/functional_tests/aquila/test_result
+          run: tests/scripts/functional_test_flagscale.sh
