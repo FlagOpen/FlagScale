@@ -27,7 +27,10 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
-
+      
+      - name: Check GPU is Free
+        run: tests/scripts/gpu_check.sh
+      
       - name: Megatron Unit Test
         run: tests/scripts/unit_test_megatron.sh ${{github.sha}}
       
@@ -51,6 +54,9 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v2
 
+      - name: Check GPU is Free
+        run: tests/scripts/gpu_check.sh
+
       - name: Flagscale Unit Test
         run: tests/scripts/unit_test_flagscale.sh ${{github.sha}}
       
@@ -73,6 +79,9 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
+
+      - name: Check GPU is Free
+        run: tests/scripts/gpu_check.sh
 
       - name: Flagscale Functional Test
         run: tests/scripts/functional_test_flagscale.sh
