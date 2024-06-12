@@ -53,6 +53,11 @@ def sort_by_memory(strategy):
     )
 
 
+def sort_by_memory_model(strategy):
+    """Sort strategy by memory_model."""
+    return strategy["modeling_memory"]
+
+
 def sort_by_performance(strategy):
     """Sort strategy by performance potentially."""
     return (
@@ -64,7 +69,7 @@ def sort_by_performance(strategy):
             else -float("inf")
         ),
         strategy["micro_batch_size"],
-        strategy["pipeline_model_parallel_size"],
+        -strategy["pipeline_model_parallel_size"],
         -strategy["data_parallel_size"],
         (
             strategy["recompute_num_layers"]

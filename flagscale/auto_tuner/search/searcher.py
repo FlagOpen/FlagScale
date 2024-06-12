@@ -48,6 +48,25 @@ class Searcher:
             )
         )
 
+        if "memory_model" in self.config.experiment.auto_tuner:
+            # In the future, the memory model will be loaded by yaml
+            model_name = self.config.experiment.auto_tuner.memory_model.get(
+                "model_name", "default"
+            )
+            if model_name != "default":
+                raise NotImplementedError(
+                    "The memory model {} is not implemented yet.".format(model_name)
+                )
+            from ..memory_model import default_model
+
+            for strategy in self.strategies:
+                strategy["modeling_memory"] = default_model(strategy, self.config)
+                self.logger.info(
+                    "Searcher: strategy {}  modeling memory is {}MB".format(
+                        strategy, strategy["modeling_memory"]
+                    )
+                )
+
         # Build search algorithm to explore strategies
         self.algo = self.build_algo(self.strategies, self.config)
 
@@ -150,7 +169,7 @@ class Searcher:
 
         # Set virtual pipeline parallel degree
         space["num_layers_per_virtual_pipeline_stage"] = (
-            [i for i in range(1, num_layers + 1)]
+            [i for i in range(0, num_layers + 1)]
             if "num_layers_per_virtual_pipeline_stage"
             not in config.experiment.auto_tuner.space
             or config.experiment.auto_tuner.space.num_layers_per_virtual_pipeline_stage
@@ -419,8 +438,6 @@ class Searcher:
                             product_dim["recompute_granularity"] = recompute_granularity
                         if recompute_granularity == "selective":
                             product_dim["recompute_method"] = None
-                        else:
-                            product_dim["num_layers_per_virtual_pipeline_stage"] = None
                         for recompute_num_layers in space["recompute_num_layers"]:
                             if (
                                 not use_recompute
@@ -470,30 +487,42 @@ class Searcher:
                 for num_layers_per_virtual_pipeline_stage in space[
                     "num_layers_per_virtual_pipeline_stage"
                 ]:
-                    pipeline_model_parallel_size = parallelism[
-                        "pipeline_model_parallel_size"
-                    ]
-                    layers = config.train.model.num_layers
-                    if (
-                        pipeline_model_parallel_size <= 2
-                        and num_layers_per_virtual_pipeline_stage != 1
-                    ):
-                        continue
-                    layers_per_pp_stage = layers // pipeline_model_parallel_size
-                    if not divisible(
-                        layers_per_pp_stage, num_layers_per_virtual_pipeline_stage
-                    ):
-                        continue
-                    if pipeline_model_parallel_size == 1:
+                    # Not use interleaved pipeline
+                    if num_layers_per_virtual_pipeline_stage == 0:
                         product_dim["num_layers_per_virtual_pipeline_stage"] = None
+                        self._append(result, unique_result, product_dim)
                     else:
-                        product_dim["num_layers_per_virtual_pipeline_stage"] = (
-                            num_layers_per_virtual_pipeline_stage
-                        )
-                    if num_layers_per_virtual_pipeline_stage == 1:
-                        product_dim["num_layers_per_virtual_pipeline_stage"] = None
+                        pipeline_model_parallel_size = parallelism[
+                            "pipeline_model_parallel_size"
+                        ]
+                        layers = config.train.model.num_layers
+                        if (
+                            pipeline_model_parallel_size <= 2
+                            and num_layers_per_virtual_pipeline_stage >= 1
+                        ):
+                            continue
 
-                    self._append(result, unique_result, product_dim)
+                        layers_per_pp_stage = layers // pipeline_model_parallel_size
+                        if not divisible(
+                            layers_per_pp_stage, num_layers_per_virtual_pipeline_stage
+                        ):
+                            continue
+
+                        # Micro batches should divide pp size
+                        if not divisible(
+                            product_dim["micro_batch_size"],
+                            num_layers_per_virtual_pipeline_stage,
+                        ):
+                            continue
+
+                        if pipeline_model_parallel_size == 1:
+                            product_dim["num_layers_per_virtual_pipeline_stage"] = None
+                        else:
+                            product_dim["num_layers_per_virtual_pipeline_stage"] = (
+                                num_layers_per_virtual_pipeline_stage
+                            )
+                        self._append(result, unique_result, product_dim)
+
         return result
 
     def _append(self, result, unique_result, product_dim):

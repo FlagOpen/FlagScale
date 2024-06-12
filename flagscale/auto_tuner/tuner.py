@@ -78,16 +78,23 @@ class AutoTuner:
                 self.config.experiment.runner.nnodes = int(os.environ["AIRS_SIZE"])
 
             if os.environ.get("AIRS_ACCELERATOR_COUNT", None):
-                self.config.experiment.auto_tuner.nproc_per_node = int(
-                    os.environ["AIRS_ACCELERATOR_COUNT"]
+                # Set config
+                self.config.experiment.auto_tuner.nproc_per_node = (
+                    int(os.environ["AIRS_ACCELERATOR_COUNT"]) * 2
+                    if "luvatar_BI" in os.environ["AIRS_ACCELERATOR_MODEL"]
+                    else int(os.environ["AIRS_ACCELERATOR_COUNT"])
                 )
                 # Set original config
-                self.orig_config.experiment.runner.nproc_per_node = int(
-                    os.environ["AIRS_ACCELERATOR_COUNT"]
+                self.orig_config.experiment.runner.nproc_per_node = (
+                    int(os.environ["AIRS_ACCELERATOR_COUNT"]) * 2
+                    if "luvatar_BI" in os.environ["AIRS_ACCELERATOR_MODEL"]
+                    else int(os.environ["AIRS_ACCELERATOR_COUNT"])
                 )
                 # Set config
-                self.config.experiment.runner.nproc_per_node = int(
-                    os.environ["AIRS_ACCELERATOR_COUNT"]
+                self.config.experiment.runner.nproc_per_node = (
+                    int(os.environ["AIRS_ACCELERATOR_COUNT"]) * 2
+                    if "luvatar_BI" in os.environ["AIRS_ACCELERATOR_MODEL"]
+                    else int(os.environ["AIRS_ACCELERATOR_COUNT"])
                 )
 
             if os.environ.get("AIRS_FBMEM", None):
@@ -226,9 +233,14 @@ class AutoTuner:
         if strategy:
             self.idx += 1
             strategy["idx"] = self.idx
-            self.logger.info(
-                f"Searching {self.idx+self.pruner.pruned_count} / {len(self.searcher.strategies)} strategy, Pruned {self.pruner.pruned_count} strategy."
-            )
+            if "memory_model" in self.config.experiment.auto_tuner:
+                self.logger.info(
+                    f"Searching {self.idx+self.pruner.pruned_count} / {len(self.searcher.strategies)} strategy, Pruned {self.pruner.pruned_count} strategy, {self.pruner.pruned_by_memory_model} by memory model."
+                )
+            else:
+                self.logger.info(
+                    f"Searching {self.idx+self.pruner.pruned_count} / {len(self.searcher.strategies)} strategy, Pruned {self.pruner.pruned_count} strategy."
+                )
             self.logger.info(f"Generate task_{self.idx}")
             self.cur_strategy = strategy
             self.cur_task = self.generator.gen(strategy)
