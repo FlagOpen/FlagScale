@@ -21,6 +21,8 @@ jobs:
         - 80
       volumes:
         - /home/flagscale_cicd/flask/static:/workspace/report
+        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
+        - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
       options: --gpus all --hostname flagscale_cicd
     steps:
       - name: Checkout Code
