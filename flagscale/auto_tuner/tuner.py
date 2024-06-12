@@ -276,7 +276,7 @@ class AutoTuner:
                     if running:
                         self.runner.stop()
                         break
-                
+
                 # Add sub process monitor
                 sub_process = self.runner._query_sub_process_status()
                 if sub_process:

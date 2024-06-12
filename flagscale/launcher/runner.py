@@ -822,17 +822,13 @@ class SSHRunner(MultiNodeRunner):
             f.write("#!/bin/bash\n\n")
             f.write("if [ -f " + host_pid_file + " ]; then\n")
             f.write("    pid=$(cat " + host_pid_file + ")\n")
-            f.write(
-                "    ps -eo pid,ppid | awk -v ppid=$pid '$2 == ppid {print $1}'\n"
-            )
+            f.write("    ps -eo pid,ppid | awk -v ppid=$pid '$2 == ppid {print $1}'\n")
             f.write("else\n")
             # TODO: This is a temporary fix. We need to find a better way to query the job.
             f.write(
                 "    pid=$(ps aux | grep 'torchrun' | grep -v grep | head -n 1 | awk '{print $2}')\n"
             )
-            f.write(
-                "    ps -eo pid,ppid | awk -v ppid=$pid '$2 == ppid {print $1}'\n"
-            )
+            f.write("    ps -eo pid,ppid | awk -v ppid=$pid '$2 == ppid {print $1}'\n")
             f.write("fi\n")
             f.flush()
             os.fsync(f.fileno())
