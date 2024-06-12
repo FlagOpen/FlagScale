@@ -1,17 +1,19 @@
-import os
-import re
-import sys
 import collections
 import copy
-import socket
-import shlex
-import subprocess
 import json
-import uuid
+import os
+import re
+import shlex
+import socket
+import subprocess
+import sys
 import time
-from datetime import datetime
+import uuid
 from abc import ABC, abstractmethod
+from datetime import datetime
+
 from omegaconf import DictConfig, OmegaConf
+
 from ..logger import logger
 from .job_status import JobStatus
 
@@ -469,13 +471,13 @@ def _generate_run_script_train(
     return host_run_script_file
 
 
-def _generate_run_script_inference(config, host, node_rank, cmd, background=True, with_test=False):
+def _generate_run_script_inference(
+    config, host, node_rank, cmd, background=True, with_test=False
+):
     logging_config = config.inference.system.logging
     no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
     if no_shared_fs:
-        host_output_file = os.path.join(
-            logging_config.log_dir, f"host.output"
-        )
+        host_output_file = os.path.join(logging_config.log_dir, f"host.output")
     else:
         host_output_file = os.path.join(
             logging_config.log_dir, f"host_{node_rank}_{host}.output"
@@ -592,9 +594,7 @@ class SSHRunner(MultiNodeRunner):
             _update_config_inference(self.config)
             self.user_args = get_args_vllm(self.config)
         else:
-            raise ValueError(
-                f"Unsupported task type in SSHRunner: {self.mode}"
-            )
+            raise ValueError(f"Unsupported task type in SSHRunner: {self.mode}")
 
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         self.user_envs = self.config.experiment.get("envs", {})
@@ -822,17 +822,13 @@ class SSHRunner(MultiNodeRunner):
             f.write("#!/bin/bash\n\n")
             f.write("if [ -f " + host_pid_file + " ]; then\n")
             f.write("    pid=$(cat " + host_pid_file + ")\n")
-            f.write(
-                "    ps -eo pid,ppid | awk -v ppid=$pid '$2 == ppid {print $1}'\n"
-            )
+            f.write("    ps -eo pid,ppid | awk -v ppid=$pid '$2 == ppid {print $1}'\n")
             f.write("else\n")
             # TODO: This is a temporary fix. We need to find a better way to query the job.
             f.write(
                 "    pid=$(ps aux | grep 'torchrun' | grep -v grep | head -n 1 | awk '{print $2}')\n"
             )
-            f.write(
-                "    ps -eo pid,ppid | awk -v ppid=$pid '$2 == ppid {print $1}'\n"
-            )
+            f.write("    ps -eo pid,ppid | awk -v ppid=$pid '$2 == ppid {print $1}'\n")
             f.write("fi\n")
             f.flush()
             os.fsync(f.fileno())
@@ -991,9 +987,7 @@ class CloudRunner(MultiNodeRunner):
             _update_config_train(self.config)
             self.user_args = get_args_megatron(self.config)
         else:
-            raise ValueError(
-                f"Unsupported task type in CloudRunner: {self.mode}"
-            )
+            raise ValueError(f"Unsupported task type in CloudRunner: {self.mode}")
 
         logger.info("\n************** configuration ***********")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
