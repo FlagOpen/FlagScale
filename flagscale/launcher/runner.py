@@ -157,7 +157,7 @@ def _flatten_dict_to_args(config_dict, ignore_keys=[]):
     return args
 
 
-def get_megatron_args(config: DictConfig):
+def get_args_megatron(config: DictConfig):
     assert (
         config.experiment.task.backend == "megatron"
     ), "This function only supports megatron backend."
@@ -178,7 +178,7 @@ def get_megatron_args(config: DictConfig):
     return args
 
 
-def get_vllm_args(config: DictConfig):
+def get_args_vllm(config: DictConfig):
     assert (
         config.experiment.task.backend == "vllm"
     ), "This function only supports megatron backend."
@@ -196,7 +196,7 @@ def get_vllm_args(config: DictConfig):
     return args
 
 
-def _update_train_config(config: DictConfig):
+def _update_config_train(config: DictConfig):
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     if not os.path.isdir(exp_dir):
         os.makedirs(exp_dir)
@@ -256,7 +256,7 @@ def _update_train_config(config: DictConfig):
     OmegaConf.set_struct(config, False)
 
 
-def _update_infer_config(config: DictConfig):
+def _update_config_inference(config: DictConfig):
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     assert os.path.isdir(exp_dir), f"Directory {exp_dir} does not exist."
 
@@ -319,7 +319,7 @@ def _get_nproc_per_node(
             return 1
 
 
-def _get_train_runner_cmd(
+def _get_runner_cmd_train(
     host,
     master_addr,
     master_port,
@@ -390,7 +390,7 @@ def _get_train_runner_cmd(
     return runner_cmd
 
 
-def _get_inference_runner_cmd(
+def _get_runner_cmd_inference(
     host,
     master_addr,
     master_port,
@@ -402,7 +402,7 @@ def _get_inference_runner_cmd(
     return ["python"]
 
 
-def _generate_run_train_script(
+def _generate_run_script_train(
     config, host, node_rank, cmd, background=True, with_test=False
 ):
     system_config = config.train.system
@@ -469,7 +469,7 @@ def _generate_run_train_script(
     return host_run_script_file
 
 
-def _generate_run_inference_script(config, host, node_rank, cmd, background=True, with_test=False):
+def _generate_run_script_inference(config, host, node_rank, cmd, background=True, with_test=False):
     logging_config = config.inference.system.logging
     no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
     if no_shared_fs:
@@ -586,11 +586,11 @@ class SSHRunner(MultiNodeRunner):
 
     def _prepare(self):
         if self.mode == "train":
-            _update_train_config(self.config)
-            self.user_args = get_megatron_args(self.config)
+            _update_config_train(self.config)
+            self.user_args = get_args_megatron(self.config)
         elif self.mode == "inference":
-            _update_infer_config(self.config)
-            self.user_args = get_vllm_args(self.config)
+            _update_config_inference(self.config)
+            self.user_args = get_args_vllm(self.config)
         else:
             raise ValueError(
                 f"Unsupported task type in SSHRunner: {self.mode}"
@@ -620,7 +620,7 @@ class SSHRunner(MultiNodeRunner):
         for k, v in self.user_envs.items():
             export_cmd += [f"{k}={v}"]
 
-        runner_cmd = eval(f"_get_{self.mode}_runner_cmd")(
+        runner_cmd = eval(f"_get_runner_cmd_{self.mode}")(
             host,
             master_addr,
             master_port,
@@ -634,12 +634,12 @@ class SSHRunner(MultiNodeRunner):
 
         if self.mode == "train":
             logging_config = self.config.train.system.logging
-            host_run_script_file = _generate_run_train_script(
+            host_run_script_file = _generate_run_script_train(
                 self.config, host, node_rank, cmd, background=True, with_test=with_test
             )
         else:
             logging_config = self.config.inference.system.logging
-            host_run_script_file = _generate_run_inference_script(
+            host_run_script_file = _generate_run_script_inference(
                 self.config, host, node_rank, cmd, background=True, with_test=with_test
             )
 
@@ -899,8 +899,8 @@ class CloudRunner(MultiNodeRunner):
         self.user_envs = self.config.experiment.get("envs", {})
         self.user_script = self.config.experiment.task.entrypoint
         if self.mode == "train":
-            _update_train_config(self.config)
-            self.user_args = get_megatron_args(self.config)
+            _update_config_train(self.config)
+            self.user_args = get_args_megatron(self.config)
         else:
             raise ValueError(
                 f"Unsupported task type in CloudRunner: {self.mode}"
@@ -924,7 +924,7 @@ class CloudRunner(MultiNodeRunner):
         for k, v in self.user_envs.items():
             export_cmd += [f"{k}={v}"]
 
-        runner_cmd = _get_train_runner_cmd(
+        runner_cmd = _get_runner_cmd_train(
             host,
             master_addr,
             master_port,
@@ -936,7 +936,7 @@ class CloudRunner(MultiNodeRunner):
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
 
-        host_run_script_file = _generate_run_train_script(
+        host_run_script_file = _generate_run_script_train(
             self.config, host, node_rank, cmd, background=False, with_test=with_test
         )
 
