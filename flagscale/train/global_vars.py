@@ -10,7 +10,7 @@ def get_extra_valid_datasets():
 
 
 def set_extra_valid_datasets(extra_valid_datasets):
-    """Initialize heterogenous context."""""
+    """Set extra_valid datasets."""""
     global _GLOBAL_EXTRA_VALID_DATASETS
     _GLOBAL_EXTRA_VALID_DATASETS = extra_valid_datasets
 

@@ -1426,10 +1426,10 @@ def _get_num_layers(args, model_type, is_decoder=False):
     return num_layers
 
 
-def _get_layer_info(args):
-    assert args.hetero_mode == "pp", "Only pipeline parallelism is supported."
+def _get_layer_info(config):
+    assert config.hetero_mode == "pp", "Only pipeline parallelism is supported."
     pipeline_rank = mpu.get_pipeline_model_parallel_rank()
-    pipeline_stages = [item for sublist in args.hetero_pipeline_stages for item in sublist]
+    pipeline_stages = [item for sublist in config.hetero_pipeline_stages for item in sublist]
     offset = sum(([0] + pipeline_stages)[: pipeline_rank + 1])
     num_layers = pipeline_stages[pipeline_rank] 
     torch.distributed.barrier()
@@ -1482,9 +1482,57 @@ class ParallelTransformer(MegatronModule):
         self.retro_add_retriever = args.retro_add_retriever
 
         # Store activation checkpoiting flag.
-        self.recompute_granularity = config.recompute_granularity
-        self.recompute_method = config.recompute_method
-        self.recompute_num_layers = config.recompute_num_layers
+        if config.recompute_method_per_stage != None:
+            if config.virtual_pipeline_model_parallel_size != None:
+                if (
+                    config.recompute_method_per_stage[
+                        mpu.get_virtual_pipeline_model_parallel_rank()
+                        * config.pipeline_model_parallel_size
+                        + mpu.get_pipeline_model_parallel_rank()
+                    ]
+                    == 0
+                ):
+                    self.recompute_method = 'uniform'
+                elif (
+                    config.recompute_method_per_stage[
+                        mpu.get_virtual_pipeline_model_parallel_rank()
+                        * config.pipeline_model_parallel_size
+                        + mpu.get_pipeline_model_parallel_rank()
+                    ]
+                    == 1
+                ):
+                    self.recompute_method = 'block'
+            else:
+                if config.recompute_method_per_stage[mpu.get_pipeline_model_parallel_rank()] == 0:
+                    self.recompute_method = 'uniform'
+                elif config.recompute_method_per_stage[mpu.get_pipeline_model_parallel_rank()] == 1:
+                    self.recompute_method = 'block'
+        else:
+            self.recompute_method = config.recompute_method
+
+        if config.recompute_num_layers_per_stage != None:
+            if config.virtual_pipeline_model_parallel_size != None:
+                self.recompute_num_layers = config.recompute_num_layers_per_stage[
+                    mpu.get_virtual_pipeline_model_parallel_rank()
+                    * config.pipeline_model_parallel_size
+                    + mpu.get_pipeline_model_parallel_rank()
+                ]
+            else:
+                self.recompute_num_layers = config.recompute_num_layers_per_stage[
+                    mpu.get_pipeline_model_parallel_rank()
+                ]
+        else:
+            self.recompute_num_layers = config.recompute_num_layers
+
+        if (
+            config.recompute_granularity_per_stage != None
+            and config.recompute_granularity_per_stage[mpu.get_pipeline_model_parallel_rank()] == 0
+        ):
+            self.recompute_granularity = None
+            self.recompute_method = None
+        else:
+            self.recompute_granularity = config.recompute_granularity
+
         self.distribute_saved_activations = \
             config.distribute_saved_activations and not config.sequence_parallel
 
@@ -1645,10 +1693,10 @@ class ParallelTransformer(MegatronModule):
                     num_ranks_in_enc = args.pipeline_model_parallel_split_rank
                     offset = (pipeline_rank - num_ranks_in_enc) * self.num_layers
             else:
-                if args.hetero_mode != "pp":
+                if config.hetero_mode != "pp":
                     offset = mpu.get_pipeline_model_parallel_rank() * self.num_layers
                 else:
-                    offset, self.num_layers = _get_layer_info(args)
+                    offset, self.num_layers = _get_layer_info(config)
 
         if self.num_layers == 0:
             # When a standalone embedding stage is used (e.g.,
@@ -1661,6 +1709,7 @@ class ParallelTransformer(MegatronModule):
             # disconnect the input tensor from the output tensor.
             self.num_layers = 1
             self.layers = torch.nn.ModuleList([ NoopTransformerLayer(1) ])
+            self.recompute_granularity = None
         else:
             self.layers = torch.nn.ModuleList(
                 [build_layer(i + 1 + offset) for i in range(self.num_layers)])

@@ -217,6 +217,10 @@ class Recorder:
         )
         last_dir = None
         last_dir_rank = 0
+        if not os.path.exists(last_path):
+            self.logger.info(f"The performance file path does not exist: {last_path}")
+            return None, logs
+
         for item in os.listdir(last_path):
             try:
                 rank = int(item)
@@ -266,7 +270,7 @@ class Recorder:
             self.logger.info(f"task_{self.cur_strategy['idx']} performance: {average}")
             return round(average, 3)
 
-    def grep_error(self, path, pattern="Error"):
+    def grep_error(self, path, pattern="Error:"):
         """Read the log file and return the error"""
         if not os.path.exists(path):
             raise ValueError(f"The path do not exist: {path}")
@@ -331,5 +335,4 @@ class Recorder:
         df = df.reindex(columns=cols)
         if "stopped_by_tuner" in df.columns:
             df = df.drop(columns=["stopped_by_tuner"])
-
         df.to_csv(self.path, index=False, escapechar="\\")

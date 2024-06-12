@@ -440,6 +440,8 @@ class Searcher:
                                         recompute_num_layers,
                                     ):
                                         continue
+                                    if recompute_num_layers != layers_per_stage:
+                                        continue
                                 product_dim["recompute_num_layers"] = (
                                     recompute_num_layers
                                 )

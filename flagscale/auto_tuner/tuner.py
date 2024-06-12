@@ -249,6 +249,7 @@ class AutoTuner:
         # Sleep 3s to ensure the task is started
         time.sleep(3)
         running = False
+        sub_process_running = False
         while True:
             # If the task timeout, stop monitoring
             end_time = time.time()
@@ -275,6 +276,19 @@ class AutoTuner:
                     if running:
                         self.runner.stop()
                         break
+                
+                # Add sub process monitor
+                sub_process = self.runner._query_sub_process_status()
+                if sub_process:
+                    sub_process_running = True
+
+                elif not sub_process:
+                    if sub_process_running:
+                        self.logger.info("Sub process not working, stop the task.")
+                        self.runner.stop()
+                        self.cur_strategy["stopped_by_tuner"] = True
+                        break
+
             except Exception as e:
                 self.logger.info(e)
                 time.sleep(self.interval)
