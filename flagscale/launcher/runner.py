@@ -471,13 +471,13 @@ def _generate_run_script_train(
     return host_run_script_file
 
 
-def _generate_run_script_inference(config, host, node_rank, cmd, background=True, with_test=False):
+def _generate_run_script_inference(
+    config, host, node_rank, cmd, background=True, with_test=False
+):
     logging_config = config.inference.system.logging
     no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
     if no_shared_fs:
-        host_output_file = os.path.join(
-            logging_config.log_dir, f"host.output"
-        )
+        host_output_file = os.path.join(logging_config.log_dir, f"host.output")
     else:
         host_output_file = os.path.join(
             logging_config.log_dir, f"host_{node_rank}_{host}.output"
@@ -594,9 +594,7 @@ class SSHRunner(MultiNodeRunner):
             _update_config_inference(self.config)
             self.user_args = get_args_vllm(self.config)
         else:
-            raise ValueError(
-                f"Unsupported task type in SSHRunner: {self.mode}"
-            )
+            raise ValueError(f"Unsupported task type in SSHRunner: {self.mode}")
 
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         self.user_envs = self.config.experiment.get("envs", {})
@@ -904,9 +902,7 @@ class CloudRunner(MultiNodeRunner):
             _update_config_train(self.config)
             self.user_args = get_args_megatron(self.config)
         else:
-            raise ValueError(
-                f"Unsupported task type in CloudRunner: {self.mode}"
-            )
+            raise ValueError(f"Unsupported task type in CloudRunner: {self.mode}")
 
         logger.info("\n************** configuration ***********")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
