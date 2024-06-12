@@ -24,10 +24,20 @@ jobs:
 
     - name: Check for Specific Approver
       run: |
-        SPECIFIC_APPROVER="aoyulong"
-        if echo "$APPROVERS" | grep -q "$SPECIFIC_APPROVER"; then
-          echo "Specific approver has approved the PR."
-        else
-          echo "The PR has not been approved by the specific approver."
+        SPECIFIC_APPROVERS=("aoyulong" "zhaoyinglia")
+        APPROVED="false"
+
+        for APPROVER in "${SPECIFIC_APPROVERS[@]}"
+        do
+          if echo "$APPROVERS" | grep -q "$APPROVER"; then
+            echo "The PR has been approved by the specific approver: $APPROVER."
+            APPROVED="true"
+            break
+          fi
+        done
+
+        if [ "$APPROVED" = "false" ]; then
+          echo "The PR has not been approved by the specific approvers."
           exit 1
         fi
+
