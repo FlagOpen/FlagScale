@@ -22,7 +22,14 @@ from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 
-_te_version = packaging.version.Version(version("transformer-engine"))
+try:
+    # Only for iluvatar ixte doesn't have version, ignore it
+    _te_version = packaging.version.Version(version("transformer-engine"))
+except:
+    # ixte versions here
+    print("This transformer package doesn't have version, set to 1.6.0")
+    _te_version = packaging.version.Version("1.6.0")
+
 
 
 def _get_extra_te_kwargs(config: TransformerConfig):
@@ -168,9 +175,13 @@ class TELinear(te.pytorch.Linear):
         # TE only returns a tuple when return_bias is True, otherwise
         # it returns a single Tensor, we always want to return two
         # values regardless of the arguments.
+        '''
         if self.te_return_bias:
             return out
         return out, None
+        '''
+        # iluvatar changes, directaly return the output
+        return out
 
 
 class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
@@ -280,9 +291,13 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
         # TE only returns a tuple when return_bias is True, otherwise
         # it returns a single Tensor, we always want to return two
         # values regardless of the arguments.
+        '''
         if self.te_return_bias:
             return out
         return out, None
+        '''
+        # iluvatar changes, directaly return the output
+        return out
 
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
         """ Sharding along axis 0, bias sharded """
@@ -535,32 +550,35 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
         else:
             return core_attn_out
 
+# iluvatar gpu doesn't have te.common.recipe, so we need to use the following code to replace it.
+try:
+    class TEDelayedScaling(te.common.recipe.DelayedScaling):
+        """
+        Wrapper for the Transformer-Engine's `DelayedScaling` layer.
+        """
 
-class TEDelayedScaling(te.common.recipe.DelayedScaling):
-    """
-    Wrapper for the Transformer-Engine's `DelayedScaling` layer.
-    """
+        def __init__(
+            self,
+            config: ModelParallelConfig,
+            fp8_format: int,
+            override_linear_precision: tuple = (False, False, False),
+        ):
+            extra_kwargs = _get_extra_te_kwargs(config)
+            if _te_version >= packaging.version.Version("1.6.0.dev0"):
+                extra_kwargs["fp8_dpa"] = config.fp8_dot_product_attention
+                extra_kwargs["fp8_mha"] = config.fp8_multi_head_attention
 
-    def __init__(
-        self,
-        config: ModelParallelConfig,
-        fp8_format: int,
-        override_linear_precision: tuple = (False, False, False),
-    ):
-        extra_kwargs = _get_extra_te_kwargs(config)
-        if _te_version >= packaging.version.Version("1.6.0.dev0"):
-            extra_kwargs["fp8_dpa"] = config.fp8_dot_product_attention
-            extra_kwargs["fp8_mha"] = config.fp8_multi_head_attention
-
-        super().__init__(
-            margin=config.fp8_margin,
-            interval=config.fp8_interval,
-            fp8_format=fp8_format,
-            amax_compute_algo=config.fp8_amax_compute_algo,
-            amax_history_len=config.fp8_amax_history_len,
-            override_linear_precision=override_linear_precision,
-            **extra_kwargs,
-        )
+            super().__init__(
+                margin=config.fp8_margin,
+                interval=config.fp8_interval,
+                fp8_format=fp8_format,
+                amax_compute_algo=config.fp8_amax_compute_algo,
+                amax_history_len=config.fp8_amax_history_len,
+                override_linear_precision=override_linear_precision,
+                **extra_kwargs,
+            )
+except:
+    print("TEDelayedScaling initialize failed, seems like your gpu doesn't support fp8 configuration, ignore TEDelayedScaling here")
 
 
 def te_checkpoint(

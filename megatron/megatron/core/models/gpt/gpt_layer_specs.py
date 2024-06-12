@@ -1,5 +1,5 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
-
+import traceback
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core.fusions.fused_layer_norm import FusedLayerNorm
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
@@ -11,7 +11,9 @@ try:
         TENorm,
         TERowParallelLinear,
     )
-except:
+except Exception as e:
+    print(e)
+    traceback.print_exc()
     pass
 
 from megatron.core.transformer.dot_product_attention import DotProductAttention
