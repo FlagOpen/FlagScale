@@ -15,6 +15,7 @@ env:
 jobs:
   megatron-unit-test:
     runs-on: self-hosted
+    concurrency: job-group
     container:
       image: localhost:5000/flagscale_cicd:v1.3
       ports:
@@ -35,6 +36,7 @@ jobs:
 
   flagscale-unit-test:
     runs-on: self-hosted
+    concurrency: job-group
     container:
       image: localhost:5000/flagscale_cicd:v1.3
       ports:
@@ -55,6 +57,7 @@ jobs:
 
   flagscale-functional-test:
     runs-on: self-hosted
+    concurrency: job-group
     container:
       image: localhost:5000/flagscale_cicd:v1.3
       ports:
