@@ -62,7 +62,14 @@ def get_num_layers_to_build(config: TransformerConfig) -> int:
         # Non-interleaved pipeline parallelism:
         # Each stage gets a contiguous set of layers.
 
-        num_layers_to_build = num_layers_per_pipeline_rank
+        if config.hetero_mode == "pp":
+            pipeline_rank = parallel_state.get_pipeline_model_parallel_rank()
+            pipeline_stages = [
+                item for sublist in config.hetero_pipeline_stages for item in sublist
+            ]
+            num_layers_to_build = pipeline_stages[pipeline_rank]
+        else:
+            num_layers_to_build = num_layers_per_pipeline_rank
 
     return num_layers_to_build
 
@@ -252,6 +259,64 @@ class TransformerBlock(MegatronModule):
                     rotary_pos_emb,
                     packed_seq_params,
                 )
+
+        if self.config.recompute_method_per_stage != None:
+            if self.config.virtual_pipeline_model_parallel_size != None:
+                if (
+                    self.config.recompute_method_per_stage[
+                        parallel_state.get_virtual_pipeline_model_parallel_rank()
+                        * self.config.pipeline_model_parallel_size
+                        + parallel_state.get_pipeline_model_parallel_rank()
+                    ]
+                    == 0
+                ):
+                    self.config.recompute_method = 'uniform'
+                elif (
+                    self.config.recompute_method_per_stage[
+                        parallel_state.get_virtual_pipeline_model_parallel_rank()
+                        * self.config.pipeline_model_parallel_size
+                        + parallel_state.get_pipeline_model_parallel_rank()
+                    ]
+                    == 1
+                ):
+                    self.config.recompute_method = 'block'
+            else:
+                if (
+                    self.config.recompute_method_per_stage[
+                        parallel_state.get_pipeline_model_parallel_rank()
+                    ]
+                    == 0
+                ):
+                    self.config.recompute_method = 'uniform'
+                elif (
+                    self.config.recompute_method_per_stage[
+                        parallel_state.get_pipeline_model_parallel_rank()
+                    ]
+                    == 1
+                ):
+                    self.config.recompute_method = 'block'
+
+        if self.config.recompute_num_layers_per_stage != None:
+            if self.config.virtual_pipeline_model_parallel_size != None:
+                self.config.recompute_num_layers = self.config.recompute_num_layers_per_stage[
+                    parallel_state.get_virtual_pipeline_model_parallel_rank()
+                    * self.config.pipeline_model_parallel_size
+                    + parallel_state.get_pipeline_model_parallel_rank()
+                ]
+            else:
+                self.config.recompute_num_layers = self.config.recompute_num_layers_per_stage[
+                    parallel_state.get_pipeline_model_parallel_rank()
+                ]
+
+        if (
+            self.config.recompute_granularity_per_stage != None
+            and self.config.recompute_granularity_per_stage[
+                parallel_state.get_pipeline_model_parallel_rank()
+            ]
+            == 0
+        ):
+            self.recompute_granularity = None
+            self.recompute_method = None
 
         if self.config.recompute_method == 'uniform':
             # Uniformly divide the total number of Transformer layers and checkpoint

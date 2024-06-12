@@ -158,7 +158,6 @@ class TransformerConfig(ModelParallelConfig):
     # activation recomputation
     ####################
     recompute_granularity: str = None
-    recompute_granularity: str = None
     """Determines which type of activation recompute to use.  Megatron-core supports 'selective'
     activation checkpointing where only the memory intensive part of attention is checkpointed.
     These memory intensive activations are also less compute intensive which makes activation
@@ -181,6 +180,15 @@ class TransformerConfig(ModelParallelConfig):
     each uniformly divided recompute unit.  When recompute_method is block, recompute_num_layers is
     the number of transformer layers to recompute within each pipeline stage.  Must be None for
     'selective' activation checkpointing."""
+
+    recompute_granularity_per_stage: list = None
+    """Same as recompute_granularity but for each stage."""
+
+    recompute_method_per_stage: list = None
+    """Same as recompute_method but for each stage."""
+
+    recompute_num_layers_per_stage: list = None
+    """Same as recompute_num_layers but for each stage."""
 
     distribute_saved_activations: bool = None
     """If True, distribute recomputed activations across the model parallel group."""
