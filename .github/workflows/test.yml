@@ -9,6 +9,9 @@ on:
   pull_request:
     branches: [ "main" ]
 
+env:
+  REPORT_ADDR: http://120.92.110.224:8081
+
 jobs:
   test:
     runs-on: self-hosted
@@ -27,13 +30,13 @@ jobs:
         run: tests/scripts/unit_test_megatron.sh ${{github.sha}}
       
       - name: Megatron Unit Test Coverage Online Report
-        run: echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-megatron/index.html"
+        run: echo "You can access the test coverage report at the $REPORT_ADDR/${{github.sha}}/cov-report-megatron/index.html"
 
       - name: Flagscale Unit Test
         run: tests/scripts/unit_test_flagscale.sh ${{github.sha}}
       
       - name: Flagscale Unit Test Coverage Online Report
-        run: echo "You can access the test coverage report at the http://120.92.110.224:8081/${{github.sha}}/cov-report-flagscale/index.html"
+        run: echo "You can access the test coverage report at the $REPORT_ADDR/${{github.sha}}/cov-report-flagscale/index.html"
 
       - name: Flagscale Functional Test
         run: tests/scripts/functional_test_flagscale.sh
