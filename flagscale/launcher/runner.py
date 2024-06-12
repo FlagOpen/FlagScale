@@ -804,6 +804,42 @@ class SSHRunner(MultiNodeRunner):
 
         return host_query_script_file
 
+    def _generate_query_sub_process_script(self, host, node_rank):
+        """Genetrate the query script for each host."""
+        logging_config = self.config.train.system.logging
+
+        host_query_sub_process_script_file = os.path.join(
+            logging_config.scripts_dir, f"host_{node_rank}_{host}_query_sub_process.sh"
+        )
+
+        host_pid_file = os.path.join(
+            logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
+        )
+
+        os.makedirs(logging_config.scripts_dir, exist_ok=True)
+
+        with open(host_query_sub_process_script_file, "w") as f:
+            f.write("#!/bin/bash\n\n")
+            f.write("if [ -f " + host_pid_file + " ]; then\n")
+            f.write("    pid=$(cat " + host_pid_file + ")\n")
+            f.write(
+                "    ps -eo pid,ppid | awk -v ppid=$pid '$2 == ppid {print $1}'\n"
+            )
+            f.write("else\n")
+            # TODO: This is a temporary fix. We need to find a better way to query the job.
+            f.write(
+                "    pid=$(ps aux | grep 'torchrun' | grep -v grep | head -n 1 | awk '{print $2}')\n"
+            )
+            f.write(
+                "    ps -eo pid,ppid | awk -v ppid=$pid '$2 == ppid {print $1}'\n"
+            )
+            f.write("fi\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(host_query_sub_process_script_file, 0o755)
+
+        return host_query_sub_process_script_file
+
     def _query_each(self, host, node_rank):
         "Query each node status."
         host_query_script_file = self._generate_query_script(host, node_rank)
@@ -836,6 +872,40 @@ class SSHRunner(MultiNodeRunner):
         result = result.stdout.rstrip() if result else ""
         return result
 
+    def _query_each_sub_process(self, host, node_rank):
+        "Query each node sub process status."
+        host_query_script_file = self._generate_query_sub_process_script(
+            host, node_rank
+        )
+        logging_config = self.config.train.system.logging
+        result = ""
+        if host != "localhost":
+            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
+            # Step 1: make sure the scripts_dir exists on the remote host
+            run_ssh_command(
+                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, query=True
+            )
+            # Step 2: copy the host_run_script_file to the remote host
+            no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
+            if no_shared_fs:
+                run_scp_command(
+                    host, host_query_script_file, logging_config.scripts_dir, ssh_port
+                )
+            # Step 3: run the host_run_script_file on the remote host
+            try:
+                result = run_ssh_command(
+                    host, f"bash {host_query_script_file}", ssh_port, query=True
+                )
+            except Exception as e:
+                logger.error(f"Failed to query sub process status on {host}: {e}")
+        else:
+            try:
+                result = run_local_command(f"bash {host_query_script_file}", query=True)
+            except Exception as e:
+                logger.error(f"Failed to query sub process status on {host}: {e}")
+        result = result.stdout.rstrip() if result else ""
+        return result
+
     def _query_status(self):
         "Query Job status."
         results = []
@@ -856,6 +926,25 @@ class SSHRunner(MultiNodeRunner):
         else:
             job_status = JobStatus.TRANSITIONAL
         return job_status
+
+    def _query_sub_process_status(self):
+        "Query sub process status."
+        results = []
+        if self.resources is None:
+            result = self._query_each_sub_process("localhost", 0)
+            results.append(result)
+
+        else:
+            host_list = list(self.resources.keys())
+            for host, _ in self.resources.items():
+                node_rank = host_list.index(host)
+                result = self._query_each_sub_process(host, node_rank)
+                results.append(result)
+        if all(status for status in results):
+            status = True
+        else:
+            status = False
+        return status
 
     def query(self, interval=10, timeout=None):
         """
