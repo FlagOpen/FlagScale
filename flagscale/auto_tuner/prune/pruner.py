@@ -14,6 +14,7 @@ class Pruner:
             if func(self.config, strategy, history):
                 not_run = True
                 break
+
         history.append(strategy)
         if not_run:
             self.pruned_count += 1

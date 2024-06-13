@@ -1,8 +1,8 @@
-import time
 import copy
 import logging
-from ..utils import divisible
+import time
 
+from ..utils import divisible
 
 __BUILT_IN_STRATEGY_DIMS__ = [
     "data_parallel_size",

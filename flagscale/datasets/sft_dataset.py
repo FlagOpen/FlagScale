@@ -9,11 +9,20 @@ from typing import Dict, Optional, Tuple
 import numpy
 import torch
 
-from megatron.core.datasets.gpt_dataset import GPTDataset, GPTDatasetConfig, _get_ltor_masks_and_position_ids
-from megatron.core.datasets.indexed_dataset import IndexedDataset, get_bin_path, get_idx_path
+from megatron.core.datasets.gpt_dataset import (
+    GPTDataset,
+    GPTDatasetConfig,
+    _get_ltor_masks_and_position_ids,
+)
+from megatron.core.datasets.indexed_dataset import (
+    IndexedDataset,
+    get_bin_path,
+    get_idx_path,
+)
 from megatron.core.datasets.utils import Split
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class SFTDatasetConfig(GPTDatasetConfig):
@@ -50,35 +59,44 @@ class SFTDataset(GPTDataset):
         config: SFTDatasetConfig,
     ) -> None:
         self.config = config
-        self.apply_sft_dataset_separated_loss_mask_if_existed = config.apply_sft_dataset_separated_loss_mask_if_existed
+        self.apply_sft_dataset_separated_loss_mask_if_existed = (
+            config.apply_sft_dataset_separated_loss_mask_if_existed
+        )
         self.loss_mask_dataset = None
 
         super().__init__(
-            indexed_dataset, dataset_path, indexed_indices, num_samples, index_split, config
+            indexed_dataset,
+            dataset_path,
+            indexed_indices,
+            num_samples,
+            index_split,
+            config,
         )
 
         self._build_loss_mask_dataset()
 
     def _build_loss_mask_dataset(self) -> None:
         """
-            Load Loss Mask IndexedDataset
+        Load Loss Mask IndexedDataset
         """
         path_prefix = None
-        base_prefix = '_text_document'
-        loss_mask_prefix = '_loss_mask_document'
+        base_prefix = "_text_document"
+        loss_mask_prefix = "_loss_mask_document"
         if self.dataset_path.endswith(base_prefix):
-            path_prefix = self.dataset_path[:-len(base_prefix)] + loss_mask_prefix
+            path_prefix = self.dataset_path[: -len(base_prefix)] + loss_mask_prefix
         if self.apply_sft_dataset_separated_loss_mask_if_existed and path_prefix:
             idx_path = get_idx_path(path_prefix)
             bin_path = get_bin_path(path_prefix)
             if os.path.exists(idx_path) and os.path.exists(bin_path):
                 self.loss_mask_dataset = IndexedDataset(
-                    path_prefix, multimodal=False, mmap=self.config.mmap_bin_files)
+                    path_prefix, multimodal=False, mmap=self.config.mmap_bin_files
+                )
 
-                print(f'> Used Dataset: aux_loss_mask ...')
+                print(f"> Used Dataset: aux_loss_mask ...")
                 if self.loss_mask_dataset is not None:
-                    assert len(self.dataset) == len(self.loss_mask_dataset), \
-                           f"Samples are not equal, ({len(self.dataset)} != {len(self.loss_mask_dataset)})"
+                    assert len(self.dataset) == len(
+                        self.loss_mask_dataset
+                    ), f"Samples are not equal, ({len(self.dataset)} != {len(self.loss_mask_dataset)})"
 
     def __getitem__(self, idx: Optional[int]) -> Dict[str, torch.Tensor]:
         """Abstract method implementation
@@ -139,11 +157,12 @@ class SFTDataset(GPTDataset):
 
         # aux dataset
         aux_loss_mask, _ = self._query_document_sample_shuffle_indices_aux_dataset(
-            self.loss_mask_dataset, idx)
+            self.loss_mask_dataset, idx
+        )
         if aux_loss_mask is not None:
-          if idx % 100 == 0:
-            print(f'> Used aux_loss_mask at current sample={idx} ...')
-          loss_mask = torch.from_numpy(aux_loss_mask).float()[1:].contiguous()
+            if idx % 100 == 0:
+                print(f"> Used aux_loss_mask at current sample={idx} ...")
+            loss_mask = torch.from_numpy(aux_loss_mask).float()[1:].contiguous()
 
         if self.config.create_attention_mask:
             return {
@@ -210,11 +229,12 @@ class SFTDataset(GPTDataset):
                 offset = 0 if i > doc_index_beg else doc_index_beg_offset
                 length = None if i < doc_index_end else doc_index_end_offset + 1
                 sample_parts.append(
-                    aux_dataset.get(self.document_index[i], offset=offset, length=length)
+                    aux_dataset.get(
+                        self.document_index[i], offset=offset, length=length
+                    )
                 )
 
         return (
             numpy.array(numpy.concatenate(sample_parts), dtype=numpy.int64),
             numpy.array(document_ids, dtype=numpy.int64),
         )
-

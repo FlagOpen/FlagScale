@@ -1,0 +1,44 @@
+name: format
+
+on:
+  pull_request:
+    branches: [ "main" ]
+    types: [opened, synchronize, reopened]
+
+env:
+  CHECK_FILES: >-
+    flagscale/auto_tuner/*.py
+    flagscale/auto_tuner/prune/*.py
+    flagscale/auto_tuner/record/*.py
+    flagscale/auto_tuner/search/*.py
+    flagscale/launcher/*.py
+    flagscale/logger.py
+    flagscale/patches_utils.py
+    flagscale/datasets/sft_dataset.py
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v2
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v2
+      with:
+        python-version: "3.10"
+    
+    - name: Install dependencies
+      run: |
+        pip install black isort
+
+    - name: Run Black
+      run: >-
+        black --check --diff --include $CHECK_FILES ./
+      
+    - name: Run Isort
+      run: |
+        isort --profile black --check --diff $CHECK_FILES
+
+
