@@ -408,7 +408,7 @@ def _generate_run_script_train(
     system_config = config.train.system
     logging_config = config.train.system.logging
 
-    no_shared_fs = config.experiment.get("no_shared_fs", False)
+    no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
     if no_shared_fs:
         host_output_file = os.path.join(logging_config.log_dir, f"host.output")
     else:
@@ -446,7 +446,7 @@ def _generate_run_script_train(
         f.write(f"\n")
         f.write(f"cd {root_dir}\n")
         f.write(f"\n")
-        f.write(f"export PYTHONPATH={megatron_dir}:{root_dir}:$PYTHONPATH\n")
+        f.write(f"export PYTHONPATH={megatron_dir}:{root_dir}\n")
         f.write(f"\n")
         f.write(f'cmd="{cmd}"\n')
         f.write(f"\n")
@@ -644,15 +644,14 @@ class SSHRunner(MultiNodeRunner):
             )
 
         if host != "localhost":
-            # CHG: delete runner from here, runner should not add ssh config otherwise it will be added in torchrun command
-            ssh_port = self.config.experiment.get("ssh_port", 22)
+            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
             # Step 1: make sure the scripts_dir exists on the remote host
             run_ssh_command(
                 host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, dryrun
             )
 
             # Step 2: copy the host_run_script_file to the remote host
-            no_shared_fs = self.config.experiment.get("no_shared_fs", False)
+            no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
             if no_shared_fs:
                 run_scp_command(
                     host,
