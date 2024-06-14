@@ -140,7 +140,7 @@ Please set the following variables before running the command:
   * `loader`: The loading method. if it's mcore, it means to load the checkpoint of transformer engine. if it's transformers, it means the checkpoint format to load is Huggingface .
   * `saver`: The saving method .if it's mcore, it means to save the checkpoint of transformer engine. if it's transformers, it means the checkpoint format to save is Huggingface .
 
-1. Convert the merged checkpoint to the Huggingface format 
+3. Convert the merged checkpoint to the Huggingface format 
 ```
 export PYTHONPATH=${FlagScale_HOME}:$PYTHONPATH
 
@@ -158,8 +158,8 @@ Please set the following variables before running the command:
   * `LOAD_DIR`: the directory for loading the original checkpoint.
   * `SAVE_DIR`: the directory for saving the merged checkpoint.
   * `FlagScale_HOME`: the directory of FlagScale.
-  * `loader`: The loading method .if it's mcore, it means using the transformer engine to load the checkpoint. if it's transformers, it means the checkpoint format to load is Huggingface .
-  * `saver`: The saving method .if it's mcore, it means using the transformer engine to save the checkpoint. if it's transformers, it means the checkpoint format to save is Huggingface .
+  * `loader`: The loading method .if it's mcore, it means to load the checkpoint of transformer engine. if it's transformers, it means the checkpoint format to load is Huggingface .
+  * `saver`: The saving method .if it's mcore, it means to save the checkpoint of transformer engine. if it's transformers, it means the checkpoint format to save is Huggingface .
 
 
 Note that the above configuration is for converting Aquila-34B and you may need to change the model configurations such as `num_layers` and`hidden_size` as needed.  
@@ -190,8 +190,8 @@ Please set the following variables before running the command:
   * `LOAD_DIR`: the directory for loading the original checkpoint.
   * `SAVE_DIR`: the directory for saving the merged checkpoint.
   * `FlagScale_HOME`: the directory of FlagScale.
-  * `loader`: The loading method .if it's mcore, it means using the transformer engine to load the checkpoint. if it's transformers, it means the checkpoint format to load is Huggingface .
-  * `saver`: The saving method .if it's mcore, it means using the transformer engine to save the checkpoint. if it's transformers, it means the checkpoint format to save is Huggingface .
+  * `loader`: The loading method. if it's mcore, it means to load the checkpoint of transformer engine. if it's transformers, it means the checkpoint format to load is Huggingface .
+  * `saver`: The saving method .if it's mcore, it means to save the checkpoint of transformer engine. if it's transformers, it means the checkpoint format to save is Huggingface .
 
 3. Serve the Aquila2 model by the below script. Here we take the Aquila2-34B as an example and assume you have an A800-80G GPU.
 ``` 
