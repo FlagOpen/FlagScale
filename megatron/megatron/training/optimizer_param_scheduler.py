@@ -49,17 +49,16 @@ class OptimizerParamScheduler(object):
 
         self.stablelm2_scheduler_config = stablelm2_scheduler_config
         if self.stablelm2_scheduler_config is not None:
-          ## absolute samples
-          self.stablelm2_scheduler_config.rsqrt_samples += \
+            ## absolute samples
+            self.stablelm2_scheduler_config.rsqrt_samples += \
               self.stablelm2_scheduler_config.cosine_samples
-          ## N of consine
-          if self.stablelm2_scheduler_config.cosine_period_samples == 0:
-            self.stablelm2_scheduler_config.cosine_period_samples = self.lr_decay_steps
+            ## N of consine
+            if self.stablelm2_scheduler_config.cosine_period_samples == 0:
+                self.stablelm2_scheduler_config.cosine_period_samples = self.lr_decay_steps
 
         # Set the learning rate
         self.step(0)
         print_rank_0('> learning rate decay style: {}'.format(self.lr_decay_style))
-
 
     def get_wd(self):
         """ Weight decay incr functions"""
@@ -84,7 +83,6 @@ class OptimizerParamScheduler(object):
                 self.wd_incr_style))
 
         return self.start_wd + coeff * delta_wd
-
 
     def get_lr(self, param_group):
         """Learning rate decay functions from:
@@ -113,47 +111,55 @@ class OptimizerParamScheduler(object):
             return min_lr
 
         # stablelm2 scheduler of multiple stages
-        print_rank_0('> stablelm2_scheduler_config: {}'.format(self.stablelm2_scheduler_config))
         if self.stablelm2_scheduler_config is not None:
-          if self.num_steps <= self.stablelm2_scheduler_config.cosine_samples:
-              ## cosine phase
-              # decay_ratio = float(self.num_steps) / float(self.lr_decay_steps)
-              # TODO
-              decay_ratio = float(self.num_steps) / float(self.stablelm2_scheduler_config.cosine_period_samples)
-              cosine_min_lr = self.stablelm2_scheduler_config.cosine_max_lr * 0.1
-              delta_lr = self.stablelm2_scheduler_config.cosine_max_lr - cosine_min_lr
-              coeff = 0.5 * (math.cos(2 * math.pi * decay_ratio) + 1.0)
-              self.stablelm2_scheduler_config.cosine_lr = cosine_min_lr + coeff * delta_lr
-              return self.stablelm2_scheduler_config.cosine_lr
-          elif self.num_steps <= self.stablelm2_scheduler_config.rsqrt_samples:
-              ## rsqrt phase
-              alpha = self.stablelm2_scheduler_config.alpha
-              beta = self.stablelm2_scheduler_config.beta
-              gbs = self.stablelm2_scheduler_config.global_batch_size * 1.0
-              self.stablelm2_scheduler_config.rsqrt_lr = alpha / ((self.num_steps / gbs + beta) ** 0.5)
-              return self.stablelm2_scheduler_config.rsqrt_lr
-          elif self.stablelm2_scheduler_config.decay_samples <= 0:
-              ## optional linear phase
-              decay_steps_ = self.lr_decay_steps - self.stablelm2_scheduler_config.rsqrt_samples
-              num_steps_ = self.num_steps - self.stablelm2_scheduler_config.rsqrt_samples
-              decay_ratio = float(num_steps_) / float(decay_steps_)
-              coeff = (1.0 - decay_ratio)
-              return coeff * self.stablelm2_scheduler_config.rsqrt_lr
-          else:
-              ## optional linear phase
-              valid_lr_decay_steps_ = min(
-                  self.lr_decay_steps,
-                  self.stablelm2_scheduler_config.rsqrt_samples + self.stablelm2_scheduler_config.decay_samples)
-              if self.num_steps <= valid_lr_decay_steps_:
-                decay_steps_ = valid_lr_decay_steps_ - self.stablelm2_scheduler_config.rsqrt_samples
+            print_rank_0('> stablelm2_scheduler_config: {}'.format(self.stablelm2_scheduler_config))
+            if self.num_steps <= self.stablelm2_scheduler_config.cosine_samples:
+                ## cosine phase
+                # decay_ratio = float(self.num_steps) / float(self.lr_decay_steps)
+                # TODO
+                decay_ratio = float(self.num_steps) / float(
+                    self.stablelm2_scheduler_config.cosine_period_samples
+                )
+                cosine_min_lr = self.stablelm2_scheduler_config.cosine_max_lr * 0.1
+                delta_lr = self.stablelm2_scheduler_config.cosine_max_lr - cosine_min_lr
+                coeff = 0.5 * (math.cos(2 * math.pi * decay_ratio) + 1.0)
+                self.stablelm2_scheduler_config.cosine_lr = cosine_min_lr + coeff * delta_lr
+                return self.stablelm2_scheduler_config.cosine_lr
+            elif self.num_steps <= self.stablelm2_scheduler_config.rsqrt_samples:
+                ## rsqrt phase
+                alpha = self.stablelm2_scheduler_config.alpha
+                beta = self.stablelm2_scheduler_config.beta
+                gbs = self.stablelm2_scheduler_config.global_batch_size * 1.0
+                self.stablelm2_scheduler_config.rsqrt_lr = alpha / (
+                    (self.num_steps / gbs + beta) ** 0.5
+                )
+                return self.stablelm2_scheduler_config.rsqrt_lr
+            elif self.stablelm2_scheduler_config.decay_samples <= 0:
+                ## optional linear phase
+                decay_steps_ = self.lr_decay_steps - self.stablelm2_scheduler_config.rsqrt_samples
                 num_steps_ = self.num_steps - self.stablelm2_scheduler_config.rsqrt_samples
                 decay_ratio = float(num_steps_) / float(decay_steps_)
-                coeff = (1.0 - decay_ratio)
-                delta_lr = self.stablelm2_scheduler_config.rsqrt_lr - self.min_lr
-                assert decay_ratio >= 0.0
-                return coeff * delta_lr + self.min_lr
-              else:
-                return self.min_lr
+                coeff = 1.0 - decay_ratio
+                return coeff * self.stablelm2_scheduler_config.rsqrt_lr
+            else:
+                ## optional linear phase
+                valid_lr_decay_steps_ = min(
+                    self.lr_decay_steps,
+                    self.stablelm2_scheduler_config.rsqrt_samples
+                    + self.stablelm2_scheduler_config.decay_samples,
+                )
+                if self.num_steps <= valid_lr_decay_steps_:
+                    decay_steps_ = (
+                        valid_lr_decay_steps_ - self.stablelm2_scheduler_config.rsqrt_samples
+                    )
+                    num_steps_ = self.num_steps - self.stablelm2_scheduler_config.rsqrt_samples
+                    decay_ratio = float(num_steps_) / float(decay_steps_)
+                    coeff = 1.0 - decay_ratio
+                    delta_lr = self.stablelm2_scheduler_config.rsqrt_lr - self.min_lr
+                    assert decay_ratio >= 0.0
+                    return coeff * delta_lr + self.min_lr
+                else:
+                    return self.min_lr
 
         # Warmup-Stable-Decay(WSD)
         if self.lr_decay_style == 'warmup-stable-decay':
@@ -192,7 +198,6 @@ class OptimizerParamScheduler(object):
 
         return min_lr + coeff * delta_lr
 
-
     def step(self, increment):
         """Set lr for all parameters groups."""
         self.num_steps += increment
@@ -201,7 +206,6 @@ class OptimizerParamScheduler(object):
             new_lr = self.get_lr(param_group)
             param_group['lr'] = new_lr * param_group.get('lr_mult', 1.0)
             param_group['weight_decay'] = new_wd * param_group.get('wd_mult', 1.0)
-
 
     def state_dict(self):
         state_dict = {
@@ -218,7 +222,6 @@ class OptimizerParamScheduler(object):
         }
         return state_dict
 
-
     def _check_and_set(self, cls_value, sd_value, name):
         """Auxiliary function for checking the values in the checkpoint and
         setting them."""
@@ -233,7 +236,6 @@ class OptimizerParamScheduler(object):
         print_rank_0(' > using checkpoint value {} for {}'.format(sd_value,
                                                                   name))
         return sd_value
-
 
     def load_state_dict(self, sd):
 
@@ -279,7 +281,6 @@ class OptimizerParamScheduler(object):
         else:
             num_steps = sd['num_steps']
         self.step(increment=num_steps)
-
 
         if 'start_wd' in sd:
             self.start_wd = self._check_and_set(self.start_wd,

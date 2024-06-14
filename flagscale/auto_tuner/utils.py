@@ -1,7 +1,8 @@
-import re
 import os
+import re
 import socket
 import subprocess
+
 from flagscale.launcher.runner import parse_hostfile
 
 
@@ -125,3 +126,38 @@ def is_master(config):
             return hostname == master
     # Local host Scene
     return True
+
+
+def compare_by_recompute(strategy1, strategy2):
+    """Compare two strategies by recompute. If strategy1 is larger memory, return True."""
+    result = False
+    # Strategy1 not use recompute, Strategy2 use recompute
+    if not strategy1["use_recompute"] and strategy2["use_recompute"]:
+        result = True
+    # Strategy1 use recompute, Strategy2 use recompute
+    elif strategy1["use_recompute"] and strategy2["use_recompute"]:
+        # Block recompute
+        if (
+            strategy1["recompute_method"] == "block"
+            and strategy2["recompute_method"] == "block"
+        ):
+            if strategy1["recompute_num_layers"] <= strategy2["recompute_num_layers"]:
+                result = True
+        elif (
+            strategy1["recompute_method"] == "uniform"
+            and strategy2["recompute_method"] == "uniform"
+        ):
+            if (
+                strategy1["recompute_granularity"] == "selective"
+                and strategy2["recompute_granularity"] == "full"
+            ):
+                result = True
+    elif (
+        strategy1["use_recompute"] == strategy2["use_recompute"]
+        and strategy1["recompute_method"] == strategy2["recompute_method"]
+        and strategy1["recompute_granularity"] == strategy2["recompute_granularity"]
+        and strategy1["recompute_num_layers"] == strategy2["recompute_num_layers"]
+    ):
+        result = True
+
+    return result

@@ -12,7 +12,6 @@ import types
 from .global_vars import set_device_type
 
 
-
 import torch.nn.functional as F
 from megatron.core.transformer import TransformerConfig
 from megatron.training.activations import squared_relu
@@ -158,47 +157,125 @@ def validate_args(args, defaults={}):
     # Load saved args from Retro (if applicable).
     load_retro_args(args)
 
-    # Tensor model parallel size.
-    args.tensor_model_parallel_size = min(
-        args.tensor_model_parallel_size, args.world_size)
-    assert args.world_size % args.tensor_model_parallel_size == 0, 'world size'\
-        ' ({}) is not divisible by tensor model parallel size ({})'.format(
-            args.world_size, args.tensor_model_parallel_size)
+    args.num_process_meshes = None
+    if args.process_meshes != None:
+        assert args.hetero_mode == "pp", \
+            'hetero_mode should be set to pp with process_meshes not None!'
 
-    # Pipeline model parallel size.
-    args.pipeline_model_parallel_size = min(
-        args.pipeline_model_parallel_size,
-        (args.world_size // args.tensor_model_parallel_size))
-    args.transformer_pipeline_model_parallel_size = (
-        args.pipeline_model_parallel_size - 1
-        if args.standalone_embedding_stage else
-        args.pipeline_model_parallel_size
-    )
+        process_meshes_tp = args.process_meshes[::3]
+        process_meshes_dp = args.process_meshes[1::3]
+        process_meshes_pp = args.process_meshes[2::3]
 
-    # Checks.
-    model_parallel_size = args.pipeline_model_parallel_size * \
-                          args.tensor_model_parallel_size
-    assert args.world_size % (model_parallel_size * args.context_parallel_size) == 0, \
-        'world size ({}) is not divisible by tensor parallel size ({}) times ' \
-        'pipeline parallel size ({}) times context parallel size ({})'.format(
-        args.world_size, args.tensor_model_parallel_size,
-        args.pipeline_model_parallel_size, args.context_parallel_size)
-    args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size)
-    if args.rank == 0:
-        print('using world size: {}, data-parallel size: {}, '
-              'context-parallel size: {} '
-              'tensor-model-parallel size: {}, '
-              'pipeline-model-parallel size: {} '.format(
-                  args.world_size, args.data_parallel_size,
-                  args.context_parallel_size,
-                  args.tensor_model_parallel_size,
-                  args.pipeline_model_parallel_size), flush=True)
-    if args.pipeline_model_parallel_size > 1:
-        if args.pipeline_model_parallel_split_rank is not None:
-            assert args.pipeline_model_parallel_split_rank < \
-                    args.pipeline_model_parallel_size, 'split rank needs'\
-                    ' to be less than pipeline model parallel size ({})'.format(
-                            args.pipeline_model_parallel_size)
+        assert args.untie_embeddings_and_output_weights, \
+            'not support shared embeddings and output weights'
+
+        args.num_process_meshes = len(process_meshes_tp)
+        assert args.num_process_meshes == 2, \
+            'only support 2 process_meshes for now!'
+
+        # Data parallel size.
+        assert all(x == process_meshes_dp[0] for x in process_meshes_dp), \
+            'all parallel group dp should be the same!'
+        args.data_parallel_size = process_meshes_dp[0]
+
+        # Pipeline model paralle size.
+        assert args.pipeline_model_parallel_size == sum(process_meshes_pp), \
+            'pipeline_model_parallel_size should match sum of process_meshes_pp!'
+        assert args.standalone_embedding_stage == False, \
+            'standalone not supported with process_meshes set!'
+        args.transformer_pipeline_model_parallel_size = args.pipeline_model_parallel_size
+        assert args.pipeline_model_parallel_split_rank == None, \
+            'pipeline_model_parallel_split_rank not supported with process_meshes set!'
+
+        # Context parallel size.
+        assert args.context_parallel_size == 1, \
+            'cp!=1 not support now!'
+
+        # Virtual parallel size.
+        assert args.num_layers_per_virtual_pipeline_stage == None, \
+            'virtual pipeline not support now!'
+
+        # Expert parallel size.
+        assert args.expert_model_parallel_size == 1, \
+            'ep!=1 not support now!'
+
+        # Tensor model parallel size
+        num_device_of_each_pipeline_stage = []
+        tp_size_of_each_pipeline_stage = []
+        for i in range(len(process_meshes_pp)):
+            for j in range(process_meshes_pp[i]):
+                tp_size_of_each_pipeline_stage.append(process_meshes_tp[i])
+                num_device_of_each_pipeline_stage.append(process_meshes_tp[i] * args.data_parallel_size)
+
+        # len = p + 1,  [0, sum(p0), sum(p0-p1), ..., sum(p0-pn-1)]
+        cumu_num_device_of_all_pipeline_stage = [sum(num_device_of_each_pipeline_stage[:i]) for i in range(args.pipeline_model_parallel_size + 1)]
+
+        for i in range(args.pipeline_model_parallel_size):
+            if cumu_num_device_of_all_pipeline_stage[i] <= args.rank < cumu_num_device_of_all_pipeline_stage[i+1]:
+                args.tensor_model_parallel_size = tp_size_of_each_pipeline_stage[i]
+
+        assert args.world_size == sum(tp * dp * pp for tp, dp, pp in 
+                                      zip(process_meshes_tp, process_meshes_dp, process_meshes_pp)), \
+            'total world size should match sum of all tp x dp x pp!'
+
+        args.process_meshes_tp = process_meshes_tp
+        args.process_meshes_dp = process_meshes_dp
+        args.process_meshes_pp = process_meshes_pp
+        args.cumu_num_device_of_all_pipeline_stage = cumu_num_device_of_all_pipeline_stage
+        args.tp_size_of_each_pipeline_stage = tp_size_of_each_pipeline_stage
+
+        if args.rank == 0:
+            print('using world size: {}, data-parallel size: {}, '
+                'context-parallel size: {} '
+                'tensor-model-parallel size: {}, '
+                'pipeline-model-parallel size: {} '.format(
+                    args.world_size, args.data_parallel_size,
+                    args.context_parallel_size,
+                    args.tensor_model_parallel_size,
+                    args.pipeline_model_parallel_size), flush=True)            
+
+    else:
+        # Tensor model parallel size.
+        args.tensor_model_parallel_size = min(
+            args.tensor_model_parallel_size, args.world_size)
+        assert args.world_size % args.tensor_model_parallel_size == 0, 'world size'\
+            ' ({}) is not divisible by tensor model parallel size ({})'.format(
+                args.world_size, args.tensor_model_parallel_size)
+
+        # Pipeline model parallel size.
+        args.pipeline_model_parallel_size = min(
+            args.pipeline_model_parallel_size,
+            (args.world_size // args.tensor_model_parallel_size))
+        args.transformer_pipeline_model_parallel_size = (
+            args.pipeline_model_parallel_size - 1
+            if args.standalone_embedding_stage else
+            args.pipeline_model_parallel_size
+        )
+
+        # Checks.
+        model_parallel_size = args.pipeline_model_parallel_size * \
+                            args.tensor_model_parallel_size
+        assert args.world_size % (model_parallel_size * args.context_parallel_size) == 0, \
+            'world size ({}) is not divisible by tensor parallel size ({}) times ' \
+            'pipeline parallel size ({}) times context parallel size ({})'.format(
+            args.world_size, args.tensor_model_parallel_size,
+            args.pipeline_model_parallel_size, args.context_parallel_size)
+        args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size)
+        if args.rank == 0:
+            print('using world size: {}, data-parallel size: {}, '
+                'context-parallel size: {} '
+                'tensor-model-parallel size: {}, '
+                'pipeline-model-parallel size: {} '.format(
+                    args.world_size, args.data_parallel_size,
+                    args.context_parallel_size,
+                    args.tensor_model_parallel_size,
+                    args.pipeline_model_parallel_size), flush=True)
+        if args.pipeline_model_parallel_size > 1:
+            if args.pipeline_model_parallel_split_rank is not None:
+                assert args.pipeline_model_parallel_split_rank < \
+                        args.pipeline_model_parallel_size, 'split rank needs'\
+                        ' to be less than pipeline model parallel size ({})'.format(
+                                args.pipeline_model_parallel_size)
 
     if args.tp_comm_overlap:
         assert args.sequence_parallel == True, 'Tensor parallel communication/GEMM overlap can happen only when sequence parallelism is enabled'
@@ -240,17 +317,17 @@ def validate_args(args, defaults={}):
             setattr(args, key, defaults[key])
 
     # Heterogeneous Training
-    assert args.hetero_mode is None, \
-        "Hetero mode is not supported in this version. Please use the v0.3."
-    if args.hetero_mode:
-        assert args.global_batch_size is not None, "global_batch_size should be specified when hetero_mode is not None"
-        assert args.hetero_current_device_type, "hetero_current_device_type should be specified when hetero_mode is not None"
-        assert args.hetero_device_types, "hetero_device_types should be specified when hetero_mode is not None"
-        assert len(args.hetero_device_types) == len(set(args.hetero_device_types)), \
-            "hetero_device_types should not contain duplicate device types"
-    else:
-        args.hetero_data_parallel_splits = None
-        args.hetero_pipeline_stage_splits = None 
+    assert args.hetero_mode != "dp", \
+       "Hetero mode is not supported in this version. Please use the v0.3."
+    # if args.hetero_mode:
+    #     assert args.global_batch_size is not None, "global_batch_size should be specified when hetero_mode is not None"
+    #     assert args.hetero_current_device_type, "hetero_current_device_type should be specified when hetero_mode is not None"
+    #     assert args.hetero_device_types, "hetero_device_types should be specified when hetero_mode is not None"
+    #     assert len(args.hetero_device_types) == len(set(args.hetero_device_types)), \
+    #         "hetero_device_types should not contain duplicate device types"
+    # else:
+    #     args.hetero_data_parallel_splits = None
+    #     args.hetero_pipeline_stage_splits = None 
 
     if args.hetero_mode == "dp":
         assert args.hetero_micro_batch_sizes, \
@@ -260,7 +337,7 @@ def validate_args(args, defaults={}):
         assert args.micro_batch_size is None, \
             "micro_batch_size should be None when hetero_mode is dp"
         args.hetero_pipeline_stage_splits = None 
-        
+
         hetero_micro_batch_sizes = args.hetero_micro_batch_sizes[1::2] 
         hetero_data_parallel_splits = args.hetero_micro_batch_sizes[::2] 
         args.hetero_micro_batch_sizes = hetero_micro_batch_sizes
@@ -280,7 +357,7 @@ def validate_args(args, defaults={}):
         assert args.global_batch_size % micro_batch_for_all_data_parallel == 0, \
             f"global batch size {args.global_batch_size} is not divisible by micro_batch_for_all_data_parallel {micro_batch_for_all_data_parallel}, "\
             f"which is the sum of hetero_micro_batch_sizes {args.hetero_micro_batch_sizes} and hetero_data_parallel_splits {args.hetero_data_parallel_splits}"
-        
+
     if args.hetero_mode == "pp":
         assert args.hetero_pipeline_stages, \
             "hetero_pipeline_stages should be specified when hetero_mode is pp"
@@ -313,8 +390,8 @@ def validate_args(args, defaults={}):
         assert num_layers == args.num_layers, f"sum of hetero_pipeline_stages {sum} should be equal to num_layers {args.num_layers}" 
         assert args.pipeline_model_parallel_size == sum(args.hetero_pipeline_stage_splits), \
             f"pipeline_model_parallel_size {args.pipeline_model_parallel_size} should be equal to the sum of hetero_pipeline_stage_splits {args.hetero_pipeline_stage_splits}"
-        assert len(args.hetero_pipeline_stage_splits) == len(args.hetero_device_types), \
-            f"length of hetero_pipeline_stage_splits {args.hetero_pipeline_stage_splits} should be equal to the length of hetero_device_types {args.hetero_device_types}"
+        # assert len(args.hetero_pipeline_stage_splits) == len(args.hetero_device_types), \
+        #     f"length of hetero_pipeline_stage_splits {args.hetero_pipeline_stage_splits} should be equal to the length of hetero_device_types {args.hetero_device_types}"
 
     # Batch size.
     assert args.micro_batch_size is not None
@@ -343,6 +420,68 @@ def validate_args(args, defaults={}):
         if args.rank == 0:
             print('WARNING: Setting args.overlap_p2p_comm to False since non-interleaved '
                   'schedule does not support overlapping p2p communication')
+
+    if args.recompute_granularity_per_stage != None:
+        assert args.recompute_granularity == 'full', \
+            'recompute-granularity-per-stage is only'\
+            'application to full recompute granularity mode'
+        assert args.recompute_method is not None, \
+            'for distributed recompute activations to work you '\
+            'need to use a recompute method '
+
+        pipeline_size_split = args.recompute_granularity_per_stage[::2]
+        recompute_granularity_split = args.recompute_granularity_per_stage[1::2]
+
+        for i in recompute_granularity_split:
+            assert i == 1 or i == 0, 'element of recompute-granularity-per-stage must be 0 or 1.'
+        assert sum(pipeline_size_split) == args.pipeline_model_parallel_size, \
+            'recompute-granularity-per-stage setting:' \
+            'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size.'
+        args.recompute_granularity_per_stage = [recompute_granularity_split[i] for i,j in enumerate(pipeline_size_split) for _ in range(j)]
+
+    if args.recompute_num_layers_per_stage != None:
+        assert args.recompute_granularity == 'full', \
+            'recompute-num-layers-per-stage is only'\
+            'application to full recompute granularity'
+        assert args.recompute_method_per_stage is not None, \
+            'recompute_method_per_stage must be used with '\
+            'recompute_num_layers_per_stage '
+
+        recompute_num_layers_stage_split = args.recompute_num_layers_per_stage[::2]
+        recompute_num_layers_layer_split = args.recompute_num_layers_per_stage[1::2]
+        recompute_methods_stage_split = args.recompute_method_per_stage[::2]
+        recompute_methods_method_split = args.recompute_method_per_stage[1::2]
+
+        assert len(recompute_num_layers_stage_split) == len(recompute_num_layers_layer_split), \
+            'args.recompute_num_layers_per_stage setting must match form: n0, layers0, n1, layers1, ...'
+        assert len(recompute_methods_stage_split) == len(recompute_methods_method_split), \
+            'args.recompute_method_per_stage setting must match form: n0, layers0, n1, layers1, ...'
+        if args.virtual_pipeline_model_parallel_size != None:
+            assert args.pipeline_model_parallel_size * args.virtual_pipeline_model_parallel_size == sum(recompute_num_layers_stage_split), \
+                'args.recompute_num_layers_per_stage setting:' \
+                'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size * virtual_pipeline_model_parallel_size'
+            assert args.pipeline_model_parallel_size * args.virtual_pipeline_model_parallel_size == sum(recompute_methods_stage_split), \
+                'args.recompute_method_per_stage setting:' \
+                'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size * virtual_pipeline_model_parallel_size'
+        else:
+            assert args.pipeline_model_parallel_size == sum(recompute_num_layers_stage_split), \
+                'args.recompute_num_layers_per_stage setting:' \
+                'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size.'
+            assert args.pipeline_model_parallel_size == sum(recompute_methods_stage_split), \
+                'args.recompute_method_per_stage setting:' \
+                'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size.'
+
+        recompute_num_layers_per_stage = []
+        for i in range(len(recompute_num_layers_stage_split)):
+            for j in range(recompute_num_layers_stage_split[i]):
+                recompute_num_layers_per_stage.append(recompute_num_layers_layer_split[i])
+        recompute_method_per_stage = []
+        for i in range(len(recompute_methods_stage_split)):
+            for j in range(recompute_methods_stage_split[i]):
+                recompute_method_per_stage.append(recompute_methods_method_split[i])
+
+        args.recompute_num_layers_per_stage = recompute_num_layers_per_stage
+        args.recompute_method_per_stage = recompute_method_per_stage
 
     if args.overlap_param_gather:
         assert args.use_distributed_optimizer, \
@@ -538,8 +677,14 @@ def validate_args(args, defaults={}):
     # disable sequence parallelism when tp=1
     # to avoid change in numerics when
     # sequence_parallelism is enabled.
-    if args.tensor_model_parallel_size == 1:
-        args.sequence_parallel = False
+    if args.num_process_meshes != None:
+        if 1 in args.tp_size_of_each_pipeline_stage:
+            if args.rank == 0:
+                print("Set sequence_parallel false for some parallel group's tp size match 1")
+            args.sequence_parallel = False
+    else:
+        if args.tensor_model_parallel_size == 1:
+            args.sequence_parallel = False
 
     # disable async_tensor_model_parallel_allreduce when
     # model parallel memory optimization is enabled
@@ -1114,6 +1259,20 @@ def _add_training_args(parser):
                        'uniformly divided recompute unit, '
                        '2) block: the number of individual Transformer layers '
                        'to recompute within each pipeline stage.')
+    group.add_argument('--recompute-granularity-per-stage', nargs='*', type=int, default=None,
+                       help='used with recompute-granularity=full, setting recompute granularity'
+                       'of each stage. This argument must be in the form: n0, flag0, n1, flag1,...'
+                       'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size.'
+                       'granularity flag: 0 means turning off full recompute, 1 means turning on')
+    group.add_argument('--recompute-method-per-stage', nargs='*', type=int, default=None,
+                       help='used with recompute-granularity=full, setting recompute method '
+                       'of each stage. This argument must be in the form: n0, method0, n1, method1, ...'
+                       'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size.'
+                       'method: 0 means uniform, 1 means block')
+    group.add_argument('--recompute-num-layers-per-stage', nargs='*', type=int, default=None,
+                       help='used with recompute-granularity=full, setting recompute num layers '
+                       'of each stage. This argument must be in the form: n0, layers0, n1, layers1, ...'
+                       'the sum of n0, n1, ... should be equal to pipeline-model-parallel-size.')
     group.add_argument('--no-clone-scatter-output-in-embedding', action='store_false',
                        help='If not set, clone the output of the scatter in embedding layer to GC original tensor.',
                        dest='clone_scatter_output_in_embedding')
@@ -1934,6 +2093,11 @@ def _add_hetero_args(parser):
                        'hetero-pipeline-stages must be in the form:'
                        'n0 layers_0_0 layers_0_1 ... n1 nlayers_1_0 nlayers_1_1 ...'
                        'The order should be consistent with --hetero-device-types.')
+    group.add_argument('--process-meshes', nargs='*', type=int, default=None,
+                       help='Use this arg to set TP/DP/PP of each process mesh group.'
+                       'This argument must be in the form: TP0, DP0, PP0, TP1, DP1, PP1'
+                       '...TPN, DPN, PPN. TP size can be different, sum of PP should match '
+                       'pipeline-model-parallel-size, DP size should be the same.')
 
     return parser
 

@@ -24,15 +24,19 @@ class GridAlgo(Algo):
     def checkout(self, mode):
         if mode == "memory":
             from ..utils import sort_by_memory
+
             if self.idx > 0 and self.idx < len(self.strategies):
-                self.strategies = self.strategies[:self.idx] + sorted(
-                    self.strategies[self.idx:], key=sort_by_memory)
+                self.strategies = self.strategies[: self.idx] + sorted(
+                    self.strategies[self.idx :], key=sort_by_memory
+                )
 
         elif mode == "performance":
             from ..utils import sort_by_performance
+
             if self.idx > 0 and self.idx < len(self.strategies):
-                self.strategies = self.strategies[:self.idx] + sorted(
-                    self.strategies[self.idx:], key=sort_by_performance)
+                self.strategies = self.strategies[: self.idx] + sorted(
+                    self.strategies[self.idx :], key=sort_by_performance
+                )
 
     def search(self):
         """Return a task iteratively."""

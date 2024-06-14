@@ -272,6 +272,19 @@ class ModelParallelConfig:
        the user adds a level 1 timer that is not called by all ranks.
     """
 
+    ###################
+    # Heterogeneous Training 
+    ###################
+    hetero_mode: str = None
+    """Specifies the mode of heterogeneous training. This could be only 'pp'."""
+
+    hetero_pipeline_stages: list = None
+    """Defines the pipeline stages for different device types. Each element represents the number of pipeline stages for one device type."""
+
+    hetero_pipeline_stage_splits: list = None
+    """A list of lists, each sublist contains numbers of layers to be processed in the corresponding pipeline stages for one device type."""
+
+
     def __post_init__(self):
         """ Python dataclass method that is used to modify attributes after initialization.
             See https://docs.python.org/3/library/dataclasses.html#post-init-processing for more details.
