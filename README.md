@@ -226,7 +226,7 @@ cd FlagScale/megatron
 2. Repartition the model weight
 
 ```
-python tools/checkpoint_util_lite.py\
+python tools/checkpoint/convert.py \
     --conversion-type weight \
     --model-type GPT \
     --load-dir ${LOAD_DIR} \
@@ -247,7 +247,7 @@ Please set the following variables before running the command:
 
 3. Repartition the distributed optimizer 
 ```
-python tools/checkpoint_util_lite.py 
+python tools/checkpoint/convert.py \
     --conversion-type optimizer \
     --model-type GPT \
     --load-dir ${LOAD_DIR} \
