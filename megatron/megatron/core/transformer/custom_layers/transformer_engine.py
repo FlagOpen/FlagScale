@@ -541,8 +541,9 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
         else:
             return core_attn_out
 
-
-class TEDelayedScaling(te.common.recipe.DelayedScaling):
+try:
+ class TEDelayedScaling(te.common.recipe.DelayedScaling):
+#class TEDelayedScaling:
     """
     Wrapper for the Transformer-Engine's `DelayedScaling` layer.
     """
@@ -567,6 +568,8 @@ class TEDelayedScaling(te.common.recipe.DelayedScaling):
             override_linear_precision=override_linear_precision,
             **extra_kwargs,
         )
+except:
+   pass
 
 
 def te_checkpoint(

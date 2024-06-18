@@ -2,4 +2,4 @@
 # -*- coding: utf-8 -*-
 
 
-rom .core_models_gpt_gpt_model import print_device_type
+from . import core_transformer_custom_layers_transformer_engine

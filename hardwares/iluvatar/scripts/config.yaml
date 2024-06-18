@@ -1,5 +1,5 @@
 defaults:
-  - train: train_aquila_7b 
+  - train: train_aquila_7b_test 
   - _self_
 
 experiment:
@@ -8,7 +8,7 @@ experiment:
   task:
     type: train
     backend: megatron
-    entrypoint: /home/FlagScale/flagscale/train/train_aquila.py
+    entrypoint: /share/project/zhusonghe/FlagScale/flagscale/train/train_aquila.py
   runner:
     backend: torchrun
     nnodes: 1 
@@ -17,6 +17,7 @@ experiment:
     PYTORCH_SKIP_COMPILE_CHECK: 1
     PYTORCH_ENABLE_SAME_RANK_A100: 1
     CUDA_DEVICE_MAX_CONNECTIONS: 1
+    PYTHONPATH: /usr/local/corex/lib64/python3/dist-packages:/share/project/zhusonghe/FlagScale/megatron:/share/project/zhusonghe/FlagScale
     CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
 
 action: run
