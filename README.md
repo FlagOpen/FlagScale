@@ -13,13 +13,6 @@ FlagScale provides developers with the actual configurations, optimization schem
 
 ## News and Updates
 
-* 2024.6.13 🔥 We release the new version (v0.4):
-  * This update includes a major upgrade to our architecture.
-  * Release a comprehensive framework for automated performance optimization, achieving significant performance gains across models of various sizes.
-  * The new TP (Tensor Parallel) partitioning method for heterogeneous computing provides greater flexibility and better performance compared to PP (Pipeline Parallel) and DP (Data Parallel) partitioning.
-  * Support for training of metax .
-  * Implement automated testing features, including unit tests, functional tests, and code formatting checks. Additionally, provide an online service for viewing test coverage reports.
-
 * 2024.4.11 🔥 We release the new version ([v0.3](https://github.com/FlagOpen/FlagScale/tree/release/v0.3)): 
   * Accomplish the heterogeneous hybrid training of the Aquila2-70B-Expr model on a cluster utilizing a combination of NVIDIA and Iluvatar chips.
   * Provide the training of the Aquila2 series across a variety of AI chips from six distinct manufacturers.
@@ -51,7 +44,7 @@ pip install -r requirements.txt
 1. Start a distributed training job 
 
 ```
-python run.py --config-path examples/aquila3/conf --config-name config1_exp_2_1.yaml
+python run.py --config-path ./examples/aquila/conf --config-name config
 ```
 
 FlagScale leverages [Hydra](https://github.com/facebookresearch/hydra) for configuration management. The YAML configuration is structured into four key sections:
@@ -78,7 +71,7 @@ To kickstart the training process, consider using the existing YAML files in the
 2. Stop a distributed training job
 
 ```
-python run.py --config-path examples/aquila3/conf --config-name config1_exp_2_1.yaml action=stop
+python run.py --config-path ./examples/aquila/conf --config-name config action=stop
 ```
 
 ### Do the heterogenous training 
@@ -97,70 +90,54 @@ It is very simple to do the heterogeneous training on chips of different generat
     ```
 
 2. Add the heterogeneous configuration
-   * If you choose a mixed training mode with tensor model parallelism and pipeline parallelism, please set the following configurations:
-      * `hetero-mode`: specify the heterogenous training mode is still  `pp`.
-      * `hetero-pipeline-stages`: specify the stage splitting configuration. For example, given `2 4 4 3 5 5 5`, the total pipeline parallel size is `2 + 3 = 5`, the total number of the model layers is `4 + 4 + 5 + 5 + 5 = 23`.
-      * `process_meshes`: Provide how each heterogeneous component is distributed and cut for distributed processing. For example, given `4 1 1 2 1 2 ` , `hetero-pipeline-stages` is `3 16 8 8`, the tensor_model_parallel_size is 4 and the pipeline_model_parallel_size is 3  , The distributed strategy groups every three. then the distributed parallelism strategy in first stage (16 layers )is tp 4 dp 1 ; In each remaining stage (8 layers in each stage ), the distributed strategy is tp 2 dp 1; the whole world size is 4 * 1 * 1 + 2 * 1 * 2 = 8;
    * If you choose the heterogenous pipeline parallelism mode, please set the following configurations: 
       * `hetero-mode`: specify the heterogenous training mode `pp`.
+      * `hetero-current-device-type`: specify the device type of the current node.
+      * `hetero-device-types`: specify all the device types used in this training.
       * `hetero-pipeline-stages`: specify the stage splitting configuration. For example, given `2 4 4 3 5 5 5`, the total pipeline parallel size is `2 + 3 = 5`, the total number of the model layers is `4 + 4 + 5 + 5 + 5 = 23`, the pipeline parallel size for the first device type in the `hetero-device-types` list is `2` and the pipeline parallel size for the second device type in the `hetero-device-types` is list `3`. 
-      * **Remove** hetero-current-device-type and hetero-device-types.
 
-   * If you choose the heterogenous data parallelism mode, Please checkout the [v0.3](https://github.com/FlagOpen/FlagScale/tree/release/v0.3) branch first and follow the instructions below
+   * If you choose the heterogenous data parallelism mode, please set the following configurations:
       * `hetero-mode`: specify the heterogenous training mode `dp`.
+      * `hetero-current-device-type`: specify the device type of the current node.
+      * `hetero-device-types`: specify all the device types used in this training.
       * `hetero-micro-batch-sizes`: specify the micro batch size splitting configuration. For example, given `2 1 3 2`, the total data parallel size is `2 + 3 = 5` and the micro batch size for each training iteration is `2 * 1 + 3 * 2 = 8`, the data parallel size for the first device type in the `hetero-device-types` list is `2` and the data parallel size for the second device type in the `hetero-device-types` is `3` list. 
       * **Remove** the `micro-batch-size` configuration because `hetero-micro-batch-sizes` works as the same purpose.  
 
 ### From FlagScale to HuggingFace
 
-1. Change to the FlagScale checkpoint  directory
+1. Change to the FlagScale directory
 
 ```
-cd FlagScale/megatron/tools/checkpoint
+cd FlagScale/megatron 
 ```
 
 2. Merge the multiple checkpoints to a single checkpoint (if needed)
 ```
-python convert.py --model-type GPT \
-        --loader mcore \
-        --saver transformers \
-        --load-dir ${LOAD_DIR} \
-        --save-dir ${SAVE_DIR} \
-        --true-vocab-size 100008 \
-        --target-tensor-parallel-size 1 \
-        --target-pipeline-parallel-size 1 \
-        --target-expert-parallel-size 1 \
-        --target-params-dtype bf16 \
-        --megatron-path {FlagScale_HOME}
+python tools/checkpoint_util.py --model-type GPT \
+        --load-dir ${LOAD_DIR} --save-dir ${SAVE_DIR} \
+        --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json \
+        --megatron-path ${FlagScale_HOME} --target-tensor-parallel-size 1 --target-pipeline-parallel-size 1
 ```
 Please set the following variables before running the command:
   * `LOAD_DIR`: the directory for loading the original checkpoint.
   * `SAVE_DIR`: the directory for saving the merged checkpoint.
   * `FlagScale_HOME`: the directory of FlagScale.
-  * `loader`: The loading method. if it's mcore, it means to load the checkpoint of transformer engine. if it's transformers, it means the checkpoint format to load is Huggingface .
-  * `saver`: The saving method .if it's mcore, it means to save the checkpoint of transformer engine. if it's transformers, it means the checkpoint format to save is Huggingface .
 
 3. Convert the merged checkpoint to the Huggingface format 
 ```
 export PYTHONPATH=${FlagScale_HOME}:$PYTHONPATH
 
-python convert.py --model-type GPT \
-        --loader mcore \
-        --saver transformers \
-        --load-dir ${LOAD_DIR} \
-        --save-dir ${SAVE_DIR} \
-        --true-vocab-size 100008 \
-        --target-tensor-parallel-size 2 \
-        --target-pipeline-parallel-size 2 \
-        --target-expert-parallel-size 2 \
+python scripts/convert_megatron_unsharded_to_huggingface.py \
+        --input-dir ${SAVE_DIR}/iter_${ITERATION}/mp_rank_00/ \
+        --output-dir ${SAVE_DIR}/iter_${ITERATION}_hf \
+        --num-layers 60 --hidden-size 6144 \
+        --num-attention-heads 48 --group-query-attention --num-query-groups 8 \
+        --data-type bf16 --multiple-of 4096 --hidden-dim-multiplier 1.3
 ```
 Please set the following variables before running the command:
-  * `LOAD_DIR`: the directory for loading the original checkpoint.
-  * `SAVE_DIR`: the directory for saving the merged checkpoint.
   * `FlagScale_HOME`: the directory of FlagScale.
-  * `loader`: The loading method .if it's mcore, it means to load the checkpoint of transformer engine. if it's transformers, it means the checkpoint format to load is Huggingface .
-  * `saver`: The saving method .if it's mcore, it means to save the checkpoint of transformer engine. if it's transformers, it means the checkpoint format to save is Huggingface .
-
+  * `SAVE_DIR`: the directory for loading the merged checkpoint.
+  * `ITERATION`: the iteration number from `latest_checkpointed_iteration.txt` in `SAVE_DIR` and need to be padded zeros to 7 digits.
 
 Note that the above configuration is for converting Aquila-34B and you may need to change the model configurations such as `num_layers` and`hidden_size` as needed.  
 
@@ -174,34 +151,22 @@ cd FlagScale/megatron
 
 2. Merge the multiple checkpoints to a single checkpoint (as needed)
 ```
-python convert.py --model-type GPT \
-        --loader mcore \
-        --saver transformers \
-        --load-dir ${LOAD_DIR} \
-        --save-dir ${SAVE_DIR} \
-        --true-vocab-size 100008 \
-        --target-tensor-parallel-size 1 \
-        --target-pipeline-parallel-size 1 \
-        --target-expert-parallel-size 1 \
-        --target-params-dtype bf16 \
-        --megatron-path {FlagScale_HOME}
+python tools/checkpoint_util.py --model-type GPT \
+        --load-dir ${LOAD_DIR} --save-dir ${SAVE_DIR} \
+        --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json \
+        --megatron-path ${FlagScale_HOME} --target-tensor-parallel-size 1 --target-pipeline-parallel-size 1
 ```
 Please set the following variables before running the command:
   * `LOAD_DIR`: the directory for loading the original checkpoint.
   * `SAVE_DIR`: the directory for saving the merged checkpoint.
   * `FlagScale_HOME`: the directory of FlagScale.
-  * `loader`: The loading method. if it's mcore, it means to load the checkpoint of transformer engine. if it's transformers, it means the checkpoint format to load is Huggingface .
-  * `saver`: The saving method .if it's mcore, it means to save the checkpoint of transformer engine. if it's transformers, it means the checkpoint format to save is Huggingface .
 
 3. Serve the Aquila2 model by the below script. Here we take the Aquila2-34B as an example and assume you have an A800-80G GPU.
 ``` 
 python ../examples/aquila/34B/inference_auto.py \
-      --server-port ${SERVER_PORT} \
-      --master-process ${MASTER_PORT} \
-      --device "0" \
-      --iteration -1 \
-      --checkpoint-path "${CKPT_DIR}" \
-      --model-info "Aquila-34b"
+       --server-port ${SERVER_PORT} --master-process ${MASTER_PORT} \
+       --device "0" --iteration -1 --checkpoint-path "${CKPT_DIR}" \
+       --model-info "Aquila-34b"
 ```
 Please set the following variables before running the command:
   * `SERVER_PORT`: the server port for serving the model.
@@ -215,7 +180,7 @@ python tools/test/test_api_flask.py
 
 ### Repartition the distributed optimizer [optional] 
 
- When using the distributed optimizer, please checkout the [v0.3](https://github.com/FlagOpen/FlagScale/tree/release/v0.3) branch first and follow the instructions below. you can use the following tool to repartition the distributed optimizer if the parallel schemes is changed during the training.
+When using the distributed optimizer, you can use the following tool to repartition the distributed optimizer if the parallel schemes is changed during the training.
 
 1. Change to the FlagScale directory
 
@@ -226,16 +191,9 @@ cd FlagScale/megatron
 2. Repartition the model weight
 
 ```
-python tools/checkpoint/convert.py \
-    --conversion-type weight \
-    --model-type GPT \
-    --load-dir ${LOAD_DIR} \
-    --save-dir ${SAVE_DIR} \ 
-    --true-vocab-size 100008 \
-    --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json \
-    --megatron-path  ${FlagScale_HOME} \
-    --target-tensor-parallel-size ${TP} \
-    --target-pipeline-parallel-size ${PP} 
+python tools/checkpoint_util_lite.py --conversion-type weight --model-type GPT --load-dir ${LOAD_DIR} --save-dir ${SAVE_DIR} \ 
+    --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json --megatron-path  ${FlagScale_HOME} \
+    --target-tensor-parallel-size ${TP} --target-pipeline-parallel-size ${PP} 
 ```
 Please set the following variables before running the command:
   * `LOAD_DIR`: the directory for loading the original checkpoint.
@@ -247,16 +205,9 @@ Please set the following variables before running the command:
 
 3. Repartition the distributed optimizer 
 ```
-python tools/checkpoint/convert.py \
-    --conversion-type optimizer \
-    --model-type GPT \
-    --load-dir ${LOAD_DIR} \
-    --save-dir ${SAVE_DIR} \ 
-    --true-vocab-size 100008 \
-    --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json \
-    --megatron-path  ${FlagScale_HOME} \
-    --target-tensor-parallel-size ${TP} \
-    --target-pipeline-parallel-size ${PP} 
+python tools/checkpoint_util_lite.py --conversion-type optimizer --model-type GPT --load-dir ${LOAD_DIR} --save-dir ${SAVE_DIR} \ 
+    --true-vocab-size 100008 --vocab-file ${FlagScale_HOME}/examples/aquila/tokenizer/vocab.json --megatron-path  ${FlagScale_HOME} \
+    --target-tensor-parallel-size ${TP} --target-pipeline-parallel-size ${PP} 
 ```
 Please set the following variables before running the command **as these used in the model weight conversion**:
   * `LOAD_DIR`: the directory for loading the original checkpoint.
@@ -277,4 +228,3 @@ We will work with the community together on the following items:
 
 ## License
 This project is mainly based on the [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) project and is licensed under the [Apache License (Version 2.0)](https://github.com/FlagOpen/FlagScale/blob/main/LICENSE). This project also contains other third-party components under other open-source licenses. See the [LICENSE](https://github.com/FlagOpen/FlagScale/blob/main/LICENSE) file for more information.
-
