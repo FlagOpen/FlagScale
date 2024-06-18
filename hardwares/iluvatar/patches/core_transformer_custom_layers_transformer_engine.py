@@ -21,7 +21,7 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 from flagscale.patches_utils import add_patches_module
 
-
+#[iluvatar] start of changes
 def forward(self, x):
         _is_first_microbatch = (
             None if self.disable_parameter_transpose_cache else self.is_first_microbatch
@@ -35,7 +35,8 @@ def forward(self, x):
         return out
 
 
-def __init__(
+class TEDelayedScaling:
+  def __init__(
         self,
         config: ModelParallelConfig,
         fp8_format: int,
@@ -45,9 +46,8 @@ def __init__(
         if _te_version >= packaging.version.Version("1.6.0.dev0"):
             extra_kwargs["fp8_dpa"] = config.fp8_dot_product_attention
             extra_kwargs["fp8_mha"] = config.fp8_multi_head_attention
-        
         try:
-        super().__init__(
+            super().__init__(
             margin=config.fp8_margin,
             interval=config.fp8_interval,
             fp8_format=fp8_format,
@@ -55,14 +55,17 @@ def __init__(
             amax_history_len=config.fp8_amax_history_len,
             override_linear_precision=override_linear_precision,
             **extra_kwargs,
-        )
+            )
         except:
            print("TEDelayedScaling initialize failed, seems like your gpu doesn't support fp8 configuration, ignore TEDelayedScaling here")
 
 
+#[iluvatar] end of changes
 
+
+print("TEDelayedScaling!!! here!!") 
 module_path = "megatron.core.transformer.custom_layers.transformer_engine"
 module_dict = {"TELinear.forward":forward,
                "TELayerNormColumnParallelLinear.forward":forward,
-               "TEDelayedScaling.__init__":__init__}
+               "TEDelayedScaling":TEDelayedScaling}
 add_patches_module(module_path,module_dict)
