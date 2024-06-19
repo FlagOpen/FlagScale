@@ -58,12 +58,8 @@ class TEDelayedScaling:
             )
         except:
            print("TEDelayedScaling initialize failed, seems like your gpu doesn't support fp8 configuration, ignore TEDelayedScaling here")
-
-
 #[iluvatar] end of changes
 
-
-print("TEDelayedScaling!!! here!!") 
 module_path = "megatron.core.transformer.custom_layers.transformer_engine"
 module_dict = {"TELinear.forward":forward,
                "TELayerNormColumnParallelLinear.forward":forward,
