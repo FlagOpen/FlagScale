@@ -3,14 +3,18 @@
 
 import os
 import sys
+from utils import MetaPathFinder
 sys.path.append(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))
+sys.meta_path.insert(0, MetaPathFinder())
 
+print("MetaPathFinder", sys.meta_path)
 import torch
 from functools import partial
 
 from typing import Union
 from megatron.training import get_args
+
 from megatron.training import print_rank_0
 from megatron.training import get_timers
 from megatron.training import get_tokenizer
@@ -34,7 +38,6 @@ from megatron.core.models.gpt.gpt_layer_specs import (
     get_gpt_layer_local_spec,
     get_gpt_layer_with_transformer_engine_spec,
 )
-
 from flagscale.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
 from flagscale.train.extra_valid import extra_valid_dataset_provider
 from flagscale.train.train import pretrain

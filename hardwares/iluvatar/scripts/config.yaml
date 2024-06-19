@@ -19,7 +19,7 @@ experiment:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     PYTHONPATH: /usr/local/corex/lib64/python3/dist-packages
     CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
-
+    DEVICE_TYPE: iluvatar
 action: run
 
 hydra:

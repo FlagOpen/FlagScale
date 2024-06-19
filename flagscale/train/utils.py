@@ -1,26 +1,34 @@
 import sys
 import importlib
-
+import os
+from importlib.metadata import version
+from flagscale.patches_utils import add_patches_module
+from pkg_resources import packaging
 _hook_modules = {"transformer_engine"}
 
-def module_hook(fullname, module):
-    if fullname == "transformer_engine":
-        print("module_hook fullname:", fullname)
-        module.common.recipe.DelayedScaling = None
+device_type = os.environ.get('DEVICE_TYPE',None)
 
+class Empty:
+    def __init__(self,*args):    
+       pass
+
+def module_hook(fullname, module):
+    if device_type == 'iluvatar':
+        if fullname == "transformer_engine":
+            print("module_hook fullname:", fullname)
+            module.common.recipe = Empty()
+            module.common.recipe.DelayedScaling = Empty()
 
 class MetaPathFinder:
 
     def find_module(self, fullname, path=None):
-        print('find_module {}'.format(fullname))
         if fullname in _hook_modules:
+            print('load_module {}'.format(fullname))
             return MetaPathLoader()
-
 
 class MetaPathLoader:
 
     def load_module(self, fullname):
-        print('load_module {}'.format(fullname))
         if fullname in sys.modules:
             return sys.modules[fullname]
 

@@ -23,13 +23,9 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 
 try:
-    # Only for iluvatar ixte doesn't have version, ignore it
-    _te_version = packaging.version.Version(version("transformer-engine"))
+  _te_version = packaging.version.Version(version("transformer-engine"))
 except:
-    # ixte versions here
-    print("This transformer package doesn't have version, set to 1.6.0")
-    _te_version = packaging.version.Version("1.6.0")
-
+  _te_version = packaging.version.Version("1.6.0") 
 
 def _get_extra_te_kwargs(config: TransformerConfig):
     extra_transformer_engine_kwargs = {
@@ -541,9 +537,7 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
         else:
             return core_attn_out
 
-try:
- class TEDelayedScaling(te.common.recipe.DelayedScaling):
-#class TEDelayedScaling:
+class TEDelayedScaling(te.common.recipe.DelayedScaling):
     """
     Wrapper for the Transformer-Engine's `DelayedScaling` layer.
     """
@@ -568,8 +562,6 @@ try:
             override_linear_precision=override_linear_precision,
             **extra_kwargs,
         )
-except:
-   pass
 
 
 def te_checkpoint(
