@@ -1,31 +1,35 @@
 import sys
 import importlib
 
-_hook_modules = {"transformer_engine"}
-
-def module_hook(fullname, module):
-    if fullname == "transformer_engine":
-        print("module_hook fullname:", fullname)
-        module.common.recipe.DelayedScaling = None
+_modules_to_modify = {"transformer_engine"}
 
 
-class MetaPathFinder:
-
-    def find_module(self, fullname, path=None):
-        print('find_module {}'.format(fullname))
-        if fullname in _hook_modules:
-            return MetaPathLoader()
+class Empty:
+    def __init__(self, *args, **kwargs):
+        pass
 
 
-class MetaPathLoader:
+def modify_module(module_name, module):
+    if module_name == "transformer_engine":
+        module.common.recipe = Empty()
+        module.common.recipe.DelayedScaling = Empty()
 
-    def load_module(self, fullname):
-        print('load_module {}'.format(fullname))
-        if fullname in sys.modules:
-            return sys.modules[fullname]
 
-        finder = sys.meta_path.pop(0)
-        module = importlib.import_module(fullname)
-        module_hook(fullname, module)
-        sys.meta_path.insert(0, finder)
+class CustomModuleFinder:
+
+    def find_module(self, module_name, path=None):
+        if module_name in _modules_to_modify:
+            return CustomModuleLoader()
+
+
+class CustomModuleLoader:
+
+    def load_module(self, module_name):
+        if module_name in sys.modules:
+            return sys.modules[module_name]
+
+        original_finder = sys.meta_path.pop(0)
+        module = importlib.import_module(module_name)
+        modify_module(module_name, module)
+        sys.meta_path.insert(0, original_finder)
         return module
