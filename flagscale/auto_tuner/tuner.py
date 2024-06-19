@@ -10,6 +10,7 @@ from flagscale.launcher.job_status import JobStatus
 from flagscale.launcher.runner import SSHRunner
 
 from .generate import Generator
+from .platform import set_jiuding_platform_args
 from .prune import Pruner
 from .record import Recorder
 from .search import Searcher
@@ -66,49 +67,10 @@ class AutoTuner:
         if "platform" not in self.config.experiment.auto_tuner:
             self.config.experiment.auto_tuner.platform = {}
 
-        # As long as AIRS_SWITCH has value it means running on the platform
+        # As long as AIRS_SWITCH has value it means running on the jiuding platform
         if os.environ.get("AIRS_SWITCH", None):
-            self.config.experiment.auto_tuner.platform.airs_switch = True
-
-            if os.environ.get("AIRS_SIZE", None):
-                self.config.experiment.auto_tuner.nnodes = int(os.environ["AIRS_SIZE"])
-                # Set original config
-                self.orig_config.experiment.runner.nnodes = int(os.environ["AIRS_SIZE"])
-                # Set config
-                self.config.experiment.runner.nnodes = int(os.environ["AIRS_SIZE"])
-
-            if os.environ.get("AIRS_ACCELERATOR_COUNT", None):
-                # Set config
-                self.config.experiment.auto_tuner.nproc_per_node = (
-                    int(os.environ["AIRS_ACCELERATOR_COUNT"]) * 2
-                    if "luvatar_BI" in os.environ["AIRS_ACCELERATOR_MODEL"]
-                    else int(os.environ["AIRS_ACCELERATOR_COUNT"])
-                )
-                # Set original config
-                self.orig_config.experiment.runner.nproc_per_node = (
-                    int(os.environ["AIRS_ACCELERATOR_COUNT"]) * 2
-                    if "luvatar_BI" in os.environ["AIRS_ACCELERATOR_MODEL"]
-                    else int(os.environ["AIRS_ACCELERATOR_COUNT"])
-                )
-                # Set config
-                self.config.experiment.runner.nproc_per_node = (
-                    int(os.environ["AIRS_ACCELERATOR_COUNT"]) * 2
-                    if "luvatar_BI" in os.environ["AIRS_ACCELERATOR_MODEL"]
-                    else int(os.environ["AIRS_ACCELERATOR_COUNT"])
-                )
-
-            if os.environ.get("AIRS_FBMEM", None):
-                self.config.experiment.auto_tuner.memory = int(os.environ["AIRS_FBMEM"])
-
-            if os.environ.get("AIRS_HOSTFILE_PATH", None):
-                # Set original config
-                self.orig_config.experiment.runner.hostfile = os.environ[
-                    "AIRS_HOSTFILE_PATH"
-                ]
-                # Set config
-                self.config.experiment.runner.hostfile = os.environ[
-                    "AIRS_HOSTFILE_PATH"
-                ]
+            set_jiuding_platform_args(self.config, self.orig_config)
+        # If on other platform, set the platform envs
 
         self.config.experiment.auto_tuner.cards = (
             self.config.experiment.auto_tuner.nnodes

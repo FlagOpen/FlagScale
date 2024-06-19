@@ -4,13 +4,13 @@ logger = logging.getLogger("FlagScale-AutoTuner")
 
 
 def prune_by_memory_model(config, strategy, history=[]):
-    if "modeling_memory" in strategy:
+    if "memory_model" in strategy:
         if (
-            strategy["modeling_memory"]
+            strategy["memory_model"]
             > config.experiment.auto_tuner.memory_model.gpu_memory
         ):
             logger.info(
-                f"The strategy {strategy} has been pruned by modeling memory {int(strategy['modeling_memory'])}MB."
+                f"The strategy {strategy} has been pruned by modeling memory {int(strategy['memory_model'])}MB."
             )
             strategy["max_mem"] = "OOM"
             strategy["performance"] = None
@@ -20,15 +20,15 @@ def prune_by_memory_model(config, strategy, history=[]):
 
 
 def prune_by_memory_model_util(config, strategy, history=[]):
-    if "modeling_memory" in strategy:
+    if "memory_model" in strategy:
         if (
-            strategy["modeling_memory"]
+            strategy["memory_model"]
             > config.experiment.auto_tuner.memory_model.gpu_memory * 0.8
-            or strategy["modeling_memory"]
+            or strategy["memory_model"]
             < config.experiment.auto_tuner.memory_model.gpu_memory * 0.2
         ):
             logger.info(
-                f"The strategy {strategy} has been pruned by modeling memory util and its memory is {int(strategy['modeling_memory'])}MB."
+                f"The strategy {strategy} has been pruned by modeling memory util and its memory is {int(strategy['memory_model'])}MB."
             )
             strategy["max_mem"] = None
             strategy["performance"] = None

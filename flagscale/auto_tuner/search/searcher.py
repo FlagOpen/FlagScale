@@ -60,10 +60,10 @@ class Searcher:
             from ..memory_model import default_model
 
             for strategy in self.strategies:
-                strategy["modeling_memory"] = default_model(strategy, self.config)
+                strategy["memory_model"] = default_model(strategy, self.config)
                 self.logger.info(
-                    "Searcher: strategy {}  modeling memory is {}MB".format(
-                        strategy, strategy["modeling_memory"]
+                    "Searcher: strategy {} memory model is {} MB".format(
+                        strategy, strategy["memory_model"]
                     )
                 )
 
