@@ -3,8 +3,10 @@
 
 import os
 import sys
+from utils import MetaPathFinder
 sys.path.append(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))
+sys.meta_path.insert(0, MetaPathFinder())
 
 import torch
 from functools import partial
