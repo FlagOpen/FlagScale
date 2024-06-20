@@ -204,22 +204,32 @@ def _set_wandb_writer(args):
             raise ValueError("Please specify the wandb experiment name!")
 
         import wandb
+        rank = torch.distributed.get_rank()
+
         if args.wandb_save_dir:
             save_dir = args.wandb_save_dir
         else:
             # Defaults to the save dir.
             save_dir = os.path.join(args.save, 'wandb')
-        rank = torch.distributed.get_rank()
-        name = f'{args.wandb_exp_name}-rank{rank}'
+        save_dir = os.path.join(save_dir, "rank-{}".format(rank))
+        os.makedirs(save_dir, exist_ok=True)
+
+        wandb_id = f"{args.wandb_exp_name}-rank-{rank}"
+        name = f'{args.wandb_exp_name}-rank-{rank}'
         group = args.wandb_exp_name
         wandb_kwargs = {
+            'id': wandb_id,
             'dir': save_dir,
             'name': name,
             'group': group,
             'project': args.wandb_project,
-            'mode': 'offline',
+            'mode': args.wandb_mode,
+            'resume': 'auto',
             'config': vars(args)}
-        os.makedirs(wandb_kwargs['dir'], exist_ok=True)
+
+        if args.wandb_mode == 'online' or args.wandb_api_key:
+            assert args.wandb_api_key, 'wandb_api_key is required for online mode'
+            wandb.login(key=args.wandb_api_key)
         wandb.init(**wandb_kwargs)
         _GLOBAL_WANDB_WRITER = wandb
 
