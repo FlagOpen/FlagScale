@@ -1142,6 +1142,10 @@ def _add_logging_args(parser):
                        help='The wandb experiment name.')
     group.add_argument('--wandb-save-dir', type=str, default='',
                        help='Path to save the wandb results locally.')
+    group.add_argument('--wandb-mode', type=str, choices=['online', 'offline', 'disabled'], default='offline',
+                       help='Can be "online", "offline" or "disabled". Defaults to "offline".')
+    group.add_argument('--wandb-api-key', type=str, default='',
+                       help='The wandb API keys and must be provided if using online mode.')
     group.add_argument('--wandb-log-model', action='store_true',
                        help='If set, write model to wandb.')
     group.add_argument('--wandb-log-model-interval', type=int, default=1000,
