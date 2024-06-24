@@ -537,6 +537,7 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
         else:
             return core_attn_out
 
+
 class TEDelayedScaling(te.common.recipe.DelayedScaling):
     """
     Wrapper for the Transformer-Engine's `DelayedScaling` layer.
