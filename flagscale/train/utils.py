@@ -1,9 +1,6 @@
 import sys
 import importlib
 import os
-from importlib.metadata import version
-from flagscale.patches_utils import add_patches_module
-from pkg_resources import packaging
 _hook_modules = {"transformer_engine"}
 
 device_type = os.environ.get('DEVICE_TYPE',None)
@@ -19,14 +16,13 @@ def module_hook(fullname, module):
             module.common.recipe = Empty()
             module.common.recipe.DelayedScaling = Empty()
 
-class MetaPathFinder:
+class CustomModuleFinder:
 
     def find_module(self, fullname, path=None):
         if fullname in _hook_modules:
-            print('load_module {}'.format(fullname))
-            return MetaPathLoader()
+            return CustomModuleLoader()
 
-class MetaPathLoader:
+class CustomModuleLoader:
 
     def load_module(self, fullname):
         if fullname in sys.modules:
