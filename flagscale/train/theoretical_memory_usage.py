@@ -1,5 +1,6 @@
 """
 Computes theoretical memory footprint for model training referring to megatron.
+Reference: https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/training/theoretical_memory_usage.py
 Activation memory is optimized with adding block recompute formula.
 """
 
@@ -110,7 +111,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
 
     # Megatron TODO: This function needs to take into account query_projection_size potentially being
     # different from hidden_size.
-    # But in FlagScale, we inplement it.
+    # But in FlagScale, we implement it.
 
     # Memory footprint from transformer layer (self-attention and MLP).
     gated_linear_multiplier = 3 / 2 if args.swiglu else 1
