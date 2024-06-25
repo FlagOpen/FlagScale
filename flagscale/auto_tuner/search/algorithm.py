@@ -20,6 +20,9 @@ class GridAlgo(Algo):
     def __init__(self, strategies, config):
         super().__init__(strategies, config)
         self.idx = 0
+        # Sort by modeling memory
+        if "memory_model" in self.config.experiment.auto_tuner:
+            self.checkout(mode="memory_model")
 
     def checkout(self, mode):
         if mode == "memory":
@@ -29,6 +32,10 @@ class GridAlgo(Algo):
                 self.strategies = self.strategies[: self.idx] + sorted(
                     self.strategies[self.idx :], key=sort_by_memory
                 )
+        elif mode == "memory_model":
+            from ..utils import sort_by_memory_model
+
+            self.strategies = sorted(self.strategies, key=sort_by_memory_model)
 
         elif mode == "performance":
             from ..utils import sort_by_performance
