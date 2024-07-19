@@ -198,58 +198,58 @@ def single_all_to_all(input, scatter_idx, gather_idx, group):
     usp_size = parallel_state.get_ulysses_sequence_parallel_world_size()
 
     if scatter_idx == 2 and gather_idx == 1:
-        # input (torch.tensor): a tensor sharded along dim 1 (bs, seqlen/P, hc, hs) output: (bs, seqlen, hc/P, hs)
-        bs, shard_seqlen, hc, hs = input.shape
-        seqlen = shard_seqlen * usp_size
-        shard_hc = hc // usp_size
+        # input (torch.tensor): a tensor sharded along dim 1 (b, sq/P, hc, hs) output: (b, sq, hc/P, hs)
+        b, sharded_sq, hc, hs = input.shape
+        sq = sharded_sq * usp_size
+        sharded_hc = hc // usp_size
 
         # transpose groups of heads with the seq-len parallel dimension, so that we can scatter them!
-        # (bs, seqlen/P, hc, hs) -reshape-> (bs, seq_len/P, P, hc/P, hs) -transpose(0,2)-> (P, seq_len/P, bs, hc/P, hs)
+        # (b, sq/P, hc, hs) -reshape-> (b, seq_len/P, P, hc/P, hs) -transpose(0,2)-> (P, seq_len/P, b, hc/P, hs)
         input_t = (
-            input.reshape(bs, shard_seqlen, usp_size, shard_hc, hs)
+            input.reshape(b, sharded_sq, usp_size, sharded_hc, hs)
             .transpose(0, 2)
             .contiguous()
         )
 
         output = torch.empty_like(input_t)
         # https://pytorch.org/docs/stable/distributed.html#torch.distributed.all_to_all_single
-        # (P, seq_len/P, bs, hc/P, hs) scatter seqlen -all2all-> (P, seq_len/P, bs, hc/P, hs) scatter head
+        # (P, seq_len/P, b, hc/P, hs) scatter sq -all2all-> (P, seq_len/P, b, hc/P, hs) scatter head
         torch.distributed.all_to_all_single(output, input_t, group=group)
 
         # if scattering the seq-dim, transpose the heads back to the original dimension
-        output = output.reshape(seqlen, bs, shard_hc, hs)
+        output = output.reshape(sq, b, sharded_hc, hs)
 
-        # (seq_len, bs, hc/P, hs) -reshape-> (bs, seq_len, hc/P, hs)
-        output = output.transpose(0, 1).contiguous().reshape(bs, seqlen, shard_hc, hs)
+        # (seq_len, b, hc/P, hs) -reshape-> (b, seq_len, hc/P, hs)
+        output = output.transpose(0, 1).contiguous().reshape(b, sq, sharded_hc, hs)
 
         return output
 
     elif scatter_idx == 1 and gather_idx == 2:
-        # input (torch.tensor): a tensor sharded along dim 1 (bs, seqlen, hc/P, hs) output: (bs, seqlen/P, hc, hs)
-        bs, seqlen, shard_hc, hs = input.shape
-        hc = shard_hc * usp_size
-        shard_seqlen = seqlen // usp_size
+        # input (torch.tensor): a tensor sharded along dim 1 (b, sq, hc/P, hs) output: (b, sq/P, hc, hs)
+        b, sq, sharded_hc, hs = input.shape
+        hc = sharded_hc * usp_size
+        sharded_sq = sq // usp_size
 
         # transpose groups of heads with the seq-len parallel dimension, so that we can scatter them!
-        # (bs, seqlen, hc/P, hs) -reshape-> (bs, P, seq_len/P, hc/P, hs) -transpose(0, 3)-> (hc/P, P, seqlen/P, bs, hs) -transpose(0, 1) -> (P, hc/P, seqlen/P, bs, hs)
+        # (b, sq, hc/P, hs) -reshape-> (b, P, seq_len/P, hc/P, hs) -transpose(0, 3)-> (hc/P, P, sq/P, b, hs) -transpose(0, 1) -> (P, hc/P, sq/P, bs, hs)
         input_t = (
-            input.reshape(bs, usp_size, shard_seqlen, shard_hc, hs)
+            input.reshape(b, usp_size, sharded_sq, sharded_hc, hs)
             .transpose(0, 3)
             .transpose(0, 1)
             .contiguous()
-            .reshape(usp_size, shard_hc, shard_seqlen, bs, hs)
+            .reshape(usp_size, sharded_hc, sharded_sq, b, hs)
         )
 
         output = torch.empty_like(input_t)
         # https://pytorch.org/docs/stable/distributed.html#torch.distributed.all_to_all_single
-        # (P, bs x hc/P, seqlen/P, hs) scatter seqlen -all2all-> (P, bs x seq_len/P, hc/P, hs) scatter head
+        # (P, b x hc/P, sq/P, hs) scatter sq -all2all-> (P, b x seq_len/P, hc/P, hs) scatter head
         torch.distributed.all_to_all_single(output, input_t, group=group)
 
         # if scattering the seq-dim, transpose the heads back to the original dimension
-        output = output.reshape(hc, shard_seqlen, bs, hs)
+        output = output.reshape(hc, sharded_sq, b, hs)
 
-        # (hc, seqlen/N, bs, hs) -tranpose(0,2)-> (bs, seqlen/N, hc, hs)
-        output = output.transpose(0, 2).contiguous().reshape(bs, shard_seqlen, hc, hs)
+        # (hc, sq/N, b, hs) -tranpose(0,2)-> (bs, sq/N, hc, hs)
+        output = output.transpose(0, 2).contiguous().reshape(b, sharded_sq, hc, hs)
 
         return output
     else:
