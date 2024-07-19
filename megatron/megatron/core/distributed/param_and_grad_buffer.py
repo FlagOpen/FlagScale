@@ -85,7 +85,7 @@ class Bucket:
         if getattr(list(params)[0], 'allreduce', True):
             self.data_parallel_rank = parallel_state.get_data_parallel_rank(with_context_parallel=True)
             assert torch.distributed.get_process_group_ranks(self.data_parallel_group) == \
-                torch.distributed.get_process_group_ranks(parallel_state.get_data_parallel_group(with_context_parallel=True))
+                torch.distributed.get_process_group_ranks(parallel_state.get_data_parallel_group(with_context_parallel=True, with_ulysses_sequence_parallel=True))
         else:
             self.data_parallel_rank = parallel_state.get_data_modulo_expert_parallel_rank()
             assert torch.distributed.get_process_group_ranks(self.data_parallel_group) == \

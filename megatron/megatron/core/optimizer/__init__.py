@@ -316,8 +316,8 @@ def get_megatron_optimizer(
             config,
             param_groups=dense_param_groups,
             per_model_buffers=per_model_buffers,
-            data_parallel_group=mpu.get_data_parallel_group(with_context_parallel=True),
-            data_parallel_group_gloo=mpu.get_data_parallel_group_gloo(with_context_parallel=True),
+            data_parallel_group=mpu.get_data_parallel_group(with_context_parallel=True, with_ulysses_sequence_parallel=True),
+            data_parallel_group_gloo=mpu.get_data_parallel_group_gloo(with_context_parallel=True, with_ulysses_sequence_parallel=True),
             data_parallel_group_idx=model_parallel_rank,
         )
     ]

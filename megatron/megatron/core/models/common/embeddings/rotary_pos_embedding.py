@@ -37,11 +37,43 @@ def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
     cp_idx = torch.tensor(
         [cp_rank, (2 * cp_size - cp_rank - 1)], device="cpu", pin_memory=True
     ).cuda(non_blocking=True)
+    # print("cp_size:", cp_size)
+    # print("cp_rank:", cp_rank)
+    # print("cp_idx:", cp_idx)
+    # print("seq_dim:", seq_dim)
+    # print("pos_emb:", pos_emb)
+    # print("pos_emb.shape1:", pos_emb.shape)
     pos_emb = pos_emb.view(
         *pos_emb.shape[:seq_dim], 2 * cp_size, -1, *pos_emb.shape[(seq_dim + 1) :]
     )
+    # print("pos_emb.shape2:", pos_emb.shape)
     pos_emb = pos_emb.index_select(seq_dim, cp_idx)
+    # print("pos_emb.shape3:", pos_emb.shape)
     pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], -1, *pos_emb.shape[(seq_dim + 2) :])
+    # print("pos_emb.shape4:", pos_emb.shape)
+    return pos_emb
+
+
+def get_pos_emb_on_this_usp_rank(pos_emb, seq_dim):
+    usp_size = parallel_state.get_ulysses_sequence_parallel_world_size()
+    usp_rank = parallel_state.get_ulysses_sequence_parallel_rank()
+    usp_idx = torch.tensor(
+        [usp_rank, (2 * usp_size - usp_rank - 1)], device="cpu", pin_memory=True
+    ).cuda(non_blocking=True)
+    # print("usp_size:", usp_size)
+    # print("usp_rank:", usp_rank)
+    # print("usp_idx:", usp_idx)
+    # print("seq_dim:", seq_dim)
+    # print("pos_emb:", pos_emb)
+    # print("pos_emb.shape1:", pos_emb.shape)
+    pos_emb = pos_emb.view(
+        *pos_emb.shape[:seq_dim], 2 * usp_size, -1, *pos_emb.shape[(seq_dim + 1) :]
+    )
+    # print("pos_emb.shape2:", pos_emb.shape)
+    pos_emb = pos_emb.index_select(seq_dim, usp_idx)
+    # print("pos_emb.shape3:", pos_emb.shape)
+    pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], -1, *pos_emb.shape[(seq_dim + 2) :])
+    # print("pos_emb.shape4:", pos_emb.shape)
     return pos_emb
 
 
@@ -89,15 +121,22 @@ class RotaryEmbedding(nn.Module):
         Returns:
             Tensor: Embeddings after applying RoPE.
         """
+        # print("max_seq_len:", max_seq_len)
+        # print("offset:", offset)
         seq = (
             torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
             + offset
         )
+        # print("seq:", seq)
+        # print("self.seq_len_interpolation_factor:", self.seq_len_interpolation_factor)
 
         if self.seq_len_interpolation_factor is not None:
             seq *= 1 / self.seq_len_interpolation_factor
 
+        # print("seq:", seq)
+        # print("self.inv_freq:", self.inv_freq)
         freqs = torch.outer(seq, self.inv_freq)
+        # print("freqs:", freqs)
         # first part even vector components, second part odd vector components,
         #  2 * dim in dimension size
         if not self.rotary_interleaved:
@@ -106,11 +145,14 @@ class RotaryEmbedding(nn.Module):
             emb = torch.stack((freqs.view(-1, 1), freqs.view(-1, 1)), dim=-1).view(
                 freqs.shape[0], -1
             )
+        # print("origin emb:", emb)
         # emb [seq_length, .., dim]
         emb = emb[:, None, None, :]
         if parallel_state.get_context_parallel_world_size() > 1:
             # slice rotary_pos_emb along sequence dimension and select the parition of the current CP rank
             emb = get_pos_emb_on_this_cp_rank(emb, 0)
+        if parallel_state.get_ulysses_sequence_parallel_world_size() > 1:
+            emb = get_pos_emb_on_this_usp_rank(emb, 0)
         return emb
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
@@ -143,10 +185,15 @@ class RotaryEmbedding(nn.Module):
             else:
                 rotary_seq_len = transformer_input.size(0)
 
+            # print("rotary_seq_len0:", rotary_seq_len)
             if transformer_config.sequence_parallel:
                 rotary_seq_len *= transformer_config.tensor_model_parallel_size
 
+        # print("rotary_seq_len0:", rotary_seq_len)
         rotary_seq_len *= transformer_config.context_parallel_size
+        # print("rotary_seq_len1:", rotary_seq_len)
+        rotary_seq_len *= transformer_config.ulysses_sequence_parallel_size
+        # print("rotary_seq_len2:", rotary_seq_len)
 
         return rotary_seq_len
 

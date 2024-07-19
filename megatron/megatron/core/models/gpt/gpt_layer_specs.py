@@ -3,7 +3,9 @@
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core.fusions.fused_layer_norm import FusedLayerNorm
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
-from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
+from megatron.core.transformer.attention import (
+    SelfAttention, SelfAttentionSubmodules, USPSelfAttention, USPSelfAttentionSubmodules
+)
 try:
     from megatron.core.transformer.custom_layers.transformer_engine import (
         TEDotProductAttention,
@@ -26,18 +28,22 @@ from megatron.core.transformer.transformer_layer import TransformerLayer, Transf
 
 # Use this spec to use lower level Transformer Engine modules (required for fp8 training)
 def get_gpt_layer_with_transformer_engine_spec(
-    num_experts: int = None, moe_grouped_gemm: bool = False, qk_layernorm: bool = False
+    num_experts: int = None, moe_grouped_gemm: bool = False, qk_layernorm: bool = False, use_usp: bool = False
 ) -> ModuleSpec:
     mlp = _get_mlp_module_spec(
         use_te=True, num_experts=num_experts, moe_grouped_gemm=moe_grouped_gemm
     )
+
+    attention_module = SelfAttention if not use_usp else USPSelfAttention
+    attention_submodules = SelfAttentionSubmodules if not use_usp else USPSelfAttentionSubmodules
+
     return ModuleSpec(
         module=TransformerLayer,
         submodules=TransformerLayerSubmodules(
             self_attention=ModuleSpec(
-                module=SelfAttention,
+                module=attention_module,
                 params={"attn_mask_type": AttnMaskType.causal},
-                submodules=SelfAttentionSubmodules(
+                submodules=attention_submodules(
                     linear_qkv=TELayerNormColumnParallelLinear,
                     core_attention=TEDotProductAttention,
                     linear_proj=TERowParallelLinear,

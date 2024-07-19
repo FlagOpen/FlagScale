@@ -186,3 +186,100 @@ def sharded_state_dict_default(
             module_sd, prefix, {}, sharded_offsets,
         )
     return module_sharded_sd
+
+
+
+def single_all_to_all(input, scatter_idx, gather_idx, group):
+
+    assert (
+        input.dim() == 4
+    ), f"input must be 4D tensor, got {input.dim()} and shape {input.shape}"
+
+    usp_size = parallel_state.get_ulysses_sequence_parallel_world_size()
+
+    if scatter_idx == 2 and gather_idx == 1:
+        # input (torch.tensor): a tensor sharded along dim 1 (bs, seqlen/P, hc, hs) output: (bs, seqlen, hc/P, hs)
+        bs, shard_seqlen, hc, hs = input.shape
+        seqlen = shard_seqlen * usp_size
+        shard_hc = hc // usp_size
+
+        # transpose groups of heads with the seq-len parallel dimension, so that we can scatter them!
+        # (bs, seqlen/P, hc, hs) -reshape-> (bs, seq_len/P, P, hc/P, hs) -transpose(0,2)-> (P, seq_len/P, bs, hc/P, hs)
+        input_t = (
+            input.reshape(bs, shard_seqlen, usp_size, shard_hc, hs)
+            .transpose(0, 2)
+            .contiguous()
+        )
+
+        output = torch.empty_like(input_t)
+        # https://pytorch.org/docs/stable/distributed.html#torch.distributed.all_to_all_single
+        # (P, seq_len/P, bs, hc/P, hs) scatter seqlen -all2all-> (P, seq_len/P, bs, hc/P, hs) scatter head
+        torch.distributed.all_to_all_single(output, input_t, group=group)
+
+        # if scattering the seq-dim, transpose the heads back to the original dimension
+        output = output.reshape(seqlen, bs, shard_hc, hs)
+
+        # (seq_len, bs, hc/P, hs) -reshape-> (bs, seq_len, hc/P, hs)
+        output = output.transpose(0, 1).contiguous().reshape(bs, seqlen, shard_hc, hs)
+
+        return output
+
+    elif scatter_idx == 1 and gather_idx == 2:
+        # input (torch.tensor): a tensor sharded along dim 1 (bs, seqlen, hc/P, hs) output: (bs, seqlen/P, hc, hs)
+        bs, seqlen, shard_hc, hs = input.shape
+        hc = shard_hc * usp_size
+        shard_seqlen = seqlen // usp_size
+
+        # transpose groups of heads with the seq-len parallel dimension, so that we can scatter them!
+        # (bs, seqlen, hc/P, hs) -reshape-> (bs, P, seq_len/P, hc/P, hs) -transpose(0, 3)-> (hc/P, P, seqlen/P, bs, hs) -transpose(0, 1) -> (P, hc/P, seqlen/P, bs, hs)
+        input_t = (
+            input.reshape(bs, usp_size, shard_seqlen, shard_hc, hs)
+            .transpose(0, 3)
+            .transpose(0, 1)
+            .contiguous()
+            .reshape(usp_size, shard_hc, shard_seqlen, bs, hs)
+        )
+
+        output = torch.empty_like(input_t)
+        # https://pytorch.org/docs/stable/distributed.html#torch.distributed.all_to_all_single
+        # (P, bs x hc/P, seqlen/P, hs) scatter seqlen -all2all-> (P, bs x seq_len/P, hc/P, hs) scatter head
+        torch.distributed.all_to_all_single(output, input_t, group=group)
+
+        # if scattering the seq-dim, transpose the heads back to the original dimension
+        output = output.reshape(hc, shard_seqlen, bs, hs)
+
+        # (hc, seqlen/N, bs, hs) -tranpose(0,2)-> (bs, seqlen/N, hc, hs)
+        output = output.transpose(0, 2).contiguous().reshape(bs, shard_seqlen, hc, hs)
+
+        return output
+    else:
+        raise RuntimeError("scatter_idx must be 1 or 2 and gather_idx must be 1 or 2")
+
+
+class _SeqAllToAll(torch.autograd.Function):
+
+    @staticmethod
+    def forward(
+        ctx: Any, 
+        group, 
+        input: torch.Tensor, 
+        scatter_idx: 
+        int, gather_idx: int
+    ) -> torch.Tensor:
+
+        ctx.group = group
+        ctx.scatter_idx = scatter_idx
+        ctx.gather_idx = gather_idx
+        return single_all_to_all(input, scatter_idx, gather_idx, group)
+
+    @staticmethod
+    def backward(
+        ctx: Any, 
+        *grad_output: torch.Tensor
+    ) -> Tuple[None, torch.Tensor, None, None]:
+        return (
+            None,
+            _SeqAllToAll.apply(ctx.group, *grad_output, ctx.gather_idx, ctx.scatter_idx), 
+            None, 
+            None,
+        )

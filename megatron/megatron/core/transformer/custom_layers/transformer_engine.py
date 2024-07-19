@@ -16,6 +16,7 @@ from megatron.core.parallel_state import (
     get_context_parallel_global_ranks,
     get_context_parallel_group,
     get_tensor_model_parallel_group,
+    get_ulysses_sequence_parallel_world_size,
 )
 from megatron.core.tensor_parallel import get_cuda_rng_tracker
 from megatron.core.transformer.enums import AttnMaskType
@@ -408,6 +409,7 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
         self.config = config
         self.te_forward_mask_type = False
         self.qkv_format: str = 'sbhd'
+        self.enable_usp = get_ulysses_sequence_parallel_world_size() > 1
 
         if self.config.apply_query_key_layer_scaling != bool(
             int(os.getenv('NVTE_APPLY_QK_LAYER_SCALING', '0'))
@@ -483,6 +485,11 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
             **extra_kwargs,
         )
 
+    def is_bshd_format(self):
+        if self.config.apply_rope_fusion and _te_version > packaging.version.Version("0.13.0"):
+            self.qkv_format = 'bshd'
+        return self.config.apply_rope_fusion and self.qkv_format == 'bshd'
+
     def forward(
         self,
         query: Tensor,
@@ -508,15 +515,16 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
             packed_seq_kwargs.pop("max_seqlen_kv", None)
 
         if self.config.apply_rope_fusion and qkv_format == 'bshd':
-            query, key, value = [x.transpose(0, 1).contiguous() for x in (query, key, value)]
-            # In PyTorch, the following two tensors are in fact the same:
-            #   Tensor with shape (1, S, H, D) and stride (S*H*D, H*D, D, 1)
-            #   Tensor with shape (1, S, H, D) and stride (H*D, H*D, D, 1)
-            # Stride for a dimension that is 1 has no meaning, so tensors created two different ways
-            # can have same shape but different strides.
-            # We unify them to the first one to pass the stride check in TE
-            if value.shape == key.shape and value.shape[0] == 1 and value.stride() != key.stride():
-                value = value.as_strided(value.shape, key.stride())
+            if not self.enable_usp:
+                query, key, value = [x.transpose(0, 1).contiguous() for x in (query, key, value)]
+                # In PyTorch, the following two tensors are in fact the same:
+                #   Tensor with shape (1, S, H, D) and stride (S*H*D, H*D, D, 1)
+                #   Tensor with shape (1, S, H, D) and stride (H*D, H*D, D, 1)
+                # Stride for a dimension that is 1 has no meaning, so tensors created two different ways
+                # can have same shape but different strides.
+                # We unify them to the first one to pass the stride check in TE
+                if value.shape == key.shape and value.shape[0] == 1 and value.stride() != key.stride():
+                    value = value.as_strided(value.shape, key.stride())
 
         if self.te_forward_mask_type:
             core_attn_out = super().forward(
@@ -531,7 +539,10 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
             core_attn_out = super().forward(query, key, value, attention_mask, **packed_seq_kwargs,)
 
         if self.config.apply_rope_fusion and qkv_format == 'bshd':
-            return core_attn_out.transpose(0, 1)
+            if not self.enable_usp:
+                return core_attn_out.transpose(0, 1)
+            else:
+                return core_attn_out
         else:
             return core_attn_out
 
