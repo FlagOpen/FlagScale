@@ -611,6 +611,9 @@ class CrossAttention(Attention):
 
 
 class USPSelfAttention(SelfAttention):
+    """
+    Refer to the USP paper (https://arxiv.org/pdf/2405.07719) for details.
+    """
     def __init__(
         self,
         config: TransformerConfig,
