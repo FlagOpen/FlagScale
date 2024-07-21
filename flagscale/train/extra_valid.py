@@ -16,7 +16,6 @@ from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegat
 from megatron.core.datasets.utils import get_blend_from_list
 from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
 from megatron.legacy.data.data_samplers import build_pretraining_data_loader
-from megatron.legacy.data.data_samplers_hetero import build_pretraining_data_loader_hetero
 
 from flagscale.train import get_extra_valid_datasets, set_extra_valid_datasets
 
@@ -139,10 +138,9 @@ def build_extra_valid_data_loaders(build_extra_valid_dataset_provider):
         # Build dataloders.
         extra_valid_dataloaders = []
         for extra_valid_ds in extra_valid_datasets:
-            if args.hetero_mode != "dp":
-                extra_valid_dataloaders.append(build_pretraining_data_loader(extra_valid_ds, 0))
-            else:
-                extra_valid_dataloaders.append(build_pretraining_data_loader_hetero(extra_valid_ds, 0))
+            extra_valid_dataloaders.append(
+                build_pretraining_data_loader(extra_valid_ds, 0)
+            )
 
         # Flags to know if we need to do extra_validation.
         do_extra_valid = extra_valid_dataloaders is not None

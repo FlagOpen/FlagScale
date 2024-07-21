@@ -250,13 +250,6 @@ def _initialize_distributed():
             timeout=timedelta(minutes=args.distributed_timeout_minutes),
         )
 
-    # if args.hetero_mode is not None:
-    #     # Build the heterogenous context after torch.distributed is initialized and
-    #     # before model parallel is initialized.
-    #     set_hetero_context(args)
-    #     if torch.distributed.get_rank() == 0:
-    #         print(get_hetero_context(), flush=True)
-
     # Set the tensor model-parallel, pipeline model-parallel, and
     # data-parallel communicators.
     if device_count > 0:
@@ -272,8 +265,8 @@ def _initialize_distributed():
                 expert_model_parallel_size=args.expert_model_parallel_size,
                 distributed_timeout_minutes=args.distributed_timeout_minutes,
                 nccl_communicator_config_path=args.nccl_communicator_config_path,
-                hetero_mode=args.hetero_mode,
                 order='tp-cp-ep-dp-pp' if not args.use_tp_pp_dp_mapping else 'tp-pp-dp',
+                args=args,
             )
             if args.rank == 0:
                 print(
@@ -284,6 +277,7 @@ def _initialize_distributed():
                     f"> initialized pipeline model parallel with size "
                     f"{mpu.get_pipeline_model_parallel_world_size()}"
                 )
+
 
 
 def _init_autoresume():
