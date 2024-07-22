@@ -41,7 +41,6 @@ def set_extra_input_tensor(input_tensor : torch.Tensor):
 
 def get_parallel_context():
     """Return heterogenous parallel context."""
-    _ensure_var_is_initialized(_GLOBAL_PARALLEL_CONTEXT, 'parallel context')
     return _GLOBAL_PARALLEL_CONTEXT
 
 
