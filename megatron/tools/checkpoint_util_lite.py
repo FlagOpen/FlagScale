@@ -280,23 +280,19 @@ def get_num_layers_from_args(
     total_num_layers,
     pp_size,
     pp_rank,
-    hetero_pipeline_stages=None,
+    hetero_pipeline_layer_split=None,
     is_decoder=False,
     standalone_embedding_stage=False,
 ):
     assert standalone_embedding_stage == False, "standalone_embedding_stage is not supported"
-    def _compute_num_layers():
-        pipeline_stages = [item for sublist in hetero_pipeline_stages for item in sublist]
-        num_layers = pipeline_stages[pp_rank] 
-        return num_layers
 
     if pp_size > 1:
         assert (
             total_num_layers % pp_size == 0
         ), "num_layers must be divisible by transformer_pipeline_model_parallel_size"
 
-        if hetero_pipeline_stages is not None:
-            num_layers = _compute_num_layers()
+        if hetero_pipeline_layer_split is not None:
+            num_layers = hetero_pipeline_layer_split[pp_rank] 
             if standalone_embedding_stage and pp_rank == 0:
                 return 0
             else:

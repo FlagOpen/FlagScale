@@ -1427,11 +1427,9 @@ def _get_num_layers(args, model_type, is_decoder=False):
 
 
 def _get_layer_info(config):
-    assert config.hetero_mode == "pp", "Only pipeline parallelism is supported."
     pipeline_rank = mpu.get_pipeline_model_parallel_rank()
-    pipeline_stages = [item for sublist in config.hetero_pipeline_stages for item in sublist]
-    offset = sum(([0] + pipeline_stages)[: pipeline_rank + 1])
-    num_layers = pipeline_stages[pipeline_rank] 
+    offset = sum(([0] + config.hetero_pipeline_layer_split)[: pipeline_rank + 1])
+    num_layers = config.hetero_pipeline_layer_split[pipeline_rank] 
     torch.distributed.barrier()
     for i in range(torch.distributed.get_world_size()):
         if i == torch.distributed.get_rank():
@@ -1664,7 +1662,7 @@ class ParallelTransformer(MegatronModule):
                 'num_layers_per_stage must be divisible by ' \
                 'virtual_pipeline_model_parallel_size'
             assert args.model_type != ModelType.encoder_and_decoder
-            assert args.hetero_mode != "pp", \
+            assert args.enable_hetero == False, \
                 "Heterogenous pipeline parallelism is not supported for virtual pipeline model parallel."
             # Number of layers in each model chunk is the number of layers in the stage,
             # divided by the number of model chunks in a stage.
@@ -1684,7 +1682,7 @@ class ParallelTransformer(MegatronModule):
             # Each stage gets a contiguous set of layers.
             if args.model_type == ModelType.encoder_and_decoder and \
                     mpu.get_pipeline_model_parallel_world_size() > 1:
-                assert args.hetero_mode != "pp", \
+                assert args.enable_hetero == False, \
                     "Heterogenous pipeline parallelism is not supported for encoder-decoder models."
                 pipeline_rank = mpu.get_pipeline_model_parallel_rank()
                 if layer_type == LayerType.encoder:
@@ -1693,7 +1691,7 @@ class ParallelTransformer(MegatronModule):
                     num_ranks_in_enc = args.pipeline_model_parallel_split_rank
                     offset = (pipeline_rank - num_ranks_in_enc) * self.num_layers
             else:
-                if config.hetero_mode != "pp":
+                if not config.enable_hetero:
                     offset = mpu.get_pipeline_model_parallel_rank() * self.num_layers
                 else:
                     offset, self.num_layers = _get_layer_info(config)

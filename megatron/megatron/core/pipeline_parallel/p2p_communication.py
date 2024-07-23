@@ -235,7 +235,8 @@ def _communicate(
     recv_next: bool,
     tensor_shape: Shape,
     config: ModelParallelConfig,
-    wait_on_reqs: bool = True
+    wait_on_reqs: bool = True,
+    group: torch.distributed.ProcessGroup = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Communicate tensors between stages. Used as helper method in other
     communication methods that are used in megatron/schedules.py.
@@ -326,12 +327,15 @@ def _communicate(
     else:
         p2p_func = _p2p_ops
 
+    if group is None:
+        group = get_pipeline_model_parallel_group()
+
     reqs = p2p_func(
         tensor_send_prev=tensor_send_prev,
         tensor_recv_prev=tensor_recv_prev,
         tensor_send_next=tensor_send_next,
         tensor_recv_next=tensor_recv_next,
-        group=get_pipeline_model_parallel_group(),
+        group=group,
     )
 
     if wait_on_reqs and len(reqs) > 0:
@@ -352,6 +356,9 @@ def recv_forward(tensor_shape: Shape, config: ModelParallelConfig) -> torch.Tens
 
     See _communicate for argument details.
     """
+    if config.enable_hetero:
+        from flagscale.train.hetero.p2p_communications import recv_forward_hetero
+        return recv_forward_hetero(tensor_shape, config)
 
     if core.parallel_state.is_pipeline_first_stage():
         input_tensor = None
@@ -376,6 +383,10 @@ def recv_backward(tensor_shape: Shape, config: ModelParallelConfig) -> torch.Ten
 
     See _communicate for argument details.
     """
+    if config.enable_hetero:
+        from flagscale.train.hetero.p2p_communications import recv_backward_hetero
+        return recv_backward_hetero(tensor_shape, config)
+
     if core.parallel_state.is_pipeline_last_stage():
         output_tensor_grad = None
     else:
@@ -399,6 +410,10 @@ def send_forward(output_tensor: torch.Tensor, config: ModelParallelConfig) -> No
 
     See _communicate for argument details.
     """
+    if config.enable_hetero:
+        from flagscale.train.hetero.p2p_communications import send_forward_hetero
+        send_forward_hetero(output_tensor, config)
+        return
 
     if not core.parallel_state.is_pipeline_last_stage():
         if config.timers is not None:
@@ -420,6 +435,11 @@ def send_backward(input_tensor_grad: torch.Tensor, config: ModelParallelConfig) 
 
     See _communicate for argument details.
     """
+    if config.enable_hetero:
+        from flagscale.train.hetero.p2p_communications import send_backward_hetero
+        send_backward_hetero(input_tensor_grad, config)
+        return
+
     if not core.parallel_state.is_pipeline_first_stage():
         if config.timers is not None:
             config.timers('backward-send', log_level=2).start()
@@ -442,6 +462,10 @@ def send_forward_recv_backward(
 
     See _communicate for argument details.
     """
+    if config.enable_hetero:
+        from flagscale.train.hetero.p2p_communications import send_forward_recv_backward_hetero
+        return send_forward_recv_backward_hetero(output_tensor, tensor_shape, config)
+
     if core.parallel_state.is_pipeline_last_stage():
         output_tensor_grad = None
     else:
@@ -467,6 +491,10 @@ def send_backward_recv_forward(
 
     See _communicate for argument details.
     """
+    if config.enable_hetero:
+        from flagscale.train.hetero.p2p_communications import send_backward_recv_forward_hetero
+        return send_backward_recv_forward_hetero(input_tensor_grad, config)
+
     if core.parallel_state.is_pipeline_first_stage():
         input_tensor = None
     else:

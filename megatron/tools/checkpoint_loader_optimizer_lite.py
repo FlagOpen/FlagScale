@@ -147,8 +147,7 @@ def _load_checkpoint(queue, args):
     tp_size = margs.tensor_model_parallel_size
     pp_size = margs.pipeline_model_parallel_size
     vp_size = margs.virtual_pipeline_model_parallel_size
-    hetero_pipeline_stages = checkpoint_args.hetero_pipeline_stages
-    hetero_pipeline_stage_splits = checkpoint_args.hetero_pipeline_stage_splits
+    hetero_pipeline_layer_split = checkpoint_args.hetero_pipeline_layer_split
     if vp_size is None:
         vp_size = 1
 
@@ -347,8 +346,9 @@ def _load_checkpoint(queue, args):
         total_layer_num = 0
         for vp_rank in range(vp_size):
             for pp_rank in range(pp_size):
-                num_layers = get_num_layers_from_args(md.num_layers, pp_size, pp_rank,
-                                                      hetero_pipeline_stages, hetero_pipeline_stage_splits)
+                num_layers = get_num_layers_from_args(
+                    md.num_layers, pp_size, pp_rank, hetero_pipeline_layer_split
+                )
                 for layer_num in range(num_layers):
                     message = {}
                     # Get non-parallel tensors from tp_rank 0
