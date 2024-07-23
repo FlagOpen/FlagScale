@@ -431,7 +431,7 @@ class ParallelContext:
         self._process_group_to_ranks = {}
         self._parallel_world_sizes = {}
         self._parallel_ranks = {}
-        self._independent_ep = False # TODO
+        self._timeout = timedelta(minutes=self._args.distributed_timeout_minutes)
 
         self._rank = torch.distributed.get_rank()
         self._rank_mapper = RankMapper(args)
@@ -443,7 +443,7 @@ class ParallelContext:
         self._global_memory_buffer = GlobalMemoryBuffer()
 
         self._is_initialized = True
-    
+
     def is_initialized(self):
         return self._is_initialized
 
@@ -461,6 +461,7 @@ class ParallelContext:
                 expert_model_parallel_size=ep,
                 nccl_communicator_config_path=self._args.nccl_communicator_config_path,
                 distributed_timeout_minutes=self._args.distributed_timeout_minutes,
+                order='tp-cp-ep-dp-pp' if not self._args.use_tp_pp_dp_mapping else 'tp-pp-dp',
                 offset=accumulated_world_size,
                 rank_mapper=self._rank_mapper,
             )
@@ -490,12 +491,12 @@ class ParallelContext:
             ]
 
     def build_inter_mesh_process_groups(self, process_mesh1, process_mesh2):
-        tp1 = process_mesh1.get_parallel_size("tp", self._independent_ep)
-        cp1 = process_mesh1.get_parallel_size("cp", self._independent_ep)
-        dp1 = process_mesh1.get_parallel_size("dp", self._independent_ep)
-        tp2 = process_mesh2.get_parallel_size("tp", self._independent_ep)
-        cp2 = process_mesh2.get_parallel_size("cp", self._independent_ep)
-        dp2 = process_mesh2.get_parallel_size("dp", self._independent_ep)
+        tp1 = process_mesh1.get_parallel_size("tp", independent_ep=False)
+        cp1 = process_mesh1.get_parallel_size("cp", independent_ep=False)
+        dp1 = process_mesh1.get_parallel_size("dp", independent_ep=False)
+        tp2 = process_mesh2.get_parallel_size("tp", independent_ep=False)
+        cp2 = process_mesh2.get_parallel_size("cp", independent_ep=False)
+        dp2 = process_mesh2.get_parallel_size("dp", independent_ep=False)
         # For now, we only support the case where the sequence dim is different.
         # However, the following code can be easily extended to support other cases.
         assert dp1 == dp2, "Data parallel size should be the same."
@@ -526,7 +527,7 @@ class ParallelContext:
                     )[0]
                     ranks = [src_rank, dst_rank]
                     timeout = max(process_mesh1._timeout, process_mesh2._timeout)
-                    group = torch.distributed.new_group(ranks, timeout)
+                    group = torch.distributed.new_group(ranks, timeout=timeout)
                     if self._rank in [src_rank, dst_rank]:
                         self._inter_mesh_process_groups[(src_rank, dst_rank)] = group
 
@@ -543,24 +544,24 @@ class ParallelContext:
         # build global model parallel process groups
         for mesh_index, process_mesh in enumerate(self._process_meshes):
             ranks_list = process_mesh.get_all_process_group_ranks(
-                "tp-pp", independent_ep=self._independent_ep, check_initialized=True
+                "tp-pp", independent_ep=False, check_initialized=True
             )
             ranks = list(itertools.chain.from_iterable(ranks_list))
             self._all_group_ranks["mp"].append(ranks)
             if self._rank in ranks:
                 self._group_ranks["mp"] = ranks
-                group = torch.distributed.new_group(ranks)
+                group = torch.distributed.new_group(ranks, timeout=self._timeout)
                 self._process_groups["mp"] = group
                 self._process_group_to_ranks[group] = ranks
 
             ranks_list = process_mesh.get_all_process_group_ranks(
-                "tp-ep-pp", independent_ep=self._independent_ep, check_initialized=True
+                "tp-ep-pp", independent_ep=True, check_initialized=True
             )
             ranks = list(itertools.chain.from_iterable(ranks_list))
             self._all_group_ranks["mp_exp"].append(ranks)
             if self._rank in ranks:
                 self._group_ranks["mp_exp"] = ranks
-                group = torch.distributed.new_group(ranks)
+                group = torch.distributed.new_group(ranks, timeout=self._timeout)
                 self._process_groups["mp_exp"] = group
                 self._process_group_to_ranks[group] = ranks
             if mesh_index == len(self._process_meshes) - 1: 
@@ -576,7 +577,7 @@ class ParallelContext:
                 aggregated_ranks = [rank for ranks in path for rank in ranks]
                 self._all_group_ranks["pp"].append(aggregated_ranks)
                 if self._rank in aggregated_ranks:
-                    group = torch.distributed.new_group(aggregated_ranks)
+                    group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout)
                     self._process_groups["pp"].append(group)
                     self._group_ranks["pp"].append(aggregated_ranks)
                     self._process_group_to_ranks[group] = aggregated_ranks
@@ -615,7 +616,7 @@ class ParallelContext:
                 position_embedding_ranks = ranks
 
             group = torch.distributed.new_group(
-                embedding_ranks,
+                embedding_ranks, timeout=self._timeout
             )
             if self._rank in embedding_ranks:
                 self._process_groups["embd"].append(group)
@@ -626,7 +627,7 @@ class ParallelContext:
                 self._group_ranks["embd"].append(embedding_ranks)
 
             group = torch.distributed.new_group(
-                position_embedding_ranks,
+                position_embedding_ranks, timeout=self._timeout
             )
             if self._rank in position_embedding_ranks:
                 self._process_groups["embd_pos"].append(group)
