@@ -456,7 +456,7 @@ def save_checkpoint(queue, args):
         if pp_rank > 0:
             post_process = pp_rank == args.target_pipeline_parallel_size - 1
         num_layers = get_num_layers_from_args(
-            md.num_layers, pp_size, pp_rank, margs.hetero_pipeline_stage_split
+            md.num_layers, pp_size, pp_rank, margs.hetero_pipeline_layer_split
         )
         for layer in range(num_layers):
             # weight
