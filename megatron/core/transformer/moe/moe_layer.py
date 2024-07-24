@@ -7,7 +7,7 @@ import torch
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.mlp import MLPSubmodules
 from megatron.core.transformer.module import MegatronModule
-from megatron.core.transformer.moe.experts import GroupedMLP, SequentialMLP
+from megatron.core.transformer.moe.experts import GroupedMLP, SequentialMLP, TEGroupedMLP
 from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.moe.token_dispatcher import (
     MoEAllGatherTokenDispatcher,
@@ -71,7 +71,10 @@ class MoELayer(BaseMoELayer):
         super(MoELayer, self).__init__(config=config, layer_number=layer_number)
         self.router = TopKRouter(config=self.config)
         if self.config.moe_grouped_gemm:
-            self.experts = GroupedMLP(self.num_local_experts, self.config)
+            if isinstance(self.submodules, MLPSubmodules):
+                self.experts = TEGroupedMLP(self.num_local_experts, self.config, self.submodules)
+            else:
+                self.experts = GroupedMLP(self.num_local_experts, self.config)
         else:
             assert isinstance(self.submodules, MLPSubmodules)
             self.experts = SequentialMLP(self.num_local_experts, self.config, self.submodules)
@@ -90,6 +93,16 @@ class MoELayer(BaseMoELayer):
         self.moe_layer_recompute = config.moe_layer_recompute
 
     def forward(self, hidden_states: torch.Tensor):
+        if (
+            self.training
+            and self.config.tensor_model_parallel_size > 1
+            and not self.config.sequence_parallel
+        ):
+            raise ValueError(
+                "During training, performance may degrade if MoE and tensor parallelism"
+                "are enabled without also enabling sequence parallelism."
+            )
+
         # process MoE
         def custom_forward(hidden_states):
             probs, indices = self.router(hidden_states)

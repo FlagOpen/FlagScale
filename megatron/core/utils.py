@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import reduce
 from types import TracebackType
-from typing import List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import torch
 
@@ -70,6 +70,13 @@ def get_model_type(model):
     return get_attr_wrapped_model(model, 'model_type')
 
 
+def get_model_xattn(model):
+    try:
+        return get_attr_wrapped_model(model, 'xattn_needed')
+    except RuntimeError:
+        return False
+
+
 def get_model_config(model):
     return get_attr_wrapped_model(model, 'config', allow_none=False)
 
@@ -104,7 +111,12 @@ def _kernel_make_viewless_tensor(inp, requires_grad):
     data, without linking the viewed tensor, referenced via the '._base'
     field.
     '''
-    out = torch.empty((1,), dtype=inp.dtype, device=inp.device, requires_grad=requires_grad,)
+    out = torch.empty(
+        (1,),
+        dtype=inp.dtype,
+        device=inp.device,
+        requires_grad=requires_grad,
+    )
     out.data = inp.data
     return out
 
@@ -198,6 +210,44 @@ def scaled_init_method_normal(sigma, num_layers):
     return init_
 
 
+def log_single_rank(logger: logging.Logger, *args: Any, rank: int = 0, **kwargs: Any):
+    """If torch distributed is initialized, log only on rank
+
+    Args:
+        logger (logging.Logger): The logger to write the logs
+
+        args (Tuple[Any]): All logging.Logger.log positional arguments
+
+        rank (int, optional): The rank to write on. Defaults to 0.
+
+        kwargs (Dict[str, Any]): All logging.Logger.log keyword arguments
+    """
+    if torch.distributed.is_initialized():
+        if torch.distributed.get_rank() == rank:
+            logger.log(*args, **kwargs)
+    else:
+        logger.log(*args, **kwargs)
+
+
+def log_on_each_pipeline_stage(logger: logging.Logger, *args: Any, **kwargs: Any):
+    """Log on first rank in each pipeline stage
+
+    Args:
+        logger (logging.Logger): The logger to write the logs
+
+        args (Tuple[Any]): All logging.Logger.log positional arguments
+
+        kwargs (Dict[str, Any]): All logging.Logger.log keyword arguments
+    """
+    assert torch.distributed.is_initialized()
+
+    if (
+        parallel_state.get_data_parallel_rank(with_context_parallel=True) == 0
+        and parallel_state.get_tensor_model_parallel_rank() == 0
+    ):
+        logger.log(*args, **kwargs)
+
+
 def check_param_hashes_across_dp_replicas(model: List[torch.nn.Module]) -> bool:
     """Computes hashes of all parameters in model, all-gathers hashes across DP replicas,
     and then checks for equality between the locally-computed hashes and the hashes
@@ -220,7 +270,7 @@ def check_param_hashes_across_dp_replicas(model: List[torch.nn.Module]) -> bool:
     params = []
     local_param_hashes = []
     for model_chunk_id, model_chunk in enumerate(model):
-        for (param_name, param) in model_chunk.named_parameters():
+        for param_name, param in model_chunk.named_parameters():
             param_hash = torch.frombuffer(
                 array.array(
                     'B', hashlib.sha1(param.data.to("cpu").float().numpy(force=True)).digest()
@@ -255,7 +305,7 @@ def check_param_hashes_across_dp_replicas(model: List[torch.nn.Module]) -> bool:
 def make_tp_sharded_tensor_for_checkpoint(
     tensor, key, tp_axis=0, replica_id=None, prepend_offsets=(), **kwargs
 ):
-    """ Helper for instantiating a ShardedTensor where the `tp_axis` dimension is sharded across TP group.
+    """Helper for instantiating a ShardedTensor where the `tp_axis` dimension is sharded across TP group.
 
     Optionally, can provide offsets which prepend new dimensions to the tensor.
     """
@@ -281,7 +331,7 @@ def make_tp_sharded_tensor_for_checkpoint(
 
 
 def make_sharded_tensor_for_checkpoint(tensor, key, prepend_offsets=(), replica_id=None, **kwargs):
-    """ Helper for instantiating a non-sharded ShardedTensor (replicated across TP and DP group).
+    """Helper for instantiating a non-sharded ShardedTensor (replicated across TP and DP group).
 
     Optionally, can provide offsets which prepend new dimensions to the tensor.
     """
@@ -325,7 +375,7 @@ def prepare_input_tensors_for_wgrad_compute(grad_output, all_gathered_input):
 
 
 def drain_embedding_wgrad_compute(config, embedding_activation_buffer, grad_output_buffer, weight):
-    """ Helper for performing embedding wgrad GEMM's during the pipeline drain phase, pipelines the AllGather and GEMM's.
+    """Helper for performing embedding wgrad GEMM's during the pipeline drain phase, pipelines the AllGather and GEMM's.
 
     Should only be used when pipeline model parallelism and gradient accumulation fusion are enabled.
     """
@@ -409,6 +459,31 @@ def drain_embedding_wgrad_compute(config, embedding_activation_buffer, grad_outp
     input, all_gathered_input[1], grad_output = None, None, None
 
 
+def local_multi_tensor_applier(op, noop_flag_buffer, tensor_lists, *args):
+    return op(2048 * 32, noop_flag_buffer, tensor_lists, *args)
+
+
+## computes l2 norm for a list of contiguous tensors
+## works as a drop-in replacement for amp_C.multi_tensor_l2norm
+def local_multi_tensor_l2_norm(chunk_size, noop_flag, tensor_lists, per_tensor, *args):
+    l2 = [[(torch.norm(tensor)) for tensor in tensor_list] for tensor_list in tensor_lists]
+    l2_reduced = torch.norm(torch.tensor(l2))
+    l2_cuda = torch.tensor([float(l2_reduced)], dtype=torch.float, device='cuda')
+    return l2_cuda, None
+
+
+## works as a drop-in replacement for amp_C.multi_tensor_scale
+def local_multi_tensor_scale(chunk_size, noop_flag, tensor_lists, scale):
+    inputs, targets = tensor_lists[0], tensor_lists[1]
+    if inputs == targets:
+        for i in range(len(targets)):
+            ## for parity with apex implementation
+            targets[i] *= scale
+    else:
+        for i in range(len(targets)):
+            targets[i] = inputs[i] * scale
+
+
 class _ValueWithRank:
     """This is an internal class, not for use outside this module
 
@@ -431,7 +506,7 @@ class _ValueWithRank:
         self._unit = unit
 
     def __lt__(self, other) -> bool:
-        """ Check if value of self is smaller than other's value
+        """Check if value of self is smaller than other's value
 
         Args:
             other (_ValueWithRank): The other object to compare with
@@ -454,7 +529,7 @@ class _ValueWithRank:
 
     def __call__(self) -> Tuple[float, int, str]:
         """Returns the value, the rank, and unit as a Tuple
-            
+
         Returns:
             Tuple[float, int, str]: value, rank, unit
         """
@@ -508,7 +583,7 @@ class _StragglerData:
     # clock
     min_clock = _ValueWithRank(sys.float_info.max, 0, "MHz")
     max_clock = _ValueWithRank(sys.float_info.min, 0, "MHz")
-    aflops: List[_ValueWithRank] = None
+    aflops: Union[List[_ValueWithRank], None] = None
 
 
 class StragglerDetector:
@@ -537,15 +612,15 @@ class StragglerDetector:
         toggle (bool): whether to start/stop detector collection
         bdata (bool): when true, just collect get_batch
         dev (int): cuda device
-        idx (int): index into the list below
-        idx_q (LifoQueue): queue of index
         evt_q (LifoQueue): cuda event queue
-        start_events (list[torch.cuda.Event]): cuda start event
-        stop_events (list[torch.cuda.Event]): cuda stop event
-        start_time (list[int]): start time (wallclock)
-        stop_time (list[int]): stop time (wallclock)
-        start_batch (list[int]): start time for get_batch
-        stop_batch (list[int]): stop time for get_batch
+        start_gemm_ev (list[torch.cuda.Event]): cuda start event
+        stop_gemm_ev (list[torch.cuda.Event]): cuda stop event
+        start_data_ev (list[torch.cuda.Event]): cuda start event
+        stop_data_ev (list[torch.cuda.Event]): cuda stop event
+        start_gemm_tm (list[int]): start time (wallclock)
+        stop_gemm_tm (list[int]): stop time (wallclock)
+        start_data_tm (list[int]): start time for get_batch
+        stop_data_tm (list[int]): stop time for get_batch
         sock (socket): the controller socket
         ctrlr (Thread): the controller thread
     """
@@ -576,28 +651,28 @@ class StragglerDetector:
         The enabled state is indicated using self._off member variable
         and the proerty enabled.
         """
-        self._off = True
+        self._off: bool = True
         self.start = self.null_method
         self.stop = self.null_method
-        self.world = 0
-        self.rank = 0
-        self.mmcnt = 1
-        self.port = 0
-        self.amp = 3.0
-        self.toggle = False
-        self.bdata = False
-        self.dev = None
-        self.idx = 0
-        self.idx_q = None
-        self.evt_q = None
-        self.start_events = None
-        self.stop_events = None
-        self.start_time = None
-        self.stop_time = None
-        self.start_batch = None
-        self.stop_batch = None
-        self.sock = None
-        self.ctrlr = None
+        self.world: int = 0
+        self.rank: int = 0
+        self.mmcnt: int = 1
+        self.port: int = 0
+        self.amp: float = 3.0
+        self.toggle: bool = False
+        self.bdata: bool = False
+        self.dev: Union[torch.device, int, None] = None
+        self.evt_q: Union[queue.LifoQueue, None] = None
+        self.start_gemm_ev: List[torch.cuda.Event] = []
+        self.stop_gemm_ev: List[torch.cuda.Event] = []
+        self.start_data_ev: List[torch.cuda.Event] = []
+        self.stop_data_ev: List[torch.cuda.Event] = []
+        self.start_gemm_tm: List[int] = []
+        self.stop_gemm_tm: List[int] = []
+        self.start_data_tm: List[int] = []
+        self.stop_data_tm: List[int] = []
+        self.sock: Union[socket.socket, None] = None
+        self.ctrlr: Union[threading.Thread, None] = None
 
     def configure(
         self,
@@ -650,15 +725,15 @@ class StragglerDetector:
             self.port = port
             self.toggle = False
             self.bdata = False
-            self.idx = 0
-            self.idx_q = queue.LifoQueue()
             self.evt_q = queue.LifoQueue()
-            self.start_events = []
-            self.stop_events = []
-            self.start_time = []
-            self.stop_time = []
-            self.start_batch = []
-            self.stop_batch = []
+            self.start_gemm_ev = []
+            self.stop_gemm_ev = []
+            self.start_data_ev = []
+            self.stop_data_ev = []
+            self.start_gemm_tm = []
+            self.stop_gemm_tm = []
+            self.start_data_tm = []
+            self.stop_data_tm = []
             backend = torch.distributed.get_backend()
             if backend == "nccl":
                 self.dev = torch.cuda.current_device()
@@ -681,18 +756,21 @@ class StragglerDetector:
         """
         if self._off:
             return
-        self.idx = 0
-        self.idx_q = queue.LifoQueue()
         # Pool them
-        _ = [self.evt_q.put(ev) for ev in self.start_events]
-        _ = [self.evt_q.put(ev) for ev in self.stop_events]
-        self.start_events = []
-        self.stop_events = []
+        if self.evt_q is not None:
+            _ = [self.evt_q.put(ev) for ev in self.start_gemm_ev]
+            _ = [self.evt_q.put(ev) for ev in self.stop_gemm_ev]
+            _ = [self.evt_q.put(ev) for ev in self.start_data_ev]
+            _ = [self.evt_q.put(ev) for ev in self.stop_data_ev]
+        self.start_gemm_ev = []
+        self.stop_gemm_ev = []
+        self.start_data_ev = []
+        self.stop_data_ev = []
         # Use regular timers
-        self.start_time = []
-        self.stop_time = []
-        self.start_batch = []
-        self.stop_batch = []
+        self.start_gemm_tm = []
+        self.stop_gemm_tm = []
+        self.start_data_tm = []
+        self.stop_data_tm = []
         self.bdata = False
 
     def start_method(self) -> None:
@@ -704,26 +782,30 @@ class StragglerDetector:
         CPU - generally useful for timing get_batch()
         """
         # Not reentrant
-        # First check if this start is for data
-        if self.bdata:
-            self.start_batch.append(time.perf_counter_ns())
-            self.stop_batch.append(0)  # this indicate we need to add timer
-            self.bdata = False
-            return
-        if self.evt_q.qsize() > 1:
+        if self.evt_q is not None and self.evt_q.qsize() > 1:
             sev = self.evt_q.get()  # no try-catch
             eev = self.evt_q.get()  # no try-catch
         else:
             sev = torch.cuda.Event(enable_timing=True)
             eev = torch.cuda.Event(enable_timing=True)
-        self.start_events.append(sev)
-        self.stop_events.append(eev)
-        self.start_time.append(0)
-        self.stop_time.append(0)
-        self.idx_q.put(self.idx)
-        self.start_time[self.idx] = time.perf_counter_ns()
-        self.start_events[self.idx].record()
-        self.idx += 1
+        # First check if this start is for data
+        if self.bdata:
+            self.start_data_ev.append(sev)
+            self.stop_data_ev.append(eev)
+            self.start_data_tm.append(0)
+            self.stop_data_tm.append(0)
+            idx = len(self.stop_data_tm) - 1
+            self.start_data_tm[idx] = time.perf_counter_ns()
+            self.start_data_ev[idx].record()
+            self.bdata = False
+            return
+        self.start_gemm_ev.append(sev)
+        self.stop_gemm_ev.append(eev)
+        self.start_gemm_tm.append(0)
+        self.stop_gemm_tm.append(0)
+        idx = len(self.stop_gemm_tm) - 1
+        self.start_gemm_tm[idx] = time.perf_counter_ns()
+        self.start_gemm_ev[idx].record()
 
     def stop_method(self) -> None:
         """This method adds the stop timers.
@@ -734,13 +816,15 @@ class StragglerDetector:
         """
         # Not reentrant
         # First check if this stop is for data
-        dle = len(self.stop_batch) - 1
-        if dle >= 0 and self.stop_batch[dle] == 0:
-            self.stop_batch[dle] = time.perf_counter_ns()
+        idx = len(self.stop_data_tm) - 1
+        if idx >= 0 and self.stop_data_tm[idx] == 0:
+            self.stop_data_tm[idx] = time.perf_counter_ns()
+            self.stop_data_ev[idx].record()
             return
-        idx = self.idx_q.get()
-        self.stop_time[idx] = time.perf_counter_ns()
-        self.stop_events[idx].record()
+        idx = len(self.stop_gemm_tm) - 1
+        if idx >= 0 and self.stop_gemm_tm[idx] == 0:
+            self.stop_gemm_tm[idx] = time.perf_counter_ns()
+            self.stop_gemm_ev[idx].record()
 
     def elapsed(self) -> Tuple[float, float, int, int, int, int]:
         """This method is called from report(), or can be called directly
@@ -760,10 +844,10 @@ class StragglerDetector:
         if self._off:
             # match with return below
             return 0, 0, 0, 0, 0, 0
-        ls_ev = len(self.start_events)
-        le_ev = len(self.stop_events)
-        ls_bs = len(self.start_batch)
-        ls_be = len(self.stop_batch)
+        ls_ev = len(self.start_gemm_ev)
+        le_ev = len(self.stop_gemm_ev)
+        ls_bs = len(self.start_data_ev)
+        ls_be = len(self.stop_data_ev)
         delta = 0.0
         batch_delta = 0.0
         temp = 0
@@ -781,15 +865,18 @@ class StragglerDetector:
             torch.cuda.synchronize()
             # Process Events
             for i in range(ls_ev):
-                e_ev = self.start_events[i].elapsed_time(self.stop_events[i])
-                e_tm = (self.stop_time[i] - self.start_time[i]) / 1e6  # ns to ms
+                e_ev = self.start_gemm_ev[i].elapsed_time(self.stop_gemm_ev[i])
+                e_tm = (self.stop_gemm_tm[i] - self.start_gemm_tm[i]) / 1e6  # ns to ms
                 # Pick the larger of Event and perf_counter time?
                 delta += max(e_ev, e_tm)
             # Process get_batch
             for i in range(ls_bs):
-                batch_delta = (self.stop_batch[i] - self.start_batch[i]) / 1e3  # us
+                b_ev = self.start_data_ev[i].elapsed_time(self.stop_data_ev[i])
+                b_tm = (self.stop_data_tm[i] - self.start_data_tm[i]) / 1e6  # ns to ms
+                # data fetching has prefetch, hence take the max, instead of avg
+                batch_delta = max(batch_delta, max(b_ev, b_tm))
         self.reset()  # Prepare for next round
-        # time in ms, batch_delta in us, check return above
+        # time in ms, batch_delta in ms, check return above
         return delta, batch_delta, temp, power, util, clock
 
     def report(self, total_flops: float = 0.0, log_interval: int = 0) -> bool:
@@ -810,19 +897,25 @@ class StragglerDetector:
         """
         ret = False
         if not self._off and total_flops > 0.0 and log_interval > 0:
-            elapsed, btime_us, temp, power, util, clock = self.elapsed()  # get raw time
+            elapsed, btime, temp, power, util, clock = self.elapsed()  # get raw time
+            # btime (get_batch time is max in the iteration)
             ptime = elapsed / (log_interval * 1.0)  # avg per iteration elapsed time, ms
-            btime = btime_us / (log_interval * 1.0)  # avg per iteration get_batch time, us
             api_flops = total_flops / (log_interval * 1.0)  # avg per iteration flops, ms
             apir_flops = api_flops / (
-                ptime * 10 ** 9 * self.world
+                ptime * 10**9 * self.world
             )  # this is avg per iteration this rank's thruput, TFLOP/s (note 10**9),
             et_flops = apir_flops / self.amp  # Estimated TFLOPs, not tracing backward
 
             o_dt = self._min_max(
-                ptime, btime, float(temp), float(power), float(util), float(clock), et_flops,
+                ptime,
+                btime,
+                float(temp),
+                float(power),
+                float(util),
+                float(clock),
+                et_flops,
             )
-            if self.rank == 0:
+            if self.rank == 0 and o_dt is not None and o_dt.aflops is not None:
                 now = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
                 min_flops, min_frank, _ = o_dt.aflops[0]()
                 max_flops, max_frank, _ = o_dt.aflops[-1]()
@@ -872,19 +965,22 @@ class StragglerDetector:
         if self.rank == 0 and self.toggle:
             off = not self._off
             self.toggle = False
-        state = torch.tensor(off, dtype=torch.bool, device=self.dev)
-        torch.distributed.broadcast(state, 0)  # Blocking
-        self._off = state.item()
-        if not self._off:
-            self.start = self.start_method
-            self.stop = self.stop_method
-            state = "ON"
-        else:
-            self.start = self.null_method
-            self.stop = self.null_method
-            state = "OFF"
-        if self.rank == 0 and off is not self._off:
-            logger.info(f"Toggling StragglerDetector State {state}")
+        st = torch.tensor(off, dtype=torch.bool, device=self.dev)
+        torch.distributed.broadcast(st, 0)  # Blocking
+        # save old switch
+        off = self._off
+        self._off = bool(st.item())
+        if off != self._off:
+            if not self._off:
+                self.start = self.start_method
+                self.stop = self.stop_method
+                state = "ON"
+            else:
+                self.start = self.null_method
+                self.stop = self.null_method
+                state = "OFF"
+            if self.rank == 0:
+                logger.info(f"Toggling StragglerDetector State {state}")
 
     def _handler(self) -> None:
         """Thread function for the controller.
@@ -901,7 +997,7 @@ class StragglerDetector:
             logger.info(
                 f"Controller ready to recv " f"commands on port {self.port}. Current state {state}"
             )
-            while True:
+            while True and self.sock is not None:
                 try:
                     conn, _ = self.sock.accept()
                     _ = conn.recv(1024)
@@ -969,7 +1065,8 @@ class StragglerDetector:
         # initialize output data object
         o_dt = _StragglerData()
 
-        prof_data = {}
+        prof_data: Dict[str, Union[int, float]] = {}
+        data_list: List[Dict[str, Union[int, float]]] = []
         prof_data["rank"] = self.rank
         prof_data["time"] = ptime
         prof_data["btime"] = btime
@@ -981,8 +1078,6 @@ class StragglerDetector:
 
         if self.rank == 0:
             data_list = [prof_data] * self.world
-        else:
-            data_list = None
 
         # this is blocking by default
         torch.distributed.gather_object(prof_data, object_gather_list=data_list, dst=0)
@@ -1010,46 +1105,47 @@ class StragglerDetector:
             min_rank = min_ctime["rank"]
             max_val = max_ctime["time"]
             max_rank = max_ctime["rank"]
-            o_dt.min_elapsed = _ValueWithRank(min_val, min_rank, "ms")
-            o_dt.max_elapsed = _ValueWithRank(max_val, max_rank, "ms")
+            o_dt.min_elapsed = _ValueWithRank(min_val, int(min_rank), "ms")
+            o_dt.max_elapsed = _ValueWithRank(max_val, int(max_rank), "ms")
 
             min_val = min_cbatch["btime"]
             min_rank = min_cbatch["rank"]
             max_val = max_cbatch["btime"]
             max_rank = max_cbatch["rank"]
-            o_dt.min_btime = _ValueWithRank(min_val, min_rank, "us")
-            o_dt.max_btime = _ValueWithRank(max_val, max_rank, "us")
+            o_dt.min_btime = _ValueWithRank(min_val, int(min_rank), "ms")
+            o_dt.max_btime = _ValueWithRank(max_val, int(max_rank), "ms")
 
             min_val = min_ctemp["temp"]
             min_rank = min_ctemp["rank"]
             max_val = max_ctemp["temp"]
             max_rank = max_ctemp["rank"]
-            o_dt.min_temp = _ValueWithRank(min_val, min_rank, "C")
-            o_dt.max_temp = _ValueWithRank(max_val, max_rank, "C")
+            o_dt.min_temp = _ValueWithRank(min_val, int(min_rank), "C")
+            o_dt.max_temp = _ValueWithRank(max_val, int(max_rank), "C")
 
             min_val = min_cpower["power"]
             min_rank = min_cpower["rank"]
             max_val = max_cpower["power"]
             max_rank = max_cpower["rank"]
-            o_dt.min_power = _ValueWithRank(min_val, min_rank, "W")
-            o_dt.max_power = _ValueWithRank(max_val, max_rank, "W")
+            o_dt.min_power = _ValueWithRank(min_val, int(min_rank), "W")
+            o_dt.max_power = _ValueWithRank(max_val, int(max_rank), "W")
 
             min_val = min_cutil["util"]
             min_rank = min_cutil["rank"]
             max_val = max_cutil["util"]
             max_rank = max_cutil["rank"]
-            o_dt.min_util = _ValueWithRank(min_val, min_rank, "%")
-            o_dt.max_util = _ValueWithRank(max_val, max_rank, "%")
+            o_dt.min_util = _ValueWithRank(min_val, int(min_rank), "%")
+            o_dt.max_util = _ValueWithRank(max_val, int(max_rank), "%")
 
             min_val = min_cclock["clock"]
             min_rank = min_cclock["rank"]
             max_val = max_cclock["clock"]
             max_rank = max_cclock["rank"]
-            o_dt.min_clock = _ValueWithRank(min_val, min_rank, "MHz")
-            o_dt.max_clock = _ValueWithRank(max_val, max_rank, "MHz")
+            o_dt.min_clock = _ValueWithRank(min_val, int(min_rank), "MHz")
+            o_dt.max_clock = _ValueWithRank(max_val, int(max_rank), "MHz")
 
             o_dt.aflops = [
-                _ValueWithRank(d.get("flops"), d.get("rank")) for _, d in enumerate(data_list)
+                _ValueWithRank(d.get("flops", 0.0), int(d.get("rank", -1)))
+                for _, d in enumerate(data_list)
             ]
             o_dt.aflops.sort(key=lambda val_with_rank: val_with_rank()[0])
         # wait for everyone here
@@ -1139,13 +1235,11 @@ class StragglerDetector:
             bool: True if the exception was handled
         """
         # Should not suppress errors even if turned off
-        ret = False
         if ex_type is not None:
-            err = traceback.format_exception(ex_tb)
+            err = traceback.format_exception(ex_type, ex_val, ex_tb)
             logger.warning(f"{str(ex_val)}\n{err}")
-            ret = True
         self.stop()
-        return ret
+        return False
 
 
 # Singleton, global visibility

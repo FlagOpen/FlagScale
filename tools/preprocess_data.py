@@ -16,8 +16,10 @@ import numpy as np
 import multiprocessing
 try:
     import nltk
+    from nltk.tokenize.punkt import PunktLanguageVars
     nltk_available = True
 except ImportError:
+    PunktLanguageVars = object  # Fallback to the built-in object class
     nltk_available = False
 
 from megatron.training.tokenizer import build_tokenizer
@@ -25,7 +27,7 @@ from megatron.core.datasets import indexed_dataset
 
 
 # https://stackoverflow.com/questions/33139531/preserve-empty-lines-with-nltks-punkt-tokenizer
-class CustomLanguageVars(nltk.tokenize.punkt.PunktLanguageVars):
+class CustomLanguageVars(PunktLanguageVars):
 
     _period_context_fmt = r"""
         \S*                          # some word material
@@ -201,7 +203,7 @@ def get_args():
                        choices=['BertWordPieceLowerCase','BertWordPieceCase',
                                 'GPT2BPETokenizer', 'SentencePieceTokenizer',
                                 'GPTSentencePieceTokenizer', 'Llama2Tokenizer',
-                                'NullTokenizer'],
+                                'Llama3Tokenizer', 'MistralTokenizer', 'NullTokenizer'],
                        help='What type of tokenizer to use.')
     group.add_argument('--tokenizer-model', type=str, default=None,
                        help='YTTM tokenizer model.')
