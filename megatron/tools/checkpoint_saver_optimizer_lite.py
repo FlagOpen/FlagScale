@@ -180,9 +180,9 @@ def save_checkpoint(queue, args):
 
     margs = parse_args()
 
-    margs.hetero_pipeline_stages = args.hetero_pipeline_stages
-    if args.hetero_pipeline_stages is not None:
-        margs.hetero_mode = "pp"
+    margs.hetero_pipeline_layer_split = args.hetero_pipeline_layer_split
+    if args.hetero_pipeline_layer_split is not None:
+        margs.enable_hetero = True 
 
     if hasattr(md, "checkpoint_args"):
         # These are arguments that we are either changing, or cause problems for validation if they are set
@@ -218,9 +218,8 @@ def save_checkpoint(queue, args):
             "lr_warmup_fraction",
             "start_weight_decay",
             "end_weight_decay",
-            "hetero_mode",
-            "hetero_pipeline_stages",
-            "hetero_pipeline_stage_splits",
+            "enable_hetero",
+            "hetero_pipeline_layer_split",
         ]
 
         for arg, value in vars(md.checkpoint_args).items():
@@ -447,9 +446,9 @@ def save_checkpoint(queue, args):
             # For later pipeline parallel ranks, make the new models
             if pp_rank > 0:
                 post_process = pp_rank == args.target_pipeline_parallel_size - 1
-            num_layers = get_num_layers_from_args(md.num_layers, pp_size, pp_rank, 
-                                                  margs.hetero_pipeline_stages,
-                                                  margs.hetero_pipeline_stage_splits)
+            num_layers = get_num_layers_from_args(
+                md.num_layers, pp_size, pp_rank, margs.hetero_pipeline_layer_split
+            )
             for layer in range(num_layers):
                 # -----------------
                 # main weight
@@ -680,7 +679,6 @@ def save_checkpoint(queue, args):
                         )
                 check_message(msg)
 
-
                 if md.output_layer:
                     msg = queue_get(f"output layer {state_key}")
                     # Deal with padding
@@ -707,7 +705,6 @@ def save_checkpoint(queue, args):
                         )
                     check_message(msg)
 
-
             for tp_rank in range(args.target_tensor_parallel_size):
                 save_optimizer_ckpt(
                     optimizer_ckpts, optimizer_ckpt_paths, state_key, tp_rank, pp_rank
@@ -717,7 +714,7 @@ def save_checkpoint(queue, args):
                         tp_rank, pp_rank
                     )
                 )
-    
+
     receive_message("param")
 
     receive_message("exp_avg")

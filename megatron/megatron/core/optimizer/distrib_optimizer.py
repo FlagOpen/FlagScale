@@ -1073,7 +1073,6 @@ class DistributedOptimizer(MixedPrecisionOptimizer):
                             (gbuf_local_numel,), dtype=torch.float32, device="cpu"
                         )
 
-                        #TODO: @aoyulong support the changing of the dp degree 
                         # Scatter tensor list.
                         if data_parallel_rank == 0:
                             world_tensors = state_dict[gbuf_idx][dtype][key]

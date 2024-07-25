@@ -22,7 +22,7 @@ def create_test_args():
     args.consumed_valid_samples = 1
     args.dataloader_type = "external"
     args.skip_train = False
-    args.hetero_mode = "pp"
+    args.enable_hetero = True 
 
     return args
 

@@ -278,13 +278,10 @@ class ModelParallelConfig:
     ###################
     # Heterogeneous Training 
     ###################
-    hetero_mode: str = None
-    """Specifies the mode of heterogeneous training. This could be only 'pp'."""
+    enable_hetero: str = None
+    """Enable the heterogeneous training."""
 
-    hetero_pipeline_stages: list = None
-    """Defines the pipeline stages for different device types. Each element represents the number of pipeline stages for one device type."""
-
-    hetero_pipeline_stage_splits: list = None
+    hetero_pipeline_layer_split: list = None
     """A list of lists, each sublist contains numbers of layers to be processed in the corresponding pipeline stages for one device type."""
 
 

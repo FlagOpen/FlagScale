@@ -10,8 +10,6 @@ from megatron.training import dist_signal_handler
 from megatron.core import Timers
 from megatron.training.tokenizer import build_tokenizer
 from .microbatches import build_num_microbatches_calculator
-from .microbatches_hetero import build_num_microbatches_calculator_hetero
-from .hetero_context import HeteroContext
 
 _GLOBAL_ARGS = None
 _GLOBAL_NUM_MICROBATCHES_CALCULATOR = None
@@ -22,7 +20,7 @@ _GLOBAL_ONE_LOGGER = None
 _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
 _GLOBAL_SIGNAL_HANDLER = None
-_GLOBAL_HETERO_CONTEXT = None
+_GLOBAL_PARALLEL_CONTEXT = None
 _GLOBAL_DEVICE_TYPE = None
 
 def get_args():
@@ -82,12 +80,6 @@ def get_timers():
 def get_signal_handler():
     _ensure_var_is_initialized(_GLOBAL_SIGNAL_HANDLER, 'signal handler')
     return _GLOBAL_SIGNAL_HANDLER
-
-
-def get_hetero_context():
-    """Return heterogenous context."""
-    _ensure_var_is_initialized(_GLOBAL_HETERO_CONTEXT, 'hetero context')
-    return _GLOBAL_HETERO_CONTEXT
 
 
 def _set_signal_handler():
@@ -153,12 +145,8 @@ def _build_num_microbatches_calculator(args):
     _ensure_var_is_not_initialized(_GLOBAL_NUM_MICROBATCHES_CALCULATOR,
                                    'num microbatches calculator')
 
-    if args.hetero_mode != "dp":
-        _GLOBAL_NUM_MICROBATCHES_CALCULATOR = build_num_microbatches_calculator(
-            args)
-    else:
-        _GLOBAL_NUM_MICROBATCHES_CALCULATOR = build_num_microbatches_calculator_hetero(
-            args)
+    _GLOBAL_NUM_MICROBATCHES_CALCULATOR = build_num_microbatches_calculator(
+        args)
 
 
 def _build_tokenizer(args):
@@ -204,22 +192,32 @@ def _set_wandb_writer(args):
             raise ValueError("Please specify the wandb experiment name!")
 
         import wandb
+        rank = torch.distributed.get_rank()
+
         if args.wandb_save_dir:
             save_dir = args.wandb_save_dir
         else:
             # Defaults to the save dir.
             save_dir = os.path.join(args.save, 'wandb')
-        rank = torch.distributed.get_rank()
-        name = f'{args.wandb_exp_name}-rank{rank}'
+        save_dir = os.path.join(save_dir, "rank-{}".format(rank))
+        os.makedirs(save_dir, exist_ok=True)
+
+        wandb_id = f"{args.wandb_exp_name}-rank-{rank}"
+        name = f'{args.wandb_exp_name}-rank-{rank}'
         group = args.wandb_exp_name
         wandb_kwargs = {
+            'id': wandb_id,
             'dir': save_dir,
             'name': name,
             'group': group,
             'project': args.wandb_project,
-            'mode': 'offline',
+            'mode': args.wandb_mode,
+            'resume': 'auto',
             'config': vars(args)}
-        os.makedirs(wandb_kwargs['dir'], exist_ok=True)
+
+        if args.wandb_mode == 'online' or args.wandb_api_key:
+            assert args.wandb_api_key, 'wandb_api_key is required for online mode'
+            wandb.login(key=args.wandb_api_key)
         wandb.init(**wandb_kwargs)
         _GLOBAL_WANDB_WRITER = wandb
 
@@ -267,13 +265,6 @@ def _set_timers(args):
     global _GLOBAL_TIMERS
     _ensure_var_is_not_initialized(_GLOBAL_TIMERS, 'timers')
     _GLOBAL_TIMERS = Timers(args.timing_log_level, args.timing_log_option)
-
-
-def set_hetero_context(args):
-    """Initialize heterogenous context."""
-    global _GLOBAL_HETERO_CONTEXT
-    _ensure_var_is_not_initialized(_GLOBAL_HETERO_CONTEXT, 'hetero context')
-    _GLOBAL_HETERO_CONTEXT = HeteroContext(args)
 
 
 def _ensure_var_is_initialized(var, name):

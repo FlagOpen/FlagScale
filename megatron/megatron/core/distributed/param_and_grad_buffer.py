@@ -80,16 +80,7 @@ class Bucket:
         self.numel_unpadded = numel_unpadded
         self.data_parallel_group = data_parallel_group
         self.data_parallel_world_size = data_parallel_world_size
-        # Replace the following impl for support hetero training
-        # self.data_parallel_rank = torch.distributed.get_rank(group=data_parallel_group)
-        if getattr(list(params)[0], 'allreduce', True):
-            self.data_parallel_rank = parallel_state.get_data_parallel_rank(with_context_parallel=True)
-            assert torch.distributed.get_process_group_ranks(self.data_parallel_group) == \
-                torch.distributed.get_process_group_ranks(parallel_state.get_data_parallel_group(with_context_parallel=True, with_ulysses_sequence_parallel=True))
-        else:
-            self.data_parallel_rank = parallel_state.get_data_modulo_expert_parallel_rank()
-            assert torch.distributed.get_process_group_ranks(self.data_parallel_group) == \
-                torch.distributed.get_process_group_ranks(parallel_state.get_data_modulo_expert_parallel_group())
+        self.data_parallel_rank = torch.distributed.get_rank(group=data_parallel_group)
         self.gradient_scaling_factor = gradient_scaling_factor
 
         self.reset()
