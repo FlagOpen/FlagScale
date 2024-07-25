@@ -7,7 +7,7 @@ experiment:
   exp_dir: /share/project/zhaoyingli/FlagScale/${experiment.exp_name}
   task:
     type: train
-    backend: megatron # vllm
+    backend: megatron
     entrypoint: flagscale/train/train_mistral.py 
   runner:
     backend: torchrun

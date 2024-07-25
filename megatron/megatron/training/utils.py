@@ -244,10 +244,6 @@ def get_batch_on_this_cp_rank(batch):
         cp_rank = mpu.get_context_parallel_rank()
         for key, val in batch.items():
             if val is not None:
-
-                # if key == "tokens":
-                #     print("cp tokens:", val.shape, val)
-
                 seq_dim = 1 if key != 'attention_mask' else 2
                 val = val.view(
                     *val.shape[0:seq_dim],
@@ -255,24 +251,10 @@ def get_batch_on_this_cp_rank(batch):
                     val.shape[seq_dim] // (2 * cp_size),
                     *val.shape[(seq_dim + 1) :],
                 )
-
-                # if key == "tokens":
-                #     print("cp seq_dim:", seq_dim)
-                #     print("cp tokens view:", val.shape, val)
-
                 index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], 
                                     device="cpu", pin_memory=True).cuda(non_blocking=True)
                 val = val.index_select(seq_dim, index)
-
-                # if key == "tokens":
-                #     print("cp index:", index)
-                #     print("cp tokens index_select:", val.shape, val)
-
                 val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
-
-                # if key == "tokens":
-                #     print("cp tokens view:", val)
-
                 batch[key] = val
 
     # usp_size = args.ulysses_sequence_parallel_size
@@ -289,10 +271,6 @@ def get_batch_on_this_cp_rank(batch):
         usp_rank = mpu.get_ulysses_sequence_parallel_rank()
         for key, val in batch.items():
             if val is not None:
-
-                # if key == "tokens":
-                #     print("usp tokens:", val.shape, val)
-
                 seq_dim = 1 if key != 'attention_mask' else 2
                 val = val.view(
                     *val.shape[0:seq_dim],
@@ -300,24 +278,10 @@ def get_batch_on_this_cp_rank(batch):
                     val.shape[seq_dim] // (2 * usp_size),
                     *val.shape[(seq_dim + 1) :],
                 )
-
-                # if key == "tokens":
-                #     print("usp seq_dim:", seq_dim)
-                #     print("usp tokens view:", val.shape, val)
-
                 index = torch.tensor([usp_rank, (2 * usp_size - usp_rank - 1)], 
                                     device="cpu", pin_memory=True).cuda(non_blocking=True)
                 val = val.index_select(seq_dim, index)
-
-                # if key == "tokens":
-                #     print("usp index:", index)
-                #     print("usp tokens index_select:", val.shape, val)
-
                 val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
-
-                # if key == "tokens":
-                #     print("usp tokens view:", val)
-
                 batch[key] = val
 
     return batch

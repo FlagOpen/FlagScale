@@ -8,7 +8,6 @@ from megatron.core import parallel_state
 
 def single_all_to_all(input, scatter_idx, gather_idx, group=None):
 
-    print("single_all_to_all input:", input.shape)
     seq_world_size = dist.get_world_size(group)
     # [seq_len/P, batch, nhead, dim] or [seq_len, batch, (nhead/P)*dim]
     inp_shape = list(input.shape)
@@ -31,20 +30,15 @@ def single_all_to_all(input, scatter_idx, gather_idx, group=None):
             inp_shape[scatter_idx + 1:]
         ).transpose(0, 1).contiguous()
 
-    print("single_all_to_all input_t:", input_t.shape)
     output = torch.empty_like(input_t)
     # input_t: 
     # [P, (seq_len/P)*batch, nhead/P, dim] or [P, seq_len/P, batch, (nhead/P)*dim]
     dist.all_to_all_single(output, input_t, group=group)
 
-    print("single_all_to_all output:", output.shape)
-
     # if scattering the seq-dim, transpose the heads back to the original dimension
     if scatter_idx < 2:
         # [P, seq_len/P, batch, (nhead/P)*dim] -transpose-> [batch, seq_len/P, P, (nhead/P)*dim] -> [seq_len/P, batch, P, (nhead/P)*dim]
         output = output.transpose(0, 2).transpose(0, 1).contiguous()
-
-    print("single_all_to_all output:", output.shape)
 
     # [P, (seq_len/P)*batch, nhead/P, dim] -reshape-> [seq_len, batch, nhead/P, dim] (gather_idx=0)
     # [seq_len/P, batch, P, (nhead/P)*dim] -reshape-> [seq_len/P, batch, nhead*dim] (gather_idx=2)
@@ -52,8 +46,6 @@ def single_all_to_all(input, scatter_idx, gather_idx, group=None):
         inp_shape[: gather_idx] + \
         [inp_shape[gather_idx] * seq_world_size,] + \
         inp_shape[gather_idx + 1:]).contiguous()
-
-    print("single_all_to_all output:", output.shape)
 
     return output
 
