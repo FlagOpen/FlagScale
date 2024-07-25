@@ -1,5 +1,4 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
-import copy 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from importlib.metadata import version
