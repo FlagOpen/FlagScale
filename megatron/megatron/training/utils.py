@@ -252,7 +252,7 @@ def get_batch_on_this_cp_rank(batch):
                     *val.shape[(seq_dim + 1) :],
                 )
                 index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], 
-                                    device="cpu", pin_memory=True).cuda(non_blocking=True)
+                                     device="cpu", pin_memory=True).cuda(non_blocking=True)
                 val = val.index_select(seq_dim, index)
                 val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
                 batch[key] = val
@@ -279,7 +279,7 @@ def get_batch_on_this_cp_rank(batch):
                     *val.shape[(seq_dim + 1) :],
                 )
                 index = torch.tensor([usp_rank, (2 * usp_size - usp_rank - 1)], 
-                                    device="cpu", pin_memory=True).cuda(non_blocking=True)
+                                     device="cpu", pin_memory=True).cuda(non_blocking=True)
                 val = val.index_select(seq_dim, index)
                 val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
                 batch[key] = val
