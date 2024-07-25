@@ -31,6 +31,7 @@ def test_result(test_reaults_path:str):
     
     print("\nresult checking")
     print("result: ", result_json)
+    print(result_json)
     print("gold_result: ", gold_result_json)
     print("The results are basically equal: ", np.allclose(gold_result_json["lm loss:"]["values"], result_json["lm loss:"]["values"]))
 
@@ -39,5 +40,4 @@ def test_result(test_reaults_path:str):
 
 if __name__ == '__main__':
     test_reaults_path = sys.argv[1]
-    compare_result_log(test_reaults_path)
     
