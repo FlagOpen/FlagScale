@@ -30,10 +30,6 @@ from megatron.training.utils import (
 )
 from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.yaml_arguments import core_transformer_config_from_yaml
-from megatron.core.models.gpt.gpt_layer_specs import (
-    get_gpt_layer_local_spec,
-    get_gpt_layer_with_transformer_engine_spec,
-)
 
 from flagscale.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
 from flagscale.train.extra_valid import extra_valid_dataset_provider
@@ -57,7 +53,6 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
     """
     args = get_args()
     use_te = args.transformer_impl == "transformer_engine"
-    use_usp = args.ulysses_sequence_parallel_size > 1
 
     print_rank_0('building GPT model ...')
     # Experimental loading arguments from yaml
@@ -70,9 +65,14 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
         if args.spec is not None:
             transformer_layer_spec = import_module(args.spec)
         else:
-            if use_te:
-                transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm, args.qk_layernorm, use_usp)
+            if use_te and args.ulysses_sequence_parallel_size > 1:
+                from flagscale.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
+                transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm, args.qk_layernorm)
+            elif use_te:
+                from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
+                transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm, args.qk_layernorm)
             else:
+                from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_local_spec
                 transformer_layer_spec = get_gpt_layer_local_spec(args.num_experts, args.moe_grouped_gemm, args.qk_layernorm)
 
         model = GPTModel(

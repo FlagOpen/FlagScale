@@ -240,7 +240,6 @@ def get_batch_on_this_cp_rank(batch):
     # that we can get balanced workload among GPUs in a context parallel group.
     args = get_args()
     cp_size = args.context_parallel_size
-    # print("start cp:")
     if cp_size > 1:
         cp_rank = mpu.get_context_parallel_rank()
         for key, val in batch.items():
@@ -275,6 +274,15 @@ def get_batch_on_this_cp_rank(batch):
                 #     print("cp tokens view:", val)
 
                 batch[key] = val
+
+    # usp_size = args.ulysses_sequence_parallel_size
+    # if usp_size > 1:
+    #     usp_rank = mpu.get_ulysses_sequence_parallel_rank()
+    #     for key, val in batch.items():
+    #         if val is not None:
+    #             seq_dim = 1 if key != 'attention_mask' else 2
+    #             val = val.chunk(usp_size, dim=seq_dim)[usp_rank]
+    #             batch[key] = val
 
     usp_size = args.ulysses_sequence_parallel_size
     if usp_size > 1:
