@@ -26,7 +26,7 @@ jobs:
       options: --gpus all --hostname flagscale_cicd
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       
       - name: Check GPU is Free
         run: tests/scripts/gpu_check.sh
@@ -52,7 +52,7 @@ jobs:
       options: --gpus all --hostname flagscale_cicd
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Check GPU is Free
         run: tests/scripts/gpu_check.sh
@@ -78,7 +78,7 @@ jobs:
       options: --gpus all --hostname flagscale_cicd
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Check GPU is Free
         run: tests/scripts/gpu_check.sh
