@@ -63,7 +63,7 @@ data:
   data_path: ${data_path:??}
   split: 1
   tokenizer:
-    tokenizer_type: AquilaTokenizer
+    tokenizer_type: AquilaTokenizerFS
     vocab_file: ./examples/aquila/tokenizer/vocab.json
     merge_file: ./examples/aquila/tokenizer/merges.txt
     special_tokens_file: ./examples/aquila/tokenizer/special_tokens.txt

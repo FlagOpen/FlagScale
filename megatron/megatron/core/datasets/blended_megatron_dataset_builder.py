@@ -11,8 +11,9 @@ import torch
 from megatron.core.datasets.blended_dataset import BlendedDataset
 from megatron.core.datasets.blended_megatron_dataset_config import BlendedMegatronDatasetConfig
 from megatron.core.datasets.megatron_dataset import LowLevelDataset, MegatronDataset
-from megatron.core.datasets.utils import Split, log_single_rank, normalize, is_built_on_zero_rank
+from megatron.core.datasets.utils import Split, normalize, is_built_on_zero_rank
 from megatron.core.parallel_state import get_virtual_pipeline_model_parallel_rank
+from megatron.core.utils import log_single_rank
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,21 @@ class BlendedMegatronDatasetBuilder(object):
         for dataset in datasets:
             if dataset is not None and len(dataset) > 0:
                 if isinstance(dataset, BlendedDataset):
+                    if dataset.built_anew_on_cache_miss or any(
+                        x.built_anew_on_cache_miss for x in dataset.datasets
+                    ):
+                        log_single_rank(
+                            logger,
+                            logging.INFO,
+                            f"Verifying NumPy indices for {type(dataset).__name__} {dataset.split.name} split",
+                        )
+                    else:
+                        log_single_rank(
+                            logger,
+                            logging.INFO,
+                            f"NumPy indices for {type(dataset).__name__} {dataset.split.name} split are fully cached, skipping verification",
+                        )
+                        continue
                     # Check blend size
                     assert dataset.size is None or dataset.size == dataset.dataset_index.shape[0]
                     # Check blend access of mid-level datasets
@@ -139,7 +155,9 @@ class BlendedMegatronDatasetBuilder(object):
 
         return datasets
 
-    def _build_blended_dataset_splits(self,) -> List[Optional[TopLevelDataset]]:
+    def _build_blended_dataset_splits(
+        self,
+    ) -> List[Optional[TopLevelDataset]]:
         """Build all dataset splits according to the provided blend(s)
 
         See the BlendedMegatronDatasetBuilder.build alias for more information.
@@ -170,7 +188,7 @@ class BlendedMegatronDatasetBuilder(object):
             split = self.config.split_matrix
 
             # Blend consists of a single prefix
-            if len(prefixes) == 1:
+            if len(prefixes) == 1 and weights is None:
                 return self._build_megatron_dataset_splits(prefixes[0], split, self.sizes)
 
             # Build the mid-level datasets
@@ -281,7 +299,10 @@ class BlendedMegatronDatasetBuilder(object):
             return blended_datasets
 
     def _build_megatron_datasets_parallel(
-        self, prefixes: List[str], split: List[float], sizes_per_dataset: List[List[int]],
+        self,
+        prefixes: List[str],
+        split: List[float],
+        sizes_per_dataset: List[List[int]],
     ) -> List[List[Optional[MegatronDataset]]]:
         """Build the megatron datasets for a list of prefixes in parallel
 
@@ -297,6 +318,7 @@ class BlendedMegatronDatasetBuilder(object):
             List[List[Optional[MegatronDataset]]]: For each split, have a list of
             MegatronDataset per prefix
         """
+
         # Helper function to wrap the threading logic
         def _threading_helper(
             megatron_datasets: List[List[Optional[MegatronDataset]]],
@@ -324,7 +346,6 @@ class BlendedMegatronDatasetBuilder(object):
                             megatron_datasets[j].append(megatron_datasets_split[j])
                     except Exception as err:
                         raise err
-            return megatron_datasets
 
         megatron_datasets = [[] for _ in range(len(Split))]
         num_dataset_builder_threads = self.config.num_dataset_builder_threads
@@ -341,7 +362,11 @@ class BlendedMegatronDatasetBuilder(object):
                     # i.e. meant for serial build, do not scale up.
                     num_workers *= min(2, max(1, torch.cuda.device_count()))
                 _threading_helper(
-                    megatron_datasets, num_workers, prefixes, split, sizes_per_dataset,
+                    megatron_datasets,
+                    num_workers,
+                    prefixes,
+                    split,
+                    sizes_per_dataset,
                 )
 
             torch.distributed.barrier()
@@ -357,7 +382,11 @@ class BlendedMegatronDatasetBuilder(object):
                 )
         else:
             _threading_helper(
-                megatron_datasets, num_dataset_builder_threads, prefixes, split, sizes_per_dataset,
+                megatron_datasets,
+                num_dataset_builder_threads,
+                prefixes,
+                split,
+                sizes_per_dataset,
             )
 
         return megatron_datasets
@@ -383,6 +412,13 @@ class BlendedMegatronDatasetBuilder(object):
         Returns:
             List[Optional[MidLevelDataset]]: The MidLevelDataset (or None) per split
         """
+        # short-cut if we are not building on this rank
+        if torch.distributed.is_initialized() and not self.is_built_on_rank():
+            for i in range(len(Split)):
+                if split[i] is not None and synchronize_ranks:
+                    torch.distributed.barrier()
+            return [None] * len(Split)
+
         # Build the low level dataset
         low_level_dataset = self.cls.build_low_level_dataset(dataset_path, self.config)
 

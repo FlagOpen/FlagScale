@@ -67,7 +67,7 @@ data:
   data_path: <xxxx>
   split: 1
   tokenizer:
-    tokenizer_type: QwenTokenizer
+    tokenizer_type: QwenTokenizerFS
     tokenizer_path: <xxxx>
     vocab_file: examples/aquila/tokenizer/vocab.json
     merge_file: examples/aquila/tokenizer/merges.txt
