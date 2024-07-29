@@ -918,11 +918,12 @@ def get_pipeline_model_parallel_group():
     return _PIPELINE_MODEL_PARALLEL_GROUP
 
 
-
 def get_data_parallel_group(with_context_parallel=False, with_ulysses_sequence_parallel=False):
     """Get the data parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
+        # TODO: add with_ulysses_sequence_parallel
+        assert with_ulysses_sequence_parallel is False
         return para_ctx.get_data_parallel_group(with_context_parallel)
 
     if with_context_parallel and with_ulysses_sequence_parallel:
@@ -949,6 +950,8 @@ def get_data_parallel_group_gloo(with_context_parallel=False, with_ulysses_seque
     """Get the data parallel group-gloo the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
+        # TODO: add with_ulysses_sequence_parallel
+        assert with_ulysses_sequence_parallel is False
         return para_ctx.get_data_parallel_group_gloo(with_context_parallel)
 
     if with_context_parallel and with_ulysses_sequence_parallel:
@@ -997,6 +1000,7 @@ def get_context_parallel_global_ranks(check_initialized=True):
 
 def get_ulysses_sequence_parallel_group(check_initialized=True):
     """Get the ulysses sequence parallel group the caller rank belongs to."""
+    # TODO: hetero case
     if check_initialized:
         assert _ULYSSES_SEQUENCE_PARALLEL_GROUP is not None, 'ulysses sequence parallel group is not initialized'
     return _ULYSSES_SEQUENCE_PARALLEL_GROUP
@@ -1004,6 +1008,7 @@ def get_ulysses_sequence_parallel_group(check_initialized=True):
 
 def get_ulysses_sequence_parallel_global_ranks(check_initialized=True):
     """Get all global ranks of the ulysses sequence parallel group that the caller rank belongs to."""
+    # TODO: hetero case
     if check_initialized:
         assert _ULYSSES_SEQUENCE_PARALLEL_GLOBAL_RANKS is not None, 'ulysses sequence parallel group is not initialized'
     return _ULYSSES_SEQUENCE_PARALLEL_GLOBAL_RANKS
@@ -1463,14 +1468,25 @@ def get_tensor_model_parallel_src_rank():
     return _TENSOR_MODEL_PARALLEL_GLOBAL_RANKS[0]
 
 
-def get_data_parallel_src_rank(with_context_parallel=False):
+def get_data_parallel_src_rank(with_context_parallel=False, with_ulysses_sequence_parallel=False):
     """Calculate the global rank corresponding to the first local rank
     in the data parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
+        assert with_ulysses_sequence_parallel is False
         return para_ctx.get_data_parallel_src_rank(with_context_parallel)
 
-    if with_context_parallel:
+    if with_context_parallel and with_ulysses_sequence_parallel:
+        assert (
+            _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP_CP is not None
+        ), "Data parallel group with ulysses sequence parallel and context parallel combined is not initialized"
+        return _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP_CP[0]
+    elif with_ulysses_sequence_parallel:
+        assert (
+            _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP is not None
+        ), "Data parallel group with ulysses sequence parallel combined is not initialized"
+        return _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP[0]
+    elif with_context_parallel:
         assert (
             _DATA_PARALLEL_GLOBAL_RANKS_WITH_CP is not None
         ), "Data parallel group with context parallel combined is not initialized"

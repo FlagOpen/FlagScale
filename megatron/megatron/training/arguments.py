@@ -698,6 +698,8 @@ def validate_args(args, defaults={}):
             "Number of experts should be a multiple of expert model parallel_size."
         assert not args.fp16, \
             "Expert parallelism is not supported with fp16 training."
+        assert args.ulysses_sequence_parallel_size == 1, \
+            "Expert parallelism is not supported with ulysses sequence parallelism."
 
     # Distributed checkpointing checks
     if args.use_dist_ckpt and args.use_legacy_models:
