@@ -27,6 +27,9 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        env:
+          https_proxy: ${{ secrets.HTTPS_PROXY }}
+          http_proxy: ${{ secrets.HTTP_PROXY }}
       
       - name: Check GPU is Free
         run: tests/scripts/gpu_check.sh
@@ -53,6 +56,9 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        env:
+          https_proxy: ${{ secrets.HTTPS_PROXY }}
+          http_proxy: ${{ secrets.HTTP_PROXY }}
 
       - name: Check GPU is Free
         run: tests/scripts/gpu_check.sh
@@ -79,7 +85,10 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
+        env:
+          https_proxy: ${{ secrets.HTTPS_PROXY }}
+          http_proxy: ${{ secrets.HTTP_PROXY }}
+          
       - name: Check GPU is Free
         run: tests/scripts/gpu_check.sh
 
