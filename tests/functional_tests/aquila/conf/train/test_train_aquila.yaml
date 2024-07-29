@@ -43,6 +43,7 @@ model:
   eval_iters: 10 
   micro_batch_size: 4 
   global_batch_size: 1024 
+  seed: 42
 
   optimizer:
     weight_decay: 0.1

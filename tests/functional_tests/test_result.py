@@ -35,7 +35,6 @@ def test_result(test_reaults_path:str):
     
     print("\nresult checking")
     print("result: ", result_json)
-    print(result_json)
     print("gold_result: ", gold_result_json)
     print("The results are basically equal: ", np.allclose(gold_result_json["lm loss:"]["values"], result_json["lm loss:"]["values"]))
 
