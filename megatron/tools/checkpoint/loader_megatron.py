@@ -17,7 +17,7 @@ def add_arguments(parser):
                        help='Path to the vocab file. If specified will use this to get vocab size and '
                        'trim padding from the embedding table.')
     group.add_argument('--megatron-path', type=str, default=None,
-                       help='Base directory of deepspeed repository')
+                       help='Base directory of Megatron repository')
     group.add_argument('--position-embedding-type',
                        type=str,
                        default='learned_absolute',
@@ -61,6 +61,7 @@ def _load_checkpoint(queue, args):
                 '--no-load-rng',
                 '--no-save-optim',
                 '--no-save-rng',
+                '--mock-data', # To pass the "blend data checks" in arguments.py
                 '--no-initialization',
                 '--load', args.load_dir,
                 '--position-embedding-type', args.position_embedding_type,
@@ -80,7 +81,7 @@ def _load_checkpoint(queue, args):
     # Validate margs.
     margs = validate_args(margs)
 
-    margs.use_mcore_models = False
+    margs.use_legacy_models = True
     margs.transformer_impl = args.loader_transformer_impl
 
     def check_for_arg(arg_name, default=None):

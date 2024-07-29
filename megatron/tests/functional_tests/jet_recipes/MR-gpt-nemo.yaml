@@ -7,15 +7,16 @@ launchers:
     ntasks_per_node: '{gpus}'
     no_container_mount_home: 'true'
 spec:
-  name: "{model}_{variant}_{scope}_{platforms}_{nodes}N{gpus}G_\
+  name: "{model}_{variant}_{scope}_\
          mbs{mbs}_gbs{gbs}_\
          {'mcore_' if use_mcore else ''}{'te_' if use_te else ''}\
          tp{tp_size}_pp{pp_size}{'_vp'+str(vp_size) if vp_size else ''}\
-         {'_'+args_meta if args_meta else ''}"
+         {'_'+args_meta if args_meta else ''}
+         _{platforms}_{nodes}N{gpus}G"
   model: gpt3-nemo
   variant: 126m
   build: mcore-nemo
-  scope: merge-request
+  scope: mr
   nodes: 1
   gpus: 8
   platforms: dgx_a100
@@ -38,7 +39,7 @@ spec:
         VP_SIZE={vp_size if vp_size is not None else '""'} \
         MBS={mbs} \
         GBS={gbs} \
-        JOB_NAME={key.split("/")[1]} \
+        JOB_NAME={name} \
         ADDITIONAL_PARAMS={extra_args if extra_args is not None else '""'}
 products:
   - {tp_size: [1], pp_size: [1], mbs: [4], gbs: [64], vp_size: [null]}
