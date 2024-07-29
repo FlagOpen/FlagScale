@@ -72,24 +72,24 @@ def build_tokenizer(args):
     elif args.tokenizer_type == 'NullTokenizer':
         assert args.vocab_size is not None
         tokenizer = _NullTokenizer(args.vocab_size)
-    elif args.tokenizer_type == 'AquilaTokenizer':
+    elif args.tokenizer_type == 'AquilaTokenizerFS':
         assert args.vocab_file is not None
         assert args.merge_file is not None
         assert args.special_tokens_file is not None
-        tokenizer = _AquilaTokenizer(args.vocab_file, args.merge_file,
+        tokenizer = _AquilaTokenizerFS(args.vocab_file, args.merge_file,
                                      args.special_tokens_file)
-    elif args.tokenizer_type == "HFTokenizer":
+    elif args.tokenizer_type == "HFTokenizerFS":
         assert args.tokenizer_path is not None
-        tokenizer = _HFTokenizer(args.tokenizer_path)
-    elif args.tokenizer_type == "Llama3Tokenizer":
+        tokenizer = _HFTokenizerFS(args.tokenizer_path)
+    elif args.tokenizer_type == "Llama3TokenizerFS":
         assert args.tokenizer_path is not None
-        tokenizer = _Llama3Tokenizer(args.tokenizer_path)
-    elif args.tokenizer_type == "QwenTokenizer":
+        tokenizer = _Llama3TokenizerFS(args.tokenizer_path)
+    elif args.tokenizer_type == "QwenTokenizerFS":
         assert args.tokenizer_path is not None
-        tokenizer = _QwenTokenizer(args.tokenizer_path)
-    elif args.tokenizer_type == "HFTokenizersTokenizer":
+        tokenizer = _QwenTokenizerFS(args.tokenizer_path)
+    elif args.tokenizer_type == "HFTokenizersTokenizerFS":
         assert args.tokenizer_path is not None
-        tokenizer = _HFTokenizersTokenizer(args.tokenizer_path)
+        tokenizer = _HFTokenizersTokenizerFS(args.tokenizer_path)
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(args.tokenizer_type))
@@ -878,7 +878,7 @@ class _NullTokenizer(MegatronTokenizer):
         return None
 
 
-class _AquilaTokenizer(MegatronTokenizer):
+class _AquilaTokenizerFS(MegatronTokenizer):
     """Aquila tokenizer."""
 
     def __init__(self, vocab_file, merge_file, special_tokens_file):
@@ -925,7 +925,7 @@ class _AquilaTokenizer(MegatronTokenizer):
         return self.pad_id
 
 
-class _HFTokenizer(MegatronTokenizer):
+class _HFTokenizerFS(MegatronTokenizer):
     """Huggingface tokenizer."""
 
     def __init__(self, tokenizer_path):
@@ -975,7 +975,7 @@ class _HFTokenizer(MegatronTokenizer):
         return self.pad_id
 
 
-class _Llama3Tokenizer(_HFTokenizer):
+class _Llama3TokenizerFS(_HFTokenizerFS):
 
     def __init__(self, tokenizer_path):
         super().__init__(tokenizer_path)
@@ -985,7 +985,7 @@ class _Llama3Tokenizer(_HFTokenizer):
         return self.tokenizer.vocab_size + len(self.tokenizer.get_added_vocab())
         
 
-class _QwenTokenizer(_HFTokenizer):
+class _QwenTokenizerFS(_HFTokenizerFS):
     """Adapted Qwen tokenizer."""
     
     def __init__(self, tokenizer_path):
@@ -995,7 +995,7 @@ class _QwenTokenizer(_HFTokenizer):
         self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]
 
 
-class _HFTokenizersTokenizer(MegatronTokenizer):
+class _HFTokenizersTokenizerFS(MegatronTokenizer):
     """Tokenizer from HuggingFace Tokenizers."""
 
     def __init__(self, json_file):

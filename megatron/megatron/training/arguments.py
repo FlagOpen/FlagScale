@@ -60,7 +60,6 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     if extra_args_provider is not None:
         parser = extra_args_provider(parser)
 
-
     # Parse.
     if ignore_unknown_args:
         args, _ = parser.parse_known_args()
@@ -89,7 +88,6 @@ def load_retro_config(retro_project_dir):
     '''Load Retro's config.json.'''
 
     # Retro config path.
-    from megatron.core.models.retro.utils import get_config_path as get_retro_config_path
     retro_config_path = get_retro_config_path(retro_project_dir)
     assert os.path.exists(retro_config_path), \
         "Retro project dir missing config.json."
@@ -110,7 +108,7 @@ def load_retro_args(args):
     that was preprocessed using the Retro preprocessing pipeline (see
     `tools/retro/preprocess_data.py`).
     """
-    from megatron.core.models.retro.utils import get_gpt_data_dir as get_retro_data_dir
+
     # Return if no project directory is specified.
     if args.retro_project_dir is None:
         return
@@ -269,10 +267,14 @@ def validate_args(args, defaults={}):
                     args.context_parallel_size,
                     args.tensor_model_parallel_size,
                     args.pipeline_model_parallel_size), flush=True)
+
+        if args.pipeline_model_parallel_split_rank is not None:
+            args.encoder_pipeline_model_parallel_size = args.pipeline_model_parallel_split_rank
+
         if args.pipeline_model_parallel_size > 1:
-            if args.pipeline_model_parallel_split_rank is not None:
-                assert args.pipeline_model_parallel_split_rank < \
-                        args.pipeline_model_parallel_size, 'split rank needs'\
+            if args.encoder_pipeline_model_parallel_size is not None:
+                assert args.encoder_pipeline_model_parallel_size < \
+                        args.pipeline_model_parallel_size, 'encoder pipeline size needs '\
                         ' to be less than pipeline model parallel size ({})'.format(
                                 args.pipeline_model_parallel_size)
 
@@ -839,7 +841,7 @@ def _add_transformer_engine_args(parser):
     group.add_argument('--no-fp8-wgrad', action='store_false',
                        help='Execute wgrad in higher precision even for FP8 runs',
                        dest='fp8_wgrad')
-    group.add_argument('--transformer-impl', default='local',
+    group.add_argument('--transformer-impl', default='transfer_engine',
                        choices=['local', 'transformer_engine'],
                        help='Which Transformer implementation to use.')
 
@@ -1129,22 +1131,6 @@ def _add_logging_args(parser):
                        help='If set, write model to wandb.')
     group.add_argument('--wandb-log-model-interval', type=int, default=1000,
                        help='The interval to save the model to wandb.')
-    group.add_argument('--enable-one-logger', action='store_true',
-                       help='If set, use one_logger to track E2E metrics'
-                       'Note that one_logger is an internal tool and not available externally. '
-                       'For installation, please try command: `pip install '
-                       '--index-url=https://sc-hw-artf.nvidia.com/api/pypi/hwinf-ml-pypi/simple'
-                       ' one_logger` or go to https://gitlab-master.nvidia.com/hwinf-dcm/onelogger '
-                       'for more details')
-    group.add_argument('--one-logger-project', type=str, default='e2e-tracking',
-                       help='The one-logger project name. Will ignore if '
-                       '--enable-one-logger is not set')
-    group.add_argument('--one-logger-entity', type=str, default='hwinf_dcm',
-                       help='The one-logger username or team name. Will ignore if '
-                       '--enable-one-logger is not set')
-    group.add_argument('--one-logger-run-name', type=str, default=None,
-                       help='The one-logger run name displayed. Will ignore if '
-                       '--enable-one-logger is not set')
     group.add_argument('--logging-level', type=int, default=None,
                        help='Set default logging level')
     return parser
@@ -1179,7 +1165,6 @@ def _add_regularization_args(parser):
                        'numerical stability')
     group.add_argument('--sgd-momentum', type=float, default=0.9,
                        help='Momentum factor for sgd')
-
     return parser
 
 
@@ -1478,7 +1463,7 @@ def _add_learning_rate_args(parser):
                        'and initial warmup, the learning rate at each '
                        'iteration would be different.')
     group.add_argument('--lr-decay-style', type=str, default='linear',
-                       choices=['constant', 'linear', 'cosine', 'inverse-square-root', 'warmup-stable-decay', 'stablelm2-scheduler'],
+                       choices=['constant', 'linear', 'cosine', 'inverse-square-root', 'WSD', 'stablelm2-scheduler'],
                        help='Learning rate decay function.')
     group.add_argument('--lr-wsd-decay-style', type=str, default='exponential',
                        choices=['exponential', 'linear', 'cosine'],
@@ -1866,10 +1851,11 @@ def _add_data_args(parser):
                                 'Llama3Tokenizer',
                                 'MistralTokenizer',
                                 'TikTokenizer',
-                                'AquilaTokenizer',
-                                'HFTokenizer', 
-                                'HFTokenizersTokenizer', 
-                                'QwenTokenizer',
+                                'AquilaTokenizerFS',
+                                'HFTokenizerFS', 
+                                'HFTokenizersTokenizerFS', 
+                                'Llama3TokenizerFS',
+                                'QwenTokenizerFS',
                                 'NullTokenizer'],
                        help='What type of tokenizer to use.')
     group.add_argument('--tokenizer-path', type=str, default=None,

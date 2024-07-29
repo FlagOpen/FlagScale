@@ -21,8 +21,4 @@ line_length = 100
 skip_string_normalization = true
 # recongized by future versions, disallows to reformat code with incompatible versions
 # Matches NeMO version so people working on both codebases don't need two different version of black installed
-<<<<<<< HEAD
-# required_version = "19.10b0"  
-=======
 required_version = "24"  
->>>>>>> 01ccfcea6b73218d4425c7e848a1ecd5393ac474

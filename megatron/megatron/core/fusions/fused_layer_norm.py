@@ -63,9 +63,9 @@ class FusedLayerNorm(torch.nn.Module):
         self.config = config
 
         self.zero_centered_gamma = self.config.layernorm_zero_centered_gamma
-        #assert (
-        #    self.config.normalization == "LayerNorm"
-        #), f'({self.config.normalization}) is not supported in FusedLayerNorm'
+        assert (
+            self.config.normalization == "LayerNorm"
+        ), f'({self.config.normalization}) is not supported in FusedLayerNorm'
 
         # List of hiddens sizes supported in the persistent layer norm kernel
         # If the hidden size is not supported, fall back to the non-persistent

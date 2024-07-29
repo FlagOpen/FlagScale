@@ -1,15 +1,19 @@
 import os, json, sys
 import numpy as np
 
+def find_directory(start_path, target_dir_name):
+    for root, dirs, files in os.walk(start_path):
+        if target_dir_name in dirs:
+            return os.path.join(root, target_dir_name)
+    return None
+
 def test_result(test_reaults_path:str):
 
-    host_path = test_reaults_path + "/logs/details/host_0_localhost"
-    id_name      = os.listdir(host_path)[0]
-    default_name = os.listdir(host_path + "/" + id_name)[0]
-    attempt_name = os.listdir(host_path + "/" + id_name + "/" + default_name)[0]
-    results_path = (os.listdir(host_path + "/" + id_name + "/" + default_name+ "/" + attempt_name))
+    start_path = test_reaults_path + "/logs/details/host_0_localhost"
+    attempt_path = find_directory(start_path, "attempt_0")
+    results_path = (os.listdir(attempt_path))
     results_path.sort()
-    result_path  = host_path + "/" + id_name + "/" + default_name+ "/" + attempt_name + "/" + results_path[-1] + "/stdout.log"
+    result_path  = attempt_path + "/" + results_path[-1] + "/stdout.log"
 
     with open(result_path, 'r') as file:
         lines = file.readlines()
@@ -31,6 +35,7 @@ def test_result(test_reaults_path:str):
     
     print("\nresult checking")
     print("result: ", result_json)
+    print(result_json)
     print("gold_result: ", gold_result_json)
     print("The results are basically equal: ", np.allclose(gold_result_json["lm loss:"]["values"], result_json["lm loss:"]["values"]))
 
@@ -39,5 +44,4 @@ def test_result(test_reaults_path:str):
 
 if __name__ == '__main__':
     test_reaults_path = sys.argv[1]
-    compare_result_log(test_reaults_path)
     

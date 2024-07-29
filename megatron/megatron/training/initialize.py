@@ -295,7 +295,6 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
                 )
 
 
-
 def _init_autoresume():
     """Set autoresume start time."""
     autoresume = get_adlr_autoresume()

@@ -2,10 +2,6 @@
 """Pretrain GPT."""
 
 import os
-import sys
-sys.path.append(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))
-
 import torch
 from functools import partial
 
@@ -22,6 +18,7 @@ from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
 from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
 import megatron.legacy.model
 from megatron.core.models.gpt import GPTModel
+from megatron.training import pretrain
 from megatron.core.utils import StragglerDetector
 from megatron.core.transformer.spec_utils import import_module
 from megatron.training.utils import (
@@ -90,23 +87,7 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
             share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
             position_embedding_type=args.position_embedding_type,
             rotary_percent=args.rotary_percent,
-<<<<<<< HEAD
-            rotary_base=args.rotary_base,
-        )
-    else:
-        assert (
-            args.context_parallel_size == 1
-        ), "Context parallelism is only supported with Megatron Core!"
-
-        model = megatron.legacy.model.GPTModel(
-            config,
-            num_tokentypes=0,
-            parallel_output=True,
-            pre_process=pre_process,
-            post_process=post_process,
-=======
             rotary_base=args.rotary_base
->>>>>>> 01ccfcea6b73218d4425c7e848a1ecd5393ac474
         )
 
     return model
@@ -261,16 +242,10 @@ if __name__ == "__main__":
     # Temporary for transition to core datasets
     train_valid_test_datasets_provider.is_distributed = True
 
-    # To avoid the circular import
-    from flagscale.train.extra_valid import extra_valid_dataset_provider
-    extra_valid_dataset_provider.is_distributed = True
-
-    # To avoid the circular import
-    from megatron.training import pretrain
-    pretrain(train_valid_test_datasets_provider,
-             model_provider,
-             ModelType.encoder_or_decoder,
-             forward_step,
-             args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
-             get_batch_fn=get_batch,
-             extra_valid_dataset_provider=extra_valid_dataset_provider)
+    pretrain(
+        train_valid_test_datasets_provider,
+        model_provider,
+        ModelType.encoder_or_decoder,
+        forward_step,
+        args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
+    )

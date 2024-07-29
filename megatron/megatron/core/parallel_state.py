@@ -90,12 +90,6 @@ _TENSOR_AND_CONTEXT_PARALLEL_GROUP = None
 # combined parallel group of TP, DP, and CP used for fp8
 _TENSOR_AND_DATA_PARALLEL_GROUP_WITH_CP = None
 
-_MODEL_PARALLEL_GLOBAL_RANKS = None
-_TENSOR_AND_DATA_PARALLEL_GLOBAL_RANKS_WITH_CP = None
-_TENSOR_AND_DATA_PARALLEL_GLOBAL_RANKS = None
-_TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS = None
-_DATA_MODULO_EXPERT_PARALLEL_GLOBAL_RANKS = None
-_EXPERT_MODEL_PARALLEL_GLOBAL_RANKS = None
 _LAST_RANK_WHEN_USING_PIPELINE = None
 
 # Memory buffers to avoid dynamic memory allocation
@@ -615,7 +609,6 @@ def initialize_model_parallel(
 
     # Build the model-parallel groups.
     global _MODEL_PARALLEL_GROUP
-    global _MODEL_PARALLEL_GLOBAL_RANKS
     assert _MODEL_PARALLEL_GROUP is None, 'model parallel group is already initialized'
     for ranks in rank_generator.get_ranks('tp-pp'):
         group = torch.distributed.new_group(
@@ -623,19 +616,6 @@ def initialize_model_parallel(
         )
         if rank in ranks:
             _MODEL_PARALLEL_GROUP = group
-            _MODEL_PARALLEL_GLOBAL_RANKS = ranks
-
-    # Build the model-parallel groups with expert parallel
-    global _MODEL_AND_EXPERT_PARALLEL_GROUP
-    assert (
-        _MODEL_AND_EXPERT_PARALLEL_GROUP is None
-    ), 'model and expert parallel group is already initialized'
-    for ranks in rank_generator.get_ranks('tp-ep-pp', independent_ep=True):
-        group = torch.distributed.new_group(
-            ranks, timeout=timeout, pg_options=get_nccl_options('mp_exp', nccl_comm_cfgs)
-        )
-        if rank in ranks:
-            _MODEL_AND_EXPERT_PARALLEL_GROUP = group
 
     # Build the model-parallel groups with expert parallel
     global _MODEL_AND_EXPERT_PARALLEL_GROUP
@@ -710,9 +690,7 @@ def initialize_model_parallel(
 
     # Build the tensor + data parallel groups.
     global _TENSOR_AND_DATA_PARALLEL_GROUP
-    global _TENSOR_AND_DATA_PARALLEL_GLOBAL_RANKS
     global _TENSOR_AND_DATA_PARALLEL_GROUP_WITH_CP
-    global _TENSOR_AND_DATA_PARALLEL_GLOBAL_RANKS_WITH_CP
     assert (
         _TENSOR_AND_DATA_PARALLEL_GROUP is None
     ), 'Tensor + data parallel group is already initialized'
@@ -722,14 +700,12 @@ def initialize_model_parallel(
         )
         if rank in ranks:
             _TENSOR_AND_DATA_PARALLEL_GROUP_WITH_CP = group
-            _TENSOR_AND_DATA_PARALLEL_GLOBAL_RANKS_WITH_CP = ranks
     for ranks in rank_generator.get_ranks('tp-dp'):
         group = torch.distributed.new_group(
             ranks, timeout=timeout, pg_options=get_nccl_options('tp_dp', nccl_comm_cfgs)
         )
         if rank in ranks:
             _TENSOR_AND_DATA_PARALLEL_GROUP = group
-            _TENSOR_AND_DATA_PARALLEL_GLOBAL_RANKS = ranks
 
     global _TENSOR_AND_CONTEXT_PARALLEL_GROUP
     assert (
@@ -745,12 +721,10 @@ def initialize_model_parallel(
     # Build the tensor + expert parallel groups
     global _EXPERT_MODEL_PARALLEL_GROUP
     assert _EXPERT_MODEL_PARALLEL_GROUP is None, 'Expert parallel group is already initialized'
-    global _EXPERT_MODEL_PARALLEL_GLOBAL_RANKS
     global _TENSOR_AND_EXPERT_PARALLEL_GROUP
     assert (
         _TENSOR_AND_EXPERT_PARALLEL_GROUP is None
     ), 'Tensor + expert parallel group is already initialized'
-    global _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS
     global _DATA_MODULO_EXPERT_PARALLEL_GROUP
     assert (
         _DATA_MODULO_EXPERT_PARALLEL_GROUP is None
@@ -761,7 +735,6 @@ def initialize_model_parallel(
     ), 'Data modulo expert group with context parallel is already initialized'
     global _DATA_MODULO_EXPERT_PARALLEL_GROUP_GLOO
     global _DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP_GLOO
-    global _DATA_MODULO_EXPERT_PARALLEL_GLOBAL_RANKS
 
     for ranks in rank_generator.get_ranks('tp-ep', independent_ep=True):
         group = torch.distributed.new_group(
@@ -769,7 +742,6 @@ def initialize_model_parallel(
         )
         if rank in ranks:
             _TENSOR_AND_EXPERT_PARALLEL_GROUP = group
-            _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS = ranks
 
     for ranks in rank_generator.get_ranks('ep', independent_ep=True):
         group = torch.distributed.new_group(
@@ -777,7 +749,6 @@ def initialize_model_parallel(
         )
         if rank in ranks:
             _EXPERT_MODEL_PARALLEL_GROUP = group
-            _EXPERT_MODEL_PARALLEL_GLOBAL_RANKS = ranks
 
     for ranks in rank_generator.get_ranks('dp', independent_ep=True):
         group = torch.distributed.new_group(
@@ -787,7 +758,6 @@ def initialize_model_parallel(
         if rank in ranks:
             _DATA_MODULO_EXPERT_PARALLEL_GROUP = group
             _DATA_MODULO_EXPERT_PARALLEL_GROUP_GLOO = group_gloo
-            _DATA_MODULO_EXPERT_PARALLEL_GLOBAL_RANKS = ranks
 
     for ranks in rank_generator.get_ranks('dp-cp', independent_ep=True):
         # Lazy initialization of the group
@@ -1002,6 +972,11 @@ def get_tensor_and_data_parallel_group(with_context_parallel=False):
 
 def get_tensor_and_context_parallel_group():
     """Get the tensor and context parallel group the caller rank belongs to."""
+    # TODO: hetero case
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_tensor_and_context_parallel_group()
+
     assert (
         _TENSOR_AND_CONTEXT_PARALLEL_GROUP is not None
     ), 'tensor and context parallel group is not initialized'
@@ -1309,6 +1284,7 @@ def is_pipeline_stage_after_split(rank=None, group=None):
 def is_inside_encoder(rank=None):
     """Return True if pipeline stage executes encoder block for a model
     with both encoder and decoder."""
+    # TODO: hetero case
     if get_pipeline_model_parallel_world_size() == 1:
         return True
     if rank is None:
@@ -1324,6 +1300,7 @@ def is_inside_encoder(rank=None):
 def is_inside_decoder(rank=None):
     """Return True if pipeline stage executes decoder block for a model
     with both encoder and decoder."""
+    # TODO: hetero case
     if get_pipeline_model_parallel_world_size() == 1:
         return True
     if rank is None:
@@ -1527,6 +1504,11 @@ def get_tensor_and_context_parallel_world_size():
 
 def get_tensor_and_context_parallel_rank():
     """Return my rank for the tensor and context parallel group."""
+    # TODO: hetero case
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_tensor_and_context_parallel_world_size()
+
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return torch.distributed.get_rank(group=get_tensor_and_context_parallel_group())
     else:
@@ -1695,18 +1677,6 @@ def destroy_model_parallel():
     _MPU_EXPERT_MODEL_PARALLEL_RANK = None
     global _LAST_RANK_WHEN_USING_PIPELINE
     _LAST_RANK_WHEN_USING_PIPELINE = None
-    global _TENSOR_MODEL_PARALLEL_GLOBAL_RANKS
-    _TENSOR_MODEL_PARALLEL_GLOBAL_RANKS = None
-    global _TENSOR_AND_DATA_PARALLEL_GLOBAL_RANKS_WITH_CP
-    _TENSOR_AND_DATA_PARALLEL_GLOBAL_RANKS_WITH_CP = None
-    global _TENSOR_AND_DATA_PARALLEL_GLOBAL_RANKS
-    _TENSOR_AND_DATA_PARALLEL_GLOBAL_RANKS = None
-    global _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS
-    _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS = None
-    global _DATA_MODULO_EXPERT_PARALLEL_GLOBAL_RANKS
-    _DATA_MODULO_EXPERT_PARALLEL_GLOBAL_RANKS = None
-    global _EXPERT_MODEL_PARALLEL_GLOBAL_RANKS
-    _EXPERT_MODEL_PARALLEL_GLOBAL_RANKS = None
     global _DATA_PARALLEL_GROUP_GLOO
     _DATA_PARALLEL_GROUP_GLOO = None
     global _DATA_PARALLEL_GROUP_WITH_CP_GLOO
