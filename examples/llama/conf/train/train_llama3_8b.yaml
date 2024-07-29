@@ -63,7 +63,7 @@ data:
   data_path: examples/llama/pile-openwebtext_text_document/pile-openwebtext_text_document
   split: 1 
   tokenizer:
-    tokenizer_type: Llama3Tokenizer
+    tokenizer_type: Llama3TokenizerFS
     tokenizer_path: meta-llama3/Meta-Llama-3-8B
     vocab_size: 128256
     make_vocab_size_divisible_by: 64

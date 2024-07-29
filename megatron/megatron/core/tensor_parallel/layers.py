@@ -157,6 +157,7 @@ class VocabParallelEmbedding(torch.nn.Module):
     Args:
         num_embeddings: vocabulary size.
         embedding_dim: size of hidden state.
+        reduce_scatter_embeddings: Decides whether to perform ReduceScatter after embedding lookup
 
     Keyword Args:
         config: A megatron.core.ModelParallelConfig object
@@ -168,12 +169,14 @@ class VocabParallelEmbedding(torch.nn.Module):
         embedding_dim: int,
         *,
         init_method: Callable,
+        reduce_scatter_embeddings: bool = False,
         config: ModelParallelConfig,
     ):
         super(VocabParallelEmbedding, self).__init__()
         # Keep the input dimensions.
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
+        self.reduce_scatter_embeddings = reduce_scatter_embeddings
         self.tensor_model_parallel_size = get_tensor_model_parallel_world_size()
         # Divide the weight matrix along the vocaburaly dimension.
         (
@@ -183,6 +186,7 @@ class VocabParallelEmbedding(torch.nn.Module):
             self.num_embeddings, get_tensor_model_parallel_rank(), self.tensor_model_parallel_size
         )
         self.num_embeddings_per_partition = self.vocab_end_index - self.vocab_start_index
+        self.deterministic_mode = config.deterministic_mode
 
         # Allocate weights and initialize.
         if config.use_cpu_initialization:
@@ -223,12 +227,22 @@ class VocabParallelEmbedding(torch.nn.Module):
         else:
             masked_input = input_
         # Get the embeddings.
-        output_parallel = self.weight[masked_input]
+        if self.deterministic_mode:
+            output_parallel = self.weight[masked_input]
+        else:
+            # F.embedding currently has a non-deterministic backward function
+            output_parallel = F.embedding(masked_input, self.weight)
         # Mask the output embedding.
         if self.tensor_model_parallel_size > 1:
             output_parallel[input_mask, :] = 0.0
-        # Reduce across all the model parallel GPUs.
-        output = reduce_from_tensor_model_parallel_region(output_parallel)
+
+        if self.reduce_scatter_embeddings:
+            # Data format change to avoid explicit tranposes : [b s h] --> [s b h].
+            output_parallel = output_parallel.transpose(0, 1).contiguous()
+            output = reduce_scatter_to_sequence_parallel_region(output_parallel)
+        else:
+            # Reduce across all the model parallel GPUs.
+            output = reduce_from_tensor_model_parallel_region(output_parallel)
         return output
 
     def sharded_state_dict(
@@ -237,7 +251,7 @@ class VocabParallelEmbedding(torch.nn.Module):
         sharded_offsets: Tuple[Tuple[int, int, int]] = (),
         metadata: Optional[dict] = None,
     ) -> ShardedStateDict:
-        """ Non-default implementation for embeddings due to `allow_shape_mismatch` param """
+        """Non-default implementation for embeddings due to `allow_shape_mismatch` param"""
         state_dict = self.state_dict(prefix='', keep_vars=True)
 
         weight_prefix = f'{prefix}weight'
@@ -258,12 +272,16 @@ class LinearWithFrozenWeight(torch.autograd.Function):
 
     Conceptually this op is the same as torch.nn.functional.linear with
     weight.requires_grad==False, but in experiments they are not identical
-    mathematically. """
+    mathematically."""
 
     @staticmethod
     @custom_fwd
     def forward(
-        ctx, input, weight, bias, allreduce_dgrad,
+        ctx,
+        input,
+        weight,
+        bias,
+        allreduce_dgrad,
     ):
         ctx.save_for_backward(weight)
         ctx.allreduce_dgrad = allreduce_dgrad
@@ -293,6 +311,7 @@ def linear_with_frozen_weight(
     async_grad_allreduce: bool,
     sequence_parallel: bool,
     grad_output_buffer: Optional[List[torch.Tensor]] = None,
+    wgrad_deferral_limit: Optional[int] = None,
     allreduce_dgrad: bool = None,
 ) -> torch.Tensor:
     """Linear layer execution with weight.requires_grad == False.
@@ -324,6 +343,9 @@ def linear_with_frozen_weight(
     grad_output_buffer (List[torch.Tensor] optional): dummy argument, used to
     keep the API unified between all forward implementation functions.
 
+    wgrad_deferral_limit (int optional): dummy argument, used to
+    keep the API unified between all forward implementation functions.
+
     allreduce_dgrad (bool): Do the allreduce of input gradients.
         Here, async and sync allreduce are the same. If sequence_parallel is
         True, this must be False, as no all reduce is performed.
@@ -333,6 +355,10 @@ def linear_with_frozen_weight(
     assert grad_output_buffer is None, (
         "grad_output_buffer kwarg is only supported with "
         "linear_with_grad_accumulation_and_async_allreduce"
+    )
+
+    assert wgrad_deferral_limit is None, (
+        "This arg is only supported with " "linear_with_grad_accumulation_and_async_allreduce"
     )
 
     if sequence_parallel:
@@ -370,12 +396,14 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         allreduce_dgrad,
         sequence_parallel,
         grad_output_buffer,
+        wgrad_deferral_limit,
     ):
         ctx.save_for_backward(input, weight)
         ctx.use_bias = bias is not None
         ctx.gradient_accumulation_fusion = gradient_accumulation_fusion
         ctx.allreduce_dgrad = allreduce_dgrad
         ctx.sequence_parallel = sequence_parallel
+        ctx.wgrad_deferral_limit = wgrad_deferral_limit
         ctx.grad_output_buffer = grad_output_buffer
 
         if sequence_parallel:
@@ -402,11 +430,13 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         input, weight = ctx.saved_tensors
         use_bias = ctx.use_bias
         grad_output_buffer = ctx.grad_output_buffer
+        wgrad_deferral_limit = ctx.wgrad_deferral_limit
 
         wgrad_compute = True
         if grad_output_buffer is not None:
-            grad_output_buffer.append(grad_output)
-            wgrad_compute = False
+            if wgrad_deferral_limit == 0 or len(grad_output_buffer) < wgrad_deferral_limit:
+                grad_output_buffer.append(grad_output)
+                wgrad_compute = False
 
         if wgrad_compute:
             if ctx.sequence_parallel:
@@ -500,12 +530,12 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
             handle.wait()
             # Need to return None's as gradient has to flow for all the input arguments
             # provided during forward
-            return sub_grad_input, grad_weight, grad_bias, None, None, None, None
+            return sub_grad_input, grad_weight, grad_bias, None, None, None, None, None
 
         if ctx.allreduce_dgrad:
             handle.wait()
 
-        return grad_input, grad_weight, grad_bias, None, None, None, None
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None
 
 
 def linear_with_grad_accumulation_and_async_allreduce(
@@ -516,6 +546,7 @@ def linear_with_grad_accumulation_and_async_allreduce(
     async_grad_allreduce: bool,
     sequence_parallel: bool,
     grad_output_buffer: Optional[List[torch.Tensor]] = None,
+    wgrad_deferral_limit: Optional[int] = 0,
     allreduce_dgrad: bool = None,
 ) -> torch.Tensor:
     """Linear layer execution with asynchronous communication and
@@ -575,6 +606,10 @@ def linear_with_grad_accumulation_and_async_allreduce(
             output gradients when embedding table wgrad compute is deferred.
             Defaults to None.
 
+        wgrad_deferral_limit (int optional): Limit on the number of
+            micro-batches for which embedding weight gradient GEMM should be
+            deferred. Defaults to 0.
+
         allreduce_dgrad (bool): Do the allreduce of input gradients.
             The allreduce is done asynchronously with the computation of weight
             gradients. If sequence_parallel is True, this must be
@@ -594,6 +629,7 @@ def linear_with_grad_accumulation_and_async_allreduce(
         allreduce_dgrad,
         sequence_parallel,
         grad_output_buffer,
+        wgrad_deferral_limit,
     ]
 
     if not linear_with_grad_accumulation_and_async_allreduce.warned:
@@ -679,7 +715,7 @@ class ColumnParallelLinear(torch.nn.Module):
         self.disable_grad_reduce = disable_grad_reduce
 
         self.explicit_expert_comm = self.is_expert and (
-            config.sequence_parallel or self.expert_parallel
+            config.tensor_model_parallel_size > 1 or self.expert_parallel
         )
         if self.explicit_expert_comm and config.moe_extended_tp:
             world_size = get_tensor_and_expert_parallel_world_size()
@@ -843,7 +879,11 @@ class ColumnParallelLinear(torch.nn.Module):
             input_parallel = copy_to_tensor_model_parallel_region(input_)
 
         if self.config.defer_embedding_wgrad_compute:
-            self.embedding_activation_buffer.append(input_parallel)
+            if (
+                self.config.wgrad_deferral_limit == 0
+                or len(self.embedding_activation_buffer) < self.config.wgrad_deferral_limit
+            ):
+                self.embedding_activation_buffer.append(input_parallel)
 
         # Matrix multiply.
         if not weight.requires_grad:
@@ -860,9 +900,14 @@ class ColumnParallelLinear(torch.nn.Module):
             gradient_accumulation_fusion=self.gradient_accumulation_fusion,
             async_grad_allreduce=allreduce_dgrad,
             sequence_parallel=False if self.explicit_expert_comm else self.sequence_parallel,
-            grad_output_buffer=self.grad_output_buffer
-            if self.config.defer_embedding_wgrad_compute
-            else None,
+            grad_output_buffer=(
+                self.grad_output_buffer if self.config.defer_embedding_wgrad_compute else None
+            ),
+            wgrad_deferral_limit=(
+                self.config.wgrad_deferral_limit
+                if self.config.defer_embedding_wgrad_compute
+                else None
+            ),
             allreduce_dgrad=allreduce_dgrad,
         )
         if self.gather_output:
@@ -875,17 +920,17 @@ class ColumnParallelLinear(torch.nn.Module):
         return output, output_bias
 
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
-        """ Sharding along axis 0, bias sharded """
+        """Sharding along axis 0, bias sharded"""
         state_dict = self.state_dict(prefix='', keep_vars=True)
         return make_sharded_tensors_for_checkpoint(
             state_dict, prefix, {'weight': 0, 'bias': 0}, sharded_offsets
         )
 
     def set_extra_state(self, state: Any):
-        """ Extra state is ignored """
+        """Extra state is ignored"""
 
     def get_extra_state(self) -> None:
-        """ Keep compatibility with TE state dict. """
+        """Keep compatibility with TE state dict."""
         return None
 
 
@@ -941,7 +986,7 @@ class RowParallelLinear(torch.nn.Module):
             raise RuntimeError("To enable `sequence_parallel`, `input_is_parallel` must be `True`")
 
         self.explicit_expert_comm = self.is_expert and (
-            config.sequence_parallel or self.expert_parallel
+            config.tensor_model_parallel_size > 1 or self.expert_parallel
         )
 
         # Divide the weight matrix along the last dimension.
@@ -1086,15 +1131,15 @@ class RowParallelLinear(torch.nn.Module):
         return output, output_bias
 
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
-        """ Sharding along axis 1, bias not sharded """
+        """Sharding along axis 1, bias not sharded"""
         state_dict = self.state_dict(prefix='', keep_vars=True)
         return make_sharded_tensors_for_checkpoint(
             state_dict, prefix, {'weight': 1}, sharded_offsets
         )
 
     def set_extra_state(self, state: Any):
-        """ Extra state is ignored """
+        """Extra state is ignored"""
 
     def get_extra_state(self) -> None:
-        """ Keep compatibility with TE state dict. """
+        """Keep compatibility with TE state dict."""
         return None
