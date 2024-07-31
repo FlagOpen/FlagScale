@@ -22,7 +22,6 @@ spec:
   args_meta: null
   micro_batch_size: 4 # MBS
   batch_size: 128 # GBS, JET schema requires 'batch_size'
-  precision: bf16
   time_limit: 1200
   ckpt_format: torch
   ckpt_resume: 0
@@ -45,7 +44,7 @@ spec:
         VP_SIZE={vp_size if vp_size is not None else '""'} \
         MBS={micro_batch_size} \
         GBS={batch_size} \
-        JOB_NAME={key.split("/")[1]} \
+        JOB_NAME={name} \
         ADDITIONAL_PARAMS={extra_args if extra_args is not None else '""'}
 products:
   - {tp_size: [1], pp_size: [4], vp_size: [2]}

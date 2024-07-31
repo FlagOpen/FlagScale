@@ -5,6 +5,7 @@
 import argparse
 import dataclasses
 import json
+import logging
 import os
 import torch
 import types
@@ -13,6 +14,12 @@ from .global_vars import set_device_type
 
 
 import torch.nn.functional as F
+
+from megatron.core.dist_checkpointing.validation import StrictHandling
+from megatron.core.models.retro.utils import (
+    get_config_path as get_retro_config_path,
+    get_gpt_data_dir as get_retro_data_dir,
+)
 from megatron.core.transformer import TransformerConfig
 from megatron.training.activations import squared_relu
 
@@ -43,6 +50,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_transformer_engine_args(parser)
     parser = _add_retro_args(parser)
     parser = _add_experimental_args(parser)
+    parser = _add_one_logger_args(parser)
     parser = _add_serving_args(parser)
     parser = _add_customized_device_args(parser)
     parser = _add_hetero_args(parser)
@@ -51,7 +59,6 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     # Custom arguments.
     if extra_args_provider is not None:
         parser = extra_args_provider(parser)
-
 
     # Parse.
     if ignore_unknown_args:
@@ -65,7 +72,8 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     # Experimental yaml
     if args.yaml_cfg is not None:
         from .yaml_arguments import load_yaml
-        assert args.yaml_cfg and args.use_mcore_models, "To use yaml, mcore must be enabled"
+        assert args.yaml_cfg and not args.use_legacy_models, \
+            "Yaml config is not supported with legacy models."
         args = load_yaml(args.yaml_cfg)
 
 
@@ -80,7 +88,6 @@ def load_retro_config(retro_project_dir):
     '''Load Retro's config.json.'''
 
     # Retro config path.
-    from megatron.core.models.retro.utils import get_config_path as get_retro_config_path
     retro_config_path = get_retro_config_path(retro_project_dir)
     assert os.path.exists(retro_config_path), \
         "Retro project dir missing config.json."
@@ -101,7 +108,7 @@ def load_retro_args(args):
     that was preprocessed using the Retro preprocessing pipeline (see
     `tools/retro/preprocess_data.py`).
     """
-    from megatron.core.models.retro.utils import get_gpt_data_dir as get_retro_data_dir
+
     # Return if no project directory is specified.
     if args.retro_project_dir is None:
         return
@@ -154,85 +161,75 @@ def load_retro_args(args):
 
 def validate_args(args, defaults={}):
 
+    # Temporary
+    assert args.non_persistent_ckpt_type in ['global', None], \
+        'Currently only global checkpoints are supported'
+
     # Load saved args from Retro (if applicable).
     load_retro_args(args)
 
-    args.num_process_meshes = None
-    if args.process_meshes != None:
-        assert args.hetero_mode == "pp", \
-            'hetero_mode should be set to pp with process_meshes not None!'
+    if args.enable_hetero:
+        assert (
+            args.hetero_process_meshes is not None
+        ), "hetero_process_meshes should be specified when enable_hetero is True"
+        assert (
+            len(args.hetero_process_meshes) % 4 == 0
+        ), f"length of hetero_process_meshes {args.hetero_process_meshes} should be divisible by 4, the format should be tp0, cp0, dp0, pp0, tp1, cp1, dp1, pp1, ..."
+        hetero_process_meshes_tp = args.hetero_process_meshes[::4]
+        hetero_process_meshes_cp = args.hetero_process_meshes[1::4]
+        hetero_process_meshes_dp = args.hetero_process_meshes[2::4]
+        hetero_process_meshes_pp = args.hetero_process_meshes[3::4]
 
-        process_meshes_tp = args.process_meshes[::3]
-        process_meshes_dp = args.process_meshes[1::3]
-        process_meshes_pp = args.process_meshes[2::3]
+        # Data parallel size
+        assert all(x == hetero_process_meshes_dp[0] for x in hetero_process_meshes_dp), \
+            f"Elements of hetero_process_meshes_dp {hetero_process_meshes_dp} should be the same!"
+        args.data_parallel_size = hetero_process_meshes_dp[0]
 
-        assert args.untie_embeddings_and_output_weights, \
-            'not support shared embeddings and output weights'
-
-        args.num_process_meshes = len(process_meshes_tp)
-        assert args.num_process_meshes == 2, \
-            'only support 2 process_meshes for now!'
-
-        # Data parallel size.
-        assert all(x == process_meshes_dp[0] for x in process_meshes_dp), \
-            'all parallel group dp should be the same!'
-        args.data_parallel_size = process_meshes_dp[0]
-
-        # Pipeline model paralle size.
-        assert args.pipeline_model_parallel_size == sum(process_meshes_pp), \
-            'pipeline_model_parallel_size should match sum of process_meshes_pp!'
+        # Pipeline model parallel size
+        assert args.pipeline_model_parallel_size == sum(hetero_process_meshes_pp), \
+            f"pipeline_model_parallel_size {args.pipeline_model_parallel_size} should match sum of hetero_process_meshes_pp {hetero_process_meshes_pp}!"
         assert args.standalone_embedding_stage == False, \
             'standalone not supported with process_meshes set!'
-        args.transformer_pipeline_model_parallel_size = args.pipeline_model_parallel_size
         assert args.pipeline_model_parallel_split_rank == None, \
             'pipeline_model_parallel_split_rank not supported with process_meshes set!'
-
-        # Context parallel size.
-        assert args.context_parallel_size == 1, \
-            'cp!=1 not support now!'
+        args.transformer_pipeline_model_parallel_size = args.pipeline_model_parallel_size
 
         # Virtual parallel size.
         assert args.num_layers_per_virtual_pipeline_stage == None, \
             'virtual pipeline not support now!'
+        
+        # Sequence parallel
+        if 1 in hetero_process_meshes_tp:
+            args.sequence_parallel = False
 
-        # Expert parallel size.
-        assert args.expert_model_parallel_size == 1, \
-            'ep!=1 not support now!'
+        # Model layer splits
+        if args.hetero_pipeline_layer_split is None:
+            num_layers_per_pipeline_stage = (
+                args.num_layers // args.transformer_pipeline_model_parallel_size
+            )
+            args.hetero_pipeline_layer_split = [
+                num_layers_per_pipeline_stage
+            ] * args.pipeline_model_parallel_size
+        else:
+            assert (
+                sum(args.hetero_pipeline_layer_split) == args.num_layers
+            ), f"sum of hetero_pipeline_layer_split {args.hetero_pipeline_layer_split} should be equal to num_layers {args.num_layers}"
+            assert args.pipeline_model_parallel_size == len(
+                args.hetero_pipeline_layer_split
+            ), f"pipeline_model_parallel_size {args.pipeline_model_parallel_size} should be equal to the length of hetero_pipeline_layer_split {args.hetero_pipeline_layer_split}"
 
-        # Tensor model parallel size
-        num_device_of_each_pipeline_stage = []
-        tp_size_of_each_pipeline_stage = []
-        for i in range(len(process_meshes_pp)):
-            for j in range(process_meshes_pp[i]):
-                tp_size_of_each_pipeline_stage.append(process_meshes_tp[i])
-                num_device_of_each_pipeline_stage.append(process_meshes_tp[i] * args.data_parallel_size)
+        hetero_process_meshes = []
+        for i in range(0, len(args.hetero_process_meshes), 4):
+            hetero_process_meshes.append(args.hetero_process_meshes[i : i + 4])
+        args.hetero_process_meshes = hetero_process_meshes
 
-        # len = p + 1,  [0, sum(p0), sum(p0-p1), ..., sum(p0-pn-1)]
-        cumu_num_device_of_all_pipeline_stage = [sum(num_device_of_each_pipeline_stage[:i]) for i in range(args.pipeline_model_parallel_size + 1)]
-
-        for i in range(args.pipeline_model_parallel_size):
-            if cumu_num_device_of_all_pipeline_stage[i] <= args.rank < cumu_num_device_of_all_pipeline_stage[i+1]:
-                args.tensor_model_parallel_size = tp_size_of_each_pipeline_stage[i]
-
-        assert args.world_size == sum(tp * dp * pp for tp, dp, pp in 
-                                      zip(process_meshes_tp, process_meshes_dp, process_meshes_pp)), \
-            'total world size should match sum of all tp x dp x pp!'
-
-        args.process_meshes_tp = process_meshes_tp
-        args.process_meshes_dp = process_meshes_dp
-        args.process_meshes_pp = process_meshes_pp
-        args.cumu_num_device_of_all_pipeline_stage = cumu_num_device_of_all_pipeline_stage
-        args.tp_size_of_each_pipeline_stage = tp_size_of_each_pipeline_stage
-
-        if args.rank == 0:
-            print('using world size: {}, data-parallel size: {}, '
-                'context-parallel size: {} '
-                'tensor-model-parallel size: {}, '
-                'pipeline-model-parallel size: {} '.format(
-                    args.world_size, args.data_parallel_size,
-                    args.context_parallel_size,
-                    args.tensor_model_parallel_size,
-                    args.pipeline_model_parallel_size), flush=True)            
+        # Device types
+        assert len(hetero_process_meshes) == len(
+            args.hetero_device_types
+        ), f"length of hetero_process_meshes {len(hetero_process_meshes)} should match length of hetero_device_types {len(args.hetero_device_types)}" 
+        assert (
+            args.hetero_current_device_type in args.hetero_device_types
+        ), f"hetero_current_device_type {args.hetero_current_device_type} should be in hetero_device_types {args.hetero_device_types}"
 
     else:
         # Tensor model parallel size.
@@ -270,10 +267,14 @@ def validate_args(args, defaults={}):
                     args.context_parallel_size,
                     args.tensor_model_parallel_size,
                     args.pipeline_model_parallel_size), flush=True)
+
+        if args.pipeline_model_parallel_split_rank is not None:
+            args.encoder_pipeline_model_parallel_size = args.pipeline_model_parallel_split_rank
+
         if args.pipeline_model_parallel_size > 1:
-            if args.pipeline_model_parallel_split_rank is not None:
-                assert args.pipeline_model_parallel_split_rank < \
-                        args.pipeline_model_parallel_size, 'split rank needs'\
+            if args.encoder_pipeline_model_parallel_size is not None:
+                assert args.encoder_pipeline_model_parallel_size < \
+                        args.pipeline_model_parallel_size, 'encoder pipeline size needs '\
                         ' to be less than pipeline model parallel size ({})'.format(
                                 args.pipeline_model_parallel_size)
 
@@ -316,82 +317,12 @@ def validate_args(args, defaults={}):
         else:
             setattr(args, key, defaults[key])
 
-    # Heterogeneous Training
-    assert args.hetero_mode != "dp", \
-       "Hetero mode is not supported in this version. Please use the v0.3."
-    # if args.hetero_mode:
-    #     assert args.global_batch_size is not None, "global_batch_size should be specified when hetero_mode is not None"
-    #     assert args.hetero_current_device_type, "hetero_current_device_type should be specified when hetero_mode is not None"
-    #     assert args.hetero_device_types, "hetero_device_types should be specified when hetero_mode is not None"
-    #     assert len(args.hetero_device_types) == len(set(args.hetero_device_types)), \
-    #         "hetero_device_types should not contain duplicate device types"
-    # else:
-    #     args.hetero_data_parallel_splits = None
-    #     args.hetero_pipeline_stage_splits = None 
-
-    if args.hetero_mode == "dp":
-        assert args.hetero_micro_batch_sizes, \
-            "hetero_micro_batch_sizes should be specified when hetero_mode is dp"
-        assert args.hetero_pipeline_stages is None, \
-            "hetero_pipeline_stages should be None when hetero_mode is dp"
-        assert args.micro_batch_size is None, \
-            "micro_batch_size should be None when hetero_mode is dp"
-        args.hetero_pipeline_stage_splits = None 
-
-        hetero_micro_batch_sizes = args.hetero_micro_batch_sizes[1::2] 
-        hetero_data_parallel_splits = args.hetero_micro_batch_sizes[::2] 
-        args.hetero_micro_batch_sizes = hetero_micro_batch_sizes
-        args.hetero_data_parallel_splits = hetero_data_parallel_splits
-
-        # Different device types have different micro batch sizes
-        args.micro_batch_size = hetero_micro_batch_sizes[args.hetero_device_types.index(args.hetero_current_device_type)]
-
-        assert len(args.hetero_micro_batch_sizes) == len(args.hetero_device_types), \
-            f"length of hetero_micro_batch_sizes {args.hetero_micro_batch_sizes} should be equal to the length of hetero_device_types {args.hetero_device_types}"
-        data_parallel_size = sum(args.hetero_data_parallel_splits)
-        assert data_parallel_size == args.data_parallel_size, \
-            f"sum of hetero_data_parallel_splits {args.hetero_data_parallel_splits} should be equal to data_parallel_size {args.data_parallel_size}"
-        micro_batch_for_all_data_parallel = sum(map(lambda x, y: x * y, 
-                                                      args.hetero_micro_batch_sizes,
-                                                      args.hetero_data_parallel_splits))
-        assert args.global_batch_size % micro_batch_for_all_data_parallel == 0, \
-            f"global batch size {args.global_batch_size} is not divisible by micro_batch_for_all_data_parallel {micro_batch_for_all_data_parallel}, "\
-            f"which is the sum of hetero_micro_batch_sizes {args.hetero_micro_batch_sizes} and hetero_data_parallel_splits {args.hetero_data_parallel_splits}"
-
-    if args.hetero_mode == "pp":
-        assert args.hetero_pipeline_stages, \
-            "hetero_pipeline_stages should be specified when hetero_mode is pp"
-        assert args.hetero_micro_batch_sizes is None, \
-            "hetero_micro_batch_sizes should be None when hetero_mode is pp"
-        args.hetero_data_parallel_splits = None 
-
-        stages = []
-        hetero_pipeline_stages = []
-        hetero_pipeline_stage_splits = []
-        counter = 0
-        num_layers = 0
-        for item in args.hetero_pipeline_stages:
-            if counter == 0:
-                hetero_pipeline_stage_splits.append(item)
-                counter = item 
-            else:
-                stages.append(item)
-                num_layers += item
-                counter -= 1
-                if counter == 0:
-                    hetero_pipeline_stages.append(stages)
-                    stages = []
-        args.hetero_pipeline_stages = hetero_pipeline_stages
-        args.hetero_pipeline_stage_splits = hetero_pipeline_stage_splits
-
-        for split, stages in zip(args.hetero_pipeline_stage_splits, args.hetero_pipeline_stages):
-            assert split == len(stages), \
-                f"hetero_pipeline_stage_split {split} should be equal to the length of hetero_pipeline_stage {stages}"
-        assert num_layers == args.num_layers, f"sum of hetero_pipeline_stages {sum} should be equal to num_layers {args.num_layers}" 
-        assert args.pipeline_model_parallel_size == sum(args.hetero_pipeline_stage_splits), \
-            f"pipeline_model_parallel_size {args.pipeline_model_parallel_size} should be equal to the sum of hetero_pipeline_stage_splits {args.hetero_pipeline_stage_splits}"
-        # assert len(args.hetero_pipeline_stage_splits) == len(args.hetero_device_types), \
-        #     f"length of hetero_pipeline_stage_splits {args.hetero_pipeline_stage_splits} should be equal to the length of hetero_device_types {args.hetero_device_types}"
+    if args.data_path is not None and args.split is None:
+        legacy_default_split_value = '969, 30, 1'
+        if args.rank == 0:
+            print('WARNING: Please specify --split when using --data-path. Using legacy default value '
+                  f'of "{legacy_default_split_value}"')
+        args.split = legacy_default_split_value
 
     # Batch size.
     assert args.micro_batch_size is not None
@@ -403,9 +334,15 @@ def validate_args(args, defaults={}):
                 args.global_batch_size), flush=True)
     assert args.global_batch_size > 0
     if args.num_layers_per_virtual_pipeline_stage is not None:
-        assert args.pipeline_model_parallel_size > 2, \
-            'pipeline-model-parallel size should be greater than 2 with ' \
-            'interleaved schedule'
+        if args.overlap_p2p_comm:
+            assert args.pipeline_model_parallel_size > 1, \
+                'when interleaved schedule is used, pipeline-model-parallel size '\
+                'should be greater than 1'
+        else:
+            assert args.pipeline_model_parallel_size > 2, \
+                'when interleaved schedule is used and p2p communication overlap is disabled, '\
+                'pipeline-model-parallel size should be greater than 2 to avoid having multiple '\
+                'p2p sends and recvs between same 2 ranks per communication batch'
         assert args.num_layers % args.transformer_pipeline_model_parallel_size == 0, \
             'number of layers should be divisible by the pipeline parallel size'
         num_layers_per_pipeline_stage = args.num_layers // args.transformer_pipeline_model_parallel_size
@@ -488,7 +425,7 @@ def validate_args(args, defaults={}):
             '--overlap-param-gather only supported with distributed optimizer'
         assert args.overlap_grad_reduce, \
             '--overlap-grad-reduce should be turned on when using --overlap-param-gather'
-        assert args.use_mcore_models, \
+        assert not args.use_legacy_models, \
             '--overlap-param-gather only supported with MCore models'
 
     # Parameters dtype.
@@ -607,6 +544,11 @@ def validate_args(args, defaults={}):
         assert args.hidden_size % args.num_attention_heads == 0
         args.kv_channels = args.hidden_size // args.num_attention_heads
 
+    if args.seq_length is not None and args.context_parallel_size > 1:
+        assert args.seq_length % (args.context_parallel_size * 2) == 0, \
+            'seq-length should be a multiple of 2 * context-parallel-size ' \
+            'if context-parallel-size > 1.'
+
     if args.seq_length is not None:
         assert args.encoder_seq_length is None
         args.encoder_seq_length = args.seq_length
@@ -677,14 +619,8 @@ def validate_args(args, defaults={}):
     # disable sequence parallelism when tp=1
     # to avoid change in numerics when
     # sequence_parallelism is enabled.
-    if args.num_process_meshes != None:
-        if 1 in args.tp_size_of_each_pipeline_stage:
-            if args.rank == 0:
-                print("Set sequence_parallel false for some parallel group's tp size match 1")
-            args.sequence_parallel = False
-    else:
-        if args.tensor_model_parallel_size == 1:
-            args.sequence_parallel = False
+    if args.tensor_model_parallel_size == 1:
+        args.sequence_parallel = False
 
     # disable async_tensor_model_parallel_allreduce when
     # model parallel memory optimization is enabled
@@ -721,8 +657,8 @@ def validate_args(args, defaults={}):
             "retro currently does not support pipeline parallelism."
 
     if args.decoupled_lr is not None or args.decoupled_min_lr is not None:
-        assert args.use_mcore_models, \
-            '--decoupled-lr and --decoupled-min-lr only supported by Megatron Core, please add --use-mcore-models.'
+        assert not args.use_legacy_models, \
+            '--decoupled-lr and --decoupled-min-lr is not supported in legacy models.'
         assert not args.use_dist_ckpt, "Distributed checkpointing does not work with decoupled LR yet."
 
     # Legacy RoPE arguments
@@ -730,8 +666,8 @@ def validate_args(args, defaults={}):
         args.position_embedding_type = 'rope'
     if args.rotary_interleaved and args.apply_rope_fusion:
         raise RuntimeError('--rotary-interleaved does not work with rope_fusion.')
-    if args.rotary_interleaved and not args.use_mcore_models:
-        raise RuntimeError('--rotary-interleaved only support Megatron Core, please add --use-mcore-models.')
+    if args.rotary_interleaved and args.use_legacy_models:
+        raise RuntimeError('--rotary-interleaved is not supported in legacy models.')
 
     # Would just need to add 'NoPE' as a position_embedding_type to support this, but for now
     # don't allow it to keep things simple
@@ -739,11 +675,14 @@ def validate_args(args, defaults={}):
         raise RuntimeError('--no-position-embedding is deprecated, use --position-embedding-type')
 
     # MoE Spec check
+    if args.num_experts == 0:
+        args.num_experts = None
     if args.num_experts is not None:
         assert args.spec is None, "Model Spec must be None when using MoEs"
-        if args.tensor_model_parallel_size > 1:
-            assert args.sequence_parallel, \
-                "When using MoE and tensor parallelism, sequence parallelism must be used."
+
+    # Context parallel
+    if args.context_parallel_size > 1:
+        assert not args.use_legacy_models, "Context parallelism is not supported in legacy models."
 
     # Expert parallelism check
     if args.expert_model_parallel_size  > 1:
@@ -754,8 +693,8 @@ def validate_args(args, defaults={}):
             "Expert parallelism is not supported with fp16 training."
 
     # Distributed checkpointing checks
-    if args.use_dist_ckpt and not args.use_mcore_models:
-        raise RuntimeError('--use-dist-ckpt only support Megatron Core, please add --use-mcore-models.')
+    if args.use_dist_ckpt and args.use_legacy_models:
+        raise RuntimeError('--use-dist-ckpt is not supported in legacy models.')
 
     # Data blend checks
     assert args.mock_data + \
@@ -778,6 +717,20 @@ def validate_args(args, defaults={}):
     # Update the printed args to reflect that `apply_query_key_layer_scaling` also controls `attention_softmax_in_fp32`
     if args.apply_query_key_layer_scaling:
         args.attention_softmax_in_fp32 = True
+
+    # Checkpointing
+    if args.ckpt_fully_parallel_save_deprecated and args.rank == 0:
+        print('--ckpt-fully-parallel-save flag is deprecated and has no effect.'
+              ' Use --no-ckpt-fully-parallel-save to disable parallel save.')
+    if (
+        args.use_dist_ckpt
+        and not args.ckpt_fully_parallel_save
+        and args.use_distributed_optimizer
+        and args.rank == 0
+    ):
+        print('Warning: With non-parallel ckpt save and DistributedOptimizer,'
+              ' it will be impossible to resume training with different parallelism.'
+              ' Consider removing flag --no-ckpt-fully-parallel-save.')
 
     # Print arguments.
     _print_args("arguments", args)
@@ -888,7 +841,7 @@ def _add_transformer_engine_args(parser):
     group.add_argument('--no-fp8-wgrad', action='store_false',
                        help='Execute wgrad in higher precision even for FP8 runs',
                        dest='fp8_wgrad')
-    group.add_argument('--transformer-impl', default='local',
+    group.add_argument('--transformer-impl', default='transfer_engine',
                        choices=['local', 'transformer_engine'],
                        help='Which Transformer implementation to use.')
 
@@ -996,7 +949,7 @@ def _add_network_size_args(parser):
                        help='Maximum number of position embeddings to use. '
                        'This is the size of position embedding.')
     group.add_argument('--position-embedding-type', type=str, default='learned_absolute',
-                       choices=['learned_absolute', 'rope'],
+                       choices=['learned_absolute', 'rope', 'none'],
                        help='Position embedding type.')
     group.add_argument('--use-rotary-position-embeddings', action='store_true',
                        help='Use rotary positional embeddings or not. '
@@ -1004,14 +957,14 @@ def _add_network_size_args(parser):
     group.add_argument('--use-rotary-emb-implement', type=str, default='apex',
                        choices=['apex', 'flash_attn'],
                        help='Position embedding implement.')
+    group.add_argument('--rotary-base', type=int, default=10000,
+                       help='Base to use for rotary positional embeddings, default 10000')
     group.add_argument('--rotary-percent', type=float, default=1.0,
                        help='Percent of rotary dimension to use, default 100%%')
     group.add_argument('--rotary-interleaved', action='store_true',
                           help='Use interleaved rotary embedding.')
     group.add_argument('--rotary-seq-len-interpolation-factor', type=int, default=None,
                        help='Sequence length interpolation factor for rotary embeddings.')
-    group.add_argument('--rotary-base', type=float, default=10000,
-                       help='Base of rotary to use, default 10000.')
     group.add_argument('--rotary-interleaved-patch', action='store_true',
                        help='Patch for loading models using interleaved rotary position embeddings.')
     group.add_argument('--no-position-embedding',
@@ -1067,6 +1020,34 @@ def _add_straggler_detector_args(parser):
                        help='Port number to toggle StragglerDetector on/off at runtime')
     group.add_argument('--straggler-minmax-count', type=int, default=1,
                        help='Number of ranks to report with high/low estimated throughput')
+    return parser
+
+def _add_one_logger_args(parser):
+    group = parser.add_argument_group(title='one logger')
+    group.add_argument('--no-one-logger', action='store_false',
+                       help='If set, disable using one_logger to track E2E metrics'
+                       'Note that one_logger is an internal tool and not '
+                       'available externally. For installation, please go to '
+                       'https://confluence.nvidia.com/display/MLWFO/Package+Repositories'
+                       'for more details',
+                       dest='enable_one_logger')
+    group.add_argument('--one-logger-project', type=str, default='megatron-lm',
+                       help='The one-logger project name. Will ignore if '
+                       '--no-one-logger is set')
+    group.add_argument('--one-logger-run-name', type=str, default=None,
+                       help='The one-logger run name displayed. Will ignore if '
+                       '--no-one-logger is set')
+    group.add_argument('--one-logger-async', action='store_true',
+                       help='If set, forces one_logger to use async mode.')
+    group.add_argument('--app-tag-run-name', type=str, default=None,
+                       help='Jobs belonging to same training run, suppose to '
+                       'have the same name. It will be used to track progress of '
+                       'a training done over multiple different jobs')
+    group.add_argument('--app-tag-run-version', type=str, default='0.0.0',
+                       help='The version of the training of which current job is '
+                       'part of. It will be used to track the changes in the '
+                       'application side which might change the performance '
+                       'baseline')
     return parser
 
 def _add_logging_args(parser):
@@ -1150,22 +1131,8 @@ def _add_logging_args(parser):
                        help='If set, write model to wandb.')
     group.add_argument('--wandb-log-model-interval', type=int, default=1000,
                        help='The interval to save the model to wandb.')
-    group.add_argument('--enable-one-logger', action='store_true',
-                       help='If set, use one_logger to track E2E metrics'
-                       'Note that one_logger is an internal tool and not available externally. '
-                       'For installation, please try command: `pip install '
-                       '--index-url=https://sc-hw-artf.nvidia.com/api/pypi/hwinf-ml-pypi/simple'
-                       ' one_logger` or go to https://gitlab-master.nvidia.com/hwinf-dcm/onelogger '
-                       'for more details')
-    group.add_argument('--one-logger-project', type=str, default='e2e-tracking',
-                       help='The one-logger project name. Will ignore if '
-                       '--enable-one-logger is not set')
-    group.add_argument('--one-logger-entity', type=str, default='hwinf_dcm',
-                       help='The one-logger username or team name. Will ignore if '
-                       '--enable-one-logger is not set')
-    group.add_argument('--one-logger-run-name', type=str, default=None,
-                       help='The one-logger run name displayed. Will ignore if '
-                       '--enable-one-logger is not set')
+    group.add_argument('--logging-level', type=int, default=None,
+                       help='Set default logging level')
     return parser
 
 
@@ -1198,7 +1165,6 @@ def _add_regularization_args(parser):
                        'numerical stability')
     group.add_argument('--sgd-momentum', type=float, default=0.9,
                        help='Momentum factor for sgd')
-
     return parser
 
 
@@ -1374,6 +1340,9 @@ def _add_training_args(parser):
                        help='Disable rope fusion, the fusion is available '
                        'only when using megatron-core.',
                        dest='apply_rope_fusion')
+    group.add_argument('--cross-entropy-loss-fusion', action='store_true',
+                       help='Enabled fusion of cross entropy loss calculation.',
+                       dest='cross_entropy_loss_fusion')
     group.add_argument('--use-flash-attn', action='store_true',
                        help='use FlashAttention implementation of attention, '
                        'FlashAttention v2 implementation as higher priority. '
@@ -1408,7 +1377,12 @@ def _add_training_args(parser):
                        'gradient computation of linear layers',
                        dest='gradient_accumulation_fusion')
     group.add_argument('--use-mcore-models', action='store_true',
-                       help='Use the implementation from megatron core')
+                       dest='deprecated_use_mcore_models',
+                       help='DEPRECATED. Use the implementation from megatron core.'
+                       'Now ignored and mcore models are the default, use '
+                       '--use-legacy-models to not use core models.')
+    group.add_argument('--use-legacy-models', action='store_true',
+                       help='Use the legacy Megatron models, not Megatron-Core models.')
     group.add_argument('--manual-gc', action='store_true',
                        help='Disable the threshold-based default garbage '
                        'collector and trigger the garbage collection manually. '
@@ -1489,8 +1463,11 @@ def _add_learning_rate_args(parser):
                        'and initial warmup, the learning rate at each '
                        'iteration would be different.')
     group.add_argument('--lr-decay-style', type=str, default='linear',
-                       choices=['constant', 'linear', 'cosine', 'inverse-square-root', 'warmup-stable-decay', 'stablelm2-scheduler'],
+                       choices=['constant', 'linear', 'cosine', 'inverse-square-root', 'WSD', 'stablelm2-scheduler'],
                        help='Learning rate decay function.')
+    group.add_argument('--lr-wsd-decay-style', type=str, default='exponential',
+                       choices=['exponential', 'linear', 'cosine'],
+                       help='Decay style for the annealing phase of WSD'),
     ## stablelm2-scheduler consists of multiple stages
     group.add_argument('--lr-decay-stablelm2-cosine-samples', type=int, default=0,
                        help='Samples number of cosine scheduler including warmup samples, used in stablelm2 scheduler.')
@@ -1512,6 +1489,10 @@ def _add_learning_rate_args(parser):
     group.add_argument('--lr-decay-samples', type=int, default=None,
                        help='number of samples to decay learning rate over,'
                        ' If None defaults to `--train-samples`')
+    group.add_argument('--lr-wsd-decay-samples', type=int, default=None,
+                       help='number of samples for the annealing phase in the wsd schedule')
+    group.add_argument('--lr-wsd-decay-iters', type=int, default=None,
+                       help='number of iterations for the annealing phase in the wsd schedule')
     group.add_argument('--lr-warmup-fraction', type=float, default=None,
                        help='fraction of lr-warmup-(iters/samples) to use '
                        'for warmup (as a float)')
@@ -1559,8 +1540,8 @@ def _add_checkpointing_args(parser):
                        help='Output directory to save searched data to.')
     group.add_argument('--data-searching-range', nargs='+', default=None,
                        help='The iteration range for searching data.')
-    group.add_argument('--save-interval', type=int, default=None,
-                       help='Number of iterations between checkpoint saves.')
+    group.add_argument('--save-interval', '--persistent-save-interval', type=int, default=None,
+                       help='Number of iterations between persistent checkpoint saves.')
     group.add_argument('--rampup-save-interval', type=int, default=None,
                        help='Number of iterations between checkpoint saves.in the ramup phase.')
     group.add_argument('--no-save-optim', action='store_true', default=None,
@@ -1573,6 +1554,17 @@ def _add_checkpointing_args(parser):
                        help='Do not load optimizer when loading checkpoint.')
     group.add_argument('--no-load-rng', action='store_true', default=None,
                        help='Do not load rng state when loading checkpoint.')
+    group.add_argument('--non-persistent-save-interval', type=int, default=None,
+                       help='Number of iterations between non-persistent saves.')
+    group.add_argument('--non-persistent-ckpt-type', type=str, default=None,
+                       choices=['global', 'local', 'in_memory', None],
+                       help='Type of non-persistent model checkpoints. '
+                           '"global" - Saved as a standard checkpoint (e.g., on Lustre) with old checkpoints being removed. '
+                           '"local" - [TBD] Each rank saves a portion of the checkpoint locally (e.g., on SSD/ramdisk). '
+                           '"in_memory" - [TBD] A special kind of local checkpoint that avoids serialization. '
+                           'None - No non-persistent checkpointing (default option).')
+    group.add_argument('--non-persistent-global-ckpt-dir', type=str, default=None,
+                       help='Directory containing global non-persistent model checkpoints.')
     group.add_argument('--finetune', action='store_true',
                        help='Load model for finetuning. Do not load optimizer '
                        'or rng state from checkpoint and set iteration to 0. '
@@ -1613,9 +1605,14 @@ def _add_checkpointing_args(parser):
                        'rng state from checkpoint and set iteration to 0. '
                        'Assumed when loading a release checkpoint.')
     group.add_argument('--ckpt-fully-parallel-save', action='store_true',
-                       help='Apply full save parallelization across DP for'
+                       dest='ckpt_fully_parallel_save_deprecated',
+                       help='Deprecated: see --no-ckpt-fully-parallel-save.')
+    group.add_argument('--no-ckpt-fully-parallel-save', action='store_false',
+                       dest='ckpt_fully_parallel_save',
+                       help='Disable applying full save parallelization across DP for'
                             ' distributed checkpoints. Depending on ckpt format'
-                            ' might increase number of files in the checkpoint.')
+                            ' might decrease the number of files in the checkpoint.'
+                            ' Makes DistributedOptimizer checkpoint non-reshardable.')
     group.add_argument('--async-save', action='store_true', default=None,
                        help='Apply async checkpointing save. Currently works only with'
                             '`torch_dist` distributed checkpoint format.')
@@ -1626,6 +1623,12 @@ def _add_checkpointing_args(parser):
                        help='If the model and optimizer state dict structure is'
                             'constant throughout a *single training job*, it allows for'
                             'different checkpointing performance optimizations.')
+    group.add_argument('--dist-ckpt-strictness', type=str, default='assume_ok_unexpected',
+                       choices=[e.value for e in StrictHandling],
+                       help='Determine handling of key mismatch during checkpoint load.'
+                            ' Check StrictHandling docs for flags meaning.'
+                            ' NOTE: This flag controls only distributed checkpoint'
+                            ' load from storage, not loading state dict into the model.')
     return parser
 
 
@@ -1672,9 +1675,12 @@ def _add_distributed_args(parser):
                        help='Degree of tensor model parallelism.')
     group.add_argument('--pipeline-model-parallel-size', type=int, default=1,
                        help='Degree of pipeline model parallelism.')
+    group.add_argument('--encoder-pipeline-model-parallel-size', type=int, default=None,
+                       help='Degree of pipeline model parallelism in the encoder.')
     group.add_argument('--pipeline-model-parallel-split-rank',
                        type=int, default=None,
-                       help='Rank where encoder and decoder should be split.')
+                       help=('Rank where encoder and decoder should be split. '
+                             'Deprecated; use --encoder-pipeline-model-parallel-size instead.'))
     group.add_argument('--model-parallel-size', type=int, default=None,
                        help='Old model parallel argument, do not use. Use '
                        '--tensor-model-parallel-size instead.')
@@ -1690,11 +1696,20 @@ def _add_distributed_args(parser):
                        help='Timeout minutes for torch.distributed.')
     group.add_argument('--overlap-grad-reduce', action='store_true',
                        default=False, help='If set, overlap DDP grad reduce.')
+    group.add_argument('--defer-embedding-wgrad-compute', action='store_true',
+                       default=False, help='If set, defers the vocabulary projection linear layer weight' 
+                       'gradient compute to pipeline flush.', dest='defer_embedding_wgrad_compute')
+    group.add_argument('--wgrad-deferral-limit', type=int, default=0, help='Number of micro-batches for which'
+                       'weight gradient computation of vocabulary projection is deferred, defaults to 0 which'
+                       'means all the micro-batches are deferred. Invalid if `defer-embedding-wgrad-compute`'
+                       'is not set')
     group.add_argument('--no-delay-grad-reduce', action='store_false',
                        help='If not set, delay / synchronize grad reductions in all but first PP stage.',
                        dest='delay_grad_reduce')
     group.add_argument('--ddp-bucket-size', type=int, default=None,
                        help='Bucket size for data-parallel communication')
+    group.add_argument('--ddp-average-in-collective', action='store_true',
+                       default=False, help='If set, average directly in data-parallel communication collective.')
     group.add_argument('--overlap-param-gather', action='store_true',
                        default=False, help='If set, overlap param all-gather in distributed optimizer.')
     group.add_argument('--delay-param-gather', action='store_true',
@@ -1768,7 +1783,7 @@ def _add_data_args(parser):
                        '(3) a list of prefixes e.g. prefix1 prefix2. '
                        'For (3), weights are inferred from the lengths of the contributing datasets. '
                        'This argument is exclusive to the other independent --*-data-path arguments.')
-    group.add_argument('--split', type=str, default='969, 30, 1',
+    group.add_argument('--split', type=str, default=None,
                        help='Comma-separated list of proportions for training,'
                        ' validation, and test split. For example the split '
                        '`90,5,5` will use 90%% of data for training, 5%% for '
@@ -1831,18 +1846,28 @@ def _add_data_args(parser):
                                 'GPT2BPETokenizer',
                                 'SentencePieceTokenizer',
                                 'GPTSentencePieceTokenizer',
-                                'AquilaTokenizer',
+                                'HuggingFaceTokenizer',
                                 'Llama2Tokenizer',
-                                'NullTokenizer', 
-                                'HFTokenizer', 
                                 'Llama3Tokenizer',
-                                'HFTokenizersTokenizer', 
-                                'QwenTokenizer'],
+                                'MistralTokenizer',
+                                'TikTokenizer',
+                                'AquilaTokenizerFS',
+                                'HFTokenizerFS', 
+                                'HFTokenizersTokenizerFS', 
+                                'Llama3TokenizerFS',
+                                'QwenTokenizerFS',
+                                'NullTokenizer'],
                        help='What type of tokenizer to use.')
     group.add_argument('--tokenizer-path', type=str, default=None,
                        help='Path to the huggingface tokenizer.')
     group.add_argument('--tokenizer-model', type=str, default=None,
                        help='Sentencepiece tokenizer model.')
+    group.add_argument('--tiktoken-pattern', type=str, default=None,
+                       help='Which tiktoken pattern to use. Options: [v1, v2]')
+    group.add_argument('--tiktoken-num-special-tokens', type=int, default=1000,
+                       help='Number of special tokens in tiktoken tokenizer')
+    group.add_argument('--tiktoken-special-tokens', type=str, nargs='+', default=None,
+                       help='List of tiktoken special tokens, needs to have ["<unk>", "<s>", "</s>"]')
     group.add_argument('--reset-position-ids', action='store_true',
                        help='Reset posistion ids after end-of-document token.')
     group.add_argument('--reset-attention-mask', action='store_true',
@@ -1862,6 +1887,8 @@ def _add_data_args(parser):
                        help='If set, use sft dataset with separated loss mask files, '
                        'if _loss_mask_document.bin and _loss_mask_document.idx existed.')
 
+    group.add_argument('--s3-cache-path', type=str, default=None,
+                       help='Path to cache index files when using s3 dataloader')
     return parser
 
 
@@ -2020,7 +2047,7 @@ def _add_moe_args(parser):
     group.add_argument('--num-experts', type=int, default=None,
                        help='Number of Experts in MoE (None means no MoE)')
     group.add_argument('--moe-router-load-balancing-type', type=str,
-                       choices=['aux_loss', 'sinkhorn', "none"],
+                       choices=['aux_loss', 'sinkhorn', 'none'],
                        default='aux_loss',
                        help='Determines the load balancing strategy for the router. "aux_loss" corresponds to the load balancing loss used in GShard and SwitchTransformer, "sinkhorn" corresponds to the balancing algorithm used in S-BASE, and "none" implies no load balancing. The default is "aux_loss".')
     group.add_argument('--moe-router-topk', type=int, default=2,
@@ -2045,7 +2072,7 @@ def _add_moe_args(parser):
     group.add_argument('--moe-pad-expert-input-to-capacity', action='store_true',
                        help='Pads the input for each expert to match the expert capacity length, effective only after the --moe-expert-capacity-factor is set.')
     group.add_argument('--moe-token-drop-policy', type=str, default='probs', choices=['probs', 'position'],
-                       help='The policy to drop tokens. Can be either "prob" or "position". If "prob", the tokens with the lowest probabilities will be dropped. If "position", tokens at the end of each batch will be dropped.')
+                       help='The policy to drop tokens. Can be either "probs" or "position". If "probs", the tokens with the lowest probabilities will be dropped. If "position", tokens at the end of each batch will be dropped.')
     group.add_argument('--moe-layer-recompute', action='store_true',
                        help='Enable checkpointing for moe_layer, should be used when memory is not sufficient.')
     group.add_argument('--moe-extended-tp', action='store_true',
@@ -2063,6 +2090,18 @@ def _add_experimental_args(parser):
                        'To use local spec specify local as the argument.'
                        'For more details, see the model class, '
                        '`transformer_block.py`, or `transformer_layer.py`')
+    group.add_argument('--hybrid-attention-ratio', type=float, default=0.0,
+                       help='Ratio of attention layers to total layers, in the '
+                       'range [0.0, 1.0].')
+    group.add_argument('--hybrid-mlp-ratio', type=float, default=0.0,
+                       help='Ratio of mlp layers to total layers, in the '
+                       'range [0.0, 1.0].')
+    group.add_argument('--hybrid-override-pattern', type=str, default=None,
+                       help='Force a specific hybrid layer pattern. If a value'
+                       'greater than 0.0 is supplied to any of the hybrid ratio'
+                       'arguments, then the number of each type of layer in the'
+                       'override pattern must match number in the overidden'
+                       'pattern')
     group.add_argument('--yaml-cfg', type=str, default=None,
                        help = 'Config file to add additional arguments')
 
@@ -2082,26 +2121,18 @@ def _add_serving_args(parser):
 def _add_hetero_args(parser):
     group = parser.add_argument_group(title="heterogeneous training")
 
-    group.add_argument('--hetero-mode', choices=['dp', 'pp'], default=None, 
+    group.add_argument('--enable-hetero', action="store_true", 
                        help='the mode of heterogeneous training')
     group.add_argument('--hetero-device-types', nargs='*', type=str, default=None, 
                        help='the list of device types: device_type_0 device_type_1 ...')
     group.add_argument('--hetero-current-device-type', type=str, default=None, 
                        help='the current device type')
-    group.add_argument('--hetero-micro-batch-sizes', nargs='*', type=int, default=None,
-                       help='heteor-micro-batch-sizes must be in the form: n0 mbs0 n1 mbs1 ...'
-                       'The order should be consistent with --hetero-device-types.'
-                       'The sum of n0, n1 ... should be equal to data-parallel-size.')
-    group.add_argument('--hetero-pipeline-stages', nargs='*', type=int, default=None,
-                       help='Incompatible with --num-layers-per-virtual-pipeline-stage.'
-                       'hetero-pipeline-stages must be in the form:'
-                       'n0 layers_0_0 layers_0_1 ... n1 nlayers_1_0 nlayers_1_1 ...'
-                       'The order should be consistent with --hetero-device-types.')
-    group.add_argument('--process-meshes', nargs='*', type=int, default=None,
-                       help='Use this arg to set TP/DP/PP of each process mesh group.'
-                       'This argument must be in the form: TP0, DP0, PP0, TP1, DP1, PP1'
-                       '...TPN, DPN, PPN. TP size can be different, sum of PP should match '
-                       'pipeline-model-parallel-size, DP size should be the same.')
+    group.add_argument('--hetero-pipeline-layer-split', nargs='*', type=int, default=None,
+                       help='Incompatible with --num-layers-per-virtual-pipeline-stage for now.'
+                       'hetero-pipeline-layer-split must be in the form: layers_0 layers_1 ... layers_n. The number of the list should be equal to pipeline-model-parallel-size.')
+    group.add_argument('--hetero-process-meshes', nargs='*', type=int, default=None,
+                       help='Use this arg to set TP-CP-DP-PP of each process mesh.'
+                       'This argument must be in the form: TP0, CP0, DP0, PP0, TP1, CP0, DP1, PP1...TPN, CPN, DPN, PPN. CP and TP size can be different, sum of PP should match pipeline-model-parallel-size, DP size should be the same.')
 
     return parser
 
