@@ -453,16 +453,16 @@ def _generate_run_script_train(
         f.write(f'cmd="{cmd}"\n')
         f.write(f"\n")
         if with_test:
-            f.write(f'bash -c "$cmd" \n')
+            f.write(f'bash -c "$cmd; sync" \n')
         else:
             # TODO: need a option to control whether to append or overwrite the output file
             # Now, it always appends to the output file
             if background:
                 f.write(
-                    f'nohup bash -c "$cmd" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
+                    f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
                 )
             else:
-                f.write(f'bash -c "$cmd" >> {host_output_file} 2>&1\n')
+                f.write(f'bash -c "$cmd; sync" >> {host_output_file} 2>&1\n')
         f.write("\n")
         f.flush()
         os.fsync(f.fileno())
