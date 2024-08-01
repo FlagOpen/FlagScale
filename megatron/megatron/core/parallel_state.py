@@ -781,7 +781,7 @@ def initialize_model_parallel(
     # we could stick it there
     _set_global_memory_buffer()
 
-    
+
 def is_initialized():
     """Useful for code segments that may be accessed with or without mpu initialization"""
     para_ctx = get_parallel_context() 
@@ -817,7 +817,7 @@ def model_parallel_is_initialized():
         return False
     return True
 
-    
+
 def get_model_parallel_group(with_expert_parallel=False):
     """Get the model parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 

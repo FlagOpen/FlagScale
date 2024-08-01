@@ -68,7 +68,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
 
     if args.device_type:
         set_device_type(args)
-    
+
     # Experimental yaml
     if args.yaml_cfg is not None:
         from .yaml_arguments import load_yaml
@@ -846,7 +846,7 @@ def _add_transformer_engine_args(parser):
     group.add_argument('--no-fp8-wgrad', action='store_false',
                        help='Execute wgrad in higher precision even for FP8 runs',
                        dest='fp8_wgrad')
-    group.add_argument('--transformer-impl', default='transfer_engine',
+    group.add_argument('--transformer-impl', default='transformer_engine',
                        choices=['local', 'transformer_engine'],
                        help='Which Transformer implementation to use.')
 
@@ -1350,10 +1350,8 @@ def _add_training_args(parser):
                        help='Enabled fusion of cross entropy loss calculation.',
                        dest='cross_entropy_loss_fusion')
     group.add_argument('--use-flash-attn', action='store_true',
-                       help='use FlashAttention implementation of attention, '
-                       'FlashAttention v2 implementation as higher priority. '
-                       'v1: https://arxiv.org/abs/2205.14135, '
-                       'v2: https://tridao.me/publications/flash2/flash2.pdf')
+                       help='use FlashAttention implementation of attention. '
+                       'https://arxiv.org/abs/2205.14135')
     group.add_argument('--disable-bias-linear', action='store_false',
                        help='Disable bias in the linear layers',
                        dest='add_bias_linear')
