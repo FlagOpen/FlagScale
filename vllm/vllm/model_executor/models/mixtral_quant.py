@@ -47,7 +47,7 @@ from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead, VocabParallelEmbedding)
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
 from vllm.model_executor.sampling_metadata import SamplingMetadata
-from vllm.sequence import SamplerOutput
+from vllm.sequence import IntermediateTensors, SamplerOutput
 
 
 class MixtralMLP(nn.Module):
@@ -166,7 +166,6 @@ class MixtralAttention(nn.Module):
         max_position: int = 4096 * 32,
         rope_theta: float = 10000,
         quant_config: Optional[QuantizationConfig] = None,
-        sliding_window: Optional[int] = None,
         cache_config: Optional[CacheConfig] = None,
     ) -> None:
         super().__init__()
@@ -190,7 +189,6 @@ class MixtralAttention(nn.Module):
         self.kv_size = self.num_kv_heads * self.head_dim
         self.scaling = self.head_dim**-0.5
         self.rope_theta = rope_theta
-        self.sliding_window = sliding_window
 
         self.qkv_proj = QKVParallelLinear(
             hidden_size,
@@ -217,7 +215,6 @@ class MixtralAttention(nn.Module):
                               self.head_dim,
                               self.scaling,
                               num_kv_heads=self.num_kv_heads,
-                              sliding_window=self.sliding_window,
                               cache_config=cache_config,
                               quant_config=quant_config)
 
@@ -254,7 +251,6 @@ class MixtralDecoderLayer(nn.Module):
             max_position=config.max_position_embeddings,
             num_kv_heads=config.num_key_value_heads,
             rope_theta=rope_theta,
-            sliding_window=config.sliding_window,
             cache_config=cache_config,
             quant_config=quant_config)
         self.block_sparse_moe = MixtralMoE(config=config,
@@ -348,7 +344,9 @@ class MixtralForCausalLM(nn.Module):
         self.config = config
         self.quant_config = quant_config
         self.model = MixtralModel(config, cache_config, quant_config)
-        self.lm_head = ParallelLMHead(config.vocab_size, config.hidden_size)
+        self.lm_head = ParallelLMHead(config.vocab_size,
+                                      config.hidden_size,
+                                      quant_config=quant_config)
         self.logits_processor = LogitsProcessor(config.vocab_size)
         self.sampler = Sampler()
 
@@ -358,6 +356,7 @@ class MixtralForCausalLM(nn.Module):
         positions: torch.Tensor,
         kv_caches: List[torch.Tensor],
         attn_metadata: AttentionMetadata,
+        intermediate_tensors: Optional[IntermediateTensors] = None,
     ) -> torch.Tensor:
         hidden_states = self.model(input_ids, positions, kv_caches,
                                    attn_metadata)
@@ -365,7 +364,7 @@ class MixtralForCausalLM(nn.Module):
 
     def compute_logits(self, hidden_states: torch.Tensor,
                        sampling_metadata: SamplingMetadata) -> torch.Tensor:
-        logits = self.logits_processor(self.lm_head.weight, hidden_states,
+        logits = self.logits_processor(self.lm_head, hidden_states,
                                        sampling_metadata)
         return logits
 

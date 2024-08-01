@@ -1,26 +1,13 @@
 from contextlib import contextmanager
-from itertools import chain
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 
 from vllm.sequence import (CompletionSequenceGroupOutput, Logprob,
                            SamplerOutput, SequenceGroupMetadata,
-                           SequenceGroupOutput, SequenceOutput)
+                           SequenceOutput)
 
 SeqId = int
-
-
-def get_all_seq_ids(
-        seq_group_metadata_list: List[SequenceGroupMetadata]) -> List[SeqId]:
-    """Given a list of SequenceGroupMetadata, create a list of all
-    sequence ids.
-    """
-    return list(
-        chain.from_iterable([
-            seq_group_metadata.seq_data.keys()
-            for seq_group_metadata in seq_group_metadata_list
-        ]))
 
 
 def get_all_num_logprobs(
@@ -31,10 +18,10 @@ def get_all_num_logprobs(
     sequence.
     """
 
-    all_num_logprobs = []
+    all_num_logprobs: List[int] = []
     for seq_group_metadata in seq_group_metadata_list:
         num_logprobs = seq_group_metadata.sampling_params.logprobs
-        if seq_group_metadata.sampling_params.logprobs is None:
+        if num_logprobs is None:
             num_logprobs = 0
         all_num_logprobs.append(num_logprobs)
 
@@ -66,9 +53,9 @@ def create_sequence_group_output(
     token_id_logprob_rank: int,
     token_id_logprob: float,
     seq_id: SeqId,
-    topk_token_ids: List[int],
-    topk_logprobs: List[float],
-) -> SequenceGroupOutput:
+    topk_token_ids: List[Optional[int]],
+    topk_logprobs: List[Optional[float]],
+) -> CompletionSequenceGroupOutput:
     """Create a SequenceGroupOutput given the sampling results.
 
     Args:
@@ -81,7 +68,7 @@ def create_sequence_group_output(
     """
     # vLLM logprobs always include the sampled token. In addition, the user may
     # request topk-logprobs (where top-k varies per user up to max_logprobs).
-    logprobs: Dict[int, Logprob] = {
+    logprobs: Dict[Optional[int], Logprob] = {
         token_id: Logprob(
             logprob=token_id_logprob,
             rank=token_id_logprob_rank,
