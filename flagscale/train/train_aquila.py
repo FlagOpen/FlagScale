@@ -13,7 +13,6 @@ from functools import partial
 
 from typing import Union
 from megatron.training import get_args
-
 from megatron.training import print_rank_0
 from megatron.training import get_timers
 from megatron.training import get_tokenizer
@@ -96,7 +95,7 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
             share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
             position_embedding_type=args.position_embedding_type,
             rotary_percent=args.rotary_percent,
-            rotary_base=args.rotary_base,
+            rotary_base=args.rotary_base
         )
 
     return model
@@ -213,7 +212,7 @@ def core_gpt_dataset_config_from_args(args):
         reset_attention_mask=args.reset_attention_mask,
         eod_mask_loss=args.eod_mask_loss,
         create_attention_mask=args.create_attention_mask_in_dataloader,
-        s3_cache_path = args.s3_cache_path,
+        s3_cache_path = args.s3_cache_path
     )
 
 
@@ -280,13 +279,14 @@ if __name__ == "__main__":
 
     # Temporary for transition to core datasets
     train_valid_test_datasets_provider.is_distributed = True
-
     extra_valid_dataset_provider.is_distributed = True
 
-    pretrain(train_valid_test_datasets_provider,
-             model_provider,
-             ModelType.encoder_or_decoder,
-             forward_step,
-             args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
-             get_batch_fn=get_batch,
-             extra_valid_dataset_provider=extra_valid_dataset_provider)
+    pretrain(
+        train_valid_test_datasets_provider,
+        model_provider,
+        ModelType.encoder_or_decoder,
+        forward_step,
+        args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
+        get_batch_fn=get_batch,
+        extra_valid_dataset_provider=extra_valid_dataset_provider
+    )

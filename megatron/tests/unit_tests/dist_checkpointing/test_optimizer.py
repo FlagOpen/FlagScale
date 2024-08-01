@@ -271,9 +271,6 @@ class TestDistributedOptimizer:
                     # this prevents NCCL errors when changing DP. TODO: fix it properly
                     sleep(20)
             finally:
-<<<<<<< HEAD
-                Utils.set_world_size()
-=======
                 Utils.set_world_size()
 
     @pytest.mark.parametrize(
@@ -484,4 +481,3 @@ class TestOptimizerResharding:
                 plain_state_dict_B = load_plain_tensors(ckpt_dir_B)
                 diffs = diff(plain_state_dict_A, plain_state_dict_B)
                 assert not any(map(bool, diffs)), diffs
->>>>>>> 01ccfcea6b73218d4425c7e848a1ecd5393ac474
