@@ -55,6 +55,9 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_customized_device_args(parser)
     parser = _add_hetero_args(parser)
     parser = _add_auto_tuner_args(parser)
+    # dong add
+    parser = _add_analyze_args(parser)
+    # dong
 
     # Custom arguments.
     if extra_args_provider is not None:
@@ -2144,3 +2147,13 @@ def _add_auto_tuner_args(parser):
                        help='use auto tuner')
 
     return parser
+
+# dong add
+def _add_analyze_args(parser):
+    group = parser.add_argument_group(title="analyze")
+
+    group.add_argument('--analyze-save-dir', type=str, default=None,
+                       help='The dir used to save analysis information. This path will include grouping information files and other files.')
+
+    return parser
+# dong

@@ -16,6 +16,8 @@ system:
     wandb_exp_name: "train-test-test" 
   checkpoint:
     save_interval: 2000 
+  analyze:
+    analyze_save_dir: ./tests/functional_tests/aquila/analyze_result_test
 
 model:
   use_mcore_models: true

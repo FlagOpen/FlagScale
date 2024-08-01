@@ -2,6 +2,9 @@
 
 """Model and data parallel groups."""
 
+# dong add
+import json
+# dong
 import os
 import warnings
 from datetime import timedelta
@@ -248,6 +251,11 @@ class RankGenerator(object):
         self.order = order
         order = order.lower()
 
+        # dong add
+        self.parallelism_to_groups = {}
+        self.rank_to_parallelism_to_group_id = {}
+        # dong
+
         if 'ep' in order:
             if 'ep-dp' not in order and 'dp-ep' not in order:
                 raise RuntimeError(f"The ep and dp must be adjacent in order ({self.order}).")
@@ -308,7 +316,40 @@ class RankGenerator(object):
             order = self.order_wo_ep
         mask = self.get_mask(order, token)
         ranks = generate_masked_orthogonal_rank_groups(self.world_size, parallel_size, mask)
+
+        # dong add        
+        self.parallelism_to_groups[token] = ranks
+        group_id = 0
+        for group in ranks:
+            for rank in group:
+                if rank not in self.rank_to_parallelism_to_group_id:
+                    self.rank_to_parallelism_to_group_id[rank] = {}
+                self.rank_to_parallelism_to_group_id[rank][token] = group_id
+            group_id = group_id + 1
+        # dong
+
         return ranks
+    
+    # dong add
+    def print_ranks(self, print_path):
+        if print_path == "stdout":
+            print("parallelism_to_groups", self.parallelism_to_groups)
+            print("rank_to_parallelism_to_group_id", self.rank_to_parallelism_to_group_id)
+        elif print_path != "stdout":
+            try:
+                os.makedirs(print_path, exist_ok=True)
+            except OSError as e:
+                raise RuntimeError(f"Failed to create path '{print_path}'. Error: {e}")
+            parallelism_to_groups_file = print_path + "/parallelism_to_groups.json"
+            with open(parallelism_to_groups_file, 'w') as file:
+                json.dump(self.parallelism_to_groups, file, ensure_ascii=False, indent=4)
+            rank_to_parallelism_to_group_id_file = print_path + "/rank_to_parallelism_to_group_id.json"
+            with open(rank_to_parallelism_to_group_id_file, 'w') as file:
+                json.dump(self.rank_to_parallelism_to_group_id, file, ensure_ascii=False, indent=4)
+        else:
+            print("parallelism_to_groups", self.parallelism_to_groups)
+            print("rank_to_parallelism_to_group_id", self.rank_to_parallelism_to_group_id)
+    # dong
 
 
 def default_embedding_ranks(pp_ranks, split_rank=None):
@@ -349,6 +390,9 @@ def initialize_model_parallel(
     encoder_pipeline_model_parallel_size: Optional[int] = None,
     get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
     get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
+    # dong add
+    analyze_save_path:str = "stdout"
+    # dong
 ) -> None:
     """Initialize model data parallel groups.
 
@@ -774,6 +818,11 @@ def initialize_model_parallel(
         if rank in ranks:
             _DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP = group
             _DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP_GLOO = group_gloo
+
+    # dong add
+    if rank == 0 and analyze_save_path != None:
+        rank_generator.print_ranks(analyze_save_path)
+    # dong
 
     # Initialize global memory buffer
     # This isn't really "parallel state" but there isn't another good place to
