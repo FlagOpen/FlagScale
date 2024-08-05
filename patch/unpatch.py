@@ -136,10 +136,12 @@ def build_dir(repo, device_type, commit_id, directory=None):
         # copy FlagScale into build
         os.system("cp -r {} {}".format(path, build_dir_path))
         repo_name = path.split("/")[-1]
+        os.system("mv {} {}".format(os.path.join(build_dir_path, repo_name), dir_path))
         os.system(
-            "mv {} {}".format(os.path.join(build_dir_path, repo_name), dir_path)
+            "mv {} {}".format(
+                os.path.join(dir_path, repo_name), os.path.join(dir_path, "FlagScale")
+            )
         )
-        os.system("mv {} {}".format(os.path.join(dir_path, repo_name),os.path.join(dir_path, 'FlagScale') ))
         delete_dir(build_dir_path)
         # step into build dir
         dir_path = os.path.join(dir_path, "FlagScale")
@@ -162,10 +164,12 @@ def build_hetero_dir(repo, device_type, commit_id, directory):
         # step into build dir
         os.system("cp -r {} {}".format(path, build_dir_path))
         repo_name = path.split("/")[-1]
+        os.system("mv {} {}".format(os.path.join(build_dir_path, repo_name), dir_path))
         os.system(
-            "mv {} {}".format(os.path.join(build_dir_path, repo_name), dir_path)
+            "mv {} {}".format(
+                os.path.join(dir_path, repo_name), os.path.join(dir_path, "FlagScale")
+            )
         )
-        os.system("mv {} {}".format(os.path.join(dir_path, repo_name),os.path.join(dir_path, 'FlagScale') ))
         delete_dir(build_dir_path)
         dir_path = os.path.join(dir_path, "FlagScale")
         repo = Repo(dir_path)
