@@ -91,6 +91,12 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
         current_commit_id = repo.head.commit
     global path
     origin_patch_branch = "origin_patch_code"
+    patch_file_path = os.path.join(path, "patch/")
+    tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
+    if os.path.exists(tmp_patch_file_path):
+        delete_dir(tmp_patch_file_path)
+    os.makedirs(tmp_patch_file_path)
+    os.system("cp -r {} {}".format(patch_file_path, tmp_patch_file_path))
     try:
         repo.git.stash()
         repo.git.checkout(current_commit_id)
@@ -103,8 +109,7 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     )
     patch_name = "".join([base_commit_id, ".patch"])
     file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
-    patch_file_path = os.path.join(path,'patch/')
-    repo.git.update_index('--assume-unchanged',patch_file_path)
+
     repo.git.stash()
     repo.git.checkout(base_commit_id)
     try:
@@ -116,6 +121,8 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
     delete_dir(tmp_path)
     device_path, patch_path = get_output_path(device_type, base_commit_id)
+    os.system("cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path))
+    delete_dir(tmp_patch_file_path)
     update_patch(patch_str, patch_name, device_path, patch_path)
     auto_commit(repo, device_type, device_path, current_commit_id)
 
@@ -136,6 +143,12 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
             raise PathNotFound
     now_device_type = device_type[-1]
     hetero_str = hetero_str + " " + str(now_device_type)
+    patch_file_path = os.path.join(path, "patch/")
+    tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
+    if os.path.exists(tmp_patch_file_path):
+        delete_dir(tmp_patch_file_path)
+    os.makedirs(tmp_patch_file_path)
+    os.system("cp -r {} {}".format(patch_file_path, tmp_patch_file_path))
     try:
         repo.git.stash()
         repo.git.checkout(current_commit_id)
@@ -149,10 +162,9 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     )
     patch_name = "".join([base_commit_id, ".patch"])
     file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
-    patch_file_path = os.path.join(path,'patch/')
-    repo.git.update_index('--assume-unchanged',patch_file_path)
+    patch_file_path = os.path.join(path, "patch/")
     repo.git.stash()
-    
+
     repo.git.checkout(base_commit_id)
     try:
         unpatch_branch = "unpatch_code"
@@ -163,6 +175,8 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
     delete_dir(tmp_path)
     device_path, patch_path = get_output_path(now_device_type, base_commit_id)
+    os.system("cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path))
+    delete_dir(tmp_patch_file_path)
     hetero_path = os.path.join(path, "patch/hetero.txt")
     update_patch(
         patch_str,
