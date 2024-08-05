@@ -1,6 +1,6 @@
 system:
-  tensor_model_parallel_size: 1
-  pipeline_model_parallel_size: 1
+  tensor_model_parallel_size: 2
+  pipeline_model_parallel_size: 2
   disable_bias_linear: True
   use_flash_attn: True
   use_distributed_optimizer: True
@@ -37,10 +37,10 @@ model:
   hidden_dropout: 0.0
   weight_decay: 0.1
   clip_grad: 1.0
-  train_samples: 1002539063
+  train_samples: 100000
   eval_iters: 0
-  micro_batch_size: 2
-  global_batch_size: 1728 
+  micro_batch_size: 1
+  global_batch_size: 32
   seed: 1234
 
   optimizer:
@@ -50,11 +50,11 @@ model:
     lr_scheduler:
       lr: 2.0e-5
       min_lr: 2.0e-6
-      lr_warmup_samples: 3076172
+      lr_warmup_samples: 500
       lr_decay_style: cosine 
 
 data:
-  data_path: ${data_path:??}
+  data_path: /share/project/caozhou/adaptive_flash_ckpt/FlagScale/data/pile_wikipedia_demo
   split: 1
   tokenizer:
     tokenizer_type: AquilaTokenizer
