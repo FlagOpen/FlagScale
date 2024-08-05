@@ -157,12 +157,6 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     )
     patch_name = "".join([base_commit_id, ".patch"])
     file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
-    patch_file_path = os.path.join(path, "patch")
-    tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
-    if os.path.exists(tmp_patch_file_path):
-        delete_dir(tmp_patch_file_path)
-    os.makedirs(tmp_patch_file_path)
-    os.system("cp -r {} {}".format(patch_file_path, tmp_patch_file_path))
     repo.git.stash()
     repo.git.checkout(base_commit_id)
     try:
@@ -186,10 +180,7 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
         base_commit_id,
     )
     auto_commit(repo, now_device_type, device_path, current_commit_id)
-    if os.path.exists(patch_file_path):
-        delete_dir(patch_file_path)
-    os.system("cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path))
-    delete_dir(tmp_patch_file_path)
+    
 
 
 def update_patch(
