@@ -13,6 +13,7 @@ from exception import PathNotFound, GitApplyError, DirNotFound
 
 path = os.getcwd()
 
+
 def check_args(args):
     if args.device_type is None:
         print("args.device_type is None")
@@ -61,7 +62,7 @@ def check_hetero_txt(device_type, base_commit_id):
     global path
     hetero_path = os.path.join(path, "patch/hetero.txt")
     if not os.path.exists(hetero_path):
-        print('{} is not found!'.format(hetero_path))
+        print("{} is not found!".format(hetero_path))
         raise FileNotFoundError
     with open(hetero_path, "r") as f:
         for line in f:
@@ -91,7 +92,7 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
         f for f in files_and_folders if os.path.isdir(os.path.join(patch_dir, f))
     ][0]
     """Check if the stored base_commit_id matches the input base_commit_id """
-    
+
     if base_commit_id_now != base_commit_id:
         print("base_commit_id is not matched")
         raise FileNotFoundError
