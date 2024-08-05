@@ -1,20 +1,15 @@
-mport argparse
+import argparse
 import os
-import re
-from git.repo import Repo
+from common import (
+    check_path,
+    delete_dir,
+    process_commit_id,
+    git_init,
+    save_patch_to_tmp,
+)
+from exception import PathNotFound, DeviceError, UnpatchDiffError
 
 path = os.getcwd()
-
-
-def check_path():
-    """get path and check 'FlagScale' in path"""
-    global path
-    pattern = r".*FlagScale.*"
-    a = re.match(pattern, path)
-    if a is None:
-        print("the FlagScale is not in your path")
-        raise PathNotFound
-
 
 def check_args(args):
     if args.device_type is None:
@@ -23,50 +18,6 @@ def check_args(args):
     if args.base_commit_id is None:
         print("args.base_commit_id is None")
         raise PathNotFound
-
-
-def delete_dir(dir_path):
-    os.system("rm -rf {}".format(dir_path))
-
-
-class PathNotFound(BaseException):
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
-
-
-class GitNotFound(BaseException):
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
-
-
-class CommitShort(BaseException):
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
-
-
-class DeviceError(BaseException):
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
-
-
-class UnpatchDiffError(BaseException):
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
-
-
-def process_commit_id(base_commit_id, patch_commit_id):
-    """Limit the length of the commit ID to 6"""
-    if len(base_commit_id) >= 6:
-        base_commit_id = base_commit_id[:6]
-    else:
-        print("base_commit_id is less longer than 6")
-        raise CommitShort
-    if len(patch_commit_id) >= 6:
-        patch_commit_id = patch_commit_id[:6]
-    else:
-        print("patch_commit_id is less longer than 6")
-        raise CommitShort
-    return base_commit_id, patch_commit_id
 
 
 def _add_auto_generate_args(parser):
@@ -104,35 +55,6 @@ def parse_autoargs():
     return args
 
 
-def get_device_type():
-    """get the global variable device_type"""
-    device_type = os.environ.get("DEVICE_TYPE", None)
-    return device_type
-
-
-def git_init(path=None):
-    """git init the repo from path"""
-    if not os.path.exists(path):
-        cwd = os.getcwd()
-        new_path = os.path.join(cwd, path)
-        if not os.path.exists(new_path):
-            raise PathNotFound
-    try:
-        repo = Repo(path)
-    except:
-        raise GitNotFound
-    assert not repo.bare
-    return repo
-
-
-def get_current_commit(repo):
-    """get the current commit id"""
-    log = repo.git.log()
-    commit_list = log.split("commit")
-    current_commit = commit_list.split("\n")[0]
-    return current_commit
-
-
 def get_output_path(device_type, base_commit_id):
     global path
     device_path = os.path.join(path, "hardwares", str(device_type))
@@ -146,6 +68,8 @@ def check_hetero_txt(device_type, base_commit_id):
     """check if the combination of device_type and commit_id is in hetero.txt"""
     global path
     hetero_path = os.path.join(path, "patch/hetero.txt")
+    if not os.path.exists(hetero_path):
+        os.system("touch {}".format(hetero_path))
     with open(hetero_path, "r") as f:
         for line in f:
             line = line.strip()
@@ -154,22 +78,7 @@ def check_hetero_txt(device_type, base_commit_id):
                 hetero_list = line[1].split()
                 if set(device_type).issubset(set(hetero_list)):
                     return True
-        return False
-
-
-def crete_tmp_dir():
-    global path
-    tmp_path = os.path.join(path, "../tmp")
-    if not os.path.isdir(tmp_path):
-        os.makedirs(tmp_path)
-    return tmp_path
-
-
-def save_patch_to_tmp(patch_name, patch_str):
-    tmp_path = crete_tmp_dir()
-    file_name = os.path.join(tmp_path, patch_name)
-    with open(file_name, "w") as f:
-        f.write(patch_str)
+    return False
 
 
 def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
@@ -179,26 +88,52 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
         raise PathNotFound
     if current_commit_id is None:
         current_commit_id = repo.head.commit
+    global path
+    origin_patch_branch = "origin_patch_code"
+    try:
+        repo.git.stash()
+        repo.git.checkout(current_commit_id)
+        repo.git.branch("origin_patch_code")
+    except:
+        print("branch {} is exist!".format(origin_patch_branch))
+        raise FileExistsError
     patch_str = repo.git.format_patch(
         "{}...{}".format(base_commit_id, current_commit_id), stdout=True
     )
     patch_name = "".join([base_commit_id, ".patch"])
-    save_patch_to_tmp(patch_name, patch_str)
+    file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
+    patch_file_path = os.path.join(path,'patch')
+    tmp_patch_file_path = os.path.join(path,'../tmp_patch/')
+    if os.path.exists(tmp_patch_file_path):
+        delete_dir(tmp_patch_file_path)
+    os.makedirs(tmp_patch_file_path)
+    os.system('cp -r {} {}'.format(patch_file_path,tmp_patch_file_path))
+    repo.git.stash()
     repo.git.checkout(base_commit_id)
+    try:
+        unpatch_branch = "unpatch_code"
+        repo.git.branch("unpatch_code")
+    except:
+        print("branch {} is exist!".format(unpatch_branch))
+        raise FileExistsError
+    auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
+    delete_dir(tmp_path)
     device_path, patch_path = get_output_path(device_type, base_commit_id)
     update_patch(patch_str, patch_name, device_path, patch_path)
     auto_commit(repo, device_type, device_path, current_commit_id)
+    if os.path.exists(patch_file_path):
+        delete_dir(patch_file_path)
+    os.system('cp -r {} {}'.format(os.path.join(tmp_patch_file_path,'patch'),path))
+    delete_dir(tmp_patch_file_path)
 
 
 def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
-
     global path
     if repo is None:
         print("repo is None")
         raise PathNotFound
     if current_commit_id is None:
         current_commit_id = repo.head.commit
-
     hetero_str = "{}: ".format(base_commit_id)
     for device in device_type[:-1]:
         hetero_str = hetero_str + " " + str(device)
@@ -208,16 +143,52 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
             raise PathNotFound
     now_device_type = device_type[-1]
     hetero_str = hetero_str + " " + str(now_device_type)
+    try:
+        repo.git.stash()
+        repo.git.checkout(current_commit_id)
+        origin_patch_branch = "origin_patch_code"
+        repo.git.branch("origin_patch_code")
+    except:
+        print("branch {} is exist!".format(origin_patch_branch))
+        raise FileExistsError
     patch_str = repo.git.format_patch(
         "{}...{}".format(base_commit_id, current_commit_id), stdout=True
     )
     patch_name = "".join([base_commit_id, ".patch"])
-    save_patch_to_tmp(patch_name, patch_str)
+    file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
+    patch_file_path = os.path.join(path,'patch')
+    tmp_patch_file_path = os.path.join(path,'../tmp_patch/')
+    if os.path.exists(tmp_patch_file_path):
+        delete_dir(tmp_patch_file_path)
+    os.makedirs(tmp_patch_file_path)
+    os.system('cp -r {} {}'.format(patch_file_path,tmp_patch_file_path))
+    repo.git.stash()
     repo.git.checkout(base_commit_id)
+    try:
+        unpatch_branch = "unpatch_code"
+        repo.git.branch("unpatch_code")
+    except:
+        print("branch {} is exist!".format(unpatch_branch))
+        raise FileExistsError
+    auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
+    delete_dir(tmp_path)
     device_path, patch_path = get_output_path(now_device_type, base_commit_id)
     hetero_path = os.path.join(path, "patch/hetero.txt")
-    update_patch(patch_str, patch_name, device_path, patch_path, hetero_path, hetero_str, device_type, base_commit_id)
+    update_patch(
+        patch_str,
+        patch_name,
+        device_path,
+        patch_path,
+        hetero_path,
+        hetero_str,
+        device_type,
+        base_commit_id,
+    )
     auto_commit(repo, now_device_type, device_path, current_commit_id)
+    if os.path.exists(patch_file_path):
+        delete_dir(patch_file_path)
+    os.system('cp -r {} {}'.format(os.path.join(tmp_patch_file_path,'patch'),path))
+    delete_dir(tmp_patch_file_path)
 
 
 def update_patch(
@@ -243,7 +214,6 @@ def update_patch(
     file_name = os.path.join(patch_path, patch_name)
     with open(file_name, "w") as f:
         f.write(patch_str)
-
     global path
     tmp_path = os.path.join(path, "../tmp")
     tmp_patch_path = os.path.join(tmp_path, file_name)
@@ -251,26 +221,29 @@ def update_patch(
     return tmp_path, tmp_patch_path
 
 
-def auto_check(
-    repo, base_commit_id, tmp_path, tmp_patch_path, origin_branch, unpatch_branch
-):
+def auto_check(repo, file_name, base_commit_id, origin_branch, unpatch_branch):
     """check if origin code and unpatch code have different"""
-    repo.git.checkout("-b", "unpatch_code")
-    repo.git.checkout(base_commit_id)
-    repo.git.am(tmp_patch_path)
-
+    repo.git.checkout(unpatch_branch)
+    repo.git.am(file_name)
     diff_str = repo.git.diff(origin_branch, unpatch_branch)
     if len(diff_str) > 0:
         print("WARNING: origin code and unpatch code have some different")
+        repo.git.stash
         repo.git.checkout("main")
+        repo.git.checkout(base_commit_id)
         repo.git.branch("-D", "origin_patch_code")
         repo.git.branch("-D", "unpatch_code")
         raise UnpatchDiffError
-    repo.git.checkout("main")
+    print('auto check successfully!')
+    repo.git.stash
+    try:
+        repo.git.checkout("main")
+    except:
+        import traceback
+        traceback.print_exc()
+    repo.git.checkout(base_commit_id)
     repo.git.branch("-D", "origin_patch_code")
     repo.git.branch("-D", "unpatch_code")
-    if os.path.isdir(tmp_path):
-        delete_dir(tmp_path)
 
 
 def auto_commit(repo, device_type, device_path, current_commit_id):
@@ -307,8 +280,8 @@ def main():
     check_path()
     global path
     repo = git_init(path)
-    base_commit_id, current_commit_id = process_commit_id(
-        args.base_commit_id, args.current_commit_id
+    current_commit_id, base_commit_id= process_commit_id(
+         args.current_commit_id,args.base_commit_id
     )
     if not check_device_type(args.device_type):
         print("device_type is not legal!")
@@ -325,4 +298,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

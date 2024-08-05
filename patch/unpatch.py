@@ -1,19 +1,17 @@
 import argparse
 import os
-import re
 from git.repo import Repo
+from common import (
+    check_path,
+    delete_dir,
+    process_commit_id,
+    git_init,
+    crete_tmp_dir,
+    save_unpatch_to_tmp,
+)
+from exception import PathNotFound, GitApplyError, DirNotFound
 
 path = os.getcwd()
-
-
-def check_path():
-    global path
-    pattern = r".*FlagScale.*"
-    a = re.match(pattern, path)
-    if a is None:
-        print("the FlagScale is not in your path")
-        raise PathNotFound
-
 
 def check_args(args):
     if args.device_type is None:
@@ -22,44 +20,6 @@ def check_args(args):
     if args.commit_id is None:
         print("args.commit_id is None")
         raise PathNotFound
-
-
-def delete_dir(dir_path):
-    os.system("rm -rf {}".format(dir_path))
-
-
-class PathNotFound(BaseException):
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
-
-
-class GitNotFound(BaseException):
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
-
-
-class CommitShort(BaseException):
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
-
-
-class GitApplyError(BaseException):
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
-
-
-class DirNotFound(BaseException):
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
-
-
-def process_commit_id(patch_commit_id):
-    if len(patch_commit_id) >= 6:
-        patch_commit_id = patch_commit_id[:6]
-    else:
-        print("patch_commit_id is less longer than 6")
-        raise CommitShort
-    return patch_commit_id
 
 
 def _add_auto_generate_args(parser):
@@ -96,50 +56,13 @@ def parse_autoargs():
     return args
 
 
-def get_device_type():
-    """get the global variable device_type"""
-    device_type = os.environ.get("DEVICE_TYPE", None)
-    return device_type
-
-
-def git_init(path=None):
-    """git init the repo from path"""
-    if not os.path.exists(path):
-        cwd = os.getcwd()
-        new_path = os.path.join(cwd, path)
-        if not os.path.exists(new_path):
-            raise PathNotFound
-    try:
-        repo = Repo(path)
-    except:
-        print("cannot initialize git repo")
-        raise GitNotFound
-    assert not repo.bare
-    return repo
-
-
-def crete_tmp_dir(dir_path, tmp_str):
-    tmp_path = os.path.join(dir_path, tmp_str)
-    if not os.path.isdir(tmp_path):
-        os.makedirs(tmp_path)
-    return tmp_path
-
-
-def save_patch_to_tmp(tmp_path, base_commit_id_dir, patch_file):
-    file_name = os.path.join(base_commit_id_dir, patch_file)
-    try:
-        os.system("cp {} {}".format(file_name, tmp_path))
-    except:
-        print("{} cannot cp".format(file_name))
-        raise BaseException
-    tmp_file_name = os.path.join(tmp_path, patch_file)
-    return tmp_file_name
-
-
 def check_hetero_txt(device_type, base_commit_id):
     """check if the combination of device_type and commit_id is in hetero.txt"""
     global path
     hetero_path = os.path.join(path, "patch/hetero.txt")
+    if not os.path.exists(hetero_path):
+        print('{} is not found!'.format(hetero_path))
+        raise FileNotFoundError
     with open(hetero_path, "r") as f:
         for line in f:
             line = line.strip()
@@ -148,7 +71,7 @@ def check_hetero_txt(device_type, base_commit_id):
                 hetero_list = line[1].split()
                 if set(device_type).issubset(set(hetero_list)):
                     return True
-        return False
+    return False
 
 
 def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
@@ -168,6 +91,7 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
         f for f in files_and_folders if os.path.isdir(os.path.join(patch_dir, f))
     ][0]
     """Check if the stored base_commit_id matches the input base_commit_id """
+    
     if base_commit_id_now != base_commit_id:
         print("base_commit_id is not matched")
         raise FileNotFoundError
@@ -183,9 +107,8 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
         if os.path.isfile(os.path.join(base_commit_id_dir, f))
     ][0]
     tmp_path = crete_tmp_dir(dir_path, tmp_str)
-    file_name = save_patch_to_tmp(tmp_path, base_commit_id_dir, patch_file)
+    file_name = save_unpatch_to_tmp(tmp_path, base_commit_id_dir, patch_file)
     repo.git.checkout(base_commit_id)
-
     try:
         repo.git.am(file_name)
     except:
@@ -270,4 +193,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
