@@ -8,8 +8,12 @@ system:
   use_mcore_models: true
   transformer_impl: transformer_engine
   hetero:
-    hetero_mode: "pp"
-    hetero_pipeline_stages: [4, 2, 2, 4, 4] 
+    enable_hetero: True
+    hetero_pipeline_layer_split: [4, 2, 2, 4]
+    hetero_process_meshes: [2, 1, 1, 3, 2, 1, 1, 1]
+    standalone_embedding_stage: False
+    hetero_device_types: ["A100"," A100"]
+    hetero_current_device_type: "A100"
   recompute:
     recompute_granularity: "full" 
     recompute_method: "uniform"
@@ -68,13 +72,12 @@ model:
       lr_decay_style: cosine 
 
 data:
-  data_path: xxxx # Please replace with your actual data path 
+  data_path: /share/project/caozhou/adaptive_flash_ckpt/FlagScale/data/pile_wikipedia_demo
   split: 1
   tokenizer:
-    tokenizer_type: xxxx # Please replace with your actual tokenizer type 
-    tokenizer_path: xxxx # Please replace with your actual tokenizer path
-    vocab_file: null 
-    merge_file: null 
-    special_tokens_file: null
-    vocab_size: xxxx # Please replace with your actual vocab size 
+    tokenizer_type: AquilaTokenizer
+    vocab_file: ./examples/aquila/tokenizer/vocab.json
+    merge_file: ./examples/aquila/tokenizer/merges.txt
+    special_tokens_file: ./examples/aquila/tokenizer/special_tokens.txt
+    vocab_size: 100008
     make_vocab_size_divisible_by: 64

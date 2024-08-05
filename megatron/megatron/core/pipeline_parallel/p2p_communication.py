@@ -357,7 +357,7 @@ def recv_forward(tensor_shape: Shape, config: ModelParallelConfig) -> torch.Tens
     See _communicate for argument details.
     """
     if config.enable_hetero:
-        from flagscale.train.hetero.p2p_communications import recv_forward_hetero
+        from flagscale.train.hetero.p2p_communication import recv_forward_hetero
         return recv_forward_hetero(tensor_shape, config)
 
     if core.parallel_state.is_pipeline_first_stage():
@@ -384,7 +384,7 @@ def recv_backward(tensor_shape: Shape, config: ModelParallelConfig) -> torch.Ten
     See _communicate for argument details.
     """
     if config.enable_hetero:
-        from flagscale.train.hetero.p2p_communications import recv_backward_hetero
+        from flagscale.train.hetero.p2p_communication import recv_backward_hetero
         return recv_backward_hetero(tensor_shape, config)
 
     if core.parallel_state.is_pipeline_last_stage():
@@ -411,7 +411,7 @@ def send_forward(output_tensor: torch.Tensor, config: ModelParallelConfig) -> No
     See _communicate for argument details.
     """
     if config.enable_hetero:
-        from flagscale.train.hetero.p2p_communications import send_forward_hetero
+        from flagscale.train.hetero.p2p_communication import send_forward_hetero
         send_forward_hetero(output_tensor, config)
         return
 
@@ -436,7 +436,7 @@ def send_backward(input_tensor_grad: torch.Tensor, config: ModelParallelConfig) 
     See _communicate for argument details.
     """
     if config.enable_hetero:
-        from flagscale.train.hetero.p2p_communications import send_backward_hetero
+        from flagscale.train.hetero.p2p_communication import send_backward_hetero
         send_backward_hetero(input_tensor_grad, config)
         return
 
@@ -463,7 +463,7 @@ def send_forward_recv_backward(
     See _communicate for argument details.
     """
     if config.enable_hetero:
-        from flagscale.train.hetero.p2p_communications import send_forward_recv_backward_hetero
+        from flagscale.train.hetero.p2p_communication import send_forward_recv_backward_hetero
         return send_forward_recv_backward_hetero(output_tensor, tensor_shape, config)
 
     if core.parallel_state.is_pipeline_last_stage():
@@ -492,8 +492,8 @@ def send_backward_recv_forward(
     See _communicate for argument details.
     """
     if config.enable_hetero:
-        from flagscale.train.hetero.p2p_communications import send_backward_recv_forward_hetero
-        return send_backward_recv_forward_hetero(input_tensor_grad, config)
+        from flagscale.train.hetero.p2p_communication import send_backward_recv_forward_hetero
+        return send_backward_recv_forward_hetero(input_tensor_grad, tensor_shape, config)
 
     if core.parallel_state.is_pipeline_first_stage():
         input_tensor = None

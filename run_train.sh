@@ -1,0 +1,4 @@
+# export NCCL_DEBUG=INFO
+# export NCCL_DEBUG_FILE="/share/project/heyongzhe/logs/nccl_debug_file_trace_hetero"
+# export NCCL_TOPO_DUMP_FILE="/share/project/heyongzhe/logs/nccl_topo_dump_file_trace_hetero"
+python run.py --config-path ./examples/aquila/conf --config-name config_hetero
