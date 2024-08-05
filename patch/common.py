@@ -57,12 +57,12 @@ def git_init(path=None):
 def crete_tmp_dir(dir_path=None, tmp_str=None):
     global path
     if dir_path is None:
-        tmp_path = os.path.join(path, "../tmp123456")
+        tmp_path = os.path.join(path, "../tmp_flagscale")
     else:
         if tmp_str is not None:
-            tmp_path = os.path.join(dir_path, tmp_str.replace('tmp','tmp123456'))
+            tmp_path = os.path.join(dir_path, tmp_str.replace('tmp','tmp_flagscale'))
         else:
-            tmp_path = os.path.join(dir_path, "../tmp123456")
+            tmp_path = os.path.join(dir_path, "../tmp_flagscale")
     if not os.path.isdir(tmp_path):
         os.makedirs(tmp_path)
     else:
