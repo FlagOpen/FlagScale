@@ -103,6 +103,8 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     )
     patch_name = "".join([base_commit_id, ".patch"])
     file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
+    patch_file_path = os.path.join(path,'patch/')
+    repo.git.update_index('--assume-unchanged',patch_file_path)
     repo.git.stash()
     repo.git.checkout(base_commit_id)
     try:
@@ -147,7 +149,10 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     )
     patch_name = "".join([base_commit_id, ".patch"])
     file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
+    patch_file_path = os.path.join(path,'patch/')
+    repo.git.update_index('--assume-unchanged',patch_file_path)
     repo.git.stash()
+    
     repo.git.checkout(base_commit_id)
     try:
         unpatch_branch = "unpatch_code"
