@@ -27,7 +27,6 @@ from megatron.core.utils import divide
 from .enums import AttnMaskType
 from .transformer_config import TransformerConfig
 
-
 try:
     import transformer_engine
 
