@@ -9,10 +9,8 @@ from common import (
     crete_tmp_dir,
     save_unpatch_to_tmp,
 )
-from exception import PathNotFound, GitApplyError, DirNotFound
 
 path = os.getcwd()
-
 
 
 def _add_auto_generate_args():
@@ -41,7 +39,6 @@ def _add_auto_generate_args():
     )
     args = parser.parse_args()
     return args
-
 
 
 def check_hetero_txt(device_type, base_commit_id):
@@ -74,12 +71,12 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
         print(patch_dir, " have no file!")
         raise FileNotFoundError
 
-    """Get the base_commit_id stored in FlagScale."""
+    # Get the base_commit_id stored in FlagScale.
     base_commit_id_now = [
         f for f in files_and_folders if os.path.isdir(os.path.join(patch_dir, f))
     ][0]
-    """Check if the stored base_commit_id matches the input base_commit_id """
 
+    # Check if the stored base_commit_id matches the input base_commit_id
     if base_commit_id_now != base_commit_id:
         print("base_commit_id is not matched")
         raise FileNotFoundError
@@ -97,11 +94,13 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
     tmp_path = crete_tmp_dir(dir_path, tmp_str)
     file_name = save_unpatch_to_tmp(tmp_path, base_commit_id_dir, patch_file)
     repo.git.checkout(base_commit_id)
+
+    # Apply the patch file
     try:
         repo.git.am(file_name)
     except:
         print("git apply {} falied!".format(file_name))
-        raise GitApplyError
+        raise ValueError
     shutil.rmtree(tmp_path)
 
 
@@ -118,13 +117,15 @@ def build_dir(repo, device_type, commit_id, directory=None):
         if os.path.exists(build_dir_path):
             shutil.rmtree(build_dir_path)
 
-        # copy FlagScale into build
+        # Copy FlagScale into build.
         shutil.copytree(path, build_dir_path)
         os.makedirs(dir_path)
         shutil.move(build_dir_path, dir_path)
-        shutil.move(os.path.join(dir_path, "patch_build"), os.path.join(dir_path, "FlagScale"))
-        
-        # Step into build dir
+        shutil.move(
+            os.path.join(dir_path, "patch_build"), os.path.join(dir_path, "FlagScale")
+        )
+
+        # Step into build dir.
         dir_path = os.path.join(dir_path, "FlagScale")
         repo = Repo(dir_path)
         apply_patch(repo, device_type, commit_id, dir_path, "../../../tmp")
@@ -140,17 +141,20 @@ def build_hetero_dir(repo, device_type, commit_id, directory):
         build_dir_path = os.path.join(path, "../patch_build")
         if os.path.exists(build_dir_path):
             shutil.rmtree(build_dir_path)
-            
-        # copy FlagScale into build
+
+        # Copy FlagScale into build.
         shutil.copytree(path, build_dir_path)
         os.makedirs(dir_path)
         shutil.move(build_dir_path, dir_path)
-        shutil.move(os.path.join(dir_path, "patch_build"), os.path.join(dir_path, "FlagScale"))
-        
-        # Step into build dir
+        shutil.move(
+            os.path.join(dir_path, "patch_build"), os.path.join(dir_path, "FlagScale")
+        )
+
+        # Step into build dir.
         dir_path = os.path.join(dir_path, "FlagScale")
         repo = Repo(dir_path)
         apply_patch(repo, device, commit_id, dir_path, "../../../tmp")
+
 
 def main():
     args = _add_auto_generate_args()
@@ -159,17 +163,17 @@ def main():
     repo = git_init(path)
     commit_id = process_commit_id(args.commit_id)
     if len(args.device_type) > 1:
-        """Heterogeneous scenarios."""
+        # Heterogeneous scenarios.
         if args.dir is None:
             print("--dir must be set!")
-            raise DirNotFound
+            raise FileNotFoundError
         if check_hetero_txt(args.device_type, commit_id):
             build_hetero_dir(repo, args.device_type, commit_id, args.dir)
         else:
             print("The combination of device_type and commit_id is not in hetero.txt.")
-            raise PathNotFound
+            raise NameError
     else:
-        """Gomogeneous scenarios."""
+        # Homogeneous scenarios.
         device_type = args.device_type[0]
         build_dir(repo, device_type, commit_id, args.dir)
     print("unpatch successfully!")

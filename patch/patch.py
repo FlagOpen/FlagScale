@@ -7,7 +7,6 @@ from common import (
     git_init,
     save_patch_to_tmp,
 )
-from exception import PathNotFound, DeviceError, UnpatchDiffError
 
 path = os.getcwd()
 
@@ -41,8 +40,6 @@ def _add_auto_generate_args():
     return args
 
 
-
-
 def get_output_path(device_type, base_commit_id):
     global path
     device_path = os.path.join(path, "hardwares", str(device_type))
@@ -70,19 +67,19 @@ def check_hetero_txt(device_type, base_commit_id):
 
 
 def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
-    """The main function to get the patch file."""
+    """The main function to get the patch file in homogeneous scenarios."""
     if repo is None:
         print("repo is None")
-        raise PathNotFound
+        raise FileNotFoundError
     global path
-    
+
     # Create diretory to save patch.py/unpatch.py.
     patch_file_path = os.path.join(path, "patch/")
     tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
     if os.path.exists(tmp_patch_file_path):
         shutil.rmtree(tmp_patch_file_path)
-    shutil.copytree(patch_file_path,tmp_patch_file_path)
-    
+    shutil.copytree(patch_file_path, tmp_patch_file_path)
+
     # Create in-place code branch to compare different.
     origin_patch_branch = "origin_patch_code"
     try:
@@ -95,11 +92,13 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     patch_str = repo.git.format_patch(
         "{}...{}".format(base_commit_id, current_commit_id), stdout=True
     )
+
+    # Save .patch file to tmp directory.
     patch_name = "".join([base_commit_id, ".patch"])
     file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
     repo.git.stash()
     repo.git.checkout(base_commit_id)
-    
+
     # Create patch code branch to compare different.
     try:
         unpatch_branch = "unpatch_code"
@@ -107,39 +106,46 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     except:
         print("branch {} is exist!".format(unpatch_branch))
         raise FileExistsError
-    # Check the different between in-place code 
+
+    # Check the different between in-place code and patch code.
     auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
     shutil.rmtree(tmp_path)
     device_path, patch_path = get_output_path(device_type, base_commit_id)
+
+    # Recover the patch/ directory.
     if not os.path.exists(patch_file_path):
-        shutil.copytree(tmp_patch_file_path,os.path.join(path,'patch'))
+        shutil.copytree(tmp_patch_file_path, os.path.join(path, "patch"))
     else:
-        shutil.rmtree(os.path.join(path,'patch'))
-        shutil.copytree(tmp_patch_file_path, os.path.join(path,'patch'))
+        shutil.rmtree(os.path.join(path, "patch"))
+        shutil.copytree(tmp_patch_file_path, os.path.join(path, "patch"))
     shutil.rmtree(tmp_patch_file_path)
     update_patch(patch_str, patch_name, device_path, patch_path)
     auto_commit(repo, device_type, device_path, current_commit_id)
 
 
 def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
+    """The main function to get the patch file in heterogeneous scenarios."""
     global path
     if repo is None:
-        print("repo is None")
-        raise PathNotFound
+        TypeError("repo is None")
     hetero_str = "{}: ".format(base_commit_id)
     for device in device_type[:-1]:
         hetero_str = hetero_str + " " + str(device)
         base_commit_id_path = os.path.join(path, "hardwares", device, base_commit_id)
         if not os.path.exists(base_commit_id_path):
             print("{} is not found".format(base_commit_id_path))
-            raise PathNotFound
+            raise FileNotFoundError
     now_device_type = device_type[-1]
     hetero_str = hetero_str + " " + str(now_device_type)
+
+    # Create diretory to save patch.py/unpatch.py.
     patch_file_path = os.path.join(path, "patch/")
     tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
     if os.path.exists(tmp_patch_file_path):
         shutil.rmtree(tmp_patch_file_path)
-    shutil.copytree(patch_file_path,tmp_patch_file_path)
+    shutil.copytree(patch_file_path, tmp_patch_file_path)
+
+    # Create in-place code branch to compare different.
     try:
         repo.git.stash()
         repo.git.checkout(current_commit_id)
@@ -152,6 +158,8 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
         "{}...{}".format(base_commit_id, current_commit_id), stdout=True
     )
     patch_name = "".join([base_commit_id, ".patch"])
+
+    # Create in-place code branch to compare different.
     file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
     patch_file_path = os.path.join(path, "patch/")
     repo.git.stash()
@@ -163,16 +171,22 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     except:
         print("branch {} is exist!".format(unpatch_branch))
         raise FileExistsError
+
+    # Check the different between in-place code and patch code.
     auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
     shutil.rmtree(tmp_path)
     device_path, patch_path = get_output_path(now_device_type, base_commit_id)
+
+    # Recover the patch/ directory.
     if not os.path.exists(patch_file_path):
-        shutil.copytree(tmp_patch_file_path,os.path.join(path,'patch'))
+        shutil.copytree(tmp_patch_file_path, os.path.join(path, "patch"))
     else:
-        shutil.rmtree(os.path.join(path,'patch'))
-        shutil.copytree(tmp_patch_file_path, os.path.join(path,'patch'))
+        shutil.rmtree(os.path.join(path, "patch"))
+        shutil.copytree(tmp_patch_file_path, os.path.join(path, "patch"))
     shutil.rmtree(tmp_patch_file_path)
     hetero_path = os.path.join(path, "patch/hetero.txt")
+
+    # Update .patch file and hetero.txt.
     update_patch(
         patch_str,
         patch_name,
@@ -196,9 +210,9 @@ def update_patch(
     device_type=None,
     base_commit_id=None,
 ):
-    """hetero_path is not None then hetero_str must be not None"""
+    """Hetero_path is not None then hetero_str must be not None."""
     assert bool(hetero_path) == bool(hetero_str)
-    """write to hetero.txt"""
+    # Write to hetero.txt.
     if hetero_str:
         if not check_hetero_txt(device_type, base_commit_id):
             with open(hetero_path, "a+") as f:
@@ -212,7 +226,7 @@ def update_patch(
 
 
 def auto_check(repo, file_name, base_commit_id, origin_branch, unpatch_branch):
-    """check if origin code and unpatch code have different"""
+    """Check if origin code and unpatch code have different."""
     repo.git.checkout(unpatch_branch)
     repo.git.am(file_name)
     diff_str = repo.git.diff(origin_branch, unpatch_branch)
@@ -223,7 +237,7 @@ def auto_check(repo, file_name, base_commit_id, origin_branch, unpatch_branch):
         repo.git.checkout(base_commit_id)
         repo.git.branch("-D", "origin_patch_code")
         repo.git.branch("-D", "unpatch_code")
-        raise UnpatchDiffError
+        raise ValueError
     print("auto check successfully!")
     repo.git.stash()
     try:
@@ -238,7 +252,7 @@ def auto_check(repo, file_name, base_commit_id, origin_branch, unpatch_branch):
 
 
 def auto_commit(repo, device_type, device_path, current_commit_id, hetero_path=None):
-    """auto git commit the patch , commit-msg is from current_commit_id's commit-msg"""
+    """Auto git commit the patch , commit-msg is from current_commit_id's commit-msg."""
     if hetero_path:
         repo.git.add(hetero_path)
     repo.git.add(device_path)
@@ -250,13 +264,15 @@ def auto_commit(repo, device_type, device_path, current_commit_id, hetero_path=N
         commit_msg = commit_msg.split("]")[1].strip()
     commit_msg = "[{}] {}".format(device_type, commit_msg)
     repo.git.commit("-m", commit_msg)
-    print("Commit successfully! if you want to push,try 'git push origin HEAD:(your branch)'")
+    print(
+        "Commit successfully! if you want to push,try 'git push origin HEAD:(your branch)'"
+    )
 
 
 def check_device_type(device_type):
     """Check the format of device_type. The device_type format must be '--device-type A_X100' or  '--device-type A_X100  B_Y100'
-    '--device-type A_X100'  format for homogeneous scenarios
-    '--device-type A_X100  B_Y100' format for heterogeneous scenarios
+    '--device-type A_X100'  format for homogeneous scenarios.
+    '--device-type A_X100  B_Y100' format for heterogeneous scenarios.
     """
     import re
 
@@ -282,13 +298,13 @@ def main():
     )
     if not check_device_type(args.device_type):
         print("device_type is not legal!")
-        raise DeviceError
+        raise SyntaxError
 
     if len(args.device_type) > 1:
-        """heterogeneous scenarios"""
+        # Heterogeneous scenarios.
         get_hetero_patch(repo, args.device_type, base_commit_id, current_commit_id)
     else:
-        """homogeneous scenarios"""
+        # Homogeneous scenarios.
         get_patch(repo, args.device_type[0], base_commit_id, current_commit_id)
     print("patch successfully!")
 

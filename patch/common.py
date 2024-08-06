@@ -1,7 +1,7 @@
 import re
 import os
+import shutil
 from git.repo import Repo
-from exception import PathNotFound, CommitShort, GitNotFound
 
 path = os.getcwd()
 
@@ -13,24 +13,24 @@ def check_path():
     a = re.match(pattern, path)
     if a is None:
         print("the FlagScale is not in your path")
-        raise PathNotFound
+        raise FileNotFoundError
 
 
-def process_commit_id(patch_commit_id,base_commit_id=None):
-    """Limit the length of the commit ID to 6"""
+def process_commit_id(patch_commit_id, base_commit_id=None):
+    """Limit the length of the commit ID to 6."""
     if base_commit_id is not None:
         if len(base_commit_id) >= 6:
             base_commit_id = base_commit_id[:6]
         else:
             print("base_commit_id is less longer than 6")
-            raise CommitShort
+            raise ValueError
     if len(patch_commit_id) >= 6:
         patch_commit_id = patch_commit_id[:6]
     else:
         print("patch_commit_id is less longer than 6")
-        raise CommitShort
+        raise ValueError
     if base_commit_id is not None:
-        return patch_commit_id,base_commit_id
+        return patch_commit_id, base_commit_id
     else:
         return patch_commit_id
 
@@ -42,12 +42,12 @@ def git_init(path=None):
             cwd = os.getcwd()
             new_path = os.path.join(cwd, path)
             if not os.path.exists(new_path):
-                raise PathNotFound
+                raise FileNotFoundError
     check_path()
     try:
         repo = Repo(path)
     except:
-        raise GitNotFound
+        raise FileNotFoundError
     assert not repo.bare
     return repo
 
@@ -58,14 +58,14 @@ def crete_tmp_dir(dir_path=None, tmp_str=None):
         tmp_path = os.path.join(path, "../tmp_flagscale")
     else:
         if tmp_str is not None:
-            tmp_path = os.path.join(dir_path, tmp_str.replace('tmp','tmp_flagscale'))
+            tmp_path = os.path.join(dir_path, tmp_str.replace("tmp", "tmp_flagscale"))
         else:
             tmp_path = os.path.join(dir_path, "../tmp_flagscale")
     if not os.path.isdir(tmp_path):
         os.makedirs(tmp_path)
     else:
         print("{} is exist!".format(tmp_path))
-        raise BaseException
+        raise FileExistsError
     return tmp_path
 
 
@@ -82,7 +82,7 @@ def save_unpatch_to_tmp(tmp_path, base_commit_id_dir, patch_file):
     """Save patch file to tmp directory."""
     file_name = os.path.join(base_commit_id_dir, patch_file)
     try:
-        os.system("cp {} {}".format(file_name, tmp_path))
+        shutil.copy(file_name, tmp_path)
     except:
         print("{} cannot cp".format(file_name))
         raise BaseException
