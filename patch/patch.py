@@ -167,10 +167,10 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     shutil.rmtree(tmp_path)
     device_path, patch_path = get_output_path(now_device_type, base_commit_id)
     if not os.path.exists(patch_file_path):
-        shutil.copytree(os.path.join(tmp_patch_file_path, "patch"), path)
+        shutil.copytree(tmp_patch_file_path,os.path.join(path,'patch'))
     else:
         shutil.rmtree(os.path.join(path,'patch'))
-        shutil.copytree(os.path.join(tmp_patch_file_path, "patch"), os.path.join(path,'patch'))
+        shutil.copytree(tmp_patch_file_path, os.path.join(path,'patch'))
     shutil.rmtree(tmp_patch_file_path)
     hetero_path = os.path.join(path, "patch/hetero.txt")
     update_patch(
