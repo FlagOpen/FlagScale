@@ -66,6 +66,9 @@ if _te_version >= packaging.version.Version("1.9.0.dev0"):
     moe_grouped_gemm_options.append(True)
 
 class TestExpertLayerReconfiguration:
+    def setup_class(cls):
+        Utils.initialize_distributed()
+    
     @pytest.mark.parametrize(
         "use_fpsl,src_tp_pp_exp,dest_tp_pp_exp,use_glu",
         [
