@@ -11,6 +11,7 @@ from collections import defaultdict
 import torch
 
 def debug_print_value(**kwargs):
+    return
     def debug_stream(**kwargs):
         for var_name, value in kwargs.items():
             print(f"{var_name}: {value}")
@@ -597,34 +598,17 @@ class ParallelContext:
                 # group = torch.distributed.new_group(ranks, timeout=self._timeout)
                 self._process_groups["mp_exp"] = group
                 self._process_group_to_ranks[group] = ranks
-            # BUG: is_built_on_rank must return True when global rank = 0 and vp rank = 0
-            # TODO: self._parallel_ranks["tp"] should store for each mesh
-            # self._parallel_ranks["tp"] = mesh_index
-            # if mesh_index == len(self._process_meshes) - 1: 
-            #     ranks_list = process_mesh.get_all_process_group_ranks(
-            #         "pp", independent_ep=False, check_initialized=True
-            #     )
-            #     ranks = list(itertools.chain.from_iterable(ranks_list))
-            #     # if self._rank in ranks:
-            #     #     self._parallel_ranks["last_rank"] = ranks[-1]
-            #     # TODO: Now last rank only stores the last mesh
-            #     # however it should append for every mesh
-            #     self._parallel_ranks["last_rank"] = ranks[-1]
-            # if mesh_index == len(self._process_meshes) - 1: 
             ranks_list = process_mesh.get_all_process_group_ranks(
                 "pp", independent_ep=False, check_initialized=True
             )
             ranks = list(itertools.chain.from_iterable(ranks_list))
-                # if self._rank in ranks:
-                #     self._parallel_ranks["last_rank"] = ranks[-1]
-                # TODO: Now last rank only stores the last mesh
-                # however it should append for every mesh
             if "last_rank" not in self._parallel_ranks:
                 self._parallel_ranks["last_rank"] = []
             self._parallel_ranks["last_rank"].append(ranks[-1])
-            # print("self._parallel_ranks[last_rank]", self._parallel_ranks["last_rank"])
         # build global pipeline process groups
         def _backtrack(mesh_index, prev_rank, path):
+            # aggregated_ranks = [rank for ranks in path for rank in ranks]
+            # group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout)
             if mesh_index == len(self._process_meshes):
                 aggregated_ranks = [rank for ranks in path for rank in ranks]
                 self._all_group_ranks["pp"].append(aggregated_ranks)
@@ -680,6 +664,7 @@ class ParallelContext:
                 embedding_ranks = ranks
                 position_embedding_ranks = ranks
 
+            # debug_print_value(embedding_ranks=embedding_ranks)
             group = torch.distributed.new_group(
                 embedding_ranks, timeout=self._timeout
             )
@@ -1020,7 +1005,12 @@ class ParallelContext:
         """Return true if current rank is in embedding group, False otherwise."""
         rank = torch.distributed.get_rank()
         if group is None:
-            group = self._process_groups.get("embd")[0]
+            group = self._process_groups.get("embd", None)
+            if group is None:
+                return False
+            else:
+                group = group[0]
+            # group = self._process_groups.get("embd")[0]
         ranks = self._process_group_to_ranks[group]
         if ignore_virtual:
             return rank in ranks 
@@ -1037,7 +1027,11 @@ class ParallelContext:
         """Return true if current rank is in position embedding group, False otherwise."""
         rank = torch.distributed.get_rank()
         if group is None:
-            group = self._process_groups.get("embd")[0]
+            group = self._process_groups.get("embd", None)
+            if group is None:
+                return False
+            else:
+                group = group[0]
         ranks = self._process_group_to_ranks[group]
         return rank in ranks 
 

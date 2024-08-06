@@ -11,9 +11,11 @@ system:
     enable_hetero: True
     hetero_pipeline_layer_split: [4, 2, 2, 4]
     hetero_process_meshes: [2, 1, 1, 3, 2, 1, 1, 1]
+    # hetero_process_meshes: [2, 1, 1, 4]
     standalone_embedding_stage: False
-    hetero_device_types: ["A100"," A100"]
-    hetero_current_device_type: "A100"
+    hetero_device_types: ["A800"," A800"]
+    # hetero_device_types: ["A800"]
+    hetero_current_device_type: "A800"
   recompute:
     recompute_granularity: "full" 
     recompute_method: "uniform"
