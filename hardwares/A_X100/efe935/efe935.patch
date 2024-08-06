@@ -1,0 +1,23 @@
+From 3567db6ac6fe76688b1ad4380adfd64af9f3b6ac Mon Sep 17 00:00:00 2001
+From: phoenixDong <liang_dong@foxmail.com>
+Date: Tue, 6 Aug 2024 10:23:39 +0800
+Subject: [PATCH] dong test
+
+---
+ megatron/megatron/core/transformer/attention.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/megatron/megatron/core/transformer/attention.py b/megatron/megatron/core/transformer/attention.py
+index 7b4bdb07..9d6e9081 100644
+--- a/megatron/megatron/core/transformer/attention.py
++++ b/megatron/megatron/core/transformer/attention.py
+@@ -29,6 +29,7 @@ from .transformer_config import TransformerConfig
+ 
+ # dong add
+ import numpy
++import pandas
+ 
+ try:
+     import transformer_engine
+-- 
+2.34.1
