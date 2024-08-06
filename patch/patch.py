@@ -121,7 +121,8 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
     delete_dir(tmp_path)
     device_path, patch_path = get_output_path(device_type, base_commit_id)
-    os.system("cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path))
+    if not os.path.exists(patch_file_path):
+        os.system("cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path))
     delete_dir(tmp_patch_file_path)
     update_patch(patch_str, patch_name, device_path, patch_path)
     auto_commit(repo, device_type, device_path, current_commit_id)
@@ -175,7 +176,8 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
     delete_dir(tmp_path)
     device_path, patch_path = get_output_path(now_device_type, base_commit_id)
-    os.system("cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path))
+    if not os.path.exists(patch_file_path):
+        os.system("cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path))
     delete_dir(tmp_patch_file_path)
     hetero_path = os.path.join(path, "patch/hetero.txt")
     update_patch(
