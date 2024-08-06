@@ -250,6 +250,7 @@ def auto_commit(repo, device_type, device_path, current_commit_id, hetero_path=N
         commit_msg = commit_msg.split("]")[1].strip()
     commit_msg = "[{}] {}".format(device_type, commit_msg)
     repo.git.commit("-m", commit_msg)
+    print("Commit successfully! if you want to push,try 'git push origin HEAD:(your branch)'")
 
 
 def check_device_type(device_type):
