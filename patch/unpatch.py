@@ -17,7 +17,7 @@ path = os.getcwd()
 
 def _add_auto_generate_args():
     parser = argparse.ArgumentParser(
-        description="patch auto generate Arguments", allow_abbrev=False
+        description="Patch auto generate Arguments", allow_abbrev=False
     )
     group = parser.add_argument_group(title="straggler")
     group.add_argument(
@@ -74,7 +74,7 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
         print(patch_dir, " have no file!")
         raise FileNotFoundError
 
-    """get the base_commit_id stored in FlagScale """
+    """Get the base_commit_id stored in FlagScale."""
     base_commit_id_now = [
         f for f in files_and_folders if os.path.isdir(os.path.join(patch_dir, f))
     ][0]

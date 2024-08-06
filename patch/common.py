@@ -7,17 +7,13 @@ path = os.getcwd()
 
 
 def check_path():
-    """get path and check 'FlagScale' in path"""
+    """Get path and check 'FlagScale' in path."""
     global path
     pattern = r".*FlagScale.*"
     a = re.match(pattern, path)
     if a is None:
         print("the FlagScale is not in your path")
         raise PathNotFound
-
-
-def delete_dir(dir_path):
-    os.system("rm -rf {}".format(dir_path))
 
 
 def process_commit_id(patch_commit_id,base_commit_id=None):
@@ -40,7 +36,7 @@ def process_commit_id(patch_commit_id,base_commit_id=None):
 
 
 def git_init(path=None):
-    """git init the repo from path"""
+    """Git init the repo from path."""
     if path:
         if not os.path.exists(path):
             cwd = os.getcwd()
@@ -74,7 +70,7 @@ def crete_tmp_dir(dir_path=None, tmp_str=None):
 
 
 def save_patch_to_tmp(patch_name, patch_str):
-    "save patch str to tmp patch file"
+    """Save patch str to tmp patch file."""
     tmp_path = crete_tmp_dir()
     file_name = os.path.join(tmp_path, patch_name)
     with open(file_name, "w") as f:
@@ -83,7 +79,7 @@ def save_patch_to_tmp(patch_name, patch_str):
 
 
 def save_unpatch_to_tmp(tmp_path, base_commit_id_dir, patch_file):
-    "save patch file to tmp directory"
+    """Save patch file to tmp directory."""
     file_name = os.path.join(base_commit_id_dir, patch_file)
     try:
         os.system("cp {} {}".format(file_name, tmp_path))
