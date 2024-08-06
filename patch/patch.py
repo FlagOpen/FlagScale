@@ -230,14 +230,14 @@ def auto_check(repo, file_name, base_commit_id, origin_branch, unpatch_branch):
     diff_str = repo.git.diff(origin_branch, unpatch_branch)
     if len(diff_str) > 0:
         print("WARNING: origin code and unpatch code have some different")
-        repo.git.stash
+        repo.git.stash()
         repo.git.checkout("main")
         repo.git.checkout(base_commit_id)
         repo.git.branch("-D", "origin_patch_code")
         repo.git.branch("-D", "unpatch_code")
         raise UnpatchDiffError
     print("auto check successfully!")
-    repo.git.stash
+    repo.git.stash()
     try:
         repo.git.checkout("main")
     except:
