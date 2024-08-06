@@ -46,6 +46,7 @@ def git_init(path=None):
         new_path = os.path.join(cwd, path)
         if not os.path.exists(new_path):
             raise PathNotFound
+    check_path()
     try:
         repo = Repo(path)
     except:
