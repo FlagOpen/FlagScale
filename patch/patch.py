@@ -1,8 +1,8 @@
 import argparse
 import os
+import shutil
 from common import (
     check_path,
-    delete_dir,
     process_commit_id,
     git_init,
     save_patch_to_tmp,
@@ -80,9 +80,10 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     patch_file_path = os.path.join(path, "patch/")
     tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
     if os.path.exists(tmp_patch_file_path):
-        delete_dir(tmp_patch_file_path)
+        shutil.rmtree(tmp_patch_file_path)
     os.makedirs(tmp_patch_file_path)
-    os.system("cp -r {} {}".format(patch_file_path, tmp_patch_file_path))
+    #os.system("cp -r {} {}".format(patch_file_path, tmp_patch_file_path))
+    shutil.copytree(patch_file_path,tmp_patch_file_path)
     
     # Create in-place code branch to compare different.
     origin_patch_branch = "origin_patch_code"
@@ -110,13 +111,14 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
         raise FileExistsError
     # Check the different between in-place code 
     auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
-    delete_dir(tmp_path)
+    shutil.rmtree(tmp_path)
     device_path, patch_path = get_output_path(device_type, base_commit_id)
     if not os.path.exists(patch_file_path):
-        os.system(
-            "cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path)
-        )
-    delete_dir(tmp_patch_file_path)
+        # os.system(
+        #     "cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path)
+        # )
+        shutil.copytree(os.path.join(tmp_patch_file_path, "patch"),path)
+    shutil.rmtree(tmp_patch_file_path)
     update_patch(patch_str, patch_name, device_path, patch_path)
     auto_commit(repo, device_type, device_path, current_commit_id)
 
@@ -138,9 +140,10 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     patch_file_path = os.path.join(path, "patch/")
     tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
     if os.path.exists(tmp_patch_file_path):
-        delete_dir(tmp_patch_file_path)
+        shutil.rmtree(tmp_patch_file_path)
     os.makedirs(tmp_patch_file_path)
-    os.system("cp -r {} {}".format(patch_file_path, tmp_patch_file_path))
+    #os.system("cp -r {} {}".format(patch_file_path, tmp_patch_file_path))
+    shutil.copytree(patch_file_path,tmp_patch_file_path)
     try:
         repo.git.stash()
         repo.git.checkout(current_commit_id)
@@ -165,13 +168,14 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
         print("branch {} is exist!".format(unpatch_branch))
         raise FileExistsError
     auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
-    delete_dir(tmp_path)
+    shutil.rmtree(tmp_path)
     device_path, patch_path = get_output_path(now_device_type, base_commit_id)
     if not os.path.exists(patch_file_path):
-        os.system(
-            "cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path)
-        )
-    delete_dir(tmp_patch_file_path)
+        # os.system(
+        #     "cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path)
+        # )
+        shutil.copytree(os.path.join(tmp_patch_file_path, "patch"), path)
+    shutil.rmtree(tmp_patch_file_path)
     hetero_path = os.path.join(path, "patch/hetero.txt")
     update_patch(
         patch_str,
@@ -204,7 +208,7 @@ def update_patch(
             with open(hetero_path, "a+") as f:
                 f.writelines(hetero_str + "\n")
     if os.path.isdir(device_path):
-        delete_dir(device_path)
+        shutil.rmtree(device_path)
     os.makedirs(patch_path)
     file_name = os.path.join(patch_path, patch_name)
     with open(file_name, "w") as f:

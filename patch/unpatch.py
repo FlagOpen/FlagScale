@@ -4,7 +4,6 @@ import shutil
 from git.repo import Repo
 from common import (
     check_path,
-    delete_dir,
     process_commit_id,
     git_init,
     crete_tmp_dir,
@@ -15,51 +14,38 @@ from exception import PathNotFound, GitApplyError, DirNotFound
 path = os.getcwd()
 
 
-def check_args(args):
-    if args.device_type is None:
-        print("args.device_type is None")
-        raise PathNotFound
-    if args.commit_id is None:
-        print("args.commit_id is None")
-        raise PathNotFound
 
-
-def _add_auto_generate_args(parser):
+def _add_auto_generate_args():
+    parser = argparse.ArgumentParser(
+        description="patch auto generate Arguments", allow_abbrev=False
+    )
     group = parser.add_argument_group(title="straggler")
     group.add_argument(
         "--device-type",
         type=str,
         nargs="+",
-        default=None,
-        help="device type what you want to merge",
+        required=True,
+        help="Device type what you want to merge.",
     )
     group.add_argument(
         "--commit-id",
         type=str,
-        default=None,
-        help="the base commit-id that chip manufacturer must offer",
+        required=True,
+        help="The base commit-id that chip manufacturer must offer.",
     )
     group.add_argument(
         "--dir",
         type=str,
         default=None,
-        help="the commit-id that want to patch",
+        help="The commit-id that want to patch.",
     )
-    return parser
-
-
-def parse_autoargs():
-    """parse the args of auto"""
-    parser = argparse.ArgumentParser(
-        description="patch auto generate Arguments", allow_abbrev=False
-    )
-    parser = _add_auto_generate_args(parser)
     args = parser.parse_args()
     return args
 
 
+
 def check_hetero_txt(device_type, base_commit_id):
-    """check if the combination of device_type and commit_id is in hetero.txt"""
+    """Check if the combination of device_type and commit_id is in hetero.txt."""
     global path
     hetero_path = os.path.join(path, "patch/hetero.txt")
     if not os.path.exists(hetero_path):
@@ -77,7 +63,7 @@ def check_hetero_txt(device_type, base_commit_id):
 
 
 def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
-    """convert FlagScale to in-place status by applying patch"""
+    """Convert FlagScale to in-place status by applying patch."""
     global path
     patch_dir = os.path.join(path, "hardwares", device_type)
     if not os.path.isdir(patch_dir):
@@ -116,34 +102,38 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
     except:
         print("git apply {} falied!".format(file_name))
         raise GitApplyError
-    delete_dir(tmp_path)
+    shutil.rmtree(tmp_path)
 
 
 def build_dir(repo, device_type, commit_id, directory=None):
-    """build directory for homogeneous scenarios"""
+    """Build directory for homogeneous scenarios."""
     global path
     if directory is None:
         apply_patch(repo, device_type, commit_id, path, "../tmp")
     else:
         if os.path.exists(os.path.join(path, directory)):
-            delete_dir(os.path.join(path, directory))
+            shutil.rmtree(os.path.join(path, directory))
         dir_path = os.path.join(path, directory, device_type)
         build_dir_path = os.path.join(path, "../patch_build")
         if os.path.exists(build_dir_path):
-            delete_dir(build_dir_path)
+            shutil.rmtree(build_dir_path)
         os.makedirs(build_dir_path)
 
         # copy FlagScale into build
-        os.system("cp -r {} {}".format(path, build_dir_path))
+        #os.system("cp -r {} {}".format(path, build_dir_path))
+        shutil.copytree(path, build_dir_path)
         os.makedirs(dir_path)
         repo_name = path.split("/")[-1]
-        os.system("mv {} {}".format(os.path.join(build_dir_path, repo_name), dir_path))
-        os.system(
-            "mv {} {}".format(
-                os.path.join(dir_path, repo_name), os.path.join(dir_path, "FlagScale")
-            )
-        )
-        delete_dir(build_dir_path)
+        # os.system("mv {} {}".format(os.path.join(build_dir_path, repo_name), dir_path))
+        shutil.move(os.path.join(build_dir_path, repo_name), dir_path)
+        # os.system(
+        #     "mv {} {}".format(
+        #         os.path.join(dir_path, repo_name), os.path.join(dir_path, "FlagScale")
+        #     )
+        # )
+        shutil.move(os.path.join(dir_path, repo_name), os.path.join(dir_path, "FlagScale"))
+
+        shutil.rmtree(build_dir_path)
         # step into build dir
         dir_path = os.path.join(dir_path, "FlagScale")
         repo = Repo(dir_path)
@@ -151,51 +141,53 @@ def build_dir(repo, device_type, commit_id, directory=None):
 
 
 def build_hetero_dir(repo, device_type, commit_id, directory):
-    """build directory for heterogeneous scenarios"""
+    """Build directory for heterogeneous scenarios."""
     global path
     if os.path.exists(os.path.join(path, directory)):
-        delete_dir(os.path.join(path, directory))
+        shutil.rmtree(os.path.join(path, directory))
     for device in device_type:
         dir_path = os.path.join(path, directory, device)
         build_dir_path = os.path.join(path, "../patch_build")
         if os.path.exists(build_dir_path):
-            delete_dir(build_dir_path)
+            shutil.rmtree(build_dir_path)
         os.makedirs(build_dir_path)
         # step into build dir
-        os.system("cp -r {} {}".format(path, build_dir_path))
+        #os.system("cp -r {} {}".format(path, build_dir_path))
+        shutil.copytree(path, build_dir_path)
         os.makedirs(dir_path)
         repo_name = path.split("/")[-1]
-        os.system("mv {} {}".format(os.path.join(build_dir_path, repo_name), dir_path))
-        os.system(
-            "mv {} {}".format(
-                os.path.join(dir_path, repo_name), os.path.join(dir_path, "FlagScale")
-            )
-        )
-        delete_dir(build_dir_path)
+        # os.system("mv {} {}".format(os.path.join(build_dir_path, repo_name), dir_path))
+        shutil.move(os.path.join(build_dir_path, repo_name), dir_path)
+        # os.system(
+        #     "mv {} {}".format(
+        #         os.path.join(dir_path, repo_name), os.path.join(dir_path, "FlagScale")
+        #     )
+        # )
+        shutil.move(os.path.join(dir_path, repo_name), os.path.join(dir_path, "FlagScale"))
+        shutil.rmtree(build_dir_path)
         dir_path = os.path.join(dir_path, "FlagScale")
         repo = Repo(dir_path)
         apply_patch(repo, device, commit_id, dir_path, "../../../tmp")
 
 
 def main():
-    args = parse_autoargs()
-    check_args(args)
+    args = _add_auto_generate_args()
     check_path()
     global path
     repo = git_init(path)
     commit_id = process_commit_id(args.commit_id)
     if len(args.device_type) > 1:
-        """heterogeneous scenarios"""
+        """Heterogeneous scenarios."""
         if args.dir is None:
             print("--dir must be set!")
             raise DirNotFound
         if check_hetero_txt(args.device_type, commit_id):
             build_hetero_dir(repo, args.device_type, commit_id, args.dir)
         else:
-            print("the combination of device_type and commit_id is not in hetero.txt ")
+            print("The combination of device_type and commit_id is not in hetero.txt.")
             raise PathNotFound
     else:
-        """homogeneous scenarios"""
+        """Gomogeneous scenarios."""
         device_type = args.device_type[0]
         build_dir(repo, device_type, commit_id, args.dir)
     print("unpatch successfully!")
