@@ -121,18 +121,10 @@ def build_dir(repo, device_type, commit_id, directory=None):
         # copy FlagScale into build
         shutil.copytree(path, build_dir_path)
         os.makedirs(dir_path)
-        repo_name = path.split("/")[-1]
-        # os.system("mv {} {}".format(os.path.join(build_dir_path, repo_name), dir_path))
-        shutil.move(os.path.join(build_dir_path, repo_name), dir_path)
-        # os.system(
-        #     "mv {} {}".format(
-        #         os.path.join(dir_path, repo_name), os.path.join(dir_path, "FlagScale")
-        #     )
-        # )
-        shutil.move(os.path.join(dir_path, repo_name), os.path.join(dir_path, "FlagScale"))
-
-        shutil.rmtree(build_dir_path)
-        # step into build dir
+        shutil.move(build_dir_path, dir_path)
+        shutil.move(os.path.join(dir_path, "patch_build"), os.path.join(dir_path, "FlagScale"))
+        
+        # Step into build dir
         dir_path = os.path.join(dir_path, "FlagScale")
         repo = Repo(dir_path)
         apply_patch(repo, device_type, commit_id, dir_path, "../../../tmp")
@@ -148,23 +140,17 @@ def build_hetero_dir(repo, device_type, commit_id, directory):
         build_dir_path = os.path.join(path, "../patch_build")
         if os.path.exists(build_dir_path):
             shutil.rmtree(build_dir_path)
-        # step into build dir
+            
+        # copy FlagScale into build
         shutil.copytree(path, build_dir_path)
         os.makedirs(dir_path)
-        repo_name = path.split("/")[-1]
-        # os.system("mv {} {}".format(os.path.join(build_dir_path, repo_name), dir_path))
-        shutil.move(os.path.join(build_dir_path, repo_name), dir_path)
-        # os.system(
-        #     "mv {} {}".format(
-        #         os.path.join(dir_path, repo_name), os.path.join(dir_path, "FlagScale")
-        #     )
-        # )
-        shutil.move(os.path.join(dir_path, repo_name), os.path.join(dir_path, "FlagScale"))
-        shutil.rmtree(build_dir_path)
+        shutil.move(build_dir_path, dir_path)
+        shutil.move(os.path.join(dir_path, "patch_build"), os.path.join(dir_path, "FlagScale"))
+        
+        # Step into build dir
         dir_path = os.path.join(dir_path, "FlagScale")
         repo = Repo(dir_path)
         apply_patch(repo, device, commit_id, dir_path, "../../../tmp")
-
 
 def main():
     args = _add_auto_generate_args()
