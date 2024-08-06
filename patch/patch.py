@@ -81,8 +81,6 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
     if os.path.exists(tmp_patch_file_path):
         shutil.rmtree(tmp_patch_file_path)
-    os.makedirs(tmp_patch_file_path)
-    #os.system("cp -r {} {}".format(patch_file_path, tmp_patch_file_path))
     shutil.copytree(patch_file_path,tmp_patch_file_path)
     
     # Create in-place code branch to compare different.
@@ -114,9 +112,6 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     shutil.rmtree(tmp_path)
     device_path, patch_path = get_output_path(device_type, base_commit_id)
     if not os.path.exists(patch_file_path):
-        # os.system(
-        #     "cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path)
-        # )
         shutil.copytree(os.path.join(tmp_patch_file_path, "patch"),path)
     shutil.rmtree(tmp_patch_file_path)
     update_patch(patch_str, patch_name, device_path, patch_path)
@@ -141,8 +136,6 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
     if os.path.exists(tmp_patch_file_path):
         shutil.rmtree(tmp_patch_file_path)
-    os.makedirs(tmp_patch_file_path)
-    #os.system("cp -r {} {}".format(patch_file_path, tmp_patch_file_path))
     shutil.copytree(patch_file_path,tmp_patch_file_path)
     try:
         repo.git.stash()
