@@ -41,11 +41,12 @@ def process_commit_id(patch_commit_id,base_commit_id=None):
 
 def git_init(path=None):
     """git init the repo from path"""
-    if not os.path.exists(path):
-        cwd = os.getcwd()
-        new_path = os.path.join(cwd, path)
-        if not os.path.exists(new_path):
-            raise PathNotFound
+    if path:
+        if not os.path.exists(path):
+            cwd = os.getcwd()
+            new_path = os.path.join(cwd, path)
+            if not os.path.exists(new_path):
+                raise PathNotFound
     check_path()
     try:
         repo = Repo(path)
