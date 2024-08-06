@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 from git.repo import Repo
 from common import (
     check_path,
@@ -127,7 +128,6 @@ def build_dir(repo, device_type, commit_id, directory=None):
         if os.path.exists(os.path.join(path, directory)):
             delete_dir(os.path.join(path, directory))
         dir_path = os.path.join(path, directory, device_type)
-        os.makedirs(dir_path)
         build_dir_path = os.path.join(path, "../patch_build")
         if os.path.exists(build_dir_path):
             delete_dir(build_dir_path)
@@ -135,6 +135,7 @@ def build_dir(repo, device_type, commit_id, directory=None):
 
         # copy FlagScale into build
         os.system("cp -r {} {}".format(path, build_dir_path))
+        os.makedirs(dir_path)
         repo_name = path.split("/")[-1]
         os.system("mv {} {}".format(os.path.join(build_dir_path, repo_name), dir_path))
         os.system(
@@ -156,13 +157,13 @@ def build_hetero_dir(repo, device_type, commit_id, directory):
         delete_dir(os.path.join(path, directory))
     for device in device_type:
         dir_path = os.path.join(path, directory, device)
-        os.makedirs(dir_path)
         build_dir_path = os.path.join(path, "../patch_build")
         if os.path.exists(build_dir_path):
             delete_dir(build_dir_path)
         os.makedirs(build_dir_path)
         # step into build dir
         os.system("cp -r {} {}".format(path, build_dir_path))
+        os.makedirs(dir_path)
         repo_name = path.split("/")[-1]
         os.system("mv {} {}".format(os.path.join(build_dir_path, repo_name), dir_path))
         os.system(

@@ -12,39 +12,35 @@ from exception import PathNotFound, DeviceError, UnpatchDiffError
 path = os.getcwd()
 
 
-def _add_auto_generate_args(parser):
-    """set input argument"""
+def _add_auto_generate_args():
+    """Set input argument."""
+    parser = argparse.ArgumentParser(
+        description="Patch auto generate Arguments.", allow_abbrev=False
+    )
     group = parser.add_argument_group(title="straggler")
     group.add_argument(
         "--device-type",
         type=str,
         nargs="+",
         required=True,
-        help="device type what you want to merge",
+        help="Device type what you want to merge.",
     )
     group.add_argument(
         "--base-commit-id",
         type=str,
         required=True,
-        help="the base commit-id that chip manufacturer must offer",
+        help="The base commit-id that chip manufacturer must offer.",
     )
     group.add_argument(
         "--current-commit-id",
         type=str,
         default=None,
-        help="the commit-id that want to patch",
+        help="The commit-id that want to patch.",
     )
-    return parser
-
-
-def parse_autoargs():
-    """parse the args of auto"""
-    parser = argparse.ArgumentParser(
-        description="patch auto generate Arguments", allow_abbrev=False
-    )
-    parser = _add_auto_generate_args(parser)
     args = parser.parse_args()
     return args
+
+
 
 
 def get_output_path(device_type, base_commit_id):
@@ -57,7 +53,7 @@ def get_output_path(device_type, base_commit_id):
 
 
 def check_hetero_txt(device_type, base_commit_id):
-    """check if the combination of device_type and commit_id is in hetero.txt"""
+    """Check if the combination of device_type and commit_id is in hetero.txt."""
     global path
     hetero_path = os.path.join(path, "patch/hetero.txt")
     if not os.path.exists(hetero_path):
@@ -74,18 +70,22 @@ def check_hetero_txt(device_type, base_commit_id):
 
 
 def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
-    """the main function to get the patch file"""
+    """The main function to get the patch file."""
     if repo is None:
         print("repo is None")
         raise PathNotFound
     global path
-    origin_patch_branch = "origin_patch_code"
+    
+    # Create diretory to save patch.py/unpatch.py.
     patch_file_path = os.path.join(path, "patch/")
     tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
     if os.path.exists(tmp_patch_file_path):
         delete_dir(tmp_patch_file_path)
     os.makedirs(tmp_patch_file_path)
     os.system("cp -r {} {}".format(patch_file_path, tmp_patch_file_path))
+    
+    # Create in-place code branch to compare different.
+    origin_patch_branch = "origin_patch_code"
     try:
         repo.git.stash()
         repo.git.checkout(current_commit_id)
@@ -98,15 +98,17 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     )
     patch_name = "".join([base_commit_id, ".patch"])
     file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
-
     repo.git.stash()
     repo.git.checkout(base_commit_id)
+    
+    # Create patch code branch to compare different.
     try:
         unpatch_branch = "unpatch_code"
         repo.git.branch("unpatch_code")
     except:
         print("branch {} is exist!".format(unpatch_branch))
         raise FileExistsError
+    # Check the different between in-place code 
     auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
     delete_dir(tmp_path)
     device_path, patch_path = get_output_path(device_type, base_commit_id)
@@ -207,11 +209,6 @@ def update_patch(
     file_name = os.path.join(patch_path, patch_name)
     with open(file_name, "w") as f:
         f.write(patch_str)
-    global path
-    tmp_path = os.path.join(path, "../tmp")
-    tmp_patch_path = os.path.join(tmp_path, file_name)
-    os.system("cp {} {}".format(file_name, tmp_path))
-    return tmp_path, tmp_patch_path
 
 
 def auto_check(repo, file_name, base_commit_id, origin_branch, unpatch_branch):
@@ -271,7 +268,7 @@ def check_device_type(device_type):
 
 
 def main():
-    args = parse_autoargs()
+    args = _add_auto_generate_args()
     check_path()
     global path
     repo = git_init(path)
