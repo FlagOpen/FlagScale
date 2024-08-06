@@ -84,7 +84,7 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
 
     files_and_folders_1 = os.listdir(base_commit_id_dir)
     if len(files_and_folders_1) == 0:
-        print(base_commit_id, " have no file!")
+        print(base_commit_id_dir, " have no file!")
         raise FileNotFoundError
     patch_file = [
         f
@@ -99,7 +99,7 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
     try:
         repo.git.am(file_name)
     except:
-        print("git apply {} falied!".format(file_name))
+        print("Git apply {} falied!".format(file_name))
         raise ValueError
     shutil.rmtree(tmp_path)
 
