@@ -12,15 +12,6 @@ from exception import PathNotFound, DeviceError, UnpatchDiffError
 path = os.getcwd()
 
 
-def check_args(args):
-    if args.device_type is None:
-        print("args.device_type is None")
-        raise PathNotFound
-    if args.base_commit_id is None:
-        print("args.base_commit_id is None")
-        raise PathNotFound
-
-
 def _add_auto_generate_args(parser):
     """set input argument"""
     group = parser.add_argument_group(title="straggler")
@@ -28,13 +19,13 @@ def _add_auto_generate_args(parser):
         "--device-type",
         type=str,
         nargs="+",
-        default=None,
+        required=True,
         help="device type what you want to merge",
     )
     group.add_argument(
         "--base-commit-id",
         type=str,
-        default=None,
+        required=True,
         help="the base commit-id that chip manufacturer must offer",
     )
     group.add_argument(
@@ -87,8 +78,6 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     if repo is None:
         print("repo is None")
         raise PathNotFound
-    if current_commit_id is None:
-        current_commit_id = repo.head.commit
     global path
     origin_patch_branch = "origin_patch_code"
     patch_file_path = os.path.join(path, "patch/")
@@ -122,7 +111,9 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     delete_dir(tmp_path)
     device_path, patch_path = get_output_path(device_type, base_commit_id)
     if not os.path.exists(patch_file_path):
-        os.system("cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path))
+        os.system(
+            "cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path)
+        )
     delete_dir(tmp_patch_file_path)
     update_patch(patch_str, patch_name, device_path, patch_path)
     auto_commit(repo, device_type, device_path, current_commit_id)
@@ -133,8 +124,6 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     if repo is None:
         print("repo is None")
         raise PathNotFound
-    if current_commit_id is None:
-        current_commit_id = repo.head.commit
     hetero_str = "{}: ".format(base_commit_id)
     for device in device_type[:-1]:
         hetero_str = hetero_str + " " + str(device)
@@ -177,7 +166,9 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     delete_dir(tmp_path)
     device_path, patch_path = get_output_path(now_device_type, base_commit_id)
     if not os.path.exists(patch_file_path):
-        os.system("cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path))
+        os.system(
+            "cp -r {} {}".format(os.path.join(tmp_patch_file_path, "patch"), path)
+        )
     delete_dir(tmp_patch_file_path)
     hetero_path = os.path.join(path, "patch/hetero.txt")
     update_patch(
@@ -281,12 +272,15 @@ def check_device_type(device_type):
 
 def main():
     args = parse_autoargs()
-    check_args(args)
     check_path()
     global path
     repo = git_init(path)
+    if args.current_commit_id is None:
+        current_commit_id = repo.head.commit
+    else:
+        current_commit_id = args.current_commit_id
     current_commit_id, base_commit_id = process_commit_id(
-        args.current_commit_id, args.base_commit_id
+        current_commit_id, args.base_commit_id
     )
     if not check_device_type(args.device_type):
         print("device_type is not legal!")
