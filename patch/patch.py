@@ -188,7 +188,7 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
         device_type,
         base_commit_id,
     )
-    auto_commit(repo, now_device_type, device_path, current_commit_id)
+    auto_commit(repo, now_device_type, device_path, current_commit_id, hetero_path)
 
 
 def update_patch(
@@ -247,8 +247,10 @@ def auto_check(repo, file_name, base_commit_id, origin_branch, unpatch_branch):
     repo.git.branch("-D", "unpatch_code")
 
 
-def auto_commit(repo, device_type, device_path, current_commit_id):
+def auto_commit(repo, device_type, device_path, current_commit_id, hetero_path=None):
     """auto git commit the patch , commit-msg is from current_commit_id's commit-msg"""
+    if hetero_path:
+        repo.git.add(hetero_path)
     repo.git.add(device_path)
     commit_msg = repo.git.log(current_commit_id)
     commit_msg = commit_msg.split("\ncommit")[0].split("\n")[4].strip()
