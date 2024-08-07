@@ -42,6 +42,7 @@ def _add_auto_generate_args():
 
 
 def get_output_path(device_type, base_commit_id):
+    """Get the output path to save patch file in hardwares directory."""
     global path
     device_path = os.path.join(path, "hardwares", str(device_type))
     patch_path = os.path.join(path, "hardwares", str(device_type), base_commit_id)
