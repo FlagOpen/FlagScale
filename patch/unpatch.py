@@ -189,5 +189,6 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
+        print(e)
         if os.path.exists(os.path.join(path, "../tmp_flagscale/")):
             shutil.rmtree(os.path.join(path, "../tmp_flagscale/"))
