@@ -87,8 +87,9 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
         repo.git.checkout(current_commit_id)
         repo.git.branch("origin_patch_code")
     except:
-        print("branch {} is exist!".format(origin_patch_branch))
-        raise FileExistsError
+        repo.git.branch("-D", origin_patch_branch)
+        repo.git.branch(origin_patch_branch)
+
     patch_str = repo.git.format_patch(
         "{}...{}".format(base_commit_id, current_commit_id), stdout=True
     )
@@ -101,11 +102,11 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
 
     # Create patch code branch to compare different.
     try:
-        unpatch_branch = "unpatch_code"
-        repo.git.branch("unpatch_code")
+        unpatch_branch = "unpatch_code_1"
+        repo.git.branch("unpatch_code_1")
     except:
-        print("branch {} is exist!".format(unpatch_branch))
-        raise FileExistsError
+        repo.git.branch("-D", unpatch_branch)
+        repo.git.branch(unpatch_branch)
 
     # Check the different between in-place code and patch code.
     auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
@@ -146,10 +147,10 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     shutil.copytree(patch_file_path, tmp_patch_file_path)
 
     # Create in-place code branch to compare different.
+    origin_patch_branch = "origin_patch_code"
     try:
         repo.git.stash()
         repo.git.checkout(current_commit_id)
-        origin_patch_branch = "origin_patch_code"
         repo.git.branch("origin_patch_code")
     except:
         print("branch {} is exist!".format(origin_patch_branch))
@@ -244,7 +245,6 @@ def auto_check(repo, file_name, base_commit_id, origin_branch, unpatch_branch):
         repo.git.checkout("main")
     except:
         import traceback
-
         traceback.print_exc()
     repo.git.checkout(base_commit_id)
     repo.git.branch("-D", "origin_patch_code")

@@ -114,11 +114,14 @@ def build_dir(repo, device_type, commit_id, directory=None):
             shutil.rmtree(os.path.join(path, directory))
         dir_path = os.path.join(path, directory, device_type)
         build_dir_path = os.path.join(path, "../patch_build")
+        build_dir_path_dir = os.path.join(build_dir_path,directory)
         if os.path.exists(build_dir_path):
             shutil.rmtree(build_dir_path)
 
         # Copy FlagScale into build.
         shutil.copytree(path, build_dir_path)
+        if os.path.isdir(build_dir_path_dir):
+            shutil.rmtree(build_dir_path_dir)
         os.makedirs(dir_path)
         shutil.move(build_dir_path, dir_path)
         shutil.move(
@@ -139,11 +142,14 @@ def build_hetero_dir(repo, device_type, commit_id, directory):
     for device in device_type:
         dir_path = os.path.join(path, directory, device)
         build_dir_path = os.path.join(path, "../patch_build")
+        build_dir_path_dir = os.path.join(build_dir_path,directory)
         if os.path.exists(build_dir_path):
             shutil.rmtree(build_dir_path)
 
         # Copy FlagScale into build.
         shutil.copytree(path, build_dir_path)
+        if os.path.isdir(build_dir_path_dir):
+            shutil.rmtree(build_dir_path_dir)
         os.makedirs(dir_path)
         shutil.move(build_dir_path, dir_path)
         shutil.move(

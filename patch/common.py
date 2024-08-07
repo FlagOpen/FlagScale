@@ -64,8 +64,8 @@ def crete_tmp_dir(dir_path=None, tmp_str=None):
     if not os.path.isdir(tmp_path):
         os.makedirs(tmp_path)
     else:
-        print("{} is exist!".format(tmp_path))
-        raise FileExistsError
+        shutil.rmtree(tmp_path)
+        os.makedirs(tmp_path)
     return tmp_path
 
 
