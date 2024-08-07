@@ -71,8 +71,7 @@ def check_hetero_txt(device_type, base_commit_id):
 def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     """The main function to get the patch file in homogeneous scenarios."""
     if repo is None:
-        print("Repo is None")
-        raise FileNotFoundError
+        raise FileNotFoundError("Repo is None")
     global path
 
     # Create diretory to save patch.py/unpatch.py.
@@ -84,11 +83,8 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
 
     # Create in-place code branch to compare different.
     origin_patch_branch = "origin_patch_code"
-    try:
-        repo.git.stash()
-        repo.git.checkout(current_commit_id)
-    except:
-        raise ValueError
+    repo.git.stash()
+    repo.git.checkout(current_commit_id)
 
     if check_branch_name(repo, origin_patch_branch):
         repo.git.branch("-D", origin_patch_branch)
@@ -140,8 +136,7 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
         hetero_str = hetero_str + " " + str(device)
         base_commit_id_path = os.path.join(path, "hardwares", device, base_commit_id)
         if not os.path.exists(base_commit_id_path):
-            print("{} is not found".format(base_commit_id_path))
-            raise FileNotFoundError
+            raise FileNotFoundError("{} is not found".format(base_commit_id_path))
     now_device_type = device_type[-1]
     hetero_str = hetero_str + " " + str(now_device_type)
 
@@ -152,11 +147,8 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
         shutil.rmtree(tmp_patch_file_path)
     shutil.copytree(patch_file_path, tmp_patch_file_path)
 
-    try:
-        repo.git.stash()
-        repo.git.checkout(current_commit_id)
-    except:
-        raise ValueError
+    repo.git.stash()
+    repo.git.checkout(current_commit_id)
 
     # Create in-place code branch to compare different.
     origin_patch_branch = "origin_patch_code"
@@ -275,7 +267,7 @@ def auto_commit(repo, device_type, device_path, current_commit_id, hetero_path=N
     commit_msg = "[{}] {}".format(device_type, commit_msg)
     repo.git.commit("-m", commit_msg)
     print(
-        "Commit successfully! if you want to push,try 'git push origin HEAD:(your branch)' or  'git push --force origin HEAD:(your branch)'"
+        "Commit successfully! If you want to push,try 'git push origin HEAD:(your branch)' or  'git push --force origin HEAD:(your branch)'"
     )
 
 
@@ -307,8 +299,7 @@ def main():
         current_commit_id, args.base_commit_id
     )
     if not check_device_type(args.device_type):
-        print("device_type is not legal!")
-        raise SyntaxError
+        raise SyntaxError("device_type is not legal!")
 
     if len(args.device_type) > 1:
         # Heterogeneous scenarios.

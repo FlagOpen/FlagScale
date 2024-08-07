@@ -12,8 +12,7 @@ def check_path():
     pattern = r".*FlagScale.*"
     a = re.match(pattern, path)
     if a is None:
-        print("the FlagScale is not in your path")
-        raise FileNotFoundError
+        raise FileNotFoundError("the FlagScale is not in your path")
 
 
 def process_commit_id(patch_commit_id, base_commit_id=None):
@@ -22,13 +21,11 @@ def process_commit_id(patch_commit_id, base_commit_id=None):
         if len(base_commit_id) >= 6:
             base_commit_id = base_commit_id[:6]
         else:
-            print("base_commit_id is less longer than 6")
-            raise ValueError
+            raise ValueError("base_commit_id is less longer than 6")
     if len(patch_commit_id) >= 6:
         patch_commit_id = patch_commit_id[:6]
     else:
-        print("patch_commit_id is less longer than 6")
-        raise ValueError
+        raise ValueError("patch_commit_id is less longer than 6")
     if base_commit_id is not None:
         return patch_commit_id, base_commit_id
     else:
@@ -42,12 +39,12 @@ def git_init(path=None):
             cwd = os.getcwd()
             new_path = os.path.join(cwd, path)
             if not os.path.exists(new_path):
-                raise FileNotFoundError
+                raise FileNotFoundError(new_path)
     check_path()
     try:
         repo = Repo(path)
     except:
-        raise FileNotFoundError
+        raise FileNotFoundError(path)
     assert not repo.bare
     return repo
 
@@ -93,7 +90,6 @@ def save_unpatch_to_tmp(tmp_path, base_commit_id_dir, patch_file):
     try:
         shutil.copy(file_name, tmp_path)
     except:
-        print("{} cannot cp".format(file_name))
-        raise BaseException
+        raise ValueError("{} cannot cp".format(file_name))
     tmp_file_name = os.path.join(tmp_path, patch_file)
     return tmp_file_name

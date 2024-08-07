@@ -46,8 +46,7 @@ def check_hetero_txt(device_type, base_commit_id):
     global path
     hetero_path = os.path.join(path, "patch/hetero.txt")
     if not os.path.exists(hetero_path):
-        print("{} is not found!".format(hetero_path))
-        raise FileNotFoundError
+        raise FileNotFoundError("{} is not found!".format(hetero_path))
     with open(hetero_path, "r") as f:
         for line in f:
             line = line.strip()
@@ -64,12 +63,10 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
     global path
     patch_dir = os.path.join(path, "hardwares", device_type)
     if not os.path.isdir(patch_dir):
-        print(patch_dir, " is not found!")
-        raise FileNotFoundError
+        raise FileNotFoundError(patch_dir, " is not found!")
     files_and_folders = os.listdir(patch_dir)
     if len(files_and_folders) == 0:
-        print(patch_dir, " have no file!")
-        raise FileNotFoundError
+        raise FileNotFoundError(patch_dir, " have no file!")
 
     # Get the base_commit_id stored in FlagScale.
     base_commit_id_now = [
@@ -78,14 +75,12 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
 
     # Check if the stored base_commit_id matches the input base_commit_id
     if base_commit_id_now != base_commit_id:
-        print("Base_commit_id is not matched")
-        raise FileNotFoundError
+        raise FileNotFoundError("Base_commit_id is not matched")
     base_commit_id_dir = os.path.join(patch_dir, base_commit_id)
 
     files_and_folders_1 = os.listdir(base_commit_id_dir)
     if len(files_and_folders_1) == 0:
-        print(base_commit_id_dir, " have no file!")
-        raise FileNotFoundError
+        raise FileNotFoundError(base_commit_id_dir, " have no file!")
     patch_file = [
         f
         for f in files_and_folders_1
@@ -99,8 +94,7 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
     try:
         repo.git.am(file_name)
     except:
-        print("Git apply {} falied!".format(file_name))
-        raise ValueError
+        raise ValueError("Git apply {} falied!".format(file_name))
     shutil.rmtree(tmp_path)
 
 
@@ -174,13 +168,11 @@ def main():
     if len(args.device_type) > 1:
         # Heterogeneous scenarios.
         if args.dir is None:
-            print("--dir must be set!")
-            raise FileNotFoundError
+            raise FileNotFoundError("--dir must be set!")
         if check_hetero_txt(args.device_type, commit_id):
             build_hetero_dir(repo, args.device_type, commit_id, args.dir)
         else:
-            print("The combination of device_type and commit_id is not in hetero.txt.")
-            raise NameError
+            raise NameError("The combination of device_type and commit_id is not in hetero.txt.")
     else:
         # Homogeneous scenarios.
         device_type = args.device_type[0]
