@@ -242,12 +242,7 @@ def auto_check(repo, file_name, base_commit_id, origin_branch, unpatch_branch):
         raise ValueError
     print("Auto check successfully!")
     repo.git.stash()
-    try:
-        repo.git.checkout("main")
-    except:
-        import traceback
-
-        traceback.print_exc()
+    repo.git.checkout("main")
     repo.git.checkout(base_commit_id)
     repo.git.branch("-D", "origin_patch_code")
     repo.git.branch("-D", "unpatch_code")
