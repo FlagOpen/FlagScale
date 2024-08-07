@@ -52,27 +52,24 @@ class TestAsyncSave:
             ),
         }
 
-        with TempNamedDir(
-            tmp_path_dist_ckpt / 'test_equivalence_async'
-        ) as async_ckpt_dir, TempNamedDir(
-            tmp_path_dist_ckpt / 'test_equivalence_sync'
-        ) as sync_ckpt_dir:
-            # async
-            async_calls = AsyncCallsQueue()
-            async_request = save(sharded_state_dict, async_ckpt_dir, async_sharded_save=True)
-            async_calls.schedule_async_request(async_request)
+        with TempNamedDir(tmp_path_dist_ckpt / 'test_equivalence_async') as async_ckpt_dir:
+            with TempNamedDir(tmp_path_dist_ckpt / 'test_equivalence_sync') as sync_ckpt_dir:
+                # async
+                async_calls = AsyncCallsQueue()
+                async_request = save(sharded_state_dict, async_ckpt_dir, async_sharded_save=True)
+                async_calls.schedule_async_request(async_request)
 
-            # sync
-            save(sharded_state_dict, sync_ckpt_dir, async_sharded_save=False)
+                # sync
+                save(sharded_state_dict, sync_ckpt_dir, async_sharded_save=False)
 
-            # finalize async
-            async_calls.maybe_finalize_async_calls(blocking=True)
+                # finalize async
+                async_calls.maybe_finalize_async_calls(blocking=True)
 
-            # load and compare
-            loaded_async_state_dict = load(sharded_state_dict, async_ckpt_dir)
-            loaded_sync_state_dict = load(sharded_state_dict, sync_ckpt_dir)
-            diffs = diff(loaded_async_state_dict, loaded_sync_state_dict)
-            assert not any(map(bool, diffs)), diffs
+                # load and compare
+                loaded_async_state_dict = load(sharded_state_dict, async_ckpt_dir)
+                loaded_sync_state_dict = load(sharded_state_dict, sync_ckpt_dir)
+                diffs = diff(loaded_async_state_dict, loaded_sync_state_dict)
+                assert not any(map(bool, diffs)), diffs
 
         Utils.destroy_model_parallel()
 

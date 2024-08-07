@@ -46,25 +46,25 @@ class TestParallelMLPWithGLU:
     ])
     def test_parallel_reconfiguration_e2e(self, tmp_path_dist_ckpt, src_tp_pp, dest_tp_pp):
         """ Test module saving and loading with different TP/PP """
-        with TempNamedDir(tmp_path_dist_ckpt / 'test_mlp_glu_reconfiguration_model_A') as ckpt_dir_A, \
-             TempNamedDir(tmp_path_dist_ckpt / 'test_mlp_glu_reconfiguration_model_B') as ckpt_dir_B:
-            # Save checkpoint A
-            Utils.initialize_model_parallel(*src_tp_pp)
-            mlp_A = initialize_mlp()
-            save(mlp_A.sharded_state_dict(sharded_offsets=get_pp_offsets()), ckpt_dir_A)
-            Utils.destroy_model_parallel()
+        with TempNamedDir(tmp_path_dist_ckpt / 'test_mlp_glu_reconfiguration_model_A') as ckpt_dir_A:
+            with TempNamedDir(tmp_path_dist_ckpt / 'test_mlp_glu_reconfiguration_model_B') as ckpt_dir_B:
+                # Save checkpoint A
+                Utils.initialize_model_parallel(*src_tp_pp)
+                mlp_A = initialize_mlp()
+                save(mlp_A.sharded_state_dict(sharded_offsets=get_pp_offsets()), ckpt_dir_A)
+                Utils.destroy_model_parallel()
 
-            # Load checkpoint A with different TP/PP and save as checkpoint B
-            Utils.initialize_model_parallel(*dest_tp_pp)
-            mlp_B = initialize_mlp()
-            state_dict = load(mlp_B.sharded_state_dict(sharded_offsets=get_pp_offsets()), ckpt_dir_A)
-            mlp_B.load_state_dict(state_dict)
-            save(mlp_B.sharded_state_dict(sharded_offsets=get_pp_offsets()), ckpt_dir_B)
-            Utils.destroy_model_parallel()
+                # Load checkpoint A with different TP/PP and save as checkpoint B
+                Utils.initialize_model_parallel(*dest_tp_pp)
+                mlp_B = initialize_mlp()
+                state_dict = load(mlp_B.sharded_state_dict(sharded_offsets=get_pp_offsets()), ckpt_dir_A)
+                mlp_B.load_state_dict(state_dict)
+                save(mlp_B.sharded_state_dict(sharded_offsets=get_pp_offsets()), ckpt_dir_B)
+                Utils.destroy_model_parallel()
 
-            # Test both checkpoints are equal
-            Utils.initialize_model_parallel(1, 1)
-            state_dict_A = load_plain_tensors(ckpt_dir_A)
-            state_dict_B = load_plain_tensors(ckpt_dir_B)
-            diffs = diff(state_dict_A, state_dict_B)
-            assert not any(map(bool, diffs)), diffs
+                # Test both checkpoints are equal
+                Utils.initialize_model_parallel(1, 1)
+                state_dict_A = load_plain_tensors(ckpt_dir_A)
+                state_dict_B = load_plain_tensors(ckpt_dir_B)
+                diffs = diff(state_dict_A, state_dict_B)
+                assert not any(map(bool, diffs)), diffs
