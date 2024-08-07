@@ -15,7 +15,7 @@ run_train() {
 
 run_pytest() {
   local results_path=$1
-  run_command "pytest -s tests/functional_tests/test_result.py --test_reaults_path=$results_path"
+  run_command "pytest -p no:warnings -s tests/functional_tests/test_result.py --test_reaults_path=$results_path"
 }
 
 run_train "tests/functional_tests/aquila/conf"
