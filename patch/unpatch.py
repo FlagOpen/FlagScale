@@ -114,7 +114,7 @@ def build_dir(repo, device_type, commit_id, directory=None):
             shutil.rmtree(os.path.join(path, directory))
         dir_path = os.path.join(path, directory, device_type)
         build_dir_path = os.path.join(path, "../patch_build")
-        build_dir_path_dir = os.path.join(build_dir_path,directory)
+        build_dir_path_dir = os.path.join(build_dir_path, directory)
         if os.path.exists(build_dir_path):
             shutil.rmtree(build_dir_path)
 
@@ -142,7 +142,7 @@ def build_hetero_dir(repo, device_type, commit_id, directory):
     for device in device_type:
         dir_path = os.path.join(path, directory, device)
         build_dir_path = os.path.join(path, "../patch_build")
-        build_dir_path_dir = os.path.join(build_dir_path,directory)
+        build_dir_path_dir = os.path.join(build_dir_path, directory)
         if os.path.exists(build_dir_path):
             shutil.rmtree(build_dir_path)
 
@@ -186,4 +186,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        if os.path.exists(os.path.join(path, "../tmp_flagscale/")):
+            shutil.rmtree(os.path.join(path, "../tmp_flagscale/"))

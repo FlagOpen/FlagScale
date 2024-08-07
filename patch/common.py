@@ -69,6 +69,15 @@ def crete_tmp_dir(dir_path=None, tmp_str=None):
     return tmp_path
 
 
+def check_branch_name(repo, branch_name):
+    """Check if branch_name exists in the repository."""
+    branch_list = repo.git.branch("--list")
+    if branch_name in branch_list:
+        return True
+    else:
+        return False
+
+
 def save_patch_to_tmp(patch_name, patch_str):
     """Save patch str to tmp patch file."""
     tmp_path = crete_tmp_dir()
