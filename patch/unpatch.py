@@ -78,7 +78,7 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
 
     # Check if the stored base_commit_id matches the input base_commit_id
     if base_commit_id_now != base_commit_id:
-        print("base_commit_id is not matched")
+        print("Base_commit_id is not matched")
         raise FileNotFoundError
     base_commit_id_dir = os.path.join(patch_dir, base_commit_id)
 
@@ -108,10 +108,10 @@ def build_dir(repo, device_type, commit_id, directory=None):
     """Build directory for homogeneous scenarios."""
     global path
     if directory is None:
-        print("now device is {} , processing....".format(device_type))
+        print("Now device is {} , processing....".format(device_type))
         apply_patch(repo, device_type, commit_id, path, "../tmp")
     else:
-        print("now device is {} , processing....".format(device_type))
+        print("Now device is {} , processing....".format(device_type))
         if os.path.exists(os.path.join(path, directory)):
             shutil.rmtree(os.path.join(path, directory))
         dir_path = os.path.join(path, directory, device_type)
@@ -142,7 +142,7 @@ def build_hetero_dir(repo, device_type, commit_id, directory):
     if os.path.exists(os.path.join(path, directory)):
         shutil.rmtree(os.path.join(path, directory))
     for device in device_type:
-        print("now device is {} , processing....".format(device))
+        print("Now device is {} , processing....".format(device))
         dir_path = os.path.join(path, directory, device)
         build_dir_path = os.path.join(path, "../patch_build")
         build_dir_path_dir = os.path.join(build_dir_path, directory)
@@ -185,7 +185,7 @@ def main():
         # Homogeneous scenarios.
         device_type = args.device_type[0]
         build_dir(repo, device_type, commit_id, args.dir)
-    print("unpatch successfully!")
+    print("Unpatch successfully!")
 
 
 if __name__ == "__main__":

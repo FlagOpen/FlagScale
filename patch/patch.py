@@ -71,7 +71,7 @@ def check_hetero_txt(device_type, base_commit_id):
 def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     """The main function to get the patch file in homogeneous scenarios."""
     if repo is None:
-        print("repo is None")
+        print("Repo is None")
         raise FileNotFoundError
     global path
 
@@ -248,7 +248,7 @@ def auto_check(repo, file_name, base_commit_id, origin_branch, unpatch_branch):
         repo.git.branch("-D", "origin_patch_code")
         repo.git.branch("-D", "unpatch_code")
         raise ValueError
-    print("auto check successfully!")
+    print("Auto check successfully!")
     repo.git.stash()
     try:
         repo.git.checkout("main")
@@ -275,7 +275,7 @@ def auto_commit(repo, device_type, device_path, current_commit_id, hetero_path=N
     commit_msg = "[{}] {}".format(device_type, commit_msg)
     repo.git.commit("-m", commit_msg)
     print(
-        "Commit successfully! if you want to push,try 'git push origin HEAD:(your branch)'"
+        "Commit successfully! if you want to push,try 'git push origin HEAD:(your branch)' or  'git push --force origin HEAD:(your branch)'"
     )
 
 
@@ -316,7 +316,7 @@ def main():
     else:
         # Homogeneous scenarios.
         get_patch(repo, args.device_type[0], base_commit_id, current_commit_id)
-    print("patch successfully!")
+    print("Patch successfully!")
 
 
 if __name__ == "__main__":
