@@ -21,7 +21,15 @@ run_pytest() {
 }
 
 run_pytest tests/unit_tests/data
-run_pytest tests/unit_tests/dist_checkpointing
+run_pytest tests/unit_tests/dist_checkpointing/models/test_bert_model.py
+run_pytest tests/unit_tests/dist_checkpointing/models/test_gpt_model.py
+run_pytest tests/unit_tests/dist_checkpointing/models/test_grouped_mlp.py
+run_pytest tests/unit_tests/dist_checkpointing/models/test_mlp_glu.py
+run_pytest tests/unit_tests/dist_checkpointing/models/test_retro_model.py
+run_pytest tests/unit_tests/dist_checkpointing/models/test_sequential_mlp.py
+run_pytest tests/unit_tests/dist_checkpointing/models/test_t5_model.py
+run_pytest tests/unit_tests/dist_checkpointing/test_*.py
+
 run_pytest tests/unit_tests/distributed
 run_pytest tests/unit_tests/fusions
 run_pytest tests/unit_tests/inference
