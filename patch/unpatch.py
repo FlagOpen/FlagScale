@@ -172,7 +172,9 @@ def main():
         if check_hetero_txt(args.device_type, commit_id):
             build_hetero_dir(repo, args.device_type, commit_id, args.dir)
         else:
-            raise NameError("The combination of device_type and commit_id is not in hetero.txt.")
+            raise NameError(
+                "The combination of device_type and commit_id is not in hetero.txt."
+            )
     else:
         # Homogeneous scenarios.
         device_type = args.device_type[0]
