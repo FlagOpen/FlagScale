@@ -106,7 +106,7 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     repo.git.checkout(base_commit_id)
 
     # Create patch code branch to compare different.
-    unpatch_branch = "unpatch_code_1"
+    unpatch_branch = "unpatch_code"
     if check_branch_name(repo, unpatch_branch):
         repo.git.branch("-D", unpatch_branch)
         repo.git.branch(unpatch_branch)
@@ -325,6 +325,7 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
+        print(e)
         path = os.getcwd()
         if os.path.exists(os.path.join(path, "../tmp_patch/")):
             shutil.rmtree(os.path.join(path, "../tmp_patch/"))
