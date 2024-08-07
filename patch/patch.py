@@ -193,9 +193,6 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     # Recover the patch/ directory.
     if not os.path.exists(patch_file_path):
         shutil.copytree(tmp_patch_file_path, os.path.join(path, "patch"))
-    else:
-        shutil.rmtree(os.path.join(path, "patch"))
-        shutil.copytree(tmp_patch_file_path, os.path.join(path, "patch"))
     shutil.rmtree(tmp_patch_file_path)
     hetero_path = os.path.join(path, "patch/hetero.txt")
 
