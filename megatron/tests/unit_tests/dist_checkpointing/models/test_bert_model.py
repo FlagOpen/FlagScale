@@ -52,6 +52,9 @@ class TestBertModel:
 
 
 class TestBERTModelReconfiguration:
+    def setup_class(cls):
+        Utils.initialize_distributed()
+    
     @pytest.mark.parametrize(
         ('use_fpsl', 'src_tp_pp', 'dest_tp_pp', 'src_layer_spec', 'dst_layer_spec'),
         [

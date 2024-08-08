@@ -45,6 +45,10 @@ class TempNamedDir(TemporaryDirectory):
         )
         self.sync = sync
 
+        if sync:
+            import torch
+            torch.distributed.barrier()
+
     def cleanup(self, override_sync: Optional[bool] = None) -> None:
         sync = self.sync if override_sync is None else override_sync
         if sync:

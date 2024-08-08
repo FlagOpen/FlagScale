@@ -25,6 +25,9 @@ from tests.unit_tests.test_utilities import Utils
 
 
 class TestFlattenedResharding:
+    def setup_class(cls):
+        Utils.initialize_distributed()
+
     @pytest.mark.parametrize(
         ('src_tp_pp', 'dest_tp_pp',),
         [
