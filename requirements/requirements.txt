@@ -13,7 +13,6 @@ ray >= 2.9
 matplotlib
 py3nvml
 graphviz
-gitpython
 tqdm
 mpi4py
 nvidia-ml-py
