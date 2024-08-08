@@ -34,6 +34,9 @@ def get_pp_offsets():
 
 
 class TestParallelMLPWithGLU:
+    def setup_class(cls):
+        Utils.initialize_distributed()
+
     @pytest.mark.parametrize("src_tp_pp,dest_tp_pp", [
         # changing PP is impossible because the number of layers must be the same
         ((2, 2), (4, 2)),
