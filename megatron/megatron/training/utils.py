@@ -266,6 +266,33 @@ def get_batch_on_this_cp_rank(batch):
                 val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
                 batch[key] = val
 
+    # usp_size = args.ulysses_sequence_parallel_size
+    # if usp_size > 1:
+    #     usp_rank = mpu.get_ulysses_sequence_parallel_rank()
+    #     for key, val in batch.items():
+    #         if val is not None:
+    #             seq_dim = 1 if key != 'attention_mask' else 2
+    #             val = val.chunk(usp_size, dim=seq_dim)[usp_rank]
+    #             batch[key] = val
+
+    usp_size = args.ulysses_sequence_parallel_size
+    if usp_size > 1:
+        usp_rank = mpu.get_ulysses_sequence_parallel_rank()
+        for key, val in batch.items():
+            if val is not None:
+                seq_dim = 1 if key != 'attention_mask' else 2
+                val = val.view(
+                    *val.shape[0:seq_dim],
+                    2 * usp_size,
+                    val.shape[seq_dim] // (2 * usp_size),
+                    *val.shape[(seq_dim + 1) :],
+                )
+                index = torch.tensor([usp_rank, (2 * usp_size - usp_rank - 1)], 
+                                     device="cpu", pin_memory=True).cuda(non_blocking=True)
+                val = val.index_select(seq_dim, index)
+                val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
+                batch[key] = val
+
     return batch
 
 

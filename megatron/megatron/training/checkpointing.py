@@ -395,7 +395,7 @@ def save_checkpoint(iteration, model, optimizer, opt_param_scheduler, num_floati
                 if args.ckpt_assume_constant_structure and args.dist_ckpt_format == 'torch_dist':
                     save_strategy.use_cached_ckpt_structure = args.ckpt_assume_constant_structure
                 if args.ckpt_fully_parallel_save:
-                    save_strategy = FullyParallelSaveStrategyWrapper(save_strategy, mpu.get_data_parallel_group(with_context_parallel=True),
+                    save_strategy = FullyParallelSaveStrategyWrapper(save_strategy, mpu.get_data_parallel_group(with_context_parallel=True, with_ulysses_sequence_parallel=True),
                                                                      args.ckpt_assume_constant_structure)
             # Store save strategy for future checkpoint saves
             if checkpointing_context is not None:
@@ -714,7 +714,7 @@ def _load_global_dist_base_checkpoint(
     # NOTE: `args.ckpt_fully_parallel_load` applies to both persistent and non-persistent checkpoints.
     if args.ckpt_fully_parallel_load:
         load_strategy = FullyParallelLoadStrategyWrapper(
-            load_strategy, mpu.get_data_parallel_group(with_context_parallel=True)
+            load_strategy, mpu.get_data_parallel_group(with_context_parallel=True, with_ulysses_sequence_parallel=True)
         )
     state_dict = dist_checkpointing.load(sharded_state_dict, checkpoint_name, load_strategy, strict=args.dist_ckpt_strictness)
     return state_dict, checkpoint_name, release

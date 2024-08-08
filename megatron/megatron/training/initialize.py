@@ -279,10 +279,11 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
                 expert_model_parallel_size=args.expert_model_parallel_size,
                 distributed_timeout_minutes=args.distributed_timeout_minutes,
                 nccl_communicator_config_path=args.nccl_communicator_config_path,
-                order='tp-cp-ep-dp-pp' if not args.use_tp_pp_dp_mapping else 'tp-pp-dp',
+                order='tp-usp-cp-ep-dp-pp' if not args.use_tp_pp_dp_mapping else 'tp-pp-dp',
                 encoder_pipeline_model_parallel_size=args.encoder_pipeline_model_parallel_size,
                 get_embedding_ranks=get_embedding_ranks,
                 get_position_embedding_ranks=get_position_embedding_ranks,
+                ulysses_sequence_parallel_size=args.ulysses_sequence_parallel_size,
             )
             if args.rank == 0:
                 print(

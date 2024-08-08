@@ -194,6 +194,10 @@ def validate_args(args, defaults={}):
             'pipeline_model_parallel_split_rank not supported with process_meshes set!'
         args.transformer_pipeline_model_parallel_size = args.pipeline_model_parallel_size
 
+        # Ulysses parallel size.
+        assert args.ulysses_sequence_parallel_size == 1, \
+            'usp!=1 not support now!'
+
         # Virtual parallel size.
         assert args.num_layers_per_virtual_pipeline_stage == None, \
             'virtual pipeline not support now!'
@@ -252,21 +256,24 @@ def validate_args(args, defaults={}):
         # Checks.
         model_parallel_size = args.pipeline_model_parallel_size * \
                             args.tensor_model_parallel_size
-        assert args.world_size % (model_parallel_size * args.context_parallel_size) == 0, \
+        assert args.world_size % (model_parallel_size * args.context_parallel_size * args.ulysses_sequence_parallel_size) == 0, \
             'world size ({}) is not divisible by tensor parallel size ({}) times ' \
-            'pipeline parallel size ({}) times context parallel size ({})'.format(
+            'pipeline parallel size ({}) times context parallel size ({}) times '\
+            'ulysses_sequence_parallel_size ({})'.format(
             args.world_size, args.tensor_model_parallel_size,
-            args.pipeline_model_parallel_size, args.context_parallel_size)
-        args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size)
+            args.pipeline_model_parallel_size, args.context_parallel_size, args.ulysses_sequence_parallel_size)
+        args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size * args.ulysses_sequence_parallel_size)
         if args.rank == 0:
             print('using world size: {}, data-parallel size: {}, '
                 'context-parallel size: {} '
                 'tensor-model-parallel size: {}, '
-                'pipeline-model-parallel size: {} '.format(
+                'pipeline-model-parallel size: {} '
+                'ulysses-sequence-parallel size: {}'.format(
                     args.world_size, args.data_parallel_size,
                     args.context_parallel_size,
                     args.tensor_model_parallel_size,
-                    args.pipeline_model_parallel_size), flush=True)
+                    args.pipeline_model_parallel_size,
+                    args.ulysses_sequence_parallel_size), flush=True)
 
         if args.pipeline_model_parallel_split_rank is not None:
             args.encoder_pipeline_model_parallel_size = args.pipeline_model_parallel_split_rank
@@ -691,6 +698,8 @@ def validate_args(args, defaults={}):
             "Number of experts should be a multiple of expert model parallel_size."
         assert not args.fp16, \
             "Expert parallelism is not supported with fp16 training."
+        assert args.ulysses_sequence_parallel_size == 1, \
+            "Expert parallelism is not supported with ulysses sequence parallelism."
 
     # Distributed checkpointing checks
     if args.use_dist_ckpt and args.use_legacy_models:
@@ -703,8 +712,8 @@ def validate_args(args, defaults={}):
            <= 1, "A single data source must be provided in training mode, else None"
 
     if args.use_tp_pp_dp_mapping:
-        assert args.context_parallel_size * args.expert_model_parallel_size <= 1, \
-            "context_parallel and expert_model_parallel can't be used with tp-pp-dp mapping."
+        assert args.context_parallel_size * args.expert_model_parallel_size * args.ulysses_sequence_parallel_size <= 1, \
+            "context_parallel, expert_model_parallel and ulysses_sequence_parallel_size can't be used with tp-pp-dp mapping."
 
     # Deterministic mode
     if args.deterministic_mode:
@@ -1740,6 +1749,8 @@ def _add_distributed_args(parser):
                        help='Indicate whether not running on a shared file system.')
     group.add_argument('--context-parallel-size', type=int, default=1,
                        help='Degree of context parallelism.')
+    group.add_argument('--ulysses-sequence-parallel-size', type=int, default=1,
+                       help='Degree of ulysses sequence parallelism.')
     group.add_argument('--nccl-communicator-config-path', type=str, default=None,
                        help='Path to the yaml file with NCCL communicator '
                        'configurations. The number of min/max thread groups and thread '
