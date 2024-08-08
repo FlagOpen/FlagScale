@@ -1,5 +1,5 @@
 cmake >= 3.21
-hydra-core:
+hydra-core
 ninja
 psutil
 numpy
