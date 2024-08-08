@@ -9,10 +9,15 @@ path = os.getcwd()
 def check_path():
     """Get path and check 'FlagScale' in path."""
     global path
-    pattern = r".*FlagScale.*"
-    a = re.match(pattern, path)
+    pattern_1 = r".*FlagScale"
+    pattern_2 = r",*FlagScale(?!.*\/).*"
+    a = re.match(pattern_1, path)
+    b = re.match(pattern_2, path)
     if a is None:
         raise FileNotFoundError("the FlagScale is not in your path")
+    if b is None:
+        print("WARNING! You are currently in a subdirectory of FlagScale, the output might be incorrect!")
+    
 
 
 def process_commit_id(patch_commit_id, base_commit_id=None):
@@ -73,6 +78,16 @@ def check_branch_name(repo, branch_name):
         return True
     else:
         return False
+
+
+def get_now_branch_name(repo):
+    """Get the now branch name when use this function"""
+    branch_list = repo.git.branch("--list").split('\n')
+    for branch_name in branch_list:
+        if '*' in branch_name:
+            branch_name = branch_name.split()[-1]
+            return branch_name
+    return 'main'
 
 
 def save_patch_to_tmp(patch_name, patch_str):

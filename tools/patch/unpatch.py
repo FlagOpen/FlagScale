@@ -44,7 +44,7 @@ def _add_auto_generate_args():
 def check_hetero_txt(device_type, base_commit_id):
     """Check if the combination of device_type and commit_id is in hetero.txt."""
     global path
-    hetero_path = os.path.join(path, "patch/hetero.txt")
+    hetero_path = os.path.join(path, "tools/patch/hetero.txt")
     if not os.path.exists(hetero_path):
         raise FileNotFoundError("{} is not found!".format(hetero_path))
     with open(hetero_path, "r") as f:

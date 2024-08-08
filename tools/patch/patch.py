@@ -7,6 +7,7 @@ from common import (
     git_init,
     save_patch_to_tmp,
     check_branch_name,
+    get_now_branch_name,
 )
 
 path = os.getcwd()
@@ -54,7 +55,7 @@ def get_output_path(device_type, base_commit_id):
 def check_hetero_txt(device_type, base_commit_id):
     """Check if the combination of device_type and commit_id is in hetero.txt."""
     global path
-    hetero_path = os.path.join(path, "patch/hetero.txt")
+    hetero_path = os.path.join(path, "tools/patch/hetero.txt")
     if not os.path.exists(hetero_path):
         os.system("touch {}".format(hetero_path))
     with open(hetero_path, "r") as f:
@@ -75,7 +76,7 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     global path
 
     # Create diretory to save patch.py/unpatch.py.
-    patch_file_path = os.path.join(path, "patch/")
+    patch_file_path = os.path.join(path, "tools/patch/")
     tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
     if os.path.exists(tmp_patch_file_path):
         shutil.rmtree(tmp_patch_file_path)
@@ -83,6 +84,7 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
 
     # Create in-place code branch to compare different.
     origin_patch_branch = "origin_patch_code"
+    now_branch = get_now_branch_name(repo)
     repo.git.stash()
     repo.git.checkout(current_commit_id)
 
@@ -111,16 +113,16 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
         repo.git.branch(unpatch_branch)
 
     # Check the different between in-place code and patch code.
-    auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
+    auto_check(repo, file_name, base_commit_id, now_branch,origin_patch_branch, unpatch_branch)
     shutil.rmtree(tmp_path)
     device_path, patch_path = get_output_path(device_type, base_commit_id)
 
     # Recover the patch/ directory.
     if not os.path.exists(patch_file_path):
-        shutil.copytree(tmp_patch_file_path, os.path.join(path, "patch"))
+        shutil.copytree(tmp_patch_file_path, os.path.join(path, "tools/patch"))
     else:
-        shutil.rmtree(os.path.join(path, "patch"))
-        shutil.copytree(tmp_patch_file_path, os.path.join(path, "patch"))
+        shutil.rmtree(os.path.join(path, "tools/patch"))
+        shutil.copytree(tmp_patch_file_path, os.path.join(path, "tools/patch"))
     shutil.rmtree(tmp_patch_file_path)
     update_patch(patch_str, patch_name, device_path, patch_path)
     auto_commit(repo, device_type, device_path, current_commit_id)
@@ -141,16 +143,18 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     hetero_str = hetero_str + " " + str(now_device_type)
 
     # Create diretory to save patch.py/unpatch.py.
-    patch_file_path = os.path.join(path, "patch/")
+    patch_file_path = os.path.join(path, "tools/patch/")
     tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
     if os.path.exists(tmp_patch_file_path):
         shutil.rmtree(tmp_patch_file_path)
     shutil.copytree(patch_file_path, tmp_patch_file_path)
-
+    now_branch = get_now_branch_name(repo)
     repo.git.stash()
     repo.git.checkout(current_commit_id)
+    
 
     # Create in-place code branch to compare different.
+    
     origin_patch_branch = "origin_patch_code"
     if check_branch_name(repo, origin_patch_branch):
         repo.git.branch("-D", origin_patch_branch)
@@ -165,7 +169,7 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
 
     # Create in-place code branch to compare different.
     file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
-    patch_file_path = os.path.join(path, "patch/")
+    patch_file_path = os.path.join(path, "tools/patch/")
     repo.git.stash()
 
     repo.git.checkout(base_commit_id)
@@ -178,15 +182,15 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
         repo.git.branch(unpatch_branch)
 
     # Check the different between in-place code and patch code.
-    auto_check(repo, file_name, base_commit_id, origin_patch_branch, unpatch_branch)
+    auto_check(repo, file_name, base_commit_id, now_branch,origin_patch_branch, unpatch_branch)
     shutil.rmtree(tmp_path)
     device_path, patch_path = get_output_path(now_device_type, base_commit_id)
 
     # Recover the patch/ directory.
     if not os.path.exists(patch_file_path):
-        shutil.copytree(tmp_patch_file_path, os.path.join(path, "patch"))
+        shutil.copytree(tmp_patch_file_path, os.path.join(path, "tools/patch"))
     shutil.rmtree(tmp_patch_file_path)
-    hetero_path = os.path.join(path, "patch/hetero.txt")
+    hetero_path = os.path.join(path, "tools/patch/hetero.txt")
 
     # Update .patch file and hetero.txt.
     update_patch(
@@ -227,7 +231,7 @@ def update_patch(
         f.write(patch_str)
 
 
-def auto_check(repo, file_name, base_commit_id, origin_branch, unpatch_branch):
+def auto_check(repo, file_name, base_commit_id, now_branch,origin_branch, unpatch_branch):
     """Check if origin code and unpatch code have different."""
     repo.git.checkout(unpatch_branch)
     repo.git.am(file_name)
@@ -235,14 +239,14 @@ def auto_check(repo, file_name, base_commit_id, origin_branch, unpatch_branch):
     if len(diff_str) > 0:
         print("WARNING: origin code and unpatch code have some different")
         repo.git.stash()
-        repo.git.checkout("main")
+        repo.git.checkout(now_branch)
         repo.git.checkout(base_commit_id)
         repo.git.branch("-D", "origin_patch_code")
         repo.git.branch("-D", "unpatch_code")
         raise ValueError
     print("Auto check successfully!")
     repo.git.stash()
-    repo.git.checkout("main")
+    repo.git.checkout(now_branch)
     repo.git.checkout(base_commit_id)
     repo.git.branch("-D", "origin_patch_code")
     repo.git.branch("-D", "unpatch_code")
@@ -273,7 +277,7 @@ def check_device_type(device_type):
     """
     import re
 
-    device_pattern = r"\w+"
+    device_pattern = r"\w+_\w+"
     for device in device_type:
         match = re.fullmatch(device_pattern, device)
         if not match:
