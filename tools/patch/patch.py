@@ -10,7 +10,7 @@ from common import (
     get_now_branch_name,
 )
 
-path = os.getcwd()
+path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _add_auto_generate_args():
@@ -55,7 +55,7 @@ def get_output_path(device_type, base_commit_id):
 def check_hetero_txt(device_type, base_commit_id):
     """Check if the combination of device_type and commit_id is in hetero.txt."""
     global path
-    hetero_path = os.path.join(path, "tools/patch/hetero.txt")
+    hetero_path = os.path.join(path, "tools/hetero.txt")
     if not os.path.exists(hetero_path):
         os.system("touch {}".format(hetero_path))
     with open(hetero_path, "r") as f:
@@ -76,8 +76,8 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     global path
 
     # Create diretory to save patch.py/unpatch.py.
-    patch_file_path = os.path.join(path, "tools/patch/")
-    tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
+    patch_file_path = os.path.join(path, "toosl/patch")
+    tmp_patch_file_path = os.path.join(path, "../tmp_patch")
     if os.path.exists(tmp_patch_file_path):
         shutil.rmtree(tmp_patch_file_path)
     shutil.copytree(patch_file_path, tmp_patch_file_path)
@@ -119,10 +119,10 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
 
     # Recover the patch/ directory.
     if not os.path.exists(patch_file_path):
-        shutil.copytree(tmp_patch_file_path, os.path.join(path, "tools/patch"))
+        shutil.copytree(tmp_patch_file_path, os.path.join(path, "patch"))
     else:
-        shutil.rmtree(os.path.join(path, "tools/patch"))
-        shutil.copytree(tmp_patch_file_path, os.path.join(path, "tools/patch"))
+        shutil.rmtree(os.path.join(path, "patch"))
+        shutil.copytree(tmp_patch_file_path, os.path.join(path, "patch"))
     shutil.rmtree(tmp_patch_file_path)
     update_patch(patch_str, patch_name, device_path, patch_path)
     auto_commit(repo, device_type, device_path, current_commit_id)
@@ -143,8 +143,8 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     hetero_str = hetero_str + " " + str(now_device_type)
 
     # Create diretory to save patch.py/unpatch.py.
-    patch_file_path = os.path.join(path, "tools/patch/")
-    tmp_patch_file_path = os.path.join(path, "../tmp_patch/")
+    patch_file_path = os.path.join(path, "tools/patch")
+    tmp_patch_file_path = os.path.join(path, "../tmp_patch")
     if os.path.exists(tmp_patch_file_path):
         shutil.rmtree(tmp_patch_file_path)
     shutil.copytree(patch_file_path, tmp_patch_file_path)
@@ -169,7 +169,7 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
 
     # Create in-place code branch to compare different.
     file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
-    patch_file_path = os.path.join(path, "tools/patch/")
+    patch_file_path = os.path.join(path, "patch")
     repo.git.stash()
 
     repo.git.checkout(base_commit_id)
@@ -188,7 +188,7 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
 
     # Recover the patch/ directory.
     if not os.path.exists(patch_file_path):
-        shutil.copytree(tmp_patch_file_path, os.path.join(path, "tools/patch"))
+        shutil.copytree(tmp_patch_file_path, os.path.join(path, "patch"))
     shutil.rmtree(tmp_patch_file_path)
     hetero_path = os.path.join(path, "tools/patch/hetero.txt")
 

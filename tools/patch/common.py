@@ -3,20 +3,17 @@ import os
 import shutil
 from git.repo import Repo
 
-path = os.getcwd()
+path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def check_path():
     """Get path and check 'FlagScale' in path."""
     global path
-    pattern_1 = r".*FlagScale"
-    pattern_2 = r",*FlagScale(?!.*\/).*"
+    pattern_1 = r".*FlagScale.*"
     a = re.match(pattern_1, path)
-    b = re.match(pattern_2, path)
     if a is None:
         raise FileNotFoundError("the FlagScale is not in your path")
-    if b is None:
-        print("WARNING! You are currently in a subdirectory of FlagScale, the output might be incorrect!")
+
     
 
 
