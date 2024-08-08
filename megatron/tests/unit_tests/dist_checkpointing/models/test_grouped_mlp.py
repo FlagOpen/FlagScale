@@ -42,6 +42,9 @@ def get_pp_offsets():
 
 
 class TestGroupedMLPReconfiguration:
+    def setup_class(cls):
+        Utils.initialize_distributed()
+        
     @pytest.mark.parametrize("use_fpsl,src_tp_pp_exp,dest_tp_pp_exp,use_glu", [
         # changing PP is impossible because the number of layers must be the same
         (False, (2, 4, 1), (2, 4, 1), False),

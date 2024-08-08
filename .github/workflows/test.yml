@@ -16,20 +16,17 @@ jobs:
   megatron-unit-test:
     runs-on: self-hosted
     container:
-      image: localhost:5000/flagscale_cicd:v1.3
+      image: localhost:5000/flagscale_cicd:v1.4
       ports:
         - 80
       volumes:
         - /home/flagscale_cicd/flask/static:/workspace/report
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
         - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
-      options: --gpus all --hostname flagscale_cicd
+      options: --gpus all --shm-size=500g --hostname flagscale_cicd
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        env:
-          https_proxy: ${{ secrets.HTTPS_PROXY }}
-          http_proxy: ${{ secrets.HTTP_PROXY }}
       
       - name: Check GPU is Free
         run: tests/scripts/gpu_check.sh
@@ -45,20 +42,17 @@ jobs:
     runs-on: self-hosted
     needs: megatron-unit-test
     container:
-      image: localhost:5000/flagscale_cicd:v1.3
+      image: localhost:5000/flagscale_cicd:v1.4
       ports:
         - 80
       volumes:
         - /home/flagscale_cicd/flask/static:/workspace/report
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
         - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
-      options: --gpus all --hostname flagscale_cicd
+      options: --gpus all --shm-size=500g --hostname flagscale_cicd
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        env:
-          https_proxy: ${{ secrets.HTTPS_PROXY }}
-          http_proxy: ${{ secrets.HTTP_PROXY }}
 
       - name: Check GPU is Free
         run: tests/scripts/gpu_check.sh
@@ -74,20 +68,17 @@ jobs:
     runs-on: self-hosted
     needs: flagscale-unit-test
     container:
-      image: localhost:5000/flagscale_cicd:v1.3
+      image: localhost:5000/flagscale_cicd:v1.4
       ports:
         - 80
       volumes:
         - /home/flagscale_cicd/flask/static:/workspace/report
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
         - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
-      options: --gpus all --hostname flagscale_cicd
+      options: --gpus all --shm-size=500g --hostname flagscale_cicd
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        env:
-          https_proxy: ${{ secrets.HTTPS_PROXY }}
-          http_proxy: ${{ secrets.HTTP_PROXY }}
           
       - name: Check GPU is Free
         run: tests/scripts/gpu_check.sh
