@@ -18,16 +18,16 @@ def check_path():
 
 
 def process_commit_id(patch_commit_id, base_commit_id=None):
-    """Limit the length of the commit ID to 6."""
+    """Limit the length of the commit ID to 8."""
     if base_commit_id is not None:
         if len(base_commit_id) >= 8:
             base_commit_id = base_commit_id[:8]
         else:
-            raise ValueError("base_commit_id is less longer than 6")
+            raise ValueError("base_commit_id is less longer than 8")
     if len(patch_commit_id) >= 8:
         patch_commit_id = patch_commit_id[:8]
     else:
-        raise ValueError("patch_commit_id is less longer than 6")
+        raise ValueError("patch_commit_id is less longer than 8")
     if base_commit_id is not None:
         return patch_commit_id, base_commit_id
     else:

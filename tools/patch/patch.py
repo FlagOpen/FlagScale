@@ -76,7 +76,7 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
     global path
 
     # Create diretory to save patch.py/unpatch.py.
-    patch_file_path = os.path.join(path, "toosl/patch")
+    patch_file_path = os.path.join(path, "tools/patch")
     tmp_patch_file_path = os.path.join(path, "../tmp_patch")
     if os.path.exists(tmp_patch_file_path):
         shutil.rmtree(tmp_patch_file_path)
