@@ -10,7 +10,7 @@ from common import (
     save_unpatch_to_tmp,
 )
 
-path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def _add_auto_generate_args():

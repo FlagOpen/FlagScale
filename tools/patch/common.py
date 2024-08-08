@@ -3,7 +3,7 @@ import os
 import shutil
 from git.repo import Repo
 
-path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def check_path():
@@ -20,12 +20,12 @@ def check_path():
 def process_commit_id(patch_commit_id, base_commit_id=None):
     """Limit the length of the commit ID to 6."""
     if base_commit_id is not None:
-        if len(base_commit_id) >= 6:
-            base_commit_id = base_commit_id[:6]
+        if len(base_commit_id) >= 8:
+            base_commit_id = base_commit_id[:8]
         else:
             raise ValueError("base_commit_id is less longer than 6")
-    if len(patch_commit_id) >= 6:
-        patch_commit_id = patch_commit_id[:6]
+    if len(patch_commit_id) >= 8:
+        patch_commit_id = patch_commit_id[:8]
     else:
         raise ValueError("patch_commit_id is less longer than 6")
     if base_commit_id is not None:
