@@ -2,6 +2,10 @@
 
 """Model and data parallel groups."""
 
+import json
+import pickle
+import socket
+
 import os
 import warnings
 from datetime import timedelta
@@ -248,6 +252,9 @@ class RankGenerator(object):
         self.order = order
         order = order.lower()
 
+        self.parallelism_to_groups = {}
+        self.rank_to_parallelism_to_group_id = {}
+
         if 'ep' in order:
             if 'ep-dp' not in order and 'dp-ep' not in order:
                 raise RuntimeError(f"The ep and dp must be adjacent in order ({self.order}).")
@@ -308,7 +315,36 @@ class RankGenerator(object):
             order = self.order_wo_ep
         mask = self.get_mask(order, token)
         ranks = generate_masked_orthogonal_rank_groups(self.world_size, parallel_size, mask)
+
+        self.parallelism_to_groups[token] = ranks
+        group_id = 0
+        for group in ranks:
+            for rank in group:
+                if rank not in self.rank_to_parallelism_to_group_id:
+                    self.rank_to_parallelism_to_group_id[rank] = {}
+                self.rank_to_parallelism_to_group_id[rank][token] = group_id
+            group_id = group_id + 1
+
         return ranks
+
+    def print_ranks(self, print_path):
+        if print_path == "stdout":
+            print("parallelism_to_groups", self.parallelism_to_groups)
+            print("rank_to_parallelism_to_group_id", self.rank_to_parallelism_to_group_id)
+        elif print_path != "stdout":
+            try:
+                os.makedirs(print_path, exist_ok=True)
+            except OSError as e:
+                raise RuntimeError(f"Failed to create path '{print_path}'. Error: {e}")
+            parallelism_to_groups_file = print_path + "/parallelism_to_groups.json"
+            with open(parallelism_to_groups_file, 'w') as file:
+                json.dump(self.parallelism_to_groups, file, ensure_ascii=False, indent=4)
+            rank_to_parallelism_to_group_id_file = print_path + "/rank_to_parallelism_to_group_id.json"
+            with open(rank_to_parallelism_to_group_id_file, 'w') as file:
+                json.dump(self.rank_to_parallelism_to_group_id, file, ensure_ascii=False, indent=4)
+        else:
+            print("parallelism_to_groups", self.parallelism_to_groups)
+            print("rank_to_parallelism_to_group_id", self.rank_to_parallelism_to_group_id)
 
 
 def default_embedding_ranks(pp_ranks, split_rank=None):
@@ -335,6 +371,54 @@ def default_position_embedding_ranks(pp_ranks, split_rank=None):
         return [pp_ranks[0]]
 
 
+def print_ranks(print_path:str):
+    # Get world size and rank. Ensure some consistencies.
+    assert torch.distributed.is_initialized()
+    
+    world_size: int = torch.distributed.get_world_size()
+    rank = torch.distributed.get_rank()
+
+    rank_to_host_name_and_ip = {}
+    host_name = socket.gethostname()
+    host_ip = socket.gethostbyname(host_name)
+    rank_to_host_name_and_ip[rank] = {"host_name:": host_name, "host_ip": host_ip}
+
+    serialized_data = pickle.dumps(rank_to_host_name_and_ip)
+    serialized_tensor = torch.ByteTensor(list(serialized_data)).cuda()
+    
+    local_length = torch.tensor([len(serialized_tensor)], dtype=torch.int).cuda()
+    all_lengths = [torch.tensor([0], dtype=torch.int).cuda() for _ in range(world_size)]
+    torch.distributed.all_gather(all_lengths, local_length)
+
+    max_length = max(length.item() for length in all_lengths)
+    padded_tensor = torch.zeros(max_length, dtype=torch.uint8).cuda()
+    padded_tensor[:local_length.item()] = serialized_tensor
+
+    gathered_tensors = [torch.zeros(max_length, dtype=torch.uint8).cuda() for _ in range(world_size)]
+    torch.distributed.all_gather(gathered_tensors, padded_tensor)
+
+    gathered_tensors = [torch.zeros_like(serialized_tensor) for _ in range(world_size)]
+    torch.distributed.all_gather(gathered_tensors, serialized_tensor)        
+    if rank == 0 and print_path != None:
+        rank_to_host_name_and_ip = {}
+        for i, tensor in enumerate(gathered_tensors):
+            serialized_data = tensor[:all_lengths[i].item()].tolist()
+            rank_dict = pickle.loads(bytes(serialized_data))
+            rank_to_host_name_and_ip.update(rank_dict)
+        if print_path == "stdout":
+            print("rank_to_host_name_and_ip", rank_to_host_name_and_ip)
+        elif print_path != "stdout":
+            try:
+                os.makedirs(print_path, exist_ok=True)
+            except OSError as e:
+                raise RuntimeError(f"Failed to create path '{print_path}'. Error: {e}")
+            rank_to_host_name_and_ip_file = print_path + "/rank_to_host_name_and_ip.json"
+            with open(rank_to_host_name_and_ip_file, 'w') as file:
+                json.dump(rank_to_host_name_and_ip, file, ensure_ascii=False, indent=4)
+        else:
+            print("rank_to_host_name_and_ip", rank_to_host_name_and_ip)
+
+
 def initialize_model_parallel(
     tensor_model_parallel_size: int = 1,
     pipeline_model_parallel_size: int = 1,
@@ -349,6 +433,7 @@ def initialize_model_parallel(
     encoder_pipeline_model_parallel_size: Optional[int] = None,
     get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
     get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
+    analyze_save_path:str = "stdout",
 ) -> None:
     """Initialize model data parallel groups.
 
@@ -780,6 +865,9 @@ def initialize_model_parallel(
     # put this. If we end up with a more generic initialization of megatron-core
     # we could stick it there
     _set_global_memory_buffer()
+
+    rank_generator.print_ranks(analyze_save_path)
+    print_ranks(analyze_save_path)
 
     
 def is_initialized():
