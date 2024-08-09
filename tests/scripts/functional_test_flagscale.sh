@@ -14,12 +14,12 @@ run_train() {
 }
 
 run_pytest() {
-  local results_path=$1
-  run_command "pytest -p no:warnings -s tests/functional_tests/test_result.py --test_reaults_path=$results_path"
+  local test_path=$1
+  run_command "pytest -p no:warnings -s tests/functional_tests/test_result.py --test_path=$test_path"
 }
 
 run_train "tests/functional_tests/aquila/conf"
-run_pytest "./tests/functional_tests/aquila/test_result"
+run_pytest "./tests/functional_tests/aquila"
 
 run_train "tests/functional_tests/mixtral/conf"
-run_pytest "./tests/functional_tests/mixtral/test_result"
+run_pytest "./tests/functional_tests/mixtral"

@@ -13,6 +13,8 @@ system:
     wandb_exp_name: train-mixtral-test
   checkpoint:
     save_interval: 2000
+  analyze:
+    analyze_save_dir: ./tests/functional_tests/mixtral/analyze_result_test
 
 model:
   use_mcore_models: true
