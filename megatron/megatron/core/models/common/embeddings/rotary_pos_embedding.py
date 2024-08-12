@@ -144,7 +144,7 @@ class RotaryEmbedding(nn.Module):
                 rotary_seq_len = transformer_input.size(0)
 
             if transformer_config.sequence_parallel:
-                rotary_seq_len *= transformer_config.tensor_model_parallel_size
+                rotary_seq_len *= parallel_state.get_tensor_model_parallel_world_size()
 
         rotary_seq_len *= transformer_config.context_parallel_size
 

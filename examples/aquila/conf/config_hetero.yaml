@@ -10,7 +10,7 @@ experiment:
     backend: megatron
     entrypoint: ./flagscale/train/train_aquila.py
   runner:
-    hostfile: xxxx # Please replace with your actual hostfile path
+    hostfile: torchrun # Please replace with your actual hostfile path
     rdzv_backend: "static" # hetero training only supports static
   envs:
     CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7

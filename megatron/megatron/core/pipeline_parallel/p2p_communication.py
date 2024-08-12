@@ -5,6 +5,7 @@ from functools import reduce
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
+import torch.distributed
 
 from megatron import core
 from megatron.core import ModelParallelConfig
@@ -15,10 +16,11 @@ from megatron.core.parallel_state import (
     get_pipeline_model_parallel_rank,
     get_pipeline_model_parallel_world_size,
 )
+from flagscale.train import get_parallel_context  
+from flagscale.train.hetero.parallel_context import ParallelContext
 
 # Types
 Shape = Union[List[int], torch.Size]
-
 
 def _communicate_shapes(tensor_send_next, tensor_send_prev, recv_prev, recv_next, config):
     """Communicate tensor shapes between stages. Used to communicate
@@ -127,11 +129,12 @@ def _batched_p2p_ops(
     group: torch.distributed.ProcessGroup
 ):
     ops = []
+
     if tensor_send_prev is not None:
         send_prev_op = torch.distributed.P2POp(
             torch.distributed.isend,
             tensor_send_prev,
-            get_pipeline_model_parallel_prev_rank(),
+            get_pipeline_model_parallel_prev_rank(group=group),
             group,
         )
         ops.append(send_prev_op)
@@ -139,7 +142,7 @@ def _batched_p2p_ops(
         recv_prev_op = torch.distributed.P2POp(
             torch.distributed.irecv,
             tensor_recv_prev,
-            get_pipeline_model_parallel_prev_rank(),
+            get_pipeline_model_parallel_prev_rank(group=group),
             group,
         )
         ops.append(recv_prev_op)
@@ -147,7 +150,7 @@ def _batched_p2p_ops(
         send_next_op = torch.distributed.P2POp(
             torch.distributed.isend,
             tensor_send_next,
-            get_pipeline_model_parallel_next_rank(),
+            get_pipeline_model_parallel_next_rank(group=group),
             group,
         )
         ops.append(send_next_op)
@@ -155,7 +158,7 @@ def _batched_p2p_ops(
         recv_next_op = torch.distributed.P2POp(
             torch.distributed.irecv,
             tensor_recv_next,
-            get_pipeline_model_parallel_next_rank(),
+            get_pipeline_model_parallel_next_rank(group=group),
             group,
         )
         ops.append(recv_next_op)
@@ -252,7 +255,6 @@ def _p2p_ops(
             reqs.append(send_prev_req)
     return reqs
 
-
 def _communicate(
     *,
     tensor_send_next: Optional[torch.Tensor],
@@ -324,6 +326,7 @@ def _communicate(
             device=torch.cuda.current_device(),
             dtype=config.pipeline_dtype,
         )
+
     if recv_next:
         if config.pipeline_dtype is None:
             raise RuntimeError("dtype must be provided if recv_next is True")
@@ -376,6 +379,10 @@ def _communicate(
 
     return tensor_recv_prev, tensor_recv_next, reqs
 
+def warm_up_comm_group(config):
+    if config.enable_hetero:
+        from flagscale.train.hetero.p2p_communication import warm_up_comm_group_hetero
+        warm_up_comm_group_hetero(config)
 
 def recv_forward(tensor_shape: Shape, config: ModelParallelConfig) -> torch.Tensor:
     """ Receive tensor from previous rank in pipeline (forward receive).
@@ -383,7 +390,7 @@ def recv_forward(tensor_shape: Shape, config: ModelParallelConfig) -> torch.Tens
     See _communicate for argument details.
     """
     if config.enable_hetero:
-        from flagscale.train.hetero.p2p_communications import recv_forward_hetero
+        from flagscale.train.hetero.p2p_communication import recv_forward_hetero
         return recv_forward_hetero(tensor_shape, config)
 
     if core.parallel_state.is_pipeline_first_stage():
@@ -410,7 +417,7 @@ def recv_backward(tensor_shape: Shape, config: ModelParallelConfig) -> torch.Ten
     See _communicate for argument details.
     """
     if config.enable_hetero:
-        from flagscale.train.hetero.p2p_communications import recv_backward_hetero
+        from flagscale.train.hetero.p2p_communication import recv_backward_hetero
         return recv_backward_hetero(tensor_shape, config)
 
     if core.parallel_state.is_pipeline_last_stage():
@@ -437,7 +444,7 @@ def send_forward(output_tensor: torch.Tensor, config: ModelParallelConfig) -> No
     See _communicate for argument details.
     """
     if config.enable_hetero:
-        from flagscale.train.hetero.p2p_communications import send_forward_hetero
+        from flagscale.train.hetero.p2p_communication import send_forward_hetero
         send_forward_hetero(output_tensor, config)
         return
 
@@ -462,7 +469,7 @@ def send_backward(input_tensor_grad: torch.Tensor, config: ModelParallelConfig) 
     See _communicate for argument details.
     """
     if config.enable_hetero:
-        from flagscale.train.hetero.p2p_communications import send_backward_hetero
+        from flagscale.train.hetero.p2p_communication import send_backward_hetero
         send_backward_hetero(input_tensor_grad, config)
         return
 
@@ -489,7 +496,7 @@ def send_forward_recv_backward(
     See _communicate for argument details.
     """
     if config.enable_hetero:
-        from flagscale.train.hetero.p2p_communications import send_forward_recv_backward_hetero
+        from flagscale.train.hetero.p2p_communication import send_forward_recv_backward_hetero
         return send_forward_recv_backward_hetero(output_tensor, tensor_shape, config)
 
     if core.parallel_state.is_pipeline_last_stage():
@@ -518,8 +525,8 @@ def send_backward_recv_forward(
     See _communicate for argument details.
     """
     if config.enable_hetero:
-        from flagscale.train.hetero.p2p_communications import send_backward_recv_forward_hetero
-        return send_backward_recv_forward_hetero(input_tensor_grad, config)
+        from flagscale.train.hetero.p2p_communication import send_backward_recv_forward_hetero
+        return send_backward_recv_forward_hetero(input_tensor_grad, tensor_shape, config)
 
     if core.parallel_state.is_pipeline_first_stage():
         input_tensor = None
