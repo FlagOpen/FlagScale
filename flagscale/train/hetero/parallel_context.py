@@ -467,6 +467,7 @@ class ParallelContext:
         self._global_memory_buffer = GlobalMemoryBuffer()
 
         self._is_initialized = True
+        self.group_of_rank_2_and_5 = torch.distributed.new_group([2, 5], timeout=self._timeout)
 
     def is_initialized(self):
         return self._is_initialized
@@ -611,14 +612,15 @@ class ParallelContext:
             # group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout)
             if mesh_index == len(self._process_meshes):
                 aggregated_ranks = [rank for ranks in path for rank in ranks]
+                debug_print_value(aggregated_ranks=aggregated_ranks)
                 self._all_group_ranks["pp"].append(aggregated_ranks)
                 group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout)
                 if self._rank in aggregated_ranks:
                     self._process_groups["pp"].append(group)
                     self._group_ranks["pp"].append(aggregated_ranks)
                     self._process_group_to_ranks[group] = aggregated_ranks
-                debug_print_value(aggregated_ranks=aggregated_ranks,
-                                  backtrack_process_groups=self._process_groups)
+                # debug_print_value(aggregated_ranks=aggregated_ranks,
+                #                   backtrack_process_groups=self._process_groups)
                 return
             current_mesh = self._process_meshes[mesh_index]
             ranks_list = current_mesh.get_all_process_group_ranks("pp")
@@ -663,6 +665,9 @@ class ParallelContext:
             else:
                 embedding_ranks = ranks
                 position_embedding_ranks = ranks
+            # debug_print_value(ranks=ranks,
+            #                   embedding_ranks=embedding_ranks, 
+            #                   position_embedding_ranks=position_embedding_ranks)
 
             # debug_print_value(embedding_ranks=embedding_ranks)
             group = torch.distributed.new_group(
@@ -720,8 +725,12 @@ class ParallelContext:
         # For now, we only support the case where the sequence dim is different.
         # However, the following code can be easily extended to support other cases.
         assert dp1 == dp2, "Data parallel size should be the same."
-        # Assume that the tensor shape is (batch_size, seq_len, hidden_size)
-        local_batch_size, local_seq_len, local_hidden_size = local_tensor_shape
+        # Assume that the tensor shape is (seq_len, batch_size, hidden_size)
+        local_seq_len, local_batch_size, local_hidden_size = local_tensor_shape
+        # debug_print_value(local_batch_size=local_batch_size, 
+        #                   local_seq_len=local_seq_len, 
+        #                   local_hidden_size=local_hidden_size,
+        #                   local_tensor_shape=local_tensor_shape)
         if self._args.sequence_parallel:
             global_seq_len = local_seq_len * tp1 * cp1
             sp1 = tp1 * cp1
@@ -733,6 +742,7 @@ class ParallelContext:
         global_batch_size = local_batch_size * dp1
         sp_overlapped_mapping = find_overlapped_mapping(sp1, sp2, global_seq_len)
         dp_overlapped_mapping = find_overlapped_mapping(dp1, dp2, global_batch_size)
+        # debug_print_value(sp1=sp1, sp2=sp2, global_seq_len=global_seq_len, sp_overlapped_mapping=sp_overlapped_mapping)
         for s in range(sp1):
             i, j = s % tp1, s // tp1
             for k in range(dp1):
@@ -767,6 +777,7 @@ class ParallelContext:
                             local_hidden_size,
                         )
                     )
+        return self._inter_mesh_tensor_slices[(rank, local_tensor_shape, next)]
 
     def get_current_process_mesh(self):
         assert self._current_process_mesh_index < len(self._process_meshes)
@@ -1010,7 +1021,6 @@ class ParallelContext:
                 return False
             else:
                 group = group[0]
-            # group = self._process_groups.get("embd")[0]
         ranks = self._process_group_to_ranks[group]
         if ignore_virtual:
             return rank in ranks 
@@ -1027,7 +1037,7 @@ class ParallelContext:
         """Return true if current rank is in position embedding group, False otherwise."""
         rank = torch.distributed.get_rank()
         if group is None:
-            group = self._process_groups.get("embd", None)
+            group = self._process_groups.get("embd_pos", None)
             if group is None:
                 return False
             else:

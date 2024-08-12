@@ -16,6 +16,7 @@ from megatron.core.parallel_state import (
     get_context_parallel_global_ranks,
     get_context_parallel_group,
     get_tensor_model_parallel_group,
+    get_tensor_model_parallel_world_size,
 )
 from megatron.core.tensor_parallel import get_cuda_rng_tracker
 from megatron.core.transformer.enums import AttnMaskType
@@ -149,7 +150,7 @@ class TELinear(te.pytorch.Linear):
             sequence_parallel=self.config.sequence_parallel,
             fuse_wgrad_accumulation=self.config.gradient_accumulation_fusion,
             tp_group=get_tensor_model_parallel_group(check_initialized=False),
-            tp_size=self.config.tensor_model_parallel_size,
+            tp_size=get_tensor_model_parallel_world_size(),
             get_rng_state_tracker=get_cuda_rng_tracker
             if get_cuda_rng_tracker().is_initialized()
             else None,
@@ -259,7 +260,7 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
             sequence_parallel=self.config.sequence_parallel,
             fuse_wgrad_accumulation=self.config.gradient_accumulation_fusion,
             tp_group=get_tensor_model_parallel_group(check_initialized=False),
-            tp_size=self.config.tensor_model_parallel_size,
+            tp_size=get_tensor_model_parallel_world_size(),
             get_rng_state_tracker=get_cuda_rng_tracker
             if get_cuda_rng_tracker().is_initialized()
             else None,
@@ -476,7 +477,7 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
             else attention_dropout,
             attn_mask_type=attn_mask_type.name,
             sequence_parallel=self.config.sequence_parallel,
-            tp_size=self.config.tensor_model_parallel_size,
+            tp_size=get_tensor_model_parallel_world_size(),
             get_rng_state_tracker=get_cuda_rng_tracker
             if get_cuda_rng_tracker().is_initialized()
             else None,

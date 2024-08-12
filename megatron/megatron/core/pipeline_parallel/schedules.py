@@ -1255,7 +1255,8 @@ def forward_backward_pipelining_without_interleaving(
         input_tensors = []
         output_tensors = []
     forward_data_store = []
-
+    
+    p2p_communication.warm_up_comm_group(config=config)
     # Run warmup forward passes.
     for i in range(num_warmup_microbatches):
         # Decide to checkpoint all layers' activations of the current micro-batch
@@ -1363,9 +1364,11 @@ def forward_backward_pipelining_without_interleaving(
                 input_tensor = None
                 send_backward(input_tensor_grad, recv_tensor_shapes, config)
             else:
+                # print("Before send_backward_recv_forward")
                 input_tensor = send_backward_recv_forward(
                     input_tensor_grad, recv_tensor_shapes, config
                 )
+                # print("After send_backward_recv_forward")
 
     # Run cooldown backward passes.
     if not forward_only:
