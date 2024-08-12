@@ -10,14 +10,6 @@ from collections import defaultdict
 
 import torch
 
-def debug_print_value(**kwargs):
-    return
-    def debug_stream(**kwargs):
-        for var_name, value in kwargs.items():
-            print(f"{var_name}: {value}")
-        yield
-    next(debug_stream(**kwargs))
-
 def get_nccl_options(pg_name, nccl_comm_cfgs):
     from megatron.core.parallel_state import get_nccl_options 
     return get_nccl_options(pg_name, nccl_comm_cfgs)
@@ -39,8 +31,6 @@ def find_overlapped_mapping(dim1, dim2, global_size=None):
     # Calculate overlaps between dim1 and dim2 segments
     for i, (start1, end1) in enumerate(dim1_segments):
         for j, (start2, end2) in enumerate(dim2_segments):
-            # constrain the edge condition [ , )
-            # checked, correct
             if start1 < end2 and end1 > start2:  # Check if segments overlap
                 # Calculate the overlap offsets relative to the start of the dim1 segment
                 local_overlap_start1 = max(start1, start2) - start1
@@ -205,7 +195,6 @@ class ProcessMesh:
         for logical_ranks in logical_ranks_list:
             for i in range(len(logical_ranks)):
                 logical_ranks[i] += self._offset 
-        # debug_print_value(logical_ranks_list=logical_ranks_list, logical_ranks=logical_ranks)
 
         for logical_ranks in logical_ranks_list:
             group_name = self.get_group_name(token, independent_ep=independent_ep) 
@@ -226,12 +215,6 @@ class ProcessMesh:
                 self._process_groups[group_name] = group
                 if gloo:
                     self._process_groups_gloo[group_name] = group_gloo
-            # debug_print_value(logical_ranks_list=logical_ranks_list,
-            #                   group_name=group_name, 
-            #                   ranks=ranks, 
-            #                   group=group, 
-            #                   _rank=self._rank,
-            #                   _process_groups=self._process_groups)
 
             # if token == "pp":
             #     if len(ranks) > 1:
@@ -425,7 +408,6 @@ class ProcessMesh:
             sizes = self._rank_generator.ordered_size_w_ep
         else:
             for coord in coords:  
-                # debug_print_value(coord=coord)
                 assert len(coord) == 4
             sizes = self._rank_generator.ordered_size_wo_ep
         strides = _prefix_product(sizes)
@@ -462,12 +444,10 @@ class ParallelContext:
         self.build_all_process_meshes()
         self.build_all_inter_mesh_process_groups()
         self.build_global_process_groups()
-        # debug_print_value(pp_group_after_build_global_process_groups=torch.distributed.get_process_group_ranks(self._process_groups["pp"][0]))
         from megatron.core.utils import GlobalMemoryBuffer
         self._global_memory_buffer = GlobalMemoryBuffer()
 
         self._is_initialized = True
-        self.group_of_rank_2_and_5 = torch.distributed.new_group([2, 5], timeout=self._timeout)
 
     def is_initialized(self):
         return self._is_initialized
@@ -546,22 +526,18 @@ class ParallelContext:
                 dst_coords = list(
                     itertools.product(dst_sp_dims, dst_dp_dims, dst_pp_dims)
                 )
-                # debug_print_value(src_coord=src_coord, dst_coords=dst_coords)
-                # src_rank = process_mesh1.logical_coords_to_ranks([src_coord])[0]
-                src_rank = process_mesh1.logical_coords_to_physical_ranks([src_coord])[0]
-                # debug_print_value(src_rank=src_rank)
+                src_rank = process_mesh1.logical_coords_to_physical_ranks(
+                    [src_coord]
+                )[0]
                 for i, dst_coord in enumerate(dst_coords):
                     sp_dim, dp_dim, pp_dim = dst_coord
                     dst_coord = [sp_dim % tp2, sp_dim // tp2, dp_dim, pp_dim]
                     dst_rank = process_mesh2.logical_coords_to_physical_ranks(
                         [dst_coord]
                     )[0]
-                    # debug_print_value(dst_rank=dst_rank, dst_coord=dst_coord)
                     ranks = [src_rank, dst_rank]
                     timeout = max(process_mesh1._timeout, process_mesh2._timeout)
                     group = torch.distributed.new_group(ranks, timeout=timeout)
-                    # if self._rank in [src_rank, dst_rank]:
-                    #     self._inter_mesh_process_groups[(src_rank, dst_rank)] = group
                     self._inter_mesh_process_groups[(src_rank, dst_rank)] = group
 
     def build_all_inter_mesh_process_groups(self):
@@ -584,7 +560,6 @@ class ParallelContext:
             group = torch.distributed.new_group(ranks, timeout=self._timeout)
             if self._rank in ranks:
                 self._group_ranks["mp"] = ranks
-                # group = torch.distributed.new_group(ranks, timeout=self._timeout)
                 self._process_groups["mp"] = group
                 self._process_group_to_ranks[group] = ranks
 
@@ -596,7 +571,6 @@ class ParallelContext:
             group = torch.distributed.new_group(ranks, timeout=self._timeout)
             if self._rank in ranks:
                 self._group_ranks["mp_exp"] = ranks
-                # group = torch.distributed.new_group(ranks, timeout=self._timeout)
                 self._process_groups["mp_exp"] = group
                 self._process_group_to_ranks[group] = ranks
             ranks_list = process_mesh.get_all_process_group_ranks(
@@ -608,19 +582,14 @@ class ParallelContext:
             self._parallel_ranks["last_rank"].append(ranks[-1])
         # build global pipeline process groups
         def _backtrack(mesh_index, prev_rank, path):
-            # aggregated_ranks = [rank for ranks in path for rank in ranks]
-            # group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout)
             if mesh_index == len(self._process_meshes):
                 aggregated_ranks = [rank for ranks in path for rank in ranks]
-                debug_print_value(aggregated_ranks=aggregated_ranks)
                 self._all_group_ranks["pp"].append(aggregated_ranks)
                 group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout)
                 if self._rank in aggregated_ranks:
                     self._process_groups["pp"].append(group)
                     self._group_ranks["pp"].append(aggregated_ranks)
                     self._process_group_to_ranks[group] = aggregated_ranks
-                # debug_print_value(aggregated_ranks=aggregated_ranks,
-                #                   backtrack_process_groups=self._process_groups)
                 return
             current_mesh = self._process_meshes[mesh_index]
             ranks_list = current_mesh.get_all_process_group_ranks("pp")
@@ -633,11 +602,6 @@ class ParallelContext:
                             mesh_is_connect = True
                 if prev_rank == -1 or mesh_is_connect:
                     valid_ranks_list.append(ranks)
-            # debug_print_value(ranks_list=ranks_list,
-            #                   prev_rank=prev_rank,
-            #                   valid_ranks_list=valid_ranks_list,
-            #                   path=path,
-            #                   _inter_mesh_process_groups=self._inter_mesh_process_groups)
             for ranks in valid_ranks_list:
                 path.append(ranks)
                 _backtrack(mesh_index + 1, ranks[-1], path)
@@ -665,19 +629,13 @@ class ParallelContext:
             else:
                 embedding_ranks = ranks
                 position_embedding_ranks = ranks
-            # debug_print_value(ranks=ranks,
-            #                   embedding_ranks=embedding_ranks, 
-            #                   position_embedding_ranks=position_embedding_ranks)
-
-            # debug_print_value(embedding_ranks=embedding_ranks)
             group = torch.distributed.new_group(
                 embedding_ranks, timeout=self._timeout
             )
             if self._rank in embedding_ranks:
                 self._process_groups["embd"].append(group)
                 self._process_group_to_ranks[group] = embedding_ranks
-            # TODO: need to check whether self._rank in ranks is correct
-            # or should it be self._rank in embedding_ranks
+            
             if self._rank in ranks:
                 self._group_ranks["embd"].append(embedding_ranks)
 
@@ -687,8 +645,7 @@ class ParallelContext:
             if self._rank in position_embedding_ranks:
                 self._process_groups["embd_pos"].append(group)
                 self._process_group_to_ranks[group] = position_embedding_ranks
-            # TODO: need to check whether self._rank in ranks is correct
-            # or should it be self._rank in position_embedding_ranks
+
             if self._rank in ranks:
                 self._group_ranks["embd_pos"].append(position_embedding_ranks)
 
@@ -727,10 +684,6 @@ class ParallelContext:
         assert dp1 == dp2, "Data parallel size should be the same."
         # Assume that the tensor shape is (seq_len, batch_size, hidden_size)
         local_seq_len, local_batch_size, local_hidden_size = local_tensor_shape
-        # debug_print_value(local_batch_size=local_batch_size, 
-        #                   local_seq_len=local_seq_len, 
-        #                   local_hidden_size=local_hidden_size,
-        #                   local_tensor_shape=local_tensor_shape)
         if self._args.sequence_parallel:
             global_seq_len = local_seq_len * tp1 * cp1
             sp1 = tp1 * cp1
@@ -742,7 +695,6 @@ class ParallelContext:
         global_batch_size = local_batch_size * dp1
         sp_overlapped_mapping = find_overlapped_mapping(sp1, sp2, global_seq_len)
         dp_overlapped_mapping = find_overlapped_mapping(dp1, dp2, global_batch_size)
-        # debug_print_value(sp1=sp1, sp2=sp2, global_seq_len=global_seq_len, sp_overlapped_mapping=sp_overlapped_mapping)
         for s in range(sp1):
             i, j = s % tp1, s // tp1
             for k in range(dp1):
@@ -811,17 +763,8 @@ class ParallelContext:
     def get_pipeline_model_parallel_group(self, check_initialized=True):
         """Get the pipeline model parallel group the caller rank belongs to."""
         group = self._process_groups.get("pp", None)
-        # pp_group checked, no problem
-        # current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        # mesh_group = current_process_mesh.get_process_group(
-        #         "pp", independent_ep=False, gloo=False, check_initialized=True
-        #     )
-        # debug_print_value(pp_group=torch.distributed.get_process_group_ranks(group[0]))
         assert group is not None, "pipeline_model parallel group is not initialized"
         return self._process_groups["pp"]
-        # return current_process_mesh.get_process_group(
-        #     "pp", independent_ep=False, gloo=False, check_initialized=check_initialized
-        # )
 
     def get_data_parallel_group(self, with_context_parallel=False):
         """Get the data parallel group the caller rank belongs to."""
@@ -1066,7 +1009,6 @@ class ParallelContext:
             return True
         if rank is None:
             rank = self.get_pipeline_model_parallel_rank(group)
-        # debug_print_value(get_pipeline_model_parallel_split_rank_group=group, get_pipeline_model_parallel_split_rank=rank)
         split_rank = self.get_pipeline_model_parallel_split_rank()
         if split_rank is None:
             return True

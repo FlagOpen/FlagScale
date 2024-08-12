@@ -21,15 +21,6 @@ from flagscale.train.hetero.parallel_context import ParallelContext
 # Types
 Shape = Union[List[int], torch.Size]
 
-
-def debug_print_value(**kwargs):
-    return
-    def debug_stream(**kwargs):
-        for var_name, value in kwargs.items():
-            print(f"{var_name}: {value}")
-        yield
-    next(debug_stream(**kwargs))
-
 def _communicate_shapes(tensor_send_next, tensor_send_prev, recv_prev, recv_next, config):
     """Communicate tensor shapes between stages. Used to communicate
     tensor shapes before the actual tensor communication happens.
@@ -137,57 +128,40 @@ def _batched_p2p_ops(
     group: torch.distributed.ProcessGroup
 ):
     ops = []
-    # para_ctx = get_parallel_context()
-    # if torch.distributed.get_rank() == 5 or get_pipeline_model_parallel_next_rank(group=group)==5:
-    #     new_group = para_ctx.group_of_rank_2_and_5
-    # else:
-    #     new_group = group
-    debug_print_value(p2p_group=group,
-                      p2p_group_ranks=torch.distributed.get_process_group_ranks(group))
-    # torch.cuda.set_device(torch.distributed.get_rank())
+
     if tensor_send_prev is not None:
-        debug_print_value(get_pipeline_model_parallel_prev_rank=get_pipeline_model_parallel_prev_rank(group=group))
         send_prev_op = torch.distributed.P2POp(
             torch.distributed.isend,
             tensor_send_prev,
             get_pipeline_model_parallel_prev_rank(group=group),
-            # new_group,
             group,
         )
         ops.append(send_prev_op)
     if tensor_recv_prev is not None:
-        debug_print_value(get_pipeline_model_parallel_prev_rank=get_pipeline_model_parallel_prev_rank(group=group))
         recv_prev_op = torch.distributed.P2POp(
             torch.distributed.irecv,
             tensor_recv_prev,
             get_pipeline_model_parallel_prev_rank(group=group),
-            # new_group,
             group,
         )
         ops.append(recv_prev_op)
     if tensor_send_next is not None:
-        debug_print_value(get_pipeline_model_parallel_next_rank=get_pipeline_model_parallel_next_rank(group=group))
         send_next_op = torch.distributed.P2POp(
             torch.distributed.isend,
             tensor_send_next,
             get_pipeline_model_parallel_next_rank(group=group),
-            #  new_group,
             group,
         )
         ops.append(send_next_op)
     if tensor_recv_next is not None:
-        debug_print_value(get_pipeline_model_parallel_next_rank=get_pipeline_model_parallel_next_rank(group=group))
         recv_next_op = torch.distributed.P2POp(
             torch.distributed.irecv,
             tensor_recv_next,
             get_pipeline_model_parallel_next_rank(group=group),
-            # new_group,
             group,
         )
         ops.append(recv_next_op)
     if len(ops) > 0:
-        # BUG hang here
-        # may result from slices
         reqs = torch.distributed.batch_isend_irecv(ops)
     else:
         reqs = []
@@ -326,19 +300,6 @@ def _communicate(
             device=torch.cuda.current_device(),
             dtype=config.pipeline_dtype,
         )
-    debug_print_value(recv_prev=recv_prev, 
-                      tensor_recv_prev=tensor_recv_prev,)
-    if tensor_recv_prev is not None:
-        debug_print_value(tensor_recv_prev_shape = tensor_recv_prev.shape)
-    
-    debug_print_value(tensor_send_prev=tensor_send_prev, 
-                      tensor_send_next=tensor_send_next,
-                      )
-    if tensor_send_prev is not None: 
-        debug_print_value(tensor_send_prev_shape=tensor_send_prev.shape)
-    if tensor_send_next is not None: 
-        debug_print_value(tensor_send_next_shape=tensor_send_next.shape)
-
 
     if recv_next:
         if config.pipeline_dtype is None:
@@ -354,11 +315,6 @@ def _communicate(
             device=torch.cuda.current_device(),
             dtype=config.pipeline_dtype,
         )
-    debug_print_value(recv_next=recv_next, 
-                      tensor_recv_next=tensor_recv_next,
-                      )
-    if tensor_recv_next is not None:
-        debug_print_value(tensor_recv_next_shape=tensor_recv_next.shape)
 
     # Send tensors in both the forward and backward directions as appropriate.
     if config.use_ring_exchange_p2p:
@@ -373,11 +329,6 @@ def _communicate(
         p2p_func = _batched_p2p_ops
     else:
         p2p_func = _p2p_ops
-    
-    debug_print_value(p2p_func=p2p_func, 
-                      group=group, 
-                      get_process_group_ranks=torch.distributed.get_process_group_ranks(group),
-                      get_pipeline_model_parallel_group=get_pipeline_model_parallel_group())
 
     if group is None:
         group = get_pipeline_model_parallel_group()
@@ -390,13 +341,10 @@ def _communicate(
         group=group,
     )
 
-    debug_print_value(reqs=reqs)
-
     if wait_on_reqs and len(reqs) > 0:
         for req in reqs:
             req.wait()
         reqs = None
-    debug_print_value(batch_p2p_comm=config.batch_p2p_comm, batch_p2p_sync=config.batch_p2p_sync)
 
     if config.batch_p2p_comm and config.batch_p2p_sync:
         # To protect against race condition when using batch_isend_irecv().

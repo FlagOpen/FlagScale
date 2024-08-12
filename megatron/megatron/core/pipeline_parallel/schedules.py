@@ -1295,7 +1295,6 @@ def forward_backward_pipelining_without_interleaving(
     # receive this tensor here.
     if num_microbatches_remaining > 0:
         input_tensor = recv_forward(recv_tensor_shapes, config)
-        # print("input_tensor: ", input_tensor)
 
     # Run 1F1B in steady state.
     for i in range(num_microbatches_remaining):
@@ -1333,12 +1332,9 @@ def forward_backward_pipelining_without_interleaving(
                 input_tensor = recv_forward(recv_tensor_shapes, config)
 
         else:
-            # print("Before send_forward_recv_backward")
             output_tensor_grad = send_forward_recv_backward(
                 output_tensor, send_tensor_shapes, config
             )
-            # print("output_tensor_grad: ", output_tensor_grad)
-            # print("After send_forward_recv_backward")
 
             # Add input_tensor and output_tensor to end of list.
             input_tensors.append(input_tensor)
@@ -1364,11 +1360,9 @@ def forward_backward_pipelining_without_interleaving(
                 input_tensor = None
                 send_backward(input_tensor_grad, recv_tensor_shapes, config)
             else:
-                # print("Before send_backward_recv_forward")
                 input_tensor = send_backward_recv_forward(
                     input_tensor_grad, recv_tensor_shapes, config
                 )
-                # print("After send_backward_recv_forward")
 
     # Run cooldown backward passes.
     if not forward_only:
