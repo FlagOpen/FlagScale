@@ -1,5 +1,5 @@
 defaults:
-  - train: train_aquila_7b
+  - train: demo
   - _self_
 
 experiment:
