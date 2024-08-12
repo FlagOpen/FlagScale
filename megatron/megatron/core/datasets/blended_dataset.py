@@ -13,7 +13,8 @@ import torch
 
 from megatron.core.datasets.blended_megatron_dataset_config import BlendedMegatronDatasetConfig
 from megatron.core.datasets.megatron_dataset import MegatronDataset
-from megatron.core.datasets.utils import log_single_rank, normalize, is_built_on_zero_rank
+from megatron.core.datasets.utils import normalize, is_built_on_zero_rank
+from megatron.core.utils import log_single_rank
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,8 @@ class BlendedDataset(torch.utils.data.Dataset):
             self.unique_description.encode("utf-8")
         ).hexdigest()
 
+        self.built_anew_on_cache_miss = False
+
         self.dataset_index, self.dataset_sample_index = self._build_indices()
 
     def __len__(self) -> int:
@@ -125,8 +128,11 @@ class BlendedDataset(torch.utils.data.Dataset):
 
         if not path_to_cache or (not cache_hit and is_built_on_zero_rank()):
             log_single_rank(
-                logger, logging.INFO, f"Build and save the {type(self).__name__} indices",
+                logger,
+                logging.INFO,
+                f"Build and save the {type(self).__name__} indices",
             )
+            self.built_anew_on_cache_miss = True
 
             # Build the dataset and dataset sample indexes
             log_single_rank(

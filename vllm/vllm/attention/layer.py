@@ -4,11 +4,12 @@ from typing import Any, Dict, List, Optional
 import torch
 import torch.nn as nn
 
-from vllm.attention.backends.abstract import AttentionMetadata
+from vllm.attention.backends.abstract import AttentionMetadata, AttentionType
 from vllm.attention.selector import get_attn_backend
 from vllm.config import CacheConfig
 from vllm.model_executor.layers.quantization.base_config import (
     QuantizationConfig)
+from vllm.model_executor.layers.quantization.kv_cache import BaseKVCacheMethod
 
 
 class Attention(nn.Module):
@@ -30,38 +31,44 @@ class Attention(nn.Module):
         scale: float,
         num_kv_heads: Optional[int] = None,
         alibi_slopes: Optional[List[float]] = None,
-        sliding_window: Optional[int] = None,
         cache_config: Optional[CacheConfig] = None,
         quant_config: Optional[QuantizationConfig] = None,
         blocksparse_params: Optional[Dict[str, Any]] = None,
+        prefix: str = "",
     ) -> None:
         super().__init__()
         if cache_config is not None:
             kv_cache_dtype = cache_config.cache_dtype
             block_size = cache_config.block_size
+            sliding_window = cache_config.sliding_window
         else:
             kv_cache_dtype = "auto"
             block_size = 16
+            sliding_window = None
         if num_kv_heads is None:
             num_kv_heads = num_heads
 
-        # The default kv_scale is set to 1.0. This is ignored
+        # The default k/v_scale is set to 1.0. This is ignored
         # when kv-cache is not fp8, and should be used with
         # kv-cache in fp8_e5m2. For kv-cache in fp8_e4m3, we
-        # expect the pre-quantized kv_scale to be loaded along
+        # expect the pre-quantized k/v_scale to be loaded along
         # with the model weights.
         self.kv_cache_dtype = kv_cache_dtype
-        self._kv_scale = 1.0
+        self._k_scale = 1.0
+        self._v_scale = 1.0
         quant_method = quant_config.get_quant_method(
-            self) if quant_config else None
+            self, prefix=prefix) if quant_config else None
         if quant_method is not None:
+            assert isinstance(quant_method, BaseKVCacheMethod)
+            # TODO (mgoin): kv cache dtype should be specified in the FP8
+            # checkpoint config and become the "auto" behavior
             if self.kv_cache_dtype == "fp8_e5m2":
                 raise ValueError("fp8_e5m2 kv-cache is not supported with "
                                  "fp8 checkpoints.")
-            # When FP8 quantization is enabled, we make a parameter
-            # "kv_scale" so that it can be loaded from FP8 checkpoint.
-            # The kv_scale will then be converted back
-            # to self._kv_scale in a native float32 value after weight loading.
+            # If quantization is enabled, we make "k_scale" and "v_scale"
+            # parameters so that it can be loaded from the model checkpoint.
+            # The k/v_scale will then be converted back to native float32
+            # values after weight loading.
             self.quant_method = quant_method
             self.quant_method.create_weights(self)
 
@@ -84,9 +91,17 @@ class Attention(nn.Module):
         value: torch.Tensor,
         kv_cache: Optional[torch.Tensor],
         attn_metadata: AttentionMetadata,
+        attn_type: AttentionType = AttentionType.DECODER,
     ) -> torch.Tensor:
-        return self.impl.forward(query, key, value, kv_cache, attn_metadata,
-                                 self._kv_scale)
+
+        return self.impl.forward(query,
+                                 key,
+                                 value,
+                                 kv_cache,
+                                 attn_metadata,
+                                 self._k_scale,
+                                 self._v_scale,
+                                 attn_type=attn_type)
 
     def extra_repr(self) -> str:
         s = f"head_size={self.impl.head_size}"  # type: ignore

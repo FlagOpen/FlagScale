@@ -28,7 +28,6 @@ except:
 
 
 class FusedLayerNorm(torch.nn.Module):
-
     """Layer Norm, fused into a single CUDA kernel.
 
     Args:
@@ -64,9 +63,9 @@ class FusedLayerNorm(torch.nn.Module):
         self.config = config
 
         self.zero_centered_gamma = self.config.layernorm_zero_centered_gamma
-        #assert (
-        #    self.config.normalization == "LayerNorm"
-        #), f'({self.config.normalization}) is not supported in FusedLayerNorm'
+        assert (
+            self.config.normalization == "LayerNorm"
+        ), f'({self.config.normalization}) is not supported in FusedLayerNorm'
 
         # List of hiddens sizes supported in the persistent layer norm kernel
         # If the hidden size is not supported, fall back to the non-persistent
@@ -103,14 +102,15 @@ class FusedLayerNorm(torch.nn.Module):
 
         if not persist_layer_norm and not HAVE_FUSED_LAYER_NORM:
             # TODO: Add pytorch only layer norm
-            raise ValueError(f'Apex must currently be installed to use megatron core.')
+            raise ValueError(f'Apex must be installed to use FusedLayerNorm.')
 
         if isinstance(hidden_size, numbers.Integral):
             hidden_size = (hidden_size,)
         self.hidden_size = torch.Size(hidden_size)
         self.eps = eps
-        self.weight = Parameter(torch.Tensor(*hidden_size))
-        self.bias = Parameter(torch.Tensor(*hidden_size))
+        # Parameters need to be initialized with torch.empty rather than torch.Tensor for correct device placement with nemo2.
+        self.weight = Parameter(torch.empty(*hidden_size))
+        self.bias = Parameter(torch.empty(*hidden_size))
         self.reset_parameters()
         self.persist_layer_norm = persist_layer_norm
         self.sequence_parallel = self.config.sequence_parallel
