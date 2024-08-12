@@ -239,8 +239,6 @@ def apply_rotary_pos_emb(
             apply_rotary_pos_emb.printed_fused_warning = True
     if config.apply_rope_fusion:
         if cu_seqlens is None:
-            # print("t_shape: ", t.shape)
-            # print("freqs_shape: ", freqs.shape)
             return fused_apply_rotary_pos_emb(t, freqs, transpose_output_memory=True)
         else:
             return fused_apply_rotary_pos_emb_thd(t, cu_seqlens, freqs)

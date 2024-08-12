@@ -1,5 +1,5 @@
 defaults:
-  - train: demo
+  - train: demo 
   - _self_
 
 experiment:

@@ -5,7 +5,6 @@ from functools import reduce
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-import time
 
 from megatron import core
 from megatron.core import ModelParallelConfig
@@ -94,6 +93,7 @@ def recv_forward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> tor
 
     See _communicate for argument details.
     """
+
     if core.parallel_state.is_pipeline_first_stage():
         input_tensor = None
     else:
@@ -153,6 +153,7 @@ def recv_backward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> to
 
     See _communicate for argument details.
     """
+
     if core.parallel_state.is_pipeline_last_stage():
         output_tensor_grad = None
     else:
@@ -212,6 +213,7 @@ def send_forward_hetero(output_tensor: torch.Tensor, config: ModelParallelConfig
 
     See _communicate for argument details.
     """
+
     if not core.parallel_state.is_pipeline_last_stage():
         if config.timers is not None:
             config.timers('forward-send', log_level=2).start()
@@ -266,6 +268,7 @@ def send_backward_hetero(input_tensor_grad: torch.Tensor, config: ModelParallelC
 
     See _communicate for argument details.
     """
+
     if not core.parallel_state.is_pipeline_first_stage():
         if config.timers is not None:
             config.timers('backward-send', log_level=2).start()
@@ -322,6 +325,7 @@ def send_forward_recv_backward_hetero(
 
     See _communicate for argument details.
     """
+
     if core.parallel_state.is_pipeline_last_stage():
         output_tensor_grad = None
     else:
@@ -384,6 +388,7 @@ def send_backward_recv_forward_hetero(
 
     See _communicate for argument details.
     """
+    
     if core.parallel_state.is_pipeline_first_stage():
         input_tensor = None
     else:
