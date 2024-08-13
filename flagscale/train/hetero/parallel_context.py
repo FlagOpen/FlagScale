@@ -315,10 +315,9 @@ class ProcessMesh:
         else:
             parallel_sizes = self._rank_generator.ordered_size_wo_ep
             order = self._rank_generator.order_wo_ep
+        order = order.split("-")
         if token in order:
-            # index() method return the start pos of token in tp-cp-dp-pp
-            # eg. if token==dp, then the index() method will return 6, while we need 2 actually
-            return parallel_sizes[order.index(token)//3]
+            return parallel_sizes[order.index(token)]
         else:
             raise ValueError(f"Invalid token: {token}")
 
