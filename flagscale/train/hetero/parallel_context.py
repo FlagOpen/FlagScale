@@ -457,14 +457,13 @@ class ParallelContext:
         world_size = torch.distributed.get_world_size()
         logical_rank = self._rank_mapper.to_logical_ranks([rank])[0]
         accumulated_world_size = 0
-        # No ep for now
-        # for tp, cp, ep, dp, pp in self._args.hetero_process_meshes:
-        for tp, cp, dp, pp in self._args.hetero_process_meshes:
+        for tp, cp, ep, dp, pp in self._args.hetero_process_meshes:
             process_mesh = ProcessMesh(
                 tensor_model_parallel_size=tp,
                 context_parallel_size=cp,
                 data_parallel_size=dp,
                 pipeline_model_parallel_size=pp,
+                expert_model_parallel_size=ep,
                 nccl_communicator_config_path=self._args.nccl_communicator_config_path,
                 distributed_timeout_minutes=self._args.distributed_timeout_minutes,
                 order='tp-cp-ep-dp-pp' if not self._args.use_tp_pp_dp_mapping else 'tp-pp-dp',
@@ -595,12 +594,12 @@ class ParallelContext:
             ranks_list = current_mesh.get_all_process_group_ranks("pp")
             valid_ranks_list = []
             for ranks in ranks_list:
-                mesh_is_connect = False
+                mesh_is_connected = False
                 for prev_path_ranks in path:
                     for prev_path_rank in prev_path_ranks:
                         if (prev_path_rank, ranks[0]) in self._inter_mesh_process_groups:
-                            mesh_is_connect = True
-                if prev_rank == -1 or mesh_is_connect:
+                            mesh_is_connected = True
+                if prev_rank == -1 or mesh_is_connected:
                     valid_ranks_list.append(ranks)
             for ranks in valid_ranks_list:
                 path.append(ranks)
@@ -806,15 +805,23 @@ class ParallelContext:
 
     def get_embedding_group(self):
         """Get the embedding group the caller rank belongs to."""
-        group = self._process_groups.get("embd", None)
-        assert group is not None, 'embedding group is not initialized'
-        return group 
+        groups = self._process_groups.get("embd", None)
+        assert groups is not None, 'embedding group is not initialized'
+        for group in groups:
+            if self._rank in self._process_group_to_ranks[group]:
+                embd_group = group
+                break
+        return embd_group 
 
     def get_position_embedding_group(self):
         """Get the position embedding group the caller rank belongs to."""
-        group = self._process_groups.get("embd", None)
-        assert group is not None, 'embedding group is not initialized'
-        return group 
+        groups = self._process_groups.get("embd_pos", None)
+        assert groups is not None, 'Position embedding group is not initialized'
+        for group in groups:
+            if self._rank in self._process_group_to_ranks[group]:
+                pos_embd_group = group
+                break
+        return pos_embd_group
 
     def get_amax_reduction_group(self, with_context_parallel=False):
         """Get the FP8 amax reduction group the caller rank belongs to."""

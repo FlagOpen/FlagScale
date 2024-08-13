@@ -192,7 +192,7 @@ def _p2p_ops(
         if tensor_send_next is not None:
             send_next_req = torch.distributed.isend(
                 tensor=tensor_send_next,
-                dst=get_pipeline_model_parallel_next_rank(),
+                dst=get_pipeline_model_parallel_next_rank(group=group),
                 group=even_send_odd_recv_group,
             )
             reqs.append(send_next_req)
@@ -200,7 +200,7 @@ def _p2p_ops(
         if tensor_recv_prev is not None:
             recv_prev_req = torch.distributed.irecv(
                 tensor=tensor_recv_prev,
-                src=get_pipeline_model_parallel_prev_rank(),
+                src=get_pipeline_model_parallel_prev_rank(group=group),
                 group=even_recv_odd_send_group,
             )
             reqs.append(recv_prev_req)
@@ -208,7 +208,7 @@ def _p2p_ops(
         if tensor_send_prev is not None:
             send_prev_req = torch.distributed.isend(
                 tensor=tensor_send_prev,
-                dst=get_pipeline_model_parallel_prev_rank(),
+                dst=get_pipeline_model_parallel_prev_rank(group=group),
                 group=even_send_odd_recv_group,
             )
             reqs.append(send_prev_req)
@@ -216,7 +216,7 @@ def _p2p_ops(
         if tensor_recv_next is not None:
             recv_next_req = torch.distributed.irecv(
                 tensor=tensor_recv_next,
-                src=get_pipeline_model_parallel_next_rank(),
+                src=get_pipeline_model_parallel_next_rank(group=group),
                 group=even_recv_odd_send_group,
             )
             reqs.append(recv_next_req)
@@ -225,7 +225,7 @@ def _p2p_ops(
         if tensor_recv_prev is not None:
             recv_prev_req = torch.distributed.irecv(
                 tensor=tensor_recv_prev,
-                src=get_pipeline_model_parallel_prev_rank(),
+                src=get_pipeline_model_parallel_prev_rank(group=group),
                 group=even_send_odd_recv_group,
             )
             reqs.append(recv_prev_req)
@@ -233,7 +233,7 @@ def _p2p_ops(
         if tensor_send_next is not None:
             send_next_req = torch.distributed.isend(
                 tensor=tensor_send_next,
-                dst=get_pipeline_model_parallel_next_rank(),
+                dst=get_pipeline_model_parallel_next_rank(group=group),
                 group=even_recv_odd_send_group,
             )
             reqs.append(send_next_req)
@@ -241,7 +241,7 @@ def _p2p_ops(
         if tensor_recv_next is not None:
             recv_next_req = torch.distributed.irecv(
                 tensor=tensor_recv_next,
-                src=get_pipeline_model_parallel_next_rank(),
+                src=get_pipeline_model_parallel_next_rank(group=group),
                 group=even_send_odd_recv_group,
             )
             reqs.append(recv_next_req)
@@ -249,7 +249,7 @@ def _p2p_ops(
         if tensor_send_prev is not None:
             send_prev_req = torch.distributed.isend(
                 tensor=tensor_send_prev,
-                dst=get_pipeline_model_parallel_prev_rank(),
+                dst=get_pipeline_model_parallel_prev_rank(group=group),
                 group=even_recv_odd_send_group,
             )
             reqs.append(send_prev_req)

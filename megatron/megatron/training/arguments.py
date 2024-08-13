@@ -173,12 +173,13 @@ def validate_args(args, defaults={}):
             args.hetero_process_meshes is not None
         ), "hetero_process_meshes should be specified when enable_hetero is True"
         assert (
-            len(args.hetero_process_meshes) % 4 == 0
+            len(args.hetero_process_meshes) % 5 == 0
         ), f"length of hetero_process_meshes {args.hetero_process_meshes} should be divisible by 4, the format should be tp0, cp0, dp0, pp0, tp1, cp1, dp1, pp1, ..."
-        hetero_process_meshes_tp = args.hetero_process_meshes[::4]
-        hetero_process_meshes_cp = args.hetero_process_meshes[1::4]
-        hetero_process_meshes_dp = args.hetero_process_meshes[2::4]
-        hetero_process_meshes_pp = args.hetero_process_meshes[3::4]
+        hetero_process_meshes_tp = args.hetero_process_meshes[0::5]
+        hetero_process_meshes_cp = args.hetero_process_meshes[1::5]
+        hetero_process_meshes_ep = args.hetero_process_meshes[2::5]
+        hetero_process_meshes_dp = args.hetero_process_meshes[3::5]
+        hetero_process_meshes_pp = args.hetero_process_meshes[4::5]
 
         # Data parallel size
         assert all(x == hetero_process_meshes_dp[0] for x in hetero_process_meshes_dp), \
@@ -219,8 +220,8 @@ def validate_args(args, defaults={}):
             ), f"pipeline_model_parallel_size {args.pipeline_model_parallel_size} should be equal to the length of hetero_pipeline_layer_split {args.hetero_pipeline_layer_split}"
 
         hetero_process_meshes = []
-        for i in range(0, len(args.hetero_process_meshes), 4):
-            hetero_process_meshes.append(args.hetero_process_meshes[i : i + 4])
+        for i in range(0, len(args.hetero_process_meshes), 5):
+            hetero_process_meshes.append(args.hetero_process_meshes[i : i + 5])
         args.hetero_process_meshes = hetero_process_meshes
 
         # Device types
