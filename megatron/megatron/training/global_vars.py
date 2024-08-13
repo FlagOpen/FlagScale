@@ -5,10 +5,13 @@
 import os
 import sys
 import torch
+import torch.distributed
 
 from megatron.core import Timers, init_num_microbatches_calculator
 from megatron.training import dist_signal_handler
 from megatron.training.tokenizer import build_tokenizer
+
+from flagscale.train import get_parallel_context  
 
 _GLOBAL_ARGS = None
 _GLOBAL_TOKENIZER = None
@@ -120,7 +123,7 @@ def set_global_writers(args):
     if is_last_rank():
         ranks_list = torch.distributed.get_process_group_ranks(mpu.get_model_parallel_group())
         ranks_tensor = torch.tensor(ranks_list, dtype=torch.int, device='cuda') 
-    torch.distributed.all_reduce(ranks_tensor)
+    torch.distributed.all_reduce(ranks_tensor, group = mpu.get_model_parallel_group())
     if torch.distributed.get_rank() in ranks_tensor.tolist(): 
         _set_wandb_writer(args)
 
