@@ -4,6 +4,8 @@ system:
   disable_bias_linear: True
   use_flash_attn: True
   use_distributed_optimizer: True
+  use_mcore_models: True
+  transformer_impl: transformer_engine
   precision:
     bf16: True
     attention_softmax_in_fp32: True
@@ -20,8 +22,6 @@ system:
     dataloader_save: ${experiment.exp_dir}/checkpoints/dataloader
 
 model:
-  use_mcore_models: True
-  transformer_impl: transformer_engine
   num_layers: 32  
   hidden_size: 4096 
   ffn_hidden_size: 11008
@@ -49,7 +49,7 @@ model:
   untie-embeddings-and-output-weights: True
   position_embedding_type: rope
   rotary_percent: 1.0
-  rotary_base: 1000000
+  rotary_base: 10000
   eod_mask_loss: True
   freeze_LM: True
   freeze_ViT: True
