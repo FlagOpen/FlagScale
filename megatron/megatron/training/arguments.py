@@ -772,11 +772,6 @@ def validate_args(args, defaults={}):
         assert args.num_layers == len(args.init_weight_ffn_norm)
         assert args.init_weight_output_norm is not None
 
-    # Data Searching
-    if args.data_searching_save:
-        assert args.world_size == 1, \
-            "World size {args.world_size} should be one when data searching."
-
     return args
 
 
@@ -1579,10 +1574,6 @@ def _add_checkpointing_args(parser):
 
     group.add_argument('--save', type=str, default=None,
                        help='Output directory to save checkpoints to.')
-    group.add_argument('--data-searching-save', type=str, default=None,
-                       help='Output directory to save searched data to.')
-    group.add_argument('--data-searching-range', nargs='+', default=None,
-                       help='The iteration range for searching data.')
     group.add_argument('--save-interval', '--persistent-save-interval', type=int, default=None,
                        help='Number of iterations between persistent checkpoint saves.')
     group.add_argument('--rampup-save-interval', type=int, default=None,
@@ -1624,8 +1615,6 @@ def _add_checkpointing_args(parser):
     group.add_argument('--use-checkpoint-args', action='store_true',
                        help='Override any command line arguments with arguments '
                        'from the checkpoint')
-    group.add_argument('--format-ckpt', action='store_true',
-                       help='Format checkpoint into the Megatron-LM format and save it')
     group.add_argument('--save-param-index-maps-only', action='store_true',
                        help='Save param name to index maps only')
     group.add_argument('--save-when-num-microbatches-change', action='store_true',

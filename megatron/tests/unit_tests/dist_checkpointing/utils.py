@@ -83,7 +83,6 @@ def init_checkpointing_mock_args(args, ckpt_dir, fully_parallel=False):
     args.exit_on_missing_checkpoint = False
     args.finetune = False
     args.finetune_with_optim = False
-    args.format_ckpt = False
     args.consumed_train_samples = 0
     args.skipped_train_samples = 0
     args.consumed_valid_samples = 0
