@@ -253,21 +253,23 @@ def validate_args(args, defaults={}):
         # Checks.
         model_parallel_size = args.pipeline_model_parallel_size * \
                             args.tensor_model_parallel_size
-        assert args.world_size % (model_parallel_size * args.context_parallel_size) == 0, \
+        assert args.world_size % (model_parallel_size * args.context_parallel_size * args.ulysses_sp_parallel_size) == 0, \
             'world size ({}) is not divisible by tensor parallel size ({}) times ' \
             'pipeline parallel size ({}) times context parallel size ({})'.format(
             args.world_size, args.tensor_model_parallel_size,
             args.pipeline_model_parallel_size, args.context_parallel_size)
-        args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size)
+        args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size * args.ulysses_sp_parallel_size)
         if args.rank == 0:
             print('using world size: {}, data-parallel size: {}, '
                 'context-parallel size: {} '
                 'tensor-model-parallel size: {}, '
-                'pipeline-model-parallel size: {} '.format(
+                'pipeline-model-parallel size: {} '
+                'ulysses-sp-parallel size: {} '.format(
                     args.world_size, args.data_parallel_size,
                     args.context_parallel_size,
                     args.tensor_model_parallel_size,
-                    args.pipeline_model_parallel_size), flush=True)
+                    args.pipeline_model_parallel_size,
+                    args.ulysses_sp_parallel_size), flush=True)
 
         if args.pipeline_model_parallel_split_rank is not None:
             args.encoder_pipeline_model_parallel_size = args.pipeline_model_parallel_split_rank
@@ -545,6 +547,21 @@ def validate_args(args, defaults={}):
         assert args.hidden_size % args.num_attention_heads == 0
         args.kv_channels = args.hidden_size // args.num_attention_heads
 
+    if args.ulysses_sp_parallel_size > 1:
+        if args.group_query_attention:
+            assert args.num_query_groups % args.ulysses_sp_parallel_size == 0, \
+                'ulysses-sp-parallel-size should be a divisor of num_query_groups ' \
+                'if ulysses-sp-parallel-size > 1 and group-query-attention is enabled.'
+        else:
+            assert args.num_attention_heads % args.ulysses_sp_parallel_size == 0, \
+                'ulysses-sp-parallel-size should be a divisor of num_attention_heads ' \
+                'if ulysses-sp-parallel-size > 1 and group-query-attention is not enabled.'
+        
+        if args.seq_length is not None and args.context_parallel_size > 1:
+            assert args.seq_length % (args.context_parallel_size * 2 * args.ulysses_sp_parallel_size) == 0, \
+                'seq-length should be a multiple of 2 * context-parallel-size * args.ulysses_sp_parallel_size ' \
+                'if context-parallel-size > 1 and args.ulysses-sp_parallel-size > 1.'
+    
     if args.seq_length is not None and args.context_parallel_size > 1:
         assert args.seq_length % (args.context_parallel_size * 2) == 0, \
             'seq-length should be a multiple of 2 * context-parallel-size ' \
@@ -684,6 +701,11 @@ def validate_args(args, defaults={}):
     # Context parallel
     if args.context_parallel_size > 1:
         assert not args.use_legacy_models, "Context parallelism is not supported in legacy models."
+    
+    # Ulysses parallel
+    if args.ulysses_sp_parallel_size > 1:
+        assert not args.use_legacy_models, "Ulysses-sp parallelism is not supported in legacy models."
+        assert args.expert_model_parallel_size <= 1, "Ulysses-sp parallelism with expert model parallelims is not supported."
 
     # Expert parallelism check
     if args.expert_model_parallel_size  > 1:
@@ -704,8 +726,8 @@ def validate_args(args, defaults={}):
            <= 1, "A single data source must be provided in training mode, else None"
 
     if args.use_tp_pp_dp_mapping:
-        assert args.context_parallel_size * args.expert_model_parallel_size <= 1, \
-            "context_parallel and expert_model_parallel can't be used with tp-pp-dp mapping."
+        assert args.context_parallel_size * args.expert_model_parallel_size * args.ulysses_sp_parallel_size <= 1, \
+            "context_parallel, expert_model_parallel and ulysses_sp_parallel_size can't be used with tp-pp-dp mapping."
 
     # Deterministic mode
     if args.deterministic_mode:
@@ -1739,6 +1761,9 @@ def _add_distributed_args(parser):
                        help='Use distributed optimizer.')
     group.add_argument('--no-shared-fs', action='store_true', 
                        help='Indicate whether not running on a shared file system.')
+    group.add_argument('--ulysses-sp-parallel-size', type=int, default=1,
+                       help='Degree of ulysses sequence parallelism. It must be the divisor of the '
+                       'head count.')
     group.add_argument('--context-parallel-size', type=int, default=1,
                        help='Degree of context parallelism.')
     group.add_argument('--nccl-communicator-config-path', type=str, default=None,

@@ -38,6 +38,9 @@ class ModelParallelConfig:
 
     context_parallel_size: int = 1
     """Splits network input along sequence dimension across GPU ranks."""
+    
+    ulysses_sp_parallel_size: int = 1
+    """Splits network input along sequence dimension across GPU ranks using deepspeed-ulysses method."""
 
     expert_model_parallel_size: int = 1
     """Distributes Moe Experts across sub data parallel dimension."""
