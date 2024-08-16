@@ -4,6 +4,8 @@
 import logging
 import random
 import os
+import packaging
+import packaging.version
 import time
 
 import numpy as np
@@ -49,8 +51,14 @@ def initialize_megatron(
     # Parse arguments
     args = parse_args(extra_args_provider, ignore_unknown_args)
 
+    # Prep for checkpoint conversion.
+    if args.ckpt_convert_format is not None:
+        assert args.ckpt_convert_save is not None
+        assert args.load is not None
+        args.exit_on_missing_checkpoint = True
+
     if args.use_checkpoint_args or args_defaults.get("use_checkpoint_args", False):
-        assert args.load is not None, "--use-checkpoints-args requires --load argument"
+        assert args.load is not None, "--use-checkpoint-args requires --load argument"
         load_args_from_checkpoint(args)
 
     if args.yaml_cfg is not None:
@@ -233,21 +241,22 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
             print("> initializing torch distributed ...", flush=True)
         # Manually set the device ids.
         if device_count > 0:
-            device = args.rank % device_count
-            if args.local_rank is not None:
-                assert (
-                    args.local_rank == device
-                ), "expected local-rank to be the same as rank % device-count."
-            else:
-                args.local_rank = device
-            torch.cuda.set_device(device)
+            torch.cuda.set_device(args.local_rank)
+            device_id = torch.device(f'cuda:{args.local_rank}')
+        else:
+            device_id = None
+
         # Call the init process
-        torch.distributed.init_process_group(
-            backend=args.distributed_backend,
-            world_size=args.world_size,
-            rank=args.rank,
-            timeout=timedelta(minutes=args.distributed_timeout_minutes),
-        )
+        init_process_group_kwargs = {
+            'backend' : args.distributed_backend,
+            'world_size': args.world_size,
+            'rank': args.rank,
+            'timeout': timedelta(minutes=args.distributed_timeout_minutes),
+        }
+        if packaging.version.Version(torch.__version__) >= packaging.version.Version("2.3.0"):
+            init_process_group_kwargs['device_id'] = device_id
+
+        torch.distributed.init_process_group(**init_process_group_kwargs)
 
     # Set the tensor model-parallel, pipeline model-parallel, and
     # data-parallel communicators.
@@ -265,6 +274,7 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
                 distributed_timeout_minutes=args.distributed_timeout_minutes,
                 nccl_communicator_config_path=args.nccl_communicator_config_path,
                 order='tp-cp-ep-dp-pp' if not args.use_tp_pp_dp_mapping else 'tp-pp-dp',
+                encoder_tensor_model_parallel_size=args.encoder_tensor_model_parallel_size,
                 encoder_pipeline_model_parallel_size=args.encoder_pipeline_model_parallel_size,
                 get_embedding_ranks=get_embedding_ranks,
                 get_position_embedding_ranks=get_position_embedding_ranks,
