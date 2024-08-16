@@ -25,13 +25,22 @@ from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 
-_te_version = packaging.version.Version(version("transformer-engine"))
+
+def get_te_version():
+    def get_te_version_str():
+        if hasattr(te, '__version__'):
+            return str(te.__version__)
+        else:
+            return version("transformer-engine")
+
+    return packaging.version.Version(get_te_version_str())
+
+
+_te_version = get_te_version()
 
 
 def _get_extra_te_kwargs(config: TransformerConfig):
-    extra_transformer_engine_kwargs = {
-        "params_dtype": config.params_dtype,
-    }
+    extra_transformer_engine_kwargs = {"params_dtype": config.params_dtype}
 
     if _te_version >= packaging.version.Version("0.12.0"):
         if config.use_cpu_initialization:
@@ -52,12 +61,7 @@ class TENorm:
     """
 
     # TODO should we ditch normalization config and just use spec to choose LayerNorm vs RMSNorm?
-    def __new__(
-        cls,
-        config: TransformerConfig,
-        hidden_size: int,
-        eps: float = 1e-5,
-    ):
+    def __new__(cls, config: TransformerConfig, hidden_size: int, eps: float = 1e-5):
         if config.normalization == "LayerNorm":
             instance = te.pytorch.LayerNorm(
                 hidden_size=hidden_size,
@@ -247,6 +251,13 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
                             if hasattr(self.config, "tp_comm_overlap_rs_dgrad")
                             else False
                         )
+                    if tp_comm_buffer_name == 'qkv' and self.config.tp_comm_overlap_disable_qkv:
+                        extra_kwargs["ub_overlap_ag"] = False
+                        extra_kwargs["ub_overlap_rs_dgrad"] = False
+
+                    if tp_comm_buffer_name == 'fc1' and self.config.tp_comm_overlap_disable_fc1:
+                        extra_kwargs["ub_overlap_ag"] = False
+                        extra_kwargs["ub_overlap_rs_dgrad"] = False
                 else:
                     extra_kwargs["ub_atomic_gemm_ag"] = self.config.tp_comm_atomic_ag
                     extra_kwargs["ub_split_ag"] = self.config.tp_comm_split_ag
@@ -542,13 +553,7 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
                 **packed_seq_kwargs,
             )
         else:
-            core_attn_out = super().forward(
-                query,
-                key,
-                value,
-                attention_mask,
-                **packed_seq_kwargs,
-            )
+            core_attn_out = super().forward(query, key, value, attention_mask, **packed_seq_kwargs)
 
         if self.config.apply_rope_fusion and qkv_format == 'bshd':
             return core_attn_out.transpose(0, 1)
@@ -750,12 +755,7 @@ if _te_version >= packaging.version.Version("1.9.0.dev0"):
             """
             tp_axis_map = {}
             for gemm_idx in range(self.num_gemms):
-                tp_axis_map.update(
-                    {
-                        f'{gemm_idx}.weight': 0,
-                        f'{gemm_idx}.bias': 0,
-                    }
-                )
+                tp_axis_map.update({f'{gemm_idx}.weight': 0, f'{gemm_idx}.bias': 0})
             return super()._sharded_state_dict_grouped(
                 tp_axis_map, prefix, sharded_offsets, metadata
             )
@@ -888,7 +888,23 @@ except ImportError:
 
 try:
 
-    from transformer_engine.pytorch.cpu_offload import get_cpu_offload_context
+    from transformer_engine.pytorch.cpu_offload import (
+        get_cpu_offload_context as _get_cpu_offload_context,
+    )
+
+    def get_cpu_offload_context(
+        enabled, num_layers, model_layers, activation_offloading, weight_offloading
+    ):
+        if _te_version > packaging.version.Version("1.8.0"):
+            context, sync_func = _get_cpu_offload_context(
+                enabled, num_layers, model_layers, activation_offloading, weight_offloading
+            )
+        else:
+            context, sync_func = _get_cpu_offload_context(
+                enabled, num_layers, activation_offloading, weight_offloading
+            )
+
+        return context, sync_func
 
 except ImportError:
 

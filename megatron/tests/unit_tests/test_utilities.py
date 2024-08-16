@@ -1,5 +1,11 @@
 import os
+from datetime import timedelta
+
 import torch
+from torch._C._distributed_c10d import PrefixStore
+from torch.distributed import rendezvous
+from torch.distributed.distributed_c10d import _store_based_barrier
+
 import megatron.core.parallel_state as ps
 
 
@@ -16,6 +22,7 @@ class Utils:
     world_size = torch.cuda.device_count()
     rank = int(os.environ['LOCAL_RANK'])
     inited = False
+    store = None
 
     @staticmethod
     def initialize_distributed():
@@ -28,11 +35,19 @@ class Utils:
             master_ip = os.getenv('MASTER_ADDR', 'localhost')
             master_port = os.getenv('MASTER_PORT', '6000')
             init_method += master_ip + ':' + master_port
+            rendezvous_iterator = rendezvous(
+                init_method, Utils.rank, Utils.world_size, timeout=timedelta(minutes=1)
+            )
+            store, rank, world_size = next(rendezvous_iterator)
+            store.set_timeout(timedelta(minutes=1))
+
+            # Use a PrefixStore to avoid accidental overrides of keys used by
+            # different systems (e.g. RPC) in case the store is multi-tenant.
+            store = PrefixStore("default_pg", store)
+            Utils.store = store
+
             torch.distributed.init_process_group(
-                backend='nccl',
-                world_size=Utils.world_size,
-                rank=Utils.rank,
-                init_method=init_method,
+                backend='nccl', world_size=Utils.world_size, rank=Utils.rank, store=store
             )
 
             torch.distributed.barrier()
@@ -58,8 +73,8 @@ class Utils:
     def destroy_model_parallel():
         if not Utils.inited:
             return
-        ps.destroy_model_parallel()
         torch.distributed.barrier()
+        ps.destroy_model_parallel()
         Utils.inited = False
 
     @staticmethod
