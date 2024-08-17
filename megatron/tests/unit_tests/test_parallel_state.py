@@ -6,7 +6,7 @@ import os
 
 rank = Utils.rank
 world_size = Utils.world_size
-test_parallel_order = ['tp-cp-ep-dp-pp', 'tp-cp-pp-ep-dp']
+test_parallel_order = ['tp-usp-cp-ep-dp-pp', 'tp-usp-cp-pp-ep-dp']
 
 @pytest.mark.parametrize('order', test_parallel_order)
 def test_initialize_and_destroy_model_parallel(order):
@@ -323,12 +323,12 @@ def test_rank_generator_for_tp_dp_pp(nodes, num_gpu, tp, pp, cp, ep, usp):
                     start_rank = (
                         i * num_pipeline_model_parallel_groups
                         + j * tensor_model_parallel_size * ulysses_sp_parallel_size * context_parallel_size
-                        + k * ulysses_sp_parallel_size * context_parallel_size
+                        + k * tensor_model_parallel_size * ulysses_sp_parallel_size
                     )
                     end_rank = (
                         i * num_pipeline_model_parallel_groups
                         + j * tensor_model_parallel_size * ulysses_sp_parallel_size * context_parallel_size
-                        + (k + 1) * ulysses_sp_parallel_size * context_parallel_size
+                        + (k + 1) * tensor_model_parallel_size * ulysses_sp_parallel_size
                     )
                     for t in range(tensor_model_parallel_size):
                         ranks = range(start_rank + t, end_rank, tensor_model_parallel_size)
