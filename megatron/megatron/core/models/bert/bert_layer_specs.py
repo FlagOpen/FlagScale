@@ -1,3 +1,4 @@
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
@@ -53,8 +54,7 @@ bert_layer_with_transformer_engine_spec = ModuleSpec(
         mlp=ModuleSpec(
             module=MLP,
             submodules=MLPSubmodules(
-                linear_fc1=TELayerNormColumnParallelLinear,
-                linear_fc2=TERowParallelLinear,
+                linear_fc1=TELayerNormColumnParallelLinear, linear_fc2=TERowParallelLinear
             ),
         ),
         mlp_bda=get_bias_dropout_add,
@@ -81,10 +81,7 @@ bert_layer_local_spec = ModuleSpec(
         pre_mlp_layernorm=LNImpl,
         mlp=ModuleSpec(
             module=MLP,
-            submodules=MLPSubmodules(
-                linear_fc1=ColumnParallelLinear,
-                linear_fc2=RowParallelLinear,
-            ),
+            submodules=MLPSubmodules(linear_fc1=ColumnParallelLinear, linear_fc2=RowParallelLinear),
         ),
         mlp_bda=get_bias_dropout_add,
         sharded_state_dict_keys_map={

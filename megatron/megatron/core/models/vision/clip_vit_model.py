@@ -4,6 +4,7 @@ from typing import Optional, Union
 
 import torch
 
+from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
 from megatron.core.models.common.vision_module.vision_module import VisionModule
 from megatron.core.transformer.custom_layers.transformer_engine import TENorm
 from megatron.core.transformer.enums import ModelType
@@ -39,6 +40,9 @@ class CLIPViTModel(VisionModule):
         img_w: int = 336,
     ) -> None:
         super().__init__(config=transformer_config)
+
+        if has_config_logger_enabled(transformer_config):
+            log_config_to_disk(transformer_config, locals(), prefix=type(self).__name__)
 
         self.class_token_len = class_token_len
         self.visual_hidden_size = transformer_config.hidden_size
@@ -146,3 +150,11 @@ class CLIPViTModel(VisionModule):
         x = x.contiguous()
 
         return x
+
+
+def get_image_sequence_length(img_h, img_w, patch_dim, add_class_token, class_token_len):
+    """Get image sequence length given image size, patch size, and class token."""
+    num_patches_per_dim_h = img_h // patch_dim
+    num_patches_per_dim_w = img_w // patch_dim
+    num_patches = num_patches_per_dim_h * num_patches_per_dim_w
+    return num_patches + (class_token_len if add_class_token else 0)

@@ -1,0 +1,11 @@
+torch
+wandb
+pybind11
+einops
+flask-restful
+nltk 
+sentencepiece
+wrapt
+# git+https://github.com/fanshiqing/grouped_gemm@v1.1.2
+zarr
+tensorstore==0.1.45

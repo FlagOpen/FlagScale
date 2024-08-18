@@ -27,7 +27,7 @@ RUN apt-get update && \
 RUN mkdir -p /run/sshd && \
     ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa && \
     cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && \
-    echo "StrictHostKeyChecking no\n" >> /etc/ssh/ssh_config
+    echo "    StrictHostKeyChecking no" >> /etc/ssh/ssh_config
 
 ##############################################################################
 # Install Miniconda 
