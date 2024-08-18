@@ -29,7 +29,7 @@ from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 def get_te_version():
     def get_te_version_str():
         if hasattr(te, '__version__'):
-            return str(te.__version__)
+            return str(te.__version__).split('+')[0]
         else:
             return version("transformer-engine")
 
@@ -895,7 +895,7 @@ try:
     def get_cpu_offload_context(
         enabled, num_layers, model_layers, activation_offloading, weight_offloading
     ):
-        if _te_version > packaging.version.Version("1.8.0"):
+        if _te_version > packaging.version.Version("1.9.0"):
             context, sync_func = _get_cpu_offload_context(
                 enabled, num_layers, model_layers, activation_offloading, weight_offloading
             )

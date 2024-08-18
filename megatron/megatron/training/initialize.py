@@ -263,8 +263,9 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
             'rank': args.rank,
             'timeout': timedelta(minutes=args.distributed_timeout_minutes),
         }
-        if packaging.version.Version(torch.__version__) >= packaging.version.Version("2.3.0"):
-            init_process_group_kwargs['device_id'] = device_id
+        # TODO: @aoyulong the init_process_group will be hanging if the device_id is set 
+        # if packaging.version.Version(torch.__version__) >= packaging.version.Version("2.3.0"):
+        #     init_process_group_kwargs['device_id'] = device_id
 
         torch.distributed.init_process_group(**init_process_group_kwargs)
 

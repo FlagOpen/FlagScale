@@ -768,7 +768,7 @@ def initialize_model_parallel(
             _POSITION_EMBEDDING_GROUP = group
             _POSITION_EMBEDDING_GLOBAL_RANKS = position_embedding_ranks
 
-    _LAST_RANK_WHEN_USING_PIPELINE = generator_wrapper('pp')[-1][-1] 
+    _LAST_RANK_WHEN_USING_PIPELINE = decoder_rank_generator.get_ranks('pp')[-1][-1] 
 
     # Build the tensor + data parallel groups.
     global _TENSOR_AND_DATA_PARALLEL_GROUP
