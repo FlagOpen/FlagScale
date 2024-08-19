@@ -6,6 +6,8 @@ system:
   sequence_parallel: True
   use_flash_attn: True
   use_distributed_optimizer: True
+  use_mcore_models: True
+  transformer_impl: transformer_engine
   precision:
     bf16: True
     attention_softmax_in_fp32: True
@@ -20,8 +22,6 @@ system:
     save_interval: 1000
 
 model:
-  use_mcore_models: True
-  transformer_impl: transformer_engine
   num_layers: 80
   hidden_size: 8192
   num_attention_heads: 64
