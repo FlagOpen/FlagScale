@@ -1,0 +1,4 @@
+hydra-core
+deepspeed
+dlrover[torch]
+matplotlib

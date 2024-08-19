@@ -22,6 +22,7 @@ from megatron.core.models.retro.utils import (
 )
 from megatron.core.transformer import TransformerConfig
 from megatron.training.activations import squared_relu
+from megatron.training.utils import update_use_dist_ckpt
 
 
 def parse_args(extra_args_provider=None, ignore_unknown_args=False):
@@ -51,6 +52,8 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_retro_args(parser)
     parser = _add_experimental_args(parser)
     parser = _add_one_logger_args(parser)
+    parser = _add_ft_package_args(parser)
+    parser = _add_config_logger_args(parser)
     parser = _add_serving_args(parser)
     parser = _add_customized_device_args(parser)
     parser = _add_hetero_args(parser)
@@ -233,53 +236,55 @@ def validate_args(args, defaults={}):
         ), f"hetero_current_device_type {args.hetero_current_device_type} should be in hetero_device_types {args.hetero_device_types}"
 
     else:
-        # Tensor model parallel size.
-        args.tensor_model_parallel_size = min(
-            args.tensor_model_parallel_size, args.world_size)
-        assert args.world_size % args.tensor_model_parallel_size == 0, 'world size'\
-            ' ({}) is not divisible by tensor model parallel size ({})'.format(
-                args.world_size, args.tensor_model_parallel_size)
+        if args.encoder_tensor_model_parallel_size > 0:
+            assert args.encoder_pipeline_model_parallel_size > 0, "encoder_pipeline_model_parallel_size must be defined."
+            assert args.num_attention_heads % args.encoder_tensor_model_parallel_size == 0
+            assert args.encoder_tensor_model_parallel_size <= args.tensor_model_parallel_size, "We do not support encoders with more TP than the decoder."
+
+        if args.encoder_pipeline_model_parallel_size > 0 and args.encoder_tensor_model_parallel_size == 0:
+            args.encoder_tensor_model_parallel_size = args.tensor_model_parallel_size
+
+        encoder_model_size = args.encoder_tensor_model_parallel_size * args.encoder_pipeline_model_parallel_size * args.context_parallel_size
+        decoder_model_size = args.tensor_model_parallel_size * args.pipeline_model_parallel_size * args.context_parallel_size
+        total_model_size = encoder_model_size + decoder_model_size
+
+        # Total model size.
+        assert args.world_size % total_model_size == 0, (
+            f"world size ({args.world_size}) is not divisible by total_model_size ({encoder_model_size=} + {decoder_model_size=})"
+        )
 
         # Pipeline model parallel size.
-        args.pipeline_model_parallel_size = min(
-            args.pipeline_model_parallel_size,
-            (args.world_size // args.tensor_model_parallel_size))
         args.transformer_pipeline_model_parallel_size = (
             args.pipeline_model_parallel_size - 1
             if args.standalone_embedding_stage else
             args.pipeline_model_parallel_size
         )
 
+        args.data_parallel_size = args.world_size // total_model_size
+
         # Checks.
-        model_parallel_size = args.pipeline_model_parallel_size * \
-                            args.tensor_model_parallel_size
-        assert args.world_size % (model_parallel_size * args.context_parallel_size * args.ulysses_sp_parallel_size) == 0, \
-            'world size ({}) is not divisible by tensor parallel size ({}) times ' \
-            'pipeline parallel size ({}) times context parallel size ({})'.format(
-            args.world_size, args.tensor_model_parallel_size,
-            args.pipeline_model_parallel_size, args.context_parallel_size)
-        args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size * args.ulysses_sp_parallel_size)
         if args.rank == 0:
             print('using world size: {}, data-parallel size: {}, '
-                'context-parallel size: {} '
-                'tensor-model-parallel size: {}, '
-                'pipeline-model-parallel size: {} '
-                'ulysses-sp-parallel size: {} '.format(
-                    args.world_size, args.data_parallel_size,
-                    args.context_parallel_size,
-                    args.tensor_model_parallel_size,
-                    args.pipeline_model_parallel_size,
-                    args.ulysses_sp_parallel_size), flush=True)
+                  'context-parallel size: {}, '
+                  'ulysses-sp-parallel size: {}, '
+                  'tensor-model-parallel size: {}, '
+                  'encoder-tensor-model-parallel size: {}, '
+                  'pipeline-model-parallel size: {}, '
+                  'encoder-pipeline-model-parallel size: {}'.format(
+                      args.world_size, args.data_parallel_size,
+                      args.context_parallel_size,
+                      args.ulysses_sp_parallel_size,
+                      args.tensor_model_parallel_size,
+                      args.encoder_tensor_model_parallel_size,
+                      args.pipeline_model_parallel_size,
+                      args.encoder_pipeline_model_parallel_size), flush=True)
 
+        # backwards compatibility.
         if args.pipeline_model_parallel_split_rank is not None:
             args.encoder_pipeline_model_parallel_size = args.pipeline_model_parallel_split_rank
+            args.pipeline_model_parallel_size -= args.encoder_pipeline_model_parallel_size
+            assert args.pipeline_model_parallel_size > 0
 
-        if args.pipeline_model_parallel_size > 1:
-            if args.encoder_pipeline_model_parallel_size is not None:
-                assert args.encoder_pipeline_model_parallel_size < \
-                        args.pipeline_model_parallel_size, 'encoder pipeline size needs '\
-                        ' to be less than pipeline model parallel size ({})'.format(
-                                args.pipeline_model_parallel_size)
 
     if args.tp_comm_overlap:
         assert args.sequence_parallel == True, 'Tensor parallel communication/GEMM overlap can happen only when sequence parallelism is enabled'
@@ -466,6 +471,7 @@ def validate_args(args, defaults={}):
 
     # Consumed tokens.
     args.consumed_train_samples = 0
+    args.skipped_train_samples = 0
     args.consumed_valid_samples = 0
 
     # Support for variable sequence lengths across batches/microbatches.
@@ -674,10 +680,14 @@ def validate_args(args, defaults={}):
         assert args.pipeline_model_parallel_size == 1, \
             "retro currently does not support pipeline parallelism."
 
+    # Set args.use_dist_ckpt from args.ckpt_format.
+    update_use_dist_ckpt(args)
+
     if args.decoupled_lr is not None or args.decoupled_min_lr is not None:
         assert not args.use_legacy_models, \
             '--decoupled-lr and --decoupled-min-lr is not supported in legacy models.'
-        assert not args.use_dist_ckpt, "Distributed checkpointing does not work with decoupled LR yet."
+        if args.load is not None or args.save is not None:
+            assert not args.use_dist_ckpt, "Distributed checkpointing does not work with decoupled LR yet."
 
     # Legacy RoPE arguments
     if args.use_rotary_position_embeddings:
@@ -731,11 +741,14 @@ def validate_args(args, defaults={}):
 
     # Deterministic mode
     if args.deterministic_mode:
-        assert not args.use_flash_attn, 'Flash attention can not be used in deterministic mode.'
+        assert not args.use_flash_attn, "Flash attention can not be used in deterministic mode."
+        assert not args.cross_entropy_loss_fusion, "Cross Entropy Fusion is currently not deterministic."
 
         all_reduce_choices = ["Tree", "Ring", "CollnetDirect", "CollnetChain", "^NVLS"]
         assert os.getenv("NCCL_ALGO", -1) != -1 and os.getenv("NCCL_ALGO") in all_reduce_choices, \
             f"NCCL_ALGO must be one of {all_reduce_choices}."
+
+        torch.use_deterministic_algorithms(True)
 
     # Update the printed args to reflect that `apply_query_key_layer_scaling` also controls `attention_softmax_in_fp32`
     if args.apply_query_key_layer_scaling:
@@ -754,6 +767,12 @@ def validate_args(args, defaults={}):
         print('Warning: With non-parallel ckpt save and DistributedOptimizer,'
               ' it will be impossible to resume training with different parallelism.'
               ' Consider removing flag --no-ckpt-fully-parallel-save.')
+    if args.use_dist_ckpt_deprecated and args.rank == 0:
+        print('--use-dist-ckpt is deprecated and has no effect.'
+              ' Use --ckpt-format to select the checkpoint format.')
+    if args.dist_ckpt_format_deprecated and args.rank == 0:
+        print('--dist-ckpt-format is deprecated and has no effect.'
+              ' Use --ckpt-format to select the checkpoint format.')
 
     # Print arguments.
     _print_args("arguments", args)
@@ -774,11 +793,6 @@ def validate_args(args, defaults={}):
         assert args.num_layers == len(args.init_weight_attn_norm)
         assert args.num_layers == len(args.init_weight_ffn_norm)
         assert args.init_weight_output_norm is not None
-
-    # Data Searching
-    if args.data_searching_save:
-        assert args.world_size == 1, \
-            "World size {args.world_size} should be one when data searching."
 
     return args
 
@@ -836,6 +850,7 @@ def core_transformer_config_from_args(args, config_class=None):
         kw_args['num_query_groups'] = args.num_query_groups
     else:
         kw_args['num_query_groups'] = None
+    kw_args['config_logger_dir'] = args.config_logger_dir
 
     # Return config.
     return config_class(**kw_args)
@@ -864,7 +879,7 @@ def _add_transformer_engine_args(parser):
     group.add_argument('--no-fp8-wgrad', action='store_false',
                        help='Execute wgrad in higher precision even for FP8 runs',
                        dest='fp8_wgrad')
-    group.add_argument('--transformer-impl', default='transfer_engine',
+    group.add_argument('--transformer-impl', default='transformer_engine',
                        choices=['local', 'transformer_engine'],
                        help='Which Transformer implementation to use.')
 
@@ -1033,6 +1048,7 @@ def _add_network_size_args(parser):
                        help='Untie embeddings and output weights.'),
     return parser
 
+
 def _add_straggler_detector_args(parser):
     group = parser.add_argument_group(title='straggler')
     group.add_argument('--log-straggler', action='store_true',
@@ -1044,6 +1060,7 @@ def _add_straggler_detector_args(parser):
     group.add_argument('--straggler-minmax-count', type=int, default=1,
                        help='Number of ranks to report with high/low estimated throughput')
     return parser
+
 
 def _add_one_logger_args(parser):
     group = parser.add_argument_group(title='one logger')
@@ -1072,6 +1089,23 @@ def _add_one_logger_args(parser):
                        'application side which might change the performance '
                        'baseline')
     return parser
+
+
+def _add_ft_package_args(parser):
+    group = parser.add_argument_group(title='ft_package')
+    group.add_argument('--enable-ft-package', action='store_true',
+                       help='If set, Fault Tolerance package is enabled. '
+                       'Note: This feature is for Nvidia internal use only.')
+    return parser
+
+
+def _add_config_logger_args(parser):
+    group = parser.add_argument_group(title='config logger')
+    group.add_argument('--config-logger-dir', type=str, default='',
+                       help='If set, will dump all configs to --config-logger-dir',
+                       dest='config_logger_dir')
+    return parser
+
 
 def _add_logging_args(parser):
     group = parser.add_argument_group(title='logging')
@@ -1120,12 +1154,6 @@ def _add_logging_args(parser):
                        'flush to disk.')
     group.add_argument('--log-timers-to-tensorboard', action='store_true',
                        help='If set, write timers to tensorboard.')
-    group.add_argument('--log-batch-size-to-tensorboard', action='store_true',
-                       help='If set, write batch-size to tensorboard.')
-    group.add_argument('--no-log-learnig-rate-to-tensorboard',
-                       action='store_false',
-                       help='Disable learning rate logging to tensorboard.',
-                       dest='log_learning_rate_to_tensorboard')
     group.add_argument('--no-log-loss-scale-to-tensorboard',
                        action='store_false',
                        help='Disable loss-scale logging to tensorboard.',
@@ -1220,6 +1248,13 @@ def _add_training_args(parser):
                        ' (1024 - 16) / 8 = 126 intervals will increase'
                        'the batch size linearly to 1024. In each interval'
                        'we will use approximately 300000 / 126 = 2380 samples.')
+    group.add_argument('--decrease-batch-size-if-needed', action='store_true', default=False,
+                       help='If set, decrease batch size if microbatch_size * dp_size'
+                       'does not divide batch_size. Useful for KSO (Keep Soldiering On)'
+                       'to continue making progress if number of healthy GPUs (and'
+                       'corresponding dp_size) does not support current batch_size.'
+                       'Old batch_size will be restored if training is re-started with'
+                       'dp_size that divides batch_size // microbatch_size.')
     group.add_argument('--recompute-activations', action='store_true',
                        help='recompute activation to allow for training '
                        'with larger models, sequences, and batch sizes.')
@@ -1319,6 +1354,8 @@ def _add_training_args(parser):
     group.add_argument('--calculate-per-token-loss', action='store_true',
                        help=('Scale cross entropy loss by the number of non-padded tokens in the '
                              'global batch, versus the default behavior of assuming all tokens are non-padded.'))
+    group.add_argument('--train-sync-interval', type=int, default=None,
+                       help='Training CPU-GPU synchronization interval, to ensure that CPU is not running too far ahead of GPU.')
 
     # deprecated
     group.add_argument('--checkpoint-activations', action='store_true',
@@ -1559,10 +1596,6 @@ def _add_checkpointing_args(parser):
 
     group.add_argument('--save', type=str, default=None,
                        help='Output directory to save checkpoints to.')
-    group.add_argument('--data-searching-save', type=str, default=None,
-                       help='Output directory to save searched data to.')
-    group.add_argument('--data-searching-range', nargs='+', default=None,
-                       help='The iteration range for searching data.')
     group.add_argument('--save-interval', '--persistent-save-interval', type=int, default=None,
                        help='Number of iterations between persistent checkpoint saves.')
     group.add_argument('--rampup-save-interval', type=int, default=None,
@@ -1604,8 +1637,6 @@ def _add_checkpointing_args(parser):
     group.add_argument('--use-checkpoint-args', action='store_true',
                        help='Override any command line arguments with arguments '
                        'from the checkpoint')
-    group.add_argument('--format-ckpt', action='store_true',
-                       help='Format checkpoint into the Megatron-LM format and save it')
     group.add_argument('--save-param-index-maps-only', action='store_true',
                        help='Save param name to index maps only')
     group.add_argument('--save-when-num-microbatches-change', action='store_true',
@@ -1615,18 +1646,32 @@ def _add_checkpointing_args(parser):
                        "(e.g., path typo), then exit instead of random "
                        "initialization.")
     group.add_argument('--use-dist-ckpt', action='store_true',
-                       help='Use distributed checkpoint format.')
+                       dest='use_dist_ckpt_deprecated',
+                       help='Deprecated: see --ckpt-format.')
     group.add_argument('--auto-detect-ckpt-format', action='store_true',
                        help='Determine if the checkpoint format is in legacy or distributed format.'
-                            ' If False, expects distributed checkpoint iff args.use_dist_ckpt.'
+                            ' If False, expects distributed checkpoint iff args.ckpt_format != "torch".'
                             ' Might slow down loading a bit (double rank0 ckpt load).')
-    group.add_argument('--dist-ckpt-format', type=str, default='torch_dist',
-                       choices=['zarr', 'torch_dist'],
-                       help='Distributed checkpoint format to use.')
+    group.add_argument('--dist-ckpt-format',
+                       dest='dist_ckpt_format_deprecated',
+                       help='Deprecated: see --ckpt-format.')
     group.add_argument('--finetune-with-optim', action='store_true',
                        help='Load model and optim for finetuning. Do not load'
                        'rng state from checkpoint and set iteration to 0. '
                        'Assumed when loading a release checkpoint.')
+    group.add_argument('--ckpt-format', default='torch_dist',
+                       choices=['torch', 'torch_dist', 'zarr'],
+                       help='Checkpoint format to use.')
+    group.add_argument('--ckpt-convert-format', default=None,
+                       choices=['torch', 'torch_dist', 'zarr'],
+                       help='Checkpoint format for conversion.')
+    group.add_argument('--ckpt-convert-save', default=None,
+                       help='Save directory for converted checkpoint.')
+    group.add_argument('--ckpt-convert-update-legacy-dist-opt-format', action='store_true',
+                       help='When loading a checkpoint, update the legacy format '
+                       'for the distributed optimizer, which previously used a '
+                       'merged param/grad buffer and a different bucket mapping. '
+                       'The legacy format was deprecated on Feb 13, 2024.')
     group.add_argument('--ckpt-fully-parallel-save', action='store_true',
                        dest='ckpt_fully_parallel_save_deprecated',
                        help='Deprecated: see --no-ckpt-fully-parallel-save.')
@@ -1696,10 +1741,13 @@ def _add_distributed_args(parser):
 
     group.add_argument('--tensor-model-parallel-size', type=int, default=1,
                        help='Degree of tensor model parallelism.')
+    group.add_argument('--encoder-tensor-model-parallel-size', type=int, default=0,
+                       help='Degree of tensor model parallelism for the encoder.')
     group.add_argument('--pipeline-model-parallel-size', type=int, default=1,
                        help='Degree of pipeline model parallelism.')
-    group.add_argument('--encoder-pipeline-model-parallel-size', type=int, default=None,
-                       help='Degree of pipeline model parallelism in the encoder.')
+    group.add_argument('--encoder-pipeline-model-parallel-size', type=int, default=0,
+                       help=('Degree of pipeline model parallelism in the encoder. This is '
+                             'independent of the amount of pipeline in the decoder.'))
     group.add_argument('--pipeline-model-parallel-split-rank',
                        type=int, default=None,
                        help=('Rank where encoder and decoder should be split. '
@@ -1720,7 +1768,7 @@ def _add_distributed_args(parser):
     group.add_argument('--overlap-grad-reduce', action='store_true',
                        default=False, help='If set, overlap DDP grad reduce.')
     group.add_argument('--defer-embedding-wgrad-compute', action='store_true',
-                       default=False, help='If set, defers the vocabulary projection linear layer weight' 
+                       default=False, help='If set, defers the vocabulary projection linear layer weight'
                        'gradient compute to pipeline flush.', dest='defer_embedding_wgrad_compute')
     group.add_argument('--wgrad-deferral-limit', type=int, default=0, help='Number of micro-batches for which'
                        'weight gradient computation of vocabulary projection is deferred, defaults to 0 which'
@@ -1744,7 +1792,7 @@ def _add_distributed_args(parser):
                        default=False, help='If set, use custom-built ring exchange '
                        'for p2p communications. Note that this option will require '
                        'a custom built image that support ring-exchange p2p.')
-    group.add_argument('--local_rank', type=int, default=None,
+    group.add_argument('--local-rank', type=int, default=int(os.getenv('LOCAL_RANK', '0')),
                        help='local rank passed from distributed launcher.')
     group.add_argument('--lazy-mpu-init', type=bool, required=False,
                        help='If set to True, initialize_megatron() '
@@ -1809,6 +1857,11 @@ def _add_data_args(parser):
                        '(3) a list of prefixes e.g. prefix1 prefix2. '
                        'For (3), weights are inferred from the lengths of the contributing datasets. '
                        'This argument is exclusive to the other independent --*-data-path arguments.')
+    group.add_argument('--renormalize-blend-weights', action='store_true',
+                       help='Renormalize the blend weights to account for the mid-level dataset '
+                       'oversampling done to ensure fulfillment of the requested number of '
+                       'samples. Use this option if prompted. Defaults to False for backward '
+                       'comparability in the data sample order.')
     group.add_argument('--split', type=str, default=None,
                        help='Comma-separated list of proportions for training,'
                        ' validation, and test split. For example the split '
@@ -2078,8 +2131,10 @@ def _add_moe_args(parser):
                        help='Determines the load balancing strategy for the router. "aux_loss" corresponds to the load balancing loss used in GShard and SwitchTransformer, "sinkhorn" corresponds to the balancing algorithm used in S-BASE, and "none" implies no load balancing. The default is "aux_loss".')
     group.add_argument('--moe-router-topk', type=int, default=2,
                        help='Number of experts to route to for each token. The default is 2.')
+    group.add_argument('--moe-router-pre-softmax', action='store_true',
+                       help='Enable pre-softmax routing for MoE, which means softmax is before the top-k selection. By default, softmax is done after top-k.')
     group.add_argument('--moe-grouped-gemm', action='store_true',
-                       help='When there are multiple experts per rank, compress multiple local (potentially small) gemms in a single kernel launch to improve the utilization and performance by leveraging the Grouped GEMM feature introduced since CUTLASS 2.8 (https://github.com/fanshiqing/grouped_gemm).')
+                       help='When there are multiple experts per rank, launch multiple local GEMM kernels in multiple streams to improve the utilization and performance with GroupedLinear in TransformerEngine.')
     group.add_argument('--moe-aux-loss-coeff', type=float, default=0.0,
                        help='Scaling coefficient for the aux loss: a starting value of 1e-2 is recommended.')
     group.add_argument('--moe-z-loss-coeff', type=float, default=None,
@@ -2130,7 +2185,6 @@ def _add_experimental_args(parser):
                        'pattern')
     group.add_argument('--yaml-cfg', type=str, default=None,
                        help = 'Config file to add additional arguments')
-
     return parser
 
 

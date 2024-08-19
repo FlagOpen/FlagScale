@@ -111,12 +111,7 @@ def _kernel_make_viewless_tensor(inp, requires_grad):
     data, without linking the viewed tensor, referenced via the '._base'
     field.
     '''
-    out = torch.empty(
-        (1,),
-        dtype=inp.dtype,
-        device=inp.device,
-        requires_grad=requires_grad,
-    )
+    out = torch.empty((1,), dtype=inp.dtype, device=inp.device, requires_grad=requires_grad)
     out.data = inp.data
     return out
 
@@ -449,14 +444,15 @@ def drain_embedding_wgrad_compute(config, embedding_activation_buffer, grad_outp
 
         grad_output = grad_output_buffer.pop(0)
         wgrad_compute(all_gathered_input[i % 2], grad_output, weight)
+        drain_idx = (i + 1) % 2
         input, all_gathered_input[i % 2], grad_output = None, None, None
 
         if config.sequence_parallel:
             handle.wait()
 
     grad_output = grad_output_buffer.pop(0)
-    wgrad_compute(all_gathered_input[1], grad_output, weight)
-    input, all_gathered_input[1], grad_output = None, None, None
+    wgrad_compute(all_gathered_input[drain_idx], grad_output, weight)
+    input, all_gathered_input[drain_idx], grad_output = None, None, None
 
 
 def local_multi_tensor_applier(op, noop_flag_buffer, tensor_lists, *args):
@@ -907,13 +903,7 @@ class StragglerDetector:
             et_flops = apir_flops / self.amp  # Estimated TFLOPs, not tracing backward
 
             o_dt = self._min_max(
-                ptime,
-                btime,
-                float(temp),
-                float(power),
-                float(util),
-                float(clock),
-                et_flops,
+                ptime, btime, float(temp), float(power), float(util), float(clock), et_flops
             )
             if self.rank == 0 and o_dt is not None and o_dt.aflops is not None:
                 now = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"

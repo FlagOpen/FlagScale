@@ -90,13 +90,13 @@ def _get_param_groups(
                 scale_lr = False
 
             if not no_wd and not scale_lr:
-                wd_mult, lr_mult = 1.0, 1.0
+                wd_mult, _lr_mult = 1.0, 1.0
             elif not no_wd and scale_lr:
-                wd_mult, lr_mult = 1.0, lr_mult
+                wd_mult, _lr_mult = 1.0, lr_mult
             elif no_wd and not scale_lr:
-                wd_mult, lr_mult = 0.0, 1.0
+                wd_mult, _lr_mult = 0.0, 1.0
             else:
-                wd_mult, lr_mult = 0.0, lr_mult
+                wd_mult, _lr_mult = 0.0, lr_mult
 
             is_decoupled_lr = False
             # For input/embedding and output layer: embedding.word_embeddings.weight / output_layer.weight.
@@ -105,19 +105,19 @@ def _get_param_groups(
             ):
                 is_decoupled_lr = True
 
-            key = (wd_mult, lr_mult, is_expert_parallel, is_decoupled_lr)
+            key = (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr)
             if key not in params_map:
                 params_map[key] = []
             params_map[key].append(param)
 
     param_groups = []
-    for (wd_mult, lr_mult, is_expert_parallel, is_decoupled_lr), params in params_map.items():
+    for (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr), params in params_map.items():
         assert len(params) > 0
         param_groups.append(
             {
                 'params': params,
                 'wd_mult': wd_mult,
-                'lr_mult': lr_mult,
+                'lr_mult': _lr_mult,
                 'is_expert_parallel': is_expert_parallel,
                 'is_decoupled_lr': is_decoupled_lr,
             }
@@ -247,12 +247,7 @@ def _get_megatron_optimizer_based_on_param_groups(
                     hysteresis=config.hysteresis,
                 )
 
-        optimizer_args = [
-            optimizer,
-            config,
-            grad_scaler,
-            init_state_fn,
-        ]
+        optimizer_args = [optimizer, config, grad_scaler, init_state_fn]
         if config.use_distributed_optimizer:
             optimizer = DistributedOptimizer(
                 *optimizer_args,
@@ -266,11 +261,7 @@ def _get_megatron_optimizer_based_on_param_groups(
             setattr(optimizer, 'model_parallel_group', model_parallel_group)
     else:
         # FP32 optimizer.
-        optimizer = FP32Optimizer(
-            optimizer,
-            config,
-            init_state_fn,
-        )
+        optimizer = FP32Optimizer(optimizer, config, init_state_fn)
         setattr(optimizer, 'model_parallel_group', model_parallel_group)
 
     return optimizer

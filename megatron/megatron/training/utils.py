@@ -471,3 +471,7 @@ def save_checkpoint_info(dir, rank0=False):
             json.dump(all_ckpts_info, f)
     torch.distributed.barrier()
     print_rank_0("Save checkpoint info done")
+
+
+def update_use_dist_ckpt(args):
+    args.use_dist_ckpt = args.ckpt_format != "torch"
