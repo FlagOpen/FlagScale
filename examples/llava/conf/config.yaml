@@ -1,10 +1,10 @@
 defaults:
-  - train: train_llava1.5.yaml
+  - train: train_llava1.5_7b.yaml
   - _self_
 
 experiment:
   exp_name: llava1.5
-  exp_dir: ./outputs
+  exp_dir: ./outputs_llava1.5
   task:
     type: train
     backend: megatron
