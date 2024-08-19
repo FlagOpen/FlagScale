@@ -67,6 +67,6 @@ data:
   data_path: <xxxx>
   split: 1
   tokenizer:
-    tokenizer_type: QwenTokenizerFS
+    tokenizer_type: <xxxx>
     tokenizer_path: <xxxx>
     make_vocab_size_divisible_by: 64
