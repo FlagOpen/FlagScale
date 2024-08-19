@@ -2,7 +2,7 @@
 import os
 
 import torch
-from dataset_helpers import TaskEncoder, print_error_handler
+from .dataset_helpers import TaskEncoder, print_error_handler
 
 from megatron.core import mpu
 from megatron.energon import (

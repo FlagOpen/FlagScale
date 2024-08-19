@@ -139,8 +139,15 @@ class LLaVAModel(MegatronModule):
                     f"vision_projection.{name}"
                     for name in self.vision_projection.state_dict().keys()
                 ]
+                vision_extra_state_param_names = []
+                for name in self.vision_model.state_dict().keys():
+                    if "_extra_state" in name:
+                        vision_extra_state_param_names.append(f"vision_model.{name}")
                 self.vision_projection.register_load_state_dict_post_hook(
                     partial(_load_state_dict_hook_ignore_param_names, vision_projection_param_names)
+                )
+                self.vision_model.register_load_state_dict_post_hook(
+                    partial(_load_state_dict_hook_ignore_param_names, vision_extra_state_param_names)
                 )
 
         self._img_seq_len = get_image_sequence_length(

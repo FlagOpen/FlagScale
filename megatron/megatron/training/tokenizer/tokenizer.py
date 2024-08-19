@@ -552,6 +552,16 @@ class _Llama2Tokenizer(_SentencePieceTokenizer):
             t = t + [self.eos_id]
         return t
 
+    def instruct_tokenize(self, s: str, bos=True, eos=False):
+        '''Default args for text completion, not chat/dialog.'''
+        assert type(s) is str
+        t = self.tokenizer.encode(s)
+        if bos:
+            t = [self.bos_id] + t
+        if eos:
+            t = t + [self.eos_id]
+        return t
+
     def detokenize(self, ids):
         return self.tokenizer.decode_ids(ids)
 
