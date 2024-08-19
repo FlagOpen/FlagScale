@@ -679,7 +679,7 @@ def initialize_model_parallel(
             _DATA_PARALLEL_GROUP_WITH_CP_GLOO = group_with_cp_gloo
             _DATA_PARALLEL_GLOBAL_RANKS_WITH_CP = ranks_with_cp
     
-    for ranks_with_usp_cp in rank_generator.get_ranks('dp-usp-cp'):
+    for ranks_with_usp_cp in generator_wrapper('dp-usp-cp'):
         group_with_usp_cp = torch.distributed.new_group(
             ranks_with_usp_cp, timeout=timeout, pg_options=get_nccl_options('dp_usp_cp', nccl_comm_cfgs)
         )
