@@ -445,6 +445,10 @@ def initialize_model_parallel(
             all-reduce is required in backward. For simplicity, we piggyback
             GPUs of context parallelism on data parallel group for
             weight gradient all-reduce.
+        
+        ulysses_parallel_size (int, default = 1):
+            The number of tensor parallel GPU groups to split the
+            network input sequence length across using deepseed-ulysses method.
 
         expert_model_parallel_size (int, default = 1):
             The number of Mixture of Experts parallel GPUs in each expert
