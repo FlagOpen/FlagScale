@@ -121,11 +121,7 @@ def deallocate_output_tensor(out, deallocate_pipeline_outputs=False):
         return
     assert isinstance(out, torch.Tensor), "expected Tensor, found %s." % type(out).__name__
     assert out._base is None, "counter-productive to free a view of another tensor."
-    out.data = torch.empty(
-        (1,),
-        device=out.device,
-        dtype=out.dtype,
-    )
+    out.data = torch.empty((1,), device=out.device, dtype=out.dtype)
 
 
 def custom_backward(output, grad_output):
@@ -146,10 +142,7 @@ def custom_backward(output, grad_output):
     # Handle scalar output
     if grad_output is None:
         assert output.numel() == 1, "implicit grad requires scalar output."
-        grad_output = torch.ones_like(
-            output,
-            memory_format=torch.preserve_format,
-        )
+        grad_output = torch.ones_like(output, memory_format=torch.preserve_format)
 
     # Call c++ engine [ see torch/csrc/autograd/python_engine.cpp ]
     Variable._execution_engine.run_backward(
@@ -190,10 +183,57 @@ def forward_step(
 ):
     """Forward step for passed-in model.
 
-    If first stage, input tensor is obtained from data_iterator, otherwise
-    passed-in input_tensor is used.
+    If it is the first stage, the input tensor is obtained from the data_iterator.
+    Otherwise, the passed-in input_tensor is used.
 
-    Returns output tensor."""
+    Args:
+        forward_step_func (callable): The forward step function for the model that takes the
+            data iterator as the first argument, and model as the second.
+            This user's forward step is expected to output a tuple of two elements:
+                1. The output object from the forward step. This output object needs to be a
+                    tensor or some kind of collection of tensors. The only hard requirement
+                    for this object is that it needs to be acceptible as input into the second
+                    function.
+                2. A function to reduce (optionally) the output from the forward step. This
+                    could be a reduction over the loss from the model, it could be a function that
+                    grabs the output from the model and reformats, it could be a function that just
+                    passes through the model output. This function must have one of the following
+                    patterns, and depending on the pattern different things happen internally.
+                        a. A tuple of reduced loss and some other data. Note that in this case
+                            the first argument is divided by the number of global microbatches,
+                            assuming it is a loss, so that the loss is stable as a function of
+                            the number of devices the step is split across.
+                        b. A triple of reduced loss, number of tokens, and some other data. This
+                            is similar to case (a), but the loss is further averaged across the
+                            number of tokens in the batch. If the user is not already averaging
+                            across the number of tokens, this pattern is useful to use.
+                        c. Any arbitrary data the user wants (eg a dictionary of tensors, a list
+                            of tensors, etc in the case of inference). To trigger case 3 you need
+                            to specify `collect_non_loss_data=True` and you may also want to
+                            specify `forward_only=True` in the call to the parent forward_backward
+                            function.
+        data_iterator (iterator): The data iterator.
+        model (nn.Module): The model to perform the forward step on.
+        num_microbatches (int): The number of microbatches.
+        input_tensor (Tensor or list[Tensor]): The input tensor(s) for the forward step.
+        forward_data_store (list): The list to store the forward data. If you go down path 2.a or
+            2.b for the return of your forward reduction function then this will store only the
+            final dimension of the output, for example the metadata output by the loss function.
+            If you go down the path of 2.c then this will store the entire output of the forward
+            reduction function applied to the model output.
+        config (object): The configuration object.
+        collect_non_loss_data (bool, optional): Whether to collect non-loss data. Defaults to False.
+            This is the path to use if you want to collect arbitrary output from the model forward,
+            such as with inference use cases. Defaults to False.
+        checkpoint_activations_microbatch (int, optional): The microbatch to checkpoint activations.
+            Defaults to None.
+        is_first_microbatch (bool, optional): Whether it is the first microbatch. Defaults to False.
+        current_microbatch (int, optional): The current microbatch. Defaults to None.
+
+    Returns:
+        Tensor or list[Tensor]: The output object(s) from the forward step.
+        Tensor: The number of tokens.
+    """
     if config.timers is not None:
         config.timers('forward-compute', log_level=2).start()
 
@@ -705,9 +745,7 @@ def forward_backward_pipelining_with_interleaving(
             collect_non_loss_data,
             checkpoint_activations_microbatch,
             check_first_val_step(
-                first_val_step,
-                forward_only,
-                is_first_microbatch_for_model_chunk(microbatch_id),
+                first_val_step, forward_only, is_first_microbatch_for_model_chunk(microbatch_id)
             ),
             current_microbatch=current_microbatch,
         )
@@ -816,16 +854,15 @@ def forward_backward_pipelining_with_interleaving(
                 recv_next = True
                 if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                     recv_next = False
-                (
-                    input_tensor,
-                    output_tensor_grad,
-                ) = p2p_communication.send_forward_backward_recv_forward_backward(
-                    output_tensor,
-                    input_tensor_grad,
-                    recv_prev=recv_prev,
-                    recv_next=recv_next,
-                    tensor_shape=tensor_shape,
-                    config=config,
+                (input_tensor, output_tensor_grad) = (
+                    p2p_communication.send_forward_backward_recv_forward_backward(
+                        output_tensor,
+                        input_tensor_grad,
+                        recv_prev=recv_prev,
+                        recv_next=recv_next,
+                        tensor_shape=tensor_shape,
+                        config=config,
+                    )
                 )
                 output_tensor_grads[num_model_chunks - 1].append(output_tensor_grad)
             else:
@@ -852,15 +889,14 @@ def forward_backward_pipelining_with_interleaving(
                 if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
                     recv_next = False
 
-                (
-                    output_tensor_grad,
-                    bwd_wait_handles,
-                ) = p2p_communication.send_backward_recv_backward(
-                    input_tensor_grad,
-                    recv_next=recv_next,
-                    tensor_shape=tensor_shape,
-                    config=config,
-                    overlap_p2p_comm=True,
+                (output_tensor_grad, bwd_wait_handles) = (
+                    p2p_communication.send_backward_recv_backward(
+                        input_tensor_grad,
+                        recv_next=recv_next,
+                        tensor_shape=tensor_shape,
+                        config=config,
+                        overlap_p2p_comm=True,
+                    )
                 )
 
                 output_tensor_grads[num_model_chunks - 1].append(output_tensor_grad)
@@ -1026,16 +1062,15 @@ def forward_backward_pipelining_with_interleaving(
                 recv_prev = False
 
             # Communicate tensors.
-            (
-                input_tensor,
-                output_tensor_grad,
-            ) = p2p_communication.send_forward_backward_recv_forward_backward(
-                output_tensor,
-                input_tensor_grad,
-                recv_prev=recv_prev,
-                recv_next=recv_next,
-                tensor_shape=tensor_shape,
-                config=config,
+            (input_tensor, output_tensor_grad) = (
+                p2p_communication.send_forward_backward_recv_forward_backward(
+                    output_tensor,
+                    input_tensor_grad,
+                    recv_prev=recv_prev,
+                    recv_next=recv_next,
+                    tensor_shape=tensor_shape,
+                    config=config,
+                )
             )
             deallocate_output_tensor(output_tensor, config.deallocate_pipeline_outputs)
 
@@ -1328,7 +1363,8 @@ def forward_backward_pipelining_without_interleaving(
         input_tensors = []
         output_tensors = []
     forward_data_store = []
-
+    
+    p2p_communication.warm_up_comm_group(config=config)
     # Run warmup forward passes.
     for i in range(num_warmup_microbatches):
         # Decide to checkpoint all layers' activations of the current micro-batch

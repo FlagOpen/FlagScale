@@ -5,10 +5,14 @@
 import os
 import sys
 import torch
+import torch.distributed
 
-from megatron.core import Timers, init_num_microbatches_calculator
+from megatron.core import Timers
+from megatron.core.num_microbatches_calculator import init_num_microbatches_calculator
 from megatron.training import dist_signal_handler
 from megatron.training.tokenizer import build_tokenizer
+
+from flagscale.train import get_parallel_context  
 
 _GLOBAL_ARGS = None
 _GLOBAL_TOKENIZER = None
@@ -87,6 +91,7 @@ def set_global_variables(args, build_tokenizer=True):
         args.global_batch_size,
         args.micro_batch_size,
         args.data_parallel_size,
+        args.decrease_batch_size_if_needed,
     )
     if build_tokenizer:
         _ = _build_tokenizer(args)
@@ -120,7 +125,7 @@ def set_global_writers(args):
     if is_last_rank():
         ranks_list = torch.distributed.get_process_group_ranks(mpu.get_model_parallel_group())
         ranks_tensor = torch.tensor(ranks_list, dtype=torch.int, device='cuda') 
-    torch.distributed.all_reduce(ranks_tensor)
+    torch.distributed.all_reduce(ranks_tensor, group = mpu.get_model_parallel_group())
     if torch.distributed.get_rank() in ranks_tensor.tolist(): 
         _set_wandb_writer(args)
 
@@ -221,7 +226,7 @@ def _set_one_logger(args):
             }
             one_logger = OneLogger(config=config)
             _GLOBAL_ONE_LOGGER = one_logger
-        except BaseException:
+        except Exception:
             print('WARNING: one_logger package is required to enable e2e metrics '
                   'tracking. please go to '
                   'https://confluence.nvidia.com/display/MLWFO/Package+Repositories'
@@ -238,7 +243,7 @@ def _set_adlr_autoresume(args):
         sys.path.append(os.environ.get('SUBMIT_SCRIPTS', '.'))
         try:
             from userlib.auto_resume import AutoResume
-        except BaseException:
+        except ImportError:
             print('ADLR autoresume is not available, exiting ...')
             sys.exit()
 
@@ -280,3 +285,28 @@ def set_device_type(args):
     # Apply the following patch during the import time
     import patches
 
+
+def destroy_global_vars():
+    global _GLOBAL_ARGS
+    _GLOBAL_ARGS = None
+
+    global _GLOBAL_TOKENIZER
+    _GLOBAL_TOKENIZER = None
+
+    global _GLOBAL_TENSORBOARD_WRITER
+    _GLOBAL_TENSORBOARD_WRITER = None
+
+    global _GLOBAL_WANDB_WRITER
+    _GLOBAL_WANDB_WRITER = None
+
+    global _GLOBAL_ONE_LOGGER
+    _GLOBAL_ONE_LOGGER = None
+
+    global _GLOBAL_ADLR_AUTORESUME
+    _GLOBAL_ADLR_AUTORESUME = None
+
+    global _GLOBAL_TIMERS
+    _GLOBAL_TIMERS = None
+
+    global _GLOBAL_SIGNAL_HANDLER
+    _GLOBAL_SIGNAL_HANDLER = None

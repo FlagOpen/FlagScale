@@ -34,9 +34,15 @@ from megatron.training.initialize import set_jit_fusion_options
 from megatron.training.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.legacy.data.data_samplers import build_pretraining_data_loader
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
+from megatron.core.parallel_state import (
+    destroy_global_memory_buffer,
+    destroy_model_parallel,
+)
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.num_microbatches_calculator import (
+    destroy_num_microbatches_calculator,
     get_current_global_batch_size,
+    get_current_running_global_batch_size,
     get_num_microbatches,
     update_num_microbatches)
 
@@ -50,8 +56,10 @@ from .utils import (
     report_memory,
     unwrap_model,
     append_to_progress_log,
+    update_use_dist_ckpt,
 )
 from .global_vars import (
+    destroy_global_vars,
     get_args,
     get_signal_handler,
     get_timers,
@@ -60,8 +68,16 @@ from .global_vars import (
     get_one_logger)
 from . import one_logger_utils
 
+from . import ft_integration
 
 stimer = StragglerDetector()
+
+def destroy_global_state():
+    destroy_global_vars()
+    destroy_num_microbatches_calculator()
+    destroy_global_memory_buffer()
+    destroy_model_parallel()
+    
 
 def print_datetime(string):
     """Note that this call will sync across all ranks."""
@@ -290,6 +306,11 @@ def pretrain(
     # Context used for persisting some state between checkpoint saves.
     checkpointing_context = {}
 
+    if args.enable_ft_package and ft_integration.get_rank_monitor_client() is not None:
+        ft_integration.get_rank_monitor_client().init_workload_monitoring()
+        ft_timeouts = ft_integration.get_rank_monitor_client().timeouts
+        print_rank_0(f"Fault tolerance client initialized. Timeouts: {ft_timeouts}")
+
     # Print setup timing.
     print_rank_0('done with setup ...')
     timers.log(['model-and-optimizer-setup',
@@ -319,7 +340,9 @@ def pretrain(
         if args.save and iteration != 0 and iteration % args.save_interval != 0:
             save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
                             num_floating_point_operations_so_far, checkpointing_context,
-                            train_data_iterator=train_data_iterator)
+                            train_data_iterator=train_data_iterator,
+                            ft_client=ft_integration.get_rank_monitor_client(
+                                ft_integration.StateMachineActions.SAVE_CHECKPOINT))
 
         one_logger and one_logger.log_metrics({
             'app_train_loop_finish_time': one_logger_utils.get_timestamp_in_ms()
@@ -344,6 +367,9 @@ def pretrain(
                                    iteration, process_non_loss_data_func, config,
                                    verbose=True, write_to_tensorboard=not args.skip_train)
 
+    wandb_writer = get_wandb_writer()
+    if wandb_writer:
+        wandb_writer.finish()
     maybe_finalize_async_save(blocking=True)
 
     one_logger and one_logger.log_metrics({
@@ -567,8 +593,11 @@ def setup_model_and_optimizer(model_provider_func,
             'load_checkpoint_start_time': one_logger_utils.get_timestamp_in_ms()
         })
         timers('load-checkpoint', log_level=0).start(barrier=True)
+
         args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
-            model, optimizer, opt_param_scheduler)
+                model, optimizer, opt_param_scheduler,
+                ft_client=ft_integration.get_rank_monitor_client())
+
         timers('load-checkpoint').stop(barrier=True)
         timers.log(['load-checkpoint'])
         one_logger and one_logger.log_metrics({
@@ -586,6 +615,20 @@ def setup_model_and_optimizer(model_provider_func,
         unwrapped_model[0].init_state_dict_from_bert()
         if args.fp16:
             optimizer.reload_model_params()
+
+    # Convert checkpoint format.
+    if args.ckpt_convert_format is not None:
+        load_ckpt_format = args.ckpt_format
+        args.ckpt_format = args.ckpt_convert_format
+        args.save = os.path.join(args.ckpt_convert_save, args.ckpt_convert_format)
+        update_use_dist_ckpt(args)
+        
+        save_checkpoint(args.iteration, model, optimizer, opt_param_scheduler,
+                        args.num_floating_point_operations_so_far)
+
+        print_rank_0("> converted checkpoint: %s -> %s." % (load_ckpt_format, args.ckpt_format))
+        torch.distributed.barrier()
+        exit()
 
     return model, optimizer, opt_param_scheduler
 
@@ -756,20 +799,22 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
         if wandb_writer:
             wandb_writer.log({'samples vs steps': args.consumed_train_samples},
                              iteration)
-        if args.log_learning_rate_to_tensorboard:
-            writer.add_scalar('learning-rate', learning_rate, iteration)
-            if args.decoupled_lr is not None:
-                writer.add_scalar('decoupled-learning-rate', decoupled_learning_rate, iteration)
-            writer.add_scalar('learning-rate vs samples', learning_rate,
-                              args.consumed_train_samples)
+        writer.add_scalar('learning-rate', learning_rate, iteration)
+        if args.decoupled_lr is not None:
+            writer.add_scalar('decoupled-learning-rate', decoupled_learning_rate, iteration)
+        writer.add_scalar('learning-rate vs samples', learning_rate,
+                          args.consumed_train_samples)
+        if wandb_writer:
+            wandb_writer.log({'learning-rate': learning_rate}, iteration)
+        if args.skipped_train_samples > 0:
+            writer.add_scalar('skipped-train-samples', args.skipped_train_samples, iteration)
             if wandb_writer:
-                wandb_writer.log({'learning-rate': learning_rate}, iteration)
-        if args.log_batch_size_to_tensorboard:
-            writer.add_scalar('batch-size', batch_size, iteration)
-            writer.add_scalar('batch-size vs samples', batch_size,
-                              args.consumed_train_samples)
-            if wandb_writer:
-                wandb_writer.log({'batch-size': batch_size}, iteration)
+                wandb_writer.log({'skipped-train-samples': args.skipped_train_samples}, iteration)
+        writer.add_scalar('batch-size', batch_size, iteration)
+        writer.add_scalar('batch-size vs samples', batch_size,
+                          args.consumed_train_samples)
+        if wandb_writer:
+            wandb_writer.log({'batch-size': batch_size}, iteration)
         for key in loss_dict:
             writer.add_scalar(key , loss_dict[key], iteration)
             writer.add_scalar(key + ' vs samples', loss_dict[key],
@@ -848,6 +893,9 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
             iteration, args.train_iters)
         log_string += ' consumed samples: {:12d} |'.format(
             args.consumed_train_samples)
+        if args.skipped_train_samples > 0:
+            log_string += ' skipped samples: {:12d} |'.format(
+                args.skipped_train_samples)
         log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(
             elapsed_time_per_iteration * 1000.0)
         if args.log_throughput:
@@ -957,7 +1005,9 @@ def save_checkpoint_and_time(iteration, model, optimizer, opt_param_scheduler,
         optimizer.disable_pre_hook()
     save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
                     num_floating_point_operations_so_far, checkpointing_context,
-                    non_persistent_ckpt=non_persistent_ckpt, train_data_iterator=train_data_iterator)
+                    non_persistent_ckpt=non_persistent_ckpt, train_data_iterator=train_data_iterator,
+                    ft_client=ft_integration.get_rank_monitor_client(
+                        ft_integration.StateMachineActions.SAVE_CHECKPOINT))
     if args.use_distributed_optimizer and args.overlap_param_gather:
         optimizer.enable_pre_hook()
     timers(timer_key).stop(barrier=True)
@@ -1089,16 +1139,17 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         # checkpoint should be saved. If the number of microbatches is different
         # from the previous iteration, save a checkpoint. Then run consistency check
         # to make sure training configuration is still valid.
-        update_num_microbatches(args.consumed_train_samples, consistency_check=False)
+        update_num_microbatches(args.consumed_train_samples, consistency_check=False, verbose=True)
         if get_num_microbatches() != num_microbatches and iteration != 0:
             assert get_num_microbatches() > num_microbatches, \
-                "number of microbatches should be increasing due to batch size rampup"
-            save_checkpoint_and_time(iteration, model, optimizer,
-                                     opt_param_scheduler,
-                                     num_floating_point_operations_so_far,
-                                     checkpointing_context, train_data_iterator=train_data_iterator)
+                "number of microbatches should be increasing due to batch size rampup ... %d -> %d." % (num_microbatches, get_num_microbatches())
+            if args.save is not None:
+                save_checkpoint_and_time(iteration, model, optimizer,
+                                         opt_param_scheduler,
+                                         num_floating_point_operations_so_far,
+                                         checkpointing_context, train_data_iterator=train_data_iterator)
         num_microbatches = get_num_microbatches()
-        update_num_microbatches(args.consumed_train_samples, consistency_check=True)
+        update_num_microbatches(args.consumed_train_samples, consistency_check=True, verbose=True)
 
         args.curr_iteration = iteration
         loss_dict, skipped_iter, grad_norm, num_zeros_in_grad = \
@@ -1113,9 +1164,38 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                      args.micro_batch_size * \
                      get_num_microbatches()
         args.consumed_train_samples += batch_size
+        num_skipped_samples_in_batch = (get_current_global_batch_size() -
+                                        get_current_running_global_batch_size())
+        if args.decrease_batch_size_if_needed:
+            assert num_skipped_samples_in_batch >= 0
+        else:
+            assert num_skipped_samples_in_batch == 0
+        args.skipped_train_samples += num_skipped_samples_in_batch
         num_fp_ops = num_floating_point_operations(args, batch_size)
         num_floating_point_operations_so_far += num_fp_ops
         total_flops += num_fp_ops
+
+        # Send heartbeat to FT package and update timeouts.
+        if args.enable_ft_package:
+            ft_client = ft_integration.get_rank_monitor_client(
+                ft_integration.StateMachineActions.TRAIN_HEARTBEAT)
+            if ft_client is not None:
+                ft_client.send_heartbeat()
+                # TODO we are always calculating timeouts in the current implementation
+                # if we want to rely on manually setup then we need to add additional argument
+                # to training and pass it here
+                if ft_integration.can_update_timeouts():
+                    ft_integration.get_rank_monitor_client(
+                        ft_integration.StateMachineActions.UPDATE_TIMEOUT).calculate_and_set_timeouts()
+                    print_rank_0(f'Updated FT timeouts. New values: \
+                        {ft_integration.get_rank_monitor_client().timeouts}')
+
+        # Bring CPU and GPU back in sync if on right iteration.
+        if (
+            args.train_sync_interval
+            and iteration % args.train_sync_interval == 0
+        ):
+            torch.cuda.synchronize()
 
         # Logging.
         loss_scale = optimizer.get_loss_scale().item()
@@ -1186,15 +1266,21 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                 optimizer.enable_pre_hook()
             timers('interval-time', log_level=0).start(barrier=True)
 
+
+            if args.enable_ft_package and ft_integration.get_rank_monitor_client() is not None:
+                ft_integration.get_rank_monitor_client(
+                    ft_integration.StateMachineActions.EVAL_HEARTBEAT).send_heartbeat()
+
         # Checkpointing
         saved_checkpoint = False
         if args.exit_signal_handler:
             signal_handler = get_signal_handler()
             if any(signal_handler.signals_received()):
-                save_checkpoint_and_time(iteration, model, optimizer,
-                                         opt_param_scheduler,
-                                         num_floating_point_operations_so_far,
-                                         checkpointing_context, train_data_iterator=train_data_iterator)
+                if args.save:
+                    save_checkpoint_and_time(iteration, model, optimizer,
+                                             opt_param_scheduler,
+                                             num_floating_point_operations_so_far,
+                                             checkpointing_context, train_data_iterator=train_data_iterator)
                 print_datetime('exiting program after receiving SIGTERM.')
                 exit = True
                 break
@@ -1227,7 +1313,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                 done_cuda, op=torch.distributed.ReduceOp.MAX)
             done = done_cuda.item()
             if done:
-                if not saved_checkpoint:
+                if args.save and not saved_checkpoint:
                     save_checkpoint_and_time(iteration, model, optimizer,
                                              opt_param_scheduler,
                                              num_floating_point_operations_so_far,
@@ -1263,18 +1349,21 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     writer = get_tensorboard_writer()
     if writer:
         writer.flush()
-    wandb_writer = get_wandb_writer()
-    if wandb_writer:
-        wandb_writer.finish()
 
     # Close out pre-hooks if using distributed optimizer and overlapped param gather.
     if args.use_distributed_optimizer and args.overlap_param_gather:
         optimizer.disable_pre_hook()
 
+    if args.enable_ft_package and ft_integration.get_rank_monitor_client() is not None:
+        ft_integration.get_rank_monitor_client().shutdown_workload_monitoring()
+
     maybe_finalize_async_save(True)
 
     # If any exit conditions (signal handler, duration, iterations) have been reached, exit.
     if exit:
+        wandb_writer = get_wandb_writer()
+        if wandb_writer:
+            wandb_writer.finish()
         sys.exit()
 
     return iteration, num_floating_point_operations_so_far
