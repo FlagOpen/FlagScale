@@ -533,7 +533,7 @@ def initialize_model_parallel(
     encoder_model_size = (
         encoder_tensor_model_parallel_size
         * encoder_pipeline_model_parallel_size
-        * context_parallel_size * ulysses_parallel_size
+        * context_parallel_size
     )
     decoder_model_size = (
         tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size * ulysses_parallel_size
@@ -593,6 +593,7 @@ def initialize_model_parallel(
             dp=data_parallel_size,
             pp=encoder_pipeline_model_parallel_size,
             cp=context_parallel_size,
+            usp=1,
             order=order,
             rank_offset=0,
         )
@@ -713,7 +714,7 @@ def initialize_model_parallel(
         os.environ["NCCL_COLLNET_ENABLE"] = "0"
 
     # Build the ulysses-sequence-parallel groups.
-    for ranks_with_usp in rank_generator.get_ranks('dp-usp'):
+    for ranks_with_usp in generator_wrapper('dp-usp'):
         group_with_usp = torch.distributed.new_group(
             ranks_with_usp, timeout=timeout, pg_options=get_nccl_options('dp_usp', nccl_comm_cfgs)
         )
@@ -742,7 +743,7 @@ def initialize_model_parallel(
     global _ULYSSES_SP_PARALLEL_GROUP
     global _ULYSSES_SP_PARALLEL_GLOBAL_RANKS
     assert _ULYSSES_SP_PARALLEL_GROUP is None, 'ulysses parallel group is already initialized'
-    for ranks in rank_generator.get_ranks('usp'):
+    for ranks in generator_wrapper('usp'):
         group = torch.distributed.new_group(
             ranks, timeout=timeout, pg_options=get_nccl_options('usp', nccl_comm_cfgs)
         )

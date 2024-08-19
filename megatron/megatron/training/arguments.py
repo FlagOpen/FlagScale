@@ -554,6 +554,7 @@ def validate_args(args, defaults={}):
         args.kv_channels = args.hidden_size // args.num_attention_heads
 
     if args.ulysses_sp_parallel_size > 1:
+        assert args.encoder_pipeline_model_parallel_size == 0, 'Encoder don\'t support ulysses parallel now.'
         if args.group_query_attention:
             assert args.num_query_groups % args.ulysses_sp_parallel_size == 0, \
                 'ulysses-sp-parallel-size should be a divisor of num_query_groups ' \
