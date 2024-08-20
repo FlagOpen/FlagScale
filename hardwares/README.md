@@ -1,3 +1,7 @@
+# FlagScale Hardware Adaptation Mechanism
+
+[中文](./README_CN.md)
+
 ## Background
 
 - Vendors: Simplify and expedite the adaptation process for FlagScale.
@@ -11,7 +15,9 @@
 [FlagScale](https://github.com/FlagOpen/FlagScale.git) will adopt a patch mechanism similar to Linux for managing and applying vendor-specific adaptation code, ensuring a simple, safe, and reliable process.
 
 Additionally, FlagScale will provide tools to:
-- Generate patches from vendor-adapted code automatically
+
+- Generate patches from vendor-adapted code automatically.
+
 - Assist users in automatically applying vendor-adapted code.
 
 Vendors must ensure the correctness of the adapted code, and in the future, FlagScale will also implement automated CI checks during integration.
@@ -22,16 +28,20 @@ Vendors must ensure the correctness of the adapted code, and in the future, Flag
 
 #### Homogeneous Scenario
 
-1. Adapt Code: Vendor A selects a specific commit from the FlagScale main branch for adaptation. The selected commit serves as the base commit ID (e.g., aaaa). After completing the adaptation and validation, all modified code is merged into the local main branch, forming a new current commit ID (e.g., bbbb).
+1. Adapt Code: Vendor A selects a specific commit from the FlagScale main branch for adaptation. The selected commit serves as the `base-commit-id` (e.g., aaaa). After completing the adaptation and validation, all modified code is merged into the local main branch, forming a new `current-commit-id` (e.g., bbbb).
 
-2. Generate Patch: Vendor A uses the tools provided by FlagScale to automatically generate a patch containing the adaptation code between the base commit ID and the current commit ID. This patch is created using the git format-patch command, and the `device-type` option should specify the vendor name and chip model, such as `A_X100`. Example code for generating the patch:
+2. Generate Patch: Vendor A uses the tools provided by FlagScale to automatically generate a patch containing the adaptation code between the `base-commit-id` and the `current-commit-id`. This patch is created using the git format-patch command, and the `device-type` option should specify the vendor name and chip model, such as `A_X100`. Example code for generating the patch:
 
 ```
 cd FlagScale
 python tools/patch/patch.py --device-type A_X100 --base-commit-id aaaa --current-commit-id bbbb
 ```
 
-After generating the patch, the file structure will appear as follows. You can see that Vendor A’s adaptation code is placed in the `FlagScale/hardwares/A_X100` directory, under a folder named after the base commit ID (i.e., aaaa). The patch file contains the actual adaptation content, with the base commit ID being the name of the patch file. If the `current-commit-id` option is not provided, the tool defaults to using the latest commit ID of the current branch as the current-commit-id.
+* `device-type`: Chip type.
+* `base-commit-id`: The FlagScale commit ID based during vendor adaptation.
+* `current-commit-id`: The commit ID after local modifications.
+
+After generating the patch, the file structure will appear as follows. You can see that Vendor A’s adaptation code is placed in the `FlagScale/hardwares/A_X100` directory, under a folder named after the `base-commit-id` (i.e., aaaa). The patch file contains the actual adaptation content, with the `base-commit-id` being the name of the patch file. If the `current-commit-id` option is not provided, the tool defaults to using the latest commit ID of the current branch as the `current-commit-id`.
 
 Example of the generated file structure:
 
@@ -47,7 +57,7 @@ FlagScale/
 
 #### Heterogeneous Scenario
 
-1. Adapt Code: Manufacturer B selects a specific commit-id of a required heterogeneous chip A from the FlagScale/hardwares directory (e.g., aaaa) as the `base-commit-id` for adaptation. After completing the adaptation and verification, all modified code is merged into the local main branch, forming a new `current-commit-id` (e.g., bbbb).
+1. Adapt Code: Manufacturer B selects a specific commit-id (e.g., aaaa) of a required heterogeneous chip A from the `FlagScale/hardwares` directory as the `base-commit-id` for adaptation. After completing the adaptation and verification, all modified code is merged into the local main branch, forming a new `current-commit-id` (e.g., bbbb).
 
 2. Generate Patch: The manufacturer uses the tools provided by FlagScale to automatically generate a standardized patch based on the code changes between the base-commit-id and the current-commit-id. Here is an example command:
 
@@ -82,7 +92,7 @@ FlagScale/
 
 3. Submit Patch: After the patch is successfully generated, the manufacturer can directly submit a pull request to the FlagScale main branch.
 
-## User Workflow
+### User Workflow
 
 #### Homogeneous Scenario
 
@@ -92,6 +102,11 @@ Users select the desired `commit-id` (e.g., aaaa) from the FlagScale/hardwares/A
 cd FlagScale
 python tools/patch/unpatch.py --device-type A_X100 --commit-id aaaa --dir build
 ```
+
+* `device-type`: Chip type.
+* `commit-id`: The commit id to unpatch.
+* `dir`: The directory path to place the FlagScale files after unpatching.
+
 The generated code structure is as follows. If `dir` is not provided, the tool defaults to placing the generated code in the FlagScale source directory.
 
 Example of the generated file structure:
@@ -123,7 +138,7 @@ cd FlagScale
 python tools/patch/unpatch.py --device-type A_X100 B_Y100 --commit-id aaaa --dir build
 ```
 
-The generated code structure is as follows. The `dir` is required for each unpatch operation. It is recommended to use `build` as the `dir` input; otherwise, the unpatch process may be slower.
+The generated code structure is as follows.
 
 ```
 FlagScale/
