@@ -276,7 +276,7 @@ def set_device_type(args):
 
     # Add patches package of device_type to sys.path
     base_base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    path_hard = os.path.join(base_base_path,"hardwares") 
+    path_hard = os.path.join(base_base_path,"hardware") 
     path = os.path.join(path_hard,args.device_type)
     assert os.path.exists(path), "Path {} does not exist.".format(path) 
     assert os.path.isdir(path), "Path {} is not a directory.".format(path)

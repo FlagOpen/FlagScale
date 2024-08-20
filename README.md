@@ -20,7 +20,7 @@ FlagScale provides developers with the actual configurations, optimization schem
 * 2023.11.30 We release the new version (v0.2): 
   * Provide the actually used training scheme for [Aquila2-70B-Expr](./examples/aquila/70B), including the parallel strategies, optimizations and hyper-parameter settings.
   * Support heterogeneous training on chips of different generations with the same architecture or compatible architectures, including NVIDIA GPUs and Iluvatar CoreX chips. 
-  * Support training on chinese domestic hardwares, including Iluvatar CoreX and Baidu KUNLUN chips.
+  * Support training on chinese domestic hardware, including Iluvatar CoreX and Baidu KUNLUN chips.
 
 * 2023.10.11 We release the initial version (v0.1) by supporting the Aquila models, and also provide our actually used training schemes for [Aquila2-7B](./examples/aquila/7B/pretrain_aquila_7b_distributed_A800_12n_80g.sh) and [Aquila2-34B](./examples/aquila/34B/pretrain_aquila_34b_distributed_A100_64n_40g.sh), including the parallel strategies, optimizations and hyper-parameter settings.
 

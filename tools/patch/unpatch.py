@@ -61,7 +61,7 @@ def check_hetero_txt(device_type, base_commit_id):
 def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
     """Convert FlagScale to in-place status by applying patch."""
     global path
-    patch_dir = os.path.join(path, "hardwares", device_type)
+    patch_dir = os.path.join(path, "hardware", device_type)
     if not os.path.isdir(patch_dir):
         raise FileNotFoundError(patch_dir, " is not found!")
     files_and_folders = os.listdir(patch_dir)
