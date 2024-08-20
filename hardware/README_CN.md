@@ -41,10 +41,10 @@ python tools/patch/patch.py --device-type A_X100 --base-commit-id aaaa --current
 * `base-commit-id`：厂商适配时的FlagScale commit id。
 * `current-commit-id`: 厂商适配时本地修改后的commit id。
 
-生成的文件结构如下所示，可以看出厂商A的适配代码会放到`FlagScale/hardwares/A_X100`中以`base-commit-id`为名的文件夹中（即aaaa），其中patch文件存放实际的适配内容，`base-commit-id`即是patch文件名。如果没有提供`current-commit-id`，工具默认以当前分支的最新commit id作为`current-commit-id`。
+生成的文件结构如下所示，可以看出厂商A的适配代码会放到`FlagScale/hardware/A_X100`中以`base-commit-id`为名的文件夹中（即aaaa），其中patch文件存放实际的适配内容，`base-commit-id`即是patch文件名。如果没有提供`current-commit-id`，工具默认以当前分支的最新commit id作为`current-commit-id`。
 ```
 FlagScale/
-├── hardwares/
+├── hardware/
 │   └── A_X100/
 │       └── aaaa/
 │           └── aaaa.patch
@@ -54,7 +54,7 @@ FlagScale/
 
 #### 异构场景
 
-1. 适配代码：厂商B从`FlagScale/hardwares`目录中选择所需异构芯片A的某个commit-id (假设aaaa)进行适配，所选择的commit作为`base-commit-id`。适配和验证完成后，将所有修改代码合入到本地main分支，形成新的`current-commit-id` (假设bbbb)。
+1. 适配代码：厂商B从`FlagScale/hardware`目录中选择所需异构芯片A的某个commit-id (假设aaaa)进行适配，所选择的commit作为`base-commit-id`。适配和验证完成后，将所有修改代码合入到本地main分支，形成新的`current-commit-id` (假设bbbb)。
 
 2. 进行patch：厂商使用FlagScale所提供的工具自动将`base-commit-id`到`current-commit-id`之间的适配代码生成符合规范patch，示例代码如下：
 
@@ -78,7 +78,7 @@ FlagScale/
 |       |-- patch.py
 |       |-- unpatch.py
 |       |-- hetero.txt
-|-- hardwares/
+|-- hardware/
 |   |-- A_X100/
 |       |-- aaaa/
 |           |-- aaaa.patch
@@ -93,7 +93,7 @@ FlagScale/
 
 #### 同构场景
 
-用户从`FlagScale/hardwares/A`目录选择所需`commit-id`（假设aaaa），然后使用FlagScale所提供的工具在指定目录（假设build）自动生成能在厂商硬件上执行的代码。示例代码如下：
+用户从`FlagScale/hardware/A`目录选择所需`commit-id`（假设aaaa），然后使用FlagScale所提供的工具在指定目录（假设build）自动生成能在厂商硬件上执行的代码。示例代码如下：
 
 ```
 cd FlagScale
@@ -112,7 +112,7 @@ FlagScale/
 |   |-- patch/
 |       |-- patch.py
 |       |-- unpatch.py
-|-- hardwares
+|-- hardware
 |   |-- A_X100/
 |       |-- aaaa/
 |           |-- aaaa.patch
@@ -141,7 +141,7 @@ FlagScale/
 |   |-- patch/
 |       |-- patch.py
 |       |-- unpatch.py
-|-- hardwares
+|-- hardware
 |   |-- A_X100/
 |       |-- aaaa/
 |           |-- aaaa.patch
@@ -159,7 +159,7 @@ FlagScale/
 
 * 问题1 ：如何迭代适配？
 
-厂商只需从FlagScale main分支选择所需`base-commit-id`进行适配，工具在`hardwares`下的厂商目录生成以commit-id为名的新文件夹存放新的适配内容。如果`base-commit-id`已经适配过，将会覆盖上次适配内容。
+厂商只需从FlagScale main分支选择所需`base-commit-id`进行适配，工具在`hardware`下的厂商目录生成以commit-id为名的新文件夹存放新的适配内容。如果`base-commit-id`已经适配过，将会覆盖上次适配内容。
 
 * 问题2：使用工具失败怎么办？
 

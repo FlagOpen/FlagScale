@@ -41,13 +41,13 @@ python tools/patch/patch.py --device-type A_X100 --base-commit-id aaaa --current
 * `base-commit-id`: The FlagScale commit ID based during vendor adaptation.
 * `current-commit-id`: The commit ID after local modifications.
 
-After generating the patch, the file structure will appear as follows. You can see that Vendor A’s adaptation code is placed in the `FlagScale/hardwares/A_X100` directory, under a folder named after the `base-commit-id` (i.e., aaaa). The patch file contains the actual adaptation content, with the `base-commit-id` being the name of the patch file. If the `current-commit-id` option is not provided, the tool defaults to using the latest commit ID of the current branch as the `current-commit-id`.
+After generating the patch, the file structure will appear as follows. You can see that Vendor A’s adaptation code is placed in the `FlagScale/hardware/A_X100` directory, under a folder named after the `base-commit-id` (i.e., aaaa). The patch file contains the actual adaptation content, with the `base-commit-id` being the name of the patch file. If the `current-commit-id` option is not provided, the tool defaults to using the latest commit ID of the current branch as the `current-commit-id`.
 
 Example of the generated file structure:
 
 ```
 FlagScale/
-├── hardwares/
+├── hardware/
 │   └── A_X100/
 │       └── aaaa/
 │           └── aaaa.patch
@@ -57,7 +57,7 @@ FlagScale/
 
 #### Heterogeneous Scenario
 
-1. Adapt Code: Manufacturer B selects a specific commit-id (e.g., aaaa) of a required heterogeneous chip A from the `FlagScale/hardwares` directory as the `base-commit-id` for adaptation. After completing the adaptation and verification, all modified code is merged into the local main branch, forming a new `current-commit-id` (e.g., bbbb).
+1. Adapt Code: Manufacturer B selects a specific commit-id (e.g., aaaa) of a required heterogeneous chip A from the `FlagScale/hardware` directory as the `base-commit-id` for adaptation. After completing the adaptation and verification, all modified code is merged into the local main branch, forming a new `current-commit-id` (e.g., bbbb).
 
 2. Generate Patch: The manufacturer uses the tools provided by FlagScale to automatically generate a standardized patch based on the code changes between the base-commit-id and the current-commit-id. Here is an example command:
 
@@ -81,7 +81,7 @@ FlagScale/
 |       |-- patch.py
 |       |-- unpatch.py
 |       |-- hetero.txt
-|-- hardwares/
+|-- hardware/
 |   |-- A_X100/
 |       |-- aaaa/
 |           |-- aaaa.patch
@@ -96,7 +96,7 @@ FlagScale/
 
 #### Homogeneous Scenario
 
-Users select the desired `commit-id` (e.g., aaaa) from the FlagScale/hardwares/A directory and use the provided tool to automatically generate code that can execute on the vendor's hardware in a specified directory `dir` (e.g., build). Example command:
+Users select the desired `commit-id` (e.g., aaaa) from the FlagScale/hardware/A directory and use the provided tool to automatically generate code that can execute on the vendor's hardware in a specified directory `dir` (e.g., build). Example command:
 
 ```
 cd FlagScale
@@ -117,7 +117,7 @@ FlagScale/
 |   |-- patch/
 |       |-- patch.py
 |       |-- unpatch.py
-|-- hardwares
+|-- hardware
 |   |-- A_X100/
 |       |-- aaaa/
 |           |-- aaaa.patch
@@ -146,7 +146,7 @@ FlagScale/
 |   |-- patch/
 |       |-- patch.py
 |       |-- unpatch.py
-|-- hardwares
+|-- hardware
 |   |-- A_X100/
 |       |-- aaaa/
 |           |-- aaaa.patch
@@ -164,7 +164,7 @@ FlagScale/
 
 * Question: How to iterate adaptation?
 
-Vendors only need to select the desired `base-commit-id` from the FlagScale main branch for adaptation. The tool will create a new folder named after the commit-id under the vendor directory in hardwares to store the new adaptation content. If the `base-commit-id` has been adapted before, the new content will overwrite the previous adaptation.
+Vendors only need to select the desired `base-commit-id` from the FlagScale main branch for adaptation. The tool will create a new folder named after the commit-id under the vendor directory in hardware to store the new adaptation content. If the `base-commit-id` has been adapted before, the new content will overwrite the previous adaptation.
 
 * Question: What to do if the tool failed?
 
