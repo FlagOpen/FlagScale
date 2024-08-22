@@ -288,7 +288,7 @@ def get_rng_state(use_dist_ckpt: bool = False):
         tp_rank = mpu.get_tensor_model_parallel_rank()
         tp_size = mpu.get_tensor_model_parallel_world_size()
         rng_state_list = ShardedObject('rng_state', rng_state_list, (pp_size, tp_size), (pp_rank, tp_rank),
-                                       replica_id=mpu.get_data_parallel_rank(with_context_parallel=True))
+                                       replica_id=mpu.get_data_parallel_rank(with_context_parallel=True, with_ulysses_sp_parallel=True))
 
     return rng_state_list
 
@@ -397,7 +397,7 @@ def save_checkpoint(iteration, model, optimizer, opt_param_scheduler, num_floati
                 if args.ckpt_assume_constant_structure and args.ckpt_format == 'torch_dist':
                     save_strategy.use_cached_ckpt_structure = args.ckpt_assume_constant_structure
                 if args.ckpt_fully_parallel_save:
-                    save_strategy = FullyParallelSaveStrategyWrapper(save_strategy, mpu.get_data_parallel_group(with_context_parallel=True),
+                    save_strategy = FullyParallelSaveStrategyWrapper(save_strategy, mpu.get_data_parallel_group(with_context_parallel=True, with_ulysses_sp_parallel=True),
                                                                      args.ckpt_assume_constant_structure)
             # Store save strategy for future checkpoint saves
             if checkpointing_context is not None:
@@ -716,7 +716,7 @@ def _load_global_dist_base_checkpoint(
     # NOTE: `args.ckpt_fully_parallel_load` applies to both persistent and non-persistent checkpoints.
     if args.ckpt_fully_parallel_load:
         load_strategy = FullyParallelLoadStrategyWrapper(
-            load_strategy, mpu.get_data_parallel_group(with_context_parallel=True)
+            load_strategy, mpu.get_data_parallel_group(with_context_parallel=True, with_ulysses_sp_parallel=True)
         )
     state_dict = dist_checkpointing.load(sharded_state_dict, checkpoint_name, load_strategy, strict=args.dist_ckpt_strictness)
     return state_dict, checkpoint_name, release

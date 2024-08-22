@@ -175,6 +175,7 @@ class ProcessMesh:
             dp=data_parallel_size,
             pp=pipeline_model_parallel_size,
             cp=context_parallel_size,
+            usp=1,
             order=order,
         )
 
@@ -465,7 +466,7 @@ class ParallelContext:
                 expert_model_parallel_size=ep,
                 nccl_communicator_config_path=self._args.nccl_communicator_config_path,
                 distributed_timeout_minutes=self._args.distributed_timeout_minutes,
-                order='tp-cp-ep-dp-pp' if not self._args.use_tp_pp_dp_mapping else 'tp-pp-dp',
+                order='tp-usp-cp-ep-dp-pp' if not self._args.use_tp_pp_dp_mapping else 'tp-pp-dp',
                 offset=accumulated_world_size,
                 rank_mapper=self._rank_mapper,
             )

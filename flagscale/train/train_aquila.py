@@ -28,6 +28,7 @@ from megatron.core.models.gpt import GPTModel
 from megatron.core.utils import StragglerDetector
 from megatron.core.transformer.spec_utils import import_module
 from megatron.training.utils import (
+    get_batch_on_this_ulysses_sp_rank,
     get_batch_on_this_cp_rank,
     get_batch_on_this_tp_rank,
 )
@@ -114,7 +115,10 @@ def get_batch(data_iterator):
 
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
-
+    
+    # slice batch along sequence dimension for ulysses sequence parallelism
+    batch = get_batch_on_this_ulysses_sp_rank(batch)
+    
     return batch.values()
 
 
@@ -138,6 +142,9 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
     total_tokens = loss_mask.sum()
     loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
 
+    if args.ulysses_sp_parallel_size > 1:
+        torch.distributed.all_reduce(loss, group=mpu.get_ulysses_sp_parallel_group())
+
     if args.context_parallel_size > 1:
         torch.distributed.all_reduce(loss, group=mpu.get_context_parallel_group())
 
@@ -155,7 +162,7 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
 
     local_num_tokens = loss[1].clone().detach().to(torch.int)
     return (
-        loss[0] * args.context_parallel_size,
+        loss[0] * args.context_parallel_size * args.ulysses_sp_parallel_size,
         local_num_tokens,
         {'lm loss': (reporting_loss[0], reporting_loss[1])},
     )
