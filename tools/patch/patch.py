@@ -43,10 +43,10 @@ def _add_auto_generate_args():
 
 
 def get_output_path(device_type, base_commit_id):
-    """Get the output path to save patch file in hardwares directory."""
+    """Get the output path to save patch file in hardware directory."""
     global path
-    device_path = os.path.join(path, "hardwares", str(device_type))
-    patch_path = os.path.join(path, "hardwares", str(device_type), base_commit_id)
+    device_path = os.path.join(path, "hardware", str(device_type))
+    patch_path = os.path.join(path, "hardware", str(device_type), base_commit_id)
     if not os.path.isdir(device_path):
         os.makedirs(device_path)
     return device_path, patch_path
@@ -136,7 +136,7 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     hetero_str = "{}: ".format(base_commit_id)
     for device in device_type[:-1]:
         hetero_str = hetero_str + " " + str(device)
-        base_commit_id_path = os.path.join(path, "hardwares", device, base_commit_id)
+        base_commit_id_path = os.path.join(path, "hardware", device, base_commit_id)
         if not os.path.exists(base_commit_id_path):
             raise FileNotFoundError("{} is not found".format(base_commit_id_path))
     now_device_type = device_type[-1]

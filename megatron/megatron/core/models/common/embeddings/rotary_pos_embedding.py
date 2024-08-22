@@ -24,7 +24,7 @@ try:
     )
 
     HAVE_APPLY_ROPE_FUSION = True
-except:
+except ImportError:
     HAVE_APPLY_ROPE_FUSION = False
 
 
@@ -44,6 +44,22 @@ def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
     pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], -1, *pos_emb.shape[(seq_dim + 2) :])
     return pos_emb
 
+def get_pos_emb_on_this_usp_rank(pos_emb, seq_dim):
+    '''
+    Ulysses sequence
+    '''
+    usp_size = parallel_state.get_ulysses_sp_parallel_world_size()
+    usp_rank = parallel_state.get_ulysses_sp_parallel_rank()
+    usp_idx = torch.tensor(
+        [usp_rank], device="cpu", pin_memory=True
+    ).cuda(non_blocking=True)
+    pos_emb = pos_emb.view(
+        *pos_emb.shape[:seq_dim], usp_size, -1, *pos_emb.shape[(seq_dim + 1) :]
+    )
+    pos_emb = pos_emb.index_select(seq_dim, usp_idx)
+    pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], -1, *pos_emb.shape[(seq_dim + 2) :])
+    return pos_emb
+
 
 class RotaryEmbedding(nn.Module):
     """Rotary Embedding for language model.
@@ -53,6 +69,7 @@ class RotaryEmbedding(nn.Module):
         rotary_percent (float): Percent of rotary dimension to use for rotary position embeddings.
         seq_len_interpolation_factor (float, optional): scale of linearly interpolating RoPE for longer sequences. The value must be a float larger than 1.0. Defaults to None
         rotary_base (int, optional): Base period for rotary position embeddings. Defaults to 10000.
+        use_cpu_initialization (bool, optional): If False, initialize the inv_freq directly on the GPU. Defaults to False
     """
 
     def __init__(
@@ -62,6 +79,7 @@ class RotaryEmbedding(nn.Module):
         rotary_interleaved: bool = False,
         seq_len_interpolation_factor: float = None,
         rotary_base: int = 10000,
+        use_cpu_initialization: bool = False,
     ) -> None:
         super().__init__()
 
@@ -71,12 +89,9 @@ class RotaryEmbedding(nn.Module):
         self.rotary_interleaved = rotary_interleaved
 
         self.seq_len_interpolation_factor = seq_len_interpolation_factor
+        device = 'cpu' if use_cpu_initialization else torch.cuda.current_device()
         self.inv_freq = 1.0 / (
-            rotary_base
-            ** (
-                torch.arange(0, dim, 2, dtype=torch.float32, device=torch.cuda.current_device())
-                / dim
-            )
+            rotary_base ** (torch.arange(0, dim, 2, dtype=torch.float32, device=device) / dim)
         )
 
     def forward(self, max_seq_len: int, offset: int = 0) -> Tensor:
@@ -89,6 +104,9 @@ class RotaryEmbedding(nn.Module):
         Returns:
             Tensor: Embeddings after applying RoPE.
         """
+        if self.inv_freq.device.type == 'cpu':
+            # move `inv_freq` to GPU once at the first micro-batch forward pass
+            self.inv_freq = self.inv_freq.to(device=torch.cuda.current_device())
         seq = (
             torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
             + offset
@@ -111,6 +129,8 @@ class RotaryEmbedding(nn.Module):
         if parallel_state.get_context_parallel_world_size() > 1:
             # slice rotary_pos_emb along sequence dimension and select the parition of the current CP rank
             emb = get_pos_emb_on_this_cp_rank(emb, 0)
+        if parallel_state.get_ulysses_sp_parallel_world_size() > 1:
+            emb = get_pos_emb_on_this_usp_rank(emb, 0)
         return emb
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
@@ -144,9 +164,9 @@ class RotaryEmbedding(nn.Module):
                 rotary_seq_len = transformer_input.size(0)
 
             if transformer_config.sequence_parallel:
-                rotary_seq_len *= transformer_config.tensor_model_parallel_size
+                rotary_seq_len *= parallel_state.get_tensor_model_parallel_world_size()
 
-        rotary_seq_len *= transformer_config.context_parallel_size
+        rotary_seq_len *= transformer_config.context_parallel_size * transformer_config.ulysses_sp_parallel_size
 
         return rotary_seq_len
 
@@ -199,7 +219,6 @@ def apply_rotary_pos_emb_bshd(t: Tensor, freqs: Tensor, rotary_interleaved: bool
 def apply_rotary_pos_emb_thd(
     t: Tensor, cu_seqlens: Tensor, freqs: Tensor, rotary_interleaved: bool = False
 ) -> Tensor:
-
     """A baseline implementation of applying RoPE for `thd` format.
 
     Args:
@@ -222,7 +241,7 @@ def apply_rotary_pos_emb_thd(
 
 
 def apply_rotary_pos_emb(
-    t: Tensor, freqs: Tensor, config: TransformerConfig, cu_seqlens: Optional[Tensor] = None,
+    t: Tensor, freqs: Tensor, config: TransformerConfig, cu_seqlens: Optional[Tensor] = None
 ):
     """
     Reroute to the appropriate apply_rotary_pos_emb function depending on

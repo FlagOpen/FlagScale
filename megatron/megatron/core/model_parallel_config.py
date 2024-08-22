@@ -38,6 +38,9 @@ class ModelParallelConfig:
 
     context_parallel_size: int = 1
     """Splits network input along sequence dimension across GPU ranks."""
+    
+    ulysses_sp_parallel_size: int = 1
+    """Splits network input along sequence dimension across GPU ranks using deepspeed-ulysses method."""
 
     expert_model_parallel_size: int = 1
     """Distributes Moe Experts across sub data parallel dimension."""
@@ -201,6 +204,16 @@ class ModelParallelConfig:
     cross_entropy_loss_fusion: bool = False
     """If this is enabled, the fused cross entropy implementation would be used.
        Defaults to False.
+    """
+
+    tp_comm_overlap_disable_qkv: bool = False
+    """
+       If true, the AllGather -> Gemm overlap for QKV gets disabled
+    """
+
+    tp_comm_overlap_disable_fc1: bool = False
+    """
+       If true, the AllGather -> Gemm overlap for FC1 layer of MLP gets disabled
     """
 
     ###################

@@ -1,0 +1,1 @@
+All the requirements are copied from the original repository. The original repository is available at https://github.com/vllm-project/vllm.git.

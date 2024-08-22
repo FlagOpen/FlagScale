@@ -1,3 +1,0 @@
-# pip install git+https://github.com/fanshiqing/grouped_gemm@v1.0
-nltk
-wrapt

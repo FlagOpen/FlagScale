@@ -1,20 +1,21 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 
-import pytest
-from pkg_resources import packaging
 from importlib.metadata import version
+
+import pytest
 import torch
+from pkg_resources import packaging
 
 from megatron.core import parallel_state
-from megatron.core.dist_checkpointing import save, load, load_plain_tensors
+from megatron.core.dist_checkpointing import load, load_plain_tensors, save
 from megatron.core.dist_checkpointing.dict_utils import diff
 from megatron.core.dist_checkpointing.serialization import (
-    get_default_save_sharded_strategy,
     get_default_load_sharded_strategy,
+    get_default_save_sharded_strategy,
 )
 from megatron.core.dist_checkpointing.strategies.fully_parallel import (
-    FullyParallelSaveStrategyWrapper,
     FullyParallelLoadStrategyWrapper,
+    FullyParallelSaveStrategyWrapper,
 )
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
 from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed
@@ -24,6 +25,7 @@ from tests.unit_tests.dist_checkpointing import TempNamedDir
 from tests.unit_tests.test_utilities import Utils
 
 _te_version = packaging.version.Version(version("transformer-engine"))
+
 
 def initialize_expert_layer(seed, glu=True, moe_grouped_gemm=False, **config_kwargs):
     torch.manual_seed(seed)
@@ -61,13 +63,21 @@ def get_pp_offsets():
     pp_size = parallel_state.get_pipeline_model_parallel_world_size()
     return ((0, pp_rank, pp_size),)
 
+
 moe_grouped_gemm_options = [False]
 if _te_version >= packaging.version.Version("1.9.0.dev0"):
     moe_grouped_gemm_options.append(True)
 
+
 class TestExpertLayerReconfiguration:
     def setup_class(cls):
         Utils.initialize_distributed()
+
+    def setup_method(self, method):
+        pass
+
+    def teardown_method(self, method):
+        Utils.destroy_model_parallel()
 
     @pytest.mark.parametrize(
         "use_fpsl,src_tp_pp_exp,dest_tp_pp_exp,use_glu",
@@ -92,16 +102,16 @@ class TestExpertLayerReconfiguration:
     def test_parallel_reconfiguration_e2e(
         self, tmp_path_dist_ckpt, src_tp_pp_exp, dest_tp_pp_exp, use_glu, use_fpsl, moe_grouped_gemm
     ):
-        """ Test model saving and loading with different TP/PP/expert parallelism """
+        """Test model saving and loading with different TP/PP/expert parallelism"""
         src_tp, src_pp, src_exp = src_tp_pp_exp
         dest_tp, dest_pp, dest_exp = dest_tp_pp_exp
+        # Save checkpoint A
+        Utils.initialize_model_parallel(src_tp, src_pp, expert_model_parallel_size=src_exp)
         with TempNamedDir(
             tmp_path_dist_ckpt / 'test_expert_layer_reconfiguration_model_A'
         ) as ckpt_dir_A, TempNamedDir(
             tmp_path_dist_ckpt / 'test_expert_layer_reconfiguration_model_B'
         ) as ckpt_dir_B:
-            # Save checkpoint A
-            Utils.initialize_model_parallel(src_tp, src_pp, expert_model_parallel_size=src_exp)
             model_A = initialize_expert_layer(1, use_glu, moe_grouped_gemm)
             sharded_state_dict = model_A.sharded_state_dict(sharded_offsets=get_pp_offsets())
 
@@ -176,16 +186,17 @@ class TestExpertLayerReconfiguration:
     def test_sequential_grouped_mlp_interchangeable(
         self, tmp_path_dist_ckpt, src_tp_pp_exp, dest_tp_pp_exp, use_glu, src_module
     ):
-        """ Test model saving and loading with different TP/PP/expert parallelism """
+        """Test model saving and loading with different TP/PP/expert parallelism"""
         src_tp, src_pp, src_exp = src_tp_pp_exp
         dest_tp, dest_pp, dest_exp = dest_tp_pp_exp
+        # Save checkpoint A
+        Utils.initialize_model_parallel(src_tp, src_pp, expert_model_parallel_size=src_exp)
         with TempNamedDir(
             tmp_path_dist_ckpt / 'test_sequential_grouped_mlp_interchangeable_model_A'
         ) as ckpt_dir_A, TempNamedDir(
             tmp_path_dist_ckpt / 'test_sequential_grouped_mlp_interchangeable_model_B'
         ) as ckpt_dir_B:
-            # Save checkpoint A
-            Utils.initialize_model_parallel(src_tp, src_pp, expert_model_parallel_size=src_exp)
+
             model_A = initialize_expert_layer(
                 1, use_glu, moe_grouped_gemm=src_module != 'sequential'
             )

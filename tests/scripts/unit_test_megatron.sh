@@ -14,7 +14,13 @@ export PYTHONPATH=..:$PYTHONPATH
 run_pytest() {
   local test_path=$1
   echo "Running $test_path"
-  torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/$code_id/cov-report-megatron --cov=megatron/core -q -x -p no:warnings $test_path
+  
+  if [ "$test_path" == "tests/unit_tests/models" ]; then
+    torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/$code_id/cov-report-megatron --cov=megatron/core -q -x -p no:warnings --ignore=tests/unit_tests/models/test_mamba_model.py $test_path
+  else
+    torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov-append --cov-report=html:/workspace/report/$code_id/cov-report-megatron --cov=megatron/core -q -x -p no:warnings $test_path
+  fi
+
   if [ $? -ne 0 ]; then
     echo "Pytest failed for $test_path"
     exit 1

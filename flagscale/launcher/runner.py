@@ -366,7 +366,8 @@ def _get_runner_cmd_train(
         del runner_args["master_addr"]
     if "master_port" in runner_args:
         del runner_args["master_port"]
-
+    if "ssh_port" in runner_args:
+        del runner_args["ssh_port"]
     runner_args["rdzv_id"] = rdzv_id
     # runner_args["master_addr"] = master_addr
     # runner_args["master_port"] = master_port

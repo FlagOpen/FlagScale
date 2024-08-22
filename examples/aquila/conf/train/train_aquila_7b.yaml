@@ -40,7 +40,7 @@ model:
   train_samples: 1002539063
   eval_iters: 0
   micro_batch_size: 2
-  global_batch_size: 1728 
+  global_batch_size: 1728
   seed: 1234
 
   optimizer:
