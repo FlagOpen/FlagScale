@@ -14,6 +14,7 @@ system:
     wandb_project: mixtral
     wandb_exp_name: mixtral-8x7b
   checkpoint:
+    ckpt_format: torch
     save_interval: 10000
 
 
@@ -34,7 +35,7 @@ model:
   hidden_dropout: 0.0
   disable_bias_linear: true
   position_embedding_type: rope
-  rotary_base: 1000000.0
+  rotary_base: 1000000
   no_position_embedding: true
   no_masked_softmax_fusion: true
   untie_embeddings_and_output_weights: true
