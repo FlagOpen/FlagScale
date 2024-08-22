@@ -12,7 +12,8 @@ from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
 from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
-from megatron.core.transformer.ulysses_sp_attention import USPSelfAttention
+
+from flagscale.train.transformer.ulysses_sp_attention import USPSelfAttention
 
 try:
     from megatron.core.transformer.custom_layers.transformer_engine import (

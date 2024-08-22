@@ -175,6 +175,7 @@ class ProcessMesh:
             dp=data_parallel_size,
             pp=pipeline_model_parallel_size,
             cp=context_parallel_size,
+            usp=1,
             order=order,
         )
 
