@@ -14,6 +14,8 @@ from ..utils import log_single_rank
 from .distributed_data_parallel_config import DistributedDataParallelConfig
 from .param_and_grad_buffer import ParamAndGradBuffer
 
+from flagscale.train import parallel_state as fs_ps
+
 logger = logging.getLogger(__name__)
 
 
@@ -173,7 +175,7 @@ class DistributedDataParallel(MegatronModule):
         # Allocate the param+grad buffers for dense params' grads.
         self.buffers = allocate_buffers_for_parameters(
             dense_params,
-            parallel_state.get_data_parallel_group(with_context_parallel=True, with_ulysses_sp_parallel=True),
+            fs_ps.get_data_parallel_group(with_context_parallel=True, with_ulysses_sp_parallel=True),
             gradient_scaling_factor=gradient_scaling_factor,
         )
 

@@ -18,6 +18,8 @@ from megatron.core.utils import (
     get_model_xattn,
 )
 
+from flagscale.train import parallel_state as fs_ps
+
 # Types
 Shape = Union[List[int], torch.Size]
 
@@ -622,9 +624,9 @@ def forward_backward_pipelining_with_interleaving(
         )
 
     tensor_shape = [seq_length, micro_batch_size, config.hidden_size]
-    tensor_shape[0] = tensor_shape[0] // parallel_state.get_context_parallel_world_size() // parallel_state.get_ulysses_sp_parallel_world_size()
+    tensor_shape[0] = tensor_shape[0] // fs_ps.get_context_parallel_world_size() // fs_ps.get_ulysses_sp_parallel_world_size()
     if config.sequence_parallel:
-        tensor_shape[0] = tensor_shape[0] // parallel_state.get_tensor_model_parallel_world_size()
+        tensor_shape[0] = tensor_shape[0] // fs_ps.get_tensor_model_parallel_world_size()
 
     # Compute number of warmup and remaining microbatches.
     num_model_chunks = len(model)
@@ -1154,9 +1156,9 @@ def get_tensor_shapes(
     # Otherwise, send one tensor.
     tensor_shapes = []
 
-    seq_length = seq_length // parallel_state.get_context_parallel_world_size() // parallel_state.get_ulysses_sp_parallel_world_size()
+    seq_length = seq_length // parallel_state.get_context_parallel_world_size() // fs_ps.get_ulysses_sp_parallel_world_size()
     if model_type == ModelType.encoder_and_decoder:
-        decoder_seq_length = decoder_seq_length // parallel_state.get_context_parallel_world_size() // parallel_state.get_ulysses_sp_parallel_world_size()
+        decoder_seq_length = decoder_seq_length // parallel_state.get_context_parallel_world_size() // fs_ps.get_ulysses_sp_parallel_world_size()
 
     if config.sequence_parallel:
         seq_length = seq_length // parallel_state.get_tensor_model_parallel_world_size()

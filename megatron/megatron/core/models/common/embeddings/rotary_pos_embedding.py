@@ -15,6 +15,8 @@ from torch import Tensor, nn
 
 from megatron.core import parallel_state
 
+from flagscale.train import parallel_state as fs_ps
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -48,8 +50,8 @@ def get_pos_emb_on_this_usp_rank(pos_emb, seq_dim):
     '''
     Ulysses sequence
     '''
-    usp_size = parallel_state.get_ulysses_sp_parallel_world_size()
-    usp_rank = parallel_state.get_ulysses_sp_parallel_rank()
+    usp_size = fs_ps.get_ulysses_sp_parallel_world_size()
+    usp_rank = fs_ps.get_ulysses_sp_parallel_rank()
     usp_idx = torch.tensor(
         [usp_rank], device="cpu", pin_memory=True
     ).cuda(non_blocking=True)
@@ -129,7 +131,7 @@ class RotaryEmbedding(nn.Module):
         if parallel_state.get_context_parallel_world_size() > 1:
             # slice rotary_pos_emb along sequence dimension and select the parition of the current CP rank
             emb = get_pos_emb_on_this_cp_rank(emb, 0)
-        if parallel_state.get_ulysses_sp_parallel_world_size() > 1:
+        if fs_ps.get_ulysses_sp_parallel_world_size() > 1:
             emb = get_pos_emb_on_this_usp_rank(emb, 0)
         return emb
 

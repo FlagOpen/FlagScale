@@ -41,6 +41,7 @@ from megatron.core.models.gpt.gpt_layer_specs import (
 from flagscale.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
 from flagscale.train.extra_valid import extra_valid_dataset_provider
 from flagscale.train.train import pretrain
+from flagscale.train import parallel_state as fs_ps
 
 
 stimer = StragglerDetector()
@@ -143,7 +144,7 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
     loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
 
     if args.ulysses_sp_parallel_size > 1:
-        torch.distributed.all_reduce(loss, group=mpu.get_ulysses_sp_parallel_group())
+        torch.distributed.all_reduce(loss, group=fs_ps.get_ulysses_sp_parallel_group())
 
     if args.context_parallel_size > 1:
         torch.distributed.all_reduce(loss, group=mpu.get_context_parallel_group())

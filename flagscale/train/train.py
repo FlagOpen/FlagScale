@@ -43,7 +43,6 @@ from megatron.legacy.data.data_samplers import build_pretraining_data_loader
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.parallel_state import (
     destroy_global_memory_buffer,
-    destroy_model_parallel,
 )
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.num_microbatches_calculator import (
@@ -79,7 +78,7 @@ from megatron.training import ft_integration
 from flagscale.train.extra_valid import extra_evaluate_and_print_results
 from flagscale.train.extra_valid import build_extra_valid_data_iterators
 from flagscale.train.stablelm2_scheduler import StableLM2SchedulerConfig
-
+from flagscale.train.parallel_state import destroy_model_parallel
 
 stimer = StragglerDetector()
 

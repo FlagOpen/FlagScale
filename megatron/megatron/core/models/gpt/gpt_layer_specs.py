@@ -13,6 +13,7 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
 from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
 
+from flagscale.train import parallel_state as fs_ps
 from flagscale.train.transformer.ulysses_sp_attention import USPSelfAttention
 
 try:
@@ -56,7 +57,7 @@ def get_gpt_layer_with_transformer_engine_spec(
         module=TransformerLayer,
         submodules=TransformerLayerSubmodules(
             self_attention=ModuleSpec(
-                module=SelfAttention if parallel_state.get_ulysses_sp_parallel_world_size() <= 1 else USPSelfAttention,
+                module=SelfAttention if fs_ps.get_ulysses_sp_parallel_world_size() <= 1 else USPSelfAttention,
                 params={"attn_mask_type": AttnMaskType.causal},
                 submodules=SelfAttentionSubmodules(
                     linear_qkv=TELayerNormColumnParallelLinear,
@@ -88,7 +89,7 @@ def get_gpt_layer_local_spec(
         submodules=TransformerLayerSubmodules(
             input_layernorm=LNImpl,
             self_attention=ModuleSpec(
-                module=SelfAttention if parallel_state.get_ulysses_sp_parallel_world_size() <= 1 else USPSelfAttention,
+                module=SelfAttention if fs_ps.get_ulysses_sp_parallel_world_size() <= 1 else USPSelfAttention,
                 params={"attn_mask_type": AttnMaskType.causal},
                 submodules=SelfAttentionSubmodules(
                     linear_qkv=ColumnParallelLinear,

@@ -26,7 +26,9 @@ from megatron.training.utils import save_checkpoint_info
 from megatron.legacy.model.transformer import bias_dropout_add_fused_train
 from megatron.legacy.model.fused_bias_gelu import bias_gelu
 
-from flagscale.train import set_parallel_context  
+from flagscale.train import set_parallel_context
+from flagscale.train import parallel_state as fs_ps
+  
 logger = logging.getLogger(__name__)
 
 
@@ -280,13 +282,13 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
         if mpu.model_parallel_is_initialized():
             print("model parallel is already initialized")
         else:
-            mpu.initialize_model_parallel(
+            fs_ps.initialize_model_parallel(
                 args.tensor_model_parallel_size,
                 args.pipeline_model_parallel_size,
                 args.virtual_pipeline_model_parallel_size,
                 args.pipeline_model_parallel_split_rank,
-                context_parallel_size=args.context_parallel_size,
                 ulysses_parallel_size=args.ulysses_sp_parallel_size,
+                context_parallel_size=args.context_parallel_size,
                 expert_model_parallel_size=args.expert_model_parallel_size,
                 distributed_timeout_minutes=args.distributed_timeout_minutes,
                 nccl_communicator_config_path=args.nccl_communicator_config_path,

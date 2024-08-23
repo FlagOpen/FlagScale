@@ -5,12 +5,13 @@ from dataclasses import dataclass
 import torch
 import torch.distributed
 
-from megatron.core import parallel_state 
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.spec_utils import ModuleSpec, build_module
 from megatron.core.transformer.attention import SelfAttention
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb
+
+from flagscale.train import parallel_state
 
 
 def post_all2all(input, scatter_idx, batch_dim_idx, seq_world_size, bs, seq_len, num_head, head_dim):

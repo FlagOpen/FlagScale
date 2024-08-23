@@ -41,6 +41,7 @@ from megatron.core.tensor_parallel import param_is_not_tensor_parallel_duplicate
 from megatron.legacy.model import Float16Module
 from megatron.legacy.model.module import param_is_not_shared
 
+from flagscale.train import parallel_state as fs_ps
 
 ALL_MODULE_WRAPPER_CLASSNAMES = (DDP, Float16Module)
 
@@ -243,7 +244,7 @@ def get_batch_on_this_ulysses_sp_rank(batch):
     args = get_args()
     uly_sp_size = args.ulysses_sp_parallel_size
     if uly_sp_size > 1:
-        usp_rank = mpu.get_ulysses_sp_parallel_rank()
+        usp_rank = fs_ps.get_ulysses_sp_parallel_rank()
         for key, val in batch.items():
             if val is not None:
                 seq_dim = 1 if key != 'attention_mask' else 2

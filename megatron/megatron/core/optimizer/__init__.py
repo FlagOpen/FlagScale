@@ -37,6 +37,8 @@ from .optimizer import (
 )
 from .optimizer_config import OptimizerConfig
 
+from flagscale.train import parallel_state as fs_ps
+
 logger = logging.getLogger(__name__)
 
 
@@ -331,8 +333,8 @@ def get_megatron_optimizer(
             param_groups=dense_param_groups,
             per_model_buffers=per_model_buffers,
             model_parallel_group=mpu.get_model_parallel_group(),
-            data_parallel_group=mpu.get_data_parallel_group(with_context_parallel=True, with_ulysses_sp_parallel=True),
-            data_parallel_group_gloo=mpu.get_data_parallel_group_gloo(with_context_parallel=True, with_ulysses_sp_parallel=True),
+            data_parallel_group=fs_ps.get_data_parallel_group(with_context_parallel=True, with_ulysses_sp_parallel=True),
+            data_parallel_group_gloo=fs_ps.get_data_parallel_group_gloo(with_context_parallel=True, with_ulysses_sp_parallel=True),
             data_parallel_group_idx=model_parallel_rank,
         )
     ]
