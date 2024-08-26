@@ -43,7 +43,6 @@ model:
   micro_batch_size: 2
   global_batch_size: 256
   allow_missing_vision_projection_checkpoint: True
-  img_embedding_idx: 1
   apply_layernorm_1p: True
   use_te: True
   group_query_attention: True
