@@ -37,7 +37,7 @@ model:
   attention_dropout: 0.0
   hidden_dropout: 0.0
   clip_grad: 1.0
-  train_iters: 20000
+  train_iters: 5000
   eval_iters: 10
   eval_interval: 1000
   micro_batch_size: 2

@@ -19,8 +19,10 @@ system:
     wandb_exp_name: "train-llama3-70B" 
   checkpoint:
     load: ${ckpt_path:??}
+    save: ${ckpt_path:??}
     ckpt_format: torch
     save_interval: 100
+    finetune: True
 
 model:
   num_layers: 80
@@ -53,16 +55,16 @@ model:
   seed: 42
 
   optimizer:
-    start_weight_decay: 1.5e-6
-    end_weight_decay: 1.5e-5
+    start_weight_decay: 0
+    end_weight_decay: 5e-7
     weight_decay_incr_style: cosine
     adam_beta1: 0.9
     adam_beta2: 0.95
     lr_scheduler:
-      lr: 1.5e-4
-      min_lr: 1.5e-5
+      lr: 5e-6
+      min_lr: 0
       lr_warmup_samples: 2048000
-      lr_decay_style: cosine 
+      lr_decay_style: cosine
 
 data:
   data_path: ${data_path:??}
@@ -71,3 +73,5 @@ data:
     tokenizer_type: Llama3TokenizerFS
     tokenizer_path: ${tokenizer_path:??}
     vocab_size: 128256
+
+    
