@@ -47,7 +47,7 @@ model:
   # moe_grouped_gemm: true
 
   # seed: 42
-  train_iters: 500000
+  train_iters: 1000
   micro_batch_size: 1
   global_batch_size: 2048
   clip_grad: 1.0
