@@ -1086,7 +1086,9 @@ def get_context_parallel_global_ranks(check_initialized=True):
 
 def get_ulysses_sp_parallel_group(check_initialized=True):
     """Get the ulysses sequence parallel group the caller rank belongs to."""
-    # TODO: support hetero
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_ulysses_sp_parallel_group(check_initialized)
 
     if check_initialized:
         assert _ULYSSES_SP_PARALLEL_GROUP is not None, 'context parallel group is not initialized'
@@ -1095,7 +1097,9 @@ def get_ulysses_sp_parallel_group(check_initialized=True):
 
 def get_ulysses_sp_parallel_global_ranks(check_initialized=True):
     """Get all global ranks of the context parallel group that the caller rank belongs to."""
-    # TODO: support hetero
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_ulysses_sp_parallel_global_ranks(check_initialized)
 
     if check_initialized:
         assert (
@@ -1729,7 +1733,9 @@ def get_data_parallel_rank(with_context_parallel=False, with_ulysses_sp_parallel
 
 def get_ulysses_sp_parallel_world_size():
     """Return world size for the ulysses_sp parallel group."""
-    # TODO: hete case
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_ulysses_sp_parallel_world_size()
 
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return torch.distributed.get_world_size(group=get_ulysses_sp_parallel_group())
@@ -1739,7 +1745,9 @@ def get_ulysses_sp_parallel_world_size():
 
 def get_ulysses_sp_parallel_rank():
     """Return my rank for the ulysses_sp parallel group."""
-    # TODO: hete case
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_ulysses_sp_parallel_rank()
     
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return torch.distributed.get_rank(group=get_ulysses_sp_parallel_group())
@@ -1847,7 +1855,7 @@ def get_data_modulo_expert_parallel_rank(with_context_parallel=False):
     """Return my rank for the context parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_data_modulo_expert_parallel_rank(with_context_parallel)
+        return para_ctx.get_data_modulo_expert_parallel_rank()
 
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return torch.distributed.get_rank(
