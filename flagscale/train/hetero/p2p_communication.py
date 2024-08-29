@@ -21,7 +21,6 @@ from flagscale.train.hetero.parallel_context import ParallelContext
 # Types
 Shape = Union[List[int], torch.Size]
 
-
 def warm_up_comm_group_hetero(config: ModelParallelConfig):
     """ Warm up the communication for all PP groups, to avoid the hang issue.
     
