@@ -1202,7 +1202,7 @@ def get_tensor_and_expert_parallel_group():
 def get_data_modulo_expert_parallel_group(with_context_parallel=False):
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_data_modulo_expert_parallel_group()
+        return para_ctx.get_data_modulo_expert_parallel_group(with_context_parallel=with_context_parallel)
 
     if with_context_parallel:
         assert (
@@ -1855,7 +1855,7 @@ def get_data_modulo_expert_parallel_rank(with_context_parallel=False):
     """Return my rank for the context parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_data_modulo_expert_parallel_rank()
+        return para_ctx.get_data_modulo_expert_parallel_rank(with_context_parallel=with_context_parallel)
 
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return torch.distributed.get_rank(
