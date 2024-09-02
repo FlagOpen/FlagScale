@@ -154,6 +154,7 @@ def recv_forward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> tor
                     tensor_shape_sliced = (sp_end - sp_start, dp_end - dp_start, local_hidden_size)
                     group = None
                     pp_groups = para_ctx.get_pipeline_model_parallel_group()
+                    print(f"LZY: recv_forward_hetero tensor_shape_sliced shape: {tensor_shape_sliced}")
                     for pp_group in pp_groups:
                         pp_group_ranks = torch.distributed.get_process_group_ranks(pp_group)
                         if rank in pp_group_ranks and dst_rank in pp_group_ranks:
@@ -249,6 +250,7 @@ def send_forward_hetero(output_tensor: torch.Tensor, config: ModelParallelConfig
         rank = torch.distributed.get_rank()
         para_ctx = get_parallel_context()
         if not is_inter_mesh_comm(para_ctx=para_ctx, comm_with_front_layer=False):
+            print(f"LZY: wrong here!!!")
             group = None
             pp_groups = para_ctx.get_pipeline_model_parallel_group()
             for pp_group in pp_groups:
@@ -273,6 +275,7 @@ def send_forward_hetero(output_tensor: torch.Tensor, config: ModelParallelConfig
                     dst_rank, (dp_start, dp_end), (sp_start, sp_end), local_hidden_size = tensor_slice
                     output_tensor_sliced = output_tensor[sp_start:sp_end, dp_start:dp_end, :]
                     group = None
+                    print(f"LZY: send_forward_hetero output_tensor_sliced shape: {output_tensor_sliced.shape}")
                     pp_groups = para_ctx.get_pipeline_model_parallel_group()
                     for pp_group in pp_groups:
                         pp_group_ranks = torch.distributed.get_process_group_ranks(pp_group)
