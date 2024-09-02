@@ -18,7 +18,6 @@ system:
     wandb_project: "train-llama3-70B" 
     wandb_exp_name: "train-llama3-70B" 
   checkpoint:
-    load: ${ckpt_path:??}
     ckpt_format: torch
     save_interval: 100
 
