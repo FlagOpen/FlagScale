@@ -342,9 +342,14 @@ def _communicate(
     # tensor parallelism, and hence a rank in the encoder is going to feed
     # several different decoder ranks. We therefore have to receive or send tensors
     # from several groups. For convenience, I wrap everything into lists.
-    pp_group = get_pipeline_model_parallel_group()
-    next_rank = get_pipeline_model_parallel_next_rank()
-    prev_rank = get_pipeline_model_parallel_prev_rank()
+    if config.enable_hetero: # Using the passed 'group' in the case of 'enable_hetero'
+        pp_group = group
+        next_rank = get_pipeline_model_parallel_next_rank(group=group)
+        prev_rank = get_pipeline_model_parallel_prev_rank(group=group)
+    else:
+        pp_group = get_pipeline_model_parallel_group()
+        next_rank = get_pipeline_model_parallel_next_rank()
+        prev_rank = get_pipeline_model_parallel_prev_rank()
     if not isinstance(pp_group, list):
         pp_group = [pp_group]
         assert not isinstance(next_rank, list)
