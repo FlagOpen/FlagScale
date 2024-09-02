@@ -308,6 +308,9 @@ class ProcessMesh:
         self.build_process_group("tp-ep", independent_ep=True, gloo=False)
         self.build_process_group("ep", independent_ep=True, gloo=False)
         self.build_process_group("dp", independent_ep=True, gloo=True)
+        self.build_process_group("dp-cp", independent_ep=False, gloo=True)
+        self.build_process_group("dp-cp", independent_ep=True, gloo=True)
+        self.build_process_group("usp", independent_ep=True, gloo=True)
 
     def get_parallel_size(self, token, independent_ep=False):
         if independent_ep:
@@ -328,13 +331,14 @@ class ProcessMesh:
             "tp-ep": ("tp_exp", None),
             "ep": ("exp", None),
             "dp": ("dp_modulo_exp", "dp"),
-            "dp-cp": ("dp_cp", "dp_cp"), 
+            "dp-cp": ("dp_cp", "dp_modulo_exp_cp"), 
             "cp": ("cp", "cp"),
             "tp-pp": ("mp", "mp"),
             "tp": ("tp", "tp"),
             "pp": ("pp", "pp"),
             "tp-dp-cp": ("tp_dp_cp", "tp_dp_cp"),
             "tp-dp": ("tp_dp", "tp_dp"),
+            "usp": ("usp", "usp"),
         }
         name_pair = names.get(token, None)
         if name_pair is None:
@@ -802,6 +806,20 @@ class ParallelContext:
         return current_process_mesh.get_process_group_ranks(
             "cp", independent_ep=False, check_initialized=check_initialized
         )
+    
+    def get_ulysses_sp_parallel_group(self, check_initialized=True):
+        """Get the ulysses sequence parallel group the caller rank belongs to."""
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_process_group(
+            "usp", independent_ep=False, gloo=False, check_initialized=check_initialized
+        )
+        
+    def get_ulysses_sp_parallel_global_ranks(self, check_initialized=True):
+        """Get all global ranks of the ulysses sequence parallel group that the caller rank belongs to."""
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_process_group_ranks(
+            "usp", independent_ep=False, check_initialized=check_initialized
+        )
 
     def get_embedding_group(self):
         """Get the embedding group the caller rank belongs to."""
@@ -859,11 +877,17 @@ class ParallelContext:
             "tp-ep", independent_ep=True, gloo=False, check_initialized=True
         )
 
-    def get_data_modulo_expert_parallel_group(self):
+    def get_data_modulo_expert_parallel_group(self, with_context_parallel=False):
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        return current_process_mesh.get_process_group(
-            "dp", independent_ep=True, gloo=False, check_initialized=True
-        )
+        if with_context_parallel:
+            return current_process_mesh.get_process_group(
+                "dp-cp", independent_ep=True, gloo=False, check_initialized=True
+            )
+        else:
+            
+            return current_process_mesh.get_process_group(
+                "dp", independent_ep=True, gloo=False, check_initialized=True
+            )
 
     def get_data_modulo_expert_parallel_group_gloo(self):
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
@@ -1142,6 +1166,20 @@ class ParallelContext:
             return torch.distributed.get_rank(group=self.get_context_parallel_group())
         else:
             return 0
+    
+    def get_ulysses_sp_parallel_world_size(self):
+        """Return world size for the ulysses sequence parallel group."""
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            return torch.distributed.get_world_size(group=self.get_ulysses_sp_parallel_group())
+        else:
+            return 0
+
+    def get_ulysses_sp_parallel_rank(self):
+        """Return my rank for the ulysses sequence parallel group."""
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            return torch.distributed.get_rank(group=self.get_ulysses_sp_parallel_group())
+        else:
+            return 0
 
     def get_expert_model_parallel_world_size(self):
         """Return world size for the expert model parallel group"""
@@ -1179,10 +1217,10 @@ class ParallelContext:
         else:
             return 0
 
-    def get_data_modulo_expert_parallel_rank(self):
+    def get_data_modulo_expert_parallel_rank(self, with_context_parallel):
         """Return my rank for the context parallel group."""
         if torch.distributed.is_available() and torch.distributed.is_initialized():
-            return torch.distributed.get_rank(group=self.get_data_modulo_expert_parallel_group())
+            return torch.distributed.get_rank(group=self.get_data_modulo_expert_parallel_group(with_context_parallel=with_context_parallel))
         else:
             return 0
 
