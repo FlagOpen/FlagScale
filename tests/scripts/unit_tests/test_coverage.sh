@@ -31,6 +31,9 @@ if [ ! -f "$report_dir/$coverage_file" ]; then
     exit 1
 fi
 
+# Add the current working directory to the list of safe directories in Git
+git config --global --add safe.directory /__w/FlagScale/FlagScale
+
 # Check the coverage for the new code changes
 echo "Checking coverage for the new code changes..."
 diff-cover "$report_dir/$coverage_file" --compare-branch=HEAD~1 --fail-under=70
