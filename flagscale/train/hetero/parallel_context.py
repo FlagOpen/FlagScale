@@ -509,7 +509,7 @@ class ParallelContext:
         # For now, we only support the case where the sequence dim is different.
         # However, the following code can be easily extended to support other cases.
         assert dp1 == dp2, "Data parallel size should be the same."
-        if self._args.sequence_parallel:
+        if not(tp1 == 1 and tp2 == 1):
             sp1 = tp1 * cp1
             sp2 = tp2 * cp2
         else:
@@ -521,9 +521,9 @@ class ParallelContext:
         dst_pp_dims = [0]
         # i is cp, j is tp, k is dp, 
         for s in range(sp1):
-            i, j = s % tp1, s // tp1
+            src_i, src_j = s % tp1, s // tp1
             for k in range(dp1):
-                src_coord = [i, j, k, src_pp_dims[0]]
+                src_coord = [src_i, src_j, k, src_pp_dims[0]]
                 dst_sp_dims = [dim for dim, _, _ in sp_overlapped_mapping[s]]
                 dst_dp_dims = [dim for dim, _, _ in dp_overlapped_mapping[k]]
                 dst_coords = list(
@@ -687,7 +687,7 @@ class ParallelContext:
         assert dp1 == dp2, "Data parallel size should be the same."
         # Assume that the tensor shape is (seq_len, batch_size, hidden_size)
         local_seq_len, local_batch_size, local_hidden_size = local_tensor_shape
-        if self._args.sequence_parallel:
+        if not(tp1 == 1 and tp2 == 1):
             global_seq_len = local_seq_len * tp1 * cp1
             sp1 = tp1 * cp1
             sp2 = tp2 * cp2
@@ -699,9 +699,9 @@ class ParallelContext:
         sp_overlapped_mapping = find_overlapped_mapping(sp1, sp2, global_seq_len)
         dp_overlapped_mapping = find_overlapped_mapping(dp1, dp2, global_batch_size)
         for s in range(sp1):
-            i, j = s % tp1, s // tp1
+            src_i, src_j = s % tp1, s // tp1
             for k in range(dp1):
-                src_coord = [i, j, k, src_pp_dims[0]]
+                src_coord = [src_i, src_j, k, src_pp_dims[0]]
                 dst_sp_dims = [c for c, _, _ in sp_overlapped_mapping[s]]
                 dst_dp_dims = [c for c, _, _ in dp_overlapped_mapping[k]]
                 dst_coords = list(

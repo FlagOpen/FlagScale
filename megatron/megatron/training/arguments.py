@@ -203,7 +203,7 @@ def validate_args(args, defaults={}):
             'virtual pipeline not support now!'
         
         # Sequence parallel
-        if 1 in hetero_process_meshes_tp:
+        if all(tp_size == 1 for tp_size in hetero_process_meshes_tp):
             args.sequence_parallel = False
 
         # Model layer splits
