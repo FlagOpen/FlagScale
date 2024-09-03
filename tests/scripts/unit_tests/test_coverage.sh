@@ -34,9 +34,15 @@ fi
 # Add the current working directory to the list of safe directories in Git
 git config --global --add safe.directory /__w/FlagScale/FlagScale
 
-# Check the coverage for the new code changes
+# Fetch the latest changes from the remote repository
+git fetch origin
+
+# Get the latest commit from the main branch
+main_branch_commit=$(git rev-parse origin/main)
+
+# Check the coverage for the new code changes against the latest commit on main
 echo "Checking coverage for the new code changes..."
-diff-cover "$report_dir/$coverage_file" --compare-branch=HEAD~1 --fail-under=70
+diff-cover "$report_dir/$coverage_file" --compare-branch=$main_branch_commit --fail-under=70
 
 # If diff-cover exits with a non-zero status, it means the coverage is below 70%
 if [ $? -ne 0 ]; then
