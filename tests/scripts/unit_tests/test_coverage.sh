@@ -40,7 +40,7 @@ git fetch origin
 # Get the latest commit from the main branch
 main_branch_commit=$(git rev-parse origin/main)
 
-# Check the coverage for the new code changes against the latest commit on main
+# Check the coverage for the new code changes against the latest commit on the main branch
 echo "Checking coverage for the new code changes..."
 diff-cover "$report_dir/$coverage_file" --compare-branch=$main_branch_commit --fail-under=70
 
