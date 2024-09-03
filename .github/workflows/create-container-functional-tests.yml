@@ -1,0 +1,30 @@
+# .github/workflows/create-container-functional-tests.yml
+name: Create and Test in Container - Functional Tests
+
+on:
+  workflow_call:
+    inputs:
+      type:
+        required: true
+        type: string
+      model:
+        required: true
+        type: string
+
+jobs:
+  functional-test:
+    runs-on: self-hosted
+    container:
+      image: localhost:5000/flagscale_cicd:v1.4
+      ports:
+        - 80
+      volumes:
+        - /home/flagscale_cicd/flask/static:/workspace/report
+        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
+        - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
+      options: --gpus all --shm-size=500g --hostname flagscale_cicd
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Run Functional Test
+        run: tests/scripts/functional_tests/test_model.sh --type ${{ inputs.type }} --model ${{ inputs.model }}

@@ -6,15 +6,19 @@ on:
     types: [opened, synchronize, reopened]
 
 env:
-  CHECK_FILES: >-
-    flagscale/auto_tuner/*.py
-    flagscale/auto_tuner/prune/*.py
-    flagscale/auto_tuner/record/*.py
-    flagscale/auto_tuner/search/*.py
-    flagscale/launcher/*.py
-    flagscale/logger.py
-    flagscale/patches_utils.py
-    flagscale/datasets/sft_dataset.py
+  INCLUDE_FILES: >-
+    flagscale/auto_tuner/.*\.py|
+    flagscale/auto_tuner/prune/.*\.py|
+    flagscale/auto_tuner/record/.*\.py|
+    flagscale/auto_tuner/search/.*\.py|
+    flagscale/launcher/.*\.py|
+    flagscale/logger\.py|
+    flagscale/patches_utils\.py|
+    flagscale/datasets/sft_dataset\.py
+
+  EXCLUDE_FILES: >-
+    megatron/megatron/core/.*\.py|
+    megatron/megatron/__init__\.py
 
 jobs:
   format:
@@ -34,11 +38,19 @@ jobs:
         pip install black isort
 
     - name: Run Black
-      run: >-
-        black --check --diff --include $CHECK_FILES ./
+      run: |
+        files=$(find . -type f \( -name "*.py" \) | grep -E "$INCLUDE_FILES" | grep -Ev "$EXCLUDE_FILES")
+        if [ -n "$files" ]; then
+          black --check --diff $files
+        else
+          echo "No files to format."
+        fi
       
     - name: Run Isort
       run: |
-        isort --profile black --check --diff $CHECK_FILES
-
-
+        files=$(find . -type f \( -name "*.py" \) | grep -E "$INCLUDE_FILES" | grep -Ev "$EXCLUDE_FILES")
+        if [ -n "$files" ]; then
+          isort --profile black --check --diff $files
+        else
+          echo "No files to sort."
+        fi
