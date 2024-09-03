@@ -32,4 +32,4 @@ jobs:
       - name: Run Unit Test
         run: tests/scripts/unit_tests/test_subset.sh --backend ${{ inputs.backend }} --subset ${{ inputs.subset }} --id ${{ github.sha }}
       - name: Unit Test Coverage Online Report
-        run: echo "You can access the test coverage report at the $REPORT_ADDR/${{github.sha}}/cov-report-${{ inputs.subset }}/index.html"
+        run: echo "You can access the test coverage report at the $REPORT_ADDR/${{github.sha}}/cov-report-${{ inputs.backend }}/index.html"

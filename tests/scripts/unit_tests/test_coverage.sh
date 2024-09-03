@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# Parse command line arguments
+id=0  # Set the default value of id to 0
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --backend) backend="$2"; shift ;;
+        --id) id="$2"; shift ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Ensure necessary arguments are provided
+if [ -z "$backend" ]; then
+    echo "Usage: $0 --backend <backend> [--id <id>]"
+    exit 1
+fi
+
+# Define the coverage report directory and the coverage XML report file
+report_dir="/workspace/report/$id/cov-report-${backend}"
+coverage_file="coverage.xml"
+
+# Check if the coverage XML file exists
+if [ ! -f "$report_dir/$coverage_file" ]; then
+    echo "Error: Coverage file $report_dir/$coverage_file not found!"
+    exit 1
+fi
+
+# Check the coverage for the new code changes
+echo "Checking coverage for the new code changes..."
+diff-cover "$report_dir/$coverage_file" --compare-branch=HEAD~1 --fail-under=70
+
+# If diff-cover exits with a non-zero status, it means the coverage is below 70%
+if [ $? -ne 0 ]; then
+    echo "Test coverage for new code is below 70%. Please add more tests."
+    exit 1
+else
+    echo "Test coverage for new code meets the 70% requirement."
+fi

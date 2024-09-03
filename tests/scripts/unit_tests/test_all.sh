@@ -2,6 +2,8 @@
 
 # Run each command and capture its return value
 commands=(
+    # unit tests -> megatron
+    "rm -rf /workspace/report/0/cov-report-megatron"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset data"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset dist_checkpointing"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset distributed"
@@ -13,9 +15,15 @@ commands=(
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset transformer/moe"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset transformer"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset ./"
+    # coverage test -> megatron
+    "./tests/scripts/unit_tests/test_coverage.sh --backend megatron"
 
+    # unit tests -> flagscale
+    "rm -rf /workspace/report/0/cov-report-flagscale"
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset launcher"
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset ./"
+    # coverage test -> flagscale
+    "./tests/scripts/unit_tests/test_coverage.sh --backend flagscale"
 
     # You can add your own test subset here
     # "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset your_subset"
