@@ -1,0 +1,30 @@
+name: Create and Test in Container - Test Coverage
+
+on:
+  workflow_call:
+    inputs:
+      backend:
+        required: true
+        type: string
+
+jobs:
+  test-coverage:
+    runs-on: self-hosted
+    container:
+      image: localhost:5000/flagscale_cicd:v1.4
+      ports:
+        - 80
+      volumes:
+        - /home/flagscale_cicd/flask/static:/workspace/report
+        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
+        - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
+      options: --gpus all --shm-size=500g --hostname flagscale_cicd
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Run Unit Tests and Check Coverage
+        run: |
+          # Execute the test coverage script with the appropriate backend and id (commit SHA)
+          tests/scripts/unit_tests/test_coverage.sh --backend ${{ inputs.backend }} --id ${{ github.sha }}

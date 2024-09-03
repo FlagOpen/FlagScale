@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Parse command line arguments
-id=0  # Set the default value of id to 0
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --backend) backend="$2"; shift ;;
@@ -15,6 +14,11 @@ done
 if [ -z "$backend" ]; then
     echo "Usage: $0 --backend <backend> [--id <id>]"
     exit 1
+fi
+
+# Set the default value of id to 0
+if [ -z "$id" ]; then
+    id=0
 fi
 
 # Define the coverage report directory and the coverage XML report file
