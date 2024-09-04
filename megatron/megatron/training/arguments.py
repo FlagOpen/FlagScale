@@ -408,9 +408,6 @@ def validate_args(args, defaults={}):
         args.recompute_granularity_per_stage_micro_batch = _parse_recompute_refined_config(args.recompute_granularity_per_stage_micro_batch, "recompute_granularity_per_stage_micro_batch")
         args.recompute_method_per_stage_micro_batch = _parse_recompute_refined_config(args.recompute_method_per_stage_micro_batch, "recompute_method_per_stage_micro_batch")
         args.recompute_num_layers_per_stage_micro_batch = _parse_recompute_refined_config(args.recompute_num_layers_per_stage_micro_batch, "recompute_num_layers_per_stage_micro_batch")
-        print(f"LZY:args.recompute_granularity_per_stage_micro_batch = {args.recompute_granularity_per_stage_micro_batch}")
-        print(f"LZY:args.recompute_method_per_stage_micro_batch = {args.recompute_method_per_stage_micro_batch}")
-        print(f"LZY:args.recompute_num_layers_per_stage_micro_batch = {args.recompute_num_layers_per_stage_micro_batch}")
         
     if args.overlap_param_gather:
         assert args.use_distributed_optimizer, \
