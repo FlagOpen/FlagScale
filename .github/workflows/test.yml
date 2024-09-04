@@ -91,7 +91,7 @@ jobs:
   # Megatron Coverage Test
   megatron-coverage-test:
     needs: megatron-unit-test-base
-    uses: ./.github/workflows/create-container-test-coverage.yml
+    uses: ./.github/workflows/create-container-coverage-tests.yml
     with:
       backend: megatron
 
@@ -113,7 +113,7 @@ jobs:
   # Flagscale Coverage Test
   flagscale-coverage-test:
     needs: flagscale-unit-test-base
-    uses: ./.github/workflows/create-container-test-coverage.yml
+    uses: ./.github/workflows/create-container-coverage-tests.yml
     with:
       backend: flagscale
 
