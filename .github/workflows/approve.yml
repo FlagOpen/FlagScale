@@ -15,18 +15,25 @@ jobs:
 
     - name: Get PR Approvals
       run: |
+        # Get the PR number from the GitHub event
         PR_NUMBER=$(jq --raw-output .number "$GITHUB_EVENT_PATH")
+
+        # Fetch approvers from the PR reviews API and join them in a single line
         APPROVERS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" \
-          | jq -r '.[] | select(.state == "APPROVED") | .user.login')
+          | jq -r '.[] | select(.state == "APPROVED") | .user.login' | tr '\n' ' ')
 
+        # Output approvers and ensure the format is correct for GITHUB_ENV
+        echo "APPROVERS=$APPROVERS"
         echo "APPROVERS=$APPROVERS" >> $GITHUB_ENV
 
     - name: Check for Specific Approver
       run: |
+        # List of specific approvers to check
         SPECIFIC_APPROVERS=("aoyulong" "zhaoyinglia")
         APPROVED="false"
 
+        # Check if any of the specific approvers have approved the PR
         for APPROVER in "${SPECIFIC_APPROVERS[@]}"
         do
           if echo "$APPROVERS" | grep -q "$APPROVER"; then
@@ -36,8 +43,8 @@ jobs:
           fi
         done
 
+        # If no specific approvers are found, exit with an error
         if [ "$APPROVED" = "false" ]; then
           echo "The PR has not been approved by the specific approvers."
           exit 1
         fi
-

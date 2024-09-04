@@ -1,4 +1,5 @@
 check_files: &check_files |
+  # Include specific folders and files
   (?x)^(
       flagscale/auto_tuner/.*\.py|
       flagscale/auto_tuner/prune/\..*\.py|
@@ -9,6 +10,12 @@ check_files: &check_files |
       flagscale/patches_utils\.py|
       flagscale/datasets/sft_dataset\.py
   )$
+  
+  # Exclude specific folders
+  (?x)^(?!(
+      megatron/megatron/core/.*\.py|
+      megatron/megatron/__init__\.py
+  ))$
 
 repos:
   - repo: local
