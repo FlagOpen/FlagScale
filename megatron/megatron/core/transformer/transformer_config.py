@@ -181,12 +181,6 @@ class TransformerConfig(ModelParallelConfig):
     the number of transformer layers to recompute within each pipeline stage.  Must be None for
     'selective' activation checkpointing."""
 
-    recompute_granularity_per_stage: list = None
-    """Same as recompute_granularity but for each stage."""
-
-    recompute_method_per_stage: list = None
-    """Same as recompute_method but for each stage."""
-
     recompute_granularity_per_stage_micro_batch: list = None
     """Same as recompute_granularity but for each stage and each micro-batch."""
 
