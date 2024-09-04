@@ -47,8 +47,8 @@ diff-cover "$report_dir/$coverage_file" --compare-branch=$common_ancestor --fail
 
 # If diff-cover exits with a non-zero status, it means the coverage is below 70%
 if [ $? -ne 0 ]; then
-    echo "Test coverage for new code is below 70%. Please add more tests."
+    echo "Test coverage for new code is below 70% in the $backend. Please add more tests."
     exit 1
 else
-    echo "Test coverage for new code meets the 70% requirement."
+    echo "Test coverage for new code meets the 70% requirement in the $backend."
 fi
