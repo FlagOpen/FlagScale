@@ -131,6 +131,13 @@ jobs:
     with:
       type: train
       model: mixtral
+  
+  functional-test-hetero-aquila:
+    needs: functional-test-mixtral
+    uses: ./.github/workflows/create-container-functional-tests.yml
+    with:
+      type: hetero_train
+      model: aquila
 
 # Add in the feature for inference
   # functional-test-vllm:
