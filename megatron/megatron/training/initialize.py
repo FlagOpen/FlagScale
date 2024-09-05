@@ -23,8 +23,9 @@ from megatron.training.checkpointing import load_args_from_checkpoint
 from megatron.training.global_vars import set_global_variables
 from megatron.training.global_vars import set_global_writers
 from megatron.training.utils import save_checkpoint_info
-from megatron.legacy.model.transformer import bias_dropout_add_fused_train
-from megatron.legacy.model.fused_bias_gelu import bias_gelu
+from megatron.core.fusions.fused_bias_dropout import bias_dropout_add_fused_train
+from megatron.core.fusions.fused_bias_gelu import bias_gelu
+from megatron.core.fusions.fused_bias_swiglu import bias_swiglu
 
 from flagscale.train import set_parallel_context  
 logger = logging.getLogger(__name__)
@@ -384,7 +385,7 @@ def _warmup_jit_function():
     )
     input = torch.rand(
         (
-            args.seq_length,
+            args.seq_length // args.context_parallel_size,
             args.micro_batch_size,
             args.ffn_hidden_size // args.tensor_model_parallel_size,
         ),
@@ -396,7 +397,10 @@ def _warmup_jit_function():
     for bias_grad, input_grad in zip([True, True], [False, True]):
         bias.requires_grad, input.requires_grad = bias_grad, input_grad
         for _ in range(5):
-            output = bias_gelu(bias, input)
+            if args.swiglu:
+                output = bias_swiglu(input, bias)
+            else:
+                output = bias_gelu(bias, input)
     del bias, input, output
 
     # Warmup fused bias+dropout+add
@@ -405,12 +409,12 @@ def _warmup_jit_function():
     else:
         seq_length = args.seq_length
     input = torch.rand(
-        (seq_length, args.micro_batch_size, args.hidden_size),
+        (seq_length // args.context_parallel_size, args.micro_batch_size, args.hidden_size),
         dtype=dtype,
         device="cuda",
     )
     residual = torch.rand(
-        (seq_length, args.micro_batch_size, args.hidden_size),
+        (seq_length // args.context_parallel_size, args.micro_batch_size, args.hidden_size),
         dtype=dtype,
         device="cuda",
     )
@@ -427,7 +431,7 @@ def _warmup_jit_function():
         bias.requires_grad = bias_grad
         residual.requires_grad = residual_grad
         for _ in range(5):
-            output = bias_dropout_add_fused_train(input, bias, residual, dropout_rate)
+            output = bias_dropout_add_fused_train([input, bias], residual, dropout_rate)
     del bias, input, residual, output
     torch.cuda.empty_cache()
 
