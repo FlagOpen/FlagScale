@@ -9,6 +9,6 @@ train:
       -tp4_pp1_ep2 
 # Add in the feature
 # inference:
-#   vllm:
+#   from_vllm:
 #     test_cases:
 #       ...

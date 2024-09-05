@@ -3,7 +3,7 @@
 wait_for_gpu() {
     gpu_count=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 
-    memory_usage_max=40000
+    memory_usage_max=30000
 
     while true; do
     
