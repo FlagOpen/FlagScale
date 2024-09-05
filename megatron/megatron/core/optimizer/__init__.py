@@ -393,9 +393,9 @@ def get_megatron_optimizer(
                 param_groups=param_groups,
                 per_model_buffers=buffers,
                 model_parallel_group=mpu.get_model_parallel_group(),
-                data_parallel_group=mpu.get_data_parallel_group(with_context_parallel=True),
+                data_parallel_group=mpu.get_data_parallel_group(with_context_parallel=True, with_ulysses_sp_parallel=True),
                 data_parallel_group_gloo=mpu.get_data_parallel_group_gloo(
-                    with_context_parallel=True
+                    with_context_parallel=True, with_ulysses_sp_parallel=True
                 ),
                 data_parallel_group_idx=model_parallel_rank,
                 overlap_param_gather_with_optimizer_step=overlap_param_gather_with_optimizer_step,
@@ -423,10 +423,10 @@ def get_megatron_optimizer(
                 per_model_buffers=moe_buffers,
                 model_parallel_group=mpu.get_model_parallel_group(with_expert_parallel=True),
                 data_parallel_group=mpu.get_data_modulo_expert_parallel_group(
-                    with_context_parallel=True, with_ulysses_sp_parallel=True
+                    with_context_parallel=True
                 ),
                 data_parallel_group_gloo=mpu.get_data_modulo_expert_parallel_group_gloo(
-                    with_context_parallel=True, with_ulysses_sp_parallel=True
+                    with_context_parallel=True
                 ),
                 data_parallel_group_idx=expert_parallel_rank * model_parallel_world_size
                 + model_parallel_rank,
