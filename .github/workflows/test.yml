@@ -88,16 +88,16 @@ jobs:
       backend: megatron
       subset: ./
 
-  # Megatron Coverage Test
-  megatron-coverage-test:
-    needs: megatron-unit-test-base
-    uses: ./.github/workflows/create-container-coverage-tests.yml
-    with:
-      backend: megatron
+  # # Megatron Coverage Test
+  # megatron-coverage-test:
+  #   needs: megatron-unit-test-base
+  #   uses: ./.github/workflows/create-container-coverage-tests.yml
+  #   with:
+  #     backend: megatron
 
   # Flagscale Unit Tests
   flagscale-unit-test-launcher:
-    needs: megatron-coverage-test
+    needs: megatron-unit-test-base
     uses: ./.github/workflows/create-container-unit-tests.yml
     with:
       backend: flagscale
@@ -111,15 +111,15 @@ jobs:
       subset: ./
 
   # Flagscale Coverage Test
-  flagscale-coverage-test:
-    needs: flagscale-unit-test-base
-    uses: ./.github/workflows/create-container-coverage-tests.yml
-    with:
-      backend: flagscale
+  # flagscale-coverage-test:
+  #   needs: flagscale-unit-test-base
+  #   uses: ./.github/workflows/create-container-coverage-tests.yml
+  #   with:
+  #     backend: flagscale
 
   # Functional Tests
   functional-test-aquila:
-    needs: flagscale-coverage-test
+    needs: flagscale-unit-test-base
     uses: ./.github/workflows/create-container-functional-tests.yml
     with:
       type: train

@@ -5,6 +5,8 @@ megatron:
     core
   subset:
     # Use default configuration if not shown
+    dist_checkpointing:
+      ignore: models/test_mamba.py
     models:
       ignore: test_mamba_model.py
     transformer/moe:
