@@ -79,8 +79,9 @@ model:
       lr_decay_style: cosine 
 
 data:
-  data_path: /share/project/lizhiyu/FlagScale/build/data/pile_wikipedia_demo
+  data_path: /home/gitlab-runner/data/pile_wikipedia_demo/pile_wikipedia_demo
   #/home/gitlab-runner/data/pile_wikipedia_demo/pile_wikipedia_demo
+  #/share/project/lizhiyu/FlagScale/build/data/pile_wikipedia_demo
   split: 1
   tokenizer:
     tokenizer_type: AquilaTokenizerFS

@@ -20,7 +20,8 @@ experiment:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     NVTE_APPLY_QK_LAYER_SCALING: 0
     NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
-
+  # cmds:
+  #   before_start: source /root/miniconda3/bin/activate flagscale
 action: run
 
 hydra:
