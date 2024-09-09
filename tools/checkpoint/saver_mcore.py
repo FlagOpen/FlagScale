@@ -321,7 +321,7 @@ def save_checkpoint(queue, args):
             msg = queue_get()
             if msg != "done":
                 print("ERROR: got some more data but was expecting to be done")
-
+        margs.use_dist_ckpt = False
         for tp_ep_rank, model in enumerate(models):
             tp_rank = tp_ep_rank % tp_size
             ep_rank = tp_ep_rank // tp_size
