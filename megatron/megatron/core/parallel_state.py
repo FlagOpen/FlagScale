@@ -277,7 +277,8 @@ class RankGenerator(object):
         for name in self.name_to_size.keys():
             if name not in order and self.name_to_size[name] != 1:
                 raise RuntimeError(
-                    f"The size of ({name}) is ({self.name_to_size[name]}), but you haven't specified the order ({self.order})."
+                    f"The size of ({name}) is ({self.name_to_size[name]}), but you haven't"
+                    f"specified the order ({self.order})."
                 )
             elif name not in order:
                 order = order + '-' + name
@@ -378,6 +379,7 @@ def initialize_model_parallel(
     get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
     get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
 ) -> None:
+    # pylint: disable=line-too-long
     """Initialize model data parallel groups.
 
     Args:
@@ -551,7 +553,8 @@ def initialize_model_parallel(
 
     if data_parallel_size % expert_model_parallel_size != 0:
         raise RuntimeError(
-            f"data_parallel_size ({data_parallel_size}) is not divisible by expert_model_parallel_size "
+            f"data_parallel_size ({data_parallel_size}) is not divisible by "
+            "expert_model_parallel_size "
         )
 
     encoder_world_size = encoder_model_size * data_parallel_size
@@ -1086,7 +1089,9 @@ def get_context_parallel_global_ranks(check_initialized=True):
 
 def get_ulysses_sp_parallel_group(check_initialized=True):
     """Get the ulysses sequence parallel group the caller rank belongs to."""
-    # TODO: support hetero
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_ulysses_sp_parallel_group(check_initialized)
 
     if check_initialized:
         assert _ULYSSES_SP_PARALLEL_GROUP is not None, 'context parallel group is not initialized'
@@ -1095,7 +1100,9 @@ def get_ulysses_sp_parallel_group(check_initialized=True):
 
 def get_ulysses_sp_parallel_global_ranks(check_initialized=True):
     """Get all global ranks of the context parallel group that the caller rank belongs to."""
-    # TODO: support hetero
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_ulysses_sp_parallel_global_ranks(check_initialized)
 
     if check_initialized:
         assert (
@@ -1174,6 +1181,7 @@ def get_tensor_and_context_parallel_group():
 
 
 def get_expert_model_parallel_group():
+    """Get the expert model parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_expert_model_parallel_group()
@@ -1185,6 +1193,7 @@ def get_expert_model_parallel_group():
 
 
 def get_tensor_and_expert_parallel_group():
+    """Get the tensor and expert parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_tensor_and_expert_parallel_group()
@@ -1196,9 +1205,10 @@ def get_tensor_and_expert_parallel_group():
 
 
 def get_data_modulo_expert_parallel_group(with_context_parallel=False):
+    """Get the data modulo expert parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_data_modulo_expert_parallel_group()
+        return para_ctx.get_data_modulo_expert_parallel_group(with_context_parallel=with_context_parallel)
 
     if with_context_parallel:
         assert (
@@ -1213,6 +1223,7 @@ def get_data_modulo_expert_parallel_group(with_context_parallel=False):
 
 
 def get_data_modulo_expert_parallel_group_gloo(with_context_parallel=False):
+    """Get the data modulo expert parallel group gloo the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_data_modulo_expert_parallel_group_gloo()
@@ -1230,6 +1241,7 @@ def get_data_modulo_expert_parallel_group_gloo(with_context_parallel=False):
 
 
 def set_expert_model_parallel_world_size(world_size):
+    """Sets the expert model parallel world size."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         para_ctx.set_expert_model_parallel_world_size(world_size)
@@ -1639,7 +1651,8 @@ def get_pipeline_model_parallel_last_rank(group=None):
 
 def get_pipeline_model_parallel_next_rank(group=None):
     """Return the global rank that follows the caller in the pipeline, for each pipeline group that
-    the rank is part of. If it's just part of one group, an int is returned, otherwise a list of ints.
+    the rank is part of. If it's just part of one group, an int is returned,
+    otherwise a list of ints.
     """
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
@@ -1659,7 +1672,8 @@ def get_pipeline_model_parallel_next_rank(group=None):
 
 def get_pipeline_model_parallel_prev_rank(group=None):
     """Return the global rank that preceeds the caller in the pipeline, for each pipeline group that
-    the rank is part of. If it's just part of one group, an int is returned, otherwise a list of ints.
+    the rank is part of. If it's just part of one group, an int is returned,
+    otherwise a list of ints.
     """
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
@@ -1729,7 +1743,9 @@ def get_data_parallel_rank(with_context_parallel=False, with_ulysses_sp_parallel
 
 def get_ulysses_sp_parallel_world_size():
     """Return world size for the ulysses_sp parallel group."""
-    # TODO: hete case
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_ulysses_sp_parallel_world_size()
 
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return torch.distributed.get_world_size(group=get_ulysses_sp_parallel_group())
@@ -1739,7 +1755,9 @@ def get_ulysses_sp_parallel_world_size():
 
 def get_ulysses_sp_parallel_rank():
     """Return my rank for the ulysses_sp parallel group."""
-    # TODO: hete case
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_ulysses_sp_parallel_rank()
     
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return torch.distributed.get_rank(group=get_ulysses_sp_parallel_group())
@@ -1847,7 +1865,7 @@ def get_data_modulo_expert_parallel_rank(with_context_parallel=False):
     """Return my rank for the context parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_data_modulo_expert_parallel_rank(with_context_parallel)
+        return para_ctx.get_data_modulo_expert_parallel_rank(with_context_parallel=with_context_parallel)
 
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return torch.distributed.get_rank(

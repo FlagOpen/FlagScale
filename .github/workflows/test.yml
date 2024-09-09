@@ -1,6 +1,3 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
 name: test
 
 on:
@@ -9,79 +6,136 @@ on:
   pull_request:
     branches: [ "main" ]
 
-env:
-  REPORT_ADDR: http://120.92.110.224:8081
+concurrency:
+  group: ${{ github.event.pull_request.number }}-${{ github.actor }}
+  cancel-in-progress: true
 
 jobs:
-  megatron-unit-test:
-    runs-on: self-hosted
-    container:
-      image: localhost:5000/flagscale_cicd:v1.4
-      ports:
-        - 80
-      volumes:
-        - /home/flagscale_cicd/flask/static:/workspace/report
-        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
-        - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
-      options: --gpus all --shm-size=500g --hostname flagscale_cicd
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-      
-      - name: Check GPU is Free
-        run: tests/scripts/gpu_check.sh
-      
-      - name: Megatron Unit Test
-        run: tests/scripts/unit_test_megatron.sh ${{github.sha}}
-      
-      - name: Megatron Unit Test Coverage Online Report
-        run: echo "You can access the test coverage report at the $REPORT_ADDR/${{github.sha}}/cov-report-megatron/index.html"
+  # Megatron Unit Tests
+  megatron-unit-test-data:
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: megatron
+      subset: data
 
+  megatron-unit-test-dist_checkpointing:
+    needs: megatron-unit-test-data
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: megatron
+      subset: dist_checkpointing
 
-  flagscale-unit-test:
-    runs-on: self-hosted
-    needs: megatron-unit-test
-    container:
-      image: localhost:5000/flagscale_cicd:v1.4
-      ports:
-        - 80
-      volumes:
-        - /home/flagscale_cicd/flask/static:/workspace/report
-        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
-        - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
-      options: --gpus all --shm-size=500g --hostname flagscale_cicd
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+  megatron-unit-test-distributed:
+    needs: megatron-unit-test-dist_checkpointing
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: megatron
+      subset: distributed
 
-      - name: Check GPU is Free
-        run: tests/scripts/gpu_check.sh
+  megatron-unit-test-fusions:
+    needs: megatron-unit-test-distributed
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: megatron
+      subset: fusions
 
-      - name: Flagscale Unit Test
-        run: tests/scripts/unit_test_flagscale.sh ${{github.sha}}
-      
-      - name: Flagscale Unit Test Coverage Online Report
-        run: echo "You can access the test coverage report at the $REPORT_ADDR/${{github.sha}}/cov-report-flagscale/index.html"
+  megatron-unit-test-inference:
+    needs: megatron-unit-test-fusions
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: megatron
+      subset: inference
 
+  megatron-unit-test-models:
+    needs: megatron-unit-test-inference
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: megatron
+      subset: models
 
-  flagscale-functional-test:
-    runs-on: self-hosted
-    needs: flagscale-unit-test
-    container:
-      image: localhost:5000/flagscale_cicd:v1.4
-      ports:
-        - 80
-      volumes:
-        - /home/flagscale_cicd/flask/static:/workspace/report
-        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
-        - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
-      options: --gpus all --shm-size=500g --hostname flagscale_cicd
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-          
-      - name: Check GPU is Free
-        run: tests/scripts/gpu_check.sh
+  megatron-unit-test-pipeline_parallel:
+    needs: megatron-unit-test-models
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: megatron
+      subset: pipeline_parallel
 
-      - name: Flagscale Functional Test
-        run: tests/scripts/functional_test_flagscale.sh
+  megatron-unit-test-tensor_parallel:
+    needs: megatron-unit-test-pipeline_parallel
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: megatron
+      subset: tensor_parallel
+
+  megatron-unit-test-transformer-moe:
+    needs: megatron-unit-test-tensor_parallel
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: megatron
+      subset: transformer/moe
+
+  megatron-unit-test-transformer:
+    needs: megatron-unit-test-transformer-moe
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: megatron
+      subset: transformer
+
+  megatron-unit-test-base:
+    needs: megatron-unit-test-transformer
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: megatron
+      subset: ./
+
+  # # Megatron Coverage Test
+  # megatron-coverage-test:
+  #   needs: megatron-unit-test-base
+  #   uses: ./.github/workflows/create-container-coverage-tests.yml
+  #   with:
+  #     backend: megatron
+
+  # Flagscale Unit Tests
+  flagscale-unit-test-launcher:
+    needs: megatron-unit-test-base
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: flagscale
+      subset: launcher
+
+  flagscale-unit-test-base:
+    needs: flagscale-unit-test-launcher
+    uses: ./.github/workflows/create-container-unit-tests.yml
+    with:
+      backend: flagscale
+      subset: ./
+
+  # Flagscale Coverage Test
+  # flagscale-coverage-test:
+  #   needs: flagscale-unit-test-base
+  #   uses: ./.github/workflows/create-container-coverage-tests.yml
+  #   with:
+  #     backend: flagscale
+
+  # Functional Tests
+  functional-test-aquila:
+    needs: flagscale-unit-test-base
+    uses: ./.github/workflows/create-container-functional-tests.yml
+    with:
+      type: train
+      model: aquila
+
+  functional-test-mixtral:
+    needs: functional-test-aquila
+    uses: ./.github/workflows/create-container-functional-tests.yml
+    with:
+      type: train
+      model: mixtral
+
+# Add in the feature for inference
+  # functional-test-vllm:
+  #   needs: functional-test-mixtral
+  #   uses: ./.github/workflows/create-container-functional-tests.yml
+  #   with:
+  #     type: inference
+  #     model: vllm

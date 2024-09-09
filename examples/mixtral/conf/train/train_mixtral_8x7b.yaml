@@ -15,7 +15,7 @@ system:
     wandb_exp_name: mixtral-8x7b
   checkpoint:
     ckpt_format: torch
-    save_interval: 10000
+    save_interval: 200
 
 
 model:
@@ -68,6 +68,6 @@ data:
   data_path: <xxxx>
   split: 1
   tokenizer:
-    tokenizer_type: <xxxx>
+    tokenizer_type: QwenTokenizerFS
     tokenizer_path: <xxxx>
     make_vocab_size_divisible_by: 64

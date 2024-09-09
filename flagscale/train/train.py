@@ -4,6 +4,7 @@
 
 import dataclasses
 from datetime import datetime
+import functools
 import os
 import gc
 import logging
@@ -38,7 +39,7 @@ from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig
 from megatron.training.initialize import initialize_megatron
 from megatron.training.initialize import write_args_to_tensorboard
 from megatron.training.initialize import set_jit_fusion_options
-from megatron.training.optimizer_param_scheduler import OptimizerParamScheduler
+from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.legacy.data.data_samplers import build_pretraining_data_loader
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.parallel_state import (
@@ -408,7 +409,7 @@ def update_train_iters(args):
         iterations = 0
         consumed_samples = 0
         # Rampup phase.
-        while consumed_samples <= int(args.rampup_batch_size[2]):
+        while consumed_samples <= int(args.rampup_batch_size[2]) and consumed_samples <= args.train_samples:
             update_num_microbatches(consumed_samples, consistency_check=False)
             consumed_samples += get_current_global_batch_size()
             iterations += 1
@@ -416,8 +417,9 @@ def update_train_iters(args):
         update_num_microbatches(0, consistency_check=False)
         # Constant phase
         # Note that we throw away any partial last batch.
-        iterations += (args.train_samples - consumed_samples) // \
-                      args.global_batch_size
+        if args.train_samples > consumed_samples:
+            iterations += (args.train_samples - consumed_samples) // \
+                          args.global_batch_size
         args.train_iters = iterations
 
     print_rank_0('setting training iterations to {}'.format(args.train_iters))
@@ -508,12 +510,13 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
             check_for_nan_in_grad=args.check_for_nan_in_loss_and_grad,
             bucket_size=args.ddp_bucket_size,
             average_in_collective=args.ddp_average_in_collective)
+        overlap_param_gather_with_optimizer_step = getattr(args, 'overlap_param_gather_with_optimizer_step', False)
         model = [DDP(config,
                      ddp_config,
                      model_chunk,
                      # Turn off bucketing for model_chunk 2 onwards, since communication for these
                      # model chunks is overlapped with compute anyway.
-                     disable_bucketing=(model_chunk_idx > 0))
+                     disable_bucketing=(model_chunk_idx > 0) or overlap_param_gather_with_optimizer_step)
                  for (model_chunk_idx, model_chunk) in enumerate(model)]
 
         # Broadcast params from data parallel src rank to other data parallel ranks.
@@ -1163,12 +1166,12 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         config.no_sync_func = [model_chunk.no_sync for model_chunk in model]
         if len(model) == 1:
             config.no_sync_func = config.no_sync_func[0]
-        if args.delay_grad_reduce:
+        if args.align_grad_reduce:
             config.grad_sync_func = [model_chunk.start_grad_sync for model_chunk in model]
             if len(model) == 1:
                 config.grad_sync_func = config.grad_sync_func[0]
-    if args.overlap_param_gather and args.delay_param_gather:
-        config.param_sync_func = [lambda x: optimizer.finish_param_sync(model_index, x)
+    if args.overlap_param_gather and args.align_param_gather:
+        config.param_sync_func = [functools.partial(optimizer.start_param_sync, model_index)
                                   for model_index in range(len(model))]
         if len(model) == 1:
             config.param_sync_func = config.param_sync_func[0]
@@ -1620,7 +1623,6 @@ def evaluate(forward_step_func,
     timers.log(['evaluate'])
 
     return total_loss_dict, collected_non_loss_data, False
-
 
 def evaluate_and_print_results(prefix, forward_step_func,
                                data_iterator, model,

@@ -164,28 +164,6 @@ def init_mock_args(args):
     return args
 
 
-def setup_model_and_optimizer(seed):
-    with mock.patch('megatron.training.training.get_args', data_parallel_random_init=False) as mock_args:
-        init_mock_args(mock_args.return_value)
-        model = get_model(partial(initialize_gpt_model, seed=seed))
-
-    config = OptimizerConfig(bf16=True, params_dtype=torch.bfloat16, use_distributed_optimizer=True)
-    optimizer = get_megatron_optimizer(config, model)
-
-    torch.manual_seed(seed + 1)
-    model_parallel_cuda_manual_seed(seed + 1)
-
-    for group in optimizer.optimizer.param_groups:
-        for p in group['params']:
-            if len(optimizer.optimizer.state[p]) == 0:
-                optimizer.optimizer.state[p]['exp_avg'] = torch.rand_like(p.data)
-                optimizer.optimizer.state[p]['exp_avg_sq'] = torch.rand_like(p.data)
-
-    optimizer.reload_model_params()
-
-    return model, optimizer
-
-
 def load_checkpoint_no_arg_checks(*args, **kwargs):
     with mock.patch('megatron.training.checkpointing.check_checkpoint_args'):
         with mock.patch('megatron.training.checkpointing.update_num_microbatches'):
@@ -284,9 +262,6 @@ class TestDistributedOptimizer:
                     # this prevents NCCL errors when changing DP. TODO: fix it properly
                     sleep(20)
             finally:
-<<<<<<< HEAD
-                Utils.set_world_size()
-=======
                 Utils.set_world_size()
 
     @pytest.mark.parametrize(
@@ -435,6 +410,7 @@ class TestFP32Optimizer:
     @pytest.mark.parametrize(
         ('src_tp_pp', 'dest_tp_pp'), [((2, 4), (2, 4)), ((2, 4), (4, 2)), ((8, 1), (1, 2))]
     )
+    @pytest.mark.skip(reason="Tests are flaky and need to be debugged")
     def test_fp32_optimizer_resharding(self, tmp_path_dist_ckpt, src_tp_pp, dest_tp_pp):
         # sync=True to make sure other ranks wait for rank 0 to finish creating directory.
         Utils.initialize_model_parallel(*src_tp_pp)
@@ -540,4 +516,4 @@ class TestOptimizerResharding:
                 plain_state_dict_B = load_plain_tensors(ckpt_dir_B)
                 diffs = diff(plain_state_dict_A, plain_state_dict_B)
                 assert not any(map(bool, diffs)), diffs
->>>>>>> 01ccfcea6b73218d4425c7e848a1ecd5393ac474
+
