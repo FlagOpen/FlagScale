@@ -2,6 +2,7 @@
 
 import dataclasses
 import os
+import warnings
 from importlib.metadata import version
 from typing import Callable
 
@@ -27,6 +28,8 @@ from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 
 
 def get_te_version():
+    """Get TE version from __version__; if not available use pip's. Use caching."""
+
     def get_te_version_str():
         if hasattr(te, '__version__'):
             return str(te.__version__).split('+')[0]
@@ -51,6 +54,7 @@ def _get_extra_te_kwargs(config: TransformerConfig):
 
 
 def condition_init_method(config, init_method):
+    """Condition TE init_method on config.perform_initialization."""
     return init_method if config.perform_initialization else (lambda w: None)
 
 
@@ -169,6 +173,7 @@ class TELinear(te.pytorch.Linear):
         )
 
     def forward(self, x):
+        """Forward."""
         _is_first_microbatch = (
             None if self.disable_parameter_transpose_cache else self.is_first_microbatch
         )
@@ -288,6 +293,7 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
         )
 
     def forward(self, x):
+        """Forward."""
         _is_first_microbatch = (
             None if self.disable_parameter_transpose_cache else self.is_first_microbatch
         )
@@ -390,7 +396,7 @@ class TERowParallelLinear(TELinear):
             init_method=condition_init_method(config, init_method),
             bias=bias,
             skip_bias_add=skip_bias_add,
-            skip_weight_param_allocation=False,  # We don't currently use this for row parallel layers
+            skip_weight_param_allocation=False,  # We don't currently use this for row parallel layers # pylint: disable=line-too-long
             tp_comm_buffer_name=tp_comm_buffer_name,
         )
 
@@ -478,9 +484,10 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
 
         if config.window_size is not None:
             # Check version
-            assert _te_version >= packaging.version.Version(
-                "1.2.0"
-            ), f"Transformer-Engine version ({str(_te_version)}) must be >= 1.2.0 to support sliding window attention."
+            assert _te_version >= packaging.version.Version("1.2.0"), (
+                f"Transformer-Engine version ({str(_te_version)}) must be >= 1.2.0 to support"
+                "sliding window attention."
+            )
             extra_kwargs['window_size'] = config.window_size
 
         super().__init__(
@@ -509,17 +516,20 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
         attn_mask_type: AttnMaskType,
         packed_seq_params: PackedSeqParams = None,
     ):
+        """Forward."""
         packed_seq_kwargs = (
             dataclasses.asdict(packed_seq_params) if packed_seq_params is not None else {}
         )
-        # overwrite self.qkv_format depending on self.config.apply_rope_fusion, which can be set after init
+        # overwrite self.qkv_format depending on self.config.apply_rope_fusion, which can be set
+        # after init
         if self.config.apply_rope_fusion and _te_version > packaging.version.Version("0.13.0"):
             self.qkv_format = 'bshd'
 
         qkv_format = packed_seq_kwargs.get('qkv_format', self.qkv_format)
 
         if _te_version < packaging.version.Version("1.3.0"):
-            # TE 1.3.0 introduces precomputing max_seqlen to remove unnecessary kernels and D2H copies (#555)
+            # TE 1.3.0 introduces precomputing max_seqlen to remove unnecessary kernels and D2H
+            # copies (#555)
             # These two arguments did not exist prior to 1.3.0
             packed_seq_kwargs.pop("max_seqlen_q", None)
             packed_seq_kwargs.pop("max_seqlen_kv", None)
@@ -537,9 +547,9 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
 
         if self.te_forward_mask_type:
             if qkv_format == 'thd' and _te_version >= packaging.version.Version("1.7.0"):
-                # thd format uses flash attention with cuDNN kernel which requires is_padding=True, so the only
-                # acceptable mask types are `padding_causal` and `padding`. These do not necessarily indicate
-                # there are padded tokens in the sequence.
+                # thd format uses flash attention with cuDNN kernel which requires is_padding=True,
+                # so the only acceptable mask types are `padding_causal` and `padding`. These do not
+                # necessarily indicate there are padded tokens in the sequence.
                 if attn_mask_type == AttnMaskType.causal:
                     attn_mask_type = AttnMaskType.padding_causal
                 elif attn_mask_type == AttnMaskType.no_mask:
@@ -604,8 +614,8 @@ if _te_version >= packaging.version.Version("1.9.0.dev0"):
             if self.expert_parallel:
                 extra_kwargs["rng_tracker_name"] = get_expert_parallel_rng_tracker_name()
 
-            # For MoE models, the comms between TP and EP group is explicitly handled by MoE token dispatcher.
-            # So we disable comms by making TE agnostic of model parallel.
+            # For MoE models, the comms between TP and EP group is explicitly handled by
+            # MoE token dispatcher. So we disable comms by making TE agnostic of model parallel.
             self.explicit_expert_comm = is_expert and (
                 config.tensor_model_parallel_size > 1 or self.expert_parallel
             )
@@ -645,6 +655,7 @@ if _te_version >= packaging.version.Version("1.9.0.dev0"):
                 setattr(param, 'allreduce', not (is_expert and self.expert_parallel))
 
         def forward(self, x, m_splits):
+            """Forward."""
             _is_first_microbatch = (
                 None if self.disable_parameter_transpose_cache else self.is_first_microbatch
             )
@@ -825,10 +836,13 @@ class TEDelayedScaling(te.common.recipe.DelayedScaling):
         if _te_version >= packaging.version.Version("1.6.0.dev0"):
             extra_kwargs["fp8_dpa"] = config.fp8_dot_product_attention
             extra_kwargs["fp8_mha"] = config.fp8_multi_head_attention
+        if _te_version < packaging.version.Version("1.8.0"):
+            extra_kwargs["interval"] = config.fp8_interval
+        elif config.fp8_interval != 1:
+            warnings.warn("fp8_interval is deprecated and ignored from Transformer-Engine v1.8.0.")
 
         super().__init__(
             margin=config.fp8_margin,
-            interval=config.fp8_interval,
             fp8_format=fp8_format,
             amax_compute_algo=config.fp8_amax_compute_algo,
             amax_history_len=config.fp8_amax_history_len,
@@ -848,6 +862,7 @@ def te_checkpoint(
     context_mask,
     rotary_pos_emb,
 ):
+    """Checkpointing with Transformer-Engine."""
     from transformer_engine.pytorch.distributed import checkpoint
 
     if _te_version >= packaging.version.Version("1.5.0"):
@@ -895,7 +910,8 @@ try:
     def get_cpu_offload_context(
         enabled, num_layers, model_layers, activation_offloading, weight_offloading
     ):
-        if _te_version > packaging.version.Version("1.9.0"):
+        """Get CPU offload context and sync function."""
+        if _te_version >= packaging.version.Version("1.10.0.dev0"):
             context, sync_func = _get_cpu_offload_context(
                 enabled, num_layers, model_layers, activation_offloading, weight_offloading
             )
