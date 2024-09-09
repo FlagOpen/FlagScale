@@ -371,10 +371,10 @@ def validate_args(args, defaults={}):
                   'schedule does not support overlapping p2p communication')
 
         def _parse_recompute_refined_config(recom_config, recom_config_name):
+            """Parse refined recompute configuration."""
             if recom_config is None:
                 return None
-            assert isinstance(recom_config, list), f"refined [{recom_config_name}] recompute configuration, "\
-                                                    "such as recompute_granularity_per_stage_micro_batch or the others, is not list."
+            assert isinstance(recom_config, list), f"[{recom_config_name}] recompute configuration, is not list."
             recom_config = [ast.literal_eval(item) for item in recom_config]
             parsed_pp_size = 0
             parsed_pp_chunk_config = []
@@ -387,9 +387,9 @@ def validate_args(args, defaults={}):
                     for mc_chunk in range(mc_chunks):
                         cur_pp_stage_per_mc += itertools.repeat(cur_pp_chunk_config[2 + mc_chunk * 2], cur_pp_chunk_config[1 + mc_chunk * 2])
                     assert len(cur_pp_stage_per_mc) == args.global_batch_size // (args.micro_batch_size * args.data_parallel_size), f"for [{recom_config_name}] refined recompute "\
-                                                    "configuration, the sum of n0, n1, ... should be equal to nums_micro_batch."
-                    if 'method' in recom_config_name:
-                        assert all(val == 0 or val == 1 for val in cur_pp_stage_per_mc), f"element of {recom_config_name} must be 0 or 1"
+                                                    "configuration, the sum of n0, n1, ... of sub-list should be equal to nums_micro_batch."
+                    if 'method' in recom_config_name or "granularity" in recom_config_name:
+                        assert all(val == 0 or val == 1 for val in cur_pp_stage_per_mc), f"the config-flag of {recom_config_name} must be 0 or 1"
                     parsed_pp_chunk_config.append(cur_pp_stage_per_mc)
             if args.virtual_pipeline_model_parallel_size != None:
                 assert parsed_pp_size == args.pipeline_model_parallel_size * args.virtual_pipeline_model_parallel_size, \
@@ -1283,21 +1283,22 @@ def _add_training_args(parser):
     group.add_argument('--recompute-granularity-per-stage-micro-batch', nargs='*', type=str, default=None,
                        help='used with recompute-granularity=full, setting recompute granularity'
                        'of each stage and each micro-batch. This argument must be a two-dimension list, '
-                       'the sum of axis 0 of which should be equal to pipeline-model-parallel-size.'
-                       'Every sub-list is in the form: n0, flag0, n1, flag1,...'
-                       'the sum of n0, n1, ... should be equal to nums-micro-batch.'
+                       'the sum of the first item of all the sub-lists should be equal to pipeline-model-parallel-size.'
+                       'Every sub-list is in the form: n0, flag0, n1, flag1,... except the first item, which is the stage number.'
+                       'The sum of n0, n1, ... should be equal to nums-micro-batch.'
                        'granularity flag: 0 means turning off full recompute, 1 means turning on')
     group.add_argument('--recompute-method-per-stage-micro-batch', nargs='*', type=str, default=None,
                        help='used with recompute-granularity=full, setting recompute method '
                        'of each stage and each micro-batch. This argument must be a two-dimension list, '
-                       'the sum of axis 0 of which should be equal to pipeline-model-parallel-size.'
-                       'Every sub-list is in the form: n0, flag0, n1, flag1,...'
-                       'the sum of n0, n1, ... should be equal to nums-micro-batch.'
+                       'the sum of the first item of all the sub-lists should be equal to pipeline-model-parallel-size.'
+                       'Every sub-list is in the form: n0, flag0, n1, flag1,... except the first item, which is the stage number.'
+                       'The sum of n0, n1, ... should be equal to nums-micro-batch.'
                        'method: 0 means uniform, 1 means block')
     group.add_argument('--recompute-num-layers-per-stage-micro-batch', nargs='*', type=str, default=None,
                        help='used with recompute-granularity=full, setting recompute num layers '
                        'of each stage and each micro-batch. This argument must be a two-dimension list, '
-                       'the sum of axis 0 of which should be equal to pipeline-model-parallel-size.')
+                       'Every sub-list is in the form: n0, num_laryers0, n1, num_laryers1,... except the first item, which is the stage number.'
+                       'The sum of n0, n1, ... should be equal to nums-micro-batch. ')
     group.add_argument('--no-clone-scatter-output-in-embedding', action='store_false',
                        help='If not set, clone the output of the scatter in embedding layer to GC original tensor.',
                        dest='clone_scatter_output_in_embedding')

@@ -11,8 +11,6 @@ experiment:
     entrypoint: flagscale/train/train_aquila.py 
   runner:
     backend: torchrun 
-  # cmds:
-  #   before_start: source /root/miniconda3/bin/activate flagscale
   shell_cmds: null 
   ssh_port: null
   envs:
