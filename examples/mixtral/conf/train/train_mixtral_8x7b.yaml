@@ -1,7 +1,7 @@
 system:
-  tensor_model_parallel_size: 1
+  tensor_model_parallel_size: 2
   pipeline_model_parallel_size: 4
-  expert_model_parallel_size: 8
+  expert_model_parallel_size: 4
   use_mcore_models: true
   transformer_impl: transformer_engine
   sequence_parallel: true
