@@ -1,7 +1,9 @@
 system:
-  tensor_model_parallel_size: 4
-  pipeline_model_parallel_size: 1
+  tensor_model_parallel_size: 2
+  pipeline_model_parallel_size: 4
   expert_model_parallel_size: 4
+  use_mcore_models: true
+  transformer_impl: transformer_engine
   sequence_parallel: true
   use_distributed_optimizer: true
   precision:
@@ -12,17 +14,16 @@ system:
     wandb_project: mixtral
     wandb_exp_name: mixtral-8x7b
   checkpoint:
-    save_interval: 10000
+    ckpt_format: torch
+    save_interval: 200
 
 
 model:
-  use_mcore_models: true
-  transformer_impl: transformer_engine
   num_layers: 32
   hidden_size: 4096
   ffn_hidden_size: 14336
   num_attention_heads: 32
-  seq_length: 2048
+  seq_length: 4096
   max_position_embeddings: 32768
   swiglu: true
   normalization: RMSNorm
@@ -34,7 +35,7 @@ model:
   hidden_dropout: 0.0
   disable_bias_linear: true
   position_embedding_type: rope
-  rotary_base: 1000000.0
+  rotary_base: 1000000
   no_position_embedding: true
   no_masked_softmax_fusion: true
   untie_embeddings_and_output_weights: true
@@ -46,9 +47,9 @@ model:
   # moe_grouped_gemm: true
 
   # seed: 42
-  train_iters: 500000
+  train_iters: 1000
   micro_batch_size: 1
-  global_batch_size: 128
+  global_batch_size: 2048
   clip_grad: 1.0
   eval_interval: 1000
   eval_iters: 10
@@ -67,10 +68,6 @@ data:
   data_path: <xxxx>
   split: 1
   tokenizer:
-    tokenizer_type: QwenTokenizer
+    tokenizer_type: QwenTokenizerFS
     tokenizer_path: <xxxx>
-    vocab_file: examples/aquila/tokenizer/vocab.json
-    merge_file: examples/aquila/tokenizer/merges.txt
-    special_tokens_file: examples/aquila/tokenizer/special_tokens.txt
-    vocab_size: 151851
     make_vocab_size_divisible_by: 64

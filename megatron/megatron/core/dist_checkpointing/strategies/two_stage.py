@@ -59,10 +59,7 @@ class _ShardedTensorMetadata:
 
 
 def sharded_tensor_chunk_id(sharded_tensor: ShardedTensor):
-    return (
-        sharded_tensor.key,
-        sharded_tensor.global_offset,
-    )
+    return (sharded_tensor.key, sharded_tensor.global_offset)
 
 
 class TwoStageDataParallelLoadShardedStrategy(LoadShardedStrategy):
@@ -100,7 +97,6 @@ class TwoStageDataParallelLoadShardedStrategy(LoadShardedStrategy):
         self.dp_group_ranks = tuple(
             sorted(torch.distributed.get_process_group_ranks(data_parallel_group))
         )
-        # TODO: @aoyulong need to fix this for heterogeneous training
         self.dp_group_rank = torch.distributed.get_rank(self.data_parallel_group_orig)
         self.global_rank = torch.distributed.get_rank()
 
@@ -149,7 +145,6 @@ class TwoStageDataParallelLoadShardedStrategy(LoadShardedStrategy):
             gloo_pg = torch.distributed.new_group(ranks=group_ranks, backend='gloo')
             if self.global_rank in group_ranks:
                 self.data_parallel_group = gloo_pg
-                # TODO: @aoyulong need to fix this for heterogeneous training
                 assert self.dp_group_rank == torch.distributed.get_rank(self.data_parallel_group)
 
     def check_backend_compatibility(self, loaded_version):
@@ -179,7 +174,7 @@ class TwoStageDataParallelLoadShardedStrategy(LoadShardedStrategy):
 
     @timed()
     def deduplicate_chunks(self, ten_metas: List[_ShardedTensorMetadata]):
-        """ Group tensors by chunk and then pick the tensor with the lowest rank.
+        """Group tensors by chunk and then pick the tensor with the lowest rank.
 
         NOTE: with proper loading overlap, loading from randomized ranks
          (instead of the smallest one) could be beneficial here.

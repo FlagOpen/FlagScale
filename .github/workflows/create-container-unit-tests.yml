@@ -1,0 +1,35 @@
+# .github/workflows/create-container-unit-tests.yml
+name: Create and Test in Container - Unit Tests
+
+env:
+  REPORT_ADDR: http://120.92.110.224:8081
+
+on:
+  workflow_call:
+    inputs:
+      backend:
+        required: true
+        type: string
+      subset:
+        required: true
+        type: string
+
+jobs:
+  unit-test:
+    runs-on: self-hosted
+    container:
+      image: localhost:5000/flagscale_cicd:v1.5
+      ports:
+        - 80
+      volumes:
+        - /home/flagscale_cicd/flask/static:/workspace/report
+        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
+        - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
+      options: --gpus all --shm-size=500g --hostname flagscale_cicd
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Run Unit Test
+        run: tests/scripts/unit_tests/test_subset.sh --backend ${{ inputs.backend }} --subset ${{ inputs.subset }} --id ${{ github.sha }}
+      - name: Unit Test Coverage Online Report
+        run: echo "You can access the test coverage report at the $REPORT_ADDR/${{github.sha}}/cov-report-${{ inputs.backend }}/index.html"

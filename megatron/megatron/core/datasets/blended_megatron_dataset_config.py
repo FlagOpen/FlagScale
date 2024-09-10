@@ -34,6 +34,12 @@ class BlendedMegatronDatasetConfig:
        'blend'. Defauls to None.
     """
 
+    renormalize_blend_weights: bool = False
+    """Renormalize the blend weights to account for mid-level dataset oversampling done to ensure 
+       fulfillmenet of the of the requested number of samples. Defaults to False for backward
+       comparability in the data sample order.
+    """
+
     split: Optional[str] = None
     """The split string, a comma separated weighting for the dataset splits when drawing samples
        from a single distribution. Not to be used with 'blend_per_split'.  Defaults to None.
@@ -64,8 +70,7 @@ class BlendedMegatronDatasetConfig:
     """The MegatronTokenizer instance or None. Required for datasets which do online tokenization."""
 
     def __post_init__(self) -> None:
-        """Do asserts and set fields post init
-        """
+        """Do asserts and set fields post init"""
         if self.blend_per_split is not None and any(self.blend_per_split):
             assert self.blend is None, "blend and blend_per_split are incompatible"
             assert self.split is None, "split and blend_per_split are incompatible"
@@ -84,14 +89,11 @@ class BlendedMegatronDatasetConfig:
                         self.blend_per_split[split.value][1]
                     ), "blend per split prefixes and weights must be equal in number"
         else:
-            assert self.split is not None, "split must be provided in absence of blend_per_split"
-            split_vector = parse_and_normalize_split(self.split)
-            self.split_matrix = convert_split_vector_to_split_matrix(split_vector)
-            log_single_rank(logger, logging.INFO, f"Let split_matrix = {self.split_matrix}")
             if self.blend is not None:
                 assert self.blend[1] is None or len(self.blend[0]) == len(
                     self.blend[1]
                 ), "blend prefixes and weights must be equal in number"
+                assert self.split is not None, "split must be provided when blend is not None"
             else:
                 self.mock = True
                 log_single_rank(
@@ -99,6 +101,15 @@ class BlendedMegatronDatasetConfig:
                     logging.INFO,
                     f"Let mock = True, as both blend and blend_per_split are None",
                 )
+                self.split = "1,1,1"
+                log_single_rank(
+                    logger,
+                    logging.INFO,
+                    f"Let split = {self.split}, an arbitrarily even split, as mock is True",
+                )
+            split_vector = parse_and_normalize_split(self.split)
+            self.split_matrix = convert_split_vector_to_split_matrix(split_vector)
+            log_single_rank(logger, logging.INFO, f"Let split_matrix = {self.split_matrix}")
 
 
 def parse_and_normalize_split(split: str) -> List[float]:

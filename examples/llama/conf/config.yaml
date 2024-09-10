@@ -26,25 +26,26 @@
 
 
 defaults:
-  - train: train_llama3_8b
+  - train: train_llama3_70b
   - _self_
 
 experiment:
   exp_name: llama3
-  exp_dir: ./outputs_llama3
+  exp_dir: ./outputs_llama3_70b
   task:
     type: train
     backend: megatron
     entrypoint: ./flagscale/train/train_llama.py
   runner:
     backend: torchrun
-    nnodes: 1 
+    nnodes: 4 
     nproc_per_node: 8 
-    hostfile: hostfile
+    hostfile: ${hostfile??} 
   envs:
     CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7 
-    CUDA_DEVICE_MAX_CONNECTIONS: 1 
-
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+    NVTE_APPLY_QK_LAYER_SCALING: 0
+    NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
 action: run 
 
 hydra: 

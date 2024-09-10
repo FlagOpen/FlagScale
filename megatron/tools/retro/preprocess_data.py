@@ -13,8 +13,6 @@ import os
 import sys
 import torch
 
-from megatron import get_args, initialize_megatron, print_rank_0
-from megatron.arguments import core_transformer_config_from_args
 from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
 from megatron.core.datasets.utils import get_blend_from_list
 from megatron.core.datasets.retro.db import build_db
@@ -37,6 +35,8 @@ from megatron.core.models.retro.utils import (
     get_config_path,
     get_gpt_data_dir,
 )
+from megatron.training import get_args, initialize_megatron, print_rank_0
+from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.tokenizer.tokenizer import (
     _BertWordPieceTokenizer,
     _GPT2BPETokenizer,
@@ -110,6 +110,7 @@ def get_gpt_chunk_datasets(config):
             get_blend_from_list(args.valid_data_path),
             get_blend_from_list(args.test_data_path)
         ],
+        renormalize_blend_weights=args.renormalize_blend_weights,
         split=config.retro_gpt_split,
         split_preprocessing=config.retro_gpt_split,
         path_to_cache=config.retro_gpt_data_cache_path,

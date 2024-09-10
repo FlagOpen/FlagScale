@@ -2,6 +2,7 @@
 
 
 import math
+from typing import Optional
 
 import torch
 from torch import Tensor
@@ -21,7 +22,8 @@ class DotProductAttention(MegatronModule):
     Region where selective activation recomputation is applied.
     This region is memory intensive but less compute intensive which
     makes activation checkpointing more efficient for LLMs (20B+).
-    See Reducing Activation Recomputation in Large Transformer Models: https://arxiv.org/abs/2205.05198 for more details.
+    See Reducing Activation Recomputation in Large Transformer Models:
+    https://arxiv.org/abs/2205.05198 for more details.
 
     We use the following notation:
      h: hidden size
@@ -94,7 +96,7 @@ class DotProductAttention(MegatronModule):
         value: Tensor,
         attention_mask: Tensor,
         attn_mask_type: AttnMaskType = None,
-        packed_seq_params: PackedSeqParams = None,
+        packed_seq_params: Optional[PackedSeqParams] = None,
     ):
         assert packed_seq_params is None, (
             "Packed sequence is not supported by DotProductAttention."
@@ -120,24 +122,19 @@ class DotProductAttention(MegatronModule):
             )
 
         # [b, np, sq, sk]
-        output_size = (
-            query.size(1),
-            query.size(2),
-            query.size(0),
-            key.size(0),
-        )
+        output_size = (query.size(1), query.size(2), query.size(0), key.size(0))
 
         # [sq, b, np, hn] -> [sq, b * np, hn]
         # This will be a simple view when doing normal attention, but in group query attention
-        # the key and value tensors are repeated to match the queries so you can't use simple strides
-        # to extract the queries.
+        # the key and value tensors are repeated to match the queries so you can't use
+        # simple strides to extract the queries.
         query = query.reshape(output_size[2], output_size[0] * output_size[1], -1)
         # [sk, b, np, hn] -> [sk, b * np, hn]
         key = key.view(output_size[3], output_size[0] * output_size[1], -1)
 
         # preallocting input tensor: [b * np, sq, sk]
         matmul_input_buffer = parallel_state.get_global_memory_buffer().get_tensor(
-            (output_size[0] * output_size[1], output_size[2], output_size[3]), query.dtype, "mpu",
+            (output_size[0] * output_size[1], output_size[2], output_size[3]), query.dtype, "mpu"
         )
 
         # Raw attention scores. [b * np, sq, sk]
@@ -176,12 +173,7 @@ class DotProductAttention(MegatronModule):
         # [sk, b, np, hn] --> [b, np, sq, hn]
 
         # context layer shape: [b, np, sq, hn]
-        output_size = (
-            value.size(1),
-            value.size(2),
-            query.size(0),
-            value.size(3),
-        )
+        output_size = (value.size(1), value.size(2), query.size(0), value.size(3))
 
         # change view [sk, b * np, hn]
         value = value.view(value.size(0), output_size[0] * output_size[1], -1)

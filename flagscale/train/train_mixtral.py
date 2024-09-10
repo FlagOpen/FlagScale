@@ -47,7 +47,7 @@ stimer = StragglerDetector()
 def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megatron.legacy.model.GPTModel]:
     """Builds the model.
 
-    If you set the use_mcore_models to True, it will return the mcore GPT model and if not the legacy GPT model.
+    If you set the use_legacy_models to True, it will return the legacy GPT model and if not the mcore GPT model.
 
     Args:
         pre_process (bool, optional): Set to true if you need to compute embedings. Defaults to True.
@@ -67,7 +67,15 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
     else:
         config = core_transformer_config_from_args(args)
 
-    if args.use_mcore_models:
+    if args.use_legacy_models:
+        model = megatron.legacy.model.GPTModel(
+            config,
+            num_tokentypes=0,
+            parallel_output=True,
+            pre_process=pre_process,
+            post_process=post_process,
+        )
+    else: # using core models
         if args.spec is not None:
             transformer_layer_spec = import_module(args.spec)
         else:
@@ -89,18 +97,6 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
             position_embedding_type=args.position_embedding_type,
             rotary_percent=args.rotary_percent,
             rotary_base=args.rotary_base,
-        )
-    else:
-        assert (
-            args.context_parallel_size == 1
-        ), "Context parallelism is only supported with Megatron Core!"
-
-        model = megatron.legacy.model.GPTModel(
-            config,
-            num_tokentypes=0,
-            parallel_output=True,
-            pre_process=pre_process,
-            post_process=post_process,
         )
 
     return model
@@ -208,6 +204,7 @@ def core_gpt_dataset_config_from_args(args):
             get_blend_from_list(args.valid_data_path),
             get_blend_from_list(args.test_data_path)
         ],
+        renormalize_blend_weights=args.renormalize_blend_weights,
         split=args.split,
         num_dataset_builder_threads=args.num_dataset_builder_threads,
         path_to_cache=args.data_cache_path,
@@ -217,6 +214,7 @@ def core_gpt_dataset_config_from_args(args):
         reset_attention_mask=args.reset_attention_mask,
         eod_mask_loss=args.eod_mask_loss,
         create_attention_mask=args.create_attention_mask_in_dataloader,
+        s3_cache_path = args.s3_cache_path,
     )
 
 
@@ -232,6 +230,7 @@ def core_sft_dataset_config_from_args(args):
             get_blend_from_list(args.valid_data_path),
             get_blend_from_list(args.test_data_path)
         ],
+        renormalize_blend_weights=args.renormalize_blend_weights,
         split=args.split,
         num_dataset_builder_threads=args.num_dataset_builder_threads,
         path_to_cache=args.data_cache_path,

@@ -1,190 +1,97 @@
 workflow:
   rules:
-    # always run MR pipelines
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    # always run web pipelines
-    - if: $CI_PIPELINE_SOURCE == "web"
-    # do not run branch pipelines if open MR exists
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+    - if: $CI_PROJECT_NAMESPACE != "ADLR"
       when: never
-    # run branch pipeline if no open MR
-    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /ci-/ && $CI_PIPELINE_SOURCE != "schedule"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      auto_cancel:
+        on_new_commit: none
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
+      variables:
+        FUNCTIONAL_TEST: "no"
+    - if: $CI_MERGE_REQUEST_LABELS =~ /Run tests/ && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA != ""
+      variables:
+        FUNCTIONAL_TEST: "yes"
+        FUNCTIONAL_TEST_SCOPE: mr
+    - if: $CI_MERGE_REQUEST_LABELS =~ /Run nightly/ && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA != ""
+      variables:
+        FUNCTIONAL_TEST: "yes"
+        FUNCTIONAL_TEST_SCOPE: nightly
+    - if: $CI_MERGE_REQUEST_LABELS =~ /Run weekly/ && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA != ""
+      variables:
+        FUNCTIONAL_TEST: "yes"
+        FUNCTIONAL_TEST_SCOPE: weekly
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA != ""
+      variables:
+        FUNCTIONAL_TEST: "no"
+    - when: never
+  auto_cancel:
+    on_new_commit: interruptible
 
 stages:
-  - test
-  - jet
+  - test 
+  - functional_tests
+  - convergence_tests
+  - publish
 
-variables: &VARS
-  SELENE_ADLR_CI_PATH: "/lustre/fsw/adlr/adlr-nlp/adlr_ci/megatron"
-  DATA_DIR: "/lustre/fsw/adlr/adlr-nlp/adlr_ci/megatron/data"
-  PYTHON_VIRTUAL_ENV: /lustre/fsw/adlr/adlr-nlp/adlr_ci/cienv/bin/activate
-  TESTS_TO_RUN_AFTER_MERGING: "MR_TESTS NIGHTLY_TESTS" # Can specify levels
-  TESTS_TO_RUN_ON_THIS_COMMIT: unit_tests
-  TEST_REGEX_ON_THIS_COMMIT:  NONE #https://github.com/google/re2/wiki/Syntax (Can define regex as in this spec) e.g /.*gpt3.*/
-  JET_CUSTOM_FILTER: ""
-  DISPLAY_OUTPUT: "True" # Set to true for new tests to copy the logs for creating golden truth file
-  TIME_LIMIT: "10:00" # Default time limit for all jobs
-  MOE_GROUPED_GEMM: 0 # Set to 1 to enable grouped gemm for MoE
-  JET_CLUSTER_BRANCH:
-    value: "mcore/draco-oci"
+default:
+  interruptible: true
+
+variables:
+  FUNCTIONAL_TEST: 
+    value: "yes"
     options:
-      - "mcore/draco-oci"
-      - "mcore/eos"
-    description: '"mcore/draco-oci" for OCI-IAD, "mcore/eos" for EOS'
+      - "yes"
+      - "no"
+    description: To run the funtional test suite
+  FUNCTIONAL_TEST_SCOPE:
+    value: "mr"
+    options:
+      - "mr"
+      - "nightly"
+      - "weekly"
+    description: "Testsuite to run (only for FUNCTIONAL_TEST=yes)"
+  FUNCTIONAL_TEST_CLUSTER:
+    value: "dgxa100_dracooci"
+    options:
+      - "dgxa100_dracooci"
+      - "dgxa100_dracooci-ord"
+      - "dgxh100_eos"
+    description: '"dgxa100_dracooci" for OCI-IAD, "dgxh100_eos" for EOS'
+  CONVERGENCE_TEST:
+    value: "no"
+    options:
+      - "yes"
+      - "no"
+    description: To run a convergence test
+  CONVERGENCE_TEST_SCOPE:
+    value: "release"
+    options:
+      - "release"
+      - "pre-release"
+    description: "Test suite to run (only for CONVERGENCE_TEST=yes)"
+  CONVERGENCE_TEST_RUN_NAME:
+    value: "pre-release-$$CI_PIPELINE_ID"
+    description: "Run directory of convergence test"
+  PUBLISH: 
+    value: "no"
+    options: 
+      - "yes"
+      - "no"
+    description: Build and publish a wheel to PyPi
+
+  # CI wide variables
+  CI_MCORE_IMAGE: ${GITLAB_ENDPOINT}:5005/adlr/megatron-lm/mcore_ci
+  CI_NEMO_IMAGE: ${GITLAB_ENDPOINT}:5005/adlr/megatron-lm/nemo_ci
+  LINTING_IMAGE: ${GITLAB_ENDPOINT}:5005/adlr/megatron-lm/mcore_linting
+  UNIT_TEST_TIMEOUT: 15
+  UNIT_TEST_REPEAT: 1
 
 include:
-  - jet-tests.yml
-
-unit_tests:
-  image: gitlab-master.nvidia.com:5005/adlr/megatron-lm/mcore_ci:24.01v3
-  tags:
-    - 8xL40S
-  stage: test
-  script:
-    - torchrun --nproc_per_node=8 -m pytest --cov-report=term --cov-report=html --cov=megatron/core tests/unit_tests
-  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
-  artifacts:
-    paths:
-      - coverage
-    expire_in: 30 days
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /Run tests/'
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-unit_tests-data:
-  image: gitlab-master.nvidia.com:5005/adlr/megatron-lm/mcore_ci:24.01v3
-  tags:
-    - 8xL40S
-  stage: test
-  script:
-    - torchrun --nproc_per_node=8 -m pytest tests/unit_tests/data
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /Run tests/'
-      when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: never
-    - when: always
-
-unit_tests-dist-checkpointing:
-  image: gitlab-master.nvidia.com:5005/adlr/megatron-lm/mcore_ci:24.01v3
-  tags:
-    - 8xL40S
-  stage: test
-  script:
-    - torchrun --nproc_per_node=8 -m pytest tests/unit_tests/dist_checkpointing
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /Run tests/'
-      when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: never
-    - when: always
-
-unit_tests-fusions:
-  image: gitlab-master.nvidia.com:5005/adlr/megatron-lm/mcore_ci:24.01v3
-  tags:
-    - 8xL40S
-  stage: test
-  script:
-    - torchrun --nproc_per_node=8 -m pytest tests/unit_tests/fusions
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /Run tests/'
-      when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: never
-    - when: always
-
-unit_tests-models:
-  image: gitlab-master.nvidia.com:5005/adlr/megatron-lm/mcore_ci:24.01v3
-  tags:
-    - 8xL40S
-  stage: test
-  script:
-    - torchrun --nproc_per_node=8 -m pytest tests/unit_tests/models
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /Run tests/'
-      when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: never
-    - when: always
-
-unit_tests-pipeline-parallel:
-  image: gitlab-master.nvidia.com:5005/adlr/megatron-lm/mcore_ci:24.01v3
-  tags:
-    - 8xL40S
-  stage: test
-  script:
-    - torchrun --nproc_per_node=8 -m pytest tests/unit_tests/pipeline_parallel
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /Run tests/'
-      when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: never
-    - when: always
-
-unit_tests-tensor-parallel:
-  image: gitlab-master.nvidia.com:5005/adlr/megatron-lm/mcore_ci:24.01v3
-  tags:
-    - 8xL40S
-  stage: test
-  script:
-    - torchrun --nproc_per_node=8 -m pytest tests/unit_tests/tensor_parallel
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /Run tests/'
-      when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: never
-    - when: always
-
-unit_tests-transformer:
-  image: gitlab-master.nvidia.com:5005/adlr/megatron-lm/mcore_ci:24.01v3
-  tags:
-    - 8xL40S
-  stage: test
-  script:
-    - torchrun --nproc_per_node=8 -m pytest tests/unit_tests/transformer
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /Run tests/'
-      when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: never
-    - when: always
-
-unit_tests-top-py:
-  image: gitlab-master.nvidia.com:5005/adlr/megatron-lm/mcore_ci:24.01v3
-  tags:
-    - 8xL40S
-  stage: test
-  script:
-    - torchrun --nproc_per_node=8 -m pytest tests/unit_tests/*.py
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /Run tests/'
-      when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: never
-    - when: always
-
-docs_build_test:
-  image: gitlab-master.nvidia.com:5005/adlr/megatron-lm/python-format:0.0.1
-  stage: test
-  tags:
-    - os/linux
-  script:
-    - cd ..
-    - rm -rf documentation && git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab-master.nvidia.com/nemo-megatron-core-tme/documentation.git
-    - mv megatron-lm/ documentation/
-    - cd documentation/
-    - ./repo docs
-  allow_failure: true
-  except:
-    - main
-
-formatting:
-  image: gitlab-master.nvidia.com:5005/adlr/megatron-lm/python-format:0.0.1
-  tags:
-    - os/linux
-  stage: test
-  script:
-    - black megatron/core --check --verbose --diff
-    - isort megatron/core --check
-  rules:
-    - when: always
+  - .gitlab/stages/00.pre.yml
+  - .gitlab/stages/01.tests.yml
+  - .gitlab/stages/02.functional-tests.yml
+  - .gitlab/stages/03.convergence-tests.yml
+  - .gitlab/stages/04.publish.yml

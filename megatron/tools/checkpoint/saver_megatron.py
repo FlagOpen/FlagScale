@@ -114,7 +114,8 @@ def save_checkpoint(queue, args):
                 '--no-save-rng',
                 '--no-initialization',
                 '--save-interval', '1',
-                '--save', args.save_dir
+                '--save', args.save_dir,
+                '--ckpt-format', 'torch', # only 'torch' supported for conversion
                 ]
 
     if md.make_vocab_size_divisible_by is not None:
@@ -151,8 +152,9 @@ def save_checkpoint(queue, args):
                         'encoder_num_layers', 'encoder_seq_length',
                         'distribute_saved_activations',
                         'train_iters', 'lr_decay_iters', 'lr_warmup_iters', 'lr_warmup_fraction',
-                        'start_weight_decay', 'end_weight_decay', 'bf16', 'fp16']
-
+                        'start_weight_decay', 'end_weight_decay', 'bf16', 'fp16',
+                        'ckpt_format',
+        ]
 
         for arg, value in vars(md.checkpoint_args).items():
             if arg in args_to_keep:
@@ -167,7 +169,7 @@ def save_checkpoint(queue, args):
     validate_args(margs)
 
     # Use MLM models.
-    margs.use_mcore_models = False
+    margs.use_legacy_models = True
     margs.transformer_impl = args.saver_transformer_impl
 
     # Do not instantiate Tensorboard

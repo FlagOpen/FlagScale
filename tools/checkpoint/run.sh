@@ -40,3 +40,17 @@ python convert.py \
     --target-params-dtype bf16 \
     --true-vocab-size 128256 \
     --megatron-path <xxx>
+
+python convert.py \
+    --model-type llama \
+    --loader transformers \
+    --saver mcore \
+    --load-dir ${transformers_ckpt_path:??} \
+    --save-dir ${mcore_ckpt_path:??} \
+    --target-tensor-parallel-size 8 \
+    --target-pipeline-parallel-size 4 \
+    --target-expert-parallel-size 1 \
+    --max-queue-size 50 \
+    --target-params-dtype bf16 \
+    --true-vocab-size 128256 \
+    --megatron-path <xxx>

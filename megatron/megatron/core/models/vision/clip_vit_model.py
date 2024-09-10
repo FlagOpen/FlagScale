@@ -4,6 +4,7 @@ from typing import Optional, Union
 
 import torch
 
+from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
 from megatron.core.models.common.vision_module.vision_module import VisionModule
 from megatron.core.transformer.custom_layers.transformer_engine import TENorm
 from megatron.core.transformer.enums import ModelType
@@ -20,11 +21,11 @@ class CLIPViTModel(VisionModule):
         transformer_config (TransformerConfig): Transformer config.
         transformer_layer_spec (ModuleSpec): Specifies module to use for transformer layers.
         ln_pre_impl (ModuleSpec or type): Specifies the layer norm type to use for ln_pre.
+        add_class_token (bool, optional): Include a class token. Defaults to True.
+        class_token_len (int): Class token length. Defaults to 1 but 8 may be faster.
         patch_dim (int): Image patch size.
         img_h (int): Input image height.
         img_w (int): Input image width.
-        add_class_token (bool, optional): Include a class token. Defaults to True.
-        class_token_len (int): Class token length. Defaults to 1 but 8 may be faster.
     """
 
     def __init__(
@@ -32,18 +33,23 @@ class CLIPViTModel(VisionModule):
         transformer_config: TransformerConfig,
         transformer_layer_spec: ModuleSpec,
         ln_pre_impl: Union[ModuleSpec, type] = TENorm,
+        add_class_token: bool = True,
+        class_token_len: int = 1,
         patch_dim: int = 14,
         img_h: int = 336,
         img_w: int = 336,
-        add_class_token: bool = True,
-        class_token_len: int = 1,
     ) -> None:
         super().__init__(config=transformer_config)
 
+        if has_config_logger_enabled(transformer_config):
+            log_config_to_disk(transformer_config, locals(), prefix=type(self).__name__)
+
+        self.class_token_len = class_token_len
         self.visual_hidden_size = transformer_config.hidden_size
         self.patch_dim = patch_dim
         self.img_h = img_h
         self.img_w = img_w
+
         assert self.img_h % self.patch_dim == 0
         assert self.img_w % self.patch_dim == 0
         self.num_patches_per_dim_h = self.img_h // self.patch_dim
@@ -82,16 +88,15 @@ class CLIPViTModel(VisionModule):
 
         self.model_type = ModelType.encoder_or_decoder
 
-        # Transformer + final layer norm (via post_process)
+        # Transformer layers.
         # TODO: Follow-up changes will make pre and post_process configurable. They are needed for supporting pipeline parallelism.
-        self.transformer = TransformerBlock(
+        # Note: a final layer norm and/or linear layer present in some implementations are omitted here. They can be added separately where needed.
+        self.decoder = TransformerBlock(
             config=transformer_config,
             spec=transformer_layer_spec,
             pre_process=True,
-            post_process=True,
+            post_process=False,
         )
-
-        # Note: a final linear layer present in some implementations is omitted here. It can be added separately where needed.
 
     def set_input_tensor(self, input_tensor: torch.Tensor) -> None:
         """Sets input tensor to the model.
@@ -99,7 +104,7 @@ class CLIPViTModel(VisionModule):
         Args:
             input_tensor (Tensor): Sets the input tensor for the model.
         """
-        self.transformer.set_input_tensor(input_tensor)
+        self.decoder.set_input_tensor(input_tensor)
 
     def forward(
         self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
@@ -109,7 +114,7 @@ class CLIPViTModel(VisionModule):
 
         Args:
             x (torch.Tensor): input data of shape [batch, img_h, img_w]
-            attention_mask (torch.Tensor with dtype=bool): Attention mask to use. If none, all ones.
+            attention_mask (torch.Tensor with dtype=bool): Attention mask to use.
 
         Returns:
             x (torch.Tensor): output after final transformer block of shape [b, s, h].
@@ -126,15 +131,24 @@ class CLIPViTModel(VisionModule):
                 [class_token, x], dim=1
             )  # [batch, grid ** 2 + class_token_len, hidden_size]
 
+        assert x.shape[1] == self.seq_length, f"{x.shape[1]} != {self.seq_length}"
         x = x + self.position_embeddings(self.position_ids)
         x = self.ln_pre(x)
-
         x = x.permute(1, 0, 2)  # [b, s, h] -> [s, b, h]
-        if attention_mask is None:
-            attention_mask = torch.ones(1, 1, x.shape[0], x.shape[0]).cuda()  # [1, 1, s, s]
-            attention_mask = attention_mask < 0.5  # to bool
-        x = self.transformer(x.contiguous(), attention_mask)
+        x = (
+            x.contiguous()
+        )  # contiguous() call required as `permute` can sparsify the tensor and this breaks pipelining
+
+        x = self.decoder(x, attention_mask)
         x = x.permute(1, 0, 2)  # [s, b, h] -> [b, s, h]
         x = x.contiguous()
 
         return x
+
+
+def get_image_sequence_length(img_h, img_w, patch_dim, add_class_token, class_token_len):
+    """Get image sequence length given image size, patch size, and class token."""
+    num_patches_per_dim_h = img_h // patch_dim
+    num_patches_per_dim_w = img_w // patch_dim
+    num_patches = num_patches_per_dim_h * num_patches_per_dim_w
+    return num_patches + (class_token_len if add_class_token else 0)

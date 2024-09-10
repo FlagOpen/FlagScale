@@ -7,3 +7,5 @@ build
 slurm*
 logs
 .vscode
+local/
+.gitmodules

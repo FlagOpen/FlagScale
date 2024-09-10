@@ -2,6 +2,7 @@
 
 import dataclasses
 import os
+import warnings
 from importlib.metadata import version
 from typing import Callable
 
@@ -10,27 +11,39 @@ import transformer_engine as te
 from pkg_resources import packaging
 from torch import Tensor
 
-from megatron.core import ModelParallelConfig
+from megatron.core import ModelParallelConfig, parallel_state
+from megatron.core.dist_checkpointing.utils import replace_prefix_for_sharding
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.parallel_state import (
     get_context_parallel_global_ranks,
     get_context_parallel_group,
     get_tensor_model_parallel_group,
+    get_tensor_model_parallel_world_size,
 )
-from megatron.core.tensor_parallel import get_cuda_rng_tracker
+from megatron.core.tensor_parallel import get_cuda_rng_tracker, get_expert_parallel_rng_tracker_name
+from megatron.core.tensor_parallel.utils import divide
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 
-try:
-  _te_version = packaging.version.Version(version("transformer-engine"))
-except:
-  _te_version = packaging.version.Version("1.6.0") 
+
+def get_te_version():
+    """Get TE version from __version__; if not available use pip's. Use caching."""
+
+    def get_te_version_str():
+        if hasattr(te, '__version__'):
+            return str(te.__version__).split('+')[0]
+        else:
+            return version("transformer-engine")
+
+    return packaging.version.Version(get_te_version_str())
+
+
+_te_version = get_te_version()
+
 
 def _get_extra_te_kwargs(config: TransformerConfig):
-    extra_transformer_engine_kwargs = {
-        "params_dtype": config.params_dtype,
-    }
+    extra_transformer_engine_kwargs = {"params_dtype": config.params_dtype}
 
     if _te_version >= packaging.version.Version("0.12.0"):
         if config.use_cpu_initialization:
@@ -41,6 +54,7 @@ def _get_extra_te_kwargs(config: TransformerConfig):
 
 
 def condition_init_method(config, init_method):
+    """Condition TE init_method on config.perform_initialization."""
     return init_method if config.perform_initialization else (lambda w: None)
 
 
@@ -51,9 +65,7 @@ class TENorm:
     """
 
     # TODO should we ditch normalization config and just use spec to choose LayerNorm vs RMSNorm?
-    def __new__(
-        cls, config: TransformerConfig, hidden_size: int, eps: float = 1e-5,
-    ):
+    def __new__(cls, config: TransformerConfig, hidden_size: int, eps: float = 1e-5):
         if config.normalization == "LayerNorm":
             instance = te.pytorch.LayerNorm(
                 hidden_size=hidden_size,
@@ -149,10 +161,10 @@ class TELinear(te.pytorch.Linear):
             sequence_parallel=self.config.sequence_parallel,
             fuse_wgrad_accumulation=self.config.gradient_accumulation_fusion,
             tp_group=get_tensor_model_parallel_group(check_initialized=False),
-            tp_size=self.config.tensor_model_parallel_size,
-            get_rng_state_tracker=get_cuda_rng_tracker
-            if get_cuda_rng_tracker().is_initialized()
-            else None,
+            tp_size=get_tensor_model_parallel_world_size(),
+            get_rng_state_tracker=(
+                get_cuda_rng_tracker if get_cuda_rng_tracker().is_initialized() else None
+            ),
             init_method=condition_init_method(config, init_method),
             bias=bias,
             return_bias=self.te_return_bias,
@@ -161,6 +173,7 @@ class TELinear(te.pytorch.Linear):
         )
 
     def forward(self, x):
+        """Forward."""
         _is_first_microbatch = (
             None if self.disable_parameter_transpose_cache else self.is_first_microbatch
         )
@@ -243,6 +256,13 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
                             if hasattr(self.config, "tp_comm_overlap_rs_dgrad")
                             else False
                         )
+                    if tp_comm_buffer_name == 'qkv' and self.config.tp_comm_overlap_disable_qkv:
+                        extra_kwargs["ub_overlap_ag"] = False
+                        extra_kwargs["ub_overlap_rs_dgrad"] = False
+
+                    if tp_comm_buffer_name == 'fc1' and self.config.tp_comm_overlap_disable_fc1:
+                        extra_kwargs["ub_overlap_ag"] = False
+                        extra_kwargs["ub_overlap_rs_dgrad"] = False
                 else:
                     extra_kwargs["ub_atomic_gemm_ag"] = self.config.tp_comm_atomic_ag
                     extra_kwargs["ub_split_ag"] = self.config.tp_comm_split_ag
@@ -259,10 +279,10 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
             sequence_parallel=self.config.sequence_parallel,
             fuse_wgrad_accumulation=self.config.gradient_accumulation_fusion,
             tp_group=get_tensor_model_parallel_group(check_initialized=False),
-            tp_size=self.config.tensor_model_parallel_size,
-            get_rng_state_tracker=get_cuda_rng_tracker
-            if get_cuda_rng_tracker().is_initialized()
-            else None,
+            tp_size=get_tensor_model_parallel_world_size(),
+            get_rng_state_tracker=(
+                get_cuda_rng_tracker if get_cuda_rng_tracker().is_initialized() else None
+            ),
             init_method=condition_init_method(config, init_method),
             bias=bias,
             return_bias=self.te_return_bias,
@@ -273,6 +293,7 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
         )
 
     def forward(self, x):
+        """Forward."""
         _is_first_microbatch = (
             None if self.disable_parameter_transpose_cache else self.is_first_microbatch
         )
@@ -287,7 +308,7 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
         return out, None
 
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
-        """ Sharding along axis 0, bias sharded """
+        """Sharding along axis 0, bias sharded"""
         state_dict = self.state_dict(prefix='', keep_vars=True)
         return make_sharded_tensors_for_checkpoint(
             state_dict, prefix, {'weight': 0, 'bias': 0}, sharded_offsets
@@ -333,7 +354,7 @@ class TEColumnParallelLinear(TELinear):
         )
 
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
-        """ Sharding along axis 0, bias sharded """
+        """Sharding along axis 0, bias sharded"""
         state_dict = self.state_dict(prefix='', keep_vars=True)
         return make_sharded_tensors_for_checkpoint(
             state_dict, prefix, {'weight': 0, 'bias': 0}, sharded_offsets
@@ -375,12 +396,12 @@ class TERowParallelLinear(TELinear):
             init_method=condition_init_method(config, init_method),
             bias=bias,
             skip_bias_add=skip_bias_add,
-            skip_weight_param_allocation=False,  # We don't currently use this for row parallel layers
+            skip_weight_param_allocation=False,  # We don't currently use this for row parallel layers # pylint: disable=line-too-long
             tp_comm_buffer_name=tp_comm_buffer_name,
         )
 
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
-        """ Sharding along axis 1, bias not sharded """
+        """Sharding along axis 1, bias not sharded"""
         state_dict = self.state_dict(prefix='', keep_vars=True)
         return make_sharded_tensors_for_checkpoint(
             state_dict, prefix, {'weight': 1}, sharded_offsets
@@ -463,23 +484,24 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
 
         if config.window_size is not None:
             # Check version
-            assert _te_version >= packaging.version.Version(
-                "1.2.0"
-            ), f"Transformer-Engine version ({str(_te_version)}) must be >= 1.2.0 to support sliding window attention."
+            assert _te_version >= packaging.version.Version("1.2.0"), (
+                f"Transformer-Engine version ({str(_te_version)}) must be >= 1.2.0 to support"
+                "sliding window attention."
+            )
             extra_kwargs['window_size'] = config.window_size
 
         super().__init__(
             num_attention_heads=self.config.num_attention_heads,
             kv_channels=self.config.kv_channels,
-            attention_dropout=self.config.attention_dropout
-            if attention_dropout is None
-            else attention_dropout,
+            attention_dropout=(
+                self.config.attention_dropout if attention_dropout is None else attention_dropout
+            ),
             attn_mask_type=attn_mask_type.name,
             sequence_parallel=self.config.sequence_parallel,
-            tp_size=self.config.tensor_model_parallel_size,
-            get_rng_state_tracker=get_cuda_rng_tracker
-            if get_cuda_rng_tracker().is_initialized()
-            else None,
+            tp_size=get_tensor_model_parallel_world_size(),
+            get_rng_state_tracker=(
+                get_cuda_rng_tracker if get_cuda_rng_tracker().is_initialized() else None
+            ),
             tp_group=get_tensor_model_parallel_group(check_initialized=False),
             layer_number=layer_number,
             **extra_kwargs,
@@ -494,17 +516,20 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
         attn_mask_type: AttnMaskType,
         packed_seq_params: PackedSeqParams = None,
     ):
+        """Forward."""
         packed_seq_kwargs = (
             dataclasses.asdict(packed_seq_params) if packed_seq_params is not None else {}
         )
-        # overwrite self.qkv_format depending on self.config.apply_rope_fusion, which can be set after init
+        # overwrite self.qkv_format depending on self.config.apply_rope_fusion, which can be set
+        # after init
         if self.config.apply_rope_fusion and _te_version > packaging.version.Version("0.13.0"):
             self.qkv_format = 'bshd'
 
         qkv_format = packed_seq_kwargs.get('qkv_format', self.qkv_format)
 
         if _te_version < packaging.version.Version("1.3.0"):
-            # TE 1.3.0 introduces precomputing max_seqlen to remove unnecessary kernels and D2H copies (#555)
+            # TE 1.3.0 introduces precomputing max_seqlen to remove unnecessary kernels and D2H
+            # copies (#555)
             # These two arguments did not exist prior to 1.3.0
             packed_seq_kwargs.pop("max_seqlen_q", None)
             packed_seq_kwargs.pop("max_seqlen_kv", None)
@@ -521,6 +546,14 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
                 value = value.as_strided(value.shape, key.stride())
 
         if self.te_forward_mask_type:
+            if qkv_format == 'thd' and _te_version >= packaging.version.Version("1.7.0"):
+                # thd format uses flash attention with cuDNN kernel which requires is_padding=True,
+                # so the only acceptable mask types are `padding_causal` and `padding`. These do not
+                # necessarily indicate there are padded tokens in the sequence.
+                if attn_mask_type == AttnMaskType.causal:
+                    attn_mask_type = AttnMaskType.padding_causal
+                elif attn_mask_type == AttnMaskType.no_mask:
+                    attn_mask_type = AttnMaskType.padding
             core_attn_out = super().forward(
                 query,
                 key,
@@ -530,12 +563,262 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
                 **packed_seq_kwargs,
             )
         else:
-            core_attn_out = super().forward(query, key, value, attention_mask, **packed_seq_kwargs,)
+            core_attn_out = super().forward(query, key, value, attention_mask, **packed_seq_kwargs)
 
         if self.config.apply_rope_fusion and qkv_format == 'bshd':
             return core_attn_out.transpose(0, 1)
         else:
             return core_attn_out
+
+
+if _te_version >= packaging.version.Version("1.9.0.dev0"):
+
+    class TEGroupedLinear(te.pytorch.GroupedLinear):
+        """
+        Wrapper for the Transformer-Engine's `GroupedLinear` layer.
+
+        Note that if Megatron's parallel_state has not been initialized
+        yet, the tp_group passed to TE will be None and must be set later
+        via set_tensor_parallel_group().
+        """
+
+        def __init__(
+            self,
+            num_gemms: int,
+            input_size: int,
+            output_size: int,
+            *,
+            parallel_mode: str,
+            config: ModelParallelConfig,
+            init_method: Callable,
+            bias: bool,
+            skip_bias_add: bool,
+            is_expert: bool = False,
+            tp_comm_buffer_name: str = None,
+        ):
+            self.config = config
+
+            # TE returns a zero length Tensor when bias=False and
+            # return_bias=True, but we prefer None.  So in that case we
+            # tell TE to not return the bias, and return None
+            # ourselves. This way our forward always returns two values
+            # and we don't have to deal with the zero length Tensor.
+            self.te_return_bias = skip_bias_add and bias
+            self.is_first_microbatch = True
+            self.disable_parameter_transpose_cache = self.config.disable_parameter_transpose_cache
+
+            extra_kwargs = _get_extra_te_kwargs(config)
+            extra_kwargs["ub_name"] = tp_comm_buffer_name
+
+            self.expert_parallel = self.config.expert_model_parallel_size > 1
+            if self.expert_parallel:
+                extra_kwargs["rng_tracker_name"] = get_expert_parallel_rng_tracker_name()
+
+            # For MoE models, the comms between TP and EP group is explicitly handled by
+            # MoE token dispatcher. So we disable comms by making TE agnostic of model parallel.
+            self.explicit_expert_comm = is_expert and (
+                config.tensor_model_parallel_size > 1 or self.expert_parallel
+            )
+            tp_group = get_tensor_model_parallel_group(check_initialized=False)
+            if self.explicit_expert_comm and config.moe_extended_tp:
+                tp_size = parallel_state.get_tensor_and_expert_parallel_world_size()
+            else:
+                tp_size = parallel_state.get_tensor_model_parallel_world_size()
+            if self.explicit_expert_comm:
+                if parallel_mode == "column":
+                    output_size = divide(output_size, tp_size)
+                elif parallel_mode == "row":
+                    input_size = divide(input_size, tp_size)
+                parallel_mode = None
+                tp_size = 1
+                tp_group = None
+
+            super().__init__(
+                num_gemms=num_gemms,
+                in_features=input_size,
+                out_features=output_size,
+                sequence_parallel=self.config.sequence_parallel,
+                fuse_wgrad_accumulation=self.config.gradient_accumulation_fusion,
+                tp_group=tp_group,
+                tp_size=tp_size,
+                get_rng_state_tracker=(
+                    get_cuda_rng_tracker if get_cuda_rng_tracker().is_initialized() else None
+                ),
+                init_method=condition_init_method(config, init_method),
+                bias=bias,
+                return_bias=self.te_return_bias,
+                parallel_mode=parallel_mode,
+                **extra_kwargs,
+            )
+
+            for param in self.parameters():
+                setattr(param, 'allreduce', not (is_expert and self.expert_parallel))
+
+        def forward(self, x, m_splits):
+            """Forward."""
+            _is_first_microbatch = (
+                None if self.disable_parameter_transpose_cache else self.is_first_microbatch
+            )
+            out = super().forward(x, m_splits, is_first_microbatch=_is_first_microbatch)
+            self.is_first_microbatch = False
+
+            # TE only returns a tuple when return_bias is True, otherwise
+            # it returns a single Tensor, we always want to return two
+            # values regardless of the arguments.
+            if self.te_return_bias:
+                return out
+            return out, None
+
+        def _sharded_state_dict_grouped(
+            self, tp_axis_map, prefix='', sharded_offsets=(), metadata=None
+        ):
+            """
+            prefix should be module_name to make keys identical to sequetial ones.
+            """
+            sharded_state_dict = {}
+            full_state_dict = self.state_dict(prefix='', keep_vars=True)
+            num_global_experts = (
+                parallel_state.get_expert_model_parallel_world_size() * self.num_gemms
+            )
+            local_expert_indices_offset = (
+                parallel_state.get_expert_model_parallel_rank() * self.num_gemms
+            )
+            ep_axis = len(sharded_offsets)
+            for gemm_idx in range(self.num_gemms):
+                state_dict = {
+                    f'{gemm_idx}.weight': full_state_dict[f'weight{gemm_idx}'],
+                    f'{gemm_idx}._extra_state': full_state_dict['_extra_state'],
+                }
+                if self.use_bias:
+                    state_dict[f'{gemm_idx}.bias'] = full_state_dict[f'bias{gemm_idx}']
+                sub_sd = make_sharded_tensors_for_checkpoint(
+                    state_dict,
+                    '',
+                    tp_axis_map,
+                    (
+                        *sharded_offsets,
+                        (ep_axis, local_expert_indices_offset + gemm_idx, num_global_experts),
+                    ),
+                )
+                # Remove expert layers indexing from sharded keys
+                replace_prefix_for_sharding(sub_sd, f'{gemm_idx}.', prefix)
+                sharded_state_dict.update(
+                    {
+                        f'{prefix}weight{gemm_idx}': sub_sd[f'{gemm_idx}.weight'],
+                        # TODO: TE's GroupedLinear only has one _extra_state for all experts.
+                        # We need sharding or build/merge fn to handle _extra_state correctly.
+                        f'{prefix}_extra_state{"" if gemm_idx == 0 else gemm_idx}': sub_sd[
+                            f'{gemm_idx}._extra_state'
+                        ],
+                    }
+                )
+                if self.use_bias:
+                    sharded_state_dict[f'{prefix}bias{gemm_idx}'] = sub_sd[f'{gemm_idx}.bias']
+            # Adjust replica ids - replication along DP modulo EP
+            for k, sh_ten in sharded_state_dict.items():
+                replica_id = sh_ten.replica_id
+                assert (
+                    len(replica_id) == 3
+                ), f'Expected replica_id for {k} to be in (PP, TP, DP) format, got: {replica_id}'
+                sh_ten.replica_id = (
+                    *replica_id[:2],
+                    parallel_state.get_data_modulo_expert_parallel_rank(),
+                )
+            return sharded_state_dict
+
+    class TEColumnParallelGroupedLinear(TEGroupedLinear):
+        """
+        Wrapper for the Transformer-Engine's `GroupedLinear` layer but specialized
+        to column-parallel style.
+        """
+
+        def __init__(
+            self,
+            num_gemms: int,
+            input_size: int,
+            output_size: int,
+            *,
+            config: ModelParallelConfig,
+            init_method: Callable,
+            bias: bool,
+            skip_bias_add: bool,
+            is_expert: bool,
+            tp_comm_buffer_name: str = None,
+        ):
+
+            super().__init__(
+                num_gemms=num_gemms,
+                input_size=input_size,
+                output_size=output_size,
+                parallel_mode="column",
+                config=config,
+                init_method=condition_init_method(config, init_method),
+                bias=bias,
+                skip_bias_add=skip_bias_add,
+                is_expert=is_expert,
+                tp_comm_buffer_name=tp_comm_buffer_name,
+            )
+
+        def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
+            """
+            For each gemm, sharding along axis 0, bias sharded.
+            Assume sharded_offsets[-1] is the expert parallel offset.
+            """
+            tp_axis_map = {}
+            for gemm_idx in range(self.num_gemms):
+                tp_axis_map.update({f'{gemm_idx}.weight': 0, f'{gemm_idx}.bias': 0})
+            return super()._sharded_state_dict_grouped(
+                tp_axis_map, prefix, sharded_offsets, metadata
+            )
+
+    class TERowParallelGroupedLinear(TEGroupedLinear):
+        """
+        Wrapper for the Transformer-Engine's `GroupedLinear` layer but specialized
+        to row-parallel style.
+        """
+
+        def __init__(
+            self,
+            num_gemms: int,
+            input_size: int,
+            output_size: int,
+            *,
+            config: ModelParallelConfig,
+            init_method: Callable,
+            bias: bool,
+            skip_bias_add: bool,
+            is_expert: bool,
+            tp_comm_buffer_name: str = None,
+        ):
+
+            super().__init__(
+                num_gemms=num_gemms,
+                input_size=input_size,
+                output_size=output_size,
+                parallel_mode="row",
+                config=config,
+                init_method=condition_init_method(config, init_method),
+                bias=bias,
+                skip_bias_add=skip_bias_add,
+                is_expert=is_expert,
+                tp_comm_buffer_name=tp_comm_buffer_name,
+            )
+
+        def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
+            """
+            For each gemm, sharding along axis 1, bias not sharded.
+            Assume sharded_offsets[-1] is the expert parallel offset.
+            """
+            tp_axis_map = {f'{gemm_idx}.weight': 1 for gemm_idx in range(self.num_gemms)}
+            return super()._sharded_state_dict_grouped(
+                tp_axis_map, prefix, sharded_offsets, metadata
+            )
+
+else:
+
+    TEGroupedLinear = None
+    TEColumnParallelGroupedLinear = None
+    TERowParallelGroupedLinear = None
 
 
 class TEDelayedScaling(te.common.recipe.DelayedScaling):
@@ -553,10 +836,13 @@ class TEDelayedScaling(te.common.recipe.DelayedScaling):
         if _te_version >= packaging.version.Version("1.6.0.dev0"):
             extra_kwargs["fp8_dpa"] = config.fp8_dot_product_attention
             extra_kwargs["fp8_mha"] = config.fp8_multi_head_attention
+        if _te_version < packaging.version.Version("1.8.0"):
+            extra_kwargs["interval"] = config.fp8_interval
+        elif config.fp8_interval != 1:
+            warnings.warn("fp8_interval is deprecated and ignored from Transformer-Engine v1.8.0.")
 
         super().__init__(
             margin=config.fp8_margin,
-            interval=config.fp8_interval,
             fp8_format=fp8_format,
             amax_compute_algo=config.fp8_amax_compute_algo,
             amax_history_len=config.fp8_amax_history_len,
@@ -575,8 +861,8 @@ def te_checkpoint(
     context,
     context_mask,
     rotary_pos_emb,
-    packed_seq_params,
 ):
+    """Checkpointing with Transformer-Engine."""
     from transformer_engine.pytorch.distributed import checkpoint
 
     if _te_version >= packaging.version.Version("1.5.0"):
@@ -587,7 +873,6 @@ def te_checkpoint(
             context,
             context_mask,
             rotary_pos_emb,
-            packed_seq_params,
             distribute_saved_activations=distribute_saved_activations,
             get_rng_state_tracker=get_rng_state_tracker,
             tp_group=tp_group,
@@ -603,7 +888,6 @@ def te_checkpoint(
             context,
             context_mask,
             rotary_pos_emb,
-            packed_seq_params,
         )
 
 
@@ -619,7 +903,24 @@ except ImportError:
 
 try:
 
-    from transformer_engine.pytorch.cpu_offload import get_cpu_offload_context
+    from transformer_engine.pytorch.cpu_offload import (
+        get_cpu_offload_context as _get_cpu_offload_context,
+    )
+
+    def get_cpu_offload_context(
+        enabled, num_layers, model_layers, activation_offloading, weight_offloading
+    ):
+        """Get CPU offload context and sync function."""
+        if _te_version >= packaging.version.Version("1.10.0.dev0"):
+            context, sync_func = _get_cpu_offload_context(
+                enabled, num_layers, model_layers, activation_offloading, weight_offloading
+            )
+        else:
+            context, sync_func = _get_cpu_offload_context(
+                enabled, num_layers, activation_offloading, weight_offloading
+            )
+
+        return context, sync_func
 
 except ImportError:
 

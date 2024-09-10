@@ -13,7 +13,8 @@ import torch
 
 from megatron.core.datasets.blended_megatron_dataset_config import BlendedMegatronDatasetConfig
 from megatron.core.datasets.megatron_dataset import MegatronDataset
-from megatron.core.datasets.utils import log_single_rank, normalize, is_built_on_zero_rank
+from megatron.core.datasets.utils import normalize, is_built_on_zero_rank
+from megatron.core.utils import log_single_rank
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,7 @@ class BlendedDataset(torch.utils.data.Dataset):
         unique_identifiers["split"] = self.split.name
         unique_identifiers["weights"] = self.weights
         unique_identifiers["size"] = self.size
+        unique_identifiers["renormalize_blend_weights"] = self.config.renormalize_blend_weights
 
         self.unique_description = json.dumps(
             unique_identifiers, indent=4, default=lambda obj: obj.unique_identifiers
@@ -80,6 +82,8 @@ class BlendedDataset(torch.utils.data.Dataset):
         self.unique_description_hash = hashlib.md5(
             self.unique_description.encode("utf-8")
         ).hexdigest()
+
+        self.built_anew_on_cache_miss = False
 
         self.dataset_index, self.dataset_sample_index = self._build_indices()
 
@@ -89,10 +93,7 @@ class BlendedDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx: int) -> Dict[str, Union[int, numpy.ndarray]]:
         dataset_id = self.dataset_index[idx]
         dataset_sample_id = self.dataset_sample_index[idx]
-        return {
-            "dataset_id": dataset_id,
-            **self.datasets[dataset_id][dataset_sample_id],
-        }
+        return {"dataset_id": dataset_id, **self.datasets[dataset_id][dataset_sample_id]}
 
     def _build_indices(self) -> Tuple[numpy.ndarray, numpy.ndarray]:
         """Build and optionally cache the dataset index and the dataset sample index
@@ -125,8 +126,9 @@ class BlendedDataset(torch.utils.data.Dataset):
 
         if not path_to_cache or (not cache_hit and is_built_on_zero_rank()):
             log_single_rank(
-                logger, logging.INFO, f"Build and save the {type(self).__name__} indices",
+                logger, logging.INFO, f"Build and save the {type(self).__name__} indices"
             )
+            self.built_anew_on_cache_miss = True
 
             # Build the dataset and dataset sample indexes
             log_single_rank(

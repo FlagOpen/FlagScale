@@ -36,12 +36,12 @@ tool_version_check() {
     fi
 }
 
-tool_version_check "yapf" $YAPF_VERSION "$(grep yapf requirements-dev.txt | cut -d'=' -f3)"
-tool_version_check "ruff" $RUFF_VERSION "$(grep "ruff==" requirements-dev.txt | cut -d'=' -f3)"
-tool_version_check "mypy" "$MYPY_VERSION" "$(grep mypy requirements-dev.txt | cut -d'=' -f3)"
-tool_version_check "isort" "$ISORT_VERSION" "$(grep isort requirements-dev.txt | cut -d'=' -f3)"
-tool_version_check "codespell" "$CODESPELL_VERSION" "$(grep codespell requirements-dev.txt | cut -d'=' -f3)"
-tool_version_check "clang-format" "$CLANGFORMAT_VERSION" "$(grep clang-format requirements-dev.txt | cut -d'=' -f3)"
+tool_version_check "yapf" $YAPF_VERSION "$(grep yapf requirements-lint.txt | cut -d'=' -f3)"
+tool_version_check "ruff" $RUFF_VERSION "$(grep "ruff==" requirements-lint.txt | cut -d'=' -f3)"
+tool_version_check "mypy" "$MYPY_VERSION" "$(grep mypy requirements-lint.txt | cut -d'=' -f3)"
+tool_version_check "isort" "$ISORT_VERSION" "$(grep isort requirements-lint.txt | cut -d'=' -f3)"
+tool_version_check "codespell" "$CODESPELL_VERSION" "$(grep codespell requirements-lint.txt | cut -d'=' -f3)"
+tool_version_check "clang-format" "$CLANGFORMAT_VERSION" "$(grep clang-format requirements-lint.txt | cut -d'=' -f3)"
 
 YAPF_FLAGS=(
     '--recursive'
@@ -96,25 +96,26 @@ echo 'vLLM yapf: Done'
 
 # Run mypy
 echo 'vLLM mypy:'
-mypy vllm/attention --config-file pyproject.toml
-mypy vllm/core --config-file pyproject.toml
-mypy vllm/distributed --config-file pyproject.toml
-mypy vllm/entrypoints --config-file pyproject.toml
-mypy vllm/executor --config-file pyproject.toml
-mypy vllm/usage --config-file pyproject.toml
-mypy vllm/*.py --config-file pyproject.toml
-mypy vllm/transformers_utils --config-file pyproject.toml
-mypy vllm/engine  --config-file pyproject.toml
-mypy vllm/worker --config-file pyproject.toml
-mypy vllm/spec_decode --config-file pyproject.toml
-mypy vllm/model_executor  --config-file pyproject.toml
-mypy vllm/lora --config-file pyproject.toml
-mypy vllm/logging --config-file pyproject.toml
-mypy vllm/model_executor --config-file pyproject.toml
+mypy tests --follow-imports skip
+mypy vllm/attention --follow-imports skip
+mypy vllm/core --follow-imports skip
+mypy vllm/distributed --follow-imports skip
+mypy vllm/engine  --follow-imports skip
+mypy vllm/entrypoints --follow-imports skip
+mypy vllm/executor --follow-imports skip
+mypy vllm/lora --follow-imports skip
+mypy vllm/model_executor  --follow-imports skip
+mypy vllm/prompt_adapter --follow-imports skip
+mypy vllm/spec_decode --follow-imports skip
+mypy vllm/worker --follow-imports skip
+mypy
 
 
+# If git diff returns a file that is in the skip list, the file may be checked anyway:
+# https://github.com/codespell-project/codespell/issues/1915
+# Avoiding the "./" prefix and using "/**" globs for directories appears to solve the problem
 CODESPELL_EXCLUDES=(
-    '--skip' '*docs/source/_build/**,./tests/lora/data'
+    '--skip' 'tests/prompts/**,./benchmarks/sonnet.txt,*tests/lora/data/**,build/**'
 )
 
 # check spelling of specified files

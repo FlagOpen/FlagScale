@@ -11,36 +11,42 @@ from tests.unit_tests.test_utilities import Utils
 
 
 def test_divide_properly():
-    assert util.divide(4,2) == 2
+    assert util.divide(4, 2) == 2
+
 
 def test_divide_improperly():
     with pytest.raises(AssertionError):
-        util.divide(4,5)
+        util.divide(4, 5)
+
 
 def test_global_memory_buffer():
     global_memory_buffer = util.GlobalMemoryBuffer()
-    obtained_tensor = global_memory_buffer.get_tensor((3,2), torch.float32, "test_tensor")
-    expected_tensor = torch.empty((3,2), dtype=torch.float32, device=torch.cuda.current_device())
+    obtained_tensor = global_memory_buffer.get_tensor((3, 2), torch.float32, "test_tensor")
+    expected_tensor = torch.empty((3, 2), dtype=torch.float32, device=torch.cuda.current_device())
     assert obtained_tensor.shape == expected_tensor.shape
 
+
 def test_make_viewless_tensor():
-    inp = torch.rand((3,4))
-    assert(torch.equal(inp, util.make_viewless_tensor(inp, True, True)))
-    assert(torch.equal(inp, util.make_viewless_tensor(inp, True, False)))
+    inp = torch.rand((3, 4))
+    assert torch.equal(inp, util.make_viewless_tensor(inp, True, True))
+    assert torch.equal(inp, util.make_viewless_tensor(inp, True, False))
+
 
 def test_safely_set_viewless_tensor_data():
-    tensor = torch.zeros((3,4))
-    new_data_tensor = torch.tensor(np.random.rand(3,4))
+    tensor = torch.zeros((3, 4))
+    new_data_tensor = torch.tensor(np.random.rand(3, 4))
     util.safely_set_viewless_tensor_data(tensor, new_data_tensor)
-    assert(torch.equal(tensor, new_data_tensor))
+    assert torch.equal(tensor, new_data_tensor)
+
 
 def test_assert_viewless_tensor():
-    tensor = torch.rand((3,4))
-    assert(torch.equal(util.assert_viewless_tensor(tensor), tensor))
-    input_tensor_list=[tensor,tensor,tensor]
+    tensor = torch.rand((3, 4))
+    assert torch.equal(util.assert_viewless_tensor(tensor), tensor)
+    input_tensor_list = [tensor, tensor, tensor]
     output_tensor_list = util.assert_viewless_tensor(input_tensor_list)
-    for inp,out in zip(input_tensor_list, output_tensor_list):
-        assert(torch.equal(inp,out))
+    for inp, out in zip(input_tensor_list, output_tensor_list):
+        assert torch.equal(inp, out)
+
 
 # Initialize torch.distributed; do not call init_process_group here, call
 # Utils.initialize_distributed() instead.
@@ -51,11 +57,13 @@ def _init_distributed(world, rank):
     assert torch.cuda.device_count() == world
     torch.distributed.barrier()
 
+
 # Deinitialization and cleanup.
 # Do not call torch.distributed.destroy_process_group, may be needed by other tests.
 def _deinit_distributed():
     assert torch.distributed.is_initialized() == True
     torch.distributed.barrier()
+
 
 def test_check_param_hashes_across_dp_replicas():
     world = int(os.getenv('WORLD_SIZE', '1'))
@@ -74,11 +82,12 @@ def test_check_param_hashes_across_dp_replicas():
     if rank == 0:
         model.weight.data.fill_(0.0)
     param_hashes_match = util.check_param_hashes_across_dp_replicas([model])
-    expected_param_hashes_match = (rank == 0)
+    expected_param_hashes_match = rank == 0
     assert param_hashes_match == expected_param_hashes_match
 
     # Teardown.
     _deinit_distributed()
+
 
 def test_straggler_detector():
     world = int(os.getenv('WORLD_SIZE', '1'))
@@ -116,9 +125,24 @@ def test_straggler_detector():
         # GEMM.
         with stimer:
             res = torch.matmul(mat1, mat2)
-        delta, batch_delta, _, _, _, _, = stimer.elapsed()
+        delta, batch_delta, _, _, _, _ = stimer.elapsed()
         assert delta > 0.0
         assert batch_delta >= s
+
+    # Test function to raise ValueError
+    def straggler_value_error():
+        raise ValueError("Exception value raised")
+
+    # Check that exception is not suppressed.
+    def straggler_detector_exception_propagate():
+        # batch_data
+        with pytest.raises(ZeroDivisionError):
+            with stimer(bdata=True):
+                x = 1 / 0
+        # non-batch-data
+        with pytest.raises(ValueError, match=r".* value .*"):
+            with stimer():
+                straggler_value_error()
 
     # Reporting.
     def straggler_detector_report():
@@ -152,14 +176,16 @@ def test_straggler_detector():
 
     # Check if the instance is in disabled state.
     straggler_detector_disabled()
-    # Enable it now, must call report.
-    straggler_detector_enable()
-    # Check if all ranks have straggler detector enabled.
-    straggler_detector_enabled()
-    # Time some operation.
-    straggler_detector_timeit()
-    # Report only from rank 0.
-    straggler_detector_report()
-
+    # # Enable it now, must call report.
+    # straggler_detector_enable()
+    # # Check if all ranks have straggler detector enabled.
+    # straggler_detector_enabled()
+    # # Time some operation.
+    # straggler_detector_timeit()
+    # # Report only from rank 0.
+    # straggler_detector_report()
+    # Check that exception is not suppressed.
+    straggler_detector_exception_propagate()
+    util.StragglerDetector._configured = False
     # Teardown.
     _deinit_distributed()

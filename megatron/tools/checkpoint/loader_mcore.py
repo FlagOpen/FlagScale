@@ -18,7 +18,7 @@ def add_arguments(parser):
                        help='Path to the vocab file. If specified will use this to get vocab size and '
                        'trim padding from the embedding table.')
     group.add_argument('--megatron-path', type=str, default=None,
-                       help='Base directory of deepspeed repository')
+                       help='Base directory of Megatron repository')
     group.add_argument('--position-embedding-type',
                        type=str,
                        default='learned_absolute',
@@ -64,12 +64,14 @@ def _load_checkpoint(queue, args):
                 '--no-save-optim',
                 '--no-save-rng',
                 '--no-initialization',
+                '--mock-data', # To pass the "blend data checks" in arguments.py
                 '--load', args.load_dir,
                 '--position-embedding-type', args.position_embedding_type,
+                '--exit-on-missing-checkpoint',
                 ]
 
     margs = parse_args()
-    margs, checkpoint_args = load_args_from_checkpoint(margs, exit_on_missing_checkpoint=True)
+    margs, checkpoint_args = load_args_from_checkpoint(margs)
 
     # Arguments do sanity checks on the world size, but we don't care,
     # so trick it into thinking we are plenty of processes
@@ -82,7 +84,7 @@ def _load_checkpoint(queue, args):
     # Validate margs.
     margs = validate_args(margs)
 
-    margs.use_mcore_models = True
+    margs.use_legacy_models = False
     margs.transformer_impl = args.loader_transformer_impl
 
     def check_for_arg(arg_name, default=None):
@@ -229,7 +231,7 @@ def _load_checkpoint(queue, args):
     md.true_vocab_size = true_vocab_size
     md.make_vocab_size_divisible_by = margs.make_vocab_size_divisible_by
     md.checkpoint_args = checkpoint_args
-    md.use_mcore_models = margs.use_mcore_models
+    md.use_legacy_models = margs.use_legacy_models
 
     # Get transformer block (named either 'encoder' or 'decoder').
     transformer_block_key = get_mcore_transformer_block_key(md.model_type)
@@ -377,6 +379,6 @@ def _load_checkpoint(queue, args):
 def load_checkpoint(queue, args):
     try:
         _load_checkpoint(queue, args)
-    except:
+    except Exception:
         queue.put("exit")
         raise
