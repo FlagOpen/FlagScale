@@ -854,11 +854,8 @@ class StragglerDetector:
         elif ls_bs != ls_be:
             logger.warning(f"get_batch Start/Stop out of sync {ls_bs}/{ls_be}")
         else:
-            temp = torch.cuda.temperature()
-            power = torch.cuda.power_draw()
-            util = torch.cuda.utilization()
-            clock = torch.cuda.clock_rate()
-            torch.cuda.synchronize()
+            logger.warning(f"[Warning] mlu does not support torch.cuda.temperature() interface.")
+            util = 0
             # Process Events
             for i in range(ls_ev):
                 e_ev = self.start_gemm_ev[i].elapsed_time(self.stop_gemm_ev[i])

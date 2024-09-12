@@ -3,6 +3,7 @@
 import torch
 
 from megatron.core.jit import jit_fuser
+from apex.contrib.activation import fused_glu
 
 ###### BIAS GELU FUSION/ NO AUTOGRAD ################
 # 1/sqrt(2*pi)-> 0.3989423
@@ -77,9 +78,8 @@ def bias_geglu_impl(input, bias):
     ori_shape = input.shape
     assert len(ori_shape) in [2, 3]
     input = input.view(-1, ori_shape[-1])
-    if bias is not None:
-        output = BiasGeGLUFunction.apply(input, bias)
-    else:
-        output = GeGLUFunction.apply(input)
+    if bias == None:
+        bias = torch.Tensor()
+    output = fused_glu.fused_geglu(input, bias)
 
     return output if len(ori_shape) == 2 else output.view(ori_shape[0], ori_shape[1], -1)

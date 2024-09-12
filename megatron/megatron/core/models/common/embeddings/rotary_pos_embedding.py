@@ -258,13 +258,18 @@ def apply_rotary_pos_emb(
             apply_rotary_pos_emb.printed_fused_warning = True
     if config.apply_rope_fusion:
         if cu_seqlens is None:
-            return fused_apply_rotary_pos_emb(t, freqs, transpose_output_memory=True)
+            output = fused_apply_rotary_pos_emb(t, freqs, transpose_output_memory=True)
         else:
-            return fused_apply_rotary_pos_emb_thd(t, cu_seqlens, freqs)
+            output = fused_apply_rotary_pos_emb_thd(t, cu_seqlens, freqs)
     else:
         if cu_seqlens is None:
-            return apply_rotary_pos_emb_bshd(t, freqs, rotary_interleaved=config.rotary_interleaved)
+            output = apply_rotary_pos_emb_bshd(t, freqs, rotary_interleaved=config.rotary_interleaved)
         else:
-            return apply_rotary_pos_emb_thd(
+            output = apply_rotary_pos_emb_thd(
                 t, cu_seqlens, freqs, rotary_interleaved=config.rotary_interleaved
             )
+        # Mlu devices tend to use nhwc' layout, not nchw's layout.
+        # This modification will affect stride, but will not affect the correctness of the results.
+        output = output.contiguous()
+        output = output.reshape(output.shape)
+    return output

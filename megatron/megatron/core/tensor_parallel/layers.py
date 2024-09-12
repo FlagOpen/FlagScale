@@ -229,10 +229,12 @@ class VocabParallelEmbedding(torch.nn.Module):
             masked_input = input_
         # Get the embeddings.
         if self.deterministic_mode:
-            output_parallel = self.weight[masked_input]
+            output_parallel = F.embedding(
+                masked_input, self.weight, padding_idx=None, scale_grad_by_freq=False, sparse=False)
         else:
             # F.embedding currently has a non-deterministic backward function
-            output_parallel = F.embedding(masked_input, self.weight)
+            output_parallel = F.embedding(
+                masked_input, self.weight, padding_idx=None, scale_grad_by_freq=False, sparse=False)
         # Mask the output embedding.
         if self.tensor_model_parallel_size > 1:
             output_parallel[input_mask, :] = 0.0

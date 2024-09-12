@@ -144,7 +144,8 @@ def _compile_dependencies():
             ">>> done with dataset index builder. Compilation time: {:.3f} "
             "seconds".format(time.time() - start_time),
             flush=True,
-        )
+        ) 
+    return
 
     # ==================
     # Load fused kernels
@@ -224,7 +225,7 @@ def _initialize_tp_communicators():
 
     #We create a MPI process group, which is needed to bootstrap the pipelined
     #tensor-model-parallel communication overlap
-    torch.distributed.new_group(backend='mpi')
+    # torch.distributed.new_group(backend='mpi')
 
     te_module.base.initialize_ub(shape = input_shape, tp_size = args.tensor_model_parallel_size,
                                  use_fp8 = (args.fp8 is not None) , ub_cfgs = ub_cfgs,)
@@ -354,7 +355,7 @@ def set_jit_fusion_options():
         torch._C._jit_override_can_fuse_on_cpu(False)
         torch._C._jit_override_can_fuse_on_gpu(False)
         torch._C._jit_set_texpr_fuser_enabled(False)
-        torch._C._jit_set_nvfuser_enabled(True)
+        # torch._C._jit_set_nvfuser_enabled(True)
         torch._C._debug_set_autodiff_subgraph_inlining(False)
     else:
         # legacy pytorch fuser
@@ -367,6 +368,7 @@ def set_jit_fusion_options():
 
 
 def _warmup_jit_function():
+    return
     """Compilie JIT functions before the main training steps"""
     args = get_args()
     if args.bf16:

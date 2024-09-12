@@ -1,9 +1,12 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 
 try:
-    import grouped_gemm
+    from apex.contrib import grouped_gemm
 except ImportError:
-    grouped_gemm = None
+   try:
+       import grouped_gemm
+   except ImportError:
+       grouped_gemm = None
 
 
 def grouped_gemm_is_available():

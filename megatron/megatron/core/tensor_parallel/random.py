@@ -8,6 +8,7 @@ import logging
 from importlib.metadata import version
 
 import torch
+import torch_mlu
 from pkg_resources import packaging
 from torch import _C
 from torch.cuda import _lazy_call
@@ -62,7 +63,9 @@ def _set_cuda_rng_state(new_state, device=-1):
             default_generator = torch.cuda.default_generators[idx]
             default_generator.set_state(new_state)
 
-    _lazy_call(cb)
+    #TODO(mlu): mlu's implementation should be called instead of cuda's implementation.
+    #_lazy_call(cb)
+    torch_mlu.mlu._lazy_call(cb)
 
 
 def get_expert_parallel_rng_tracker_name():

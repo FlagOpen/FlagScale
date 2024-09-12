@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from megatron.core.jit import jit_fuser
+from apex.contrib.activation import fused_glu
 
 ###### BIAS SWIGLU FUSION/ NO AUTOGRAD ################
 
@@ -77,10 +78,10 @@ def bias_swiglu_impl(input, bias, fp8_input_store=False):
     ori_shape = input.shape
     assert len(ori_shape) in [2, 3]
     input = input.view(-1, ori_shape[-1])
-    if bias is not None:
-        output = BiasSwiGLUFunction.apply(input, bias, fp8_input_store)
-    else:
-        output = SwiGLUFunction.apply(input, fp8_input_store)
+    assert fp8_input_store == False, "MLU does not support fp8_input_store is True"
+    if bias == None:
+        bias=torch.Tensor()
+    output = fused_glu.fused_swiglu(input, bias)
 
     return output if len(ori_shape) == 2 else output.view(ori_shape[0], ori_shape[1], -1)
 

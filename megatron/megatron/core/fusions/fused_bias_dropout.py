@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 import torch
 
 from megatron.core.jit import jit_fuser
+from apex.contrib.fused_bias_dropout.fused_bias_dropout import get_bias_dropout_add
 
 
 def _bias_dropout_add_func(x_with_bias, residual, prob, training):
@@ -47,9 +48,9 @@ def bias_dropout_add_unfused(training):
 
 @jit_fuser
 def bias_dropout_add_fused_train(
-    x_with_bias: Tuple[torch.Tensor, Optional[torch.Tensor]], residual: torch.Tensor, prob: float
+    x_with_bias: Tuple[torch.Tensor, Optional[torch.Tensor]], residual: torch.Tensor, prob: float,
 ) -> torch.Tensor:
-    return _bias_dropout_add_func(x_with_bias, residual, prob, True)
+    return get_bias_dropout_add(True, True)(x_with_bias, residual, prob)
 
 
 @jit_fuser

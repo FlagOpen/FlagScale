@@ -13,9 +13,8 @@ experiment:
     backend: torchrun
     nnodes: 4 
     nproc_per_node: 8
-    hostfile: <xxx>
   envs:
-    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7 
+    MLU_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7 
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     NVTE_APPLY_QK_LAYER_SCALING: 0
     NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0

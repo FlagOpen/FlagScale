@@ -35,6 +35,7 @@ try:
 except ImportError:
     rearrange = None
 
+from apex.contrib.fused_bias_dropout.fused_bias_dropout import get_bias_dropout_add as get_bias_dropout_add_mlu
 
 # Try FlashAttn2 first
 try:
@@ -898,7 +899,8 @@ def bias_dropout_add_fused_train(x: torch.Tensor,
                                  bias: Optional[torch.Tensor],
                                  residual: torch.Tensor,
                                  prob: float) -> torch.Tensor:
-    return bias_dropout_add(x, bias, residual, prob, True)
+    bias = bias.contiguous() if bias != None else torch.Tensor()
+    return get_bias_dropout_add_mlu(True, True)((x, bias), residual, prob)
 
 
 @jit_fuser

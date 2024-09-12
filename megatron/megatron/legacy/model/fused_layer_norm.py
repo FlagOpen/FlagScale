@@ -95,10 +95,7 @@ class MixedFusedLayerNorm(torch.nn.Module):
             "fused_layer_norm_affine is not available, please install apex from https://github.com/NVIDIA/apex"
         return fused_layer_norm_affine(input, weight, self.bias, self.normalized_shape, eps=self.eps)
     else:
-        if 'memory_efficient' in inspect.getfullargspec(FastLayerNormFN.forward).args:
-            output = FastLayerNormFN.apply(input, weight, self.bias, self.eps, False)
-        else:
-            output = FastLayerNormFN.apply(input, weight, self.bias, self.eps)
+        output = FastLayerNormFN.apply(input, weight, self.bias, self.eps, False)
         # Apex's fast layer norm function outputs a 'view' tensor (i.e., has
         # a populated '_base' field). This will result in schedule.py's
         # deallocate_output_tensor() throwing an error, so a viewless tensor is

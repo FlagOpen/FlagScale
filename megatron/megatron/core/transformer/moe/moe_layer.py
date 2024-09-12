@@ -71,10 +71,7 @@ class MoELayer(BaseMoELayer):
         super(MoELayer, self).__init__(config=config, layer_number=layer_number)
         self.router = TopKRouter(config=self.config)
         if self.config.moe_grouped_gemm:
-            if isinstance(self.submodules, MLPSubmodules):
-                self.experts = TEGroupedMLP(self.num_local_experts, self.config, self.submodules)
-            else:
-                self.experts = GroupedMLP(self.num_local_experts, self.config)
+            self.experts = GroupedMLP(self.num_local_experts, self.config)
         else:
             assert isinstance(self.submodules, MLPSubmodules)
             self.experts = SequentialMLP(self.num_local_experts, self.config, self.submodules)
