@@ -71,6 +71,7 @@ jobs:
         model: 
           - aquila
           - mixtral
+    name: "train-${{ matrix.model }}"
     with:
       model: ${{ matrix.model }}
       type: train
@@ -82,6 +83,7 @@ jobs:
       matrix:
         model: 
           - aquila
+    name: "hetero_train-${{ matrix.model }}"
     with:
       model: ${{ matrix.model }}
       type: hetero_train
@@ -94,6 +96,7 @@ jobs:
 #     matrix:
 #       model: 
 #         - from_vllm
+#   name: "inference-${{ matrix.model }}"
 #   with:
 #     model: ${{ matrix.model }}
 #     type: inference
