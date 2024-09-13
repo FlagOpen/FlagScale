@@ -28,6 +28,7 @@ jobs:
           - transformer/moe
           - transformer
           - ./
+    name: "megatron-${{ matrix.subset }}"
     with:
       backend: megatron
       subset: ${{ matrix.subset }}
@@ -47,6 +48,7 @@ jobs:
         subset: 
           - launcher
           - ./
+    name: "flagscale-${{ matrix.subset }}"
     with:
       backend: flagscale
       subset: ${{ matrix.subset }}
