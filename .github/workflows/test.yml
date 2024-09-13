@@ -72,7 +72,16 @@ jobs:
     with:
       model: ${{ matrix.model }}
       type: train
-      backend: flagscale
+  
+  functional-test-hetero-aquila:
+    needs: functional-tests-train
+    uses: ./.github/workflows/functional-tests.yml
+    strategy:
+      matrix:
+        model: aquila
+    with:
+      model: ${{ matrix.model }}
+      type: hetero_train
 
 # Add in the feature for inference
 # functional-tests-inference:
