@@ -78,7 +78,8 @@ jobs:
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
-        model: aquila
+        model: 
+          - aquila
     with:
       model: ${{ matrix.model }}
       type: hetero_train
