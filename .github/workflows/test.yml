@@ -61,8 +61,8 @@ jobs:
   # Functional Tests with Model and Type Matrix
   functional-tests-train:
     needs:
-      -megatron-coverage-test
-      -flagscale-coverage-test
+      - megatron-coverage-test
+      - flagscale-coverage-test
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
@@ -73,7 +73,7 @@ jobs:
       model: ${{ matrix.model }}
       type: train
   
-  functional-test-hetero-aquila:
+  functional-test-hetero:
     needs: functional-tests-train
     uses: ./.github/workflows/functional-tests.yml
     strategy:
@@ -86,6 +86,7 @@ jobs:
 
 # Add in the feature for inference
 # functional-tests-inference:
+#   needs: functional-test-hetero
 #   uses: ./.github/workflows/functional-tests.yml
 #   strategy:
 #     matrix:
