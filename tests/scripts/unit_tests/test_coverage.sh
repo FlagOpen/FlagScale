@@ -34,16 +34,37 @@ fi
 # Add the current working directory to the list of safe directories in Git
 git config --global --add safe.directory /__w/FlagScale/FlagScale
 
-# Ensure the upstream main branch is up-to-date
-git remote add upstream https://github.com/FlagOpen/FlagScale.git
-git fetch upstream main:main
+# Check if the upstream remote already exists
+if git remote get-url upstream > /dev/null 2>&1; then
+    echo "Upstream remote already exists."
+else
+    git remote add upstream https://github.com/FlagOpen/FlagScale.git
+fi
+
+git fetch --unshallow upstream main
 
 # Get the latest common ancestor between the current branch and upstream main
 common_ancestor=$(git merge-base HEAD upstream/main)
 
-# Check the coverage for the new code changes against the common ancestor
+# Check if a common ancestor was found
+if [ -z "$common_ancestor" ]; then
+    echo "Error: No common ancestor found between the current branch and upstream main."
+    echo "Ensure that your branch has a common history with upstream/main."
+    exit 1
+fi
+
+# Get the changed files between the current branch and the common ancestor
+git diff --name-only $common_ancestor HEAD > changed_files.txt
+
+# If no changes detected
+if [ ! -s changed_files.txt ]; then
+    echo "No changes detected between $common_ancestor and HEAD."
+    exit 1
+fi
+
+# Check the coverage for the new code changes
 echo "Checking coverage for the new code changes..."
-diff-cover "$report_dir/$coverage_file" --compare-branch=$common_ancestor --fail-under=70
+diff-cover "$report_dir/$coverage_file" --compare-branch=$common_ancestor --html-report "$report_dir/diff-cover-report-${backend}.html" --fail-under=70
 
 # If diff-cover exits with a non-zero status, it means the coverage is below 70%
 if [ $? -ne 0 ]; then

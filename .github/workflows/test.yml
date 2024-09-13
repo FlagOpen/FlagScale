@@ -11,138 +11,92 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Megatron Unit Tests
-  megatron-unit-test-data:
-    uses: ./.github/workflows/create-container-unit-tests.yml
+  # Megatron Unit Tests with Matrix
+  megatron-unit-tests:
+    uses: ./.github/workflows/unit-tests.yml
+    strategy:
+      matrix:
+        subset: 
+          - data
+          - dist_checkpointing
+          - distributed
+          - fusions
+          - inference
+          - models
+          - pipeline_parallel
+          - tensor_parallel
+          - transformer/moe
+          - transformer
+          - ./
+    name: "megatron-${{ matrix.subset }}"
     with:
       backend: megatron
-      subset: data
+      subset: ${{ matrix.subset }}
 
-  megatron-unit-test-dist_checkpointing:
-    needs: megatron-unit-test-data
-    uses: ./.github/workflows/create-container-unit-tests.yml
+  # Megatron Coverage Test
+  megatron-coverage-test:
+    needs: megatron-unit-tests
+    uses: ./.github/workflows/coverage-tests.yml
     with:
       backend: megatron
-      subset: dist_checkpointing
 
-  megatron-unit-test-distributed:
-    needs: megatron-unit-test-dist_checkpointing
-    uses: ./.github/workflows/create-container-unit-tests.yml
-    with:
-      backend: megatron
-      subset: distributed
-
-  megatron-unit-test-fusions:
-    needs: megatron-unit-test-distributed
-    uses: ./.github/workflows/create-container-unit-tests.yml
-    with:
-      backend: megatron
-      subset: fusions
-
-  megatron-unit-test-inference:
-    needs: megatron-unit-test-fusions
-    uses: ./.github/workflows/create-container-unit-tests.yml
-    with:
-      backend: megatron
-      subset: inference
-
-  megatron-unit-test-models:
-    needs: megatron-unit-test-inference
-    uses: ./.github/workflows/create-container-unit-tests.yml
-    with:
-      backend: megatron
-      subset: models
-
-  megatron-unit-test-pipeline_parallel:
-    needs: megatron-unit-test-models
-    uses: ./.github/workflows/create-container-unit-tests.yml
-    with:
-      backend: megatron
-      subset: pipeline_parallel
-
-  megatron-unit-test-tensor_parallel:
-    needs: megatron-unit-test-pipeline_parallel
-    uses: ./.github/workflows/create-container-unit-tests.yml
-    with:
-      backend: megatron
-      subset: tensor_parallel
-
-  megatron-unit-test-transformer-moe:
-    needs: megatron-unit-test-tensor_parallel
-    uses: ./.github/workflows/create-container-unit-tests.yml
-    with:
-      backend: megatron
-      subset: transformer/moe
-
-  megatron-unit-test-transformer:
-    needs: megatron-unit-test-transformer-moe
-    uses: ./.github/workflows/create-container-unit-tests.yml
-    with:
-      backend: megatron
-      subset: transformer
-
-  megatron-unit-test-base:
-    needs: megatron-unit-test-transformer
-    uses: ./.github/workflows/create-container-unit-tests.yml
-    with:
-      backend: megatron
-      subset: ./
-
-  # # Megatron Coverage Test
-  # megatron-coverage-test:
-  #   needs: megatron-unit-test-base
-  #   uses: ./.github/workflows/create-container-coverage-tests.yml
-  #   with:
-  #     backend: megatron
-
-  # Flagscale Unit Tests
-  flagscale-unit-test-launcher:
-    needs: megatron-unit-test-base
-    uses: ./.github/workflows/create-container-unit-tests.yml
+  # Flagscale Unit Tests with Matrix
+  flagscale-unit-tests:
+    uses: ./.github/workflows/unit-tests.yml
+    strategy:
+      matrix:
+        subset: 
+          - launcher
+          - ./
+    name: "flagscale-${{ matrix.subset }}"
     with:
       backend: flagscale
-      subset: launcher
-
-  flagscale-unit-test-base:
-    needs: flagscale-unit-test-launcher
-    uses: ./.github/workflows/create-container-unit-tests.yml
-    with:
-      backend: flagscale
-      subset: ./
+      subset: ${{ matrix.subset }}
 
   # Flagscale Coverage Test
-  # flagscale-coverage-test:
-  #   needs: flagscale-unit-test-base
-  #   uses: ./.github/workflows/create-container-coverage-tests.yml
-  #   with:
-  #     backend: flagscale
-
-  # Functional Tests
-  functional-test-aquila:
-    needs: flagscale-unit-test-base
-    uses: ./.github/workflows/create-container-functional-tests.yml
+  flagscale-coverage-test:
+    needs: flagscale-unit-tests
+    uses: ./.github/workflows/coverage-tests.yml
     with:
-      type: train
-      model: aquila
+      backend: flagscale
 
-  functional-test-mixtral:
-    needs: functional-test-aquila
-    uses: ./.github/workflows/create-container-functional-tests.yml
+  # Functional Tests with Model and Type Matrix
+  functional-tests-train:
+    needs:
+      - megatron-coverage-test
+      - flagscale-coverage-test
+    uses: ./.github/workflows/functional-tests.yml
+    strategy:
+      matrix:
+        model: 
+          - aquila
+          - mixtral
+    name: "train-${{ matrix.model }}"
     with:
+      model: ${{ matrix.model }}
       type: train
-      model: mixtral
   
-  functional-test-hetero-aquila:
-    needs: functional-test-mixtral
-    uses: ./.github/workflows/create-container-functional-tests.yml
+  functional-test-hetero:
+    needs: functional-tests-train
+    uses: ./.github/workflows/functional-tests.yml
+    strategy:
+      matrix:
+        model: 
+          - aquila
+    name: "hetero_train-${{ matrix.model }}"
     with:
+      model: ${{ matrix.model }}
       type: hetero_train
-      model: aquila
 
 # Add in the feature for inference
-  # functional-test-vllm:
-  #   needs: functional-test-mixtral
-  #   uses: ./.github/workflows/create-container-functional-tests.yml
-  #   with:
-  #     type: inference
-  #     model: vllm
+# functional-tests-inference:
+#   needs: functional-test-hetero
+#   uses: ./.github/workflows/functional-tests.yml
+#   strategy:
+#     matrix:
+#       model: 
+#         - from_vllm
+#   name: "inference-${{ matrix.model }}"
+#   with:
+#     model: ${{ matrix.model }}
+#     type: inference
