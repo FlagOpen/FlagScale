@@ -23,8 +23,25 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }} 
+          ref: ${{ github.event.pull_request.head.ref }}
+          ssh-strict: true
+          ssh-user: git
+          persist-credentials: true
+          clean: true
+          sparse-checkout-cone-mode: true
+          fetch-tags: false
+          show-progress: true
+          lfs: false
+          submodules: false
+          set-safe-directory: true
       
       - name: Run Unit Tests and Check Coverage
         run: |
           # Execute the test coverage script with the appropriate backend and id (commit SHA)
           tests/scripts/unit_tests/test_coverage.sh --backend ${{ inputs.backend }} --id ${{ github.sha }}
+      
+      - name: Coverage Online Report
+        run: echo "You can access the test diff-coverage report at the $REPORT_ADDR/${{github.sha}}/diff-cover-report-${{ inputs.backend }}/index.html"
+        

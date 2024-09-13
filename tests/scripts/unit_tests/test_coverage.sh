@@ -41,11 +41,17 @@ else
     git remote add upstream https://github.com/FlagOpen/FlagScale.git
 fi
 
-# Fetch the latest upstream main branch
-git fetch upstream main
+git fetch --unshallow upstream main
 
 # Get the latest common ancestor between the current branch and upstream main
 common_ancestor=$(git merge-base HEAD upstream/main)
+
+# Check if a common ancestor was found
+if [ -z "$common_ancestor" ]; then
+    echo "Error: No common ancestor found between the current branch and upstream main."
+    echo "Ensure that your branch has a common history with upstream/main."
+    exit 1
+fi
 
 # Get the changed files between the current branch and the common ancestor
 git diff --name-only $common_ancestor HEAD > changed_files.txt
@@ -58,7 +64,7 @@ fi
 
 # Check the coverage for the new code changes
 echo "Checking coverage for the new code changes..."
-diff-cover "$report_dir/$coverage_file" --compare-branch=$common_ancestor --fail-under=70
+diff-cover "$report_dir/$coverage_file" --compare-branch=$common_ancestor --html-report "$report_dir/diff-cover-report-${backend}.html" --fail-under=70
 
 # If diff-cover exits with a non-zero status, it means the coverage is below 70%
 if [ $? -ne 0 ]; then

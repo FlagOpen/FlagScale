@@ -41,7 +41,6 @@ jobs:
 
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
-    needs: megatron-coverage-test
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
@@ -61,6 +60,9 @@ jobs:
 
   # Functional Tests with Model and Type Matrix
   functional-tests-train:
+    needs:
+      -megatron-coverage-test
+      -flagscale-coverage-test
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
@@ -70,6 +72,7 @@ jobs:
     with:
       model: ${{ matrix.model }}
       type: train
+      backend: flagscale
 
 # Add in the feature for inference
 # functional-tests-inference:
