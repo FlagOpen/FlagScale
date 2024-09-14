@@ -36,6 +36,7 @@ jobs:
   # Megatron Coverage Test
   megatron-coverage-test:
     needs: megatron-unit-tests
+    if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/coverage-tests.yml
     with:
       backend: megatron
@@ -56,6 +57,7 @@ jobs:
   # Flagscale Coverage Test
   flagscale-coverage-test:
     needs: flagscale-unit-tests
+    if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/coverage-tests.yml
     with:
       backend: flagscale
