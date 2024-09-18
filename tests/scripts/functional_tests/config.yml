@@ -12,6 +12,7 @@ hetero_train:
   aquila:
     test_cases:
       -tp2pp1_tp4pp1_tp2pp1
+      -tp2dp1pp1_tp2dp2pp1_tp1dp2pp1
 # Add in the feature
 # inference:
 #   from_vllm:
