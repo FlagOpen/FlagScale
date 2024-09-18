@@ -1,5 +1,5 @@
 # .github/workflows/create-container-functional-tests.yml
-name: Create and Test in Container - Functional Tests
+name: Functional Tests
 
 on:
   workflow_call:
@@ -23,8 +23,23 @@ jobs:
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
         - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
       options: --gpus all --shm-size=500g --hostname flagscale_cicd
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }} 
+          ref: ${{ github.event.pull_request.head.ref }}
+          ssh-strict: true
+          ssh-user: git
+          persist-credentials: true
+          clean: true
+          sparse-checkout-cone-mode: true
+          fetch-tags: false
+          show-progress: true
+          lfs: false
+          submodules: false
+          set-safe-directory: true
+
       - name: Run Functional Test
         run: tests/scripts/functional_tests/test_model.sh --type ${{ inputs.type }} --model ${{ inputs.model }}

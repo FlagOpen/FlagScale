@@ -30,7 +30,7 @@ jobs:
     - name: Check for Specific Approver
       run: |
         # List of specific approvers to check
-        SPECIFIC_APPROVERS=("aoyulong" "zhaoyinglia")
+        SPECIFIC_APPROVERS=("aoyulong" "zhaoyinglia" "heavyrain-lzy")
         APPROVED="false"
 
         # Check if any of the specific approvers have approved the PR
