@@ -180,8 +180,6 @@ class DistributedDataParallel(MegatronModule):
                         param_and_grad_dtype_to_indices[(param_dtype, grad_dtype)],
                     )
                 )
-                for param in params:
-                    self.param_to_buffer[param] = buffers[-1]
 
                 grad_buffer_param_index_map = buffers[-1].param_index_map
                 for param in params:
