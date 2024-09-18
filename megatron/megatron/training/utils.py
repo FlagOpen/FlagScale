@@ -90,9 +90,21 @@ def calc_params_l2_norm(model):
     norm_2 = norm * norm
     if mpu.get_expert_model_parallel_world_size() == 1:
         # Sum across all model-parallel GPUs(tensor + pipeline).
-        torch.distributed.all_reduce(norm_2,
+        mp_group = mpu.get_model_parallel_group()
+        if not isinstance(mp_group, list):
+            mp_groups = [mp_group]
+        else:
+            mp_groups = mp_group
+        original_norm_2 = norm_2
+        mp_groups_size = len(mp_groups)
+        for g_idx, mp_group in enumerate(mp_groups):
+            
+            torch.distributed.all_reduce(norm_2,
                                      op=torch.distributed.ReduceOp.SUM,
                                      group=mpu.get_model_parallel_group())
+            if mp_groups_size != 1 and g_idx != mp_groups_size - 1:
+                norm_2 = original_norm_2
+
     else:
         # Sum across tensor, pipeline and expert model-parallel GPUs.
         torch.distributed.all_reduce(norm_2,
@@ -338,6 +350,9 @@ def append_to_progress_log(string, barrier=True):
 def get_batch_on_this_tp_rank(data_iterator):
 
     args = get_args()
+    if args.enable_hetero:
+        import flagscale.train.utils as flagscale_utils
+        return flagscale_utils.get_batch_on_this_tp_rank(data_iterator, args)
 
     def _broadcast(item):
        if item is not None:
