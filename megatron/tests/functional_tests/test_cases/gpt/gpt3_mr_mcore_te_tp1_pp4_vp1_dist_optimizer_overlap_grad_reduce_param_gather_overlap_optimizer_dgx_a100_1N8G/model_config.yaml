@@ -3,6 +3,7 @@ ENV_VARS:
   NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
   NCCL_ALGO: Tree
   CUBLAS_WORKSPACE_CONFIG: :4096:8
+  N_REPEATS: 5
 MODEL_ARGS:
   --num-layers: 12
   --hidden-size: 512
@@ -44,7 +45,6 @@ MODEL_ARGS:
   --overlap-grad-reduce: true
   --overlap-param-gather: true
   --overlap-param-gather-with-optimizer-step: true
-  --align-param-gather: true
   --check-weight-hash-across-dp-replicas-interval: 10
   --ckpt-fully-parallel-load: true
   --deterministic-mode: true

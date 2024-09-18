@@ -1,9 +1,11 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
 from dataclasses import dataclass
+from importlib.metadata import version
 from typing import Callable, Optional, Tuple
 
 import torch.nn.functional as F
+from pkg_resources import packaging
 
 from ..model_parallel_config import ModelParallelConfig
 from ..utils import init_method_normal, scaled_init_method_normal
@@ -22,6 +24,14 @@ class TransformerConfig(ModelParallelConfig):
     ####################
     num_layers: int = 0
     """Number of transformer layers in a transformer block."""
+
+    first_pipeline_num_layers: int = None
+    """Number of transformer layers on first pipeline stage. 
+    None implies equal layer division across PP ranks."""
+
+    last_pipeline_num_layers: int = None
+    """Number of transformer layers on last pipeline stage. 
+    None implies equal layer division across PP ranks."""
 
     hidden_size: int = 0
     """Transformer hidden size."""
@@ -229,9 +239,22 @@ class TransformerConfig(ModelParallelConfig):
     fp8_multi_head_attention: bool = False
     """When set to True, use the FP8 implementation of Multi Head Attention."""
 
+    tp_only_amax_red: bool = False
+    """When set to True, reduce the FP8 AMAX only in the TP or TP-CP domain"""
+
     ####################
     # MoE related
     ####################
+    moe_shared_expert_intermediate_size: int = None
+    """Shared expert total ffn hidden size.
+    It should be equal to 'num_shared_experts * ffn_size_of_each_shared_expert' if
+    there are multiple shared experts.
+    None means no shared expert."""
+
+    moe_shared_expert_overlap: bool = False
+    """Enable overlapping between shared expert computations and dispatcher communications.
+    Without this, the shared epxerts execute after the routed experts."""
+
     moe_router_load_balancing_type: str = "aux_loss"
     """Determines the load balancing strategy for the router. "aux_loss" corresponds to the load
     balancing loss used in GShard and SwitchTransformer, "sinkhorn" corresponds to the balancing
@@ -300,7 +323,10 @@ class TransformerConfig(ModelParallelConfig):
     """When set to true, the parameter transposes are not cached for subsequent iterations."""
 
     enable_cuda_graph: bool = False
-    """When set to true, TransformerLayer blocks are wrapped with CUDA graph."""
+    """When set to true, TransformerLayer layers are swapped with a CUDA graphed version."""
+
+    external_cuda_graph: bool = False
+    """When set to true, TransformerLayer layers are swapped with user provided CUDA graphs."""
 
     config_logger_dir: str = ""
     """When non-empty, dumps entry-point configs to config_logger_dir"""
@@ -345,6 +371,20 @@ class TransformerConfig(ModelParallelConfig):
 
         if self.num_moe_experts is not None and self.num_moe_experts <= 0:
             raise ValueError('num_moe_experts must be non-negative.')
+
+        if self.moe_shared_expert_intermediate_size is not None:
+            if self.moe_shared_expert_intermediate_size <= 0:
+                raise ValueError(
+                    f'moe_shared_expert_intermediate_size must be '
+                    f'num_shared_experts * ffn_size_of_each_shared_expert, '
+                    f'but got {self.moe_shared_expert_intermediate_size}'
+                )
+            if self.moe_shared_expert_overlap and self.moe_token_dispatcher_type not in [
+                "alltoall"
+            ]:
+                raise ValueError(
+                    f'moe_shared_expert_overlap only works with alltoall token dispatcher.'
+                )
 
         if self.moe_expert_capacity_factor is not None:
             if self.moe_token_dispatcher_type not in ["alltoall", "alltoall_seq"]:
@@ -470,3 +510,15 @@ class TransformerConfig(ModelParallelConfig):
                     f'ffn_hidden_size: {self.ffn_hidden_size} must be divisible by '
                     f'extended_tp_size {extended_tp_size}'
                 )
+
+        if self.num_moe_experts and self.fp8:
+            # TE version below 1.7.0 will raise Error when handle zeros tokens for expert
+            te_version = packaging.version.Version(version("transformer-engine"))
+            if te_version < packaging.version.Version("1.7.0.dev0"):
+                raise ValueError(
+                    "Only transformer-engine>=1.7.0 supports MoE FP8 training, "
+                    f"but your version is {te_version}."
+                )
+
+            if self.moe_grouped_gemm:
+                raise ValueError("Grouped GEMM of MoE not support fp8 for now.")
