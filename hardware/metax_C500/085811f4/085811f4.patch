@@ -1,0 +1,280 @@
+From 5e77a5b13c226036db7947e0ae9219bb27c48a9f Mon Sep 17 00:00:00 2001
+From: sfwang <wangshunfei2010@126.com>
+Date: Thu, 19 Sep 2024 15:19:07 +0800
+Subject: [PATCH] adapt C500 for llava1.5-7b
+
+---
+ examples/llava/conf/config.yaml               |  59 +++++---
+ .../llava/conf/train/train_llava1.5_7b.yaml   | 139 +++++++++---------
+ .../core/distributed/param_and_grad_buffer.py |   4 +-
+ .../megatron/legacy/fused_kernels/__init__.py |   2 +-
+ 4 files changed, 112 insertions(+), 92 deletions(-)
+
+diff --git a/examples/llava/conf/config.yaml b/examples/llava/conf/config.yaml
+index e7b327ee..ebcdd256 100644
+--- a/examples/llava/conf/config.yaml
++++ b/examples/llava/conf/config.yaml
+@@ -1,27 +1,48 @@
++action: run
+ defaults:
+-  - train: train_llava1.5_7b.yaml
+-  - _self_
+-
++- train: train_llava1.5_7b.yaml
++- _self_
+ experiment:
++  cmds:
++    before_start: ''
++  envs:
++    CUCC_PATH: /opt/maca/tools/cu-bridge
++    CUDA_DEVICE_MAX_CONNECTIONS: 1
++    CUDA_PATH: /opt/maca/tools/cu-bridge
++    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
++    DEVINFO_ROOT: /opt/maca
++    FORCE_ACTIVATE_WAIT: 1
++    LD_LIBRARY_PATH: /opt/maca/lib:/opt/maca/mxgpu_llvm/lib:/opt/mxdriver/lib:/opt/maca/ompi/lib:/opt/maca/ucx/lib:/opt/mxdriver/lib
++    MACA_CLANG: /opt/maca/mxgpu_llvm
++    MACA_CLANG_PATH: /opt/maca/mxgpu_llvm/bin
++    MACA_PATH: /opt/maca
++    MACA_SMALL_PAGESIZE_ENABLE: 1
++    MAX_JOBS: 20
++    MCBLAS_CUSTOMIZED_CONFIG_PATH: /data/dataset/llava/mcblas_customized_config.yaml
++    MCCL_IB_GID_INDEX: 1
++    MCCL_LIMIT_RING_LL_THREADTHRESHOLDS: 1
++    MCCL_NET_GDR_LEVEL: 7
++    MCCL_P2P_LEVEL: SYS
++    MCPYTORCH_DISABLE_PRINT: 1
++    NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
++    NVTE_APPLY_QK_LAYER_SCALING: 0
++    NVTE_FLASH_ATTN: 1
++    NVTE_FUSED_ATTN: 0
++    PATH: /opt/conda/bin:/opt/conda/condabin:/opt/maca/tools/cu-bridge:/opt/maca/bin:/opt/maca/mxgpu_llvm/bin:/opt/conda/bin:/opt/maca/bin:/opt/maca/mxgpu_llvm/bin:/opt/maca/ompi/bin:/opt/maca/ucx/bin:/opt/mxdriver/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
++    PYTORCH_ENABLE_SAME_RAND_A100: 1
++    SET_DEVICE_NUMA_PREFERRED: 1
+   exp_name: llava1.5
+   exp_dir: ./outputs_llava1.5
+-  task:
+-    type: train
+-    backend: megatron
+-    entrypoint: ./flagscale/train/train_llava.py
+   runner:
+     backend: torchrun
+-    nnodes: 4 
++    hostfile: /metax/sfwang/FlagScale/hostfile
++    nnodes: 4
+     nproc_per_node: 8
+-    hostfile: <xxx>
+-  envs:
+-    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7 
+-    CUDA_DEVICE_MAX_CONNECTIONS: 1
+-    NVTE_APPLY_QK_LAYER_SCALING: 0
+-    NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
+-
+-action: run 
+-
+-hydra: 
++    ssh_port: 1234
++  task:
++    backend: megatron
++    entrypoint: ./flagscale/train/train_llava.py
++    type: train
++hydra:
+   run:
+-    dir: ${experiment.exp_dir}/hydra 
++    dir: ${experiment.exp_dir}/hydra
+\ No newline at end of file
+diff --git a/examples/llava/conf/train/train_llava1.5_7b.yaml b/examples/llava/conf/train/train_llava1.5_7b.yaml
+index 040b73ca..99647166 100644
+--- a/examples/llava/conf/train/train_llava1.5_7b.yaml
++++ b/examples/llava/conf/train/train_llava1.5_7b.yaml
+@@ -1,83 +1,82 @@
+-system:
+-  tensor_model_parallel_size: 1
+-  pipeline_model_parallel_size: 1
+-  disable_bias_linear: True
+-  use_flash_attn: True
+-  use_distributed_optimizer: True
+-  use_mcore_models: True
+-  transformer_impl: transformer_engine
+-  precision:
+-    bf16: True
+-    attention_softmax_in_fp32: True
+-  logging:
+-    log_interval: 1
+-    tensorboard_log_interval: 1
+-    wandb_project: "train-llava-1.5" 
+-    wandb_exp_name: "train-llava-1.5"
+-    log_params_norm: True
+-    log_num_zeros_in_grad: True
+-  checkpoint:
+-    save_interval: 1000
+-    pretrained_checkpoint: ${pretrained_checkpoint_path:??}
+-    dataloader_save: ${experiment.exp_dir}/checkpoints/dataloader
+-    use_dist_ckpt: False
+-    ckpt_format: torch
+-    async_save: False
+-
++data:
++  data_path: /metax/sfwang/FlagScale/megatron/examples/multimodal/pretrain_dataset.yaml
++  dataloader_type: external
++  prompt-path: /data/dataset/llava/FlagScale/megatron/examples/multimodal/manual_prompts.json
++  prompt_path: /metax/sfwang/FlagScale/megatron/examples/multimodal/manual_prompts.json
++  split: 100,0,0
++  tokenizer:
++    tokenizer_model: /data/dataset/llava/vicuna-7b-v1___5/tokenizer.model
++    tokenizer_type: Llama2Tokenizer
++    vocab_size: 32000
++  valid_path: /metax/sfwang/FlagScale/megatron/examples/multimodal/pretrain_dataset.yaml
+ model:
+-  num_layers: 32  
+-  hidden_size: 4096 
+-  ffn_hidden_size: 11008
+-  num_attention_heads: 32 
+-  seq_length: 2048
+-  max_position_embeddings: 4096
+-  swiglu: True
+-  normalization: RMSNorm
+-  init_method_std: 0.014
++  allow_missing_vision_projection_checkpoint: true
++  apply_layernorm_1p: true
+   attention_dropout: 0.0
+-  hidden_dropout: 0.0
+   clip_grad: 1.0
+-  train_iters: 5000
+-  eval_iters: 10
++  disable_vision_class_token: true
++  eod_mask_loss: true
+   eval_interval: 1000
+-  micro_batch_size: 2
++  eval_iters: 10
++  ffn_hidden_size: 11008
++  freeze_LM: true
++  freeze_ViT: true
+   global_batch_size: 256
+-  allow_missing_vision_projection_checkpoint: True
+-  apply_layernorm_1p: True
+-  use_te: True
+-  group_query_attention: True
+-  num_query_groups: 32
+-  no_masked_softmax_fusion: True
+-  untie-embeddings-and-output-weights: True
+-  position_embedding_type: rope
+-  rotary_percent: 1.0
+-  rotary_base: 10000
+-  eod_mask_loss: True
+-  freeze_LM: True
+-  freeze_ViT: True
+-  patch_dim: 14
++  group_query_attention: true
++  hidden_dropout: 0.0
++  hidden_size: 4096
+   img_h: 336
+   img_w: 336
++  init_method_std: 0.014
+   language_model_type: vicuna_7b
+-  disable_vision_class_token: True
+-  seed: 1234
+-
++  max_position_embeddings: 4096
++  micro_batch_size: 2
++  no_masked_softmax_fusion: true
++  normalization: RMSNorm
++  num_attention_heads: 32
++  num_layers: 32
++  num_query_groups: 32
+   optimizer:
+-    weight_decay: 0.0
+     adam_beta1: 0.9
+     adam_beta2: 0.95
+     lr_scheduler:
+-      lr: 1.0e-3
+-      lr_warmup_fraction: .03
++      lr: 0.001
+       lr_decay_style: cosine
+-
+-data:
+-  data_path: ./examples/multimodal/pretrain_dataset.yaml
+-  valid_path: ./examples/multimodal/pretrain_dataset.yaml
+-  prompt-path: ./examples/multimodal/manual_prompts.json
+-  dataloader_type: external
+-  split: 100,0,0
+-  tokenizer:
+-    tokenizer_type: Llama2Tokenizer
+-    tokenizer_model: ${tokenizer_model_path:??}
+-    vocab_size: 32000
++      lr_warmup_fraction: 0.03
++    weight_decay: 0.0
++  patch_dim: 14
++  position_embedding_type: rope
++  rotary_base: 10000
++  rotary_percent: 1.0
++  seed: 1234
++  seq_length: 2048
++  swiglu: true
++  train_iters: 30
++  untie-embeddings-and-output-weights: true
++  use_te: true
++system:
++  checkpoint:
++    async_save: false
++    ckpt_format: torch
++    dataloader_save: /data/dataset/llava/checkpoints/dataloader
++    pretrained_checkpoint: /data/dataset/llava/LLaVA_megatron/vicuna_instruct_clip336_mlp_tp1_combined_mcore
++    save: /data/dataset/llava/checkpoints
++    save_interval: 5000
++    use_dist_ckpt: false
++  disable_bias_linear: true
++  logging:
++    log_interval: 1
++    log_num_zeros_in_grad: true
++    log_params_norm: false
++    tensorboard_log_interval: 1
++    wandb_exp_name: train-llava-1.5
++    wandb_project: train-llava-1.5
++  pipeline_model_parallel_size: 1
++  precision:
++    attention_softmax_in_fp32: true
++    bf16: true
++  tensor_model_parallel_size: 1
++  transformer_impl: transformer_engine
++  use_distributed_optimizer: true
++  use_flash_attn: true
++  use_mcore_models: true
+\ No newline at end of file
+diff --git a/megatron/megatron/core/distributed/param_and_grad_buffer.py b/megatron/megatron/core/distributed/param_and_grad_buffer.py
+index 65c8eeb1..bdf8a712 100644
+--- a/megatron/megatron/core/distributed/param_and_grad_buffer.py
++++ b/megatron/megatron/core/distributed/param_and_grad_buffer.py
+@@ -5,7 +5,7 @@ import math
+ import os
+ from enum import Enum
+ from typing import Dict, List, Optional
+-
++import numpy
+ import torch
+ 
+ from ..utils import log_on_each_pipeline_stage
+@@ -253,7 +253,7 @@ class ParamAndGradBuffer:
+                 # This also helps cuBLAS pick more efficient algorithms for GEMMs.
+                 # We now ensure that all buckets start at a memory address that is 256-byte
+                 # aligned (128 values since params and grads use >= 16-bit precision).
+-                return _pad(bucket_end_index, math.lcm(self.data_parallel_world_size, 128))
++                return _pad(bucket_end_index, numpy.lcm(self.data_parallel_world_size, 128))
+             return bucket_end_index
+ 
+         def _pad_start_of_param_if_needed(param_start_index: int) -> int:
+diff --git a/megatron/megatron/legacy/fused_kernels/__init__.py b/megatron/megatron/legacy/fused_kernels/__init__.py
+index 87cceac3..5a04def1 100644
+--- a/megatron/megatron/legacy/fused_kernels/__init__.py
++++ b/megatron/megatron/legacy/fused_kernels/__init__.py
+@@ -56,7 +56,7 @@ def load(args):
+ 
+ def _get_cuda_bare_metal_version(cuda_dir):
+     raw_output = subprocess.check_output(
+-        [cuda_dir + "/bin/nvcc", "-V"], universal_newlines=True
++        [cuda_dir + "/bin/cucc", "-V"], universal_newlines=True
+     )
+     output = raw_output.split()
+     release_idx = output.index("release") + 1
+-- 
+2.25.1
