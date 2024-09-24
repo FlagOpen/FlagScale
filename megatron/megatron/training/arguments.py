@@ -190,9 +190,16 @@ def validate_args(args, defaults={}):
         hetero_process_meshes_pp = args.hetero_process_meshes[4::5]
 
         # Data parallel size
-        assert all(x == hetero_process_meshes_dp[0] for x in hetero_process_meshes_dp), \
-            f"Elements of hetero_process_meshes_dp {hetero_process_meshes_dp} should be the same!"
+        # NOTE: Use the first data parallel size as the global data parallel size to loader data
         args.data_parallel_size = hetero_process_meshes_dp[0]
+        assert all(args.data_parallel_size * args.micro_batch_size % hetero_dp == 0 for hetero_dp in hetero_process_meshes_dp), \
+            f"data_parallel_size * micro_batch_size {args.data_parallel_size * args.micro_batch_size} should be divisible by all hetero_process_meshes_dp {hetero_process_meshes_dp}!"
+        
+        # NOTE: Only support cp and ep size to be the same
+        assert all(hetero_cp == hetero_process_meshes_cp[0] for hetero_cp in hetero_process_meshes_cp), \
+            f"all hetero_process_meshes_cp {hetero_process_meshes_cp} should be the same!"
+        assert all(hetero_ep == hetero_process_meshes_ep[0] for hetero_ep in hetero_process_meshes_ep), \
+            f"all hetero_process_meshes_ep {hetero_process_meshes_ep} should be the same!"
 
         # Pipeline model parallel size
         assert args.pipeline_model_parallel_size == sum(hetero_process_meshes_pp), \
