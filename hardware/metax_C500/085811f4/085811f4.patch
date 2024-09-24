@@ -121,7 +121,7 @@ index 040b73ca..99647166 100644
 +  prompt_path: xxx/FlagScale/megatron/examples/multimodal/manual_prompts.json
 +  split: 100,0,0
 +  tokenizer:
-+    tokenizer_model: xxx/vicuna-7b-v1___5/tokenizer.model
++    tokenizer_model: /data/dataset/llava/vicuna-7b-v1___5/tokenizer.model
 +    tokenizer_type: Llama2Tokenizer
 +    vocab_size: 32000
 +  valid_path: xxx/FlagScale/megatron/examples/multimodal/pretrain_dataset.yaml
@@ -218,9 +218,9 @@ index 040b73ca..99647166 100644
 +  checkpoint:
 +    async_save: false
 +    ckpt_format: torch
-+    dataloader_save: xxx/checkpoints/dataloader
-+    pretrained_checkpoint: xxx/LLaVA_megatron/vicuna_instruct_clip336_mlp_tp1_combined_mcore
-+    save: xxx/checkpoints
++    dataloader_save: /share/project/checkpoints/dataloader
++    pretrained_checkpoint: /data/dataset/llava/LLaVA_megatron/vicuna_instruct_clip336_mlp_tp1_combined_mcore
++    save: /share/project/checkpoints
 +    save_interval: 5000
 +    use_dist_ckpt: false
 +  disable_bias_linear: true
