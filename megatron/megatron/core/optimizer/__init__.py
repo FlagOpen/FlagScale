@@ -371,7 +371,9 @@ def get_megatron_optimizer(
     else:
         all_dense_model_chunks = [model_chunks]
         overlap_param_gather_with_optimizer_step_flags = [False]
-    model_parallel_rank = torch.distributed.get_rank(mpu.get_model_parallel_group())
+    mp_group = mpu.get_model_parallel_group()
+    mp_group = [mp_group] if not isinstance(mp_group, list) else mp_group
+    model_parallel_rank = torch.distributed.get_rank(mp_group[0])
 
     optimizers = []
     model_chunk_offset = 0
