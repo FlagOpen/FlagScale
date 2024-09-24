@@ -23,7 +23,7 @@ def build_pretraining_data_loader(dataset, consumed_samples):
         batch_sampler = MegatronPretrainingSampler(
             total_samples=len(dataset),
             consumed_samples=consumed_samples,
-            micro_batch_size=args.micro_batch_size,
+            micro_batch_size=args.micro_batch_size * args.data_parallel_size // mpu.get_data_parallel_world_size(),
             data_parallel_rank=mpu.get_data_parallel_rank(),
             data_parallel_size=mpu.get_data_parallel_world_size())
     elif args.dataloader_type == 'cyclic':
@@ -31,7 +31,7 @@ def build_pretraining_data_loader(dataset, consumed_samples):
             dataset,
             total_samples=len(dataset),
             consumed_samples=consumed_samples,
-            micro_batch_size=args.micro_batch_size,
+            micro_batch_size=args.micro_batch_size * args.data_parallel_size // mpu.get_data_parallel_world_size(),
             data_parallel_rank=mpu.get_data_parallel_rank(),
             data_parallel_size=mpu.get_data_parallel_world_size(),
             data_sharding=args.data_sharding)
