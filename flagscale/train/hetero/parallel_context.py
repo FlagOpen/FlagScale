@@ -518,10 +518,11 @@ class ParallelContext:
         dp_overlapped_mapping = find_overlapped_mapping(dp1, dp2)
         src_pp_dims = [process_mesh1.get_parallel_size("pp") - 1]
         dst_pp_dims = [0]
-        # i is tp, j is cp, k is dp, 
+        
+        # find pp group connection
         for s in range(sp1):
+            # i is tp, j is cp, k is dp, 
             src_i, src_j = s % tp1, s // tp1
-            finded_mp_group = False
             for k in range(dp1):
                 src_coord = [src_i, src_j, k, src_pp_dims[0]]
                 dst_sp_dims = [dim for dim, _, _ in sp_overlapped_mapping[s]]
@@ -532,7 +533,6 @@ class ParallelContext:
                 src_rank = process_mesh1.logical_coords_to_physical_ranks(
                     [src_coord]
                 )[0]
-                # find pp group connection
                 for dst_coord in dst_coords:
                     sp_dim, dp_dim, pp_dim = dst_coord
                     dst_coord = [sp_dim % tp2, sp_dim // tp2, dp_dim, pp_dim]
@@ -546,26 +546,24 @@ class ParallelContext:
                     # group = torch.distributed.new_group(ranks, timeout=timeout)
                     self._inter_mesh_process_groups_pp[(src_rank, dst_rank)] = True
                 
-                # find mp(tp+pp) group connection
-                if not finded_mp_group:
-                    finded_mp_group = True
-                    for k in range(dp1):
-                        src_coord = [tp1 - 1, cp1 - 1, k, src_pp_dims[0]]
-                        dst_dp_dims = [dim for dim, _, _ in dp_overlapped_mapping[k]]
-                        dst_coords = list(
-                            itertools.product([0], [0], dst_dp_dims, dst_pp_dims)
-                        )
-                        src_rank = process_mesh1.logical_coords_to_physical_ranks(
-                            [src_coord]
-                        )[0]
-                        for dst_coord in dst_coords:
-                            tp_dim, cp_dim, dp_dim, pp_dim = dst_coord
-                            dst_coord = [tp_dim, cp_dim, dp_dim, pp_dim]
-                            dst_rank = process_mesh2.logical_coords_to_physical_ranks(
-                                [dst_coord]
-                            )[0]
-                            self._inter_mesh_process_groups_dp[(src_rank, dst_rank)] = True
-                
+        # find mp(tp+pp) group connection
+        for k in range(dp1):
+            src_coord = [tp1 - 1, cp1 - 1, k, src_pp_dims[0]]
+            dst_dp_dims = [dim for dim, _, _ in dp_overlapped_mapping[k]]
+            dst_coords = list(
+                itertools.product([0], [0], dst_dp_dims, dst_pp_dims)
+            )
+            src_rank = process_mesh1.logical_coords_to_physical_ranks(
+                [src_coord]
+            )[0]
+            for dst_coord in dst_coords:
+                tp_dim, cp_dim, dp_dim, pp_dim = dst_coord
+                dst_coord = [tp_dim, cp_dim, dp_dim, pp_dim]
+                dst_rank = process_mesh2.logical_coords_to_physical_ranks(
+                    [dst_coord]
+                )[0]
+                self._inter_mesh_process_groups_dp[(src_rank, dst_rank)] = True
+        
 
     def build_all_inter_mesh_process_groups(self):
         if len(self._process_meshes) == 1:

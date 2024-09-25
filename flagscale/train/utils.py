@@ -78,7 +78,7 @@ def get_batch_on_this_tp_rank(data_iterator, args=None):
            _broadcast(batch['attention_mask'])
 
     else:
-       cur_mc_size = args.micro_batch_size * args.data_parallel_size // mpu.get_data_parallel_world_size()
+       cur_mc_size = args.micro_batch_size
        tokens=torch.empty((cur_mc_size,args.seq_length), dtype = torch.int64 , device = torch.cuda.current_device())
        labels=torch.empty((cur_mc_size,args.seq_length), dtype = torch.int64 , device = torch.cuda.current_device())
        loss_mask=torch.empty((cur_mc_size,args.seq_length), dtype = torch.float32 , device = torch.cuda.current_device())
