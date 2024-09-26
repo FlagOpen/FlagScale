@@ -432,7 +432,8 @@ class ParallelContext:
         self._process_meshes = [] 
         self._rank_to_process_mesh = {}
         self._inter_mesh_group_ranks = defaultdict(list) 
-        self._inter_mesh_process_groups = {} # (src_rank, dst_rank) -> group
+        self._inter_mesh_process_groups_pp = {} # (src_rank, dst_rank) -> bool
+        self._inter_mesh_process_groups_dp = {} # (src_rank, dst_rank) -> bool
         # (src_rank, local_tensor_shape, next) -> (dst_rank, (dp_start, dp_end), (sp_start, sp_end), local_hidden_size)
         self._inter_mesh_tensor_slices = {}
         self._group_ranks = defaultdict(list)
@@ -506,9 +507,7 @@ class ParallelContext:
         tp2 = process_mesh2.get_parallel_size("tp", independent_ep=False)
         cp2 = process_mesh2.get_parallel_size("cp", independent_ep=False)
         dp2 = process_mesh2.get_parallel_size("dp", independent_ep=False)
-        # For now, we only support the case where the sequence dim is different.
-        # However, the following code can be easily extended to support other cases.
-        assert dp1 == dp2, "Data parallel size should be the same."
+
         if not(tp1 == 1 and tp2 == 1):
             sp1 = tp1 * cp1
             sp2 = tp2 * cp2
@@ -519,9 +518,10 @@ class ParallelContext:
         dp_overlapped_mapping = find_overlapped_mapping(dp1, dp2)
         src_pp_dims = [process_mesh1.get_parallel_size("pp") - 1]
         dst_pp_dims = [0]
-        # i is cp, j is tp, k is dp, 
+        # i is tp, j is cp, k is dp, 
         for s in range(sp1):
             src_i, src_j = s % tp1, s // tp1
+            finded_mp_group = False
             for k in range(dp1):
                 src_coord = [src_i, src_j, k, src_pp_dims[0]]
                 dst_sp_dims = [dim for dim, _, _ in sp_overlapped_mapping[s]]
@@ -532,16 +532,40 @@ class ParallelContext:
                 src_rank = process_mesh1.logical_coords_to_physical_ranks(
                     [src_coord]
                 )[0]
-                for i, dst_coord in enumerate(dst_coords):
+                # find pp group connection
+                for dst_coord in dst_coords:
                     sp_dim, dp_dim, pp_dim = dst_coord
                     dst_coord = [sp_dim % tp2, sp_dim // tp2, dp_dim, pp_dim]
                     dst_rank = process_mesh2.logical_coords_to_physical_ranks(
                         [dst_coord]
                     )[0]
-                    ranks = [src_rank, dst_rank]
-                    timeout = max(process_mesh1._timeout, process_mesh2._timeout)
-                    group = torch.distributed.new_group(ranks, timeout=timeout)
-                    self._inter_mesh_process_groups[(src_rank, dst_rank)] = group
+                    # NOTE: There is no need to create a group for the commnetting boundary.
+                    #       We will create the `pp` group in the `build_global_process_groups` function.
+                    # ranks = [src_rank, dst_rank]
+                    # timeout = max(process_mesh1._timeout, process_mesh2._timeout)
+                    # group = torch.distributed.new_group(ranks, timeout=timeout)
+                    self._inter_mesh_process_groups_pp[(src_rank, dst_rank)] = True
+                
+                # find mp(tp+pp) group connection
+                if not finded_mp_group:
+                    finded_mp_group = True
+                    for k in range(dp1):
+                        src_coord = [tp1 - 1, cp1 - 1, k, src_pp_dims[0]]
+                        dst_dp_dims = [dim for dim, _, _ in dp_overlapped_mapping[k]]
+                        dst_coords = list(
+                            itertools.product([0], [0], dst_dp_dims, dst_pp_dims)
+                        )
+                        src_rank = process_mesh1.logical_coords_to_physical_ranks(
+                            [src_coord]
+                        )[0]
+                        for dst_coord in dst_coords:
+                            tp_dim, cp_dim, dp_dim, pp_dim = dst_coord
+                            dst_coord = [tp_dim, cp_dim, dp_dim, pp_dim]
+                            dst_rank = process_mesh2.logical_coords_to_physical_ranks(
+                                [dst_coord]
+                            )[0]
+                            self._inter_mesh_process_groups_dp[(src_rank, dst_rank)] = True
+                
 
     def build_all_inter_mesh_process_groups(self):
         if len(self._process_meshes) == 1:
@@ -553,19 +577,37 @@ class ParallelContext:
             )
 
     def build_global_process_groups(self):
-        # build global model parallel process groups
-        for mesh_index, process_mesh in enumerate(self._process_meshes):
-            ranks_list = process_mesh.get_all_process_group_ranks(
-                "tp-pp", independent_ep=False, check_initialized=True
-            )
-            ranks = list(itertools.chain.from_iterable(ranks_list))
-            self._all_group_ranks["mp"].append(ranks)
-            group = torch.distributed.new_group(ranks, timeout=self._timeout)
-            if self._rank in ranks:
-                self._group_ranks["mp"] = ranks
-                self._process_groups["mp"] = group
-                self._process_group_to_ranks[group] = ranks
+        # build global pipeline process groups
+        def _backtrack(mesh_index, prev_rank, path, token = "pp", independent_ep=False):
+            group_name = self._process_meshes[0].get_group_name(token, independent_ep=independent_ep)
+            if mesh_index == len(self._process_meshes):
+                aggregated_ranks = [rank for ranks in path for rank in ranks]
+                self._all_group_ranks[group_name].append(aggregated_ranks)
+                group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout)
+                if self._rank in aggregated_ranks:
+                    self._process_groups[group_name].append(group)
+                    self._group_ranks[group_name].append(aggregated_ranks)
+                    self._process_group_to_ranks[group] = aggregated_ranks
+                return
+            current_mesh = self._process_meshes[mesh_index]
+            ranks_list = current_mesh.get_all_process_group_ranks(token, independent_ep=independent_ep, check_initialized=True)
+            valid_ranks_list = []
+            for ranks in ranks_list:
+                mesh_is_connected = False
+                for prev_path_ranks in path:
+                    for prev_path_rank in prev_path_ranks:
+                        if token == "pp" and (prev_path_rank, ranks[0]) in self._inter_mesh_process_groups_pp:
+                            mesh_is_connected = True
+                        elif token == "tp-pp" and (prev_path_rank, ranks[0]) in self._inter_mesh_process_groups_dp:
+                            mesh_is_connected = True
+                if prev_rank == -1 or mesh_is_connected:
+                    valid_ranks_list.append(ranks)
+            for ranks in valid_ranks_list:
+                path.append(ranks)
+                _backtrack(mesh_index + 1, ranks[-1], path, token=token, independent_ep=independent_ep)
+                path.pop()
 
+        for mesh_index, process_mesh in enumerate(self._process_meshes):
             ranks_list = process_mesh.get_all_process_group_ranks(
                 "tp-ep-pp", independent_ep=True, check_initialized=True
             )
@@ -583,33 +625,8 @@ class ParallelContext:
             if "last_rank" not in self._parallel_ranks:
                 self._parallel_ranks["last_rank"] = []
             self._parallel_ranks["last_rank"].append(ranks[-1])
-        # build global pipeline process groups
-        def _backtrack(mesh_index, prev_rank, path):
-            if mesh_index == len(self._process_meshes):
-                aggregated_ranks = [rank for ranks in path for rank in ranks]
-                self._all_group_ranks["pp"].append(aggregated_ranks)
-                group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout)
-                if self._rank in aggregated_ranks:
-                    self._process_groups["pp"].append(group)
-                    self._group_ranks["pp"].append(aggregated_ranks)
-                    self._process_group_to_ranks[group] = aggregated_ranks
-                return
-            current_mesh = self._process_meshes[mesh_index]
-            ranks_list = current_mesh.get_all_process_group_ranks("pp")
-            valid_ranks_list = []
-            for ranks in ranks_list:
-                mesh_is_connected = False
-                for prev_path_ranks in path:
-                    for prev_path_rank in prev_path_ranks:
-                        if (prev_path_rank, ranks[0]) in self._inter_mesh_process_groups:
-                            mesh_is_connected = True
-                if prev_rank == -1 or mesh_is_connected:
-                    valid_ranks_list.append(ranks)
-            for ranks in valid_ranks_list:
-                path.append(ranks)
-                _backtrack(mesh_index + 1, ranks[-1], path)
-                path.pop()
-        _backtrack(0, -1, path=[])
+        _backtrack(0, -1, path=[], token="tp-pp", independent_ep=False)
+        _backtrack(0, -1, path=[], token="pp", independent_ep=False)
         # build global embedding process groups
         for ranks in self._group_ranks["pp"]:
             if len(ranks) > 1:
@@ -653,10 +670,10 @@ class ParallelContext:
                 self._group_ranks["embd_pos"].append(position_embedding_ranks)
 
     def get_inter_mesh_process_group(self, src_rank, dst_rank):
-        if (src_rank, dst_rank) in self._inter_mesh_process_groups:
-            return self._inter_mesh_process_groups[(src_rank, dst_rank)]
-        elif (dst_rank, src_rank) in self._inter_mesh_process_groups:
-            return self._inter_mesh_process_groups[(dst_rank, src_rank)]
+        if (src_rank, dst_rank) in self._inter_mesh_process_groups_pp:
+            return self._inter_mesh_process_groups_pp[(src_rank, dst_rank)]
+        elif (dst_rank, src_rank) in self._inter_mesh_process_groups_pp:
+            return self._inter_mesh_process_groups_pp[(dst_rank, src_rank)]
         else:
             raise RuntimeError(
                 f"ProcessGroup [{src_rank}, {dst_rank}] does not exist."
@@ -682,9 +699,7 @@ class ParallelContext:
         tp2 = process_mesh2.get_parallel_size("tp", independent_ep=False)
         cp2 = process_mesh2.get_parallel_size("cp", independent_ep=False)
         dp2 = process_mesh2.get_parallel_size("dp", independent_ep=False)
-        # For now, we only support the case where the sequence dim is different.
-        # However, the following code can be easily extended to support other cases.
-        assert dp1 == dp2, "Data parallel size should be the same."
+
         # Assume that the tensor shape is (seq_len, batch_size, hidden_size)
         local_seq_len, local_batch_size, local_hidden_size = local_tensor_shape
         if not(tp1 == 1 and tp2 == 1):
