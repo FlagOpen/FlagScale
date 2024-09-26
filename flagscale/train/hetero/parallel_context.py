@@ -557,8 +557,6 @@ class ParallelContext:
                 [src_coord]
             )[0]
             for dst_coord in dst_coords:
-                tp_dim, cp_dim, dp_dim, pp_dim = dst_coord
-                dst_coord = [tp_dim, cp_dim, dp_dim, pp_dim]
                 dst_rank = process_mesh2.logical_coords_to_physical_ranks(
                     [dst_coord]
                 )[0]

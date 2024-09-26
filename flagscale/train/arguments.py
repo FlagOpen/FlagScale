@@ -11,7 +11,7 @@ import torch
 from flagscale.train.hetero.parallel_context import RankMapper
 
 
-class FlagScaleArguments:
+class FSTrainArguments:
     """Extend the Megatron arguments with FlagScale specific arguments.
     """
     
