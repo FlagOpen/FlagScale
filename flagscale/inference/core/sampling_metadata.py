@@ -47,9 +47,11 @@ class SequenceGroupToSample:
     # Sample token indices from logits. Empty if sampling is not required.
     sample_indices: List[int]
 
+    # --- FLAGSCALE MODIFICATION BEG ---
     negative_seq_data: Optional[Dict[int, SequenceData]] = None
     negative_seq_len: Optional[int] = None
     negative_query_len: Optional[int] = None
+    # --- FLAGSCALE MODIFICATION END ---
 
     @property
     def do_sample(self):
@@ -247,7 +249,7 @@ def _prepare_seq_groups(
 
     for i, seq_group_metadata in enumerate(seq_group_metadata_list):
         seq_ids = seq_group_metadata.seq_data.keys()
-        has_negative = seq_group_metadata.negative_seq_data is not None
+        has_negative = seq_group_metadata.negative_seq_data is not None # --- FLAGSCALE MODIFICATION ---
 
         if cache is not None:
             sample_obj = cache.get_cached_seq_group_to_sample(len(seq_ids))
@@ -264,8 +266,10 @@ def _prepare_seq_groups(
         # If the current seq group is in decode stage, it is None.
         seq_len: Optional[int] = None
         query_len: Optional[int] = None
+        # --- FLAGSCALE MODIFICATION BEG ---
         negative_seq_len: Optional[int] = None
         negative_query_len: Optional[int] = None
+        # --- FLAGSCALE MODIFICATION END ---
         prompt_logprob_indices: List[int] = (sample_obj.prompt_logprob_indices
                                              if cache is not None else [])
         sample_indices: List[int] = (sample_obj.sample_indices
@@ -283,6 +287,7 @@ def _prepare_seq_groups(
             num_prefill_sample = len(seq_ids)
             assert num_prefill_sample == 1
             assert query_lens is not None and seq_lens is not None
+            # --- FLAGSCALE MODIFICATION BEG ---
             if has_negative:
                 positive_query_lens, positive_seq_lens = query_lens[::2], seq_lens[::2]
                 negative_query_lens, negative_seq_lens = query_lens[1::2], seq_lens[1::2]
@@ -303,8 +308,10 @@ def _prepare_seq_groups(
                 prompt_logprob_len = (query_len - num_prefill_sample
                                     if do_sample else query_len)
                 sample_len = num_prefill_sample if do_sample else 0
+            # --- FLAGSCALE MODIFICATION END ---
         else:
             # Decode
+            # --- FLAGSCALE MODIFICATION BEG ---
             if has_negative:
                 prompt_logprob_len = 0
                 sample_len = len(seq_ids) if do_sample else 0
@@ -313,6 +320,7 @@ def _prepare_seq_groups(
             else:
                 prompt_logprob_len = 0
                 sample_len = len(seq_ids) if do_sample else 0
+            # --- FLAGSCALE MODIFICATION END ---
 
             if sampling_params.seed is not None and generators is not None:
                 generator = generators.get(seq_group_metadata.request_id)
@@ -335,6 +343,7 @@ def _prepare_seq_groups(
                 range(model_output_idx, model_output_idx + sample_len))
         model_output_idx += sample_len
 
+        # --- FLAGSCALE MODIFICATION BEG ---
         if sampling_params.prompt_logprobs is not None and has_negative:
             selected_token_indices.extend(
                 range(model_output_idx, model_output_idx + negative_prompt_logprob_len))
@@ -345,6 +354,7 @@ def _prepare_seq_groups(
                 range(model_output_idx, model_output_idx + negative_sample_len))
         if has_negative:
             model_output_idx += negative_sample_len
+        # --- FLAGSCALE MODIFICATION END ---
 
         # We now find indices for logprob computation and sampling.
         """
@@ -376,10 +386,12 @@ def _prepare_seq_groups(
             sample_obj.query_len = query_len
             sample_obj.generator = generator
             sample_obj.is_prompt = is_prompt
+            # --- FLAGSCALE MODIFICATION BEG ---
             if has_negative:
                 sample_obj.negative_seq_data = seq_group_metadata.negative_seq_data
                 sample_obj.negative_seq_len = negative_seq_len
                 sample_obj.negative_query_len = negative_query_len
+            # --- FLAGSCALE MODIFICATION END ---
         else:
             sample_obj = SequenceGroupToSample(
                 seq_ids=list(seq_ids),
@@ -391,9 +403,11 @@ def _prepare_seq_groups(
                 is_prompt=is_prompt,
                 prompt_logprob_indices=list(prompt_logprob_indices),
                 sample_indices=list(sample_indices),
+                # --- FLAGSCALE MODIFICATION BEG ---
                 negative_seq_data=seq_group_metadata.negative_seq_data if has_negative else None,
                 negative_seq_len=negative_seq_len if has_negative else None,
                 negative_query_len=negative_query_len if has_negative else None,
+                # --- FLAGSCALE MODIFICATION END ---
             )
 
         seq_groups.append(sample_obj)

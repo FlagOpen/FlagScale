@@ -158,7 +158,9 @@ class SamplingParams(
     include_stop_str_in_output: bool = False
     truncate_prompt_tokens: Optional[Annotated[int, msgspec.Meta(ge=1)]] = None
     output_kind: RequestOutputKind = RequestOutputKind.CUMULATIVE
+    # --- FLAGSCALE MODIFICATION BEG ---
     guidance_scale: Optional[float] = None
+    # --- FLAGSCALE MODIFICATION END ---
 
     # The below fields are not supposed to be used as an input.
     # They are set in post_init.
@@ -334,9 +336,11 @@ class SamplingParams(
         if self.best_of != self.n and self.output_kind == (
                 RequestOutputKind.DELTA):
             raise ValueError("best_of must equal n to use output_kind=DELTA")
+        # --- FLAGSCALE MODIFICATION BEG ---
         if self.guidance_scale is not None and self.guidance_scale < 1:
             raise ValueError(
                 f"guidance_scale must be at least 1, got {self.guidance_scale}.")
+        # --- FLAGSCALE MODIFICATION END ---
 
     def _verify_beam_search(self) -> None:
         if self.best_of == 1:
@@ -450,4 +454,6 @@ class SamplingParams(
             "spaces_between_special_tokens="
             f"{self.spaces_between_special_tokens}, "
             f"truncate_prompt_tokens={self.truncate_prompt_tokens}, "
+            # --- FLAGSCALE MODIFICATION BEG ---
             f"guidance_scale={self.guidance_scale})")
+            # --- FLAGSCALE MODIFICATION END ---

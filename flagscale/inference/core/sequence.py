@@ -363,7 +363,7 @@ class Sequence:
         lora_request: Optional[LoRARequest] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         from_decoder_prompt: bool = True,
-        from_negative_prompt: bool = False,
+        from_negative_prompt: bool = False, # --- FLAGSCALE MODIFICATION ---
     ) -> None:
         self.seq_id = seq_id
         self.inputs = inputs
@@ -372,7 +372,9 @@ class Sequence:
         self.lora_request = lora_request
         self.prompt_adapter_request = prompt_adapter_request
         self.from_decoder_prompt = from_decoder_prompt
+        # --- FLAGSCALE MODIFICATION BEG ---
         self.from_negative_prompt = from_negative_prompt
+        # --- FLAGSCALE MODIFICATION END ---
         self._prompt: Optional[str] = None
         self._prompt_token_ids: Optional[List[int]] = None
 
@@ -435,9 +437,11 @@ class Sequence:
         # as appropriate
         prompt_key: str = ("prompt"
                            if self.from_decoder_prompt else "encoder_prompt")
+        # --- FLAGSCALE MODIFICATION BEG ---
         if self.from_negative_prompt:
             assert self.from_decoder_prompt is True, "negative prompt is only supported for decoder"
             prompt_key: str = "negative_prompt"
+        # --- FLAGSCALE MODIFICATION END ---
 
         # Cache prompt
         self._prompt = cast(Optional[str], self.inputs.get(prompt_key))
@@ -454,9 +458,11 @@ class Sequence:
         prompt_token_ids_key: str = ("prompt_token_ids"
                                      if self.from_decoder_prompt else
                                      "encoder_prompt_token_ids")
+        # --- FLAGSCALE MODIFICATION BEG ---
         if self.from_negative_prompt:
             assert self.from_decoder_prompt is True, "negative prompt is only supported for decoder"
             prompt_token_ids_key: str = "negative_prompt_token_ids"
+        # --- FLAGSCALE MODIFICATION END ---
 
         # Cache computed prompt token ids
         self._prompt_token_ids = cast(List[int],
@@ -644,7 +650,7 @@ class SequenceGroup:
         embeddings: Optional[List[float]] = None,
         pooling_params: Optional[PoolingParams] = None,
         encoder_seq: Optional[Sequence] = None,
-        negative_seqs: Optional[list[Sequence]] = None,
+        negative_seqs: Optional[list[Sequence]] = None, # --- FLAGSCALE MODIFICATION ---
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> None:
@@ -665,13 +671,15 @@ class SequenceGroup:
         self.embeddings = embeddings
         self.pooling_params = pooling_params
         self.prompt_adapter_request = prompt_adapter_request
-        self.trace_headers = trace_headers
         self.encoder_seq = encoder_seq
+        self.trace_headers = trace_headers
+        # --- FLAGSCALE MODIFICATION BEG ---
         self.negative_seqs = negative_seqs
         if negative_seqs:
             self.negative_seqs_dict = {seq.seq_id: seq for seq in negative_seqs}
             assert self.is_single_seq is True
             assert self.seqs_dict.keys() == self.negative_seqs_dict.keys()
+        # --- FLAGSCALE MODIFICATION END ---
 
     @property
     def prompt(self) -> Optional[str]:
@@ -794,6 +802,7 @@ class SequenceGroup:
 
         return [seq for seq in self.seqs if seq.status == status]
 
+    # --- FLAGSCALE MODIFICATION BEG ---
     def has_negative_seqs(self) -> bool:
         return self.negative_seqs is not None
 
@@ -813,6 +822,7 @@ class SequenceGroup:
                 return_seqs.append(negative_seq)
 
         return return_seqs
+    # --- FLAGSCALE MODIFICATION END ---
 
     def is_encoder_decoder(self) -> bool:
         return self.encoder_seq is not None
@@ -838,10 +848,12 @@ class SequenceGroup:
             if not seq.is_finished():
                 seq.data.update_num_computed_tokens(num_new_computed_tokens)
 
+    # --- FLAGSCALE MODIFICATION BEG ---
     def update_negative_num_computed_tokens(self, num_new_computed_tokens: int):
         for seq, negative_seq in zip(self.seqs, self.negative_seqs):
             if not seq.is_finished():
                 negative_seq.data.update_num_computed_tokens(num_new_computed_tokens)
+    # --- FLAGSCALE MODIFICATION END ---
 
     def get_num_uncomputed_tokens(self) -> int:
         num_uncomputed_tokens = 0
@@ -984,9 +996,11 @@ class SequenceGroupMetadata(
     prompt_adapter_request: Optional[PromptAdapterRequest] = None
     token_chunk_size: Optional[int] = None
 
+    # --- FLAGSCALE MODIFICATION BEG ---
     negative_seq_data: Optional[Dict[int, SequenceData]] = None
     negative_block_tables: Optional[Dict[int, List[int]]] = None
     negative_token_chunk_size: Optional[int] = None
+    # --- FLAGSCALE MODIFICATION END ---
 
     ### Stateful fields that are lazily defined. ###
     # The number of speculative tokens adopted in this request.
@@ -1003,12 +1017,14 @@ class SequenceGroupMetadata(
             else:
                 self.token_chunk_size = 1
 
+        # --- FLAGSCALE MODIFICATION BEG ---
         if self.negative_seq_data is not None and self.negative_token_chunk_size is None:
             if self.is_prompt:
                 self.negative_token_chunk_size = next(iter(
                     self.negative_seq_data.values())).get_len()
             else:
                 self.negative_token_chunk_size = 1
+        # --- FLAGSCALE MODIFICATION END ---
 
     @property
     def lora_int_id(self) -> int:

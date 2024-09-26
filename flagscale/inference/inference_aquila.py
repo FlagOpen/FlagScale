@@ -33,14 +33,14 @@ def inference(args: argparse.Namespace, parser: FSArgumentParser, prompts: List[
     fs_llm = LLM(**engine_args)
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer, trust_remote_code=True)
     fs_llm.set_tokenizer(tokenizer)
-    print(f"==> {engine_args=}")
+    print(f"=> {engine_args=}")
 
     # step 3: initialize the sampling parameters
     # TODO(zhaoyinglia): add logits processor
     assert sampling_params_args["logits_processors"] is None, "logits_processors is not supported yet."
     sampling_params_args["seed"] = sampling_params_args.pop("sampling_seed")
     sampling_params = SamplingParams(**sampling_params_args)
-    print(f"==> {sampling_params=}")
+    print(f"=> {sampling_params=}")
 
     # step 4: build inputs
     inputs = {}
@@ -61,8 +61,7 @@ def inference(args: argparse.Namespace, parser: FSArgumentParser, prompts: List[
     outputs = fs_llm.generate(inputs, sampling_params)
     for output in outputs:
         print("*"*50)
-        print(f"=> {output.prompt}")
-        print(f"=> {output.outputs[0].text}")
+        print(f"=> {output.prompt}: {output.outputs[0].text}")
 
 
 if __name__ == '__main__':

@@ -20,8 +20,10 @@ class TextPrompt(TypedDict):
     if the model supports it.
     """
 
+    # --- FLAGSCALE MODIFICATION BEG ---
     negative_prompt: NotRequired[Optional[str]]
     """The negative input text to be tokenized before passing to the model."""
+    # --- FLAGSCALE MODIFICATION END ---
 
 
 class TokensPrompt(TypedDict):
@@ -36,8 +38,10 @@ class TokensPrompt(TypedDict):
     if the model supports it.
     """
 
+    # --- FLAGSCALE MODIFICATION BEG ---
     negative_prompt_token_ids: NotRequired[Optional[List[int]]]
     """A list of token IDs to pass to the model for the negative input."""
+    # --- FLAGSCALE MODIFICATION END ---
 
 
 SingletonPromptInputs = Union[str, TextPrompt, TokensPrompt]
@@ -129,8 +133,10 @@ class LLMInputs(TypedDict):
     if the model supports it.
     """
 
+    # --- FLAGSCALE MODIFICATION BEG ---
     negative_prompt_token_ids: NotRequired[Optional[List[int]]]
     negative_prompt: NotRequired[Optional[str]]
+    # --- FLAGSCALE MODIFICATION END ---
 
 
 class EncoderDecoderLLMInputs(LLMInputs):

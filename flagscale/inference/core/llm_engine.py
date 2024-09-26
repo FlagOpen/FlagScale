@@ -643,6 +643,7 @@ class LLMEngine:
                                    prompt_adapter_request,
                                    from_decoder_prompt=False)
 
+        # --- FLAGSCALE MODIFICATION BEG ---
         negative_seq = None
         if "negative_prompt_token_ids" in processed_inputs \
             and processed_inputs["negative_prompt_token_ids"]:
@@ -653,6 +654,7 @@ class LLMEngine:
                                     lora_request,
                                     prompt_adapter_request,
                                     from_negative_prompt=True)
+        # --- FLAGSCALE MODIFICATION END ---
 
         # Create a SequenceGroup based on SamplingParams or PoolingParams
         if isinstance(params, SamplingParams):
@@ -665,7 +667,7 @@ class LLMEngine:
                 trace_headers=trace_headers,
                 prompt_adapter_request=prompt_adapter_request,
                 encoder_seq=encoder_seq,
-                negative_seq=negative_seq)
+                negative_seq=negative_seq) # --- FLAGSCALE MODIFICATION ---
         elif isinstance(params, PoolingParams):
             seq_group = self._create_sequence_group_with_pooling(
                 request_id,
@@ -776,7 +778,7 @@ class LLMEngine:
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         encoder_seq: Optional[Sequence] = None,
-        negative_seq: Optional[Sequence] = None,
+        negative_seq: Optional[Sequence] = None, # --- FLAGSCALE MODIFICATION ---
     ) -> SequenceGroup:
         """Creates a SequenceGroup with SamplingParams."""
         max_logprobs = self.get_model_config().max_logprobs
@@ -804,7 +806,7 @@ class LLMEngine:
             trace_headers=trace_headers,
             prompt_adapter_request=prompt_adapter_request,
             encoder_seq=encoder_seq,
-            negative_seqs=[negative_seq] if negative_seq else None)
+            negative_seqs=[negative_seq] if negative_seq else None) # --- FLAGSCALE MODIFICATION ---
 
         return seq_group
 
@@ -978,10 +980,12 @@ class LLMEngine:
             if not is_async:
                 seq_group.update_num_computed_tokens(
                     scheduled_seq_group.token_chunk_size)
+                # --- FLAGSCALE MODIFICATION BEG ---
                 if seq_group.has_negative_seqs():
                     seq_group.update_negative_num_computed_tokens(
                         scheduled_seq_group.negative_token_chunk_size
                     )
+                # --- FLAGSCALE MODIFICATION END ---
 
             if outputs:
                 for o in outputs:
@@ -1106,10 +1110,12 @@ class LLMEngine:
 
             seq_group.update_num_computed_tokens(
                 seq_group_metadata.token_chunk_size)
+            # --- FLAGSCALE MODIFICATION BEG ---
             if seq_group.has_negative_seqs():
                 seq_group.update_negative_num_computed_tokens(
                     scheduled_seq_group.negative_token_chunk_size
                 )
+            # --- FLAGSCALE MODIFICATION END ---
 
             if seq_group_metadata.do_sample:
                 assert len(sequence_group_outputs.samples) == 1, (
@@ -1121,9 +1127,11 @@ class LLMEngine:
                 assert len(seq_group.seqs) == 1
                 seq = seq_group.seqs[0]
                 seq.append_token_id(sample.output_token, sample.logprobs)
+                # --- FLAGSCALE MODIFICATION BEG ---
                 if seq_group.has_negative_seqs():
                     negative_seq = seq_group.negative_seqs[0]
                     negative_seq.append_token_id(sample.output_token, sample.logprobs)
+                # --- FLAGSCALE MODIFICATION END ---
 
     def step(self) -> List[Union[RequestOutput, EmbeddingRequestOutput]]:
         """Performs one decoding iteration and returns newly generated results.

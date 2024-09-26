@@ -10,20 +10,24 @@ from vllm.lora.request import LoRARequest
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.transformers_utils.tokenizer_group import BaseTokenizerGroup
 
+# --- FLAGSCALE MODIFICATION BEG ---
 from vllm.inputs.data import (EncoderDecoderLLMInputs, LLMInputs, PromptInputs,
                               SingletonPromptInputs)
 from vllm.inputs.parse import is_explicit_encoder_decoder_prompt, parse_singleton_prompt
+# --- FLAGSCALE MODIFICATION END ---
 
 if TYPE_CHECKING:
     from vllm.multimodal import MultiModalDataDict
 
 logger = init_logger(__name__)
 
+# --- FLAGSCALE MODIFICATION BEG ---
 PromptComponents = Tuple[Optional[str], List[int],
                          Optional["MultiModalDataDict"],
                          Optional[None], Optional[None]]
 DecoderPromptComponents = Tuple[Optional[str], Optional[List[int]],
                                 Optional["MultiModalDataDict"],]
+# --- FLAGSCALE MODIFICATION END ---
 
 
 class InputPreprocessor:
@@ -238,13 +242,15 @@ class InputPreprocessor:
                 lora_request=lora_request,
             )
             multi_modal_data = None
-            negative_prompt = negative_prompt_token_ids = None
+            negative_prompt = negative_prompt_token_ids = None # --- FLAGSCALE MODIFICATION ---
         elif parsed["type"] == "tokens":
             prompt = None
             prompt_token_ids = parsed["content"]["prompt_token_ids"]
             multi_modal_data = parsed["content"].get("multi_modal_data")
+            # --- FLAGSCALE MODIFICATION BEG ---
             negative_prompt = None
             negative_prompt_token_ids = parsed["content"].get("negative_prompt_token_ids")
+            # --- FLAGSCALE MODIFICATION END ---
         elif parsed["type"] == "text":
             prompt = parsed["content"]["prompt"]
             prompt_token_ids = self._tokenize_prompt(
@@ -253,6 +259,7 @@ class InputPreprocessor:
                 lora_request=lora_request,
             )
             multi_modal_data = parsed["content"].get("multi_modal_data")
+            # --- FLAGSCALE MODIFICATION BEG ---
             negative_prompt = parsed["content"].get("negative_prompt")
             negative_prompt_token_ids = None
             if negative_prompt:
@@ -261,10 +268,11 @@ class InputPreprocessor:
                     request_id=request_id,
                     lora_request=lora_request,
                 )
+            # --- FLAGSCALE MODIFICATION END ---
         else:
             assert_never(parsed)
 
-        return prompt, prompt_token_ids, multi_modal_data, negative_prompt, negative_prompt_token_ids
+        return prompt, prompt_token_ids, multi_modal_data, negative_prompt, negative_prompt_token_ids # --- FLAGSCALE MODIFICATION ---
 
     async def _extract_prompt_components_async(
         self,
@@ -283,13 +291,15 @@ class InputPreprocessor:
                 lora_request=lora_request,
             )
             multi_modal_data = None
-            negative_prompt = negative_prompt_token_ids = None
+            negative_prompt = negative_prompt_token_ids = None # --- FLAGSCALE MODIFICATION ---
         elif parsed["type"] == "tokens":
             prompt = None
             prompt_token_ids = parsed["content"]["prompt_token_ids"]
             multi_modal_data = parsed["content"].get("multi_modal_data")
+            # --- FLAGSCALE MODIFICATION BEG ---
             negative_prompt = None
             negative_prompt_token_ids = parsed["content"].get("negative_prompt_token_ids")
+            # --- FLAGSCALE MODIFICATION END ---
         elif parsed["type"] == "text":
             prompt = parsed["content"]["prompt"]
             prompt_token_ids = await self._tokenize_prompt_async(
@@ -298,6 +308,7 @@ class InputPreprocessor:
                 lora_request=lora_request,
             )
             multi_modal_data = parsed["content"].get("multi_modal_data")
+            # --- FLAGSCALE MODIFICATION BEG ---
             negative_prompt = parsed["content"].get("negative_prompt")
             negative_prompt_token_ids = None
             if negative_prompt:
@@ -306,10 +317,11 @@ class InputPreprocessor:
                     request_id=request_id,
                     lora_request=lora_request,
                 )
+            # --- FLAGSCALE MODIFICATION END ---
         else:
             assert_never(parsed)
 
-        return prompt, prompt_token_ids, multi_modal_data, negative_prompt, negative_prompt_token_ids
+        return prompt, prompt_token_ids, multi_modal_data, negative_prompt, negative_prompt_token_ids # --- FLAGSCALE MODIFICATION ---
 
     def _build_enc_dec_llm_inputs(
         self,
@@ -438,7 +450,10 @@ class InputPreprocessor:
         prompt_comps: PromptComponents,
         prompt_adapter_request: Optional[PromptAdapterRequest],
     ) -> LLMInputs:
-        prompt, prompt_token_ids, multi_modal_data, negative_prompt, negative_prompt_token_ids = prompt_comps
+        # --- FLAGSCALE MODIFICATION BEG ---
+        prompt, prompt_token_ids, multi_modal_data, \
+            negative_prompt, negative_prompt_token_ids = prompt_comps
+        # --- FLAGSCALE MODIFICATION END ---
 
         prompt_token_ids = self._apply_prompt_adapter(
             prompt_token_ids, prompt_adapter_request=prompt_adapter_request)
@@ -446,8 +461,8 @@ class InputPreprocessor:
         return LLMInputs(prompt_token_ids=prompt_token_ids,
                          prompt=prompt,
                          multi_modal_data=multi_modal_data,
-                         negative_prompt_token_ids=negative_prompt_token_ids,
-                         negative_prompt=negative_prompt)
+                         negative_prompt_token_ids=negative_prompt_token_ids, # --- FLAGSCALE MODIFICATION ---
+                         negative_prompt=negative_prompt) # --- FLAGSCALE MODIFICATION ---
 
     def _process_decoder_only_prompt(
         self,

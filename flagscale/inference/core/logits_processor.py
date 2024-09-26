@@ -119,20 +119,23 @@ def _apply_logits_processors(
     sampling_metadata: SamplingMetadata,
 ) -> torch.Tensor:
     found_logits_processors = False
-    has_negative = False
+    has_negative = False # --- FLAGSCALE MODIFICATION ---
     logits_processed = 0
     for seq_group in sampling_metadata.seq_groups:
         seq_ids = seq_group.seq_ids
         sampling_params = seq_group.sampling_params
+        # --- FLAGSCALE MODIFICATION BEG ---
         logits_processors = sampling_params.logits_processors or []
         guidance_scale = sampling_params.guidance_scale
+        # --- FLAGSCALE MODIFICATION END ---
 
-        if logits_processors or guidance_scale is not None:
+        if logits_processors or guidance_scale is not None: # --- FLAGSCALE MODIFICATION ---
             found_logits_processors = True
 
             for seq_id, logits_row_idx in zip(seq_ids,
                                               seq_group.sample_indices):
 
+                # --- FLAGSCALE MODIFICATION BEG ---
                 if guidance_scale is not None:
                     has_negative = True
                     assert 2 * logits_row_idx + 1 < logits.shape[0]
@@ -148,6 +151,7 @@ def _apply_logits_processors(
                         logits_row_idx *= 2
                 else:
                     logits_row = logits[logits_row_idx]
+                # --- FLAGSCALE MODIFICATION END ---
 
                 past_tokens_ids = seq_group.seq_data[seq_id].output_token_ids
                 prompt_tokens_ids = seq_group.seq_data[seq_id].prompt_token_ids
@@ -170,11 +174,11 @@ def _apply_logits_processors(
     if found_logits_processors:
         # verifies that no rows in logits were missed unexpectedly
         if has_negative:
-            assert logits_processed == logits.shape[0] // 2
+            assert logits_processed == logits.shape[0] // 2 # --- FLAGSCALE MODIFICATION ---
         else:
             assert logits_processed == logits.shape[0]
 
     if has_negative:
-        return logits[::2, :]
+        return logits[::2, :] # --- FLAGSCALE MODIFICATION ---
     else:
         return logits

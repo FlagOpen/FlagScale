@@ -460,16 +460,18 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                 self.sliding_window_blocks * self.block_size
 
     def _compute_lens(self, inter_data: InterDataForSeqGroup, seq_idx: int,
-                      seq_group_metadata: SequenceGroupMetadata, is_negative: bool = False):
+                      seq_group_metadata: SequenceGroupMetadata, is_negative: bool = False): # --- FLAGSCALE MODIFICATION ---
         """Compute context length, sequence length and tokens
         for the given sequence data.
         """
+        # --- FLAGSCALE MODIFICATION BEG ---
         if is_negative:
             seq_data = seq_group_metadata.negative_seq_data[inter_data.seq_ids[seq_idx]]
             token_chunk_size = seq_group_metadata.negative_token_chunk_size
         else:
             seq_data = seq_group_metadata.seq_data[inter_data.seq_ids[seq_idx]]
             token_chunk_size = seq_group_metadata.token_chunk_size
+        # --- FLAGSCALE MODIFICATION END ---
 
         # Compute context length (the number of tokens that are
         # already computed) and sequence length (total number of tokens).
@@ -524,7 +526,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
 
     def _compute_for_prefix_cache_hit(
             self, inter_data: InterDataForSeqGroup, seq_idx: int,
-            seq_group_metadata: SequenceGroupMetadata, is_negative: bool = False):
+            seq_group_metadata: SequenceGroupMetadata, is_negative: bool = False): # --- FLAGSCALE MODIFICATION ---
         """Check if hit prefix cache (i.e., some blocks are already computed).
         If hit, update input tokens and positions to only compute the
         remaining blocks.
@@ -583,7 +585,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
     def _compute_for_sliding_window(self, inter_data: InterDataForSeqGroup,
                                     seq_idx: int,
                                     seq_group_metadata: SequenceGroupMetadata,
-                                    is_negative: bool = False):
+                                    is_negative: bool = False): # --- FLAGSCALE MODIFICATION ---
         """Update seq_len and curr_sliding_window_block for the given
         sequence data (only required by decoding) if sliding window is enabled.
         """
@@ -613,7 +615,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
     def _compute_lora_input(self, inter_data: InterDataForSeqGroup,
                             seq_idx: int,
                             seq_group_metadata: SequenceGroupMetadata,
-                            is_negative: bool = False):
+                            is_negative: bool = False): # --- FLAGSCALE MODIFICATION ---
         """If LoRA is enabled, compute LoRA index and prompt mapping."""
         if not self.enable_lora:
             return
@@ -734,6 +736,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
         for per_seq_group_fn in self.per_seq_group_compute_fns:
             per_seq_group_fn(inter_data, seq_group_metadata)
 
+        # --- FLAGSCALE MODIFICATION BEG ---
         if seq_group_metadata.negative_seq_data:
             negative_inter_data = self.init_cached_inter_data(
                 request_id=seq_group_metadata.request_id,
@@ -751,6 +754,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                     per_seq_fn(negative_inter_data, seq_idx, seq_group_metadata, is_negative=True)
             for per_seq_group_fn in self.per_seq_group_compute_fns:
                 per_seq_group_fn(negative_inter_data, seq_group_metadata)
+        # --- FLAGSCALE MODIFICATION END ---
 
     def _use_captured_graph(self,
                             batch_size: int,
@@ -1876,5 +1880,3 @@ def _get_max_graph_batch_size(max_num_seqs: int) -> int:
         return padded_size
     assert padded_size > _BATCH_SIZES_TO_CAPTURE[-1]
     return _BATCH_SIZES_TO_CAPTURE[-1]
-
-
