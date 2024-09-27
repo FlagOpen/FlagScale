@@ -3,6 +3,7 @@ import math
 import warnings
 import itertools
 import operator
+import dataclasses
 from typing import List, Optional
 from datetime import timedelta
 from functools import cmp_to_key
@@ -126,8 +127,10 @@ class ProcessMesh:
         order: str = "tp-cp-ep-dp-pp",
         offset: int = 0,
         rank_mapper: RankMapper = None,
+        args: dict = None,
     ):
         assert torch.distributed.is_initialized()
+        self._args = args
         self._rank = torch.distributed.get_rank()
         self._world_size = tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size * data_parallel_size 
         self._offset = offset
@@ -185,9 +188,41 @@ class ProcessMesh:
         self._all_group_ranks = defaultdict(list) # group_ranks belongs to the current process mesh 
         self._process_groups = {} # process groups belongs to the current rank
         self._process_groups_gloo = {} # process groups belongs to the current rank with gloo backend
+        
+        self._tranformer_config = None
+        self._ddp_config = None
+        self._optimizer_config = None
 
+        self.build_config()
         self.build_all_process_groups()
-
+    
+    def build_config(self):
+        def _build_ddp_config(args):
+            from megatron.core.distributed import DistributedDataParallelConfig
+            kwargs = {}
+            for f in dataclasses.fields(DistributedDataParallelConfig):
+                if hasattr(args, f.name):
+                    kwargs[f.name] = getattr(args, f.name)
+            kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
+            kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
+            kwargs['bucket_size'] = args.ddp_bucket_size
+            kwargs['average_in_collective'] = args.ddp_average_in_collective
+            ddp_config = DistributedDataParallelConfig(**kwargs)
+            return ddp_config
+        
+        def _build_optimzer_config(args):
+            from megatron.core.optimizer import OptimizerConfig
+            kwargs = {}
+            for f in dataclasses.fields(OptimizerConfig):
+                if hasattr(args, f.name):
+                    kwargs[f.name] = getattr(args, f.name)
+            return OptimizerConfig(**kwargs)
+        
+        from megatron.training.arguments import core_transformer_config_from_args
+        self._transformer_config = core_transformer_config_from_args(self._args)
+        self._ddp_config = _build_ddp_config(self._args)
+        self._optimizer_config = _build_optimzer_config(self._args)
+    
     def build_process_group(
         self, token, independent_ep=False, gloo=False
     ):
@@ -399,6 +434,15 @@ class ProcessMesh:
             ), f"Process group {group_name} is not initialized."
         return ranks
 
+    def get_transformer_config(self):
+        return self._transformer_config
+    
+    def get_ddp_config(self):
+        return self._ddp_config
+    
+    def get_optimizer_config(self):
+        return self._optimizer_config
+    
     def logical_coords_to_physical_ranks(self, coords, independent_ep=False):
         def _prefix_product(a: List[int], init=1) -> List[int]:
             r = [init]
@@ -474,6 +518,7 @@ class ParallelContext:
                 order='tp-usp-cp-ep-dp-pp' if not self._args.use_tp_pp_dp_mapping else 'tp-pp-dp',
                 offset=accumulated_world_size,
                 rank_mapper=self._rank_mapper,
+                args=self._args,
             )
             if (
                 logical_rank >= accumulated_world_size
@@ -1252,6 +1297,18 @@ class ParallelContext:
         assert self._global_memory_buffer is not None, 'global memory buffer is not initialized'
         return self._global_memory_buffer
 
+    def get_transformer_config(self):
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_transformer_config()
+    
+    def get_ddp_config(self):
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_ddp_config()
+    
+    def get_optimizer_config(self):
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_optimizer_config()
+    
     def destroy_global_memory_buffer(self):
         """Sets the global memory buffer to None"""
         self._global_memory_buffer = None

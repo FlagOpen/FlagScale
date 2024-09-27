@@ -171,10 +171,11 @@ class FSTrainArguments:
                 # Sequence parallel
                 if self.args.tensor_model_parallel_size == 1:
                     self.args.sequence_parallel = False
+                    
+                #TODO: update other args if need
                 
             accumulated_world_size += temp_world_size
 
-        #TODO: update other args if need
     
     def post_validate_args(self):
         """Post-validate the arguments after Megatron function `validate_args`."""

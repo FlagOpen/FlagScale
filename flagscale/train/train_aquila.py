@@ -68,7 +68,9 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
     if args.yaml_cfg is not None:
         config = core_transformer_config_from_yaml(args, "language_model")
     else:
-        config = core_transformer_config_from_args(args)
+        config = mpu.get_transformer_config()
+        if config is None:
+            config = core_transformer_config_from_args(args)
 
     if args.use_legacy_models:
         model = megatron.legacy.model.GPTModel(
