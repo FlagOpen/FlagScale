@@ -95,11 +95,8 @@ if [ -z "$model" ]; then
 fi
 
 # Run the tests based on the provided test type and test model
-if [ "$type" == "train" ]; then
-  test_model_train "$type" "$model"
-elif [ "$type" == "inference" ]; then
+if [ "$type" == "inference" ]; then
   test_model_inference "$type" "$model"
 else
-  echo "Error: Unknown test type '$type'"
-  exit 1
+  test_model_train "$type" "$model"
 fi
