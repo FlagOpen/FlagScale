@@ -61,7 +61,9 @@ def inference(args: argparse.Namespace, parser: FSArgumentParser, prompts: List[
     outputs = fs_llm.generate(inputs, sampling_params)
     for output in outputs:
         print("*"*50)
-        print(f"=> {output.prompt}: {output.outputs[0].text}")
+        print(f"{output.prompt=}")
+        print(f"{output.outputs[0].text=}")
+        print(f"{output.outputs[0].token_ids=}")
 
 
 if __name__ == '__main__':
@@ -85,4 +87,3 @@ if __name__ == '__main__':
         negative_prompts = args.negative_prompts * len(prompts)
 
     inference(args, parser, prompts, negative_prompts)
-    print("=> Done!")
