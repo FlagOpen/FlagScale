@@ -679,7 +679,10 @@ def setup_model_and_optimizer(model_provider_func,
     unwrapped_model = unwrap_model(model)
 
     
-    config = mpu.get_optimizer_config()
+    para_ctx = get_parallel_context()
+    if para_ctx is not None:
+        config = para_ctx.get_ddp_config()
+
     if config is None:
         kwargs = {}
         for f in dataclasses.fields(OptimizerConfig):
