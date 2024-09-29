@@ -66,6 +66,7 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
 
     print_rank_0('building GPT model ...')
     # Experimental loading arguments from yaml
+    config = None
     if args.yaml_cfg is not None:
         config = core_transformer_config_from_yaml(args, "language_model")
     else:
@@ -283,6 +284,7 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
     """
     args = get_args()
 
+    config = None
     para_ctx = get_parallel_context()
     if para_ctx is not None:
         config = para_ctx.get_dataset_config()

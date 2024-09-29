@@ -545,6 +545,7 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
     if wrap_with_ddp:
         config = get_model_config(model[0])
         
+        ddp_config = None
         para_ctx = get_parallel_context()
         if para_ctx is not None:
             ddp_config = para_ctx.get_ddp_config()
@@ -678,10 +679,10 @@ def setup_model_and_optimizer(model_provider_func,
     model = get_model(model_provider_func, model_type)
     unwrapped_model = unwrap_model(model)
 
-    
+    config = None
     para_ctx = get_parallel_context()
     if para_ctx is not None:
-        config = para_ctx.get_ddp_config()
+        config = para_ctx.get_optimizer_config()
 
     if config is None:
         kwargs = {}
