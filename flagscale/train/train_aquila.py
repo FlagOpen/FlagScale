@@ -43,6 +43,7 @@ from megatron.core.models.gpt.gpt_layer_specs import (
 from flagscale.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
 from flagscale.train.extra_valid import extra_valid_dataset_provider
 from flagscale.train.train import pretrain
+from flagscale.train.global_vars import get_parallel_context
 
 
 stimer = StragglerDetector()
@@ -68,7 +69,10 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
     if args.yaml_cfg is not None:
         config = core_transformer_config_from_yaml(args, "language_model")
     else:
-        config = mpu.get_transformer_config()
+        para_ctx = get_parallel_context()
+        if para_ctx is not None:
+            config = para_ctx.get_transformer_config()
+
         if config is None:
             config = core_transformer_config_from_args(args)
 
@@ -279,10 +283,15 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
     """
     args = get_args()
 
-    if args.apply_sft_dataset_separated_loss_mask_if_existed:
-        config = core_sft_dataset_config_from_args(args)
-    else:
-        config = core_gpt_dataset_config_from_args(args)
+    para_ctx = get_parallel_context()
+    if para_ctx is not None:
+        config = para_ctx.get_dataset_config()
+
+    if config is None:
+        if args.apply_sft_dataset_separated_loss_mask_if_existed:
+            config = core_sft_dataset_config_from_args(args)
+        else:
+            config = core_gpt_dataset_config_from_args(args)
 
     if args.mock_data:
         dataset_type = MockGPTDataset

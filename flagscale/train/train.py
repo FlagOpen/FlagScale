@@ -86,6 +86,7 @@ from megatron.training import ft_integration
 from flagscale.train.extra_valid import extra_evaluate_and_print_results
 from flagscale.train.extra_valid import build_extra_valid_data_iterators
 from flagscale.train.stablelm2_scheduler import StableLM2SchedulerConfig
+from flagscale.train.global_vars import get_parallel_context
 
 
 stimer = StragglerDetector()
@@ -544,7 +545,9 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
     if wrap_with_ddp:
         config = get_model_config(model[0])
         
-        ddp_config = mpu.get_ddp_config()
+        para_ctx = get_parallel_context()
+        if para_ctx is not None:
+            ddp_config = para_ctx.get_ddp_config()
         if ddp_config is None:
             kwargs = {}
             for f in dataclasses.fields(DistributedDataParallelConfig):
@@ -675,6 +678,7 @@ def setup_model_and_optimizer(model_provider_func,
     model = get_model(model_provider_func, model_type)
     unwrapped_model = unwrap_model(model)
 
+    
     config = mpu.get_optimizer_config()
     if config is None:
         kwargs = {}

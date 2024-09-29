@@ -188,40 +188,8 @@ class ProcessMesh:
         self._all_group_ranks = defaultdict(list) # group_ranks belongs to the current process mesh 
         self._process_groups = {} # process groups belongs to the current rank
         self._process_groups_gloo = {} # process groups belongs to the current rank with gloo backend
-        
-        self._tranformer_config = None
-        self._ddp_config = None
-        self._optimizer_config = None
 
-        self.build_config()
         self.build_all_process_groups()
-    
-    def build_config(self):
-        def _build_ddp_config(args):
-            from megatron.core.distributed import DistributedDataParallelConfig
-            kwargs = {}
-            for f in dataclasses.fields(DistributedDataParallelConfig):
-                if hasattr(args, f.name):
-                    kwargs[f.name] = getattr(args, f.name)
-            kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
-            kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
-            kwargs['bucket_size'] = args.ddp_bucket_size
-            kwargs['average_in_collective'] = args.ddp_average_in_collective
-            ddp_config = DistributedDataParallelConfig(**kwargs)
-            return ddp_config
-        
-        def _build_optimzer_config(args):
-            from megatron.core.optimizer import OptimizerConfig
-            kwargs = {}
-            for f in dataclasses.fields(OptimizerConfig):
-                if hasattr(args, f.name):
-                    kwargs[f.name] = getattr(args, f.name)
-            return OptimizerConfig(**kwargs)
-        
-        from megatron.training.arguments import core_transformer_config_from_args
-        self._transformer_config = core_transformer_config_from_args(self._args)
-        self._ddp_config = _build_ddp_config(self._args)
-        self._optimizer_config = _build_optimzer_config(self._args)
     
     def build_process_group(
         self, token, independent_ep=False, gloo=False
@@ -495,6 +463,14 @@ class ParallelContext:
         self.build_global_process_groups()
         from megatron.core.utils import GlobalMemoryBuffer
         self._global_memory_buffer = GlobalMemoryBuffer()
+
+        # Initialize the associated configs
+        self._tranformer_config = None
+        self._ddp_config = None
+        self._optimizer_config = None
+        self._dataset_config = None
+
+        self.build_config()
 
         self._is_initialized = True
 
@@ -1301,13 +1277,100 @@ class ParallelContext:
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         return current_process_mesh.get_transformer_config()
     
+    def build_config(self):
+        def _build_ddp_config(args):
+            from megatron.core.distributed import DistributedDataParallelConfig
+            kwargs = {}
+            for f in dataclasses.fields(DistributedDataParallelConfig):
+                if hasattr(args, f.name):
+                    kwargs[f.name] = getattr(args, f.name)
+            kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
+            kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
+            kwargs['bucket_size'] = args.ddp_bucket_size
+            kwargs['average_in_collective'] = args.ddp_average_in_collective
+            ddp_config = DistributedDataParallelConfig(**kwargs)
+            return ddp_config
+        
+        def _build_optimzer_config(args):
+            from megatron.core.optimizer import OptimizerConfig
+            kwargs = {}
+            for f in dataclasses.fields(OptimizerConfig):
+                if hasattr(args, f.name):
+                    kwargs[f.name] = getattr(args, f.name)
+            return OptimizerConfig(**kwargs)
+        
+        def _build_dataset_config(args):
+            from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
+            from flagscale.datasets.sft_dataset import SFTDatasetConfig
+            from megatron.training import get_tokenizer
+            from megatron.core.datasets.utils import get_blend_from_list
+            
+            if args.apply_sft_dataset_separated_loss_mask_if_existed:
+                tokenizer = get_tokenizer()
+
+                return SFTDatasetConfig(
+                    random_seed=args.seed,
+                    sequence_length=args.seq_length,
+                    blend=get_blend_from_list(args.data_path),
+                    blend_per_split=[
+                        get_blend_from_list(args.train_data_path),
+                        get_blend_from_list(args.valid_data_path),
+                        get_blend_from_list(args.test_data_path)
+                    ],
+                    renormalize_blend_weights=args.renormalize_blend_weights,
+                    split=args.split,
+                    num_dataset_builder_threads=args.num_dataset_builder_threads,
+                    path_to_cache=args.data_cache_path,
+                    mmap_bin_files=args.mmap_bin_files,
+                    tokenizer=tokenizer,
+                    reset_position_ids=args.reset_position_ids,
+                    reset_attention_mask=args.reset_attention_mask,
+                    eod_mask_loss=args.eod_mask_loss,
+                    create_attention_mask=args.create_attention_mask_in_dataloader,
+                    apply_sft_dataset_separated_loss_mask_if_existed=args.apply_sft_dataset_separated_loss_mask_if_existed,
+                )
+            else:
+                tokenizer = get_tokenizer()
+
+                return GPTDatasetConfig(
+                    random_seed=args.seed,
+                    sequence_length=args.seq_length,
+                    blend=get_blend_from_list(args.data_path),
+                    blend_per_split=[
+                        get_blend_from_list(args.train_data_path),
+                        get_blend_from_list(args.valid_data_path),
+                        get_blend_from_list(args.test_data_path)
+                    ],
+                    renormalize_blend_weights=args.renormalize_blend_weights,
+                    split=args.split,
+                    num_dataset_builder_threads=args.num_dataset_builder_threads,
+                    path_to_cache=args.data_cache_path,
+                    mmap_bin_files=args.mmap_bin_files,
+                    tokenizer=tokenizer,
+                    reset_position_ids=args.reset_position_ids,
+                    reset_attention_mask=args.reset_attention_mask,
+                    eod_mask_loss=args.eod_mask_loss,
+                    create_attention_mask=args.create_attention_mask_in_dataloader,
+                    s3_cache_path = args.s3_cache_path,
+                )
+        
+        from megatron.training.arguments import core_transformer_config_from_args
+        self._transformer_config = core_transformer_config_from_args(self._args)
+        self._ddp_config = _build_ddp_config(self._args)
+        self._optimizer_config = _build_optimzer_config(self._args)
+        self._dataset_config = _build_dataset_config(self._args)
+    
+    def get_transformer_config(self):
+        return self._transformer_config
+    
     def get_ddp_config(self):
-        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        return current_process_mesh.get_ddp_config()
+        return self._ddp_config
     
     def get_optimizer_config(self):
-        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        return current_process_mesh.get_optimizer_config()
+        return self._optimizer_config
+    
+    def get_dataset_config(self):
+        return self._dataset_config
     
     def destroy_global_memory_buffer(self):
         """Sets the global memory buffer to None"""
