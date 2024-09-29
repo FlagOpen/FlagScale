@@ -1948,12 +1948,7 @@ def get_moe_layer_wise_logging_tracker():
     """Return the moe layer wise tracker."""
     global _MOE_LAYER_WISE_LOGGING_TRACKER
     return _MOE_LAYER_WISE_LOGGING_TRACKER
-
-def get_transformer_config():
-    para_ctx = get_parallel_context() 
-    if para_ctx is not None:
-        return para_ctx.get_transformer_config()
-    return None
+ 
     
 def destroy_model_parallel():
     """Set the groups to none."""
