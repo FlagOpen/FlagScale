@@ -5,10 +5,9 @@ new_path = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))) + "/megatron"
 sys.path.insert(0, new_path)
 
-# running this unit test on the local machine need to add the following code
-# new_path = os.path.dirname(os.path.dirname(
-#     os.path.dirname(os.path.abspath(__file__))))
-# sys.path.insert(0, new_path)
+new_path = os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, new_path)
 
 import torch
 
