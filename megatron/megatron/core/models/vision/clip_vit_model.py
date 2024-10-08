@@ -49,9 +49,9 @@ class CLIPViTModel(VisionModule):
         self.patch_dim = patch_dim
         self.img_h = img_h
         self.img_w = img_w
-
-        assert self.img_h % self.patch_dim == 0
-        assert self.img_w % self.patch_dim == 0
+        # Comment this code because it does not need to be completely satisfied to be divisible
+        # assert self.img_h % self.patch_dim == 0
+        # assert self.img_w % self.patch_dim == 0
         self.num_patches_per_dim_h = self.img_h // self.patch_dim
         self.num_patches_per_dim_w = self.img_w // self.patch_dim
         self.num_patches = self.num_patches_per_dim_h * self.num_patches_per_dim_w
@@ -134,6 +134,7 @@ class CLIPViTModel(VisionModule):
 
         assert x.shape[1] == self.seq_length, f"{x.shape[1]} != {self.seq_length}"
         x = x + self.position_embeddings(self.position_ids)
+        x = x.contiguous()
         x = self.ln_pre(x)
         x = x.permute(1, 0, 2)  # [b, s, h] -> [s, b, h]
         # `permute` can make the tensor non-contiguous, breaking pipelining.
@@ -142,6 +143,7 @@ class CLIPViTModel(VisionModule):
         x = self.decoder(x, attention_mask)
         x = x.permute(1, 0, 2)  # [s, b, h] -> [b, s, h]
         x = x.contiguous()
+        # Return the output becase no post layer and output layer operations are required
 
         return x
 

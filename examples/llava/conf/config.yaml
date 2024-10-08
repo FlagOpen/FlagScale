@@ -1,19 +1,17 @@
 defaults:
-  - train: train_llava1.5_7b.yaml
+  - train: train_llavaov_7b.yaml
   - _self_
 
 experiment:
-  exp_name: llava1.5
-  exp_dir: ./outputs_llava1.5
+  exp_name: llava_ov
+  exp_dir: ./outputs
   task:
     type: train
     backend: megatron
-    entrypoint: ./flagscale/train/train_llava.py
+    entrypoint: ./flagscale/train/train_llava_ov.py
   runner:
     backend: torchrun
-    nnodes: 4 
-    nproc_per_node: 8
-    hostfile: <xxx>
+    nnodes: 1
   envs:
     CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7 
     CUDA_DEVICE_MAX_CONNECTIONS: 1
