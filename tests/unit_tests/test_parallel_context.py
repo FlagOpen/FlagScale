@@ -1,14 +1,3 @@
-import sys
-import os
-
-new_path = os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__)))) + "/megatron"
-sys.path.insert(0, new_path)
-
-new_path = os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, new_path)
-
 import torch
 
 from tests.unit_tests.test_utilities import Utils as MegatronUtils
