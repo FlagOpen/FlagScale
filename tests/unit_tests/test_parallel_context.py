@@ -20,7 +20,7 @@ from megatron.training.tokenizer.tokenizer import _NullTokenizer
 
 
 from flagscale.train.hetero.parallel_context import ParallelContext
-from flagscale.train.arguments import FSTrainArguments
+from flagscale.train.arguments import FSTrainArguments # noqa
 
 
 def init_parallel_context() -> ParallelContext:
