@@ -117,17 +117,7 @@ run_tests() {
         done
     fi
 
-    # Ensure the test report is generated
-    report_directory="/workspace/report/$id/cov-report-${backend}"
-    xml_report="$report_directory/coverage.xml"
-
-    # Wait for report generation
-    while [ ! -f "$xml_report" ]; do
-        echo "Waiting for the test reports to be generated..."
-        sleep 5
-    done
-
-    echo "Test reports generated successfully."
+    sleep 1m
 }
 
 # Run tests based on type, path, and depth
