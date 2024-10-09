@@ -2,19 +2,19 @@ train:
   aquila:
     test_cases:
       -tp2_pp2
-      -tp4_pp2 
+      -tp4_pp2
   mixtral:
     test_cases:
       -tp2_pp1_ep2
-      -tp4_pp1_ep2 
-  
+      -tp4_pp1_ep2
+
 hetero_train:
   aquila:
     test_cases:
       -tp2pp1_tp4pp1_tp2pp1
       -tp2dp1pp1_tp2dp2pp1_tp1dp2pp1
-# Add in the feature
-# inference:
-#   from_vllm:
-#     test_cases:
-#       ...
+
+inference:
+  opt:
+    test_cases:
+      -tp1_pp1

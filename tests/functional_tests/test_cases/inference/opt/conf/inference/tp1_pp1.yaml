@@ -1,6 +1,6 @@
 engine:
-  model: BAAI/Aquila-7B/
-  tokenizer: BAAI/Aquila-7B/
+  model: facebook/opt-125m
+  tokenizer: facebook/opt-125m
   trust_remote_code: true
   tensor_parallel_size: 1
   pipeline_parallel_size: 1
