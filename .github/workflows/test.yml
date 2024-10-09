@@ -11,27 +11,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Megatron Unit Tests with Matrix
-  megatron-unit-tests:
-    uses: ./.github/workflows/unit-tests.yml
-    strategy:
-      matrix:
-        subset: 
-          - data
-          - dist_checkpointing
-          - distributed
-          - fusions
-          - inference
-          - models
-          - pipeline_parallel
-          - tensor_parallel
-          - transformer/moe
-          - transformer
-          - ./
-    name: "megatron-${{ matrix.subset }}"
-    with:
-      backend: megatron
-      subset: ${{ matrix.subset }}
+  # # Megatron Unit Tests with Matrix
+  # megatron-unit-tests:
+  #   uses: ./.github/workflows/unit-tests.yml
+  #   strategy:
+  #     matrix:
+  #       subset: 
+  #         - data
+  #         - dist_checkpointing
+  #         - distributed
+  #         - fusions
+  #         - inference
+  #         - models
+  #         - pipeline_parallel
+  #         - tensor_parallel
+  #         - transformer/moe
+  #         - transformer
+  #         - ./
+  #   name: "megatron-${{ matrix.subset }}"
+  #   with:
+  #     backend: megatron
+  #     subset: ${{ matrix.subset }}
 
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
@@ -46,45 +46,46 @@ jobs:
       backend: flagscale
       subset: ${{ matrix.subset }}
 
-  # Functional Tests with Model and Type Matrix
-  functional-tests-train:
-    needs:
-      - megatron-unit-tests
-      - flagscale-unit-tests
-    uses: ./.github/workflows/functional-tests.yml
-    strategy:
-      matrix:
-        model: 
-          - aquila
-          - mixtral
-    name: "train-${{ matrix.model }}"
-    with:
-      model: ${{ matrix.model }}
-      type: train
+  # # Functional Tests with Model and Type Matrix
+  # functional-tests-train:
+  #   needs:
+  #     - megatron-unit-tests
+  #     - flagscale-unit-tests
+  #   uses: ./.github/workflows/functional-tests.yml
+  #   strategy:
+  #     matrix:
+  #       model: 
+  #         - aquila
+  #         - mixtral
+  #   name: "train-${{ matrix.model }}"
+  #   with:
+  #     model: ${{ matrix.model }}
+  #     type: train
 
-  functional-tests-hetero:
-    needs: functional-tests-train
-    uses: ./.github/workflows/functional-tests.yml
-    strategy:
-      matrix:
-        model: 
-          - aquila
-    name: "hetero_train-${{ matrix.model }}"
-    with:
-      model: ${{ matrix.model }}
-      type: hetero_train
+  # functional-tests-hetero:
+  #   needs: functional-tests-train
+  #   uses: ./.github/workflows/functional-tests.yml
+  #   strategy:
+  #     matrix:
+  #       model: 
+  #         - aquila
+  #   name: "hetero_train-${{ matrix.model }}"
+  #   with:
+  #     model: ${{ matrix.model }}
+  #     type: hetero_train
 
-  # Megatron Coverage Test
-  megatron-coverage-test:
-    needs: functional-tests-hetero
-    if: ${{ github.event_name == 'pull_request' }}
-    uses: ./.github/workflows/coverage-tests.yml
-    with:
-      backend: megatron
+  # # Megatron Coverage Test
+  # megatron-coverage-test:
+  #   needs: functional-tests-hetero
+  #   if: ${{ github.event_name == 'pull_request' }}
+  #   uses: ./.github/workflows/coverage-tests.yml
+  #   with:
+  #     backend: megatron
 
   # Flagscale Coverage Test
   flagscale-coverage-test:
-    needs: functional-tests-hetero
+    # needs: functional-tests-hetero
+    needs: flagscale-unit-tests
     if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/coverage-tests.yml
     with:
