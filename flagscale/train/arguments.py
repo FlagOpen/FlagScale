@@ -23,12 +23,6 @@ class FSTrainArguments:
         if name == "rank_mapper":
             return self._rank_mapper
         return getattr(self.args, name)
-
-    def __str__(self):
-        return str(self.args)
-
-    def __repr__(self):
-        return repr(self.args)
     
     def _initialize_distributed(self):
         """Initialize torch.distributed and core model parallel."""
@@ -72,10 +66,6 @@ class FSTrainArguments:
         self._rank_mapper = RankMapper(self.args)
         return self._rank_mapper
 
-    @classmethod
-    def from_dict(cls, args):
-        return cls(args)
-
     def pre_validate_args(self):
         """Pre-validate the arguments before Megatron function `validate_args`."""
         if self._rank_mapper is None:
@@ -86,7 +76,7 @@ class FSTrainArguments:
         ), "hetero_process_meshes should be specified when enable_hetero is True"
         assert (
             len(self.args.hetero_process_meshes) % 5 == 0
-        ), f"length of hetero_process_meshes {self.args.hetero_process_meshes} should be divisible by 4, the format should be tp0, cp0, dp0, pp0, tp1, cp1, dp1, pp1, ..."
+        ), f"length of hetero_process_meshes {self.args.hetero_process_meshes} should be divisible by 5, the format should be tp0, cp0, dp0, pp0, tp1, cp1, dp1, pp1, ..."
         hetero_process_meshes_tp = self.args.hetero_process_meshes[0::5]
         hetero_process_meshes_cp = self.args.hetero_process_meshes[1::5]
         hetero_process_meshes_ep = self.args.hetero_process_meshes[2::5]
@@ -224,6 +214,3 @@ class FSTrainArguments:
         args.recompute_num_layers_per_stage_micro_batch = _parse_recompute_refined_config(args.recompute_num_layers_per_stage_micro_batch, "recompute_num_layers_per_stage_micro_batch")
         
         #TODO: update other args if need
-
-    def to_namespace(self):
-        return types.SimpleNamespace(**self.args)

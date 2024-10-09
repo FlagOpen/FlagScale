@@ -176,7 +176,7 @@ def validate_args(args, defaults={}):
     # Set args.use_dist_ckpt from args.ckpt_format.
     update_use_dist_ckpt(args)
 
-    if args.hetero_process_meshes is None:
+    if not args.enable_hetero:
         if args.encoder_tensor_model_parallel_size > 0:
             assert args.encoder_pipeline_model_parallel_size > 0, "encoder_pipeline_model_parallel_size must be defined."
             assert args.num_attention_heads % args.encoder_tensor_model_parallel_size == 0

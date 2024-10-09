@@ -282,7 +282,7 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
     # data-parallel communicators.
     if device_count > 0:
         # Set the parallel context.
-        if args.hetero_process_meshes is not None:
+        if args.enable_hetero:
             set_parallel_context(args)
             return
 
