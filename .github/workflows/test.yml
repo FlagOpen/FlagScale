@@ -39,7 +39,8 @@ jobs:
     strategy:
       matrix:
         subset: 
-          - launcher
+          - ./
+          # - launcher
     name: "flagscale-${{ matrix.subset }}"
     with:
       backend: flagscale
@@ -51,7 +52,8 @@ jobs:
     strategy:
       matrix:
         subset: 
-          - ./
+          # - ./
+          - launcher
     name: "flagscale-${{ matrix.subset }}"
     with:
       backend: flagscale
