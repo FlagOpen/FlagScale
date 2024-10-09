@@ -34,26 +34,13 @@ jobs:
   #     subset: ${{ matrix.subset }}
 
   # Flagscale Unit Tests with Matrix
-  flagscale-unit-tests-0:
+  flagscale-unit-tests:
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
         subset: 
-          - ./
-          # - launcher
-    name: "flagscale-${{ matrix.subset }}"
-    with:
-      backend: flagscale
-      subset: ${{ matrix.subset }}
-
-  flagscale-unit-tests-1:
-    needs: flagscale-unit-tests-0
-    uses: ./.github/workflows/unit-tests.yml
-    strategy:
-      matrix:
-        subset: 
-          # - ./
           - launcher
+          - ./
     name: "flagscale-${{ matrix.subset }}"
     with:
       backend: flagscale
@@ -98,7 +85,7 @@ jobs:
   # Flagscale Coverage Test
   flagscale-coverage-test:
     # needs: functional-tests-hetero
-    needs: flagscale-unit-tests-1
+    needs: flagscale-unit-tests
     if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/coverage-tests.yml
     with:
