@@ -41,7 +41,8 @@ else
     git remote add upstream https://github.com/FlagOpen/FlagScale.git
 fi
 
-git fetch --unshallow upstream main
+# git fetch --unshallow upstream main
+git fetch upstream main
 
 # Get the latest common ancestor between the current branch and upstream main
 common_ancestor=$(git merge-base HEAD upstream/main)

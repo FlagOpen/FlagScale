@@ -1,5 +1,5 @@
 import pytest
-from flagscale.launcher.runner import parse_hostfile
+from flagscale.launcher.runner import parse_hostfile, dummy_test
 
 @pytest.fixture
 def mock_os_path_isfile(mocker):
@@ -49,3 +49,6 @@ def test_parse_hostfile_empty(mock_os_path_isfile, mock_open):
     mock_open.return_value.readlines.return_value = hostfile_content
     with pytest.raises(ValueError):
         parse_hostfile("/path/to/hostfile.txt")
+
+def test_dummy():
+    assert 1 == dummy_test()

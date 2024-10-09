@@ -1059,3 +1059,8 @@ class CloudRunner(MultiNodeRunner):
 
     def stop(self):
         raise ValueError("the stop method is not necessary in CloudRunner")
+
+def dummy_test():
+    a = 1
+    b = a ** 2
+    return b
