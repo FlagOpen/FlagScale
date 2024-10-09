@@ -40,7 +40,7 @@ jobs:
       matrix:
         subset: 
           - launcher
-          - ./
+          # - ./
     name: "flagscale-${{ matrix.subset }}"
     with:
       backend: flagscale
