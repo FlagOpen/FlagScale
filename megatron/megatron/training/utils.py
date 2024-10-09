@@ -349,9 +349,6 @@ def append_to_progress_log(string, barrier=True):
 def get_batch_on_this_tp_rank(data_iterator):
 
     args = get_args()
-    if args.enable_hetero:
-        import flagscale.train.utils as flagscale_utils
-        return flagscale_utils.get_batch_on_this_tp_rank(data_iterator, args)
 
     def _broadcast(item):
        if item is not None:
