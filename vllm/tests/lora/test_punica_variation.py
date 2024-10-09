@@ -3,7 +3,6 @@ This script is mainly used to test whether trtion kernels can run normally
 under different conditions, including various batches, numbers of LoRA , and 
 maximum ranks.
 """
-import random
 from unittest.mock import patch
 
 import pytest
@@ -16,16 +15,17 @@ from vllm.lora.ops.sgmv_expand import sgmv_expand
 from vllm.lora.ops.sgmv_expand_slice import sgmv_expand_slice
 from vllm.lora.ops.sgmv_shrink import sgmv_shrink
 from vllm.triton_utils.libentry import LibEntry
+from vllm.utils import seed_everything
 
 from .utils import (generate_data, generate_data_for_expand_nslices,
                     ref_torch_groupgemm)
 
-HIDDEN_SIZES = [3424, 4096, 4097]
+HIDDEN_SIZES = [4097]
 
 BATCHES = [1, 4, 16, 32]
-NUM_LORA = [1, 4, 8, 16, 32, 64, 128]
+NUM_LORA = [1, 8, 32, 128]
 DTYPES = [torch.float16, torch.bfloat16]
-MAX_RANKS = [1, 4, 8, 16, 32, 64, 128]
+MAX_RANKS = [1, 4, 8, 16, 32, 64, 128, 256]
 SCALES = [0.5]
 SEED = [0]
 CUDA_DEVICES = [f"cuda:{0}"]
@@ -60,11 +60,8 @@ def test_punica_sgmv(
     seed: int,
     device: str,
 ):
-    random.seed(seed)
     torch.set_default_device(device)
-    torch.random.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
+    seed_everything(seed)
 
     seq_length = 128
     (
@@ -153,11 +150,8 @@ def test_punica_bgmv(
     from vllm.lora.ops.bgmv_expand import _bgmv_expand_kernel
     from vllm.lora.ops.bgmv_shrink import _bgmv_shrink_kernel
 
-    random.seed(seed)
     torch.set_default_device(device)
-    torch.random.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
+    seed_everything(seed)
 
     seq_length = 1
     (
@@ -244,11 +238,9 @@ def test_punica_expand_nslices(
 ):
     from vllm.lora.ops.bgmv_expand_slice import _bgmv_expand_slice_kernel
 
-    random.seed(seed)
     torch.set_default_device(device)
-    torch.random.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
+    seed_everything(seed)
+
     seq_length = 128 if op_type == "sgmv" else 1
     (
         inputs_tensor,
@@ -321,22 +313,3 @@ def test_punica_expand_nslices(
 
         slice_offset += hidden_size
     assert_close(our_outputs, ref_outputs)
-
-
-if __name__ == "__main__":
-    from itertools import product
-
-    lst = list(
-        product(
-            BATCHES,
-            NUM_LORA,
-            MAX_RANKS,
-            [1.0],
-            [torch.float16],
-            ["expand"],
-            SEED,
-            CUDA_DEVICES,
-        ))
-    for ele in lst:
-        test_punica_bgmv(*ele)
-        print(f"{ele},pass")

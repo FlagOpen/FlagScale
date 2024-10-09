@@ -33,14 +33,6 @@ jobs:
       backend: megatron
       subset: ${{ matrix.subset }}
 
-  # Megatron Coverage Test
-  megatron-coverage-test:
-    needs: megatron-unit-tests
-    if: ${{ github.event_name == 'pull_request' }}
-    uses: ./.github/workflows/coverage-tests.yml
-    with:
-      backend: megatron
-
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
     uses: ./.github/workflows/unit-tests.yml
@@ -54,19 +46,11 @@ jobs:
       backend: flagscale
       subset: ${{ matrix.subset }}
 
-  # Flagscale Coverage Test
-  flagscale-coverage-test:
-    needs: flagscale-unit-tests
-    if: ${{ github.event_name == 'pull_request' }}
-    uses: ./.github/workflows/coverage-tests.yml
-    with:
-      backend: flagscale
-
   # Functional Tests with Model and Type Matrix
   functional-tests-train:
     needs:
-      - megatron-coverage-test
-      - flagscale-coverage-test
+      - megatron-unit-tests
+      - flagscale-unit-tests
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
@@ -77,8 +61,8 @@ jobs:
     with:
       model: ${{ matrix.model }}
       type: train
-  
-  functional-test-hetero:
+
+  functional-tests-hetero:
     needs: functional-tests-train
     uses: ./.github/workflows/functional-tests.yml
     strategy:
@@ -90,9 +74,25 @@ jobs:
       model: ${{ matrix.model }}
       type: hetero_train
 
+  # Megatron Coverage Test
+  megatron-coverage-test:
+    needs: functional-tests-hetero
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/coverage-tests.yml
+    with:
+      backend: megatron
+
+  # Flagscale Coverage Test
+  flagscale-coverage-test:
+    needs: functional-tests-hetero
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/coverage-tests.yml
+    with:
+      backend: flagscale
+
 # Add in the feature for inference
 # functional-tests-inference:
-#   needs: functional-test-hetero
+#   needs: functional-tests-hetero
 #   uses: ./.github/workflows/functional-tests.yml
 #   strategy:
 #     matrix:
