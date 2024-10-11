@@ -18,6 +18,8 @@ megatron:
       ignore: test_utilities.py 
 
 flagscale:
+  set_environment: 
+      export PYTHONPATH=./megatron:$PYTHONPATH
   subset:
     launcher:
       type: batch 
