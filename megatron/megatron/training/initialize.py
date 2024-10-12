@@ -27,6 +27,7 @@ from megatron.core.fusions.fused_bias_dropout import bias_dropout_add_fused_trai
 from megatron.core.fusions.fused_bias_gelu import bias_gelu
 from megatron.core.fusions.fused_bias_swiglu import bias_swiglu
 
+from flagscale.train import FSTrainArguments
 from flagscale.train import set_parallel_context  
 logger = logging.getLogger(__name__)
 
@@ -65,10 +66,17 @@ def initialize_megatron(
         assert args.load is not None, "--use-checkpoint-args requires --load argument"
         load_args_from_checkpoint(args)
 
+    if args.hetero_process_meshes is not None:
+        fs_argument = FSTrainArguments(args)
+        fs_argument.pre_validate_args()
+
     if args.yaml_cfg is not None:
         args = validate_yaml(args, args_defaults)
     else:
         validate_args(args, args_defaults)
+        
+    if args.hetero_process_meshes is not None:
+        fs_argument.post_validate_args()
 
 
     # set global args, build tokenizer, and set adlr-autoresume,

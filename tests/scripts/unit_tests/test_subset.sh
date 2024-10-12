@@ -116,6 +116,8 @@ run_tests() {
             fi
         done
     fi
+
+    sleep 1m
 }
 
 # Run tests based on type, path, and depth
