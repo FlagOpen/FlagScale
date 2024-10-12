@@ -1,5 +1,5 @@
 import pytest
-from flagscale.launcher.runner import parse_hostfile
+from flagscale.runner.runner_utils import parse_hostfile
 
 @pytest.fixture
 def mock_os_path_isfile(mocker):

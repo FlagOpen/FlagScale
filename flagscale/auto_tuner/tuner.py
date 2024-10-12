@@ -6,8 +6,8 @@ import time
 
 from omegaconf import DictConfig, OmegaConf
 
-from flagscale.launcher.job_status import JobStatus
-from flagscale.launcher.runner import SSHRunner
+from flagscale.runner.runner_base import JobStatus
+from flagscale.runner.runner_train import SSHTrainRunner
 
 from .generate import Generator
 from .platform import set_jiuding_platform_args
@@ -160,7 +160,7 @@ class AutoTuner:
                 raise ValueError(f"No strategy can run.")
             best_task = self.generator.gen_best_task(best_strategy, self.orig_config)
             best_task.action = "run"
-            runner = SSHRunner(best_task)
+            runner = SSHTrainRunner(best_task)
             runner.run(monitor=True, interval=60)
 
     def need_stop(self):
@@ -213,7 +213,7 @@ class AutoTuner:
         # Instantiate a runner and run the task
         if task is None:
             task = self.cur_task
-        self.runner = SSHRunner(task)
+        self.runner = SSHTrainRunner(task)
         self.runner.run()
         # set start time
         self.task_start_time = time.time()
