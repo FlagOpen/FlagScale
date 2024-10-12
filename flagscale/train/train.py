@@ -269,9 +269,15 @@ def pretrain(
     # This will be closer to what scheduler will see (outside of
     # image ... launches.
     global _TRAIN_START_TIME
-    start_time_tensor = torch.tensor([_TRAIN_START_TIME],
-                                     dtype=torch.double,
-                                     device='cuda')
+    if torch.distributed.get_backend() == "gloo":
+        start_time_tensor = torch.tensor([_TRAIN_START_TIME],
+                                         dtype=torch.double,
+                                         device='cpu')
+    else:
+        start_time_tensor = torch.tensor([_TRAIN_START_TIME],
+                                         dtype=torch.double,
+                                         device='cuda')
+
     torch.distributed.all_reduce(start_time_tensor,
                                  op=torch.distributed.ReduceOp.MIN)
     _TRAIN_START_TIME = start_time_tensor.item()
