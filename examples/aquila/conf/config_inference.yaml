@@ -10,9 +10,11 @@ experiment:
     backend: vllm
     entrypoint: ./flagscale/inference/inference_aquila.py
   runner:
-    hostfile: /share/project/zhaoyingli/hostfile
+    hostfile: xxxx 
+  cmds:
+    before_start: source /root/miniconda3/bin/activate flagscale
   envs:
-    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
+    CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
 
 action: run
