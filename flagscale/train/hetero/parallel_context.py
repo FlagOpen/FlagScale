@@ -66,7 +66,6 @@ class RankMapper:
                          'device_type': self._hetero_current_device_type}
         torch.distributed.all_gather_object(
             all_rank_infos, cur_rank_info)
-        print("allgather ranks infos is done")
         physical_ranks = []
         for info in all_rank_infos:
             self._rank_infos[info['rank']] = info

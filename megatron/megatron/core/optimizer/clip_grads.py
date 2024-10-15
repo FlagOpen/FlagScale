@@ -49,22 +49,12 @@ from ..transformer.module import param_is_not_shared
 
 def get_device_type(model_parallel_group=None):
     device = 'cuda'
-    if model_parallel_group is not None:
-        if isinstance(model_parallel_group, list):
-            if model_parallel_group[0].name() == 'gloo':
-                device = 'cpu'
-            else:
-                device = 'cuda'
-        else:
-            if model_parallel_group.name() == 'gloo':
-                device = 'cpu'
-            else:
-                device = 'cuda'
-    else:
-        if torch.distributed.get_backend() == 'gloo':
+    if model_parallel_group is not None and isinstance(model_parallel_group, list):
+        if model_parallel_group[0].name() == 'gloo':
             device = 'cpu'
-        else:
-            device = 'cuda'
+    else:
+        if torch.distributed.get_backend(model_parallel_group) == 'gloo':
+            device = 'cpu'
     return device
 
 def get_grad_norm_fp32(

@@ -1018,12 +1018,6 @@ def get_pipeline_model_parallel_group():
     ), 'pipeline_model parallel group is not initialized'
     return _PIPELINE_MODEL_PARALLEL_GROUP
 
-def get_pipeline_model_parallel_group_gloo():
-    """Get the pipeline-model-parallel group the caller rank belongs to."""
-    para_ctx = get_parallel_context()
-    assert para_ctx is not None, 'pipeline_model parallel gloo group is not initialized'
-    if para_ctx is not None:
-        return para_ctx.get_pipeline_model_parallel_group()
 
 def get_data_parallel_group(with_context_parallel=False, with_ulysses_sp_parallel=False):
     """Get the data-parallel group the caller rank belongs to."""
