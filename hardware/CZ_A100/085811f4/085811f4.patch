@@ -1,0 +1,24 @@
+From a72d05ea1c2342eb82e20fdce02fd7bcfc9a1a1e Mon Sep 17 00:00:00 2001
+From: caozhou <caozhou@baai.ac.cn>
+Date: Wed, 16 Oct 2024 14:08:35 +0800
+Subject: [PATCH] test patch
+
+---
+ examples/llava/conf/train/train_llava1.5_7b.yaml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/examples/llava/conf/train/train_llava1.5_7b.yaml b/examples/llava/conf/train/train_llava1.5_7b.yaml
+index 040b73ca..3d04e2d2 100644
+--- a/examples/llava/conf/train/train_llava1.5_7b.yaml
++++ b/examples/llava/conf/train/train_llava1.5_7b.yaml
+@@ -7,7 +7,7 @@ system:
+   use_mcore_models: True
+   transformer_impl: transformer_engine
+   precision:
+-    bf16: True
++    fp16: True
+     attention_softmax_in_fp32: True
+   logging:
+     log_interval: 1
+-- 
+2.34.1
