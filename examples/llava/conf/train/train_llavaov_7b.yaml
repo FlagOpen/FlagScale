@@ -1,11 +1,12 @@
 system:
-  tensor_model_parallel_size: 8
+  tensor_model_parallel_size: 4
   pipeline_model_parallel_size: 1
   disable_bias_linear: True
   use_flash_attn: True
   use_distributed_optimizer: True
   use_mcore_models: True
-  transformer_impl: transformer_engine
+  transformer_impl: local
+  use_te: False
   precision:
     bf16: True
     attention_softmax_in_fp32: True
@@ -18,7 +19,7 @@ system:
     log_num_zeros_in_grad: True
   checkpoint:
     save_interval: 1000
-    # pretrained_checkpoint: xxxx
+    pretrained_checkpoint: xxxx
     dataloader_save: ${experiment.exp_dir}/checkpoints/dataloader
     use_dist_ckpt: False
     ckpt_format: torch
@@ -39,14 +40,12 @@ model:
   clip_grad: 1.0
   train_iters: 5000
   micro_batch_size: 1
-  global_batch_size: 1
+  global_batch_size: 256
   allow_missing_vision_projection_checkpoint: True
   apply_layernorm_1p: True
-  use_te: True
   group_query_attention: True
-  num_query_groups: 32
   no_masked_softmax_fusion: True
-  untie-embeddings-and-output-weights: True
+  untie-embeddings-and-output-weights: False
   position_embedding_type: rope
   rotary_percent: 1.0
   rotary_base: 1000000
@@ -76,11 +75,11 @@ model:
 data:
   interleaved_dataset: True
   training_dataset_only: True
-  data_path: xxxx
+  data_path: xxxx/FlagScale/megatron/examples/multimodal/pretrain_dataset.yaml
   dataloader_type: external
   split: 100,0,0
   tokenizer:
-    tokenizer_type: QwenTokenizerFS
-    tokenizer_path: xxxx
-    vocab_size: 152064
+    tokenizer_type: QwenTokenizer2FS
+    tokenizer_path: xxxx/Qwen2-7B-Instruct
+    vocab_size: 152064 # 7b
     make_vocab_size_divisible_by: 64

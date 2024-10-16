@@ -42,7 +42,7 @@ def model_provider(
         model: A multimodal model.
     """
     args = get_args()
-
+    args.use_te = (args.transformer_impl == "transformer_engine")
     use_te = args.use_te
 
     print_rank_0('building a multimodal model ...')
@@ -64,7 +64,7 @@ def model_provider(
     if use_te:
         language_transformer_layer_spec = get_layer_spec_te(is_vit=False)
     else:
-        language_transformer_layer_spec = get_layer_spec(is_vit=False)
+        language_transformer_layer_spec = get_layer_spec(is_vit=False, normalization=args.normalization)
 
     vision_config = deepcopy(base_config)
     vision_config.vision_model_type = args.vision_model_type
@@ -73,7 +73,7 @@ def model_provider(
     if use_te:
         vision_transformer_layer_spec = get_layer_spec_te(is_vit=True)
     else:
-        vision_transformer_layer_spec = get_layer_spec(is_vit=True)
+        vision_transformer_layer_spec = get_layer_spec(is_vit=True, normalization="LayerNorm")
 
     vision_projection_config = deepcopy(base_config)
     vision_projection_config = get_vision_projection_config(vision_projection_config, language_config.hidden_size)
@@ -115,6 +115,12 @@ def model_provider(
     )
 
     model.freeze(freeze_language_model=args.freeze_LM, freeze_vision_model=args.freeze_ViT, freeze_vision_projection=False)
+    
+    # Print model for debugging.
+    if args.use_te:
+        print(f"LLaVA OneVision Model with TE: ", model)
+    else:
+        print(f"LLaVA OneVision Model without TE: ", model)
 
     return model
 
@@ -207,10 +213,8 @@ def get_batch(data_iterator):
     # Padding input_ids and labels
     torch.cuda.nvtx.range_push("pad_sequence_and_attn_mask")
     # Truncation and padding to the max len
-    input_ids = [_input_ids[: args.seq_length] for _input_ids in input_ids]
-    labels = [_labels[1: args.seq_length+1] for _labels in labels]
-    input_ids = pad_sequence(input_ids_list, batch_first=True, padding_value=tokenizer.pad_token_id, tokenizer=tokenizer)
-    labels = pad_sequence(labels_list, batch_first=True, padding_value=IGNORE_INDEX, tokenizer=tokenizer)
+    input_ids = pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id, tokenizer=tokenizer)
+    labels = pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX, tokenizer=tokenizer)
     # Attention mask same as LLaVA-NeXT
     attention_mask = input_ids.ne(tokenizer.pad_token_id)
     torch.cuda.nvtx.range_pop()
@@ -301,7 +305,7 @@ def add_multimodal_extra_args(parser):
     group.add_argument("--interleaved-dataset", action='store_true', default=False, help="Offline dataset with InterleavedSample")
     group.add_argument("--training-dataset-only", action='store_true', default=False, help="Only training dataset")
     group.add_argument("--vision-model-type", default="clip", help="Vision model type")
-    group.add_argument("--image-aspect-ratio", type=str, default="spatial_unpad", help="Image aspect ratio")
+    group.add_argument("--image-aspect-ratio", type=str, default="square", help="Image aspect ratio")
     group.add_argument("--mm-patch-merge-type", type=str, default="flat", help="Multimodal patch merge type")
     group.add_argument("--image-grid-pinpoints", type=str, default=None, help="Image grid pinpoints")
     group.add_argument("--use-pos-skipping", action='store_true', default=False, help="Use position skipping")
