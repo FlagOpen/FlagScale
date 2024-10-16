@@ -44,7 +44,9 @@ def convert(input_path, output_path, tensor_parallel_size):
             new_state_dicts[i]["model"][new_name] = new_tensors[i].clone()
 
     for i in range(tensor_parallel_size):
-        output_path_tp = os.path.join(output_path, f"state_dict_tp_{i}.pt")
+        output_dir_tp = os.path.join(output_path, "iter_0000001", f"mp_rank_0{i}")
+        os.makedirs(output_dir_tp, exist_ok=True)
+        output_path_tp = os.path.join(output_dir_tp, "model_optim_rng.pt")
         torch.save(new_state_dicts[i], output_path_tp)
 
 
@@ -73,4 +75,3 @@ python mlp_converter.py --input /some/input/folder/mm_projector.bin --output /so
     convert(args.input, args.output, args.tensor_parallel_size)
 
     print("done.")
-

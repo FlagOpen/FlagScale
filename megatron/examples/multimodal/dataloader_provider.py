@@ -2,7 +2,7 @@
 import os
 
 import torch
-from .dataset_helpers import TaskEncoder, print_error_handler
+from .dataset_helpers import TaskEncoder, print_error_handler, AnyResTaskEncoder
 
 from megatron.core import mpu
 from megatron.energon import (
@@ -23,11 +23,12 @@ from megatron.training.checkpointing import get_checkpoint_name
 def datasets_provider(worker_config=None):
     """Create multimodal train, validation and test datasets."""
     args = get_args()
+    interleaved = args.interleaved_dataset
     dname = args.data_path[0] if type(args.data_path) is list else args.data_path
     train_dataset = get_train_dataset(
         dname,
         batch_size=args.micro_batch_size,
-        task_encoder=TaskEncoder(),
+        task_encoder=TaskEncoder() if not interleaved else AnyResTaskEncoder(),
         worker_config=worker_config,
         virtual_epoch_length=1000,
         max_samples_per_sequence=100,
@@ -36,12 +37,14 @@ def datasets_provider(worker_config=None):
         image_decode="pil",
     )
 
+    if args.training_dataset_only:
+        return train_dataset, None, None
     val_datasets = get_val_datasets(
         dname,
         batch_size=args.micro_batch_size,
         # This is the total number over all workers
         # limit=args.eval_iters * get_num_microbatches(),
-        task_encoder=TaskEncoder(),
+        task_encoder=TaskEncoder() if not interleaved else AnyResTaskEncoder(),
         worker_config=worker_config,
         handler=print_error_handler,
         image_decode="pil",
@@ -101,7 +104,8 @@ def train_valid_test_dataloaders_provider(train_val_test_num_samples):
                     print_rank_0(f"restored dataset state from {data_save_name}")
                 except Exception as e:
                     print_rank_0("loading dataloader checkpoint failed. Skipping. " + str(e))
-
+    if args.training_dataset_only:
+        return EnergonDataloader(train_dataloader), EnergonDataloader(None), EnergonDataloader(None)
     valid_dataloader = [
         EnergonDataloader(get_loader(valid_ds, worker_config=worker_config))
         for valid_ds in valid_ds1
