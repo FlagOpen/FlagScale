@@ -1,0 +1,62 @@
+From 8b85572575817b96f428fff83a87995048a5d498 Mon Sep 17 00:00:00 2001
+From: zhangsanfeng2022 <211136803@qq.com>
+Date: Wed, 16 Oct 2024 10:51:30 +0800
+Subject: [PATCH] [kunlunxin] llava1.5 7b patch.
+
+---
+ examples/llava/conf/config.yaml               | 24 +++++++++++++++++++
+ .../llava/conf/train/train_llava1.5_7b.yaml   |  4 +++-
+ 2 files changed, 27 insertions(+), 1 deletion(-)
+
+diff --git a/examples/llava/conf/config.yaml b/examples/llava/conf/config.yaml
+index e7b327ee..09d3159c 100644
+--- a/examples/llava/conf/config.yaml
++++ b/examples/llava/conf/config.yaml
+@@ -19,6 +19,30 @@ experiment:
+     CUDA_DEVICE_MAX_CONNECTIONS: 1
+     NVTE_APPLY_QK_LAYER_SCALING: 0
+     NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
++    ALLGATHER_ASYNC: false
++    ALLREDUCE_ASYNC: false
++    ALLREDUCE_FUSION: 0
++    BKCL_CCIX_BUFFER_GM: 1
++    BKCL_CCIX_RING: 1
++    BKCL_ENABLE_XDR: 1
++    BKCL_FLAT_RING: 1
++    BKCL_KL3_TURBO_MODE: 1
++    BKCL_RDMA_FORCE_TREE: 1
++    BKCL_RDMA_NICS: ens11np0,ens11np0,ens13np0,ens13np0,ens15np0,ens15np0,ens17np0,ens17np0
++    BKCL_RDMA_PROXY_DISABLE: 1
++    BKCL_RING_BUFFER_GM: 1
++    BKCL_TIMEOUT: 360000
++    BKCL_TRANS_UNSUPPORTED_DATATYPE: 1
++    BKCL_TREE_THRESHOLD: 1
++    BKCL_XLINK_C2C: 1
++    BKCL_XLINK_D2D: 0
++    BKCL_XLINK_ETH: 0
++    CUDART_DUMMY_REGISTER: 1
++    FAST_SWIGLU_ENABLE: 1
++    USE_FAST_BF16_FC: true
++    USE_L3: 1
++    XDNN_USE_FAST_SWISH: true
++    XPU_ZEBU_MODE: 1
+ 
+ action: run 
+ 
+diff --git a/examples/llava/conf/train/train_llava1.5_7b.yaml b/examples/llava/conf/train/train_llava1.5_7b.yaml
+index 040b73ca..c1cfde55 100644
+--- a/examples/llava/conf/train/train_llava1.5_7b.yaml
++++ b/examples/llava/conf/train/train_llava1.5_7b.yaml
+@@ -7,7 +7,9 @@ system:
+   use_mcore_models: True
+   transformer_impl: transformer_engine
+   precision:
+-    bf16: True
++    fp16: True
++    initial_loss_scale: 512
++    min_loss_scale: 1.0
+     attention_softmax_in_fp32: True
+   logging:
+     log_interval: 1
+-- 
+2.25.1
