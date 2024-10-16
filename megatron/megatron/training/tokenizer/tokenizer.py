@@ -80,6 +80,9 @@ def build_tokenizer(args, **kwargs):
     elif args.tokenizer_type == "QwenTokenizerFS":
         assert args.tokenizer_path is not None
         tokenizer = _QwenTokenizerFS(args.tokenizer_path)
+    elif args.tokenizer_type == "QwenTokenizer2FS":
+        assert args.tokenizer_path is not None
+        tokenizer = _QwenTokenizer2FS(args.tokenizer_path, args)
     elif args.tokenizer_type == "HFTokenizersTokenizerFS":
         assert args.tokenizer_path is not None
         tokenizer = _HFTokenizersTokenizerFS(args.tokenizer_path)
@@ -891,6 +894,20 @@ class _QwenTokenizerFS(_HFTokenizerFS):
         self.cls_id = self.tokenizer.encode('<|extra_203|>')[0]
         self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]
 
+class _QwenTokenizer2FS(_HFTokenizerFS):
+    """Adapted Qwen tokenizer."""
+    
+    def __init__(self, tokenizer_path, args):
+        super().__init__(tokenizer_path)
+        self.eod_id = self.tokenizer.encode('<|extra_204|>')[0]
+        self.cls_id = self.tokenizer.encode('<|extra_203|>')[0]
+        self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]
+        assert args.vocab_size is not None
+        self._vocab_size = args.vocab_size
+    
+    @property
+    def vocab_size(self):
+        return self._vocab_size
 
 class _HFTokenizersTokenizerFS(MegatronTokenizer):
     """Tokenizer from HuggingFace Tokenizers."""

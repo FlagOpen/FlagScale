@@ -11,6 +11,7 @@ from megatron.core.transformer.enums import ModelType
 from megatron.core.transformer.spec_utils import ModuleSpec, build_module
 from megatron.core.transformer.transformer_block import TransformerBlock
 from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.training import get_args
 
 
 # Note: This is under development and is missing features like position embedding interpolation.
@@ -33,6 +34,7 @@ class CLIPViTModel(VisionModule):
         transformer_config: TransformerConfig,
         transformer_layer_spec: ModuleSpec,
         ln_pre_impl: Union[ModuleSpec, type] = TENorm,
+        ln_post_impl: Union[ModuleSpec, type] = TENorm,
         add_class_token: bool = True,
         class_token_len: int = 1,
         patch_dim: int = 14,
@@ -61,14 +63,25 @@ class CLIPViTModel(VisionModule):
 
         self.seq_length = self.num_patches + (self.class_token_len if self.add_class_token else 0)
 
-        self.conv1 = torch.nn.Conv2d(
-            in_channels=3,
-            out_channels=self.visual_hidden_size,
-            kernel_size=self.patch_dim,
-            stride=self.patch_dim,
-            bias=False,
-        )
-
+        # siglip same as LLaVA-NeXT
+        args = get_args()
+        if "vision_model_type" in args and args.vision_model_type == "siglip":
+            self.conv1 = torch.nn.Conv2d(
+                in_channels=3,
+                out_channels=self.visual_hidden_size,
+                kernel_size=self.patch_dim,
+                stride=self.patch_dim,
+                bias=True,
+                padding="valid",
+            )
+        else:
+            self.conv1 = torch.nn.Conv2d(
+                in_channels=3,
+                out_channels=self.visual_hidden_size,
+                kernel_size=self.patch_dim,
+                stride=self.patch_dim,
+                bias=False,
+            )
         self.position_ids = torch.arange(self.seq_length).expand(1, -1).cuda()
 
         self.position_embeddings = torch.nn.Embedding(self.seq_length, self.visual_hidden_size)
@@ -78,13 +91,22 @@ class CLIPViTModel(VisionModule):
             self.class_token = torch.nn.Parameter(
                 torch.randn(1, self.class_token_len, self.visual_hidden_size)
             )
-
-        self.ln_pre = build_module(
-            ln_pre_impl,
-            config=transformer_config,
-            hidden_size=self.visual_hidden_size,
-            eps=transformer_config.layernorm_epsilon,
-        )
+        
+        # siglip same as LLaVA-NeXT
+        if not args.vision_model_type == "siglip":
+            self.ln_pre = build_module(
+                ln_pre_impl,
+                config=transformer_config,
+                hidden_size=self.visual_hidden_size,
+                eps=transformer_config.layernorm_epsilon,
+            )
+        if args.vision_model_type == "siglip":
+            self.ln_post = build_module(
+                ln_post_impl,
+                config=transformer_config,
+                hidden_size=self.visual_hidden_size,
+                eps=transformer_config.layernorm_epsilon,
+            )
 
         self.model_type = ModelType.encoder_or_decoder
 
@@ -135,7 +157,11 @@ class CLIPViTModel(VisionModule):
         assert x.shape[1] == self.seq_length, f"{x.shape[1]} != {self.seq_length}"
         x = x + self.position_embeddings(self.position_ids)
         x = x.contiguous()
-        x = self.ln_pre(x)
+
+        args = get_args()
+        if not args.vision_model_type == "siglip":
+            x = self.ln_pre(x)
+
         x = x.permute(1, 0, 2)  # [b, s, h] -> [s, b, h]
         # `permute` can make the tensor non-contiguous, breaking pipelining.
         x = x.contiguous()
@@ -143,8 +169,9 @@ class CLIPViTModel(VisionModule):
         x = self.decoder(x, attention_mask)
         x = x.permute(1, 0, 2)  # [s, b, h] -> [b, s, h]
         x = x.contiguous()
-        # Return the output becase no post layer and output layer operations are required
-
+        # Return the output because no post layer and output layer operations are required
+        # if args.vision_model_type == "siglip":
+        #     x = self.ln_post(x)
         return x
 
 

@@ -1977,6 +1977,7 @@ def _add_data_args(parser):
                                 'HFTokenizersTokenizerFS', 
                                 'Llama3TokenizerFS',
                                 'QwenTokenizerFS',
+                                'QwenTokenizer2FS',
                                 'NullTokenizer'],
                        help='What type of tokenizer to use.')
     group.add_argument('--tokenizer-path', type=str, default=None,
