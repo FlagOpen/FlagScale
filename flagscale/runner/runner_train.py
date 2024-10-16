@@ -1,165 +1,25 @@
-import collections
-import copy
-import json
 import os
-import re
-import shlex
-import socket
-import subprocess
-import sys
 import time
-import uuid
-from abc import ABC, abstractmethod
+import shlex
 from datetime import datetime
-
 from omegaconf import DictConfig, OmegaConf
-
-from ..logger import logger
-from .job_status import JobStatus
-
-
-def log_and_raise_error(message):
-    logger.error(message)
-    raise ValueError(message)
-
-
-def parse_hostfile(hostfile_path):
-    if hostfile_path is None or not os.path.isfile(hostfile_path):
-        logger.warning(
-            "Hostfile not found. The training will proceed using only local resources."
-        )
-        return None
-
-    # e.g., worker0 slots=8 type=A100
-    pattern = re.compile(r"^(\S+)\s+slots=(\d+)(?:\s+type=(\S+))?")
-
-    resources = collections.OrderedDict()
-
-    with open(hostfile_path, "r") as fd:
-        hostfile_lines = fd.readlines()
-
-    for line in hostfile_lines:
-        line = line.strip()
-        match = pattern.search(line)
-        if line.startswith("#") or line == "":
-            # hostfile comment or empty line, ignore
-            continue
-        elif match:
-            host = match.group(1)
-            num_slots = int(match.group(2))
-            machine_type = match.group(3) if match.group(3) else None
-            if host in resources:
-                log_and_raise_error(
-                    f"Hostfile contains multiple entries for host: {host}."
-                )
-            resources[host] = {"slots": num_slots, "type": machine_type}
-        else:
-            log_and_raise_error(f"Invalid entry in hostfile: {line}.")
-
-    if len(resources) == 0:
-        log_and_raise_error(
-            "Hostfile is empty or not formatted correctly. Please check the hostfile."
-        )
-
-    return resources
+from flagscale.runner.runner_base import RunnerBase, JobStatus
+from flagscale.runner.runner_utils import (
+    flatten_dict_to_args,
+    parse_hostfile,
+    parse_hostfile,
+    get_free_port,
+    get_host_name_or_ip,
+    run_ssh_command,
+    run_local_command,
+    run_scp_command,
+    logger,
+    get_nnodes,
+    get_nproc_per_node,
+)
 
 
-def get_free_port():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
-
-
-def get_host_name_or_ip():
-    host_name = socket.gethostname()
-    if host_name:
-        return host_name
-    try:
-        # doesn't even have to be reachable
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.connect(("10.255.255.255", 1))
-        IP = sock.getsockname()[0]
-    except Exception:
-        IP = "127.0.0.1"
-    finally:
-        if (
-            "sock" in locals()
-        ):  # Ensure 'sock' was successfully created before attempting to close it
-            sock.close()
-    return IP
-
-
-def run_local_command(cmd, dryrun=False, query=False):
-    logger.info(f"Run the local command: {cmd}")
-    if dryrun:
-        return
-    if query:
-        result = subprocess.run(
-            cmd, shell=True, check=True, capture_output=True, text=True
-        )
-        return result
-    else:
-        result = subprocess.run(
-            cmd, shell=True, check=True, capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            print(f"Command {cmd} failed with return code {result.returncode}.")
-            print(f"Output: {result.stdout}")
-            print(f"Error: {result.stderr}")
-            sys.exit(result.returncode)
-
-
-def run_ssh_command(host, cmd, port=None, dryrun=False, query=False):
-    if port:
-        ssh_cmd = f"ssh -f -n -p {port} {host} '{cmd}'"
-    else:
-        ssh_cmd = f"ssh -f -n {host} '{cmd}'"
-    if not query:
-        logger.info(f"SSHRunner is running the ssh command: {ssh_cmd}")
-    if dryrun:
-        return
-    if query:
-        result = subprocess.run(
-            ssh_cmd, shell=True, check=True, text=True, stdout=subprocess.PIPE
-        )
-        return result
-    else:
-        subprocess.run(ssh_cmd, shell=True, check=True)
-
-
-def run_scp_command(host, src, dst, port=None, dryrun=False):
-    if port:
-        scp_cmd = f"scp -P {port} -r {src} {host}:{dst} "
-    else:
-        scp_cmd = f"scp -r {src} {host}:{dst} "
-    logger.info(f"Run the scp command: {scp_cmd}")
-    if dryrun:
-        return
-    subprocess.run(scp_cmd, shell=True, check=True)
-
-
-def _flatten_dict_to_args(config_dict, ignore_keys=[]):
-    args = []
-    for key, value in config_dict.items():
-        if key in ignore_keys:
-            continue
-        key = key.replace("_", "-")
-        if isinstance(value, dict):
-            args.extend(_flatten_dict_to_args(value, ignore_keys))
-        elif isinstance(value, list):
-            args.append(f"--{key}")
-            for v in value:
-                args.append(f"{v}")
-        elif isinstance(value, bool):
-            if value:
-                args.append(f"--{key}")
-        else:
-            args.append(f"--{key}")
-            args.append(f"{value}")
-    return args
-
-
-def get_args_megatron(config: DictConfig):
+def _get_args_megatron(config: DictConfig):
     assert (
         config.experiment.task.backend == "megatron"
     ), "This function only supports megatron backend."
@@ -175,25 +35,7 @@ def get_args_megatron(config: DictConfig):
 
     ignore_keys = ["log_dir", "details_dir", "scripts_dir", "pids_dir"]
     # Flatten the dictionary to a list of arguments
-    args = _flatten_dict_to_args(new_config_dict, ignore_keys)
-
-    return args
-
-
-def get_args_vllm(config: DictConfig):
-    assert (
-        config.experiment.task.backend == "vllm"
-    ), "This function only supports megatron backend."
-
-    config_dict = OmegaConf.to_container(config, resolve=True)
-    config_dict = config_dict["inference"]
-
-    new_config_dict = {}
-    new_config_dict.update(config_dict["engine"])
-    new_config_dict.update(config_dict["data"])
-
-    ignore_keys = ["log_dir", "scripts_dir", "pids_dir"]
-    args = _flatten_dict_to_args(new_config_dict, ignore_keys)
+    args = flatten_dict_to_args(new_config_dict, ignore_keys)
 
     return args
 
@@ -256,69 +98,6 @@ def _update_config_train(config: DictConfig):
     config.logging.wandb_save_dir = wandb_dir
 
     OmegaConf.set_struct(config, False)
-
-
-def _update_config_inference(config: DictConfig):
-    exp_dir = os.path.abspath(config.experiment.exp_dir)
-    assert os.path.isdir(exp_dir), f"Directory {exp_dir} does not exist."
-
-    OmegaConf.set_struct(config, False)
-    config.inference.system = DictConfig({})
-
-    config = config.inference.system
-    config.logging = DictConfig({})
-
-    log_dir = os.path.join(exp_dir, "logs")
-    scripts_dir = os.path.join(log_dir, "scripts")
-    pids_dir = os.path.join(log_dir, "pids")
-
-    config.logging.log_dir = log_dir
-    config.logging.scripts_dir = scripts_dir
-    config.logging.pids_dir = pids_dir
-
-    OmegaConf.set_struct(config, False)
-
-
-def _get_nnodes(nnodes_from_hostfile=None, nnodes_from_args=None):
-    assert nnodes_from_hostfile is not None or nnodes_from_args is not None
-    if nnodes_from_hostfile is not None and nnodes_from_args is not None:
-        if isinstance(nnodes_from_args, str) and ":" in nnodes_from_args:
-            # Ignore the max nnodes from the args, no elastic support
-            nnodes_from_args, _ = nnodes_from_args.split(":")
-        return min(nnodes_from_hostfile, int(nnodes_from_args))
-    elif nnodes_from_hostfile is not None:
-        return nnodes_from_hostfile
-    elif nnodes_from_args is not None:
-        if isinstance(nnodes_from_args, str) and ":" in nnodes_from_args:
-            # Ignore the max nnodes from the args, no elastic support
-            nnodes_from_args, _ = nnodes_from_args.split(":")
-        return int(nnodes_from_args)
-
-
-def _get_nproc_per_node(
-    nproc_from_hostfile=None, nproc_from_args=None, num_visible_devices=None
-):
-    if nproc_from_hostfile is not None and nproc_from_args is not None:
-        nproc = min(nproc_from_hostfile, int(nproc_from_args))
-        if num_visible_devices:
-            return min(nproc, num_visible_devices)
-        else:
-            return nproc
-    elif nproc_from_hostfile is not None:
-        if num_visible_devices:
-            return min(nproc_from_hostfile, num_visible_devices)
-        else:
-            return nproc_from_hostfile
-    elif nproc_from_args is not None:
-        if num_visible_devices:
-            return min(int(nproc_from_args), num_visible_devices)
-        else:
-            return nproc_from_args
-    else:
-        if num_visible_devices:
-            return num_visible_devices
-        else:
-            return 1
 
 
 def _get_runner_cmd_train(
@@ -393,18 +172,6 @@ def _get_runner_cmd_train(
     return runner_cmd
 
 
-def _get_runner_cmd_inference(
-    host,
-    master_addr,
-    master_port,
-    nnodes,
-    node_rank,
-    nproc_per_node,
-    config: DictConfig,
-):
-    return ["python"]
-
-
 def _generate_run_script_train(
     config, host, node_rank, cmd, background=True, with_test=False
 ):
@@ -472,66 +239,7 @@ def _generate_run_script_train(
     return host_run_script_file
 
 
-def _generate_run_script_inference(
-    config, host, node_rank, cmd, background=True, with_test=False
-):
-    logging_config = config.inference.system.logging
-    no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
-    if no_shared_fs:
-        host_output_file = os.path.join(logging_config.log_dir, f"host.output")
-    else:
-        host_output_file = os.path.join(
-            logging_config.log_dir, f"host_{node_rank}_{host}.output"
-        )
-    host_run_script_file = os.path.join(
-        logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
-    )
-    host_pid_file = os.path.join(
-        logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-    )
-    os.makedirs(logging_config.scripts_dir, exist_ok=True)
-
-    root_dir = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
-    vllm_dir = os.path.join(root_dir, "vllm")
-    cmds_config = config.experiment.get("cmds", None)
-    if cmds_config:
-        before_start = cmds_config.get("before_start", "")
-    else:
-        before_start = ""
-    with open(host_run_script_file, "w") as f:
-        f.write("#!/bin/bash\n\n")
-        f.write(f"{before_start}\n")
-        f.write(f"mkdir -p {logging_config.log_dir}\n")
-        f.write(f"mkdir -p {logging_config.pids_dir}\n")
-        f.write(f"\n")
-        f.write(f"cd {root_dir}\n")
-        f.write(f"\n")
-        f.write(f"export PYTHONPATH={vllm_dir}:{root_dir}\n")
-        f.write(f"\n")
-        f.write(f'cmd="{cmd}"\n')
-        f.write(f"\n")
-        if with_test:
-            f.write(f'bash -c "$cmd" \n')
-        else:
-            # TODO: need a option to control whether to append or overwrite the output file
-            # Now, it always appends to the output file
-            if background:
-                f.write(
-                    f'nohup bash -c "$cmd" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
-                )
-            else:
-                f.write(f'bash -c "$cmd" >> {host_output_file} 2>&1\n')
-        f.write("\n")
-        f.flush()
-        os.fsync(f.fileno())
-    os.chmod(host_run_script_file, 0o755)
-
-    return host_run_script_file
-
-
-def _generate_stop_script(config, host, node_rank):
+def _generate_stop_script_train(config, host, node_rank):
     if getattr(config, "train", None):
         logging_config = config.train.system.logging
     else:
@@ -569,34 +277,16 @@ def _generate_stop_script(config, host, node_rank):
     return host_stop_script_file
 
 
-class MultiNodeRunner(ABC):
-
-    @abstractmethod
-    def run(self):
-        """Run the command"""
-
-    @abstractmethod
-    def stop(self):
-        """stop the command"""
-
-
-class SSHRunner(MultiNodeRunner):
-
+class SSHTrainRunner(RunnerBase):
     def __init__(self, config: DictConfig):
-        self.config = config
-        self.mode = getattr(self.config.experiment.task, "type", None)
+        super().__init__(config)
+        self.task_type = getattr(self.config.experiment.task, "type", None)
+        assert self.task_type == "train", f"Unsupported task type: {self.task_type}"
         self._prepare()
 
     def _prepare(self):
-        if self.mode == "train":
-            _update_config_train(self.config)
-            self.user_args = get_args_megatron(self.config)
-        elif self.mode == "inference":
-            _update_config_inference(self.config)
-            self.user_args = get_args_vllm(self.config)
-        else:
-            raise ValueError(f"Unsupported task type in SSHRunner: {self.mode}")
-
+        _update_config_train(self.config)
+        self.user_args = _get_args_megatron(self.config)
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         self.user_envs = self.config.experiment.get("envs", {})
         self.user_script = self.config.experiment.task.entrypoint
@@ -621,7 +311,7 @@ class SSHRunner(MultiNodeRunner):
         for k, v in self.user_envs.items():
             export_cmd += [f"{k}={v}"]
 
-        runner_cmd = eval(f"_get_runner_cmd_{self.mode}")(
+        runner_cmd = _get_runner_cmd_train(
             host,
             master_addr,
             master_port,
@@ -633,16 +323,10 @@ class SSHRunner(MultiNodeRunner):
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
 
-        if self.mode == "train":
-            logging_config = self.config.train.system.logging
-            host_run_script_file = _generate_run_script_train(
-                self.config, host, node_rank, cmd, background=True, with_test=with_test
-            )
-        else:
-            logging_config = self.config.inference.system.logging
-            host_run_script_file = _generate_run_script_inference(
-                self.config, host, node_rank, cmd, background=True, with_test=with_test
-            )
+        logging_config = self.config.train.system.logging
+        host_run_script_file = _generate_run_script_train(
+            self.config, host, node_rank, cmd, background=True, with_test=with_test
+        )
 
         if host != "localhost":
             ssh_port = self.config.experiment.runner.get("ssh_port", 22)
@@ -681,7 +365,7 @@ class SSHRunner(MultiNodeRunner):
         if self.resources is not None:
             nnodes_from_hostfile = len(self.resources.keys())
             nnodes_from_args = runner_config.get("nnodes", None)
-            nnodes = _get_nnodes(nnodes_from_hostfile, nnodes_from_args)
+            nnodes = get_nnodes(nnodes_from_hostfile, nnodes_from_args)
             available_ip = list(self.resources.keys())[0]
             available_port = get_free_port()
             for node_rank, (host, resource_info) in enumerate(self.resources.items()):
@@ -689,7 +373,7 @@ class SSHRunner(MultiNodeRunner):
                     break
                 nproc_from_hostfile = resource_info["slots"]
                 nproc_from_args = runner_config.get("nproc_per_node", None)
-                nproc_per_node = _get_nproc_per_node(
+                nproc_per_node = get_nproc_per_node(
                     nproc_from_hostfile, nproc_from_args, num_visible_devices
                 )
                 master_addr = runner_config.get("master_addr", available_ip)
@@ -707,7 +391,7 @@ class SSHRunner(MultiNodeRunner):
         else:
             # If hostfile is not provided, run the job on localhost
             nproc_from_args = runner_config.get("nproc_per_node", None)
-            nproc_per_node = _get_nproc_per_node(
+            nproc_per_node = get_nproc_per_node(
                 None, nproc_from_args, num_visible_devices
             )
             available_addr = runner_config.get("master_addr", "localhost")
@@ -723,7 +407,7 @@ class SSHRunner(MultiNodeRunner):
                 dryrun=dryrun,
             )
         # If need monitor, query status continually
-        if monitor and self.mode == "train":
+        if monitor:
             # sleep to wait task already started
             time.sleep(interval)
             try:
@@ -738,11 +422,8 @@ class SSHRunner(MultiNodeRunner):
                 logger.info(e)
 
     def _stop_each(self, host, node_rank):
-        host_stop_script_file = _generate_stop_script(self.config, host, node_rank)
-        if self.mode == "train":
-            logging_config = self.config.train.system.logging
-        else:
-            logging_config = self.config.inference.system.logging
+        host_stop_script_file = _generate_stop_script_train(self.config, host, node_rank)
+        logging_config = self.config.train.system.logging
 
         if host != "localhost":
             ssh_port = self.config.experiment.runner.get("ssh_port", 22)
@@ -764,7 +445,7 @@ class SSHRunner(MultiNodeRunner):
             self._stop_each("localhost", 0)
             return
 
-        nnodes = _get_nnodes(
+        nnodes = get_nnodes(
             len(self.resources), self.config.experiment.runner.get("nnodes", None)
         )
 
@@ -974,21 +655,18 @@ class SSHRunner(MultiNodeRunner):
                 cur_time = time.time()
 
 
-class CloudRunner(MultiNodeRunner):
-
+class CloudTrainRunner(RunnerBase):
     def __init__(self, config: DictConfig):
-        self.config = config
-        self.mode = getattr(self.config.experiment.task, "type", None)
+        super().__init__(config)
+        self.task_type = getattr(self.config.experiment.task, "type", None)
+        assert self.task_type == "train", f"Unsupported task type: {self.task_type}"
         self._prepare()
 
     def _prepare(self):
         self.user_envs = self.config.experiment.get("envs", {})
         self.user_script = self.config.experiment.task.entrypoint
-        if self.mode == "train":
-            _update_config_train(self.config)
-            self.user_args = get_args_megatron(self.config)
-        else:
-            raise ValueError(f"Unsupported task type in CloudRunner: {self.mode}")
+        _update_config_train(self.config)
+        self.user_args = _get_args_megatron(self.config)
 
         logger.info("\n************** configuration ***********")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
@@ -1039,10 +717,10 @@ class CloudRunner(MultiNodeRunner):
 
         runner_config = self.config.experiment.runner
         nnodes_from_args = runner_config.get("nnodes", None)
-        nnodes = _get_nnodes(None, nnodes_from_args)
+        nnodes = get_nnodes(None, nnodes_from_args)
         node_rank = runner_config.node_rank
         nproc_from_args = runner_config.get("nproc_per_node", None)
-        nproc_per_node = _get_nproc_per_node(None, nproc_from_args, num_visible_devices)
+        nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
         master_addr = runner_config.master_addr
         master_port = runner_config.master_port
         host = get_host_name_or_ip()
@@ -1056,6 +734,3 @@ class CloudRunner(MultiNodeRunner):
             with_test=with_test,
             dryrun=dryrun,
         )
-
-    def stop(self):
-        raise ValueError("the stop method is not necessary in CloudRunner")
