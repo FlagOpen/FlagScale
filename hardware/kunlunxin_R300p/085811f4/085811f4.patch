@@ -41,9 +41,9 @@ index e7b327ee..09d3159c 100644
 +    USE_L3: 1
 +    XDNN_USE_FAST_SWISH: true
 +    XPU_ZEBU_MODE: 1
- 
+
  action: run 
- 
+
 diff --git a/examples/llava/conf/train/train_llava1.5_7b.yaml b/examples/llava/conf/train/train_llava1.5_7b.yaml
 index 040b73ca..c1cfde55 100644
 --- a/examples/llava/conf/train/train_llava1.5_7b.yaml
@@ -73,15 +73,15 @@ index 01425f36..459b76db 100644
      assert iteration >= 0 or release, 'error parsing metadata file {}'.format(
          tracker_filename)
 @@ -530,8 +530,7 @@ def save_dataloader_state(train_iterator, iteration, dataloader_save_path):
- 
+
      torch.distributed.barrier(group=mpu.get_data_parallel_group())
- 
+
 -    if mpu.get_data_parallel_rank() == 0:
 -        ensure_directory_exists(data_state_save_path)
 +    ensure_directory_exists(data_state_save_path)
- 
+
      torch.distributed.barrier(group=mpu.get_data_parallel_group())
- 
+
 @@ -1109,7 +1108,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
          if (args.fp16 or args.bf16) and optimizer is not None \
              and not args.finetune_with_optim:
@@ -98,7 +98,7 @@ index 01425f36..459b76db 100644
 -            # after making use of the iteration returned by read_metadata 
 +            # after making use of the iteration returned by read_metadata
              iteration = 0
- 
+
          except KeyError:
 -- 
 2.47.0

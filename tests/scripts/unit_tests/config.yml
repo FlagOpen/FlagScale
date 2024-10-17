@@ -1,0 +1,29 @@
+megatron:
+  set_environment: 
+    cd megatron; export PYTHONPATH=..:$PYTHONPATH
+  coverage:
+    core
+  subset:
+    # Use default configuration if not shown
+    dist_checkpointing:
+      ignore: models/test_mamba.py
+    models:
+      ignore: test_mamba_model.py
+    transformer/moe:
+      type: single 
+      ignore: test_upcycling.py
+    transformer:
+      depth: 1 
+    ./:
+      depth: 1 
+      ignore: test_utilities.py 
+
+flagscale:
+  set_environment: 
+      export PYTHONPATH=./megatron:$PYTHONPATH
+  subset:
+    runner:
+      type: batch 
+      depth: all 
+    ./:
+      depth: 1 

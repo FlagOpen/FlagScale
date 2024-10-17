@@ -1,6 +1,10 @@
 import sys
 import importlib
 import os
+
+import torch
+from megatron.core import mpu
+
 _hook_modules = {"transformer_engine"}
 
 device_type = os.environ.get('DEVICE_TYPE',None)

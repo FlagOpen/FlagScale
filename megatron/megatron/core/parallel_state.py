@@ -247,6 +247,8 @@ def generate_masked_orthogonal_rank_groups(
 
 
 class RankGenerator(object):
+    """A class for generating rank groups for different modes of parallelism."""
+
     def __init__(
         self, tp: int, ep: int, dp: int, pp: int, cp: int, usp: int, order: str, rank_offset: int = 0
     ) -> None:
@@ -277,7 +279,8 @@ class RankGenerator(object):
         for name in self.name_to_size.keys():
             if name not in order and self.name_to_size[name] != 1:
                 raise RuntimeError(
-                    f"The size of ({name}) is ({self.name_to_size[name]}), but you haven't specified the order ({self.order})."
+                    f"The size of ({name}) is ({self.name_to_size[name]}), but you haven't"
+                    f"specified the order ({self.order})."
                 )
             elif name not in order:
                 order = order + '-' + name
@@ -298,6 +301,13 @@ class RankGenerator(object):
                 self.ordered_size_wo_ep.append(self.name_to_size[token])
 
     def get_mask(self, order: str, token: str):
+        """Create a mask for the specified tokens based on the given order.
+
+        Args:
+            order (str): The order of parallelism types (e.g., 'tp-dp-pp').
+            token (str): The specific parallelism types to include in the mask,
+                         separated by hyphens (e.g., 'tp-dp').
+        """
         ordered_token = order.split('-')
         token = token.split('-')
         mask = [False] * len(ordered_token)
@@ -306,9 +316,9 @@ class RankGenerator(object):
         return mask
 
     def get_ranks(self, token, independent_ep=False):
-        '''Get rank group by input token.
+        """Get rank group by input token.
 
-        Arguments:
+        Args:
             token (str):
                 Specify the ranks type that want to get. If we want
                 to obtain multiple parallel types, we can use a hyphen
@@ -321,7 +331,7 @@ class RankGenerator(object):
                 EP, we should set the flag. For example, get_ranks('dp', True)
                 will get DP modulo EP group, and get_ranks('dp', False) will
                 get full DP group.
-        '''
+        """
         if independent_ep:
             parallel_size = self.ordered_size_w_ep
             order = self.order_w_ep
@@ -378,6 +388,7 @@ def initialize_model_parallel(
     get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
     get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
 ) -> None:
+    # pylint: disable=line-too-long
     """Initialize model data parallel groups.
 
     Args:
@@ -551,7 +562,8 @@ def initialize_model_parallel(
 
     if data_parallel_size % expert_model_parallel_size != 0:
         raise RuntimeError(
-            f"data_parallel_size ({data_parallel_size}) is not divisible by expert_model_parallel_size "
+            f"data_parallel_size ({data_parallel_size}) is not divisible by "
+            "expert_model_parallel_size "
         )
 
     encoder_world_size = encoder_model_size * data_parallel_size
@@ -953,7 +965,7 @@ def is_unitialized() -> bool:
 
 
 def model_parallel_is_initialized():
-    """Check if model and data parallel groups are initialized."""
+    """Check if model- and data-parallel groups are initialized."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return True
@@ -968,7 +980,7 @@ def model_parallel_is_initialized():
 
     
 def get_model_parallel_group(with_expert_parallel=False):
-    """Get the model parallel group the caller rank belongs to."""
+    """Get the model-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_model_parallel_group(with_expert_parallel)
@@ -983,7 +995,7 @@ def get_model_parallel_group(with_expert_parallel=False):
 
 
 def get_tensor_model_parallel_group(check_initialized=True):
-    """Get the tensor model parallel group the caller rank belongs to."""
+    """Get the tensor-model-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_tensor_model_parallel_group(check_initialized)
@@ -996,7 +1008,7 @@ def get_tensor_model_parallel_group(check_initialized=True):
 
 
 def get_pipeline_model_parallel_group():
-    """Get the pipeline model parallel group the caller rank belongs to."""
+    """Get the pipeline-model-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_pipeline_model_parallel_group()
@@ -1008,7 +1020,7 @@ def get_pipeline_model_parallel_group():
 
 
 def get_data_parallel_group(with_context_parallel=False, with_ulysses_sp_parallel=False):
-    """Get the data parallel group the caller rank belongs to."""
+    """Get the data-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         # TODO: support "with_ulysses_sp_parallel is True"
@@ -1035,7 +1047,7 @@ def get_data_parallel_group(with_context_parallel=False, with_ulysses_sp_paralle
 
 
 def get_data_parallel_group_gloo(with_context_parallel=False, with_ulysses_sp_parallel=False):
-    """Get the data parallel group-gloo the caller rank belongs to."""
+    """Get the Gloo data-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         # TODO: support "with_ulysses_sp_parallel is True"
@@ -1062,7 +1074,7 @@ def get_data_parallel_group_gloo(with_context_parallel=False, with_ulysses_sp_pa
 
 
 def get_context_parallel_group(check_initialized=True):
-    """Get the context parallel group the caller rank belongs to."""
+    """Get the context-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_context_parallel_group(check_initialized)
@@ -1073,7 +1085,7 @@ def get_context_parallel_group(check_initialized=True):
 
 
 def get_context_parallel_global_ranks(check_initialized=True):
-    """Get all global ranks of the context parallel group that the caller rank belongs to."""
+    """Get all global ranks of the context-parallel group that the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_context_parallel_global_ranks(check_initialized)
@@ -1086,7 +1098,9 @@ def get_context_parallel_global_ranks(check_initialized=True):
 
 def get_ulysses_sp_parallel_group(check_initialized=True):
     """Get the ulysses sequence parallel group the caller rank belongs to."""
-    # TODO: support hetero
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_ulysses_sp_parallel_group(check_initialized)
 
     if check_initialized:
         assert _ULYSSES_SP_PARALLEL_GROUP is not None, 'context parallel group is not initialized'
@@ -1095,7 +1109,9 @@ def get_ulysses_sp_parallel_group(check_initialized=True):
 
 def get_ulysses_sp_parallel_global_ranks(check_initialized=True):
     """Get all global ranks of the context parallel group that the caller rank belongs to."""
-    # TODO: support hetero
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_ulysses_sp_parallel_global_ranks(check_initialized)
 
     if check_initialized:
         assert (
@@ -1124,26 +1140,38 @@ def get_position_embedding_group():
     return _POSITION_EMBEDDING_GROUP
 
 
-def get_amax_reduction_group(with_context_parallel=False):
+def get_amax_reduction_group(with_context_parallel=False, tp_only_amax_red=False):
     """Get the FP8 amax reduction group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_amax_reduction_group(with_context_parallel)
 
     if with_context_parallel:
-        assert (
-            _TENSOR_AND_CONTEXT_PARALLEL_GROUP is not None
-        ), 'FP8 amax reduction group is not initialized'
-        return _TENSOR_AND_CONTEXT_PARALLEL_GROUP
+        if not tp_only_amax_red:
+            assert (
+                _TENSOR_AND_DATA_PARALLEL_GROUP_WITH_CP is not None
+            ), 'FP8 amax reduction group is not initialized'
+            return _TENSOR_AND_DATA_PARALLEL_GROUP_WITH_CP
+        else:
+            assert (
+                _TENSOR_AND_CONTEXT_PARALLEL_GROUP is not None
+            ), 'FP8 amax reduction group is not initialized'
+            return _TENSOR_AND_CONTEXT_PARALLEL_GROUP
     else:
-        assert (
-            _TENSOR_MODEL_PARALLEL_GROUP is not None
-        ), 'FP8 amax reduction group is not initialized'
-        return _TENSOR_MODEL_PARALLEL_GROUP
+        if not tp_only_amax_red:
+            assert (
+                _TENSOR_AND_DATA_PARALLEL_GROUP is not None
+            ), 'FP8 amax reduction group is not initialized'
+            return _TENSOR_AND_DATA_PARALLEL_GROUP
+        else:
+            assert (
+                _TENSOR_MODEL_PARALLEL_GROUP is not None
+            ), 'FP8 amax reduction group is not initialized'
+            return _TENSOR_MODEL_PARALLEL_GROUP
 
 
 def get_tensor_and_data_parallel_group(with_context_parallel=False):
-    """Get the tensor and data parallel group the caller rank belongs to."""
+    """Get the tensor- and data-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_tensor_and_data_parallel_group(with_context_parallel)
@@ -1161,7 +1189,7 @@ def get_tensor_and_data_parallel_group(with_context_parallel=False):
 
 
 def get_tensor_and_context_parallel_group():
-    """Get the tensor and context parallel group the caller rank belongs to."""
+    """Get the tensor- and context-parallel group the caller rank belongs to."""
     # TODO: hetero case
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
@@ -1174,6 +1202,7 @@ def get_tensor_and_context_parallel_group():
 
 
 def get_expert_model_parallel_group():
+    """Get the expert-model-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_expert_model_parallel_group()
@@ -1185,6 +1214,7 @@ def get_expert_model_parallel_group():
 
 
 def get_tensor_and_expert_parallel_group():
+    """Get the tensor- and expert-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_tensor_and_expert_parallel_group()
@@ -1196,9 +1226,10 @@ def get_tensor_and_expert_parallel_group():
 
 
 def get_data_modulo_expert_parallel_group(with_context_parallel=False):
+    """Get the data-modulo-expert-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_data_modulo_expert_parallel_group()
+        return para_ctx.get_data_modulo_expert_parallel_group(with_context_parallel=with_context_parallel)
 
     if with_context_parallel:
         assert (
@@ -1213,6 +1244,7 @@ def get_data_modulo_expert_parallel_group(with_context_parallel=False):
 
 
 def get_data_modulo_expert_parallel_group_gloo(with_context_parallel=False):
+    """Get the Gloo data-modulo-expert-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_data_modulo_expert_parallel_group_gloo()
@@ -1230,6 +1262,7 @@ def get_data_modulo_expert_parallel_group_gloo(with_context_parallel=False):
 
 
 def set_expert_model_parallel_world_size(world_size):
+    """Sets the expert-model-parallel world size."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         para_ctx.set_expert_model_parallel_world_size(world_size)
@@ -1239,7 +1272,7 @@ def set_expert_model_parallel_world_size(world_size):
 
 
 def set_tensor_model_parallel_world_size(world_size):
-    """Set the tensor model parallel size"""
+    """Set the tensor-model-parallel size"""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         para_ctx.set_tensor_model_parallel_world_size(world_size)
@@ -1249,7 +1282,7 @@ def set_tensor_model_parallel_world_size(world_size):
 
 
 def set_pipeline_model_parallel_world_size(world_size):
-    """Set the pipeline model parallel size"""
+    """Set the pipeline-model-parallel size"""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         para_ctx.set_pipeline_model_parallel_world_size(world_size)
@@ -1259,7 +1292,7 @@ def set_pipeline_model_parallel_world_size(world_size):
 
 
 def set_virtual_pipeline_model_parallel_world_size(world_size):
-    """Set the pipeline model parallel size"""
+    """Set the pipeline-model-parallel size"""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         para_ctx = para_ctx.set_virtual_pipeline_model_parallel_world_size(world_size)
@@ -1269,7 +1302,7 @@ def set_virtual_pipeline_model_parallel_world_size(world_size):
 
 
 def get_tensor_model_parallel_world_size():
-    """Return world size for the tensor model parallel group."""
+    """Return world size for the tensor-model-parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_tensor_model_parallel_world_size()
@@ -1281,7 +1314,7 @@ def get_tensor_model_parallel_world_size():
 
 
 def get_pipeline_model_parallel_world_size(group=None):
-    """Return world size for the pipeline model parallel group."""
+    """Return world size for the pipeline-model-parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_pipeline_model_parallel_world_size(group)
@@ -1292,7 +1325,7 @@ def get_pipeline_model_parallel_world_size(group=None):
 
     pp_group = get_pipeline_model_parallel_group()
     if isinstance(pp_group, list):
-        # I am assuming that each pp group is the same size.
+        # Implicit assumption that each PP group is the same size.
         sizes = []
         for group in _PIPELINE_GLOBAL_RANKS:
             sizes.append(len(group))
@@ -1303,7 +1336,7 @@ def get_pipeline_model_parallel_world_size(group=None):
 
 
 def set_expert_model_parallel_rank(rank):
-    """Set expert model parallel rank."""
+    """Set expert-model-parallel rank."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         para_ctx.set_expert_model_parallel_rank(rank)
@@ -1313,7 +1346,7 @@ def set_expert_model_parallel_rank(rank):
 
 
 def set_tensor_model_parallel_rank(rank):
-    """Set tensor model parallel rank."""
+    """Set tensor-model-parallel rank."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         para_ctx.set_tensor_model_parallel_rank(rank)
@@ -1323,7 +1356,7 @@ def set_tensor_model_parallel_rank(rank):
 
 
 def set_pipeline_model_parallel_rank(rank):
-    """Set pipeline model parallel rank."""
+    """Set pipeline-model-parallel rank."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         para_ctx.set_pipeline_model_parallel_rank(rank)
@@ -1333,7 +1366,7 @@ def set_pipeline_model_parallel_rank(rank):
 
 
 def set_pipeline_model_parallel_split_rank(rank):
-    """Set pipeline model parallel split rank. DEPRECATED."""
+    """Set pipeline-model-parallel split rank. DEPRECATED."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         para_ctx.set_pipeline_model_parallel_split_rank(rank)
@@ -1343,7 +1376,7 @@ def set_pipeline_model_parallel_split_rank(rank):
 
 
 def get_tensor_model_parallel_rank():
-    """Return my rank for the tensor model parallel group."""
+    """Return caller's rank for the tensor-model-parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_tensor_model_parallel_rank()
@@ -1355,7 +1388,7 @@ def get_tensor_model_parallel_rank():
 
 
 def get_pipeline_model_parallel_rank(group=None):
-    """Return my rank for the pipeline model parallel group."""
+    """Return caller's rank for the pipeline-model-parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_pipeline_model_parallel_rank(group)
@@ -1366,7 +1399,7 @@ def get_pipeline_model_parallel_rank(group=None):
     rank = torch.distributed.get_rank()
     pp_group = get_pipeline_model_parallel_group()
     if isinstance(pp_group, list):
-        # I am assuming that if i exist in multiple pp groups, then I am in the same index.
+        # Assume that if the caller exist in multiple PP groups, then it has the same index.
         indices = []
         for group in _PIPELINE_GLOBAL_RANKS:
             for i, r in enumerate(group):
@@ -1379,7 +1412,7 @@ def get_pipeline_model_parallel_rank(group=None):
 
 
 def get_pipeline_model_parallel_split_rank():
-    """Return pipeline model parallel split rank."""
+    """Return pipeline-model-parallel split rank."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_pipeline_model_parallel_split_rank()
@@ -1404,7 +1437,7 @@ def is_pipeline_first_stage(ignore_virtual=False, group=None):
 
 
 def is_pipeline_last_stage(ignore_virtual=False, group=None):
-    """Return True if in the last pipeline model-parallel stage, False otherwise."""
+    """Return True if in the last pipeline-model-parallel stage, False otherwise."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.is_pipeline_last_stage(ignore_virtual, group)
@@ -1609,8 +1642,7 @@ def get_data_parallel_src_rank(with_context_parallel=False, with_ulysses_sp_para
 
 
 def get_pipeline_model_parallel_first_rank(group=None):
-    """Return the global rank of the first process in the pipeline for the
-    current tensor parallel group"""
+    """Return the global rank of the first stage in the current rank's pipeline."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_pipeline_model_parallel_first_rank(group)
@@ -1626,8 +1658,7 @@ def get_pipeline_model_parallel_first_rank(group=None):
 
 
 def get_pipeline_model_parallel_last_rank(group=None):
-    """Return the global rank of the last process in the pipeline for the
-    current tensor parallel group"""
+    """Return the global rank of the last stage in the current rank's pipeline."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_pipeline_model_parallel_last_rank(group)
@@ -1638,8 +1669,10 @@ def get_pipeline_model_parallel_last_rank(group=None):
 
 
 def get_pipeline_model_parallel_next_rank(group=None):
-    """Return the global rank that follows the caller in the pipeline, for each pipeline group that
-    the rank is part of. If it's just part of one group, an int is returned, otherwise a list of ints.
+    """Return the global rank that follows the caller in the pipeline, for each
+    pipeline-parallel group that the rank is part of.
+
+    If it is just part of one group, an int is returned, otherwise a list of ints.
     """
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
@@ -1658,8 +1691,10 @@ def get_pipeline_model_parallel_next_rank(group=None):
 
 
 def get_pipeline_model_parallel_prev_rank(group=None):
-    """Return the global rank that preceeds the caller in the pipeline, for each pipeline group that
-    the rank is part of. If it's just part of one group, an int is returned, otherwise a list of ints.
+    """Return the global rank that precedes the caller in the pipeline, for each
+    pipeline-parallel group that the rank is part of.
+
+    If it is just part of one group, an int is returned, otherwise a list of ints.
     """
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
@@ -1711,7 +1746,7 @@ def set_data_parallel_rank(rank):
 
 
 def get_data_parallel_rank(with_context_parallel=False, with_ulysses_sp_parallel=False):
-    """Return my rank for the data parallel group."""
+    """Return caller's rank in the data-parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_data_parallel_rank(with_context_parallel)
@@ -1729,7 +1764,9 @@ def get_data_parallel_rank(with_context_parallel=False, with_ulysses_sp_parallel
 
 def get_ulysses_sp_parallel_world_size():
     """Return world size for the ulysses_sp parallel group."""
-    # TODO: hete case
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_ulysses_sp_parallel_world_size()
 
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return torch.distributed.get_world_size(group=get_ulysses_sp_parallel_group())
@@ -1739,7 +1776,9 @@ def get_ulysses_sp_parallel_world_size():
 
 def get_ulysses_sp_parallel_rank():
     """Return my rank for the ulysses_sp parallel group."""
-    # TODO: hete case
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_ulysses_sp_parallel_rank()
     
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return torch.distributed.get_rank(group=get_ulysses_sp_parallel_group())
@@ -1760,7 +1799,7 @@ def get_context_parallel_world_size():
 
 
 def get_context_parallel_rank():
-    """Return my rank for the context parallel group."""
+    """Return caller's rank in the context-parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_context_parallel_rank()
@@ -1772,7 +1811,7 @@ def get_context_parallel_rank():
 
 
 def get_tensor_and_context_parallel_world_size():
-    """Return world size for the tensor and context parallel group"""
+    """Return world size for the tensor and context-parallel group."""
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return torch.distributed.get_world_size(group=get_tensor_and_context_parallel_group())
     else:
@@ -1780,7 +1819,7 @@ def get_tensor_and_context_parallel_world_size():
 
 
 def get_tensor_and_context_parallel_rank():
-    """Return my rank for the tensor and context parallel group."""
+    """Return caller's rank in the joint tensor-model-parallel and context-parallel group."""
     # TODO: hetero case
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
@@ -1797,7 +1836,7 @@ def get_expert_model_parallel_world_size():
     if para_ctx is not None:
         return para_ctx.get_expert_model_parallel_world_size()
 
-    """Return world size for the expert model parallel group"""
+    """Return world size for the expert-model-parallel group."""
     if _MPU_EXPERT_MODEL_PARALLEL_WORLD_SIZE is not None:
         return _MPU_EXPERT_MODEL_PARALLEL_WORLD_SIZE
     if torch.distributed.is_available() and torch.distributed.is_initialized():
@@ -1827,7 +1866,7 @@ def get_tensor_and_expert_parallel_world_size():
 
 
 def get_expert_model_parallel_rank():
-    """Return my rank for the expert parallel group"""
+    """Return caller's rank in the expert-model-parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_expert_model_parallel_rank()
@@ -1844,10 +1883,10 @@ def get_expert_model_parallel_rank():
 
 
 def get_data_modulo_expert_parallel_rank(with_context_parallel=False):
-    """Return my rank for the context parallel group."""
+    """Return caller's rank in the context-parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_data_modulo_expert_parallel_rank(with_context_parallel)
+        return para_ctx.get_data_modulo_expert_parallel_rank(with_context_parallel=with_context_parallel)
 
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return torch.distributed.get_rank(
@@ -1858,7 +1897,7 @@ def get_data_modulo_expert_parallel_rank(with_context_parallel=False):
 
 
 def get_tensor_and_expert_parallel_rank():
-    """Return my rank for the tensor and expert parallel group"""
+    """Return caller's rank in the joint tensor- and expert-model-parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_tensor_and_expert_parallel_rank()
@@ -1870,7 +1909,7 @@ def get_tensor_and_expert_parallel_rank():
 
 
 def _set_global_memory_buffer():
-    """Initialize global buffer"""
+    """Initialize global buffer."""
     global _GLOBAL_MEMORY_BUFFER
     assert _GLOBAL_MEMORY_BUFFER is None, 'global memory buffer is already initialized'
     _GLOBAL_MEMORY_BUFFER = GlobalMemoryBuffer()
@@ -1893,6 +1932,8 @@ def destroy_global_memory_buffer():
 
 
 def get_all_ranks():
+    """Get caller's rank in tensor-model-parallel, data-parallel, context-parallel,
+    pipeline-model-parallel and expert-model-parallel groups."""
     ranks = [
         get_tensor_model_parallel_rank(),
         get_data_parallel_rank(),
@@ -1907,8 +1948,8 @@ def get_moe_layer_wise_logging_tracker():
     """Return the moe layer wise tracker."""
     global _MOE_LAYER_WISE_LOGGING_TRACKER
     return _MOE_LAYER_WISE_LOGGING_TRACKER
-
-
+ 
+    
 def destroy_model_parallel():
     """Set the groups to none."""
     global _MODEL_PARALLEL_GROUP
@@ -2007,6 +2048,9 @@ def destroy_model_parallel():
 
     global _DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP_GLOO
     _DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP_GLOO = None
+
+    global _MOE_LAYER_WISE_LOGGING_TRACKER
+    _MOE_LAYER_WISE_LOGGING_TRACKER = {}
     global _ULYSSES_SP_PARALLEL_GROUP
     _ULYSSES_SP_PARALLEL_GROUP = None
     global _ULYSSES_SP_PARALLEL_GLOBAL_RANKS
