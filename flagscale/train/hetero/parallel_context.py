@@ -66,7 +66,6 @@ class RankMapper:
                          'device_type': self._hetero_current_device_type}
         torch.distributed.all_gather_object(
             all_rank_infos, cur_rank_info)
-
         physical_ranks = []
         for info in all_rank_infos:
             self._rank_infos[info['rank']] = info
@@ -206,6 +205,7 @@ class ProcessMesh:
             ranks = self._rank_mapper.to_physical_ranks(logical_ranks)
             group = torch.distributed.new_group(
                 ranks,
+                backend="nccl",
                 timeout=self._timeout,
                 pg_options=pg_options,
             )
@@ -594,13 +594,15 @@ class ParallelContext:
             )
 
     def build_global_process_groups(self):
+        """ Build global process groups across all process meshes. The global process groups are used for the communication 
+            between different pipeline stages. Heteregonous process groups except for the default process groups are all here"""
         # build global pipeline process groups
         def _backtrack(mesh_index, prev_rank, path, token = "pp", independent_ep=False):
             group_name = self._process_meshes[0].get_group_name(token, independent_ep=independent_ep)
             if mesh_index == len(self._process_meshes):
                 aggregated_ranks = [rank for ranks in path for rank in ranks]
                 self._all_group_ranks[group_name].append(aggregated_ranks)
-                group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout)
+                group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout, use_local_synchronization=True)
                 if self._rank in aggregated_ranks:
                     self._process_groups[group_name].append(group)
                     self._group_ranks[group_name].append(aggregated_ranks)
@@ -630,7 +632,7 @@ class ParallelContext:
             )
             ranks = list(itertools.chain.from_iterable(ranks_list))
             self._all_group_ranks["mp_exp"].append(ranks)
-            group = torch.distributed.new_group(ranks, timeout=self._timeout)
+            group = torch.distributed.new_group(ranks, timeout=self._timeout, use_local_synchronization=True)
             if self._rank in ranks:
                 self._group_ranks["mp_exp"] = ranks
                 self._process_groups["mp_exp"] = group
@@ -667,7 +669,7 @@ class ParallelContext:
                 embedding_ranks = ranks
                 position_embedding_ranks = ranks
             group = torch.distributed.new_group(
-                embedding_ranks, timeout=self._timeout
+                embedding_ranks, timeout=self._timeout, use_local_synchronization=True
             )
             if self._rank in embedding_ranks:
                 self._process_groups["embd"].append(group)
@@ -677,7 +679,7 @@ class ParallelContext:
                 self._group_ranks["embd"].append(embedding_ranks)
 
             group = torch.distributed.new_group(
-                position_embedding_ranks, timeout=self._timeout
+                position_embedding_ranks, timeout=self._timeout, use_local_synchronization=True
             )
             if self._rank in position_embedding_ranks:
                 self._process_groups["embd_pos"].append(group)
