@@ -217,6 +217,7 @@ def pretrain(
     args_defaults={},
     get_embedding_ranks=None,
     get_position_embedding_ranks=None,
+    non_loss_data_func=None,
     get_batch_fn=None,
     extra_valid_dataset_provider=None,
 ):
@@ -247,6 +248,10 @@ def pretrain(
             to it. It is used for programs to add their own arguments.
         args_defaults: a dictionary from argument-name to argument-value. It
             to set already parse arguments.
+        get_embedding_ranks (TODO):
+        get_position_embedding_ranks (TODO):
+        non_loss_data_func (callable): A custom function to call during evaluation.
+            It can run e.g. benchmarks.
     """
 
     # Initalize and get arguments, timers, and Tensorboard writer.
@@ -380,6 +385,7 @@ def pretrain(
                 model, optimizer, opt_param_scheduler,
                 train_data_iterator, valid_data_iterator,
                 process_non_loss_data_func, config, checkpointing_context,
+                non_loss_data_func,
                 extra_valid_dataset_provider)
 
         print_datetime('after training is done')
@@ -406,14 +412,16 @@ def pretrain(
         evaluate_and_print_results(prefix, forward_step_func,
                                    valid_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
-                                   verbose=True, write_to_tensorboard=not args.skip_train)
+                                   verbose=True, write_to_tensorboard=not args.skip_train,
+                                   non_loss_data_func=non_loss_data_func)
 
     if args.do_test:
         prefix = f'iteration {iteration} on test set'
         evaluate_and_print_results(prefix, forward_step_func,
                                    test_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
-                                   verbose=True, write_to_tensorboard=not args.skip_train)
+                                   verbose=True, write_to_tensorboard=not args.skip_train,
+                                   non_loss_data_func=non_loss_data_func)
 
     wandb_writer = get_wandb_writer()
     if wandb_writer:
@@ -702,6 +710,7 @@ def setup_model_and_optimizer(model_provider_func,
     opt_param_scheduler = get_optimizer_param_scheduler(optimizer)
 
     if args.moe_use_upcycling:
+        torch.distributed.barrier()
         assert not os.path.exists(
             args.save
         ), ("The upcycling destination directory already exists. "
@@ -710,15 +719,18 @@ def setup_model_and_optimizer(model_provider_func,
             "All subsequent runs should remove this flag. ")
         num_experts = args.num_experts
         args.num_experts = None
+        expert_model_parallel_size = args.expert_model_parallel_size
+        args.expert_model_parallel_size = 1
         dense_model_for_upcycling = get_model(model_provider_func, model_type)
         args.num_experts = num_experts
+        args.expert_model_parallel_size = expert_model_parallel_size
         _, args.num_floating_point_operations_so_far = upcycling_utils.load_and_upcycle_model(
             load_checkpoint,
             unwrapped_model,
             dense_model_for_upcycling,
             load_kwargs = {'model': dense_model_for_upcycling, 'optimizer': None, 'opt_param_scheduler': None}
         )
-        args.iteration = 0
+        args.iteration = 1
         save_checkpoint(args.iteration, model, None, None, args.num_floating_point_operations_so_far)
         torch.distributed.barrier()
         del dense_model_for_upcycling
@@ -1212,7 +1224,7 @@ def save_checkpoint_and_time(iteration, model, optimizer, opt_param_scheduler,
 
 def train(forward_step_func, model, optimizer, opt_param_scheduler,
           train_data_iterator, valid_data_iterator,
-          process_non_loss_data_func, config, checkpointing_context, extra_valid_dataset_provider=None):
+          process_non_loss_data_func, config, checkpointing_context, non_loss_data_func, extra_valid_dataset_provider=None):
     """Train the model function."""
     args = get_args()
     timers = get_timers()
@@ -1615,6 +1627,7 @@ def evaluate(forward_step_func,
              process_non_loss_data_func,
              config,
              verbose=False,
+             non_loss_data_func=None,
              extra_valid_index=None):
     """Evaluation."""
     args = get_args()
@@ -1700,7 +1713,9 @@ def evaluate(forward_step_func,
                     return None, None, True
 
         collected_non_loss_data = None
-        if process_non_loss_data_func is not None and is_last_rank():
+        if non_loss_data_func is not None:
+            collected_non_loss_data = non_loss_data_func(model)
+        elif process_non_loss_data_func is not None and is_last_rank():
             collected_non_loss_data = forward_backward_func(
                 forward_step_func=forward_step_func,
                 data_iterator=data_iterator,
@@ -1728,7 +1743,7 @@ def evaluate(forward_step_func,
 def evaluate_and_print_results(prefix, forward_step_func,
                                data_iterator, model,
                                iteration, process_non_loss_data_func, config,
-                               verbose=False, write_to_tensorboard=True):
+                               verbose=False, write_to_tensorboard=True, non_loss_data_func=None):
     """Helper function to evaluate and dump results on screen."""
     args = get_args()
     if write_to_tensorboard:
@@ -1740,7 +1755,7 @@ def evaluate_and_print_results(prefix, forward_step_func,
 
     total_loss_dict, collected_non_loss_data, timelimit = evaluate(
         forward_step_func, data_iterator, model,
-        process_non_loss_data_func, config, verbose)
+        process_non_loss_data_func, config, verbose, non_loss_data_func)
     # Timelimit hit during evaluation
     if timelimit:
         return

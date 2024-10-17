@@ -39,7 +39,7 @@ jobs:
     strategy:
       matrix:
         subset: 
-          - launcher
+          - runner 
           - ./
     name: "flagscale-${{ matrix.subset }}"
     with:
