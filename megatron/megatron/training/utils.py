@@ -90,9 +90,20 @@ def calc_params_l2_norm(model):
     norm_2 = norm * norm
     if mpu.get_expert_model_parallel_world_size() == 1:
         # Sum across all model-parallel GPUs(tensor + pipeline).
-        torch.distributed.all_reduce(norm_2,
-                                     op=torch.distributed.ReduceOp.SUM,
-                                     group=mpu.get_model_parallel_group())
+        mp_groups = mpu.get_model_parallel_group()
+        if isinstance(mp_groups, list):
+            original_norm_2 = norm_2
+            for mp_group in mp_groups:
+                norm_2 = original_norm_2
+                torch.distributed.all_reduce(norm_2,
+                                             op=torch.distributed.ReduceOp.SUM,
+                                             group=mp_group)
+            
+        else:
+            torch.distributed.all_reduce(norm_2,
+                                         op=torch.distributed.ReduceOp.SUM,
+                                         group=mpu.get_model_parallel_group())
+
     else:
         # Sum across tensor, pipeline and expert model-parallel GPUs.
         torch.distributed.all_reduce(norm_2,

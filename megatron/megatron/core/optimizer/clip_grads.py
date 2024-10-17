@@ -82,9 +82,15 @@ def get_grad_norm_fp32(
         total_norm = max(grad.abs().max() for grad in grads_for_norm)
         total_norm_cuda = torch.tensor([float(total_norm)], dtype=torch.float, device='cuda')
         # Take max across all model-parallel GPUs.
-        torch.distributed.all_reduce(
-            total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=model_parallel_group
-        )
+        if isinstance(model_parallel_group, list):
+            for mp_group in model_parallel_group:
+                torch.distributed.all_reduce(
+                    total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=mp_group
+                )
+        else:
+            torch.distributed.all_reduce(
+                total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=model_parallel_group
+            )
         total_norm = total_norm_cuda[0].item()
 
     else:
@@ -112,9 +118,17 @@ def get_grad_norm_fp32(
                 total_norm += grad_norm**norm_type
 
         # Sum across all model-parallel GPUs.
-        torch.distributed.all_reduce(
-            total_norm, op=torch.distributed.ReduceOp.SUM, group=model_parallel_group
-        )
+        if isinstance(model_parallel_group, list):
+            original_total_norm = total_norm
+            for mp_group in model_parallel_group:
+                total_norm = original_total_norm
+                torch.distributed.all_reduce(
+                    total_norm, op=torch.distributed.ReduceOp.SUM, group=mp_group
+                )
+        else:
+            torch.distributed.all_reduce(
+                total_norm, op=torch.distributed.ReduceOp.SUM, group=model_parallel_group
+            )
         total_norm = total_norm.item() ** (1.0 / norm_type)
 
     return total_norm
@@ -184,9 +198,17 @@ def count_zeros_fp32(
             total_num_zeros = num_zeros + total_num_zeros
 
     # Sum across all model-parallel GPUs.
-    torch.distributed.all_reduce(
-        total_num_zeros, op=torch.distributed.ReduceOp.SUM, group=model_parallel_group
-    )
+    if isinstance(model_parallel_group, list):
+        original_total_num_zeros = total_num_zeros
+        for mp_group in model_parallel_group:
+            total_num_zeros = original_total_num_zeros
+            torch.distributed.all_reduce(
+                total_num_zeros, op=torch.distributed.ReduceOp.SUM, group=mp_group
+            )
+    else:
+        torch.distributed.all_reduce(
+            total_num_zeros, op=torch.distributed.ReduceOp.SUM, group=model_parallel_group
+        )
 
     total_num_zeros = total_num_zeros.item()
 

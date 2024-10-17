@@ -41,9 +41,9 @@ index e7b327ee..b73a8e5d 100644
 +    USE_L3: 1
 +    XDNN_USE_FAST_SWISH: true
 +    XPU_ZEBU_MODE: 1
- 
+
  action: run 
- 
+
  hydra: 
    run:
 -    dir: ${experiment.exp_dir}/hydra 
@@ -86,21 +86,21 @@ index 01425f36..fcd72eb8 100644
      assert iteration >= 0 or release, 'error parsing metadata file {}'.format(
          tracker_filename)
 @@ -530,13 +530,13 @@ def save_dataloader_state(train_iterator, iteration, dataloader_save_path):
- 
+
      torch.distributed.barrier(group=mpu.get_data_parallel_group())
- 
+
 -    if mpu.get_data_parallel_rank() == 0:
 -        ensure_directory_exists(data_state_save_path)
 +    ensure_directory_exists(data_state_save_path)
- 
+
      torch.distributed.barrier(group=mpu.get_data_parallel_group())
- 
+
      dataloader_save_dict = {}
      dataloader_save_dict['dataloader_state_dict'] = train_dataloader_state_dict
 +
      torch.save(dataloader_save_dict, data_state_save_path)
- 
- 
+
+
 @@ -1109,7 +1109,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
          if (args.fp16 or args.bf16) and optimizer is not None \
              and not args.finetune_with_optim:
@@ -117,7 +117,7 @@ index 01425f36..fcd72eb8 100644
 -            # after making use of the iteration returned by read_metadata 
 +            # after making use of the iteration returned by read_metadata
              iteration = 0
- 
+
          except KeyError:
 -- 
 2.47.0

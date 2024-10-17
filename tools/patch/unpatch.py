@@ -71,10 +71,10 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
     # Get the base_commit_id stored in FlagScale.
     base_commit_id_now = [
         f for f in files_and_folders if os.path.isdir(os.path.join(patch_dir, f))
-    ][0]
+    ]
 
     # Check if the stored base_commit_id matches the input base_commit_id
-    if base_commit_id_now != base_commit_id:
+    if base_commit_id not in base_commit_id_now:
         raise FileNotFoundError("Base_commit_id is not matched")
     base_commit_id_dir = os.path.join(patch_dir, base_commit_id)
 
