@@ -1,35 +1,9 @@
-check_files: &check_files |
-  # Include specific folders and files
-  (?x)^(
-      flagscale/auto_tuner/.*\.py|
-      flagscale/auto_tuner/prune/\..*\.py|
-      flagscale/auto_tuner/record/\..*\.py|
-      flagscale/auto_tuner/search/\..*\.py|
-      flagscale/launcher/\..*\.py|
-      flagscale/logger\.py|
-      flagscale/patches_utils\.py|
-      flagscale/datasets/sft_dataset\.py
-  )$
-  
-  # Exclude specific folders
-  (?x)^(?!(
-      megatron/megatron/core/.*\.py|
-      megatron/megatron/__init__\.py
-  ))$
-
 repos:
   - repo: local
     hooks:
-      - id: black
-        name: black
-        entry: black
-        language: system
+      - id: run-black-and-isort
+        name: Run black and isort
+        entry: ./tests/scripts/test_format.sh
+        language: script
         types: [python]
-        files: *check_files
-      - id: isort
-        name: isort
-        entry: isort
-        language: system
-        types: [python]
-        files: *check_files
-        args: ["--profile", "black"]
+        pass_filenames: false
