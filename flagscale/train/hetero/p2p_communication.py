@@ -261,7 +261,7 @@ def send_forward_hetero(output_tensor: torch.Tensor, config: ModelParallelConfig
                     group = pp_group
                     break
             _communicate(
-                tensor_send_next=output_tensor if group.name() != "gloo" else output_tensor.to(torch.device("cpu")),
+                tensor_send_next=output_tensor if group.name() != "gloo" else output_tensor.cpu(),
                 tensor_send_prev=None,
                 recv_prev=False,
                 recv_next=False,
@@ -285,7 +285,7 @@ def send_forward_hetero(output_tensor: torch.Tensor, config: ModelParallelConfig
                             group = pp_group
                             break
                     _communicate(
-                        tensor_send_next=output_tensor_sliced if group.name() != "gloo" else output_tensor_sliced.to(torch.device("cpu")),
+                        tensor_send_next=output_tensor_sliced.clone() if group.name() != "gloo" else output_tensor_sliced.cpu(),
                         tensor_send_prev=None,
                         recv_prev=False,
                         recv_next=False,
@@ -317,7 +317,7 @@ def send_backward_hetero(input_tensor_grad: torch.Tensor, config: ModelParallelC
                     break
             _communicate(
                 tensor_send_next=None,
-                tensor_send_prev=input_tensor_grad if group.name() != "gloo" else input_tensor_grad.to(torch.device("cpu")),
+                tensor_send_prev=input_tensor_grad if group.name() != "gloo" else input_tensor_grad.cpu(),
                 recv_prev=False,
                 recv_next=False,
                 tensor_shape=None,
@@ -341,7 +341,7 @@ def send_backward_hetero(input_tensor_grad: torch.Tensor, config: ModelParallelC
                             break
                     _communicate(
                         tensor_send_next=None,
-                        tensor_send_prev=input_tensor_grad_sliced if group.name() != "gloo" else input_tensor_grad_sliced.to(torch.device("cpu")),
+                        tensor_send_prev=input_tensor_grad_sliced.clone() if group.name() != "gloo" else input_tensor_grad_sliced.cpu(),
                         recv_prev=False,
                         recv_next=False,
                         tensor_shape=None,
@@ -375,7 +375,7 @@ def send_forward_recv_backward_hetero(
                     group = pp_group
                     break
             _, output_tensor_grad, _ = _communicate(
-                tensor_send_next=output_tensor if group.name() != "gloo" else output_tensor.to(torch.device("cpu")),
+                tensor_send_next=output_tensor if group.name() != "gloo" else output_tensor.cpu(),
                 tensor_send_prev=None,
                 recv_prev=False,
                 recv_next=True,
@@ -403,7 +403,7 @@ def send_forward_recv_backward_hetero(
                             group = pp_group
                             break
                     _, output_tensor_grad_sliced, _ = _communicate(
-                        tensor_send_next=output_tensor_sliced if group.name() != "gloo" else output_tensor_sliced.to(torch.device("cpu")),
+                        tensor_send_next=output_tensor_sliced.clone() if group.name() != "gloo" else output_tensor_sliced.cpu(),
                         tensor_send_prev=None,
                         recv_prev=False,
                         recv_next=True,
@@ -443,7 +443,7 @@ def send_backward_recv_forward_hetero(
                     break
             input_tensor, _, _ = _communicate(
                 tensor_send_next=None,
-                tensor_send_prev=input_tensor_grad if group.name() != "gloo" else input_tensor_grad.to(torch.device("cpu")),
+                tensor_send_prev=input_tensor_grad if group.name() != "gloo" else input_tensor_grad.cpu(),
                 recv_prev=True,
                 recv_next=False,
                 tensor_shape=tensor_shape,
@@ -471,7 +471,7 @@ def send_backward_recv_forward_hetero(
                             break
                     input_tensor_sliced, _, _ = _communicate(
                         tensor_send_next=None,
-                        tensor_send_prev=input_tensor_grad_sliced if group.name() != "gloo" else input_tensor_grad_sliced.to(torch.device("cpu")),
+                        tensor_send_prev=input_tensor_grad_sliced.clone() if group.name() != "gloo" else input_tensor_grad_sliced.cpu(),
                         recv_prev=True,
                         recv_next=False,
                         tensor_shape=tensor_shape_sliced,
