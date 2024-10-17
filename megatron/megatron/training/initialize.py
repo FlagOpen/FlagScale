@@ -4,8 +4,6 @@
 import logging
 import random
 import os
-import packaging
-import packaging.version
 import time
 
 import numpy as np
@@ -23,9 +21,12 @@ from megatron.training.checkpointing import load_args_from_checkpoint
 from megatron.training.global_vars import set_global_variables
 from megatron.training.global_vars import set_global_writers
 from megatron.training.utils import save_checkpoint_info
-from megatron.legacy.model.transformer import bias_dropout_add_fused_train
-from megatron.legacy.model.fused_bias_gelu import bias_gelu
+from megatron.core.fusions.fused_bias_dropout import bias_dropout_add_fused_train
+from megatron.core.fusions.fused_bias_gelu import bias_gelu
+from megatron.core.fusions.fused_bias_swiglu import bias_swiglu
+from megatron.core.utils import get_te_version, is_te_min_version
 
+from flagscale.train import FSTrainArguments
 from flagscale.train import set_parallel_context  
 logger = logging.getLogger(__name__)
 
@@ -64,10 +65,17 @@ def initialize_megatron(
         assert args.load is not None, "--use-checkpoint-args requires --load argument"
         load_args_from_checkpoint(args)
 
+    if args.hetero_process_meshes is not None:
+        fs_argument = FSTrainArguments(args)
+        fs_argument.pre_validate_args()
+
     if args.yaml_cfg is not None:
         args = validate_yaml(args, args_defaults)
     else:
         validate_args(args, args_defaults)
+        
+    if args.hetero_process_meshes is not None:
+        fs_argument.post_validate_args()
 
 
     # set global args, build tokenizer, and set adlr-autoresume,
@@ -222,12 +230,21 @@ def _initialize_tp_communicators():
 
     input_shape = [(args.seq_length * args.micro_batch_size) // args.context_parallel_size , args.hidden_size]
 
-    #We create a MPI process group, which is needed to bootstrap the pipelined
-    #tensor-model-parallel communication overlap
-    torch.distributed.new_group(backend='mpi')
-
-    te_module.base.initialize_ub(shape = input_shape, tp_size = args.tensor_model_parallel_size,
-                                 use_fp8 = (args.fp8 is not None) , ub_cfgs = ub_cfgs,)
+    if is_te_min_version("1.9.0"):
+        # The process group with the target bootstrap backend is created in Transformer Engine.
+        te_module.base.initialize_ub(shape = input_shape, tp_size = args.tensor_model_parallel_size,
+                                     use_fp8 = (args.fp8 is not None) , ub_cfgs = ub_cfgs,
+                                     bootstrap_backend = args.tp_comm_bootstrap_backend)
+    else:
+        if args.tp_comm_bootstrap_backend != 'mpi':
+            warnings.warn(
+                f"Transformer Engine v{get_te_version()} supports only MPI bootstrap backend."
+            )
+        # Create a MPI process group to help with TP communication overlap bootstrap.
+        torch.distributed.new_group(backend='mpi')
+    
+        te_module.base.initialize_ub(shape = input_shape, tp_size = args.tensor_model_parallel_size,
+                                     use_fp8 = (args.fp8 is not None) , ub_cfgs = ub_cfgs)
 
 def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
     """Initialize torch.distributed and core model parallel."""
@@ -384,7 +401,7 @@ def _warmup_jit_function():
     )
     input = torch.rand(
         (
-            args.seq_length,
+            args.seq_length // args.context_parallel_size,
             args.micro_batch_size,
             args.ffn_hidden_size // args.tensor_model_parallel_size,
         ),
@@ -396,7 +413,10 @@ def _warmup_jit_function():
     for bias_grad, input_grad in zip([True, True], [False, True]):
         bias.requires_grad, input.requires_grad = bias_grad, input_grad
         for _ in range(5):
-            output = bias_gelu(bias, input)
+            if args.swiglu:
+                output = bias_swiglu(input, bias)
+            else:
+                output = bias_gelu(bias, input)
     del bias, input, output
 
     # Warmup fused bias+dropout+add
@@ -405,12 +425,12 @@ def _warmup_jit_function():
     else:
         seq_length = args.seq_length
     input = torch.rand(
-        (seq_length, args.micro_batch_size, args.hidden_size),
+        (seq_length // args.context_parallel_size, args.micro_batch_size, args.hidden_size),
         dtype=dtype,
         device="cuda",
     )
     residual = torch.rand(
-        (seq_length, args.micro_batch_size, args.hidden_size),
+        (seq_length // args.context_parallel_size, args.micro_batch_size, args.hidden_size),
         dtype=dtype,
         device="cuda",
     )
@@ -427,7 +447,7 @@ def _warmup_jit_function():
         bias.requires_grad = bias_grad
         residual.requires_grad = residual_grad
         for _ in range(5):
-            output = bias_dropout_add_fused_train(input, bias, residual, dropout_rate)
+            output = bias_dropout_add_fused_train([input, bias], residual, dropout_rate)
     del bias, input, residual, output
     torch.cuda.empty_cache()
 

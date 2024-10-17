@@ -40,9 +40,9 @@ index e7b327ee..b73a8e5d 100644
 +    USE_L3: 1
 +    XDNN_USE_FAST_SWISH: true
 +    XPU_ZEBU_MODE: 1
- 
+
  action: run 
- 
+
  hydra: 
    run:
 -    dir: ${experiment.exp_dir}/hydra 
