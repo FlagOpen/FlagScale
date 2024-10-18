@@ -142,6 +142,11 @@ def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torc
         # to the other ranks in the pipeline parallel group.
         last_rank = parallel_state.get_pipeline_model_parallel_last_rank()
         pp_group = parallel_state.get_pipeline_model_parallel_group()
+        
+        # NOTE: This is a hack to support multiple pipeline parallel groups. The origin
+        #       parallel_state.get_pipeline_model_parallel_last_rank() only supports a single
+        if isinstance(pp_group, list):
+            last_rank = [parallel_state.get_pipeline_model_parallel_last_rank(g) for g in pp_group]
 
         if not isinstance(last_rank, list):
             assert not isinstance(last_rank, list)
@@ -159,7 +164,7 @@ def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torc
             num_tokens_list.append(torch.clone(num_tokens))
         assert all(x.item() == num_tokens_list[0] for x in num_tokens_list)
         
-        if num_tokens.device() == torch.device('cpu'):
+        if num_tokens.device == torch.device('cpu'):
             num_tokens = num_tokens.cuda()
 
         # all-reduce across DP ranks.
