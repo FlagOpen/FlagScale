@@ -47,15 +47,7 @@ except ImportError:
 from ..tensor_parallel import param_is_not_tensor_parallel_duplicate
 from ..transformer.module import param_is_not_shared
 
-def get_device_type(model_parallel_group=None):
-    device = 'cuda'
-    if model_parallel_group is not None and isinstance(model_parallel_group, list):
-        if model_parallel_group[0].name() == 'gloo':
-            device = 'cpu'
-    else:
-        if torch.distributed.get_backend(model_parallel_group) == 'gloo':
-            device = 'cpu'
-    return device
+from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
 
 def get_grad_norm_fp32(
     grads_for_norm: Union[List[torch.Tensor], torch.Tensor],
@@ -90,7 +82,7 @@ def get_grad_norm_fp32(
     if norm_type == inf:
         total_norm = max(grad.abs().max() for grad in grads_for_norm)
         # For cpu comminication
-        tensor_device = get_device_type(model_parallel_group)
+        tensor_device = get_device_type_for_comm(model_parallel_group)
         total_norm_cuda = torch.tensor([float(total_norm)], dtype=torch.float, device=tensor_device)
         # Take max across all model-parallel GPUs.
         if isinstance(model_parallel_group, list):
@@ -131,7 +123,7 @@ def get_grad_norm_fp32(
         # Sum across all model-parallel GPUs.
 
         # For cpu comminication
-        tensor_device = get_device_type(model_parallel_group)
+        tensor_device = get_device_type_for_comm(model_parallel_group)
         if isinstance(model_parallel_group, list):
             original_total_norm = total_norm
             for mp_group in model_parallel_group:
@@ -203,7 +195,7 @@ def count_zeros_fp32(
     #   - grad should not be none
     #   - parameter should not be shared
     #   - should not be a replica due to tensor model parallelism
-    comm_device = get_device_type(model_parallel_group)
+    comm_device = get_device_type_for_comm(model_parallel_group)
 
     total_num_zeros = torch.tensor([0.0], dtype=torch.float, device=comm_device)
     for param in parameters:

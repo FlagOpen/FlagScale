@@ -9,10 +9,10 @@ import torch.distributed
 
 from megatron.core import Timers
 from megatron.core.num_microbatches_calculator import init_num_microbatches_calculator
-from megatron.core.optimizer.clip_grads import get_device_type
 from megatron.training import dist_signal_handler
 from megatron.training.tokenizer import build_tokenizer
 
+from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
 from flagscale.train import get_parallel_context  
 
 _GLOBAL_ARGS = None
@@ -125,7 +125,7 @@ def set_global_writers(args):
     if not isinstance(mp_groups, list):
         mp_groups = [mp_groups]
     size = torch.distributed.get_world_size(mp_groups[-1])
-    comm_device = get_device_type(mp_groups)
+    comm_device = get_device_type_for_comm(mp_groups)
     ranks_tensor = torch.tensor([0 for _ in range(size)], dtype=torch.int, device=comm_device)
     orig_ranks = torch.tensor([i for i in range(size)], dtype=torch.int, device=comm_device)
     if is_last_rank():
