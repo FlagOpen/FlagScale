@@ -354,13 +354,16 @@ class MixedPrecisionOptimizer(MegatronOptimizer):
 
         # Update across all model parallel instances.
         mp_groups = self.get_model_parallel_group()
+        if "gloo" in torch.distributed.get_backend(mp_groups):
+            self.found_inf = self.found_inf.cpu()
         if not isinstance(mp_groups, list):
             mp_groups = [mp_groups]
         for mp_group in mp_groups:
             torch.distributed.all_reduce(
                 self.found_inf, op=torch.distributed.ReduceOp.MAX, group=mp_group
             )
-
+        if self.found_inf.device != torch.device('cuda'):
+            self.found_inf = self.found_inf.cuda()
         # Check for nan.
         found_inf_flag = self.found_inf.item() > 0
 
