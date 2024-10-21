@@ -12,6 +12,7 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
+      environment: approve
 
     - name: Get PR Approvals
       run: |
@@ -30,7 +31,7 @@ jobs:
     - name: Check for Specific Approver
       run: |
         # List of specific approvers to check
-        SPECIFIC_APPROVERS=("aoyulong" "zhaoyinglia" "heavyrain-lzy" "Caozhou1995")
+        IFS=',' read -r -a SPECIFIC_APPROVERS <<< "${{ vars.SPECIFIC_APPROVERS }}"
         APPROVED="false"
 
         # Check if any of the specific approvers have approved the PR
