@@ -21,6 +21,18 @@ from flagscale.train.hetero.parallel_context import ParallelContext
 # Types
 Shape = Union[List[int], torch.Size]
 
+def get_device_type_for_comm(model_parallel_group=None):
+    device = 'cuda'
+    # "cpu:gloo": gloo only supports cpu tensor.
+    # "gloo" & "cpu:gloo,cuda:gloo": gloo supports both cpu and cuda tensor.
+    if isinstance(model_parallel_group, list):
+        if 'gloo' in torch.distributed.get_backend(model_parallel_group[0]):
+            device = 'cpu'
+    else:
+        if 'gloo' in torch.distributed.get_backend(model_parallel_group):
+            device = 'cpu'
+    return device
+
 def warm_up_comm_group_hetero(config: ModelParallelConfig):
     """ Warm up the communication for all PP groups, to avoid the hang issue.
     
@@ -41,13 +53,13 @@ def warm_up_comm_group_hetero(config: ModelParallelConfig):
     to_send_tensor= torch.empty(
             tensor_shape,
             requires_grad=True,
-            device=torch.cuda.current_device(),
+            device=torch.cuda.current_device() if "gloo" not in pp_groups[0].name() else torch.device("cpu"),
             dtype=config.pipeline_dtype,
         )
     to_recv_tensor= torch.empty(
             tensor_shape,
             requires_grad=True,
-            device=torch.cuda.current_device(),
+            device=torch.cuda.current_device() if "gloo" not in  pp_groups[0].name() else torch.device("cpu") ,
             dtype=config.pipeline_dtype,
         )
 
@@ -124,9 +136,9 @@ def recv_forward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> tor
             config.timers('forward-recv', log_level=2).start()
         rank = torch.distributed.get_rank()
         para_ctx = get_parallel_context()
+        pp_groups = para_ctx.get_pipeline_model_parallel_group()
         if not is_inter_mesh_comm(para_ctx=para_ctx, comm_with_front_layer=True):
             group = None
-            pp_groups = para_ctx.get_pipeline_model_parallel_group()
             for pp_group in pp_groups:
                 if rank in torch.distributed.get_process_group_ranks(pp_group):
                     group = pp_group
@@ -145,7 +157,7 @@ def recv_forward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> tor
                 rank=rank, local_tensor_shape=tensor_shape, next=False
             )
             input_tensor = torch.empty(tensor_shape, 
-                                       device=torch.cuda.current_device(), 
+                                       device=torch.cuda.current_device() if "gloo" not in pp_groups[0].name() else torch.device("cpu"), 
                                        dtype=config.pipeline_dtype, 
                                        requires_grad=True)
             if tensor_slices is not None:
@@ -171,6 +183,8 @@ def recv_forward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> tor
                     input_tensor.data[sp_start:sp_end, dp_start:dp_end, :] = input_tensor_sliced
         if config.timers is not None:
             config.timers('forward-recv').stop()
+    if input_tensor is not None and input_tensor.device == torch.device("cpu"):
+        input_tensor = input_tensor.to(torch.cuda.current_device())
     return input_tensor
 
 
@@ -187,9 +201,9 @@ def recv_backward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> to
             config.timers('backward-recv', log_level=2).start()
         rank = torch.distributed.get_rank()
         para_ctx = get_parallel_context()
+        pp_groups = para_ctx.get_pipeline_model_parallel_group()
         if not is_inter_mesh_comm(para_ctx=para_ctx, comm_with_front_layer=False):
             group = None
-            pp_groups = para_ctx.get_pipeline_model_parallel_group()
             for pp_group in pp_groups:
                 if rank in torch.distributed.get_process_group_ranks(pp_group):
                     group = pp_group
@@ -208,7 +222,7 @@ def recv_backward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> to
                 rank=rank, local_tensor_shape=tensor_shape, next=True
             )
             output_tensor_grad = torch.empty(tensor_shape, 
-                                             device=torch.cuda.current_device(), 
+                                             device=torch.cuda.current_device() if "gloo" not in pp_groups[0].name() else torch.device("cpu"), 
                                              dtype=config.pipeline_dtype, 
                                              requires_grad=True)
             if tensor_slices is not None:
@@ -216,7 +230,6 @@ def recv_backward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> to
                     dst_rank, (dp_start, dp_end), (sp_start, sp_end), local_hidden_size = tensor_slice
                     tensor_shape_sliced = (sp_end - sp_start, dp_end - dp_start, local_hidden_size)
                     group = None
-                    pp_groups = para_ctx.get_pipeline_model_parallel_group()
                     for pp_group in pp_groups:
                         pp_group_ranks = torch.distributed.get_process_group_ranks(pp_group)
                         if rank in pp_group_ranks and dst_rank in pp_group_ranks:
@@ -234,6 +247,10 @@ def recv_backward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> to
                     output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced
         if config.timers is not None:
             config.timers('backward-recv').stop()
+
+    if output_tensor_grad is not None and output_tensor_grad.device == torch.device("cpu"):
+        output_tensor_grad = output_tensor_grad.to(torch.cuda.current_device())
+    
     return output_tensor_grad
 
 
@@ -256,7 +273,7 @@ def send_forward_hetero(output_tensor: torch.Tensor, config: ModelParallelConfig
                     group = pp_group
                     break
             _communicate(
-                tensor_send_next=output_tensor,
+                tensor_send_next=output_tensor if "gloo" not in group.name() else output_tensor.cpu(),
                 tensor_send_prev=None,
                 recv_prev=False,
                 recv_next=False,
@@ -280,7 +297,7 @@ def send_forward_hetero(output_tensor: torch.Tensor, config: ModelParallelConfig
                             group = pp_group
                             break
                     _communicate(
-                        tensor_send_next=output_tensor_sliced,
+                        tensor_send_next=output_tensor_sliced.contiguous() if "gloo" not in group.name() else output_tensor_sliced.cpu(),
                         tensor_send_prev=None,
                         recv_prev=False,
                         recv_next=False,
@@ -312,7 +329,7 @@ def send_backward_hetero(input_tensor_grad: torch.Tensor, config: ModelParallelC
                     break
             _communicate(
                 tensor_send_next=None,
-                tensor_send_prev=input_tensor_grad,
+                tensor_send_prev=input_tensor_grad if "gloo" not in group.name() else input_tensor_grad.cpu(),
                 recv_prev=False,
                 recv_next=False,
                 tensor_shape=None,
@@ -336,7 +353,7 @@ def send_backward_hetero(input_tensor_grad: torch.Tensor, config: ModelParallelC
                             break
                     _communicate(
                         tensor_send_next=None,
-                        tensor_send_prev=input_tensor_grad_sliced,
+                        tensor_send_prev=input_tensor_grad_sliced.contiguous() if "gloo" not in group.name() else input_tensor_grad_sliced.cpu(),
                         recv_prev=False,
                         recv_next=False,
                         tensor_shape=None,
@@ -362,15 +379,15 @@ def send_forward_recv_backward_hetero(
             config.timers('forward-send-backward-recv', log_level=2).start()
         rank = torch.distributed.get_rank()
         para_ctx = get_parallel_context()
+        pp_groups = para_ctx.get_pipeline_model_parallel_group()
         if not is_inter_mesh_comm(para_ctx=para_ctx, comm_with_front_layer=False):
             group = None
-            pp_groups = para_ctx.get_pipeline_model_parallel_group()
             for pp_group in pp_groups:
                 if rank in torch.distributed.get_process_group_ranks(pp_group):
                     group = pp_group
                     break
             _, output_tensor_grad, _ = _communicate(
-                tensor_send_next=output_tensor,
+                tensor_send_next=output_tensor if "gloo" not in group.name() else output_tensor.cpu(),
                 tensor_send_prev=None,
                 recv_prev=False,
                 recv_next=True,
@@ -383,7 +400,7 @@ def send_forward_recv_backward_hetero(
                 rank=rank, local_tensor_shape=output_tensor.shape, next=True
             )
             output_tensor_grad = torch.empty(tensor_shape, 
-                                             device=torch.cuda.current_device(), 
+                                             device=torch.cuda.current_device() if "gloo" not in pp_groups[0].name() else torch.device("cpu"),
                                              dtype=config.pipeline_dtype, 
                                              requires_grad=True)
             if tensor_slices is not None:
@@ -392,14 +409,13 @@ def send_forward_recv_backward_hetero(
                     output_tensor_sliced = output_tensor[sp_start:sp_end, dp_start:dp_end, :]
                     tensor_shape_sliced = (sp_end - sp_start, dp_end - dp_start, local_hidden_size)
                     group = None
-                    pp_groups = para_ctx.get_pipeline_model_parallel_group()
                     for pp_group in pp_groups:
                         pp_group_ranks = torch.distributed.get_process_group_ranks(pp_group)
                         if rank in pp_group_ranks and dst_rank in pp_group_ranks:
                             group = pp_group
                             break
                     _, output_tensor_grad_sliced, _ = _communicate(
-                        tensor_send_next=output_tensor_sliced,
+                        tensor_send_next=output_tensor_sliced.contiguous() if "gloo" not in group.name() else output_tensor_sliced.cpu(),
                         tensor_send_prev=None,
                         recv_prev=False,
                         recv_next=True,
@@ -410,6 +426,8 @@ def send_forward_recv_backward_hetero(
                     output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced
         if config.timers is not None:
             config.timers('forward-send-backward-recv').stop()
+    if output_tensor_grad is not None and output_tensor_grad.device == torch.device("cpu"):
+        output_tensor_grad = output_tensor_grad.to(torch.cuda.current_device())
     return output_tensor_grad
 
 
@@ -428,16 +446,16 @@ def send_backward_recv_forward_hetero(
             config.timers('backward-send-forward-recv', log_level=2).start()
         rank = torch.distributed.get_rank()
         para_ctx = get_parallel_context()
+        pp_groups = para_ctx.get_pipeline_model_parallel_group()
         if not is_inter_mesh_comm(para_ctx=para_ctx, comm_with_front_layer=True):
             group = None
-            pp_groups = para_ctx.get_pipeline_model_parallel_group()
             for pp_group in pp_groups:
                 if rank in torch.distributed.get_process_group_ranks(pp_group):
                     group = pp_group
                     break
             input_tensor, _, _ = _communicate(
                 tensor_send_next=None,
-                tensor_send_prev=input_tensor_grad,
+                tensor_send_prev=input_tensor_grad if "gloo" not in group.name() else input_tensor_grad.cpu(),
                 recv_prev=True,
                 recv_next=False,
                 tensor_shape=tensor_shape,
@@ -449,7 +467,7 @@ def send_backward_recv_forward_hetero(
                 rank=rank, local_tensor_shape=input_tensor_grad.shape, next=False
             )
             input_tensor = torch.empty(tensor_shape, 
-                                       device=torch.cuda.current_device(), 
+                                       device=torch.cuda.current_device() if "gloo" not in pp_groups[0].name() else torch.device("cpu"),
                                        dtype=config.pipeline_dtype, 
                                        requires_grad=True)
             if tensor_slices is not None:
@@ -458,7 +476,6 @@ def send_backward_recv_forward_hetero(
                     input_tensor_grad_sliced = input_tensor_grad[sp_start:sp_end, dp_start:dp_end, :]
                     tensor_shape_sliced = (sp_end - sp_start, dp_end - dp_start, local_hidden_size)
                     group = None
-                    pp_groups = para_ctx.get_pipeline_model_parallel_group()
                     for pp_group in pp_groups:
                         pp_group_ranks = torch.distributed.get_process_group_ranks(pp_group)
                         if rank in pp_group_ranks and dst_rank in pp_group_ranks:
@@ -466,7 +483,7 @@ def send_backward_recv_forward_hetero(
                             break
                     input_tensor_sliced, _, _ = _communicate(
                         tensor_send_next=None,
-                        tensor_send_prev=input_tensor_grad_sliced,
+                        tensor_send_prev=input_tensor_grad_sliced.contiguous() if "gloo" not in group.name() else input_tensor_grad_sliced.cpu(),
                         recv_prev=True,
                         recv_next=False,
                         tensor_shape=tensor_shape_sliced,
@@ -476,4 +493,6 @@ def send_backward_recv_forward_hetero(
                     input_tensor.data[sp_start:sp_end, dp_start:dp_end, :] = input_tensor_sliced
         if config.timers is not None:
             config.timers('backward-send-forward-recv').stop()
+    if input_tensor is not None and input_tensor.device == torch.device("cpu"):
+        input_tensor = input_tensor.to(torch.cuda.current_device())
     return input_tensor

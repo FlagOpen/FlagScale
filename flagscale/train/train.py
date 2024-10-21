@@ -87,7 +87,7 @@ from flagscale.train.extra_valid import extra_evaluate_and_print_results
 from flagscale.train.extra_valid import build_extra_valid_data_iterators
 from flagscale.train.stablelm2_scheduler import StableLM2SchedulerConfig
 from flagscale.train.global_vars import get_parallel_context
-
+from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
 
 stimer = StragglerDetector()
 
@@ -275,9 +275,15 @@ def pretrain(
     # This will be closer to what scheduler will see (outside of
     # image ... launches.
     global _TRAIN_START_TIME
-    start_time_tensor = torch.tensor([_TRAIN_START_TIME],
-                                     dtype=torch.double,
-                                     device='cuda')
+    if "gloo" in torch.distributed.get_backend():
+        start_time_tensor = torch.tensor([_TRAIN_START_TIME],
+                                         dtype=torch.double,
+                                         device='cpu')
+    else:
+        start_time_tensor = torch.tensor([_TRAIN_START_TIME],
+                                         dtype=torch.double,
+                                         device='cuda')
+
     torch.distributed.all_reduce(start_time_tensor,
                                  op=torch.distributed.ReduceOp.MIN)
     _TRAIN_START_TIME = start_time_tensor.item()
@@ -1876,9 +1882,9 @@ def build_train_valid_test_data_loaders(
         do_test = test_dataloader is not None and args.eval_iters > 0
         flags = torch.tensor(
             [int(do_train), int(do_valid), int(do_test)],
-            dtype=torch.long, device='cuda')
+            dtype=torch.long, device=get_device_type_for_comm())
     else:
-        flags = torch.tensor([0, 0, 0], dtype=torch.long, device='cuda')
+        flags = torch.tensor([0, 0, 0], dtype=torch.long, device=get_device_type_for_comm())
 
     torch.distributed.broadcast(flags, 0)
 

@@ -58,6 +58,12 @@ class FSTrainArguments:
                 'rank': args.rank,
                 'timeout': timedelta(minutes=args.distributed_timeout_minutes),
             }
+            # for communication based cpu
+            if args.enable_hetero:
+                # if not all(device_type == args.hetero_device_types[0] for device_type in args.hetero_device_types):
+                #     init_process_group_kwargs['backend'] = 'gloo'
+                # Force the group of backend gloo only support cpu
+                init_process_group_kwargs['backend'] = 'cpu:gloo'
             torch.distributed.init_process_group(**init_process_group_kwargs)
     
     
