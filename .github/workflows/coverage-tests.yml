@@ -1,5 +1,8 @@
 name: Test Coverage
 
+env:
+  REPORT_ADDR: http://120.92.110.224:8081
+
 on:
   workflow_call:
     inputs:
