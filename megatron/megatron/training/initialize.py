@@ -284,7 +284,7 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
         if args.enable_hetero:
             # if not all(device_type == args.hetero_device_types[0] for device_type in args.hetero_device_types):
             #     init_process_group_kwargs['backend'] = 'gloo'
-            init_process_group_kwargs['backend'] = 'gloo'
+            init_process_group_kwargs['backend'] = 'cpu:gloo'
         # TODO: @aoyulong the init_process_group will be hanging if the device_id is set 
         # if packaging.version.Version(torch.__version__) >= packaging.version.Version("2.3.0"):
         #     init_process_group_kwargs['device_id'] = device_id
