@@ -100,6 +100,7 @@ run_tests() {
         wait_for_gpu
         echo "Running batch test: $_test_files"
         torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:/workspace/report/$id/cov-report-${backend}/coverage.xml --cov-report=html:/workspace/report/$id/cov-report-${backend} -q -x -p no:warnings -m "not flaky" $ignore_cmd $_test_files
+        sleep 30s
         if [ $? -ne 0 ]; then
             echo "Test failed: $_test_files"
             exit 1
@@ -109,6 +110,7 @@ run_tests() {
             wait_for_gpu
             echo "Running single test: $_test_file"
             torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:/workspace/report/$id/cov-report-${backend}/coverage.xml --cov-report=html:/workspace/report/$id/cov-report-${backend} -q -x -p no:warnings -m "not flaky" $ignore_cmd $_test_file
+            sleep 30s
             # Check the exit status of pytest
             if [ $? -ne 0 ]; then
                 echo "Test failed: $_test_file"
@@ -116,8 +118,6 @@ run_tests() {
             fi
         done
     fi
-
-    sleep 1m
 }
 
 # Run tests based on type, path, and depth

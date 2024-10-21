@@ -20,7 +20,7 @@ commands=(
 
     # unit tests -> flagscale
     "rm -rf /workspace/report/0/cov-report-flagscale"
-    "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset launcher"
+    "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset runner"
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset ./"
     # coverage test -> flagscale
     "./tests/scripts/unit_tests/test_coverage.sh --backend flagscale"
