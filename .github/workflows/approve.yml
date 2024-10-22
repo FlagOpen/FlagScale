@@ -8,11 +8,11 @@ on:
 jobs:
   approve:
     runs-on: ubuntu-latest
+    environment: CI_CD
 
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
-      environment: CI_CD
 
     - name: Get PR Approvals
       run: |

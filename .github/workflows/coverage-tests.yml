@@ -10,6 +10,7 @@ on:
 jobs:
   test-coverage:
     runs-on: self-hosted
+    environment: CI_CD
     container:
       image: localhost:5000/flagscale_cicd:v1.5
       ports:
@@ -23,7 +24,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        environment: CI_CD
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }} 
           ref: ${{ github.event.pull_request.head.ref }}
