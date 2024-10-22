@@ -12,7 +12,7 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
-      environment: approve
+      environment: CI_CD
 
     - name: Get PR Approvals
       run: |

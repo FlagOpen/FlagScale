@@ -23,7 +23,7 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        environment: report
+        environment: CI_CD
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }} 
           ref: ${{ github.event.pull_request.head.ref }}
