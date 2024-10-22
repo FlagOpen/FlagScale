@@ -1,9 +1,6 @@
 # .github/workflows/create-container-unit-tests.yml
 name: Unit Tests
 
-env:
-  REPORT_ADDR: http://120.92.110.224:8081
-
 on:
   workflow_call:
     inputs:
@@ -29,6 +26,7 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        environment: report
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }} 
           ref: ${{ github.event.pull_request.head.ref }}
@@ -47,4 +45,4 @@ jobs:
         run: tests/scripts/unit_tests/test_subset.sh --backend ${{ inputs.backend }} --subset ${{ inputs.subset }} --id ${{ github.sha }}
       
       - name: Unit Test Coverage Online Report
-        run: echo "You can access the test coverage report at the $REPORT_ADDR/${{github.sha}}/cov-report-${{ inputs.backend }}/index.html"
+        run: echo "You can access the test coverage report at the ${{ vars.REPORT_ADDR }}/${{github.sha}}/cov-report-${{ inputs.backend }}/index.html"

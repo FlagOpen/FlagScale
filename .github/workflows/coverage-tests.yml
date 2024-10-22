@@ -1,8 +1,5 @@
 name: Test Coverage
 
-env:
-  REPORT_ADDR: http://120.92.110.224:8081
-
 on:
   workflow_call:
     inputs:
@@ -26,6 +23,7 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        environment: report
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }} 
           ref: ${{ github.event.pull_request.head.ref }}
@@ -46,5 +44,5 @@ jobs:
           tests/scripts/unit_tests/test_coverage.sh --backend ${{ inputs.backend }} --id ${{ github.sha }}
       
       - name: Coverage Online Report
-        run: echo "You can access the test diff-coverage report at the $REPORT_ADDR/${{github.sha}}/diff-cover-report-${{ inputs.backend }}/index.html"
+        run: echo "You can access the test diff-coverage report at the ${{ vars.REPORT_ADDR }}/${{github.sha}}/diff-cover-report-${{ inputs.backend }}/index.html"
         
