@@ -225,7 +225,7 @@ def test_gptq_marlin_gemm(
     opcheck(
         torch.ops._C.gptq_marlin_gemm,
         (a_input, marlin_q_w, marlin_s, marlin_zp, g_idx, sort_indices,
-         workspace.scratch, quant_type, a_input.shape[0], b_weight.shape[1],
+         workspace.scratch, quant_type.id, a_input.shape[0], b_weight.shape[1],
          a_input.shape[1], is_k_full, False, use_fp32_reduce),
         test_utils=DEFAULT_OPCHECK_TEST_UTILS)
 
@@ -252,6 +252,16 @@ def test_gptq_marlin_gemm(
     max_diff = compute_max_diff(output, output_ref)
 
     assert max_diff < 0.04
+
+
+# TODO: find better way to test this?
+@torch.compile(fullgraph=True)
+def marlin_24_gemm_tester(a_input, marlin_24_q_w_comp, marlin_24_meta,
+                          marlin_24_s, scratch, quant_type, size_m, size_n,
+                          size_k):
+    return ops.gptq_marlin_24_gemm(a_input, marlin_24_q_w_comp, marlin_24_meta,
+                                   marlin_24_s, scratch, quant_type, size_m,
+                                   size_n, size_k)
 
 
 @pytest.mark.skipif(not is_quant_method_supported("gptq_marlin"),
@@ -282,11 +292,11 @@ def test_gptq_marlin_24_gemm(k_chunk, n_chunk, quant_type, group_size,
 
     opcheck(torch.ops._C.gptq_marlin_24_gemm,
             (a_input, marlin_24_q_w_comp, marlin_24_meta, marlin_24_s,
-             workspace_24.scratch, quant_type, a_input.shape[0],
+             workspace_24.scratch, quant_type.id, a_input.shape[0],
              b_weight.shape[1], a_input.shape[1]),
             test_utils=DEFAULT_OPCHECK_TEST_UTILS)
 
-    output = ops.gptq_marlin_24_gemm(
+    output = marlin_24_gemm_tester(
         a_input,
         marlin_24_q_w_comp,
         marlin_24_meta,
@@ -501,3 +511,18 @@ def test_marlin_qqq_gemm(
     max_diff = compute_max_diff(output, output_ref)
 
     assert max_diff < 0.04
+
+
+def test_marlin_gemm_opcheck():
+    size_m = 2048
+    size_n = 4096
+    size_k = 4096
+    a = torch.rand((size_m, size_n), device='cuda', dtype=torch.float16)
+    w = torch.randint(-5, 5, (256, 8192), device='cuda', dtype=torch.int32)
+    s = torch.full((32, size_k), 0.125, device='cuda', dtype=torch.float16)
+    wk = MarlinWorkspace(size_n, GPTQ_MARLIN_MIN_THREAD_N,
+                         GPTQ_MARLIN_MAX_PARALLEL).scratch
+    x = torch.ops._C.marlin_gemm(a, w, s, wk, size_m, size_n, size_k)
+    y = torch.ops._C.marlin_gemm(a, w, s, wk, size_m, size_n, size_k)
+    torch.testing.assert_close(x, y)
+    opcheck(torch.ops._C.marlin_gemm, (a, w, s, wk, size_m, size_n, size_k))
