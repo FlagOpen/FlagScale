@@ -40,6 +40,7 @@ jobs:
     - name: Run Black
       run: |
         files=$(find . -type f \( -name "*.py" \) | grep -E "$INCLUDE_FILES" | grep -Ev "$EXCLUDE_FILES")
+        echo "files:" $files
         if [ -n "$files" ]; then
           black --check --diff $files
         else
@@ -49,6 +50,7 @@ jobs:
     - name: Run Isort
       run: |
         files=$(find . -type f \( -name "*.py" \) | grep -E "$INCLUDE_FILES" | grep -Ev "$EXCLUDE_FILES")
+        echo "files:" $files
         if [ -n "$files" ]; then
           isort --profile black --check --diff $files
         else
