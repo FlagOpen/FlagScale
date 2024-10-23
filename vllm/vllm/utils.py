@@ -4,6 +4,8 @@ import contextlib
 import datetime
 import enum
 import gc
+import inspect
+import ipaddress
 import os
 import random
 import socket
@@ -11,10 +13,12 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import uuid
 import warnings
 import weakref
-from asyncio import FIRST_COMPLETED, ensure_future
+from asyncio import FIRST_COMPLETED, AbstractEventLoop, Future, Task
+from collections.abc import Mapping
 from functools import lru_cache, partial, wraps
 from platform import uname
 from typing import (Any, AsyncGenerator, Awaitable, Callable, Dict, Generic,
@@ -38,6 +42,9 @@ from vllm.platforms import current_platform
 logger = init_logger(__name__)
 
 # Exception strings for non-implemented encoder/decoder scenarios
+
+# Reminder: Please update docs/source/serving/compatibility_matrix.rst
+# If the feature combo become valid
 
 STR_NOT_IMPL_ENC_DEC_SWA = \
     "Sliding window attention for encoder/decoder models " + \
@@ -116,6 +123,9 @@ STR_ROCM_FLASH_ATTN_VAL: str = "ROCM_FLASH"
 STR_XFORMERS_ATTN_VAL: str = "XFORMERS"
 STR_FLASH_ATTN_VAL: str = "FLASH_ATTN"
 STR_INVALID_VAL: str = "INVALID"
+
+GB_bytes = 1_000_000_000
+"""The number of bytes in one gigabyte (GB)."""
 
 GiB_bytes = 1 << 30
 """The number of bytes in one gibibyte (GiB)."""
@@ -309,30 +319,12 @@ def is_hip() -> bool:
 
 
 @lru_cache(maxsize=None)
-def is_cpu() -> bool:
-    from importlib.metadata import PackageNotFoundError, version
-    try:
-        return "cpu" in version("vllm")
-    except PackageNotFoundError:
-        return False
-
-
-@lru_cache(maxsize=None)
 def is_openvino() -> bool:
     from importlib.metadata import PackageNotFoundError, version
     try:
         return "openvino" in version("vllm")
     except PackageNotFoundError:
         return False
-
-
-@lru_cache(maxsize=None)
-def is_neuron() -> bool:
-    try:
-        import transformers_neuronx
-    except ImportError:
-        transformers_neuronx = None
-    return transformers_neuronx is not None
 
 
 @lru_cache(maxsize=None)
@@ -428,6 +420,12 @@ def make_async(func: Callable[P, T]) -> Callable[P, Awaitable[T]]:
     return _async_wrapper
 
 
+def _next_task(iterator: AsyncGenerator[T, None],
+               loop: AbstractEventLoop) -> Task:
+    # Can use anext() in python >= 3.10
+    return loop.create_task(iterator.__anext__())  # type: ignore[arg-type]
+
+
 async def iterate_with_cancellation(
     iterator: AsyncGenerator[T, None],
     is_cancelled: Callable[[], Awaitable[bool]],
@@ -436,19 +434,27 @@ async def iterate_with_cancellation(
     at least once per second to check for client cancellation.
     """
 
-    # Can use anext() in python >= 3.10
-    awaits = [ensure_future(iterator.__anext__())]
+    loop = asyncio.get_running_loop()
+
+    awaits: List[Future[T]] = [_next_task(iterator, loop)]
+    next_cancel_check: float = 0
     while True:
-        done, pending = await asyncio.wait(awaits, timeout=1)
-        if await is_cancelled():
-            with contextlib.suppress(BaseException):
-                awaits[0].cancel()
-                await iterator.aclose()
-            raise asyncio.CancelledError("client cancelled")
+        done, pending = await asyncio.wait(awaits, timeout=1.5)
+
+        # Check for cancellation at most once per second
+        time_now = time.time()
+        if time_now >= next_cancel_check:
+            if await is_cancelled():
+                with contextlib.suppress(BaseException):
+                    awaits[0].cancel()
+                    await iterator.aclose()
+                raise asyncio.CancelledError("client cancelled")
+            next_cancel_check = time_now + 1
+
         if done:
             try:
                 item = await awaits[0]
-                awaits[0] = ensure_future(iterator.__anext__())
+                awaits[0] = _next_task(iterator, loop)
                 yield item
             except StopAsyncIteration:
                 # we are done
@@ -469,25 +475,29 @@ async def merge_async_iterators(
     to check for client cancellation.
     """
 
-    # Can use anext() in python >= 3.10
-    awaits = {
-        ensure_future(pair[1].__anext__()): pair
-        for pair in enumerate(iterators)
-    }
-    timeout = None if is_cancelled is None else 1
+    loop = asyncio.get_running_loop()
+
+    awaits = {_next_task(pair[1], loop): pair for pair in enumerate(iterators)}
+    timeout = None if is_cancelled is None else 1.5
+    next_cancel_check: float = 0
     try:
         while awaits:
             done, pending = await asyncio.wait(awaits.keys(),
                                                return_when=FIRST_COMPLETED,
                                                timeout=timeout)
-            if is_cancelled is not None and await is_cancelled():
-                raise asyncio.CancelledError("client cancelled")
+            if is_cancelled is not None:
+                # Check for cancellation at most once per second
+                time_now = time.time()
+                if time_now >= next_cancel_check:
+                    if await is_cancelled():
+                        raise asyncio.CancelledError("client cancelled")
+                    next_cancel_check = time_now + 1
             for d in done:
                 pair = awaits.pop(d)
                 try:
                     item = await d
                     i, it = pair
-                    awaits[ensure_future(it.__anext__())] = pair
+                    awaits[_next_task(it, loop)] = pair
                     yield i, item
                 except StopAsyncIteration:
                     pass
@@ -497,6 +507,15 @@ async def merge_async_iterators(
             with contextlib.suppress(BaseException):
                 f.cancel()
                 await it.aclose()
+
+
+async def collect_from_async_generator(
+        iterator: AsyncGenerator[T, None]) -> List[T]:
+    """Collect all items from an async generator into a list."""
+    items = []
+    async for item in iterator:
+        items.append(item)
+    return items
 
 
 def get_ip() -> str:
@@ -530,6 +549,14 @@ def get_ip() -> str:
         " VLLM_HOST_IP or HOST_IP.",
         stacklevel=2)
     return "0.0.0.0"
+
+
+def is_valid_ipv6_address(address: str) -> bool:
+    try:
+        ipaddress.IPv6Address(address)
+        return True
+    except ValueError:
+        return False
 
 
 def get_distributed_init_method(ip: str, port: int) -> str:
@@ -734,7 +761,8 @@ def create_kv_caches_with_random(
 
 @lru_cache
 def print_warning_once(msg: str) -> None:
-    logger.warning(msg)
+    # Set the stacklevel to 2 to print the caller's line info
+    logger.warning(msg, stacklevel=2)
 
 
 @lru_cache(maxsize=None)
@@ -749,15 +777,15 @@ def is_pin_memory_available() -> bool:
     elif is_xpu():
         print_warning_once("Pin memory is not supported on XPU.")
         return False
-    elif is_neuron():
+    elif current_platform.is_neuron():
         print_warning_once("Pin memory is not supported on Neuron.")
         return False
-    elif is_cpu() or is_openvino():
+    elif current_platform.is_cpu() or is_openvino():
         return False
     return True
 
 
-class CudaMemoryProfiler:
+class DeviceMemoryProfiler:
 
     def __init__(self, device: Optional[torch.types.Device] = None):
         self.device = device
@@ -922,6 +950,8 @@ def flatten_2d_lists(lists: List[List[T]]) -> List[T]:
     return [item for sublist in lists for item in sublist]
 
 
+# TODO: This function can be removed if transformer_modules classes are
+# serialized by value when communicating between processes
 def init_cached_hf_modules() -> None:
     """
     Lazy initialization of the Hugging Face modules.
@@ -1007,10 +1037,54 @@ def identity(value: T) -> T:
 F = TypeVar('F', bound=Callable[..., Any])
 
 
+def deprecate_args(
+    start_index: int,
+    is_deprecated: Union[bool, Callable[[], bool]] = True,
+    additional_message: Optional[str] = None,
+) -> Callable[[F], F]:
+
+    if not callable(is_deprecated):
+        is_deprecated = partial(identity, is_deprecated)
+
+    def wrapper(fn: F) -> F:
+
+        params = inspect.signature(fn).parameters
+        pos_types = (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+        pos_kws = [
+            kw for kw, param in params.items() if param.kind in pos_types
+        ]
+
+        @wraps(fn)
+        def inner(*args, **kwargs):
+            if is_deprecated():
+                deprecated_args = pos_kws[start_index:len(args)]
+                if deprecated_args:
+                    msg = (
+                        f"The positional arguments {deprecated_args} are "
+                        "deprecated and will be removed in a future update.")
+                    if additional_message is not None:
+                        msg += f" {additional_message}"
+
+                    warnings.warn(
+                        DeprecationWarning(msg),
+                        stacklevel=3,  # The inner function takes up one level
+                    )
+
+            return fn(*args, **kwargs)
+
+        return inner  # type: ignore
+
+    return wrapper
+
+
 def deprecate_kwargs(
-        *kws: str,
-        is_deprecated: Union[bool, Callable[[], bool]] = True,
-        additional_message: Optional[str] = None) -> Callable[[F], F]:
+    *kws: str,
+    is_deprecated: Union[bool, Callable[[], bool]] = True,
+    additional_message: Optional[str] = None,
+) -> Callable[[F], F]:
     deprecated_kws = set(kws)
 
     if not callable(is_deprecated):
@@ -1078,6 +1152,13 @@ def cuda_device_count_stateless() -> int:
     # This can be removed and simply replaced with torch.cuda.get_device_count
     # after https://github.com/pytorch/pytorch/pull/122815 is released.
     return _cuda_device_count_stateless(envs.CUDA_VISIBLE_DEVICES)
+
+
+def cuda_is_initialized() -> bool:
+    """Check if CUDA is initialized."""
+    if not torch.cuda._is_compiled():
+        return False
+    return torch.cuda.is_initialized()
 
 
 def weak_bind(bound_method: Callable[..., Any], ) -> Callable[..., None]:
@@ -1180,11 +1261,21 @@ class FlexibleArgumentParser(argparse.ArgumentParser):
         config_args = FlexibleArgumentParser._load_config_file(file_path)
 
         # 0th index is for {serve,chat,complete}
+        # followed by model_tag (only for serve)
         # followed by config args
         # followed by rest of cli args.
         # maintaining this order will enforce the precedence
         # of cli > config > defaults
-        args = [args[0]] + config_args + args[1:index] + args[index + 2:]
+        if args[0] == "serve":
+            if index == 1:
+                raise ValueError(
+                    "No model_tag specified! Please check your command-line"
+                    " arguments.")
+            args = [args[0]] + [
+                args[1]
+            ] + config_args + args[2:index] + args[index + 2:]
+        else:
+            args = [args[0]] + config_args + args[1:index] + args[index + 2:]
 
         return args
 
@@ -1237,12 +1328,143 @@ async def _run_task_with_lock(task: Callable, lock: asyncio.Lock, *args,
         return await task(*args, **kwargs)
 
 
+def supports_kw(
+    callable: Callable[..., object],
+    kw_name: str,
+    requires_kw_only: bool = False,
+    allow_var_kwargs: bool = True,
+) -> bool:
+    """Check if a keyword is a valid kwarg for a callable; if requires_kw_only
+    disallows kwargs names that can also be positional arguments.
+    """
+    params = inspect.signature(callable).parameters
+    if not params:
+        return False
+
+    param_val = params.get(kw_name)
+
+    # Types where the it may be valid, i.e., explicitly defined & nonvariadic
+    passable_kw_types = set((inspect.Parameter.POSITIONAL_ONLY,
+                             inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                             inspect.Parameter.KEYWORD_ONLY))
+
+    if param_val:
+        is_sig_param = param_val.kind in passable_kw_types
+        # We want kwargs only, but this is passable as a positional arg
+        if (requires_kw_only and is_sig_param
+                and param_val.kind != inspect.Parameter.KEYWORD_ONLY):
+            return False
+        if ((requires_kw_only
+             and param_val.kind == inspect.Parameter.KEYWORD_ONLY)
+                or (not requires_kw_only and is_sig_param)):
+            return True
+
+    # If we're okay with var-kwargs, it's supported as long as
+    # the kw_name isn't something like *args, **kwargs
+    if allow_var_kwargs:
+        # Get the last param; type is ignored here because params is a proxy
+        # mapping, but it wraps an ordered dict, and they appear in order.
+        # Ref: https://docs.python.org/3/library/inspect.html#inspect.Signature.parameters
+        last_param = params[next(reversed(params))]  # type: ignore
+        return (last_param.kind == inspect.Parameter.VAR_KEYWORD
+                and last_param.name != kw_name)
+    return False
+
+
+def resolve_mm_processor_kwargs(
+    init_kwargs: Optional[Dict[str, Any]],
+    inference_kwargs: Optional[Dict[str, Any]],
+    callable: Callable[..., object],
+    allow_var_kwargs: bool = False,
+) -> Dict[str, Any]:
+    """Applies filtering to eliminate invalid mm_processor_kwargs, i.e.,
+    those who are not explicit keywords to the given callable (of one is
+    given; otherwise no filtering is done), then merges the kwarg dicts,
+    giving priority to inference_kwargs if there are any collisions.
+
+    In the case that no kwarg overrides are provided, returns an empty
+    dict so that it can still be kwarg expanded into the callable later on.
+
+    If allow_var_kwargs=True, allows for things that can be expanded into
+    kwargs as long as they aren't naming collision for var_kwargs or potential
+    positional arguments.
+    """
+    # Filter inference time multimodal processor kwargs provided
+    runtime_mm_kwargs = get_allowed_kwarg_only_overrides(
+        callable,
+        overrides=inference_kwargs,
+        allow_var_kwargs=allow_var_kwargs)
+
+    # Filter init time multimodal processor kwargs provided
+    init_mm_kwargs = get_allowed_kwarg_only_overrides(
+        callable, overrides=init_kwargs, allow_var_kwargs=allow_var_kwargs)
+
+    # Merge the final processor kwargs, prioritizing inference
+    # time values over the initialization time values.
+    mm_processor_kwargs = {**init_mm_kwargs, **runtime_mm_kwargs}
+    return mm_processor_kwargs
+
+
+def get_allowed_kwarg_only_overrides(
+    callable: Callable[..., object],
+    overrides: Optional[Dict[str, Any]],
+    allow_var_kwargs: bool = False,
+) -> Dict[str, Any]:
+    """
+    Given a callable which has one or more keyword only params and a dict
+    mapping param names to values, drop values that can be not be kwarg
+    expanded to overwrite one or more keyword-only args. This is used in a
+    few places to handle custom processor overrides for multimodal models,
+    e.g., for profiling when processor options provided by the user
+    may affect the number of mm tokens per instance.
+
+    Args:
+        callable: Callable which takes 0 or more keyword only arguments.
+                  If None is provided, all overrides names are allowed.
+        overrides: Potential overrides to be used when invoking the callable.
+        allow_var_kwargs: Allows overrides that are expandable for var kwargs.
+
+    Returns:
+        Dictionary containing the kwargs to be leveraged which may be used
+        to overwrite one or more keyword only arguments when invoking the
+        callable.
+    """
+    if not overrides:
+        return {}
+
+    # Drop any mm_processor_kwargs provided by the user that
+    # are not kwargs, unless it can fit it var_kwargs param
+    filtered_overrides = {
+        kwarg_name: val
+        for kwarg_name, val in overrides.items()
+        if supports_kw(callable,
+                       kwarg_name,
+                       requires_kw_only=True,
+                       allow_var_kwargs=allow_var_kwargs)
+    }
+
+    # If anything is dropped, log a warning
+    dropped_keys = overrides.keys() - filtered_overrides.keys()
+    if dropped_keys:
+        logger.warning(
+            "The following intended overrides are not keyword-only args "
+            "and and will be dropped: %s", dropped_keys)
+
+    return filtered_overrides
+
+
 # Using dynamo with vLLM doesn't really work well with PyTorch versions < 2.4.0.
 # In particular, the FakeScalarType is not supported for earlier versions of
 # PyTorch which breaks dynamo for any ops registered using ScalarType.
 def supports_dynamo() -> bool:
     base_torch_version = Version(Version(torch.__version__).base_version)
     return base_torch_version >= Version("2.4.0")
+
+
+# Some backends use pytorch version < 2.4.0 which doesn't
+# support `torch.library.custom_op`.
+def supports_custom_op() -> bool:
+    return hasattr(torch.library, "custom_op")
 
 
 class AtomicCounter:
@@ -1268,3 +1490,24 @@ class AtomicCounter:
     @property
     def value(self):
         return self._value
+
+
+# Adapted from: https://stackoverflow.com/a/47212782/5082708
+class LazyDict(Mapping, Generic[T]):
+
+    def __init__(self, factory: Dict[str, Callable[[], T]]):
+        self._factory = factory
+        self._dict: Dict[str, T] = {}
+
+    def __getitem__(self, key) -> T:
+        if key not in self._dict:
+            if key not in self._factory:
+                raise KeyError(key)
+            self._dict[key] = self._factory[key]()
+        return self._dict[key]
+
+    def __iter__(self):
+        return iter(self._factory)
+
+    def __len__(self):
+        return len(self._factory)
