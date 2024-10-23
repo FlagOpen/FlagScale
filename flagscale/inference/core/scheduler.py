@@ -629,7 +629,7 @@ class Scheduler:
                     ret.prefill_seq_groups_list.append(seq_group)
                 else:
                     scheduled_seq_group.token_chunk_size = 1
-                    scheduled_seq_group.negative_token_chunk_size = 1 # --- FLAGSCALE MODIFICATION ---
+                    scheduled_seq_group.negative_token_chunk_size = 1 if seq_group.has_negative_seqs() else 0 # --- FLAGSCALE MODIFICATION ---
                     decode_seq_groups.append(scheduled_seq_group)
                     ret.decode_seq_groups_list.append(seq_group)
 
@@ -743,7 +743,7 @@ class Scheduler:
                                            negative_token_chunk_size=negative_num_new_tokens)) # --- FLAGSCALE MODIFICATION ---
             else:
                 decode_seq_groups.append(
-                    ScheduledSequenceGroup(seq_group, token_chunk_size=1, negative_token_chunk_size=1)) # --- FLAGSCALE MODIFICATION ---
+                    ScheduledSequenceGroup(seq_group, token_chunk_size=1, negative_token_chunk_size=1 if seq_group.has_negative_seqs() else 0)) # --- FLAGSCALE MODIFICATION ---
             budget.add_num_batched_tokens(seq_group.request_id, num_new_tokens + negative_num_new_tokens) # --- FLAGSCALE MODIFICATION ---
             budget.add_num_seqs(seq_group.request_id, num_new_seqs)
 
@@ -1430,8 +1430,9 @@ class Scheduler:
             seq.reset_state_for_recompute()
 
             # --- FLAGSCALE MODIFICATION BEG ---
-            negative_seq = seq_group.negative_seqs_dict[seq.seq_id]
-            negative_seq.reset_state_for_recompute()
+            if seq_group.has_negative_seqs():
+                negative_seq = seq_group.negative_seqs_dict[seq.seq_id]
+                negative_seq.reset_state_for_recompute()
             # --- FLAGSCALE MODIFICATION END ---
 
     def _preempt_by_swap(
@@ -1562,4 +1563,5 @@ class Scheduler:
                                       block_size) * block_size
             else:
                 num_new_tokens = min(num_new_tokens, remaining_token_budget)
-        return num_new_tokens, 0 # --- FLAGSCALE MODIFICATION ---
+
+        return num_new_tokens, negative_num_new_tokens # --- FLAGSCALE MODIFICATION ---
