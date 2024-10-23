@@ -37,6 +37,7 @@ test_model() {
     wait_for_gpu
     echo "Running tests for ${_model} with type ${_type} and case: ${_case}"
     run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
+    sleep 1m
     run_command "pytest -p no:warnings -s tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_model=${_model} --test_case=${_case}"
   done
 }
