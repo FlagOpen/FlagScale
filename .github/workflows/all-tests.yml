@@ -28,7 +28,7 @@ jobs:
           - transformer/moe
           - transformer
           - ./
-    name: "megatron-${{ if eq(matrix.subset, './') }}root{{ else }}${{ matrix.subset }}{{ end }}"
+    name: ${{ if eq(matrix.subset, './') }}megatron-root${{ else }}megatron-${{ matrix.subset }}{{ end }}
     with:
       backend: megatron
       subset: ${{ matrix.subset }}
@@ -41,7 +41,7 @@ jobs:
         subset: 
           - runner 
           - ./
-    name: "flagscale-${{ if eq(matrix.subset, './') }}root{{ else }}${{ matrix.subset }}{{ end }}"
+    name: ${{ if eq(matrix.subset, './') }}flagscale-root${{ else }}flagscale-${{ matrix.subset }}{{ end }}
     with:
       backend: flagscale
       subset: ${{ matrix.subset }}
