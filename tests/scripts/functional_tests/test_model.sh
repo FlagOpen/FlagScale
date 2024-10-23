@@ -15,7 +15,7 @@ source tests/scripts/_gpu_check.sh
 CONFIG_FILE="tests/scripts/functional_tests/config.yml"
 
 # Function to parse the configuration file and run tests
-test_model_train() {
+test_model() {
   local _type=$1
   local _model=$2
   # Use parse_config.py to parse the YAML file with test type and test model
@@ -33,43 +33,11 @@ test_model_train() {
   for _case in "${_cases[@]}"; do
     # Remove leading '-'
     _case=${_case#-}
-
+    
     wait_for_gpu
     echo "Running tests for ${_model} with type ${_type} and case: ${_case}"
-    run_cmd="python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
-    echo "Running command: $run_cmd"
-    run_command "$run_cmd"
-    test_cmd="pytest -p no:warnings -s tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_model=${_model} --test_case=${_case}"
-    echo "Testing command: $test_cmd"
-    run_command "$test_cmd"
-  done
-}
-
-test_model_inference() {
-  local _type=$1
-  local _model=$2
-  # Use parse_config.py to parse the YAML file with test type and test model
-  local _cases=$(python tests/scripts/functional_tests/parse_config.py --config $CONFIG_FILE --type $_type --model $_model)
-
-  # Convert the parsed test cases to an array
-  IFS=' ' read -r -a _cases <<< "$_cases"
-  # Check if _cases is not an empty list
-  if [ ${#_cases[@]} -eq 0 ]; then
-    echo "No test cases found for model '$_model' with test type '$_type'. Exiting."
-    exit 0
-  fi
-
-  # Loop through each test case, remove leading '-', and run the test
-  for _case in "${_cases[@]}"; do
-    # Remove leading '-'
-    _case=${_case#-}
-
-    wait_for_gpu
-    echo "Running tests for ${_model} with type ${_type} and case: ${_case}"
-    run_cmd="python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
-    echo "Running command: $run_cmd"
-    run_command "$run_cmd"
-    # TODO: add inference result comparison
+    run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
+    run_command "pytest -p no:warnings -s tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_model=${_model} --test_case=${_case}"
   done
 }
 
@@ -95,8 +63,5 @@ if [ -z "$model" ]; then
 fi
 
 # Run the tests based on the provided test type and test model
-if [ "$type" == "inference" ]; then
-  test_model_inference "$type" "$model"
-else
-  test_model_train "$type" "$model"
-fi
+test_model "$type" "$model"
+
