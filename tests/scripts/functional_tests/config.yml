@@ -18,4 +18,3 @@ hetero_train:
 #   from_vllm:
 #     test_cases:
 #       ...
-

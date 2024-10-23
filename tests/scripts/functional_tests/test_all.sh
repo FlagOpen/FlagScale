@@ -23,4 +23,3 @@ for cmd in "${commands[@]}"; do
         exit 1
     fi
 done
-

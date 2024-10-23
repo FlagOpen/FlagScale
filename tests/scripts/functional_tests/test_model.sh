@@ -64,4 +64,3 @@ fi
 
 # Run the tests based on the provided test type and test model
 test_model "$type" "$model"
-
