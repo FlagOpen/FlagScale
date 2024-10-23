@@ -3,6 +3,7 @@ import math
 import warnings
 import itertools
 import operator
+import dataclasses
 from typing import List, Optional
 from datetime import timedelta
 from functools import cmp_to_key
@@ -65,7 +66,6 @@ class RankMapper:
                          'device_type': self._hetero_current_device_type}
         torch.distributed.all_gather_object(
             all_rank_infos, cur_rank_info)
-
         physical_ranks = []
         for info in all_rank_infos:
             self._rank_infos[info['rank']] = info
@@ -126,8 +126,10 @@ class ProcessMesh:
         order: str = "tp-cp-ep-dp-pp",
         offset: int = 0,
         rank_mapper: RankMapper = None,
+        args: dict = None,
     ):
         assert torch.distributed.is_initialized()
+        self._args = args
         self._rank = torch.distributed.get_rank()
         self._world_size = tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size * data_parallel_size 
         self._offset = offset
@@ -187,7 +189,7 @@ class ProcessMesh:
         self._process_groups_gloo = {} # process groups belongs to the current rank with gloo backend
 
         self.build_all_process_groups()
-
+    
     def build_process_group(
         self, token, independent_ep=False, gloo=False
     ):
@@ -203,6 +205,7 @@ class ProcessMesh:
             ranks = self._rank_mapper.to_physical_ranks(logical_ranks)
             group = torch.distributed.new_group(
                 ranks,
+                backend="nccl",
                 timeout=self._timeout,
                 pg_options=pg_options,
             )
@@ -399,6 +402,15 @@ class ProcessMesh:
             ), f"Process group {group_name} is not initialized."
         return ranks
 
+    def get_transformer_config(self):
+        return self._transformer_config
+    
+    def get_ddp_config(self):
+        return self._ddp_config
+    
+    def get_optimizer_config(self):
+        return self._optimizer_config
+    
     def logical_coords_to_physical_ranks(self, coords, independent_ep=False):
         def _prefix_product(a: List[int], init=1) -> List[int]:
             r = [init]
@@ -452,6 +464,14 @@ class ParallelContext:
         from megatron.core.utils import GlobalMemoryBuffer
         self._global_memory_buffer = GlobalMemoryBuffer()
 
+        # Initialize the associated configs
+        self._tranformer_config = None
+        self._ddp_config = None
+        self._optimizer_config = None
+        self._dataset_config = None
+
+        self.build_config()
+
         self._is_initialized = True
 
     def is_initialized(self):
@@ -474,6 +494,7 @@ class ParallelContext:
                 order='tp-usp-cp-ep-dp-pp' if not self._args.use_tp_pp_dp_mapping else 'tp-pp-dp',
                 offset=accumulated_world_size,
                 rank_mapper=self._rank_mapper,
+                args=self._args,
             )
             if (
                 logical_rank >= accumulated_world_size
@@ -518,10 +539,11 @@ class ParallelContext:
         dp_overlapped_mapping = find_overlapped_mapping(dp1, dp2)
         src_pp_dims = [process_mesh1.get_parallel_size("pp") - 1]
         dst_pp_dims = [0]
-        # i is tp, j is cp, k is dp, 
+        
+        # find pp group connection
         for s in range(sp1):
+            # i is tp, j is cp, k is dp, 
             src_i, src_j = s % tp1, s // tp1
-            finded_mp_group = False
             for k in range(dp1):
                 src_coord = [src_i, src_j, k, src_pp_dims[0]]
                 dst_sp_dims = [dim for dim, _, _ in sp_overlapped_mapping[s]]
@@ -532,7 +554,6 @@ class ParallelContext:
                 src_rank = process_mesh1.logical_coords_to_physical_ranks(
                     [src_coord]
                 )[0]
-                # find pp group connection
                 for dst_coord in dst_coords:
                     sp_dim, dp_dim, pp_dim = dst_coord
                     dst_coord = [sp_dim % tp2, sp_dim // tp2, dp_dim, pp_dim]
@@ -546,26 +567,22 @@ class ParallelContext:
                     # group = torch.distributed.new_group(ranks, timeout=timeout)
                     self._inter_mesh_process_groups_pp[(src_rank, dst_rank)] = True
                 
-                # find mp(tp+pp) group connection
-                if not finded_mp_group:
-                    finded_mp_group = True
-                    for k in range(dp1):
-                        src_coord = [tp1 - 1, cp1 - 1, k, src_pp_dims[0]]
-                        dst_dp_dims = [dim for dim, _, _ in dp_overlapped_mapping[k]]
-                        dst_coords = list(
-                            itertools.product([0], [0], dst_dp_dims, dst_pp_dims)
-                        )
-                        src_rank = process_mesh1.logical_coords_to_physical_ranks(
-                            [src_coord]
-                        )[0]
-                        for dst_coord in dst_coords:
-                            tp_dim, cp_dim, dp_dim, pp_dim = dst_coord
-                            dst_coord = [tp_dim, cp_dim, dp_dim, pp_dim]
-                            dst_rank = process_mesh2.logical_coords_to_physical_ranks(
-                                [dst_coord]
-                            )[0]
-                            self._inter_mesh_process_groups_dp[(src_rank, dst_rank)] = True
-                
+        # find mp(tp+pp) group connection
+        for k in range(dp1):
+            src_coord = [tp1 - 1, cp1 - 1, k, src_pp_dims[0]]
+            dst_dp_dims = [dim for dim, _, _ in dp_overlapped_mapping[k]]
+            dst_coords = list(
+                itertools.product([0], [0], dst_dp_dims, dst_pp_dims)
+            )
+            src_rank = process_mesh1.logical_coords_to_physical_ranks(
+                [src_coord]
+            )[0]
+            for dst_coord in dst_coords:
+                dst_rank = process_mesh2.logical_coords_to_physical_ranks(
+                    [dst_coord]
+                )[0]
+                self._inter_mesh_process_groups_dp[(src_rank, dst_rank)] = True
+        
 
     def build_all_inter_mesh_process_groups(self):
         if len(self._process_meshes) == 1:
@@ -577,13 +594,15 @@ class ParallelContext:
             )
 
     def build_global_process_groups(self):
+        """ Build global process groups across all process meshes. The global process groups are used for the communication 
+            between different pipeline stages. Heteregonous process groups except for the default process groups are all here"""
         # build global pipeline process groups
         def _backtrack(mesh_index, prev_rank, path, token = "pp", independent_ep=False):
             group_name = self._process_meshes[0].get_group_name(token, independent_ep=independent_ep)
             if mesh_index == len(self._process_meshes):
                 aggregated_ranks = [rank for ranks in path for rank in ranks]
                 self._all_group_ranks[group_name].append(aggregated_ranks)
-                group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout)
+                group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout, use_local_synchronization=True)
                 if self._rank in aggregated_ranks:
                     self._process_groups[group_name].append(group)
                     self._group_ranks[group_name].append(aggregated_ranks)
@@ -613,7 +632,7 @@ class ParallelContext:
             )
             ranks = list(itertools.chain.from_iterable(ranks_list))
             self._all_group_ranks["mp_exp"].append(ranks)
-            group = torch.distributed.new_group(ranks, timeout=self._timeout)
+            group = torch.distributed.new_group(ranks, timeout=self._timeout, use_local_synchronization=True)
             if self._rank in ranks:
                 self._group_ranks["mp_exp"] = ranks
                 self._process_groups["mp_exp"] = group
@@ -650,7 +669,7 @@ class ParallelContext:
                 embedding_ranks = ranks
                 position_embedding_ranks = ranks
             group = torch.distributed.new_group(
-                embedding_ranks, timeout=self._timeout
+                embedding_ranks, timeout=self._timeout, use_local_synchronization=True
             )
             if self._rank in embedding_ranks:
                 self._process_groups["embd"].append(group)
@@ -660,7 +679,7 @@ class ParallelContext:
                 self._group_ranks["embd"].append(embedding_ranks)
 
             group = torch.distributed.new_group(
-                position_embedding_ranks, timeout=self._timeout
+                position_embedding_ranks, timeout=self._timeout, use_local_synchronization=True
             )
             if self._rank in position_embedding_ranks:
                 self._process_groups["embd_pos"].append(group)
@@ -1256,6 +1275,105 @@ class ParallelContext:
         assert self._global_memory_buffer is not None, 'global memory buffer is not initialized'
         return self._global_memory_buffer
 
+    def get_transformer_config(self):
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_transformer_config()
+    
+    def build_config(self):
+        def _build_ddp_config(args):
+            from megatron.core.distributed import DistributedDataParallelConfig
+            kwargs = {}
+            for f in dataclasses.fields(DistributedDataParallelConfig):
+                if hasattr(args, f.name):
+                    kwargs[f.name] = getattr(args, f.name)
+            kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
+            kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
+            kwargs['bucket_size'] = args.ddp_bucket_size
+            kwargs['average_in_collective'] = args.ddp_average_in_collective
+            ddp_config = DistributedDataParallelConfig(**kwargs)
+            return ddp_config
+        
+        def _build_optimzer_config(args):
+            from megatron.core.optimizer import OptimizerConfig
+            kwargs = {}
+            for f in dataclasses.fields(OptimizerConfig):
+                if hasattr(args, f.name):
+                    kwargs[f.name] = getattr(args, f.name)
+            return OptimizerConfig(**kwargs)
+        
+        def _build_dataset_config(args):
+            from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
+            from flagscale.datasets.sft_dataset import SFTDatasetConfig
+            from megatron.training import get_tokenizer
+            from megatron.core.datasets.utils import get_blend_from_list
+            
+            if args.apply_sft_dataset_separated_loss_mask_if_existed:
+                tokenizer = get_tokenizer()
+
+                return SFTDatasetConfig(
+                    random_seed=args.seed,
+                    sequence_length=args.seq_length,
+                    blend=get_blend_from_list(args.data_path),
+                    blend_per_split=[
+                        get_blend_from_list(args.train_data_path),
+                        get_blend_from_list(args.valid_data_path),
+                        get_blend_from_list(args.test_data_path)
+                    ],
+                    renormalize_blend_weights=args.renormalize_blend_weights,
+                    split=args.split,
+                    num_dataset_builder_threads=args.num_dataset_builder_threads,
+                    path_to_cache=args.data_cache_path,
+                    mmap_bin_files=args.mmap_bin_files,
+                    tokenizer=tokenizer,
+                    reset_position_ids=args.reset_position_ids,
+                    reset_attention_mask=args.reset_attention_mask,
+                    eod_mask_loss=args.eod_mask_loss,
+                    create_attention_mask=args.create_attention_mask_in_dataloader,
+                    apply_sft_dataset_separated_loss_mask_if_existed=args.apply_sft_dataset_separated_loss_mask_if_existed,
+                )
+            else:
+                tokenizer = get_tokenizer()
+
+                return GPTDatasetConfig(
+                    random_seed=args.seed,
+                    sequence_length=args.seq_length,
+                    blend=get_blend_from_list(args.data_path),
+                    blend_per_split=[
+                        get_blend_from_list(args.train_data_path),
+                        get_blend_from_list(args.valid_data_path),
+                        get_blend_from_list(args.test_data_path)
+                    ],
+                    renormalize_blend_weights=args.renormalize_blend_weights,
+                    split=args.split,
+                    num_dataset_builder_threads=args.num_dataset_builder_threads,
+                    path_to_cache=args.data_cache_path,
+                    mmap_bin_files=args.mmap_bin_files,
+                    tokenizer=tokenizer,
+                    reset_position_ids=args.reset_position_ids,
+                    reset_attention_mask=args.reset_attention_mask,
+                    eod_mask_loss=args.eod_mask_loss,
+                    create_attention_mask=args.create_attention_mask_in_dataloader,
+                    s3_cache_path = args.s3_cache_path,
+                )
+        
+        from megatron.training.arguments import core_transformer_config_from_args
+        self._transformer_config = core_transformer_config_from_args(self._args)
+        self._ddp_config = _build_ddp_config(self._args)
+        self._optimizer_config = _build_optimzer_config(self._args)
+        self._dataset_config = _build_dataset_config(self._args)
+    
+    def get_transformer_config(self):
+        return self._transformer_config
+    
+    def get_ddp_config(self):
+        return self._ddp_config
+    
+    def get_optimizer_config(self):
+        return self._optimizer_config
+    
+    def get_dataset_config(self):
+        return self._dataset_config
+    
     def destroy_global_memory_buffer(self):
         """Sets the global memory buffer to None"""
         self._global_memory_buffer = None

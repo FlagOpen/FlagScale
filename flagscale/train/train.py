@@ -86,7 +86,8 @@ from megatron.training import ft_integration
 from flagscale.train.extra_valid import extra_evaluate_and_print_results
 from flagscale.train.extra_valid import build_extra_valid_data_iterators
 from flagscale.train.stablelm2_scheduler import StableLM2SchedulerConfig
-
+from flagscale.train.global_vars import get_parallel_context
+from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
 
 stimer = StragglerDetector()
 
@@ -216,6 +217,7 @@ def pretrain(
     args_defaults={},
     get_embedding_ranks=None,
     get_position_embedding_ranks=None,
+    non_loss_data_func=None,
     get_batch_fn=None,
     extra_valid_dataset_provider=None,
 ):
@@ -246,6 +248,10 @@ def pretrain(
             to it. It is used for programs to add their own arguments.
         args_defaults: a dictionary from argument-name to argument-value. It
             to set already parse arguments.
+        get_embedding_ranks (TODO):
+        get_position_embedding_ranks (TODO):
+        non_loss_data_func (callable): A custom function to call during evaluation.
+            It can run e.g. benchmarks.
     """
 
     # Initalize and get arguments, timers, and Tensorboard writer.
@@ -269,9 +275,15 @@ def pretrain(
     # This will be closer to what scheduler will see (outside of
     # image ... launches.
     global _TRAIN_START_TIME
-    start_time_tensor = torch.tensor([_TRAIN_START_TIME],
-                                     dtype=torch.double,
-                                     device='cuda')
+    if "gloo" in torch.distributed.get_backend():
+        start_time_tensor = torch.tensor([_TRAIN_START_TIME],
+                                         dtype=torch.double,
+                                         device='cpu')
+    else:
+        start_time_tensor = torch.tensor([_TRAIN_START_TIME],
+                                         dtype=torch.double,
+                                         device='cuda')
+
     torch.distributed.all_reduce(start_time_tensor,
                                  op=torch.distributed.ReduceOp.MIN)
     _TRAIN_START_TIME = start_time_tensor.item()
@@ -373,6 +385,7 @@ def pretrain(
                 model, optimizer, opt_param_scheduler,
                 train_data_iterator, valid_data_iterator,
                 process_non_loss_data_func, config, checkpointing_context,
+                non_loss_data_func,
                 extra_valid_dataset_provider)
 
         print_datetime('after training is done')
@@ -399,14 +412,16 @@ def pretrain(
         evaluate_and_print_results(prefix, forward_step_func,
                                    valid_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
-                                   verbose=True, write_to_tensorboard=not args.skip_train)
+                                   verbose=True, write_to_tensorboard=not args.skip_train,
+                                   non_loss_data_func=non_loss_data_func)
 
     if args.do_test:
         prefix = f'iteration {iteration} on test set'
         evaluate_and_print_results(prefix, forward_step_func,
                                    test_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
-                                   verbose=True, write_to_tensorboard=not args.skip_train)
+                                   verbose=True, write_to_tensorboard=not args.skip_train,
+                                   non_loss_data_func=non_loss_data_func)
 
     wandb_writer = get_wandb_writer()
     if wandb_writer:
@@ -543,16 +558,21 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
 
     if wrap_with_ddp:
         config = get_model_config(model[0])
-
-        kwargs = {}
-        for f in dataclasses.fields(DistributedDataParallelConfig):
-            if hasattr(args, f.name):
-                kwargs[f.name] = getattr(args, f.name)
-        kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
-        kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
-        kwargs['bucket_size'] = args.ddp_bucket_size
-        kwargs['average_in_collective'] = args.ddp_average_in_collective
-        ddp_config = DistributedDataParallelConfig(**kwargs)
+        
+        ddp_config = None
+        para_ctx = get_parallel_context()
+        if para_ctx is not None:
+            ddp_config = para_ctx.get_ddp_config()
+        if ddp_config is None:
+            kwargs = {}
+            for f in dataclasses.fields(DistributedDataParallelConfig):
+                if hasattr(args, f.name):
+                    kwargs[f.name] = getattr(args, f.name)
+            kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
+            kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
+            kwargs['bucket_size'] = args.ddp_bucket_size
+            kwargs['average_in_collective'] = args.ddp_average_in_collective
+            ddp_config = DistributedDataParallelConfig(**kwargs)
 
         overlap_param_gather_with_optimizer_step = getattr(args, 'overlap_param_gather_with_optimizer_step', False)
         model = [DDP(config,
@@ -673,17 +693,24 @@ def setup_model_and_optimizer(model_provider_func,
     model = get_model(model_provider_func, model_type)
     unwrapped_model = unwrap_model(model)
 
-    kwargs = {}
-    for f in dataclasses.fields(OptimizerConfig):
-        if hasattr(args, f.name):
-            kwargs[f.name] = getattr(args, f.name)
-    config = OptimizerConfig(**kwargs)
+    config = None
+    para_ctx = get_parallel_context()
+    if para_ctx is not None:
+        config = para_ctx.get_optimizer_config()
+
+    if config is None:
+        kwargs = {}
+        for f in dataclasses.fields(OptimizerConfig):
+            if hasattr(args, f.name):
+                kwargs[f.name] = getattr(args, f.name)
+        config = OptimizerConfig(**kwargs)
     config.timers = timers
     optimizer = get_megatron_optimizer(config, model, no_wd_decay_cond,
                                        scale_lr_cond, lr_mult)
     opt_param_scheduler = get_optimizer_param_scheduler(optimizer)
 
     if args.moe_use_upcycling:
+        torch.distributed.barrier()
         assert not os.path.exists(
             args.save
         ), ("The upcycling destination directory already exists. "
@@ -692,15 +719,18 @@ def setup_model_and_optimizer(model_provider_func,
             "All subsequent runs should remove this flag. ")
         num_experts = args.num_experts
         args.num_experts = None
+        expert_model_parallel_size = args.expert_model_parallel_size
+        args.expert_model_parallel_size = 1
         dense_model_for_upcycling = get_model(model_provider_func, model_type)
         args.num_experts = num_experts
+        args.expert_model_parallel_size = expert_model_parallel_size
         _, args.num_floating_point_operations_so_far = upcycling_utils.load_and_upcycle_model(
             load_checkpoint,
             unwrapped_model,
             dense_model_for_upcycling,
             load_kwargs = {'model': dense_model_for_upcycling, 'optimizer': None, 'opt_param_scheduler': None}
         )
-        args.iteration = 0
+        args.iteration = 1
         save_checkpoint(args.iteration, model, None, None, args.num_floating_point_operations_so_far)
         torch.distributed.barrier()
         del dense_model_for_upcycling
@@ -771,7 +801,7 @@ def train_step(forward_step_func, data_iterator,
         model=model,
         num_microbatches=get_num_microbatches(),
         seq_length=args.seq_length,
-        micro_batch_size=args.micro_batch_size * args.data_parallel_size // mpu.get_data_parallel_world_size(),
+        micro_batch_size=args.micro_batch_size,
         decoder_seq_length=args.decoder_seq_length,
         forward_only=False)
 
@@ -1194,7 +1224,7 @@ def save_checkpoint_and_time(iteration, model, optimizer, opt_param_scheduler,
 
 def train(forward_step_func, model, optimizer, opt_param_scheduler,
           train_data_iterator, valid_data_iterator,
-          process_non_loss_data_func, config, checkpointing_context, extra_valid_dataset_provider=None):
+          process_non_loss_data_func, config, checkpointing_context, non_loss_data_func, extra_valid_dataset_provider=None):
     """Train the model function."""
     args = get_args()
     timers = get_timers()
@@ -1597,6 +1627,7 @@ def evaluate(forward_step_func,
              process_non_loss_data_func,
              config,
              verbose=False,
+             non_loss_data_func=None,
              extra_valid_index=None):
     """Evaluation."""
     args = get_args()
@@ -1682,7 +1713,9 @@ def evaluate(forward_step_func,
                     return None, None, True
 
         collected_non_loss_data = None
-        if process_non_loss_data_func is not None and is_last_rank():
+        if non_loss_data_func is not None:
+            collected_non_loss_data = non_loss_data_func(model)
+        elif process_non_loss_data_func is not None and is_last_rank():
             collected_non_loss_data = forward_backward_func(
                 forward_step_func=forward_step_func,
                 data_iterator=data_iterator,
@@ -1710,7 +1743,7 @@ def evaluate(forward_step_func,
 def evaluate_and_print_results(prefix, forward_step_func,
                                data_iterator, model,
                                iteration, process_non_loss_data_func, config,
-                               verbose=False, write_to_tensorboard=True):
+                               verbose=False, write_to_tensorboard=True, non_loss_data_func=None):
     """Helper function to evaluate and dump results on screen."""
     args = get_args()
     if write_to_tensorboard:
@@ -1722,7 +1755,7 @@ def evaluate_and_print_results(prefix, forward_step_func,
 
     total_loss_dict, collected_non_loss_data, timelimit = evaluate(
         forward_step_func, data_iterator, model,
-        process_non_loss_data_func, config, verbose)
+        process_non_loss_data_func, config, verbose, non_loss_data_func)
     # Timelimit hit during evaluation
     if timelimit:
         return
@@ -1849,9 +1882,9 @@ def build_train_valid_test_data_loaders(
         do_test = test_dataloader is not None and args.eval_iters > 0
         flags = torch.tensor(
             [int(do_train), int(do_valid), int(do_test)],
-            dtype=torch.long, device='cuda')
+            dtype=torch.long, device=get_device_type_for_comm())
     else:
-        flags = torch.tensor([0, 0, 0], dtype=torch.long, device='cuda')
+        flags = torch.tensor([0, 0, 0], dtype=torch.long, device=get_device_type_for_comm())
 
     torch.distributed.broadcast(flags, 0)
 

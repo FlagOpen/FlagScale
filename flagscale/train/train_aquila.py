@@ -43,6 +43,7 @@ from megatron.core.models.gpt.gpt_layer_specs import (
 from flagscale.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
 from flagscale.train.extra_valid import extra_valid_dataset_provider
 from flagscale.train.train import pretrain
+from flagscale.train.global_vars import get_parallel_context
 
 
 stimer = StragglerDetector()
@@ -65,10 +66,16 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
 
     print_rank_0('building GPT model ...')
     # Experimental loading arguments from yaml
+    config = None
     if args.yaml_cfg is not None:
         config = core_transformer_config_from_yaml(args, "language_model")
     else:
-        config = core_transformer_config_from_args(args)
+        para_ctx = get_parallel_context()
+        if para_ctx is not None:
+            config = para_ctx.get_transformer_config()
+
+        if config is None:
+            config = core_transformer_config_from_args(args)
 
     if args.use_legacy_models:
         model = megatron.legacy.model.GPTModel(
@@ -83,9 +90,9 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
             transformer_layer_spec = import_module(args.spec)
         else:
             if use_te:
-                transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm, args.qk_layernorm, args.fp8)
+                transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm, args.qk_layernorm, args.multi_latent_attention, args.fp8)
             else:
-                transformer_layer_spec = get_gpt_layer_local_spec(args.num_experts, args.moe_grouped_gemm, args.qk_layernorm)
+                transformer_layer_spec = get_gpt_layer_local_spec(args.num_experts, args.moe_grouped_gemm, args.qk_layernorm, args.multi_latent_attention)
 
         build_model_context = nullcontext
         build_model_context_args = {}
@@ -115,7 +122,8 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
                 share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
                 position_embedding_type=args.position_embedding_type,
                 rotary_percent=args.rotary_percent,
-                rotary_base=args.rotary_base
+                rotary_base=args.rotary_base,
+                rope_scaling=args.use_rope_scaling
             )
 
     return model
@@ -277,10 +285,16 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
     """
     args = get_args()
 
-    if args.apply_sft_dataset_separated_loss_mask_if_existed:
-        config = core_sft_dataset_config_from_args(args)
-    else:
-        config = core_gpt_dataset_config_from_args(args)
+    config = None
+    para_ctx = get_parallel_context()
+    if para_ctx is not None:
+        config = para_ctx.get_dataset_config()
+
+    if config is None:
+        if args.apply_sft_dataset_separated_loss_mask_if_existed:
+            config = core_sft_dataset_config_from_args(args)
+        else:
+            config = core_gpt_dataset_config_from_args(args)
 
     if args.mock_data:
         dataset_type = MockGPTDataset

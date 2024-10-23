@@ -1,6 +1,5 @@
-engine:
-  model: BAAI/Aquila-7B/
-  tokenizer: BAAI/Aquila-7B/
+llm:
+  model: xxxx 
   trust_remote_code: true
   tensor_parallel_size: 1
   pipeline_parallel_size: 1
@@ -10,20 +9,13 @@ engine:
   seed: 1234
   disable_async_output_proc: true
 
-data:
-  # prompts_path: null
+generate:
   prompts: [
     "Hello, my name is",
     "The president of the United States is",
     "The capital of France is",
     "The future of AI is",
   ]
-  negative_prompts: "bad words"
-  guidance_scale: 2.0
-  best_of: 1
-  top_p: 0.95
-  top_k: 100
-  max_tokens: 7
-  use_beam_search: false
-  temperature: 0.9
-  sampling_seed: 1234 # will be renamed to 'seed' as input of SamplingParams
+  sampling:
+    top_p: 0.95
+    temperature: 0.8

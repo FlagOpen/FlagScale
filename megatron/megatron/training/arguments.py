@@ -22,7 +22,7 @@ from megatron.core.models.retro.utils import (
     get_config_path as get_retro_config_path,
     get_gpt_data_dir as get_retro_data_dir,
 )
-from megatron.core.transformer import TransformerConfig
+from megatron.core.transformer import TransformerConfig, MLATransformerConfig
 from megatron.training.activations import squared_relu
 from megatron.training.utils import update_use_dist_ckpt
 
@@ -47,6 +47,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_biencoder_args(parser)
     parser = _add_vision_args(parser)
     parser = _add_moe_args(parser)
+    parser = _add_mla_args(parser)
     parser = _add_logging_args(parser)
     parser = _add_straggler_detector_args(parser)
     parser = _add_inference_args(parser)
@@ -176,78 +177,7 @@ def validate_args(args, defaults={}):
     # Set args.use_dist_ckpt from args.ckpt_format.
     update_use_dist_ckpt(args)
 
-    if args.enable_hetero:
-        assert (
-            args.hetero_process_meshes is not None
-        ), "hetero_process_meshes should be specified when enable_hetero is True"
-        assert (
-            len(args.hetero_process_meshes) % 5 == 0
-        ), f"length of hetero_process_meshes {args.hetero_process_meshes} should be divisible by 4, the format should be tp0, cp0, dp0, pp0, tp1, cp1, dp1, pp1, ..."
-        hetero_process_meshes_tp = args.hetero_process_meshes[0::5]
-        hetero_process_meshes_cp = args.hetero_process_meshes[1::5]
-        hetero_process_meshes_ep = args.hetero_process_meshes[2::5]
-        hetero_process_meshes_dp = args.hetero_process_meshes[3::5]
-        hetero_process_meshes_pp = args.hetero_process_meshes[4::5]
-
-        # Data parallel size
-        # NOTE: Use the first data parallel size as the global data parallel size to loader data
-        args.data_parallel_size = hetero_process_meshes_dp[0]
-        assert all(args.data_parallel_size * args.micro_batch_size % hetero_dp == 0 for hetero_dp in hetero_process_meshes_dp), \
-            f"data_parallel_size * micro_batch_size {args.data_parallel_size * args.micro_batch_size} should be divisible by all hetero_process_meshes_dp {hetero_process_meshes_dp}!"
-        
-        # NOTE: Only support cp and ep size to be the same
-        assert all(hetero_cp == hetero_process_meshes_cp[0] for hetero_cp in hetero_process_meshes_cp), \
-            f"all hetero_process_meshes_cp {hetero_process_meshes_cp} should be the same!"
-        assert all(hetero_ep == hetero_process_meshes_ep[0] for hetero_ep in hetero_process_meshes_ep), \
-            f"all hetero_process_meshes_ep {hetero_process_meshes_ep} should be the same!"
-
-        # Pipeline model parallel size
-        assert args.pipeline_model_parallel_size == sum(hetero_process_meshes_pp), \
-            f"pipeline_model_parallel_size {args.pipeline_model_parallel_size} should match sum of hetero_process_meshes_pp {hetero_process_meshes_pp}!"
-        assert args.standalone_embedding_stage == False, \
-            'standalone not supported with process_meshes set!'
-        assert args.pipeline_model_parallel_split_rank == None, \
-            'pipeline_model_parallel_split_rank not supported with process_meshes set!'
-        args.transformer_pipeline_model_parallel_size = args.pipeline_model_parallel_size
-
-        # Virtual parallel size.
-        assert args.num_layers_per_virtual_pipeline_stage == None, \
-            'virtual pipeline not support now!'
-        
-        # Sequence parallel
-        if all(tp_size == 1 for tp_size in hetero_process_meshes_tp):
-            args.sequence_parallel = False
-
-        # Model layer splits
-        if args.hetero_pipeline_layer_split is None:
-            num_layers_per_pipeline_stage = (
-                args.num_layers // args.transformer_pipeline_model_parallel_size
-            )
-            args.hetero_pipeline_layer_split = [
-                num_layers_per_pipeline_stage
-            ] * args.pipeline_model_parallel_size
-        else:
-            assert (
-                sum(args.hetero_pipeline_layer_split) == args.num_layers
-            ), f"sum of hetero_pipeline_layer_split {args.hetero_pipeline_layer_split} should be equal to num_layers {args.num_layers}"
-            assert args.pipeline_model_parallel_size == len(
-                args.hetero_pipeline_layer_split
-            ), f"pipeline_model_parallel_size {args.pipeline_model_parallel_size} should be equal to the length of hetero_pipeline_layer_split {args.hetero_pipeline_layer_split}"
-
-        hetero_process_meshes = []
-        for i in range(0, len(args.hetero_process_meshes), 5):
-            hetero_process_meshes.append(args.hetero_process_meshes[i : i + 5])
-        args.hetero_process_meshes = hetero_process_meshes
-
-        # Device types
-        assert len(hetero_process_meshes) == len(
-            args.hetero_device_types
-        ), f"length of hetero_process_meshes {len(hetero_process_meshes)} should match length of hetero_device_types {len(args.hetero_device_types)}" 
-        assert (
-            args.hetero_current_device_type in args.hetero_device_types
-        ), f"hetero_current_device_type {args.hetero_current_device_type} should be in hetero_device_types {args.hetero_device_types}"
-
-    else:
+    if not args.enable_hetero:
         if args.encoder_tensor_model_parallel_size > 0:
             assert args.encoder_pipeline_model_parallel_size > 0, "encoder_pipeline_model_parallel_size must be defined."
             assert args.num_attention_heads % args.encoder_tensor_model_parallel_size == 0
@@ -277,19 +207,19 @@ def validate_args(args, defaults={}):
         # Checks.
         if args.rank == 0:
             print('using world size: {}, data-parallel size: {}, '
-                  'context-parallel size: {}, '
-                  'ulysses-sp-parallel size: {}, '
-                  'tensor-model-parallel size: {}, '
-                  'encoder-tensor-model-parallel size: {}, '
-                  'pipeline-model-parallel size: {}, '
-                  'encoder-pipeline-model-parallel size: {}'.format(
-                      args.world_size, args.data_parallel_size,
-                      args.context_parallel_size,
-                      args.ulysses_sp_parallel_size,
-                      args.tensor_model_parallel_size,
-                      args.encoder_tensor_model_parallel_size,
-                      args.pipeline_model_parallel_size,
-                      args.encoder_pipeline_model_parallel_size), flush=True)
+                    'context-parallel size: {}, '
+                    'ulysses-sp-parallel size: {}, '
+                    'tensor-model-parallel size: {}, '
+                    'encoder-tensor-model-parallel size: {}, '
+                    'pipeline-model-parallel size: {}, '
+                    'encoder-pipeline-model-parallel size: {}'.format(
+                        args.world_size, args.data_parallel_size,
+                        args.context_parallel_size,
+                        args.ulysses_sp_parallel_size,
+                        args.tensor_model_parallel_size,
+                        args.encoder_tensor_model_parallel_size,
+                        args.pipeline_model_parallel_size,
+                        args.encoder_pipeline_model_parallel_size), flush=True)
 
         # backwards compatibility.
         if args.pipeline_model_parallel_split_rank is not None:
@@ -374,52 +304,12 @@ def validate_args(args, defaults={}):
         # Overlap P2P communication is disabled if not using the interleaved schedule.
         args.overlap_p2p_comm = False
         args.align_param_gather = False
-        if args.rank == 0:
+        # Only print warning if PP size > 1.
+        if args.rank == 0 and args.pipeline_model_parallel_size > 1:
             print('WARNING: Setting args.overlap_p2p_comm and args.align_param_gather to False '
                   'since non-interleaved schedule does not support overlapping p2p communication '
                   'and aligned param AG')
 
-        def _parse_recompute_refined_config(recom_config, recom_config_name):
-            """Parse refined recompute configuration."""
-            if recom_config is None:
-                return None
-            assert isinstance(recom_config, list), f"[{recom_config_name}] recompute configuration, is not list."
-            recom_config = [ast.literal_eval(item) for item in recom_config]
-            parsed_pp_size = 0
-            parsed_pp_chunk_config = []
-            for pp_chunk_id in range(len(recom_config)):
-                cur_pp_chunk_config = recom_config[pp_chunk_id]
-                for _ in range(cur_pp_chunk_config[0]):
-                    parsed_pp_size = parsed_pp_size + 1
-                    mc_chunks = len(cur_pp_chunk_config) // 2
-                    cur_pp_stage_per_mc = []
-                    for mc_chunk in range(mc_chunks):
-                        cur_pp_stage_per_mc += itertools.repeat(cur_pp_chunk_config[2 + mc_chunk * 2], cur_pp_chunk_config[1 + mc_chunk * 2])
-                    assert len(cur_pp_stage_per_mc) == args.global_batch_size // (args.micro_batch_size * args.data_parallel_size), f"for [{recom_config_name}] refined recompute "\
-                                                    "configuration, the sum of n0, n1, ... of sub-list should be equal to nums_micro_batch."
-                    if 'method' in recom_config_name or "granularity" in recom_config_name:
-                        assert all(val == 0 or val == 1 for val in cur_pp_stage_per_mc), f"the config-flag of {recom_config_name} must be 0 or 1"
-                    parsed_pp_chunk_config.append(cur_pp_stage_per_mc)
-            if args.virtual_pipeline_model_parallel_size != None:
-                assert parsed_pp_size == args.pipeline_model_parallel_size * args.virtual_pipeline_model_parallel_size, \
-                'for refined recompute configuration, the sum of axis 0 should be equal to pipeline-model-parallel-size * args.virtual_pipeline_model_parallel_size.'
-            else:
-                assert parsed_pp_size == args.pipeline_model_parallel_size, \
-                    'for refined recompute configuration, the sum of axis 0 should be equal to pipeline-model-parallel-size.'
-            return parsed_pp_chunk_config
-        
-        if args.recompute_granularity_per_stage_micro_batch != None:
-            assert args.recompute_granularity == 'full', \
-                'recompute-granularity-per-stage is only'\
-                'application to full recompute granularity mode'
-            assert args.recompute_method is not None, \
-                'for distributed recompute activations to work you '\
-                'need to use a recompute method '
-
-        args.recompute_granularity_per_stage_micro_batch = _parse_recompute_refined_config(args.recompute_granularity_per_stage_micro_batch, "recompute_granularity_per_stage_micro_batch")
-        args.recompute_method_per_stage_micro_batch = _parse_recompute_refined_config(args.recompute_method_per_stage_micro_batch, "recompute_method_per_stage_micro_batch")
-        args.recompute_num_layers_per_stage_micro_batch = _parse_recompute_refined_config(args.recompute_num_layers_per_stage_micro_batch, "recompute_num_layers_per_stage_micro_batch")
-        
     if args.overlap_param_gather:
         assert args.use_distributed_optimizer, \
             '--overlap-param-gather only supported with distributed optimizer'
@@ -829,9 +719,12 @@ def _check_arg_is_not_none(args, arg):
 
 
 def core_transformer_config_from_args(args, config_class=None):
-
+    
     # Config class.
     config_class = config_class or TransformerConfig
+
+    if args.multi_latent_attention:
+        config_class = MLATransformerConfig
 
     # Translate args to core transformer configuration
     kw_args = {}
@@ -1020,6 +913,8 @@ def _add_network_size_args(parser):
                           help='Use interleaved rotary embedding.')
     group.add_argument('--rotary-seq-len-interpolation-factor', type=int, default=None,
                        help='Sequence length interpolation factor for rotary embeddings.')
+    group.add_argument('--use-rope-scaling', action='store_true',
+                       help='Apply rope scaling as used in llama3.1')
     group.add_argument('--rotary-interleaved-patch', action='store_true',
                        help='Patch for loading models using interleaved rotary position embeddings.')
     group.add_argument('--no-position-embedding',
@@ -1062,7 +957,9 @@ def _add_network_size_args(parser):
                        help='Disable BERT binary head.',
                        dest='bert_binary_head')
     group.add_argument('--untie-embeddings-and-output-weights', action='store_true',
-                       help='Untie embeddings and output weights.'),
+                       help='Untie embeddings and output weights.')
+    group.add_argument('--multi-latent-attention', action='store_true',
+                       help='Use multi-latent attention for model.')
     return parser
 
 
@@ -1364,6 +1261,9 @@ def _add_training_args(parser):
     group.add_argument('--disable-tp-comm-bulk-wgrad', action='store_false',
                        help='Disables the Reduce-Scatter overlap with bprop weight gradient GEMM.',
                        dest='tp_comm_bulk_wgrad')
+    group.add_argument('--tp-comm-bootstrap-backend', default='nccl', type=str,
+                       choices=['nccl', 'mpi', 'gloo'],
+                       help='Set the bootstrapping backend of Tensor parallel communications.')
     group.add_argument('--use-cpu-initialization', action='store_true',
                        default=None,
                        help='If set, initialize weights on the CPU. This eliminates init differences based on tensor parallelism.')
@@ -2211,6 +2111,23 @@ def _add_moe_args(parser):
     group.add_argument('--moe-use-upcycling', action='store_true',
                        help='Load a checkpoint of a dense model, convert it into an MoE model, and save the converted model to the path specified by --save. '
                        'Upcycling is implemented on the top of distributed checkpointing, so it supports parallel modes different from the dense model.')
+
+    return parser
+
+def _add_mla_args(parser):
+    group = parser.add_argument_group(title="mla")
+    group.add_argument('--q-lora-rank', type=int, default=None,
+                       help="Rank of Query tensor's low rank representation.")
+    group.add_argument('--kv-lora-rank', type=int, default=32,
+                       help="Rank of Key and Value tensors' low rank representation.")
+    group.add_argument('--qk-head-dim', type=int, default=128,
+                       help="Dimension of the head in the QK projection. q_head_dim = qk_head_dim + qk_pos_emb_head_dim")
+    group.add_argument('--qk-pos-emb-head-dim', type=int, default=64,
+                       help="Dimension of the position embedding in the QK projection.")
+    group.add_argument('--v-head-dim', type=int, default=128,
+                       help="Dimension of the head in the V projection.")
+    group.add_argument('--rotary-scaling-factor', type=float, default=1.0,
+                       help="Rotary scaling factor for the rotary embeddings.")
 
     return parser
 

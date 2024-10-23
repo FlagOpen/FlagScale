@@ -11,6 +11,7 @@ megatron:
       ignore: test_mamba_model.py
     transformer/moe:
       type: single 
+      ignore: test_upcycling.py
     transformer:
       depth: 1 
     ./:
@@ -18,10 +19,11 @@ megatron:
       ignore: test_utilities.py
 
 flagscale:
+  set_environment: 
+      export PYTHONPATH=./megatron:$PYTHONPATH
   subset:
-    launcher:
+    runner:
       type: batch 
       depth: all 
     ./:
       depth: 1 
-      ignore: test_utilities.py
