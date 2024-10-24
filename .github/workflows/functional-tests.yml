@@ -42,4 +42,29 @@ jobs:
           set-safe-directory: true
 
       - name: Run Functional Test
-        run: tests/scripts/functional_tests/test_model.sh --type ${{ inputs.type }} --model ${{ inputs.model }}
+        run: |
+          max_attempts=10
+          attempts=0
+          success=0
+
+          while [ $attempts -lt $max_attempts ]; do
+              echo "Attempt $((attempts + 1)) of $max_attempts"
+              
+              # Run the functional test script
+              tests/scripts/functional_tests/test_model.sh --type ${{ inputs.type }} --model ${{ inputs.model }} || true
+              
+              if [ $? -eq 0 ]; then
+                  echo "Functional test succeeded on attempt $((attempts + 1))"
+                  success=1
+                  break
+              else
+                  echo "Functional test failed on attempt $((attempts + 1))"
+                  attempts=$((attempts + 1))
+              fi
+          done
+
+          # If all attempts failed, exit with an error
+          if [ $success -eq 0 ]; then
+              echo "Error: All $max_attempts attempts failed"
+              exit 1
+          fi

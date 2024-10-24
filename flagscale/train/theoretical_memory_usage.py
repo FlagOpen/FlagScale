@@ -333,9 +333,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
     return activation_memory
 
 
-def report_theoretical_memory(
-    args, num_microbatches=None, verbose=False
-):
+def report_theoretical_memory(args, num_microbatches=None, verbose=False):
     weight_and_optimizer_memory = (
         compute_weight_and_optimizer_memory(args, verbose=verbose)
         / NUM_BYTES_IN_MEGABYTE
@@ -349,4 +347,3 @@ def report_theoretical_memory(
     )
     total_memory = weight_and_optimizer_memory + activation_memory
     return int(total_memory)
-

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-from omegaconf import DictConfig
 from enum import Enum
+
+from omegaconf import DictConfig
 
 
 class JobStatus(Enum):

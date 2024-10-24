@@ -1,10 +1,12 @@
+import collections
 import os
 import re
-import sys
 import socket
 import subprocess
-import collections
+import sys
+import time
 from datetime import datetime
+
 from omegaconf import DictConfig, OmegaConf
 
 from flagscale.logger import logger
@@ -81,7 +83,45 @@ def get_host_name_or_ip():
     return IP
 
 
+def extract_script_path(cmd):
+    """Extracts the script path from a command string."""
+    parts = cmd.split()
+    if "bash" in parts:
+        bash_index = parts.index("bash")
+        if len(parts) > bash_index + 1:
+            return parts[bash_index + 1]
+    return None
+
+
+def check_script_integrity(script_path):
+    """Check if the script exists and is executable, with retries."""
+    max_retries = 5
+    retry_count = 0
+    while retry_count < max_retries:
+        if os.path.exists(script_path) and os.access(script_path, os.X_OK):
+            logger.info(f"Script {script_path} is ready and executable.")
+            return True
+        else:
+            logger.warning(
+                f"Script {script_path} not ready or not executable. Retrying in 5 seconds..."
+            )
+            time.sleep(5)  # wait for 5 seconds before retrying
+            retry_count += 1
+    logger.error(
+        f"Script {script_path} failed to be ready after {max_retries} retries."
+    )
+    return False
+
+
 def run_local_command(cmd, dryrun=False, query=False):
+    script_path = extract_script_path(cmd)
+    if script_path is None:
+        logger.error("No script path could be extracted from the command.")
+        return False
+
+    if not check_script_integrity(script_path):
+        return False  # Exit if the script is not ready after retries
+
     logger.info(f"Run the local command: {cmd}")
     if dryrun:
         return

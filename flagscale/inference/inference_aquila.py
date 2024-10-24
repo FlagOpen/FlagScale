@@ -1,34 +1,43 @@
-import os
-import yaml
 import argparse
-from omegaconf import OmegaConf, ListConfig
+import os
+
+import yaml
+from omegaconf import ListConfig, OmegaConf
+
 from vllm import LLM, SamplingParams
 
 
 def get_config():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config-path", type=str, required=True, help="Path to the configuration YAML file")
+    parser.add_argument(
+        "--config-path",
+        type=str,
+        required=True,
+        help="Path to the configuration YAML file",
+    )
     args = parser.parse_args()
 
     config_path = args.config_path
     # Open the YAML file and convert it into a dictionary
-    with open(config_path, 'r') as file:
+    with open(config_path, "r") as file:
         config_dict = yaml.safe_load(file)
-    
+
     # Convert the dictionary into a DictConfig
     config = OmegaConf.create(config_dict)
-    return config 
+    return config
 
 
 def get_prompts(prompts):
     print(prompts, type(prompts))
     if isinstance(prompts, str) and os.path.isfile(prompts):
-        with open(prompts, 'r') as file:
+        with open(prompts, "r") as file:
             return [line.strip() for line in file.readlines()]
     elif isinstance(prompts, (list, ListConfig)):
         return prompts
     else:
-        raise ValueError("Prompts should be either a list of strings or a path to a file containing a list of strings.")
+        raise ValueError(
+            "Prompts should be either a list of strings or a path to a file containing a list of strings."
+        )
 
 
 def inference():
@@ -48,7 +57,7 @@ def inference():
     assert model is not None
     llm = LLM(model, **llm_args)
 
-    # Generate texts from the prompts. 
+    # Generate texts from the prompts.
     outputs = llm.generate(prompts, sampling_params)
 
     # Print the outputs.
@@ -58,6 +67,6 @@ def inference():
         print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Run the inference
     inference()
