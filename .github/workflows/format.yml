@@ -1,4 +1,4 @@
-name: format
+name: Format Check
 
 on:
   pull_request:
@@ -29,7 +29,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up Python 3.10
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: "3.10"
     
@@ -40,6 +40,7 @@ jobs:
     - name: Run Black
       run: |
         files=$(find . -type f \( -name "*.py" \) | grep -E "$INCLUDE_FILES" | grep -Ev "$EXCLUDE_FILES")
+        echo "files:" $files
         if [ -n "$files" ]; then
           black --check --diff $files
         else
@@ -49,6 +50,7 @@ jobs:
     - name: Run Isort
       run: |
         files=$(find . -type f \( -name "*.py" \) | grep -E "$INCLUDE_FILES" | grep -Ev "$EXCLUDE_FILES")
+        echo "files:" $files
         if [ -n "$files" ]; then
           isort --profile black --check --diff $files
         else
