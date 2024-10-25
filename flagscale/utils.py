@@ -2,6 +2,7 @@ import os
 import sys
 import importlib
 
+
 _vLLM_replace_modules = {
     "vllm.sampling_params": "flagscale/inference/core/sampling_params.py",
     "vllm.sequence": "flagscale/inference/core/sequence.py",

@@ -1,6 +1,5 @@
+# This file is modified from 'FlagScale/vllm/vllm/core/block_manager.py'
 """A block manager that manages token blocks."""
-# This file is modified from 'FlagScale/vllm/vllm/sequence.py'
-from itertools import chain
 from typing import Dict, List, Optional
 from typing import Sequence as GenericSequence
 from typing import Tuple
@@ -22,16 +21,15 @@ NegativeSeqId = int
 # --- FLAGSCALE MODIFICATION END ---
 
 
-class BlockSpaceManagerV2(BlockSpaceManager):
+class SelfAttnBlockSpaceManager(BlockSpaceManager):
     """BlockSpaceManager which manages the allocation of KV cache.
 
     It owns responsibility for allocation, swapping, allocating memory for
     autoregressively-generated tokens, and other advanced features such as
     prefix caching, forking/copy-on-write, and sliding-window memory allocation.
 
-    The current implementation is partial; in particular prefix caching and
-    sliding-window are not feature complete. This class implements the design
-    described in https://github.com/vllm-project/vllm/pull/3492.
+    This class implements the design described in
+    https://github.com/vllm-project/vllm/pull/3492.
 
     Lookahead slots
         The block manager has the notion of a "lookahead slot". These are slots
@@ -114,7 +112,9 @@ class BlockSpaceManagerV2(BlockSpaceManager):
         self._last_access_blocks_tracker = LastAccessBlocksTracker(
             self.block_allocator)
 
-    def can_allocate(self, seq_group: SequenceGroup) -> AllocStatus:
+    def can_allocate(self,
+                     seq_group: SequenceGroup,
+                     num_lookahead_slots: int = 0) -> AllocStatus:
         # FIXME(woosuk): Here we assume that all sequences in the group share
         # the same prompt. This may not be true for preempted sequences.
 
@@ -124,6 +124,7 @@ class BlockSpaceManagerV2(BlockSpaceManager):
         num_required_blocks = BlockTable.get_num_required_blocks(
             seq.get_token_ids(),
             block_size=self.block_size,
+            num_lookahead_slots=num_lookahead_slots,
         )
 
         if seq_group.is_encoder_decoder():
@@ -140,6 +141,7 @@ class BlockSpaceManagerV2(BlockSpaceManager):
             num_required_blocks += BlockTable.get_num_required_blocks(
                 negative_seq.get_token_ids(),
                 block_size=self.block_size,
+                num_lookahead_slots=num_lookahead_slots,
             )
         # --- FLAGSCALE MODIFICATION END ---
 
@@ -165,7 +167,9 @@ class BlockSpaceManagerV2(BlockSpaceManager):
             block_allocator=self.block_allocator,
             max_block_sliding_window=self.max_block_sliding_window,
         )
-        block_table.allocate(seq.get_token_ids())
+        if seq.get_token_ids():
+            # Add blocks to the block table only if the sequence is non empty.
+            block_table.allocate(seq.get_token_ids())
 
         return block_table
 
@@ -202,7 +206,7 @@ class BlockSpaceManagerV2(BlockSpaceManager):
 
         assert (request_id
                 not in self.cross_block_tables), \
-                "block table already exists"
+            "block table already exists"
 
         # --- FLAGSCALE MODIFICATION BEG ---
         if seq_group.has_negative_seqs():
@@ -268,7 +272,7 @@ class BlockSpaceManagerV2(BlockSpaceManager):
         self,
         seq: Sequence,
         num_lookahead_slots: int,
-        seq_group: SequenceGroup, # --- FLAGSCALE MODIFICATION ---
+        seq_group: SequenceGroup = None, # --- FLAGSCALE MODIFICATION ---
     ) -> List[Tuple[int, int]]:
 
         block_table = self.block_tables[seq.seq_id]
@@ -532,12 +536,31 @@ class BlockSpaceManagerV2(BlockSpaceManager):
             AllocStatus: The AllocStatus for swapping in/out the given 
                 sequence_group on to the 'device'.
         """
-        blocks = self._get_blocks_for_swap(seq_group, status)
-        num_blocks_touched = self.block_allocator.get_num_blocks_touched(
-            blocks, device, num_lookahead_slots)
+        # First determine the number of blocks that will be touched by this
+        # swap. Then verify if there are available blocks in the device
+        # to perform the swap.
+        num_blocks_touched = 0
+        blocks: List[Block] = []
+        for seq in seq_group.get_seqs(status=status):
+            block_table = self.block_tables[seq.seq_id]
+            if block_table.blocks is not None:
+                # Compute the number blocks to touch for the tokens to be
+                # appended. This does NOT include the full blocks that need
+                # to be touched for the swap.
+                num_blocks_touched += \
+                    block_table.get_num_blocks_touched_by_append_slots(
+                        block_table.get_unseen_token_ids(seq.get_token_ids()),
+                        num_lookahead_slots=num_lookahead_slots)
+                blocks.extend(block_table.blocks)
+        # Compute the number of full blocks to touch and add it to the
+        # existing count of blocks to touch.
+        num_blocks_touched += self.block_allocator.get_num_full_blocks_touched(
+            blocks, device=device)
+
         watermark_blocks = 0
         if device == Device.GPU:
             watermark_blocks = self.watermark_blocks
+
         if self.block_allocator.get_num_total_blocks(
                 device) < num_blocks_touched:
             return AllocStatus.NEVER
@@ -546,23 +569,3 @@ class BlockSpaceManagerV2(BlockSpaceManager):
             return AllocStatus.OK
         else:
             return AllocStatus.LATER
-
-    def _get_blocks_for_swap(self, seq_group: SequenceGroup,
-                             status: SequenceStatus) -> List[Block]:
-        """Returns the list of blocks those are touched by the seq_group
-        
-        Args:
-            sequence_group (SequenceGroup): The sequence group to swap in.
-            status (SequenceStatus): The status of sequence which is needed
-                for action. RUNNING for swap out and SWAPPED for swap in
-        
-        Returns:
-            The list of blocks those are touched by the seq_group.
-        """
-        blocks: Dict[int, List[Block]] = {}
-        for seq in seq_group.get_seqs(status=status):
-            block_table = self.block_tables[seq.seq_id]
-            if block_table.blocks is not None:
-                blocks[seq.seq_id] = block_table.blocks
-        combined_blocks = list(chain(*blocks.values()))
-        return combined_blocks

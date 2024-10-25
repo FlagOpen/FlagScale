@@ -1,5 +1,5 @@
-"""A layer that compute logits from hidden_stats."""
 # This file is modified from 'FlagScale/vllm/vllm/model_executor/layers/logits_processor.py'
+"""A layer that compute logits from hidden_stats."""
 import inspect
 from typing import Optional
 
@@ -49,14 +49,15 @@ class LogitsProcessor(nn.Module):
         self,
         lm_head: VocabParallelEmbedding,
         hidden_states: torch.Tensor,
-        sampling_metadata: SamplingMetadata,
+        sampling_metadata: Optional[SamplingMetadata] = None,
         embedding_bias: Optional[torch.Tensor] = None,
     ) -> Optional[torch.Tensor]:
         if self.logits_as_input:
             logits = hidden_states
         else:
-            hidden_states = _prune_hidden_states(hidden_states,
-                                                 sampling_metadata)
+            if sampling_metadata is not None:
+                hidden_states = _prune_hidden_states(hidden_states,
+                                                     sampling_metadata)
 
             # Get the logits for the next tokens.
             logits = self._get_logits(hidden_states, lm_head, embedding_bias)
@@ -70,7 +71,8 @@ class LogitsProcessor(nn.Module):
                 logits *= self.scale
 
             # Apply logits processors (if any).
-            logits = _apply_logits_processors(logits, sampling_metadata)
+            if sampling_metadata is not None:
+                logits = _apply_logits_processors(logits, sampling_metadata)
 
         return logits
 
@@ -124,8 +126,9 @@ def _apply_logits_processors(
     for seq_group in sampling_metadata.seq_groups:
         seq_ids = seq_group.seq_ids
         sampling_params = seq_group.sampling_params
+        logits_processors = sampling_params.logits_processors
         # --- FLAGSCALE MODIFICATION BEG ---
-        logits_processors = sampling_params.logits_processors or []
+        logits_processors = logits_processors or []
         guidance_scale = sampling_params.guidance_scale
         # --- FLAGSCALE MODIFICATION END ---
 
