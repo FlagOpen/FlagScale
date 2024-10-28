@@ -34,8 +34,12 @@ test_model() {
     # Remove leading '-'
     _case=${_case#-}
     
-    wait_for_gpu
+    # wait_for_gpu
     echo "Running tests for ${_model} with type ${_type} and case: ${_case}"
+    result_path="tests/functional_tests/test_cases/${_type}/${_model}/results_test/${_case}"
+    if [ -d $result_path ]; then
+      rm -r $result_path
+    fi
     run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
     run_command "pytest -p no:warnings -s tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_model=${_model} --test_case=${_case}"
   done

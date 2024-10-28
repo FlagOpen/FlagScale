@@ -1,21 +1,23 @@
 import os
-import time
 import shlex
+import time
 from datetime import datetime
+
 from omegaconf import DictConfig, OmegaConf
-from flagscale.runner.runner_base import RunnerBase, JobStatus
+
+from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.runner_utils import (
     flatten_dict_to_args,
-    parse_hostfile,
-    parse_hostfile,
     get_free_port,
     get_host_name_or_ip,
-    run_ssh_command,
-    run_local_command,
-    run_scp_command,
-    logger,
     get_nnodes,
     get_nproc_per_node,
+    logger,
+    parse_hostfile,
+    run_local_command,
+    run_scp_command,
+    run_ssh_command,
+    wait_for_utf8_encoded_file,
 )
 
 
@@ -203,7 +205,7 @@ def _generate_run_script_train(
         before_start = cmds_config.get("before_start", "")
     else:
         before_start = ""
-    with open(host_run_script_file, "w") as f:
+    with open(host_run_script_file, "w", encoding="utf-8") as f:
         f.write("#!/bin/bash\n\n")
         f.write(f"{before_start}\n")
         f.write(f"mkdir -p {system_config.checkpoint.load}\n")
@@ -260,7 +262,7 @@ def _generate_stop_script_train(config, host, node_rank):
         after_stop = cmds_config.get("after_stop", "")
     else:
         after_stop = ""
-    with open(host_stop_script_file, "w") as f:
+    with open(host_stop_script_file, "w", encoding="utf-8") as f:
         f.write("#!/bin/bash\n\n")
         f.write("if [ -f " + host_pid_file + " ]; then\n")
         f.write("    pid=$(cat " + host_pid_file + ")\n")
@@ -422,7 +424,9 @@ class SSHTrainRunner(RunnerBase):
                 logger.info(e)
 
     def _stop_each(self, host, node_rank):
-        host_stop_script_file = _generate_stop_script_train(self.config, host, node_rank)
+        host_stop_script_file = _generate_stop_script_train(
+            self.config, host, node_rank
+        )
         logging_config = self.config.train.system.logging
 
         if host != "localhost":
@@ -468,7 +472,7 @@ class SSHTrainRunner(RunnerBase):
 
         os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
-        with open(host_query_script_file, "w") as f:
+        with open(host_query_script_file, "w", encoding="utf-8") as f:
             f.write("#!/bin/bash\n\n")
             f.write("if [ -f " + host_pid_file + " ]; then\n")
             f.write("    pid=$(cat " + host_pid_file + ")\n")
@@ -500,7 +504,7 @@ class SSHTrainRunner(RunnerBase):
 
         os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
-        with open(host_query_sub_process_script_file, "w") as f:
+        with open(host_query_sub_process_script_file, "w", encoding="utf-8") as f:
             f.write("#!/bin/bash\n\n")
             f.write("if [ -f " + host_pid_file + " ]; then\n")
             f.write("    pid=$(cat " + host_pid_file + ")\n")

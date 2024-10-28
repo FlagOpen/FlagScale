@@ -1,20 +1,21 @@
 import os
-import sys 
 import shlex
+import sys
+
 import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
+
 from flagscale.runner.runner_base import RunnerBase
 from flagscale.runner.runner_utils import (
-    parse_hostfile,
-    parse_hostfile,
     get_free_port,
-    run_ssh_command,
-    run_local_command,
-    run_scp_command,
-    logger,
     get_nnodes,
     get_nproc_per_node,
+    logger,
+    parse_hostfile,
+    run_local_command,
+    run_scp_command,
+    run_ssh_command,
 )
 
 
@@ -25,11 +26,13 @@ def _get_args_vllm(config: DictConfig):
     # see the following link for more details
     # https://github.com/facebookresearch/hydra/discussions/2750
     root_config_path = [
-        path["path"] for path in hydra_config.runtime.config_sources if path["schema"] == "file"
+        path["path"]
+        for path in hydra_config.runtime.config_sources
+        if path["schema"] == "file"
     ][0]
     print(f"root_config_path: {root_config_path}")
-    config_name = hydra_config.runtime.choices['inference']
-    config_path = os.path.join(root_config_path, f"inference/{config_name}.yaml") 
+    config_name = hydra_config.runtime.choices["inference"]
+    config_path = os.path.join(root_config_path, f"inference/{config_name}.yaml")
     config_path = hydra.utils.to_absolute_path(config_path)
     print(f"config_path: {config_path}")
     args.append(f"--config-path={config_path}")
@@ -68,7 +71,7 @@ def _get_runner_cmd_inference(
     nproc_per_node,
     config: DictConfig,
 ):
-    runner_cmd = ['python'] 
+    runner_cmd = ["python"]
     return runner_cmd
 
 
@@ -101,7 +104,7 @@ def _generate_run_script_inference(
         before_start = cmds_config.get("before_start", "")
     else:
         before_start = ""
-    with open(host_run_script_file, "w") as f:
+    with open(host_run_script_file, "w", encoding="utf-8") as f:
         f.write("#!/bin/bash\n\n")
         f.write(f"{before_start}\n")
         f.write(f"mkdir -p {logging_config.log_dir}\n")
@@ -127,8 +130,6 @@ def _generate_run_script_inference(
         os.fsync(f.fileno())
     os.chmod(host_run_script_file, 0o755)
 
-    return host_run_script_file
-
 
 def _generate_stop_script_train(config, host, node_rank):
     logging_config = config.inference.logging
@@ -148,7 +149,7 @@ def _generate_stop_script_train(config, host, node_rank):
         after_stop = cmds_config.get("after_stop", "")
     else:
         after_stop = ""
-    with open(host_stop_script_file, "w") as f:
+    with open(host_stop_script_file, "w", encoding="utf-8") as f:
         f.write("#!/bin/bash\n\n")
         f.write("if [ -f " + host_pid_file + " ]; then\n")
         f.write("    pid=$(cat " + host_pid_file + ")\n")
@@ -294,7 +295,9 @@ class SSHInferenceRunner(RunnerBase):
             )
 
     def _stop_each(self, host, node_rank):
-        host_stop_script_file = _generate_stop_script_train(self.config, host, node_rank)
+        host_stop_script_file = _generate_stop_script_train(
+            self.config, host, node_rank
+        )
         logging_config = self.config.inference.logging
 
         if host != "localhost":

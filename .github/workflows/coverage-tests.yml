@@ -41,7 +41,7 @@ jobs:
       - name: Run Unit Tests and Check Coverage
         run: |
           # Execute the test coverage script with the appropriate backend and id (commit SHA)
-          tests/scripts/unit_tests/test_coverage.sh --backend ${{ inputs.backend }} --id ${{ github.sha }}
+          tests/scripts/unit_tests/test_coverage_online.sh --backend ${{ inputs.backend }} --id ${{ github.sha }}
       
       - name: Coverage Online Report
         run: |
