@@ -17,7 +17,6 @@ from flagscale.runner.runner_utils import (
     run_local_command,
     run_scp_command,
     run_ssh_command,
-    wait_for_utf8_encoded_file,
 )
 
 
