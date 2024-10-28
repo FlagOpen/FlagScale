@@ -5,6 +5,7 @@
 # vllm
 -r vllm/requirements-cuda.txt
 -r vllm/requirements-dev.txt
+-r vllm/requirements-build.txt
 
 # flagscale
 -r flagscale/requirements-common.txt

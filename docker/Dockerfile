@@ -18,7 +18,7 @@ RUN apt-get update && \
         curl wget vim tmux less unzip \
         htop iftop iotop ca-certificates openssh-client openssh-server \
         rsync iputils-ping net-tools \
-        tzdata psmisc screen && \
+        tzdata psmisc screen libx11-dev && \
     apt-get clean
 
 ##############################################################################
