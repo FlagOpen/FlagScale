@@ -35,10 +35,8 @@ jobs:
 
     - name: Run Black
       run: |
-        echo "black --verbose --include $INCLUDE_PATHS ./ --diff"
-        black --verbose --include $INCLUDE_PATHS ./ --diff
+        black --verbose --include $INCLUDE_FILES ./ --diff
       
     - name: Run Isort
       run: |
-        echo "isort --verbose --profile black $INCLUDE_PATHS --diff"
-        isort --verbose --profile black $INCLUDE_PATHS --diff
+        isort --verbose --profile black $INCLUDE_FILES --diff
