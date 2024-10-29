@@ -5,8 +5,9 @@ run_command() {
   eval $1
   if [ $? -ne 0 ]; then
     echo "Command failed: $1"
-    exit 1
+    return 1
   fi
+  return 0
 }
 
 source tests/scripts/_gpu_check.sh
@@ -23,6 +24,7 @@ test_model() {
 
   # Convert the parsed test cases to an array
   IFS=' ' read -r -a _cases <<< "$_cases"
+  
   # Check if _cases is not an empty list
   if [ ${#_cases[@]} -eq 0 ]; then
     echo "No test cases found for model '$_model' with test type '$_type'. Exiting."
@@ -33,15 +35,35 @@ test_model() {
   for _case in "${_cases[@]}"; do
     # Remove leading '-'
     _case=${_case#-}
-    
-    # wait_for_gpu
-    echo "Running tests for ${_model} with type ${_type} and case: ${_case}"
-    result_path="tests/functional_tests/test_cases/${_type}/${_model}/results_test/${_case}"
-    if [ -d $result_path ]; then
-      rm -r $result_path
-    fi
-    run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
-    run_command "pytest -p no:warnings -s tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_model=${_model} --test_case=${_case}"
+
+    # Attempt to run the test 5 times
+    for i in {1..5}; do
+      echo "---------"
+      echo "Attempt $i for model ${_model} with type ${_type} and case: ${_case}"
+      echo "---------"
+
+      # Remove previous results if exist
+      result_path="tests/functional_tests/test_cases/${_type}/${_model}/results_test/${_case}"
+      if [ -d $result_path ]; then
+        rm -r $result_path
+      fi
+
+      run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
+      if [ $? -ne 0 ]; then
+        echo "Test failed on attempt $i for case $_case."
+        exit 1
+      fi
+
+      run_command "pytest -p no:warnings -s tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_model=${_model} --test_case=${_case}"
+      if [ $? -ne 0 ]; then
+        echo "Pytest failed on attempt $i for case $_case."
+        exit 1
+      fi
+
+      # Ensure that pytest check is completed before deleting the folder
+      sleep 10s
+    done
+    echo "All 5 attempts successful for case $_case for model ${_model}."
   done
 }
 

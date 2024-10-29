@@ -204,7 +204,7 @@ def _generate_run_script_train(
         before_start = cmds_config.get("before_start", "")
     else:
         before_start = ""
-    with open(host_run_script_file, "w", encoding="utf-8") as f:
+    with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write(f"{before_start}\n")
         f.write(f"mkdir -p {system_config.checkpoint.load}\n")
@@ -261,7 +261,7 @@ def _generate_stop_script_train(config, host, node_rank):
         after_stop = cmds_config.get("after_stop", "")
     else:
         after_stop = ""
-    with open(host_stop_script_file, "w", encoding="utf-8") as f:
+    with open(host_stop_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("if [ -f " + host_pid_file + " ]; then\n")
         f.write("    pid=$(cat " + host_pid_file + ")\n")
@@ -471,7 +471,7 @@ class SSHTrainRunner(RunnerBase):
 
         os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
-        with open(host_query_script_file, "w", encoding="utf-8") as f:
+        with open(host_query_script_file, "w") as f:
             f.write("#!/bin/bash\n\n")
             f.write("if [ -f " + host_pid_file + " ]; then\n")
             f.write("    pid=$(cat " + host_pid_file + ")\n")
@@ -503,7 +503,7 @@ class SSHTrainRunner(RunnerBase):
 
         os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
-        with open(host_query_sub_process_script_file, "w", encoding="utf-8") as f:
+        with open(host_query_sub_process_script_file, "w") as f:
             f.write("#!/bin/bash\n\n")
             f.write("if [ -f " + host_pid_file + " ]; then\n")
             f.write("    pid=$(cat " + host_pid_file + ")\n")
