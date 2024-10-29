@@ -1,14 +1,13 @@
 import itertools
-from array import array
 from typing import List
 
 import pytest
 import torch
 
 from vllm.engine.arg_utils import EngineArgs
-from vllm.sequence import (VLLM_TOKEN_ID_ARRAY_TYPE, SamplingParams,
-                           SequenceData, SequenceGroupMetadata)
-from vllm.utils import is_cpu, make_tensor_with_pad
+from vllm.platforms import current_platform
+from vllm.sequence import SamplingParams, SequenceData, SequenceGroupMetadata
+from vllm.utils import make_tensor_with_pad
 from vllm.worker.enc_dec_model_runner import EncoderDecoderModelRunner
 from vllm.worker.model_runner import _get_graph_batch_size
 
@@ -33,7 +32,7 @@ def _create_model_runner(model: str, *args,
     return model_runner
 
 
-@pytest.mark.skipif(condition=is_cpu(),
+@pytest.mark.skipif(condition=current_platform.is_cpu(),
                     reason="CPU backend is currently "
                     "unsupported for encoder/ "
                     "decoder models")
@@ -76,7 +75,7 @@ def test_empty_seq_group():
     assert return_seq_lens is None
 
 
-@pytest.mark.skipif(condition=is_cpu(),
+@pytest.mark.skipif(condition=current_platform.is_cpu(),
                     reason="CPU backend is currently "
                     "unsupported for encoder/ "
                     "decoder models")
@@ -119,12 +118,10 @@ def test_prepare_prompt(batch_size):
         # make sure all tokens fit into one block
         seq_len = i % (model_runner.block_size - 1) + 1
         seq_lens.append(seq_len)
-        seq_data = SequenceData(array(VLLM_TOKEN_ID_ARRAY_TYPE,
-                                      range(seq_len)))
+        seq_data = SequenceData.from_seqs(range(seq_len))
         encoder_seq_len = (i + 1) % (model_runner.block_size - 1) + 1
         encoder_seq_lens.append(encoder_seq_len)
-        encoder_seq_data = SequenceData(
-            array(VLLM_TOKEN_ID_ARRAY_TYPE, range(encoder_seq_len)))
+        encoder_seq_data = SequenceData.from_seqs(range(encoder_seq_len))
         seq_group_metadata = SequenceGroupMetadata(
             request_id=f"test_{i}",
             is_prompt=True,
@@ -268,7 +265,7 @@ def test_prepare_prompt(batch_size):
     assert torch.equal(actual, expected)
 
 
-@pytest.mark.skipif(condition=is_cpu(),
+@pytest.mark.skipif(condition=current_platform.is_cpu(),
                     reason="CPU backend is currently "
                     "unsupported for encoder/ "
                     "decoder models")
@@ -317,11 +314,9 @@ def test_prepare_decode(batch_size, multiple_seqs_per_seq_group):
     for i in range(batch_size):
         # make sure all tokens fit into one block
         seq_len = i % (model_runner.block_size - 1) + 1
-        seq_data = SequenceData(
-            array(VLLM_TOKEN_ID_ARRAY_TYPE, (range(seq_len))))
+        seq_data = SequenceData.from_seqs(range(seq_len))
         encoder_seq_len = (i + 1) % (model_runner.block_size - 1) + 1
-        encoder_seq_data = SequenceData(
-            array(VLLM_TOKEN_ID_ARRAY_TYPE, (range(encoder_seq_len))))
+        encoder_seq_data = SequenceData.from_seqs(range(encoder_seq_len))
 
         seq_group_metadata = SequenceGroupMetadata(
             request_id=f"test_{i}",
@@ -496,7 +491,7 @@ def test_prepare_decode(batch_size, multiple_seqs_per_seq_group):
 def test_prepare_decode_cuda_graph(batch_size, multiple_seqs_per_seq_group):
     """
     Tests that for encoder-decoder models with CUDA Graph capture and replay
-    enabled, the tensors used during the decode phase are correctly padded 
+    enabled, the tensors used during the decode phase are correctly padded
     for varying input batch sizes.
     """
     model_runner = _create_model_runner(
@@ -523,11 +518,9 @@ def test_prepare_decode_cuda_graph(batch_size, multiple_seqs_per_seq_group):
     for i in range(batch_size):
         # make sure all tokens fit into one block
         seq_len = i % (model_runner.block_size - 1) + 1
-        seq_data = SequenceData(
-            array(VLLM_TOKEN_ID_ARRAY_TYPE, (range(seq_len))))
+        seq_data = SequenceData.from_seqs(range(seq_len))
         encoder_seq_len = (i + 1) % (model_runner.block_size - 1) + 1
-        encoder_seq_data = SequenceData(
-            array(VLLM_TOKEN_ID_ARRAY_TYPE, (range(encoder_seq_len))))
+        encoder_seq_data = SequenceData.from_seqs(range(encoder_seq_len))
         seq_group_metadata = SequenceGroupMetadata(
             request_id=f"test_{i}",
             is_prompt=False,

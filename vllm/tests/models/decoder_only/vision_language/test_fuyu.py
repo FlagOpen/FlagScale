@@ -3,8 +3,8 @@ from typing import List, Optional, Tuple, Type
 import pytest
 
 from vllm.multimodal.utils import rescale_image_size
+from vllm.platforms import current_platform
 from vllm.sequence import SampleLogprobs
-from vllm.utils import is_cpu
 
 from ....conftest import IMAGE_ASSETS, HfRunner, VllmRunner, _ImageAssets
 from ...utils import check_logprobs_close
@@ -46,7 +46,7 @@ def run_test(
 
     All the image fixtures for the test are from IMAGE_ASSETS.
     For huggingface runner, we provide the PIL images as input.
-    For vllm runner, we provide MultiModalDataDict objects 
+    For vllm runner, we provide MultiModalDataDict objects
     and corresponding MultiModalConfig as input.
     Note, the text input is also adjusted to abide by vllm contract.
     The text output is sanitized to be able to compare with hf.
@@ -65,8 +65,8 @@ def run_test(
 
     # max_model_len should be greater than image_feature_size
     with vllm_runner(model,
-                     max_model_len=2560,
-                     max_num_seqs=1,
+                     max_model_len=2048,
+                     max_num_seqs=2,
                      dtype=dtype,
                      tensor_parallel_size=tensor_parallel_size,
                      distributed_executor_backend=distributed_executor_backend,
@@ -80,8 +80,6 @@ def run_test(
         ]
 
     with hf_runner(model, dtype=dtype) as hf_model:
-        hf_model.model.get_output_embeddings = lambda: \
-            hf_model.model.language_model.get_output_embeddings()
         eos_token_id = hf_model.processor.tokenizer.eos_token_id
         hf_outputs_per_image = [
             hf_model.generate_greedy_logprobs_limit(prompts,
@@ -105,7 +103,7 @@ def run_test(
 
 
 target_dtype = "half"
-if is_cpu():
+if current_platform.is_cpu():
     target_dtype = "bfloat16"
 
 

@@ -1,9 +1,6 @@
 # .github/workflows/create-container-unit-tests.yml
 name: Unit Tests
 
-env:
-  REPORT_ADDR: http://120.92.110.224:8081
-
 on:
   workflow_call:
     inputs:
@@ -23,6 +20,7 @@ jobs:
         - 80
       volumes:
         - /home/flagscale_cicd/flask/static:/workspace/report
+        - /home/flagscale_cicd/flask/config:/workspace/config
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
         - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
       options: --gpus all --shm-size=500g --hostname flagscale_cicd
@@ -47,4 +45,6 @@ jobs:
         run: tests/scripts/unit_tests/test_subset.sh --backend ${{ inputs.backend }} --subset ${{ inputs.subset }} --id ${{ github.sha }}
       
       - name: Unit Test Coverage Online Report
-        run: echo "You can access the test coverage report at the $REPORT_ADDR/${{github.sha}}/cov-report-${{ inputs.backend }}/index.html"
+        run: | 
+          REPORT_ADDR=$(cat "/workspace/config/report_address")
+          echo "You can access the test coverage report at http://${REPORT_ADDR}/${{github.sha}}/cov-report-${{ inputs.backend }}/index.html"

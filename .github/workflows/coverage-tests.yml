@@ -16,6 +16,7 @@ jobs:
         - 80
       volumes:
         - /home/flagscale_cicd/flask/static:/workspace/report
+        - /home/flagscale_cicd/flask/config:/workspace/config
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
         - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
       options: --gpus all --shm-size=500g --hostname flagscale_cicd
@@ -43,5 +44,8 @@ jobs:
           tests/scripts/unit_tests/test_coverage.sh --backend ${{ inputs.backend }} --id ${{ github.sha }}
       
       - name: Coverage Online Report
-        run: echo "You can access the test diff-coverage report at the $REPORT_ADDR/${{github.sha}}/diff-cover-report-${{ inputs.backend }}/index.html"
+        run: |
+          REPORT_ADDR=$(cat "/workspace/config/report_address")
+          echo "You can access the test diff-coverage report at the http://${REPORT_ADDR}/${{github.sha}}/diff-cover-report-${{ inputs.backend }}/index.html"
+
         
