@@ -1,5 +1,5 @@
-"""Sampling parameters for text generation."""
 # This file is modified from 'FlagScale/vllm/vllm/sampling_params.py'
+"""Sampling parameters for text generation."""
 import copy
 from dataclasses import dataclass
 from enum import Enum, IntEnum
