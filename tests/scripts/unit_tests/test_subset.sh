@@ -67,6 +67,31 @@ echo "Running test: $backend -> ${subset:-./}"
 # Execute the set_environment commands
 eval "$set_environment"
 
+# Function to check if both reports are complete
+check_reports_complete() {
+    local xml_report="$1"
+    local html_report="$2"
+    
+    local xml_previous_size=0
+    local html_previous_size=0
+    local xml_current_size
+    local html_current_size
+
+    # Continuously check size stability for both reports
+    while true; do
+        xml_current_size=$(stat --format=%s "$xml_report" 2>/dev/null || echo 0)
+        html_current_size=$(stat --format=%s "$html_report" 2>/dev/null || echo 0)
+
+        if [ "$xml_previous_size" -eq "$xml_current_size" ] && [ "$html_previous_size" -eq "$html_current_size" ]; then
+            break
+        fi
+
+        xml_previous_size=$xml_current_size
+        html_previous_size=$html_current_size
+        sleep 5s
+    done
+}
+
 # Function to run tests at a specific depth
 run_tests() {
     local _type="$1"
@@ -96,10 +121,18 @@ run_tests() {
 
     _test_files=$(echo "$_test_files" | tr '\n' ' ')
 
+    local xml_report="/workspace/report/$id/cov-report-${backend}/coverage.xml"
+    local html_report="/workspace/report/$id/cov-report-${backend}"
+
     if [ "$_type" == "batch" ]; then
         wait_for_gpu
+        
         echo "Running batch test: $_test_files"
-        torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:/workspace/report/$id/cov-report-${backend}/coverage.xml --cov-report=html:/workspace/report/$id/cov-report-${backend} -q -x -p no:warnings -m "not flaky" $ignore_cmd $_test_files
+        torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings -m "not flaky" $ignore_cmd $_test_files
+        
+        # Check if both report files are complete
+        check_reports_complete "$xml_report" "$html_report"
+        
         if [ $? -ne 0 ]; then
             echo "Test failed: $_test_files"
             exit 1
@@ -108,7 +141,11 @@ run_tests() {
         for _test_file in $_test_files; do
             wait_for_gpu
             echo "Running single test: $_test_file"
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:/workspace/report/$id/cov-report-${backend}/coverage.xml --cov-report=html:/workspace/report/$id/cov-report-${backend} -q -x -p no:warnings -m "not flaky" $ignore_cmd $_test_file
+            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings -m "not flaky" $ignore_cmd $_test_file
+            
+            # Check if both report files are complete
+            check_reports_complete "$xml_report" "$html_report"
+
             # Check the exit status of pytest
             if [ $? -ne 0 ]; then
                 echo "Test failed: $_test_file"
@@ -116,8 +153,6 @@ run_tests() {
             fi
         done
     fi
-
-    sleep 1m
 }
 
 # Run tests based on type, path, and depth
