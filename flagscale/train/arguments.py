@@ -59,7 +59,7 @@ class FSTrainArguments:
                 'timeout': timedelta(minutes=args.distributed_timeout_minutes),
             }
             # for communication based cpu
-            if args.enable_hetero:
+            if args.enable_hetero and args.hetero_use_cpu_communication:
                 # if not all(device_type == args.hetero_device_types[0] for device_type in args.hetero_device_types):
                 #     init_process_group_kwargs['backend'] = 'gloo'
                 # Force the group of backend gloo only support cpu
