@@ -16,14 +16,14 @@ commands=(
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset transformer"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset ./"
     # coverage test -> megatron
-    "./tests/scripts/unit_tests/test_coverage_offline.sh --backend megatron"
+    "./tests/scripts/unit_tests/test_coverage.sh --backend megatron --status offline"
 
     # unit tests -> flagscale
     "rm -rf /workspace/report/0/cov-report-flagscale"
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset runner"
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset ./"
     # coverage test -> flagscale
-    "./tests/scripts/unit_tests/test_coverage_offline.sh --backend flagscale"
+    "./tests/scripts/unit_tests/test_coverage.sh --backend flagscale --status offline"
 
     # You can add your own test subset here
     # "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset your_subset"

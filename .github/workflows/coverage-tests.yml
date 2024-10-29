@@ -41,11 +41,11 @@ jobs:
       - name: Run Unit Tests and Check Coverage
         run: |
           # Execute the test coverage script with the appropriate backend and id (commit SHA)
-          tests/scripts/unit_tests/test_coverage_online.sh --backend ${{ inputs.backend }} --id ${{ github.sha }}
+          tests/scripts/unit_tests/test_coverage.sh --backend ${{ inputs.backend }} --id ${{ github.sha }} --status online
       
       - name: Coverage Online Report
         run: |
           REPORT_ADDR=$(cat "/workspace/config/report_address")
-          echo "You can access the test diff-coverage report at the http://${REPORT_ADDR}/${{github.sha}}/diff-cover-report-${{ inputs.backend }}/index.html"
+          echo "You can access the test diff-coverage report at the http://${REPORT_ADDR}/${{github.sha}}/diff-cover-report-${{ inputs.backend }}.html"
 
         

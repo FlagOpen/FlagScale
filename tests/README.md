@@ -134,12 +134,13 @@ When you create a PR using your forked repository, the testing workflow will aut
   1. Run the command:
      ```bash
      # Ensure unit tests have been run locally before executing this command
-     ./tests/scripts/unit_tests/test_coverage_offline.sh --backend ${BACKEND}
+     ./tests/scripts/unit_tests/test_coverage.sh --backend ${BACKEND} --status ${STATUS}
      ```
      
      Please set the following variables:
 
      - `BACKEND`: `flagscale` or `megatron`.
+     - `STATUS`: `online` or `offline`.
 
   2. View the report:
      
