@@ -1,4 +1,17 @@
 hydra-core
 deepspeed
-dlrover[torch]
+accelerate
 matplotlib
+tensorboard
+
+# serving
+sr
+diffusers
+translate
+imageio
+python-multipart
+imageio[ffmpeg]
+ks3sdk
+
+# others
+s3fs
