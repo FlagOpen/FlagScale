@@ -4,7 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "megatron-energon"
-dynamic = ["version"]
+# dynamic = ["version"]
+version = "0.0.0"
 authors = [
   { name="Lukas Vögtle", email="lvoegtle@nvidia.com" },
   { name="Philipp Fischer", email="pfischer@nvidia.com" },
