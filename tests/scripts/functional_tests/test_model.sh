@@ -38,6 +38,8 @@ test_model() {
 
     # Attempt to run the test 5 times
     for i in {1..5}; do
+      wait_for_gpu
+
       echo "---------"
       echo "Attempt $i for model ${_model} with type ${_type} and case: ${_case}"
       echo "---------"

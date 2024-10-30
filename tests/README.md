@@ -145,7 +145,7 @@ When you create a PR using your forked repository, the testing workflow will aut
   2. View the report:
      
      Open the following in a browser:
-     `/workspace/report/${ID}/diff-cover-report-${BACKEND}/index.html`
+     `/workspace/report/${ID}/diff-cover-report-${BACKEND}.html`
      Use these variables:
      - `ID`: Use `0` when running locally.
      - `BACKEND`: `flagscale` or `megatron`.
