@@ -1,13 +1,11 @@
 llm:
-  model: xxxx 
+  model: BAAI/Aquila-7B
+  tokenizer: BAAI/Aquila-7B
   trust_remote_code: true
   tensor_parallel_size: 1
   pipeline_parallel_size: 1
-  use_v2_block_manager: true
   gpu_memory_utilization: 0.9
-  dtype: bfloat16
   seed: 1234
-  disable_async_output_proc: true
 
 generate:
   prompts: [

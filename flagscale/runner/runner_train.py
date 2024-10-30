@@ -7,7 +7,6 @@ from flagscale.runner.runner_base import RunnerBase, JobStatus
 from flagscale.runner.runner_utils import (
     flatten_dict_to_args,
     parse_hostfile,
-    parse_hostfile,
     get_free_port,
     get_host_name_or_ip,
     run_ssh_command,

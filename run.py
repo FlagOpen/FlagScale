@@ -1,7 +1,6 @@
 import hydra
-from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
-from flagscale.logger import logger
+
 from flagscale.runner.runner_train import SSHTrainRunner, CloudTrainRunner
 from flagscale.runner.runner_inference import SSHInferenceRunner
 

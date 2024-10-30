@@ -166,11 +166,16 @@ def token_inputs(
     prompt: Optional[str] = None,
     multi_modal_data: Optional["MultiModalDataDict"] = None,
     mm_processor_kwargs: Optional[Dict[str, Any]] = None,
+    # --- FLAGSCALE MODIFICATION BEG ---
     negative_prompt_token_ids: Optional[List[int]] = None,
     negative_prompt: Optional[str] = None,
+    # --- FLAGSCALE MODIFICATION END ---
 ) -> TokenInputs:
     """Construct :class:`TokenInputs` from optional values."""
-    inputs = TokenInputs(prompt_token_ids=prompt_token_ids, negative_prompt_token_ids=negative_prompt_token_ids)
+    # --- FLAGSCALE MODIFICATION BEG ---
+    inputs = TokenInputs(prompt_token_ids=prompt_token_ids,
+                         negative_prompt_token_ids=negative_prompt_token_ids)
+    # --- FLAGSCALE MODIFICATION END ---
 
     if prompt is not None:
         inputs["prompt"] = prompt
@@ -178,8 +183,10 @@ def token_inputs(
         inputs["multi_modal_data"] = multi_modal_data
     if mm_processor_kwargs is not None:
         inputs["mm_processor_kwargs"] = mm_processor_kwargs
+    # --- FLAGSCALE MODIFICATION BEG ---
     if negative_prompt is not None:
         inputs["negative_prompt"] = negative_prompt
+    # --- FLAGSCALE MODIFICATION END ---
 
     return inputs
 

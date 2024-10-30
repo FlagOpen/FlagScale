@@ -282,7 +282,8 @@ class InputPreprocessor:
             assert_never(parsed)
 
         return (prompt_text, prompt_token_ids, multi_modal_data,
-                mm_processor_kwargs, negative_prompt_text, negative_prompt_token_ids) # --- FLAGSCALE MODIFICATION ---
+                mm_processor_kwargs,
+                negative_prompt_text, negative_prompt_token_ids) # --- FLAGSCALE MODIFICATION ---
 
     async def _extract_prompt_components_async(
         self,
@@ -335,7 +336,8 @@ class InputPreprocessor:
             assert_never(parsed)
 
         return (prompt_text, prompt_token_ids, multi_modal_data,
-                mm_processor_kwargs, negative_prompt_text, negative_prompt_token_ids) # --- FLAGSCALE MODIFICATION ---
+                mm_processor_kwargs,
+                negative_prompt_text, negative_prompt_token_ids) # --- FLAGSCALE MODIFICATION ---
 
     def _build_enc_dec_llm_inputs(
         self,

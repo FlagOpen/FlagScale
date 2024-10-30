@@ -8,11 +8,11 @@ experiment:
   task:
     type: inference
     backend: vllm
-    entrypoint: ./flagscale/inference/inference_aquila.py
+    entrypoint: flagscale/inference/inference_aquila.py
   runner:
-    hostfile: xxxx 
+    hostfile: null
   cmds:
-    before_start: source /root/miniconda3/bin/activate flagscale
+    before_start: source activate flagscale
   envs:
     CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1

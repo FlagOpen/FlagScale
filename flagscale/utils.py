@@ -6,7 +6,7 @@ import importlib
 _vLLM_replace_modules = {
     "vllm.sampling_params": "flagscale/inference/core/sampling_params.py",
     "vllm.sequence": "flagscale/inference/core/sequence.py",
-    "vllm.core.block_manager_v2": "flagscale/inference/core/block_manager_v2.py",
+    "vllm.core.block_manager": "flagscale/inference/core/block_manager.py",
     "vllm.core.scheduler": "flagscale/inference/core/scheduler.py",
     "vllm.engine.llm_engine": "flagscale/inference/core/llm_engine.py",
     "vllm.engine.output_processor.single_step": "flagscale/inference/core/single_step.py",
@@ -35,16 +35,6 @@ class CustomModuleLoader:
     device_type = os.environ.get('DEVICE_TYPE',None)
 
     def load_module(self, fullname):
-        if fullname in sys.modules:
-            return sys.modules[fullname]
-
-        if self.device_type == "iluvatar":
-            if fullname == "transformer_engine":
-                finder = sys.meta_path.pop(0)
-                module = importlib.import_module(fullname)
-                module.common.recipe = Empty()
-                module.common.recipe.DelayedScaling = Empty()
-                sys.meta_path.insert(0, finder)
 
         if fullname in _vLLM_replace_modules:
             replace_module_path = _vLLM_replace_modules[fullname]
@@ -53,4 +43,16 @@ class CustomModuleLoader:
             spec.loader.exec_module(module)
             sys.modules[fullname] = module
 
+        if fullname in sys.modules:
+            return sys.modules[fullname]
+
+        finder = sys.meta_path.pop(0)
+        module = importlib.import_module(fullname)
+
+        if self.device_type == "iluvatar":
+            if fullname == "transformer_engine":
+                module.common.recipe = Empty()
+                module.common.recipe.DelayedScaling = Empty()
+
+        sys.meta_path.insert(0, finder)
         return module
