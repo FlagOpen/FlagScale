@@ -138,11 +138,7 @@ def recv_forward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> tor
         para_ctx = get_parallel_context()
         pp_groups = para_ctx.get_pipeline_model_parallel_group()
         if not is_inter_mesh_comm(para_ctx=para_ctx, comm_with_front_layer=True):
-            group = None
-            for pp_group in pp_groups:
-                if rank in torch.distributed.get_process_group_ranks(pp_group):
-                    group = pp_group
-                    break
+            group = para_ctx.get_pipeline_model_parallel_group(local_pp_group=True)
             input_tensor, _, _ = _communicate(
                 tensor_send_next=None,
                 tensor_send_prev=None,
@@ -203,11 +199,7 @@ def recv_backward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> to
         para_ctx = get_parallel_context()
         pp_groups = para_ctx.get_pipeline_model_parallel_group()
         if not is_inter_mesh_comm(para_ctx=para_ctx, comm_with_front_layer=False):
-            group = None
-            for pp_group in pp_groups:
-                if rank in torch.distributed.get_process_group_ranks(pp_group):
-                    group = pp_group
-                    break
+            group = para_ctx.get_pipeline_model_parallel_group(local_pp_group=True)
             _, output_tensor_grad, _ = _communicate(
                 tensor_send_next=None,
                 tensor_send_prev=None,
@@ -266,12 +258,7 @@ def send_forward_hetero(output_tensor: torch.Tensor, config: ModelParallelConfig
         rank = torch.distributed.get_rank()
         para_ctx = get_parallel_context()
         if not is_inter_mesh_comm(para_ctx=para_ctx, comm_with_front_layer=False):
-            group = None
-            pp_groups = para_ctx.get_pipeline_model_parallel_group()
-            for pp_group in pp_groups:
-                if rank in torch.distributed.get_process_group_ranks(pp_group):
-                    group = pp_group
-                    break
+            group = para_ctx.get_pipeline_model_parallel_group(local_pp_group=True)
             _communicate(
                 tensor_send_next=output_tensor if "gloo" not in group.name() else output_tensor.cpu(),
                 tensor_send_prev=None,
@@ -321,12 +308,7 @@ def send_backward_hetero(input_tensor_grad: torch.Tensor, config: ModelParallelC
         rank = torch.distributed.get_rank()
         para_ctx = get_parallel_context()
         if not is_inter_mesh_comm(para_ctx=para_ctx, comm_with_front_layer=True):
-            group = None
-            pp_groups = para_ctx.get_pipeline_model_parallel_group()
-            for pp_group in pp_groups:
-                if rank in torch.distributed.get_process_group_ranks(pp_group):
-                    group = pp_group
-                    break
+            group = para_ctx.get_pipeline_model_parallel_group(local_pp_group=True)
             _communicate(
                 tensor_send_next=None,
                 tensor_send_prev=input_tensor_grad if "gloo" not in group.name() else input_tensor_grad.cpu(),
@@ -381,11 +363,7 @@ def send_forward_recv_backward_hetero(
         para_ctx = get_parallel_context()
         pp_groups = para_ctx.get_pipeline_model_parallel_group()
         if not is_inter_mesh_comm(para_ctx=para_ctx, comm_with_front_layer=False):
-            group = None
-            for pp_group in pp_groups:
-                if rank in torch.distributed.get_process_group_ranks(pp_group):
-                    group = pp_group
-                    break
+            group = para_ctx.get_pipeline_model_parallel_group(local_pp_group=True)
             _, output_tensor_grad, _ = _communicate(
                 tensor_send_next=output_tensor if "gloo" not in group.name() else output_tensor.cpu(),
                 tensor_send_prev=None,
@@ -448,11 +426,7 @@ def send_backward_recv_forward_hetero(
         para_ctx = get_parallel_context()
         pp_groups = para_ctx.get_pipeline_model_parallel_group()
         if not is_inter_mesh_comm(para_ctx=para_ctx, comm_with_front_layer=True):
-            group = None
-            for pp_group in pp_groups:
-                if rank in torch.distributed.get_process_group_ranks(pp_group):
-                    group = pp_group
-                    break
+            group = para_ctx.get_pipeline_model_parallel_group(local_pp_group=True)
             input_tensor, _, _ = _communicate(
                 tensor_send_next=None,
                 tensor_send_prev=input_tensor_grad if "gloo" not in group.name() else input_tensor_grad.cpu(),
