@@ -37,11 +37,11 @@ test_model() {
     _case=${_case#-}
 
     # Attempt to run the test 5 times
-    for i in {1..5}; do
+    for attempt_i in {1..5}; do
       wait_for_gpu
 
       echo "---------"
-      echo "Attempt $i for model ${_model} with type ${_type} and case: ${_case}"
+      echo "Attempt $attempt_i for model ${_model} with type ${_type} and case: ${_case}"
       echo "---------"
 
       # Remove previous results if exist
@@ -52,13 +52,13 @@ test_model() {
 
       run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
       if [ $? -ne 0 ]; then
-        echo "Test failed on attempt $i for case $_case."
+        echo "Test failed on attempt $attempt_i for case $_case."
         exit 1
       fi
 
       run_command "pytest -p no:warnings -s tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_model=${_model} --test_case=${_case}"
       if [ $? -ne 0 ]; then
-        echo "Pytest failed on attempt $i for case $_case."
+        echo "Pytest failed on attempt $attempt_i for case $_case."
         exit 1
       fi
 
