@@ -38,6 +38,9 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     ```sh
     cd vllm
     pip install .
+
+    cd megatron-energon
+    pip install .
     ```
 
 ### Run a Task 
