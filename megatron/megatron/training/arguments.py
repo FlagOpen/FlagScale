@@ -2183,7 +2183,8 @@ def _add_hetero_args(parser):
     group.add_argument('--hetero-process-meshes', nargs='*', type=int, default=None,
                        help='Use this arg to set TP-CP-DP-PP of each process mesh.'
                        'This argument must be in the form: TP0, CP0, DP0, PP0, TP1, CP0, DP1, PP1...TPN, CPN, DPN, PPN. CP and TP size can be different, sum of PP should match pipeline-model-parallel-size, DP size should be the same.')
-
+    group.add_argument('--hetero-use-cpu-communication', action='store_true', default=True, help='Use CPU for communication for heterogeneous communication.')
+    
     return parser
 
 
