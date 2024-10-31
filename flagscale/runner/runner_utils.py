@@ -1,10 +1,11 @@
+import collections
 import os
 import re
-import sys
 import socket
 import subprocess
-import collections
+import sys
 from datetime import datetime
+
 from omegaconf import DictConfig, OmegaConf
 
 from flagscale.logger import logger

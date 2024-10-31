@@ -1,21 +1,22 @@
 import os
-import time
 import shlex
+import time
 from datetime import datetime
+
 from omegaconf import DictConfig, OmegaConf
-from flagscale.runner.runner_base import RunnerBase, JobStatus
+
+from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.runner_utils import (
     flatten_dict_to_args,
-    parse_hostfile,
-    parse_hostfile,
     get_free_port,
     get_host_name_or_ip,
-    run_ssh_command,
-    run_local_command,
-    run_scp_command,
-    logger,
     get_nnodes,
     get_nproc_per_node,
+    logger,
+    parse_hostfile,
+    run_local_command,
+    run_scp_command,
+    run_ssh_command,
 )
 
 
@@ -422,7 +423,9 @@ class SSHTrainRunner(RunnerBase):
                 logger.info(e)
 
     def _stop_each(self, host, node_rank):
-        host_stop_script_file = _generate_stop_script_train(self.config, host, node_rank)
+        host_stop_script_file = _generate_stop_script_train(
+            self.config, host, node_rank
+        )
         logging_config = self.config.train.system.logging
 
         if host != "localhost":

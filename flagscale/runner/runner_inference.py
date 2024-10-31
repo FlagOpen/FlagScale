@@ -1,20 +1,21 @@
 import os
-import sys 
 import shlex
+import sys
+
 import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
+
 from flagscale.runner.runner_base import RunnerBase
 from flagscale.runner.runner_utils import (
-    parse_hostfile,
-    parse_hostfile,
     get_free_port,
-    run_ssh_command,
-    run_local_command,
-    run_scp_command,
-    logger,
     get_nnodes,
     get_nproc_per_node,
+    logger,
+    parse_hostfile,
+    run_local_command,
+    run_scp_command,
+    run_ssh_command,
 )
 
 
@@ -25,11 +26,13 @@ def _get_args_vllm(config: DictConfig):
     # see the following link for more details
     # https://github.com/facebookresearch/hydra/discussions/2750
     root_config_path = [
-        path["path"] for path in hydra_config.runtime.config_sources if path["schema"] == "file"
+        path["path"]
+        for path in hydra_config.runtime.config_sources
+        if path["schema"] == "file"
     ][0]
     print(f"root_config_path: {root_config_path}")
-    config_name = hydra_config.runtime.choices['inference']
-    config_path = os.path.join(root_config_path, f"inference/{config_name}.yaml") 
+    config_name = hydra_config.runtime.choices["inference"]
+    config_path = os.path.join(root_config_path, f"inference/{config_name}.yaml")
     config_path = hydra.utils.to_absolute_path(config_path)
     print(f"config_path: {config_path}")
     args.append(f"--config-path={config_path}")
@@ -68,7 +71,7 @@ def _get_runner_cmd_inference(
     nproc_per_node,
     config: DictConfig,
 ):
-    runner_cmd = ['python'] 
+    runner_cmd = ["python"]
     return runner_cmd
 
 
@@ -126,8 +129,6 @@ def _generate_run_script_inference(
         f.flush()
         os.fsync(f.fileno())
     os.chmod(host_run_script_file, 0o755)
-
-    return host_run_script_file
 
 
 def _generate_stop_script_train(config, host, node_rank):
@@ -294,7 +295,9 @@ class SSHInferenceRunner(RunnerBase):
             )
 
     def _stop_each(self, host, node_rank):
-        host_stop_script_file = _generate_stop_script_train(self.config, host, node_rank)
+        host_stop_script_file = _generate_stop_script_train(
+            self.config, host, node_rank
+        )
         logging_config = self.config.inference.logging
 
         if host != "localhost":

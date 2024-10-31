@@ -7,18 +7,14 @@ on:
 
 env:
   INCLUDE_FILES: >-
-    flagscale/auto_tuner/.*\.py|
-    flagscale/auto_tuner/prune/.*\.py|
-    flagscale/auto_tuner/record/.*\.py|
-    flagscale/auto_tuner/search/.*\.py|
-    flagscale/launcher/.*\.py|
-    flagscale/logger\.py|
-    flagscale/patches_utils\.py|
-    flagscale/datasets/sft_dataset\.py
-
-  EXCLUDE_FILES: >-
-    megatron/megatron/core/.*\.py|
-    megatron/megatron/__init__\.py
+    flagscale/auto_tuner/*.py
+    flagscale/auto_tuner/prune/*.py
+    flagscale/auto_tuner/record/*.py
+    flagscale/auto_tuner/search/*.py
+    flagscale/runner/*.py
+    flagscale/logger.py
+    flagscale/patches_utils.py
+    flagscale/datasets/sft_dataset.py
 
 jobs:
   format:
@@ -39,20 +35,8 @@ jobs:
 
     - name: Run Black
       run: |
-        files=$(find . -type f \( -name "*.py" \) | grep -E "$INCLUDE_FILES" | grep -Ev "$EXCLUDE_FILES")
-        echo "files:" $files
-        if [ -n "$files" ]; then
-          black --check --diff $files
-        else
-          echo "No files to format."
-        fi
+        black --verbose --include $INCLUDE_FILES ./ --diff
       
     - name: Run Isort
       run: |
-        files=$(find . -type f \( -name "*.py" \) | grep -E "$INCLUDE_FILES" | grep -Ev "$EXCLUDE_FILES")
-        echo "files:" $files
-        if [ -n "$files" ]; then
-          isort --profile black --check --diff $files
-        else
-          echo "No files to sort."
-        fi
+        isort --verbose --profile black $INCLUDE_FILES --diff
