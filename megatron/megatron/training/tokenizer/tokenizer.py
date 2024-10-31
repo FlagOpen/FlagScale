@@ -83,6 +83,9 @@ def build_tokenizer(args, **kwargs):
     elif args.tokenizer_type == "HFTokenizersTokenizerFS":
         assert args.tokenizer_path is not None
         tokenizer = _HFTokenizersTokenizerFS(args.tokenizer_path)
+    elif args.tokenizer_type == "Qwen2TokenizerFS":
+        assert args.tokenizer_path is not None
+        tokenizer = _Qwen2TokenizerFS(args.tokenizer_path, args)
     else:
         raise NotImplementedError('{} tokenizer is not ' 'implemented.'.format(args.tokenizer_type))
 
@@ -986,3 +989,19 @@ class _HFTokenizersTokenizerFS(MegatronTokenizer):
     @property
     def pad(self):
         return self.pad_id
+
+
+class _Qwen2TokenizerFS(_HFTokenizerFS):
+    """Adapted Qwen tokenizer."""
+    
+    def __init__(self, tokenizer_path, args):
+        super().__init__(tokenizer_path)
+        self.eod_id = self.tokenizer.encode('<|extra_204|>')[0]
+        self.cls_id = self.tokenizer.encode('<|extra_203|>')[0]
+        self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]
+        assert args.vocab_size is not None
+        self._vocab_size = args.vocab_size
+    
+    @property
+    def vocab_size(self):
+        return self._vocab_size
