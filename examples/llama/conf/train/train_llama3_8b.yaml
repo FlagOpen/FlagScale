@@ -37,7 +37,7 @@ model:
   normalization: RMSNorm
   rotary_interleaved_patch: False
   position_embedding_type: rope
-  rotary_base: 500000.0
+  rotary_base: 500000
   untie_embeddings_and_output_weights: True
   init_method_std: 0.02
   attention_dropout: 0.0
