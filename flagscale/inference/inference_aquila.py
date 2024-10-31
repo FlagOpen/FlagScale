@@ -1,63 +1,77 @@
 import os
-import yaml
-import argparse
-from omegaconf import OmegaConf, ListConfig
-from vllm import LLM, SamplingParams
+import sys
+sys.path.append(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))
+from flagscale.utils import CustomModuleFinder
+sys.meta_path.insert(0, CustomModuleFinder())
 
+from transformers import AutoTokenizer
 
-def get_config():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config-path", type=str, required=True, help="Path to the configuration YAML file")
-    args = parser.parse_args()
+from vllm import LLM
+from vllm.sampling_params import SamplingParams
 
-    config_path = args.config_path
-    # Open the YAML file and convert it into a dictionary
-    with open(config_path, 'r') as file:
-        config_dict = yaml.safe_load(file)
-    
-    # Convert the dictionary into a DictConfig
-    config = OmegaConf.create(config_dict)
-    return config 
-
-
-def get_prompts(prompts):
-    print(prompts, type(prompts))
-    if isinstance(prompts, str) and os.path.isfile(prompts):
-        with open(prompts, 'r') as file:
-            return [line.strip() for line in file.readlines()]
-    elif isinstance(prompts, (list, ListConfig)):
-        return prompts
-    else:
-        raise ValueError("Prompts should be either a list of strings or a path to a file containing a list of strings.")
+from flagscale.inference.arguments import parse_config
 
 
 def inference():
-    # Get the configuration.
-    config = get_config()
+    """Initialize the LLMEngine"""
+    # step 1: parse inference config
+    cfg = parse_config()
 
-    # Get the prompts.
-    prompts = get_prompts(config.generate.prompts)
+    prompts = []
+    if cfg.generate.get("prompts_path", None):
+        with open(cfg.generate.prompts_path, "r") as f:
+            while True:
+                prompt = f.readline()
+                if not prompt:
+                    break
+                prompts.append(prompt[:-1]) # remove the last '\n' of prompt
+    elif cfg.generate.get("prompts", None):
+        prompts = cfg.generate.prompts
+    else:
+        raise ValueError("Pleace set right prompts_path or prompts.")
 
-    # Create a sampling params object.
-    sampling_args = config.get("sampling", {})
-    sampling_params = SamplingParams(**sampling_args)
+    negative_prompts = []
+    if cfg.generate.get("negative_prompts_path", None):
+        with open(cfg.generate.prompts_path, "r") as f:
+            while True:
+                negative_prompt = f.readline()
+                if not negative_prompt:
+                    break
+                negative_prompts.append(negative_prompt[:-1]) # remove the last '\n' of prompt
+    elif cfg.generate.get("prompts", None):
+        negative_prompts = cfg.generate.negative_prompts
+    else:
+        raise ValueError("Pleace set right negative_prompts_path or negative_prompts.")
 
-    # Create an LLM.
-    llm_args = config.get("llm", {})
-    model = llm_args.pop("model", None)
-    assert model is not None
-    llm = LLM(model, **llm_args)
+    # step 2: initialize the LLM engine
+    llm_cfg = cfg.get("llm", {})
+    llm = LLM(**llm_cfg)
 
-    # Generate texts from the prompts. 
-    outputs = llm.generate(prompts, sampling_params)
+    tokenizer_cfg = llm_cfg.get("tokenizer", None)
+    if tokenizer_cfg:
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_cfg, trust_remote_code=True)
+        llm.set_tokenizer(tokenizer)
 
-    # Print the outputs.
+    # step 3: initialize the sampling parameters
+    # TODO(zhaoyinglia): support config logits processor
+    sampling_cfg = cfg.generate.get("sampling", {})
+    assert not sampling_cfg.get("logits_processors", None), "logits_processors is not supported yet."
+    sampling_params = SamplingParams(**sampling_cfg)
+    print(f"=> {sampling_params=}")
+
+    # step 4: build inputs
+    inputs = [{"prompt": prompt, "negative_prompt": negative_prompt} for prompt, negative_prompt in zip(prompts, negative_prompts)]
+    print(f"=> {inputs=}")
+
+    # step 5: generate outputs
+    outputs = llm.generate(inputs, sampling_params)
     for output in outputs:
-        prompt = output.prompt
-        generated_text = output.outputs[0].text
-        print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
+        print("*"*50)
+        print(f"{output.prompt=}")
+        print(f"{output.outputs[0].text=}")
+        print(f"{output.outputs[0].token_ids=}")
 
 
 if __name__ == '__main__':
-    # Run the inference
     inference()

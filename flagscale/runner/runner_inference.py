@@ -20,22 +20,19 @@ from flagscale.runner.runner_utils import (
 
 
 def _get_args_vllm(config: DictConfig):
-    args = []
-    hydra_config = HydraConfig.get()
-    config_name = hydra_config.job.config_name
     # see the following link for more details
     # https://github.com/facebookresearch/hydra/discussions/2750
-    root_config_path = [
-        path["path"]
-        for path in hydra_config.runtime.config_sources
-        if path["schema"] == "file"
-    ][0]
-    print(f"root_config_path: {root_config_path}")
-    config_name = hydra_config.runtime.choices["inference"]
-    config_path = os.path.join(root_config_path, f"inference/{config_name}.yaml")
+    OmegaConf.set_struct(config, False)
+
+    hydra_config = HydraConfig.get()
+    output_dir = hydra_config.runtime.output_dir
+    output_subdir = hydra_config.output_subdir
+    config_path = os.path.join(output_dir, f"{output_subdir}/config.yaml")
     config_path = hydra.utils.to_absolute_path(config_path)
-    print(f"config_path: {config_path}")
+
+    args = []
     args.append(f"--config-path={config_path}")
+
     return args
 
 
@@ -50,8 +47,7 @@ def _update_config_inference(config: DictConfig):
     if config.get("logging", None) is None:
         config.inference.logging = DictConfig({})
 
-    prefix = "inference"
-    log_dir = os.path.join(exp_dir, f"{prefix}_logs")
+    log_dir = os.path.join(exp_dir, f"inference_logs")
     scripts_dir = os.path.join(log_dir, "scripts")
     pids_dir = os.path.join(log_dir, "pids")
 
@@ -59,20 +55,7 @@ def _update_config_inference(config: DictConfig):
     config.inference.logging.scripts_dir = scripts_dir
     config.inference.logging.pids_dir = pids_dir
 
-    OmegaConf.set_struct(config, False)
-
-
-def _get_runner_cmd_inference(
-    host,
-    master_addr,
-    master_port,
-    nnodes,
-    node_rank,
-    nproc_per_node,
-    config: DictConfig,
-):
-    runner_cmd = ["python"]
-    return runner_cmd
+    OmegaConf.set_struct(config, True)
 
 
 def _generate_run_script_inference(
@@ -112,6 +95,8 @@ def _generate_run_script_inference(
         f.write(f"\n")
         f.write(f"cd {root_dir}\n")
         f.write(f"\n")
+        f.write(f"export PYTHONPATH={root_dir}\n")
+        f.write(f"\n")
         f.write(f'cmd="{cmd}"\n')
         f.write(f"\n")
         if with_test:
@@ -131,7 +116,7 @@ def _generate_run_script_inference(
     os.chmod(host_run_script_file, 0o755)
 
 
-def _generate_stop_script_train(config, host, node_rank):
+def _generate_stop_script(config, host, node_rank):
     logging_config = config.inference.logging
 
     host_stop_script_file = os.path.join(
@@ -199,17 +184,7 @@ class SSHInferenceRunner(RunnerBase):
         for k, v in self.user_envs.items():
             export_cmd += [f"{k}={v}"]
 
-        runner_cmd = _get_runner_cmd_inference(
-            host,
-            master_addr,
-            master_port,
-            nnodes,
-            node_rank,
-            nproc_per_node,
-            self.config,
-        )
-
-        cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
+        cmd = shlex.join(export_cmd + ["python"] + [self.user_script] + self.user_args)
 
         logging_config = self.config.inference.logging
         host_run_script_file = _generate_run_script_inference(
@@ -295,7 +270,7 @@ class SSHInferenceRunner(RunnerBase):
             )
 
     def _stop_each(self, host, node_rank):
-        host_stop_script_file = _generate_stop_script_train(
+        host_stop_script_file = _generate_stop_script(
             self.config, host, node_rank
         )
         logging_config = self.config.inference.logging

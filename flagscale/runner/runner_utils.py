@@ -3,10 +3,7 @@ import os
 import re
 import socket
 import subprocess
-import sys
-from datetime import datetime
-
-from omegaconf import DictConfig, OmegaConf
+import collections
 
 from flagscale.logger import logger
 

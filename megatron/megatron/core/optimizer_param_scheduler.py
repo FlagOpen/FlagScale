@@ -159,49 +159,49 @@ class OptimizerParamScheduler:
             num_steps = max(self.num_steps, 1)
             lr = max_lr * warmup_steps**0.5 / (num_steps**0.5)
             return max(min_lr, lr)
-        
+
         # stablelm2 scheduler of multiple stages
-        log_single_rank(logger, logging.INFO, f"> stablelm2_scheduler_config: {self.stablelm2_scheduler_config}")
         if self.stablelm2_scheduler_config is not None:
-          if self.num_steps <= self.stablelm2_scheduler_config.cosine_samples:
-              ## cosine phase
-              # decay_ratio = float(self.num_steps) / float(self.lr_decay_steps)
-              # TODO
-              decay_ratio = float(self.num_steps) / float(self.stablelm2_scheduler_config.cosine_period_samples)
-              cosine_min_lr = self.stablelm2_scheduler_config.cosine_max_lr * 0.1
-              delta_lr = self.stablelm2_scheduler_config.cosine_max_lr - cosine_min_lr
-              coeff = 0.5 * (math.cos(2 * math.pi * decay_ratio) + 1.0)
-              self.stablelm2_scheduler_config.cosine_lr = cosine_min_lr + coeff * delta_lr
-              return self.stablelm2_scheduler_config.cosine_lr
-          elif self.num_steps <= self.stablelm2_scheduler_config.rsqrt_samples:
-              ## rsqrt phase
-              alpha = self.stablelm2_scheduler_config.alpha
-              beta = self.stablelm2_scheduler_config.beta
-              gbs = self.stablelm2_scheduler_config.global_batch_size * 1.0
-              self.stablelm2_scheduler_config.rsqrt_lr = alpha / ((self.num_steps / gbs + beta) ** 0.5)
-              return self.stablelm2_scheduler_config.rsqrt_lr
-          elif self.stablelm2_scheduler_config.decay_samples <= 0:
-              ## optional linear phase
-              decay_steps_ = self.lr_decay_steps - self.stablelm2_scheduler_config.rsqrt_samples
-              num_steps_ = self.num_steps - self.stablelm2_scheduler_config.rsqrt_samples
-              decay_ratio = float(num_steps_) / float(decay_steps_)
-              coeff = (1.0 - decay_ratio)
-              return coeff * self.stablelm2_scheduler_config.rsqrt_lr
-          else:
-              ## optional linear phase
-              valid_lr_decay_steps_ = min(
-                  self.lr_decay_steps,
-                  self.stablelm2_scheduler_config.rsqrt_samples + self.stablelm2_scheduler_config.decay_samples)
-              if self.num_steps <= valid_lr_decay_steps_:
-                decay_steps_ = valid_lr_decay_steps_ - self.stablelm2_scheduler_config.rsqrt_samples
+            log_single_rank(logger, logging.INFO, f"> stablelm2_scheduler_config: {self.stablelm2_scheduler_config}")
+            if self.num_steps <= self.stablelm2_scheduler_config.cosine_samples:
+                ## cosine phase
+                # decay_ratio = float(self.num_steps) / float(self.lr_decay_steps)
+                # TODO
+                decay_ratio = float(self.num_steps) / float(self.stablelm2_scheduler_config.cosine_period_samples)
+                cosine_min_lr = self.stablelm2_scheduler_config.cosine_max_lr * 0.1
+                delta_lr = self.stablelm2_scheduler_config.cosine_max_lr - cosine_min_lr
+                coeff = 0.5 * (math.cos(2 * math.pi * decay_ratio) + 1.0)
+                self.stablelm2_scheduler_config.cosine_lr = cosine_min_lr + coeff * delta_lr
+                return self.stablelm2_scheduler_config.cosine_lr
+            elif self.num_steps <= self.stablelm2_scheduler_config.rsqrt_samples:
+                ## rsqrt phase
+                alpha = self.stablelm2_scheduler_config.alpha
+                beta = self.stablelm2_scheduler_config.beta
+                gbs = self.stablelm2_scheduler_config.global_batch_size * 1.0
+                self.stablelm2_scheduler_config.rsqrt_lr = alpha / ((self.num_steps / gbs + beta) ** 0.5)
+                return self.stablelm2_scheduler_config.rsqrt_lr
+            elif self.stablelm2_scheduler_config.decay_samples <= 0:
+                ## optional linear phase
+                decay_steps_ = self.lr_decay_steps - self.stablelm2_scheduler_config.rsqrt_samples
                 num_steps_ = self.num_steps - self.stablelm2_scheduler_config.rsqrt_samples
                 decay_ratio = float(num_steps_) / float(decay_steps_)
                 coeff = (1.0 - decay_ratio)
-                delta_lr = self.stablelm2_scheduler_config.rsqrt_lr - self.min_lr
-                assert decay_ratio >= 0.0
-                return coeff * delta_lr + self.min_lr
-              else:
-                return self.min_lr
+                return coeff * self.stablelm2_scheduler_config.rsqrt_lr
+            else:
+                ## optional linear phase
+                valid_lr_decay_steps_ = min(
+                    self.lr_decay_steps,
+                    self.stablelm2_scheduler_config.rsqrt_samples + self.stablelm2_scheduler_config.decay_samples)
+                if self.num_steps <= valid_lr_decay_steps_:
+                    decay_steps_ = valid_lr_decay_steps_ - self.stablelm2_scheduler_config.rsqrt_samples
+                    num_steps_ = self.num_steps - self.stablelm2_scheduler_config.rsqrt_samples
+                    decay_ratio = float(num_steps_) / float(decay_steps_)
+                    coeff = (1.0 - decay_ratio)
+                    delta_lr = self.stablelm2_scheduler_config.rsqrt_lr - self.min_lr
+                    assert decay_ratio >= 0.0
+                    return coeff * delta_lr + self.min_lr
+                else:
+                    return self.min_lr
 
         # Warmup-Stable-Decay(WSD)
         if self.lr_decay_style == 'warmup-stable-decay':
