@@ -1,18 +1,21 @@
 import os
 import shlex
+import sys
+
 import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
+
 from flagscale.runner.runner_base import RunnerBase
 from flagscale.runner.runner_utils import (
-    parse_hostfile,
     get_free_port,
-    run_ssh_command,
-    run_local_command,
-    run_scp_command,
-    logger,
     get_nnodes,
     get_nproc_per_node,
+    logger,
+    parse_hostfile,
+    run_local_command,
+    run_scp_command,
+    run_ssh_command,
 )
 
 
@@ -111,8 +114,6 @@ def _generate_run_script_inference(
         f.flush()
         os.fsync(f.fileno())
     os.chmod(host_run_script_file, 0o755)
-
-    return host_run_script_file
 
 
 def _generate_stop_script(config, host, node_rank):
@@ -269,7 +270,9 @@ class SSHInferenceRunner(RunnerBase):
             )
 
     def _stop_each(self, host, node_rank):
-        host_stop_script_file = _generate_stop_script(self.config, host, node_rank)
+        host_stop_script_file = _generate_stop_script(
+            self.config, host, node_rank
+        )
         logging_config = self.config.inference.logging
 
         if host != "localhost":

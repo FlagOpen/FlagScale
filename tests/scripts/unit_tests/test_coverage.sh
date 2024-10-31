@@ -5,20 +5,27 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         --backend) backend="$2"; shift ;;
         --id) id="$2"; shift ;;
+        --status) status="$2"; shift ;;  # Accept --status from command line
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
 done
 
 # Ensure necessary arguments are provided
-if [ -z "$backend" ]; then
-    echo "Usage: $0 --backend <backend> [--id <id>]"
+if [ -z "$backend" ] || [ -z "$status" ]; then
+    echo "Usage: $0 --backend <backend> --status <status> [--id <id>]"
     exit 1
 fi
 
 # Set the default value of id to 0
 if [ -z "$id" ]; then
     id=0
+fi
+
+# Validate status input
+if [ "$status" != "online" ] && [ "$status" != "offline" ]; then
+    echo "Invalid status: $status. Must be 'online' or 'offline'."
+    exit 1
 fi
 
 # Define the coverage report directory and the coverage XML report file
@@ -34,14 +41,22 @@ fi
 # Add the current working directory to the list of safe directories in Git
 git config --global --add safe.directory /__w/FlagScale/FlagScale
 
-# Check if the upstream remote already exists
+# Check if the upstream remote already exists or add it
 if git remote get-url upstream > /dev/null 2>&1; then
     echo "Upstream remote already exists."
 else
     git remote add upstream https://github.com/FlagOpen/FlagScale.git
 fi
 
-git fetch --unshallow upstream main
+# Fetch behavior based on status
+if [ "$status" == "online" ]; then
+    git fetch --unshallow upstream main
+elif [ "$status" == "offline" ]; then
+    git fetch upstream main
+else
+    echo "Unknown status: $status"
+    exit 1
+fi
 
 # Get the latest common ancestor between the current branch and upstream main
 common_ancestor=$(git merge-base HEAD upstream/main)

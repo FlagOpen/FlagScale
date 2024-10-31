@@ -39,9 +39,13 @@ system:
     log_interval: 1
     no_log_loss_scale_to_tensorboard: true
   checkpoint:
-    save_interval: 100000 
+    no_save_optim: true
+    no_save_rng: true
+    save_interval: 100000
+    tensorboard_log_interval: 999999
 
 model:
+  deterministic_mode: true
   use_mcore_models: true
   transformer_impl: transformer_engine
   num_layers: 8 

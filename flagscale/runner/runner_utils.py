@@ -1,6 +1,6 @@
+import collections
 import os
 import re
-import sys
 import socket
 import subprocess
 import collections

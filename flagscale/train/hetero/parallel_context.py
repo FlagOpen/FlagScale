@@ -797,8 +797,11 @@ class ParallelContext:
             "tp", independent_ep=False, gloo=False, check_initialized=check_initialized
         )
 
-    def get_pipeline_model_parallel_group(self, check_initialized=True):
+    def get_pipeline_model_parallel_group(self, check_initialized=True, local_pp_group=False):
         """Get the pipeline model parallel group the caller rank belongs to."""
+        if local_pp_group:
+            current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+            return current_process_mesh.get_process_group("pp", independent_ep=False, gloo=False, check_initialized=True)
         group = self._process_groups.get("pp", None)
         assert group is not None, "pipeline_model parallel group is not initialized"
         return self._process_groups["pp"]
@@ -1147,6 +1150,9 @@ class ParallelContext:
         if group is None:
             group = self.get_pipeline_model_parallel_group()[0]
         ranks = self._process_group_to_ranks.get(group, None)
+        if ranks is None:
+            current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+            ranks = current_process_mesh.get_process_group_ranks(token="pp", independent_ep=False, check_initialized=True)
         assert ranks is not None, "Pipeline parallel group is not initialized"
         rank_in_pipeline = self.get_pipeline_model_parallel_rank(group)
         world_size = self.get_pipeline_model_parallel_world_size(group)
@@ -1157,6 +1163,9 @@ class ParallelContext:
         if group is None:
             group = self.get_pipeline_model_parallel_group()[0]
         ranks = self._process_group_to_ranks.get(group, None)
+        if ranks is None:
+            current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+            ranks = current_process_mesh.get_process_group_ranks(token="pp", independent_ep=False, check_initialized=True)
         assert ranks is not None, "Pipeline parallel group is not initialized"
         rank_in_pipeline = self.get_pipeline_model_parallel_rank(group)
         world_size = self.get_pipeline_model_parallel_world_size(group)
@@ -1167,7 +1176,7 @@ class ParallelContext:
         assert (
             self._parallel_ranks.get("last_rank", None) is not None
         ), "Last rank when using pipeline is not initialized"
-        return self._parallel_ranks["last_rank"][self._current_process_mesh_index]
+        return self._parallel_ranks["last_rank"][-1]
 
     def get_data_parallel_world_size(self, with_context_parallel=False):
         """Return world size for the data parallel group."""

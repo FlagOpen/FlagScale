@@ -1,0 +1,22 @@
+/*.sig-param:nth-child(1 of .sig-param):nth-last-child(n + 3 of .sig-param)::before,
+.sig-param:nth-child(1 of .sig-param):nth-last-child(n + 3 of .sig-param) ~ .sig-param ::before {
+    content: "\a\20\20\20\20\20\20\20\20\20\20\20\20\20\20\20\20";
+    white-space: pre;
+}*/
+
+/* Newlines (\a) and spaces (\20) before each parameter */
+.sig-param::before {
+    content: "\a\20\20\20\20\20\20\20\20\20\20\20\20\20\20\20\20";
+    white-space: pre;
+}
+
+/* Newline after the last parameter (so the closing bracket is on a new line) */
+dt em.sig-param:last-of-type::after {
+    content: "\a";
+    white-space: pre;
+}
+
+/* To have blue background of width of the block (instead of width of content) */
+dl.class > dt:first-of-type {
+    display: block !important;
+}
