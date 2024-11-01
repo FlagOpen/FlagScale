@@ -1,6 +1,5 @@
 import os
 import shlex
-import sys
 
 import hydra
 from hydra.core.hydra_config import HydraConfig

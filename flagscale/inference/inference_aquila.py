@@ -1,8 +1,9 @@
 import os
 import sys
-sys.path.append(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from flagscale.utils import CustomModuleFinder
+
 sys.meta_path.insert(0, CustomModuleFinder())
 
 from transformers import AutoTokenizer
@@ -31,7 +32,9 @@ def inference(cfg):
     # step 3: initialize the sampling parameters
     # TODO(zhaoyinglia): support config logits processor
     sampling_cfg = cfg.generate.get("sampling", {})
-    assert not sampling_cfg.get("logits_processors", None), "logits_processors is not supported yet."
+    assert not sampling_cfg.get(
+        "logits_processors", None
+    ), "logits_processors is not supported yet."
     sampling_params = SamplingParams(**sampling_cfg)
     print(f"=> {sampling_params=}")
 

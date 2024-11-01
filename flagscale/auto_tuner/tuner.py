@@ -6,14 +6,13 @@ import time
 
 from omegaconf import DictConfig, OmegaConf
 
-from flagscale.runner.runner_base import JobStatus
-from flagscale.runner.runner_train import SSHTrainRunner
-
 from .generate import Generator
 from .platform import set_jiuding_platform_args
 from .prune import Pruner
 from .record import Recorder
 from .search import Searcher
+from flagscale.runner.runner_base import JobStatus
+from flagscale.runner.runner_train import SSHTrainRunner
 
 
 class AutoTuner:
