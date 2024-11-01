@@ -356,7 +356,7 @@ class SSHTrainRunner(RunnerBase):
 
         num_visible_devices = None
         visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
-        if visible_devices:
+        if visible_devices is not None and isinstance(visible_devices, str):
             visible_devices = visible_devices.split(",")
             num_visible_devices = len(visible_devices)
 

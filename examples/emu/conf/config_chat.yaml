@@ -1,0 +1,24 @@
+defaults:
+  - _self_
+  - inference: inference_emu3_i2t
+
+experiment:
+  exp_name: emu3_chat
+  exp_dir: outputs/${experiment.exp_name}
+  task:
+    type: inference
+    backend: vllm
+    entrypoint: flagscale/inference/inference_emu3.py
+  runner:
+    hostfile: null
+  cmds:
+    before_start: source activate flagscale
+  envs:
+    CUDA_VISIBLE_DEVICES: 0
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+
+action: run
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra 

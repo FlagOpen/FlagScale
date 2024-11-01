@@ -115,6 +115,8 @@ def _generate_run_script_inference(
         os.fsync(f.fileno())
     os.chmod(host_run_script_file, 0o755)
 
+    return host_run_script_file
+
 
 def _generate_stop_script(config, host, node_rank):
     logging_config = config.inference.logging
@@ -217,7 +219,7 @@ class SSHInferenceRunner(RunnerBase):
     def run(self, with_test=False, dryrun=False):
         num_visible_devices = None
         visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
-        if visible_devices:
+        if visible_devices is not None and isinstance(visible_devices, str):
             visible_devices = visible_devices.split(",")
             num_visible_devices = len(visible_devices)
 
@@ -270,9 +272,7 @@ class SSHInferenceRunner(RunnerBase):
             )
 
     def _stop_each(self, host, node_rank):
-        host_stop_script_file = _generate_stop_script(
-            self.config, host, node_rank
-        )
+        host_stop_script_file = _generate_stop_script(self.config, host, node_rank)
         logging_config = self.config.inference.logging
 
         if host != "localhost":
