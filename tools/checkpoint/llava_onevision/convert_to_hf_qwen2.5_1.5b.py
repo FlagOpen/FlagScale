@@ -52,7 +52,7 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
     mlp_chunk_dim_1 = ["encoder.linear_fc2.weight"]
     for name, param in mc_model_0["model"].items():
         # column parallel
-        if use_te and "_extra_state" in name:
+        if "_extra_state" in name:
             continue
         params = [model["model"][name] for model in mc_models]
         if (

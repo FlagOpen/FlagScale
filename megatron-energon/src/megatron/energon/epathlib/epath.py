@@ -7,7 +7,7 @@ from pathlib import Path as PathlibPath
 from pathlib import PurePosixPath
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
-import fsspec
+import fsspec.asyn
 import s3fs
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
