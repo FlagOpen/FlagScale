@@ -3,7 +3,6 @@ import os
 import re
 import socket
 import subprocess
-import collections
 
 from flagscale.logger import logger
 

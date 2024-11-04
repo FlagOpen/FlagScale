@@ -106,6 +106,7 @@ _EMBEDDING_MODELS = {
 
 _MULTIMODAL_MODELS = {
     # [Decoder-only]
+    "Emu3ForCausalLM": ("llama", "LlamaForCausalLM"),
     "Blip2ForConditionalGeneration": ("blip2", "Blip2ForConditionalGeneration"),
     "ChameleonForConditionalGeneration": ("chameleon", "ChameleonForConditionalGeneration"),  # noqa: E501
     "ChatGLMModel": ("chatglm", "ChatGLMForCausalLM"),

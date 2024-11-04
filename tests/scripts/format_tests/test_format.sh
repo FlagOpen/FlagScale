@@ -11,7 +11,9 @@ flagscale/auto_tuner/search/*.py \
 flagscale/runner/*.py \
 flagscale/logger.py \
 flagscale/patches_utils.py \
-flagscale/datasets/sft_dataset.py"
+flagscale/datasets/sft_dataset.py \
+flagscale/inference/inference_*.py \
+flagscale/inference/arguments.py"
 
 # Function to run a command and continue even if it fails
 run_command() {
@@ -32,8 +34,8 @@ echo "******************************************** Running isort ***************
 
 # Show the changes made by isort
 echo "Showing changes made by isort..."
-run_command "isort --verbose --profile black $INCLUDE_PATHS --diff"
+run_command "isort --verbose --profile black $INCLUDE_PATHS --diff --known-local-folder flagscale"
 
 # Run isort to sort imports and apply changes
 echo "Applying isort formatting..."
-run_command "isort --verbose --profile black $INCLUDE_PATHS"
+run_command "isort --verbose --profile black $INCLUDE_PATHS --known-local-folder flagscale"

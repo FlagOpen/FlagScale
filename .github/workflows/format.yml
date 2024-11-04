@@ -15,6 +15,8 @@ env:
     flagscale/logger.py
     flagscale/patches_utils.py
     flagscale/datasets/sft_dataset.py
+    flagscale/inference/inference_*.py
+    flagscale/inference/arguments.py
 
 jobs:
   format:
@@ -28,7 +30,7 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: "3.10"
-    
+
     - name: Install dependencies
       run: |
         pip install black isort
@@ -36,7 +38,7 @@ jobs:
     - name: Run Black
       run: |
         black --verbose --include $INCLUDE_FILES ./ --diff
-      
+
     - name: Run Isort
       run: |
-        isort --verbose --profile black $INCLUDE_FILES --diff
+        isort --verbose --profile black $INCLUDE_FILES --diff --known-local-folder flagscale
