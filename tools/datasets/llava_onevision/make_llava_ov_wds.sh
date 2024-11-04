@@ -10,8 +10,8 @@ export GLOO_SOCKET_IFNAME=eth0
 export NCCL_IB_HCA=mlx5_2,mlx5_5
 export CUDA_LAUNCH_BLOCKING=1
 
-VISION_MODEL_VERSION="google/siglip-so400m-patch14-384"
-PROJECTOR="Aquila-VL-2B/mm_projector.bin"
+LLaVA-NeXT-HOME="Path_Of_LLaVA-NeXT"
+VISION_MODEL_PATH="Path_Of_VISION_MODEL"
 PROMPT_VERSION="qwen_1_5"
 
 # stage1
@@ -30,6 +30,7 @@ echo "BASE_RUN_NAME: ${EXPNAME_PATH}"
 
 CKPT_PATH="./checkpoints"
 
+mkdir -p $CKPT_PATH
 mkdir -p $EXPNAME_PATH
 LOGFILE=$EXPNAME_PATH/exp.log
 i=0
@@ -47,17 +48,16 @@ do
     "cd ${PWD} && \
     export WANDB_MODE=offline && \
     export ACCELERATE_CPU_AFFINITY=1 && \
-    export PYTHONPATH=/share/project/gushuhao/1.research/LLaVA-NeXT-main:$PYTHONPATH && \
+    export PYTHONPATH=$LLaVA-NeXT-HOME:$PYTHONPATH && \
     torchrun --nproc_per_node=4 --nnodes=${NNodes} --node_rank=${i} --master_addr=${MASTER_ADDR} --master_port=29513 llava_ov_wds.py \
         --model_name_or_path ${CKPT_PATH} \
         --version ${PROMPT_VERSION} \
         --data_path $DATA_PATH \
         --image_folder playground/data \
         --video_folder ./onevision_data/videos \
-        --pretrain_mm_mlp_adapter="${PROJECTOR}" \
         --mm_tunable_parts="mm_mlp_adapter" \
         --mm_vision_tower_lr=2e-6 \
-        --vision_tower ${VISION_MODEL_VERSION} \
+        --vision_tower ${VISION_MODEL_PATH} \
         --mm_projector_type mlp2x_gelu \
         --mm_vision_select_layer -2 \
         --mm_use_im_start_end False \
