@@ -426,7 +426,10 @@ class ProcessMesh:
             for coord in coords:  
                 assert len(coord) == 4
             sizes = self._rank_generator.ordered_size_wo_ep
-        strides = _prefix_product(sizes)
+        # NOTE: We remove the ulysses-sp model parallel size from the sizes, as it is always 1 currently.
+        new_sizes = [val for idx, val in enumerate(sizes) if idx != 2]
+        assert len(new_sizes) == len(coords[0]), f"new_sizes: {new_sizes}, coords[0]: {coords[0]}"
+        strides = _prefix_product(new_sizes)
         logical_ranks = []
         for coord in coords:  
             logical_rank = sum([c * s for c, s in zip(coord, strides)]) + self._offset
