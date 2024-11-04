@@ -9,10 +9,10 @@ When training the LLava-one-vision model with FlagScale, the original LLava-one-
 1. Download https://github.com/LLaVA-VL/LLaVA-NeXT into Path_Of_LLaVA-NeXT.
 2. Download google/siglip-so400m-patch14-384 into VISION_MODEL_PATH.
 3. Write a hostfile with one IP per line, like the example below:
-'''
+```
 1.2.3.4 slots=8
 1.2.3.5 slots=8
-'''
+```
 4. Prepare a dataset input compatible with the LLava-one-vision library, like next_ov_stage_july21.yaml.
 
 ## Example
