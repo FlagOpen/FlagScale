@@ -24,13 +24,13 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
 
 1. Clone the repository:
     ```sh
-    git clone git@gitee.com:baai-opensp/FlagScale.git 
+    git clone https://github.com/FlagOpen/FlagScale.git
     ```
 
 2. Install the dependencies:
     ```sh
     cd FlagScale
-    pip install -r requirements/requirements.txt
+    pip install -r requirements/requirements-dev.txt
     ```
     You can install only the required packages for the specific backend engine you need by modifying the requirements.
 
