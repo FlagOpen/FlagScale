@@ -427,7 +427,7 @@ class ProcessMesh:
                 assert len(coord) == 4
             sizes = self._rank_generator.ordered_size_wo_ep
         # TODO: Support ulysses sequence parallelism
-        new_sizes = [val for idx, val in enumerate(sizes) if idx != 2]
+        new_sizes = [val for idx, val in enumerate(sizes) if idx != 1]
         assert len(new_sizes) == len(coords[0]), f"new_sizes: {new_sizes}, coords[0]: {coords[0]}"
         strides = _prefix_product(new_sizes)
         logical_ranks = []
