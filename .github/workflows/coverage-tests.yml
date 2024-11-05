@@ -46,6 +46,6 @@ jobs:
       - name: Coverage Online Report
         run: |
           REPORT_ADDR=$(cat "/workspace/config/report_address")
-          echo "You can access the test diff-coverage report at the http://${REPORT_ADDR}/${{github.sha}}/diff-cover-report-${{ inputs.backend }}.html"
+          echo "You can access the test diff-coverage report at the http://${REPORT_ADDR}/${{github.sha}}/cov-report-${{ inputs.backend }}/diff-cover-report-${{ inputs.backend }}.html"
 
         
