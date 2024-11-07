@@ -450,7 +450,7 @@ Convert Qwen weights to megatron format.
 
 
 Example usage:
-python qwen_converter.py --input /some/input/folder --output /some/output/folder --tensor-parallel-size 4
+python convert_to_fs_qwen2.5_1.5b.py --input /some/input/folder --output /some/output/folder --tensor-parallel-size 4
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
