@@ -327,7 +327,7 @@ class SSHTrainRunner(RunnerBase):
         )
         # update hetero-current-device-type according to the device_type in hostfile
         for k in self.user_args:
-            if k == "--hetero-current-device-type":
+            if k == "--hetero-current-device-type" and device_type is not None:
                 idx = self.user_args.index(k)
                 self.user_args[idx + 1] = device_type
 
