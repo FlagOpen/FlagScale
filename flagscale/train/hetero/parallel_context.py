@@ -996,8 +996,11 @@ class ParallelContext:
             return rank
         if group is None:
             group = self.get_pipeline_model_parallel_group()[0]
-        ranks = self._process_group_to_ranks[group]
-        return ranks.index(self._rank)
+        if group not in self._process_group_to_ranks: # local pipeline group
+            return torch.distributed.get_rank(group=group)
+        else:
+            ranks = self._process_group_to_ranks[group]
+            return ranks.index(self._rank)
 
     def get_pipeline_model_parallel_split_rank(self):
         """Return pipeline model parallel split rank."""
