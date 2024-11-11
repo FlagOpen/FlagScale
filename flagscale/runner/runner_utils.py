@@ -196,11 +196,12 @@ def get_nproc_per_node(
             return 1
 
 
-def get_decive_extra_config(config, device_type):
+def add_decive_extra_config(config, device_type):
     if device_type is None:
         logger.warning(
             f"type in hostfile is not specified. All the nodes use the same arguments inlucding evnironment variables."
         )
+        return OmegaConf.to_container(config, resolve=True)
     cur_node_config = {}
     temp_dict = {}
     if isinstance(config, DictConfig):

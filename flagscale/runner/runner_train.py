@@ -7,8 +7,8 @@ from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.runner_utils import (
+    add_decive_extra_config,
     flatten_dict_to_args,
-    get_decive_extra_config,
     get_free_port,
     get_host_name_or_ip,
     get_nnodes,
@@ -311,7 +311,7 @@ class SSHTrainRunner(RunnerBase):
         dryrun=False,
     ):
         export_cmd = []
-        cur_envs = get_decive_extra_config(self.user_envs, device_type)
+        cur_envs = add_decive_extra_config(self.user_envs, device_type)
 
         for k, v in cur_envs.items():
             export_cmd += [f"{k}={v}"]
@@ -326,10 +326,12 @@ class SSHTrainRunner(RunnerBase):
             self.config,
         )
         # update hetero-current-device-type according to the device_type in hostfile
-        for k in self.user_args:
-            if k == "--hetero-current-device-type" and device_type is not None:
-                idx = self.user_args.index(k)
+        if device_type is not None:
+            if "--hetero-current-device-type" in self.user_args:
+                idx = self.user_args.index("--hetero-current-device-type")
                 self.user_args[idx + 1] = device_type
+            else:
+                self.user_args += ["--hetero-current-device-type", device_type]
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
 
