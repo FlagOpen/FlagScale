@@ -438,6 +438,12 @@ def add_multimodal_extra_args(parser):
     group.add_argument(
         "--pos-skipping-range", type=int, default=4096, help="Position skipping range"
     )
+    group.add_argument(
+        "--add-faster-video", default=False, help="Whetehr add fatser video token"
+    )
+    group.add_argument(
+        "--mm-spatial-pool-mode", type=str, default=bilinear, help="Spatial pool mode"
+    )
     return parser
 
 
