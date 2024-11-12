@@ -4,6 +4,8 @@ import re
 import socket
 import subprocess
 
+from omegaconf import DictConfig, OmegaConf
+
 from flagscale.logger import logger
 
 
@@ -44,6 +46,10 @@ def parse_hostfile(hostfile_path):
             resources[host] = {"slots": num_slots, "type": machine_type}
         else:
             log_and_raise_error(f"Invalid entry in hostfile: {line}.")
+
+    assert all(info["type"] == None for _, info in resources.items()) or all(
+        info["type"] != None for _, info in resources.items()
+    ), "All hosts must have the a machine type or no machine type specified."
 
     if len(resources) == 0:
         log_and_raise_error(
@@ -188,3 +194,26 @@ def get_nproc_per_node(
             return num_visible_devices
         else:
             return 1
+
+
+def add_decive_extra_config(config, device_type):
+    if device_type is None:
+        logger.warning(
+            f"type in hostfile is not specified. All the nodes use the same arguments inlucding evnironment variables."
+        )
+        return OmegaConf.to_container(config, resolve=True)
+    cur_node_config = {}
+    temp_dict = {}
+    if isinstance(config, DictConfig):
+        temp_dict = OmegaConf.to_container(config, resolve=True)
+    else:
+        temp_dict = config
+    for key, value in temp_dict.items():
+        if isinstance(value, dict):
+            if key == device_type:
+                cur_node_config.update(value)
+            else:
+                continue
+        else:
+            cur_node_config[key] = value
+    return cur_node_config
