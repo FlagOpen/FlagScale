@@ -65,7 +65,8 @@ def warm_up_comm_group_hetero(config: ModelParallelConfig):
 
     for pp_group in pp_groups:
         group_ranks = torch.distributed.get_process_group_ranks(pp_group)
-        if rank == group_ranks[0]:
+        pipeline_rank = get_pipeline_model_parallel_rank()
+        if pipeline_rank == 0:
             _communicate(
                 tensor_send_next=to_send_tensor,
                 tensor_send_prev=None,
@@ -75,7 +76,7 @@ def warm_up_comm_group_hetero(config: ModelParallelConfig):
                 config=config,
                 group=pp_group,
             )
-        elif rank == group_ranks[-1]:
+        elif pipeline_rank == len(group_ranks) - 1:
             _communicate(
                 tensor_send_next=None,
                 tensor_send_prev=None,
