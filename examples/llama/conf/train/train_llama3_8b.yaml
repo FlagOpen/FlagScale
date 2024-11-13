@@ -43,11 +43,11 @@ model:
   attention_dropout: 0.0
   hidden_dropout: 0.0
   clip_grad: 1.0
-  train_samples: 200000 
+  train_samples: 32
   eval_iters: 100
   eval_interval: 1000
   micro_batch_size: 1
-  global_batch_size: 2048  
+  global_batch_size: 16  
 
   optimizer:
     weight_decay: 1e-2
@@ -60,10 +60,10 @@ model:
       lr_decay_style: cosine 
 
 data:
-  data_path: examples/llama/pile-openwebtext_text_document/pile-openwebtext_text_document
+  data_path: /share/project/lizhiyu/FlagScale/build/data/pile_wikipedia_demo
   split: 1 
   tokenizer:
     tokenizer_type: Llama3TokenizerFS
-    tokenizer_path: meta-llama3/Meta-Llama-3-8B
+    tokenizer_path: /share/project/liangdong/Profiler/FlagScale/examples/llama/tokenizer/Llama-3-70B/
     vocab_size: 128256
     make_vocab_size_divisible_by: 64

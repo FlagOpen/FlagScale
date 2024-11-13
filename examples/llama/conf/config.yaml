@@ -26,21 +26,27 @@
 
 
 defaults:
-  - train: train_llama3_70b
+  - train: train_llama3_8b
   - _self_
 
 experiment:
   exp_name: llama3
-  exp_dir: ./outputs_llama3_70b
+  exp_dir: ./outputs_llama3_8b
   task:
     type: train
     backend: megatron
     entrypoint: ./flagscale/train/train_llama.py
+  # cmds:
+  #   before_start: source /root/miniconda3/bin/activate flagscale
   runner:
     backend: torchrun
-    nnodes: 4 
+    nnodes: 1
+    hostfile: null 
     nproc_per_node: 8 
-    hostfile: ${hostfile??} 
+    # for cloud runner
+    # node_rank: 0
+    # master_addr: 172.xxx.xxx.xxx
+    # master_port: 6000
   envs:
     CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7 
     CUDA_DEVICE_MAX_CONNECTIONS: 1
