@@ -316,66 +316,6 @@ class TransformerBlock(MegatronModule):
                     rotary_pos_emb,
                 )
 
-        if self.config.recompute_method_per_stage_micro_batch != None:
-            if self.config.virtual_pipeline_model_parallel_size != None:
-                if (
-                    self.config.recompute_method_per_stage_micro_batch[
-                        parallel_state.get_virtual_pipeline_model_parallel_rank()
-                        * self.config.pipeline_model_parallel_size
-                        + parallel_state.get_pipeline_model_parallel_rank()
-                    ][self.current_microbatch]
-                    == 0
-                ):
-                    self.config.recompute_method = 'uniform'
-                elif (
-                    self.config.recompute_method_per_stage_micor_batch[
-                        parallel_state.get_virtual_pipeline_model_parallel_rank()
-                        * self.config.pipeline_model_parallel_size
-                        + parallel_state.get_pipeline_model_parallel_rank()
-                    ][self.current_microbatch]
-                    == 1
-                ):
-                    self.config.recompute_method = 'block'
-                else:
-                    raise ValueError("the item of recompute_method_per_stage_micor_batch must be '0' or '1' ")
-            else:
-                if (
-                    self.config.recompute_method_per_stage_micro_batch[
-                        parallel_state.get_pipeline_model_parallel_rank()
-                    ][self.current_microbatch]
-                    == 0
-                ):
-                    self.config.recompute_method = 'uniform'
-                elif (
-                    self.config.recompute_method_per_stage_micro_batch[
-                        parallel_state.get_pipeline_model_parallel_rank()
-                    ][self.current_microbatch]
-                    == 1
-                ):
-                    self.config.recompute_method = 'block'
-
-        if self.config.recompute_num_layers_per_stage_micro_batch != None:
-            if self.config.virtual_pipeline_model_parallel_size != None:
-                self.config.recompute_num_layers = self.config.recompute_num_layers_per_stage_micro_batch[
-                    parallel_state.get_virtual_pipeline_model_parallel_rank()
-                    * self.config.pipeline_model_parallel_size
-                    + parallel_state.get_pipeline_model_parallel_rank()
-                ][self.current_microbatch]
-            else:
-                self.config.recompute_num_layers = self.config.recompute_num_layers_per_stage_micro_batch[
-                    parallel_state.get_pipeline_model_parallel_rank()
-                ][self.current_microbatch]
-
-        if (
-            self.config.recompute_granularity_per_stage_micro_batch != None
-            and self.config.recompute_granularity_per_stage_micro_batch[
-                parallel_state.get_pipeline_model_parallel_rank()
-            ][self.current_microbatch]
-            == 0
-        ):
-            self.recompute_granularity = None
-            self.recompute_method = None
-
         if self.config.recompute_method == 'uniform':
             # Uniformly divide the total number of Transformer layers and checkpoint
             # the input activation of each divided chunk.
@@ -537,6 +477,71 @@ class TransformerBlock(MegatronModule):
             )
         else:
             fp8_context = nullcontext()
+
+        if self.config.recompute_method_per_stage_micro_batch != None:
+            if self.config.virtual_pipeline_model_parallel_size != None:
+                if (
+                    self.config.recompute_method_per_stage_micro_batch[
+                        parallel_state.get_virtual_pipeline_model_parallel_rank()
+                        * self.config.pipeline_model_parallel_size
+                        + parallel_state.get_pipeline_model_parallel_rank()
+                    ][self.current_microbatch]
+                    == 0
+                ):
+                    self.config.recompute_method = 'uniform'
+                elif (
+                    self.config.recompute_method_per_stage_micor_batch[
+                        parallel_state.get_virtual_pipeline_model_parallel_rank()
+                        * self.config.pipeline_model_parallel_size
+                        + parallel_state.get_pipeline_model_parallel_rank()
+                    ][self.current_microbatch]
+                    == 1
+                ):
+                    self.config.recompute_method = 'block'
+                else:
+                    raise ValueError("the item of recompute_method_per_stage_micor_batch must be '0' or '1' ")
+            else:
+                if (
+                    self.config.recompute_method_per_stage_micro_batch[
+                        parallel_state.get_pipeline_model_parallel_rank()
+                    ][self.current_microbatch]
+                    == 0
+                ):
+                    self.config.recompute_method = 'uniform'
+                elif (
+                    self.config.recompute_method_per_stage_micro_batch[
+                        parallel_state.get_pipeline_model_parallel_rank()
+                    ][self.current_microbatch]
+                    == 1
+                ):
+                    self.config.recompute_method = 'block'
+                else:
+                    raise ValueError("the item of recompute_method_per_stage_micor_batch must be '0' or '1' ")
+
+        if self.config.recompute_num_layers_per_stage_micro_batch != None:
+            if self.config.virtual_pipeline_model_parallel_size != None:
+                self.config.recompute_num_layers = self.config.recompute_num_layers_per_stage_micro_batch[
+                    parallel_state.get_virtual_pipeline_model_parallel_rank()
+                    * self.config.pipeline_model_parallel_size
+                    + parallel_state.get_pipeline_model_parallel_rank()
+                ][self.current_microbatch]
+            else:
+                self.config.recompute_num_layers = self.config.recompute_num_layers_per_stage_micro_batch[
+                    parallel_state.get_pipeline_model_parallel_rank()
+                ][self.current_microbatch]
+            if self.config.recompute_num_layers == 0:
+                self.config.recompute_method = None
+                self.config.recompute_granularity = None
+
+        if (
+            self.config.recompute_granularity_per_stage_micro_batch != None
+            and self.config.recompute_granularity_per_stage_micro_batch[
+                parallel_state.get_pipeline_model_parallel_rank()
+            ][self.current_microbatch]
+            == 0
+        ):
+            self.config.recompute_granularity = None
+            self.config.recompute_method = None
 
         with rng_context and fp8_context:
             # Forward pass.

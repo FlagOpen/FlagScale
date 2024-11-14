@@ -996,7 +996,11 @@ class ParallelContext:
             return rank
         if group is None:
             group = self.get_pipeline_model_parallel_group()[0]
-        return torch.distributed.get_rank(group=group)
+        if group not in self._process_group_to_ranks: # local pipeline group
+            return torch.distributed.get_rank(group=group)
+        else:
+            ranks = self._process_group_to_ranks[group]
+            return ranks.index(self._rank)
 
     def get_pipeline_model_parallel_split_rank(self):
         """Return pipeline model parallel split rank."""
@@ -1153,11 +1157,14 @@ class ParallelContext:
         if group is None:
             group = self.get_pipeline_model_parallel_group()[0]
         ranks = self._process_group_to_ranks.get(group, None)
-        if ranks is None:
+        if ranks is None: # local pipeline group
             current_process_mesh = self._process_meshes[self._current_process_mesh_index]
             ranks = current_process_mesh.get_process_group_ranks(token="pp", independent_ep=False, check_initialized=True)
-        assert ranks is not None, "Pipeline parallel group is not initialized"
-        rank_in_pipeline = self.get_pipeline_model_parallel_rank(group)
+            assert ranks is not None, "Pipeline parallel group is not initialized"
+            rank_in_pipeline = torch.distributed.get_rank(group=group)
+            world_size = self.get_pipeline_model_parallel_world_size(group)
+            return ranks[(rank_in_pipeline + 1) % world_size]
+        rank_in_pipeline = ranks.index(self._rank)
         world_size = self.get_pipeline_model_parallel_world_size(group)
         return ranks[(rank_in_pipeline + 1) % world_size]
 
@@ -1166,11 +1173,14 @@ class ParallelContext:
         if group is None:
             group = self.get_pipeline_model_parallel_group()[0]
         ranks = self._process_group_to_ranks.get(group, None)
-        if ranks is None:
+        if ranks is None: # local pipeline group
             current_process_mesh = self._process_meshes[self._current_process_mesh_index]
             ranks = current_process_mesh.get_process_group_ranks(token="pp", independent_ep=False, check_initialized=True)
-        assert ranks is not None, "Pipeline parallel group is not initialized"
-        rank_in_pipeline = self.get_pipeline_model_parallel_rank(group)
+            assert ranks is not None, "Pipeline parallel group is not initialized"
+            rank_in_pipeline = torch.distributed.get_rank(group=group)
+            world_size = self.get_pipeline_model_parallel_world_size(group)
+            return ranks[(rank_in_pipeline - 1) % world_size]
+        rank_in_pipeline = ranks.index(self._rank)
         world_size = self.get_pipeline_model_parallel_world_size(group)
         return ranks[(rank_in_pipeline - 1) % world_size]
 
