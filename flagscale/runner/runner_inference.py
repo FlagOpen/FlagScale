@@ -81,6 +81,7 @@ def _generate_run_script_inference(
     root_dir = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
+    vllm_dir = os.path.join(root_dir, "vllm")
     cmds_config = config.experiment.get("cmds", None)
     if cmds_config:
         before_start = cmds_config.get("before_start", "")
@@ -94,7 +95,7 @@ def _generate_run_script_inference(
         f.write(f"\n")
         f.write(f"cd {root_dir}\n")
         f.write(f"\n")
-        f.write(f"export PYTHONPATH={root_dir}\n")
+        f.write(f"export PYTHONPATH={vllm_dir}:{root_dir}\n")
         f.write(f"\n")
         f.write(f'cmd="{cmd}"\n')
         f.write(f"\n")
