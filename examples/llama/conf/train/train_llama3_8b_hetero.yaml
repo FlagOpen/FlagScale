@@ -18,6 +18,7 @@ system:
     load: outputs_llama3/checkpoint_mc
     save_interval: 10
     finetune: True
+    ckpt_format: "torch"
 
 model:
   use_mcore_models: True
