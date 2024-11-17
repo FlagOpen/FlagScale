@@ -16,9 +16,9 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
     new_state_dicts = [{"model": dict()} for _ in range(tensor_parallel_size)]
 
     # Indices from mapping pytorch multihead attention to megatron.
-    kv_channels = 72
     hidden_dim = 1152
     num_heads = 16
+    kv_channels = hidden_dim // num_heads
     indices = []
     for i in range(num_heads):
         lb = i * kv_channels

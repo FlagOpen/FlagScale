@@ -251,10 +251,11 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
                 raise ValueError(f"{name} is not converted.")
 
     # Indices from mapping pytorch multihead attention to megatron.
-    kv_channels = 72
     hidden_dim = 1152
     num_heads = 16
-    num_query_groups = 16
+    kv_channels = hidden_dim // num_heads
+    # Because the visual tower does not have GQA, num_query_groups=num_ heads
+    num_query_groups = num_heads
     kv_projection_size = kv_channels * num_query_groups
     indices = []
     # Q
