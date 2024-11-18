@@ -291,6 +291,7 @@ class SSHTrainRunner(RunnerBase):
         self.user_args = _get_args_megatron(self.config)
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         self.user_envs = self.config.experiment.get("envs", {})
+        self.cur_envs = None  # current node envs
         self.user_script = self.config.experiment.task.entrypoint
         self.resources = parse_hostfile(
             self.config.experiment.runner.get("hostfile", None)
@@ -311,9 +312,8 @@ class SSHTrainRunner(RunnerBase):
         dryrun=False,
     ):
         export_cmd = []
-        cur_envs = add_decive_extra_config(self.user_envs, device_type)
 
-        for k, v in cur_envs.items():
+        for k, v in self.cur_envs.items():
             export_cmd += [f"{k}={v}"]
 
         runner_cmd = _get_runner_cmd_train(
@@ -366,11 +366,6 @@ class SSHTrainRunner(RunnerBase):
     def run(self, with_test=False, dryrun=False, monitor=False, interval=10):
 
         num_visible_devices = None
-        visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
-        if visible_devices is not None and isinstance(visible_devices, str):
-            visible_devices = visible_devices.split(",")
-            num_visible_devices = len(visible_devices)
-
         runner_config = self.config.experiment.runner
 
         # If hostfile is provided, use the resources from the hostfile
@@ -383,6 +378,13 @@ class SSHTrainRunner(RunnerBase):
             for node_rank, (host, resource_info) in enumerate(self.resources.items()):
                 if node_rank >= nnodes:
                     break
+                self.cur_envs = add_decive_extra_config(
+                    self.user_envs, resource_info["type"]
+                )
+                visible_devices = self.cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+                if visible_devices is not None and isinstance(visible_devices, str):
+                    visible_devices = visible_devices.split(",")
+                    num_visible_devices = len(visible_devices)
                 nproc_from_hostfile = resource_info["slots"]
                 nproc_from_args = runner_config.get("nproc_per_node", None)
                 nproc_per_node = get_nproc_per_node(
@@ -403,6 +405,11 @@ class SSHTrainRunner(RunnerBase):
                 )
         else:
             # If hostfile is not provided, run the job on localhost
+            self.cur_envs = self.user_envs
+            visible_devices = self.cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+            if visible_devices is not None and isinstance(visible_devices, str):
+                visible_devices = visible_devices.split(",")
+                num_visible_devices = len(visible_devices)
             nproc_from_args = runner_config.get("nproc_per_node", None)
             nproc_per_node = get_nproc_per_node(
                 None, nproc_from_args, num_visible_devices
