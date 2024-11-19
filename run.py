@@ -3,6 +3,7 @@ from omegaconf import DictConfig
 
 from flagscale.runner.runner_train import SSHTrainRunner, CloudTrainRunner
 from flagscale.runner.runner_inference import SSHInferenceRunner
+from flagscale.runner.runner_serve import SSHServeRunner
 
 
 @hydra.main(version_base=None, config_name="config")
@@ -43,6 +44,14 @@ def main(config: DictConfig) -> None:
             runner.run()
         elif config.action == "dryrun":
             runner.run(dryrun=True)
+        elif config.action == "stop":
+            runner.stop()
+        else:
+            raise ValueError(f"Unknown action {config.action}")
+    elif task_type == "serve":
+        runner = SSHServeRunner(config)
+        if config.action == "run":
+            runner.run()
         elif config.action == "stop":
             runner.stop()
         else:
