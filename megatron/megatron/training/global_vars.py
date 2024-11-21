@@ -12,6 +12,7 @@ from megatron.core.num_microbatches_calculator import init_num_microbatches_calc
 from megatron.training import dist_signal_handler
 from megatron.training.tokenizer import build_tokenizer
 
+from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
 from flagscale.train import get_parallel_context  
 
 _GLOBAL_ARGS = None
@@ -120,12 +121,20 @@ def set_global_writers(args):
 
     # build wandb writers for all processes in the dp group of the last rank 
     from megatron.core import mpu 
-    size = torch.distributed.get_world_size(mpu.get_model_parallel_group())
-    ranks_tensor = torch.tensor([0 for _ in range(size)], dtype=torch.int, device='cuda')
+    mp_groups = mpu.get_model_parallel_group()
+    if not isinstance(mp_groups, list):
+        mp_groups = [mp_groups]
+    size = torch.distributed.get_world_size(mp_groups[-1])
+    comm_device = get_device_type_for_comm(mp_groups)
+    ranks_tensor = torch.tensor([0 for _ in range(size)], dtype=torch.int, device=comm_device)
+    orig_ranks = torch.tensor([i for i in range(size)], dtype=torch.int, device=comm_device)
     if is_last_rank():
-        ranks_list = torch.distributed.get_process_group_ranks(mpu.get_model_parallel_group())
-        ranks_tensor = torch.tensor(ranks_list, dtype=torch.int, device='cuda') 
-    torch.distributed.all_reduce(ranks_tensor, group = mpu.get_model_parallel_group())
+        ranks_tensor = orig_ranks
+        ranks_list = torch.distributed.get_process_group_ranks(mp_groups[-1])
+        ranks_tensor = torch.tensor(ranks_list, dtype=torch.int, device=comm_device) 
+    for group in mp_groups:
+        ranks_tensor = orig_ranks
+        torch.distributed.all_reduce(ranks_tensor, group=group)
     if torch.distributed.get_rank() in ranks_tensor.tolist(): 
         _set_wandb_writer(args)
 

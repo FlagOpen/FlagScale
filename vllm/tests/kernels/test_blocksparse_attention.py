@@ -7,7 +7,8 @@ import torch
 from vllm import _custom_ops as ops
 from vllm.attention.ops.blocksparse_attention.interface import (
     LocalStridedBlockSparseAttn)
-from vllm.utils import get_max_shared_memory_bytes, is_hip
+from vllm.platforms import current_platform
+from vllm.utils import get_max_shared_memory_bytes, seed_everything
 
 from .allclose_default import get_default_atol, get_default_rtol
 
@@ -172,10 +173,7 @@ def test_paged_attention(
     blocksparse_block_size: int,
     blocksparse_head_sliding_step: int,
 ) -> None:
-    random.seed(seed)
-    torch.random.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
+    seed_everything(seed)
     torch.set_default_device(device)
     scale = float(1.0 / (head_size**0.5))
     num_query_heads, num_kv_heads = num_heads
@@ -319,15 +317,15 @@ def test_paged_attention(
     # NOTE(woosuk): Due to the kernel-level differences in the two
     # implementations, there is a small numerical difference in the two
     # outputs. Thus, we use a relaxed tolerance for the test.
-    atol = get_default_atol(output) if is_hip() else 1e-3
-    rtol = get_default_rtol(output) if is_hip() else 1e-5
+    atol = get_default_atol(output) if current_platform.is_rocm() else 1e-3
+    rtol = get_default_rtol(output) if current_platform.is_rocm() else 1e-5
 
     # NOTE(zhaoyang): FP8 KV Cache will introduce quantization error,
     # so we use a relaxed tolerance for the test.
     atol, rtol = 1e-3, 1e-5
     if kv_cache_dtype == "fp8":
         atol, rtol = 1e-2, 1e-5
-    assert torch.allclose(output, ref_output, atol=atol, rtol=rtol)
+    torch.testing.assert_close(output, ref_output, atol=atol, rtol=rtol)
 
 
 def ref_multi_query_kv_attention(
@@ -386,10 +384,7 @@ def test_varlen_blocksparse_attention_prefill(
     seed: int,
     device: str,
 ) -> None:
-    random.seed(seed)
-    torch.random.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
+    seed_everything(seed)
     torch.set_default_device(device)
     # MAX_SEQ_LEN sometimes causes OOM in the reference implementation.
     # As the xformers library is already tested with its own tests, we can use
@@ -441,4 +436,4 @@ def test_varlen_blocksparse_attention_prefill(
         scale,
         dtype,
     )
-    assert torch.allclose(output, ref_output, atol=1e-2, rtol=1e-2)
+    torch.testing.assert_close(output, ref_output, atol=1e-2, rtol=1e-2)

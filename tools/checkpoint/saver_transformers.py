@@ -223,7 +223,7 @@ def save_checkpoint(queue, args):
 
     print("*"*20 + "validate saver arguments" + "*"*20)
     margs = validate_args(margs)
-
+    margs.use_dist_ckpt = False
     if md.true_vocab_size is not None:
         margs.padded_vocab_size = _vocab_size_with_padding(md.true_vocab_size, margs)
     else:

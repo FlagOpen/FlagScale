@@ -1,0 +1,94 @@
+<mxfile host="Electron" modified="2023-04-25T14:48:47.391Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/21.2.1 Chrome/112.0.5615.87 Electron/24.1.2 Safari/537.36" etag="lBneK-A7G4DkP6uOi3sa" version="21.2.1" type="device">
+  <diagram id="07fea595-8f29-1299-0266-81d95cde20df" name="Page-1">
+    <mxGraphModel dx="1260" dy="1530" grid="0" gridSize="10" guides="0" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1169" pageHeight="827" background="none" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="EeR23cp9OgTQIamsDvA7-231" value="&lt;font color=&quot;#23497d&quot;&gt;TaskEncoder&lt;/font&gt;" style="swimlane;whiteSpace=wrap;fillColor=none;swimlaneFillColor=#BAC8D3;fontColor=#2F5B7C;fontFamily=Tahoma;html=1;strokeColor=none;opacity=50;align=right;startSize=15;verticalAlign=bottom;" parent="1" vertex="1">
+          <mxGeometry x="80" y="131.5" width="480" height="518.5" as="geometry">
+            <mxRectangle x="24.5" y="88.5" width="80" height="23" as="alternateBounds" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-262" style="edgeStyle=orthogonalEdgeStyle;shape=connector;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;labelBackgroundColor=default;strokeColor=#2F5B7C;strokeWidth=3;fontFamily=Helvetica;fontSize=11;fontColor=default;endArrow=block;endFill=1;" parent="EeR23cp9OgTQIamsDvA7-231" source="EeR23cp9OgTQIamsDvA7-233" target="EeR23cp9OgTQIamsDvA7-260" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-233" value="encode_sample()" style="whiteSpace=wrap;strokeColor=none;fillColor=#2f5b7c;shadow=0;fontColor=#FFFFFF;fontFamily=Helvetica;fontStyle=0;html=1;fontSize=12;spacing=6;verticalAlign=middle;dashed=1;dashPattern=12 12;" parent="EeR23cp9OgTQIamsDvA7-231" vertex="1">
+          <mxGeometry x="180" y="26.5" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-265" style="edgeStyle=orthogonalEdgeStyle;shape=connector;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;labelBackgroundColor=default;strokeColor=#2F5B7C;strokeWidth=3;fontFamily=Helvetica;fontSize=11;fontColor=default;endArrow=block;endFill=1;" parent="EeR23cp9OgTQIamsDvA7-231" source="EeR23cp9OgTQIamsDvA7-241" target="EeR23cp9OgTQIamsDvA7-264" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-241" value="batch()&lt;br&gt;&lt;i&gt;&lt;br&gt;(may be overriden, but uncommon)&lt;/i&gt;" style="whiteSpace=wrap;strokeColor=none;fillColor=#2f5b7c;shadow=0;fontColor=#FFFFFF;fontFamily=Helvetica;fontStyle=0;html=1;fontSize=12;spacing=6;verticalAlign=middle;" parent="EeR23cp9OgTQIamsDvA7-231" vertex="1">
+          <mxGeometry x="180" y="218.5" width="120" height="81.5" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-263" style="edgeStyle=orthogonalEdgeStyle;shape=connector;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;labelBackgroundColor=default;strokeColor=#2F5B7C;strokeWidth=3;fontFamily=Helvetica;fontSize=11;fontColor=default;endArrow=block;endFill=1;" parent="EeR23cp9OgTQIamsDvA7-231" source="EeR23cp9OgTQIamsDvA7-260" target="EeR23cp9OgTQIamsDvA7-241" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-260" value="&lt;b style=&quot;border-color: var(--border-color);&quot;&gt;CaptioningSample&lt;/b&gt;&lt;br style=&quot;border-color: var(--border-color);&quot;&gt;image: torch.Tensor&lt;br style=&quot;border-color: var(--border-color);&quot;&gt;&lt;div style=&quot;border-color: var(--border-color);&quot;&gt;caption: str&lt;/div&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fontFamily=Helvetica;fontSize=12;fontColor=#FFFFFF;align=left;fillColor=#12aab5;strokeColor=none;shadow=0;fontStyle=0;spacing=6;spacingBottom=0;" parent="EeR23cp9OgTQIamsDvA7-231" vertex="1">
+          <mxGeometry x="160" y="108.5" width="160" height="80.75" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-269" style="edgeStyle=orthogonalEdgeStyle;shape=connector;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;labelBackgroundColor=default;strokeColor=#2F5B7C;strokeWidth=3;fontFamily=Helvetica;fontSize=11;fontColor=default;endArrow=block;endFill=1;" parent="EeR23cp9OgTQIamsDvA7-231" source="EeR23cp9OgTQIamsDvA7-264" target="EeR23cp9OgTQIamsDvA7-268" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-264" value="&lt;b style=&quot;border-color: var(--border-color);&quot;&gt;CaptioningBatch&lt;/b&gt;&lt;br style=&quot;border-color: var(--border-color);&quot;&gt;image: torch.Tensor&lt;br style=&quot;border-color: var(--border-color);&quot;&gt;&lt;div style=&quot;border-color: var(--border-color);&quot;&gt;caption: List[str]&lt;/div&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fontFamily=Helvetica;fontSize=12;fontColor=#FFFFFF;align=left;fillColor=#12aab5;strokeColor=none;shadow=0;fontStyle=0;spacing=6;spacingBottom=0;" parent="EeR23cp9OgTQIamsDvA7-231" vertex="1">
+          <mxGeometry x="160" y="328.5" width="160" height="80.75" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-268" value="encode_batch()" style="whiteSpace=wrap;strokeColor=none;fillColor=#2f5b7c;shadow=0;fontColor=#FFFFFF;fontFamily=Helvetica;fontStyle=0;html=1;fontSize=12;spacing=6;verticalAlign=middle;dashed=1;dashPattern=12 12;" parent="EeR23cp9OgTQIamsDvA7-231" vertex="1">
+          <mxGeometry x="180" y="438.5" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="2y5nxieE3EETo1UtqVLI-180" value="&lt;h1 style=&quot;line-height: 110%;&quot;&gt;Customizable TaskEncoder&lt;br&gt;&lt;/h1&gt;&lt;p style=&quot;line-height: 120%;&quot;&gt;All methods can be overridden.&lt;br&gt;You will get custom sample and batch types&lt;/p&gt;" style="text;html=1;strokeColor=#6c8ebf;fillColor=#dae8fc;spacing=5;spacingTop=-20;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="EeR23cp9OgTQIamsDvA7-231" vertex="1">
+          <mxGeometry x="-50" y="128.5" width="190" height="241.5" as="geometry" />
+        </mxCell>
+        <mxCell id="170" value="&lt;font color=&quot;#23497d&quot;&gt;Flavor &quot;&lt;/font&gt;Captioning&quot;" style="swimlane;whiteSpace=wrap;fillColor=none;swimlaneFillColor=#BAC8D3;fontColor=#2F5B7C;fontFamily=Tahoma;html=1;strokeColor=none;opacity=50;align=right;" parent="1" vertex="1">
+          <mxGeometry x="80" y="-180" width="480" height="301.5" as="geometry">
+            <mxRectangle x="24.5" y="88.5" width="80" height="23" as="alternateBounds" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-252" style="edgeStyle=orthogonalEdgeStyle;shape=connector;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;labelBackgroundColor=default;strokeColor=#2F5B7C;strokeWidth=3;fontFamily=Helvetica;fontSize=11;fontColor=default;endArrow=block;endFill=1;" parent="170" source="EeR23cp9OgTQIamsDvA7-218" target="EeR23cp9OgTQIamsDvA7-251" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-218" value="Captioning dataset&lt;br&gt;as web dataset on disk&amp;nbsp;with&lt;br&gt;dataset.yaml" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#2f5b7c;strokeColor=#FFFFFF;fontColor=#FFFFFF;shadow=0;fontStyle=0;gradientColor=none;spacing=6;" parent="170" vertex="1">
+          <mxGeometry x="40" y="51.5" width="135" height="118.5" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-249" value="&lt;b style=&quot;border-color: var(--border-color);&quot;&gt;CaptioningSample&lt;/b&gt;&lt;br style=&quot;border-color: var(--border-color);&quot;&gt;image: torch.Tensor&lt;br style=&quot;border-color: var(--border-color);&quot;&gt;&lt;div style=&quot;border-color: var(--border-color);&quot;&gt;caption: str&lt;/div&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fontFamily=Helvetica;fontSize=12;fontColor=#FFFFFF;align=left;fillColor=#12aab5;strokeColor=none;shadow=0;fontStyle=0;spacing=6;spacingBottom=0;" parent="170" vertex="1">
+          <mxGeometry x="160" y="200" width="160" height="80.75" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-253" value="&amp;nbsp;iterate&amp;nbsp;" style="edgeStyle=orthogonalEdgeStyle;shape=connector;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;labelBackgroundColor=#dce3e9;strokeColor=#2F5B7C;strokeWidth=3;fontFamily=Helvetica;fontSize=11;fontColor=default;endArrow=block;endFill=1;labelBorderColor=none;spacingLeft=0;spacingRight=-3;spacing=3;" parent="170" source="EeR23cp9OgTQIamsDvA7-251" target="EeR23cp9OgTQIamsDvA7-249" edge="1">
+          <mxGeometry x="-0.0434" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-251" value="&lt;b&gt;get_dataset()&lt;/b&gt;&lt;br&gt;constructs a&lt;br&gt;CaptioningWebdataset" style="whiteSpace=wrap;strokeColor=none;fillColor=#2f5b7c;shadow=0;fontColor=#FFFFFF;fontFamily=Helvetica;fontStyle=0;html=1;fontSize=12;spacing=6;verticalAlign=middle;" parent="170" vertex="1">
+          <mxGeometry x="270" y="80.75" width="165" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-276" style="edgeStyle=orthogonalEdgeStyle;shape=connector;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;labelBackgroundColor=default;strokeColor=#2F5B7C;strokeWidth=3;fontFamily=Helvetica;fontSize=11;fontColor=default;endArrow=block;endFill=1;" parent="1" source="EeR23cp9OgTQIamsDvA7-272" target="EeR23cp9OgTQIamsDvA7-275" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-272" value="&lt;div style=&quot;&quot;&gt;&lt;b style=&quot;background-color: initial;&quot;&gt;Batch as it goes&lt;br&gt;into network&lt;/b&gt;&lt;/div&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fontFamily=Helvetica;fontSize=12;fontColor=#FFFFFF;align=center;fillColor=#12aab5;strokeColor=none;shadow=0;fontStyle=0;spacing=6;spacingBottom=0;" parent="1" vertex="1">
+          <mxGeometry x="240" y="670" width="160" height="61.5" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-273" style="edgeStyle=orthogonalEdgeStyle;shape=connector;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;labelBackgroundColor=default;strokeColor=#2F5B7C;strokeWidth=3;fontFamily=Helvetica;fontSize=11;fontColor=default;endArrow=block;endFill=1;" parent="1" source="EeR23cp9OgTQIamsDvA7-268" target="EeR23cp9OgTQIamsDvA7-272" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="EeR23cp9OgTQIamsDvA7-275" value="model.forward()" style="whiteSpace=wrap;strokeColor=none;fillColor=#2f5b7c;shadow=0;fontColor=#FFFFFF;fontFamily=Helvetica;fontStyle=0;html=1;fontSize=12;spacing=6;verticalAlign=middle;dashed=1;dashPattern=12 12;" parent="1" vertex="1">
+          <mxGeometry x="260" y="760" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="2y5nxieE3EETo1UtqVLI-175" value="&lt;h1 style=&quot;line-height: 110%;&quot;&gt;Batching&lt;/h1&gt;&lt;p style=&quot;line-height: 120%;&quot;&gt;Default batching stacks tensors or creates lists of strings&lt;/p&gt;" style="text;html=1;strokeColor=#6c8ebf;fillColor=#dae8fc;spacing=5;spacingTop=-20;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="600" y="360" width="350" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="2y5nxieE3EETo1UtqVLI-176" value="&lt;h1 style=&quot;line-height: 110%;&quot;&gt;Batch Encoding&lt;/h1&gt;&lt;p style=&quot;line-height: 120%;&quot;&gt;Tokenization with padding to longest sequence,&lt;br&gt;or image padding and stacking. Custom batching operations.&lt;/p&gt;" style="text;html=1;strokeColor=#6c8ebf;fillColor=#dae8fc;spacing=5;spacingTop=-20;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="600" y="560" width="350" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="2y5nxieE3EETo1UtqVLI-174" value="&lt;h1 style=&quot;line-height: 110%;&quot;&gt;Sample Encoding&lt;/h1&gt;&lt;p style=&quot;line-height: 120%;&quot;&gt;For example image augmentations and cropping,&lt;br&gt;maybe unpadded tokenizations&lt;/p&gt;" style="text;html=1;strokeColor=#6c8ebf;fillColor=#dae8fc;spacing=5;spacingTop=-20;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="600" y="160" width="350" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="2y5nxieE3EETo1UtqVLI-178" value="&lt;h1 style=&quot;line-height: 110%;&quot;&gt;Constructing the Dataset&lt;/h1&gt;&lt;p style=&quot;line-height: 120%;&quot;&gt;The &lt;b&gt;get_dataset()&lt;/b&gt; method, automatically determines the right class to use from the &lt;b&gt;dataset.yaml&lt;/b&gt; file.&lt;/p&gt;&lt;p style=&quot;line-height: 120%;&quot;&gt;You can pass your &lt;b&gt;TaskEncoder&lt;/b&gt; to the method to use custom methods as shown below&lt;/p&gt;" style="text;html=1;strokeColor=#6c8ebf;fillColor=#dae8fc;spacing=5;spacingTop=-20;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="600" y="-120" width="350" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="2y5nxieE3EETo1UtqVLI-179" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;endArrow=block;strokeColor=#2F5B7C;strokeWidth=3;endFill=1;" parent="1" source="EeR23cp9OgTQIamsDvA7-249" target="EeR23cp9OgTQIamsDvA7-233" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

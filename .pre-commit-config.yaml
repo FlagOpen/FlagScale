@@ -1,28 +1,9 @@
-check_files: &check_files |
-  (?x)^(
-      flagscale/auto_tuner/.*\.py|
-      flagscale/auto_tuner/prune/\..*\.py|
-      flagscale/auto_tuner/record/\..*\.py|
-      flagscale/auto_tuner/search/\..*\.py|
-      flagscale/launcher/\..*\.py|
-      flagscale/logger\.py|
-      flagscale/patches_utils\.py|
-      flagscale/datasets/sft_dataset\.py
-  )$
-
 repos:
   - repo: local
     hooks:
-      - id: black
-        name: black
-        entry: black
-        language: system
+      - id: run-black-and-isort
+        name: Run black and isort
+        entry: ./tests/scripts/format_tests/test_format.sh
+        language: script
         types: [python]
-        files: *check_files
-      - id: isort
-        name: isort
-        entry: isort
-        language: system
-        types: [python]
-        files: *check_files
-        args: ["--profile", "black"]
+        pass_filenames: false

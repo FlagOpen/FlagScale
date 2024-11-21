@@ -10,6 +10,7 @@ class RMSNorm(torch.nn.Module):
                  dim: int,
                  eps: float = 1e-6,
                  sequence_parallel: bool = False,
+                 config: dict = None,
                  init_weight: float = None):
         """RMS Normaliation module
 

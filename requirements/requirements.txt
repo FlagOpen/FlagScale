@@ -1,11 +1,8 @@
 # Megatron-LM
 -r megatron/requirements-cuda.txt
--r megatron/requirements-dev.txt
 
 # vllm
 -r vllm/requirements-cuda.txt
--r megatron/requirements-dev.txt
 
 # flagscale
 -r flagscale/requirements-common.txt
--r flagscale/requirements-dev.txt
