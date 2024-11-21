@@ -43,8 +43,8 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     cd vllm
     pip install .
 
-    cd megatron-energon
-    pip install .
+    pip install -e ./megatron-energon
+    cp -r megatron-energon/src/megatron/energon megatron/megatron
     ```
 
 ### Run a Task 
