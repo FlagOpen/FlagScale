@@ -1,6 +1,7 @@
 import collections
 import os
 import re
+import sys
 import socket
 import subprocess
 
@@ -83,19 +84,30 @@ def get_host_name_or_ip():
             sock.close()
     return IP
 
-
 def run_local_command(cmd, dryrun=False, query=False):
     logger.info(f"Run the local command: {cmd}")
     if dryrun:
         return
     if query:
         result = subprocess.run(
-            cmd, shell=True, check=True, capture_output=True, text=True
+            cmd,
+            shell=True,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         return result
     else:
         result = subprocess.run(
-            cmd, shell=True, check=True, capture_output=True, text=True
+            cmd,
+            shell=True,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace'
         )
         if result.returncode != 0:
             print(f"Command {cmd} failed with return code {result.returncode}.")
@@ -113,13 +125,22 @@ def run_ssh_command(host, cmd, port=None, dryrun=False, query=False):
         logger.info(f"Running the ssh command: {ssh_cmd}")
     if dryrun:
         return
+    result = subprocess.run(
+        ssh_cmd,
+        shell=True,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding='utf-8',
+        errors='replace'
+    )
+    if result.returncode != 0:
+        print(f"SSH command {ssh_cmd} failed with return code {result.returncode}.")
+        print(f"Output: {result.stdout}")
+        print(f"Error: {result.stderr}")
+        sys.exit(result.returncode)
     if query:
-        result = subprocess.run(
-            ssh_cmd, shell=True, check=True, text=True, stdout=subprocess.PIPE
-        )
         return result
-    else:
-        subprocess.run(ssh_cmd, shell=True, check=True)
 
 
 def run_scp_command(host, src, dst, port=None, dryrun=False):
@@ -130,7 +151,20 @@ def run_scp_command(host, src, dst, port=None, dryrun=False):
     logger.info(f"Run the scp command: {scp_cmd}")
     if dryrun:
         return
-    subprocess.run(scp_cmd, shell=True, check=True)
+    result = subprocess.run(
+        scp_cmd,
+        shell=True,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding='utf-8',
+        errors='replace'
+    )
+    if result.returncode != 0:
+        print(f"SCP command {scp_cmd} failed with return code {result.returncode}.")
+        print(f"Output: {result.stdout}")
+        print(f"Error: {result.stderr}")
+        sys.exit(result.returncode)
 
 
 def flatten_dict_to_args(config_dict, ignore_keys=[]):
