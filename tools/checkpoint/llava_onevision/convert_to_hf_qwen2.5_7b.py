@@ -215,7 +215,8 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
         # Language model mappings
         if "image_newline" in mc_name:
             file_name = check_model_file("model.image_newline", hf_models)
-            hf_models[file_name]["model.image_newline"] = mc_tensor
+            if file_name != None:
+                hf_models[file_name]["model.image_newline"] = mc_tensor
 
         if "language_model.embedding.word_embeddings.weight" in mc_name:
             file_name = check_model_file("model.embed_tokens.weight", hf_models)
