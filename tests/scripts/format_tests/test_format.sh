@@ -13,7 +13,9 @@ flagscale/logger.py \
 flagscale/patches_utils.py \
 flagscale/datasets/sft_dataset.py \
 flagscale/inference/inference_*.py \
-flagscale/inference/arguments.py"
+flagscale/inference/arguments.py \
+tools/checkpoint/sfpt_ckpt/*.py \
+"
 
 # Function to run a command and continue even if it fails
 run_command() {
