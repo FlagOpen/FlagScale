@@ -1,3 +1,15 @@
+## Introduce
+This pull request introduces support for deploying large models with FlagScale, leveraging the Ray framework for efficient orchestration and scalability. Currently, this implementation supports the Qwen model, enabling users to easily deploy and manage large-scale machine learning services.
+
+Future Key features include:
+
+- Easy distributed Serve on base of eamless integration with Ray.
+- Optimized resource management for large model inference.
+- Simplified deployment process for the LLM and Multimodal models.
+
+This enhancement will significantly improve the usability of FlagScale for large model deployment scenarios.
+
+
 ## Setup
 [Install vLLM](../../../README.md#setup)
 

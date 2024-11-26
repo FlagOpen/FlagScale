@@ -1,4 +1,4 @@
-import os, sys
+import sys
 import logging
 import yaml
 import ray
@@ -6,24 +6,10 @@ import subprocess
 import argparse
 
 
-# os.environ["RAY_LOG_TO_STDERR"] = "1"
-# os.environ["RAY_BACKEND_LOG_LEVEL"] = "info"  # 或 debug
-os.environ["PYTHONUNBUFFERED"] = "1"
-sys.stdout.reconfigure(line_buffering=True)
-# root_logger = logging.getLogger()
-# root_logger.setLevel(logging.DEBUG)
-# handler = logging.StreamHandler(sys.stdout)
-# handler.setLevel(logging.DEBUG)
-# formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-# handler.setFormatter(formatter)
-# root_logger.addHandler(handler)
 
-
-# ray.init(log_to_driver=True, logging_level=logging.DEBUG, configure_logging=True)
 ray.init(log_to_driver=True, logging_level=logging.INFO)
 
 
-# logging.getLogger("vllm").setLevel(logging.DEBUG)
 @ray.remote(num_gpus=1)
 def start_vllm_serve(args):
 
