@@ -51,6 +51,8 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
 
 FlagScale provides a unified runner for various tasks, including training and inference. Simply specify the configuration file to run the task with a single command. The runner will automatically load the configurations and execute the task. The following example demonstrates how to run a distributed training task.
 
+#### Train
+
 1. Start the distributed training job:
     ```sh
     python run.py --config-path ./examples/aquila/conf --config-name config action=run
@@ -61,6 +63,17 @@ FlagScale provides a unified runner for various tasks, including training and in
     ```sh
     python run.py --config-path ./examples/aquila/conf --config-name config action=stop
     ```
+
+#### Serve
+1. Start the server:
+    ```sh
+    python run.py --config-path ./examples/qwen --config-name config action=run
+    ```
+2. Stop the server:
+    ```sh
+    python run.py --config-path ./examples/qwen --config-name config action=stop
+    ```
+For more details, please refer to [Quick Start](./flagscale/serve/README.md).
 
 ## License
 
