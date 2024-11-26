@@ -32,7 +32,7 @@ def main():
                                      allow_abbrev=False, conflict_handler='resolve')
     # convert args
     parser.add_argument('--model-type', type=str, default=[], nargs="+", required=True,
-                        choices=['mistral', 'mixtral', 'llama'],
+                        choices=['aquila3_dense', 'aquila3_moe', 'mistral', 'mixtral', 'llama'],
                         help='Type of the model.')
     parser.add_argument('--loader', type=str, default='mcore', choices=['mcore', 'transformers'],
                         help='Module name to load checkpoint, should be on python path')
@@ -44,6 +44,7 @@ def main():
                         help='Directory to save model checkpoint to')
     parser.add_argument('--max-queue-size', type=int, default=50,
                         help='Maximum number of tensors in the queue')
+    extend_cases = [['mistral', 'mixtral'], ['aquila3_dense', 'aquila3_moe']]
 
     known_args, _ = parser.parse_known_args()
     loader = load_plugin('loader', known_args.loader)
