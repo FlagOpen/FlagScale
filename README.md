@@ -49,7 +49,7 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
 
 ### Run a Task 
 
-FlagScale provides a unified runner for various tasks, including training and inference. Simply specify the configuration file to run the task with a single command. The runner will automatically load the configurations and execute the task. The following example demonstrates how to run a distributed training task.
+FlagScale provides a unified runner for various tasks, including training，inference and serve. Simply specify the configuration file to run the task with a single command. The runner will automatically load the configurations and execute the task. The following example demonstrates how to run a distributed training task.
 
 #### Train
 
