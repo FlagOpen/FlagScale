@@ -4,7 +4,7 @@ import yaml
 import ray
 import subprocess
 import argparse
-
+from flagscale.logger import logger
 
 
 ray.init(log_to_driver=True, logging_level=logging.INFO)
@@ -25,18 +25,18 @@ def start_vllm_serve(args):
 
     # Start the subprocess
 
-    print(f"Starting vllm serve with command: {' '.join(command)}")
+    logger.info(f"Starting vllm serve with command: {' '.join(command)}")
     process = subprocess.Popen(command, stdout=sys.stdout, stderr=sys.stderr)
     # process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
     stdout, stderr = process.communicate()
 
-    print("Standard Output:")
-    print(stdout)
-    # print(stdout.decode())
-    print("Standard Error:")
-    print(stderr)
-    # print(stderr.decode())
+    logger.info("Standard Output:")
+    logger.info(stdout)
+    # logger.info(stdout.decode())
+    logger.info("Standard Error:")
+    logger.info(stderr)
+    # logger.info(stderr.decode())
 
     return process.returncode
 
@@ -55,7 +55,7 @@ def main():
 
     return_code = ray.get(result)
 
-    print(f"vllm serve exited with return code: {return_code}")
+    logger.info(f"vllm serve exited with return code: {return_code}")
 
 
 if __name__ == "__main__":
