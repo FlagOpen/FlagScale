@@ -958,7 +958,7 @@ else:
     TERowParallelGroupedLinear = None
 
 
-class TEDelayedScaling(te.common.recipe.DelayedScalingBaseClass):
+class TEDelayedScaling(te.common.recipe.DelayedScaling):
     """
     Wrapper for the Transformer-Engine's `DelayedScaling` layer.
     """
@@ -987,7 +987,8 @@ class TEDelayedScaling(te.common.recipe.DelayedScalingBaseClass):
             **extra_kwargs,
         )
 
-class TECudaRNGStatesTracker(te.pytorch.distributed.CudaRNGStatesTrackerBaseClass):
+
+class TECudaRNGStatesTracker(te.pytorch.distributed.CudaRNGStatesTracker):
     """Wraps TransformerEngine's CudaRNGStatesTracker so that it is
     interchangeable with Megatron's RNG tracker"""
 
