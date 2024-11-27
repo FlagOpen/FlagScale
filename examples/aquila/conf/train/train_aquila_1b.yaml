@@ -1,0 +1,99 @@
+system:
+  tensor_model_parallel_size: 1
+  pipeline_model_parallel_size: 2
+  disable_bias_linear: True
+  use_flash_attn: True
+  use_distributed_optimizer: True
+  precision:
+    fp16: True
+    initial_loss_scale: 522893
+    min_loss_scale: 1.0
+    attention_softmax_in_fp32: True
+    accumulate_allreduce_grads_in_fp32: True
+  logging:
+    log_interval: 1
+    tensorboard_log_interval: 1
+    wandb_project: "train-aquila-1B" 
+    wandb_exp_name: "train-test-1B" 
+  checkpoint:
+    # load: outputs_llama3/checkpoint_mc
+    ckpt_format: torch
+    save_interval: 2000 
+  
+  hetero:
+    enable_hetero: True
+    hetero_use_cpu_communication: False
+    # mesh format [tp1,cp1,ep1,dp1,pp1,(tp2,cp2...)]
+
+    hetero_pipeline_layer_split: [12, 12]
+    hetero_process_meshes: [1, 1, 1, 4, 2]
+    hetero_device_types: ["A800"]
+
+    standalone_embedding_stage: False
+    hetero_current_device_type: "A800"
+
+  # recompute:
+  #   recompute_granularity: "full"
+  #   recompute_method: "uniform"
+  #   recompute_num_layers: 1
+
+  #   ## pp 2 stages
+  #   recompute_granularity_per_stage_micro_batch:
+  #     - [1, 4, 1, 4, 0]
+  #     - [1, 8, 1, 0, 0]
+  #   recompute_method_per_stage_micro_batch:
+  #     - [1, 8, 1, 0, 0]
+  #     - [1, 8, 1, 0, 0]
+  #   recompute_num_layers_per_stage_micro_batch:
+  #     - [1, 8, 16, 0, 0]
+  #     - [1, 0, 16, 8, 0]
+
+model:
+  # use_mcore_models: True # deprecated
+  transformer_impl: transformer_engine
+  num_layers: 24 
+  hidden_size: 2048 
+  num_attention_heads: 16 
+  seq_length: 4096 
+  max_position_embeddings: 4096 # only for adding position embeddings
+  norm_epsilon: 1e-5
+  use_rotary_position_embeddings: true
+  no_position_embedding: true
+  rotary_base: 100000 # To be determined 
+  swiglu: true
+  multiple_of: 256
+  normalization: RMSNorm
+  qk_layernorm: True
+  qk_layernorm_hidden_dim: True
+  position_embedding_type: rope
+  untie_embeddings_and_output_weights: true
+  init_method_std: 0.02
+  attention_dropout: 0.0
+  hidden_dropout: 0.0
+  weight_decay: 0.1
+  clip_grad: 1.0
+  train_samples: 160
+  eval_iters: 0
+  micro_batch_size: 2
+  global_batch_size: 16
+  seed: 1234
+
+  optimizer:
+    weight_decay: 0.1
+    adam_beta1: 0.9
+    adam_beta2: 0.95
+    lr_scheduler:
+      lr: 2.0e-5
+      min_lr: 2.0e-6
+      lr_warmup_samples: 10
+      lr_decay_style: cosine 
+
+data:
+  data_path: ${data_path:??}
+  # data_path: ./build/data/pile_wikipedia_demo
+  split: 1 
+  tokenizer:
+    tokenizer_type: QwenTokenizerFS
+    tokenizer_path: ${tokenizer_path:??}
+    vocab_size: 151851
+    make_vocab_size_divisible_by: 64

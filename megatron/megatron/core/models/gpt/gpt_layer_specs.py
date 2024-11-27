@@ -58,6 +58,7 @@ def get_gpt_layer_with_transformer_engine_spec(
     qk_layernorm: Optional[bool] = False,
     multi_latent_attention: Optional[bool] = False,
     fp8: Optional[str] = None,
+    qk_layernorm_hiddnen_dim: Optional[int] = False,
 ) -> ModuleSpec:
     """Use this spec to use lower-level Transformer Engine modules (required for fp8 training).
 
@@ -114,8 +115,8 @@ def get_gpt_layer_with_transformer_engine_spec(
                         linear_proj=TERowParallelLinear,
                         # TENorm significantly harms convergence when used
                         # for QKLayerNorm; we instead use the Apex implementation.
-                        q_layernorm=FusedLayerNorm if qk_layernorm else IdentityOp,
-                        k_layernorm=FusedLayerNorm if qk_layernorm else IdentityOp,
+                        q_layernorm=FusedLayerNorm if (qk_layernorm and not qk_layernorm_hiddnen_dim) else (TENorm if (qk_layernorm and qk_layernorm_hiddnen_dim) else IdentityOp),
+                        k_layernorm=FusedLayerNorm if (qk_layernorm and not qk_layernorm_hiddnen_dim) else (TENorm if (qk_layernorm and qk_layernorm_hiddnen_dim) else IdentityOp),
                     ),
                 ),
                 self_attn_bda=get_bias_dropout_add,
