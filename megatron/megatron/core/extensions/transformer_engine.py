@@ -957,13 +957,8 @@ else:
     TEColumnParallelGroupedLinear = None
     TERowParallelGroupedLinear = None
 
-# To compatible with BI150
-try:
-    from transformer_engine.common.recipe import DelayedScaling
-    DelayedScalingBaseClass = DelayedScaling
-except ImportError:
-    DelayedScalingBaseClass = object
-class TEDelayedScaling(DelayedScalingBaseClass):
+
+class TEDelayedScaling(te.common.recipe.DelayedScalingBaseClass):
     """
     Wrapper for the Transformer-Engine's `DelayedScaling` layer.
     """
@@ -991,14 +986,8 @@ class TEDelayedScaling(DelayedScalingBaseClass):
             override_linear_precision=override_linear_precision,
             **extra_kwargs,
         )
-# To compatible with BI150
-try:
-    from transformer_engine.pytorch.distributed import CudaRNGStatesTracker
-    CudaRNGStatesTrackerBaseClass = CudaRNGStatesTracker
-except ImportError:
-    from transformer_engine.pytorch.dist import CudaRNGStatesTracker
-    CudaRNGStatesTrackerBaseClass = CudaRNGStatesTracker
-class TECudaRNGStatesTracker(CudaRNGStatesTrackerBaseClass):
+
+class TECudaRNGStatesTracker(te.pytorch.distributed.CudaRNGStatesTrackerBaseClass):
     """Wraps TransformerEngine's CudaRNGStatesTracker so that it is
     interchangeable with Megatron's RNG tracker"""
 
