@@ -37,8 +37,9 @@ jobs:
 
     - name: Run Black
       run: |
-        black --verbose --include $INCLUDE_FILES ./ --diff
+        black --verbose --include "$INCLUDE_FILES" ./ --check || { echo "Code formatting does not comply with Black's rules. Please reformat the code according to Black and resubmit."; exit 1; }
 
     - name: Run Isort
       run: |
-        isort --verbose --profile black $INCLUDE_FILES --diff --known-local-folder flagscale
+        isort --verbose --profile black $INCLUDE_FILES --check-only --diff --known-local-folder flagscale || { echo "Import order does not comply with isort rules. Please fix the import order and resubmit."; exit 1; }
+
