@@ -13,9 +13,9 @@ This enhancement will significantly improve the usability of FlagScale for large
 ## Setup
 [Install vLLM](../../README.md#setup)
 
-[Prepare Qwen data](https://www.modelscope.cn/models/Qwen/Qwen2.5-7B-Instruct/summary)
 
 ## Prepare Model
+[Prepare Qwen data](https://www.modelscope.cn/models/Qwen/Qwen2.5-7B-Instruct/summary)
 ```shell
 pip install modelscope
 modelscope download --model Qwen/Qwen2.5-7B-Instruct --local_dir /models/
