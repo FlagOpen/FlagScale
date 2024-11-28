@@ -4,8 +4,8 @@ import yaml
 import ray
 import subprocess
 import argparse
-from flagscale.logger import logger
-
+#from flagscale.logger import logger
+import logging as logger
 
 #ray.init(log_to_driver=True, logging_level=logging.INFO)
 ray.init(log_to_driver=True, logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"))
