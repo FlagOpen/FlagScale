@@ -45,3 +45,8 @@ curl http://127.0.0.1:4567/v1/chat/completions -H "Content-Type: application/jso
 cd FlagScale
 python run.py --config-path examples/qwen/ --config-name config action=stop
 ```
+
+## logs
+Since serve is the distributed mode, the logs are stored separately. 
+The default logs of are loacated in `/tmp/ray/session_latest/logs`.
+The log of each work is named as `worker-[worker_id]-[job_id]-[pid].[out|err]`.
