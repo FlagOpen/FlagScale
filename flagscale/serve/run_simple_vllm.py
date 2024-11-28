@@ -31,6 +31,8 @@ def start_vllm_serve(args):
     job_id = runtime_context.get_job_id()
     logger.info(f"***************** Current Worker ID: {worker_id} *****************")
     logger.info(f"***************** Current Job ID: {job_id} *****************")
+    log_path = f"/tmp/ray/session_latest/logs/worker-{worker_id}-"
+    logger.info(f"***************** Current Worker log path: {log_path} *****************")
     process = subprocess.Popen(command, stdout=sys.stdout, stderr=sys.stderr)
     # process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     pid = os.getpid()
