@@ -5,7 +5,7 @@ system:
   use_flash_attn: True
   use_distributed_optimizer: True
   precision:
-    fp16: True
+    bf16: True
     initial_loss_scale: 522893
     min_loss_scale: 1.0
     attention_softmax_in_fp32: True
