@@ -130,6 +130,7 @@ class ProcessMesh:
     ):
         assert torch.distributed.is_initialized()
         self._args = args
+        self._distributed_backend = args.distributed_backend
         self._rank = torch.distributed.get_rank()
         self._world_size = tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size * data_parallel_size 
         self._offset = offset
@@ -205,7 +206,7 @@ class ProcessMesh:
             ranks = self._rank_mapper.to_physical_ranks(logical_ranks)
             group = torch.distributed.new_group(
                 ranks,
-                backend="nccl",
+                backend=self._distributed_backend,
                 timeout=self._timeout,
                 pg_options=pg_options,
             )

@@ -5,19 +5,21 @@ import gc
 import logging
 import os
 import queue
+import pickle
 from contextlib import contextmanager
 from itertools import chain
 from pathlib import Path
 from time import time
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union, cast
 
 import psutil
 import torch
 from torch import multiprocessing as mp
 from torch.distributed.checkpoint import FileSystemWriter
-from torch.distributed.checkpoint.filesystem import DEFAULT_SUFFIX, _StoragePrefix, _write_item
+from torch.distributed.checkpoint.filesystem import DEFAULT_SUFFIX, _StoragePrefix, _write_item, _metadata_fn
 from torch.distributed.checkpoint.planner import SavePlan, SavePlanner, WriteItem, WriteItemType
 from torch.distributed.checkpoint.storage import WriteResult
+from torch.distributed.checkpoint.metadata import Metadata
 from torch.futures import Future
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,40 @@ logger = logging.getLogger(__name__)
 WriteBucket = Tuple[Path, str, Tuple[list, list]]  # represents writes to a single file
 
 _results_queue = None
+
+_GLOBAL_PREVIOUS_METADATA = None 
+
+_GLOBAL_PREVIOUS_COUNT = 0
+
+
+def get_previous_metadata():
+    """
+    Get the metadata from the previous save.
+    """
+    return _GLOBAL_PREVIOUS_METADATA
+
+
+def set_previous_metadata(metadata):
+    """
+    Set the metadata from the previous save.
+    """
+    global _GLOBAL_PREVIOUS_METADATA
+    _GLOBAL_PREVIOUS_METADATA = metadata
+
+
+def get_previous_count():
+    """
+    Get the count from the previous save.
+    """
+    return _GLOBAL_PREVIOUS_COUNT
+
+
+def set_previous_count(count):
+    """
+    Set the count from the previous save.
+    """
+    global _GLOBAL_PREVIOUS_COUNT
+    _GLOBAL_PREVIOUS_COUNT = count
 
 
 def _get_write_results_queue():
@@ -80,6 +116,13 @@ class FileSystemWriterAsync(FileSystemWriter):
         self.write_buckets: Optional[List[WriteBucket]] = None
         self.results_queue: Optional[mp.Queue] = None
 
+        # Get the value from the environment variable if it exists, otherwise default to False
+        self.single_file_per_tensor_ckpt = os.getenv('FS_SFPT_CKPT_SAVE', 'False').lower() in (
+            'true',
+            '1',
+            't',
+        )
+
     def prepare_write_data(self, plan: SavePlan, planner: SavePlanner) -> None:
         """
         First stage of async saving. Copy data to CPU and plan the local saving.
@@ -99,12 +142,17 @@ class FileSystemWriterAsync(FileSystemWriter):
         start = time()
         # move tensors from GPU to CPU before starting async writing
         # We do D2H synchronously for now
-        file_count = 0
+        if not self.single_file_per_tensor_ckpt:
+            file_count = 0
+        else:
+            file_count = get_previous_count() 
 
         def gen_file():
             nonlocal file_count
             file_name = f"{storage_plan.prefix}{file_count}{DEFAULT_SUFFIX}"
             file_count += 1
+            if self.single_file_per_tensor_ckpt:
+                set_previous_count(file_count)
             return file_name
 
         # Prepare bytes / tensor data in each bucket, which will be assigned to each writer process
@@ -314,6 +362,48 @@ class FileSystemWriterAsync(FileSystemWriter):
             )
         return list(chain.from_iterable(write_results.values()))
 
+    def finish(self, metadata: Metadata, results: List[List[WriteResult]]) -> None:
+        # Modify based on the original implementation from torch.distributed.checkpoint.filesystem.FileSystemWriter
+        # https://github.com/pytorch/pytorch/blob/625c24a7f98a645b6f8758a01d7163a842582ce0/torch/distributed/checkpoint/filesystem.py#L574
+
+        if not self.single_file_per_tensor_ckpt:
+            storage_md = {}
+        else:
+            if get_previous_count() == 1:
+                storage_md = {}
+            else:
+                # Get the metadata from the previous save
+                prev_metadata = get_previous_metadata()
+                prev_metadata.state_dict_metadata.update(metadata.state_dict_metadata)
+                metadata = prev_metadata
+                storage_md = metadata.storage_data 
+
+        for wr_list in results:
+            storage_md.update({wr.index: wr.storage_data for wr in wr_list})
+        metadata.storage_data = storage_md
+
+        if not self.single_file_per_tensor_ckpt or get_previous_count() == 1:
+            metadata.storage_meta = self.storage_meta()
+
+        tmp_path = cast(Path, self.fs.concat_path(self.path, f"{_metadata_fn}.tmp"))
+        with self.fs.create_stream(tmp_path, "wb") as metadata_file:
+            pickle.dump(metadata, metadata_file)
+            if self.sync_files:
+                try:
+                    os.fsync(metadata_file.fileno())
+                except AttributeError:
+                    os.sync()
+
+        # delete in-case other checkpoints were present.
+        if self.fs.exists(self.metadata_path):
+            self.fs.rm_file(self.metadata_path)
+
+        self.fs.rename(tmp_path, self.metadata_path)
+
+        # Store the metadata for the next save
+        if self.single_file_per_tensor_ckpt:
+            set_previous_metadata(metadata)
+
 
 def _split_by_size_and_type(bins: int, items: List[WriteItem]) -> List[List[WriteItem]]:
     """
@@ -349,7 +439,6 @@ def _split_by_size_and_type(bins: int, items: List[WriteItem]) -> List[List[Writ
         idx = min(enumerate(bucket_sizes), key=lambda x: x[1])[0]
         buckets[idx].append(item)
         bucket_sizes[idx] += _item_size(item)
-
     return buckets
 
 

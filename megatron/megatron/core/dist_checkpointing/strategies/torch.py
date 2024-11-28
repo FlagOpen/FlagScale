@@ -2,6 +2,7 @@
 
 """ Strategies using PyTorch distributed.checkpoint as an underlying format. """
 import io
+import os
 from collections import ChainMap, defaultdict
 from dataclasses import dataclass
 from itertools import product
@@ -404,7 +405,6 @@ def _replace_sharded_keys_with_state_dict_keys(
         assert len(tensors) == len(rename_mapping[k])
         for ten, recovered_k in zip(tensors, rename_mapping[k]):
             recovered_sd[recovered_k] = ten
-
     return unflatten_state_dict(recovered_sd, flat_mapping)
 
 
@@ -734,6 +734,13 @@ class TorchDistLoadShardedStrategy(LoadShardedStrategy):
 
         Returns: loaded state dict
         """
+        # Get the value from the environment variable if it exists, otherwise default to True
+        single_file_per_tensor_ckpt = os.getenv('FS_SFPT_CKPT_LOAD', 'False').lower() in (
+            'true',
+            '1',
+            't',
+        )
+
         # Apply N-D tensors resharding
         sharded_state_dict, formulation_restore_data = apply_nd_flattened_tensors_reformulation(
             sharded_state_dict, get_reformulation_metadata(sharded_state_dict, checkpoint_dir)
@@ -752,13 +759,24 @@ class TorchDistLoadShardedStrategy(LoadShardedStrategy):
         )
         pyt_state_dict = mcore_to_pyt_state_dict(sharded_state_dict, True)
         # Load PyT Distributed format
-        checkpoint.load_state_dict(
-            pyt_state_dict,
-            FileSystemReader(checkpoint_dir),
-            planner=MCoreLoadPlanner(
-                shapes_validation_sharded_tensors=flexible_shape_sharded_tensors
-            ),
-        )
+        if not single_file_per_tensor_ckpt: 
+            checkpoint.load_state_dict(
+                pyt_state_dict,
+                FileSystemReader(checkpoint_dir),
+                planner=MCoreLoadPlanner(
+                    shapes_validation_sharded_tensors=flexible_shape_sharded_tensors
+                ),
+            )
+        else:
+            checkpoint.load_state_dict(
+                pyt_state_dict,
+                FileSystemReader(checkpoint_dir),
+                planner=MCoreLoadPlanner(
+                    shapes_validation_sharded_tensors=flexible_shape_sharded_tensors,
+                    allow_partial_load=True,
+                ),
+            )
+
         pyt_state_dict = cast(
             Dict[str, Union[TorchShardedTensor, List[io.BytesIO]]], pyt_state_dict
         )
@@ -767,6 +785,13 @@ class TorchDistLoadShardedStrategy(LoadShardedStrategy):
             k: v if not isinstance(v, TorchShardedTensor) else _unwrap_pyt_sharded_tensor(v)
             for k, v in pyt_state_dict.items()
         }
+
+        if single_file_per_tensor_ckpt: 
+            mcore_state_dict = {
+                k: [None] if (not isinstance(v, list) and "_extra_state" in k) else v
+                for k, v in mcore_state_dict.items()
+            }
+
         mcore_state_dict = _replace_sharded_keys_with_state_dict_keys(
             mcore_state_dict, flat_mapping, rename_mapping
         )
