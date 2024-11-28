@@ -138,13 +138,6 @@ def _generate_stop_script(config, host, node_rank):
         after_stop = ""
     with open(host_stop_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
-        # f.write("if [ -f " + host_pid_file + " ]; then\n")
-        # f.write("    pid=$(cat " + host_pid_file + ")\n")
-        # f.write("    pkill -P $pid\n")
-        # f.write("else\n")
-        # # TODO: This is a temporary fix. We need to find a better way to stop the job.
-        # f.write("    pkill -f 'python'\n")
-        # f.write("fi\n")
         f.write("pkill -f 'python'\n")
         f.write(f"{after_stop}\n")
         f.flush()
