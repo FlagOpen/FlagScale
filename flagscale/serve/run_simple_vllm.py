@@ -4,11 +4,13 @@ import yaml
 import ray
 import subprocess
 import argparse
-#from flagscale.logger import logger
 import logging as logger
 
-#ray.init(log_to_driver=True, logging_level=logging.INFO)
-ray.init(log_to_driver=True, logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"))
+ray.init(
+    log_to_driver=True,
+    logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"),
+)
+
 
 @ray.remote(num_gpus=1)
 def start_vllm_serve(args):
@@ -24,7 +26,6 @@ def start_vllm_serve(args):
         command.append(f"--{arg}")
 
     # Start the subprocess
-
     logger.info(f"Starting vllm serve with command: {' '.join(command)}")
     runtime_context = ray.get_runtime_context()
     worker_id = runtime_context.get_worker_id()
@@ -32,7 +33,9 @@ def start_vllm_serve(args):
     logger.info(f"***************** Current Worker ID: {worker_id} *****************")
     logger.info(f"***************** Current Job ID: {job_id} *****************")
     log_path = f"/tmp/ray/session_latest/logs/worker-{worker_id}-"
-    logger.info(f"***************** Current Worker log path: {log_path} *****************")
+    logger.info(
+        f"***************** Current Worker log path: {log_path} *****************"
+    )
     process = subprocess.Popen(command, stdout=sys.stdout, stderr=sys.stderr)
     # process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     pid = os.getpid()
@@ -41,9 +44,7 @@ def start_vllm_serve(args):
     stdout, stderr = process.communicate()
 
     logger.info(f"Standard Output: {stdout}")
-    # logger.info(stdout.decode())
     logger.info(f"Standard Error: {stderr}")
-    # logger.info(stderr.decode())
 
     return process.returncode
 
