@@ -7,6 +7,7 @@ commands=(
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset data"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset dist_checkpointing"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset distributed"
+    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset export"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset fusions"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset inference"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset models"
