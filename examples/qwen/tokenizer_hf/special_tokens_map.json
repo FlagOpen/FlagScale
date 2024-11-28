@@ -1,6 +1,0 @@
-{
-  "bos_token": "[CLS]",
-  "eos_token": "</s>",
-  "unk_token": "<|endoftext|>",
-  "pad_token": "<|endoftext|>"
-}
