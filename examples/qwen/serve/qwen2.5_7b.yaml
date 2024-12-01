@@ -1,6 +1,6 @@
 command-line-mode: true
 
-vllm:
+llm:
   model-tag: /models/Qwen2.5-7B-Instruct
   tensor-parallel-size: 1
   gpu-memory-utilization: 0.9
@@ -11,7 +11,7 @@ vllm:
     - trust-remote-code
     - enable-chunked-prefill
 
-serve:
-  deployments:
+deploy:
+  instance:
   - name: qwen2.5-7b
     num-replicas: 1

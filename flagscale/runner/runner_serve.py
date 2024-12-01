@@ -86,6 +86,7 @@ def _generate_run_script_serve(
         before_start = cmds_config.get("before_start", "")
     else:
         before_start = ""
+    cmd += f" --log-dir={logging_config.log_dir}"
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("set -x\n")
