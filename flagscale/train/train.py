@@ -1330,14 +1330,14 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
 
     if args.profile and torch.distributed.get_rank() in args.profile_ranks and args.use_pytorch_profiler:
         prof = torch.profiler.profile(
-            schedule=torch.profiler.schedule(
-                wait=max(args.profile_step_start-1, 0),
-                warmup=1 if args.profile_step_start > 0 else 0,
-                active=args.profile_step_end-args.profile_step_start,
-                repeat=1),
-            on_trace_ready=torch.profiler.tensorboard_trace_handler(args.tensorboard_dir),
-            record_shapes=True,
-            with_stack=True)
+        schedule=torch.profiler.schedule(
+            wait=max(args.profile_step_start-1, 0),
+            warmup=1 if args.profile_step_start > 0 else 0,
+            active=args.profile_step_end-args.profile_step_start,
+            repeat=1),
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(args.tensorboard_dir),
+        record_shapes=True,
+        with_stack=True)
         prof.start()
 
     while iteration < args.train_iters:
