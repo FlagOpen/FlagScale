@@ -31,7 +31,9 @@ def vllm_serve(args, log_dir):
     runtime_context = ray.get_runtime_context()
     worker_id = runtime_context.get_worker_id()
     job_id = runtime_context.get_job_id()
-    logger.info(f"[Serve]: Current Job ID: {job_id} , \n[Serve]: ******** Worker ID: {worker_id} ********\n\n")
+    logger.info(
+        f"[Serve]: Current Job ID: {job_id} , \n[Serve]: ******** Worker ID: {worker_id} ********\n\n"
+    )
     link_dir = os.path.join(
         log_dir, f"session_latest_{timestamp}", "logs", f"worker-{worker_id}-"
     )

@@ -13,5 +13,5 @@ llm:
 
 deploy:
   instance:
-  - name: qwen2.5-7b
-    num-replicas: 1
+    - name: qwen2.5-7b
+      num-replicas: 1

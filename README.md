@@ -65,6 +65,7 @@ FlagScale provides a unified runner for various tasks, including training，infe
     ```
 
 #### Serve
+
 1. Start the server:
     ```sh
     python run.py --config-path ./examples/qwen --config-name config action=run

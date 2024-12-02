@@ -1,12 +1,13 @@
 import ray
 
 
-class TaskManager():
+class TaskManager:
     def __init__(self):
         pass
 
+
 def init():
-    ray.init(address='auto')
+    ray.init(address="auto")
 
 
 def run():
