@@ -34,7 +34,7 @@ def start_vllm_serve(args, log_dir):
     link_dir = os.path.join(
         log_dir, f"session_latest_{timestamp}", "logs", f"worker-{worker_id}-"
     )
-    logger.info(f"[Serve]: ***************** Current Worker log path: {link_dir}***************** \n")
+    logger.info(f"[Serve]: ***************** Current Worker log path: {link_dir} ***************** \n")
 
     process = subprocess.Popen(command, stdout=sys.stdout, stderr=sys.stderr)
     pid = os.getpid()
