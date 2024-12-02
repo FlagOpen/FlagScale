@@ -58,9 +58,10 @@ def main():
 
     config = OmegaConf.load(args.config_path)
     logger.info(f"--------------------- config {config} -------------------------")
-    
+    # Note: Custom the log dir here may cause "OSError: AF_UNIX path length cannot exceed 107 bytes:"
     ray.init(log_to_driver=True, logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"))
     link_dir = os.path.join(args.log_dir, f"session_latest_{timestamp}")
+    # TODO: Default path in ray will be replaced by api here.
     os.symlink("/tmp/ray/session_latest", link_dir)
     result = start_vllm_serve.remote(config, args.log_dir)
 
