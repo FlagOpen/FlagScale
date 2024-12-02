@@ -1,5 +1,5 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
-
+import os
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import List, Optional, Union
@@ -630,6 +630,16 @@ class TransformerBlock(MegatronModule):
         non_homogeneous_layers = metadata is not None and metadata.get(
             'non_homogeneous_layers', False
         )
+
+        # TODO: @aoyulong - This is a temporary solution to support single-file-per-tensor ckpt
+        non_homogeneous_layers_env = os.getenv('FS_NON_HOMOGENEOUS_LAYERS', 'False').lower() in (
+            'true',
+            '1',
+            't',
+        )
+        if non_homogeneous_layers_env:
+            non_homogeneous_layers = True
+
         sharded_state_dict = {}
 
         layer_prefix = f'{prefix}layers.'
