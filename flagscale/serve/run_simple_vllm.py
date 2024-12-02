@@ -1,6 +1,7 @@
 import os
 import sys
 import datetime
+import inspect
 import subprocess
 import argparse
 import logging as logger
@@ -12,7 +13,7 @@ timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 
 @ray.remote(num_gpus=1)
-def start_vllm_serve(args, log_dir):
+def vllm_serve(args, log_dir):
 
     vllm_args = args["serve"]["llm"]
 
@@ -30,18 +31,20 @@ def start_vllm_serve(args, log_dir):
     runtime_context = ray.get_runtime_context()
     worker_id = runtime_context.get_worker_id()
     job_id = runtime_context.get_job_id()
-    logger.info(f"[Serve]: Current Worker ID: {worker_id} and Job ID: {job_id} \n")
+    logger.info(f"[Serve]: Current Job ID: {job_id} , \n[Serve]: ******** Worker ID: {worker_id} ********\n\n")
     link_dir = os.path.join(
         log_dir, f"session_latest_{timestamp}", "logs", f"worker-{worker_id}-"
     )
-    logger.info(f"[Serve]: ***************** Current Worker log path: {link_dir} ***************** \n")
+    logger.info(
+        f"\n\n[Serve]: **********************        {inspect.currentframe().f_code.co_name} Worker log path\
+        ********************** \n[Serve]: {link_dir} \n\n"
+    )
 
     process = subprocess.Popen(command, stdout=sys.stdout, stderr=sys.stderr)
     pid = os.getpid()
     logger.info(f"[Serve]: Current vLLM PID: {pid} ")
 
     stdout, stderr = process.communicate()
-
     logger.info(f"[Serve]: Standard Output: {stdout}")
     logger.info(f"[Serve]: Standard Error: {stderr}")
 
@@ -58,7 +61,9 @@ def main():
     args = parser.parse_args()
 
     config = OmegaConf.load(args.config_path)
-    logger.info(f"[Serve]: ***************** config {config} *****************")
+    logger.info(
+        f"\n [Serve]: ************************ config ************************ \n [Serve]: {config} \n"
+    )
     # Note: Custom log dir here may cause "OSError: AF_UNIX path length cannot exceed 107 bytes:"
     ray.init(
         log_to_driver=True,
@@ -67,7 +72,7 @@ def main():
     link_dir = os.path.join(args.log_dir, f"session_latest_{timestamp}")
     # TODO: Default path in ray will be replaced by api here.
     os.symlink("/tmp/ray/session_latest", link_dir)
-    result = start_vllm_serve.remote(config, args.log_dir)
+    result = vllm_serve.remote(config, args.log_dir)
 
     return_code = ray.get(result)
 
