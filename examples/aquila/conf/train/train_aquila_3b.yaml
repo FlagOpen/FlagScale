@@ -12,11 +12,12 @@ system:
     accumulate_allreduce_grads_in_fp32: True
   logging:
     log_interval: 1
+    log_throughput: True
     tensorboard_log_interval: 1
     wandb_project: "train-aquila-1B" 
     wandb_exp_name: "train-test-1B" 
   checkpoint:
-    # load: outputs_llama3/checkpoint_mc
+    load: outputs_llama3/checkpoint_mc
     ckpt_format: torch
     save_interval: 2000 
   
@@ -25,7 +26,7 @@ system:
     hetero_use_cpu_communication: False
     # mesh format [tp1,cp1,ep1,dp1,pp1,(tp2,cp2...)]
 
-    hetero_pipeline_layer_split: [12, 12]
+    hetero_pipeline_layer_split: [18, 18]
     hetero_process_meshes: [1, 1, 1, 4, 2]
     hetero_device_types: ["A800"]
 
@@ -51,22 +52,23 @@ system:
 model:
   # use_mcore_models: True # deprecated
   transformer_impl: transformer_engine
-  num_layers: 24 
+  num_layers: 36 
   hidden_size: 2048 
-  num_attention_heads: 16 
+  num_attention_heads: 16
+  group_query_attention: True
+  num_query_groups: 2
   seq_length: 4096 
   max_position_embeddings: 4096 # only for adding position embeddings
-  norm_epsilon: 1e-5
+  norm_epsilon: 1e-6
   use_rotary_position_embeddings: true
   no_position_embedding: true
-  rotary_base: 100000 # To be determined 
+  rotary_base: 1000000
   swiglu: true
   multiple_of: 256
+  hidden_dim_multiplier: 2 # ffn_hidden_size 11008
   normalization: RMSNorm
-  qk_layernorm: True
-  qk_layernorm_hidden_dim: True
   position_embedding_type: rope
-  untie_embeddings_and_output_weights: true
+  untie_embeddings_and_output_weights: False
   init_method_std: 0.02
   attention_dropout: 0.0
   hidden_dropout: 0.0
@@ -74,8 +76,8 @@ model:
   clip_grad: 1.0
   train_samples: 160
   eval_iters: 0
-  micro_batch_size: 2
-  global_batch_size: 16
+  micro_batch_size: 1
+  global_batch_size: 1024
   seed: 1234
 
   optimizer:
@@ -85,15 +87,14 @@ model:
     lr_scheduler:
       lr: 2.0e-5
       min_lr: 2.0e-6
-      lr_warmup_samples: 10
+      lr_warmup_samples: 2000
       lr_decay_style: cosine 
 
 data:
   data_path: ${data_path:??}
-  # data_path: ./build/data/pile_wikipedia_demo
   split: 1 
   tokenizer:
     tokenizer_type: QwenTokenizerFS
-    tokenizer_path: ${tokenizer_path:??}
-    vocab_size: 151851
+    tokenizer_path: examples/aquila/qwentokenizer
+    vocab_size: 151936
     make_vocab_size_divisible_by: 64

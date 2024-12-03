@@ -18,9 +18,12 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
     sync.
     """
 
+    embed_group = parallel_state.get_embedding_group()
+    if not isinstance(embed_group, list):
+        embed_group = [embed_group]
     if (
         parallel_state.is_rank_in_embedding_group(ignore_virtual=True)
-        and torch.distributed.get_world_size(parallel_state.get_embedding_group()) > 1
+        and torch.distributed.get_world_size(embed_group[0]) > 1
     ):
         if parallel_state.is_pipeline_first_stage(ignore_virtual=True):
             model_module = model[0]
@@ -33,7 +36,13 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
         if model_module.share_embeddings_and_output_weights:
             weight = model_module.shared_embedding_or_output_weight()
             grad = weight.main_grad
-            torch.distributed.all_reduce(grad, group=parallel_state.get_embedding_group())
+            if len(embed_group) == 1:
+                torch.distributed.all_reduce(grad, group=embed_group[0])
+            else:
+                origin_grad = grad.data.clone()
+                for group in embed_group:
+                    grad.data = origin_grad.clone()
+                    torch.distributed.all_reduce(grad, group=group)
 
 
 def _allreduce_position_embedding_grads(model: List[torch.nn.Module], config: TransformerConfig):
