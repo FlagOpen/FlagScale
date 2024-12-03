@@ -9,11 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 
-from megatron.energon import (
-    Batch,
-    DefaultTaskEncoder,
-    InterleavedSample
-)
+from megatron.energon import Batch, DefaultTaskEncoder, InterleavedSample
 from megatron.training import get_args
 
 
@@ -37,6 +33,7 @@ class AnyResTaskSample:
     image_sizes: torch.Tensor
     modalities: torch.Tensor
 
+
 # Typing for the resulting batch data after encode_batch()
 @dataclass
 class AnyResTaskBatch(Batch):
@@ -52,16 +49,16 @@ class AnyResTaskBatch(Batch):
     modalities: torch.Tensor
 
 
-class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample, AnyResTaskBatch, dict]):
+class AnyResTaskEncoder(
+    DefaultTaskEncoder[InterleavedSample, InterleavedSample, AnyResTaskBatch, dict]
+):
     """
     A task encoder for anyres.
     This encoder is just a wrapper around data that has already been made.
     Production data can be referenced to LLaVA-NeXT and can be input into vision tower.
     """
 
-    def __init__(
-        self
-    ):
+    def __init__(self):
         # Specify the batch_type for default batching (batching is performed here "manually" by
         # overwriting the `batch` method)
         super().__init__()
@@ -70,7 +67,9 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
 
     def encode_sample(self, sample: InterleavedSample):
         if not isinstance(sample, InterleavedSample):
-            raise ValueError(f"This encoder only supports InterleavedSample, but got {type(sample)}.")
+            raise ValueError(
+                f"This encoder only supports InterleavedSample, but got {type(sample)}."
+            )
         yield self.encode_interleaved(sample)
 
     def encode_interleaved(self, sample: InterleavedSample):
@@ -82,22 +81,24 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
         elif len(sample.sequence) == 5:
             input_ids, labels, images, image_sizes, modalities = sample.sequence
         else:
-            assert ValueError("The sequence must have 4 or 5 elements, but got {len(sample.sequence)}.")
+            assert ValueError(
+                "The sequence must have 4 or 5 elements, but got {len(sample.sequence)}."
+            )
 
         # process modalities to tensor
-        if modalities is None:
-            modalities = "image"
-        # image, video, text to 0, 1, 2
-        if modalities == "image":
-            modalities = torch.tensor([0])
-        elif modalities == "video":
-            modalities = torch.tensor([1])
-        elif modalities == "text":
-            modalities = torch.tensor([2])
-        else:
-            raise ValueError(f"Unsupported modality: {modalities}")
-        
+        modalities_list = []
+        for modality in modalities:
+            # image, video, text to 0, 1, 2
+            if modality == "image":
+                modalities_list.append(torch.tensor([0]))
+            elif modality == "video":
+                modalities_list.append(torch.tensor([1]))
+            elif modality == "text":
+                modalities_list.append(torch.tensor([2]))
+            else:
+                raise ValueError(f"Unsupported modality: {modalities}")
 
+        modalities = modalities_list
         return AnyResTaskSample(
             __key__=sample.__key__,
             __subflavors__=sample.__subflavors__,
@@ -106,8 +107,8 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
             labels=labels,
             labels_shape=torch.tensor(labels.shape),
             images=images,
-            image_sizes=torch.tensor(image_sizes),
-            modalities=modalities
+            image_sizes=image_sizes,
+            modalities=modalities,
         )
 
     def batch(self, samples: List[AnyResTaskSample]) -> AnyResTaskBatch:
@@ -115,10 +116,19 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
         input_ids_shape = torch.stack([s.input_ids_shape for s in samples], dim=0)
         labels = torch.cat([s.labels.flatten() for s in samples], dim=0)
         labels_shape = torch.stack([s.labels_shape for s in samples], dim=0)
-        images = torch.cat([s.images.flatten() for s in samples], dim=0)
-        split_image_sizes = torch.stack([torch.tensor(s.images.shape) for s in samples], dim=0)
-        image_sizes = torch.stack([s.image_sizes for s in samples], dim=0)
-        modalities = torch.stack([s.modalities for s in samples], dim=0)
+        # Double loop
+        images = torch.cat(
+            [image.flatten() for s in samples for image in s.images], dim=0
+        )
+        split_image_sizes = torch.stack(
+            [torch.tensor(image.shape) for s in samples for image in s.images], dim=0
+        )
+        image_sizes = torch.stack(
+            [image_sizes for s in samples for image_sizes in s.image_sizes], dim=0
+        )
+        modalities = torch.stack(
+            [s.modalities for s in samples for modalities in s.modalities], dim=0
+        )
 
         batch = AnyResTaskBatch(
             __keys__=[s.__key__ for s in samples],
@@ -130,7 +140,7 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
             images=images,
             image_sizes=image_sizes,
             split_image_sizes=split_image_sizes,
-            modalities=modalities
+            modalities=modalities,
         )
 
         return batch

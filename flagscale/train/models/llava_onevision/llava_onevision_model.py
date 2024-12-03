@@ -103,7 +103,7 @@ class LLaVAOneVisionModel(MegatronModule):
         self.vision_model = None
         self.vision_projection = None
         self.language_model = None
-        args = get_args()
+        self.args = get_args()
 
         # Init image_newline
         if "unpad" in args.mm_patch_merge_type:
@@ -261,11 +261,12 @@ class LLaVAOneVisionModel(MegatronModule):
         past_key_values=None,
     ):
         """This function is modified from LLaVA-NeXT."""
-        args = get_args()
+        args = self.args
         vision_tower = self.vision_model
-        # Micro batch size must be 1 when in the mixture modalities mode.
+
         if vision_tower is None or images is None or input_ids.shape[1] == 1:
-            input_ids = self.embed_tokens(input_ids)
+            # [BugFix]: comment out the embed_tokens
+            # input_ids = self.embed_tokens(input_ids)
             loss_mask = torch.where(
                 labels == IGNORE_INDEX, torch.tensor(0), torch.tensor(1)
             )
@@ -274,6 +275,8 @@ class LLaVAOneVisionModel(MegatronModule):
         if isinstance(modalities, str):
             modalities = [modalities]
 
+        # Comment out the code because we're starting to support it
+        """
         text_modality = False
         image_or_video_modality = False
         for modality in modalities:
@@ -286,6 +289,7 @@ class LLaVAOneVisionModel(MegatronModule):
             raise ValueError(
                 "Text and image/video modalities cannot be mixed in the same batch."
             )
+        """
 
         if type(images) is list or images.ndim == 5:
             if type(images) is list:
@@ -302,14 +306,14 @@ class LLaVAOneVisionModel(MegatronModule):
                     images_list.append(image)
                 else:
                     images_list.append(image.unsqueeze(0))
-                    raise ValueError(
-                        "Video not supported yet. In the future, we will support video."
-                    )
+                    # Comment out the code because we're starting to support it
+                    # raise ValueError(
+                    #     "Video not supported yet. In the future, we will support video."
+                    # )
 
             concat_images = torch.cat([image for image in images_list], dim=0)
             split_sizes = [image.shape[0] for image in images_list]
 
-            split_sizes = [image.shape[0] for image in images_list]
             encoded_image_features = self.encode_images(concat_images)
 
             # Get every sample image features
@@ -317,22 +321,30 @@ class LLaVAOneVisionModel(MegatronModule):
             image_features = []
             for idx, image_feat in enumerate(encoded_image_features):
                 if idx in video_idx_in_batch:
-                    raise ValueError(
-                        "Video not supported yet. In the future, we will support video."
-                    )
+                    image_features.append(self.get_2dPool(image_feat))
+                    # Comment out the code because we're starting to support it
+                    # raise ValueError(
+                    #     "Video not supported yet. In the future, we will support video."
+                    # )
                 else:
                     image_features.append(image_feat)
 
             mm_patch_merge_type = args.mm_patch_merge_type
-            assert mm_patch_merge_type in [
-                "flat",
-                "spatial_unpad",
-            ], f"Unexpected mm_patch_merge_type: {mm_patch_merge_type}"
+            # mm_patch_merge_type all values are supported
+
             image_aspect_ratio = args.image_aspect_ratio
             if image_aspect_ratio != "square":
                 assert (
                     "anyres" in image_aspect_ratio
                 ), f"Unexpected image_aspect_ratio: {image_aspect_ratio}"
+
+            mm_newline_position = args.mm_newline_position
+            assert mm_newline_position in [
+                "one_token",
+                "grid",
+                "frame",
+                "no_token",
+            ], f"Unexpected mm_newline_position: {mm_newline_position}"
 
             if mm_patch_merge_type == "flat":
                 image_features = [x.flatten(0, 1) for x in image_features]
@@ -340,7 +352,41 @@ class LLaVAOneVisionModel(MegatronModule):
             elif mm_patch_merge_type.startswith("spatial"):
                 new_image_features = []
                 for image_idx, image_feature in enumerate(image_features):
-                    if image_feature.shape[0] > 1:
+                    if image_idx in video_idx_in_batch:  # video operations
+                        if mm_newline_position == "grid":
+                            # Grid-wise
+                            image_feature = self.add_token_per_grid(image_feature)
+                            assert not self.args.add_faster_video
+                            # No all_faster_video_features variable because encode_multimodals is not called.
+                            # So we didn't add any code about add_faster_video
+                            new_image_features.append(image_feature)
+                        elif mm_newline_position == "frame":
+                            # Frame-wise
+                            image_feature = self.add_token_per_frame(image_feature)
+
+                            new_image_features.append(image_feature.flatten(0, 1))
+
+                        elif mm_newline_position == "one_token":
+                            # one-token
+                            image_feature = image_feature.flatten(0, 1)
+                            if "unpad" in mm_patch_merge_type:
+                                image_feature = torch.cat(
+                                    (
+                                        image_feature,
+                                        self.image_newline[None].to(
+                                            image_feature.device
+                                        ),
+                                    ),
+                                    dim=0,
+                                )
+                            new_image_features.append(image_feature)
+                        elif mm_newline_position == "no_token":
+                            new_image_features.append(image_feature.flatten(0, 1))
+                        else:
+                            raise ValueError(
+                                f"Unexpected mm_newline_position: {mm_newline_position}"
+                            )
+                    elif image_feature.shape[0] > 1:
                         # Raw image features
                         base_image_feature = image_feature[0]
                         # Patch iamge features
@@ -379,7 +425,14 @@ class LLaVAOneVisionModel(MegatronModule):
                                 num_patch_height, num_patch_width, height, width, -1
                             )
 
-                        if (
+                        if "maxpool2x2" in mm_patch_merge_type:
+                            image_feature = image_feature.permute(
+                                4, 0, 2, 1, 3
+                            ).contiguous()
+                            image_feature = image_feature.flatten(1, 2).flatten(2, 3)
+                            image_feature = nn.functional.max_pool2d(image_feature, 2)
+                            image_feature = image_feature.flatten(1, 2).transpose(0, 1)
+                        elif (
                             "unpad" in mm_patch_merge_type
                             and "anyres_max" in image_aspect_ratio
                             and matched_anyres_max_num_patches
@@ -642,7 +695,6 @@ class LLaVAOneVisionModel(MegatronModule):
         if _position_ids is None:
             position_ids = None
 
-        # This branch is not used in the onevision training.
         if args.use_pos_skipping and args.training:
             position_ids = (
                 torch.arange(new_input_embeds.size(1), device=new_input_embeds.device)
@@ -704,6 +756,73 @@ class LLaVAOneVisionModel(MegatronModule):
             1, 0
         ).contiguous()  # [b, text_seq_len, h_language]
         return language_embeddings
+
+    def get_2dPool(self, image_feature, stride=2):
+        args = self.args
+        height = width = args.img_h // args.patch_dim
+        num_frames, num_tokens, num_dim = image_feature.shape
+        image_feature = image_feature.view(num_frames, height, width, -1)
+        image_feature = image_feature.permute(0, 3, 1, 2).contiguous()
+        if args.mm_spatial_pool_mode == "average":
+            image_feature = torch.nn.functional.avg_pool2d(image_feature, stride)
+        elif args.mm_spatial_pool_mode == "max":
+            image_feature = torch.nn.functional.max_pool2d(image_feature, stride)
+        elif args.mm_spatial_pool_mode == "bilinear":
+            height, width = image_feature.shape[2:]
+            scaled_shape = [math.ceil(height / stride), math.ceil(width / stride)]
+            image_feature = torch.nn.functional.interpolate(
+                image_feature, size=scaled_shape, mode="bilinear"
+            )
+
+        else:
+            raise ValueError(
+                f"Unexpected mm_spatial_pool_mode: {args.mm_spatial_pool_mode}"
+            )
+        image_feature = image_feature.permute(0, 2, 3, 1)
+        image_feature = image_feature.view(num_frames, -1, num_dim)
+        return image_feature
+
+    def add_token_per_grid(self, image_feature):
+        resize_h = int(math.sqrt(image_feature.shape[1]))
+        num_frames = image_feature.shape[0]
+        feature_dim = image_feature.shape[-1]
+
+        image_feature = image_feature.view(num_frames, 1, resize_h, resize_h, -1)
+        image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
+        image_feature = image_feature.flatten(1, 2).flatten(2, 3)
+        image_feature = torch.cat(
+            (
+                image_feature,
+                self.image_newline[:, None, None]
+                .expand(*image_feature.shape[:-1], 1)
+                .to(image_feature.device),
+            ),
+            dim=-1,
+        )
+        if self.args.add_faster_video:
+            # (3584, 832, 14) -> (3584, 64, 13, 14)
+            image_feature = image_feature.view(feature_dim, num_frames, resize_h, -1)
+            #  (3584, 64, 13, 14) -> (64, 13, 14, 3584)
+            image_feature = image_feature.permute(1, 2, 3, 0).contiguous()
+            # (64, 13, 14, 3584) -> (64, 13*14, 3584)
+            image_feature = image_feature.flatten(1, 2)
+            return image_feature
+        image_feature = image_feature.flatten(1, 2).transpose(0, 1)
+        return image_feature
+
+    def add_token_per_frame(self, image_feature):
+        image_feature = image_feature.permute(2, 0, 1).contiguous()
+        image_feature = torch.cat(
+            (
+                image_feature,
+                self.image_newline[:, None, None]
+                .expand(*image_feature.shape[:-1], 1)
+                .to(image_feature.device),
+            ),
+            dim=-1,
+        )
+        image_feature = image_feature.permute(1, 2, 0).contiguous()
+        return image_feature
 
 
 def _load_state_dict_hook_ignore_param_names(
