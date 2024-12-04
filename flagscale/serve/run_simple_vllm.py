@@ -35,7 +35,7 @@ def vllm_serve(args, log_dir):
         f"[Serve]: Current Job ID: {job_id} , \n[Serve]: ******** Worker ID: {worker_id} ********\n\n"
     )
     link_dir = os.path.join(
-        log_dir, f"session_latest_{timestamp}", "logs", f"worker-{worker_id}-"
+        log_dir, f"session_latest_{timestamp}", f"worker-{worker_id}-"
     )
     logger.info(
         f"\n\n[Serve]: **********************        {inspect.currentframe().f_code.co_name} Worker log path\
@@ -72,8 +72,8 @@ def main():
         logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"),
     )
     link_dir = os.path.join(args.log_dir, f"session_latest_{timestamp}")
-    # TODO: Default path in ray will be replaced by api here.
-    os.symlink("/tmp/ray/session_latest", link_dir)
+    tar_dir = ray._private.worker.global_worker.node._logs_dir
+    os.symlink(tar_dir, link_dir)
     result = vllm_serve.remote(config, args.log_dir)
 
     return_code = ray.get(result)
