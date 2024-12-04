@@ -1,0 +1,22 @@
+defaults:
+  - _self_
+  - serve: config_qwen2.5_72b
+
+experiment:
+  exp_name: qwen_gen
+  exp_dir: outputs/${experiment.exp_name}
+  task:
+    type: serve
+    backend: vllm
+    entrypoint: null
+  runner:
+    hostfile: null
+  envs:
+    CUDA_VISIBLE_DEVICES: 0,1,2,3
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+
+action: run
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra
