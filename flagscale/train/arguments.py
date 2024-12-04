@@ -114,6 +114,8 @@ class FSTrainArguments:
         if self.args.untie_embeddings_and_output_weights == False:
             assert all(hetero_process_meshes_tp[0] == hetero_process_meshes_tp[-1]), \
                 f"if untie_embeddings_and_output_weights is False, the first and last stage should have the same tp degree!"
+            assert self.args.hetero_use_cpu_communication == False, \
+                f"if untie_embeddings_and_output_weights is False, the hetero_use_cpu_communication should be False currently!"
 
         # Virtual parallel size.
         if self.args.enable_hetero:
