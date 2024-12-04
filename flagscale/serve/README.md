@@ -27,7 +27,7 @@ modelscope download --model Qwen/Qwen2.5-7B-Instruct --local_dir /models/
 
 ```shell
 cd FlagScale
-python run.py --config-path examples/qwen/ --config-name config action=run
+python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=run
 ```
 
 ## Serve call
@@ -46,7 +46,7 @@ curl http://127.0.0.1:4567/v1/chat/completions -H "Content-Type: application/jso
 
 ```shell
 cd FlagScale
-python run.py --config-path examples/qwen/ --config-name config action=stop
+python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=stop
 ```
 
 ## logs
@@ -72,7 +72,7 @@ All the args remain the same as vLLM. Note that action args without value, like 
 ```YAML
 command-line-mode: true
 
-vllm:
+llm:
   model-tag: /models/Qwen2.5-7B-Instruct
   tensor-parallel-size: 1
   gpu-memory-utilization: 0.9
