@@ -10,19 +10,35 @@ from safetensors.torch import load_file
 
 def convert(input_path, output_path, tensor_parallel_size, use_te):
     device = "cuda"
+    # index.json
+    index_path = None
+    for file in os.listdir(input_path):
+        if file.endswith("index.json"):
+            index_path = os.path.join(input_path, file)
+            break
+    assert index_path is not None, "index.json not found in input path"
 
-    state_dict = load_file(os.path.join(input_path, "model.safetensors"), device=device)
+    with open(index_path, "r") as f:
+        weight_map = json.load(f)["weight_map"]
+
+    caches = {}
+    for name in weight_map:
+        file_name = weight_map[name]
+        if file_name not in caches:
+            caches[file_name] = load_file(
+                os.path.join(input_path, file_name), device=device
+            )
 
     new_state_dicts = [{"model": dict()} for _ in range(tensor_parallel_size)]
 
     # Process language model
     # Indices from mapping pytorch multihead attention to megatron.
-    hidden_dim = 1536
-    num_heads = 12
+    hidden_dim = 3584
+    num_heads = 28
     assert hidden_dim % num_heads == 0
     kv_channels = hidden_dim // num_heads
     # GQA Process
-    num_query_groups = 2
+    num_query_groups = 4
     kv_projection_size = kv_channels * num_query_groups
     indices = []
     assert num_heads % num_query_groups == 0
@@ -48,7 +64,7 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
     indices = torch.cat(indices)
 
     gate_up_indices = []
-    ffn_hidden_size = 8960
+    ffn_hidden_size = 18944
     assert ffn_hidden_size % tensor_parallel_size == 0
     interval = ffn_hidden_size // tensor_parallel_size
     for i in range(tensor_parallel_size):
@@ -60,8 +76,9 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
         )
     gate_up_indices = torch.cat(gate_up_indices)
 
-    for name in state_dict:
-        tensor = state_dict[name]
+    for name in weight_map:
+        file_name = weight_map[name]
+        tensor = caches[file_name][name]
 
         # Map parameter names to ones used in megatron.
         new_name = ""
@@ -80,12 +97,8 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
         elif "model.image_newline" in name:
             new_name = "image_newline"
         elif "lm_head.weight" in name:
-            # share weight
-            continue
-            """
             new_name = "language_model.output_layer.weight"
             chunk_dim = 0
-            """
         # the norm after last layer
         elif "model.norm.weight" in name:
             new_name = "language_model.decoder.final_layernorm.weight"
@@ -105,15 +118,18 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
                     split_name = name.split(".")
                     split_name[-2] = "q_proj"
                     q_name = ".".join(split_name)
-                    q_tensor = state_dict[q_name]
+                    file_name = weight_map[q_name]
+                    q_tensor = caches[file_name][q_name]
 
                     split_name[-2] = "k_proj"
                     k_name = ".".join(split_name)
-                    k_tensor = state_dict[k_name]
+                    file_name = weight_map[k_name]
+                    k_tensor = caches[file_name][k_name]
 
                     split_name[-2] = "v_proj"
                     v_name = ".".join(split_name)
-                    v_tensor = state_dict[v_name]
+                    file_name = weight_map[v_name]
+                    v_tensor = caches[file_name][v_name]
 
                     # concat and dim = 0
                     # q,k,v concat in the first dim
@@ -138,15 +154,18 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
                     split_name = name.split(".")
                     split_name[-2] = "q_proj"
                     q_name = ".".join(split_name)
-                    q_tensor = state_dict[q_name]
+                    file_name = weight_map[q_name]
+                    q_tensor = caches[file_name][q_name]
 
                     split_name[-2] = "k_proj"
                     k_name = ".".join(split_name)
-                    k_tensor = state_dict[k_name]
+                    file_name = weight_map[k_name]
+                    k_tensor = caches[file_name][k_name]
 
                     split_name[-2] = "v_proj"
                     v_name = ".".join(split_name)
-                    v_tensor = state_dict[v_name]
+                    file_name = weight_map[v_name]
+                    v_tensor = caches[file_name][v_name]
 
                     # concat and dim = 0
                     new_tensor = torch.cat([q_tensor, k_tensor, v_tensor], dim=0)
@@ -172,12 +191,14 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
                     split_name = name.split(".")
                     split_name[-2] = "gate_proj"
                     gate_name = ".".join(split_name)
-                    gate_tensor = state_dict[gate_name]
+                    file_name = weight_map[gate_name]
+                    gate_tensor = caches[file_name][gate_name]
 
                     split_name = name.split(".")
                     split_name[-2] = "up_proj"
                     up_name = ".".join(split_name)
-                    up_tensor = state_dict[up_name]
+                    file_name = weight_map[up_name]
+                    up_tensor = caches[file_name][up_name]
 
                     # concat and dim = 0
                     new_tensor = torch.cat([gate_tensor, up_tensor], dim=0)
@@ -239,7 +260,10 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
 
     indices = torch.cat(indices)
 
-    for name, tensor in state_dict.items():
+    for name in weight_map:
+        file_name = weight_map[name]
+        tensor = caches[file_name][name]
+        
         if "model.vision_tower.vision_tower.vision_model" not in name:
             continue
 
@@ -281,15 +305,17 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
                     split_name = name.split(".")
                     split_name[-2] = "q_proj"
                     q_name = ".".join(split_name)
-                    q_tensor = state_dict[q_name]
-
+                    file_name = weight_map[q_name]
+                    q_tensor = caches[file_name][q_name]
                     split_name[-2] = "k_proj"
                     k_name = ".".join(split_name)
-                    k_tensor = state_dict[k_name]
+                    file_name = weight_map[k_name]
+                    k_tensor = caches[file_name][k_name]
 
                     split_name[-2] = "v_proj"
                     v_name = ".".join(split_name)
-                    v_tensor = state_dict[v_name]
+                    file_name = weight_map[v_name]
+                    v_tensor = caches[file_name][v_name]
 
                     # concat and dim = 0
                     # q,k,v concat in the first dim
@@ -314,15 +340,18 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
                     split_name = name.split(".")
                     split_name[-2] = "q_proj"
                     q_name = ".".join(split_name)
-                    q_tensor = state_dict[q_name]
-
+                    file_name = weight_map[q_name]
+                    q_tensor = caches[file_name][q_name]
+                    
                     split_name[-2] = "k_proj"
                     k_name = ".".join(split_name)
-                    k_tensor = state_dict[k_name]
+                    file_name = weight_map[k_name]
+                    k_tensor = caches[file_name][k_name]
 
                     split_name[-2] = "v_proj"
                     v_name = ".".join(split_name)
-                    v_tensor = state_dict[v_name]
+                    file_name = weight_map[v_name]
+                    v_tensor = caches[file_name][v_name]
 
                     # concat and dim = 0
                     new_tensor = torch.cat([q_tensor, k_tensor, v_tensor], dim=0)
@@ -397,7 +426,9 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
         print(f"{new_name} processed")
 
     # Process projection
-    for name, tensor in state_dict.items():
+    for name in weight_map:
+        file_name = weight_map[name]
+        tensor = caches[file_name][name]
         # Map parameter names to ones used in megatron.
         new_name = ""
         new_tensor = tensor
@@ -431,7 +462,7 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
 
     for i in range(tensor_parallel_size):
         output_dir_tp = os.path.join(output_path, "iter_0000001", f"mp_rank_0{i}")
-        os.makedirs(output_dir_tp)
+        os.makedirs(output_dir_tp, exist_ok=True)
         output_path_tp = os.path.join(output_dir_tp, "model_optim_rng.pt")
         torch.save(new_state_dicts[i], output_path_tp)
 
@@ -450,7 +481,7 @@ Convert Qwen weights to megatron format.
 
 
 Example usage:
-python convert_to_fs_qwen2.5_1.5b.py --input /some/input/folder --output /some/output/folder --tensor-parallel-size 4
+python convert_to_fs_qwen2.5_7b.py --input /some/input/folder --output /some/output/folder --tensor-parallel-size 4 --use-te
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
