@@ -18,13 +18,14 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
     sync.
     """
 
-    embed_group = parallel_state.get_embedding_group()
-    if not isinstance(embed_group, list):
-        embed_group = [embed_group]
-    if (
-        parallel_state.is_rank_in_embedding_group(ignore_virtual=True)
-        and torch.distributed.get_world_size(embed_group[0]) > 1
-    ):
+    if (parallel_state.is_rank_in_embedding_group(ignore_virtual=True)):
+        embed_group = parallel_state.get_embedding_group()
+        if not isinstance(embed_group, list):
+            embed_group = [embed_group]
+    else:
+        return
+    
+    if (torch.distributed.get_world_size(embed_group[0]) > 1):
         if parallel_state.is_pipeline_first_stage(ignore_virtual=True):
             model_module = model[0]
         elif parallel_state.is_pipeline_last_stage(ignore_virtual=True):

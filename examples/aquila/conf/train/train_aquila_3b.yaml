@@ -14,8 +14,8 @@ system:
     log_interval: 1
     log_throughput: True
     tensorboard_log_interval: 1
-    wandb_project: "train-aquila-1B" 
-    wandb_exp_name: "train-test-1B" 
+    wandb_project: "train-aquila-3B" 
+    wandb_exp_name: "train-test-3B" 
   checkpoint:
     load: outputs_llama3/checkpoint_mc
     ckpt_format: torch
@@ -94,7 +94,7 @@ data:
   data_path: ${data_path:??}
   split: 1 
   tokenizer:
-    tokenizer_type: QwenTokenizerFS
+    tokenizer_type: Qwen2TokenizerFS
     tokenizer_path: examples/aquila/qwentokenizer
     vocab_size: 151936
     make_vocab_size_divisible_by: 64
