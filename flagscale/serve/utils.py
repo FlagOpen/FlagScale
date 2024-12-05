@@ -26,7 +26,7 @@ def stop():
 def remote(*args, **kwargs):
     """Transform a function into a Ray task"""
 
-    def _merge_kwargs(func_name, *args, **kwargs):
+    def _merge_kwargs(func_name, **kwargs):
         new_kwargs = kwargs.copy()
         model_map = {
             model.model_name: model
@@ -40,19 +40,12 @@ def remote(*args, **kwargs):
                 new_kwargs.pop("model_name", None)
 
         return new_kwargs
+    
+    assert len(args) == 1 and len(kwargs) == 0 and callable(args[0]), f"Invalid arguments with args: {args} and kargs {kwargs}"
 
-    def decorator(func):
-        new_kwargs = _merge_kwargs(func.__name__, *args, **kwargs)
-        remote_func = ray.remote(*args, **new_kwargs)(func)
+    new_kwargs = _merge_kwargs(args[0].__name__, **kwargs)
 
-        def wrapper(*args, **kwargs):
-            future = remote_func.remote(*args, **kwargs)
-            result = ray.get(future)
-            return result
-
-        return wrapper
-
-    return decorator
+    return ray.remote(*args, **new_kwargs)
 
 
 def _load() -> None:

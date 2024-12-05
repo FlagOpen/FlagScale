@@ -13,7 +13,7 @@ from flagscale import serve
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 
-@serve.remote(num_gpus=1)
+@serve.remote
 def vllm_model(args):
 
     vllm_args = args["serve"]["llm"]
@@ -63,7 +63,9 @@ def main():
     link_dir = os.path.join(serve.task_config.log_dir, f"session_latest_{timestamp}")
     tar_dir = ray._private.worker.global_worker.node._logs_dir
     os.symlink(tar_dir, link_dir)
-    return_code = vllm_serve(serve.task_config)
+
+    result = vllm_model.remote(serve.task_config)
+    return_code = ray.get(result)
 
     logger.info(f"[Serve]: vLLM serve exited with return code: {return_code}")
 
