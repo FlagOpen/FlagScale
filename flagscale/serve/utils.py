@@ -28,14 +28,10 @@ def remote(*args, **kwargs):
 
     def _merge_kwargs(func_name, **kwargs):
         new_kwargs = kwargs.copy()
-        model_map = {
-            model.model_name: model
-            for instance in task_config.serve.deploy
-            for model in instance.models
-        }
+        models = task_config.serve.deploy.models
 
-        if func_name in model_map:
-            new_kwargs.update(model_map[func_name])
+        if func_name in models:
+            new_kwargs.update(models[func_name])
             if "model_name" not in kwargs:
                 new_kwargs.pop("model_name", None)
 
@@ -43,7 +39,7 @@ def remote(*args, **kwargs):
     
     assert len(args) == 1 and len(kwargs) == 0 and callable(args[0]), f"Invalid arguments with args: {args} and kargs {kwargs}"
 
-    new_kwargs = _merge_kwargs(args[0].__name__, **kwargs)
+    new_kwargs = _merge_kwargs(kwargs[], **kwargs)
 
     return ray.remote(*args, **new_kwargs)
 

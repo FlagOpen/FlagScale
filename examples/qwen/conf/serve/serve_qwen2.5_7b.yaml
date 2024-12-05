@@ -1,18 +1,18 @@
-command-line-mode: true
-
-llm:
-  model-tag: /models/Qwen2.5-7B-Instruct
-  tensor-parallel-size: 1
-  gpu-memory-utilization: 0.9
-  max-model-len: 32768
-  max-num-seqs: 256
-  port: 4567
-  action-args:
-    - trust-remote-code
-    - enable-chunked-prefill
+model_args:
+  vllm_model:
+    model-tag: /models/Qwen2.5-7B-Instruct
+    tensor-parallel-size: 1
+    gpu-memory-utilization: 0.9
+    max-model-len: 32768
+    max-num-seqs: 256
+    port: 4567
+    action-args:
+      - trust-remote-code
+      - enable-chunked-prefill
 
 deploy:
-  - instance: qwen2.5-7b
-    models:
-      - model_name: vllm_model
-        num_gpus: 1
+  command-line-mode: true
+  instance: qwen2.5-7b
+  models:
+    vllm_model:
+      num_gpus: 1

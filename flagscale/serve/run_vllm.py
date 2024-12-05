@@ -13,10 +13,10 @@ from flagscale import serve
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 
-@serve.remote
+@serve.remote(name="vllm_model")
 def vllm_model(args):
 
-    vllm_args = args["serve"]["llm"]
+    vllm_args = args["serve"]["model_args"]["vllm_model"]
 
     command = ["vllm", "serve"]
     command.append(vllm_args["model-tag"])

@@ -153,7 +153,9 @@ class SSHServeRunner(RunnerBase):
         super().__init__(config)
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
-        self.command_line_mode = getattr(self.config.serve, "command-line-mode", None)
+        self.command_line_mode = getattr(
+            self.config.serve.deploy, "command-line-mode", None
+        )
         self._prepare()
 
     def _prepare(self):
