@@ -14,5 +14,5 @@ llm:
 deploy:
   - instance: qwen2.5-7b
     models:
-      - model_name: vllm_serve
+      - model_name: vllm_model
         num_gpus: 1

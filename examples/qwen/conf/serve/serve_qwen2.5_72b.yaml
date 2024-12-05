@@ -1,7 +1,7 @@
 command-line-mode: true
 
 llm:
-  model-tag: /models/qwen/weights/ 
+  model-tag: /models/Qwen2.5-72B-Instruct
   tensor-parallel-size: 4
   gpu-memory-utilization: 0.9
   max-model-len: 32768
@@ -14,5 +14,5 @@ llm:
 deploy:
   - instance: qwen2.5-72b
     models:
-      - model_name: vllm_serve
+      - model_name: vllm_model
         num_gpus: 4

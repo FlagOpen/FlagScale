@@ -1,9 +1,9 @@
 defaults:
   - _self_
-  - serve: qwen2.5_7b
+  - serve: serve_qwen2.5_7b
 
 experiment:
-  exp_name: qwen_gen
+  exp_name: qwen2.5_7b
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
@@ -12,7 +12,7 @@ experiment:
   runner:
     hostfile: null
   envs:
-    CUDA_VISIBLE_DEVICES: 4
+    CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
 
 action: run

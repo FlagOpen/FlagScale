@@ -161,7 +161,7 @@ class SSHServeRunner(RunnerBase):
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
         if self.command_line_mode:
-            self.user_script = "flagscale/serve/run_simple_vllm.py"
+            self.user_script = "flagscale/serve/run_vllm.py"
         else:
             self.user_script = self.config.experiment.task.entrypoint
         self.resources = parse_hostfile(

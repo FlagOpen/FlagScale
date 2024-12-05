@@ -14,7 +14,7 @@ timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 
 @serve.remote(num_gpus=1)
-def vllm_serve(args):
+def vllm_model(args):
 
     vllm_args = args["serve"]["llm"]
 
