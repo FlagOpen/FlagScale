@@ -5,6 +5,7 @@ import ray
 
 task_config = OmegaConf.create()
 
+
 class TaskManager:
     def __init__(self):
         pass
@@ -32,14 +33,13 @@ def remote(*args, **kwargs):
             for instance in task_config.serve.deploy
             for model in instance.models
         }
-        
+
         if func_name in model_map:
             new_kwargs.update(model_map[func_name])
             if "model_name" not in kwargs:
                 new_kwargs.pop("model_name", None)
 
         return new_kwargs
-
 
     def decorator(func):
         new_kwargs = _merge_kwargs(func.__name__, *args, **kwargs)
@@ -73,7 +73,8 @@ def _load() -> None:
 
     return
 
+
 def prepare() -> None:
     # Load config
     _load()
-    pass
+    return

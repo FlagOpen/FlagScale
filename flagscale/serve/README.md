@@ -83,8 +83,12 @@ llm:
     - trust-remote-code
     - enable-chunked-prefill
 
-serve:
-  deployments:
-  - name: qwen2.5-7b
-    num-replicas: 1
+deploy:
+  - instance: qwen2.5-7b
+    models:
+      - model_name: vllm_serve
+        num_gpus: 1
 ```
+
+### How to config serve parameters
+***deploy*** block is used to specify the parameters of serve. The ***instance*** is the name of serve instance, and ***models*** block is used to specify the parameters of each model decorated by "serve.remote".
