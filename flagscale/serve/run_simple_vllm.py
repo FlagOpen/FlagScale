@@ -12,7 +12,7 @@ import ray
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 
-@ray.remote(num_gpus=1)
+@ray.serve.remote(num_gpus=1)
 def vllm_serve(args, log_dir):
 
     vllm_args = args["serve"]["llm"]
