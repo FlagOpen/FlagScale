@@ -68,7 +68,7 @@ def _load() -> None:
     config = OmegaConf.load(args.config_path)
 
     global task_config
-    task_config = OmegaConf.update(config)
+    task_config.update(config)
     task_config.update({"log_dir": args.log_dir})
 
     return
