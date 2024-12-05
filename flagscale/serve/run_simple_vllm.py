@@ -7,12 +7,13 @@ import argparse
 import logging as logger
 from omegaconf import OmegaConf
 import ray
+from flagscale import serve
 
 
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 
-@ray.serve.remote(num_gpus=1)
+@serve.remote(num_gpus=1)
 def vllm_serve(args, log_dir):
 
     vllm_args = args["serve"]["llm"]
@@ -66,6 +67,7 @@ def main():
     logger.info(
         f"\n [Serve]: ************************ config ************************ \n [Serve]: {config} \n"
     )
+    serve.load(config)
     # Note: Custom log dir here may cause "OSError: AF_UNIX path length cannot exceed 107 bytes:"
     ray.init(
         log_to_driver=True,
@@ -74,9 +76,7 @@ def main():
     link_dir = os.path.join(args.log_dir, f"session_latest_{timestamp}")
     tar_dir = ray._private.worker.global_worker.node._logs_dir
     os.symlink(tar_dir, link_dir)
-    result = vllm_serve.remote(config, args.log_dir)
-
-    return_code = ray.get(result)
+    return_code = vllm_serve(config, args.log_dir)
 
     logger.info(f"[Serve]: vLLM serve exited with return code: {return_code}")
 

@@ -1,7 +1,8 @@
-import time
-import logging
+from omegaconf import OmegaConf
 import ray
 
+
+global_config = OmegaConf.create()
 
 class TaskManager:
     def __init__(self):
@@ -21,20 +22,20 @@ def stop():
 
 
 def remote(*args, **kwargs):
+    """Transform a function into a Ray task"""
     def decorator(func):
         remote_func = ray.remote(*args, **kwargs)(func)
 
-        def wrapper(*args, **kwargs):
-            start_time = time.time()
-            
+        def wrapper(*args, **kwargs):            
             future = remote_func.remote(*args, **kwargs)
-            
             result = ray.get(future)
-            
-            end_time = time.time()
-            
             return result
 
         return wrapper
 
     return decorator
+
+
+def load(config: OmegaConf) -> None:
+    global_config.merge(config)
+    return
