@@ -67,7 +67,6 @@ def main():
     logger.info(
         f"\n [Serve]: ************************ config ************************ \n [Serve]: {config} \n"
     )
-    serve.load(config)
     # Note: Custom log dir here may cause "OSError: AF_UNIX path length cannot exceed 107 bytes:"
     ray.init(
         log_to_driver=True,

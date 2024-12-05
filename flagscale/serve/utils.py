@@ -24,9 +24,20 @@ def stop():
 
 def remote(*args, **kwargs):
     """Transform a function into a Ray task"""
+
+    def _merge_kwargs(func_name, *args, **kwargs):
+        new_kwargs = kwargs.copy()
+        for instance in task_config.serve.deploy:
+            for model in instance.models:
+                if model.model_name == func_name:
+                    new_kwargs.update(model)
+                    new_kwargs.pop("model_name")
+        return new_kwargs
+
+
     def decorator(func):
-        # task_config.serve.deploy[0].models
-        remote_func = ray.remote(*args, **kwargs)(func)
+        new_kwargs = _merge_kwargs(func.__name__, *args, **kwargs)
+        remote_func = ray.remote(*args, **new_kwargs)(func)
 
         def wrapper(*args, **kwargs):
             future = remote_func.remote(*args, **kwargs)
@@ -38,7 +49,8 @@ def remote(*args, **kwargs):
     return decorator
 
 
-def load(config: OmegaConf) -> None:
+def _load(config: OmegaConf) -> None:
+    """Load configuration for cluster init"""
     parser = argparse.ArgumentParser(description="Start vllm serve with Ray")
 
     parser.add_argument(
@@ -52,3 +64,8 @@ def load(config: OmegaConf) -> None:
     global task_config
     task_config = OmegaConf.merge(task_config, config)
     return
+
+def prepare() -> None:
+    # Load config
+    _load()
+    pass
