@@ -69,6 +69,8 @@ def _load() -> None:
 
     global task_config
     task_config = OmegaConf.merge(task_config, config)
+    task_config.update({"log_dir": args.log_dir})
+
     return
 
 def prepare() -> None:
