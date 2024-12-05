@@ -27,11 +27,17 @@ def remote(*args, **kwargs):
 
     def _merge_kwargs(func_name, *args, **kwargs):
         new_kwargs = kwargs.copy()
-        for instance in task_config.serve.deploy:
-            for model in instance.models:
-                if model.model_name == func_name:
-                    new_kwargs.update(model)
-                    new_kwargs.pop("model_name")
+        model_map = {
+            model.model_name: model
+            for instance in task_config.serve.deploy
+            for model in instance.models
+        }
+        
+        if func_name in model_map:
+            new_kwargs.update(model_map[func_name])
+            if "model_name" not in kwargs:
+                new_kwargs.pop("model_name", None)
+
         return new_kwargs
 
 
@@ -49,7 +55,7 @@ def remote(*args, **kwargs):
     return decorator
 
 
-def _load(config: OmegaConf) -> None:
+def _load() -> None:
     """Load configuration for cluster init"""
     parser = argparse.ArgumentParser(description="Start vllm serve with Ray")
 
