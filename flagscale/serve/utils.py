@@ -37,5 +37,6 @@ def remote(*args, **kwargs):
 
 
 def load(config: OmegaConf) -> None:
-    global_config.merge(config)
+    global global_config
+    global_config = OmegaConf.merge(global_config, config)
     return
