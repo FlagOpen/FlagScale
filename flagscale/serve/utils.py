@@ -1,8 +1,9 @@
 from omegaconf import OmegaConf
+import argparse
 import ray
 
 
-global_config = OmegaConf.create()
+task_config = OmegaConf.create()
 
 class TaskManager:
     def __init__(self):
@@ -24,9 +25,10 @@ def stop():
 def remote(*args, **kwargs):
     """Transform a function into a Ray task"""
     def decorator(func):
+        # task_config.serve.deploy[0].models
         remote_func = ray.remote(*args, **kwargs)(func)
 
-        def wrapper(*args, **kwargs):            
+        def wrapper(*args, **kwargs):
             future = remote_func.remote(*args, **kwargs)
             result = ray.get(future)
             return result
@@ -37,6 +39,16 @@ def remote(*args, **kwargs):
 
 
 def load(config: OmegaConf) -> None:
-    global global_config
-    global_config = OmegaConf.merge(global_config, config)
+    parser = argparse.ArgumentParser(description="Start vllm serve with Ray")
+
+    parser.add_argument(
+        "--config-path", type=str, required=True, help="Path to the model"
+    )
+    parser.add_argument("--log-dir", type=str, required=True, help="Path to the model")
+    args = parser.parse_args()
+
+    config = OmegaConf.load(args.config_path)
+
+    global task_config
+    task_config = OmegaConf.merge(task_config, config)
     return

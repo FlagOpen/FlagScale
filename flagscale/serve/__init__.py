@@ -1,4 +1,4 @@
-from .utils import init, run, stop, load, remote
+from .utils import init, run, stop, load, remote, task_config
 
 
-__all__ = ["init", "run", "stop", "load", "remote"]
+__all__ = ["init", "run", "stop", "load", "remote", "task_config"]
