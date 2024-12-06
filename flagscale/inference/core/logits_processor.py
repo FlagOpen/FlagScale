@@ -112,8 +112,14 @@ def _prune_hidden_states(
     hidden_states: torch.Tensor,
     sampling_metadata: SamplingMetadata,
 ) -> torch.Tensor:
-    return hidden_states.index_select(0,
-                                      sampling_metadata.selected_token_indices)
+    # NOTE(kzawora): The if guard is needed for Gaudi - in some scenarios
+    # (warmup, profile_run) we might not have selected_token_indices,
+    # so we skip pruning.
+    if sampling_metadata.selected_token_indices is not None:
+        return hidden_states.index_select(
+            0, sampling_metadata.selected_token_indices)
+    else:
+        return hidden_states
 
 
 def _apply_logits_processors(
@@ -152,10 +158,9 @@ def _apply_logits_processors(
                     else:
                         logits_row = logits[2 * logits_row_idx]
                         logits_row_idx *= 2
+                # --- FLAGSCALE MODIFICATION END ---
                 else:
                     logits_row = logits[logits_row_idx]
-                # --- FLAGSCALE MODIFICATION END ---
-
                 past_tokens_ids = seq_group.seq_data[seq_id].output_token_ids
                 prompt_tokens_ids = seq_group.seq_data[seq_id].prompt_token_ids
 

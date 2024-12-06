@@ -199,9 +199,7 @@ class SamplingParams(
     include_stop_str_in_output: bool = False
     truncate_prompt_tokens: Optional[Annotated[int, msgspec.Meta(ge=1)]] = None
     output_kind: RequestOutputKind = RequestOutputKind.CUMULATIVE
-    # --- FLAGSCALE MODIFICATION BEG ---
-    guidance_scale: Optional[float] = None
-    # --- FLAGSCALE MODIFICATION END ---
+    guidance_scale: Optional[float] = None # --- FLAGSCALE MODIFICATION ---
 
     # The below fields are not supposed to be used as an input.
     # They are set in post_init.
@@ -297,8 +295,9 @@ class SamplingParams(
                 raise ValueError(
                     f"best_of must be greater than or equal to n, "
                     f"got n={self.n} and best_of={self.best_of}.")
-            self._real_n = self.n
-            self.n = self.best_of
+            if not self._real_n:
+                self._real_n = self.n
+                self.n = self.best_of
 
         if 0 < self.temperature < _MAX_TEMP:
             logger.warning(
@@ -490,10 +489,8 @@ class SamplingParams(
             "spaces_between_special_tokens="
             f"{self.spaces_between_special_tokens}, "
             f"truncate_prompt_tokens={self.truncate_prompt_tokens}, "
-            f"guided_decoding={self.guided_decoding}, "
-            # --- FLAGSCALE MODIFICATION BEG ---
-            f"guidance_scale={self.guidance_scale})")
-            # --- FLAGSCALE MODIFICATION END ---
+            f"guided_decoding={self.guided_decoding}, "   
+            f"guidance_scale={self.guidance_scale})") # --- FLAGSCALE MODIFICATION ---
 
 
 class BeamSearchParams(
@@ -507,3 +504,4 @@ class BeamSearchParams(
     ignore_eos: bool = False
     temperature: float = 0.0
     length_penalty: float = 1.0
+    include_stop_str_in_output: bool = False
