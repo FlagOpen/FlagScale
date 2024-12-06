@@ -27,7 +27,6 @@ def vllm_model(args):
         command.append(f"--{arg}")
 
     # Start the subprocess
-
     logger.info(f"[Serve]: Starting vllm serve with command: {' '.join(command)}")
     runtime_context = ray.get_runtime_context()
     worker_id = runtime_context.get_worker_id()
