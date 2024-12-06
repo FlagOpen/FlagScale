@@ -36,8 +36,6 @@ def remote(*args, **kwargs):
                 new_kwargs.pop("model_name", None)
 
         return new_kwargs
-    
-    assert len(args) == 1 and len(kwargs) == 0 and callable(args[0]), f"Invalid arguments with args: {args} and kargs {kwargs}"
 
     new_kwargs = _merge_kwargs(kwargs["name"], **kwargs)
 
