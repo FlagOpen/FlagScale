@@ -92,9 +92,9 @@ def calc_params_l2_norm(model):
         # Sum across all model-parallel GPUs(tensor + pipeline).
         mp_groups = mpu.get_model_parallel_group()
         if isinstance(mp_groups, list):
-            original_norm_2 = norm_2
+            original_norm_2 = norm_2.clone().detach()
             for mp_group in mp_groups:
-                norm_2 = original_norm_2
+                norm_2 = original_norm_2.clone()
                 torch.distributed.all_reduce(norm_2,
                                              op=torch.distributed.ReduceOp.SUM,
                                              group=mp_group)

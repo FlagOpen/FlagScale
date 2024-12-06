@@ -2059,6 +2059,8 @@ def _add_vision_args(parser):
     # regularization arguments
     group.add_argument('--qk-layernorm', action='store_true',
                        help='Whether to layer normalize the q and k attention embeddings.')
+    group.add_argument('--qk-layernorm-hidden-dim', action='store_true',
+                       help='Whether to layer normalize the q and k attention embeddings on hidden dimension rather than head dimension')
 
     return parser
 

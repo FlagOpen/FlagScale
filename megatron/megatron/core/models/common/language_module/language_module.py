@@ -98,9 +98,16 @@ class LanguageModule(MegatronModule):
             if parallel_state.is_rank_in_embedding_group():
                 weight = self.shared_embedding_or_output_weight()
                 weight.data = weight.data.cuda()
-                torch.distributed.all_reduce(
-                    weight.data, group=parallel_state.get_embedding_group()
-                )
+                embedding_group = parallel_state.get_embedding_group()
+                if not isinstance(embedding_group, list):
+                    torch.distributed.all_reduce(
+                        weight.data, group=parallel_state.get_embedding_group()
+                    )
+                else:
+                    original_weight = weight.data.clone()
+                    for group in embedding_group:
+                        weight.data = original_weight.clone()
+                        torch.distributed.all_reduce(weight.data, group=group)
 
         elif not getattr(LanguageModule, "embedding_warning_printed", False):
             logging.getLogger(__name__).warning(

@@ -129,11 +129,11 @@ def set_global_writers(args):
     ranks_tensor = torch.tensor([0 for _ in range(size)], dtype=torch.int, device=comm_device)
     orig_ranks = torch.tensor([i for i in range(size)], dtype=torch.int, device=comm_device)
     if is_last_rank():
-        ranks_tensor = orig_ranks
         ranks_list = torch.distributed.get_process_group_ranks(mp_groups[-1])
-        ranks_tensor = torch.tensor(ranks_list, dtype=torch.int, device=comm_device) 
+        ranks_tensor = torch.tensor(ranks_list, dtype=torch.int, device=comm_device)
+    orig_ranks = ranks_tensor.clone().detach()
     for group in mp_groups:
-        ranks_tensor = orig_ranks
+        ranks_tensor = orig_ranks.clone()
         torch.distributed.all_reduce(ranks_tensor, group=group)
     if torch.distributed.get_rank() in ranks_tensor.tolist(): 
         _set_wandb_writer(args)

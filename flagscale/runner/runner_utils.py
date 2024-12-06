@@ -1,9 +1,9 @@
 import collections
 import os
 import re
-import sys
 import socket
 import subprocess
+import sys
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -84,6 +84,7 @@ def get_host_name_or_ip():
             sock.close()
     return IP
 
+
 def run_local_command(cmd, dryrun=False, query=False):
     logger.info(f"Run the local command: {cmd}")
     if dryrun:
@@ -106,8 +107,8 @@ def run_local_command(cmd, dryrun=False, query=False):
             check=True,
             capture_output=True,
             text=True,
-            encoding='utf-8',
-            errors='replace'
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode != 0:
             print(f"Command {cmd} failed with return code {result.returncode}.")
@@ -131,8 +132,8 @@ def run_ssh_command(host, cmd, port=None, dryrun=False, query=False):
         check=True,
         capture_output=True,
         text=True,
-        encoding='utf-8',
-        errors='replace'
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode != 0:
         print(f"SSH command {ssh_cmd} failed with return code {result.returncode}.")
@@ -157,8 +158,8 @@ def run_scp_command(host, src, dst, port=None, dryrun=False):
         check=True,
         capture_output=True,
         text=True,
-        encoding='utf-8',
-        errors='replace'
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode != 0:
         print(f"SCP command {scp_cmd} failed with return code {result.returncode}.")
