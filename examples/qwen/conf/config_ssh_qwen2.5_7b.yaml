@@ -11,10 +11,12 @@ experiment:
     entrypoint: null
   runner:
     hostfile: /workspace/ip108/hostfile.txt
-  ssh_port: 2222
+    ssh_port: 2222
   envs:
     CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
+  cmds:
+    before_start: source /root/miniconda3/bin/activate flagscale
 
 action: run
 
