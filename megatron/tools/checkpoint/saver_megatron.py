@@ -116,6 +116,7 @@ def save_checkpoint(queue, args):
                 '--save-interval', '1',
                 '--save', args.save_dir,
                 '--ckpt-format', 'torch', # only 'torch' supported for conversion
+                '--no-one-logger',
                 ]
 
     if md.make_vocab_size_divisible_by is not None:
@@ -297,7 +298,7 @@ def save_checkpoint(queue, args):
             else:
                 mlp_l0_weight = torch.chunk(msg.pop("mlp l0 weight"), args.target_tensor_parallel_size, dim=0)
 
-            if md.linear_bias or md.linear_bias_qkv:
+            if md.qkv_bias:
                 qkv_bias = torch.chunk(msg.pop("qkv bias"), args.target_tensor_parallel_size, dim=0)
             if md.linear_bias:
                 if md.swiglu:
@@ -320,7 +321,7 @@ def save_checkpoint(queue, args):
                     l.post_attention_norm.bias.data.copy_(post_norm_bias)
                 l.mlp.dense_h_to_4h.weight.data.copy_(mlp_l0_weight[tp_rank])
                 l.mlp.dense_4h_to_h.weight.data.copy_(mlp_l1_weight[tp_rank])
-                if md.linear_bias or md.linear_bias_qkv:
+                if md.qkv_bias:
                     l.self_attention.query_key_value.bias.data.copy_(qkv_bias[tp_rank])
                 if md.linear_bias:
                     l.self_attention.dense.bias.data.copy_(dense_bias)

@@ -8,6 +8,7 @@ from typing import List, Optional
 from datetime import timedelta
 from functools import cmp_to_key
 from collections import defaultdict
+from typing import Callable, List, Optional
 
 import torch
 
@@ -119,44 +120,54 @@ class ProcessMesh:
         virtual_pipeline_model_parallel_size: Optional[int] = None,
         pipeline_model_parallel_split_rank: Optional[int] = None,
         use_sharp: bool = False,
+        ulysses_parallel_size: int  = 1,
         context_parallel_size: int = 1,
+        hierarchical_context_parallel_sizes: Optional[List[int]] = None,
         expert_model_parallel_size: int = 1,
+        num_distributed_optimizer_instances: int = 1,
+        expert_tensor_parallel_size: Optional[int] = None,
         nccl_communicator_config_path: Optional[str] = None,
         distributed_timeout_minutes: int = 30,
-        order: str = "tp-cp-ep-dp-pp",
+        order: str = "tp-usp-cp-ep-dp-pp",
         offset: int = 0,
         rank_mapper: RankMapper = None,
         args: dict = None,
     ):
         assert torch.distributed.is_initialized()
-        self._args = args
-        self._distributed_backend = args.distributed_backend
-        self._rank = torch.distributed.get_rank()
-        self._world_size = tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size * data_parallel_size 
+        self._data_parallel_size = data_parallel_size
+        self._tensor_model_parallel_size = tensor_model_parallel_size
+        self._pipeline_model_parallel_size = pipeline_model_parallel_size
+        self._virtual_pipeline_model_parallel_size = virtual_pipeline_model_parallel_size
+        self._pipeline_model_parallel_split_rank = pipeline_model_parallel_split_rank
+        self._use_sharp = use_sharp
+        self._ulysses_parallel_size = ulysses_parallel_size
+        self._context_parallel_size = context_parallel_size
+        self._hierarchical_context_parallel_sizes = hierarchical_context_parallel_sizes
+        self._expert_model_parallel_size = expert_model_parallel_size
+        self._num_distributed_optimizer_instances = num_distributed_optimizer_instances
+        self._expert_tensor_parallel_size = expert_tensor_parallel_size
+        self._order = order
         self._offset = offset
+        self._args = args
 
-        if data_parallel_size % expert_model_parallel_size != 0:
-            raise RuntimeError(
-                f"data_parallel_size ({data_parallel_size}) is not divisible by expert_model_parallel_size "
-            )
+        self._timeout = timedelta(minutes=distributed_timeout_minutes)
+        self._rank = torch.distributed.get_rank()
+        self._world_size = (
+            self._tensor_model_parallel_size
+            * self._pipeline_model_parallel_size
+            * self._context_parallel_size
+            * self._data_parallel_size
+        )
+        self._distributed_backend = args.distributed_backend
 
-        if expert_model_parallel_size > 1 and context_parallel_size > 1:
-            raise RuntimeError(
-                f"combination of expert model prallellism and context parallelism is not supported"
-            )
-
-        if virtual_pipeline_model_parallel_size is not None:
-            if not pipeline_model_parallel_size > 2:
+        if self._virtual_pipeline_model_parallel_size is not None:
+            if not self._pipeline_model_parallel_size > 2:
                 raise RuntimeError(
                     "pipeline-model-parallel size should be greater than 2 with interleaved schedule"
                 )
 
             self._virtual_pipeline_model_parallel_rank = 0
-            self._virtual_pipeline_model_parallel_world_size = virtual_pipeline_model_parallel_size
-
-        self._pipeline_model_parallel_split_rank = pipeline_model_parallel_split_rank
-
-        self._use_sharp = use_sharp
+            self._virtual_pipeline_model_parallel_world_size = self._virtual_pipeline_model_parallel_size
 
         self._nccl_comm_cfgs = {}
         if nccl_communicator_config_path is not None:
@@ -173,16 +184,39 @@ class ProcessMesh:
 
         from megatron.core.parallel_state import RankGenerator 
         self._rank_generator = RankGenerator(
-            tp=tensor_model_parallel_size,
-            ep=expert_model_parallel_size,
-            dp=data_parallel_size,
-            pp=pipeline_model_parallel_size,
-            cp=context_parallel_size,
+            tp=self._tensor_model_parallel_size,
+            ep=1,
+            dp=self._data_parallel_size,
+            pp=self._pipeline_model_parallel_size,
+            cp=self._context_parallel_size,
             usp=1,
-            order=order,
+            order=self._order,
         )
 
-        self._timeout = timedelta(minutes=distributed_timeout_minutes)
+        # Build expert rank generator
+        if self._expert_tensor_parallel_size is None:
+            self._expert_tensor_parallel_size = self._tensor_model_parallel_size
+        self._expert_tensor_model_pipeline_parallel_size = (
+            self._expert_tensor_parallel_size
+            * self._expert_model_parallel_size
+            * self._pipeline_model_parallel_size
+        )
+        self._expert_data_parallel_size = self._world_size // self._expert_tensor_model_pipeline_parallel_size
+        if self._world_size % self._expert_tensor_model_pipeline_parallel_size != 0:
+            raise RuntimeError(
+                f"decoder world_size ({self._world_size}) is not divisible by expert_tensor_model_pipeline_parallel size ({self._expert_tensor_model_pipeline_parallel_size})"
+            )
+
+        self._expert_rank_generator = RankGenerator(
+            tp=self._expert_tensor_parallel_size,
+            ep=self._expert_model_parallel_size,
+            dp=self._expert_data_parallel_size,
+            pp=self._pipeline_model_parallel_size,
+            cp=1,
+            usp=1,
+            order=self._order,
+        )
+
         self._rank_mapper = rank_mapper 
         self._group_ranks = {} # group_ranks belongs to the current rank 
         self._all_group_ranks = defaultdict(list) # group_ranks belongs to the current process mesh 
@@ -190,19 +224,23 @@ class ProcessMesh:
         self._process_groups_gloo = {} # process groups belongs to the current rank with gloo backend
 
         self.build_all_process_groups()
-    
+
     def build_process_group(
-        self, token, independent_ep=False, gloo=False
+        self, token, is_expert=False, gloo=False
     ):
-        logical_ranks_list = self._rank_generator.get_ranks(token, independent_ep=independent_ep)
+        if not is_expert:
+            logical_ranks_list = self._rank_generator.get_ranks(token)
+        else:
+            logical_ranks_list = self._expert_rank_generator.get_ranks(token)
         # Add the offset for each ranks of the current process mesh
         for logical_ranks in logical_ranks_list:
             for i in range(len(logical_ranks)):
                 logical_ranks[i] += self._offset 
 
         for logical_ranks in logical_ranks_list:
-            group_name = self.get_group_name(token, independent_ep=independent_ep) 
-            pg_options = get_nccl_options(group_name, self._nccl_comm_cfgs)
+            group_name = self.get_group_name(token, is_expert=is_expert) 
+            nccl_option_name = self.get_nccl_option_name(token, is_expert=is_expert)
+            pg_options = get_nccl_options(nccl_option_name, self._nccl_comm_cfgs)
             ranks = self._rank_mapper.to_physical_ranks(logical_ranks)
             group = torch.distributed.new_group(
                 ranks,
@@ -221,66 +259,79 @@ class ProcessMesh:
                 if gloo:
                     self._process_groups_gloo[group_name] = group_gloo
 
-            # if token == "pp":
-            #     if len(ranks) > 1:
-            #         embedding_ranks = [ranks[0], ranks[-1]]
-            #         position_embedding_ranks = [ranks[0]]
-            #         if self._pipeline_model_parallel_split_rank is not None:
-            #             if (
-            #                 ranks[self._pipeline_model_parallel_split_rank]
-            #                 not in embedding_ranks
-            #             ):
-            #                 embedding_ranks = [
-            #                     ranks[0],
-            #                     ranks[self._pipeline_model_parallel_split_rank],
-            #                     ranks[-1],
-            #                 ]
-            #             if (
-            #                 ranks[self._pipeline_model_parallel_split_rank]
-            #                 not in position_embedding_ranks
-            #             ):
-            #                 position_embedding_ranks = [
-            #                     ranks[0],
-            #                     ranks[self._pipeline_model_parallel_split_rank],
-            #                 ]
-            #     else:
-            #         embedding_ranks = ranks
-            #         position_embedding_ranks = ranks
+            if token == "dp-cp" and not is_expert:
+                self._build_dist_opt_process_groups(ranks, pg_options, group, group_gloo)
 
-            #     self._all_group_ranks["embd"].append(embedding_ranks)
-            #     group = torch.distributed.new_group(
-            #         embedding_ranks,
-            #         timeout=self._timeout,
-            #         pg_options=get_nccl_options("embd", self._nccl_comm_cfgs),
-            #     )
-            #     if self._rank in embedding_ranks:
-            #         self._process_groups["embd"] = group
-            #     # TODO: need to check whether self._rank in ranks is correct
-            #     # or should it be self._rank in embedding_ranks
-            #     if self._rank in ranks:
-            #         self._group_ranks["embd"] = embedding_ranks
+            if token == "cp" and not is_expert:
+                self._build_hierarchical_cp_groups()
 
-            #     self._all_group_ranks["embd_pos"].append(position_embedding_ranks)
-            #     group = torch.distributed.new_group(
-            #         position_embedding_ranks,
-            #         timeout=self.timeout,
-            #         pg_options=get_nccl_options("embd", self._nccl_comm_cfgs),
-            #     )
-            #     if self._rank in position_embedding_ranks:
-            #         self._process_groups["embd_pos"] = group
-            #     # TODO: need to check whether self._rank in ranks is correct
-            #     # or should it be self._rank in position_embedding_ranks
-            #     if self._rank in ranks:
-            #         self._group_ranks["embd_pos"] = position_embedding_ranks
+    def _build_dist_opt_process_groups(self, ranks, pg_options, group, group_gloo):
+        if self._num_distributed_optimizer_instances > 1:
+            # Create groups for Partial DistOpt, one for intra-partial DP domain
+            # Another for inter-partial DP domain
+            for i in range(self._num_distributed_optimizer_instances):
+                intra_partial_data_parallel_ranks_with_cp = ranks[
+                    (i * self._intra_partial_data_parallel_size) : (
+                        (i + 1) * self._intra_partial_data_parallel_size
+                    )
+                ]
 
-        # if token == "pp":
-        #     self._last_rank_when_using_pp = self._rank_mapper.to_physical_ranks(
-        #         [logical_ranks_list[-1][-1]]
-        #     )[0]
+                group_name = "intra_dp_cp"
+                self._all_group_ranks[group_name].append(intra_partial_data_parallel_ranks_with_cp)
+
+                intra_partial_data_parallel_group_with_cp = torch.distributed.new_group(
+                    intra_partial_data_parallel_ranks_with_cp,
+                    timeout=self._timeout,
+                    pg_options=pg_options,
+                )
+                intra_partial_data_parallel_group_with_cp_gloo = torch.distributed.new_group(
+                    intra_partial_data_parallel_ranks_with_cp, timeout=self._timeout, backend="gloo"
+                )
+
+                if self._rank in intra_partial_data_parallel_ranks_with_cp:
+                    self._group_ranks[group_name] = intra_partial_data_parallel_ranks_with_cp 
+                    self._process_groups[group_name] = intra_partial_data_parallel_group_with_cp 
+                    self._process_groups_gloo[group_name] = intra_partial_data_parallel_group_with_cp_gloo
+
+            for i in range(self._intra_partial_data_parallel_size):
+                inter_partial_data_parallel_ranks_with_cp = ranks[
+                    i::self._intra_partial_data_parallel_size
+                ]
+
+                group_name = "inter_dp_cp"
+                self._all_group_ranks[group_name].append(inter_partial_data_parallel_ranks_with_cp)
+
+                inter_partial_data_parallel_group_with_cp = torch.distributed.new_group(
+                    inter_partial_data_parallel_ranks_with_cp,
+                    timeout=self._timeout,
+                    pg_options=pg_options,
+                )
+
+                if self._rank in inter_partial_data_parallel_ranks_with_cp:
+                    self._process_groups[group_name] = inter_partial_data_parallel_group_with_cp 
+        else:
+            group_name = "intra_dp_cp"
+            self._all_group_ranks[group_name].append(ranks)
+            self._process_groups[group_name] = group 
+            self._process_groups_gloo[group_name] = group_gloo
+
+    def _build_hierarchical_cp_groups(self, ranks, pg_options):
+        if self._hierarchical_context_parallel_sizes:
+            group_name = "hierarchical_cp"
+            from megatron.core.parallel_state import create_hierarchical_parallel_groups 
+            hierarchical_cp_groups = self._process_groups.get(group_name, [])
+            hierarchical_cp_groups += create_hierarchical_parallel_groups(
+                self._rank,
+                ranks,
+                self._context_parallel_size,
+                self._hierarchical_context_parallel_sizes,
+                pg_options,
+            )
+            self._process_groups[group_name] = hierarchical_cp_groups
 
     def build_all_process_groups(self):
-        self.build_process_group("dp", independent_ep=False, gloo=True)
-        self.build_process_group("dp-cp", independent_ep=False, gloo=True)
+        self.build_process_group("dp", is_expert=False, gloo=True)
+        self.build_process_group("dp-cp", is_expert=False, gloo=True)
 
         # Apply SHARP to DP process groups
         if self._use_sharp:
@@ -302,68 +353,82 @@ class ProcessMesh:
             # Set `NCCL_COLLNET_ENABLE=0` to restrict SHARP application to DP process groups
             os.environ["NCCL_COLLNET_ENABLE"] = "0"
 
-        self.build_process_group("cp", independent_ep=False, gloo=False)
-        self.build_process_group("tp-pp", independent_ep=False, gloo=False)
-        self.build_process_group("tp-ep-pp", independent_ep=True, gloo=False)
-        self.build_process_group('tp', independent_ep=False, gloo=False)
-        self.build_process_group("pp", independent_ep=False, gloo=False)
-        self.build_process_group("tp-dp-cp", independent_ep=False, gloo=False)
-        self.build_process_group("tp-dp", independent_ep=False, gloo=False)
-        self.build_process_group("tp-ep", independent_ep=True, gloo=False)
-        self.build_process_group("ep", independent_ep=True, gloo=False)
-        self.build_process_group("dp", independent_ep=True, gloo=True)
-        self.build_process_group("dp-cp", independent_ep=False, gloo=True)
-        self.build_process_group("dp-cp", independent_ep=True, gloo=True)
-        self.build_process_group("usp", independent_ep=True, gloo=True)
+        self.build_process_group("dp-usp-cp", is_expert=False, gloo=True)
+        self.build_process_group("dp-usp", is_expert=False, gloo=True)
+        self.build_process_group("cp", is_expert=False, gloo=False)
+        self.build_process_group("usp", is_expert=False, gloo=False)
+        self.build_process_group("tp-pp", is_expert=False, gloo=False)
+        self.build_process_group('tp', is_expert=False, gloo=False)
+        self.build_process_group("pp", is_expert=False, gloo=False)
+        self.build_process_group("tp-dp-cp", is_expert=False, gloo=False)
+        self.build_process_group("tp-dp", is_expert=False, gloo=False)
+        self.build_process_group("tp-cp", is_expert=False, gloo=False)
+        # build expert process groups
+        self.build_process_group("ep", is_expert=True, gloo=False)
+        self.build_process_group("tp", is_expert=True, gloo=False)
+        self.build_process_group("tp-ep", is_expert=True, gloo=False)
+        self.build_process_group("tp-ep-pp", is_expert=True, gloo=False)
+        self.build_process_group("dp", is_expert=True, gloo=True)
 
-    def get_parallel_size(self, token, independent_ep=False):
-        if independent_ep:
-            parallel_sizes = self._rank_generator.ordered_size_w_ep
-            order = self._rank_generator.order_w_ep
+    def get_parallel_size(self, token, is_expert=False):
+        if not is_expert:
+            parallel_sizes = self._rank_generator.ordered_size
+            order = self._rank_generator.order
         else:
-            parallel_sizes = self._rank_generator.ordered_size_wo_ep
-            order = self._rank_generator.order_wo_ep
+            parallel_sizes = self._expert_rank_generator.ordered_size
+            order = self._expert_rank_generator.order
         order = order.split("-")
         if token in order:
             return parallel_sizes[order.index(token)]
         else:
             raise ValueError(f"Invalid token: {token}")
 
-    def get_group_name(self, token, independent_ep=False):
-        names = {
-            "tp-ep-pp": ("mp_exp", None),  # (with_ep, without_ep)
-            "tp-ep": ("tp_exp", None),
-            "ep": ("exp", None),
-            "dp": ("dp_modulo_exp", "dp"),
-            "dp-cp": ("dp_cp", "dp_modulo_exp_cp"), 
-            "cp": ("cp", "cp"),
-            "tp-pp": ("mp", "mp"),
-            "tp": ("tp", "tp"),
-            "pp": ("pp", "pp"),
-            "tp-dp-cp": ("tp_dp_cp", "tp_dp_cp"),
-            "tp-dp": ("tp_dp", "tp_dp"),
-            "usp": ("usp", "usp"),
-        }
-        name_pair = names.get(token, None)
-        if name_pair is None:
-            raise ValueError(f"Invalid token: {token}")
-        if independent_ep:
-            name = name_pair[0]
-            assert name is not None, f"Token {token} does not support independent ep."
-            return name
+    def get_group_name(self, token, is_expert=False):
+        # Add a prefix exp to form the expert process group names
+        # Make the group name is unique for the expert and non-expert process groups
+        prefix = "exp" if is_expert else ""
+        return f"{prefix}_{token}" 
+
+    def get_nccl_option_name(self, token, is_expert=False):
+        if not is_expert:
+            names = {
+                "dp": "dp",
+                "dp-cp": "dp_cp", 
+                "dp-usp-cp": "dp_usp_cp",
+                "dp-usp": "dp_usp",
+                "cp": "cp",
+                "tp-pp": "mp",
+                "tp": "tp",
+                "pp": "pp",
+                "tp-dp-cp": "tp_dp_cp",
+                "tp-dp": "tp_dp",
+                "usp": "usp", 
+                "tp-cp": "tp_cp",
+            }
+            name = names.get(token, None)
+            if name is None:
+                raise ValueError(f"Invalid token: {token}")
         else:
-            name = name_pair[1]
-            assert name is not None, f"Token {token} does not support non-independent ep."
-            return name
+            names = {
+                "ep": "exp",
+                "tp": "tp",
+                "tp-ep": "tp_exp",
+                "tp-ep-pp": "mp",
+                "dp": "dp",
+            }
+            name = names.get(token, None)
+            if name is None:
+                raise ValueError(f"Invalid token: {token}")
+        return name
 
     def get_process_group(
         self,
         token,
-        independent_ep=False,
+        is_expert=False,
         gloo=False,
         check_initialized=False,
     ):
-        group_name = self.get_group_name(token, independent_ep=independent_ep)
+        group_name = self.get_group_name(token, is_expert=is_expert)
         if gloo:
             group = self._process_groups_gloo.get(group_name, None)
         else:
@@ -374,17 +439,17 @@ class ProcessMesh:
             ), f"Process group {group_name} is not initialized."
         return group
 
-    def get_process_group_size(self, token, independent_ep=False, gloo=False):
-        group_name = self.get_group_name(token, independent_ep=independent_ep)
+    def get_process_group_size(self, token, is_expert=False, gloo=False):
+        group_name = self.get_group_name(token, is_expert=is_expert)
         if gloo:
             return torch.distributed.get_world_size(self._process_groups_gloo[group_name])
         else:
             return torch.distributed.get_world_size(self._process_groups[group_name])
 
     def get_process_group_ranks(
-        self, token, independent_ep=False, check_initialized=False
+        self, token, is_expert=False, check_initialized=False
     ):
-        group_name = self.get_group_name(token, independent_ep=independent_ep)
+        group_name = self.get_group_name(token, is_expert=is_expert)
         ranks = self._group_ranks.get(group_name, None)
         if check_initialized:
             assert (
@@ -393,9 +458,9 @@ class ProcessMesh:
         return ranks
 
     def get_all_process_group_ranks(
-        self, token, independent_ep=False, check_initialized=False
+        self, token, is_expert=False, check_initialized=False
     ):
-        group_name = self.get_group_name(token, independent_ep=independent_ep)
+        group_name = self.get_group_name(token, is_expert=is_expert)
         ranks = self._all_group_ranks.get(group_name, None)
         if check_initialized:
             assert (
@@ -405,28 +470,28 @@ class ProcessMesh:
 
     def get_transformer_config(self):
         return self._transformer_config
-    
+
     def get_ddp_config(self):
         return self._ddp_config
-    
+
     def get_optimizer_config(self):
         return self._optimizer_config
-    
-    def logical_coords_to_physical_ranks(self, coords, independent_ep=False):
+
+    def logical_coords_to_physical_ranks(self, coords, is_expert=False):
         def _prefix_product(a: List[int], init=1) -> List[int]:
             r = [init]
             for v in a:
                 init = init * v
                 r.append(init)
             return r
-        if independent_ep:
-            for coord in coords:  
-                assert len(coord) == 5
-            sizes = self._rank_generator.ordered_size_w_ep
-        else:
+        if not is_expert:
             for coord in coords:  
                 assert len(coord) == 4
-            sizes = self._rank_generator.ordered_size_wo_ep
+            sizes = self._rank_generator.ordered_size
+        else:
+            for coord in coords:  
+                assert len(coord) == 5
+            sizes = self._expert_rank_generator.ordered_size
         # TODO: Support ulysses sequence parallelism
         new_sizes = [val for idx, val in enumerate(sizes) if idx != 1]
         assert len(new_sizes) == len(coords[0]), f"new_sizes: {new_sizes}, coords[0]: {coords[0]}"
@@ -488,10 +553,10 @@ class ParallelContext:
         accumulated_world_size = 0
         for tp, cp, ep, dp, pp in self._args.hetero_process_meshes:
             process_mesh = ProcessMesh(
-                tensor_model_parallel_size=tp,
-                context_parallel_size=cp,
                 data_parallel_size=dp,
+                tensor_model_parallel_size=tp,
                 pipeline_model_parallel_size=pp,
+                context_parallel_size=cp,
                 expert_model_parallel_size=ep,
                 nccl_communicator_config_path=self._args.nccl_communicator_config_path,
                 distributed_timeout_minutes=self._args.distributed_timeout_minutes,
@@ -526,12 +591,12 @@ class ParallelContext:
             ]
 
     def build_inter_mesh_process_groups(self, process_mesh1, process_mesh2):
-        tp1 = process_mesh1.get_parallel_size("tp", independent_ep=False)
-        cp1 = process_mesh1.get_parallel_size("cp", independent_ep=False)
-        dp1 = process_mesh1.get_parallel_size("dp", independent_ep=False)
-        tp2 = process_mesh2.get_parallel_size("tp", independent_ep=False)
-        cp2 = process_mesh2.get_parallel_size("cp", independent_ep=False)
-        dp2 = process_mesh2.get_parallel_size("dp", independent_ep=False)
+        tp1 = process_mesh1.get_parallel_size("tp", is_expert=False)
+        cp1 = process_mesh1.get_parallel_size("cp", is_expert=False)
+        dp1 = process_mesh1.get_parallel_size("dp", is_expert=False)
+        tp2 = process_mesh2.get_parallel_size("tp", is_expert=False)
+        cp2 = process_mesh2.get_parallel_size("cp", is_expert=False)
+        dp2 = process_mesh2.get_parallel_size("dp", is_expert=False)
 
         if not(tp1 == 1 and tp2 == 1):
             sp1 = tp1 * cp1
@@ -586,7 +651,6 @@ class ParallelContext:
                     [dst_coord]
                 )[0]
                 self._inter_mesh_process_groups_dp[(src_rank, dst_rank)] = True
-        
 
     def build_all_inter_mesh_process_groups(self):
         if len(self._process_meshes) == 1:
@@ -601,8 +665,8 @@ class ParallelContext:
         """ Build global process groups across all process meshes. The global process groups are used for the communication 
             between different pipeline stages. Heteregonous process groups except for the default process groups are all here"""
         # build global pipeline process groups
-        def _backtrack(mesh_index, prev_rank, path, token = "pp", independent_ep=False):
-            group_name = self._process_meshes[0].get_group_name(token, independent_ep=independent_ep)
+        def _backtrack(mesh_index, prev_rank, path, token = "pp", is_expert=False):
+            group_name = self._process_meshes[0].get_group_name(token, is_expert=is_expert)
             if mesh_index == len(self._process_meshes):
                 aggregated_ranks = [rank for ranks in path for rank in ranks]
                 self._all_group_ranks[group_name].append(aggregated_ranks)
@@ -613,7 +677,7 @@ class ParallelContext:
                     self._process_group_to_ranks[group] = aggregated_ranks
                 return
             current_mesh = self._process_meshes[mesh_index]
-            ranks_list = current_mesh.get_all_process_group_ranks(token, independent_ep=independent_ep, check_initialized=True)
+            ranks_list = current_mesh.get_all_process_group_ranks(token, is_expert=is_expert, check_initialized=True)
             valid_ranks_list = []
             for ranks in ranks_list:
                 mesh_is_connected = False
@@ -627,29 +691,29 @@ class ParallelContext:
                     valid_ranks_list.append(ranks)
             for ranks in valid_ranks_list:
                 path.append(ranks)
-                _backtrack(mesh_index + 1, ranks[-1], path, token=token, independent_ep=independent_ep)
+                _backtrack(mesh_index + 1, ranks[-1], path, token=token, is_expert=is_expert)
                 path.pop()
 
         for mesh_index, process_mesh in enumerate(self._process_meshes):
             ranks_list = process_mesh.get_all_process_group_ranks(
-                "tp-ep-pp", independent_ep=True, check_initialized=True
+                "tp-ep-pp", is_expert=True, check_initialized=True
             )
             ranks = list(itertools.chain.from_iterable(ranks_list))
-            self._all_group_ranks["mp_exp"].append(ranks)
+            self._all_group_ranks["exp_mp"].append(ranks)
             group = torch.distributed.new_group(ranks, timeout=self._timeout, use_local_synchronization=True)
             if self._rank in ranks:
-                self._group_ranks["mp_exp"] = ranks
-                self._process_groups["mp_exp"] = group
+                self._group_ranks["exp_mp"] = ranks
+                self._process_groups["exp_mp"] = group
                 self._process_group_to_ranks[group] = ranks
             ranks_list = process_mesh.get_all_process_group_ranks(
-                "pp", independent_ep=False, check_initialized=True
+                "pp", is_expert=False, check_initialized=True
             )
             ranks = list(itertools.chain.from_iterable(ranks_list))
             if "last_rank" not in self._parallel_ranks:
                 self._parallel_ranks["last_rank"] = []
             self._parallel_ranks["last_rank"].append(ranks[-1])
-        _backtrack(0, -1, path=[], token="tp-pp", independent_ep=False)
-        _backtrack(0, -1, path=[], token="pp", independent_ep=False)
+        _backtrack(0, -1, path=[], token="tp-pp", is_expert=False)
+        _backtrack(0, -1, path=[], token="pp", is_expert=False)
         # build global embedding process groups
         for ranks in self._group_ranks["pp"]:
             if len(ranks) > 1:
@@ -709,19 +773,19 @@ class ParallelContext:
         if next:
             process_mesh2 = self.get_next_process_mesh()
             # first stage of the next process mesh
-            src_pp_dims = [process_mesh1.get_parallel_size("pp") - 1]
+            src_pp_dims = [process_mesh1.get_parallel_size("pp", is_expert=False) - 1]
             dst_pp_dims = [0]
         else:
             process_mesh2 = self.get_prev_process_mesh()
             # last stage of the previous process mesh
             src_pp_dims = [0]
             dst_pp_dims = [process_mesh2.get_parallel_size("pp") - 1]
-        tp1 = process_mesh1.get_parallel_size("tp", independent_ep=False)
-        cp1 = process_mesh1.get_parallel_size("cp", independent_ep=False)
-        dp1 = process_mesh1.get_parallel_size("dp", independent_ep=False)
-        tp2 = process_mesh2.get_parallel_size("tp", independent_ep=False)
-        cp2 = process_mesh2.get_parallel_size("cp", independent_ep=False)
-        dp2 = process_mesh2.get_parallel_size("dp", independent_ep=False)
+        tp1 = process_mesh1.get_parallel_size("tp", is_expert=False)
+        cp1 = process_mesh1.get_parallel_size("cp", is_expert=False)
+        dp1 = process_mesh1.get_parallel_size("dp", is_expert=False)
+        tp2 = process_mesh2.get_parallel_size("tp", is_expert=False)
+        cp2 = process_mesh2.get_parallel_size("cp", is_expert=False)
+        dp2 = process_mesh2.get_parallel_size("dp", is_expert=False)
 
         # Assume that the tensor shape is (seq_len, batch_size, hidden_size)
         local_seq_len, local_batch_size, local_hidden_size = local_tensor_shape
@@ -784,12 +848,8 @@ class ParallelContext:
         assert self._current_process_mesh_index + 1 < len(self._process_meshes)
         return self._process_meshes[self._current_process_mesh_index + 1]
 
-    def get_model_parallel_group(self, with_expert_parallel=False):
+    def get_model_parallel_group(self):
         """Get the model parallel group the caller rank belongs to."""
-        if with_expert_parallel:
-            group = self._process_groups.get("mp_exp", None)
-            assert group is not None, "model parallel group is not initialized"
-            return group 
         group = self._process_groups.get("mp", None)
         assert group is not None, 'model parallel group is not initialized'
         return group
@@ -798,68 +858,110 @@ class ParallelContext:
         """Get the tensor model parallel group the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         return current_process_mesh.get_process_group(
-            "tp", independent_ep=False, gloo=False, check_initialized=check_initialized
+            "tp", is_expert=False, gloo=False, check_initialized=check_initialized
         )
 
-    def get_pipeline_model_parallel_group(self, check_initialized=True, local_pp_group=False):
+    def get_pipeline_model_parallel_group(self, local_pp_group=False):
         """Get the pipeline model parallel group the caller rank belongs to."""
         if local_pp_group:
             current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-            return current_process_mesh.get_process_group("pp", independent_ep=False, gloo=False, check_initialized=True)
+            return current_process_mesh.get_process_group("pp", is_expert=False, gloo=False, check_initialized=True)
         group = self._process_groups.get("pp", None)
         assert group is not None, "pipeline_model parallel group is not initialized"
         return self._process_groups["pp"]
 
-    def get_data_parallel_group(self, with_context_parallel=False):
+    def get_data_parallel_group(self, with_context_parallel=False, partial_data_parallel=False, with_ulysses_sp_parallel=False):
         """Get the data parallel group the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        if with_context_parallel:
+        if with_context_parallel and with_ulysses_sp_parallel:
+            assert partial_data_parallel is False, "Partial data parallel is not supported with Ulysses SP parallel"
             return current_process_mesh.get_process_group(
-                "dp-cp", independent_ep=False, gloo=False, check_initialized=True
+                "dp-usp-cp", is_expert=False, gloo=False, check_initialized=True
+            )
+        elif with_context_parallel:
+            if partial_data_parallel:
+                return current_process_mesh.get_process_group(
+                    "intra_dp_cp", is_expert=False, gloo=False, check_initialized=True
+                )
+            return current_process_mesh.get_process_group(
+                "dp-cp", is_expert=False, gloo=False, check_initialized=True
+            )
+        elif with_ulysses_sp_parallel:
+            assert partial_data_parallel is False, "Partial data parallel is not supported with Ulysses SP parallel"
+            return current_process_mesh.get_process_group(
+                "dp-usp", is_expert=False, gloo=False, check_initialized=True
             )
         else:
             return current_process_mesh.get_process_group(
-                "dp", independent_ep=False, gloo=False, check_initialized=True
+                "dp", is_expert=False, gloo=False, check_initialized=True
             )
 
-    def get_data_parallel_group_gloo(self, with_context_parallel=False):
+    def get_data_parallel_group_gloo(self, with_context_parallel=False, partial_data_parallel=False, with_ulysses_sp_parallel=False):
         """Get the data parallel group-gloo the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        if with_context_parallel:
+        if with_context_parallel and with_ulysses_sp_parallel:
+            assert partial_data_parallel is False, "Partial data parallel is not supported with Ulysses SP parallel"
             return current_process_mesh.get_process_group(
-                "dp-cp", independent_ep=False, gloo=True, check_initialized=True
+                "dp-usp-cp", is_expert=False, gloo=True, check_initialized=True
+            )
+        elif with_context_parallel:
+            if partial_data_parallel:
+                return current_process_mesh.get_process_group(
+                    "intra_dp_cp", is_expert=False, gloo=True, check_initialized=True
+                )
+            return current_process_mesh.get_process_group(
+                "dp-cp", is_expert=False, gloo=True, check_initialized=True
+            )
+        elif with_ulysses_sp_parallel:
+            assert partial_data_parallel is False, "Partial data parallel is not supported with Ulysses SP parallel"
+            return current_process_mesh.get_process_group(
+                "dp-usp", is_expert=False, gloo=True, check_initialized=True
             )
         else:
             return current_process_mesh.get_process_group(
-                "dp", independent_ep=False, gloo=True, check_initialized=True
+                "dp", is_expert=False, gloo=True, check_initialized=True
             )
+
+    def get_inter_partial_data_parallel_group(self):
+        """Get the group spanning the different partial data-parallel groups."""
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_process_group(
+            "inter_dp_cp", is_expert=False, gloo=False, check_initialized=True
+        )
 
     def get_context_parallel_group(self, check_initialized=True):
         """Get the context parallel group the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         return current_process_mesh.get_process_group(
-            "cp", independent_ep=False, gloo=False, check_initialized=check_initialized
+            "cp", is_expert=False, gloo=False, check_initialized=check_initialized
         )
 
     def get_context_parallel_global_ranks(self, check_initialized=True):
         """Get all global ranks of the context parallel group that the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         return current_process_mesh.get_process_group_ranks(
-            "cp", independent_ep=False, check_initialized=check_initialized
+            "cp", is_expert=False, check_initialized=check_initialized
         )
     
     def get_ulysses_sp_parallel_group(self, check_initialized=True):
         """Get the ulysses sequence parallel group the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         return current_process_mesh.get_process_group(
-            "usp", independent_ep=False, gloo=False, check_initialized=check_initialized
+            "usp", is_expert=False, gloo=False, check_initialized=check_initialized
         )
         
     def get_ulysses_sp_parallel_global_ranks(self, check_initialized=True):
         """Get all global ranks of the ulysses sequence parallel group that the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         return current_process_mesh.get_process_group_ranks(
-            "usp", independent_ep=False, check_initialized=check_initialized
+            "usp", is_expert=False, check_initialized=check_initialized
+        )
+
+    def get_hierarchical_context_parallel_groups(self, check_initialized=True):
+        """Get the inner ring of context parallel group the caller rank belongs to."""
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_process_group(
+            "hierarchical_cp", is_expert=False, gloo=False, check_initialized=check_initialized
         )
 
     def get_embedding_group(self):
@@ -882,62 +984,46 @@ class ParallelContext:
                 break
         return pos_embd_group
 
-    def get_amax_reduction_group(self, with_context_parallel=False):
+    def get_amax_reduction_group(self, with_context_parallel=False, tp_only_amax_red=False):
         """Get the FP8 amax reduction group the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         if with_context_parallel:
-            return current_process_mesh.get_process_group(
-                "tp-dp-cp", independent_ep=False, gloo=False, check_initialized=True
-            )
+            if not tp_only_amax_red:
+                return current_process_mesh.get_process_group(
+                    "tp-dp-cp", is_expert=False, gloo=False, check_initialized=True
+                )
+            else:
+                return current_process_mesh.get_process_group(
+                    "tp-cp", is_expert=False, gloo=False, check_initialized=True
+                )
         else:
-            return current_process_mesh.get_process_group(
-                "tp-dp", independent_ep=False, gloo=False, check_initialized=True
-            )
+            if not tp_only_amax_red:
+                return current_process_mesh.get_process_group(
+                    "tp-dp", is_expert=False, gloo=False, check_initialized=True
+                )
+            else:
+                return current_process_mesh.get_process_group(
+                    "tp", is_expert=False, gloo=False, check_initialized=True
+                )
 
     def get_tensor_and_data_parallel_group(self, with_context_parallel=False):
         """Get the tensor and data parallel group the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         if with_context_parallel:
             return current_process_mesh.get_process_group(
-                "tp-dp-cp", independent_ep=False, gloo=False, check_initialized=True
+                "tp-dp-cp", is_expert=False, gloo=False, check_initialized=True
             )
         else:
             return current_process_mesh.get_process_group(
-                "tp-dp", independent_ep=False, gloo=False, check_initialized=True
+                "tp-dp", is_expert=False, gloo=False, check_initialized=True
             )
 
-    def get_expert_model_parallel_group(self):
+    def get_tensor_and_context_parallel_group(self):
+        """Get the tensor- and context-parallel group the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         return current_process_mesh.get_process_group(
-            "ep", independent_ep=True, gloo=False, check_initialized=True
+            "tp-cp", is_expert=False, gloo=False, check_initialized=True
         )
-
-    def get_tensor_and_expert_parallel_group(self):
-        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        return current_process_mesh.get_process_group(
-            "tp-ep", independent_ep=True, gloo=False, check_initialized=True
-        )
-
-    def get_data_modulo_expert_parallel_group(self, with_context_parallel=False):
-        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        if with_context_parallel:
-            return current_process_mesh.get_process_group(
-                "dp-cp", independent_ep=True, gloo=False, check_initialized=True
-            )
-        else:
-            
-            return current_process_mesh.get_process_group(
-                "dp", independent_ep=True, gloo=False, check_initialized=True
-            )
-
-    def get_data_modulo_expert_parallel_group_gloo(self):
-        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        return current_process_mesh.get_process_group(
-            "dp", independent_ep=True, gloo=True, check_initialized=True
-        )
-
-    def set_expert_model_parallel_world_size(self, world_size):
-        self._parallel_world_sizes["ep"] = world_size
 
     def set_tensor_model_parallel_world_size(self, world_size):
         """Set the tensor model parallel size"""
@@ -966,10 +1052,6 @@ class ParallelContext:
         if group is None:
             group = self.get_pipeline_model_parallel_group()[0]
         return torch.distributed.get_world_size(group)
-
-    def set_expert_model_parallel_rank(self, rank):
-        """Set expert model parallel rank."""
-        self._parallel_ranks["ep"] = rank
 
     def set_tensor_model_parallel_rank(self, rank):
         """Set tensor model parallel rank."""
@@ -1092,6 +1174,46 @@ class ParallelContext:
             return True
         return False
 
+    def is_inside_encoder(self, rank=None) -> bool:
+        """Return True if pipeline stage executes encoder block.
+        This function implicitly assumes we have a model with both
+        encoder and decoder."""
+        if self.get_pipeline_model_parallel_world_size() == 1:
+            return True
+        if rank is None:
+            rank = self.get_pipeline_model_parallel_rank()
+        pipeline_model_parallel_decoder_start = self.get_pipeline_model_parallel_decoder_start() 
+        # _PIPELINE_MODEL_PARALLEL_DECODER_START == None means that the
+        # encoder shares the first pipeline rank with the decoder
+        if pipeline_model_parallel_decoder_start is None and rank == 0:
+            return True
+        # _PIPELINE_MODEL_PARALLEL_DECODER_START != None means that the
+        # encoder is on it's own pipeline ranks before the decoder
+        if (
+            pipeline_model_parallel_decoder_start is not None
+            and rank < pipeline_model_parallel_decoder_start 
+        ):
+            return True
+        return False
+
+    def is_inside_decoder(self, rank=None) -> bool:
+        """Return True if pipeline stage executes decoder block for a model
+        with both encoder and decoder."""
+        if self.get_pipeline_model_parallel_world_size() == 1:
+            return True
+        if rank is None:
+            rank = self.get_pipeline_model_parallel_rank()
+        pipeline_model_parallel_decoder_start = self.get_pipeline_model_parallel_decoder_start()
+        if pipeline_model_parallel_decoder_start is None:
+            return True
+        if rank >= pipeline_model_parallel_decoder_start:
+            return True
+        return False
+
+    def get_pipeline_model_parallel_decoder_start(self) -> int:
+        """Return decoder start rank (if encoder pipeline parallelism is set)."""
+        return self._parallel_ranks.get("pp-decoder-start", None)
+
     def is_pipeline_stage_at_split(self, group=None):
         """Return true if pipeline stage executes decoder block and next
         stage executes encoder block for a model with both encoder and
@@ -1116,7 +1238,7 @@ class ParallelContext:
         in the tensor model parallel group."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         ranks = current_process_mesh.get_process_group_ranks(
-            "tp", independent_ep=False, check_initialized=True
+            "tp", is_expert=False, check_initialized=True
         )
         return ranks[0]
 
@@ -1126,11 +1248,11 @@ class ParallelContext:
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         if with_context_parallel:
             ranks = current_process_mesh.get_process_group_ranks(
-                "dp-cp", independent_ep=False, check_initialized=True
+                "dp-cp", is_expert=False, check_initialized=True
             )
         else:
             ranks = current_process_mesh.get_process_group_ranks(
-                "dp", independent_ep=False, check_initialized=True
+                "dp", is_expert=False, check_initialized=True
             )
         return ranks[0]
 
@@ -1160,7 +1282,7 @@ class ParallelContext:
         ranks = self._process_group_to_ranks.get(group, None)
         if ranks is None: # local pipeline group
             current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-            ranks = current_process_mesh.get_process_group_ranks(token="pp", independent_ep=False, check_initialized=True)
+            ranks = current_process_mesh.get_process_group_ranks(token="pp", is_expert=False, check_initialized=True)
             assert ranks is not None, "Pipeline parallel group is not initialized"
             rank_in_pipeline = torch.distributed.get_rank(group=group)
             world_size = self.get_pipeline_model_parallel_world_size(group)
@@ -1176,7 +1298,7 @@ class ParallelContext:
         ranks = self._process_group_to_ranks.get(group, None)
         if ranks is None: # local pipeline group
             current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-            ranks = current_process_mesh.get_process_group_ranks(token="pp", independent_ep=False, check_initialized=True)
+            ranks = current_process_mesh.get_process_group_ranks(token="pp", is_expert=False, check_initialized=True)
             assert ranks is not None, "Pipeline parallel group is not initialized"
             rank_in_pipeline = torch.distributed.get_rank(group=group)
             world_size = self.get_pipeline_model_parallel_world_size(group)
@@ -1194,6 +1316,9 @@ class ParallelContext:
 
     def get_data_parallel_world_size(self, with_context_parallel=False):
         """Return world size for the data parallel group."""
+        size = self._parallel_world_sizes.get("dp", None)
+        if size is not None:
+            return size 
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             return torch.distributed.get_world_size(
                 group=self.get_data_parallel_group(with_context_parallel=with_context_parallel)
@@ -1201,8 +1326,15 @@ class ParallelContext:
         else:
             return 0
 
+    def set_data_parallel_rank(self, rank):
+        """Return world size for the data parallel group."""
+        self._parallel_ranks["dp"] = rank
+
     def get_data_parallel_rank(self, with_context_parallel=False):
         """Return my rank for the data parallel group."""
+        rank = self._parallel_ranks.get("dp", None)
+        if rank is not None:
+            return rank
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             return torch.distributed.get_rank(
                 group=self.get_data_parallel_group(with_context_parallel=with_context_parallel)
@@ -1224,6 +1356,20 @@ class ParallelContext:
         else:
             return 0
     
+    def get_tensor_and_context_parallel_world_size(self):
+        """Return world size for the tensor and context-parallel group."""
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            return torch.distributed.get_world_size(group=self.get_tensor_and_context_parallel_group())
+        else:
+            return 0
+
+    def get_tensor_and_context_parallel_rank(self):
+        """Return caller's rank in the joint tensor-model-parallel and context-parallel group."""
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            return torch.distributed.get_rank(group=self.get_tensor_and_context_parallel_group())
+        else:
+            return 0
+
     def get_ulysses_sp_parallel_world_size(self):
         """Return world size for the ulysses sequence parallel group."""
         if torch.distributed.is_available() and torch.distributed.is_initialized():
@@ -1238,55 +1384,137 @@ class ParallelContext:
         else:
             return 0
 
+    ### Expert-related parallel states functions
+    def get_expert_model_parallel_group(self, check_initialized=True):
+        """Get the expert-model-parallel group the caller rank belongs to."""
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_process_group(
+            "ep", is_expert=True, gloo=False, check_initialized=check_initialized
+        )
+
     def get_expert_model_parallel_world_size(self):
-        """Return world size for the expert model parallel group"""
-        if self._parallel_world_sizes.get("ep", None) is not None:
-            return self._parallel_world_sizes["ep"]
+        """Return world size for the expert-model-parallel group."""
+        size = self._parallel_world_sizes.get("ep", None)
+        if size is not None:
+            return size 
         if torch.distributed.is_available() and torch.distributed.is_initialized():
-            tensor_and_expert_parallel_world_size = torch.distributed.get_world_size(
-                group=self.get_tensor_and_expert_parallel_group()
-            )
-            return tensor_and_expert_parallel_world_size // self.get_tensor_model_parallel_world_size()
+            return torch.distributed.get_world_size(group=self.get_expert_model_parallel_group())
         else:
             return 0
 
-    def get_tensor_and_expert_parallel_world_size(self):
-        """Return world size for the expert model parallel group times model parallel group.
-           Currently, each expert will also be distributed across TP group by default.
-        """
-        if torch.distributed.is_available() and torch.distributed.is_initialized():
-            tensor_and_expert_parallel_world_size = torch.distributed.get_world_size(
-                group=self.get_tensor_and_expert_parallel_group()
-            )
-            return tensor_and_expert_parallel_world_size
-        else:
-            return 0
+    def set_expert_model_parallel_world_size(self, world_size):
+        """Sets the expert-model-parallel world size."""
+        self._parallel_world_sizes["ep"] = world_size
 
     def get_expert_model_parallel_rank(self):
-        """Return my rank for the expert parallel group"""
-        if self._parallel_ranks.get("ep", None) is not None:
-            return self._parallel_ranks["ep"]
+        """Return caller's rank in the expert-model-parallel group."""
+        rank = self._parallel_ranks.get("ep", None)
+        if rank is not None:
+            return rank
         if torch.distributed.is_available() and torch.distributed.is_initialized():
-            tensor_and_expert_parallel_rank = torch.distributed.get_rank(
-                group=self.get_tensor_and_expert_parallel_group()
+            return torch.distributed.get_rank(group=self.get_expert_model_parallel_group())
+        else:
+            return 0
+
+    def set_expert_model_parallel_rank(self, rank):
+        """Set expert-model-parallel rank."""
+        self._parallel_ranks["ep"] = rank
+
+    def get_expert_tensor_parallel_group(self, check_initialized=True):
+        """Get the expert-tensor-parallel group the caller rank belongs to."""
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_process_group(
+            "tp", is_expert=True, gloo=False, check_initialized=check_initialized
+        )
+
+    def get_expert_tensor_parallel_world_size(self):
+        """Return world size for the expert tensor parallel group."""
+        size = self._parallel_world_sizes.get("exp_tp", None)
+        if size is not None:
+            return size 
+        # Use tensor parallel group world size for backward compability otherwise
+        if not self.get_expert_tensor_parallel_group():
+            return self.get_tensor_model_parallel_world_size()
+        else:
+            return torch.distributed.get_world_size(group=self.get_expert_tensor_parallel_group())
+
+    def set_expert_tensor_parallel_world_size(self, world_size):
+        "Set expert tensor model parallel size"
+        self._parallel_world_sizes["exp_tp"] = world_size
+
+    def get_expert_tensor_parallel_rank(self):
+        """Return my rank for the expert tensor parallel group."""
+        rank = self._parallel_ranks.get("exp_tp", None)
+        if rank is not None:
+            return rank
+        # Use tensor parallel group rank for backward compability otherwise
+        if not self.get_expert_tensor_parallel_group():
+            return self.get_tensor_model_parallel_rank()
+        else:
+            return torch.distributed.get_rank(group=self.get_expert_tensor_parallel_group())
+
+    def set_expert_tensor_parallel_rank(self, rank):
+        "Set expert tensor model parallel rank"
+        self._parallel_ranks["exp_tp"] = rank
+
+    def get_expert_tensor_and_model_parallel_group(self, check_initialized=True):
+        """Get the expert-tensor and expert-model group the caller rank belongs to."""
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_process_group(
+            "tp_mp", is_expert=True, gloo=False, check_initialized=check_initialized
+        )
+
+    def get_expert_tensor_and_model_parallel_world_size(self):
+        """Return world size for the expert model parallel group times expert tensor parallel group."""
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            world_size = torch.distributed.get_world_size(
+                group=self.get_expert_tensor_and_model_parallel_group()
             )
-            return tensor_and_expert_parallel_rank // self.get_tensor_model_parallel_world_size()
+            return world_size
         else:
             return 0
 
-    def get_data_modulo_expert_parallel_rank(self, with_context_parallel):
-        """Return my rank for the context parallel group."""
+    def get_expert_tensor_and_model_parallel_rank(self):
+        """Return caller's rank in the joint tensor- and expert-model-parallel group."""
         if torch.distributed.is_available() and torch.distributed.is_initialized():
-            return torch.distributed.get_rank(group=self.get_data_modulo_expert_parallel_group(with_context_parallel=with_context_parallel))
+            return torch.distributed.get_rank(group=self.get_expert_tensor_and_model_parallel_group())
         else:
             return 0
 
-    def get_tensor_and_expert_parallel_rank(self):
-        """Return my rank for the tensor and expert parallel group"""
+    def get_expert_tensor_model_pipeline_parallel_group(self):
+        """Get expert tensor-model-pipeline parallel group."""
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_process_group(
+            "tp_pp", is_expert=True, gloo=False, check_initialized=True)
+
+    def get_expert_data_parallel_group(self):
+        """Get expert data parallel group."""
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_process_group(
+            "dp", is_expert=True, gloo=False, check_initialized=True)
+
+    def get_data_modulo_expert_parallel_group(self):
+        """[Deprecated] Get expert data parallel group."""
+        warnings.warn(
+            "get_data_modulo_expert_parallel_group is deprecated, please use "
+            "get_expert_data_parallel_group instead.",
+            DeprecationWarning,
+        )
+        self.get_expert_data_parallel_group()
+
+    def get_expert_data_parallel_group_gloo(self):
+        """Get expert data parallel group-gloo."""
+        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
+        return current_process_mesh.get_process_group(
+            "dp", is_expert=True, gloo=True, check_initialized=True)
+
+    def get_expert_data_parallel_rank(self):
+        """Return caller's rank in the expert data parallel group."""
         if torch.distributed.is_available() and torch.distributed.is_initialized():
-            return torch.distributed.get_rank(group=self.get_tensor_and_expert_parallel_group())
+            return torch.distributed.get_rank(group=self.get_expert_data_parallel_group())
         else:
             return 0
+    ### End of expert-related functions region
 
     def set_global_memory_buffer(self):
         """Initialize global buffer"""
@@ -1298,10 +1526,10 @@ class ParallelContext:
         assert self._global_memory_buffer is not None, 'global memory buffer is not initialized'
         return self._global_memory_buffer
 
-    def get_transformer_config(self):
-        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        return current_process_mesh.get_transformer_config()
-    
+    def destroy_global_memory_buffer(self):
+        """Sets the global memory buffer to None"""
+        self._global_memory_buffer = None
+
     def build_config(self):
         def _build_ddp_config(args):
             from megatron.core.distributed import DistributedDataParallelConfig
@@ -1396,7 +1624,3 @@ class ParallelContext:
     
     def get_dataset_config(self):
         return self._dataset_config
-    
-    def destroy_global_memory_buffer(self):
-        """Sets the global memory buffer to None"""
-        self._global_memory_buffer = None

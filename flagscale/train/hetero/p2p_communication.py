@@ -21,6 +21,7 @@ from flagscale.train.hetero.parallel_context import ParallelContext
 # Types
 Shape = Union[List[int], torch.Size]
 
+
 def get_device_type_for_comm(model_parallel_group=None):
     device = 'cuda'
     # "cpu:gloo": gloo only supports cpu tensor.
@@ -32,6 +33,7 @@ def get_device_type_for_comm(model_parallel_group=None):
         if 'gloo' in torch.distributed.get_backend(model_parallel_group):
             device = 'cpu'
     return device
+
 
 def warm_up_comm_group_hetero(config: ModelParallelConfig):
     """ Warm up the communication for all PP groups, to avoid the hang issue.
@@ -123,6 +125,7 @@ def is_inter_mesh_comm(para_ctx: ParallelContext, comm_with_front_layer: bool):
         for i in range(0, min(para_ctx._current_process_mesh_index + 1, len(para_ctx._process_meshes))):
             total_current_pipeline_model_parallel_size += para_ctx._process_meshes[i]._rank_generator.pp
         return get_pipeline_model_parallel_rank() == total_current_pipeline_model_parallel_size - 1        
+
 
 def recv_forward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> torch.Tensor:
     """ Receive tensor from previous rank in pipeline (forward receive).
