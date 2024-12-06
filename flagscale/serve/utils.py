@@ -25,7 +25,7 @@ def stop():
 
 def remote(*args, **kwargs):
     """Transform a function into a Ray task"""
-
+    _load()
     def _merge_kwargs(func_name, **kwargs):
         new_kwargs = kwargs.copy()
         models = task_config.serve.deploy.models
@@ -49,7 +49,7 @@ def _load() -> None:
     parser.add_argument(
         "--config-path", type=str, required=True, help="Path to the model"
     )
-    parser.add_argument("--log-dir", type=str, required=True, help="Path to the model")
+    parser.add_argument("--log-dir", type=str, default="outputs", help="Path to the model")
     args = parser.parse_args()
 
     config = OmegaConf.load(args.config_path)
@@ -63,5 +63,5 @@ def _load() -> None:
 
 def prepare() -> None:
     # Load config
-    _load()
+    # _load()
     return
