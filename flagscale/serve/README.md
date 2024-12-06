@@ -27,7 +27,7 @@ modelscope download --model Qwen/Qwen2.5-7B-Instruct --local_dir /models/
 
 ```shell
 cd FlagScale
-python run.py --config-path examples/qwen/ --config-name config action=run
+python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=run
 ```
 
 ## Serve call
@@ -46,7 +46,7 @@ curl http://127.0.0.1:4567/v1/chat/completions -H "Content-Type: application/jso
 
 ```shell
 cd FlagScale
-python run.py --config-path examples/qwen/ --config-name config action=stop
+python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=stop
 ```
 
 ## logs
@@ -70,21 +70,24 @@ vllm serve /models/Qwen2.5-7B-Instruct --tensor-parallel-size=1 --gpu-memory-uti
 All the args remain the same as vLLM. Note that action args without value, like trust-remote-code and enable-chunked-prefill, are located in **action-args** block in config file.
 
 ```YAML
-command-line-mode: true
+model_args:
+  vllm_model:
+    model-tag: /models/Qwen2.5-7B-Instruct
+    tensor-parallel-size: 1
+    gpu-memory-utilization: 0.9
+    max-model-len: 32768
+    max-num-seqs: 256
+    port: 4567
+    action-args:
+      - trust-remote-code
+      - enable-chunked-prefill
 
-vllm:
-  model-tag: /models/Qwen2.5-7B-Instruct
-  tensor-parallel-size: 1
-  gpu-memory-utilization: 0.9
-  max-model-len: 32768
-  max-num-seqs: 256
-  port: 4567
-  action-args:
-    - trust-remote-code
-    - enable-chunked-prefill
-
-serve:
-  deployments:
-  - name: qwen2.5-7b
-    num-replicas: 1
+deploy:
+  command-line-mode: true
+  models:
+    vllm_model:
+      num_gpus: 1
 ```
+
+### How to config serve parameters
+***deploy*** block is used to specify the parameters of serve. The ***models*** block is used to specify the parameters of each model decorated by "serve.remote".

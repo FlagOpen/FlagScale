@@ -10,9 +10,9 @@ experiment:
     backend: megatron 
     entrypoint: flagscale/train/train_mixtral.py 
   runner:
-    backend: torchrun 
+    backend: torchrun
+    ssh_port: null
   shell_cmds: null 
-  ssh_port: null
   envs:
     HYDRA_FULL_ERROR: 1
     CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
