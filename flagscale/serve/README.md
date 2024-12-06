@@ -70,25 +70,24 @@ vllm serve /models/Qwen2.5-7B-Instruct --tensor-parallel-size=1 --gpu-memory-uti
 All the args remain the same as vLLM. Note that action args without value, like trust-remote-code and enable-chunked-prefill, are located in **action-args** block in config file.
 
 ```YAML
-command-line-mode: true
-
-llm:
-  model-tag: /models/Qwen2.5-7B-Instruct
-  tensor-parallel-size: 1
-  gpu-memory-utilization: 0.9
-  max-model-len: 32768
-  max-num-seqs: 256
-  port: 4567
-  action-args:
-    - trust-remote-code
-    - enable-chunked-prefill
+model_args:
+  vllm_model:
+    model-tag: /models/Qwen2.5-7B-Instruct
+    tensor-parallel-size: 1
+    gpu-memory-utilization: 0.9
+    max-model-len: 32768
+    max-num-seqs: 256
+    port: 4567
+    action-args:
+      - trust-remote-code
+      - enable-chunked-prefill
 
 deploy:
-  - instance: qwen2.5-7b
-    models:
-      - model_name: vllm_serve
-        num_gpus: 1
+  command-line-mode: true
+  models:
+    vllm_model:
+      num_gpus: 1
 ```
 
 ### How to config serve parameters
-***deploy*** block is used to specify the parameters of serve. The ***instance*** is the name of serve instance, and ***models*** block is used to specify the parameters of each model decorated by "serve.remote".
+***deploy*** block is used to specify the parameters of serve. The ***models*** block is used to specify the parameters of each model decorated by "serve.remote".
