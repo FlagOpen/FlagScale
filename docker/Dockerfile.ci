@@ -1,0 +1,111 @@
+FROM nvcr.io/nvidia/pytorch:24.05-py3
+
+ENV DEBIAN_FRONTEND noninteractive
+ENV TZ=Asia/Shanghai
+
+
+##############################################################################
+# To avoid "curl 92 HTTP/2 stream 0 was not closed cleanly: CANCEL (err 8)" or "fetch-pack: unexpected disconnect while reading sideband packet".
+##############################################################################
+# lowSpeedTime=300s lowSpeedLimit=100B
+RUN git config --global http.lowSpeedTime 300 \
+    && git config --global http.lowSpeedLimit 100 \
+    && git config --global http.postBuffer 524288000
+
+
+##############################################################################
+# Change apt source to Ksyun
+##############################################################################
+RUN sed -i "s#\S\+#http://apt.ksyun.cn/ubuntu/#2" /etc/apt/sources.list && \
+    > /etc/apt/apt.conf.d/docker-clean && \
+    > /etc/dpkg/dpkg.cfg.d/pkg-config-hook-config
+
+
+##############################################################################
+# Install basic utilities
+##############################################################################
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        software-properties-common build-essential autotools-dev \
+        nfs-common pdsh \
+        curl wget vim tmux less unzip \
+        htop iftop iotop ca-certificates openssh-client openssh-server \
+        rsync iputils-ping net-tools sudo \
+        tzdata psmisc screen libx11-dev llvm-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+
+##############################################################################
+# Uninstall unnecessary packages and their dependencies
+##############################################################################
+RUN pip install --upgrade pip && pip install pip-autoremove && \
+    pip-autoremove torch torchvision torchaudio torch-tensorrt transformer_engine \
+        pytorch-quantization pytorch-triton \
+        flash-attn tensorboard apex cudf dask-cudf \
+        cugraph cugraph-dgl cugraph-pyg cugraph-service-server -y
+
+
+##############################################################################
+# Install PyTorch
+##############################################################################
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir torch==2.5.1 torchvision torchaudio \
+    -f https://download.pytorch.org/whl/cu124/torch_stable.html -v \
+    || { echo 'PyTorch installation failed'; exit 1; }
+
+
+##############################################################################
+# Install, run, and test dependent environments and data
+##############################################################################
+RUN pip install pytest pytest-cov pytest_mock pytest-random-order \
+    pre-commit black isort \
+    zarr tensorstore==0.1.45 wrapt tiktoken omegaconf setuptools_scm hydra-core Ray==2.40.0 numpy==1.26.4 pillow==10.4.0 \
+    git+https://github.com/fanshiqing/grouped_gemm@v1.1.4 nltk==3.8.1 \
+    && python -m nltk.downloader -d /root/nltk_data punkt
+
+
+# apex
+RUN cd /workspace \
+    && git clone https://github.com/NVIDIA/apex \
+    && cd apex \
+    && pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation \
+    --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
+
+
+# flash-attention
+# Supported flash-attn versions are >= 2.1.1, <= 2.6.3.
+# flash-attn==2.6.3
+RUN cd /workspace \
+    && git clone https://github.com/Dao-AILab/flash-attention.git \
+    && cd flash-attention \
+    && git checkout c1d146c \
+    && git submodule update --init --recursive \
+    && MAX_JOBS=96 python setup.py install
+
+
+# TransformerEngin
+RUN cd /workspace \
+    && git clone -b stable https://github.com/NVIDIA/TransformerEngine.git \
+    && cd TransformerEngine \
+    && git submodule update --init --recursive \
+    && pip install .
+
+
+# xformers
+RUN cd /workspace \
+    && git clone https://github.com/facebookresearch/xformers.git \
+    && cd xformers \
+    && git submodule update --init --recursive \
+    && pip install -v -U .
+
+
+# vllm test
+RUN cd /workspace \
+    && git clone https://github.com/FlagOpen/FlagScale.git \
+    && cd FlagScale/vllm \
+    && sed -i 's/torch == 2.5.0/torch == 2.5.1/' ./requirements-cuda.txt \
+    && sed -i 's/xformers == 0.0.28.post3/xformers == 0.0.29/' ./requirements-cuda.txt \
+    && MAX_JOBS=96 pip install --no-build-isolation -v -e .
+    && cd /workspace \
+    && rm -r ./FlagScale

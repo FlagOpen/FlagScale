@@ -20,6 +20,7 @@ jobs:
           - data
           - dist_checkpointing
           - distributed
+          - export
           - fusions
           - inference
           - models

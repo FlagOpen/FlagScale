@@ -1,18 +1,21 @@
 import argparse
-from argparse import Namespace
 import os
+from argparse import Namespace
 from pathlib import Path
 
 import torch
+
 from megatron.core.dist_checkpointing import ShardedTensor, save
-from megatron.core.dist_checkpointing.serialization import get_default_save_common_strategy
+from megatron.core.dist_checkpointing.serialization import (
+    get_default_save_common_strategy,
+)
 
 
 def convert_sfpt_ckpt_to_dist_ckpt(input_dir, output_dir):
     # Distributed checkpoint loading requires the distributed environment to be initialized
-    rank = int(os.getenv('RANK', '0'))
-    world_size = int(os.getenv("WORLD_SIZE", '1'))
-    print(f'Rank: {rank}, World size: {world_size}')
+    rank = int(os.getenv("RANK", "0"))
+    world_size = int(os.getenv("WORLD_SIZE", "1"))
+    print(f"Rank: {rank}, World size: {world_size}")
     torch.distributed.init_process_group(
         backend="gloo", world_size=world_size, rank=rank
     )
@@ -39,14 +42,14 @@ def convert_sfpt_ckpt_to_dist_ckpt(input_dir, output_dir):
                 tensor,
             )
             save(sharded_state_dict, ckpt_output_dir)
-    
+
     # Fake the minimal args for the checkpoint loading processing
     state_dict = {}
     args = Namespace(
-       tensor_model_parallel_size=1,
-       pipeline_model_parallel_size=1,
+        tensor_model_parallel_size=1,
+        pipeline_model_parallel_size=1,
     )
-    state_dict['args'] = args
+    state_dict["args"] = args
     common_strategy = get_default_save_common_strategy()
     common_strategy.save_common(state_dict, Path(ckpt_output_dir))
 
@@ -56,9 +59,21 @@ def convert_sfpt_ckpt_to_dist_ckpt(input_dir, output_dir):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Convert single-file-per-tensor checkpoint to distributed checkpoint.")
-    parser.add_argument("--input_dir", type=str, required=True, help="Input directory containing the single-file-per-tensor checkpoint.")
-    parser.add_argument("--output_dir", type=str, required=True, help="Output directory to save the distributed checkpoint.")
+    parser = argparse.ArgumentParser(
+        description="Convert single-file-per-tensor checkpoint to distributed checkpoint."
+    )
+    parser.add_argument(
+        "--input_dir",
+        type=str,
+        required=True,
+        help="Input directory containing the single-file-per-tensor checkpoint.",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        required=True,
+        help="Output directory to save the distributed checkpoint.",
+    )
     return parser.parse_args()
 
 
