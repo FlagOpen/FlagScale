@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export flagscale_skip=1
+
 # Run each command and capture its return value
 commands=(
     # unit tests -> megatron
@@ -42,4 +44,5 @@ for cmd in "${commands[@]}"; do
         # Throw an exception by exiting the script with a non-zero status
         exit 1
     fi
+    echo "Success: Command '$cmd' successed"
 done

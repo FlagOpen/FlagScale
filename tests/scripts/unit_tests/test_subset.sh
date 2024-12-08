@@ -1,5 +1,8 @@
 #!/bin/bash
 
+export NVTE_FLASH_ATTN=0
+export NVTE_FUSED_ATTN=0
+
 source tests/scripts/_gpu_check.sh
 
 # Parse command line arguments

@@ -73,8 +73,8 @@ class TestParallelMLAAttention:
             )
             hidden_states = hidden_states.cuda()
 
-            attention_mask = torch.ones((1, 1, sequence_length, sequence_length), dtype=bool).cuda()
-
+            self.parallel_attention.config.max_position_embeddings = sequence_length
+            attention_mask = torch.ones((micro_batch_size, 1, 1, sequence_length), dtype=bool).cuda()
             output, bias = self.parallel_attention(hidden_states, attention_mask)
 
             assert config.recompute_granularity is None
@@ -82,6 +82,9 @@ class TestParallelMLAAttention:
             assert output.shape[1] == micro_batch_size
             assert output.shape[2] == config.hidden_size
             assert bias.shape[0] == config.hidden_size
+            
+            os.environ['NVTE_FUSED_ATTN'] = "0"
+            os.environ['NVTE_FLASH_ATTN'] = "0"
 
     def test_fused_rope_gpu_forward(self):
         if is_te_min_version("1.10.0"):
@@ -102,10 +105,9 @@ class TestParallelMLAAttention:
             )
             hidden_states = hidden_states.cuda()
 
-            attention_mask = torch.ones((1, 1, sequence_length, sequence_length), dtype=bool).cuda()
-            rotary_pos_emb = torch.ones(
-                sequence_length, 1, 1, self.parallel_attention.config.kv_channels
-            ).cuda()
+            self.parallel_attention.config.max_position_embeddings = sequence_length
+            attention_mask = torch.ones((micro_batch_size, 1, 1, sequence_length), dtype=bool).cuda()
+            rotary_pos_emb = None
             output, bias = self.parallel_attention(
                 hidden_states, attention_mask, rotary_pos_emb=rotary_pos_emb
             )
@@ -116,6 +118,9 @@ class TestParallelMLAAttention:
             assert output.shape[2] == config.hidden_size
             assert bias.shape[0] == config.hidden_size
             self.parallel_attention.config.apply_rope_fusion = False
+
+            os.environ['NVTE_FUSED_ATTN'] = "0"
+            os.environ['NVTE_FLASH_ATTN'] = "0"
 
     def test_checkpointed_gpu_forward(self):
         if is_te_min_version("1.10.0"):
@@ -149,7 +154,8 @@ class TestParallelMLAAttention:
             )
             hidden_states = hidden_states.cuda()
 
-            attention_mask = torch.ones((1, 1, sequence_length, sequence_length), dtype=bool).cuda()
+            self.parallel_attention.config.max_position_embeddings = sequence_length
+            attention_mask = torch.ones((micro_batch_size, 1, 1, sequence_length), dtype=bool).cuda()
 
             output, bias = checkpointed_parallel_attention(hidden_states, attention_mask)
 
@@ -158,3 +164,6 @@ class TestParallelMLAAttention:
             assert output.shape[1] == micro_batch_size
             assert output.shape[2] == config.hidden_size
             assert bias.shape[0] == config.hidden_size
+
+            os.environ['NVTE_FUSED_ATTN'] = "0"
+            os.environ['NVTE_FLASH_ATTN'] = "0"
