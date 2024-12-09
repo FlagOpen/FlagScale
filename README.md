@@ -72,11 +72,11 @@ FlagScale provides a unified runner for various tasks, including training，infe
 
 1. Start the server:
     ```sh
-    python run.py --config-path ./examples/qwen --config-name config action=run
+    python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=run
     ```
 2. Stop the server:
     ```sh
-    python run.py --config-path ./examples/qwen --config-name config action=stop
+    python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=stop
     ```
 For more details, please refer to [Quick Start](./flagscale/serve/README.md).
 

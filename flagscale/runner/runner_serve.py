@@ -153,7 +153,9 @@ class SSHServeRunner(RunnerBase):
         super().__init__(config)
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
-        self.command_line_mode = getattr(self.config.serve, "command-line-mode", None)
+        self.command_line_mode = getattr(
+            self.config.serve.deploy, "command-line-mode", None
+        )
         self._prepare()
 
     def _prepare(self):
@@ -161,7 +163,7 @@ class SSHServeRunner(RunnerBase):
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
         if self.command_line_mode:
-            self.user_script = "flagscale/serve/run_simple_vllm.py"
+            self.user_script = "flagscale/serve/run_vllm.py"
         else:
             self.user_script = self.config.experiment.task.entrypoint
         self.resources = parse_hostfile(
