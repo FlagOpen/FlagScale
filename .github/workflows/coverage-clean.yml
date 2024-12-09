@@ -1,4 +1,4 @@
-name: Test Coverage
+name: Clean Old Coverage
 
 on:
   workflow_call:
@@ -8,7 +8,7 @@ on:
         type: string
 
 jobs:
-  test-coverage:
+  clean-coverage:
     runs-on: self-hosted
     container:
       image: localhost:5000/flagscale_cicd:v2.0-pytorch-2.5.1-cuda-12.4.131-ngc-24.05
