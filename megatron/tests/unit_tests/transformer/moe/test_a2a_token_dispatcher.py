@@ -1,5 +1,6 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 
+import os
 import pytest
 import torch
 
@@ -66,10 +67,11 @@ class TestAlltoAllDispatcher:
         )
         container.dispacher_capacity_test()
 
+    # Skip because not running in internal and flaky
+    @pytest.mark.skipif(os.getenv('flagscale_skip') == '1', reason="flagscale_skip is enabled, skipping test.")
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
     @pytest.mark.internal
     @pytest.mark.timeout(120)
-    @pytest.mark.internal
     @pytest.mark.parametrize("tp_size,ep_size", [(1, 8), (8, 1), (4, 2), (1, 1)])
     @pytest.mark.flaky
     def test_capacity_padding_forward_backward(self, tp_size, ep_size):
