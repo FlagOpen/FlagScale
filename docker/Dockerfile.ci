@@ -98,14 +98,3 @@ RUN cd /workspace \
     && cd xformers \
     && git submodule update --init --recursive \
     && pip install -v -U .
-
-
-# vllm test
-RUN cd /workspace \
-    && git clone https://github.com/FlagOpen/FlagScale.git \
-    && cd FlagScale/vllm \
-    && sed -i 's/torch == 2.5.0/torch == 2.5.1/' ./requirements-cuda.txt \
-    && sed -i 's/xformers == 0.0.28.post3/xformers == 0.0.29/' ./requirements-cuda.txt \
-    && MAX_JOBS=96 pip install --no-build-isolation -v -e .
-    && cd /workspace \
-    && rm -r ./FlagScale
