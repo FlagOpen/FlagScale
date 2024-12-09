@@ -16,6 +16,7 @@ jobs:
         - 80
       volumes:
         - /home/flagscale_cicd/flask/static:/workspace/report
+        - /home/flagscale_cicd/flask/config:/workspace/config
       options: --hostname flagscale_cicd
 
     steps:
