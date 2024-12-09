@@ -6,6 +6,7 @@ export FLAGSCALE_SKIP=1
 commands=(
     # unit tests -> megatron
     "rm -rf /workspace/report/0/cov-report-megatron"
+    "rm -rf /workspace/report/cov-temp-megatron"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset data"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset dist_checkpointing"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset distributed"
@@ -23,6 +24,7 @@ commands=(
 
     # unit tests -> flagscale
     "rm -rf /workspace/report/0/cov-report-flagscale"
+    "rm -rf /workspace/report/cov-temp-flagscale"
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset runner"
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset ./"
     # coverage test -> flagscale

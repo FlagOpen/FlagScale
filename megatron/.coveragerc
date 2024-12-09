@@ -2,4 +2,4 @@
 directory = coverage
 
 [run]
-data_file = .coverage_$LOCAL_RANK
+data_file = /workspace/report/cov-temp-megatron/.coverage_$LOCAL_RANK
