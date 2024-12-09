@@ -1,46 +1,83 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 import argparse
 import os
-
+import json
 import torch
-
 from safetensors.torch import load_file
 
+def convert(input_path, output_path, tensor_parallel_size, use_te, device):
+    print(f"Using device: {device}.")
+    if device not in ["cuda", "cpu"]:
+        raise ValueError("Invalid device specified. Use 'cuda' or 'cpu'.")
 
-def convert(input_path, output_path, tensor_parallel_size, use_te):
-    device = "cuda"
+    # Index for model weights
+    index_path = None
+    for file in os.listdir(input_path):
+        if file.endswith("index.json"):
+            index_path = os.path.join(input_path, file)
+            break
+    assert index_path is not None, "index.json not found in input path"
 
-    state_dict = load_file(input_path, device=device)
-    for name, tensor in state_dict.items():
-        print(name, tensor.dtype, tensor.shape)
+    with open(index_path, "r") as f:
+        weight_map = json.load(f)["weight_map"]
+
+    caches = {}
+    for name in weight_map:
+        file_name = weight_map[name]
+        if file_name not in caches:
+            caches[file_name] = load_file(
+                os.path.join(input_path, file_name), device=device
+            )
+
     new_state_dicts = [{"model": dict()} for _ in range(tensor_parallel_size)]
 
     # Indices from mapping pytorch multihead attention to megatron.
-    hidden_dim = 1152
-    num_heads = 16
+    hidden_dim = 5120
+    num_heads = 40
+    assert hidden_dim % num_heads == 0
     kv_channels = hidden_dim // num_heads
+    # GQA Process
+    num_query_groups = 8
+    kv_projection_size = kv_channels * num_query_groups
     indices = []
-    for i in range(num_heads):
+    assert num_heads % num_query_groups == 0
+    for i in range(num_query_groups):
         lb = i * kv_channels
         ub = (i + 1) * kv_channels
-        indices.append(torch.arange(lb, ub, dtype=torch.int))
+        indices.append(
+            torch.arange(
+                num_heads // num_query_groups * kv_channels * i,
+                num_heads // num_query_groups * kv_channels * (i + 1),
+                dtype=torch.int,
+            )
+        )
         indices.append(torch.arange(hidden_dim + lb, hidden_dim + ub, dtype=torch.int))
         indices.append(
-            torch.arange(2 * hidden_dim + lb, 2 * hidden_dim + ub, dtype=torch.int)
+            torch.arange(
+                (hidden_dim + kv_projection_size) + lb,
+                (hidden_dim + kv_projection_size) + ub,
+                dtype=torch.int,
+            )
         )
 
     indices = torch.cat(indices)
 
-    for name, tensor in state_dict.items():
-        # Skip text model, logit_bias, logit_scale
-        if "vision_model" not in name:
-            print(f"{name} skipped")
-            continue
+    gate_up_indices = []
+    ffn_hidden_size = 27648
+    assert ffn_hidden_size % tensor_parallel_size == 0
+    interval = ffn_hidden_size // tensor_parallel_size
+    for i in range(tensor_parallel_size):
+        lb = i * interval
+        ub = (i + 1) * interval
+        gate_up_indices.append(torch.arange(lb, ub, dtype=torch.int))
+        gate_up_indices.append(
+            torch.arange(ffn_hidden_size + lb, ffn_hidden_size + ub, dtype=torch.int)
+        )
+    gate_up_indices = torch.cat(gate_up_indices)
 
-        # Skip final layers not used in our model.
-        if "head" in name:
-            print(f"{name} skipped")
-            continue
+    for name in weight_map:
+        file_name = weight_map[name]
+        tensor = caches[file_name][name]
 
         # Map parameter names to ones used in megatron.
         new_name = ""
@@ -52,23 +89,19 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
         chunk_dim = None
 
         qkv_params = set()
-        if "position_embedding" in name:
-            new_name = "position_embeddings.weight"
-        elif "post_layernorm.weight" in name:
-            new_name = "ln_post.weight"
-        elif "post_layernorm.bias" in name:
-            new_name = "ln_post.bias"
-        elif "patch_embedding.weight" in name:
-            new_name = "conv1.weight"
-        elif "patch_embedding.bias" in name:
-            new_name = "conv1.bias"
-        elif "encoder.layers" in name:
-            layer_idx = name.split(".")[3]
+        gate_up_params = set()
+        if "embed_tokens.weight" in name:
+            new_name = "embedding.word_embeddings.weight"
+            chunk_dim = 0
+        elif "lm_head.weight" in name:
+            new_name = "output_layer.weight"
+            chunk_dim = 0
+        # the norm after last layer
+        elif "norm.weight" in name and "layernorm.weight" not in name:
+            new_name = "decoder.final_layernorm.weight"
+        elif "model.layers" in name:
+            layer_idx = name.split(".")[2]
             base = f"decoder.layers.{layer_idx}"
-            if "encoder.layers.26" in name:
-                print(f"{name} skipped due to the last layer")
-                continue
-
             if (
                 "self_attn.q_proj.weight" in name
                 or "self_attn.k_proj.weight" in name
@@ -80,15 +113,18 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
                     split_name = name.split(".")
                     split_name[-2] = "q_proj"
                     q_name = ".".join(split_name)
-                    q_tensor = state_dict[q_name]
+                    file_name = weight_map[q_name]
+                    q_tensor = caches[file_name][q_name]
 
                     split_name[-2] = "k_proj"
                     k_name = ".".join(split_name)
-                    k_tensor = state_dict[k_name]
+                    file_name = weight_map[k_name]
+                    k_tensor = caches[file_name][k_name]
 
                     split_name[-2] = "v_proj"
                     v_name = ".".join(split_name)
-                    v_tensor = state_dict[v_name]
+                    file_name = weight_map[v_name]
+                    v_tensor = caches[file_name][v_name]
 
                     # concat and dim = 0
                     # q,k,v concat in the first dim
@@ -113,15 +149,18 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
                     split_name = name.split(".")
                     split_name[-2] = "q_proj"
                     q_name = ".".join(split_name)
-                    q_tensor = state_dict[q_name]
+                    file_name = weight_map[q_name]
+                    q_tensor = caches[file_name][q_name]
 
                     split_name[-2] = "k_proj"
                     k_name = ".".join(split_name)
-                    k_tensor = state_dict[k_name]
+                    file_name = weight_map[k_name]
+                    k_tensor = caches[file_name][k_name]
 
                     split_name[-2] = "v_proj"
                     v_name = ".".join(split_name)
-                    v_tensor = state_dict[v_name]
+                    file_name = weight_map[v_name]
+                    v_tensor = caches[file_name][v_name]
 
                     # concat and dim = 0
                     new_tensor = torch.cat([q_tensor, k_tensor, v_tensor], dim=0)
@@ -133,38 +172,43 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
                     qkv_params.add(new_name)
                 else:
                     continue
-            elif "attn.out_proj.weight" in name:
+            elif "self_attn.o_proj.weight" in name:
                 new_name = f"{base}.self_attention.linear_proj.weight"
                 chunk_dim = 1
-            elif "attn.out_proj.bias" in name:
-                new_name = f"{base}.self_attention.linear_proj.bias"
-            elif "layer_norm1.weight" in name:
+            elif "input_layernorm.weight" in name:
                 new_name = f"{base}.input_layernorm.weight"
                 if use_te:
                     new_name = f"{base}.self_attention.linear_qkv.layer_norm_weight"
-            elif "layer_norm1.bias" in name:
-                new_name = f"{base}.input_layernorm.bias"
-                if use_te:
-                    new_name = f"{base}.self_attention.linear_qkv.layer_norm_bias"
-            elif "mlp.fc1.weight" in name:
+            elif "mlp.gate_proj.weight" in name or "mlp.up_proj.weight" in name:
                 new_name = f"{base}.mlp.linear_fc1.weight"
-                chunk_dim = 0
-            elif "mlp.fc1.bias" in name:
-                new_name = f"{base}.mlp.linear_fc1.bias"
-                chunk_dim = 0
-            elif "mlp.fc2.weight" in name:
+                if new_name not in gate_up_params:
+                    # gate, up
+                    split_name = name.split(".")
+                    split_name[-2] = "gate_proj"
+                    gate_name = ".".join(split_name)
+                    file_name = weight_map[gate_name]
+                    gate_tensor = caches[file_name][gate_name]
+
+                    split_name = name.split(".")
+                    split_name[-2] = "up_proj"
+                    up_name = ".".join(split_name)
+                    file_name = weight_map[up_name]
+                    up_tensor = caches[file_name][up_name]
+
+                    # concat and dim = 0
+                    new_tensor = torch.cat([gate_tensor, up_tensor], dim=0)
+                    new_tensor = new_tensor[gate_up_indices]
+                    gate_up_params.add(new_name)
+                    chunk_dim = 0
+                else:
+                    continue
+            elif "mlp.down_proj.weight" in name:
                 new_name = f"{base}.mlp.linear_fc2.weight"
                 chunk_dim = 1
-            elif "mlp.fc2.bias" in name:
-                new_name = f"{base}.mlp.linear_fc2.bias"
-            elif "layer_norm2.weight" in name:
+            elif "post_attention_layernorm.weight" in name:
                 new_name = f"{base}.pre_mlp_layernorm.weight"
                 if use_te:
                     new_name = f"{base}.mlp.linear_fc1.layer_norm_weight"
-            elif "layer_norm2.bias" in name:
-                new_name = f"{base}.pre_mlp_layernorm.bias"
-                if use_te:
-                    new_name = f"{base}.mlp.linear_fc1.layer_norm_bias"
 
         assert new_name != "", f"unexpected layer name {name}"
 
@@ -192,30 +236,27 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
                         new_name[: new_name.rfind(".") + 1] + "_extra_state"
                     )  # Replace the weight name.
                     new_state_dicts[i]["model"][extra_state_name] = None
-
         print(f"{new_name} processed")
+
     for i in range(tensor_parallel_size):
         output_dir_tp = os.path.join(output_path, "iter_0000001", f"mp_rank_0{i}")
         os.makedirs(output_dir_tp)
         output_path_tp = os.path.join(output_dir_tp, "model_optim_rng.pt")
         torch.save(new_state_dicts[i], output_path_tp)
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="""
-Convert SigLIP VIT weights to megatron format.
-
+Convert Qwen weights to megatron format.
 
 Example usage:
-python siglip_converter.py --input /some/input/folder --output /some/output/folder --tensor-parallel-size 4
+
+python convert_qwen2.5_32b.py --input ${Folder containing qwen2.5 32b ckpt} --output ${Converted megatron format ckpt folder} --tensor-parallel-size 2 --device cpu
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument(
-        "--input", type=str, required=True, help="SigLIP weights folder"
-    )
+    parser.add_argument("--input", type=str, required=True, help="Qwen folder")
     parser.add_argument(
         "--output",
         type=str,
@@ -226,9 +267,10 @@ python siglip_converter.py --input /some/input/folder --output /some/output/fold
         "--tensor-parallel-size", type=int, default=1, help="model tensor parallel size"
     )
     parser.add_argument("--use-te", action="store_true", help="Use Transformer Engine")
+    parser.add_argument("--device", type=str, default="cuda", choices=["cuda", "cpu"], help="Device to run the model on. 'cuda' is faster but may not fit larger models; 'cpu' is slower but can fit larger models.")
 
     args = parser.parse_args()
 
-    convert(args.input, args.output, args.tensor_parallel_size, args.use_te)
+    convert(args.input, args.output, args.tensor_parallel_size, args.use_te, args.device)
 
     print("done.")
