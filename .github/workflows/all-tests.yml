@@ -11,15 +11,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Megatron Coverage Clean
-  megatron-coverage-clean:
-    uses: ./.github/workflows/coverage-clean.yml
+  # Megatron Report Clean
+  megatron-report-clean:
+    uses: ./.github/workflows/report-clean.yml
     with:
       backend: megatron
 
   # Megatron Unit Tests with Matrix
   megatron-unit-tests:
-    needs: megatron-coverage-clean
+    needs: megatron-report-clean
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
@@ -41,15 +41,15 @@ jobs:
       backend: megatron
       subset: ${{ matrix.subset }}
 
-  # FlagScale Coverage Clean
-  flagscale-coverage-clean:
-    uses: ./.github/workflows/coverage-clean.yml
+  # FlagScale Report Clean
+  flagscale-report-clean:
+    uses: ./.github/workflows/report-clean.yml
     with:
       backend: flagscale
 
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
-    needs: flagscale-coverage-clean
+    needs: flagscale-report-clean
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
