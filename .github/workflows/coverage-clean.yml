@@ -21,6 +21,7 @@ jobs:
     steps:
       - name: Clean Old Coverage Report
         run: |
+          REPORT_ADDR=$(cat "/workspace/config/report_address")
           echo "Clean old coverage report at the http://${REPORT_ADDR}/${{github.sha}}/cov-report-${{ inputs.backend }}/diff-cover-report-${{ inputs.backend }}.html"
           if [ -d "/workspace/report/${{ github.sha }}/cov-report-${{ inputs.backend }}" ]; then
             rm -r /workspace/report/${{ github.sha }}/cov-report-${{ inputs.backend }}
