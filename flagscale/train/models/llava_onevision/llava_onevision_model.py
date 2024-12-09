@@ -105,6 +105,7 @@ class LLaVAOneVisionModel(MegatronModule):
         self.language_model = None
         self.args = get_args()
 
+        args = self.args
         # Init image_newline
         if "unpad" in args.mm_patch_merge_type:
             embed_std = 1 / torch.sqrt(
