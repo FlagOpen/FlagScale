@@ -52,7 +52,7 @@ class TestParallelAttention:
         )
         hidden_states = hidden_states.cuda()
 
-        attention_mask = torch.ones((1, 1, sequence_length, sequence_length), dtype=bool).cuda()
+        attention_mask = torch.ones((micro_batch_size, 1, 1, sequence_length), dtype=bool).cuda()
 
         output, bias = self.parallel_attention(hidden_states, attention_mask)
 
@@ -76,7 +76,7 @@ class TestParallelAttention:
         )
         hidden_states = hidden_states.cuda()
 
-        attention_mask = torch.ones((1, 1, sequence_length, sequence_length), dtype=bool).cuda()
+        attention_mask = torch.ones((micro_batch_size, 1, 1, sequence_length), dtype=bool).cuda()
         rotary_pos_emb = torch.ones(
             sequence_length, 1, 1, self.parallel_attention.config.kv_channels
         ).cuda()
@@ -112,7 +112,7 @@ class TestParallelAttention:
         )
         hidden_states = hidden_states.cuda()
 
-        attention_mask = torch.ones((1, 1, sequence_length, sequence_length), dtype=bool).cuda()
+        attention_mask = torch.ones((micro_batch_size, 1, 1, sequence_length), dtype=bool).cuda()
 
         output, bias = checkpointed_parallel_attention(hidden_states, attention_mask)
 
