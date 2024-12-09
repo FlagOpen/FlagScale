@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export flagscale_skip=1
+export FLAGSCALE_SKIP=1
 export NVTE_FLASH_ATTN=0
 export NVTE_FUSED_ATTN=0
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export flagscale_skip=1
+export FLAGSCALE_SKIP=1
 
 # Run each command and capture its return value
 commands=(

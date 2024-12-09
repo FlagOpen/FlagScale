@@ -282,7 +282,7 @@ class TestFullyParallelSaveAndLoad:
         assert loaded_state_dict.keys() == state_dict.keys()
 
     # The mock function running internally was not called
-    @pytest.mark.skipif(os.getenv('flagscale_skip') == '1', reason="flagscale_skip is enabled, skipping test.")
+    @pytest.mark.skipif(os.getenv('FLAGSCALE_SKIP') == '1', reason="FLAGSCALE_SKIP is enabled, skipping test.")
     @pytest.mark.parametrize('state_dict_device', ['cpu', 'cuda'])
     @pytest.mark.flaky
     def test_memory_usage(self, state_dict_device, tmp_path_dist_ckpt):

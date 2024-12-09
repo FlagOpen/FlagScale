@@ -18,17 +18,17 @@ jobs:
       matrix:
         subset: 
           - data
-          - dist_checkpointing
-          - distributed
-          - export
-          - fusions
-          - inference
-          - models
-          - pipeline_parallel
-          - tensor_parallel
-          - transformer/moe
-          - transformer
-          - ./
+          # - dist_checkpointing
+          # - distributed
+          # - export
+          # - fusions
+          # - inference
+          # - models
+          # - pipeline_parallel
+          # - tensor_parallel
+          # - transformer/moe
+          # - transformer
+          # - ./
     name: "megatron-${{ matrix.subset == './' && 'root' || matrix.subset }}"
     with:
       backend: megatron

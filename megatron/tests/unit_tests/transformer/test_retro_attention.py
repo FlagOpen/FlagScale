@@ -21,7 +21,7 @@ from megatron.core.transformer.transformer_block import TransformerBlock
 from tests.unit_tests.test_utilities import Utils
 
 # Skip this test, it did not appear in te1.5, it appeared in te1.12, and the same problem occurred in Megatron-LM
-@pytest.mark.skipif(os.getenv('flagscale_skip') == '1', reason="flagscale_skip is enabled, skipping test.")
+@pytest.mark.skipif(os.getenv('FLAGSCALE_SKIP') == '1', reason="FLAGSCALE_SKIP is enabled, skipping test.")
 class TestRetroAttention:
 
     @classmethod
