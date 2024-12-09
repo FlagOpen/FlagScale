@@ -127,6 +127,7 @@ run_tests() {
 
     local xml_report="/workspace/report/$id/cov-report-${backend}/coverage.xml"
     local html_report="/workspace/report/$id/cov-report-${backend}"
+    export COMMIT_ID=$id
 
     if [ "$_type" == "batch" ]; then
         wait_for_gpu
