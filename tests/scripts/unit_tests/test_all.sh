@@ -1,12 +1,10 @@
 #!/bin/bash
 
-export FLAGSCALE_SKIP=1
-
 # Run each command and capture its return value
 commands=(
     # unit tests -> megatron
-    "rm -rf /workspace/report/0/cov-report-megatron"
-    "rm -rf /workspace/report/0/cov-temp-megatron"
+    "if [ -d "/workspace/report/0/cov-report-megatron" ]; then rm -r /workspace/report/0/cov-report-megatron; fi"
+    "if [ -d "/workspace/report/0/cov-temp-megatron" ]; then rm -r /workspace/report/0/cov-temp-megatron; fi"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset data"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset dist_checkpointing"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset distributed"
@@ -23,8 +21,8 @@ commands=(
     "./tests/scripts/unit_tests/test_coverage.sh --backend megatron --status offline"
 
     # unit tests -> flagscale
-    "rm -rf /workspace/report/0/cov-report-flagscale"
-    "rm -rf /workspace/report/0/cov-temp-flagscale"
+    "if [ -d "/workspace/report/0/cov-report-flagscale" ]; then rm -r /workspace/report/0/cov-report-flagscale; fi"
+    "if [ -d "/workspace/report/0/cov-temp-flagscale" ]; then rm -r /workspace/report/0/cov-temp-flagscale; fi"
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset runner"
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset ./"
     # coverage test -> flagscale
