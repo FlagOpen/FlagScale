@@ -7,6 +7,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.runner_utils import (
+    add_decive_extra_config,
     flatten_dict_to_args,
     get_free_port,
     get_host_name_or_ip,
@@ -290,6 +291,7 @@ class SSHTrainRunner(RunnerBase):
         self.user_args = _get_args_megatron(self.config)
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         self.user_envs = self.config.experiment.get("envs", {})
+        self.cur_envs = None  # current node envs
         self.user_script = self.config.experiment.task.entrypoint
         self.resources = parse_hostfile(
             self.config.experiment.runner.get("hostfile", None)
@@ -305,11 +307,13 @@ class SSHTrainRunner(RunnerBase):
         nnodes,
         node_rank,
         nproc_per_node,
+        device_type=None,
         with_test=False,
         dryrun=False,
     ):
         export_cmd = []
-        for k, v in self.user_envs.items():
+
+        for k, v in self.cur_envs.items():
             export_cmd += [f"{k}={v}"]
 
         runner_cmd = _get_runner_cmd_train(
@@ -321,6 +325,13 @@ class SSHTrainRunner(RunnerBase):
             nproc_per_node,
             self.config,
         )
+        # update hetero-current-device-type according to the device_type in hostfile
+        if device_type is not None:
+            if "--hetero-current-device-type" in self.user_args:
+                idx = self.user_args.index("--hetero-current-device-type")
+                self.user_args[idx + 1] = device_type
+            else:
+                self.user_args += ["--hetero-current-device-type", device_type]
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
 
@@ -355,11 +366,6 @@ class SSHTrainRunner(RunnerBase):
     def run(self, with_test=False, dryrun=False, monitor=False, interval=10):
 
         num_visible_devices = None
-        visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
-        if visible_devices is not None and isinstance(visible_devices, str):
-            visible_devices = visible_devices.split(",")
-            num_visible_devices = len(visible_devices)
-
         runner_config = self.config.experiment.runner
 
         # If hostfile is provided, use the resources from the hostfile
@@ -372,6 +378,13 @@ class SSHTrainRunner(RunnerBase):
             for node_rank, (host, resource_info) in enumerate(self.resources.items()):
                 if node_rank >= nnodes:
                     break
+                self.cur_envs = add_decive_extra_config(
+                    self.user_envs, resource_info["type"]
+                )
+                visible_devices = self.cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+                if visible_devices is not None and isinstance(visible_devices, str):
+                    visible_devices = visible_devices.split(",")
+                    num_visible_devices = len(visible_devices)
                 nproc_from_hostfile = resource_info["slots"]
                 nproc_from_args = runner_config.get("nproc_per_node", None)
                 nproc_per_node = get_nproc_per_node(
@@ -386,11 +399,17 @@ class SSHTrainRunner(RunnerBase):
                     nnodes,
                     node_rank,
                     nproc_per_node,
+                    device_type=resource_info["type"],
                     with_test=with_test,
                     dryrun=dryrun,
                 )
         else:
             # If hostfile is not provided, run the job on localhost
+            self.cur_envs = self.user_envs
+            visible_devices = self.cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+            if visible_devices is not None and isinstance(visible_devices, str):
+                visible_devices = visible_devices.split(",")
+                num_visible_devices = len(visible_devices)
             nproc_from_args = runner_config.get("nproc_per_node", None)
             nproc_per_node = get_nproc_per_node(
                 None, nproc_from_args, num_visible_devices

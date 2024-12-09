@@ -301,6 +301,7 @@ def _prepare_seq_groups(
                 negative_prompt_logprob_len = (negative_query_len - num_prefill_sample
                                                if do_sample else negative_query_len)
                 negative_sample_len = num_prefill_sample if do_sample else 0
+            # --- FLAGSCALE MODIFICATION END ---
             else:
                 query_len, seq_len = query_lens[i], seq_lens[i]
                 # If we need sampling, exclude num_prefill_sample tokens from
@@ -308,22 +309,26 @@ def _prepare_seq_groups(
                 prompt_logprob_len = (query_len - num_prefill_sample
                                     if do_sample else query_len)
                 sample_len = num_prefill_sample if do_sample else 0
-            # --- FLAGSCALE MODIFICATION END ---
         else:
             # Decode
             # --- FLAGSCALE MODIFICATION BEG ---
             if has_negative:
+                # positive
                 prompt_logprob_len = 0
-                query_len = query_lens[::2][i] if query_lens is not None else 1
+                query_len = query_lens[::2][i] if query_lens is not None and len(
+                    query_lens[::2]) > 0 else 1
                 sample_len = len(seq_ids) * query_len if do_sample else 0
+                # negative
                 negative_prompt_logprob_len = 0
-                negative_query_len = query_lens[1::2][i] if query_lens is not None else 1
+                negative_query_len = query_lens[1::2][i] if query_lens is not None and len(
+                    query_lens[1::2]) > 0 else 1
                 negative_sample_len = len(seq_ids) * negative_query_len if do_sample else 0
+            # --- FLAGSCALE MODIFICATION END ---
             else:
                 prompt_logprob_len = 0
-                query_len = query_lens[i] if query_lens is not None else 1
+                query_len = query_lens[i] if query_lens is not None and len(
+                    query_lens) > 0 else 1
                 sample_len = len(seq_ids) * query_len if do_sample else 0
-            # --- FLAGSCALE MODIFICATION END ---
 
             if sampling_params.seed is not None and generators is not None:
                 generator = generators.get(seq_group_metadata.request_id)
@@ -515,6 +520,7 @@ class SamplingTensors:
         if do_penalties:
             for seq_group in sampling_metadata.seq_groups:
                 seq_ids = seq_group.seq_ids
+                sampling_params = seq_group.sampling_params
                 if (seq_group.is_prompt
                         and sampling_params.prompt_logprobs is not None):
                     prefill_len = len(seq_group.prompt_logprob_indices)

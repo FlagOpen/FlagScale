@@ -8,6 +8,7 @@ Additionally, `load` expects the sharded state dict argument as a guidance for
 loading the sharded tensors.
 """
 
+import os
 import logging
 from pathlib import Path
 from typing import Dict, Optional, Set, Tuple, Union
@@ -339,10 +340,17 @@ def save(
                 f'Checkpoint destination directory does not exist: {checkpoint_dir}'
             )
 
-        if next(checkpoint_dir.iterdir(), None) is not None:
-            raise CheckpointingException(
-                f'Checkpoint destination directory ({checkpoint_dir}) is not empty'
-            )
+        # Skip this if the env var exists, otherwise default to False
+        single_file_per_tensor_ckpt = os.getenv('FS_SFPT_CKPT_SAVE', 'False').lower() in (
+            'true',
+            '1',
+            't',
+        )
+        if not single_file_per_tensor_ckpt:
+            if next(checkpoint_dir.iterdir(), None) is not None:
+                raise CheckpointingException(
+                    f'Checkpoint destination directory ({checkpoint_dir}) is not empty'
+                )
 
     if common_strategy is not None:
         raise NotImplementedError('The only supported common strategy is torch')

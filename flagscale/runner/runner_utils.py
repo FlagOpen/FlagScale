@@ -3,6 +3,9 @@ import os
 import re
 import socket
 import subprocess
+import sys
+
+from omegaconf import DictConfig, OmegaConf
 
 from flagscale.logger import logger
 
@@ -45,6 +48,10 @@ def parse_hostfile(hostfile_path):
         else:
             log_and_raise_error(f"Invalid entry in hostfile: {line}.")
 
+    assert all(info["type"] == None for _, info in resources.items()) or all(
+        info["type"] != None for _, info in resources.items()
+    ), "All hosts must have the a machine type or no machine type specified."
+
     if len(resources) == 0:
         log_and_raise_error(
             "Hostfile is empty or not formatted correctly. Please check the hostfile."
@@ -84,12 +91,24 @@ def run_local_command(cmd, dryrun=False, query=False):
         return
     if query:
         result = subprocess.run(
-            cmd, shell=True, check=True, capture_output=True, text=True
+            cmd,
+            shell=True,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         return result
     else:
         result = subprocess.run(
-            cmd, shell=True, check=True, capture_output=True, text=True
+            cmd,
+            shell=True,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode != 0:
             print(f"Command {cmd} failed with return code {result.returncode}.")
@@ -107,13 +126,22 @@ def run_ssh_command(host, cmd, port=None, dryrun=False, query=False):
         logger.info(f"Running the ssh command: {ssh_cmd}")
     if dryrun:
         return
+    result = subprocess.run(
+        ssh_cmd,
+        shell=True,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        print(f"SSH command {ssh_cmd} failed with return code {result.returncode}.")
+        print(f"Output: {result.stdout}")
+        print(f"Error: {result.stderr}")
+        sys.exit(result.returncode)
     if query:
-        result = subprocess.run(
-            ssh_cmd, shell=True, check=True, text=True, stdout=subprocess.PIPE
-        )
         return result
-    else:
-        subprocess.run(ssh_cmd, shell=True, check=True)
 
 
 def run_scp_command(host, src, dst, port=None, dryrun=False):
@@ -124,7 +152,20 @@ def run_scp_command(host, src, dst, port=None, dryrun=False):
     logger.info(f"Run the scp command: {scp_cmd}")
     if dryrun:
         return
-    subprocess.run(scp_cmd, shell=True, check=True)
+    result = subprocess.run(
+        scp_cmd,
+        shell=True,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        print(f"SCP command {scp_cmd} failed with return code {result.returncode}.")
+        print(f"Output: {result.stdout}")
+        print(f"Error: {result.stderr}")
+        sys.exit(result.returncode)
 
 
 def flatten_dict_to_args(config_dict, ignore_keys=[]):
@@ -188,3 +229,26 @@ def get_nproc_per_node(
             return num_visible_devices
         else:
             return 1
+
+
+def add_decive_extra_config(config, device_type):
+    if device_type is None:
+        logger.warning(
+            f"type in hostfile is not specified. All the nodes use the same arguments inlucding evnironment variables."
+        )
+        return OmegaConf.to_container(config, resolve=True)
+    cur_node_config = {}
+    temp_dict = {}
+    if isinstance(config, DictConfig):
+        temp_dict = OmegaConf.to_container(config, resolve=True)
+    else:
+        temp_dict = config
+    for key, value in temp_dict.items():
+        if isinstance(value, dict):
+            if key == device_type:
+                cur_node_config.update(value)
+            else:
+                continue
+        else:
+            cur_node_config[key] = value
+    return cur_node_config

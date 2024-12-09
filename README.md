@@ -1,3 +1,5 @@
+[<img src="flagopen.png">](https://flagopen.baai.ac.cn/)
+
 ## Latest News
 - **[2024/11]** Released [v0.6.0](https://github.com/FlagOpen/FlagScale/tree/release/v0.6.0): 
   - Introduced general multi-dimensional heterogeneous parallelism and CPU-based communication between different chips.
@@ -12,7 +14,9 @@
 
 [FlagScale](https://github.com/FlagOpen/FlagScale.git) is a comprehensive toolkit designed to support the entire lifecycle of large models, developed with the backing of the Beijing Academy of Artificial Intelligence (BAAI). It builds on the strengths of several prominent open-source projects, including [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) and [vllm](https://github.com/vllm-project/vllm), to provide a robust, end-to-end solution for managing and scaling large models.
 
-The primary objective of FlagScale is to enable seamless scalability across diverse hardware architectures while maximizing computational resource efficiency and enhancing model performance. By offering essential components for model development, training, and deployment, FlagScale aims to serve as an indispensable toolkit for optimizing both the speed and effectiveness of large model workflows.
+The primary objective of FlagScale is to enable seamless scalability across diverse hardware architectures while maximizing computational resource efficiency and enhancing model performance. By offering essential components for model development, training, and deployment, FlagScale seeks to establish itself as an indispensable toolkit for optimizing both the speed and effectiveness of large model workflows.
+
+FlagScale is also a part of [FlagAI-Open](https://flagopen.baai.ac.cn/), an open-source initiative by BAAI that aims to foster an open-source ecosystem for AI technologies. It serves as a platform where developers, researchers, and AI enthusiasts can collaborate on various AI projects, contribute to the development of cutting-edge AI solutions, and share their work with the global community.
 
 ## Quick Start
 
@@ -43,13 +47,15 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     cd vllm
     pip install .
 
-    cd megatron-energon
-    pip install .
+    pip install -e ./megatron-energon
+    cp -r megatron-energon/src/megatron/energon megatron/megatron
     ```
 
 ### Run a Task 
 
-FlagScale provides a unified runner for various tasks, including training and inference. Simply specify the configuration file to run the task with a single command. The runner will automatically load the configurations and execute the task. The following example demonstrates how to run a distributed training task.
+FlagScale provides a unified runner for various tasks, including training，inference and serve. Simply specify the configuration file to run the task with a single command. The runner will automatically load the configurations and execute the task. The following example demonstrates how to run a distributed training task.
+
+#### Train
 
 1. Start the distributed training job:
     ```sh
@@ -61,6 +67,18 @@ FlagScale provides a unified runner for various tasks, including training and in
     ```sh
     python run.py --config-path ./examples/aquila/conf --config-name config action=stop
     ```
+
+#### Serve
+
+1. Start the server:
+    ```sh
+    python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=run
+    ```
+2. Stop the server:
+    ```sh
+    python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=stop
+    ```
+For more details, please refer to [Quick Start](./flagscale/serve/README.md).
 
 ## License
 
