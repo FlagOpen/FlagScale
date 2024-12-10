@@ -158,13 +158,6 @@ class Embedding(MegatronModule):
         )
         self._word_embeddings_key = 'word_embeddings'
 
-        if args.apply_init_customized:
-            init_method = config.init_method(args.init_method_std_scaled_embed)
-            with tensor_parallel.get_cuda_rng_tracker().fork():
-                init_method(self.word_embeddings.weight)
-                if torch.distributed.get_rank() == 0:
-                    print('Override Embedding init_method.', flush=True)
-
         # Position embedding (serial).
         self.add_position_embedding = args.position_embedding_type == 'learned_absolute'
         if self.add_position_embedding:
@@ -396,7 +389,6 @@ class TransformerLanguageModel(MegatronModule):
                 kv_channels=rotary_dim,
                 rotary_percent=args.rotary_percent,
                 seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor,
-                rotary_base=args.rotary_base
             )
 
         # Encoder (usually set to True, False if part of an encoder-decoder
@@ -445,12 +437,6 @@ class TransformerLanguageModel(MegatronModule):
                     bias=False,
                 )  # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
                 self._output_layer_key = 'output_layer'
-
-                if args.apply_init_customized:
-                    init_method = self.init_method(args.init_method_std_scaled_output)
-                    with tensor_parallel.get_cuda_rng_tracker().fork():
-                        init_method(self.output_layer.weight)
-                        print('Override output_layer init_method.', flush=True)
 
     def set_input_tensor(self, input_tensor):
         """See megatron.legacy.model.transformer.set_input_tensor()"""
