@@ -1,0 +1,29 @@
+CI:
+- .github/**
+
+Datasets:
+- megatron/megatron/core/datasets/**
+
+BERT:
+- megatron/megatron/core/models/bert/**
+
+GPT:
+- megatron/megatron/core/models/gpt/**
+
+RETRO:
+- megatron/megatron/core/models/retro/**
+
+Dist-Ckpt:
+- megatron/megatron/core/dist_checkpointing
+
+Dist-Opt:
+- megatron/megatron/core/optimizer/distrib_optimizer 
+
+Inference:
+- megatron/megatron/core/inference
+
+MoE:
+- megatron/megatron/core/transformer/moe
+
+Tests:
+- tests/**
