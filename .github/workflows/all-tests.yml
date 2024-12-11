@@ -11,10 +11,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pre-tests:
-    uses: ./.github/workflows/pre-tests.yml
+  pre:
+    uses: ./.github/workflows/pre.yml
     
-
   # Megatron Report Clean
   megatron-report-clean:
     uses: ./.github/workflows/report-clean.yml

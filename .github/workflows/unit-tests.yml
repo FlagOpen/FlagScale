@@ -40,7 +40,7 @@ jobs:
           lfs: false
           submodules: false
           set-safe-directory: true
-     
+
       - name: Unit Test Coverage Online Report
         run: | 
           REPORT_ADDR=$(cat "/workspace/config/report_address")
