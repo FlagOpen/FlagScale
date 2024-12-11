@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pre-test:
+  pre-tests:
     uses: ./.github/workflows/pre-test.yml
 
   # Megatron Report Clean
