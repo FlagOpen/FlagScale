@@ -40,7 +40,13 @@ jobs:
           lfs: false
           submodules: false
           set-safe-directory: true
-
+          
+      - name: Run Labeler Action
+        uses: actions/labeler@v4
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: '.github/labeler-config.yml'
+     
       - name: Unit Test Coverage Online Report
         run: | 
           REPORT_ADDR=$(cat "/workspace/config/report_address")

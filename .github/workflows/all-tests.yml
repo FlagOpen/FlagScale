@@ -11,15 +11,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  name: labeler
-    uses: actions/labeler@v4
-    with:
-      repo-token: "${{ secrets.GITHUB_TOKEN }}"
-      configuration-path: ".github/labeler-config.yml"
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Labeler Action
+        uses: actions/labeler@v4
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: '.github/labeler-config.yml'
 
   # Megatron Report Clean
   megatron-report-clean:
-    needs: labeler
     uses: ./.github/workflows/report-clean.yml
     with:
       backend: megatron
@@ -50,7 +55,6 @@ jobs:
 
   # FlagScale Report Clean
   flagscale-report-clean:
-    needs: labeler
     uses: ./.github/workflows/report-clean.yml
     with:
       backend: flagscale
