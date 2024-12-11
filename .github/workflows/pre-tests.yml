@@ -1,5 +1,8 @@
 name: Pre Tests
 
+on:
+  workflow_call:
+
 jobs:
   trufflehog:
     runs-on: ubuntu-latest
