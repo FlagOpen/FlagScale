@@ -11,8 +11,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  name: labeler
+    uses: actions/labeler@v4
+    with:
+      repo-token: "${{ secrets.GITHUB_TOKEN }}"
+      configuration-path: ".github/labeler-config.yml"
+
+  # Megatron Report Clean
+  megatron-report-clean:
+    needs: labeler
+    uses: ./.github/workflows/report-clean.yml
+    with:
+      backend: megatron
+
   # Megatron Unit Tests with Matrix
   megatron-unit-tests:
+    needs: megatron-report-clean
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
@@ -20,6 +34,7 @@ jobs:
           - data
           - dist_checkpointing
           - distributed
+          - export
           - fusions
           - inference
           - models
@@ -33,8 +48,16 @@ jobs:
       backend: megatron
       subset: ${{ matrix.subset }}
 
+  # FlagScale Report Clean
+  flagscale-report-clean:
+    needs: labeler
+    uses: ./.github/workflows/report-clean.yml
+    with:
+      backend: flagscale
+
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
+    needs: flagscale-report-clean
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
