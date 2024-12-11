@@ -4,13 +4,14 @@ on:
   workflow_call:
 
 jobs:
-  trufflehog:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@v7
-        with:
-          path: '.'
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Secret Scanning
+      uses: trufflesecurity/trufflehog@main
+      with:
+        extra_args: --results=verified,unknown
