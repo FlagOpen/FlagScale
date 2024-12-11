@@ -15,16 +15,3 @@ jobs:
       uses: trufflesecurity/trufflehog@main
       with:
         extra_args: --results=verified,unknown
-    
-  pre_job:
-    runs-on: ubuntu-latest
-    if: github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened'
-
-    steps:
-    - name: Check if target branch is protected
-      run: |
-        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-          echo "This is a protected branch"
-          exit 1
-        fi
-      continue-on-error: true 
