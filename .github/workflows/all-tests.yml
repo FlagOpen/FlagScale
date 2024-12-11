@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   pre-tests:
-    uses: .github/workflows/pre-tests.yml
+    uses: ./.github/workflows/pre-tests.yml
     
 
   # Megatron Report Clean
