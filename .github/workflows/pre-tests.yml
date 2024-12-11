@@ -4,7 +4,7 @@ on:
   workflow_call:
 
 jobs:
-  test:
+   secret-scanning:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
