@@ -237,7 +237,11 @@ def recv_backward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> to
                         config=config,
                         group=group,
                     )
-                    output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced
+                    if dp_end - dp_start != tensor_shape[1]:
+                        dp_coef = float((dp_end - dp_start)) / float(tensor_shape[1])
+                        output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced * dp_coef
+                    else:
+                        output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced
         if config.timers is not None:
             config.timers('backward-recv').stop()
 
@@ -402,7 +406,11 @@ def send_forward_recv_backward_hetero(
                         config=config,
                         group=group,
                     )
-                    output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced
+                    if dp_end - dp_start != tensor_shape[1]:
+                        dp_coef = float((dp_end - dp_start)) / float(tensor_shape[1])
+                        output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced * dp_coef
+                    else:
+                        output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced
         if config.timers is not None:
             config.timers('forward-send-backward-recv').stop()
     if output_tensor_grad is not None and output_tensor_grad.device == torch.device("cpu"):

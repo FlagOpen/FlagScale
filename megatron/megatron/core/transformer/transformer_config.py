@@ -331,6 +331,9 @@ class TransformerConfig(ModelParallelConfig):
 
     config_logger_dir: str = ""
     """When non-empty, dumps entry-point configs to config_logger_dir"""
+    
+    qk_layernorm_hidden_dim: bool = False
+    """Whether to apply LayerNorm to the query and key embeddings on the hidden dimension rather than head dimension."""
 
     def __post_init__(self):
         """Python dataclass method that is used to modify attributes after initialization.
