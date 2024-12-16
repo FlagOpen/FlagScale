@@ -9,8 +9,6 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn.functional as F
-from typing import Optional
-from itertools import chain
 
 from megatron import core
 from megatron.core import mpu, tensor_parallel
@@ -22,14 +20,14 @@ from megatron.core.models.common.embeddings import apply_rotary_pos_emb
 from megatron.core.jit import jit_fuser
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core.parallel_state import (
-    get_tensor_and_expert_parallel_group,
+    get_expert_tensor_and_model_parallel_group,
     get_tensor_model_parallel_group,
 )
 from megatron.core.tensor_parallel import (
-    gather_from_sequence_parallel_region_to_moe,
+    gather_from_sequence_parallel_region,
+    reduce_scatter_to_sequence_parallel_region,
     get_cuda_rng_tracker,
     get_data_parallel_rng_tracker_name,
-    reduce_scatter_to_sequence_parallel_region_from_moe,
 )
 from megatron.legacy.model.enums import AttnMaskType, AttnType, LayerType
 from megatron.legacy.model.fused_bias_gelu import bias_gelu_impl
@@ -49,10 +47,8 @@ try:
 except ImportError:
     rearrange = None
 
-
-# Try FlashAttn2 first
 try:
-    from flash_attn.flash_attn_interface import flash_attn_varlen_func as flash_attn_unpadded_func
+    from flash_attn.flash_attn_interface import flash_attn_unpadded_func
 except ImportError:
     try:
         from flash_attn.flash_attn_interface import (
@@ -106,25 +102,15 @@ class ParallelMLP(MegatronModule):
     state back into h hidden dimension.
     """
 
-    def __init__(self, config, layer_number, is_expert=False):
+    def __init__(self, config, is_expert=False):
         super(ParallelMLP, self).__init__()
         args = get_args()
 
-        self.layer_number = max(1, layer_number)
         self.add_bias = config.add_bias_linear
 
         ffn_hidden_size = config.ffn_hidden_size
         if config.gated_linear_unit:
             ffn_hidden_size *= 2
-
-        if args.apply_init_customized:
-            assert args.swiglu, "Only support for ParallelMLP using swiglu."
-            init_method_ffn_w1 = config.init_method(
-                args.init_method_std_scaled_ffn_w1[self.layer_number-1])
-            init_method_ffn_w2 = config.init_method(
-                args.init_method_std_scaled_ffn_w2[self.layer_number-1])
-            init_method_ffn_w3 = config.init_method(
-                args.init_method_std_scaled_ffn_w3[self.layer_number-1])
 
         # Project to 4h. If using swiglu double the output width, see https://arxiv.org/pdf/2002.05202.pdf
         self.dense_h_to_4h = tensor_parallel.ColumnParallelLinear(
@@ -170,15 +156,6 @@ class ParallelMLP(MegatronModule):
             input_is_parallel=True,
             is_expert=is_expert,
         )
-
-        if args.apply_init_customized:
-            with tensor_parallel.get_cuda_rng_tracker().fork():
-                w1, w3 = self.dense_h_to_4h.weight.chunk(2, dim=0)
-                init_method_ffn_w1(w1)
-                init_method_ffn_w3(w3)
-                init_method_ffn_w2(self.dense_4h_to_h.weight)
-                if torch.distributed.get_rank() == 0:
-                    print('Override ParallelMLP init_method.', flush=True)
 
     def forward(self, hidden_states):
 
@@ -227,7 +204,7 @@ class SwitchMLP(MegatronModule):
     """
     Routes input to one of N MLP "experts"
     """
-    def __init__(self, config, layer_number):
+    def __init__(self, config):
         super(SwitchMLP, self).__init__()
         args = get_args()
         self.router = get_router_linear_layer(config)
@@ -242,12 +219,13 @@ class SwitchMLP(MegatronModule):
 
         self.local_experts = torch.nn.ModuleList()
         for i in range(self.num_local_experts):
-            self.local_experts.append(ParallelMLP(config, layer_number, is_expert=True))
+            self.local_experts.append(ParallelMLP(config, is_expert=True))
+
+        self.tp_ep_group = get_expert_tensor_and_model_parallel_group()
 
     def gather_indices(self, local_indices):
         """ Gather tensors and concatinate along the first dimension."""
-        group = get_tensor_and_expert_parallel_group()
-        world_size = torch.distributed.get_world_size(group=group)
+        world_size = torch.distributed.get_world_size(group=self.tp_ep_group)
         # Bypass the function if we are using only 1 GPU.
         if world_size == 1:
             return local_indices
@@ -259,7 +237,7 @@ class SwitchMLP(MegatronModule):
         output = torch.empty(dim_size, dtype=local_indices.dtype,
                              device=torch.cuda.current_device())
         torch.distributed._all_gather_base(
-            output, local_indices.contiguous(), group=group
+            output, local_indices.contiguous(), group=self.tp_ep_group
         )
         return output
 
@@ -292,7 +270,7 @@ class SwitchMLP(MegatronModule):
         # Each vector could be routed differently
         if self.sequence_parallel or (self.expert_parallel_size > 1):
             global_hidden_states = \
-                gather_from_sequence_parallel_region_to_moe(hidden_states)
+                gather_from_sequence_parallel_region(hidden_states, group=self.tp_ep_group)
             global_indices = self.gather_indices(max_ind)
         else:
             global_hidden_states = hidden_states
@@ -314,10 +292,10 @@ class SwitchMLP(MegatronModule):
 
         if self.sequence_parallel or (self.expert_parallel_size > 1):
             output_total = \
-                reduce_scatter_to_sequence_parallel_region_from_moe(output_total)
+                reduce_scatter_to_sequence_parallel_region(output_total, group=self.tp_ep_group)
             if self.add_bias:
                 output_bias_total = \
-                    reduce_scatter_to_sequence_parallel_region_from_moe(output_bias_total)
+                    reduce_scatter_to_sequence_parallel_region(output_bias_total, group=self.tp_ep_group)
 
                 # bias is duplicated across tensor parallelism ranks;
                 # reduce scatter reduces bias across tensor parallel_ranks
@@ -549,8 +527,6 @@ class ParallelAttention(MegatronModule):
         self.attn_mask_type = attn_mask_type
         self.params_dtype = config.params_dtype
         self.sequence_parallel = config.sequence_parallel
-        self.rotary_interleaved_patch = args.rotary_interleaved_patch
-
         self.config = config
         self.group_query_attention = args.group_query_attention
         self.num_query_groups = args.num_query_groups
@@ -591,14 +567,6 @@ class ParallelAttention(MegatronModule):
         else:
             self.num_query_groups_per_partition = self.num_attention_heads_per_partition
 
-        if args.apply_init_customized:
-            init_method_attn_q = config.init_method(
-                args.init_method_std_scaled_attn_q[self.layer_number-1])
-            init_method_attn_k = config.init_method(
-                args.init_method_std_scaled_attn_k[self.layer_number-1])
-            init_method_attn_v = config.init_method(
-                args.init_method_std_scaled_attn_v[self.layer_number-1])
-
         # Strided linear layer.
         if attention_type == AttnType.self_attn:
             self.query_key_value = tensor_parallel.ColumnParallelLinear(
@@ -608,24 +576,6 @@ class ParallelAttention(MegatronModule):
                 init_method=config.init_method,
                 bias=args.add_bias_linear or args.add_qkv_bias,
                 gather_output=False)
-            if args.apply_init_customized:
-                with tensor_parallel.get_cuda_rng_tracker().fork():
-                    # [ng, (np/ng + 2), hn, h]
-                    tmp =  self.num_attention_heads_per_partition // self.num_query_groups_per_partition
-                    new_tensor_shape = (self.num_query_groups_per_partition,
-                                        tmp + 2,
-                                        self.hidden_size_per_attention_head,
-                                        self.query_key_value.weight.size()[-1])
-
-                    wq = self.query_key_value.weight.view(new_tensor_shape)[:, 0:tmp        :, :]
-                    wk = self.query_key_value.weight.view(new_tensor_shape)[:, tmp:tmp+1    :, :]
-                    wv = self.query_key_value.weight.view(new_tensor_shape)[:, tmp+1:tmp+2, :, :]
-
-                    init_method_attn_q(wq)
-                    init_method_attn_k(wk)
-                    init_method_attn_v(wv)
-                if torch.distributed.get_rank() == 0:
-                    print('Override ParallelAttention init_method.', flush=True)
         else:
             assert attention_type == AttnType.cross_attn
 
@@ -638,7 +588,7 @@ class ParallelAttention(MegatronModule):
                 query_projection_size,
                 config=config,
                 init_method=config.init_method,
-                bias=args.add_bias_linear or args.add_qkv_bias,
+                bias=config.add_bias_linear,
                 gather_output=False)
 
             self.key_value = tensor_parallel.ColumnParallelLinear(
@@ -646,7 +596,7 @@ class ParallelAttention(MegatronModule):
                 2 * kv_projection_size,
                 config=config,
                 init_method=config.init_method,
-                bias=args.add_bias_linear or args.add_qkv_bias,
+                bias=config.add_bias_linear,
                 gather_output=False)
 
         self.core_attention = CoreAttention(self.layer_number, config,
@@ -761,7 +711,7 @@ class ParallelAttention(MegatronModule):
                 dim=3)
 
             # [sq, b, ng, np/ng * hn] -> [sq, b, np, hn] -
-            query_layer = query_layer.reshape(query_layer.size(0), query_layer.size(1), -1, self.hidden_size_per_attention_head)
+            query_layer = query_layer.view(query_layer.size(0), query_layer.size(1), -1, self.hidden_size_per_attention_head)
         else:
             # Attention heads [sk, b, h] --> [sk, b, (np * 2 * hn)]
             mixed_kv_layer, _ = self.key_value(encoder_output)
@@ -851,18 +801,8 @@ class ParallelAttention(MegatronModule):
         # apply relative positional encoding (rotary embedding)
         if rotary_pos_emb is not None:
             q_pos_emb, k_pos_emb = rotary_pos_emb
-            query_layer = apply_rotary_pos_emb(query_layer, q_pos_emb, self.config)
-            key_layer = apply_rotary_pos_emb(key_layer, k_pos_emb, self.config)
-            if self.rotary_interleaved_patch:
-                # TODO, better ops to reduce overhead
-                assert rearrange is not None, 'Please install einops first, e.g., with pip install einops'
-                query_layer = rearrange(query_layer, '... (two headdim) -> ... two headdim', two=2)
-                query_layer = rearrange(query_layer.transpose(-2, -1), '... headdim two -> ... (headdim two)', two=2)
-                key_layer = rearrange(key_layer, '... (two headdim) -> ... two headdim', two=2)
-                key_layer = rearrange(key_layer.transpose(-2, -1), '... headdim two -> ... (headdim two)', two=2)
-                value_layer = rearrange(value_layer, '... (two headdim) -> ... two headdim', two=2)
-                value_layer = rearrange(value_layer.transpose(-2, -1), '... headdim two -> ... (headdim two)', two=2)
-
+            query_layer = apply_rotary_pos_emb(query_layer, q_pos_emb,self.config)
+            key_layer = apply_rotary_pos_emb(key_layer, k_pos_emb,self.config)
             # TODO, can apply positional embedding to value_layer so it has
             # absolute positional embedding.
             # otherwise, only relative positional embedding takes effect
@@ -942,12 +882,6 @@ class ParallelTransformerLayer(MegatronModule):
         self.layer_number = layer_number
         self.layer_type = layer_type
 
-        self.init_weight_attn_norm = args.norm_init_weight
-        self.init_weight_ffn_norm = args.norm_init_weight
-        if args.apply_init_norm_customized:
-            self.init_weight_attn_norm = args.init_weight_attn_norm[self.layer_number-1];
-            self.init_weight_ffn_norm = args.init_weight_ffn_norm[self.layer_number-1];
-
         self.apply_residual_connection_post_norm \
             = config.apply_residual_connection_post_layernorm
 
@@ -955,7 +889,7 @@ class ParallelTransformerLayer(MegatronModule):
         self.fp32_residual_connection = config.fp32_residual_connection
 
         # Normalize the input data.
-        self.input_norm = get_norm(config, self.init_weight_attn_norm)
+        self.input_norm = get_norm(config)
 
         # Self attention.
         self.self_attention = ParallelAttention(
@@ -968,7 +902,7 @@ class ParallelTransformerLayer(MegatronModule):
         self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0.0 else None
 
         # Normalize the attention output
-        self.post_attention_norm = get_norm(config, self.init_weight_ffn_norm)
+        self.post_attention_norm = get_norm(config)
 
         # Cross attention.
         if self.layer_type in (LayerType.decoder,
@@ -984,9 +918,9 @@ class ParallelTransformerLayer(MegatronModule):
 
         # MLP
         if args.num_experts is not None:
-            self.mlp = SwitchMLP(config, layer_number)
+            self.mlp = SwitchMLP(config)
         else:
-            self.mlp = ParallelMLP(config, layer_number)
+            self.mlp = ParallelMLP(config)
 
         # Set bias+dropout+add fusion grad_enable execution handler.
         TORCH_MAJOR = int(torch.__version__.split('.')[0])
@@ -1417,18 +1351,6 @@ def _get_num_layers(args, model_type, is_decoder=False):
     return num_layers
 
 
-def _get_layer_info(config):
-    pipeline_rank = mpu.get_pipeline_model_parallel_rank()
-    offset = sum(([0] + config.hetero_pipeline_layer_split)[: pipeline_rank + 1])
-    num_layers = config.hetero_pipeline_layer_split[pipeline_rank] 
-    torch.distributed.barrier()
-    for i in range(torch.distributed.get_world_size()):
-        if i == torch.distributed.get_rank():
-            print("pipeline_rank:", pipeline_rank, "offset:", offset, "num_layers:", num_layers, flush=True)
-        torch.distributed.barrier()
-    return offset, num_layers
-
-
 def _get_layer_type(model_type, default_layer_type, retro_layer_numbers,
                     layer_number):
     args = get_args()
@@ -1471,57 +1393,9 @@ class ParallelTransformer(MegatronModule):
         self.retro_add_retriever = args.retro_add_retriever
 
         # Store activation checkpoiting flag.
-        if config.recompute_method_per_stage != None:
-            if config.virtual_pipeline_model_parallel_size != None:
-                if (
-                    config.recompute_method_per_stage[
-                        mpu.get_virtual_pipeline_model_parallel_rank()
-                        * config.pipeline_model_parallel_size
-                        + mpu.get_pipeline_model_parallel_rank()
-                    ]
-                    == 0
-                ):
-                    self.recompute_method = 'uniform'
-                elif (
-                    config.recompute_method_per_stage[
-                        mpu.get_virtual_pipeline_model_parallel_rank()
-                        * config.pipeline_model_parallel_size
-                        + mpu.get_pipeline_model_parallel_rank()
-                    ]
-                    == 1
-                ):
-                    self.recompute_method = 'block'
-            else:
-                if config.recompute_method_per_stage[mpu.get_pipeline_model_parallel_rank()] == 0:
-                    self.recompute_method = 'uniform'
-                elif config.recompute_method_per_stage[mpu.get_pipeline_model_parallel_rank()] == 1:
-                    self.recompute_method = 'block'
-        else:
-            self.recompute_method = config.recompute_method
-
-        if config.recompute_num_layers_per_stage != None:
-            if config.virtual_pipeline_model_parallel_size != None:
-                self.recompute_num_layers = config.recompute_num_layers_per_stage[
-                    mpu.get_virtual_pipeline_model_parallel_rank()
-                    * config.pipeline_model_parallel_size
-                    + mpu.get_pipeline_model_parallel_rank()
-                ]
-            else:
-                self.recompute_num_layers = config.recompute_num_layers_per_stage[
-                    mpu.get_pipeline_model_parallel_rank()
-                ]
-        else:
-            self.recompute_num_layers = config.recompute_num_layers
-
-        if (
-            config.recompute_granularity_per_stage != None
-            and config.recompute_granularity_per_stage[mpu.get_pipeline_model_parallel_rank()] == 0
-        ):
-            self.recompute_granularity = None
-            self.recompute_method = None
-        else:
-            self.recompute_granularity = config.recompute_granularity
-
+        self.recompute_granularity = config.recompute_granularity
+        self.recompute_method = config.recompute_method
+        self.recompute_num_layers = config.recompute_num_layers
         self.distribute_saved_activations = \
             config.distribute_saved_activations and not config.sequence_parallel
 
@@ -1653,8 +1527,6 @@ class ParallelTransformer(MegatronModule):
                 'num_layers_per_stage must be divisible by ' \
                 'virtual_pipeline_model_parallel_size'
             assert args.model_type != ModelType.encoder_and_decoder
-            assert args.enable_hetero == False, \
-                "Heterogenous pipeline parallelism is not supported for virtual pipeline model parallel."
             # Number of layers in each model chunk is the number of layers in the stage,
             # divided by the number of model chunks in a stage.
             self.num_layers = self.num_layers // config.virtual_pipeline_model_parallel_size
@@ -1673,8 +1545,6 @@ class ParallelTransformer(MegatronModule):
             # Each stage gets a contiguous set of layers.
             if args.model_type == ModelType.encoder_and_decoder and \
                     mpu.get_pipeline_model_parallel_world_size() > 1:
-                assert args.enable_hetero == False, \
-                    "Heterogenous pipeline parallelism is not supported for encoder-decoder models."
                 pipeline_rank = mpu.get_pipeline_model_parallel_rank()
                 if layer_type == LayerType.encoder:
                     offset = pipeline_rank * self.num_layers
@@ -1682,10 +1552,7 @@ class ParallelTransformer(MegatronModule):
                     num_ranks_in_enc = args.pipeline_model_parallel_split_rank
                     offset = (pipeline_rank - num_ranks_in_enc) * self.num_layers
             else:
-                if not config.enable_hetero:
-                    offset = mpu.get_pipeline_model_parallel_rank() * self.num_layers
-                else:
-                    offset, self.num_layers = _get_layer_info(config)
+                offset = mpu.get_pipeline_model_parallel_rank() * self.num_layers
 
         if self.num_layers == 0:
             # When a standalone embedding stage is used (e.g.,
@@ -1698,7 +1565,6 @@ class ParallelTransformer(MegatronModule):
             # disconnect the input tensor from the output tensor.
             self.num_layers = 1
             self.layers = torch.nn.ModuleList([ NoopTransformerLayer(1) ])
-            self.recompute_granularity = None
         else:
             self.layers = torch.nn.ModuleList(
                 [build_layer(i + 1 + offset) for i in range(self.num_layers)])
@@ -1714,13 +1580,9 @@ class ParallelTransformer(MegatronModule):
                             args.retro_encoder_attention_dropout
                     layer.hidden_dropout = args.retro_encoder_hidden_dropout
 
-        self.init_weight_output_norm = args.norm_init_weight
-        if args.apply_init_norm_customized:
-            self.init_weight_output_norm = args.init_weight_output_norm
-
         if self.post_process and self.post_norm:
             # Final layer norm before output.
-            self.final_norm = get_norm(config, self.init_weight_output_norm)
+            self.final_norm = get_norm(config)
 
     def _get_layer(self, layer_number):
         return self.layers[layer_number]

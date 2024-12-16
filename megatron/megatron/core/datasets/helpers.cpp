@@ -234,7 +234,7 @@ py::array build_sample_idx(const py::array_t<int32_t> &sizes_,
   // Return the numpy array.
   const auto byte_size = sizeof(int64_t);
   return py::array(std::vector<int64_t>{num_samples + 1, 2}, // shape
-                   {2 * byte_size, byte_size},           // C-style contiguous strides
+                   {2 * byte_size, byte_size},               // C-style contiguous strides
                    sample_idx,                               // the data pointer
                    free_when_done);                          // numpy array references
 }

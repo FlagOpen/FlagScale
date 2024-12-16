@@ -130,27 +130,40 @@ run_tests() {
         echo "Running batch test: $_test_files"
         torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings -m "not flaky" $ignore_cmd $_test_files
         
-        # Check if both report files are complete
-        check_reports_complete "$xml_report" "$html_report"
-        
+        # Check the exit status of pytest
         if [ $? -ne 0 ]; then
             echo "Test failed: $_test_files"
             exit 1
         fi
+
+        # Check if both report files are complete
+        check_reports_complete "$xml_report" "$html_report"
+        
+        if [ $? -ne 0 ]; then
+            echo "Check reports failed: $xml_report $html_report"
+            exit 1
+        fi
+
     elif [ "$_type" == "single" ]; then
         for _test_file in $_test_files; do
             wait_for_gpu
             echo "Running single test: $_test_file"
             torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings -m "not flaky" $ignore_cmd $_test_file
-            
-            # Check if both report files are complete
-            check_reports_complete "$xml_report" "$html_report"
 
             # Check the exit status of pytest
             if [ $? -ne 0 ]; then
                 echo "Test failed: $_test_file"
                 exit 1
             fi
+
+            # Check if both report files are complete
+            check_reports_complete "$xml_report" "$html_report"
+
+            if [ $? -ne 0 ]; then
+                echo "Check reports failed: $xml_report $html_report"
+                exit 1
+            fi
+
         done
     fi
 }
