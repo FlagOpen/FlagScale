@@ -14,7 +14,7 @@ class ModelWorker1:
 
     def generate(self, prompt):
         outputs = self.llm.generate([prompt], sampling_params=self.sampling_params)
-        return [output.text for output in outputs]
+        return [output.outputs[0].text for output in outputs]
 
 
 @serve.remote(name="model2")
@@ -26,7 +26,7 @@ class ModelWorker2:
 
     def generate(self, prompt):
         outputs = self.llm.generate([prompt], sampling_params=self.sampling_params)
-        return [output.text for output in outputs]
+        return [output.outputs[0].text for output in outputs]
 
 
 ray.init()
