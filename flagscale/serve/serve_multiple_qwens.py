@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from vllm import LLM, SamplingParams
-import ray
 from flagscale import serve
 
 
@@ -29,9 +28,10 @@ class ModelWorker2:
         return [output.outputs[0].text for output in outputs]
 
 
-ray.init()
-model_worker1 = ModelWorker1.remote(serve.task_config)
-model_worker2 = ModelWorker2.remote(serve.task_config)
+serve.init()
+task_config = serve.TaskConfig.get()
+model_worker1 = ModelWorker1.remote(task_config)
+model_worker2 = ModelWorker2.remote(task_config)
 
 
 app = FastAPI()

@@ -3,7 +3,32 @@ import argparse
 import ray
 
 
-task_config = OmegaConf.create()
+class TaskConfig:
+    _instance = OmegaConf.create()
+    _loaded = False
+
+    @classmethod
+    def load(cls, config=None):
+        """
+        Load the global configuration.
+        This can only be called once. 
+        
+        :param config: An OmegaConf config object. If None, raise a RuntimeErrord.
+        """
+        if cls._loaded:
+            return
+        if config is None:
+            raise RuntimeError("config must not be None.")
+
+        cls._instance.update(config)
+        cls._loaded = True
+
+    @classmethod
+    def get(cls):
+        """
+        Retrieve the loaded configuration.
+        """
+        return cls._instance
 
 
 class TaskManager:
@@ -11,8 +36,9 @@ class TaskManager:
         pass
 
 
-def init():
-    ray.init(address="auto")
+def init(*args, **kwargs):
+    _load()
+    ray.init(*args, **kwargs)
 
 
 def run():
@@ -54,9 +80,8 @@ def _load() -> None:
 
     config = OmegaConf.load(args.config_path)
 
-    global task_config
-    task_config.update(config)
-    task_config.update({"log_dir": args.log_dir})
+    config.update({"log_dir": args.log_dir})
+    TaskConfig.load(config)
 
     return
 
