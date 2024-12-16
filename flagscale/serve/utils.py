@@ -54,6 +54,7 @@ def remote(*args, **kwargs):
     _load()
     def _merge_kwargs(func_name, **kwargs):
         new_kwargs = kwargs.copy()
+        task_config = TaskConfig.get()
         models = task_config.serve.deploy.models
 
         if func_name in models:
