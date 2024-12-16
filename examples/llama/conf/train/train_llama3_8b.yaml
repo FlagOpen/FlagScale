@@ -35,7 +35,7 @@ model:
   no_position_embedding: True
   swiglu: True
   normalization: RMSNorm
-  rotary_interleaved_patch: False
+  # rotary_interleaved_patch: False
   position_embedding_type: rope
   rotary_base: 500000
   untie_embeddings_and_output_weights: True

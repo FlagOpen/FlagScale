@@ -285,6 +285,7 @@ class TestFullyParallelSaveAndLoad:
     @pytest.mark.skipif(os.getenv('FLAGSCALE_SKIP') == '1', reason="FLAGSCALE_SKIP is enabled, skipping test.")
     @pytest.mark.parametrize('state_dict_device', ['cpu', 'cuda'])
     @pytest.mark.flaky
+    @pytest.mark.flaky_in_dev
     def test_memory_usage(self, state_dict_device, tmp_path_dist_ckpt):
         Utils.initialize_model_parallel(2, 1)
 

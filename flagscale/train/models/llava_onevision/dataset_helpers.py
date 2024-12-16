@@ -33,9 +33,9 @@ class AnyResTaskSample:
     input_ids_shape: torch.Tensor
     labels: torch.Tensor
     labels_shape: torch.Tensor
-    images: torch.Tensor
-    image_sizes: torch.Tensor
-    modalities: torch.Tensor
+    images: List[torch.Tensor]
+    image_sizes: List[torch.Tensor]
+    modalities: List[torch.Tensor]
 
 # Typing for the resulting batch data after encode_batch()
 @dataclass
@@ -85,19 +85,19 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
             assert ValueError("The sequence must have 4 or 5 elements, but got {len(sample.sequence)}.")
 
         # process modalities to tensor
-        if modalities is None:
-            modalities = "image"
-        # image, video, text to 0, 1, 2
-        if modalities == "image":
-            modalities = torch.tensor([0])
-        elif modalities == "video":
-            modalities = torch.tensor([1])
-        elif modalities == "text":
-            modalities = torch.tensor([2])
-        else:
-            raise ValueError(f"Unsupported modality: {modalities}")
+        modalities_list = []
+        for modality in modalities:
+            # image, video, text to 0, 1, 2
+            if modality == "image":
+                modalities_list.append(torch.tensor([0]))
+            elif modality == "video":
+                modalities_list.append(torch.tensor([1]))
+            elif modality == "text":
+                modalities_list.append(torch.tensor([2]))
+            else:
+                raise ValueError(f"Unsupported modality: {modalities}")
         
-
+        modalities = modalities_list
         return AnyResTaskSample(
             __key__=sample.__key__,
             __subflavors__=sample.__subflavors__,
@@ -106,7 +106,7 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
             labels=labels,
             labels_shape=torch.tensor(labels.shape),
             images=images,
-            image_sizes=torch.tensor(image_sizes),
+            image_sizes=image_sizes,
             modalities=modalities
         )
 
@@ -115,10 +115,12 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
         input_ids_shape = torch.stack([s.input_ids_shape for s in samples], dim=0)
         labels = torch.cat([s.labels.flatten() for s in samples], dim=0)
         labels_shape = torch.stack([s.labels_shape for s in samples], dim=0)
-        images = torch.cat([s.images.flatten() for s in samples], dim=0)
-        split_image_sizes = torch.stack([torch.tensor(s.images.shape) for s in samples], dim=0)
-        image_sizes = torch.stack([s.image_sizes for s in samples], dim=0)
-        modalities = torch.stack([s.modalities for s in samples], dim=0)
+        # Double loop
+        images = torch.cat([image.flatten() for s in samples for image in s.images], dim=0)
+        split_image_sizes = torch.stack([torch.tensor(image.shape) for s in samples for image in s.images], dim=0)
+        # Adapt video data by decord
+        image_sizes = torch.stack([image_sizes if len(image_sizes.shape) == 1 else torch.tensor((1, image_sizes.item())) for s in samples for image_sizes in s.image_sizes], dim=0)
+        modalities = torch.stack([modalities for s in samples for modalities in s.modalities], dim=0)
 
         batch = AnyResTaskBatch(
             __keys__=[s.__key__ for s in samples],

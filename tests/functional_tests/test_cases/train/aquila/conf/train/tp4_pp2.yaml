@@ -33,7 +33,7 @@ model:
   swiglu: true
   multiple_of: 256
   normalization: RMSNorm
-  rotary_interleaved_patch: true
+  # rotary_interleaved_patch: true
   untie_embeddings_and_output_weights: true
   init_method_std: 0.02
   attention_dropout: 0.0

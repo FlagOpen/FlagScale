@@ -161,6 +161,7 @@ class TestBertModelAttentionDimensions:
         ), f"Expected b11s for attn_mask_dimensions but got {attn_mask_dimensions}"
 
     @pytest.mark.internal
+    @pytest.mark.flaky_in_dev
     def test_transformer_engine_version_1_7_to_1_10_rng_error(self, mocker):
         # Get the current version of Transformer Engine
         te_version = f"{get_te_version().major}.{get_te_version().minor}"

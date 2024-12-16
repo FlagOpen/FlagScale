@@ -8,7 +8,7 @@ import torch
 import torch.distributed
 
 from megatron.core import Timers
-from megatron.core.num_microbatches_calculator import init_num_microbatches_calculator
+from megatron.core.num_microbatches_calculator import init_num_microbatches_calculator, unset_num_microbatches_calculator
 from megatron.training import dist_signal_handler
 from megatron.training.tokenizer import build_tokenizer
 
@@ -24,7 +24,7 @@ _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
 _GLOBAL_SIGNAL_HANDLER = None
 _GLOBAL_PARALLEL_CONTEXT = None
-_GLOBAL_DEVICE_TYPE = None
+
 
 def get_args():
     """Return arguments."""
@@ -137,6 +137,35 @@ def set_global_writers(args):
         torch.distributed.all_reduce(ranks_tensor, group=group)
     if torch.distributed.get_rank() in ranks_tensor.tolist(): 
         _set_wandb_writer(args)
+
+
+def unset_global_variables():
+    """Unset global vars.
+
+    Useful for multiple runs. See `tests/unit_tests/ckpt_converter/test_ckpt_converter.py` for an example.
+    """
+
+    global _GLOBAL_ARGS
+    global _GLOBAL_NUM_MICROBATCHES_CALCULATOR
+    global _GLOBAL_TOKENIZER
+    global _GLOBAL_TENSORBOARD_WRITER
+    global _GLOBAL_WANDB_WRITER
+    global _GLOBAL_ONE_LOGGER
+    global _GLOBAL_ADLR_AUTORESUME
+    global _GLOBAL_TIMERS
+    global _GLOBAL_SIGNAL_HANDLER
+
+    _GLOBAL_ARGS = None
+    _GLOBAL_NUM_MICROBATCHES_CALCULATOR = None
+    _GLOBAL_TOKENIZER = None
+    _GLOBAL_TENSORBOARD_WRITER = None
+    _GLOBAL_WANDB_WRITER = None
+    _GLOBAL_ONE_LOGGER = None
+    _GLOBAL_ADLR_AUTORESUME = None
+    _GLOBAL_TIMERS = None
+    _GLOBAL_SIGNAL_HANDLER = None
+
+    unset_num_microbatches_calculator()
 
 
 def set_args(args):
@@ -274,25 +303,6 @@ def _ensure_var_is_initialized(var, name):
 def _ensure_var_is_not_initialized(var, name):
     """Make sure the input variable is not None."""
     assert var is None, '{} is already initialized.'.format(name)
-
-
-def set_device_type(args):
-    """Initialize customized device type."""
-    global _GLOBAL_DEVICE_TYPE
-    _ensure_var_is_not_initialized(_GLOBAL_DEVICE_TYPE, 'device type')
-    assert args.device_type is not None
-    _GLOBAL_DEVICE_TYPE = args.device_type
-
-    # Add patches package of device_type to sys.path
-    base_base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    path_hard = os.path.join(base_base_path,"hardware") 
-    path = os.path.join(path_hard,args.device_type)
-    assert os.path.exists(path), "Path {} does not exist.".format(path) 
-    assert os.path.isdir(path), "Path {} is not a directory.".format(path)
-    sys.path.append(path)
-    
-    # Apply the following patch during the import time
-    import patches
 
 
 def destroy_global_vars():

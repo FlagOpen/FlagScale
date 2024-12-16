@@ -28,7 +28,7 @@ from flagscale.train.models.llava_onevision.llava_onevision_model import (
     IGNORE_INDEX,
     IMAGE_TOKEN_INDEX,
 )
-from examples.multimodal.layer_specs import (
+from flagscale.train.models.llava_onevision.layer_specs import (
     get_layer_spec,
     get_mlp_module_spec,
     get_layer_spec_te,
@@ -437,6 +437,15 @@ def add_multimodal_extra_args(parser):
     )
     group.add_argument(
         "--pos-skipping-range", type=int, default=4096, help="Position skipping range"
+    )
+    group.add_argument(
+        "--add-faster-video", default=False, help="Whetehr add fatser video token"
+    )
+    group.add_argument(
+        "--mm-spatial-pool-mode", type=str, default="bilinear", help="Spatial pool mode"
+    )
+    group.add_argument(
+        "--mm-newline-position", type=str, default="grid", help="Newline position."
     )
     return parser
 

@@ -114,9 +114,10 @@ class ModelArguments:
     use_pos_skipping: Optional[bool] = field(default=False)
     pos_skipping_range: Optional[int] = field(default=4096)
 
-
     mm_newline_position: Optional[str] = field(default="one_token")
-
+    add_faster_video: Optional[bool] = field(default=False)
+    faster_token_stride: Optional[int] = field(default=10)
+    delay_load: Optional[bool] = field(default=True)
 
 @dataclass
 class DataArguments:
@@ -133,7 +134,8 @@ class DataArguments:
     video_folder: Optional[str] = field(default=None)
     video_fps: Optional[int] = field(default=1)
     frames_upbound: Optional[int] = field(default=0)
-
+    add_time_instruction: Optional[bool] = field(default=False)
+    force_sample: Optional[bool] = field(default=False)
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
@@ -570,7 +572,7 @@ def preprocess_qwen(sources, tokenizer: transformers.PreTrainedTokenizer, has_im
         tokenizer.add_tokens(["<image>"], special_tokens=True)
 
     image_token_index = tokenizer.convert_tokens_to_ids("<image>")
-    im_start, im_end = tokenizer.additional_special_tokens_ids
+    im_start, im_end = tokenizer.additional_special_tokens_ids[:2]
     # unmask_tokens = ["<|im_start|>", "<|im_start|>", "\n"]
     unmask_tokens_idx =  [198, im_start, im_end]
     nl_tokens = tokenizer("\n").input_ids
@@ -614,9 +616,7 @@ def preprocess_qwen(sources, tokenizer: transformers.PreTrainedTokenizer, has_im
                 target += [IGNORE_INDEX] * len(encode_id)
             else:
                 target += encode_id
-        
 
-                    
         assert len(input_id) == len(target), f"{len(input_id)} != {len(target)}"
         for idx, encode_id in enumerate(input_id):
             if encode_id in unmask_tokens_idx:
@@ -700,8 +700,6 @@ def preprocess_llama3(
                 target += [IGNORE_INDEX] * len(encode_id)
             else:
                 target += encode_id
-        
-
                     
         assert len(input_id) == len(target), f"{len(input_id)} != {len(target)}"
         for idx, encode_id in enumerate(input_id):
@@ -1042,7 +1040,9 @@ class SupervisedWebDataset(IterableDataset):
                 print("File {} not exist!".format(video_file))
 
             try:
-                if "shareVideoGPTV" in video_file:
+                print("video_file: ", video_file)
+                if "shareVideoGPTV" in video_file or "M4-Instruct-Videos" in video_file:
+                    print("video_file: ", video_file)
                     frame_files = [os.path.join(video_file, f) for f in os.listdir(video_file) if os.path.isfile(os.path.join(video_file, f))]
                     frame_files.sort()  # Ensure the frames are sorted if they are named sequentially
 
@@ -1119,7 +1119,6 @@ class SupervisedWebDataset(IterableDataset):
         data_dict["id"] = item_id
 
         return data_dict
-
 
 
 class LazySupervisedDataset(Dataset):
@@ -1329,7 +1328,7 @@ class LazySupervisedDataset(Dataset):
                 print("File {} not exist!".format(video_file))
 
             try:
-                if "shareVideoGPTV" in video_file:
+                if "shareVideoGPTV" in video_file or "M4-Instruct-Videos" in video_file:
                     frame_files = [os.path.join(video_file, f) for f in os.listdir(video_file) if os.path.isfile(os.path.join(video_file, f))]
                     frame_files.sort()  # Ensure the frames are sorted if they are named sequentially
 
@@ -1349,7 +1348,7 @@ class LazySupervisedDataset(Dataset):
                         except IOError:
                             print(f"Failed to read frame at path: {frame_path}")
                 else:
-                    video = process_video_with_decord(video_file, self.data_args)
+                    video, video_time, frame_time, num_frames_to_sample = process_video_with_decord(video_file, self.data_args)
 
                 processor = self.data_args.image_processor
                 image = processor.preprocess(video, return_tensors="pt")["pixel_values"]
@@ -1850,6 +1849,7 @@ def train(attn_implementation=None):
     start_time = time.time()
     with wds.ShardWriter(os.path.join(output, f'llava-ov-{dist.get_rank()}-%d.tar'), maxcount=10000) as shard_writer:
         dataloader = trainer.get_train_dataloader()
+        print(f"sample num: {len(dataloader)}")
         global_id = 0
         for entry in tqdm(dataloader):
             if global_id == 0:
@@ -1860,22 +1860,59 @@ def train(attn_implementation=None):
             sequence = []
             sequence.append(entry['input_ids'][0].cpu())
             sequence.append(entry['labels'][0].cpu())
-            modalities = 'image'
-            if 'images' in entry and entry['images'] is not None:
-              modalities = 'image'
-              images = entry['images'][0].cpu()
-              images_shape = list(images.shape)
-              if len(images_shape) == 3:
-                images = images.reshape([1, *images_shape])
-              sequence.append(images)
-              sequence.append(torch.tensor(entry['image_sizes'][0]))
-            else:
-              modalities = 'text'
-              sequence.append(torch.tensor([0]))
-              sequence.append(torch.tensor([0]))
 
-            # awk(5)
-            sequence.append(modalities)
+            assert 'images' in entry
+            # single image or video
+            multi_images = False
+            if len(entry['images']) > 1:
+                assert len(entry['images']) == len(entry['image_sizes'])
+                assert len(entry['images']) == len(entry['modalities'])
+                multi_images = True
+            
+            if not multi_images:
+                images = entry['images'][0].cpu()
+                images_shape = list(images.shape)
+                if len(images_shape) == 3:
+                    images = images.reshape([1, *images_shape])
+                sequence.append([images])
+                sequence.append([torch.tensor(entry['image_sizes'][0])])
+                sequence.append([entry['modalities'][0]])
+                if entry['modalities'][0] == "video":
+                    print(f"Processing video and image_sizes: {entry['image_sizes'][0]}, {images.shape}")
+                elif entry['modalities'][0] == "text":
+                    print("Processing text.")
+                elif entry['modalities'][0] == "image":
+                    print("Processing single image.")
+                else:
+                    raise ValueError()
+            else:
+                # Process images
+                images = []
+                each_image_shape = None
+                for image in entry['images']:
+                    image_cpu = image.cpu()
+                    image_shape = list(image_cpu.shape)
+                    if not each_image_shape:
+                        each_image_shape = image_shape
+                    # Image shape should be the same when in multi images scene
+                    assert each_image_shape == image_shape
+                    if len(image_shape) == 3:
+                        image_cpu = image_cpu.reshape([1, *image_shape])
+                    images.append(image_cpu)
+                
+                # Process image_sizes
+                image_sizes = []
+                for image_size in entry['image_sizes']:
+                    image_sizes.append(torch.tensor(image_size))
+                
+                # Process modalities
+                modalities = []
+                for modality in entry['modalities']:
+                    modalities.append(modality)
+
+                sequence.append(images)
+                sequence.append(image_sizes)
+                sequence.append(modalities)  
 
             sample = {
               "__key__": str(global_id),
@@ -1885,7 +1922,7 @@ def train(attn_implementation=None):
             shard_writer.write(sample)
             global_id += 1
 
-    rank0_print(f"Datasets saved to {training_args.output_dir}")
+    print(f"rank {dist.get_rank()} datasets saved to {training_args.output_dir}")
 
 
 if __name__ == "__main__":
