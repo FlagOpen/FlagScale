@@ -1,10 +1,13 @@
 #!/bin/bash
 
+if [ -d "/workspace/report/0/cov-report-megatron" ]; then rm -r /workspace/report/0/cov-report-megatron; fi
+if [ -d "/workspace/report/0/cov-temp-megatron" ]; then rm -r /workspace/report/0/cov-temp-megatron; fi
+if [ -d "/workspace/report/0/cov-report-flagscale" ]; then rm -r /workspace/report/0/cov-report-flagscale; fi
+if [ -d "/workspace/report/0/cov-temp-flagscale" ]; then rm -r /workspace/report/0/cov-temp-flagscale; fi
+
 # Run each command and capture its return value
 commands=(
     # unit tests -> megatron
-    "if [ -d "/workspace/report/0/cov-report-megatron" ]; then rm -r /workspace/report/0/cov-report-megatron; fi"
-    "if [ -d "/workspace/report/0/cov-temp-megatron" ]; then rm -r /workspace/report/0/cov-temp-megatron; fi"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset data"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset dist_checkpointing"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset distributed"
@@ -21,8 +24,6 @@ commands=(
     "./tests/scripts/unit_tests/test_coverage.sh --backend megatron --status offline"
 
     # unit tests -> flagscale
-    "if [ -d "/workspace/report/0/cov-report-flagscale" ]; then rm -r /workspace/report/0/cov-report-flagscale; fi"
-    "if [ -d "/workspace/report/0/cov-temp-flagscale" ]; then rm -r /workspace/report/0/cov-temp-flagscale; fi"
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset runner"
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset ./"
     # coverage test -> flagscale

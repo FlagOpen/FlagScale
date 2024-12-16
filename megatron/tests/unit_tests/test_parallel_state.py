@@ -510,9 +510,9 @@ def test_rank_generator_for_tp_dp_pp(nodes, num_gpu, tp, pp, cp, ep, usp):
         expert_model_parallel_size=ep,
         ulysses_sp_parallel_size=usp,
     )
-    rank_generator = ps.RankGenerator(tp=tp, ep=1, dp=dp, pp=pp, cp=cp, order="tp-cp-dp-pp")
+    rank_generator = ps.RankGenerator(tp=tp, ep=1, dp=dp, pp=pp, cp=cp, usp=1, order="tp-cp-dp-pp")
     expert_rank_generator = ps.RankGenerator(
-        tp=tp, ep=ep, dp=expert_dp, pp=pp, cp=1, order="tp-ep-dp-pp"
+        tp=tp, ep=ep, dp=expert_dp, pp=pp, cp=1, usp=1, order="tp-ep-dp-pp"
     )
     assert dp_groups == rank_generator.get_ranks(
         "dp"

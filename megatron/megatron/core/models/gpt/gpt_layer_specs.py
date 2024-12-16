@@ -114,7 +114,8 @@ def get_gpt_layer_with_transformer_engine_spec(
             module=TransformerLayer,
             submodules=TransformerLayerSubmodules(
                 self_attention=ModuleSpec(
-                    module=SelfAttention if parallel_state.get_ulysses_sp_parallel_world_size() <= 1 else USPSelfAttention,
+                    # module=SelfAttention if parallel_state.get_ulysses_sp_parallel_world_size() <= 1 else USPSelfAttention,
+                    module=SelfAttention,
                     params={"attn_mask_type": AttnMaskType.causal},
                     submodules=SelfAttentionSubmodules(
                         linear_qkv=TELayerNormColumnParallelLinear,

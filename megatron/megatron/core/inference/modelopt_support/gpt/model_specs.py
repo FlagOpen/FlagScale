@@ -17,6 +17,7 @@ def get_gpt_layer_modelopt_spec(
     moe_grouped_gemm: bool = False,
     remap_te_layernorm: bool = False,
     qk_layernorm: bool = False,
+    use_te=False,
 ) -> ModuleSpec:
     """Mix the native spec with TENorm.
 
@@ -25,7 +26,7 @@ def get_gpt_layer_modelopt_spec(
     has stopped supporting RMSNorm needed by llama.
     """
     mlp = _get_mlp_module_spec(
-        use_te=False, num_experts=num_experts, moe_grouped_gemm=moe_grouped_gemm, fp8=False
+        use_te=use_te, num_experts=num_experts, moe_grouped_gemm=moe_grouped_gemm, fp8=False
     )
     sharded_state_dict_keys_map = {}
     if remap_te_layernorm:
