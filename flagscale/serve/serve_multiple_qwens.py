@@ -4,8 +4,6 @@ from vllm import LLM, SamplingParams
 import ray
 from flagscale import serve
 
-ray.init(num_gpus=4)
-
 
 @serve.remote(name="model1")
 class ModelWorker1:
