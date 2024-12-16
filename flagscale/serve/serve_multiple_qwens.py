@@ -10,7 +10,7 @@ class ModelWorker1:
     def __init__(self, args):
         model_config = args["serve"]["model_args"]["model1"]
         self.llm = LLM(**model_config)
-        self.sampling_params = SamplingParams(temperature=0.7, top_p=0.95)
+        self.sampling_params = SamplingParams(temperature=0.7, top_p=0.95, max_tokens=1000)
 
     def generate(self, prompt):
         outputs = self.llm.generate([prompt], sampling_params=self.sampling_params)
@@ -22,7 +22,7 @@ class ModelWorker2:
     def __init__(self, args):
         model_config = args["serve"]["model_args"]["model2"]
         self.llm = LLM(**model_config)
-        self.sampling_params = SamplingParams(temperature=0.7, top_p=0.95)
+        self.sampling_params = SamplingParams(temperature=0.7, top_p=0.95, max_tokens=1000)
 
     def generate(self, prompt):
         outputs = self.llm.generate([prompt], sampling_params=self.sampling_params)

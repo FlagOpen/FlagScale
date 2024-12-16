@@ -59,6 +59,19 @@ The log of each work is named as `worker-[worker_id]-[job_id]-[pid].[out|err]`.
 
 Flagscale.serve will support multiple scenarios. For better performance and usage, Flagscale.serve will optimize for specific scenarios, and these optimizations can be applied through different configurations.
 
+### Config one or more models
+Now, you can config all args needed by one or more models in config file. You can also config the number of GPUs used by each model.\
+Serve
+```shell
+python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_multiple_models action=run
+```
+Call
+
+```shell
+curl http://127.0.0.1:9010/generate -H "Content-Type: application/json" -d '{
+        "prompt": "Introduce Bruce Lee in details."
+    }'
+```
 ### Command Line Mode with vLLM
 
 If origin model is excuted in command line mode with vLLM, we can use Flagscale.serve to deploy it easily.
