@@ -9,8 +9,8 @@ ray.init(num_gpus=4)
 
 @serve.remote(name="model1")
 class ModelWorker1:
-    def __init__(self):
-        model_config = serve.task_config["serve"]["model_args"]["model1"]
+    def __init__(self, args):
+        model_config = args["serve"]["model_args"]["model1"]
         self.llm = LLM(**model_config)
         self.sampling_params = SamplingParams(temperature=0.7, top_p=0.95)
 
@@ -21,8 +21,8 @@ class ModelWorker1:
 
 @serve.remote(name="model2")
 class ModelWorker2:
-    def __init__(self):
-        model_config = serve.task_config["serve"]["model_args"]["model2"]
+    def __init__(self, args):
+        model_config = args["serve"]["model_args"]["model2"]
         self.llm = LLM(**model_config)
         self.sampling_params = SamplingParams(temperature=0.7, top_p=0.95)
 
@@ -31,8 +31,9 @@ class ModelWorker2:
         return [output.text for output in outputs]
 
 
-model_worker1 = ModelWorker1.remote()
-model_worker2 = ModelWorker2.remote()
+ray.init()
+model_worker1 = ModelWorker1.remote(serve.task_config)
+model_worker2 = ModelWorker2.remote(serve.task_config)
 
 
 app = FastAPI()
