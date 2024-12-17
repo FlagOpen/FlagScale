@@ -1,6 +1,6 @@
 megatron:
   set_environment: 
-    cd megatron; export PYTHONPATH=..:$PYTHONPATH
+    cd megatron; export PYTHONPATH=..:$PYTHONPATH;export FLAGSCALE_SKIP=1;export NVTE_FLASH_ATTN=0;export NVTE_FUSED_ATTN=0;
   coverage:
     core
   subset:
@@ -20,7 +20,7 @@ megatron:
 
 flagscale:
   set_environment: 
-      export PYTHONPATH=./megatron:$PYTHONPATH
+      export PYTHONPATH=./megatron:$PYTHONPATH;export FLAGSCALE_SKIP=1;export NVTE_FLASH_ATTN=0;export NVTE_FUSED_ATTN=0;
   subset:
     runner:
       type: batch 

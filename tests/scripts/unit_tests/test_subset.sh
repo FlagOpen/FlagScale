@@ -2,10 +2,6 @@
 
 echo "The current directory is: $(pwd)"
 
-export FLAGSCALE_SKIP=1
-export NVTE_FLASH_ATTN=0
-export NVTE_FUSED_ATTN=0
-
 source tests/scripts/_gpu_check.sh
 
 # Parse command line arguments
