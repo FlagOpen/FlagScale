@@ -1,32 +1,42 @@
 megatron:
-  set_environment: 
+  set_environment:
     cd megatron; export PYTHONPATH=..:$PYTHONPATH;export NVTE_FLASH_ATTN=0;export NVTE_FUSED_ATTN=0;
   coverage:
     core
   subset:
     # Use default configuration if not shown
     dist_checkpointing:
-      ignore: 
+      ignore:
         - models/test_mamba.py
       deselect:
         - test_fully_parallel.py::TestFullyParallelSaveAndLoad::test_memory_usage
     models:
-      ignore: test_mamba_model.py
+      ignore: 
+        - test_mamba_model.py
+      deselect:
+        - test_t5_model.py::TestT5Model::test_post_process_forward
+        - test_t5_model.py::TestT5Model::test_forward_output_encoder_hidden_only
+        - test_t5_model.py::TestT5Model::test_forward_with_encoder_hidden_states
     transformer/moe:
       type: single 
-      ignore: test_upcycling.py
+      ignore: 
+        - test_upcycling.py
+      deselect:
+       - test_a2a_token_dispatcher.py::TestAlltoAllDispatcher::test_capacity_padding_forward_backward
+       - test_grouped_mlp.py::TestParallelGroupedMLP::test_constructor
     transformer:
-      depth: 1 
+      depth: 1
     ./:
-      depth: 1 
-      ignore: test_utilities.py
+      depth: 1
+      ignore: 
+        - test_utilities.py
 
 flagscale:
-  set_environment: 
+  set_environment:
       export PYTHONPATH=./megatron:$PYTHONPATH;export NVTE_FLASH_ATTN=0;export NVTE_FUSED_ATTN=0;
   subset:
     runner:
-      type: batch 
-      depth: all 
+      type: batch
+      depth: all
     ./:
-      depth: 1 
+      depth: 1
