@@ -517,12 +517,6 @@ def test_rank_generator_for_tp_dp_pp(nodes, num_gpu, tp, pp, cp, ep, usp):
     Reason: FlagScale add usp in RankGenerator.
     """
     rank_generator = ps.RankGenerator(tp=tp, ep=1, dp=dp, pp=pp, cp=cp, usp=1, order="tp-cp-dp-pp")
-    """
-    Author: FlagScale
-    Date: 2024-12-17
-    Action: Add usp=1
-    Reason: FlagScale add usp in RankGenerator.
-    """
     expert_rank_generator = ps.RankGenerator(
         tp=tp, ep=ep, dp=expert_dp, pp=pp, cp=1, usp=1, order="tp-ep-dp-pp"
     )

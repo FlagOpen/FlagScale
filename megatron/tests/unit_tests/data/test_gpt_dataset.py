@@ -47,7 +47,6 @@ def test_mock_gpt_dataset():
         tokenizer=tokenizer,
     )
 
-
     datasets = BlendedMegatronDatasetBuilder(
         MockGPTDataset, [100, 100, 100], lambda: True, config
     ).build()
