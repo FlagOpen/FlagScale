@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import List, Tuple
 from unittest import mock
 
-import os
 import pytest
 import torch
 

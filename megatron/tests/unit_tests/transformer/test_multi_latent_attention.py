@@ -74,7 +74,7 @@ class TestParallelMLAAttention:
             hidden_states = hidden_states.cuda()
 
             self.parallel_attention.config.max_position_embeddings = sequence_length
-            attention_mask = torch.ones((micro_batch_size, 1, 1, sequence_length), dtype=bool).cuda()
+            attention_mask = torch.ones((1, 1, sequence_length, sequence_length), dtype=bool).cuda()
             output, bias = self.parallel_attention(hidden_states, attention_mask)
 
             assert config.recompute_granularity is None
@@ -106,7 +106,7 @@ class TestParallelMLAAttention:
             hidden_states = hidden_states.cuda()
 
             self.parallel_attention.config.max_position_embeddings = sequence_length
-            attention_mask = torch.ones((micro_batch_size, 1, 1, sequence_length), dtype=bool).cuda()
+            attention_mask = torch.ones((1, 1, sequence_length, sequence_length), dtype=bool).cuda()
             rotary_pos_emb = None
             output, bias = self.parallel_attention(
                 hidden_states, attention_mask, rotary_pos_emb=rotary_pos_emb
@@ -155,7 +155,7 @@ class TestParallelMLAAttention:
             hidden_states = hidden_states.cuda()
 
             self.parallel_attention.config.max_position_embeddings = sequence_length
-            attention_mask = torch.ones((micro_batch_size, 1, 1, sequence_length), dtype=bool).cuda()
+            attention_mask = torch.ones((1, 1, sequence_length, sequence_length), dtype=bool).cuda()
 
             output, bias = checkpointed_parallel_attention(hidden_states, attention_mask)
 
