@@ -67,9 +67,6 @@ def _get_train_data_iterator():
         tokenizer=_NullTokenizer(vocab_size=50),
     )
 
-    from tests.unit_tests.data import set_mock_args
-    set_mock_args()
-
     datasets = BlendedMegatronDatasetBuilder(
         MockGPTDataset, [1000, None, None], lambda: True, config
     ).build()
@@ -103,8 +100,12 @@ def _forward_step_func(data_iterator, model):
 
     return output_tensor, partial(_loss_func, loss_mask)
 
-# Class-level skip decorator
-# Skip all tests in this class if the device does not support CUDA or if its compute capability is less than 8.9.
+"""
+Author: FlagScale
+Date: 2024-12-17
+Action: Add class-level skip decorator
+Reason: Skip all tests in this class if the device does not support CUDA or if its compute capability is less than 8.9.
+"""
 @pytest.mark.skipif(
     not torch.cuda.is_available() or torch.cuda.get_device_capability(0) < (8, 9),
     reason="Device compute capability 8.9 or higher required for FP8 execution"

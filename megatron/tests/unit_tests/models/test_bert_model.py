@@ -160,6 +160,12 @@ class TestBertModelAttentionDimensions:
             attn_mask_dimensions == "b11s"
         ), f"Expected b11s for attn_mask_dimensions but got {attn_mask_dimensions}"
 
+    """
+    Author: FlagScale
+    Date: 2024-12-17
+    Action: Modify the process, exceptions are only thrown between te 1.7 and 1.10.
+    Reason: The new version of TE has already addressed potential exceptions.
+    """
     @pytest.mark.internal
     @pytest.mark.flaky_in_dev
     def test_transformer_engine_version_1_7_to_1_10_rng_error(self, mocker):
