@@ -32,6 +32,7 @@ jobs:
           - inference
           - models
           - pipeline_parallel
+          - ssm
           - tensor_parallel
           - transformer/moe
           - transformer

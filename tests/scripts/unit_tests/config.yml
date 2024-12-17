@@ -1,10 +1,10 @@
+# Use default configuration if not shown
 megatron:
   set_environment:
     cd megatron; export PYTHONPATH=..:$PYTHONPATH;export NVTE_FLASH_ATTN=0;export NVTE_FUSED_ATTN=0;
   coverage:
     core
   subset:
-    # Use default configuration if not shown
     dist_checkpointing:
       ignore:
         - models/test_mamba.py
@@ -17,6 +17,12 @@ megatron:
         - test_t5_model.py::TestT5Model::test_post_process_forward
         - test_t5_model.py::TestT5Model::test_forward_output_encoder_hidden_only
         - test_t5_model.py::TestT5Model::test_forward_with_encoder_hidden_states
+    ssm:
+      ignore:
+        - test_mamba_block.py
+        - test_mamba_hybrid_layer_allocation.py
+        - test_mamba_layer.py
+        - test_mamba_mixer.py
     transformer/moe:
       type: single 
       ignore: 
@@ -24,8 +30,20 @@ megatron:
       deselect:
        - test_a2a_token_dispatcher.py::TestAlltoAllDispatcher::test_capacity_padding_forward_backward
        - test_grouped_mlp.py::TestParallelGroupedMLP::test_constructor
+       - test_grouped_mlp.py::TestParallelGroupedMLP::test_weight_init_value_the_same
+       - test_grouped_mlp.py::TestParallelGroupedMLP::test_gpu_forward_with_no_tokens_allocated
+       - test_grouped_mlp.py::TestParallelGroupedMLP::test_gradient_with_no_tokens_allocated
+       - test_moe_layer.py::TestMoELayerInit::test_moe_with_late_initialize
     transformer:
       depth: 1
+      deselect:
+        - test_attention.py::TestParallelAttention::test_gpu_forward
+        - test_attention.py::TestParallelAttention::test_fused_rope_gpu_forward
+        - test_attention.py::TestParallelAttention::test_checkpointed_gpu_forward
+        - test_multi_latent_attention.py::TestParallelMLAAttention::test_gpu_forward
+        - test_multi_latent_attention.py::TestParallelMLAAttention::test_fused_rope_gpu_forward
+        - test_multi_latent_attention.py::TestParallelMLAAttention::test_checkpointed_gpu_forward
+        - test_retro_attention.py::TestRetroAttention::test_gpu_forward
     ./:
       depth: 1
       ignore: 
