@@ -101,6 +101,7 @@ run_tests() {
     local _path="$2"
     local _depth="$3"
     local _ignore="$4"
+    local _deselect="$5"
 
     local _test_files="$_path"
     if ! ([ "$_depth" = "all" ] && [ "$_type" = "batch" ]); then
@@ -123,6 +124,8 @@ run_tests() {
         done
     fi
 
+    _test_files=$(echo "$_test_files" | tr '\n' ' ')
+
     # Process the raw deselect into bash-friendly --deselect parameters
     deselect_cmd=""
     if [ -n "$_deselect" ]; then
@@ -132,11 +135,8 @@ run_tests() {
             _clean_item=${item#-}
             _clean_item=$(echo "$_clean_item" | tr -d "',[]")
             deselect_cmd+="--deselect=${path}/${_clean_item} "
-            _test_files=$(echo "$_test_files" | grep -v "${_path}/${_clean_item}")
         done
     fi
-
-    _test_files=$(echo "$_test_files" | tr '\n' ' ')
 
     local xml_report="/workspace/report/$id/cov-report-${backend}/coverage.xml"
     local html_report="/workspace/report/$id/cov-report-${backend}"
@@ -189,4 +189,4 @@ run_tests() {
 }
 
 # Run tests based on type, path, and depth
-run_tests "$type" "$path" "$depth" "$ignore"
+run_tests "$type" "$path" "$depth" "$ignore" "$deselect"
