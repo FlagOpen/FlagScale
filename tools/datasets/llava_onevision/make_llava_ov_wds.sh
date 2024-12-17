@@ -11,7 +11,7 @@ export GLOO_SOCKET_IFNAME=eth0
 export NCCL_IB_HCA=mlx5_2,mlx5_5
 export CUDA_LAUNCH_BLOCKING=1
 
-LLaVA-NeXT-HOME="Path_Of_LLaVA-NeXT"
+LLaVA_NeXT_HOME="Path_Of_LLaVA-NeXT"
 VISION_MODEL_PATH="Path_Of_VISION_MODEL"
 PROMPT_VERSION="qwen_1_5"
 
@@ -35,6 +35,7 @@ mkdir -p $CKPT_PATH
 mkdir -p $EXPNAME_PATH
 LOGFILE=$EXPNAME_PATH/exp.log
 i=1
+rank=0
 NNodes=`wc -l ${HOSTFILE} | cut -d " " -f1`
 MASTER_ADDR=`head -n 1 ${HOSTFILE} | cut -d " " -f1`
 echo "Master node: ${MASTER_ADDR}"
@@ -52,7 +53,7 @@ do
     export ACCELERATE_CPU_AFFINITY=1 && \
     export PYTHONPATH=$LLaVA_NeXT_HOME:$PYTHONPATH && \
     source /root/miniconda3/bin/activate flagscale && \
-    torchrun --nproc_per_node=8 --nnodes=${NNodes} --node_rank=${i} --master_addr=${MASTER_ADDR} --master_port=13888 llava_ov_wds.py \
+    torchrun --nproc_per_node=8 --nnodes=${NNodes} --node_rank=${rank} --master_addr=${MASTER_ADDR} --master_port=13888 llava_ov_wds.py \
         --model_name_or_path ${CKPT_PATH} \
         --version ${PROMPT_VERSION} \
         --data_path $DATA_PATH \
@@ -97,4 +98,5 @@ do
         --do_train False \
         --frames_upbound 32 1>$LOGFILE.$ip 2>&1" &
     i=`expr $i + 1`
+    rank=`expr $rank + 1`
 done
