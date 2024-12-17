@@ -78,8 +78,6 @@ class TestAlltoAllDispatcher:
         )
         container.dispatcher_capacity_test()
 
-    # Skip because not running in internal and flaky
-    @pytest.mark.skipif(os.getenv('FLAGSCALE_SKIP') == '1', reason="FLAGSCALE_SKIP is enabled, skipping test.")
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
     @pytest.mark.internal
     @pytest.mark.timeout(120)

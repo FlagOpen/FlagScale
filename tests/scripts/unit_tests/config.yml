@@ -6,7 +6,8 @@ megatron:
   subset:
     # Use default configuration if not shown
     dist_checkpointing:
-      ignore: models/test_mamba.py
+      ignore: 
+        - models/test_mamba.py
     models:
       ignore: test_mamba_model.py
     transformer/moe:
@@ -16,7 +17,7 @@ megatron:
       depth: 1 
     ./:
       depth: 1 
-      ignore: test_utilities.py 
+      ignore: test_utilities.py
 
 flagscale:
   set_environment: 

@@ -21,8 +21,7 @@ from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed
 from megatron.core.transformer.transformer_block import TransformerBlock
 from tests.unit_tests.test_utilities import Utils
 
-# Skip this test, it did not appear in te1.5, it appeared in te1.12, and the same problem occurred in Megatron-LM
-@pytest.mark.skipif(os.getenv('FLAGSCALE_SKIP') == '1', reason="FLAGSCALE_SKIP is enabled, skipping test.")
+
 class TestRetroAttention:
 
     @classmethod
