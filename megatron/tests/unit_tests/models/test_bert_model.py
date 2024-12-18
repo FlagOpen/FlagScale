@@ -161,7 +161,7 @@ class TestBertModelAttentionDimensions:
         ), f"Expected b11s for attn_mask_dimensions but got {attn_mask_dimensions}"
 
     """
-    Author: FlagScale
+    Author: phoenixdong
     Date: 2024-12-17
     Action: Modify the process, exceptions are only thrown between te 1.7 and 1.10.
     Reason: The new version of TE has already addressed potential exceptions.

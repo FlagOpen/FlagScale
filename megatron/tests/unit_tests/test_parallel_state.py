@@ -511,7 +511,7 @@ def test_rank_generator_for_tp_dp_pp(nodes, num_gpu, tp, pp, cp, ep, usp):
         ulysses_sp_parallel_size=usp,
     )
     """
-    Author: FlagScale
+    Author: phoenixdong
     Date: 2024-12-17
     Action: Add usp=1
     Reason: FlagScale add usp in RankGenerator.

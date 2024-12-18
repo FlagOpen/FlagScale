@@ -104,7 +104,7 @@ def _forward_step_func(data_iterator, model):
     return output_tensor, partial(loss_func, loss_mask)
 
 """
-Author: FlagScale
+Author: phoenixdong
 Date: 2024-12-17
 Action: Add class-level skip decorator
 Reason: Skip all tests in this class if the device does not support CUDA or if its compute capability is less than 8.9.
