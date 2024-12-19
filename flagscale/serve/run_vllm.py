@@ -55,15 +55,16 @@ def vllm_model(args):
 
 def main():
     # Note: Custom log dir here may cause "OSError: AF_UNIX path length cannot exceed 107 bytes:"
-    ray.init(
+    serve.init(
         log_to_driver=True,
         logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"),
     )
-    link_dir = os.path.join(serve.task_config.log_dir, f"session_latest_{timestamp}")
+    task_config = serve.TaskConfig.get()
+    link_dir = os.path.join(task_config.log_dir, f"session_latest_{timestamp}")
     tar_dir = ray._private.worker.global_worker.node._logs_dir
     os.symlink(tar_dir, link_dir)
 
-    result = vllm_model.remote(serve.task_config)
+    result = vllm_model.remote(task_config)
     return_code = ray.get(result)
 
     logger.info(f"[Serve]: vLLM serve exited with return code: {return_code}")
