@@ -143,20 +143,27 @@ def _get_runner_cmd_train(
         del runner_args["per_node_task"]
     if "hostfile" in runner_args:
         del runner_args["hostfile"]
-    if "master_addr" in runner_args:
-        del runner_args["master_addr"]
-    if "master_port" in runner_args:
-        del runner_args["master_port"]
     if "ssh_port" in runner_args:
         del runner_args["ssh_port"]
     runner_args["rdzv_id"] = rdzv_id
-    # runner_args["master_addr"] = master_addr
-    # runner_args["master_port"] = master_port
+
+    if "master_addr" in runner_args and "master_port" in runner_args:
+        runner_args["master_addr"] = master_addr
+        runner_args["master_port"] = master_port
+    else:
+        if "master_addr" in runner_args:
+            del runner_args["master_addr"]
+        if "master_port" in runner_args:
+            del runner_args["master_port"]
+
     runner_args["nnodes"] = nnodes
     runner_args["node_rank"] = node_rank
     runner_args["nproc_per_node"] = nproc_per_node
-    runner_args["rdzv_backend"] = rdzv_backend
-    runner_args["rdzv_endpoint"] = rdzv_endpoint
+
+    if not ("master_addr" in runner_args and "master_port" in runner_args):
+        runner_args["rdzv_backend"] = rdzv_backend
+        runner_args["rdzv_endpoint"] = rdzv_endpoint
+
     runner_args["log_dir"] = (
         log_dir if backend == "torchrun" else os.path.join(log_dir, rdzv_id)
     )

@@ -79,6 +79,7 @@ fi
 
 # Check the coverage for the new code changes
 echo "Checking coverage for the new code changes..."
+echo "diff-cover "$report_dir/$coverage_file" --compare-branch=$common_ancestor --html-report "$report_dir/diff-cover-report-${backend}.html" --fail-under=70"
 diff-cover "$report_dir/$coverage_file" --compare-branch=$common_ancestor --html-report "$report_dir/diff-cover-report-${backend}.html" --fail-under=70
 
 # If diff-cover exits with a non-zero status, it means the coverage is below 70%

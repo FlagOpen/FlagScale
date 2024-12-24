@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo "The current directory is: $(pwd)"
+
 # Function to execute a command and handle failures
 run_command() {
   eval $1

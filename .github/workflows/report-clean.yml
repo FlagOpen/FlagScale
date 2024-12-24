@@ -1,0 +1,32 @@
+name: Clean Old Report
+
+on:
+  workflow_call:
+    inputs:
+      backend:
+        required: true
+        type: string
+
+jobs:
+  clean-report:
+    runs-on: self-hosted
+    container:
+      image: localhost:5000/flagscale_cicd:v2.0-pytorch-2.5.1-cuda-12.4.131-ngc-24.05
+      ports:
+        - 80
+      volumes:
+        - /home/flagscale_cicd/flask/static:/workspace/report
+        - /home/flagscale_cicd/flask/config:/workspace/config
+      options: --hostname flagscale_cicd
+
+    steps:
+      - name: Clean Old Report Report
+        run: |
+          REPORT_ADDR=$(cat "/workspace/config/report_address")
+          echo "Clean old Report report at the http://${REPORT_ADDR}/${{github.sha}}/cov-report-${{ inputs.backend }}/diff-cover-report-${{ inputs.backend }}.html"
+          if [ -d "/workspace/report/${{ github.sha }}/cov-report-${{ inputs.backend }}" ]; then
+            rm -r /workspace/report/${{ github.sha }}/cov-report-${{ inputs.backend }}
+          fi
+          if [ -d "/workspace/report/${{ github.sha }}/cov-temp-${{ inputs.backend }}" ]; then
+            rm -r /workspace/report/${{ github.sha }}/cov-temp-${{ inputs.backend }}
+          fi
