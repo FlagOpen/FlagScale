@@ -45,8 +45,7 @@ model:
   eval_iters: 10
   eval_interval: 100
   micro_batch_size: 1
-  # global_batch_size: 1024
-  rampup_batch_size: 256 8 1024 256
+  global_batch_size: 1024
 
   optimizer:
     weight_decay: 1e-2
@@ -60,7 +59,7 @@ model:
       lr_decay_style: cosine
 
 data:
-  data_path: build/data/pile_wikipedia_demo
+  data_path: ${data_path:??}
   split: 1
   tokenizer:
     tokenizer_type: Llama2Tokenizer

@@ -1,10 +1,10 @@
 defaults:
-  - train: train_aquila_3b
+  - train: demo
   - _self_
 
 experiment:
-  exp_name: aquila3b
-  exp_dir: ./outputs_dp4dp4_last
+  exp_name: aquila2
+  exp_dir: ./outputs
   task:
     type: train
     backend: megatron
@@ -14,13 +14,10 @@ experiment:
   runner:
     backend: torchrun
     nnodes: 1 
-    nproc_per_node: 8
+    nproc_per_node: 8 
   envs:
     CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
     CUDA_DEVICE_MAX_CONNECTIONS: 1
-    NCCL_ALGO: "Tree"
-    NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
-    CUDNN_DETERMINISTIC: "true"
 
 action: run
 
