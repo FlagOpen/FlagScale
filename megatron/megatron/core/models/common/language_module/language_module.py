@@ -104,9 +104,9 @@ class LanguageModule(MegatronModule):
                         weight.data, group=parallel_state.get_embedding_group()
                     )
                 else:
-                    original_weight = weight.data.clone()
+                    original_weight = weight.clone().detach().data
                     for group in embedding_group:
-                        weight.data = original_weight.clone()
+                        weight.data.copy_(original_weight)
                         torch.distributed.all_reduce(weight.data, group=group)
 
         elif not getattr(LanguageModule, "embedding_warning_printed", False):

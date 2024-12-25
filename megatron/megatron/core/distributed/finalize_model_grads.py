@@ -33,17 +33,39 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
         else:  # We do not support an interleaved schedule for models with encoders yet.
             model_module = model[0]
 
+        use_dist_opt = False
+        if hasattr(model_module, "ddp_config"):
+            use_dist_opt = model_module.ddp_config.use_distributed_optimizer
         model_module = get_attr_wrapped_model(model_module, 'pre_process', return_model_obj=True)
         if model_module.share_embeddings_and_output_weights:
             weight = model_module.shared_embedding_or_output_weight()
             grad = weight.main_grad
-            if len(embed_group) == 1:
-                torch.distributed.all_reduce(grad, group=embed_group[0])
+            if use_dist_opt:
+                if config.use_partional_reduce_for_shared_embedding:
+                    dp_world_size = parallel_state.get_data_parallel_world_size()
+                    dp_rank = parallel_state.get_data_parallel_rank()
+                    assert grad.shape[0] % dp_world_size == 0, f"grad shape: {grad.shape[0]}, dp_world_size: {dp_world_size}"
+                    per_partion_size = grad.shape[0] // dp_world_size
+                    if len(embed_group) == 1:
+                        offset = per_partion_size * dp_rank
+                        torch.distributed.all_reduce(grad[offset:offset+per_partion_size, :], group=embed_group[0])
+                    else:
+                        group_idx = 0
+                        per_partion_size = per_partion_size // len(embed_group)
+                        for group in embed_group:
+                            offset = per_partion_size * (dp_rank * len(embed_group) + group_idx)
+                            torch.distributed.all_reduce(grad[offset : offset + per_partion_size, :], group=group)
+                            group_idx += 1
+                else: # megartron default method
+                    torch.distributed.all_reduce(grad, group=embed_group[0])
             else:
-                origin_grad = grad.data.clone()
-                for group in embed_group:
-                    grad.data = origin_grad.clone()
-                    torch.distributed.all_reduce(grad, group=group)
+                if len(embed_group) == 1:
+                    torch.distributed.all_reduce(grad, group=embed_group[0])
+                else:
+                    original_grad_data = grad.clone().detach().data
+                    for group in embed_group:
+                        grad.data.copy_(original_grad_data)
+                        torch.distributed.all_reduce(grad, group=group)
 
 
 def _allreduce_position_embedding_grads(model: List[torch.nn.Module], config: TransformerConfig):

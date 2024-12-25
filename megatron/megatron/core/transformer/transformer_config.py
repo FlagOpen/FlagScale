@@ -335,6 +335,9 @@ class TransformerConfig(ModelParallelConfig):
     qk_layernorm_hidden_dim: bool = False
     """Whether to apply LayerNorm to the query and key embeddings on the hidden dimension rather than head dimension."""
 
+    use_partional_reduce_for_shared_embedding: bool = False
+    """Whether to use partional reduce for shared embedding."""
+    
     def __post_init__(self):
         """Python dataclass method that is used to modify attributes after initialization.
         See https://docs.python.org/3/library/dataclasses.html#post-init-processing for more

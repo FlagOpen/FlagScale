@@ -1751,6 +1751,8 @@ def _add_distributed_args(parser):
                        'affects the encoder embedding.)')
     group.add_argument('--use-distributed-optimizer', action='store_true',
                        help='Use distributed optimizer.')
+    group.add_argument('--use-partional-reduce-for-shared-embedding', action='store_true',
+                       help='Use partial reduce for shared word embedding.')
     group.add_argument('--no-shared-fs', action='store_true', 
                        help='Indicate whether not running on a shared file system.')
     group.add_argument('--ulysses-sp-parallel-size', type=int, default=1,
