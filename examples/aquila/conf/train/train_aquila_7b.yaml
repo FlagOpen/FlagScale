@@ -1,8 +1,6 @@
 system:
   tensor_model_parallel_size: 1
   pipeline_model_parallel_size: 1
-  context_parallel_size: 1
-  ulysses_sp_parallel_size: 4
   disable_bias_linear: True
   use_flash_attn: True
   use_distributed_optimizer: True
@@ -25,7 +23,6 @@ model:
   hidden_size: 4096 
   num_attention_heads: 32 
   seq_length: 2048 
-  max_position_embeddings: 2048
   max_position_embeddings: 2048
   norm_epsilon: 1e-5
   use_rotary_position_embeddings: true
@@ -58,7 +55,6 @@ model:
 
 data:
   data_path: ${data_path:??}
-  data_path: ./build/data/pile_wikipedia_demo
   split: 1
   tokenizer:
     tokenizer_type: AquilaTokenizerFS
