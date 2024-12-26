@@ -1,0 +1,28 @@
+root_path: /workspace/ip203/project/ray2                                                                                                                                             
+
+deploy:
+  models:
+    A:
+      module: main
+      entrypoint: model_A
+      num_gpus: 1
+    B:
+      module: main
+      depend: A
+      entrypoint: model_B
+      num_gpus: 1
+    C:
+      module: custom.models
+      depend: A
+      entrypoint: model_C
+      num_gpus: 1
+    D:
+      module: custom.models
+      depends:
+        - B
+        - C
+      entrypoint: model_D
+      num_gpus: 2
+
+  entry: A
+  exit: D
