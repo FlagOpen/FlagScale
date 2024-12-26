@@ -26,7 +26,6 @@ def sample_N(dataset, N, randomize):
     return samples
 
 
-@pytest.mark.flaky
 def test_mock_gpt_dataset():
     if torch.distributed.is_available():
         Utils.initialize_distributed()
@@ -47,9 +46,6 @@ def test_mock_gpt_dataset():
         eod_mask_loss=True,
         tokenizer=tokenizer,
     )
-
-    from tests.unit_tests.data import set_mock_args
-    set_mock_args()
 
     datasets = BlendedMegatronDatasetBuilder(
         MockGPTDataset, [100, 100, 100], lambda: True, config

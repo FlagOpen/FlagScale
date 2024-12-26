@@ -1,6 +1,7 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 """General utilities."""
+import json
 import os
 import sys
 import socket
@@ -12,13 +13,10 @@ try:
     from transformer_engine.pytorch.optimizers import multi_tensor_applier, multi_tensor_l2norm
 except ImportError:
     try:
+        from amp_C import multi_tensor_l2norm
         from apex.multi_tensor_apply import multi_tensor_applier
     except ImportError:
-        multi_tensor_applier = None
 
-    try:
-        from amp_C import multi_tensor_l2norm
-    except ImportError:
         import warnings
         warnings.warn(
             f'Transformer Engine and Apex are not installed. '
@@ -37,12 +35,17 @@ from megatron.training import (
 )
 from megatron.core import DistributedDataParallel as DDP
 from megatron.core import mpu
+from megatron.core.datasets.utils import get_blend_from_list
 from megatron.core.tensor_parallel import param_is_not_tensor_parallel_duplicate
+from megatron.core.utils import get_data_parallel_group_if_dtensor, to_local_if_dtensor
 from megatron.legacy.model import Float16Module
 from megatron.legacy.model.module import param_is_not_shared
 
-
-ALL_MODULE_WRAPPER_CLASSNAMES = (DDP, Float16Module)
+try:
+    from megatron.core.distributed import TorchFullyShardedDataParallel as torch_FSDP
+    ALL_MODULE_WRAPPER_CLASSNAMES = (DDP, torch_FSDP, Float16Module)
+except ImportError:
+    ALL_MODULE_WRAPPER_CLASSNAMES = (DDP, Float16Module)
 
 
 def unwrap_model(model, module_instances=ALL_MODULE_WRAPPER_CLASSNAMES):
@@ -65,21 +68,28 @@ def calc_params_l2_norm(model):
     args = get_args()
     if not isinstance(model, list):
         model = [model]
-    # Remove duplicate params.
+    # Seperate moe and dense params
     params_data = []
-    for model_ in model:
-        for param in model_.parameters():
+    moe_params_data = []
+    data_parallel_group = None
+
+    for model_chunk in model:
+        for i, param in enumerate(model_chunk.parameters()):
+            data_parallel_group = get_data_parallel_group_if_dtensor(param, data_parallel_group)
             is_not_tp_duplicate = param_is_not_tensor_parallel_duplicate(param)
-            if mpu.get_expert_model_parallel_rank() > 0:
-                if not getattr(param, 'allreduce', True) and is_not_tp_duplicate:
-                    assert param_is_not_shared(param)
-                    params_data.append(param.data.float() if args.bf16 else param.data)
+            if not (param.requires_grad and is_not_tp_duplicate):
+                continue
+            assert is_not_tp_duplicate
+            if not getattr(param, 'allreduce', True):
+                assert param_is_not_shared(param)
+                param = to_local_if_dtensor(param)
+                moe_params_data.append(param.data.float() if args.bf16 else param.data)
             else:
-                is_not_shared = param_is_not_shared(param)
-                if is_not_shared and is_not_tp_duplicate:
+                if param_is_not_shared(param):
+                    param = to_local_if_dtensor(param)
                     params_data.append(param.data.float() if args.bf16 else param.data)
 
-    # Calculate norm
+    # Calculate dense param norm
     dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device='cuda')
     norm, _ = multi_tensor_applier(
         multi_tensor_l2norm,
@@ -88,30 +98,46 @@ def calc_params_l2_norm(model):
         False # no per-parameter norm
     )
     norm_2 = norm * norm
-    if mpu.get_expert_model_parallel_world_size() == 1:
-        # Sum across all model-parallel GPUs(tensor + pipeline).
-        mp_groups = mpu.get_model_parallel_group()
-        if isinstance(mp_groups, list):
-            original_norm_2 = norm_2.clone().detach()
-            for mp_group in mp_groups:
-                norm_2 = original_norm_2.clone()
-                torch.distributed.all_reduce(norm_2,
-                                             op=torch.distributed.ReduceOp.SUM,
-                                             group=mp_group)
-            
-        else:
-            torch.distributed.all_reduce(norm_2,
-                                         op=torch.distributed.ReduceOp.SUM,
-                                         group=mpu.get_model_parallel_group())
 
+    if data_parallel_group is not None:
+        torch.distributed.all_reduce(norm_2,
+                                     op=torch.distributed.ReduceOp.SUM,
+                                     group=data_parallel_group)
+
+    # Sum across all model-parallel GPUs(tensor + pipeline).
+    mp_groups = mpu.get_model_parallel_group()
+    if isinstance(mp_groups, list):
+        if len(mp_groups) > 1:
+            assert mpu.get_expert_model_parallel_world_size() <= 1, f"Expert model parallelism is not supported with  heterogeneous model parallelism"
+        original_norm_2 = norm_2.clone().detach()
+        for mp_group in mp_groups:
+            norm_2 = original_norm_2.clone()
+            torch.distributed.all_reduce(norm_2,
+                                            op=torch.distributed.ReduceOp.SUM,
+                                            group=mp_group)
     else:
-        # Sum across tensor, pipeline and expert model-parallel GPUs.
-        torch.distributed.all_reduce(norm_2,
-                                     op=torch.distributed.ReduceOp.SUM,
-                                     group=mpu.get_tensor_and_expert_parallel_group())
-        torch.distributed.all_reduce(norm_2,
-                                     op=torch.distributed.ReduceOp.SUM,
-                                     group=mpu.get_pipeline_model_parallel_group())
+        # Sum across all model-parallel GPUs(tensor + pipeline).
+        torch.distributed.all_reduce(
+            norm_2,
+            op=torch.distributed.ReduceOp.SUM,
+            group=mpu.get_model_parallel_group()
+        )
+    # Calculate moe norm
+    if len(moe_params_data) > 0:
+        moe_norm, _ = multi_tensor_applier(
+            multi_tensor_l2norm,
+            dummy_overflow_buf,
+            [moe_params_data],
+            False # no per-parameter norm
+        )
+        moe_norm_2 = moe_norm * moe_norm
+        # Sum across expert tensor, model and pipeline parallel GPUs.
+        torch.distributed.all_reduce(
+            moe_norm_2,
+            op=torch.distributed.ReduceOp.SUM,
+            group=mpu.get_expert_tensor_model_pipeline_parallel_group()
+        )
+        norm_2 += moe_norm_2
     return norm_2.item() ** 0.5
 
 
@@ -331,7 +357,7 @@ def print_rank_last(message):
 
 
 def append_to_progress_log(string, barrier=True):
-    """ Append given string to progress log. """
+    """Append given string to progress log."""
     args = get_args()
     if args.save is None:
         return
@@ -344,6 +370,54 @@ def append_to_progress_log(string, barrier=True):
             num_gpus = args.world_size
             f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\tJob ID: {job_id}\t"
                     f"# GPUs: {num_gpus}\t{string}\n")
+
+
+def get_blend_and_blend_per_split(args):
+    """Get blend and blend_per_split from passed-in arguments."""
+    use_data_path = args.data_path is not None or \
+        args.data_args_path is not None
+    use_per_split_data_path = any(
+        elt is not None
+        for elt in [args.train_data_path,
+                    args.valid_data_path,
+                    args.test_data_path]) or \
+        args.per_split_data_args_path is not None
+
+    blend = None
+    blend_per_split = None
+    if use_data_path:
+        if args.data_args_path is not None:
+            assert args.data_path is None
+            with open(args.data_args_path, 'r') as f:
+                blend = get_blend_from_list(f.read().split())
+        else:
+            assert args.data_path is not None
+            blend = get_blend_from_list(args.data_path)
+    elif use_per_split_data_path:
+        if args.per_split_data_args_path is not None:
+            with open(args.per_split_data_args_path, 'r') as f:
+                per_split_data_args = json.load(f)
+                # Each element in blend_per_split should be a list of files (and optional
+                # weights), so split string if needed.
+                for split in ["train", "valid", "test"]:
+                    if isinstance(per_split_data_args[split], str):
+                        per_split_data_args[split] = per_split_data_args[split].split()
+
+                blend_per_split = [
+                    get_blend_from_list(per_split_data_args["train"]),
+                    get_blend_from_list(per_split_data_args["valid"]),
+                    get_blend_from_list(per_split_data_args["test"])
+                ]
+        else:
+            blend_per_split = [
+                get_blend_from_list(args.train_data_path),
+                get_blend_from_list(args.valid_data_path),
+                get_blend_from_list(args.test_data_path)
+            ]
+    else:
+        blend, blend_per_split = None, None
+
+    return blend, blend_per_split
 
 
 def get_batch_on_this_tp_rank(data_iterator):
@@ -431,57 +505,6 @@ def get_batch_on_this_tp_rank(data_iterator):
        }
 
     return batch
-
-
-def get_host_ip():
-    """Get the IP address of the current host."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.settimeout(0)
-    try:
-        # doesn't even have to be reachable
-        s.connect(('10.254.254.254', 1))
-        IP = s.getsockname()[0]
-    except Exception:
-        IP = '127.0.0.1'
-    finally:
-        s.close()
-    return IP
-    
-
-def save_checkpoint_info(dir, rank0=False):
-    if not dir:
-        return
-
-    def get_checkpoint_dir():
-        pipeline_parallel = (mpu.get_pipeline_model_parallel_world_size() > 1)
-        tensor_rank = mpu.get_tensor_model_parallel_rank()
-        pipeline_rank = mpu.get_pipeline_model_parallel_rank()
-
-        if not pipeline_parallel:
-            ckpt_dir= f'mp_rank_{tensor_rank:02d}'
-        else:
-            ckpt_dir = f'mp_rank_{tensor_rank:02d}_{pipeline_rank:03d}'
-
-        return ckpt_dir 
-    
-    host = get_host_ip()
-    cur_ckpt_dir = get_checkpoint_dir()
-    rank = torch.distributed.get_rank()
-    world_size = torch.distributed.get_world_size()
-    all_ckpts_info = [None for _ in range(world_size)]
-    existed = True if mpu.get_data_parallel_rank() == 0 else False
-    cur_ckpt_info = {'rank': rank, 'host': host, 'ckpt_dir': cur_ckpt_dir, 'existed': existed}
-
-    torch.distributed.all_gather_object(all_ckpts_info, cur_ckpt_info)
-
-    local_rank = os.environ.get('LOCAL_RANK')
-    if int(local_rank) == 0:
-        import json
-        path = os.path.join(dir, 'ckpt_info.json')
-        with open(path, 'w') as f:
-            json.dump(all_ckpts_info, f)
-    torch.distributed.barrier()
-    print_rank_0("Save checkpoint info done")
 
 
 def update_use_dist_ckpt(args):

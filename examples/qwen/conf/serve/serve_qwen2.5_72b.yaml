@@ -1,0 +1,17 @@
+model_args:
+  vllm_model:
+    model-tag: /models/Qwen2.5-72B-Instruct
+    tensor-parallel-size: 4
+    gpu-memory-utilization: 0.9
+    max-model-len: 32768
+    max-num-seqs: 256
+    port: 4567
+    action-args:
+      - trust-remote-code
+      - enable-chunked-prefill
+
+deploy:
+  command-line-mode: true
+  models:
+    vllm_model:
+      num_gpus: 4

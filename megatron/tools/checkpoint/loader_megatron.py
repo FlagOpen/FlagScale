@@ -66,6 +66,7 @@ def _load_checkpoint(queue, args):
                 '--load', args.load_dir,
                 '--position-embedding-type', args.position_embedding_type,
                 '--exit-on-missing-checkpoint',
+                '--no-one-logger',
                 ]
 
     margs = parse_args()
@@ -218,7 +219,7 @@ def _load_checkpoint(queue, args):
     md.output_layer = margs.untie_embeddings_and_output_weights
     md.position_embedding_type = margs.position_embedding_type
     md.linear_bias = margs.add_bias_linear
-    md.linear_bias_qkv = margs.add_qkv_bias
+    md.qkv_bias = margs.add_qkv_bias
     md.norm_has_bias = norm_has_bias
     md.swiglu = margs.swiglu
     md.previous_tensor_parallel_size = margs.tensor_model_parallel_size
@@ -291,7 +292,7 @@ def _load_checkpoint(queue, args):
                     dense_weight.append(layer.self_attention.dense.weight.data)
                     mlp_l0_weight.append(layer.mlp.dense_h_to_4h.weight.data)
                     mlp_l1_weight.append(layer.mlp.dense_4h_to_h.weight.data)
-                    if md.linear_bias or md.linear_bias_qkv:
+                    if md.qkv_bias:
                         qkv_bias.append(layer.self_attention.query_key_value.bias.data)
                     if md.linear_bias:
                         mlp_l0_bias.append(layer.mlp.dense_h_to_4h.bias.data)
@@ -310,7 +311,7 @@ def _load_checkpoint(queue, args):
                 message["qkv weight"] = torch.cat(qkv_weight, dim=0)
                 message["dense weight"] = torch.cat(dense_weight, dim=1)
                 message["mlp l1 weight"] = torch.cat(mlp_l1_weight, dim=1)
-                if md.linear_bias or md.linear_bias_qkv:
+                if md.qkv_bias:
                     message["qkv bias"] = torch.cat(qkv_bias, dim=0)
                 if md.linear_bias:
                     if md.swiglu:

@@ -29,9 +29,9 @@ def test_parse_hostfile_correctly_formatted(mock_os_path_isfile, mock_open):
         "worker3": {"slots": 16, "type": "A100"},
     }
 
-    mock_open.return_value.readlines.return_value = hostfile_content
-    result = parse_hostfile("/path/to/hostfile.txt")
-    assert result == expected_result
+    with pytest.raises(AssertionError, match="All hosts must have the a machine type or no machine type specified."):
+        mock_open.return_value.readlines.return_value = hostfile_content
+        parse_hostfile("/path/to/hostfile.txt")
 
 def test_parse_hostfile_incorrectly_formatted(mock_os_path_isfile, mock_open):
     hostfile_content = ["worker0 slots=16 type=A100",

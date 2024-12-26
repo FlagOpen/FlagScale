@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo "The current directory is: $(pwd)"
+
 source tests/scripts/_gpu_check.sh
 
 # Parse command line arguments
@@ -36,6 +38,7 @@ coverage=$(echo $config | cut -d '|' -f 3)
 type=$(echo $config | cut -d '|' -f 4)
 depth=$(echo $config | cut -d '|' -f 5)
 ignore=$(echo $config | cut -d '|' -f 6)
+deselect=$(echo $config | cut -d '|' -f 7)
 
 # Set default value
 if [ -z "$root" ]; then
@@ -98,6 +101,7 @@ run_tests() {
     local _path="$2"
     local _depth="$3"
     local _ignore="$4"
+    local _deselect="$5"
 
     local _test_files="$_path"
     if ! ([ "$_depth" = "all" ] && [ "$_type" = "batch" ]); then
@@ -114,6 +118,7 @@ run_tests() {
         for item in $_ignore; do
             # Remove the leading '-' from each item if it exists
             _clean_item=${item#-}
+            _clean_item=$(echo "$_clean_item" | tr -d "',[]")
             ignore_cmd+="--ignore=${path}/${_clean_item} "
             _test_files=$(echo "$_test_files" | grep -v "${_path}/${_clean_item}")
         done
@@ -121,39 +126,67 @@ run_tests() {
 
     _test_files=$(echo "$_test_files" | tr '\n' ' ')
 
+    # Process the raw deselect into bash-friendly --deselect parameters
+    deselect_cmd=""
+    if [ -n "$_deselect" ]; then
+        # Handle the entire string as a list of files
+        for item in $_deselect; do
+            # Remove the leading '-' from each item if it exists
+            _clean_item=${item#-}
+            _clean_item=$(echo "$_clean_item" | tr -d "',[]")
+            deselect_cmd+="--deselect=${path}/${_clean_item} "
+        done
+    fi
+
     local xml_report="/workspace/report/$id/cov-report-${backend}/coverage.xml"
     local html_report="/workspace/report/$id/cov-report-${backend}"
+    export COMMIT_ID=$id
 
     if [ "$_type" == "batch" ]; then
         wait_for_gpu
         
-        echo "Running batch test: $_test_files"
-        torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings -m "not flaky" $ignore_cmd $_test_files
+        echo "Running batch test:"
+        echo "torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_files"
+        torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_files
         
-        # Check if both report files are complete
-        check_reports_complete "$xml_report" "$html_report"
-        
+        # Check the exit status of pytest
         if [ $? -ne 0 ]; then
             echo "Test failed: $_test_files"
             exit 1
         fi
+
+        # Check if both report files are complete
+        check_reports_complete "$xml_report" "$html_report"
+        
+        if [ $? -ne 0 ]; then
+            echo "Check reports failed: $xml_report $html_report"
+            exit 1
+        fi
+
     elif [ "$_type" == "single" ]; then
         for _test_file in $_test_files; do
             wait_for_gpu
             echo "Running single test: $_test_file"
-            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings -m "not flaky" $ignore_cmd $_test_file
-            
-            # Check if both report files are complete
-            check_reports_complete "$xml_report" "$html_report"
+            echo "torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_file"
+            torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_file
 
             # Check the exit status of pytest
             if [ $? -ne 0 ]; then
                 echo "Test failed: $_test_file"
                 exit 1
             fi
+
+            # Check if both report files are complete
+            check_reports_complete "$xml_report" "$html_report"
+
+            if [ $? -ne 0 ]; then
+                echo "Check reports failed: $xml_report $html_report"
+                exit 1
+            fi
+
         done
     fi
 }
 
 # Run tests based on type, path, and depth
-run_tests "$type" "$path" "$depth" "$ignore"
+run_tests "$type" "$path" "$depth" "$ignore" "$deselect"

@@ -1,7 +1,7 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
 from dataclasses import dataclass
-from typing import Callable, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch.nn.functional as F
 
@@ -313,6 +313,25 @@ class TransformerConfig(ModelParallelConfig):
     moe_layer_recompute: bool = False
     """Memory optimization: checkpointing moe_layer to save actiavtion memory."""
 
+    ##################
+    # Context Parallel
+    ##################
+    cp_comm_type: Union[str, List[str]] = None
+    """Inter-gpu communication type for context parallelism.
+    str: all layers share same communication type.
+    List[str]: each layer has its separate communication type.
+    cp_comm_type of each layer can be "p2p" or "all_gather" or "a2a" or "a2a+p2p".
+    "p2p": Exchange KV chunks with P2P communications in ring topology. P2P is async and can be
+    overlapped with attention compute.
+    "all_gather": All-gather to get full sequence of KV before attention. The all-gather is not
+    async, and cannot be overlapped.
+    "a2a": Like DeepSpeed Ulysses, scatter attention heads across the CP group, and gather to get
+    full sequence of QKV.
+    "a2a+p2p": A hierarchical implementation of context parallelism to attention. 
+    It uses A2A communications in low-level CP groups (e.g., via NVLink),
+    and P2P communications in high-level CP groups (e.g., via IBLink).
+    """
+
     ####################
     # miscellaneous
     ####################
@@ -338,6 +357,9 @@ class TransformerConfig(ModelParallelConfig):
     use_partional_reduce_for_shared_embedding: bool = False
     """Whether to use partional reduce for shared embedding."""
     
+    flash_decode: bool = False
+    """ Use the optimized flash decoding kernel during inference. """
+
     def __post_init__(self):
         """Python dataclass method that is used to modify attributes after initialization.
         See https://docs.python.org/3/library/dataclasses.html#post-init-processing for more
@@ -492,11 +514,24 @@ class TransformerConfig(ModelParallelConfig):
                     "When bias_activation_fusion is True, gated_linear_unit is False, "
                     "and activation function is gelu, add_bias_linear must also be True."
                 )
+
         if self.activation_func_fp8_input_store:
             if self.activation_func != F.silu or not self.gated_linear_unit:
                 raise ValueError("Storing activation input in FP8 is supported only for SwiGLU.")
-        if self.apply_rope_fusion and self.rotary_interleaved:
-            raise ValueError('rotary_interleaved does not work with apply_rope_fusion.')
+
+        if self.apply_rope_fusion:
+            if self.rotary_interleaved:
+                raise ValueError("rotary_interleaved does not work with apply_rope_fusion.")
+
+            from megatron.core.models.common.embeddings.rope_utils import HAVE_APPLY_ROPE_FUSION
+
+            if not HAVE_APPLY_ROPE_FUSION:
+                raise ValueError(
+                    "apply_rope_fusion is not available. Please install TE >= 1.4 or Apex."
+                )
+
+        if self.multi_latent_attention and self.rotary_interleaved:
+            raise ValueError("rotary_interleaved does not work with multi_latent_attention.")
 
         if self.init_method is None:
             self.init_method = init_method_normal(self.init_method_std)
@@ -506,17 +541,13 @@ class TransformerConfig(ModelParallelConfig):
                 self.init_method_std, self.num_layers
             )
 
-        if self.moe_extended_tp:
-            if self.moe_token_dispatcher_type != 'allgather':
-                raise ValueError(
-                    "Moe extended TP parallelism only applies to allgather based token dispatcher."
-                )
-            extended_tp_size = self.tensor_model_parallel_size * self.expert_model_parallel_size
-            if self.ffn_hidden_size % extended_tp_size != 0:
-                raise ValueError(
-                    f'ffn_hidden_size: {self.ffn_hidden_size} must be divisible by '
-                    f'extended_tp_size {extended_tp_size}'
-                )
+        if (
+            self.moe_token_dispatcher_type == "alltoall_seq"
+            and self.tensor_model_parallel_size != self.expert_tensor_parallel_size
+        ):
+            raise ValueError(
+                "alltoall_seq dispatcher not support different TP size for MoE and Dense layer."
+            )
 
         if self.num_moe_experts and self.fp8:
             # TE version below 1.7.0 will raise Error when handle zeros tokens for expert
@@ -526,8 +557,32 @@ class TransformerConfig(ModelParallelConfig):
                     f"but your version is {get_te_version()}."
                 )
 
-            if self.moe_grouped_gemm:
-                raise ValueError("Grouped GEMM of MoE not support fp8 for now.")
+            if self.moe_grouped_gemm and not is_te_min_version("1.11.0"):
+                raise ValueError(
+                    "Only transformer-engine>=1.11.0 supports FP8 grouped gemm, "
+                    f"but your version is {get_te_version()}."
+                )
+
+        if self.flash_decode and self.fp8:
+            raise ValueError("FP8 inference is currently not support with flash decoding.")
+
+        if self.moe_token_dispatcher_type in ['allgather', 'alltoall_seq']:
+            if self.variable_seq_lengths is True:
+                raise ValueError(
+                    f"Token dispatcher type: {self.moe_token_dispatcher_type} does not support "
+                    f"variable sequence length, please use alltoall dispatcher instead."
+                )
+
+        if self.cp_comm_type is not None:
+            if isinstance(self.cp_comm_type, list):
+                assert len(self.cp_comm_type) == self.num_layers, (
+                    f"Length of cp_comm_type ({len(self.cp_comm_type)}) should equal to "
+                    f"the total number of transformer layers ({self.num_layers})!"
+                )
+            else:
+                assert isinstance(
+                    self.cp_comm_type, str
+                ), "Unsupported communication type for context parallelism!"
 
 
 @dataclass
