@@ -13,7 +13,7 @@ def main():
     if config["deploy"].get("router"):
         builder.run_router_task()
     else:
-        result = builder.run_task(input_data="Introduce Bruce Lee")
+        result = builder.run_task()
 
 if __name__ == "__main__":
     main()
