@@ -20,15 +20,8 @@ from flagscale.inference.processing_emu3 import (
     Emu3Processor,
 )
 
-# from fastapi import FastAPI
-
-# app = FastAPI()
 
 
-# ray.init(num_gpus=1)
-
-
-# @ray.remote(num_gpus=1)
 def prepare_processor(llm_cfg, vq_model):
     tokenizer = AutoTokenizer.from_pretrained(
         llm_cfg.model, trust_remote_code=True, padding_side="left"
@@ -43,7 +36,7 @@ def prepare_processor(llm_cfg, vq_model):
 
 
 # @ray.remote(num_gpus=1)
-def inference_t2i(cfg, POSITIVE_PROMPT, NEGATIVE_PROMPT):
+def inference_t2i(cfg, positive_prompt, negative_prompt):
     """
     text-to-image task
     """
@@ -65,9 +58,9 @@ def inference_t2i(cfg, POSITIVE_PROMPT, NEGATIVE_PROMPT):
     emu3_processor = prepare_processor(llm_cfg, vq_model)
 
     # Step 4: Prepare inputs and sampling_parameters
-    prompts = [p + POSITIVE_PROMPT for p in prompts]
+    prompts = [p + positive_prompt for p in prompts]
     model_config = llm.llm_engine.get_model_config()
-    negative_prompts = [NEGATIVE_PROMPT] * len(prompts)
+    negative_prompts = [negative_prompt] * len(prompts)
 
     sampling_params = []
     positive_input_ids = []
@@ -130,14 +123,8 @@ def inference_t2i(cfg, POSITIVE_PROMPT, NEGATIVE_PROMPT):
 
 
 
-# @app.get("/generate")
-# async def process_route(input_str: str):
-#     result = process(input_str)
-#     return {"input": input_str, "output": result}
-
-
 if __name__ == "__main__":
     cfg = parse_config()
-    POSITIVE_PROMPT = " masterpiece, film grained, best quality."
-    NEGATIVE_PROMPT = "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry."
-    inference_t2i(cfg, POSITIVE_PROMPT, NEGATIVE_PROMPT)
+    positive_prompt = " masterpiece, film grained, best quality."
+    negative_prompt = "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry."
+    inference_t2i(cfg, positive_prompt, negative_prompt)
