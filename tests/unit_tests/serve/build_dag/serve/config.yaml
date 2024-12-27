@@ -30,4 +30,4 @@ deploy:
     name: generate
     port: 8000
     request:
-      key: prompt
+      prompt: str
