@@ -162,12 +162,17 @@ class SSHServeRunner(RunnerBase):
         _update_config_serve(self.config)
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
+        entrypoint = self.config.experiment.task.get("entrypoint")
         if self.command_line_mode:
             self.user_script = "flagscale/serve/run_vllm.py"
-        elif not self.config.experiment.task.entrypoint:
+        elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
+            self.user_script = entrypoint
+        elif entrypoint is None:
             self.user_script = "flagscale/serve/run_serve.py"
         else:
-            self.user_script = self.config.experiment.task.entrypoint
+            raise ValueError(
+                f"Invalid config entrypoint: {entrypoint}, must be a python file path or null."
+            )
         self.resources = parse_hostfile(
             self.config.experiment.runner.get("hostfile", None)
         )
