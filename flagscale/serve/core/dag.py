@@ -95,7 +95,7 @@ class Builder:
         self.check_dag()
         return
 
-    def run_task(self, input_data):
+    def run_task(self, input_data=None):
         assert len(self.tasks) > 0
         ray.init(
             num_gpus=6,
@@ -134,7 +134,10 @@ class Builder:
                                 model_nodes[dependencies[0]]
                             )
                     else:
-                        model_nodes[model_alias] = self.tasks[model_alias].bind(input_data)
+                        if input_data is None:
+                            model_nodes[model_alias] = self.tasks[model_alias].bind()
+                        else:
+                            model_nodes[model_alias] = self.tasks[model_alias].bind(input_data)
                     models_to_process.remove(model_alias)
                     progress = True
             if not progress:
