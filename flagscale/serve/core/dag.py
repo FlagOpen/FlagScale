@@ -11,22 +11,16 @@ from fastapi import FastAPI, HTTPException, Request
 
 
 class RequestData(BaseModel):
-    model_name: str
     prompt: str
 
-def create_route(path: str, method: str, func: Callable[[RequestData], Any]):
-    config_path="/workspace/ip203/project/ray2"
-    config_path=os.path.join(config_path, 'models.yaml')
-    config = load_model_config(config_path)
-    sys.path.append(config["root_path"])
-    
-    tasks, models = create_tasks(config["deploy"], {})
+def create_route(path: str, func: Callable, method="post"):
+    app = FastAPI()
     
     if method.lower() == 'post':
         @app.post(path)
         async def route_handler(request_data: RequestData):
             try:
-                response = func(config["deploy"], tasks, request_data.prompt)
+                response = func(request_data.prompt)
                 return response
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
@@ -170,13 +164,20 @@ class Builder:
             if not progress:
                 raise ValueError("Circular dependency detected in model configuration")
 
-        print("model_nodes **************8 ", model_nodes, flush=True)
-        print("dir model_nodes **************8 ", dir(model_nodes), flush=True)
+        print("model_nodes ************** ", model_nodes, flush=True)
         print(
-            " config['deploy']['models'] ************8 ",
+            " config['deploy']['models'] ************ ",
             self.config["deploy"]["models"],
             flush=True,
         )
         final_node = model_nodes[self.config["deploy"]["exit"]]
-        final_result = workflow.run(final_node)
+
+        router_config = self.config["deploy"].get("router")
+
+        if router_config and len(router_config) > 0:
+            name = router_config["name"]
+            port = router_config["port"]
+            create_route(name, port, workflow.run)
+        else:
+            final_result = workflow.run(final_node)
         return final_result

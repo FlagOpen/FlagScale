@@ -26,3 +26,8 @@ deploy:
 
   entry: A
   exit: D
+  router:
+    name: generate
+    port: 8000
+    request:
+      key: prompt
