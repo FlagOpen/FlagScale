@@ -9,10 +9,11 @@ def main():
     project_path = config["root_path"]
     sys.path.append(project_path)
     builder = Builder(config)
-    tasks = builder.build_task()
-    res = builder.run_task(tasks, input_data="Introduce Bruce Lee")
-    print("**************** res ****************", res)
-
+    builder.build_task()
+    if config["deploy"].get("router"):
+        builder.run_router_task()
+    else:
+        result = builder.run_task(input_data="Introduce Bruce Lee")
 
 if __name__ == "__main__":
     main()
