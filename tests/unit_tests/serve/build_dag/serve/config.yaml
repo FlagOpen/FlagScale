@@ -1,4 +1,4 @@
-root_path: /workspace/ip203/project/ray2                                                                                                                                             
+root_path: tests/unit_tests/serve/build_dag                                                                                                                                             
 
 deploy:
   models:
