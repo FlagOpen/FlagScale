@@ -20,15 +20,12 @@ from flagscale.inference.processing_emu3 import (
     Emu3Processor,
 )
 
-from fastapi import FastAPI
+# from fastapi import FastAPI
 
-app = FastAPI()
+# app = FastAPI()
 
 
 # ray.init(num_gpus=1)
-
-POSITIVE_PROMPT = " masterpiece, film grained, best quality."
-NEGATIVE_PROMPT = "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry."
 
 
 # @ray.remote(num_gpus=1)
@@ -46,7 +43,7 @@ def prepare_processor(llm_cfg, vq_model):
 
 
 # @ray.remote(num_gpus=1)
-def inference_t2i(cfg):
+def inference_t2i(cfg, POSITIVE_PROMPT, NEGATIVE_PROMPT):
     """
     text-to-image task
     """
@@ -132,89 +129,15 @@ def inference_t2i(cfg):
             print(f"Saved result_{idx_i}_{idx_j}.png")
 
 
-def inference_i2t(cfg):
-    """
-    image understanding task
-    """
 
-    # Step 1: Parse inference config
-    prompts = cfg.generate.get("prompts", [])
-    images = cfg.generate.get("images", [])
-    assert len(prompts) == len(
-        images
-    ), "Please set the same length of prompts and images."
-
-    # Step 2: initialize the LLM engine
-    llm_cfg = cfg.get("llm", {})
-    vq_model = llm_cfg.pop("vq_model", None)
-    assert vq_model, "Please set the vq_model in llm config."
-    llm = LLM(**llm_cfg)
-
-    # Step 3: initialize the emu3 processor
-    emu3_processor = prepare_processor(llm_cfg, vq_model)
-
-    # Step 4: Prepare inputs and sampling_parameters
-    sampling_params = []
-    positive_input_ids = []
-    for i in range(len(prompts)):
-        kwargs = dict(
-            mode="U",
-            text=prompts[i],
-            image=Image.open(images[i]),
-            padding_image=False,
-            return_tensors="pt",
-        )
-        pos_inputs = emu3_processor(**kwargs)
-
-        # prepare inputs
-        positive_input_ids.append(pos_inputs.input_ids.tolist()[0])
-
-        # initialize the sampling_parameters
-        sampling_cfg = cfg.generate.get("sampling", {})
-        assert not sampling_cfg.get(
-            "logits_processors", None
-        ), "logits_processors is not supported yet."
-        sampling_params.append(SamplingParams(**sampling_cfg))
-
-    # Step 6: build vllm inputs
-    inputs = [
-        {
-            "prompt_token_ids": p_ids,
-        }
-        for p_ids in positive_input_ids
-    ]
-    print(f"=> {inputs=}")
-    print(f"=> {sampling_params=}")
-
-    # Step 7: generate outputs
-    outputs = llm.generate(inputs, sampling_params)
-    for idx_i, out in enumerate(outputs):
-        output = torch.tensor(
-            list(out.outputs[0].token_ids),
-            dtype=pos_inputs.input_ids.dtype,
-            device=pos_inputs.input_ids.device,
-        )
-        answer = emu3_processor.decode(output, skip_special_tokens=True)
-        print(f"Answer_{idx_i}:\n {answer}\n")
-
-
-@app.get("/generate")
-async def process_route(input_str: str):
-    result = process(input_str)
-    return {"input": input_str, "output": result}
+# @app.get("/generate")
+# async def process_route(input_str: str):
+#     result = process(input_str)
+#     return {"input": input_str, "output": result}
 
 
 if __name__ == "__main__":
     cfg = parse_config()
-    mode = cfg.generate.get("mode", None)
-
-    if mode == "G":
-        # ray.get(inference_t2i.remote(cfg))
-        inference_t2i(cfg)
-    elif mode == "U":
-        inference_i2t(cfg)
-    else:
-        raise ValueError(
-            f"Unsupported mode: {mode}. Options: 'G'(generation) and 'U'(understanding)."
-        )
-
+    POSITIVE_PROMPT = " masterpiece, film grained, best quality."
+    NEGATIVE_PROMPT = "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry."
+    inference_t2i(cfg, POSITIVE_PROMPT, NEGATIVE_PROMPT)
