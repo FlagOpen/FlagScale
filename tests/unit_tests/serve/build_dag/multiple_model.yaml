@@ -1,0 +1,18 @@
+defaults:
+  - _self_
+  - serve: config
+
+experiment:
+  exp_name: multiple_model
+  exp_dir: outputs/${experiment.exp_name}
+  task:
+    type: serve
+    backend: vllm
+    entrypoint: null
+  runner:
+    hostfile: null
+  envs:
+    CUDA_VISIBLE_DEVICES: 0,1,2,3
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+
+action: run
