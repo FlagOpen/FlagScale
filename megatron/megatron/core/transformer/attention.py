@@ -521,7 +521,7 @@ class SelfAttention(Attention):
                 # nums_head_cur_rank = divide(self.config.num_attention_heads, tp_world_size)
                 self.q_layernorm = build_module(
                     submodules.q_layernorm,
-                    hidden_size=self.config.num_attention_heads * self.hidden_size_per_attention_head,
+                    hidden_size=self.query_projection_size,
                     config=self.config,
                     eps=self.config.layernorm_epsilon,
                 )
@@ -542,7 +542,7 @@ class SelfAttention(Attention):
                 # nums_head_cur_rank = divide(self.config.num_attention_heads, tp_world_size)
                 self.k_layernorm = build_module(
                     submodules.k_layernorm,
-                    hidden_size=self.config.num_query_groups * self.hidden_size_per_attention_head,
+                    hidden_size=self.kv_projection_size,
                     config=self.config,
                     eps=self.config.layernorm_epsilon,
                 )
