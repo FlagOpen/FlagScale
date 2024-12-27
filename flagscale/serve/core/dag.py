@@ -13,7 +13,6 @@ from typing import Callable, Any
 from fastapi import FastAPI, HTTPException, Request
 
 
-
 class Builder:
     def __init__(self, config):
         self.config = config
@@ -128,7 +127,9 @@ class Builder:
                     if dependencies:
                         if len(dependencies) > 1:
                             inputs = [model_nodes[dep] for dep in dependencies]
-                            model_nodes[model_alias] = self.tasks[model_alias].bind(*inputs)
+                            model_nodes[model_alias] = self.tasks[model_alias].bind(
+                                *inputs
+                            )
                         else:
                             model_nodes[model_alias] = self.tasks[model_alias].bind(
                                 model_nodes[dependencies[0]]
@@ -137,7 +138,9 @@ class Builder:
                         if input_data is None:
                             model_nodes[model_alias] = self.tasks[model_alias].bind()
                         else:
-                            model_nodes[model_alias] = self.tasks[model_alias].bind(input_data)
+                            model_nodes[model_alias] = self.tasks[model_alias].bind(
+                                input_data
+                            )
                     models_to_process.remove(model_alias)
                     progress = True
             if not progress:
@@ -149,9 +152,8 @@ class Builder:
         final_result = workflow.run(final_node)
         return final_result
 
-
     def run_router_task(self, method="post"):
-        
+
         router_config = self.config["deploy"].get("router")
 
         assert router_config and len(router_config) > 0
@@ -160,7 +162,8 @@ class Builder:
         request_config = router_config["request"]
 
         RequestData = create_model(
-            "Request", **{field: (type_, ...) for field, type_ in request_config.items()}
+            "Request",
+            **{field: (type_, ...) for field, type_ in request_config.items()},
         )
         app = FastAPI()
 
