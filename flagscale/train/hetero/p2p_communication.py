@@ -240,7 +240,11 @@ def recv_backward_hetero(tensor_shape: Shape, config: ModelParallelConfig) -> to
                         config=config,
                         group=group,
                     )
-                    output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced
+                    if dp_end - dp_start != tensor_shape[1]:
+                        dp_coef = float((dp_end - dp_start)) / float(tensor_shape[1])
+                        output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced * dp_coef
+                    else:
+                        output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced
         if config.timers is not None:
             config.timers('backward-recv').stop()
 
@@ -330,6 +334,10 @@ def send_backward_hetero(input_tensor_grad: torch.Tensor, config: ModelParallelC
                 for tensor_slice in tensor_slices:
                     dst_rank, (dp_start, dp_end), (sp_start, sp_end), local_hidden_size = tensor_slice
                     input_tensor_grad_sliced = input_tensor_grad[sp_start:sp_end, dp_start:dp_end, :]
+                    dp_coef = 1.0
+                    if dp_end - dp_start != input_tensor_grad.shape[1]:
+                        dp_coef = float(input_tensor_grad.shape[1]) / float((dp_end - dp_start))
+
                     group = None
                     pp_groups = para_ctx.get_pipeline_model_parallel_group()
                     for pp_group in pp_groups:
@@ -339,7 +347,7 @@ def send_backward_hetero(input_tensor_grad: torch.Tensor, config: ModelParallelC
                             break
                     _communicate(
                         tensor_send_next=None,
-                        tensor_send_prev=input_tensor_grad_sliced.contiguous() if "gloo" not in group.name() else input_tensor_grad_sliced.cpu(),
+                        tensor_send_prev=input_tensor_grad_sliced.contiguous() * dp_coef if "gloo" not in group.name() else input_tensor_grad_sliced.cpu() * dp_coef,
                         recv_prev=False,
                         recv_next=False,
                         tensor_shape=None,
@@ -405,7 +413,11 @@ def send_forward_recv_backward_hetero(
                         config=config,
                         group=group,
                     )
-                    output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced
+                    if dp_end - dp_start != tensor_shape[1]:
+                        dp_coef = float((dp_end - dp_start)) / float(tensor_shape[1])
+                        output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced * dp_coef
+                    else:
+                        output_tensor_grad.data[sp_start:sp_end, dp_start:dp_end, :] = output_tensor_grad_sliced
         if config.timers is not None:
             config.timers('forward-send-backward-recv').stop()
     if output_tensor_grad is not None and output_tensor_grad.device == torch.device("cpu"):
@@ -453,6 +465,9 @@ def send_backward_recv_forward_hetero(
                     dst_rank, (dp_start, dp_end), (sp_start, sp_end), local_hidden_size = tensor_slice
                     input_tensor_grad_sliced = input_tensor_grad[sp_start:sp_end, dp_start:dp_end, :]
                     tensor_shape_sliced = (sp_end - sp_start, dp_end - dp_start, local_hidden_size)
+                    dp_coef = 1.0
+                    if dp_end - dp_start != input_tensor_grad.shape[1]:
+                        dp_coef = float(input_tensor_grad.shape[1]) / float((dp_end - dp_start))
                     group = None
                     for pp_group in pp_groups:
                         pp_group_ranks = torch.distributed.get_process_group_ranks(pp_group)
@@ -461,7 +476,7 @@ def send_backward_recv_forward_hetero(
                             break
                     input_tensor_sliced, _, _ = _communicate(
                         tensor_send_next=None,
-                        tensor_send_prev=input_tensor_grad_sliced.contiguous() if "gloo" not in group.name() else input_tensor_grad_sliced.cpu(),
+                        tensor_send_prev=input_tensor_grad_sliced.contiguous() * dp_coef if "gloo" not in group.name() else input_tensor_grad_sliced.cpu() * dp_coef,
                         recv_prev=True,
                         recv_next=False,
                         tensor_shape=tensor_shape_sliced,

@@ -1003,11 +1003,7 @@ class ParallelContext:
         """Get the embedding group the caller rank belongs to."""
         groups = self._global_process_groups.get("embd", None)
         assert groups is not None, 'embedding group is not initialized'
-        for group in groups:
-            if self._rank in self._global_process_group_to_ranks[group]:
-                embd_group = group
-                break
-        return embd_group 
+        return groups 
 
     def get_position_embedding_group(self):
         """Get the position embedding group the caller rank belongs to."""

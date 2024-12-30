@@ -110,6 +110,18 @@ class FSTrainArguments:
             'pipeline_model_parallel_split_rank not supported with process_meshes set!'
         self.args.transformer_pipeline_model_parallel_size = self.args.pipeline_model_parallel_size
         
+        # if untie_embeddings_and_output_weights is False, the first and last stage should have the same tp degree
+        if self.args.untie_embeddings_and_output_weights == False:
+            assert hetero_process_meshes_tp[0] == hetero_process_meshes_tp[-1], \
+                f"if untie_embeddings_and_output_weights is False, the first and last stage should have the same tp degree!"
+            assert self.args.hetero_use_cpu_communication == False, \
+                f"if untie_embeddings_and_output_weights is False, the hetero_use_cpu_communication should be False currently!"
+            if hetero_process_meshes_dp[0] != hetero_process_meshes_dp[-1]:
+                assert self.args.use_partial_reduce_for_shared_embedding == True, \
+                    f"if untie_embeddings_and_output_weights is False and  hetero_process_meshes_dp[0] and hetero_process_meshes_dp[-1] are different, "\
+                    "the use_partial_reduce_for_shared_embedding should be True currently!"
+            
+
         # Virtual parallel size.
         if self.args.enable_hetero:
             assert self.args.num_layers_per_virtual_pipeline_stage == None, \

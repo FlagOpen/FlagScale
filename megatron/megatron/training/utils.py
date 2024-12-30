@@ -105,11 +105,23 @@ def calc_params_l2_norm(model):
                                      group=data_parallel_group)
 
     # Sum across all model-parallel GPUs(tensor + pipeline).
-    torch.distributed.all_reduce(
-        norm_2,
-        op=torch.distributed.ReduceOp.SUM,
-        group=mpu.get_model_parallel_group()
-    )
+    mp_groups = mpu.get_model_parallel_group()
+    if isinstance(mp_groups, list):
+        if len(mp_groups) > 1:
+            assert mpu.get_expert_model_parallel_world_size() <= 1, f"Expert model parallelism is not supported with  heterogeneous model parallelism"
+        original_norm_2 = norm_2.clone().detach()
+        for mp_group in mp_groups:
+            norm_2 = original_norm_2.clone()
+            torch.distributed.all_reduce(norm_2,
+                                            op=torch.distributed.ReduceOp.SUM,
+                                            group=mp_group)
+    else:
+        # Sum across all model-parallel GPUs(tensor + pipeline).
+        torch.distributed.all_reduce(
+            norm_2,
+            op=torch.distributed.ReduceOp.SUM,
+            group=mpu.get_model_parallel_group()
+        )
     # Calculate moe norm
     if len(moe_params_data) > 0:
         moe_norm, _ = multi_tensor_applier(

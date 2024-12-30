@@ -141,9 +141,9 @@ def get_grad_norm_fp32(
         # For cpu comminication
         tensor_device = get_device_type_for_comm(grad_stats_parallel_group)
         if isinstance(grad_stats_parallel_group, list):
-            original_total_norm = total_norm
-            for group in grad_stats_parallel_group:
-                total_norm = original_total_norm
+            original_total_norm = total_norm.clone().detach()
+            for mp_group in grad_stats_parallel_group:
+                total_norm.data = original_total_norm.data.clone()
                 total_norm = total_norm.to(tensor_device)
                 torch.distributed.all_reduce(
                     total_norm, op=torch.distributed.ReduceOp.SUM, group=group
@@ -236,9 +236,9 @@ def count_zeros_fp32(
         )
     # Sum across all model-parallel GPUs.
     if isinstance(grad_stats_parallel_group, list):
-        original_total_num_zeros = total_num_zeros
+        original_total_num_zeros = total_num_zeros.clone().detach()
         for group in grad_stats_parallel_group:
-            total_num_zeros = original_total_num_zeros
+            total_num_zeros.data = original_total_num_zeros.data.clone()
             torch.distributed.all_reduce(
                 total_num_zeros, op=torch.distributed.ReduceOp.SUM, group=group
             )

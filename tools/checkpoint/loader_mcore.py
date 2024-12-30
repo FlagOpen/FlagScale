@@ -93,6 +93,17 @@ def _load_checkpoint(queue, args):
     _set_arg("expert_model_parallel_size")
     _set_arg("num_experts")
     _set_arg("sequence_parallel")
+    
+    # for hetero
+    _set_arg("enable_hetero")
+    _set_arg("hetero_process_meshes")
+    _set_arg("hetero_pipeline_layer_split")
+
+    # for hetero
+    if margs.hetero_process_meshes is not None:
+        margs.pipeline_model_parallel_size = sum(row[-1] for row in margs.hetero_process_meshes)
+    margs.data_parallel_size = 1
+    margs.micro_batch_size = 1
 
     # Arguments do sanity checks on the world size, but we don't care,
     # so trick it into thinking we are plenty of processes

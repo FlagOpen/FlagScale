@@ -83,7 +83,7 @@ def get_num_layers_to_build(config: TransformerConfig) -> int:
         pipeline_ranks = config.pipeline_model_parallel_size
         num_layers_per_pipeline_rank = config.num_layers // pipeline_ranks
 
-    if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
+    if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None and parallel_state.get_virtual_pipeline_model_parallel_world_size() > 1:
         # Interleaved pipeline parallelism:
         # Number of layers in each model chunk is the number of layers in the stage,
         # divided by the number of model chunks in a stage.

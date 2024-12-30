@@ -115,10 +115,14 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
     sync.
     """
 
-    if (
-        parallel_state.is_rank_in_embedding_group(ignore_virtual=True)
-        and torch.distributed.get_world_size(parallel_state.get_embedding_group()) > 1
-    ):
+    if (parallel_state.is_rank_in_embedding_group(ignore_virtual=True)):
+        embed_group = parallel_state.get_embedding_group()
+        if not isinstance(embed_group, list):
+            embed_group = [embed_group]
+    else:
+        return
+    
+    if (torch.distributed.get_world_size(embed_group[0]) > 1):
         if parallel_state.is_pipeline_first_stage(ignore_virtual=True):
             model_module = model[0]
         elif parallel_state.is_pipeline_last_stage(ignore_virtual=True):
@@ -126,13 +130,41 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
         else:  # We do not support an interleaved schedule for models with encoders yet.
             model_module = model[0]
 
+        use_dist_opt = False
+        if hasattr(model_module, "ddp_config"):
+            use_dist_opt = model_module.ddp_config.use_distributed_optimizer
         model_module = get_attr_wrapped_model(model_module, 'pre_process', return_model_obj=True)
         if model_module.share_embeddings_and_output_weights:
             weight = model_module.shared_embedding_or_output_weight()
             grad_attr = "main_grad" if hasattr(weight, "main_grad") else "grad"
             orig_grad = getattr(weight, grad_attr)
             grad = _unshard_if_dtensor(orig_grad)
-            torch.distributed.all_reduce(grad, group=parallel_state.get_embedding_group())
+            if use_dist_opt:
+                if config.use_partial_reduce_for_shared_embedding:
+                    dp_world_size = parallel_state.get_data_parallel_world_size()
+                    dp_rank = parallel_state.get_data_parallel_rank()
+                    assert grad.shape[0] % dp_world_size == 0, f"grad shape: {grad.shape[0]}, dp_world_size: {dp_world_size}"
+                    per_partion_size = grad.shape[0] // dp_world_size
+                    if len(embed_group) == 1:
+                        offset = per_partion_size * dp_rank
+                        torch.distributed.all_reduce(grad[offset:offset+per_partion_size, :], group=embed_group[0])
+                    else:
+                        group_idx = 0
+                        per_partion_size = per_partion_size // len(embed_group)
+                        for group in embed_group:
+                            offset = per_partion_size * (dp_rank * len(embed_group) + group_idx)
+                            torch.distributed.all_reduce(grad[offset : offset + per_partion_size, :], group=group)
+                            group_idx += 1
+                else: # megartron default method
+                    torch.distributed.all_reduce(grad, group=embed_group[0])
+            else:
+                if len(embed_group) == 1: # megartron default method
+                    torch.distributed.all_reduce(grad, group=embed_group[0])
+                else:
+                    original_grad_data = grad.clone().detach().data
+                    for group in embed_group:
+                        grad.data.copy_(original_grad_data)
+                        torch.distributed.all_reduce(grad, group=group)
             setattr(weight, grad_attr, _reshard_if_dtensor(grad, orig_grad))
 
 

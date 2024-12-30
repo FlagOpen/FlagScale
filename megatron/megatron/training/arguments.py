@@ -1784,6 +1784,8 @@ def _add_distributed_args(parser):
                        'affects the encoder embedding.)')
     group.add_argument('--use-distributed-optimizer', action='store_true',
                        help='Use distributed optimizer.')
+    group.add_argument('--use-partial-reduce-for-shared-embedding', action='store_true',
+                       help='Use partial reduce for shared word embedding.')
     group.add_argument('--no-shared-fs', action='store_true', 
                        help='Indicate whether not running on a shared file system.')
     group.add_argument('--ulysses-sp-parallel-size', type=int, default=1,
@@ -2118,6 +2120,8 @@ def _add_vision_args(parser):
     # regularization arguments
     group.add_argument('--qk-layernorm', action='store_true',
                        help='Whether to layer normalize the q and k attention embeddings.')
+    group.add_argument('--qk-layernorm-hidden-dim', action='store_true',
+                       help='Whether to layer normalize the q and k attention embeddings on hidden dimension rather than head dimension')
 
     return parser
 

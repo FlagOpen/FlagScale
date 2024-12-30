@@ -1,5 +1,5 @@
 defaults:
-  - train: demo 
+  - train: demo
   - _self_
 
 experiment:
@@ -9,6 +9,8 @@ experiment:
     type: train
     backend: megatron
     entrypoint: ./flagscale/train/train_aquila.py
+  # cmds:
+  #   before_start: source /root/miniconda3/bin/activate flagscale
   runner:
     backend: torchrun
     nnodes: 1 

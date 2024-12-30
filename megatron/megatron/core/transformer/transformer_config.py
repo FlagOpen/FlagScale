@@ -350,7 +350,13 @@ class TransformerConfig(ModelParallelConfig):
 
     config_logger_dir: str = ""
     """When non-empty, dumps entry-point configs to config_logger_dir"""
+    
+    qk_layernorm_hidden_dim: bool = False
+    """Whether to apply LayerNorm to the query and key embeddings on the hidden dimension rather than head dimension."""
 
+    use_partial_reduce_for_shared_embedding: bool = False
+    """Whether to use partional reduce for shared embedding."""
+    
     flash_decode: bool = False
     """ Use the optimized flash decoding kernel during inference. """
 
