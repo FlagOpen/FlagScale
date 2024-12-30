@@ -140,7 +140,7 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
             orig_grad = getattr(weight, grad_attr)
             grad = _unshard_if_dtensor(orig_grad)
             if use_dist_opt:
-                if config.use_partional_reduce_for_shared_embedding:
+                if config.use_partial_reduce_for_shared_embedding:
                     dp_world_size = parallel_state.get_data_parallel_world_size()
                     dp_rank = parallel_state.get_data_parallel_rank()
                     assert grad.shape[0] % dp_world_size == 0, f"grad shape: {grad.shape[0]}, dp_world_size: {dp_world_size}"

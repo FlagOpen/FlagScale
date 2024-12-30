@@ -354,7 +354,7 @@ class TransformerConfig(ModelParallelConfig):
     qk_layernorm_hidden_dim: bool = False
     """Whether to apply LayerNorm to the query and key embeddings on the hidden dimension rather than head dimension."""
 
-    use_partional_reduce_for_shared_embedding: bool = False
+    use_partial_reduce_for_shared_embedding: bool = False
     """Whether to use partional reduce for shared embedding."""
     
     flash_decode: bool = False

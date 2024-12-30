@@ -29,7 +29,7 @@ system:
   # hetero:
   #   enable_hetero: True
   #   hetero_use_cpu_communication: False
-  #   use_partional_reduce_for_shared_embedding: True
+  #   use_partial_reduce_for_shared_embedding: True
   #   # mesh format [tp1,cp1,ep1,dp1,pp1,(tp2,cp2...)]
 
   #   hetero_pipeline_layer_split: [12,12]

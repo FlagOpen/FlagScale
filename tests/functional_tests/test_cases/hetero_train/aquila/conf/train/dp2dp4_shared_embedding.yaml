@@ -9,7 +9,7 @@ system:
   use_distributed_optimizer: True
   hetero:
     enable_hetero: True
-    use_partional_reduce_for_shared_embedding: True
+    use_partial_reduce_for_shared_embedding: True
     hetero_pipeline_layer_split: [4, 4]
     hetero_process_meshes: [1,1,1,2,1, 1,1,1,4,1]
     hetero_device_types: ["A800", "A800"]
