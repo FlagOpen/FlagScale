@@ -2,8 +2,14 @@ import argparse
 import glob
 import json
 import os
+import sys
 import re
 import subprocess
+
+# Get the absolute path of the parent directory
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir))
+# Add the parent directory to sys.path
+sys.path.insert(0, parent_dir)
 
 from run_text_generation import get_output_path
 from config import EvaluationConfig
@@ -48,6 +54,10 @@ def convert_to_mmmu_format(input_path):
                     )
 
                 # MMMU eval script expects just a sample_id to prediction mapping.
+                # Skip possible duplicates.
+                if sample_id in output:
+                    continue
+
                 output[sample_id] = prediction
 
     with open(output_file_path, "w") as output_file:

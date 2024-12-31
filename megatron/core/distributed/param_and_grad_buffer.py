@@ -2,13 +2,14 @@
 
 import logging
 import math
-import os
 from contextlib import nullcontext
 from enum import Enum
 from typing import Dict, List, Optional
 
 import torch
 from torch.distributed import _coalescing_manager
+
+from megatron.core.rerun_state_machine import get_rerun_state_machine
 
 from ..utils import is_float8tensor, is_torch_min_version, log_on_each_pipeline_stage
 from .distributed_data_parallel_config import DistributedDataParallelConfig
@@ -153,15 +154,16 @@ class _ParamAndGradBucketGroup:
         Make sure norm of grads in bucket are not NaN prior to data-parallel
         all-reduce / reduce-scatter.
         """
-        global_rank = torch.distributed.get_rank()
-        norm_is_nan = self.buckets[0].grad_data.norm(p=2).isnan()
-        for i in range(1, len(self.buckets)):
-            norm_is_nan.logical_or_(self.buckets[i].grad_data.norm(p=2).isnan())
-        assert not norm_is_nan, (
-            f'Rank {global_rank}: found NaN in local grad norm in '
-            f'backward pass before data-parallel communication collective. '
-            f'Device: {torch.cuda.current_device()}, node: {os.uname()[1]}'
-        )
+        rerun_state_machine = get_rerun_state_machine()
+        for i in range(len(self.buckets)):
+            rerun_state_machine.validate_result(
+                result=self.buckets[i].grad_data.norm(p=2),
+                rejection_func=torch.isnan,
+                message=f"found NaN in local grad norm for bucket #{i} "
+                f"in backward pass before data-parallel communication collective",
+                tolerance=0.001,  # 0.1% tolerance to account for non-deterministic FA backward
+                fatal=True,
+            )
 
     def start_param_sync(self, force_sync: bool = False):
         """
@@ -268,13 +270,12 @@ class _ParamAndGradBucketGroup:
         if self.ddp_config.average_in_collective:
             reduce_op = torch.distributed.ReduceOp.AVG
 
-        # Stream synchronization logic of the CUDA streams that is
-        # implemented below for the gradient reduction within and across
-        # distributed optimizer instances.
+        # We use the following stream synchronization for the gradient reduction
+        # within and across DistOpt instances.
 
-        # Compute Stream - -------------Gradient Compute-------------------
-        # Comm. Stream   - ------(wait for nccl)-----(wait for nccl)-------
-        # NCCL Stream    -       -------RS------     -------AR------
+        # Compute Stream: -------------Gradient compute-------------------
+        # Comm. Stream:   ------(wait for NCCL)-----(wait for NCCL)-------
+        # NCCL Stream:          -------RS------     -------AR------
 
         # Use async communications only when overlap_grad_reduce is True.
         async_op = (
@@ -285,13 +286,13 @@ class _ParamAndGradBucketGroup:
             self.ddp_config.num_distributed_optimizer_instances > 1
             and self.ddp_config.overlap_grad_reduce
         ):
-            # Assign a communication stream if we use partial DP DistOpt and we
-            # need to overlap communication
+            # Assign a communication stream if we have multiple DistOpt instances and we
+            # need to overlap communication.
             stream_context = torch.cuda.stream(self.communication_stream)
 
             # The RS/AR communication stream needs to wait for the default stream
             # to complete its gradient computation before launching the next
-            # gradient reduction collective
+            # gradient reduction collective.
             self.communication_stream.wait_stream(torch.cuda.default_stream())
         else:
             stream_context = nullcontext()
@@ -312,24 +313,21 @@ class _ParamAndGradBucketGroup:
                         local_data_view,
                         bucket.grad_data,
                         op=reduce_op,
-                        group=self.intra_distributed_optimizer_instance_group,
+                        group=communication_group,
                         async_op=async_op,
                     )
                 else:
                     torch.distributed.all_reduce(
-                        bucket.grad_data,
-                        op=reduce_op,
-                        group=self.data_parallel_group,
-                        async_op=async_op,
+                        bucket.grad_data, op=reduce_op, group=communication_group, async_op=async_op
                     )
 
-        # When enabling partial DP domain DistOpt, we need to All-Reduce across all partial domains
+        # With multiple DistOpt instances, we need to all-reduce across instances.
         if (
             self.ddp_config.use_distributed_optimizer
             and self.ddp_config.num_distributed_optimizer_instances > 1
         ):
 
-            # Create a new coalescing facility for the inter partial DP-AllReduce here
+            # Create a new coalescing manager for the inter-instance all-reduce.
             with stream_context, _coalescing_manager(
                 self.inter_distributed_optimizer_instance_group, async_ops=async_op
             ) as cm:
@@ -364,13 +362,13 @@ class _ParamAndGradBucketGroup:
         communication call to complete. When ddp_config.overlap_grad_reduce is set to False,
         makes synchronous call.
         """
-        # If overlap_grad_reduce is False, start (and finish) synchronous communication call here.
         self.param_gather_dispatched = False
+        # If overlap_grad_reduce is False, start (and finish) synchronous communication call here.
         if not self.ddp_config.overlap_grad_reduce:
             self.start_grad_sync()
             return
-        # When using partial DP DistOpt, we don't need to sync as we launch comms on a separate
-        # communication stream
+        # When using multiple DistOpt instances, we don't need to sync here as we launch
+        # communications on a separate communication stream.
         if self.ddp_config.num_distributed_optimizer_instances > 1:
             torch.cuda.default_stream().wait_stream(self.communication_stream)
             return

@@ -40,7 +40,6 @@ MODEL_ARGS:
   --tensor-model-parallel-size: 1
   --pipeline-model-parallel-size: 2
   --position-embedding-type: rope
-  --no-rope-fusion: true
   --no-ckpt-fully-parallel-save: true
   --deterministic-mode: true
   --no-gradient-accumulation-fusion: true
@@ -49,4 +48,5 @@ MODEL_ARGS:
   --ckpt-format: torch_dist
   --data-cache-path: ${DATA_CACHE_PATH}
   --bf16: true
+  --attention-backend: unfused
 TEST_TYPE: regular
