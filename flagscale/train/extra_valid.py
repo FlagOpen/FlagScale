@@ -87,6 +87,9 @@ def build_extra_valid_datasets(build_extra_valid_dataset_provider):
 
     args = get_args()
 
+    if args.extra_valid_data_path is None:
+        return [None]
+
     assert len(args.extra_valid_data_path) % 2 == 0, \
         "extra_valid_data_path format should be a list of weight, prefix and tag."
 
@@ -157,7 +160,8 @@ def build_extra_valid_data_loaders(build_extra_valid_dataset_provider):
             )
 
         # Flags to know if we need to do extra_validation.
-        do_extra_valid = extra_valid_dataloaders is not None
+        is_none = map(lambda _: _ is None, extra_valid_dataloaders)
+        do_extra_valid = len(extra_valid_dataloaders) > 0 and not all(is_none)
         flags = torch.tensor([int(do_extra_valid)], dtype=torch.long, device='cuda')
     else:
         flags = torch.tensor([0], dtype=torch.long, device='cuda')
