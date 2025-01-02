@@ -16,7 +16,9 @@ class RemoteBase:
         else:
             return attr
 
-class LLMActor(RemoteBase):
+
+@ray.remote(num_gpus=1)
+class LLMActor():
     def __init__(self):
         # Initialize the LLM inside the actor to avoid serialization
         self.llm = LLM(
@@ -35,10 +37,10 @@ class LLMActor(RemoteBase):
         return result[0].outputs[0].text
 
 
-llm = LLMActor()
+llm = LLMActor.remote()
 
 def model_A(prompt):
-    result = llm.generate([prompt])
+    result = llm.generate.remote(prompt)
     return fn(result[0].outputs[0].text)
 
 
