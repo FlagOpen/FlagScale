@@ -1,11 +1,10 @@
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
 """Pretrain utilities."""
 
 import dataclasses
 from datetime import datetime
 import functools
-import os
 import gc
 import logging
 import math
@@ -16,10 +15,6 @@ from megatron.training.log_handler import CustomHandler
 logging.basicConfig(handlers=[CustomHandler()], level=logging.INFO)
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 import time
-import json
-from collections import defaultdict
-
-
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
 import torch
@@ -43,6 +38,7 @@ try:
     HAVE_FSDP2 = True
 except ImportError:
     HAVE_FSDP2 = False
+
 from megatron.core.distributed import finalize_model_grads
 from megatron.core.enums import ModelType
 from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig
@@ -86,6 +82,7 @@ from megatron.training.global_vars import (
     get_wandb_writer,
     get_one_logger)
 from megatron.training import one_logger_utils
+
 from megatron.training import ft_integration
 
 from flagscale.train.extra_valid import extra_evaluate_and_print_results
@@ -346,6 +343,7 @@ def pretrain(
         train_data_iterator = []
         valid_data_iterator = []
         test_data_iterator = []
+        extra_valid_data_iterator = []
         for i in range(len(model)):
             mpu.set_virtual_pipeline_model_parallel_rank(i)
             iterators = build_train_valid_test_data_iterators(
@@ -353,10 +351,15 @@ def pretrain(
             train_data_iterator.append(iterators[0])
             valid_data_iterator.append(iterators[1])
             test_data_iterator.append(iterators[2])
+            extra_iterators = build_extra_valid_data_iterators(
+                extra_valid_dataset_provider)
+            extra_valid_data_iterator.append(extra_iterators)
     else:
         train_data_iterator, valid_data_iterator, test_data_iterator \
             = build_train_valid_test_data_iterators(
                 train_valid_test_dataset_provider)
+        extra_valid_data_iterator = build_extra_valid_data_iterators(
+            extra_valid_dataset_provider)
     timers('train/valid/test-data-iterators-setup').stop()
     print_datetime('after dataloaders are built')
     app_metrics['app_build_dataiters_finish_time'] = one_logger_utils.get_timestamp_in_ms()
@@ -394,8 +397,7 @@ def pretrain(
                 model, optimizer, opt_param_scheduler,
                 train_data_iterator, valid_data_iterator,
                 process_non_loss_data_func, config, checkpointing_context,
-                non_loss_data_func,
-                extra_valid_dataset_provider)
+                non_loss_data_func, extra_valid_data_iterator)
 
         print_datetime('after training is done')
 
@@ -1357,7 +1359,8 @@ def checkpoint_and_decide_exit(model, optimizer, opt_param_scheduler, iteration,
 
 def train(forward_step_func, model, optimizer, opt_param_scheduler,
           train_data_iterator, valid_data_iterator,
-          process_non_loss_data_func, config, checkpointing_context, non_loss_data_func, extra_valid_dataset_provider=None):
+          process_non_loss_data_func, config, checkpointing_context, non_loss_data_func,
+          extra_valid_data_iterator=None):
     """Training function: run train_step desired number of times, run validation, checkpoint."""
     args = get_args()
     timers = get_timers()
@@ -1440,6 +1443,8 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
 
     eval_duration = 0.0
     eval_iterations = 0
+    extra_eval_duration = 0.0
+    extra_eval_iterations = 0
 
     def get_e2e_base_metrics():
         """Get base metrics values for one-logger to calculate E2E tracking metrics.
@@ -1453,7 +1458,9 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             'num_floating_point_operations_so_far': num_floating_point_operations_so_far,
             'consumed_train_samples': args.consumed_train_samples,
             'world_size': args.world_size,
-            'seq_length': args.seq_length
+            'seq_length': args.seq_length,
+            'extra_eval_duration': extra_eval_duration,
+            'extra_eval_iterations': extra_eval_iterations,
         }
     # Cache into one-logger for callback.
     if one_logger:
@@ -1574,38 +1581,39 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                 enable_forward_pre_hook(model)
             timers('interval-time', log_level=0).start(barrier=True)
 
+            if args.enable_ft_package and ft_integration.get_rank_monitor_client() is not None:
+                ft_integration.get_rank_monitor_client(
+                    ft_integration.StateMachineActions.EVAL_HEARTBEAT).send_heartbeat()
+
         # Extra Evaluation
-        if args.extra_valid_interval and iteration % args.extra_valid_interval == 0:
-            # Need to rebuild the dataloaders for extra validation,
-            # but we don't need to rebuild the datasets
-            # TODO: refactor this code and test this in vp - @aoyulong 
-            if args.virtual_pipeline_model_parallel_size is not None:
-                extra_valid_data_iterators = []
-                for i in range(len(model)):
-                    mpu.set_virtual_pipeline_model_parallel_rank(i)
-                    extra_valid_data_iterators.append(
-                        build_extra_valid_data_iterators(extra_valid_dataset_provider))
-            else:
-                extra_valid_data_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
-            # do_extra_valid flag is used to indicate that we are doing extra validation
-            # and is set in the build_extra_valid_data_iterators function 
-            if args.do_extra_valid:
-                if args.use_distributed_optimizer and args.overlap_param_gather:
-                    disable_forward_pre_hook(model)
-                if args.manual_gc and args.manual_gc_eval:
-                    # Collect all objects.
-                    gc.collect()
-                prefix = 'iteration {}'.format(iteration)
-                for extra_valid_index, extra_valid_data_iterator in enumerate(extra_valid_data_iterators):
-                    extra_evaluate_and_print_results(extra_valid_index, prefix, forward_step_func,
-                                                     extra_valid_data_iterator, model,
-                                                     iteration, process_non_loss_data_func,
-                                                     config, False)
-                if args.manual_gc and args.manual_gc_eval:
-                    # Collect only the objects created and used in evaluation.
-                    gc.collect(generation=0)
-                if args.use_distributed_optimizer and args.overlap_param_gather:
-                    enable_forward_pre_hook(model)
+        if args.extra_eval_interval and iteration % args.extra_eval_interval == 0 and \
+            getattr(args, "do_extra_valid", False):
+            timers('interval-time').stop()
+            if args.use_distributed_optimizer and args.overlap_param_gather:
+                disable_forward_pre_hook(model)
+            if args.manual_gc and args.manual_gc_eval:
+                # Collect all objects.
+                gc.collect()
+            prefix = 'iteration {}'.format(iteration)
+            for extra_valid_index, extra_valid_data_itr in enumerate(extra_valid_data_iterator):
+                timers('extra-eval-time', log_level=0).start(barrier=True)
+                extra_eval_iters = args.extra_eval_iters_list[extra_valid_index]
+                extra_evaluate_and_print_results(extra_valid_index, prefix, forward_step_func,
+                                                 extra_valid_data_itr, model,
+                                                 iteration, process_non_loss_data_func,
+                                                 config, verbose=False, write_to_tensorboard=True,
+                                                 non_loss_data_func=non_loss_data_func)
+                extra_eval_duration += timers('extra-eval-time').elapsed()
+                extra_eval_iterations += extra_eval_iters
+                timers('extra-eval-time').stop()
+            one_logger_utils.track_e2e_metrics()
+
+            if args.manual_gc and args.manual_gc_eval:
+                # Collect only the objects created and used in evaluation.
+                gc.collect(generation=0)
+            if args.use_distributed_optimizer and args.overlap_param_gather:
+                enable_forward_pre_hook(model)
+            timers('interval-time', log_level=0).start(barrier=True)
 
             if args.enable_ft_package and ft_integration.get_rank_monitor_client() is not None:
                 ft_integration.get_rank_monitor_client(
@@ -1677,11 +1685,11 @@ def evaluate(forward_step_func,
     eval_batch_size = args.global_batch_size
     eval_num_microbatches = eval_batch_size // \
         (args.micro_batch_size * args.data_parallel_size)
-    
+
     if extra_valid_index is not None:
-        assert args.extra_valid_iters_list is not None, \
-            "extra_valid_iters_list must be provided if extra_valid_index is not None"
-        eval_iters = args.extra_valid_iters_list[extra_valid_index]
+        assert getattr(args, "extra_eval_iters_list") is not None, \
+            "extra_eval_iters_list must be provided if extra_valid_index is not None"
+        eval_iters = args.extra_eval_iters_list[extra_valid_index]
     else:
         eval_iters = args.eval_iters
 
@@ -1804,13 +1812,13 @@ def evaluate_and_print_results(prefix, forward_step_func,
                                   iteration)
                 writer.add_scalar('{} validation ppl vs samples'.format(key),
                                   ppl, args.consumed_train_samples)
-                if wandb_writer and is_last_rank():
-                    wandb_writer.log({
-                        '{} validation'.format(key): total_loss_dict[key].item()},
-                        iteration)
-                    wandb_writer.log({
-                        '{} validation vs samples'.format(key): args.consumed_train_samples},
-                        iteration)
+            if wandb_writer and is_last_rank():
+                wandb_writer.log({
+                    '{} validation'.format(key): total_loss_dict[key].item()},
+                    iteration)
+                wandb_writer.log({
+                    '{} validation vs samples'.format(key): args.consumed_train_samples},
+                    iteration)
 
     if process_non_loss_data_func is not None and writer and is_last_rank():
         process_non_loss_data_func(collected_non_loss_data, iteration, writer)
