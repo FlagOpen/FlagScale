@@ -27,7 +27,7 @@ deploy:
   entry: A
   exit: D
   router:
-    name: generate
+    name: /generate
     port: 8000
     request:
       prompt: str

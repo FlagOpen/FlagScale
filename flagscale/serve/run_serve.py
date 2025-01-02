@@ -5,7 +5,7 @@ from flagscale.serve.core.dag import Builder
 
 
 def main():
-    config = parse_config()
+    config = parse_config().serve
     project_path = config["root_path"]
     sys.path.append(project_path)
     builder = Builder(config)

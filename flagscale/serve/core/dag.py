@@ -92,10 +92,6 @@ class Builder:
             # tasks[model_alias] = ray.remote(num_gpus=num_gpus)(model)
             # models[model_alias] = model
         self.check_dag()
-        return
-
-    def run_task(self, input_data=None):
-        assert len(self.tasks) > 0
         ray.init(
             num_gpus=6,
             storage="/tmp/ray_workflow",
@@ -103,6 +99,10 @@ class Builder:
                 "working_dir": self.config["root_path"],
             },
         )
+        return
+
+    def run_task(self, input_data=None):
+        assert len(self.tasks) > 0
         models_to_process = list(self.config["deploy"]["models"].keys())
 
         model_nodes = {}
