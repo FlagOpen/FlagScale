@@ -114,6 +114,7 @@ def build_extra_valid_datasets(build_extra_valid_dataset_provider):
 
     args.extra_eval_iters_list = valid_iters_per_dataset
     args.extra_prefix_paths_list = raw_prefix_paths_per_dataset
+    args.extra_num_samples_list = num_samples_per_dataset
 
     assert len(raw_prefix_paths_per_dataset) == len(num_samples_per_dataset), \
         f"Number of extra_valid data paths {len(raw_prefix_paths_per_dataset)} does not match number of extra_valid data samples {len(num_samples_per_dataset)}"
@@ -240,9 +241,13 @@ def extra_evaluate_and_print_results(index, prefix, forward_step_func,
     if extra_prefix_paths_list:
         label = f'{extra_prefix_paths_list[index]}'
 
+    comsumed_samples = ''
+    extra_num_samples_list = getattr(args, "extra_num_samples_list", None)
+    if extra_num_samples_list:
+        comsumed_samples = extra_num_samples_list[index]
+
     string = f' extra validation {prefix} loss at {label} | '
-    loss_section = 'validation loss'
-    ppl_section = 'validation ppl'
+    string += f'consumed samples: {comsumed_samples} | '
     for key in total_loss_dict:
         string += '{} value: {:.6E} | '.format(key, total_loss_dict[key].item())
         ppl = math.exp(min(20, total_loss_dict[key].item()))
@@ -266,9 +271,9 @@ def extra_evaluate_and_print_results(index, prefix, forward_step_func,
                 wandb_writer.log({
                     '{} validation {} vs samples'.format(key, label): args.consumed_train_samples},
                     iteration)
-                wandb_writer.log({'{}/{} validation {} ppl'.format(ppl_section, key, label): ppl},
+                wandb_writer.log({'validation ppl/{} validation {} ppl'.format(key, label): ppl},
                     iteration)
-                wandb_writer.log({'{}/{} validation {}'.format(loss_section, key, label): total_loss_dict[key].item()},
+                wandb_writer.log({'validation loss/{} validation {}'.format(key, label): total_loss_dict[key].item()},
                     iteration)
 
     if process_non_loss_data_func is not None and writer and is_last_rank():
