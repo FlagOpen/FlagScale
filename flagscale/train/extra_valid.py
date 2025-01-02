@@ -161,7 +161,7 @@ def build_extra_valid_data_loaders(build_extra_valid_dataset_provider):
 
         # Flags to know if we need to do extra_validation.
         is_none = map(lambda _: _ is None, extra_valid_dataloaders)
-        do_extra_valid = len(extra_valid_dataloaders) > 0 and not all(is_none)
+        do_extra_valid = len(extra_valid_dataloaders) > 0 and not any(is_none)
         flags = torch.tensor([int(do_extra_valid)], dtype=torch.long, device='cuda')
     else:
         flags = torch.tensor([0], dtype=torch.long, device='cuda')
