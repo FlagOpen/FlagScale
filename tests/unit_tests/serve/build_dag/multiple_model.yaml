@@ -12,7 +12,7 @@ experiment:
   runner:
     hostfile: null
   envs:
-    CUDA_VISIBLE_DEVICES: 0,1,2,3
+    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5
     CUDA_DEVICE_MAX_CONNECTIONS: 1
 
 action: run
