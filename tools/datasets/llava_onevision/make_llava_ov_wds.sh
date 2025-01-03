@@ -27,6 +27,12 @@ set -u
   HOSTFILE=$3
 set +u
 
+if [ $# -ge 4 ]; then
+    FILTER_JSON=$4
+else
+    FILTER_JSON=""
+fi
+
 echo "BASE_RUN_NAME: ${EXPNAME_PATH}"
 
 CKPT_PATH="./checkpoints"
@@ -52,6 +58,7 @@ do
     export WANDB_MODE=offline && \
     export ACCELERATE_CPU_AFFINITY=1 && \
     export PYTHONPATH=$LLaVA_NeXT_HOME:$PYTHONPATH && \
+    export FILTER_JSON=$FILTER_JSON && \
     source /root/miniconda3/bin/activate flagscale && \
     torchrun --nproc_per_node=8 --nnodes=${NNodes} --node_rank=${rank} --master_addr=${MASTER_ADDR} --master_port=13888 llava_ov_wds.py \
         --model_name_or_path ${CKPT_PATH} \

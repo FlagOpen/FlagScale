@@ -191,6 +191,10 @@ def get_batch(data_iterator):
     labels_shape = tensor_parallel.broadcast_data(["labels_shape"], data, torch.int64)[
         "labels_shape"
     ]
+    ids = tensor_parallel.broadcast_data(["ids"], data, torch.uint8)["ids"]
+    ids_shape = tensor_parallel.broadcast_data(["ids_shape"], data, torch.int64)[
+        "ids_shape"
+    ]
     images = tensor_parallel.broadcast_data(["images"], data, torch.float32)["images"]
     split_image_sizes = tensor_parallel.broadcast_data(
         ["split_image_sizes"], data, torch.int64
@@ -228,6 +232,17 @@ def get_batch(data_iterator):
         start_idx += num_elements
     assert start_idx == labels.numel()
     labels = labels_list
+
+    # ids to list
+    ids_list = []
+    start_idx = 0
+    for shape in ids_shape:
+        num_elements = torch.prod(shape).item()
+        sub_tensor = ids[start_idx : start_idx + num_elements].reshape(shape.tolist())
+        ids_list.append(sub_tensor)
+        start_idx += num_elements
+    assert start_idx == ids.numel()
+    ids = ids_list
 
     # images to list
     images_list = []
@@ -288,7 +303,7 @@ def get_batch(data_iterator):
     attention_mask = input_ids.ne(tokenizer.pad_token_id)
     torch.cuda.nvtx.range_pop()
 
-    return input_ids, labels, attention_mask, images, image_sizes, modalities
+    return input_ids, labels, attention_mask, images, image_sizes, modalities, ids
 
 
 def pad_sequence(input_ids, batch_first, padding_value, tokenizer):
@@ -316,7 +331,13 @@ def get_image_token_count():
     return num_image_tokens
 
 
-def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tensor):
+def loss_func(
+    labels: torch.Tensor,
+    loss_mask: torch.Tensor,
+    ids,
+    logits: torch.Tensor,
+):
+    args = get_args()
     labels = labels.transpose(0, 1).contiguous()  # [b s] => [s b]
     logits = logits.transpose(0, 1).contiguous()  # [b s h] => [s b h]
 
@@ -334,6 +355,11 @@ def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tenso
         loss = torch.mean(losses)
 
     # Reduce loss for logging.
+    if args.skip_train:
+        assert isinstance(ids, list) and len(ids) == 1
+        id = "".join([chr(c) for c in ids[0].cpu().numpy()])
+        print(f"Evaluating id: {id}, loss: {loss.detach().clone().item()}", flush=True)
+
     averaged_loss = average_losses_across_data_parallel_group([loss])
     return loss, {"lm loss": averaged_loss[0]}
 
@@ -354,7 +380,7 @@ def forward_step(data_iterator, model: LLaVAOneVisionModel):
 
     # Get the batch.
     timers("batch-generator", log_level=2).start()
-    input_ids, labels, attention_mask, images, image_sizes, modalities = get_batch(
+    input_ids, labels, attention_mask, images, image_sizes, modalities, ids = get_batch(
         data_iterator
     )
     if "text" in modalities and ("image" in modalities or "video" in modalities):
@@ -367,7 +393,7 @@ def forward_step(data_iterator, model: LLaVAOneVisionModel):
         input_ids, labels, attention_mask, images, image_sizes, modalities
     )
 
-    return output_tensor, partial(loss_func, labels, loss_mask)
+    return output_tensor, partial(loss_func, labels, loss_mask, ids)
 
 
 def add_multimodal_extra_args(parser):
