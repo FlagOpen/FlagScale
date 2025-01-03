@@ -37,7 +37,12 @@ from megatron.core import DistributedDataParallel as DDP
 from megatron.core import mpu
 from megatron.core.datasets.utils import get_blend_from_list
 from megatron.core.tensor_parallel import param_is_not_tensor_parallel_duplicate
-from megatron.core.utils import get_data_parallel_group_if_dtensor, to_local_if_dtensor
+from megatron.core.utils import (
+    get_batch_on_this_cp_rank,
+    get_data_parallel_group_if_dtensor,
+    to_local_if_dtensor,
+    get_batch_on_this_ulysses_sp_rank,
+)
 from megatron.legacy.model import Float16Module
 from megatron.legacy.model.module import param_is_not_shared
 
@@ -91,13 +96,16 @@ def calc_params_l2_norm(model):
 
     # Calculate dense param norm
     dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device='cuda')
-    norm, _ = multi_tensor_applier(
-        multi_tensor_l2norm,
-        dummy_overflow_buf,
-        [params_data],
-        False # no per-parameter norm
-    )
-    norm_2 = norm * norm
+    if len(params_data) > 0:
+        norm, _ = multi_tensor_applier(
+            multi_tensor_l2norm,
+            dummy_overflow_buf,
+            [params_data],
+            False # no per-parameter norm
+        )
+        norm_2 = norm * norm
+    else:
+        norm_2 = torch.tensor([0.0], dtype=torch.float32, device='cuda')
 
     if data_parallel_group is not None:
         torch.distributed.all_reduce(norm_2,
@@ -151,6 +159,41 @@ def average_losses_across_data_parallel_group(losses):
         torch.distributed.get_world_size(group=mpu.get_data_parallel_group())
 
     return averaged_losses
+
+
+def reduce_max_stat_across_model_parallel_group(stat: float) -> float:
+    """
+    Ranks without an optimizer will have no grad_norm or num_zeros_in_grad stats.
+    We need to ensure the logging and writer rank has those values.
+    This function reduces a stat tensor across the model parallel group.
+
+    We use an all_reduce max since the values have already been summed across optimizer ranks where possible
+    """
+    if stat is None:
+        stat = -1.0
+    stat = torch.tensor([stat], dtype=torch.float32, device=torch.cuda.current_device())
+    torch.distributed.all_reduce(
+        stat, op=torch.distributed.ReduceOp.MAX, group=mpu.get_model_parallel_group()
+    )
+    if stat.item() == -1.0:
+        return None
+    else:
+        return stat.item()
+
+
+def logical_and_across_model_parallel_group(input: bool) -> bool:
+    """
+    This function gathers a bool value across the model parallel group
+    """
+    if input is True:
+        input = 1
+    else:
+        input = 0
+    input = torch.tensor([input], dtype=torch.int, device=torch.cuda.current_device())
+    torch.distributed.all_reduce(
+        input, op=torch.distributed.ReduceOp.MIN, group=mpu.get_model_parallel_group()
+    )
+    return bool(input.item())
 
 
 def report_memory(name):
@@ -271,66 +314,6 @@ def get_ltor_masks_and_position_ids(data,
     attention_mask = (attention_mask < 0.5)
 
     return attention_mask, loss_mask, position_ids
-
-def get_batch_on_this_ulysses_sp_rank(batch):
-    """ Slice batch input along sequence dimension into multiple chunks,
-        which are parallelized across GPUs in a ulysses-sequence parallel group.
-    """
-
-    args = get_args()
-    uly_sp_size = args.ulysses_sp_parallel_size
-    if uly_sp_size > 1:
-        usp_rank = mpu.get_ulysses_sp_parallel_rank()
-        for key, val in batch.items():
-            if val is not None:
-                seq_dim = 1 if key != 'attention_mask' else 2
-                val = val.view(
-                    *val.shape[0:seq_dim],
-                    uly_sp_size,
-                    val.shape[seq_dim] // uly_sp_size,
-                    *val.shape[(seq_dim + 1) :],
-                )
-                index = torch.tensor([usp_rank], 
-                                     device="cpu", pin_memory=True).cuda(non_blocking=True)
-                val = val.index_select(seq_dim, index)
-                val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
-                batch[key] = val
-
-    return batch
-
-
-def get_batch_on_this_cp_rank(batch):
-    """ Slice batch input along sequence dimension into multiple chunks,
-        which are parallelized across GPUs in a context parallel group.
-    """
-
-    # With causal masking, each token only attends to its prior tokens. Simply split
-    # sequence into CP chunks can result in severe load imbalance. That's to say, chunks
-    # at the end of sequence have bigger workload than others. To address this issue,
-    # we split sequence into 2*CP ranks. Assuming CP=2, we then get 4 chunks, chunk_0
-    # and chunk_3 are assigned to GPU0, chunk_1 and chunk_2 are assigned to GPU1, so
-    # that we can get balanced workload among GPUs in a context parallel group.
-    args = get_args()
-    cp_size = args.context_parallel_size
-    if cp_size > 1:
-        cp_rank = mpu.get_context_parallel_rank()
-        for key, val in batch.items():
-            if val is not None:
-                seq_dim = 1 if key != 'attention_mask' else 2
-                val = val.view(
-                    *val.shape[0:seq_dim],
-                    2 * cp_size,
-                    val.shape[seq_dim] // (2 * cp_size),
-                    *val.shape[(seq_dim + 1) :],
-                )
-                index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], 
-                                     device="cpu", pin_memory=True).cuda(non_blocking=True)
-                val = val.index_select(seq_dim, index)
-                val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
-                batch[key] = val
-
-    return batch
-
 
 def print_rank_0(message):
     """If distributed is initialized, print only on rank 0."""
@@ -479,11 +462,11 @@ def get_batch_on_this_tp_rank(data_iterator):
            _broadcast(loss_mask)
            _broadcast(attention_mask)
            _broadcast(position_ids)
- 
+
        elif mpu.is_pipeline_first_stage():
            labels=None
            loss_mask=None
-   
+
            _broadcast(tokens)
            _broadcast(attention_mask)
            _broadcast(position_ids)
@@ -491,11 +474,11 @@ def get_batch_on_this_tp_rank(data_iterator):
        elif mpu.is_pipeline_last_stage():
            tokens=None
            position_ids=None
-    
+
            _broadcast(labels)
            _broadcast(loss_mask)
            _broadcast(attention_mask)
- 
+
        batch = {
            'tokens': tokens,
            'labels': labels,
