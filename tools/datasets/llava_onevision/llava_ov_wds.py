@@ -1432,6 +1432,8 @@ class DataCollatorForSupervisedDataset(object):
             #     batch["images"] = torch.stack(images)
             # else:
             batch["images"] = images
+            assert "id" in instances[0]
+            batch["ids"] = [torch.tensor([ord(c) for c in instance["id"]], dtype=torch.uint8) for instance in instances]
 
         if "prompt" in instances[0]:
             batch["prompts"] = [instance["prompt"] for instance in instances]
@@ -1847,15 +1849,22 @@ def train(attn_implementation=None):
     if not os.path.exists(output):
         os.mkdir(output)
     start_time = time.time()
+    filter_ids = []
+    filter_json = os.environ.get("FILTER_JSON", "")
+    if filter_json:
+        with open(filter_json, 'r') as file:
+            data = json.load(file)
+            filter_ids = data["ids"]
     with wds.ShardWriter(os.path.join(output, f'llava-ov-{dist.get_rank()}-%d.tar'), maxcount=10000) as shard_writer:
         dataloader = trainer.get_train_dataloader()
         print(f"sample num: {len(dataloader)}")
-        global_id = 0
         for entry in tqdm(dataloader):
-            if global_id == 0:
-              for x in entry.keys():
-                #print(f"key={x}, type={type(entry[x])}")
-                pass
+            assert 'ids' in entry
+            assert len(entry["ids"]) == 1
+            id = "".join([chr(c) for c in entry["ids"][0].cpu().numpy()])
+            if filter_ids and id not in filter_ids:
+                print(f"The id {id} is filtered out.")
+                continue
 
             sequence = []
             sequence.append(entry['input_ids'][0].cpu())
@@ -1878,15 +1887,16 @@ def train(attn_implementation=None):
                 sequence.append([torch.tensor(entry['image_sizes'][0])])
                 sequence.append([entry['modalities'][0]])
                 if entry['modalities'][0] == "video":
-                    print(f"Processing video and image_sizes: {entry['image_sizes'][0]}, {images.shape}")
+                    print(f"Processing id {id} video and image_sizes: {entry['image_sizes'][0]}, {images.shape}")
                 elif entry['modalities'][0] == "text":
-                    print("Processing text.")
+                    print(f"Processing id {id} text.")
                 elif entry['modalities'][0] == "image":
-                    print("Processing single image.")
+                    print(f"Processing id {id} single image.")
                 else:
                     raise ValueError()
             else:
                 # Process images
+                print(f"Processing id {id} multi images.")
                 images = []
                 each_image_shape = None
                 for image in entry['images']:
@@ -1912,15 +1922,14 @@ def train(attn_implementation=None):
 
                 sequence.append(images)
                 sequence.append(image_sizes)
-                sequence.append(modalities)  
+                sequence.append(modalities)
 
             sample = {
-              "__key__": str(global_id),
+              "__key__": str(id),
               "sequence.pyd": sequence,
             }
 
             shard_writer.write(sample)
-            global_id += 1
 
     print(f"rank {dist.get_rank()} datasets saved to {training_args.output_dir}")
 
