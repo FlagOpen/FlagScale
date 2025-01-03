@@ -2,7 +2,7 @@ import torch
 
 from tests.unit_tests.test_utilities import Utils as MegatronUtils
 
-from megatron.training.arguments import parse_args
+from megatron.training.arguments import parse_args, validate_args
 import megatron.training.global_vars as mcore_global_vars
 from megatron.training.tokenizer.tokenizer import _NullTokenizer
 
@@ -46,6 +46,12 @@ def init_parallel_context() -> ParallelContext:
     args.num_attention_heads = 32
     args.hidden_size = 1024
     args.num_layers = 12
+    
+    # extra optimizer config
+    args.main_grads_dtype = torch.float32
+    args.main_params_dtype = torch.float32
+    args.exp_avg_dtype = torch.float32
+    args.exp_avg_sq_dtype = torch.float32
     
     train_args = FSTrainArguments(args)
     train_args.pre_validate_args()

@@ -200,28 +200,30 @@ def validate_args(args, defaults={}):
 
     # Set args.use_dist_ckpt from args.ckpt_format.
     update_use_dist_ckpt(args)
+    
+    if args.attention_backend == AttnBackend.local:
+            assert args.spec[0] == 'local' , '--attention-backend local is only supported with --spec local'
+
     if not args.enable_hetero:
-        if args.encoder_pipeline_model_parallel_size == 0 and args.num_experts == 0:
-            assert args.encoder_tensor_model_parallel_size == args.tensor_model_parallel_size,  "If non-MOE encoder shares first decoder pipeline rank it must have the same TP as the decoder."
+        # NOTE(zhaoyinglia): raise assert error when ckpt convert for decode-only dense model
+        # if args.encoder_pipeline_model_parallel_size == 0 and args.num_experts == 0:
+        #     assert args.encoder_tensor_model_parallel_size == args.tensor_model_parallel_size,  "If non-MOE encoder shares first decoder pipeline rank it must have the same TP as the decoder."
 
         if args.encoder_tensor_model_parallel_size > 0:
             assert args.num_attention_heads % args.encoder_tensor_model_parallel_size == 0
             assert args.encoder_tensor_model_parallel_size <= args.tensor_model_parallel_size, "We do not support encoders with more TP than the decoder."
 
-            if args.encoder_pipeline_model_parallel_size > 0 and args.encoder_tensor_model_parallel_size == 0:
-                args.encoder_tensor_model_parallel_size = args.tensor_model_parallel_size
+        if args.encoder_pipeline_model_parallel_size > 0 and args.encoder_tensor_model_parallel_size == 0:
+            args.encoder_tensor_model_parallel_size = args.tensor_model_parallel_size
 
-            encoder_model_size = args.encoder_tensor_model_parallel_size * args.encoder_pipeline_model_parallel_size * args.context_parallel_size
-            decoder_model_size = args.tensor_model_parallel_size * args.pipeline_model_parallel_size * args.context_parallel_size
-            total_model_size = encoder_model_size + decoder_model_size
+        encoder_model_size = args.encoder_tensor_model_parallel_size * args.encoder_pipeline_model_parallel_size * args.context_parallel_size
+        decoder_model_size = args.tensor_model_parallel_size * args.pipeline_model_parallel_size * args.context_parallel_size
+        total_model_size = encoder_model_size + decoder_model_size
 
-            # Total model size.
-            assert args.world_size % total_model_size == 0, (
-                f"world size ({args.world_size}) is not divisible by total_model_size ({encoder_model_size=} + {decoder_model_size=})"
-            )
-
-        if args.attention_backend == AttnBackend.local:
-            assert args.spec[0] == 'local' , '--attention-backend local is only supported with --spec local'
+        # Total model size.
+        assert args.world_size % total_model_size == 0, (
+            f"world size ({args.world_size}) is not divisible by total_model_size ({encoder_model_size=} + {decoder_model_size=})"
+        )
 
         # Pipeline model parallel size.
         args.transformer_pipeline_model_parallel_size = (
@@ -1898,7 +1900,7 @@ def _add_validation_args(parser):
     group.add_argument('--eval-interval', type=int, default=1000,
                        help='Interval between running evaluation on '
                        'validation set.')
-    group.add_argument('--extra-valid-interval', type=int, default=None,
+    group.add_argument('--extra-eval-interval', type=int, default=None,
                        help='Interval between running evaluation on '
                        'extra validation sets.')
     group.add_argument("--test-mode", action="store_true", help='Run all real-time test alongside the experiment.')
@@ -1982,9 +1984,10 @@ def _add_data_args(parser):
                        help='The weight and prefix list for an independent validation dataset. '
                        'Follows the same pattern rules as --data-path.')
     group.add_argument('--extra-valid-data-path', nargs='*', default=None,
-                       help='Path to the validation dataset. Accepted format:'
-                       'dataset1-weight dataset1-path dataset1-tag dataset2-weight '
-                       'dataset2-path dataset2-tag ...')
+                       help='The weight, prefix list for an independent extra validation dataset. '
+                       'The accepted format is a list of weight, prefix and tag, '
+                       'e.g. weight1 prefix1 tag1 weight2 prefix2 tag2. '
+                       'The weight1 means the number of tokens in the prefix1 dataset. ')
     group.add_argument('--test-data-path', nargs='*', default=None,
                        help='The weight and prefix list for an independent test dataset. '
                        'Follows the same pattern rules as --data-path.')

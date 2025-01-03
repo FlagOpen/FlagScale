@@ -41,6 +41,7 @@ from megatron.core.utils import (
     get_batch_on_this_cp_rank,
     get_data_parallel_group_if_dtensor,
     to_local_if_dtensor,
+    get_batch_on_this_ulysses_sp_rank,
 )
 from megatron.legacy.model import Float16Module
 from megatron.legacy.model.module import param_is_not_shared
@@ -313,33 +314,6 @@ def get_ltor_masks_and_position_ids(data,
     attention_mask = (attention_mask < 0.5)
 
     return attention_mask, loss_mask, position_ids
-
-def get_batch_on_this_ulysses_sp_rank(batch):
-    """ Slice batch input along sequence dimension into multiple chunks,
-        which are parallelized across GPUs in a ulysses-sequence parallel group.
-    """
-
-    args = get_args()
-    uly_sp_size = args.ulysses_sp_parallel_size
-    if uly_sp_size > 1:
-        usp_rank = mpu.get_ulysses_sp_parallel_rank()
-        for key, val in batch.items():
-            if val is not None:
-                seq_dim = 1 if key != 'attention_mask' else 2
-                val = val.view(
-                    *val.shape[0:seq_dim],
-                    uly_sp_size,
-                    val.shape[seq_dim] // uly_sp_size,
-                    *val.shape[(seq_dim + 1) :],
-                )
-                index = torch.tensor([usp_rank], 
-                                     device="cpu", pin_memory=True).cuda(non_blocking=True)
-                val = val.index_select(seq_dim, index)
-                val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
-                batch[key] = val
-
-    return batch
-
 
 def print_rank_0(message):
     """If distributed is initialized, print only on rank 0."""

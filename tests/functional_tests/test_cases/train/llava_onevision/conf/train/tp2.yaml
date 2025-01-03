@@ -23,6 +23,7 @@ system:
     async_save: False
 
 model:
+  attention_backend: unfused
   num_layers: 28  
   hidden_size: 1536 
   ffn_hidden_size: 8960

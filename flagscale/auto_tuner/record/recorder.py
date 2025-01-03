@@ -17,7 +17,7 @@ class Recorder:
         )
         # Metric to grep in the last rank of last node log file
         if (
-            "auto_tuner" in self.config
+            "auto_tuner" in self.config.experiment
             and "performance" in self.config.experiment.auto_tuner
         ):
             self.metric = self.config.experiment.auto_tuner.performance.get(
@@ -28,7 +28,7 @@ class Recorder:
 
         # Sort order of performance, order just in [ascend, and descend], default ascend
         if (
-            "auto_tuner" in self.config
+            "auto_tuner" in self.config.experiment
             and "performance" in self.config.experiment.auto_tuner
         ):
             self.sorted_order = self.config.experiment.auto_tuner.performance.get(

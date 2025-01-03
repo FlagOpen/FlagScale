@@ -32,6 +32,7 @@ system:
     tensorboard_log_interval: 999999
 
 model:
+  attention_backend: unfused
   deterministic_mode: true
   use_mcore_models: true
   transformer_impl: transformer_engine

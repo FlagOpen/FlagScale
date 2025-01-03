@@ -393,8 +393,12 @@ class MixedPrecisionOptimizer(MegatronOptimizer):
 
         # Update across all model parallel instances.
         groups = self.get_grad_stats_parallel_group()
-        if "gloo" in torch.distributed.get_backend(groups):
-            self.found_inf = self.found_inf.cpu()
+        if isinstance(groups, list):
+            if "gloo" in torch.distributed.get_backend(groups[0]):
+                self.found_inf = self.found_inf.cpu()
+        else:
+            if "gloo" in torch.distributed.get_backend(groups):
+                self.found_inf = self.found_inf.cpu()
         if not isinstance(groups, list):
             groups = [groups]
         for group in groups:

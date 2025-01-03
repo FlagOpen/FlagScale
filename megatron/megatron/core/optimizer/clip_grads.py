@@ -88,15 +88,17 @@ def get_grad_norm_fp32(
     # Calculate norm.
     if norm_type == inf:
         total_norm = max(grad.abs().max() for grad in grads_for_norm)
-        # For cpu comminication
-        tensor_device = get_device_type_for_comm(grad_stats_parallel_group)
-        total_norm_cuda = torch.tensor([float(total_norm)], dtype=torch.float, device=tensor_device)
+        total_norm_cuda = torch.tensor([float(total_norm)], dtype=torch.float, device='cuda')
         # Take max across all data-parallel GPUs if using FSDP and then all model-parallel GPUs.
         if data_parallel_group:
             torch.distributed.all_reduce(
                 total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=data_parallel_group
             )
+
         # Take max across all model-parallel GPUs.
+        # For cpu comminication
+        tensor_device = get_device_type_for_comm(grad_stats_parallel_group)
+        total_norm_cuda.to(tensor_device)
         if isinstance(grad_stats_parallel_group, list):
             for group in grad_stats_parallel_group:
                 torch.distributed.all_reduce(
@@ -146,7 +148,7 @@ def get_grad_norm_fp32(
                 total_norm.data = original_total_norm.data.clone()
                 total_norm = total_norm.to(tensor_device)
                 torch.distributed.all_reduce(
-                    total_norm, op=torch.distributed.ReduceOp.SUM, group=group
+                    total_norm, op=torch.distributed.ReduceOp.SUM, group=mp_group
                 )
         else:
             total_norm = total_norm.to(tensor_device)
@@ -226,8 +228,7 @@ def count_zeros_fp32(
     #   - grad should not be none
     #   - parameter should not be shared
     #   - should not be a replica due to tensor model parallelism
-    comm_device = get_device_type_for_comm(grad_stats_parallel_group)
-    total_num_zeros = torch.tensor([0.0], dtype=torch.float, device=comm_device)
+    total_num_zeros = torch.tensor([0.0], dtype=torch.float, device='cuda')
     data_parallel_group = None
     for param in parameters:
         grad_attr = "decoupled_grad" if use_decoupled_grad else "grad"
@@ -247,6 +248,8 @@ def count_zeros_fp32(
             total_num_zeros, op=torch.distributed.ReduceOp.SUM, group=data_parallel_group
         )
     # Sum across all model-parallel GPUs.
+    comm_device = get_device_type_for_comm(grad_stats_parallel_group)
+    total_num_zeros.to(comm_device)
     if isinstance(grad_stats_parallel_group, list):
         original_total_num_zeros = total_num_zeros.clone().detach()
         for group in grad_stats_parallel_group:
