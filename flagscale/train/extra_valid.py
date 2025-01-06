@@ -1,4 +1,3 @@
-import os
 import math
 import torch
 
@@ -14,6 +13,7 @@ from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
 from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
 from megatron.core.datasets.utils import get_blend_from_list
 from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
+from megatron.core.rerun_state_machine import RerunDataIterator
 from megatron.legacy.data.data_samplers import build_pretraining_data_loader
 
 from flagscale.train import get_extra_valid_datasets, set_extra_valid_datasets
@@ -198,12 +198,15 @@ def build_extra_valid_data_iterators(build_extra_valid_dataset_provider):
     def _get_iterator(dataloader_type, dataloader):
         """Return dataset iterator."""
         if dataloader_type == "single":
-            return iter(dataloader)
+            return RerunDataIterator(iter(dataloader))
         elif dataloader_type == "cyclic":
-            return iter(cyclic_iter(dataloader))
+            return RerunDataIterator(iter(cyclic_iter(dataloader)))
         elif dataloader_type == "external":
             # External dataloader is passed through. User is expected to define how to iterate.
-            return dataloader
+            if isinstance(dataloader, list):
+                return [RerunDataIterator(d) for d in dataloader]
+            else:
+                return RerunDataIterator(dataloader)
         else:
             raise RuntimeError("unexpected dataloader type")
 
