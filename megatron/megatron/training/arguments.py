@@ -2356,32 +2356,3 @@ def _add_auto_tuner_args(parser):
                        help='use auto tuner')
 
     return parser
-
-
-def _add_hetero_args(parser):
-    group = parser.add_argument_group(title="heterogeneous training")
-
-    group.add_argument('--enable-hetero', action="store_true", 
-                       help='the mode of heterogeneous training')
-    group.add_argument('--hetero-device-types', nargs='*', type=str, default=None, 
-                       help='the list of device types: device_type_0 device_type_1 ...')
-    group.add_argument('--hetero-current-device-type', type=str, default=None, 
-                       help='the current device type')
-    group.add_argument('--hetero-pipeline-layer-split', nargs='*', type=int, default=None,
-                       help='Incompatible with --num-layers-per-virtual-pipeline-stage for now.'
-                       'hetero-pipeline-layer-split must be in the form: layers_0 layers_1 ... layers_n. The number of the list should be equal to pipeline-model-parallel-size.')
-    group.add_argument('--hetero-process-meshes', nargs='*', type=int, default=None,
-                       help='Use this arg to set TP-CP-DP-PP of each process mesh.'
-                       'This argument must be in the form: TP0, CP0, DP0, PP0, TP1, CP0, DP1, PP1...TPN, CPN, DPN, PPN. CP and TP size can be different, sum of PP should match pipeline-model-parallel-size, DP size should be the same.')
-    group.add_argument('--hetero-use-cpu-communication', action='store_true', help='Use CPU for communication for heterogeneous communication.')
-    
-    return parser
-
-
-def _add_auto_tuner_args(parser):
-    group = parser.add_argument_group(title="auto tuner")
-
-    group.add_argument('--auto-tune', action='store_true',
-                       help='use auto tuner')
-
-    return parser
