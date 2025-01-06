@@ -253,7 +253,7 @@ def extra_evaluate_and_print_results(index, prefix, forward_step_func,
     if extra_num_samples_list:
         comsumed_samples = extra_num_samples_list[index]
 
-    string = f' extra validation {prefix} loss at {label} | '
+    string = f' extra validation loss at {prefix} {label} | '
     string += f'consumed samples: {comsumed_samples} | '
     for key in total_loss_dict:
         string += '{} value: {:.6E} | '.format(key, total_loss_dict[key].item())
