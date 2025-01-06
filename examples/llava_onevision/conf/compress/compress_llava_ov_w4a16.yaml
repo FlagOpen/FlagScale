@@ -1,0 +1,37 @@
+system:
+  tensor_model_parallel_size: 1
+  pipeline_model_parallel_size: 1
+  use_flash_attn: True
+  sequence_parallel: True
+  logging:
+    log_interval: 1
+    tensorboard_log_interval: 1
+    wandb_project: "compress-llavaov-7B" 
+    wandb_exp_name: "compress-test-7B" 
+  save_dir: 
+
+
+model: 
+  model_path: 
+  device_map: "cuda:0"
+  model_name: llava_qwen
+  trust_remote_code: true
+  torch_dtype: bfloat16
+
+data:
+  data_path: 
+  num_calibration_samples: 16
+  max_seq_length: 8192
+  tokenzier_args: null
+
+compress_args:
+  quantization:
+    - algo:
+        gptq: 
+          blocksize: 128
+          percdamp: 0.01
+      ignore: ["re:.*vision_model*", "re:.*mm_projector*", "re:.*lm_head"]
+      targets: [Linear]
+      scheme: W4A16
+
+
