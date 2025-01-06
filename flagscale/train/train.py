@@ -1066,8 +1066,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
 
     if args.num_experts is not None:
         moe_loss_scale = 1 / get_num_microbatches()
-        moe_tokens_per_expert_logging = getattr(args, 'moe_tokens_per_expert_logging', False)
-        track_moe_metrics(moe_loss_scale, iteration, writer, wandb_writer, total_loss_dict, args.moe_per_layer_logging, moe_tokens_per_expert_logging)
+        track_moe_metrics(moe_loss_scale, iteration, writer, wandb_writer, total_loss_dict, args.moe_per_layer_logging)
 
     if iteration % args.log_interval == 0:
         elapsed_time = timers('interval-time').elapsed(barrier=True)
