@@ -438,6 +438,29 @@ def pretrain(
                                    verbose=True, write_to_tensorboard=not args.skip_train,
                                    non_loss_data_func=non_loss_data_func)
 
+    if extra_valid_dataset_provider is not None:
+        # NOTE(zhaoyinglia): Must rebuild the dataloaders for extra validation here,
+        # to guarantee extra validation start from extra_iter=0 every time,
+        # but we don't need to rebuild the datasets.
+        if args.virtual_pipeline_model_parallel_size is not None:
+            extra_valid_data_iterator = []
+            for i in range(len(model)):
+                mpu.set_virtual_pipeline_model_parallel_rank(i)
+                extra_iterators = build_extra_valid_data_iterators(
+                    extra_valid_dataset_provider)
+                extra_valid_data_iterator.append(extra_iterators)
+        else:
+            extra_valid_data_iterator = build_extra_valid_data_iterators(
+                extra_valid_dataset_provider)
+        if getattr(args, "do_extra_valid", False):
+            prefix = f'iteration {iteration} on extra validation set'
+            for extra_valid_index, extra_valid_data_itr in enumerate(extra_valid_data_iterator):
+                extra_evaluate_and_print_results(extra_valid_index, prefix, forward_step_func,
+                                                 extra_valid_data_itr, model,
+                                                 iteration, process_non_loss_data_func, config,
+                                                 verbose=True, write_to_tensorboard=not args.skip_train,
+                                                 non_loss_data_func=non_loss_data_func)
+
     wandb_writer = get_wandb_writer()
     if wandb_writer:
         wandb_writer.finish()
@@ -1673,7 +1696,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                     extra_valid_dataset_provider)
             timers('interval-time').stop()
             # do_extra_valid flag is used to indicate that we are doing extra validation
-            # and is set in the build_extra_valid_data_iterators function 
+            # and is set in the build_extra_valid_data_iterators function
             if getattr(args, "do_extra_valid", False):
                 if args.use_distributed_optimizer and args.overlap_param_gather:
                     disable_forward_pre_hook(model)
@@ -1685,10 +1708,10 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                     timers('extra-eval-time', log_level=0).start(barrier=True)
                     extra_eval_iters = args.extra_eval_iters_list[extra_valid_index]
                     extra_evaluate_and_print_results(extra_valid_index, prefix, forward_step_func,
-                                                    extra_valid_data_itr, model,
-                                                    iteration, process_non_loss_data_func,
-                                                    config, verbose=False, write_to_tensorboard=True,
-                                                    non_loss_data_func=non_loss_data_func)
+                                                     extra_valid_data_itr, model,
+                                                     iteration, process_non_loss_data_func,
+                                                     config, verbose=False, write_to_tensorboard=True,
+                                                     non_loss_data_func=non_loss_data_func)
                     extra_eval_duration += timers('extra-eval-time').elapsed()
                     extra_eval_iterations += extra_eval_iters
                     timers('extra-eval-time').stop()
