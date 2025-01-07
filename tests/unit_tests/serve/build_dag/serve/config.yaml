@@ -5,28 +5,32 @@ deploy:
     A:
       module: main
       entrypoint: model_A
-      num_gpus: 1
+      resources:
+        num_gpus: 1
     B:
       module: main
-      depend: A
+      depends:
+        - A
       entrypoint: model_B
-      num_gpus: 1
+      resources:
+        num_gpus: 1
     C:
       module: custom.models
-      depend: A
+      depends: 
+        - A
       entrypoint: model_C
-      num_gpus: 1
+      resources:
+        num_gpus: 1
     D:
       module: custom.models
       depends:
         - B
         - C
       entrypoint: model_D
-      num_gpus: 2
+      resources:
+        num_gpus: 1
 
-  entry: A
-  exit: D
-  router:
+  service:
     name: /generate
     port: 8000
     request:

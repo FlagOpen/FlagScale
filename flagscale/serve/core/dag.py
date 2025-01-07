@@ -1,6 +1,6 @@
 import importlib
 import uvicorn
-import networkx as nx
+# import networkx as nx
 import matplotlib.pyplot as plt
 import ray
 from ray import workflow
@@ -24,62 +24,75 @@ class Builder:
             raise ValueError("key deploy is missing for deployment configuration.")
         if not config.deploy.get("models", None):
             raise ValueError("key models is missing for building dag pipeline.")
+    
 
-    def check_dag(self, visibilization=False):
+    def find_final_node(self):
+        whole_nodes = set(self.config["deploy"]["models"].keys())
+        dependencies = set()
 
-        # Ensure that all dependencies are valid
-        dag = {}
         for model_alias, model_config in self.config["deploy"]["models"].items():
-            dependencies = []
-            if "depends" in model_config:
-                deps = model_config["depends"]
-                if not isinstance(deps, (list, omegaconf.listconfig.ListConfig)):
-                    deps = [deps]
-                dependencies = deps
-            elif "depend" in model_config:
-                dep = model_config["depend"]
-                dependencies = [dep]
-            else:
-                dependencies = []
-            dag[model_alias] = dependencies
-
-            for dep in dependencies:
-                if dep not in self.config["deploy"]["models"]:
-                    raise ValueError(
-                        f"Dependency {dep} for model {model_alias} not found in config['deploy']['models']"
-                    )
-
-        # Create a directed graph
-        G = nx.DiGraph()
-
-        # Add nodes and edges
-        for node, neighbors in dag.items():
-            for neighbor in neighbors:
-                G.add_edge(node, neighbor)
-
-        if visibilization or not nx.is_directed_acyclic_graph(G):
-            pos = nx.spring_layout(G)
-            plt.figure(figsize=(8, 6))
-            nx.draw(
-                G,
-                pos,
-                with_labels=True,
-                node_color="lightblue",
-                edge_color="gray",
-                node_size=2000,
-                font_size=15,
-                arrows=True,
+            if len(model_config.get("depends", [])) > 0:
+                dependencies.update(model_config.depends)
+        
+        output_node = whole_nodes - dependencies
+        if len(output_node) != 1:
+            raise ValueError(
+                f"There should only have one final node but there are {len(output_node)} nodes {output_node}."
             )
+        return list(output_node)[0]
 
-            # Save the graph as an image without displaying it
-            dag_file_name = "dag.png"
-            plt.savefig(dag_file_name, bbox_inches="tight")
-            plt.close()
-            # Ensure that the graph is a DAG
-            if not nx.is_directed_acyclic_graph(G):
-                raise ValueError(
-                    f"The graph contains cycles and is not a Directed Acyclic Graph (DAG). The dag can be visibilized at {dag_file_name}"
-                )
+    # def check_dag(self, visibilization=False):
+
+    #     # Ensure that all dependencies are valid
+    #     dag = {}
+    #     for model_alias, model_config in self.config["deploy"]["models"].items():
+    #         dependencies = []
+    #         if "depends" in model_config:
+    #             deps = model_config["depends"]
+    #             if not isinstance(deps, (list, omegaconf.listconfig.ListConfig)):
+    #                 deps = [deps]
+    #             dependencies = deps
+    #         else:
+    #             dependencies = []
+    #         dag[model_alias] = dependencies
+
+    #         for dep in dependencies:
+    #             if dep not in self.config["deploy"]["models"]:
+    #                 raise ValueError(
+    #                     f"Dependency {dep} for model {model_alias} not found in config['deploy']['models']"
+    #                 )
+
+    #     # Create a directed graph
+    #     G = nx.DiGraph()
+
+    #     # Add nodes and edges
+    #     for node, neighbors in dag.items():
+    #         for neighbor in neighbors:
+    #             G.add_edge(node, neighbor)
+
+    #     if visibilization or not nx.is_directed_acyclic_graph(G):
+    #         pos = nx.spring_layout(G)
+    #         plt.figure(figsize=(8, 6))
+    #         nx.draw(
+    #             G,
+    #             pos,
+    #             with_labels=True,
+    #             node_color="lightblue",
+    #             edge_color="gray",
+    #             node_size=2000,
+    #             font_size=15,
+    #             arrows=True,
+    #         )
+
+    #         # Save the graph as an image without displaying it
+    #         dag_file_name = "dag.png"
+    #         plt.savefig(dag_file_name, bbox_inches="tight")
+    #         plt.close()
+    #         # Ensure that the graph is a DAG
+    #         if not nx.is_directed_acyclic_graph(G):
+    #             raise ValueError(
+    #                 f"The graph contains cycles and is not a Directed Acyclic Graph (DAG). The dag can be visibilized at {dag_file_name}"
+    #             )
 
     def build_task(self):
         ray.init(
@@ -93,11 +106,11 @@ class Builder:
             model_name = model_config["entrypoint"]
             module = importlib.import_module(module_name)
             model = getattr(module, model_name)
-            num_gpus = model_config.get("num_gpus", 0)
+            num_gpus = model_config.resources.get("num_gpus", 0)
             self.tasks[model_alias] = ray.remote(model).options(num_gpus=num_gpus)
             # tasks[model_alias] = ray.remote(num_gpus=num_gpus)(model)
             # models[model_alias] = model
-        self.check_dag()
+        # self.check_dag()
         return
 
     def run_task(self, input_data=None):
@@ -116,9 +129,6 @@ class Builder:
                     if not isinstance(deps, (list, omegaconf.listconfig.ListConfig)):
                         deps = [deps]
                     dependencies = deps
-                elif "depend" in model_config:
-                    dep = model_config["depend"]
-                    dependencies = [dep]
                 else:
                     dependencies = []
 
@@ -146,14 +156,15 @@ class Builder:
                 raise ValueError("Circular dependency detected in model configuration")
 
         logger.info(f" =========== deploy model_nodes ============= ", model_nodes)
+        find_final_node = self.find_final_node()
 
-        final_node = model_nodes[self.config["deploy"]["exit"]]
+        final_node = model_nodes[find_final_node]
         final_result = workflow.run(final_node)
         return final_result
 
     def run_router_task(self, method="post"):
 
-        router_config = self.config["deploy"].get("router")
+        router_config = self.config["deploy"].get("service")
 
         assert router_config and len(router_config) > 0
         name = router_config["name"]
