@@ -118,7 +118,7 @@ class TopKRouter(Router):
         """
 
         def _sinkhorn_activation(logits):
-            if self.topk == 1 or self.score_function_type == "sigmoid":
+            if self.topk == 1:
                 logits = torch.sigmoid(logits)
 
             else:  # k > 1
@@ -136,11 +136,6 @@ class TopKRouter(Router):
         else:
             logits = _sinkhorn_activation(logits)
             _, indices = torch.topk(logits, k=self.topk, dim=1)
-
-        if self.score_function_type == "sigmoid":
-            tmp = logits.sum(dim=-1, keepdim=True)
-            logits = logits / tmp
-
         map = torch.zeros_like(logits).int().scatter(1, indices, 1).bool()
         scores = logits * map
         return scores, map
@@ -174,7 +169,6 @@ class TopKRouter(Router):
             if self.score_function_type == "sigmoid":
                 tmp = scores.sum(dim=-1, keepdim=True)
                 scores = scores / tmp
-
             aux_loss_func = partial(
                 switch_load_balancing_loss_func,
                 probs=scores,
