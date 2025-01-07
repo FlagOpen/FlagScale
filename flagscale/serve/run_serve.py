@@ -10,10 +10,7 @@ def main():
     sys.path.append(project_path)
     builder = Builder(config)
     builder.build_task()
-    if config["deploy"].get("router"):
-        builder.run_router_task()
-    else:
-        result = builder.run_task()
+    builder.run_router_task()
 
 
 if __name__ == "__main__":

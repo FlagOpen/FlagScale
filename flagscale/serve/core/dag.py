@@ -82,6 +82,12 @@ class Builder:
                 )
 
     def build_task(self):
+        ray.init(
+            storage="/tmp/ray_workflow",
+            runtime_env={
+                "working_dir": self.config["root_path"],
+            },
+        )
         for model_alias, model_config in self.config["deploy"]["models"].items():
             module_name = model_config["module"]
             model_name = model_config["entrypoint"]
@@ -92,13 +98,6 @@ class Builder:
             # tasks[model_alias] = ray.remote(num_gpus=num_gpus)(model)
             # models[model_alias] = model
         self.check_dag()
-        ray.init(
-            num_gpus=6,
-            storage="/tmp/ray_workflow",
-            runtime_env={
-                "working_dir": self.config["root_path"],
-            },
-        )
         return
 
     def run_task(self, input_data=None):
