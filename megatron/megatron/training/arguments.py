@@ -2233,7 +2233,7 @@ def _add_moe_args(parser):
     group.add_argument('--moe-router-score-function-type', type=str,
                        choices=['softmax', 'sigmoid'],
                        default='softmax',
-                       help='Determines the score function type for the router, currently support "aux_loss" and "seq_aux_loss" load balancing type.')
+                       help='Determines the score function type for the router, currently support two load balancing type: "aux_loss" and "seq_aux_loss".')
     group.add_argument('--moe-router-topk', type=int, default=2,
                        help='Number of experts to route to for each token. The default is 2.')
     group.add_argument('--moe-router-pre-softmax', action='store_true',

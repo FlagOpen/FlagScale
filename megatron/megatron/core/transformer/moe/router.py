@@ -120,7 +120,6 @@ class TopKRouter(Router):
         def _sinkhorn_activation(logits):
             if self.topk == 1:
                 logits = torch.sigmoid(logits)
-
             else:  # k > 1
                 logits = torch.softmax(logits, dim=-1, dtype=torch.float32).type_as(logits)
             return logits
@@ -322,7 +321,6 @@ class TopKRouter(Router):
                 use_pre_softmax=self.config.moe_router_pre_softmax,
                 moe_router_topk_scaling_factor=self.config.moe_router_topk_scaling_factor,
                 deterministic_mode=self.config.deterministic_mode,
-                score_function_type=self.score_function_type,
             )
         else:
             raise ValueError(f"Unsupported MoE routing type: {self.routing_type}")

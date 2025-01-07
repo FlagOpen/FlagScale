@@ -284,7 +284,7 @@ class TransformerConfig(ModelParallelConfig):
     algorithm used in S-BASE, and "none" implies no load balancing. The default is "aux_loss"."""
 
     moe_router_score_function_type: str = "softmax"
-    """Determines the score function type for the router, currently support "aux_loss" and "seq_aux_loss" load balancing type."""
+    """Determines the score function type for the router, currently support two load balancing type: "aux_loss" and "seq_aux_loss"."""
 
     moe_router_topk: int = 2
     """Number of experts to route to for each token."""
