@@ -159,7 +159,8 @@ class Builder:
         find_final_node = self.find_final_node()
 
         final_node = model_nodes[find_final_node]
-        ray.dag.vis_utils.plot(final_node, "output.jpg")
+        # pydot is required to plot DAG, install it with `pip install pydot`.
+        #ray.dag.vis_utils.plot(final_node, "output.jpg")
         final_result = workflow.run(final_node)
         return final_result
 
