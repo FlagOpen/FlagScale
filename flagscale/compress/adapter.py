@@ -34,7 +34,7 @@ QUANT_MAPPING_NAMES = {
     }
 
 class LLMCompressorAdapter:
-    def __init__(self, model, scheme, targets, algo=None, ignore=None, dataset=None):
+    def __init__(self, model, scheme, targets, algo=None, ignore=None, dataset=None, num_calibration_steps=384):
         self.model = model
         modify_save_pretrained(self.model)
         if algo is not None:
@@ -49,7 +49,7 @@ class LLMCompressorAdapter:
         self.targets = targets
         self.wrapper_cls = None
         self.layer_compressors_ = []
-        self.num_calibration_steps = 16
+        self.num_calibration_steps = num_calibration_steps
         self.dataset = dataset
 
         if (self.algo is None and is_preset_scheme(self.scheme)) or self.algo in list(QUANT_MAPPING_NAMES.keys()):

@@ -70,6 +70,7 @@ def compress(cfg, model=None, dataset=None):
         for algo_args in recipe:
             algo_args = OmegaConf.to_container(algo_args)
             algo_args["dataset"] = dataset
+            algo_args["num_calibration_steps"] = cfg.data.get("max_seq_length", 384)
             adapter = LLMCompressorAdapter(model=model, **algo_args)
             ### modify model inplace
             model = adapter.model
