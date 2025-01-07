@@ -103,7 +103,7 @@ class Builder:
         )
         for model_alias, model_config in self.config["deploy"]["models"].items():
             module_name = model_config["module"]
-            model_name = model_config["entrypoint"]
+            model_name = model_config["name"]
             module = importlib.import_module(module_name)
             model = getattr(module, model_name)
             num_gpus = model_config.resources.get("num_gpus", 0)
@@ -148,7 +148,7 @@ class Builder:
                             model_nodes[model_alias] = self.tasks[model_alias].bind()
                         else:
                             model_nodes[model_alias] = self.tasks[model_alias].bind(
-                                input_data
+                                *input_data
                             )
                     models_to_process.remove(model_alias)
                     progress = True
@@ -169,11 +169,12 @@ class Builder:
         assert router_config and len(router_config) > 0
         name = router_config["name"]
         port = router_config["port"]
-        request_config = router_config["request"]
+        request_names = router_config["request"]["names"]
+        request_types = router_config["request"]["types"]
 
         RequestData = create_model(
             "Request",
-            **{field: (type_, ...) for field, type_ in request_config.items()},
+            **{field: (type_, ...) for field, type_ in zip(request_names, request_types)},
         )
         app = FastAPI()
 
@@ -181,8 +182,9 @@ class Builder:
 
             @app.post(name)
             async def route_handler(request_data: RequestData):
+                input_data = tuple(getattr(request_data, field) for field in request_names)
                 try:
-                    response = self.run_task(request_data.prompt)
+                    response = self.run_task(*input_data)
                     return response
                 except Exception as e:
                     raise HTTPException(status_code=400, detail=str(e))

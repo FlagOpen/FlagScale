@@ -35,7 +35,6 @@ def prepare_processor(llm_cfg, vq_model):
     return Emu3Processor(image_processor, image_tokenizer, tokenizer)
 
 
-# @ray.remote(num_gpus=1)
 def inference_t2i(cfg, positive_prompt, negative_prompt):
     """
     text-to-image task
