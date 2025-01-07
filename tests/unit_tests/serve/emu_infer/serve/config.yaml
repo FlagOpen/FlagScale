@@ -35,6 +35,8 @@ deploy:
     port: 8000
     request:
       names:
-        - prompt
+        - positive_prompt
+        - negative_prompt
       types:
+        - str
         - str
