@@ -34,4 +34,7 @@ deploy:
     name: /generate
     port: 8000
     request:
-      prompt: str
+      names:
+        - prompt
+      types:
+        - str
