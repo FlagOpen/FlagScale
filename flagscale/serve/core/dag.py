@@ -113,7 +113,7 @@ class Builder:
         # self.check_dag()
         return
 
-    def run_task(self, input_data=None):
+    def run_task(self, *input_data):
         assert len(self.tasks) > 0
         models_to_process = list(self.config["deploy"]["models"].keys())
 
@@ -144,7 +144,7 @@ class Builder:
                                 model_nodes[dependencies[0]]
                             )
                     else:
-                        if input_data is None:
+                        if len(input_data)==0:
                             model_nodes[model_alias] = self.tasks[model_alias].bind()
                         else:
                             model_nodes[model_alias] = self.tasks[model_alias].bind(
