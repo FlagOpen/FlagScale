@@ -283,6 +283,9 @@ class TransformerConfig(ModelParallelConfig):
     which computes the loss for each individual sample; "sinkhorn" corresponds to the balancing 
     algorithm used in S-BASE, and "none" implies no load balancing. The default is "aux_loss"."""
 
+    moe_router_score_function_type: str = "softmax"
+    """Determines the score function type for the router."""
+
     moe_router_topk: int = 2
     """Number of experts to route to for each token."""
 

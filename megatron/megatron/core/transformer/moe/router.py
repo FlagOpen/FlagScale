@@ -17,6 +17,7 @@ from megatron.core.transformer.moe.moe_utils import (
     switch_load_balancing_loss_func,
     topk_softmax_with_capacity,
     z_loss_func,
+    score_function,
 )
 from megatron.core.transformer.transformer_config import TransformerConfig
 
@@ -102,6 +103,7 @@ class TopKRouter(Router):
         super().__init__(config=config)
         self.topk = self.config.moe_router_topk
         self.routing_type = self.config.moe_router_load_balancing_type
+        self.score_function_type = self.config.moe_router_score_function_type
         self.input_jitter = None
 
     def sinkhorn_load_balancing(self, logits: torch.Tensor):
@@ -116,8 +118,9 @@ class TopKRouter(Router):
         """
 
         def _sinkhorn_activation(logits):
-            if self.topk == 1:
+            if self.topk == 1 or self.score_function_type == "sigmoid":
                 logits = torch.sigmoid(logits)
+
             else:  # k > 1
                 logits = torch.softmax(logits, dim=-1, dtype=torch.float32).type_as(logits)
             return logits
@@ -133,6 +136,11 @@ class TopKRouter(Router):
         else:
             logits = _sinkhorn_activation(logits)
             _, indices = torch.topk(logits, k=self.topk, dim=1)
+
+        if self.score_function_type == "sigmoid":
+            tmp = logits.sum(dim=-1, keepdim=True)
+            logits = logits / tmp
+
         map = torch.zeros_like(logits).int().scatter(1, indices, 1).bool()
         scores = logits * map
         return scores, map
@@ -157,11 +165,16 @@ class TopKRouter(Router):
             moe_router_topk_limited_devices=self.config.moe_router_topk_limited_devices,
             moe_router_topk_scaling_factor=self.config.moe_router_topk_scaling_factor,
             deterministic_mode=self.config.deterministic_mode,
+            score_function_type=self.score_function_type,
         )
 
         if self.training:
             # Apply load balancing loss
-            scores = torch.softmax(logits, dim=-1, dtype=torch.float32)
+            scores = score_function(logits, self.score_function_type)
+            if self.score_function_type == "sigmoid":
+                tmp = scores.sum(dim=-1, keepdim=True)
+                scores = scores / tmp
+
             aux_loss_func = partial(
                 switch_load_balancing_loss_func,
                 probs=scores,
@@ -186,10 +199,14 @@ class TopKRouter(Router):
             moe_router_topk_limited_devices=self.config.moe_router_topk_limited_devices,
             moe_router_topk_scaling_factor=self.config.moe_router_topk_scaling_factor,
             deterministic_mode=self.config.deterministic_mode,
+            score_function_type=self.score_function_type,
         )
 
         if self.training:
-            scores = torch.softmax(logits, dim=-1, dtype=torch.float32)
+            scores = score_function(logits, self.score_function_type)
+            if self.score_function_type == "sigmoid":
+                tmp = scores.sum(dim=-1, keepdim=True)
+                scores = scores / tmp
             aux_loss_func = partial(
                 sequence_load_balancing_loss_func,
                 probs=scores,
@@ -311,6 +328,7 @@ class TopKRouter(Router):
                 use_pre_softmax=self.config.moe_router_pre_softmax,
                 moe_router_topk_scaling_factor=self.config.moe_router_topk_scaling_factor,
                 deterministic_mode=self.config.deterministic_mode,
+                score_function_type=self.score_function_type,
             )
         else:
             raise ValueError(f"Unsupported MoE routing type: {self.routing_type}")

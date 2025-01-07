@@ -94,6 +94,17 @@ def sequence_load_balancing_loss_func(
 
     return seq_aux_loss
 
+def score_function(
+    input: torch.Tensor,
+    score_function_type: str = "softmax",
+):
+    if score_function_type == "softmax":
+        scores = torch.softmax(input, dim=-1, dtype=torch.float32).type_as(input)
+    elif score_function_type == "sigmoid":
+        scores = input.sigmoid()
+    else:
+        raise ValueError(f"Unsupported MoE routing score function type: {score_function_type}")
+    return scores
 
 def z_loss_func(logits, z_loss_coeff):
     """Encourages the router's logits to remain small to enhance stability.
@@ -323,6 +334,7 @@ def topk_softmax_with_capacity(
     moe_router_topk_limited_devices: int = None,
     moe_router_topk_scaling_factor: float = None,
     deterministic_mode: bool = False,
+    score_function_type: str = "softmax",
 ):
     """Apply capacity and padding to the top-k selection.
     Args:
@@ -355,7 +367,7 @@ def topk_softmax_with_capacity(
     num_experts = logits.shape[1]
     if use_pre_softmax:
         # Pre softmax
-        scores = torch.softmax(logits, dim=-1, dtype=torch.float32).type_as(logits)
+        scores = score_function(logits, score_function_type)
 
         if moe_router_topk_limited_devices:
             probs, top_indices = device_limited_topk(
@@ -382,7 +394,11 @@ def topk_softmax_with_capacity(
             )
         else:
             scores, top_indices = torch.topk(logits, k=topk, dim=1)
-        probs = torch.softmax(scores, dim=-1, dtype=torch.float32).type_as(logits)
+        probs = score_function(scores, score_function_type)
+
+    if score_function_type == "sigmoid":
+        tmp = probs.sum(dim=-1, keepdim=True)
+        probs = probs / tmp
 
     # TODO Try using element-wise operations instead of scatter?
     topk_masked_gates = torch.zeros_like(logits).scatter(1, top_indices, probs)
