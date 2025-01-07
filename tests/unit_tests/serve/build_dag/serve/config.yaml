@@ -20,7 +20,7 @@ deploy:
         - A
       name: model_C
       resources:
-        num_gpus: 1
+        num_gpus: 0
     D:
       module: custom.models
       depends:
@@ -28,7 +28,7 @@ deploy:
         - C
       name: model_D
       resources:
-        num_gpus: 1
+        num_gpus: 0
 
   service:
     name: /generate
