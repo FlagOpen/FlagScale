@@ -8,7 +8,7 @@ from omegaconf import OmegaConf
 import torch
 from transformers import *
 
-from flagscale.compress.combine_algo import prepare_compress_methods
+from flagscale.compress.combined_algo import prepare_compress_methods
 from flagscale.compress.adapter import LLMCompressorAdapter
 
 _g_ignore_fields = ["experiment", "action"]

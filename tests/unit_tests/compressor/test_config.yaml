@@ -7,7 +7,7 @@ experiment:
   runner:
     hostfile: null
   cmds:
-    before_start: source activate lms-flagscale
+    before_start: source activate flagscale
   envs:
     CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
