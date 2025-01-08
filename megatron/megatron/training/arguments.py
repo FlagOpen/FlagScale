@@ -2230,6 +2230,10 @@ def _add_moe_args(parser):
                        choices=['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'],
                        default='aux_loss',
                        help='Determines the load balancing strategy for the router. "aux_loss" corresponds to the load balancing loss used in GShard and SwitchTransformer; "seq_aux_loss" corresponds to the load balancing loss used in DeepSeekV2, which computes the loss for each individual sample; "sinkhorn" corresponds to the balancing algorithm used in S-BASE, and "none" implies no load balancing. The default is "aux_loss".')
+    group.add_argument('--moe-router-score-function-type', type=str,
+                       choices=['softmax', 'sigmoid'],
+                       default='softmax',
+                       help='Determines the score function type for the router, currently support two load balancing type: "aux_loss" and "seq_aux_loss".')
     group.add_argument('--moe-router-topk', type=int, default=2,
                        help='Number of experts to route to for each token. The default is 2.')
     group.add_argument('--moe-router-pre-softmax', action='store_true',
