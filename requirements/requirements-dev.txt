@@ -10,3 +10,6 @@
 # flagscale
 -r flagscale/requirements-common.txt
 -r flagscale/requirements-dev.txt
+
+# compress
+-r compress/requirements-dev.txt

@@ -4,6 +4,7 @@ from omegaconf import DictConfig
 from flagscale.runner.runner_train import SSHTrainRunner, CloudTrainRunner
 from flagscale.runner.runner_inference import SSHInferenceRunner
 from flagscale.runner.runner_serve import SSHServeRunner
+from flagscale.runner.runner_compress import SSHCompressRunner
 
 
 @hydra.main(version_base=None, config_name="config")
@@ -54,6 +55,12 @@ def main(config: DictConfig) -> None:
             runner.run()
         elif config.action == "test":
             runner.run(with_test=True)
+    elif task_type == "compress":
+        runner = SSHCompressRunner(config)
+        if config.action == "run":
+            runner.run()
+        elif config.action == "dryrun":
+            runner.run(dryrun=True)
         elif config.action == "stop":
             runner.stop()
         else:

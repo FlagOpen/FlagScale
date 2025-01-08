@@ -1,0 +1,2 @@
+llmcompressor
+compressed-tensors-nightly
