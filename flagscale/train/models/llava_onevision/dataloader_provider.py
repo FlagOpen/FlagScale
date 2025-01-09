@@ -67,10 +67,15 @@ def datasets_provider(worker_config=None):
 
 def train_valid_test_dataloaders_provider(train_val_test_num_samples):
     """Build multimodal train, validation and test dataloaders."""
+    args = get_args()
+
+    # In llava-ov, set skip_train False to eval each sample.
+    # Training while evaluating is not supported yet.
+    if args.skip_train:
+        args.eval_iters = args.train_iters
+
     if get_tensor_model_parallel_rank() != 0:
         return None, None, None
-
-    args = get_args()
 
     worker_debug_path = None
     worker_log_level = 0
@@ -110,11 +115,18 @@ def train_valid_test_dataloaders_provider(train_val_test_num_samples):
                         "loading dataloader checkpoint failed. Skipping. " + str(e)
                     )
     if args.training_dataset_only:
-        return (
-            EnergonDataloader(train_dataloader),
-            EnergonDataloader(None),
-            EnergonDataloader(None),
-        )
+        if not args.skip_train:
+            return (
+                EnergonDataloader(train_dataloader),
+                None,
+                None,
+            )
+        else:
+            return (
+                None,
+                EnergonDataloader(train_dataloader),
+                None,
+            )        
     valid_dataloader = [
         EnergonDataloader(get_loader(valid_ds, worker_config=worker_config))
         for valid_ds in valid_ds1
