@@ -3,26 +3,26 @@ root_path: tests/unit_tests/serve/build_dag
 deploy:
   models:
     A:
-      module: main
+      module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/main.py 
       name: model_A
       resources:
         num_gpus: 1
     B:
-      module: main
+      module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/main.py
       depends:
         - A
       name: model_B
       resources:
         num_gpus: 1
     C:
-      module: custom.models
+      module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/custom/models.py
       depends: 
         - A
       name: model_C
       resources:
         num_gpus: 0
     D:
-      module: custom.models
+      module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/custom/models.py
       depends:
         - B
         - C
