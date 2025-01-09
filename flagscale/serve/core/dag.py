@@ -1,4 +1,5 @@
 import importlib
+import sys
 import uvicorn
 # import networkx as nx
 import matplotlib.pyplot as plt
@@ -7,6 +8,7 @@ from ray import workflow
 import omegaconf
 import logging as logger
 
+from pathlib import Path
 
 from pydantic import create_model
 from typing import Callable, Any
@@ -95,16 +97,26 @@ class Builder:
     #             )
 
     def build_task(self):
+
+        pythonpath_tmp = set()
+        for model_alias, model_config in self.config["deploy"]["models"].items():
+            module_name = model_config["module"]
+            path = Path(module_name)
+            module_dir = str(path.parent)
+            pythonpath_tmp.add(module_dir)
+        pythonpath = ":".join(pythonpath_tmp)
+        print(f" --------------------------- {pythonpath} ----------------------------- ", flush=True)
         ray.init(
-            storage="/tmp/ray_workflow",
-            runtime_env={
-                "working_dir": self.config["root_path"],
-            },
+            storage="/tmp/ray_workflow", runtime_env={"env_vars": {"PYTHONPATH": pythonpath}}
         )
         for model_alias, model_config in self.config["deploy"]["models"].items():
             module_name = model_config["module"]
             model_name = model_config["name"]
-            module = importlib.import_module(module_name)
+            path = Path(module_name)
+            module_tmp = path.stem
+            module_dir = str(path.parent)
+            sys.path.append(module_dir) 
+            module = importlib.import_module(module_tmp)
             model = getattr(module, model_name)
             num_gpus = model_config.resources.get("num_gpus", 0)
             self.tasks[model_alias] = ray.remote(model).options(num_gpus=num_gpus)
