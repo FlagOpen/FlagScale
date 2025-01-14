@@ -8,6 +8,56 @@ import math
 NUM_BYTES_IN_MEGABYTE = 1024 * 1024
 
 
+def compute_activated_weight_number(args, verbose=False):
+    if args.num_experts is None:
+        return
+    # Attention projection size.
+    query_projection_size = args.kv_channels * args.num_attention_heads
+    query_projection_to_hidden_size_ratio = query_projection_size / args.hidden_size
+    # Group Query Attention.
+    if not args.group_query_attention:
+        args.num_query_groups = args.num_attention_heads
+    # MoE.
+    # NOTE(zhaoyingli): We only compute the number of activated parameters by topk routing.
+    num_experts = args.moe_router_topk
+    gated_linear_multiplier = 3 / 2 if args.swiglu else 1
+    num_parameters_in_transformer_layers = (
+        2
+        * args.num_layers
+        * args.hidden_size
+        * args.hidden_size
+        * (
+            # Attention.
+            (
+                (1 + (args.num_query_groups / args.num_attention_heads))
+                * query_projection_to_hidden_size_ratio
+            )
+            # MLP.
+            + ((args.ffn_hidden_size / args.hidden_size) * num_experts * gated_linear_multiplier)
+            # Transformer layernorms.
+            + (2 / args.hidden_size)
+            # Final layernorm.
+            + (1 / (args.num_layers * args.hidden_size))
+        )
+    )
+    embedding_size = args.hidden_size * args.padded_vocab_size
+    if args.untie_embeddings_and_output_weights:
+        num_parameters_in_embedding_layers = 2 * embedding_size
+    else:
+        num_parameters_in_embedding_layers = embedding_size
+    num_total_parameters = num_parameters_in_transformer_layers + num_parameters_in_embedding_layers
+    if verbose:
+        print(
+            f"Number of activated parameters in transformer layers in billions: "
+            f"{num_parameters_in_transformer_layers / 10**9: .2f}"
+        )
+        print(
+            f"Number of activated parameters in embedding layers in billions: "
+            f"{num_parameters_in_embedding_layers / 10**9:.2f}"
+        )
+        print(f"Total number of activated parameters in billions: {num_total_parameters / 10**9:.2f}")
+
+
 def compute_weight_and_optimizer_memory(args, verbose=False):
     # Attention projection size.
     query_projection_size = args.kv_channels * args.num_attention_heads
@@ -164,6 +214,8 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
 
 
 def report_theoretical_memory(args, num_microbatches=None, verbose=False):
+    compute_activated_weight_number(args, verbose=verbose)
+
     weight_and_optimizer_memory = (
         compute_weight_and_optimizer_memory(args, verbose=verbose) / NUM_BYTES_IN_MEGABYTE
     )
