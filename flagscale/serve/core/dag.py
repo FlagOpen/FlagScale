@@ -118,7 +118,7 @@ class Builder:
             sys.path.append(module_dir) 
             module = importlib.import_module(module_tmp)
             model = getattr(module, model_name)
-            num_gpus = model_config.resources.get("num_gpus", 0)
+            num_gpus = model_config.resources.get("gpu", 0)
             self.tasks[model_alias] = ray.remote(model).options(num_gpus=num_gpus)
             # tasks[model_alias] = ray.remote(num_gpus=num_gpus)(model)
             # models[model_alias] = model

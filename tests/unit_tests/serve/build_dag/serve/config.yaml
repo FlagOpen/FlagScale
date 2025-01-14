@@ -4,21 +4,21 @@ deploy:
       module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/main.py 
       name: model_A
       resources:
-        num_gpus: 1
+        gpu: 1
     B:
       module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/main.py
       depends:
         - A
       name: model_B
       resources:
-        num_gpus: 1
+        gpu: 1
     C:
       module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/custom/models.py
       depends: 
         - A
       name: model_C
       resources:
-        num_gpus: 0
+        gpu: 0
     D:
       module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/custom/models.py
       depends:
@@ -26,7 +26,7 @@ deploy:
         - C
       name: model_D
       resources:
-        num_gpus: 0
+        gpu: 0
 
   service:
     name: /generate
@@ -36,3 +36,18 @@ deploy:
         - prompt
       types:
         - str
+
+hostfile:
+  nodes:
+    - master:
+        ip: 192.168.1.100
+        slots: 4
+        type: gpu
+    - node:
+        ip: 192.168.1.101
+        slots: 4
+        type: custom
+    - node:
+        ip: 192.168.1.102
+        slots: 2
+        type: gpu
