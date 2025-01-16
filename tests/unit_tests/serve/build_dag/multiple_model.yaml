@@ -13,5 +13,7 @@ experiment:
   envs:
     CUDA_VISIBLE_DEVICES: 0,1,2,3
     CUDA_DEVICE_MAX_CONNECTIONS: 1
+  cmds:
+    before_start: source /root/miniconda3/bin/activate flagscale
 
 action: run

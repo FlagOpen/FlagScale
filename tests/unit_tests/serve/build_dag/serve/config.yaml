@@ -11,7 +11,7 @@ deploy:
         - A
       name: model_B
       resources:
-        gpu: 1
+        gpu: 0
     C:
       module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/custom/models.py
       depends: 
@@ -40,12 +40,10 @@ deploy:
 hostfile:
   nodes:
     - master:
-        ip: 10.1.1.203
-        slots: 4
+        ip: 172.17.0.4
+        slots: 2
         type: gpu
-        port: 9031
     - node:
-        ip: 192.168.1.101
-        slots: 4
+        ip: 172.17.0.2
+        slots: 2
         type: custom
-        port: 9999
