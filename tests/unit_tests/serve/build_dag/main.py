@@ -3,7 +3,7 @@ from custom.models import fn
 from flagscale.serve.core import auto_remote
 
 
-@auto_remote(num_gpus=1)
+@auto_remote(gpu=1,custom={"custom":0.5})
 class LLMActor:
     def __init__(self):
         # Initialize the LLM inside the actor to avoid serialization

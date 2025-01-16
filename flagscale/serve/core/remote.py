@@ -1,9 +1,12 @@
 import ray
 
 
-def auto_remote(num_gpus=0):
+def auto_remote(gpu=0, cpu=1, custom={}):
     def decorator(cls):
-        original_cls = ray.remote(num_gpus=num_gpus, resources={"custom": 0.5})(cls)
+        if not custom:
+            original_cls = ray.remote(num_gpus=gpu,num_cpus=cpu)(cls)
+        else:
+            original_cls = ray.remote(num_gpus=gpu,num_cpus=cpu, resources=custom)(cls)
 
         class Wrapper:
             def __init__(self, *args, **kwargs):
