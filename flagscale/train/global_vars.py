@@ -1,11 +1,12 @@
 import torch
 
 from flagscale.train.hetero.parallel_context import ParallelContext
+from flagscale.train.spiky_loss import SpikyLossDetector
 
 _GLOBAL_EXTRA_VALID_DATASETS = None
 _GLOBAL_EXATRA_INPUT_TENSOR = None
 _GLOBAL_PARALLEL_CONTEXT = None
-
+_GLOBAL_SPIKY_LOSS_DETECTOR = None
 
 def _ensure_var_is_initialized(var, name):
     """Make sure the input variable is not None."""
@@ -49,3 +50,15 @@ def set_parallel_context(args):
     global _GLOBAL_PARALLEL_CONTEXT
     _ensure_var_is_not_initialized(_GLOBAL_PARALLEL_CONTEXT, 'parallel context')
     _GLOBAL_PARALLEL_CONTEXT = ParallelContext(args)
+
+def get_spiky_loss_detector():
+    """Return spiky loss detector."""
+    _ensure_var_is_initialized(_GLOBAL_SPIKY_LOSS_DETECTOR, 'spiky loss detector')
+    return _GLOBAL_SPIKY_LOSS_DETECTOR
+
+
+def set_get_spiky_loss_detector(args):
+    """Initialize spiky loss detector."""
+    global _GLOBAL_SPIKY_LOSS_DETECTOR
+    _ensure_var_is_not_initialized(_GLOBAL_SPIKY_LOSS_DETECTOR, 'spiky loss detector')
+    _GLOBAL_SPIKY_LOSS_DETECTOR = SpikyLossDetector(args.spiky_loss_threshold)

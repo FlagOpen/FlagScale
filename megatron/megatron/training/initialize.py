@@ -28,7 +28,7 @@ from megatron.core.fusions.fused_bias_swiglu import bias_swiglu
 from megatron.core.utils import get_te_version, is_te_min_version, is_torch_min_version
 
 from flagscale.train import FSTrainArguments
-from flagscale.train import set_parallel_context  
+from flagscale.train import set_parallel_context, set_get_spiky_loss_detector
 logger = logging.getLogger(__name__)
 
 
@@ -106,6 +106,9 @@ def initialize_megatron(
             error_injection_type=RerunDiagnostic(args.error_injection_type),
         ),
     )
+    
+    if args.auto_skip_spiky_loss:
+        set_get_spiky_loss_detector(args=args)
 
     # torch.distributed initialization
     def finish_mpu_init():

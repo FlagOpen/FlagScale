@@ -97,7 +97,7 @@ from megatron.training import ft_integration
 from flagscale.train.extra_valid import extra_evaluate_and_print_results
 from flagscale.train.extra_valid import build_extra_valid_data_iterators
 from flagscale.train.stablelm2_scheduler import StableLM2SchedulerConfig
-from flagscale.train.global_vars import get_parallel_context
+from flagscale.train.global_vars import get_parallel_context, get_spiky_loss_detector
 from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
 
 stimer = StragglerDetector()
@@ -832,6 +832,18 @@ def train_step(forward_step_func, data_iterator,
     if should_exit:
         return {}, True, should_checkpoint, should_exit, exit_code, None, None
 
+    ###########FlagScale begin ##########
+    if args.auto_skip_spiky_loss and (args.consumed_train_samples > args.lr_warmup_samples and args.curr_iteration > args.lr_warmup_iters):
+        spiky_loss_detector = get_spiky_loss_detector()
+        loss_ = spiky_loss_detector.reduce_losses(losses_reduced)
+        is_spiky_loss = spiky_loss_detector.is_spkiy_loss(loss_)
+        is_spiky_loss_tensor = torch.tensor(is_spiky_loss, dtype=torch.int, device="cuda")
+        torch.distributed.all_reduce(is_spiky_loss_tensor, op=torch.distributed.ReduceOp.MAX)
+        is_spiky_loss = is_spiky_loss_tensor.item()
+        if is_spiky_loss > 0:
+            return {}, True, should_checkpoint, should_exit, exit_code, None, None
+    #########FlagScale end ############
+    
     # Empty unused memory.
     if args.empty_unused_memory_level >= 1:
         torch.cuda.empty_cache()
@@ -1573,6 +1585,34 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
 
         # Run training step.
         args.curr_iteration = iteration
+        ###########FlagScale begin ##########
+        if args.skip_samples_range or args.skip_iters_range:
+            current_global_batch_size = get_current_global_batch_size()
+            start_skip_iteration = 0
+            end_skip_iteration = 0
+            if args.skip_samples_range:
+                if args.consumed_train_samples + current_global_batch_size > args.skip_samples_range[0] and args.consumed_train_samples < args.skip_samples_range[1]:
+                    num_skipped_iters = (args.skip_samples_range[1] - args.consumed_train_samples + current_global_batch_size - 1) // current_global_batch_size
+                    args.skip_samples_range[1] = args.consumed_train_samples + num_skipped_iters * current_global_batch_size
+                    start_skip_iteration = iteration
+                    end_skip_iteration = iteration + num_skipped_iters
+            else:
+                if iteration >= args.skip_iters_range[0] and iteration < args.skip_iters_range[1]:
+                    start_skip_iteration = iteration
+                    end_skip_iteration = args.skip_iters_range[1]
+            while iteration >= start_skip_iteration and iteration < end_skip_iteration:
+                if mpu.is_pipeline_first_stage() or mpu.is_pipeline_last_stage():
+                    for _ in range(get_num_microbatches()):
+                        _ = next(train_data_iterator)
+                args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
+                                           args.micro_batch_size * \
+                                           get_num_microbatches()
+                update_num_microbatches(args.consumed_train_samples, consistency_check=True, verbose=True)
+                iteration += 1
+                
+            args.curr_iteration = iteration
+        ###########FlagScale end ##########
+                
         loss_dict, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad = \
             train_step(forward_step_func,
                        train_data_iterator,
