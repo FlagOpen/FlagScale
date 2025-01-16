@@ -1,4 +1,4 @@
-import importlib
+import os, importlib
 import sys
 import uvicorn
 import socket
@@ -136,6 +136,9 @@ class Builder:
 
     def init_cluster(self, pythonpath=""):
         hostfile = self.config.get("hostfile", None)
+        address="auto"
+        exp_path = os.path.join(self.exp_config.exp_dir, "ray_workflow")
+        ray_path = os.path.abspath(exp_path)
         if hostfile:
             head_ip, head_port = next(
                 (
@@ -153,7 +156,7 @@ class Builder:
                 port = self.check_and_get_port()
             else:
                 port = self.check_and_get_port(target_port=int(head_port))
-            cmd = ["ray", "start", "--head", f"--port={port}"]
+            cmd = ["ray", "start", "--head", f"--port={port}", f"--storage={ray_path}"]
             logger.info(f"head node command: {cmd}")
             head_result = subprocess.run(
                 cmd,
@@ -191,7 +194,7 @@ class Builder:
                         )
                     if self.exp_config.get("cmds", "") and self.exp_config.cmds.get("before_start", ""):
                         before_start_cmd = self.exp_config.cmds.before_start
-                        node_cmd = f"{before_start_cmd} && " + node_cmd
+                        node_cmd = f"export RAY_STORAGE={ray_path} && {before_start_cmd} && " + node_cmd
 
                     if node.get("port", None):
                         ssh_cmd = f'ssh -n -p {node.port} {node.ip} "{node_cmd}"'
@@ -216,14 +219,14 @@ class Builder:
                         logger.warning(f"Output: {result.stdout}")
                         logger.warning(f"Error: {result.stderr}")
                         sys.exit(result.returncode)
-
+        logger.warning(f" =========== pythonpath {pythonpath} -----------------------")
         if pythonpath:
             ray.init(
-                storage="/tmp/ray_workflow",
+                address=address,
                 runtime_env={"env_vars": {"PYTHONPATH": pythonpath}},
             )
         else:
-            ray.init(storage="/tmp/ray_workflow")
+            ray.init(address=address)
 
     def build_task(self):
 
@@ -235,7 +238,7 @@ class Builder:
             pythonpath_tmp.add(module_dir)
         pythonpath = ":".join(pythonpath_tmp)
         print(f" --------------------------- {pythonpath} ----------------------------- ", flush=True)
-        self.init_cluster(pythonpath="")
+        self.init_cluster(pythonpath=pythonpath)
 
         for model_alias, model_config in self.config["deploy"]["models"].items():
             module_name = model_config["module"]
@@ -246,8 +249,11 @@ class Builder:
             sys.path.append(module_dir) 
             module = importlib.import_module(module_tmp)
             model = getattr(module, model_name)
-            num_gpus = model_config.resources.get("gpu", 0)
-            self.tasks[model_alias] = ray.remote(model).options(num_gpus=num_gpus)
+            resources = model_config.resources
+            num_gpus = resources.get("gpu", 0)
+            num_cpus = resources.get("cpu", 1)
+            customs = {res: resources[res] for res in resources if res not in ['gpu', 'cpu']}
+            self.tasks[model_alias] = ray.remote(model).options(num_cpus=num_cpus, num_gpus=num_gpus, resources=customs)
             # tasks[model_alias] = ray.remote(num_gpus=num_gpus)(model)
             # models[model_alias] = model
         # self.check_dag()
