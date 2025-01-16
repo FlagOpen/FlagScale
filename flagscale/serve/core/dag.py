@@ -139,9 +139,9 @@ class Builder:
         if hostfile:
             head_ip, head_port = next(
                 (
-                    (node.ip, node.port)
+                    (node.master.ip, node.master.port)
                     for node in hostfile.nodes
-                    if "master" in node.role
+                    if "master" in node
                 ),
                 (None, None),
             )
@@ -171,8 +171,9 @@ class Builder:
                 logger.warning(f"Error: {head_result.stderr}")
                 sys.exit(head_result.returncode)
 
-            for node in hostfile.nodes:
-                if "node" in node:
+            for item in hostfile.nodes:
+                if "node" in item:
+                    node = item.node
                     if node.type == "gpu":
                         node_cmd = (
                             f"ray start --address={head_ip} --num-gpus={node.slots}"
@@ -233,7 +234,7 @@ class Builder:
             pythonpath_tmp.add(module_dir)
         pythonpath = ":".join(pythonpath_tmp)
         print(f" --------------------------- {pythonpath} ----------------------------- ", flush=True)
-        self.init_cluster(self, pythonpath="")
+        self.init_cluster(pythonpath="")
 
         for model_alias, model_config in self.config["deploy"]["models"].items():
             module_name = model_config["module"]
