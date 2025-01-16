@@ -139,7 +139,7 @@ class Builder:
         if hostfile:
             head_ip, head_port = next(
                 (
-                    (node.master.ip, node.master.port)
+                    (node.master.ip, node.master.get("port", None))
                     for node in hostfile.nodes
                     if "master" in node
                 ),
@@ -170,23 +170,24 @@ class Builder:
                 logger.warning(f"Output: {head_result.stdout}")
                 logger.warning(f"Error: {head_result.stderr}")
                 sys.exit(head_result.returncode)
+            address = f"{head_ip}:{port}"
 
             for item in hostfile.nodes:
                 if "node" in item:
                     node = item.node
                     if node.type == "gpu":
                         node_cmd = (
-                            f"ray start --address={head_ip} --num-gpus={node.slots}"
+                            f"ray start --address={address} --num-gpus={node.slots}"
                         )
 
                     elif node.type == "cpu":
                         node_cmd = (
-                            f"ray start --address={head_ip} --num-cpus={node.slots}"
+                            f"ray start --address={address} --num-cpus={node.slots}"
                         )
                     else:
                         resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
                         node_cmd = (
-                            f"ray start --address={head_ip} --resources='{resource}'"
+                            f"ray start --address={address} --resources='{resource}'"
                         )
                     if self.exp_config.get("cmds", "") and self.exp_config.cmds.get("before_start", ""):
                         before_start_cmd = self.exp_config.cmds.before_start
