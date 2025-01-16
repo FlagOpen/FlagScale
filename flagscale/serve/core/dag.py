@@ -1,6 +1,11 @@
 import importlib
 import sys
 import uvicorn
+import socket
+import subprocess
+import json
+
+
 # import networkx as nx
 import matplotlib.pyplot as plt
 import ray
@@ -17,8 +22,9 @@ from fastapi import FastAPI, HTTPException, Request
 
 class Builder:
     def __init__(self, config):
-        self.config = config
-        self.check_config(config)
+        self.config = config.serve
+        self.exp_config = config.experiment
+        self.check_config(self.config)
         self.tasks = {}
 
     def check_config(self, config):
@@ -26,7 +32,6 @@ class Builder:
             raise ValueError("key deploy is missing for deployment configuration.")
         if not config.deploy.get("models", None):
             raise ValueError("key models is missing for building dag pipeline.")
-    
 
     def find_final_node(self):
         whole_nodes = set(self.config["deploy"]["models"].keys())
@@ -35,13 +40,46 @@ class Builder:
         for model_alias, model_config in self.config["deploy"]["models"].items():
             if len(model_config.get("depends", [])) > 0:
                 dependencies.update(model_config.depends)
-        
+
         output_node = whole_nodes - dependencies
         if len(output_node) != 1:
             raise ValueError(
                 f"There should only have one final node but there are {len(output_node)} nodes {output_node}."
             )
         return list(output_node)[0]
+
+    def check_and_get_port(self, target_port=None, host="0.0.0.0"):
+        """
+        Check if a specific port is free; if not, allocate a free port.
+        :param target_port: The port number to check, default is None.
+        :param host: The host address to check, default is "0.0.0.0".
+        :return: A tuple (is_free, port), where `is_free` indicates if the target port is free,
+                and `port` is the allocated port (target_port if free, or a new free port).
+        """
+        if target_port is None:
+            # The same as Ray
+            port = 6379
+        else:
+            port = target_port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                # Try binding the target port
+                s.bind((host, port))
+                logger.info(f"Port {port} is free and can be used.")
+                return port
+            except OSError:
+                # Target port is occupied, get a free port
+                s.bind((host, 0))
+                free_port = s.getsockname()[1]
+                if target_port is None:
+                    logger.info(
+                        f"Port {port} is occupied. Allocated free port: {free_port}"
+                    )
+                else:
+                    logger.warning(
+                        f"Port {port} is occupied. Allocated free port: {free_port}"
+                    )
+                return free_port
 
     # def check_dag(self, visibilization=False):
 
@@ -96,6 +134,95 @@ class Builder:
     #                 f"The graph contains cycles and is not a Directed Acyclic Graph (DAG). The dag can be visibilized at {dag_file_name}"
     #             )
 
+    def init_cluster(self, pythonpath=""):
+        hostfile = self.config.get("hostfile", None)
+        if hostfile:
+            head_ip, head_port = next(
+                (
+                    (node.ip, node.port)
+                    for node in hostfile.nodes
+                    if "master" in node.role
+                ),
+                (None, None),
+            )
+            if head_ip is None:
+                raise ValueError(
+                    f"Failed to start Ray cluster using hostfile {hostfile} due to master node missing. Please ensure that the file exists and has the correct format."
+                )
+            if head_port is None:
+                port = self.check_and_get_port()
+            else:
+                port = self.check_and_get_port(target_port=int(head_port))
+            cmd = ["ray", "start", "--head", f"--port={port}"]
+            logger.info(f"head node command: {cmd}")
+            head_result = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            if head_result.returncode != 0:
+                logger.warning(
+                    f"SSH command {ssh_cmd} failed with return code {head_result.returncode}."
+                )
+                logger.warning(f"Output: {head_result.stdout}")
+                logger.warning(f"Error: {head_result.stderr}")
+                sys.exit(head_result.returncode)
+
+            for node in hostfile.nodes:
+                if "node" in node:
+                    if node.type == "gpu":
+                        node_cmd = (
+                            f"ray start --address={head_ip} --num-gpus={node.slots}"
+                        )
+
+                    elif node.type == "cpu":
+                        node_cmd = (
+                            f"ray start --address={head_ip} --num-cpus={node.slots}"
+                        )
+                    else:
+                        resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                        node_cmd = (
+                            f"ray start --address={head_ip} --resources='{resource}'"
+                        )
+                    if self.exp_config.get("cmds", "") and self.exp_config.cmds.get("before_start", ""):
+                        before_start_cmd = self.exp_config.cmds.before_start
+                        node_cmd = f"{before_start_cmd} && " + node_cmd
+
+                    if node.get("port", None):
+                        ssh_cmd = f'ssh -n -p {node.port} {node.ip} "{node_cmd}"'
+                    else:
+                        ssh_cmd = f'ssh -n {node.ip} "{node_cmd}"'
+                    
+                    logger.info(f"worker node command: {cmd}")
+
+                    result = subprocess.run(
+                        ssh_cmd,
+                        shell=True,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                    )
+                    if result.returncode != 0:
+                        logger.warning(
+                            f"SSH command {ssh_cmd} failed with return code {result.returncode}."
+                        )
+                        logger.warning(f"Output: {result.stdout}")
+                        logger.warning(f"Error: {result.stderr}")
+                        sys.exit(result.returncode)
+
+        if pythonpath:
+            ray.init(
+                storage="/tmp/ray_workflow",
+                runtime_env={"env_vars": {"PYTHONPATH": pythonpath}},
+            )
+        else:
+            ray.init(storage="/tmp/ray_workflow")
+
     def build_task(self):
 
         pythonpath_tmp = set()
@@ -106,9 +233,8 @@ class Builder:
             pythonpath_tmp.add(module_dir)
         pythonpath = ":".join(pythonpath_tmp)
         print(f" --------------------------- {pythonpath} ----------------------------- ", flush=True)
-        ray.init(
-            storage="/tmp/ray_workflow", runtime_env={"env_vars": {"PYTHONPATH": pythonpath}}
-        )
+        self.init_cluster(self, pythonpath="")
+
         for model_alias, model_config in self.config["deploy"]["models"].items():
             module_name = model_config["module"]
             model_name = model_config["name"]
@@ -172,7 +298,7 @@ class Builder:
 
         final_node = model_nodes[find_final_node]
         # pydot is required to plot DAG, install it with `pip install pydot`.
-        #ray.dag.vis_utils.plot(final_node, "output.jpg")
+        # ray.dag.vis_utils.plot(final_node, "output.jpg")
         final_result = workflow.run(final_node)
         return final_result
 

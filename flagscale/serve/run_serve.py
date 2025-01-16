@@ -5,7 +5,7 @@ from flagscale.serve.core.dag import Builder
 
 
 def main():
-    config = parse_config().serve
+    config = parse_config()
     builder = Builder(config)
     builder.build_task()
     builder.run_router_task()
