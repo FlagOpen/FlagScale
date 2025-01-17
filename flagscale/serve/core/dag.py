@@ -330,7 +330,7 @@ class Builder:
             ray.init(address=address)
 
     def build_task(self):
-
+        self.check_dag()
         pythonpath_tmp = set()
         for model_alias, model_config in self.config["deploy"]["models"].items():
             module_name = model_config["module"]
@@ -357,7 +357,6 @@ class Builder:
             self.tasks[model_alias] = ray.remote(model).options(num_cpus=num_cpus, num_gpus=num_gpus, resources=customs)
             # tasks[model_alias] = ray.remote(num_gpus=num_gpus)(model)
             # models[model_alias] = model
-        self.check_dag()
         return
 
     def run_task(self, *input_data):
