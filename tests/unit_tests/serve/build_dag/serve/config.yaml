@@ -1,26 +1,26 @@
 deploy:
   models:
     A:
-      module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/main.py 
+      module: ./tests/unit_tests/serve/build_dag/main.py 
       name: model_A
       resources:
-        gpu: 1
+        gpu: 0 
     B:
-      module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/main.py
+      module: ./tests/unit_tests/serve/build_dag/main.py
       depends:
         - A
       name: model_B
       resources:
         gpu: 0
     C:
-      module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/custom/models.py
+      module: ./tests/unit_tests/serve/build_dag/custom/models.py
       depends: 
         - A
       name: model_C
       resources:
         gpu: 0
     D:
-      module: /workspace/ip203/github_flagscale/tests/unit_tests/serve/build_dag/custom/models.py
+      module: ./tests/unit_tests/serve/build_dag/custom/models.py
       depends:
         - B
         - C
