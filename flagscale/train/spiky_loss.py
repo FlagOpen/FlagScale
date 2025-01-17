@@ -38,7 +38,7 @@ class SpikyLossDetector:
             elif math.isinf(loss) or math.isinf(self.last_loss):
                 return True
             else:
-                result = math.fabs(loss - self.last_loss) / self.last_loss >= self.threshold
+                result = (loss - self.last_loss) / self.last_loss >= self.threshold
                 if result:
                     return True
                 else:
