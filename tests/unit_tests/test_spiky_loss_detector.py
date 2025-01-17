@@ -30,6 +30,6 @@ def test_spiky_loss_detector(pp_size=2, threshold=0.2):
     is_spiky_loss_tensor = torch.tensor(is_spiky_loss, dtype=torch.int, device="cuda")
     torch.distributed.all_reduce(is_spiky_loss_tensor, op=torch.distributed.ReduceOp.MAX)
     is_spiky_loss = is_spiky_loss_tensor.item()
-    assert is_spiky_loss == 1, f"Expected 0, got {is_spiky_loss}"
+    assert is_spiky_loss == 1, f"Expected 1, got {is_spiky_loss}"
     
     Utils.destroy_model_parallel()
