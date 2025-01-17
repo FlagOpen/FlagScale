@@ -2,6 +2,9 @@ import math
 import torch
 
 class SpikyLossDetector:
+    '''This class represents a Spiky Loss Detector.
+        It is used to detect spikes in loss values during training.
+    '''
     def __init__(self, threshold=0.2, loss = None):
         self.last_loss = loss
         self.threshold = threshold

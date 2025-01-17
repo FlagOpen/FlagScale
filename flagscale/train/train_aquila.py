@@ -168,7 +168,7 @@ def get_batch(data_iterator):
 
 
 # define spiky loss as a variation of 20% or more
-SPIKY_LOSS_PERC = 0.08
+SPIKY_LOSS_PERC = 0.2
 
 
 def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
