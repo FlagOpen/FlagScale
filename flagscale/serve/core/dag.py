@@ -39,7 +39,7 @@ def visualize_dag(dag, file_name):
                 # Draw arrow
                 plt.arrow(
                     x, y, nx - x, ny - y,
-                    head_width=0.15, head_length=0.3, fc="gray", ec="gray", length_includes_head=True, alpha=0.7
+                    head_width=0.05, head_length=0.3, fc="gray", ec="gray", length_includes_head=True, alpha=0.7
                 )
                 drawn_edges.add((node, neighbor))  # Mark edge as drawn
         # Draw the node
@@ -49,7 +49,7 @@ def visualize_dag(dag, file_name):
         )
 
     plt.axis("off")
-    plt.savefig(file_name, bbox_inches="tight", dpi=300)
+    plt.savefig(file_name, bbox_inches="tight", dpi=100)
     plt.close()
 
 
@@ -172,7 +172,7 @@ class Builder:
             if node not in visited:
                 if is_cyclic(node, visited, set()):
                     if visibilization:
-                        visualize_dag(dag, "dag1.png")
+                        visualize_dag(dag, "dag2.png")
                     raise ValueError(
                         "The graph contains cycles and is not a Directed Acyclic Graph (DAG)."
                     )
