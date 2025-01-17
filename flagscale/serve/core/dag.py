@@ -20,6 +20,60 @@ from typing import Callable, Any
 from fastapi import FastAPI, HTTPException, Request
 
 
+def visualize_dag(dag, file_name):
+    # Assign positions for nodes (simple linear layout for demonstration)
+    positions = {}
+    for idx, node in enumerate(dag):
+        positions[node] = (idx * 2, 0)  # Space nodes horizontally
+
+    plt.figure(figsize=(10, 6))
+
+    # Keep track of drawn edges to avoid drawing the same edge twice
+    drawn_edges = set()
+
+    for node, neighbors in dag.items():
+        x, y = positions[node]
+        for neighbor in neighbors:
+            nx, ny = positions[neighbor]
+            if (node, neighbor) not in drawn_edges:
+                # Draw arrow
+                plt.arrow(
+                    x, y, nx - x, ny - y,
+                    head_width=0.15, head_length=0.3, fc="gray", ec="gray", length_includes_head=True, alpha=0.7
+                )
+                drawn_edges.add((node, neighbor))  # Mark edge as drawn
+        # Draw the node
+        plt.text(
+            x, y, node, fontsize=12, ha="center", va="center",
+            bbox=dict(facecolor="lightblue", edgecolor="black", boxstyle="round,pad=0.3")
+        )
+
+    plt.axis("off")
+    plt.savefig(file_name, bbox_inches="tight", dpi=300)
+    plt.close()
+
+
+def _visualize_dag(dag, file_name):
+    # Create a simple DAG visualization using matplotlib
+    positions = {}
+    for idx, node in enumerate(dag):
+        positions[node] = (idx, 0)
+
+    plt.figure(figsize=(8, 6))
+    for node, neighbors in dag.items():
+        x, y = positions[node]
+        for neighbor in neighbors:
+            nx, ny = positions[neighbor]
+            plt.arrow(
+                x, y, nx - x, ny - y,
+                head_width=0.05, head_length=0.1, fc="gray", ec="gray", length_includes_head=True
+            )
+        plt.text(x, y, node, fontsize=10, ha="center", va="center", bbox=dict(facecolor="lightblue", alpha=0.5))
+
+    plt.axis("off")
+    plt.savefig(file_name, bbox_inches="tight")
+    plt.close()
+
 class Builder:
     def __init__(self, config):
         self.config = config.serve
@@ -81,6 +135,52 @@ class Builder:
                     )
                 return free_port
 
+    def check_dag(self, visibilization=True):
+        # Ensure that all dependencies are valid
+        dag = {}
+        for model_alias, model_config in self.config["deploy"]["models"].items():
+            dependencies = []
+            if "depends" in model_config:
+                deps = model_config["depends"]
+                if not isinstance(deps, (list, omegaconf.listconfig.ListConfig)):
+                    deps = [deps]
+                dependencies = deps
+            dag[model_alias] = dependencies
+
+            for dep in dependencies:
+                if dep not in self.config["deploy"]["models"]:
+                    raise ValueError(
+                        f"Dependency {dep} for model {model_alias} not found in config['deploy']['models']"
+                    )
+
+        # Helper function to check for cycles using DFS
+        def is_cyclic(node, visited, stack):
+            visited.add(node)
+            stack.add(node)
+            for neighbor in dag.get(node, []):
+                if neighbor not in visited:
+                    if is_cyclic(neighbor, visited, stack):
+                        return True
+                elif neighbor in stack:
+                    return True
+            stack.remove(node)
+            return False
+
+        # Check for cycles
+        visited = set()
+        for node in dag:
+            if node not in visited:
+                if is_cyclic(node, visited, set()):
+                    if visibilization:
+                        visualize_dag(dag, "dag.png")
+                    raise ValueError(
+                        "The graph contains cycles and is not a Directed Acyclic Graph (DAG)."
+                    )
+
+        # Optionally visualize the DAG
+        if visibilization:
+            visualize_dag(dag, "dag.png")
+
     # def check_dag(self, visibilization=False):
 
     #     # Ensure that all dependencies are valid
@@ -135,6 +235,7 @@ class Builder:
     #             )
 
     def init_cluster(self, pythonpath=""):
+
         hostfile = self.config.get("hostfile", None)
         address="auto"
         exp_path = os.path.join(self.exp_config.exp_dir, "ray_workflow")
@@ -256,7 +357,7 @@ class Builder:
             self.tasks[model_alias] = ray.remote(model).options(num_cpus=num_cpus, num_gpus=num_gpus, resources=customs)
             # tasks[model_alias] = ray.remote(num_gpus=num_gpus)(model)
             # models[model_alias] = model
-        # self.check_dag()
+        self.check_dag()
         return
 
     def run_task(self, *input_data):
