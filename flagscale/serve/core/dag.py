@@ -172,7 +172,7 @@ class Builder:
             if node not in visited:
                 if is_cyclic(node, visited, set()):
                     if visibilization:
-                        visualize_dag(dag, "dag.png")
+                        visualize_dag(dag, "dag1.png")
                     raise ValueError(
                         "The graph contains cycles and is not a Directed Acyclic Graph (DAG)."
                     )
