@@ -4,9 +4,8 @@ import uvicorn
 import socket
 import subprocess
 import json
+import numpy as np
 
-
-# import networkx as nx
 import matplotlib.pyplot as plt
 import ray
 from ray import workflow
@@ -14,7 +13,6 @@ import omegaconf
 import logging as logger
 
 from pathlib import Path
-
 from pydantic import create_model
 from typing import Callable, Any
 from fastapi import FastAPI, HTTPException, Request
@@ -52,27 +50,6 @@ def visualize_dag(dag, file_name):
     plt.savefig(file_name, bbox_inches="tight", dpi=100)
     plt.close()
 
-
-def _visualize_dag(dag, file_name):
-    # Create a simple DAG visualization using matplotlib
-    positions = {}
-    for idx, node in enumerate(dag):
-        positions[node] = (idx, 0)
-
-    plt.figure(figsize=(8, 6))
-    for node, neighbors in dag.items():
-        x, y = positions[node]
-        for neighbor in neighbors:
-            nx, ny = positions[neighbor]
-            plt.arrow(
-                x, y, nx - x, ny - y,
-                head_width=0.05, head_length=0.1, fc="gray", ec="gray", length_includes_head=True
-            )
-        plt.text(x, y, node, fontsize=10, ha="center", va="center", bbox=dict(facecolor="lightblue", alpha=0.5))
-
-    plt.axis("off")
-    plt.savefig(file_name, bbox_inches="tight")
-    plt.close()
 
 class Builder:
     def __init__(self, config):
@@ -154,12 +131,12 @@ class Builder:
                     )
 
         # Helper function to check for cycles using DFS
-        def is_cyclic(node, visited, stack):
+        def _is_cyclic(node, visited, stack):
             visited.add(node)
             stack.add(node)
             for neighbor in dag.get(node, []):
                 if neighbor not in visited:
-                    if is_cyclic(neighbor, visited, stack):
+                    if _is_cyclic(neighbor, visited, stack):
                         return True
                 elif neighbor in stack:
                     return True
@@ -170,69 +147,91 @@ class Builder:
         visited = set()
         for node in dag:
             if node not in visited:
-                if is_cyclic(node, visited, set()):
-                    if visibilization:
-                        visualize_dag(dag, "dag2.png")
+                if _is_cyclic(node, visited, set()):
                     raise ValueError(
                         "The graph contains cycles and is not a Directed Acyclic Graph (DAG)."
                     )
 
+        def _visualize_dag_with_force_directed_layout(dag, file_name, iterations=100, k=1.0, t=1.0, cooling_factor=0.9):
+            nodes = list(dag.keys())
+            n = len(nodes)
+            
+            # Initialize node positions
+            positions = {node: np.random.rand(2) * 10 for node in nodes}
+            
+            for _ in range(iterations):
+                # Calculate repulsive forces
+                for i in range(n):
+                    for j in range(i + 1, n):
+                        node1, node2 = nodes[i], nodes[j]
+                        delta = positions[node1] - positions[node2]
+                        distance = np.linalg.norm(delta)
+                        if distance > 1e-10:
+                            f = (delta / distance) * (k**2 / distance)
+                            positions[node1] += f
+                            positions[node2] -= f
+                
+                # Calculate attractive forces
+                for node, neighbors in dag.items():
+                    for neighbor in neighbors:
+                        delta = positions[node] - positions[neighbor]
+                        distance = np.linalg.norm(delta)
+                        if distance > 1e-10:
+                            f = (delta / distance) * (distance / k)
+                            positions[node] -= f
+                            positions[neighbor] += f
+                
+                # Cool down
+                t *= cooling_factor
+                # Limit movement step
+                for node in nodes:
+                    move = np.random.randn(2) * t
+                    positions[node] += move
+            
+            # Normalize positions
+            all_positions = np.array([positions[node] for node in nodes])
+            x_min, y_min = all_positions.min(axis=0)
+            x_max, y_max = all_positions.max(axis=0)
+            all_positions = (all_positions - [x_min, y_min]) / ([x_max - x_min, y_max - y_min])
+            for i, node in enumerate(nodes):
+                positions[node] = all_positions[i]
+            
+            # Create figure
+            plt.figure(figsize=(8, 6))
+            
+            # Draw edges
+            for node, neighbors in dag.items():
+                x, y = positions[node]
+                for neighbor in neighbors:
+                    nx, ny = positions[neighbor]
+                    plt.arrow(
+                        x, y, nx - x, ny - y,
+                        head_width=0.04, head_length=0.08, fc="gray", ec="gray",
+                        length_includes_head=True, alpha=0.8, zorder=5
+                    )
+            
+            # Draw nodes
+            for node, (x, y) in positions.items():
+                plt.scatter(x, y, s=800, color="lightblue", edgecolors="black", zorder=3)
+                plt.text(x, y, node, fontsize=12, ha="center", va="center", zorder=4)
+            
+            # Add title
+            plt.title("Directed Acyclic Graph (DAG)", fontsize=14)
+            
+            # Set aspect ratio
+            plt.axis('equal')
+            
+            # Hide axes
+            plt.axis("off")
+            
+            # Save figure
+            plt.savefig(file_name)
+            plt.close()
+
         # Optionally visualize the DAG
         if visibilization:
-            visualize_dag(dag, "dag.png")
+            _visualize_dag_with_force_directed_layout(dag, "dag.png")
 
-    # def check_dag(self, visibilization=False):
-
-    #     # Ensure that all dependencies are valid
-    #     dag = {}
-    #     for model_alias, model_config in self.config["deploy"]["models"].items():
-    #         dependencies = []
-    #         if "depends" in model_config:
-    #             deps = model_config["depends"]
-    #             if not isinstance(deps, (list, omegaconf.listconfig.ListConfig)):
-    #                 deps = [deps]
-    #             dependencies = deps
-    #         else:
-    #             dependencies = []
-    #         dag[model_alias] = dependencies
-
-    #         for dep in dependencies:
-    #             if dep not in self.config["deploy"]["models"]:
-    #                 raise ValueError(
-    #                     f"Dependency {dep} for model {model_alias} not found in config['deploy']['models']"
-    #                 )
-
-    #     # Create a directed graph
-    #     G = nx.DiGraph()
-
-    #     # Add nodes and edges
-    #     for node, neighbors in dag.items():
-    #         for neighbor in neighbors:
-    #             G.add_edge(node, neighbor)
-
-    #     if visibilization or not nx.is_directed_acyclic_graph(G):
-    #         pos = nx.spring_layout(G)
-    #         plt.figure(figsize=(8, 6))
-    #         nx.draw(
-    #             G,
-    #             pos,
-    #             with_labels=True,
-    #             node_color="lightblue",
-    #             edge_color="gray",
-    #             node_size=2000,
-    #             font_size=15,
-    #             arrows=True,
-    #         )
-
-    #         # Save the graph as an image without displaying it
-    #         dag_file_name = "dag.png"
-    #         plt.savefig(dag_file_name, bbox_inches="tight")
-    #         plt.close()
-    #         # Ensure that the graph is a DAG
-    #         if not nx.is_directed_acyclic_graph(G):
-    #             raise ValueError(
-    #                 f"The graph contains cycles and is not a Directed Acyclic Graph (DAG). The dag can be visibilized at {dag_file_name}"
-    #             )
 
     def init_cluster(self, pythonpath=""):
 

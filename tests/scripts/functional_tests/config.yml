@@ -16,8 +16,13 @@ hetero_train:
   aquila:
     test_cases:
       -tp2pp1_tp4pp1_tp2pp1
-      -tp2dp1pp1_tp2dp2pp1_tp1dp2pp1
+      -tp2dp1pp1_tp2dp2pp1_tp1dp2pp1<<<<<<< HEAD
       -dp2dp4_shared_embedding
+
+serve:
+  build_dag:
+    test_cases:
+      - multiple_model
       
 # Add in the feature
 # inference:

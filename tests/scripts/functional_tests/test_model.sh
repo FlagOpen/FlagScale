@@ -64,6 +64,31 @@ test_model() {
         exit 1
       fi
 
+      if ${_type} == "serve":
+            # Remove previous results if exist
+      result_path="tests/functional_tests/test_cases/${_type}/${_model}/results_test/${_case}"
+      if [ -d $result_path ]; then
+        rm -r $result_path
+      fi
+
+      run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
+      if [ $? -ne 0 ]; then
+        echo "Test failed on attempt $attempt_i for case $_case."
+        exit 1
+      fi
+
+      run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
+      if [ $? -ne 0 ]; then
+        echo "Test failed on attempt $attempt_i for case $_case."
+        exit 1
+      fi
+
+      # run_command "pytest -p no:warnings -s tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_model=${_model} --test_case=${_case}"
+      # if [ $? -ne 0 ]; then
+      #   echo "Pytest failed on attempt $attempt_i for case $_case."
+      #   exit 1
+      # fi
+
       # Ensure that pytest check is completed before deleting the folder
       sleep 10s
     done
