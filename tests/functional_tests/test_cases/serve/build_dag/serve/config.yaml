@@ -36,14 +36,3 @@ deploy:
         - prompt
       types:
         - str
-
-hostfile:
-  nodes:
-    - master:
-        ip: 172.17.0.4
-        slots: 2
-        type: gpu
-    - node:
-        ip: 172.17.0.2
-        slots: 2
-        type: custom
