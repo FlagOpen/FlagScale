@@ -25,8 +25,8 @@ test_model() {
   local _cases=$(python tests/scripts/functional_tests/parse_config.py --config $CONFIG_FILE --type $_type --model $_model)
 
   # Convert the parsed test cases to an array
-  IFS=' ' read -r -a _cases <<<"$_cases"
-
+  IFS=' ' read -r -a _cases <<< "$_cases"
+  
   # Check if _cases is not an empty list
   if [ ${#_cases[@]} -eq 0 ]; then
     echo "No test cases found for model '$_model' with test type '$_type'. Exiting."
@@ -53,11 +53,6 @@ test_model() {
       fi
 
       if [ ${_type} = "serve" ]; then
-        # Remove previous results if exist
-        result_path="tests/functional_tests/test_cases/${_type}/${_model}/results_test/${_case}"
-        if [ -d $result_path ]; then
-          rm -r $result_path
-        fi
 
         # serve
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
@@ -87,8 +82,6 @@ test_model() {
           exit 1
         fi
 
-      fi
-
       # Ensure that pytest check is completed before deleting the folder
       sleep 10s
     done
@@ -98,21 +91,12 @@ test_model() {
 
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
-  case $1 in
-  --type)
-    type="$2"
+    case $1 in
+        --type) type="$2"; shift ;;
+        --model) model="$2"; shift ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
     shift
-    ;;
-  --model)
-    model="$2"
-    shift
-    ;;
-  *)
-    echo "Unknown parameter passed: $1"
-    exit 1
-    ;;
-  esac
-  shift
 done
 
 # Validate that the required parameters --type and --model are provided
