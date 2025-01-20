@@ -20,7 +20,7 @@ hetero_train:
       -dp2dp4_shared_embedding
 
 serve:
-  build_dag:
+  multiple_nodes:
     test_cases:
       - multiple_model
       
