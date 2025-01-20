@@ -832,7 +832,7 @@ def train_step(forward_step_func, data_iterator,
     if should_exit:
         return {}, True, should_checkpoint, should_exit, exit_code, None, None
 
-    ###########FlagScale begin ##########
+    ########## FlagScale Begin ##########
     if args.auto_skip_spiky_loss and (args.consumed_train_samples > args.lr_warmup_samples and args.curr_iteration > args.lr_warmup_iters):
         spiky_loss_detector = get_spiky_loss_detector()
         loss_ = spiky_loss_detector.reduce_losses(losses_reduced)
@@ -842,7 +842,7 @@ def train_step(forward_step_func, data_iterator,
         is_spiky_loss = is_spiky_loss_tensor.item()
         if is_spiky_loss > 0:
             return {}, True, should_checkpoint, should_exit, exit_code, None, None
-    #########FlagScale end ############
+    ########## FlagScale Begin ##########
     
     # Empty unused memory.
     if args.empty_unused_memory_level >= 1:
@@ -1586,7 +1586,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         # Run training step.
         args.curr_iteration = iteration
 
-        ###########FlagScale begin ##########
+        ########## FlagScale Begin ##########
         if args.skip_samples_range or args.skip_iters_range:
             current_global_batch_size = get_current_global_batch_size()
             start_skip_iteration = 0
@@ -1612,7 +1612,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                 iteration += 1
                 
             args.curr_iteration = iteration
-        ###########FlagScale end ##########
+        ########## FlagScale Begin ##########
                 
         loss_dict, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad = \
             train_step(forward_step_func,
