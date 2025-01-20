@@ -23,6 +23,7 @@ def auto_remote(gpu=0, cpu=1, custom={}):
 
                 # Here we call getattr(...) on the *real* remote actor,
                 # not on self (the Wrapper), so no infinite recursion.
+                # Todo: to be auto
                 remote_method = getattr(actor, name)
                 if name in ("generate", "gpu_computation"):
                     return method
