@@ -1,26 +1,26 @@
 deploy:
   models:
     A:
-      module: ./tests/unit_tests/serve/multiple_nodes/main.py 
+      module: ./tests/functional_tests/test_cases/serve/multiple_nodes/main.py 
       name: model_A
       resources:
         gpu: 0 
     B:
-      module: ./tests/unit_tests/serve/multiple_nodes/main.py
+      module: ./tests/functional_tests/test_cases/serve/multiple_nodes/main.py
       depends:
         - A
       name: model_B
       resources:
         gpu: 0
     C:
-      module: ./tests/unit_tests/serve/multiple_nodes/custom/models.py
+      module: ./tests/functional_tests/test_cases/serve/multiple_nodes/custom/models.py
       depends: 
         - A
       name: model_C
       resources:
         gpu: 0
     D:
-      module: ./tests/unit_tests/serve/multiple_nodes/custom/models.py
+      module: ./tests/functional_tests/test_cases/serve/multiple_nodes/custom/models.py
       depends:
         - B
         - C
