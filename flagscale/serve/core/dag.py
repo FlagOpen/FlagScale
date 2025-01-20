@@ -18,39 +18,6 @@ from typing import Callable, Any
 from fastapi import FastAPI, HTTPException, Request
 
 
-def visualize_dag(dag, file_name):
-    # Assign positions for nodes (simple linear layout for demonstration)
-    positions = {}
-    for idx, node in enumerate(dag):
-        positions[node] = (idx * 2, 0)  # Space nodes horizontally
-
-    plt.figure(figsize=(10, 6))
-
-    # Keep track of drawn edges to avoid drawing the same edge twice
-    drawn_edges = set()
-
-    for node, neighbors in dag.items():
-        x, y = positions[node]
-        for neighbor in neighbors:
-            nx, ny = positions[neighbor]
-            if (node, neighbor) not in drawn_edges:
-                # Draw arrow
-                plt.arrow(
-                    x, y, nx - x, ny - y,
-                    head_width=0.05, head_length=0.3, fc="gray", ec="gray", length_includes_head=True, alpha=0.7
-                )
-                drawn_edges.add((node, neighbor))  # Mark edge as drawn
-        # Draw the node
-        plt.text(
-            x, y, node, fontsize=12, ha="center", va="center",
-            bbox=dict(facecolor="lightblue", edgecolor="black", boxstyle="round,pad=0.3")
-        )
-
-    plt.axis("off")
-    plt.savefig(file_name, bbox_inches="tight", dpi=100)
-    plt.close()
-
-
 class Builder:
     def __init__(self, config):
         self.config = config.serve
