@@ -235,7 +235,7 @@ class Builder:
             )
             if head_result.returncode != 0:
                 logger.warning(
-                    f"SSH command {ssh_cmd} failed with return code {head_result.returncode}."
+                    f"Head Node cmd {ssh_cmd} failed with return code {head_result.returncode}."
                 )
                 logger.warning(f"Output: {head_result.stdout}")
                 logger.warning(f"Error: {head_result.stderr}")
@@ -286,7 +286,29 @@ class Builder:
                         logger.warning(f"Output: {result.stdout}")
                         logger.warning(f"Error: {result.stderr}")
                         sys.exit(result.returncode)
-        logger.warning(f" =========== pythonpath {pythonpath} -----------------------")
+        else:
+            port = self.check_and_get_port()
+            head_ip = "127.0.0.1"
+            cmd = ["ray", "start", "--head", f"--port={port}", f"--storage={ray_path}"]
+            logger.info(f"head node command: {cmd}")
+            head_result = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            if head_result.returncode != 0:
+                logger.warning(
+                    f"local command {cmd} failed with return code {head_result.returncode}."
+                )
+                logger.warning(f"Output: {head_result.stdout}")
+                logger.warning(f"Error: {head_result.stderr}")
+                sys.exit(head_result.returncode)
+            address = f"{head_ip}:{port}"
+
+        logger.info(f" =========== pythonpath {pythonpath} -----------------------")
         if pythonpath:
             ray.init(
                 address=address,
