@@ -71,6 +71,8 @@ model:
   micro_batch_size: 4 
   global_batch_size: 1024 
   seed: 42
+  auto_skip_spiky_loss: true
+  spiky_loss_threshold: 0.25
 
   optimizer:
     weight_decay: 0.1
