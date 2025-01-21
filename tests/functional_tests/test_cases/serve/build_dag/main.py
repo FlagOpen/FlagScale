@@ -37,4 +37,4 @@ def model_B(input_data):
 
 if __name__ == "__main__":
     prompt = "introduce Bruce Lee"
-    print(model_A(prompt))
+    #print(model_A(prompt))
