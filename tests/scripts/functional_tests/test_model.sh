@@ -21,11 +21,8 @@ CONFIG_FILE="tests/scripts/functional_tests/config.yml"
 test_model() {
   local _type=$1
   local _model=$2
-  echo "model====== ${_model}" 
-  echo "test_model ------------- ${_type} ${_model}"
   # Use parse_config.py to parse the YAML file with test type and test model
   local _cases=$(python tests/scripts/functional_tests/parse_config.py --config $CONFIG_FILE --type $_type --model $_model)
-  echo "----_cases----- ${_cases}"
   # Convert the parsed test cases to an array
   IFS=' ' read -r -a _cases <<< "$_cases"
   
@@ -42,6 +39,10 @@ test_model() {
 
     # Attempt to run the test 5 times
     for attempt_i in {1..5}; do
+      if [ ${_type} = "serve" ] && [ ${attempt_i} -gt 1 ]; then
+        break
+      fi
+
       wait_for_gpu
 
       echo "---------"
@@ -55,22 +56,24 @@ test_model() {
       fi
 
       if [ ${_type} = "serve" ]; then
-        echo "serve in ===================== 1 "
         # serve
-        echo "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
-        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
+        echo "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
+        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
         if [ $? -ne 0 ]; then
           echo "Test failed on attempt $attempt_i for case $_case."
           exit 1
         fi
-        echo "serve in ===================== 2 "
-        # call 
-        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
+        sleep 2m
+        # call
+        echo "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
+        run_command "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
         if [ $? -ne 0 ]; then
           echo "Test failed on attempt $attempt_i for case $_case."
           exit 1
         fi
-
+        #clear
+        echo "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=stop"
+        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=stop"
       else
 
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"

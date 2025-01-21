@@ -9,6 +9,8 @@ commands=(
     "tests/scripts/functional_tests/test_model.sh --type hetero_train --model aquila"
     # Add in the feature
     # "tests/scripts/functional_tests/test_model.sh --type inference --model vllm"
+    # For serve
+    "tests/scripts/functional_tests/test_model.sh --type serve --model build_dag"
 )
 
 for cmd in "${commands[@]}"; do
