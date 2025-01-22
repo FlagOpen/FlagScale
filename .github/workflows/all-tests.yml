@@ -127,6 +127,7 @@ jobs:
       - flagscale-unit-tests
       - functional-tests-train
       - functional-tests-hetero
+      - functional-tests-serve
       - megatron-coverage-test
       - flagscale-coverage-test
     runs-on: ubuntu-latest
