@@ -12,6 +12,13 @@ run_command() {
   return 0
 }
 
+# Function to execute a command and handle failures
+clear_serve() {
+  pkill -f "python"
+  return 0
+}
+
+
 source tests/scripts/_gpu_check.sh
 
 # Path to the YAML configuration file
@@ -56,12 +63,12 @@ test_model() {
       fi
 
       if [ ${_type} = "serve" ]; then
-        clear_cmd="python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=stop"
         # serve
         echo "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
         if [ $? -ne 0 ]; then
           echo "Test failed on attempt $attempt_i for case $_case."
+          clear_serve
           exit 1
         fi
         sleep 2m
@@ -70,11 +77,11 @@ test_model() {
         run_command "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
         if [ $? -ne 0 ]; then
           echo "Test failed on attempt $attempt_i for case $_case."
+          clear_serve
           exit 1
         fi
         #clear
-        echo "${clear_cmd}"
-        run_command "${clear_cmd}"
+        clear_serve
       else
 
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
