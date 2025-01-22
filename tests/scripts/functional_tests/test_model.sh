@@ -14,6 +14,7 @@ run_command() {
 
 # Function to execute a command and handle failures
 clear_serve() {
+  ray stop
   pkill -f "python"
   return 0
 }
