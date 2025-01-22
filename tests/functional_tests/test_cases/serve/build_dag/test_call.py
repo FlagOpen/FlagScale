@@ -10,7 +10,7 @@ class TestAPI(unittest.TestCase):
         response = requests.post(url, headers=headers, json=test_data)
 
         self.assertEqual(response.status_code, 200, 
-                        f"Expected status code 200, got {response.status_code}. Response: {response.text}")
+                        f"Expected status code 200, got {response.status_code}. Response: {response}")
 
         self.assertGreater(len(response.text), 0,
                           "Generated text should not be empty")
