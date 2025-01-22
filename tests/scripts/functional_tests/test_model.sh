@@ -87,6 +87,7 @@ test_model() {
               cat "$FILE"
               echo "------------------curl call----------------------"
               ifconfig
+              env
               curl -v http://127.0.0.1:6701/generate -H "Content-Type: application/json" -d '{"prompt": "introduce Bruce Lee2"}'
               echo "------------------curl result----------------------"
           else
