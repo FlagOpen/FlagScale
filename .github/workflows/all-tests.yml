@@ -43,7 +43,6 @@ jobs:
       subset: ${{ matrix.subset }}
 
   functional-tests-serve:
-    needs: functional-tests-hetero
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
