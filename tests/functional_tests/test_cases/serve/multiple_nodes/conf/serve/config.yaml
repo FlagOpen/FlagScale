@@ -30,7 +30,7 @@ deploy:
 
   service:
     name: /generate
-    port: 8000
+    port: 6701 
     request:
       names:
         - prompt
