@@ -1,4 +1,4 @@
-from vllm import LLM, SamplingParams
+# from vllm import LLM, SamplingParams
 from custom.models import fn
 from flagscale.serve.core import auto_remote
 
