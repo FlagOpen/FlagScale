@@ -52,6 +52,7 @@ test_model() {
       fi
 
       wait_for_gpu
+      nvidia-smi
 
       echo "---------"
       echo "Attempt $attempt_i for model ${_model} with type ${_type} and case: ${_case}"
