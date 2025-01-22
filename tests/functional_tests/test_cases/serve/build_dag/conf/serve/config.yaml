@@ -4,7 +4,7 @@ deploy:
       module: ./tests/functional_tests/test_cases/serve/build_dag/main.py 
       name: model_A
       resources:
-        gpu: 0 
+        gpu: 1 
     B:
       module: ./tests/functional_tests/test_cases/serve/build_dag/main.py
       depends:
