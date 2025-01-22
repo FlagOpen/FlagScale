@@ -326,7 +326,6 @@ class Builder:
             module_dir = str(path.parent)
             pythonpath_tmp.add(os.path.abspath(module_dir))
         pythonpath = ":".join(pythonpath_tmp)
-        print(f" --------------------------- {pythonpath} ----------------------------- ", flush=True)
         self.init_cluster(pythonpath=pythonpath)
 
         for model_alias, model_config in self.config["deploy"]["models"].items():
