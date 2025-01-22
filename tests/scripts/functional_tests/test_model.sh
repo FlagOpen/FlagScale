@@ -74,6 +74,7 @@ test_model() {
         fi
         sleep 2m
         # call
+        export no_proxy="127.0.0.1,localhost"
         echo "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
         run_command "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
         if [ $? -ne 0 ]; then
