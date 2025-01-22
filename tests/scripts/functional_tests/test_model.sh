@@ -65,6 +65,7 @@ test_model() {
 
       if [ ${_type} = "serve" ]; then
         pip list
+        export no_proxy="127.0.0.1,localhost"
         # serve
         echo "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
@@ -73,9 +74,8 @@ test_model() {
           clear_serve
           exit 1
         fi
-        sleep 2m
+        sleep 3m
         # call
-        export no_proxy="127.0.0.1,localhost"
         echo "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
         run_command "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
         if [ $? -ne 0 ]; then
@@ -90,7 +90,7 @@ test_model() {
               echo "------------------curl call----------------------"
               ifconfig
               env
-              curl -v http://127.0.0.1:6701/generate -H "Content-Type: application/json" -d '{"prompt": "introduce Bruce Lee2"}'
+              # curl -v http://127.0.0.1:6701/generate -H "Content-Type: application/json" -d '{"prompt": "introduce Bruce Lee2"}'
               echo "------------------curl result----------------------"
           else
               echo "log not exists: $FILE"
