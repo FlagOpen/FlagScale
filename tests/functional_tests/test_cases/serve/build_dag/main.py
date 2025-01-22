@@ -8,7 +8,7 @@ class LLMActor:
     def __init__(self):
         # Initialize the LLM inside the actor to avoid serialization
         self.llm = LLM(
-            model="/models/Qwen2.5-0.5B-Instruct",
+            model="/home/gitlab-runner/data/Qwen2.5-0.5B-Instruct",
             tensor_parallel_size=1,
             gpu_memory_utilization=0.5
         )
