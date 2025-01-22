@@ -83,9 +83,11 @@ test_model() {
 
           if [ -e "$FILE" ]; then
               echo "log exists: $FILE"
-              echo "----------------------------------------"
-              cat "$FILE"  # 打印日志文件内容
-              echo "----------------------------------------"
+              echo "-----------------print log -----------------------"
+              cat "$FILE"
+              echo "------------------curl call----------------------"
+              curl -v http://127.0.0.1:6701/generate -H "Content-Type: application/json" -d '{"prompt": "introduce Bruce Lee2"}'
+              echo "------------------curl result----------------------"
           else
               echo "log not exists: $FILE"
           fi
