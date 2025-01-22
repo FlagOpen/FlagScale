@@ -56,6 +56,7 @@ test_model() {
       fi
 
       if [ ${_type} = "serve" ]; then
+        clear_cmd="python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=stop"
         # serve
         echo "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
@@ -72,8 +73,8 @@ test_model() {
           exit 1
         fi
         #clear
-        echo "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=stop"
-        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=stop"
+        echo "${clear_cmd}"
+        run_command "${clear_cmd}"
       else
 
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"

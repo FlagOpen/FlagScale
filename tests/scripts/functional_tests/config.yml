@@ -16,7 +16,7 @@ hetero_train:
   aquila:
     test_cases:
       -tp2pp1_tp4pp1_tp2pp1
-      -tp2dp1pp1_tp2dp2pp1_tp1dp2pp1<<<<<<< HEAD
+      -tp2dp1pp1_tp2dp2pp1_tp1dp2pp1
       -dp2dp4_shared_embedding
 
 serve:
