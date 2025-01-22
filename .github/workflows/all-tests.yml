@@ -91,6 +91,19 @@ jobs:
       model: ${{ matrix.model }}
       type: hetero_train
 
+
+  functional-tests-serve:
+    needs: functional-tests-hetero
+    uses: ./.github/workflows/functional-tests.yml
+    strategy:
+      matrix:
+        model: 
+          - build_dag
+    name: "serve-${{ matrix.model }}"
+    with:
+      model: ${{ matrix.model }}
+      type: serve
+
   # Megatron Coverage Test
   megatron-coverage-test:
     needs: functional-tests-hetero
