@@ -64,6 +64,7 @@ test_model() {
       fi
 
       if [ ${_type} = "serve" ]; then
+        pip list
         # serve
         echo "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
