@@ -197,7 +197,8 @@ class Builder:
 
         # Optionally visualize the DAG
         if visibilization:
-            _visualize_dag_with_force_directed_layout(dag, "dag.png")
+            dag_img_path = exp_path = os.path.join(self.exp_config.exp_dir, "dag.png")
+            _visualize_dag_with_force_directed_layout(dag, dag_img_path)
 
 
     def init_cluster(self, pythonpath=""):
