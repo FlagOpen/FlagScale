@@ -82,21 +82,6 @@ test_model() {
         if [ $? -ne 0 ]; then
           echo "Test failed on attempt $attempt_i for case $_case."
 
-          FILE="./outputs/multiple_model/serve_logs/host_0_localhost.output"
-
-          if [ -e "$FILE" ]; then
-              echo "log exists: $FILE"
-              echo "-----------------print log -----------------------"
-              cat "$FILE"
-              echo "------------------curl call----------------------"
-              ifconfig
-              env
-              # curl -v http://127.0.0.1:6701/generate -H "Content-Type: application/json" -d '{"prompt": "introduce Bruce Lee2"}'
-              echo "------------------curl result----------------------"
-          else
-              echo "log not exists: $FILE"
-          fi
-
           clear_serve
           exit 1
         fi
