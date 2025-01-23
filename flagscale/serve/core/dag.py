@@ -410,7 +410,7 @@ class Builder:
             if not progress:
                 raise ValueError("Circular dependency detected in model configuration")
 
-        logger.info(f" =========== deploy model_nodes ============= ", model_nodes)
+        logger.info(f" =========== deploy model_nodes {model_nodes} ============= ")
         find_final_node = self.find_final_node()
 
         final_node = model_nodes[find_final_node]
