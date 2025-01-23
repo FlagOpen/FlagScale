@@ -12,7 +12,7 @@ run_command() {
   return 0
 }
 
-# Function to execute a command and handle failures
+# Function to execute a command and clear serve process
 clear_serve() {
   ray stop
   pkill -f "python"
@@ -31,6 +31,7 @@ test_model() {
   local _model=$2
   # Use parse_config.py to parse the YAML file with test type and test model
   local _cases=$(python tests/scripts/functional_tests/parse_config.py --config $CONFIG_FILE --type $_type --model $_model)
+
   # Convert the parsed test cases to an array
   IFS=' ' read -r -a _cases <<< "$_cases"
   
@@ -47,12 +48,7 @@ test_model() {
 
     # Attempt to run the test 5 times
     for attempt_i in {1..5}; do
-      if [ ${_type} = "serve" ] && [ ${attempt_i} -gt 1 ]; then
-        break
-      fi
-
       wait_for_gpu
-      nvidia-smi
 
       echo "---------"
       echo "Attempt $attempt_i for model ${_model} with type ${_type} and case: ${_case}"
@@ -65,7 +61,9 @@ test_model() {
       fi
 
       if [ ${_type} = "serve" ]; then
-        pip list
+        if [ ${attempt_i} -gt 1 ]; then
+          break
+        fi
         export no_proxy="127.0.0.1,localhost"
         # serve
         echo "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
@@ -75,7 +73,7 @@ test_model() {
           clear_serve
           exit 1
         fi
-        sleep 3m
+        sleep 2m
         # call
         echo "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
         run_command "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
