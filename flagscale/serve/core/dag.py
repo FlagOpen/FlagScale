@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 import ray
 from ray import workflow
 
-from flagscale.logger import logger
+from logging import logger
 
 
 class Builder:
