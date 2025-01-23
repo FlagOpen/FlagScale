@@ -44,7 +44,6 @@ jobs:
 
   # FlagScale Report Clean
   flagscale-report-clean:
-    needs: functional-tests-serve
     uses: ./.github/workflows/report-clean.yml
     with:
       backend: flagscale
@@ -93,6 +92,7 @@ jobs:
       type: hetero_train
 
   functional-tests-serve:
+    needs: functional-tests-hetero
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
