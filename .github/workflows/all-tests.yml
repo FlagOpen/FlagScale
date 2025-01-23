@@ -42,20 +42,8 @@ jobs:
       backend: megatron
       subset: ${{ matrix.subset }}
 
-  functional-tests-serve:
-    uses: ./.github/workflows/functional-tests.yml
-    strategy:
-      matrix:
-        model: 
-          - build_dag
-    name: "serve-${{ matrix.model }}"
-    with:
-      model: ${{ matrix.model }}
-      type: serve
-
   # FlagScale Report Clean
   flagscale-report-clean:
-    needs: functional-tests-serve
     uses: ./.github/workflows/report-clean.yml
     with:
       backend: flagscale
@@ -103,6 +91,18 @@ jobs:
       model: ${{ matrix.model }}
       type: hetero_train
 
+  functional-tests-serve:
+    needs: functional-tests-hetero
+    uses: ./.github/workflows/functional-tests.yml
+    strategy:
+      matrix:
+        model: 
+          - build_dag
+    name: "serve-${{ matrix.model }}"
+    with:
+      model: ${{ matrix.model }}
+      type: serve
+
   # Megatron Coverage Test
   megatron-coverage-test:
     needs: functional-tests-hetero
@@ -122,11 +122,11 @@ jobs:
   # Check All Tests 
   all-tests:
     needs:
-      - functional-tests-serve
       - megatron-unit-tests
       - flagscale-unit-tests
       - functional-tests-train
       - functional-tests-hetero
+      - functional-tests-serve
       - megatron-coverage-test
       - flagscale-coverage-test
     runs-on: ubuntu-latest
