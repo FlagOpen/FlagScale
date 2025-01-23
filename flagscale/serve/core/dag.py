@@ -5,17 +5,17 @@ import socket
 import subprocess
 import json
 import numpy as np
-
-import matplotlib.pyplot as plt
-import ray
-from ray import workflow
 import omegaconf
-import logging as logger
+import matplotlib.pyplot as plt
 
 from pathlib import Path
 from pydantic import create_model
 from typing import Callable, Any
 from fastapi import FastAPI, HTTPException, Request
+import ray
+from ray import workflow
+
+from flagscale.logger import logger
 
 
 class Builder:
@@ -119,13 +119,15 @@ class Builder:
                         "The graph contains cycles and is not a Directed Acyclic Graph (DAG)."
                     )
 
-        def _visualize_dag_with_force_directed_layout(dag, file_name, iterations=100, k=1.0, t=1.0, cooling_factor=0.9):
+        def _visualize_dag_with_force_directed_layout(
+            dag, file_name, iterations=100, k=1.0, t=1.0, cooling_factor=0.9
+        ):
             nodes = list(dag.keys())
             n = len(nodes)
-            
+
             # Initialize node positions
             positions = {node: np.random.rand(2) * 10 for node in nodes}
-            
+
             for _ in range(iterations):
                 # Calculate repulsive forces
                 for i in range(n):
@@ -137,7 +139,7 @@ class Builder:
                             f = (delta / distance) * (k**2 / distance)
                             positions[node1] += f
                             positions[node2] -= f
-                
+
                 # Calculate attractive forces
                 for node, neighbors in dag.items():
                     for neighbor in neighbors:
@@ -147,50 +149,62 @@ class Builder:
                             f = (delta / distance) * (distance / k)
                             positions[node] -= f
                             positions[neighbor] += f
-                
+
                 # Cool down
                 t *= cooling_factor
                 # Limit movement step
                 for node in nodes:
                     move = np.random.randn(2) * t
                     positions[node] += move
-            
+
             # Normalize positions
             all_positions = np.array([positions[node] for node in nodes])
             x_min, y_min = all_positions.min(axis=0)
             x_max, y_max = all_positions.max(axis=0)
-            all_positions = (all_positions - [x_min, y_min]) / ([x_max - x_min, y_max - y_min])
+            all_positions = (all_positions - [x_min, y_min]) / (
+                [x_max - x_min, y_max - y_min]
+            )
             for i, node in enumerate(nodes):
                 positions[node] = all_positions[i]
-            
+
             # Create figure
             plt.figure(figsize=(8, 6))
-            
+
             # Draw edges
             for node, neighbors in dag.items():
                 x, y = positions[node]
                 for neighbor in neighbors:
                     nx, ny = positions[neighbor]
                     plt.arrow(
-                        x, y, nx - x, ny - y,
-                        head_width=0.04, head_length=0.08, fc="gray", ec="gray",
-                        length_includes_head=True, alpha=0.8, zorder=5
+                        x,
+                        y,
+                        nx - x,
+                        ny - y,
+                        head_width=0.04,
+                        head_length=0.08,
+                        fc="gray",
+                        ec="gray",
+                        length_includes_head=True,
+                        alpha=0.8,
+                        zorder=5,
                     )
-            
+
             # Draw nodes
             for node, (x, y) in positions.items():
-                plt.scatter(x, y, s=800, color="lightblue", edgecolors="black", zorder=3)
+                plt.scatter(
+                    x, y, s=800, color="lightblue", edgecolors="black", zorder=3
+                )
                 plt.text(x, y, node, fontsize=12, ha="center", va="center", zorder=4)
-            
+
             # Add title
             plt.title("Directed Acyclic Graph (DAG)", fontsize=14)
-            
+
             # Set aspect ratio
-            plt.axis('equal')
-            
+            plt.axis("equal")
+
             # Hide axes
             plt.axis("off")
-            
+
             # Save figure
             plt.savefig(file_name)
             plt.close()
@@ -200,11 +214,10 @@ class Builder:
             dag_img_path = exp_path = os.path.join(self.exp_config.exp_dir, "dag.png")
             _visualize_dag_with_force_directed_layout(dag, dag_img_path)
 
-
     def init_cluster(self, pythonpath=""):
 
         hostfile = self.config.get("hostfile", None)
-        address="auto"
+        address = "auto"
         exp_path = os.path.join(self.exp_config.exp_dir, "ray_workflow")
         ray_path = os.path.abspath(exp_path)
         if hostfile:
@@ -256,19 +269,26 @@ class Builder:
                             f"ray start --address={address} --num-cpus={node.slots}"
                         )
                     else:
-                        resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                        resource = json.dumps({node.type: node.slots}).replace(
+                            '"', '\\"'
+                        )
                         node_cmd = (
                             f"ray start --address={address} --resources='{resource}'"
                         )
-                    if self.exp_config.get("cmds", "") and self.exp_config.cmds.get("before_start", ""):
+                    if self.exp_config.get("cmds", "") and self.exp_config.cmds.get(
+                        "before_start", ""
+                    ):
                         before_start_cmd = self.exp_config.cmds.before_start
-                        node_cmd = f"export RAY_STORAGE={ray_path} && {before_start_cmd} && " + node_cmd
+                        node_cmd = (
+                            f"export RAY_STORAGE={ray_path} && {before_start_cmd} && "
+                            + node_cmd
+                        )
 
                     if node.get("port", None):
                         ssh_cmd = f'ssh -n -p {node.port} {node.ip} "{node_cmd}"'
                     else:
                         ssh_cmd = f'ssh -n {node.ip} "{node_cmd}"'
-                    
+
                     logger.info(f"worker node command: {cmd}")
 
                     result = subprocess.run(
@@ -335,22 +355,23 @@ class Builder:
             path = Path(module_name)
             module_tmp = path.stem
             module_dir = str(path.parent)
-            sys.path.append(module_dir) 
+            sys.path.append(module_dir)
             module = importlib.import_module(module_tmp)
             model = getattr(module, model_name)
             resources = model_config.resources
             num_gpus = resources.get("gpu", 0)
             num_cpus = resources.get("cpu", 1)
-            customs = {res: resources[res] for res in resources if res not in ['gpu', 'cpu']}
-            self.tasks[model_alias] = ray.remote(model).options(num_cpus=num_cpus, num_gpus=num_gpus, resources=customs)
-            # tasks[model_alias] = ray.remote(num_gpus=num_gpus)(model)
-            # models[model_alias] = model
+            customs = {
+                res: resources[res] for res in resources if res not in ["gpu", "cpu"]
+            }
+            self.tasks[model_alias] = ray.remote(model).options(
+                num_cpus=num_cpus, num_gpus=num_gpus, resources=customs
+            )
         return
 
     def run_task(self, *input_data):
         assert len(self.tasks) > 0
         models_to_process = list(self.config["deploy"]["models"].keys())
-
         model_nodes = {}
 
         while models_to_process:
@@ -378,7 +399,7 @@ class Builder:
                                 model_nodes[dependencies[0]]
                             )
                     else:
-                        if len(input_data)==0:
+                        if len(input_data) == 0:
                             model_nodes[model_alias] = self.tasks[model_alias].bind()
                         else:
                             model_nodes[model_alias] = self.tasks[model_alias].bind(
@@ -399,10 +420,9 @@ class Builder:
         return final_result
 
     def run_router_task(self, method="post"):
-
         router_config = self.config["deploy"].get("service")
-
         assert router_config and len(router_config) > 0
+
         name = router_config["name"]
         port = router_config["port"]
         request_names = router_config["request"]["names"]
@@ -410,7 +430,10 @@ class Builder:
 
         RequestData = create_model(
             "Request",
-            **{field: (type_, ...) for field, type_ in zip(request_names, request_types)},
+            **{
+                field: (type_, ...)
+                for field, type_ in zip(request_names, request_types)
+            },
         )
         app = FastAPI()
 
@@ -418,7 +441,9 @@ class Builder:
 
             @app.post(name)
             async def route_handler(request_data: RequestData):
-                input_data = tuple(getattr(request_data, field) for field in request_names)
+                input_data = tuple(
+                    getattr(request_data, field) for field in request_names
+                )
                 try:
                     response = self.run_task(*input_data)
                     return response
