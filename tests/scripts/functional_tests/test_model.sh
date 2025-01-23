@@ -79,7 +79,19 @@ test_model() {
         run_command "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
         if [ $? -ne 0 ]; then
           echo "Test failed on attempt $attempt_i for case $_case."
+          FILE="./outputs/${_case}/serve_logs/host_0_localhost.output"
 
+          if [ -e "$FILE" ]; then
+              echo "log exists: $FILE"
+              echo "------------------ serve log begin -----------------------"
+              cat "$FILE"
+              echo "------------------ env ----------------------"
+              env
+              pip list
+              echo "------------------ serve log end ----------------------"
+          else
+              echo "log not exists: $FILE"
+          fi
           clear_serve
           exit 1
         fi
