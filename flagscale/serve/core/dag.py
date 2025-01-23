@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 import ray
 from ray import workflow
 
-from logging import logger
+import logging as logger
 
 
 class Builder:
