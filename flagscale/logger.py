@@ -13,7 +13,7 @@ class Logger:
             self.logger.removeHandler(handler)
 
         formatter = logging.Formatter(
-            "[%(asctime)s %(name)s %(filename)s %(levelname)s] %(message)s"
+            "[%(asctime)s %(name)s %(filename)s:%(lineno)d %(levelname)s] %(message)s"
         )
 
         stream_handler = logging.StreamHandler(sys.stdout)
