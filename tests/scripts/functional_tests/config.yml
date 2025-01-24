@@ -20,10 +20,10 @@ hetero_train:
       -dp2dp4_shared_embedding
 
 serve:
-  build_dag:
+  test_serve_base:
     test_cases:
       -multiple_model
-      
+
 # Add in the feature
 # inference:
 #   from_vllm:
