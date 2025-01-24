@@ -1,14 +1,14 @@
 from vllm import LLM, SamplingParams
-from custom.models import fn
+from util_models.util_model import fn
 from flagscale.serve.core import auto_remote
 
 
-@auto_remote(gpu=1,custom={"custom":0.5})
+@auto_remote(gpu=1)
 class LLMActor:
     def __init__(self):
         # Initialize the LLM inside the actor to avoid serialization
         self.llm = LLM(
-            model="/models/Qwen2.5-0.5B-Instruct",
+            model="/home/gitlab-runner/data/Qwen2.5-0.5B-Instruct",
             tensor_parallel_size=1,
             gpu_memory_utilization=0.5
         )

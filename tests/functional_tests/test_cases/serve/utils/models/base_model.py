@@ -1,4 +1,4 @@
-from custom.models import fn
+from util_models.util_model import fn
 
 
 def model_A(prompt):
