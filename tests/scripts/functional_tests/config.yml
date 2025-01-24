@@ -18,7 +18,12 @@ hetero_train:
       -tp2pp1_tp4pp1_tp2pp1
       -tp2dp1pp1_tp2dp2pp1_tp1dp2pp1
       -dp2dp4_shared_embedding
-      
+
+serve:
+  test_serve_base:
+    test_cases:
+      -multiple_model
+
 # Add in the feature
 # inference:
 #   from_vllm:

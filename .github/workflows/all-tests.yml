@@ -91,6 +91,20 @@ jobs:
       model: ${{ matrix.model }}
       type: hetero_train
 
+  functional-tests-serve:
+    needs: functional-tests-hetero
+    uses: ./.github/workflows/functional-tests.yml
+    strategy:
+      matrix:
+        model: 
+          - test_serve_base
+          # - test_serve_vllm_model
+          # - test_serve_multiple_nodes
+    name: "serve-${{ matrix.model }}"
+    with:
+      model: ${{ matrix.model }}
+      type: serve
+
   # Megatron Coverage Test
   megatron-coverage-test:
     needs: functional-tests-hetero
@@ -114,6 +128,7 @@ jobs:
       - flagscale-unit-tests
       - functional-tests-train
       - functional-tests-hetero
+      - functional-tests-serve
       - megatron-coverage-test
       - flagscale-coverage-test
     runs-on: ubuntu-latest

@@ -1,0 +1,38 @@
+deploy:
+  models:
+    A:
+      module: ./tests/functional_tests/test_cases/serve/utils/models/base_model.py 
+      name: model_A
+      resources:
+        gpu: 1 
+    B:
+      module: ./tests/functional_tests/test_cases/serve/utils/models/base_model.py
+      depends:
+        - A
+      name: model_B
+      resources:
+        gpu: 0
+    C:
+      module: ./tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
+      depends: 
+        - A
+      name: model_C
+      resources:
+        gpu: 0
+    D:
+      module: ./tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
+      depends:
+        - B
+        - C
+      name: model_D
+      resources:
+        gpu: 0
+
+  service:
+    name: /generate
+    port: 6701
+    request:
+      names:
+        - prompt
+      types:
+        - str

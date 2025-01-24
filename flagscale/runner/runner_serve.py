@@ -100,17 +100,14 @@ def _generate_run_script_serve(
         f.write(f"\n")
         f.write(f'cmd="{cmd}"\n')
         f.write(f"\n")
-        if with_test:
-            f.write(f'bash -c "$cmd; sync" \n')
+        # TODO: need a option to control whether to append or overwrite the output file
+        # Now, it always appends to the output file
+        if background:
+            f.write(
+                f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
+            )
         else:
-            # TODO: need a option to control whether to append or overwrite the output file
-            # Now, it always appends to the output file
-            if background:
-                f.write(
-                    f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
-                )
-            else:
-                f.write(f'bash -c "$cmd; sync" >> {host_output_file} 2>&1\n')
+            f.write(f'bash -c "$cmd; sync" >> {host_output_file} 2>&1\n')
         f.write("\n")
         f.flush()
         os.fsync(f.fileno())
@@ -139,6 +136,7 @@ def _generate_stop_script(config, host, node_rank):
         after_stop = ""
     with open(host_stop_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
+        f.write("ray stop\n")
         f.write("pkill -f 'python'\n")
         f.write(f"{after_stop}\n")
         f.flush()
@@ -162,10 +160,17 @@ class SSHServeRunner(RunnerBase):
         _update_config_serve(self.config)
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
+        entrypoint = self.config.experiment.task.get("entrypoint", None)
         if self.command_line_mode:
             self.user_script = "flagscale/serve/run_vllm.py"
+        elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
+            self.user_script = entrypoint
+        elif entrypoint is None:
+            self.user_script = "flagscale/serve/run_serve.py"
         else:
-            self.user_script = self.config.experiment.task.entrypoint
+            raise ValueError(
+                f"Invalid config entrypoint: {entrypoint}, must be a python file path or null."
+            )
         self.resources = parse_hostfile(
             self.config.experiment.runner.get("hostfile", None)
         )

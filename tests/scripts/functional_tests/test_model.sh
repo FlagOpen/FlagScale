@@ -52,16 +52,71 @@ test_model() {
         rm -r $result_path
       fi
 
-      run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
-      if [ $? -ne 0 ]; then
-        echo "Test failed on attempt $attempt_i for case $_case."
-        exit 1
-      fi
+      if [ ${_type} = "serve" ]; then
+        if [ ${attempt_i} -gt 1 ]; then
+          break
+        fi
 
-      run_command "pytest -p no:warnings -s tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_model=${_model} --test_case=${_case}"
-      if [ $? -ne 0 ]; then
-        echo "Pytest failed on attempt $attempt_i for case $_case."
-        exit 1
+        # Function to execute a command and clear serve process
+        clear_serve() {
+          ray stop
+          pkill -f "python"
+          return 0
+        }
+
+        # Function to print serve logs
+        print_log() {
+          local log_file=$1
+          echo "------------------ serve log begin -----------------------"
+          if [[ -n "$log_file" && -f "$log_file" ]]; then
+            echo "Log file found at $log_file. Printing log content:"
+            cat "$log_file"
+          else
+            echo "No log file found at $log_file or path is empty."
+          fi
+          echo "------------------ env ----------------------"
+          env
+          pip list
+          echo "------------------ serve log end   -----------------------"
+        }
+
+        log_path="./outputs/${_case}/serve_logs/host_0_localhost.output"
+
+        export no_proxy="127.0.0.1,localhost"
+        # serve
+        echo "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
+        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
+        if [ $? -ne 0 ]; then
+          echo "Test failed on attempt $attempt_i for serve case $_case."
+          print_log "$log_path"
+          clear_serve
+          exit 1
+        fi
+        sleep 2m
+        # call
+        echo "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
+        run_command "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
+        if [ $? -ne 0 ]; then
+          echo "Test failed on attempt $attempt_i for call serve case $_case."
+          print_log "$log_path"
+          clear_serve
+          exit 1
+        fi
+        #clear
+        clear_serve
+      else
+
+        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=test"
+        if [ $? -ne 0 ]; then
+          echo "Test failed on attempt $attempt_i for case $_case."
+          exit 1
+        fi
+
+        run_command "pytest -p no:warnings -s tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_model=${_model} --test_case=${_case}"
+        if [ $? -ne 0 ]; then
+          echo "Pytest failed on attempt $attempt_i for case $_case."
+          exit 1
+        fi
       fi
 
       # Ensure that pytest check is completed before deleting the folder
