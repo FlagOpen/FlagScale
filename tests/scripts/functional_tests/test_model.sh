@@ -12,7 +12,6 @@ run_command() {
   return 0
 }
 
-
 source tests/scripts/_gpu_check.sh
 
 # Path to the YAML configuration file
@@ -119,6 +118,7 @@ test_model() {
           exit 1
         fi
       fi
+
       # Ensure that pytest check is completed before deleting the folder
       sleep 10s
     done
