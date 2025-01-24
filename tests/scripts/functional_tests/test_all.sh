@@ -10,7 +10,7 @@ commands=(
     # Add in the feature
     # "tests/scripts/functional_tests/test_model.sh --type inference --model vllm"
     # For serve
-    "tests/scripts/functional_tests/test_model.sh --type serve --model build_dag"
+    "tests/scripts/functional_tests/test_model.sh --type serve --model test_serve_base"
 )
 
 for cmd in "${commands[@]}"; do
