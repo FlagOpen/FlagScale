@@ -66,7 +66,10 @@ class Compressor:
 
     def compress(self):
         self.tokenizer = None
-        self.model_path = self.cfg.model.pop("model_path")
+        self.model_path = None
+        if self.model is None:
+            assert self.cfg.model is not None
+            self.model_path = self.cfg.model.pop("model_path")
         if self.cfg.data.tokenzier_args is not None:
             self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.data.tokenzier_args.pop("tokenizer_path"), **self.cfg.data.tokenzier_args)
         if self.model is None:
@@ -80,8 +83,6 @@ class Compressor:
             for algo_args in recipe:
                 algo_args = OmegaConf.to_container(algo_args)
                 algo_args["dataset"] = self.dataset
-                print("algo_args: ", algo_args)
-                # import pdb; pdb.set_trace()
                 algo_args["num_calibration_steps"] = self.cfg.data.get("num_calibration_steps", 384)
                 adapter = LLMCompressorAdapter(model=self.model, **algo_args)
                 ### modify model inplace
@@ -94,7 +95,6 @@ class Compressor:
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(self.cfg.system.save_dir)
         copy_rest_file(self.model_path, cfg.system.save_dir)
-        import pdb; pdb.set_trace()
 
     @torch.no_grad()
     def convert(self, model):

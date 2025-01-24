@@ -62,7 +62,7 @@ if __name__ == "__main__":
     cmp = Compressor(cfg, dataset=dataset)
     cmp.compress()
     model = cmp.convert(cmp.model)
-
+    
     ### test code
     with torch.no_grad():
         from llmcompressor.pytorch.utils import tensors_to_device

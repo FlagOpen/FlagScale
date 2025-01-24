@@ -21,6 +21,11 @@ class RTNWrapper(ModuleCompressionWrapper):
             if self.input_observer_args and self.input_observer_args.dynamic:
                 self.input_observer_args.observer = "minmax"
                 self.input_observer = Observer.load_from_registry(self.input_observer_args.get_observer(), quantization_args=self.input_observer_args)
+            if self.weights_observer_args:
+                # origin_weight = self.layer.weight.clone()
+                W = fake_quantize(self.layer.weight, self.layer.weight_scale, self.layer.weight_zero_point, self.weights_observer_args)
+                update_parameter_data(self.layer, W, f"weight")
+                del W
         else:
             if self.weights_observer_args and not self.weights_observer_args.dynamic:
                 self.weight_observer = Observer.load_from_registry(self.weights_observer_args.get_observer(), quantization_args=self.weights_observer_args)
@@ -60,10 +65,6 @@ class RTNWrapper(ModuleCompressionWrapper):
                     del tmp_inp, error
                 else:
                     inp = fake_quantize(inp, self.layer.input_scale, self.layer.input_zero_point, self.input_observer_args)
-            if self.weights_observer_args:
-                W = fake_quantize(self.layer.weight, self.layer.weight_scale, self.layer.weight_zero_point, self.weights_observer_args)
-                update_parameter_data(self.layer, W, f"weight")
-                del W
         out = self.layer(inp, **kwargs)
         # if self._enable_fake_quant and self.output_observer:
         #     out = fake_quantize(out, self.layer.output_scale, self.layer.output_zero_point, self.output_observer.quantization_args)
