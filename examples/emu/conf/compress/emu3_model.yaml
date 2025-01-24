@@ -8,12 +8,11 @@ system:
     tensorboard_log_interval: 1
     wandb_project: "compress-emu3-7B" 
     wandb_exp_name: "compress-test-7B" 
-  save_dir: 
+  save_dir: outputs/emu3/inference_model
 
 
 model: 
   model_cls: AutoModelForCausalLM
-  model_path: BAAI/Emu3-Gen/
+  model_path: /share/project/lms/Emu3-Gen/
   device_map: cuda:0
   trust_remote_code: true
-  torch_dtype: bfloat16

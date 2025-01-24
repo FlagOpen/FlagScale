@@ -9,7 +9,7 @@ import torch
 from megatron.core.datasets.indexed_dataset import IndexedDataset
 from torch.utils.data import Dataset
 
-from flagscale.compress.compressor import compress, prepare_config
+from flagscale.compress.compressor import Compressor, prepare_config
 
 class CusDataset(Dataset):
     def __init__(self, ds):
@@ -59,4 +59,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg = prepare_config(args.config_path)
     dataset = prepare_dataset(cfg)
-    compress(cfg, dataset=dataset)
+    cmp = Compressor(cfg, dataset=dataset)
+    cmp.compress()
+    model = cmp.convert(cmp.model)
+
+    ### test code
+    with torch.no_grad():
+        from llmcompressor.pytorch.utils import tensors_to_device
+        model_device = next(model.parameters()).device
+        for idx, data in enumerate(dataset):
+            data = tensors_to_device(data, model_device)
+            if idx < 2:
+                model(**data)
+            else:
+                break
+

@@ -13,7 +13,7 @@ import copy
 import torch
 from torch.utils.data import Dataset
 
-from flagscale.compress.compressor import compress, prepare_config
+from flagscale.compress.compressor import Compressor, prepare_config
 import transformers
 from llava.model.builder import load_pretrained_model
 from llava.train.train import make_supervised_data_module, DataArguments, LLaVATrainer
@@ -67,7 +67,7 @@ def prepare_dataset(cfg, model, tokenizer):
     if cfg.data.data_path is None:
         return None
     new_data_args = copy.deepcopy(cfg.data)
-    new_data_args.pop("num_calibration_samples")
+    new_data_args.pop("num_calibration_steps")
     new_data_args.pop("max_seq_length")
     new_data_args.pop("tokenzier_args")
     
@@ -100,6 +100,8 @@ def prepare_dataset(cfg, model, tokenizer):
         elif isinstance(data_args.image_grid_pinpoints, str):
             data_args.image_grid_pinpoints = ast.literal_eval(data_args.image_grid_pinpoints)
     dataset = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
+    import pdb
+    pdb.set_trace()
 
     ds = CusDataset(dataset["train_dataset"])
     return ds
@@ -117,4 +119,5 @@ if __name__ == "__main__":
     cfg = prepare_config(args.config_path)
     model, tokenizer = prepare_model(cfg)
     dataset = prepare_dataset(cfg, model, tokenizer)
-    compress(cfg, dataset=dataset, model=model)
+    com = Compressor(cfg, dataset=dataset, model=model)
+    com.compress()
