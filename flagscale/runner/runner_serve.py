@@ -160,7 +160,7 @@ class SSHServeRunner(RunnerBase):
         _update_config_serve(self.config)
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
-        entrypoint = self.config.experiment.task.get("entrypoint")
+        entrypoint = self.config.experiment.task.get("entrypoint", None)
         if self.command_line_mode:
             self.user_script = "flagscale/serve/run_vllm.py"
         elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):

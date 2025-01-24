@@ -1,14 +1,12 @@
-import sys
-
 from flagscale.serve.arguments import parse_config
-from flagscale.serve.core.dag import Builder
+from flagscale.serve.engine import ServeEngine
 
 
 def main():
     config = parse_config()
-    builder = Builder(config)
-    builder.build_task()
-    builder.run_router_task()
+    engine = ServeEngine(config)
+    engine.build_task()
+    engine.run_router_task()
 
 
 if __name__ == "__main__":
