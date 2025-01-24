@@ -16,7 +16,7 @@ from flagscale.logger import logger
 from dag_utils import check_and_get_port
 
 
-class Engine:
+class ServeEngine:
     def __init__(self, config):
         self.config = config.serve
         self.exp_config = config.experiment
