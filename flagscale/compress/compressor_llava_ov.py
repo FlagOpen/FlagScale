@@ -100,8 +100,6 @@ def prepare_dataset(cfg, model, tokenizer):
         elif isinstance(data_args.image_grid_pinpoints, str):
             data_args.image_grid_pinpoints = ast.literal_eval(data_args.image_grid_pinpoints)
     dataset = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
-    import pdb
-    pdb.set_trace()
 
     ds = CusDataset(dataset["train_dataset"])
     return ds

@@ -3,20 +3,16 @@ defaults:
   - _self_
 
 data:
-  data_path: /share/project/lms/emu3_testdata/3_text_document
-  num_calibration_steps: 16
-  max_seq_length: 9216
+  data_path: null
+  num_calibration_steps: null
+  max_seq_length: null
   tokenzier_args:
-    tokenizer_path: /share/project/lms/Emu3-Gen/
-    special_tokens_file: /share/project/lms/Emu3-Gen/emu3_vision_tokens.txt
+    tokenizer_path: BAAI/Emu3-Gen/
+    special_tokens_file: BAAI/Emu3-Gen/emu3_vision_tokens.txt
     trust_remote_code: true
 
 compress_args:
   quantization:
-    - algo:
-        smoothquant:
-          smoothing_strength: 0.5
-      ignore: ["lm_head"]
     - algo:
       targets: ["Linear"]
       ignore: ["lm_head"]

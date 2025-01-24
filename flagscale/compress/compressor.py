@@ -75,7 +75,6 @@ class Compressor:
         if self.model is None:
             model_cls = eval(self.cfg.model.pop("model_cls"))
             self.model = model_cls.from_pretrained(self.model_path, **self.cfg.model)
-        # import pdb; pdb.set_trace()
         assert isinstance(self.model, torch.nn.Module), f"model type {type(self.model)} error, please check it"
         compress_args = self.cfg.compress_args
         recipes = prepare_compress_methods(compress_args)

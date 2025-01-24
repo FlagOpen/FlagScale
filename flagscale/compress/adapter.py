@@ -22,7 +22,6 @@ from compressed_tensors.quantization import (
     QuantizationScheme,
     disable_quantization,
     enable_quantization,
-    is_attention_module,
 )
 from llmcompressor.modifiers.quantization.calibration import (
     apply_calibration_status,
@@ -40,7 +39,6 @@ from flagscale.compress.algo import SmoothQuantWrapper, RTNWrapper
 from flagscale.compress.blockwise_compressor import BlockCompressor
 
 from flagscale.runner.runner_utils import logger
-import pdb
 
 __all__ = ["LLMCompressorAdapter"]
 
@@ -55,8 +53,6 @@ BLOCKWISE_WRAPPER_NAMES = {
 class LLMCompressorAdapter:
     def __init__(self, model, scheme=None, targets=None, algo=None, ignore=None, dataset=None, num_calibration_steps=384):
         self.model = model
-        # print("model: ", model)
-        # modify_save_pretrained(self.model)
         if algo is not None:
             assert len(algo) == 1
             for k, v in algo.items():
@@ -91,7 +87,6 @@ class LLMCompressorAdapter:
                 self.wrapper_cls = RTNWrapper
                 self.compress_granularity = LayerCompressor
         quant_config = self.init_quant_config()
-        print(quant_config)
 
         if quant_config is not None:
             ### find ignore and target to quant, initialize module for quant
@@ -101,7 +96,6 @@ class LLMCompressorAdapter:
 
         self.init_compressor()
         if self.require_calib:
-            # self.insert_observer()
             if model.training == False: ### Post Training
                 assert self.dataset is not None, f"The algorithm {self.algo} you selected requires a calibration process, please provide the calibration data"
                 self.run_blockwise_calib_forward()
@@ -112,10 +106,10 @@ class LLMCompressorAdapter:
             self.layer_compressors_[0].clear_early_stop()
             for idx, layer_compressor in enumerate(self.layer_compressors_):
                 layer_compressor.pre_compress()
-                # import pdb;pdb.set_trace()
                 layer_compressor.compress()
                 layer_compressor.post_compress()
                 layer_compressor.revert_layer_wrappers()
+        
         
     def init_quant_config(self):
         if self.scheme is not None:
@@ -182,7 +176,6 @@ class LLMCompressorAdapter:
             for idx, layer_compressor in enumerate(self.layer_compressors_):
                 logger.info(f"start calibration layer {layer_compressor.name}")
                 layer_compressor.pre_compress()
-                # print("idx: ", idx, intermediates)
                 unquantized_outputs = layer_compressor.calibrate_layer(intermediates)
                 layer_compressor.compress()
                 layer_compressor.post_compress()
@@ -192,4 +185,3 @@ class LLMCompressorAdapter:
                 logger.info(f"Mean output error from quantization: {error:.3f}")
                 intermediates = quantized_outputs
         self.model.apply(enable_quantization)
-    

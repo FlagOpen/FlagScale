@@ -62,6 +62,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_rerun_machine_args(parser)
     parser = _add_hetero_args(parser)
     parser = _add_auto_tuner_args(parser)
+    parser = _add_auto_skip_spiky_loss(parser)
 
     # Custom arguments.
     if extra_args_provider is not None:
@@ -1405,6 +1406,10 @@ def _add_training_args(parser):
                        help='Total number of samples to train over all '
                        'training runs. Note that either train-iters or '
                        'train-samples should be provided.')
+    group.add_argument('--skip-samples-range', nargs='+', type=int, default=None,
+                       help='Range of samples to skip during training.')
+    group.add_argument('--skip-iters-range', nargs='+', type=int, default=None,
+                       help='Range of iterations to skip during training.')
     group.add_argument('--log-interval', type=int, default=100,
                        help='Report loss and timing interval.')
     group.add_argument('--exit-interval', type=int, default=None,
@@ -2230,6 +2235,10 @@ def _add_moe_args(parser):
                        choices=['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'],
                        default='aux_loss',
                        help='Determines the load balancing strategy for the router. "aux_loss" corresponds to the load balancing loss used in GShard and SwitchTransformer; "seq_aux_loss" corresponds to the load balancing loss used in DeepSeekV2, which computes the loss for each individual sample; "sinkhorn" corresponds to the balancing algorithm used in S-BASE, and "none" implies no load balancing. The default is "aux_loss".')
+    group.add_argument('--moe-router-score-function-type', type=str,
+                       choices=['softmax', 'sigmoid'],
+                       default='softmax',
+                       help='Determines the score function type for the router, currently support two load balancing type: "aux_loss" and "seq_aux_loss".')
     group.add_argument('--moe-router-topk', type=int, default=2,
                        help='Number of experts to route to for each token. The default is 2.')
     group.add_argument('--moe-router-pre-softmax', action='store_true',
@@ -2355,4 +2364,14 @@ def _add_auto_tuner_args(parser):
     group.add_argument('--auto-tune', action='store_true',
                        help='use auto tuner')
 
+    return parser
+
+
+def _add_auto_skip_spiky_loss(parser):
+    group = parser.add_argument_group(title='auto skip spiky loss')
+    
+    group.add_argument('--auto-skip-spiky-loss', action='store_true',
+                       help='Automatically skip spiky loss iterations.')
+    group.add_argument('--spiky-loss-threshold', type=float, default=0.2,
+                          help='Threshold for skipping spiky loss iterations.')
     return parser
