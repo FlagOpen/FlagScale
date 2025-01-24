@@ -12,13 +12,6 @@ run_command() {
   return 0
 }
 
-# Function to execute a command and clear serve process
-clear_serve() {
-  ray stop
-  pkill -f "python"
-  return 0
-}
-
 
 source tests/scripts/_gpu_check.sh
 
@@ -64,12 +57,39 @@ test_model() {
         if [ ${attempt_i} -gt 1 ]; then
           break
         fi
+
+        # Function to execute a command and clear serve process
+        clear_serve() {
+          ray stop
+          pkill -f "python"
+          return 0
+        }
+
+        # Function to print serve logs
+        print_log() {
+          local log_file=$1
+          echo "------------------ serve log begin -----------------------"
+          if [[ -n "$log_file" && -f "$log_file" ]]; then
+            echo "Log file found at $log_file. Printing log content:"
+            cat "$log_file"
+          else
+            echo "No log file found at $log_file or path is empty."
+          fi
+          echo "------------------ env ----------------------"
+          env
+          pip list
+          echo "------------------ serve log end   -----------------------"
+        }
+
+        log_path="./outputs/${_case}/serve_logs/host_0_localhost.output"
+
         export no_proxy="127.0.0.1,localhost"
         # serve
         echo "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_model}/conf --config-name ${_case} action=run"
         if [ $? -ne 0 ]; then
-          echo "Test failed on attempt $attempt_i for case $_case."
+          echo "Test failed on attempt $attempt_i for serve case $_case."
+          print_log "$log_path"
           clear_serve
           exit 1
         fi
@@ -78,20 +98,8 @@ test_model() {
         echo "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
         run_command "python tests/functional_tests/test_cases/${_type}/${_model}/test_call.py"
         if [ $? -ne 0 ]; then
-          echo "Test failed on attempt $attempt_i for case $_case."
-          FILE="./outputs/${_case}/serve_logs/host_0_localhost.output"
-
-          if [ -e "$FILE" ]; then
-              echo "log exists: $FILE"
-              echo "------------------ serve log begin -----------------------"
-              cat "$FILE"
-              echo "------------------ env ----------------------"
-              env
-              pip list
-              echo "------------------ serve log end ----------------------"
-          else
-              echo "log not exists: $FILE"
-          fi
+          echo "Test failed on attempt $attempt_i for call serve case $_case."
+          print_log "$log_path"
           clear_serve
           exit 1
         fi
