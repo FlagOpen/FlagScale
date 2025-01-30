@@ -4,7 +4,7 @@ defaults:
 
 data:
   data_path: 
-  num_calibration_samples: 16
+  num_calibration_steps: 16
   max_seq_length: 8192
   tokenzier_args: null
 

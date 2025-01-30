@@ -9,7 +9,7 @@ import torch
 from megatron.core.datasets.indexed_dataset import IndexedDataset
 from torch.utils.data import Dataset
 
-from flagscale.compress.compressor import compress, prepare_config
+from flagscale.compress.compressor import Compressor, prepare_config
 
 class CusDataset(Dataset):
     def __init__(self, ds):
@@ -59,4 +59,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg = prepare_config(args.config_path)
     dataset = prepare_dataset(cfg)
-    compress(cfg, dataset=dataset)
+    cmp = Compressor(cfg, dataset=dataset)
+    cmp.compress()
+    

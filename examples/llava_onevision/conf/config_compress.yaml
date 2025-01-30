@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - compress: compress_llava_ov_w4a16
+  - compress: compress_llava_ov
 
 experiment:
   exp_name: llava_ov

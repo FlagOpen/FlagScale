@@ -4,8 +4,8 @@ defaults:
 
 data:
   data_path: null
-  max_calib_data: null
-  max_seq_len: null
+  num_calibration_steps: null
+  max_seq_length: null
   tokenzier_args:
     tokenizer_path: BAAI/Emu3-Gen/
     special_tokens_file: BAAI/Emu3-Gen/emu3_vision_tokens.txt
