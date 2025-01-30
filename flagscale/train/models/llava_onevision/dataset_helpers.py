@@ -36,6 +36,8 @@ class AnyResTaskSample:
     images: List[torch.Tensor]
     image_sizes: List[torch.Tensor]
     modalities: List[torch.Tensor]
+    ids: torch.Tensor
+    ids_shape: torch.Tensor
 
 # Typing for the resulting batch data after encode_batch()
 @dataclass
@@ -50,6 +52,8 @@ class AnyResTaskBatch(Batch):
     image_sizes: torch.Tensor
     split_image_sizes: torch.Tensor
     modalities: torch.Tensor
+    ids: torch.Tensor
+    ids_shape: torch.Tensor
 
 
 class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample, AnyResTaskBatch, dict]):
@@ -84,6 +88,10 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
         else:
             assert ValueError("The sequence must have 4 or 5 elements, but got {len(sample.sequence)}.")
 
+        id = "".join(sample.__key__.split("/")[1:])
+        ids_tensor = torch.tensor([ord(c) for c in id], dtype=torch.uint8)
+        ids_shape = torch.tensor(ids_tensor.shape)
+
         # process modalities to tensor
         modalities_list = []
         for modality in modalities:
@@ -107,7 +115,9 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
             labels_shape=torch.tensor(labels.shape),
             images=images,
             image_sizes=image_sizes,
-            modalities=modalities
+            modalities=modalities,
+            ids=ids_tensor,
+            ids_shape=ids_shape
         )
 
     def batch(self, samples: List[AnyResTaskSample]) -> AnyResTaskBatch:
@@ -121,7 +131,8 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
         # Adapt video data by decord
         image_sizes = torch.stack([image_sizes if len(image_sizes.shape) == 1 else torch.tensor((1, image_sizes.item())) for s in samples for image_sizes in s.image_sizes], dim=0)
         modalities = torch.stack([modalities for s in samples for modalities in s.modalities], dim=0)
-
+        ids = torch.cat([s.ids.flatten() for s in samples], dim=0)
+        ids_shape = torch.stack([s.ids_shape for s in samples], dim=0)
         batch = AnyResTaskBatch(
             __keys__=[s.__key__ for s in samples],
             __subflavors__=[s.__subflavors__ for s in samples],
@@ -132,7 +143,9 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
             images=images,
             image_sizes=image_sizes,
             split_image_sizes=split_image_sizes,
-            modalities=modalities
+            modalities=modalities,
+            ids=ids,
+            ids_shape=ids_shape,
         )
 
         return batch
