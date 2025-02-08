@@ -1,0 +1,24 @@
+defaults:
+  - _self_
+  - serve: serve_deepseek_v3
+
+experiment:
+  exp_name: deepseek_v3
+  exp_dir: outputs/${experiment.exp_name}
+  task:
+    type: serve
+    backend: vllm
+    entrypoint: null
+  runner:
+    hostfile: /path/to/hostfile # type: {remote ip} slots={gpu num} type={gpu type} (like: x.x.x.x slots=8 type=A100)
+    ssh_port: 22 # replace with your ssh port
+  envs:
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+  cmds:
+    before_start: source /root/miniconda3/bin/activate flagscale
+
+action: run
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra

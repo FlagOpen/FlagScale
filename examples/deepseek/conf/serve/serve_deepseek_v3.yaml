@@ -1,0 +1,17 @@
+model_args:
+  vllm_model:
+    model-tag: /models/Qwen2.5-Coder-32B-Instruct
+    tensor-parallel-size: 8
+    pipeline-parallel-size: 2
+    gpu-memory-utilization: 0.2
+    max-num-seqs: 256
+    port: 9010
+    action-args:
+      - trust-remote-code
+      - enable-chunked-prefill
+
+deploy:
+  command-line-mode: true
+  models:
+    vllm_model:
+      num_gpus: 16
