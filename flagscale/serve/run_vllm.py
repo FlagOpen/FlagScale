@@ -72,10 +72,11 @@ def start_cluster(task_config):
         port = check_and_get_port()
     else:
         port = check_and_get_port(target_port=int(head_port))
-    cmd = ["ray", "start", "--head", f"--port={port}"]
+    cmd = f"ray stop && ray start --head --port={port}"
     logger.info(f"head node command: {cmd}")
     head_result = subprocess.run(
         cmd,
+        shell=True,
         check=True,
         capture_output=True,
         text=True,
@@ -96,19 +97,19 @@ def start_cluster(task_config):
             node = item.node
             if node.type == "gpu":
                 node_cmd = (
-                    f"ray start --address={address} --num-gpus={node.slots}"
+                    f"ray stop && ray start --address={address} --num-gpus={node.slots}"
                 )
 
             elif node.type == "cpu":
                 node_cmd = (
-                    f"ray start --address={address} --num-cpus={node.slots}"
+                    f"ray stop && ray start --address={address} --num-cpus={node.slots}"
                 )
             else:
                 resource = json.dumps({node.type: node.slots}).replace(
                     '"', '\\"'
                 )
                 node_cmd = (
-                    f"ray start --address={address} --resources='{resource}'"
+                    f"ray stop && ray start --address={address} --resources='{resource}'"
                 )
             if task_config.experiment.get("cmds", "") and task_config.experiment.cmds.get(
                 "before_start", ""
@@ -125,11 +126,10 @@ def start_cluster(task_config):
                 ssh_cmd = f'ssh -n {node.ip} "{node_cmd}"'
 
             if node.get("docker", None):
-                ssh_cmd = f'ssh -n {node.ip} "docker exec {node.docker} /bin/bash -c "{node_cmd}""'
+                ssh_cmd = f'ssh -n {node.ip} "docker exec {node.docker} /bin/bash -c \'{node_cmd}\'"'
 
             logger.info(f"worker node command: {cmd}")
             print("=========== ssh_cmd =============== ", ssh_cmd)
-            breakpoint()
 
             result = subprocess.run(
                 ssh_cmd,
