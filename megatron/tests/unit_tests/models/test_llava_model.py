@@ -143,7 +143,6 @@ class TestLLaVAModel:
             inference_params,
             image_token_index,
             num_image_tiles,
-            image_token_mask,
         )
 
         img_seq_len = 577
@@ -695,6 +694,12 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters())
 
 
+"""
+    Author: lizhiyu
+    Date: 2024-02-11
+    Action: 
+    Reason: This test always fails. You change `(2, 3, 2, 1) -> (2, 1, 2, 1)` to fix it temporarily.
+"""
 @pytest.mark.internal  # The model is under active development and its methods may change.
 @pytest.mark.parametrize(
     'dtp, dpp, etp, epp', [(1, 1, 1, 0), (1, 1, 1, 1), (2, 1, 2, 0), (2, 3, 2, 1), (2, 4, 2, 0)]

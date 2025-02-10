@@ -136,6 +136,12 @@ class TestParallelTransformerBlock:
 
 
 class TestPipelineParallelTransformerBlock:
+    """
+    Author: lizhiyu
+    Date: 2024-02-11
+    Action: 
+    Reason: This test always fails. `include_embedding_in_pipeline_split` and `include_loss_in_pipeline_split` are not in TransformerConfig.
+"""
     @pytest.mark.parametrize(
         "num_layers, pipeline_model_parallel_size, virtual_pipeline_model_parallel_size, "
         "include_embedding_in_pipeline_split, include_loss_in_pipeline_split, "

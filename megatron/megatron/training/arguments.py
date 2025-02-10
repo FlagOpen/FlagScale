@@ -1935,6 +1935,11 @@ def _add_distributed_args(parser):
                        'complete it instead.Also turns on '
                        '--use-cpu-initialization flag. This is for '
                        'external DDP manager.' )
+    group.add_argument('--standalone-embedding-stage', action='store_true',
+                       default=False, help='If set, *input* embedding layer '
+                       'is placed on its own pipeline stage, without any '
+                       'transformer layers. (For T5, this flag currently only '
+                       'affects the encoder embedding.)')
     group.add_argument('--account-for-embedding-in-pipeline-split', action='store_true',
                        default=False, help='If set, *input* embedding layer will be treated as a standard transformer'
                        'layer in the context of partition and placement for pipeline parallelism.')

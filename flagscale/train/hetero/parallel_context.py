@@ -16,6 +16,23 @@ def get_nccl_options(pg_name, nccl_comm_cfgs):
     from megatron.core.parallel_state import get_nccl_options 
     return get_nccl_options(pg_name, nccl_comm_cfgs)
 
+def create_group(
+    ranks=None,
+    timeout=None,
+    backend=None,
+    pg_options=None,
+    use_local_synchronization=False,
+    group_desc=None,
+):
+    from megatron.core.parallel_state import create_group
+    return create_group(
+        ranks=ranks,
+        timeout=timeout,
+        backend=backend,
+        pg_options=pg_options,
+        use_local_synchronization=use_local_synchronization,
+        group_desc=group_desc,
+    )
 
 def find_overlapped_mapping(dim1, dim2, global_size=None):
     """
@@ -145,6 +162,7 @@ class ProcessMesh:
         self._hierarchical_context_parallel_sizes = hierarchical_context_parallel_sizes
         self._expert_model_parallel_size = expert_model_parallel_size
         self._num_distributed_optimizer_instances = num_distributed_optimizer_instances
+        self._intra_partial_data_parallel_size = data_parallel_size * context_parallel_size // num_distributed_optimizer_instances
         self._expert_tensor_parallel_size = expert_tensor_parallel_size
         self._order = order
         self._offset = offset
@@ -242,16 +260,9 @@ class ProcessMesh:
             nccl_option_name = self.get_nccl_option_name(token, is_expert=is_expert)
             pg_options = get_nccl_options(nccl_option_name, self._nccl_comm_cfgs)
             ranks = self._rank_mapper.to_physical_ranks(logical_ranks)
-            group = torch.distributed.new_group(
-                ranks,
-                backend=self._distributed_backend,
-                timeout=self._timeout,
-                pg_options=pg_options,
-            )
+            group = create_group(ranks, timeout=self._timeout, backend=self._distributed_backend, pg_options=pg_options, group_desc=group_name)
             if gloo:
-                group_gloo = torch.distributed.new_group(
-                    ranks, timeout=self._timeout, backend="gloo"
-                )
+                group_gloo = create_group(ranks, timeout=self._timeout, backend="gloo", group_desc=group_name+"_gloo")
             self._all_group_ranks[group_name].append(ranks)
             if self._rank in ranks:
                 self._group_ranks[group_name] = ranks
@@ -287,14 +298,18 @@ class ProcessMesh:
                     raise ValueError(f"Invalid token: {token}")
                 self._all_group_ranks[group_name].append(intra_partial_data_parallel_ranks_with_cp)
 
-                intra_partial_data_parallel_group_with_cp = torch.distributed.new_group(
+                intra_partial_data_parallel_group_with_cp = create_group(
                     intra_partial_data_parallel_ranks_with_cp,
                     timeout=self._timeout,
+                    backend=self._distributed_backend,
                     pg_options=pg_options,
+                    group_desc=group_name,
                 )
-                intra_partial_data_parallel_group_with_cp_gloo = torch.distributed.new_group(
-                    intra_partial_data_parallel_ranks_with_cp, timeout=self._timeout, backend="gloo"
-                )
+                intra_partial_data_parallel_group_with_cp_gloo = create_group(
+                    intra_partial_data_parallel_ranks_with_cp,
+                    timeout=self._timeout,
+                    backend="gloo",
+                    group_desc=group_name+"_gloo")
 
                 if self._rank in intra_partial_data_parallel_ranks_with_cp:
                     self._group_ranks[group_name] = intra_partial_data_parallel_ranks_with_cp 
@@ -315,10 +330,12 @@ class ProcessMesh:
 
                 self._all_group_ranks[group_name].append(inter_partial_data_parallel_ranks_with_cp)
 
-                inter_partial_data_parallel_group_with_cp = torch.distributed.new_group(
+                inter_partial_data_parallel_group_with_cp = create_group(
                     inter_partial_data_parallel_ranks_with_cp,
                     timeout=self._timeout,
+                    backend=self._distributed_backend,
                     pg_options=pg_options,
+                    group_desc=group_name,
                 )
 
                 if self._rank in inter_partial_data_parallel_ranks_with_cp:
@@ -421,7 +438,7 @@ class ProcessMesh:
                 "dp-usp-cp": "dp_usp_cp",
                 "dp-usp": "dp_usp",
                 "cp": "cp",
-                "hierachical-cp": "cp",
+                "hierachical-cp": "hcp",
                 "usp": "usp",
                 "tp-pp": "mp",
                 "tp": "tp",
@@ -435,11 +452,11 @@ class ProcessMesh:
                 raise ValueError(f"Invalid token: {token}")
         else:
             names = {
-                "ep": "exp",
-                "tp": "tp",
+                "ep": "ep",
+                "tp": "ep_tp",
                 "tp-ep": "tp_exp",
-                "tp-ep-pp": "mp",
-                "dp": "dp",
+                "tp-ep-pp": "tp_ep_mp",
+                "dp": "ep_dp",
             }
             name = names.get(token, None)
             if name is None:
@@ -699,7 +716,7 @@ class ParallelContext:
             if mesh_index == len(self._process_meshes):
                 aggregated_ranks = [rank for ranks in path for rank in ranks]
                 self._global_all_group_ranks[group_name].append(aggregated_ranks)
-                group = torch.distributed.new_group(aggregated_ranks, timeout=self._timeout, use_local_synchronization=True)
+                group = create_group(aggregated_ranks, timeout=self._timeout, use_local_synchronization=True, group_desc=group_name)
                 if self._rank in aggregated_ranks:
                     self._global_process_groups[group_name].append(group)
                     self._global_group_ranks[group_name].append(aggregated_ranks)
@@ -729,7 +746,7 @@ class ParallelContext:
             )
             ranks = list(itertools.chain.from_iterable(ranks_list))
             self._global_all_group_ranks["mp"].append(ranks)
-            group = torch.distributed.new_group(ranks, timeout=self._timeout, use_local_synchronization=True)
+            group = create_group(ranks, timeout=self._timeout, use_local_synchronization=True, group_desc="mp")
             if self._rank in ranks:
                 self._global_group_ranks["mp"] = ranks
                 self._global_process_groups["mp"] = group
@@ -765,9 +782,7 @@ class ParallelContext:
             else:
                 embedding_ranks = ranks
                 position_embedding_ranks = ranks
-            group = torch.distributed.new_group(
-                embedding_ranks, timeout=self._timeout, use_local_synchronization=True
-            )
+            group = create_group(embedding_ranks, timeout=self._timeout, use_local_synchronization=True, group_desc="embd")
             if self._rank in embedding_ranks:
                 self._global_process_groups["embd"].append(group)
                 self._global_process_group_to_ranks[group] = embedding_ranks
@@ -775,9 +790,7 @@ class ParallelContext:
             if self._rank in ranks:
                 self._global_group_ranks["embd"].append(embedding_ranks)
 
-            group = torch.distributed.new_group(
-                position_embedding_ranks, timeout=self._timeout, use_local_synchronization=True
-            )
+            group = create_group(position_embedding_ranks, timeout=self._timeout, use_local_synchronization=True, group_desc="embd_pos")
             if self._rank in position_embedding_ranks:
                 self._global_process_groups["embd_pos"].append(group)
                 self._global_process_group_to_ranks[group] = position_embedding_ranks
@@ -1627,7 +1640,6 @@ class ParallelContext:
                         get_blend_from_list(args.valid_data_path),
                         get_blend_from_list(args.test_data_path)
                     ],
-                    renormalize_blend_weights=args.renormalize_blend_weights,
                     split=args.split,
                     num_dataset_builder_threads=args.num_dataset_builder_threads,
                     path_to_cache=args.data_cache_path,
@@ -1651,7 +1663,6 @@ class ParallelContext:
                         get_blend_from_list(args.valid_data_path),
                         get_blend_from_list(args.test_data_path)
                     ],
-                    renormalize_blend_weights=args.renormalize_blend_weights,
                     split=args.split,
                     num_dataset_builder_threads=args.num_dataset_builder_threads,
                     path_to_cache=args.data_cache_path,

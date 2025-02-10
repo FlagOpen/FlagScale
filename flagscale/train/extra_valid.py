@@ -36,7 +36,6 @@ def core_gpt_dataset_config_from_args(args, data_path):
         sequence_length=args.seq_length,
         blend=get_blend_from_list(data_path),
         blend_per_split=None,
-        renormalize_blend_weights=args.renormalize_blend_weights,
         split="0,1,0",
         num_dataset_builder_threads=args.num_dataset_builder_threads,
         path_to_cache=args.data_cache_path,
