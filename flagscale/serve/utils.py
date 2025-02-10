@@ -28,9 +28,8 @@ def remote(*args, **kwargs):
     _load()
     def _merge_kwargs(func_name, **kwargs):
         new_kwargs = kwargs.copy()
-        models = task_config.serve.deploy.models
-
-        if func_name in models:
+        models = task_config.serve.deploy.get("models", None)
+        if models and func_name in models:
             new_kwargs.update(models[func_name])
             if "model_name" not in kwargs:
                 new_kwargs.pop("model_name", None)
