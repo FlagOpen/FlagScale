@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - serve: serve_deepseek_v3
+  - serve: deepseek_v3
 
 experiment:
   exp_name: deepseek_v3
