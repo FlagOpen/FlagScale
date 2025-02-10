@@ -55,7 +55,7 @@ def vllm_model(args):
     return process.returncode
 
 def start_cluster(task_config):
-    hostfile = task_config.hostfile
+    hostfile = task_config.serve.hostfile
     head_ip, head_port = next(
         (
             (node.master.ip, node.master.get("port", None))
@@ -124,7 +124,12 @@ def start_cluster(task_config):
             else:
                 ssh_cmd = f'ssh -n {node.ip} "{node_cmd}"'
 
+            if node.get("docker", None):
+                ssh_cmd = f'ssh -n {node.ip} "docker exec {node.docker} /bin/bash -c "{node_cmd}""'
+
             logger.info(f"worker node command: {cmd}")
+            print("=========== ssh_cmd =============== ", ssh_cmd)
+            breakpoint()
 
             result = subprocess.run(
                 ssh_cmd,
