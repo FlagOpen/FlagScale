@@ -10,6 +10,7 @@ import torch
 from PIL import Image
 from transformers import AutoImageProcessor, AutoModel, AutoTokenizer
 
+import vllm
 from vllm import LLM
 from vllm.sampling_params import SamplingParams
 
@@ -191,7 +192,7 @@ def inference_i2t(cfg):
 if __name__ == "__main__":
     cfg = parse_config()
     mode = cfg.generate.get("mode", None)
-
+    print(f"[vllm.__file__] {vllm.__file__}")
     if mode == "G":
         inference_t2i(cfg)
     elif mode == "U":
