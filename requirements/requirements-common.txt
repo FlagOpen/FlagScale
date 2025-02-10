@@ -1,0 +1,15 @@
+# pytorch
+torch==2.5.1
+torchvision
+torchaudio
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+# base
+hydra-core
+deepspeed
+accelerate
+matplotlib
+tensorboard
+PyYAML
+
+https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl

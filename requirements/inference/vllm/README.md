@@ -1,0 +1,1 @@
+Use vllm's requirements. The vllm repository is available at https://github.com/vllm-project/vllm.git.

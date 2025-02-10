@@ -1,15 +1,2 @@
-# Megatron-LM
--r megatron/requirements-cuda.txt
--r megatron/requirements-dev.txt
-
-# vllm
--r vllm/requirements-cuda.txt
--r vllm/requirements-dev.txt
--r vllm/requirements-build.txt
-
-# flagscale
--r flagscale/requirements-common.txt
--r flagscale/requirements-dev.txt
-
-# compress
--r compress/requirements-dev.txt
+# pre-commit
+pre-commit>=2.20.0
