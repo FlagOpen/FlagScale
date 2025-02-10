@@ -1,9 +1,9 @@
 model_args:
   vllm_model:
-    model-tag: /models/Qwen2.5-Coder-32B-Instruct # To be replaced by /models/deepseek_v3/model
+    model-tag: /models/deepseek_v3/model
     tensor-parallel-size: 8
     pipeline-parallel-size: 2
-    gpu-memory-utilization: 0.2
+    gpu-memory-utilization: 0.9
     max-num-seqs: 256
     port: 9010
     action-args:
@@ -23,4 +23,4 @@ hostfile:
         ip: 10.1.1.203
         slots: 8
         type: gpu
-        docker: cz-ds
+        docker: ds
