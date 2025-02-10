@@ -1,7 +1,7 @@
-import os
-import sys
-import shlex
 import importlib
+import os
+import shlex
+import sys
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -36,9 +36,7 @@ def _get_args_vllm(config: DictConfig):
     # step3: dict -> yaml
     logging_config = config.inference.logging
     new_config = OmegaConf.create(config_dict)
-    new_conf_file = os.path.join(
-        logging_config.scripts_dir, f"inference.yaml"
-    )
+    new_conf_file = os.path.join(logging_config.scripts_dir, f"inference.yaml")
 
     # step4: write the new yaml file to `outputs_dir/inference_logs/scripts/inference.yaml`
     with open(new_conf_file, "w") as f:
