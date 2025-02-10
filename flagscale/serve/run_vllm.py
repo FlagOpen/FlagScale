@@ -4,10 +4,12 @@ import datetime
 import inspect
 import subprocess
 import argparse
+import json
 import logging as logger
 from omegaconf import OmegaConf
 import ray
 from flagscale import serve
+from dag_utils import check_and_get_port
 
 
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -52,6 +54,94 @@ def vllm_model(args):
 
     return process.returncode
 
+def start_cluster(task_config):
+    hostfile = task_config.hostfile
+    head_ip, head_port = next(
+        (
+            (node.master.ip, node.master.get("port", None))
+            for node in hostfile.nodes
+            if "master" in node
+        ),
+        (None, None),
+    )
+    if head_ip is None:
+        raise ValueError(
+            f"Failed to start Ray cluster using hostfile {hostfile} due to master node missing. Please ensure that the file exists and has the correct format."
+        )
+    if head_port is None:
+        port = check_and_get_port()
+    else:
+        port = check_and_get_port(target_port=int(head_port))
+    cmd = ["ray", "start", "--head", f"--port={port}"]
+    logger.info(f"head node command: {cmd}")
+    head_result = subprocess.run(
+        cmd,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if head_result.returncode != 0:
+        logger.warning(
+            f"Head Node cmd {ssh_cmd} failed with return code {head_result.returncode}."
+        )
+        logger.warning(f"Output: {head_result.stdout}")
+        logger.warning(f"Error: {head_result.stderr}")
+        sys.exit(head_result.returncode)
+    address = f"{head_ip}:{port}"
+
+    for item in hostfile.nodes:
+        if "node" in item:
+            node = item.node
+            if node.type == "gpu":
+                node_cmd = (
+                    f"ray start --address={address} --num-gpus={node.slots}"
+                )
+
+            elif node.type == "cpu":
+                node_cmd = (
+                    f"ray start --address={address} --num-cpus={node.slots}"
+                )
+            else:
+                resource = json.dumps({node.type: node.slots}).replace(
+                    '"', '\\"'
+                )
+                node_cmd = (
+                    f"ray start --address={address} --resources='{resource}'"
+                )
+            if task_config.experiment.get("cmds", "") and task_config.experiment.cmds.get(
+                "before_start", ""
+            ):
+                before_start_cmd = task_config.experiment.cmds.before_start
+                node_cmd = (
+                    f"{before_start_cmd} && "
+                    + node_cmd
+                )
+
+            if node.get("port", None):
+                ssh_cmd = f'ssh -n -p {node.port} {node.ip} "{node_cmd}"'
+            else:
+                ssh_cmd = f'ssh -n {node.ip} "{node_cmd}"'
+
+            logger.info(f"worker node command: {cmd}")
+
+            result = subprocess.run(
+                ssh_cmd,
+                shell=True,
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    f"SSH command {ssh_cmd} failed with return code {result.returncode}."
+                )
+                logger.warning(f"Output: {result.stdout}")
+                logger.warning(f"Error: {result.stderr}")
+                sys.exit(result.returncode)
 
 def vllm_multiple_nodes_serve(args):
     vllm_args = args["serve"]["model_args"]["vllm_model"]
@@ -92,17 +182,22 @@ def vllm_multiple_nodes_serve(args):
 
 
 def main():
-    # Note: Custom log dir here may cause "OSError: AF_UNIX path length cannot exceed 107 bytes:"
-    ray.init(
-        log_to_driver=True,
-        logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"),
-    )
-    link_dir = os.path.join(serve.task_config.log_dir, f"session_latest_{timestamp}")
-    tar_dir = ray._private.worker.global_worker.node._logs_dir
-    os.symlink(tar_dir, link_dir)
+    hostfile = serve.task_config.serve.get("hostfile", None)
+    if hostfile:
+        start_cluster(serve.task_config)
+        return_code = vllm_multiple_nodes_serve(serve.task_config)
+    else:
+        # Note: Custom log dir here may cause "OSError: AF_UNIX path length cannot exceed 107 bytes:"
+        ray.init(
+            log_to_driver=True,
+            logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"),
+        )
+        link_dir = os.path.join(serve.task_config.log_dir, f"session_latest_{timestamp}")
+        tar_dir = ray._private.worker.global_worker.node._logs_dir
+        os.symlink(tar_dir, link_dir)
 
-    result = vllm_model.remote(serve.task_config)
-    return_code = ray.get(result)
+        result = vllm_model.remote(serve.task_config)
+        return_code = ray.get(result)
 
     logger.info(f"[Serve]: vLLM serve exited with return code: {return_code}")
 

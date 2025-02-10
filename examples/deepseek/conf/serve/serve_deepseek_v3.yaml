@@ -1,6 +1,6 @@
 model_args:
   vllm_model:
-    model-tag: /models/Qwen2.5-Coder-32B-Instruct
+    model-tag: /models/Qwen2.5-Coder-32B-Instruct # To be replaced by /models/deepseek_v3/model
     tensor-parallel-size: 8
     pipeline-parallel-size: 2
     gpu-memory-utilization: 0.2
@@ -12,9 +12,6 @@ model_args:
 
 deploy:
   command-line-mode: true
-  models:
-    vllm_model:
-      num_gpus: 16
 
 hostfile:
   nodes:

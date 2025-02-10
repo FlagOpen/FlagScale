@@ -15,7 +15,7 @@ experiment:
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
   cmds:
-    before_start: source /root/miniconda3/bin/activate flagscale
+    before_start: source /root/miniconda3/bin/activate flagscale && GLOO_SOCKET_IFNAME=bond0
 
 action: run
 
