@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import pathlib
 import re
@@ -12,13 +13,15 @@ import click
 import jetclient
 import requests
 import yaml
-from jet import workloads
 from jetclient.facades.objects import log as jet_log
 from jetclient.services.dtos.pipeline import PipelineStatus
 
 from tests.test_utils.python_scripts import common
 
 BASE_PATH = pathlib.Path(__file__).parent.resolve()
+GITLAB_PREFIX = "assets/basic/tests-unit-tests-data-{environment}-{tag}/"
+
+logger = logging.getLogger(__name__)
 
 
 def register_pipeline_terminator(pipeline: jetclient.JETPipeline):
@@ -37,17 +40,23 @@ def launch_and_wait_for_completion(
     environment: str,
     n_repeat: int,
     time_limit: int,
+    scope: str,
     container_image: Optional[str],
     container_tag: str,
     cluster: str,
     account: str,
+    record_checkpoints: str,
+    partition: Optional[str],
     tag: Optional[str],
     run_name: Optional[str],
     wandb_experiment: Optional[str],
 ) -> jetclient.JETPipeline:
-    n_submit_errors = 0
+    cluster_config = {"account": account}
+    if partition is not None:
+        cluster_config['partition'] = partition
 
-    while n_submit_errors < 3:
+    n_submission_attempts = 0
+    while n_submission_attempts < 3:
         pipeline = jetclient.JETClient(
             customer='mcore', gitlab_ci_token=os.getenv("RO_API_TOKEN"), env="prod"
         ).workloads.submit(
@@ -56,13 +65,15 @@ def launch_and_wait_for_completion(
                 n_repeat=n_repeat,
                 time_limit=time_limit,
                 tag=tag,
+                scope=scope,
                 container_image=container_image,
                 container_tag=container_tag,
                 environment=environment,
+                record_checkpoints=record_checkpoints,
             ),
             config_id=f"mcore/{common.resolve_cluster_config(cluster)}",
             custom_config={
-                "launchers": {cluster: {"account": account, "ntasks_per_node": 8}},
+                "launchers": {cluster: cluster_config},
                 "executors": {
                     "jet-ci": {
                         "environments": {
@@ -76,63 +87,68 @@ def launch_and_wait_for_completion(
                         }
                     }
                 },
+                "outputs": {
+                    "enabled": True,
+                    "artifacts_storages": [common.resolve_artifact_config(cluster)],
+                },
             },
             wait_for_validation=True,
             max_wait_time=(60 * 60),
         )
         if pipeline.get_status() == PipelineStatus.SUBMISSION_FAILED:
-            n_submit_errors += 1
-            print(f"Failed submitting pipeline. Let's try again ({n_submit_errors}/3)")
+            n_submission_attempts += 1
+            logger.info("Submission failed, attempt again (%s/3)", str(n_submission_attempts))
             continue
         break
 
     register_pipeline_terminator(pipeline=pipeline)
 
-    print(
-        f"Pipeline triggered; inspect it here: https://gitlab-master.nvidia.com/dl/jet/ci/-/pipelines/{pipeline.jet_id}",
-        flush=True,
+    logger.info(
+        "Pipeline triggered; inspect it here: https://gitlab-master.nvidia.com/dl/jet/ci/-/pipelines/%s",
+        pipeline.jet_id,
     )
 
-    n_wait_attempts = 0
-    while n_wait_attempts < 3:
-        try:
-            pipeline.wait(max_wait_time=60 * 60 * 24 * 7, interval=60 * 1)
-            break
-        except (requests.exceptions.ConnectionError, json.decoder.JSONDecodeError) as e:
-            print(e)
-            time.sleep(60 * 3**n_wait_attempts)
-            pipeline = workloads.get_pipeline(pipeline.jet_id)
-            n_wait_attempts += 1
+    pipeline.wait(max_wait_time=60 * 60 * 24 * 7, interval=60 * 1, retries_on_error=3)
 
-    print(f"Pipeline terminated; status: {pipeline.get_status()}")
+    logger.info(f"Pipeline terminated; status: {pipeline.get_status()}")
     return pipeline
 
 
 def download_job_assets(logs: List[jet_log.JETLog], iteration: int = 0) -> List[str]:
     if not logs:
+        logger.info("No logs found for download.")
         return [""]
 
-    assets_base_path = BASE_PATH / ".." / ".." / ".." / ".." / "results" / f"iteration={iteration}"
+    assets_base_path = BASE_PATH / ".." / ".." / ".." / "results" / f"iteration={iteration}"
 
     for restart_idx, log in enumerate(logs):
         assets = log.get_assets()
         assets_path = assets_base_path / f"restart={restart_idx}"
         assets_path.mkdir(parents=True, exist_ok=True)
-        for log_filename in assets.keys():
-            with open(assets_path / log_filename, "w") as fh:
-                assets[log_filename].download(pathlib.Path(fh.name))
+        for asset in assets:
+            (assets_path / asset.source_path.removeprefix(GITLAB_PREFIX)).parent.mkdir(
+                parents=True, exist_ok=True
+            )
+            with open(assets_path / asset.source_path.removeprefix(GITLAB_PREFIX), "w") as fh:
+                dest = pathlib.Path(fh.name)
+                logger.info(
+                    "Downloading log %s to %s",
+                    asset.source_path.removeprefix(GITLAB_PREFIX),
+                    str(dest),
+                )
+                asset.download(dest)
     return assets
 
 
 def extract_logs_to_string(logs: List[jet_log.JETLog]) -> List[str]:
     if not logs:
+        logger.info("No logs found for download.")
         return [""]
 
-    assets = logs[0].get_assets()
-    log_filename = [key for key in assets.keys() if key.endswith(".log")][0]
-
     with tempfile.NamedTemporaryFile() as tmp_file:
-        assets[log_filename].download(pathlib.Path(tmp_file.name))
+        assets = logs[-1].get_assets()
+        asset = [asset for asset in assets if asset.name == "output_script-0.log"][0]
+        asset.download(pathlib.Path(tmp_file.name))
         with open(pathlib.Path(tmp_file.name), "r") as fh:
             return fh.readlines()
 
@@ -161,6 +177,7 @@ def parse_finished_training(logs: List[str]) -> Optional[bool]:
 )
 @click.option("--n-repeat", required=False, default=1, type=int)
 @click.option("--time-limit", required=False, default=1800, type=int)
+@click.option("--scope", required=False, default="mr", type=str)
 @click.option(
     "--account",
     required=False,
@@ -168,10 +185,12 @@ def parse_finished_training(logs: List[str]) -> Optional[bool]:
     help="Slurm account to use",
     default="coreai_dlalgo_mcore",
 )
+@click.option("--partition", required=False, type=str, help="Slurm partition to use", default=None)
 @click.option("--cluster", required=True, type=str, help="Cluster to run on")
 @click.option("--container-tag", required=True, type=str, help="Base image of Mcore image")
 @click.option("--container-image", required=False, type=str, help="Base image of Mcore image")
 @click.option("--tag", required=False, type=str, help="Tag (only relevant for unit tests)")
+@click.option("--record-checkpoints", required=False, type=str, help="Values are 'true' or 'false'")
 @click.option(
     "--run-name", required=False, type=str, help="Run name (only relevant for release tests)"
 )
@@ -187,14 +206,23 @@ def main(
     environment: str,
     n_repeat: int,
     time_limit: int,
+    scope: str,
     account: str,
+    partition: Optional[str],
     cluster: str,
     container_tag: str,
+    record_checkpoints: str,
     tag: Optional[str] = None,
     container_image: Optional[str] = None,
     run_name: Optional[str] = None,
     wandb_experiment: Optional[str] = None,
 ):
+    logging.basicConfig(level=logging.INFO)
+    logger.info('Started')
+
+    global GITLAB_PREFIX
+    GITLAB_PREFIX = GITLAB_PREFIX.format(environment=environment, tag=tag)
+
     model_config_path = pathlib.Path(
         BASE_PATH
         / ".."
@@ -217,8 +245,10 @@ def main(
     else:
         test_type = "unit_test"
 
+    logger.info('test_type will be %s', test_type)
+
     if test_type == "release" and (run_name is None or wandb_experiment is None):
-        print(f"Not all arguments provided ({run_name=}, {wandb_experiment=})")
+        logger.error(f"Not all arguments provided ({run_name=}, {wandb_experiment=})")
         sys.exit(1)
 
     n_attempts = 0
@@ -230,13 +260,16 @@ def main(
             environment=environment,
             n_repeat=n_repeat,
             time_limit=time_limit,
+            scope=scope,
             container_image=container_image,
             container_tag=container_tag,
             cluster=cluster,
             account=account,
+            partition=partition,
             tag=tag,
             run_name=run_name,
             wandb_experiment=wandb_experiment,
+            record_checkpoints=record_checkpoints,
         )
 
         main_job = [job for job in pipeline.get_jobs() if job.name.startswith("basic")][0]
@@ -247,25 +280,39 @@ def main(
                 jet_log = main_job.get_logs()
                 logs = extract_logs_to_string(logs=jet_log)
                 download_job_assets(logs=jet_log, iteration=n_iteration)
+                no_log = False
                 break
-            except (requests.exceptions.ConnectionError, json.decoder.JSONDecodeError) as e:
-                print(e)
+            except (
+                requests.exceptions.ConnectionError,
+                json.decoder.JSONDecodeError,
+                UnicodeDecodeError,
+            ) as e:
+                logger.error(e)
                 time.sleep((3**n_download_attempt) * 60)
                 n_download_attempt += 1
+                no_log = True
+            except KeyError as e:
+                logger.error(e)
+                no_log = True
+                break
+
+        if no_log:
+            logger.error("Did not find any logs to download, retry.")
+            continue
 
         concat_logs = "\n".join(logs)
-        print(f"Logs:\n{concat_logs}")
+        if concat_logs.strip() == "":
+            logger.error("No logs found. Try again.")
+            n_attempts += 1
+            continue
+
+        if test_type != "release":
+            print(f"Logs:\n{concat_logs}")
 
         success = pipeline.get_status() == PipelineStatus.SUCCESS
+        logger.info("Pipeline terminated with status %s", pipeline.get_status().name)
 
         if test_type == "unit_test":
-            success = success and (
-                (
-                    re.search(r'=.*?\bpassed\b.*?=', concat_logs)
-                    and not re.search(r'=.*?\bfailed\b.*?=', concat_logs)
-                )
-                or "0 selected" in concat_logs
-            )
             sys.exit(int(not success))  # invert for exit 0
 
         if test_type != "release":
@@ -276,23 +323,24 @@ def main(
                 "Some NCCL operations have failed or timed out." in concat_logs
                 or "uncorrectable ECC error encountered" in concat_logs
                 or "illegal memory access" in concat_logs
-                or "illegal instruction" in concat_logs
+                or "illegal instruction" in concat_logs in concat_logs
             ):
-                print("Detected NCCL failure, attempt restart.")
+                logger.error("Detected NCCL failure, attempt restart.")
                 n_attempts += 1
                 continue
 
-            if "FAILED tests/functional_tests/python_test_utils/test_ci_pipeline.py" in concat_logs:
-                print("Non-determinism, let's try another node.")
+            if "FAILED tests/functional_tests/python_test_utils" in concat_logs:
+                logger.error("Non-determinism, let's try another node.")
                 n_nondeterminism_attemps += 1
                 continue
+
+            sys.exit(1)
 
         if parse_failed_job(logs=logs):
             n_attempts += 1
             continue
 
         if parse_finished_training(logs=logs):
-            success = pipeline.get_status() == PipelineStatus.SUCCESS
             sys.exit(int(not success))  # invert for exit 0
         n_iteration += 1
     sys.exit(1)

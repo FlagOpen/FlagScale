@@ -36,6 +36,8 @@ functional:configure:
       A100_CLUSTER=$([[ "$FUNCTIONAL_TEST_CLUSTER_A100" != "" ]] && echo $FUNCTIONAL_TEST_CLUSTER_A100 || echo $DEFAULT_A100_CLUSTER)
       H100_CLUSTER=$([[ "$FUNCTIONAL_TEST_CLUSTER_H100" != "" ]] && echo $FUNCTIONAL_TEST_CLUSTER_H100 || echo $DEFAULT_H100_CLUSTER)
     - |
+      RECORD_CHECKPOINTS=$([[ "$CI_MERGE_REQUEST_LABELS" == *"Record checkpoints"* ]] && echo "true" || echo "false")
+    - |
       if [[ "$FUNCTIONAL_TEST_SCOPE" == "release" || "$FUNCTIONAL_TEST_SCOPE" == "pre-release" ]]; then
         FUNCTIONAL_TEST_NAME=$(eval echo $FUNCTIONAL_TEST_NAME)
         RELEASE_ARGS=(
@@ -48,33 +50,30 @@ functional:configure:
         RELEASE_ARGS=()
       fi
     - |
+      ARGS=(
+        "--scope $FUNCTIONAL_TEST_SCOPE"
+        "--n-repeat $FUNCTIONAL_TEST_REPEAT"
+        "--time-limit $FUNCTIONAL_TEST_TIME_LIMIT"
+        "--test-cases $FUNCTIONAL_TEST_CASES"
+        "--a100-cluster $A100_CLUSTER"
+        "--h100-cluster $H100_CLUSTER"
+        "--container-image ${UTILITY_IMAGE}"
+        "--container-tag ${CI_PIPELINE_ID}"
+        "--dependent-job functional:configure"
+        "--record-checkpoints ${RECORD_CHECKPOINTS}"
+      )
+    - |
       export PYTHONPATH=$(pwd)
       python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
-        --scope $FUNCTIONAL_TEST_SCOPE \
+        ${ARGS[@]} \
         --environment dev \
-        --n-repeat "$FUNCTIONAL_TEST_REPEAT" \
-        --time-limit "$FUNCTIONAL_TEST_TIME_LIMIT" \
-        --test-cases $FUNCTIONAL_TEST_CASES \
-        --a100-cluster $A100_CLUSTER \
-        --h100-cluster $H100_CLUSTER \
-        --container-image ${UTILITY_IMAGE} \
-        --container-tag ${CI_PIPELINE_ID} \
-        --dependent-job "functional:configure" \
         --output-path "functional-test-job-dev.yaml" \
         ${RELEASE_ARGS[@]}
     - |
       export PYTHONPATH=$(pwd)
       python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
-        --scope $FUNCTIONAL_TEST_SCOPE \
+        ${ARGS[@]} \
         --environment lts \
-        --n-repeat "$FUNCTIONAL_TEST_REPEAT" \
-        --time-limit "$FUNCTIONAL_TEST_TIME_LIMIT" \
-        --test-cases $FUNCTIONAL_TEST_CASES \
-        --a100-cluster $A100_CLUSTER \
-        --h100-cluster $H100_CLUSTER \
-        --container-image ${UTILITY_IMAGE} \
-        --container-tag ${CI_PIPELINE_ID} \
-        --dependent-job "functional:configure" \
         --output-path "functional-test-job-lts.yaml" \
         ${RELEASE_ARGS[@]}
   artifacts:
@@ -111,6 +110,26 @@ functional:run_dev:
   variables:
     ENVIRONMENT: dev
 
+functional:run_nemo:
+  extends: [.functional_tests_rules]
+  trigger:
+    project: 'dl/joc/nemo-ci'
+    branch: main-mirror
+    strategy: depend
+  inherit:
+    variables: true
+  variables:
+    MCORE_COMMIT: $CI_COMMIT_SHA
+    TEST_LLM_MODULE: 'True'
+    TEST_ALIGNER_MODULE: 'False'
+    TEST_DATA_CURATOR_MODULE: 'False'
+    TESTS_TO_RUN_ON_THIS_COMMIT: nightly
+  rules:
+    - if: $FUNCTIONAL_TEST == "yes"
+      when: manual
+      allow_failure: true
+    - when: never
+
 functional:notify:
   extends: [.functional_tests_rules]
   image: badouralix/curl-jq
@@ -140,4 +159,23 @@ functional:notify:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule" && $FUNCTIONAL_TEST == "yes"
       when: always
+    - when: never
+
+functional:download_golden_values:
+  extends: [.functional_tests_rules]
+  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
+  tags:
+    - mcore-docker-node-small
+  script:
+    - env
+    - export RO_API_TOKEN=${PROJECT_ACCESS_TOKEN_MCORE}
+    - export GITLAB_ENDPOINT
+    - python tests/test_utils/python_scripts/download_golden_values.py --pipeline-id ${CI_PIPELINE_ID}
+  artifacts:
+    paths:
+      - tests/
+  rules:
+    - if: $FUNCTIONAL_TEST == "yes"
+      when: manual
+      allow_failure: true
     - when: never
