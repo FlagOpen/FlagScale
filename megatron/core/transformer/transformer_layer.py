@@ -1,10 +1,11 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
-
+import warnings
 from abc import ABC
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Union
 
 import torch
+import torch.distributed
 
 from megatron.core import parallel_state
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
@@ -15,6 +16,159 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec, build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import make_viewless_tensor
+
+
+def get_transformer_layer_offset(config: TransformerConfig):
+    """Get the index offset of current pipeline stage, given the level of pipelining."""
+    pipeline_rank = parallel_state.get_pipeline_model_parallel_rank()
+    if not parallel_state.is_inside_encoder():
+        pp_decoder_start = parallel_state.get_pipeline_model_parallel_decoder_start()
+        if pp_decoder_start is not None:
+            pipeline_rank = pipeline_rank - pp_decoder_start
+
+    if config.pipeline_model_parallel_size > 1:
+
+        if (
+            config.num_layers_in_first_pipeline_stage is not None
+            or config.num_layers_in_last_pipeline_stage is not None
+        ):
+            # Calculate number of pipeline stages to distribute the remaining Transformer
+            # layers after deducting the Transformer layers in the first or the last stages
+            middle_pipeline_stages = config.pipeline_model_parallel_size
+            middle_pipeline_stages -= sum(
+                [
+                    1 if x is not None else 0
+                    for x in (
+                        config.num_layers_in_first_pipeline_stage,
+                        config.num_layers_in_last_pipeline_stage,
+                    )
+                ]
+            )
+
+            # Calculate layers to distribute in each pipeline stage. If the
+            # num_layers_in_first_pipeline_stage and num_layers_in_last_pipeline_stage
+            # are not set, we will not enable uneven pipeline. All layers will be treated
+            # as middle layers.
+            num_layers_in_first_pipeline_stage = (
+                0
+                if config.num_layers_in_first_pipeline_stage is None
+                else config.num_layers_in_first_pipeline_stage
+            )
+            num_layers_in_last_pipeline_stage = (
+                0
+                if config.num_layers_in_last_pipeline_stage is None
+                else config.num_layers_in_last_pipeline_stage
+            )
+
+            middle_num_layers = (
+                config.num_layers
+                - num_layers_in_first_pipeline_stage
+                - num_layers_in_last_pipeline_stage
+            )
+
+            if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
+                vp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
+                vp_size = parallel_state.get_virtual_pipeline_model_parallel_world_size()
+
+                # Calculate number of layers in each virtual model chunk
+                # If the num_layers_in_first_pipeline_stage and
+                # num_layers_in_last_pipeline_stage are not set, all pipeline stages
+                # will be treated as middle pipeline stages in the calculation
+                num_layers_per_virtual_model_chunk_in_first_pipeline_stage = (
+                    0
+                    if config.num_layers_in_first_pipeline_stage is None
+                    else config.num_layers_in_first_pipeline_stage // vp_size
+                )
+
+                num_layers_per_virtual_model_chunk_in_last_pipeline_stage = (
+                    0
+                    if config.num_layers_in_last_pipeline_stage is None
+                    else config.num_layers_in_last_pipeline_stage // vp_size
+                )
+
+                num_layers_per_vritual_model_chunk_in_middle_pipeline_stage = (
+                    middle_num_layers // vp_size
+                )
+
+                # First stage + middle stage + last stage
+                total_virtual_chunks = (
+                    num_layers_per_virtual_model_chunk_in_first_pipeline_stage
+                    + num_layers_per_vritual_model_chunk_in_middle_pipeline_stage
+                    + num_layers_per_virtual_model_chunk_in_last_pipeline_stage
+                )
+
+                # Calculate the layer offset with interleaved uneven pipeline parallelism
+                if pipeline_rank == 0:
+                    offset = vp_rank * total_virtual_chunks
+                else:
+                    offset = (
+                        vp_rank * total_virtual_chunks
+                        + num_layers_per_virtual_model_chunk_in_first_pipeline_stage
+                        + (pipeline_rank - 1)
+                        * (
+                            num_layers_per_vritual_model_chunk_in_middle_pipeline_stage
+                            // middle_pipeline_stages
+                        )
+                    )
+            else:
+                if middle_pipeline_stages > 0:
+                    num_layers_per_pipeline_rank = middle_num_layers // middle_pipeline_stages
+                else:
+                    num_layers_per_pipeline_rank = 0
+
+                middle_pipeline_rank = (
+                    pipeline_rank
+                    if config.num_layers_in_first_pipeline_stage is None
+                    else pipeline_rank - 1
+                )
+
+                if pipeline_rank == 0:
+                    offset = 0
+                else:
+                    offset = (
+                        middle_pipeline_rank * num_layers_per_pipeline_rank
+                    ) + num_layers_in_first_pipeline_stage
+        else:
+            num_layers = config.num_layers
+
+            # Increase the number of layers by one if we include the embedding (loss)
+            # layer into pipeline parallelism partition and placement
+            if config.account_for_embedding_in_pipeline_split:
+                num_layers += 1
+
+            if config.account_for_loss_in_pipeline_split:
+                num_layers += 1
+
+            num_layers_per_pipeline_rank = num_layers // config.pipeline_model_parallel_size
+
+            if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
+                vp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
+                vp_size = parallel_state.get_virtual_pipeline_model_parallel_world_size()
+
+                num_layers_per_virtual_rank = num_layers_per_pipeline_rank // vp_size
+                total_virtual_chunks = num_layers // vp_size
+                offset = vp_rank * total_virtual_chunks + (
+                    pipeline_rank * num_layers_per_virtual_rank
+                )
+
+                # Reduce the offset of embedding layer from the total layer number
+                if (
+                    config.account_for_embedding_in_pipeline_split
+                    and not parallel_state.is_pipeline_first_stage()
+                ):
+                    offset -= 1
+            else:
+                offset = pipeline_rank * num_layers_per_pipeline_rank
+
+                # Reduce the offset of embedding layer from the total layer number
+                if (
+                    config.account_for_embedding_in_pipeline_split
+                    and not parallel_state.is_pipeline_first_stage()
+                ):
+                    offset -= 1
+    else:
+        offset = 0
+    return offset
 
 
 @dataclass
@@ -93,14 +247,16 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
     ):
         super().__init__(config=config)
 
-        if config.enable_cuda_graph and self.training:
-            assert (
-                not config.cpu_offloading and config.recompute_granularity is None
-            ), "Cudagraphs not supported"
-            self.cudagraph_manager = CudaGraphManager()
+        if config.enable_cuda_graph:
+            if not self.training:
+                # Cudagraphs for inference are only enabled with the flash decoding kernel
+                assert (
+                    self.config.flash_decode
+                ), "--flash-decode is required to use CUDA graphs during inference"
+            self.cudagraph_manager = CudaGraphManager(config)
 
         self.submodules_config = submodules
-        self.layer_number = layer_number + TransformerLayer._get_layer_offset(self.config)
+        self.layer_number = layer_number + get_transformer_layer_offset(self.config)
         self.hidden_dropout = config.hidden_dropout if hidden_dropout is None else hidden_dropout
 
         # [Module 1: Input Layernorm] Optional Layernorm on the input data
@@ -174,82 +330,17 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
 
     @staticmethod
     def _get_layer_offset(config: TransformerConfig):
-        """Get the index offset of current pipeline stage, given the level of pipelining."""
-        pipeline_rank = parallel_state.get_pipeline_model_parallel_rank()
-        if not parallel_state.is_inside_encoder():
-            pp_decoder_start = parallel_state.get_pipeline_model_parallel_decoder_start()
-            if pp_decoder_start is not None:
-                pipeline_rank = pipeline_rank - pp_decoder_start
+        """
+        Get the layer offset for the current pipeline stage.
 
-        num_layers_per_pipeline_rank = config.num_layers // config.pipeline_model_parallel_size
+        Deprecated: please use `get_transformer_layer_offset` instead.
+        """
 
-        if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
-            vp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
-            vp_size = parallel_state.get_virtual_pipeline_model_parallel_world_size()
-
-            total_num_layers = config.num_layers
-            num_layers_per_virtual_rank = num_layers_per_pipeline_rank // vp_size
-            total_virtual_chunks = total_num_layers // vp_size
-            offset = vp_rank * total_virtual_chunks + (pipeline_rank * num_layers_per_virtual_rank)
-
-        else:
-            # Each stage gets a contiguous set of layers.
-            if config.pipeline_model_parallel_size > 1:
-                if (
-                    config.first_pipeline_num_layers is not None
-                    or config.last_pipeline_num_layers is not None
-                ):
-                    # Calculate number of pipelines for distributing layers
-                    middle_pipeline_stages = config.pipeline_model_parallel_size
-                    middle_pipeline_stages -= sum(
-                        [
-                            1 if x is not None else 0
-                            for x in (
-                                config.first_pipeline_num_layers,
-                                config.last_pipeline_num_layers,
-                            )
-                        ]
-                    )
-
-                    # Calculate layers to distribute
-                    first_pipeline_offset = (
-                        0
-                        if config.first_pipeline_num_layers is None
-                        else config.first_pipeline_num_layers
-                    )
-                    last_pipeline_offset = (
-                        0
-                        if config.last_pipeline_num_layers is None
-                        else config.last_pipeline_num_layers
-                    )
-
-                    middle_num_layers = (
-                        config.num_layers - first_pipeline_offset - last_pipeline_offset
-                    )
-
-                    if middle_pipeline_stages > 0:
-                        num_layers_per_pipeline_rank = middle_num_layers // middle_pipeline_stages
-                    else:
-                        num_layers_per_pipeline_rank = 0
-
-                    middle_pipeline_rank = (
-                        pipeline_rank
-                        if config.first_pipeline_num_layers is None
-                        else pipeline_rank - 1
-                    )
-
-                    if pipeline_rank == 0:
-                        offset = 0
-                    else:
-                        offset = (
-                            middle_pipeline_rank * num_layers_per_pipeline_rank
-                        ) + first_pipeline_offset
-                else:
-                    offset = pipeline_rank * num_layers_per_pipeline_rank
-            else:
-                offset = 0
-
-        return offset
+        warnings.warn(
+            "TransformerLayer._get_layer_offset is deprecated."
+            "Please use get_transformer_layer_offset instead."
+        )
+        return get_transformer_layer_offset(config)
 
     def forward(
         self,
@@ -263,6 +354,7 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
         attention_bias=None,
         inference_params=None,
         packed_seq_params=None,
+        sequence_len_offset=None,
     ):
         """
         Perform a forward pass through the transformer layer.
@@ -304,6 +396,7 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
             rotary_pos_sin=rotary_pos_sin,
             attention_bias=attention_bias,
             packed_seq_params=packed_seq_params,
+            sequence_len_offset=sequence_len_offset,
         )
 
         # TODO: could we move `bias_dropout_add_exec_handler` itself
@@ -392,6 +485,18 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
         return sharded_state_dict
 
     def __call__(self, *args, **kwargs):
-        if hasattr(self, 'cudagraph_manager'):
+        # Training and validation mode CUDA graphs
+        if hasattr(self, 'cudagraph_manager') and kwargs.get('inference_params') is None:
+            return self.cudagraph_manager(self, args, kwargs)
+        # Inference mode. CUDA graphs are used in the decode phase only, when attn mask is None
+        elif (
+            not self.training
+            and hasattr(self, 'cudagraph_manager')
+            and kwargs.get('inference_params') is not None
+            and kwargs['inference_params'].decode_mode
+        ):
+            assert (
+                kwargs.get('attention_mask') is None
+            ), f"Attention mask must not be set when using CUDA graphs for decode"
             return self.cudagraph_manager(self, args, kwargs)
         return super(MegatronModule, self).__call__(*args, **kwargs)
