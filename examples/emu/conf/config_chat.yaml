@@ -5,6 +5,8 @@ defaults:
 experiment:
   exp_name: emu3_chat
   exp_dir: outputs/${experiment.exp_name}
+  model: BAAI/Emu3-Chat
+  vq_model: BAAI/Emu3-VisionTokenizer
   task:
     type: inference
     backend: vllm

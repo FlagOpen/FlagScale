@@ -1,6 +1,7 @@
 llm:
-  model: BAAI/Emu3-Gen
-  vq_model: BAAI/Emu3-VisionTokenizer/
+  model: ${experiment.model}
+  vq_model: ${experiment.vq_model}
+  dtype: bfloat16
   skip_tokenizer_init: true
   trust_remote_code: true
   tensor_parallel_size: 1

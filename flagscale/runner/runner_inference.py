@@ -1,8 +1,8 @@
+import importlib
 import os
 import shlex
+import sys
 
-import hydra
-from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.runner_base import RunnerBase
@@ -19,18 +19,31 @@ from flagscale.runner.runner_utils import (
 
 
 def _get_args_vllm(config: DictConfig):
-    # see the following link for more details
-    # https://github.com/facebookresearch/hydra/discussions/2750
-    OmegaConf.set_struct(config, False)
+    # step1: yaml -> dict
+    assert (
+        config.experiment.task.backend == "vllm"
+    ), "This function only supports vllm backend."
+    config_dict = OmegaConf.to_container(config, resolve=True)
 
-    hydra_config = HydraConfig.get()
-    output_dir = hydra_config.runtime.output_dir
-    output_subdir = hydra_config.output_subdir
-    config_path = os.path.join(output_dir, f"{output_subdir}/config.yaml")
-    config_path = hydra.utils.to_absolute_path(config_path)
+    # step2: restructuring the config
+    config_dict = config_dict["inference"]
+    config_dict["logging"].pop("log_dir")
+    config_dict["logging"].pop("scripts_dir")
+    config_dict["logging"].pop("pids_dir")
+    if not config_dict.get("logging"):
+        config_dict.pop("logging")
+
+    # step3: dict -> yaml
+    logging_config = config.inference.logging
+    new_config = OmegaConf.create(config_dict)
+    new_conf_file = os.path.join(logging_config.scripts_dir, f"inference.yaml")
+
+    # step4: write the new yaml file to `outputs_dir/inference_logs/scripts/inference.yaml`
+    with open(new_conf_file, "w") as f:
+        OmegaConf.save(config=new_config, f=f.name, resolve=True)
 
     args = []
-    args.append(f"--config-path={config_path}")
+    args.append(f"--config-path={new_conf_file}")
 
     return args
 
@@ -54,6 +67,7 @@ def _update_config_inference(config: DictConfig):
     config.inference.logging.scripts_dir = scripts_dir
     config.inference.logging.pids_dir = pids_dir
 
+    os.makedirs(config.inference.logging.scripts_dir, exist_ok=True)
     OmegaConf.set_struct(config, True)
 
 
@@ -81,7 +95,16 @@ def _generate_run_script_inference(
     root_dir = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
-    vllm_dir = os.path.join(root_dir, "vllm")
+
+    fs_path = sys.path.pop(0)
+    try:
+        package_path = importlib.util.find_spec("vllm").origin
+    except:
+        raise ValueError("vllm package not found.")
+    sys.path.insert(0, fs_path)
+    path = package_path.split("/")[:-2]
+    vllm_dir = "/".join(path)
+
     cmds_config = config.experiment.get("cmds", None)
     if cmds_config:
         before_start = cmds_config.get("before_start", "")
