@@ -141,6 +141,8 @@ def model_provider(
             share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
             position_embedding_type=args.position_embedding_type,
             rotary_percent=args.rotary_percent,
+            relative_attention_num_buckets=args.relative_attention_num_buckets,
+            relative_attention_max_distance=args.relative_attention_max_distance,
             add_encoder=add_encoder,
             add_decoder=add_decoder,
         )
@@ -226,7 +228,6 @@ def train_valid_test_datasets_provider(train_val_test_num_samples: int):
             get_blend_from_list(args.valid_data_path),
             get_blend_from_list(args.test_data_path),
         ],
-        renormalize_blend_weights=args.renormalize_blend_weights,
         split=args.split,
         path_to_cache=args.data_cache_path,
         tokenizer=tokenizer,

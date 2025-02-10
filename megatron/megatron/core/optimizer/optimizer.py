@@ -374,7 +374,8 @@ class MixedPrecisionOptimizer(MegatronOptimizer):
         return self.grad_scaler.scale
 
     def reload_model_params(self):
-        self._copy_model_params_to_main_params()
+        if self.param_groups:
+            self._copy_model_params_to_main_params()
 
     def _unscale_main_grads_and_check_for_nan(self):
 
@@ -563,6 +564,9 @@ class Float16OptimizerWithFloat16Params(MixedPrecisionOptimizer):
                                 main_param.shared = param.shared
                             # Replace the optimizer params with the new fp32 copy.
                             param_group['params'][i] = main_param
+
+                            # Store handle to main_param.
+                            param.main_param = main_param
 
                             fp32_from_float16_params_this_group.append(main_param)
                             # Reset existing state dict key to the new main param.

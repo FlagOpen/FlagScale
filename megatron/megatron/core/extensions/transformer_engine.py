@@ -35,6 +35,7 @@ from megatron.core.tensor_parallel.layers import (
     _initialize_affine_weight_cpu,
     set_tensor_model_parallel_attributes,
 )
+from megatron.core.tensor_parallel.random import get_data_parallel_rng_tracker_name
 from megatron.core.tensor_parallel.utils import divide
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -98,6 +99,13 @@ class TELinear(te.pytorch.Linear):
     Note that if Megatron's parallel_state has not been initialized
     yet, the tp_group passed to TE will be None and must be set later
     via set_tensor_parallel_group().
+
+    parallel_mode currently supports 3 different values:
+        - "column": Split the weight matrix along output dimension (used in TEColumnParallelLinear)
+        - "row": Split the weight matrix along input dimension (used in TERowParallelLinear)
+        - "duplicated": No tensor parallelism and weight is duplicated across TP ranks
+        - Note: For expert linear layers, we will disable communication logic here
+                as TP communication is handled in token_dispatcher.
     """
 
     def __init__(
@@ -170,47 +178,68 @@ class TELinear(te.pytorch.Linear):
         if is_expert:
             rng_tracker_name = get_expert_parallel_rng_tracker_name()
         else:
-            rng_tracker_name = None
+            if parallel_mode == "duplicated":
+                rng_tracker_name = get_data_parallel_rng_tracker_name()
+            else:
+                rng_tracker_name = None
         if is_te_min_version("1.7.0"):
             extra_kwargs["rng_tracker_name"] = rng_tracker_name
 
-        # Disable communications in TE when using TP or EP by making TE agnostic of model parallel.
-        if is_expert:
-            tp_group = get_expert_tensor_parallel_group(check_initialized=False)
-            tp_size = get_expert_tensor_parallel_world_size()
-        else:
-            tp_group = get_tensor_model_parallel_group(check_initialized=False)
-            tp_size = get_tensor_model_parallel_world_size()
-        explicit_expert_comm = is_expert and (tp_size > 1 or self.expert_parallel)
-
-        if explicit_expert_comm:
-            if parallel_mode == "column":
-                output_size = divide(output_size, tp_size)
-            elif parallel_mode == "row":
-                input_size = divide(input_size, tp_size)
-            parallel_mode = None
-            tp_size = 1
+        te_parallel_mode = parallel_mode
+        if parallel_mode == "duplicated":
+            # Handle non-parallel case
             tp_group = None
+            tp_size = 1
+            explicit_expert_comm = False
+            te_parallel_mode = None
+        else:
+            # Disable communications in TE when using TP or EP by
+            # making TE agnostic of model parallel.
+            if is_expert:
+                tp_group = get_expert_tensor_parallel_group(check_initialized=False)
+                tp_size = get_expert_tensor_parallel_world_size()
+            else:
+                tp_group = get_tensor_model_parallel_group(check_initialized=False)
+                tp_size = get_tensor_model_parallel_world_size()
+            explicit_expert_comm = is_expert and (tp_size > 1 or self.expert_parallel)
+
+            if explicit_expert_comm:
+                if parallel_mode == "column":
+                    output_size = divide(output_size, tp_size)
+                elif parallel_mode == "row":
+                    input_size = divide(input_size, tp_size)
+                te_parallel_mode = None
+                tp_size = 1
+                tp_group = None
 
         super().__init__(
             in_features=input_size,
             out_features=output_size,
             sequence_parallel=self.config.sequence_parallel,
             fuse_wgrad_accumulation=self.config.gradient_accumulation_fusion,
-            tp_group=get_tensor_model_parallel_group(check_initialized=False),
-            tp_size=get_tensor_model_parallel_world_size(),
+            tp_group=tp_group,
+            tp_size=tp_size,
             get_rng_state_tracker=(
                 get_cuda_rng_tracker if get_cuda_rng_tracker().is_initialized() else None
             ),
             init_method=condition_init_method(config, init_method),
             bias=bias,
             return_bias=self.te_return_bias,
-            parallel_mode=parallel_mode,
+            parallel_mode=te_parallel_mode,
             **extra_kwargs,
         )
 
         for param in self.parameters():
-            setattr(param, 'allreduce', not (is_expert and self.expert_parallel))
+            if is_expert:
+                # Reduce the gradient on the expert_data_parallel group for expert linear layers
+                setattr(param, 'allreduce', not self.expert_parallel)
+            else:
+                # Reduce the gradient on DP group
+                setattr(param, 'allreduce', True)
+                if parallel_mode == "duplicated":
+                    # Reduce the gradient further on the TP group since the weight is
+                    # duplicated across TP ranks
+                    setattr(param, 'sequence_parallel', self.config.sequence_parallel)
 
     def forward(self, x):
         """Forward."""
@@ -386,6 +415,12 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
             state_dict, prefix, {'weight': 0, 'bias': 0}, sharded_offsets
         )
 
+    def __repr__(self):
+        return (
+            f"{type(self).__name__}(in_features={self.in_features}, "
+            f"out_features={self.out_features}, bias={self.use_bias}, TP={self.tp_size})"
+        )
+
 
 class TEColumnParallelLinear(TELinear):
     """
@@ -464,6 +499,12 @@ class TEColumnParallelLinear(TELinear):
             state_dict, prefix, {'weight': 0, 'bias': 0}, sharded_offsets
         )
 
+    def __repr__(self):
+        return (
+            f"{type(self).__name__}(in_features={self.in_features}, "
+            f"out_features={self.out_features}, bias={self.use_bias}, TP={self.tp_size})"
+        )
+
 
 class TERowParallelLinear(TELinear):
     """
@@ -540,6 +581,12 @@ class TERowParallelLinear(TELinear):
         state_dict = self.state_dict(prefix='', keep_vars=True)
         return make_sharded_tensors_for_checkpoint(
             state_dict, prefix, {'weight': 1}, sharded_offsets
+        )
+
+    def __repr__(self):
+        return (
+            f"{type(self).__name__}(in_features={self.in_features}, "
+            f"out_features={self.out_features}, bias={self.use_bias}, TP={self.tp_size})"
         )
 
 
@@ -1134,6 +1181,10 @@ class TEDelayedScaling(te.common.recipe.DelayedScaling):
 class TECudaRNGStatesTracker(te.pytorch.distributed.CudaRNGStatesTracker):
     """Wraps TransformerEngine's CudaRNGStatesTracker so that it is
     interchangeable with Megatron's RNG tracker"""
+
+    def __init__(self):
+        super().__init__()
+        self.reset()
 
     def is_initialized(self):
         """Checks if the internal RNG state has been set wirth set_states()."""

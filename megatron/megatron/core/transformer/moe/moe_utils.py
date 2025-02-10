@@ -6,6 +6,7 @@ from typing import Optional
 import torch
 
 from megatron.core import parallel_state
+from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
 
 
 def switch_load_balancing_loss_func(
@@ -59,7 +60,6 @@ def switch_load_balancing_loss_func(
 def sequence_load_balancing_loss_func(
     probs: torch.Tensor,
     routing_map: torch.Tensor,
-    tokens_per_expert: torch.Tensor,
     batch_size: int,
     seq_length: int,
     topk: int,
@@ -70,44 +70,45 @@ def sequence_load_balancing_loss_func(
     Calculate the auxiliary loss in sequence-level by computing the loss for each individual sample.
     Refer to the DeepSeek-V2 huggingface repo
     (https://huggingface.co/deepseek-ai/DeepSeek-V2) for details.
+
+    Args:
+        probs (torch.Tensor): Softmax probabilities output by the router for each token.
+                              Shape in [num_tokens, num_experts].
+        routing_map (torch.Tensor): Mapping of tokens to experts assignment.
+                                    Shape in [num_tokens, num_experts].
+        batch_size (int): Batch size to process.
+        seq_length (int): Sequence length to process.
+        topk (int): Number of experts to route to for each token.
+        moe_aux_loss_coeff (float): Scaling coefficient for the auxiliary loss.
+        sequence_partition_group (optional): The parallel group over which the sequence is
+                                             partitioned. If None, no partitioning is applied.
+                                             Defaults to None.
+
+    Returns:
+        torch.Tensor: The sequence auxiliary loss for load balancing.
     """
     num_sub_sequence = 1
+    num_experts = probs.shape[1]
+
+    probs_for_aux_loss = probs.view(seq_length, batch_size, -1)
+    routing_map = routing_map.view(seq_length, batch_size, -1)
 
     # If the sequence is partitioned by certain parallelism strategies like Sequence Parallelism
     # or Context Parallelism, compute the gradient of the auxiliary loss with respect to the full
     # sequence.
     if sequence_partition_group is not None:
-        # We can keep `aggregated_probs_per_expert` local since we don't need the gradient for
-        # `tokens_per_expert`, saving one allreduce operation for `aggregated_probs_per_expert`.
         num_sub_sequence = torch.distributed.get_world_size(sequence_partition_group)
-        torch.distributed.all_reduce(tokens_per_expert, group=sequence_partition_group)
+        seq_length *= num_sub_sequence
+        probs_for_aux_loss = gather_from_sequence_parallel_region(
+            probs_for_aux_loss, group=sequence_partition_group
+        )
 
-    assert num_sub_sequence == 1, "Do not support sequence aux loss in sequence partition case"
-
-    num_experts = probs.shape[1]
-
-    probs_for_aux_loss = probs.view(seq_length, batch_size, -1)
-    cost_coeff = routing_map.view(seq_length, batch_size, -1).sum(dim=0).float()
-    cost_coeff.div_(seq_length * topk / num_experts)
+    cost_coeff = routing_map.sum(dim=0, dtype=torch.float).div_(seq_length * topk / num_experts)
     seq_aux_loss = (cost_coeff * probs_for_aux_loss.mean(dim=0)).sum(dim=1).mean()
     seq_aux_loss *= moe_aux_loss_coeff
 
     return seq_aux_loss
 
-def score_function(
-    input: torch.Tensor,
-    score_function_type: str = "softmax",
-    target_dtype: torch.dtype = None,
-):
-    if score_function_type == "softmax":
-        scores = torch.softmax(input, dim=-1, dtype=torch.float32)
-        if target_dtype:
-            scores = scores.type(target_dtype)
-    elif score_function_type == "sigmoid":
-        scores = input.sigmoid()
-    else:
-        raise ValueError(f"Unsupported MoE routing score function type: {score_function_type}")
-    return scores
 
 def z_loss_func(logits, z_loss_coeff):
     """Encourages the router's logits to remain small to enhance stability.
@@ -206,29 +207,48 @@ class MoEAuxLossAutoScaler(torch.autograd.Function):
         MoEAuxLossAutoScaler.main_loss_backward_scale = scale
 
 
-def permute(tokens, routing_map, num_out_tokens: int = None):
+def permute(tokens, routing_map, num_out_tokens: int = None, drop_and_pad: bool = False):
     """Permute the tokens and probs based on the mask.
     Tokens with the same designated expert will be grouped together.
     The shape of mask is [tokens, num_experts], it indicates which experts were selected
     by each token.
+
+    When drop_and_pad=True, in routing_map, the number of non-zeros in each column equals to
+    expert capacity. This function exploits this feature to use ops that support cuda graph.
 
     Args:
         tokens (torch.Tensor): The input token tensor, [num_tokens, hidden].
         routing_map (torch.Tensor): The sparse token to expert mapping, [num_tokens, num_experts].
         num_out_tokens (int, optional): The number of output tokens. If None, it's set to
                                         the number of input tokens.
+        drop_and_pad (bool, optional): Whether or not the token dispatcher uses token-drop
+                                       and pads the number of tokens to the expert capacity.
+                                       If set to true, routing_map has a fixed number of non-zeros
+                                       in each column.
     """
     num_tokens, hidden = tokens.shape
     num_experts = routing_map.shape[1]
+    if drop_and_pad and not (num_out_tokens is None):
+        capacity = num_out_tokens // num_experts
+        assert not routing_map.requires_grad
+        # mask [num_tokens, num_experts] -> [num_experts, num_tokens]
+        routing_map = routing_map.to(dtype=torch.int8).T.contiguous()
+        # use argsort to put indices of all non-zeros in the beginning of list
+        # and keep the first `capacity` number of indices
+        sorted_indices = routing_map.argsort(dim=-1, descending=True, stable=True)[
+            :, :capacity
+        ].contiguous()
+        # flatten from [num_experts, capacity] to 1D
+        sorted_indices = sorted_indices.view(-1)
+    else:
+        # mask [num_tokens, num_experts] -> [num_experts, num_tokens]
+        routing_map = routing_map.bool().T.contiguous()
 
-    # mask [num_tokens, num_experts] -> [num_experts, num_tokens]
-    routing_map = routing_map.bool().T.contiguous()
-
-    # Create a dense expert-to-token mapping from the sparse token-to-expert mapping
-    token_indices = (
-        torch.arange(num_tokens, device=routing_map.device).unsqueeze(0).expand(num_experts, -1)
-    )
-    sorted_indices = token_indices.masked_select(routing_map)
+        # Create a dense expert-to-token mapping from the sparse token-to-expert mapping
+        token_indices = (
+            torch.arange(num_tokens, device=routing_map.device).unsqueeze(0).expand(num_experts, -1)
+        )
+        sorted_indices = token_indices.masked_select(routing_map)
 
     # use the mapping to permute the tokens
     permuted_input = tokens.index_select(0, sorted_indices)
@@ -242,10 +262,17 @@ def unpermute(
     restore_shape: torch.Size,
     probs: torch.Tensor = None,
     routing_map: torch.Tensor = None,
+    drop_and_pad: bool = False,
 ):
     """
     Restore the original order of tokens after permutation. If probs are provided, it
     will also apply them to the tokens before restoring the order.
+
+    When drop_and_pad=True, the tensors will have the following properties:
+      - In routing_map, the number of non-zeros in each column equals to expert capacity
+      - The size of sorted_indices equals to num_experts * capacity, each split of `capacity`
+        contains the indices of tokens routed to an expert.
+    This function exploits these features to use ops that support cuda graph.
 
     Args:
         permuted_tokens (torch.Tensor): The permuted token tensor.
@@ -254,6 +281,8 @@ def unpermute(
         probs (torch.Tensor, optional): The unpermuted probs tensor,
         routing_map (torch.Tensor, optional): Token to expert mapping, shape
             [num_tokens, num_experts].
+        drop_and_pad (bool, optional): Whether or not the token dispatcher uses token-drop
+                                       and pads the number of tokens to the expert capacity.
 
     Returns:
         torch.Tensor: The tokens restored to their original order.
@@ -262,7 +291,24 @@ def unpermute(
 
     if probs is not None:
         assert routing_map is not None, "Mask must be provided to permute the probs."
-        permuted_probs = probs.T.contiguous().masked_select(routing_map.T.contiguous())
+        if drop_and_pad:
+            num_experts = routing_map.size(1)
+            num_permuted_tokens = sorted_indices.size(0)
+            capacity = num_permuted_tokens // num_experts
+            num_unpermuted_tokens = probs.size(0)
+
+            # [num_unpermuted_tokens, num_experts] -> num_experts * num_unpermuted_tokens
+            probs_T_1D = probs.T.contiguous().view(-1)
+
+            # get 1D indices of the probs selected by routing_map
+            indices_dim0 = torch.arange(num_experts, device=routing_map.device).unsqueeze(-1)
+            indices_dim1 = sorted_indices.view(num_experts, capacity)
+            indices_1D = (indices_dim0 * num_unpermuted_tokens + indices_dim1).view(-1)
+
+            # get probs from indices
+            permuted_probs = probs_T_1D.index_select(0, indices_1D)
+        else:
+            permuted_probs = probs.T.contiguous().masked_select(routing_map.T.contiguous())
         permuted_tokens = permuted_tokens * permuted_probs.unsqueeze(-1)
 
     # Create an output tensor filled with zeros
@@ -281,47 +327,56 @@ def sort_chunks_by_idxs(input: torch.Tensor, split_sizes: torch.Tensor, sorted_i
     return output
 
 
-def device_limited_topk(
+def group_limited_topk(
     scores: torch.Tensor,
     topk: int,
     num_tokens: int,
     num_experts: int,
-    moe_router_topk_limited_devices: int,
+    num_groups: int,
+    group_topk: int,
 ):
-    """Perform top-k routing on a subset of expert parallel ranks.
+    """Perform top-k routing on a subset of expert groups.
 
-    Selects N ranks for each token, then conducts top-k selection among experts on these devices.
-    See DeepSeek-V2 technical report (https://arxiv.org/pdf/2405.04434) for details.
+    When using group-limited routing:
+    1. Experts are divided into 'moe_router_num_groups' equal-sized groups
+    2. For each token, 'moe_router_group_topk' groups are selected based on routing scores
+       (specifically, the sum of top-2 expert scores within each group)
+    3. From these selected groups, 'moe_router_topk' individual experts are chosen
+
+    Two common use cases:
+    - Device-limited routing: Set 'moe_router_num_groups' equal to expert parallel size (EP)
+      to limit each token to experts on a subset of devices
+      (See DeepSeek-V2: https://arxiv.org/pdf/2405.04434)
+
+    - Node-limited routing: Set 'moe_router_num_groups' equal to number of nodes in EP group
+      to limit each token to experts on a subset of nodes
+      (See DeepSeek-V3: https://arxiv.org/pdf/2412.19437)
 
     Args:
-        scores (torch.Tensor): Softmax scores from the router.
+        scores (torch.Tensor): Softmax scores generated by the router.
         topk (int): The number of experts to select for each token.
         num_tokens (int): The number of tokens.
         num_experts (int): The number of experts.
-        moe_router_topk_limited_devices (int): Number of expert parallel ranks to consider for
-            each token during routing. None means no device limitation.
+        num_groups (int): Number of groups for routed experts.
+        group_topk (int): Number of groups selected for each token.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Probs and indices tensor.
     """
-
     # Organize the experts into groups
-    num_group = (
-        parallel_state.get_expert_model_parallel_world_size()
-    )  # num_group equals to expert parallel size
-    group_scores = scores.view(num_tokens, num_group, -1).max(dim=-1).values
-    group_idx = torch.topk(group_scores, k=moe_router_topk_limited_devices, dim=-1, sorted=False)[1]
+    group_scores = scores.view(num_tokens, num_groups, -1).topk(2, dim=-1)[0].sum(dim=-1)
+    group_idx = torch.topk(group_scores, k=group_topk, dim=-1, sorted=False)[1]
     group_mask = torch.zeros_like(group_scores)
     group_mask.scatter_(1, group_idx, 1)
 
     # Mask the experts based on selection groups
     score_mask = (
         group_mask.unsqueeze(-1)
-        .expand(num_tokens, num_group, num_experts // num_group)
+        .expand(num_tokens, num_groups, num_experts // num_groups)
         .reshape(num_tokens, -1)
     )
 
-    masked_scores = scores.masked_fill(~score_mask.bool(), 0.0)
+    masked_scores = scores.masked_fill(~score_mask.bool(), float('-inf'))
     probs, top_indices = torch.topk(masked_scores, k=topk, dim=-1)
 
     return probs, top_indices
@@ -334,27 +389,31 @@ def topk_softmax_with_capacity(
     pad_to_capacity: bool = False,
     drop_policy: str = "probs",
     use_pre_softmax: bool = False,
-    moe_router_topk_limited_devices: int = None,
-    moe_router_topk_scaling_factor: float = None,
+    num_groups: Optional[int] = None,
+    group_topk: Optional[int] = None,
+    scaling_factor: Optional[float] = None,
     deterministic_mode: bool = False,
-    score_function_type: str = "softmax",
+    score_function: str = "softmax",
+    expert_bias: Optional[torch.Tensor] = None,
 ):
     """Apply capacity and padding to the top-k selection.
     Args:
         logits (torch.Tensor): Logits tensor.
         topk (int): The number of experts to select for each token.
-        capacity_factor (int): The capacity factor of each expert. Will drop tokens if the number
+        capacity_factor (float): The capacity factor of each expert. Will drop tokens if the number
                                of tokens exceeds the capacity.
         pad_to_capacity (bool): Whether to need padding in token drop mode.
         drop_policy (str): The policy to drop tokens. Can be either "prob" or "position".
                            If "prob", the tokens with the lowest probabilities will be dropped.
                            If "position", tokens at the end of each batch will be dropped.
         use_pre_softmax (bool): Whether to apply softmax before top-k selection.
-        moe_router_topk_limited_devices (int): Number of expert parallel ranks to consider for
-            each token during routing. None means no device limitation.
-        moe_router_topk_scaling_factor (float): Scaling factor for routing score in top-k
-            selection, only works when use_pre_softmax enabled.
+        num_groups (int): Number of groups for routed experts.
+        group_topk (int): Number of selected groups for each token.
+        scaling_factor (float): Scaling factor of routing score in top-k selection.
         deterministic_mode (bool): Deprecated.
+        score_function (str): The score function to use. Can be either "softmax" or "sigmoid".
+        expert_bias (torch.Tensor): The bias added to logits for expert routing.
+
     Returns:
         Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
             - routing_probs (torch.Tensor): A tensor of shape [num_tokens, num_experts] containing
@@ -366,42 +425,42 @@ def topk_softmax_with_capacity(
               the number of local tokens assigned to each expert before dropping and padding.
     """
     assert logits.dim() == 2, f"Expected 2D logits [num_tokens, num_experts], got {logits.dim()}."
-    num_tokens = logits.shape[0]
-    num_experts = logits.shape[1]
-    if use_pre_softmax:
-        # Pre softmax
-        scores = score_function(logits, score_function_type, logits.dtype)
+    num_tokens, num_experts = logits.shape
 
-        if moe_router_topk_limited_devices:
-            probs, top_indices = device_limited_topk(
-                scores, topk, num_tokens, num_experts, moe_router_topk_limited_devices
+    def compute_topk(scores, topk, num_groups=None, group_topk=None):
+        if group_topk:
+            return group_limited_topk(
+                scores=scores,
+                topk=topk,
+                num_tokens=num_tokens,
+                num_experts=num_experts,
+                num_groups=num_groups,
+                group_topk=group_topk,
             )
         else:
-            probs, top_indices = torch.topk(scores, k=topk, dim=1)
+            return torch.topk(scores, k=topk, dim=1)
 
-        # Normalize the probs.
-        if moe_router_topk_scaling_factor:
-            probs = probs * moe_router_topk_scaling_factor
+    if score_function == "softmax":
+        if use_pre_softmax:
+            scores = torch.softmax(logits, dim=-1, dtype=torch.float32).type_as(logits)
+            probs, top_indices = compute_topk(scores, topk, num_groups, group_topk)
+        else:
+            scores, top_indices = compute_topk(logits, topk, num_groups, group_topk)
+            probs = torch.softmax(scores, dim=-1, dtype=torch.float32).type_as(logits)
+    elif score_function == "sigmoid":
+        scores = torch.sigmoid(logits)
+        if expert_bias is not None:
+            scores_for_routing = scores + expert_bias
+            _, top_indices = compute_topk(scores_for_routing, topk, num_groups, group_topk)
+            scores = torch.gather(scores, dim=1, index=top_indices).type_as(logits)
+        else:
+            scores, top_indices = compute_topk(scores, topk, num_groups, group_topk)
+        probs = scores / (scores.sum(dim=-1, keepdim=True) + 1e-20) if topk > 1 else scores
     else:
-        # Post softmax
-        if topk == 1:
-            # Requires applying softmax before selecting the top-k when k is 1,
-            # since softmax on a [num_tokens, 1] would yield a zero gradient.
-            raise ValueError("Please use --moe-router-pre-softmax when topk is 1.")
-        assert (
-            moe_router_topk_scaling_factor is None
-        ), "moe_router_topk_scaling_factor is not supported with post-softmax"
-        if moe_router_topk_limited_devices:
-            scores, top_indices = device_limited_topk(
-                logits, topk, num_tokens, num_experts, moe_router_topk_limited_devices
-            )
-        else:
-            scores, top_indices = torch.topk(logits, k=topk, dim=1)
-        probs = score_function(scores, score_function_type, logits.dtype)
+        raise ValueError(f"Invalid score_function: {score_function}")
 
-    if score_function_type == "sigmoid":
-        tmp = probs.sum(dim=-1, keepdim=True)
-        probs = probs / tmp
+    if scaling_factor:
+        probs = probs * scaling_factor
 
     # TODO Try using element-wise operations instead of scatter?
     topk_masked_gates = torch.zeros_like(logits).scatter(1, top_indices, probs)
@@ -535,3 +594,23 @@ def track_moe_metrics(
                     )
 
     clear_aux_losses_tracker()
+
+
+def get_updated_expert_bias(tokens_per_expert, expert_bias, expert_bias_update_rate):
+    """Update expert bias for biased expert routing. See https://arxiv.org/abs/2408.15664v1#
+
+    Args:
+        tokens_per_expert (torch.Tensor): The number of tokens assigned to each expert.
+        expert_bias (torch.Tensor): The bias for each expert.
+        expert_bias_udpate_rate (float): The update rate for the expert bias.
+    """
+    with torch.no_grad():
+        # All Reduce Across TPxCPxDP group
+        torch.distributed.all_reduce(
+            tokens_per_expert,
+            group=parallel_state.get_tensor_and_data_parallel_group(with_context_parallel=True),
+        )
+        average_tokens = tokens_per_expert.sum(dim=-1, keepdim=True) / tokens_per_expert.shape[-1]
+        offset = average_tokens - tokens_per_expert
+        updated_expert_bias = expert_bias + torch.sign(offset) * expert_bias_update_rate
+        return updated_expert_bias

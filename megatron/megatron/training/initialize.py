@@ -25,6 +25,7 @@ from megatron.training.global_vars import set_global_writers
 from megatron.core.fusions.fused_bias_dropout import bias_dropout_add_fused_train
 from megatron.core.fusions.fused_bias_gelu import bias_gelu
 from megatron.core.fusions.fused_bias_swiglu import bias_swiglu
+from megatron.core.parallel_state import create_group
 from megatron.core.utils import get_te_version, is_te_min_version, is_torch_min_version
 
 from flagscale.train import FSTrainArguments
@@ -64,6 +65,13 @@ def initialize_megatron(
 
     if args.use_checkpoint_args or args_defaults.get("use_checkpoint_args", False):
         assert args.load is not None, "--use-checkpoint-args requires --load argument"
+        assert (
+            args.non_persistent_ckpt_type != "local"
+        ), (
+            "--use-checkpoint-args is not supported with --non_persistent_ckpt_type=local. "
+            "Two-stage checkpoint loading is not implemented, and all arguments must be defined "
+            "before initializing LocalCheckpointManager."
+        )
         load_args_from_checkpoint(args)
 
     if args.hetero_process_meshes is not None:
@@ -91,7 +99,7 @@ def initialize_megatron(
         return {
             'rng_tracker_states': tensor_parallel.get_cuda_rng_tracker().get_states()
         }
-    
+
     def state_restore_func(state_dict):
         if state_dict['rng_tracker_states']:
             tensor_parallel.get_cuda_rng_tracker().set_states(state_dict['rng_tracker_states'])
@@ -119,7 +127,7 @@ def initialize_megatron(
         # Random seeds for reproducibility.
         if args.rank == 0:
             print("> setting random seeds to {} ...".format(args.seed))
-        _set_random_seed(args.seed, args.data_parallel_random_init)
+        _set_random_seed(args.seed, args.data_parallel_random_init, args.te_rng_tracker, args.inference_rng_tracker)
 
         # Set tensorboard writer and wandb writer.
         set_global_writers(args)
@@ -268,8 +276,8 @@ def _initialize_tp_communicators():
                 f"Transformer Engine v{get_te_version()} supports only MPI bootstrap backend."
             )
         # Create a MPI process group to help with TP communication overlap bootstrap.
-        torch.distributed.new_group(backend='mpi')
-    
+        create_group(backend='mpi', group_desc='TP_BOOTSTRAP_GROUP_MPI')
+
         te_module.base.initialize_ub(shape = input_shape, tp_size = args.tensor_model_parallel_size,
                                      use_fp8 = (args.fp8 is not None) , ub_cfgs = ub_cfgs)
 
@@ -342,7 +350,7 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
                 expert_tensor_parallel_size=args.expert_tensor_parallel_size,
                 distributed_timeout_minutes=args.distributed_timeout_minutes,
                 nccl_communicator_config_path=args.nccl_communicator_config_path,
-                order='tp-usp-cp-ep-dp-pp' if not args.use_tp_pp_dp_mapping else 'tp-pp-dp',
+                order='tp-usp-cp-ep-dp-pp' if not args.use_tp_pp_dp_mapping else 'tp-cp-ep-pp-dp',
                 encoder_tensor_model_parallel_size=args.encoder_tensor_model_parallel_size,
                 encoder_pipeline_model_parallel_size=args.encoder_pipeline_model_parallel_size,
                 get_embedding_ranks=get_embedding_ranks,
@@ -368,7 +376,7 @@ def _init_autoresume():
         torch.distributed.barrier()
 
 
-def _set_random_seed(seed_, data_parallel_random_init=False):
+def _set_random_seed(seed_, data_parallel_random_init=False, te_rng_tracker=False, inference_rng_tracker=False):
     """Set random seed for reproducability."""
     if seed_ is not None and seed_ > 0:
         # Ensure that different pipeline MP stages get different seeds.
@@ -380,7 +388,7 @@ def _set_random_seed(seed_, data_parallel_random_init=False):
         np.random.seed(seed)
         torch.manual_seed(seed)
         if torch.cuda.device_count() > 0:
-            tensor_parallel.model_parallel_cuda_manual_seed(seed)
+            tensor_parallel.model_parallel_cuda_manual_seed(seed, te_rng_tracker, inference_rng_tracker)
     else:
         raise ValueError("Seed ({}) should be a positive integer.".format(seed_))
 

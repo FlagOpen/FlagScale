@@ -19,6 +19,12 @@ BASE_PATH = pathlib.Path(__file__).parent.resolve()
 )
 @click.option("--a100-cluster", required=True, type=str, help="A100 Cluster to run on")
 @click.option("--h100-cluster", required=True, type=str, help="H100 Cluster to run on")
+@click.option(
+    "--a100-partition", required=False, type=str, help="Slurm partition to use", default=None
+)
+@click.option(
+    "--h100-partition", required=False, type=str, help="Slurm partition to use", default=None
+)
 @click.option("--output-path", required=True, type=str, help="Path to write GitLab job to")
 @click.option("--container-image", required=True, type=str, help="LTS Container image to use")
 @click.option("--container-tag", required=True, type=str, help="Container tag to use")
@@ -28,6 +34,7 @@ BASE_PATH = pathlib.Path(__file__).parent.resolve()
     type=str,
     help="Name of job that created the downstream pipeline",
 )
+@click.option("--record-checkpoints", required=False, type=str, help="Values are 'true' or 'false'")
 @click.option("--tag", required=False, type=str, help="Tag (only relevant for unit tests)")
 @click.option(
     "--run-name", required=False, type=str, help="Run name (only relevant for release tests)"
@@ -46,10 +53,13 @@ def main(
     test_cases: str,
     a100_cluster: str,
     h100_cluster: str,
+    a100_partition: Optional[str],
+    h100_partition: Optional[str],
     output_path: str,
     container_image: str,
     container_tag: str,
     dependent_job: str,
+    record_checkpoints: str,
     tag: Optional[str] = None,
     run_name: Optional[str] = None,
     wandb_experiment: Optional[str] = None,
@@ -97,14 +107,19 @@ def main(
     else:
         gitlab_pipeline = {
             "stages": list(set([test_case.spec.model for test_case in list_of_test_cases])),
-            "default": {"interruptible": True},
+            "default": {
+                "interruptible": True,
+                "retry": {"max": 2, "when": "runner_system_failure"},
+            },
         }
 
         for test_case in list_of_test_cases:
             if test_case.spec.platforms == "dgx_a100":
                 cluster = a100_cluster
+                partition = a100_partition
             elif test_case.spec.platforms == "dgx_h100":
                 cluster = h100_cluster
+                partition = h100_partition
             else:
                 raise ValueError(f"Platform {test_case.spec.platforms} unknown")
 
@@ -118,10 +133,15 @@ def main(
                 f"--environment {test_case.spec.environment}",
                 f"--n-repeat {n_repeat}",
                 f"--time-limit {time_limit}",
+                f"--scope {scope}",
                 f"--test-case '{test_case.spec.test_case}'",
                 f"--container-tag {container_tag}",
                 f"--cluster {cluster}",
+                f"--record-checkpoints {record_checkpoints}",
             ]
+
+            if partition is not None:
+                script.append(f"--partition {partition}")
 
             if tag is not None:
                 script.append(f"--tag {tag}")

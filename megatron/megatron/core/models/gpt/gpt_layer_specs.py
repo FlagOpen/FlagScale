@@ -22,7 +22,11 @@ from megatron.core.transformer.transformer_block import (
     get_num_layers_to_build,
 )
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
+from megatron.core.transformer.transformer_layer import (
+    TransformerLayer,
+    TransformerLayerSubmodules,
+    get_transformer_layer_offset,
+)
 from megatron.core.utils import is_te_min_version
 
 from flagscale.train.transformer.ulysses_sp_attention import USPSelfAttention
@@ -32,6 +36,7 @@ try:
         TEColumnParallelLinear,
         TEDotProductAttention,
         TELayerNormColumnParallelLinear,
+        TELinear,
         TENorm,
         TERowParallelLinear,
     )
@@ -82,7 +87,7 @@ def get_gpt_layer_with_transformer_engine_spec(
             ' and will be removed soon. Please update your code accordingly.'
         )
 
-    mlp = _get_mlp_module_spec(
+    mlp = get_mlp_module_spec(
         use_te=True,
         num_experts=num_experts,
         moe_grouped_gemm=moe_grouped_gemm,
@@ -99,14 +104,22 @@ def get_gpt_layer_with_transformer_engine_spec(
                     params={"attn_mask_type": AttnMaskType.causal},
                     submodules=MLASelfAttentionSubmodules(
                         linear_q_proj=TEColumnParallelLinear,
-                        linear_q_down_proj=TEColumnParallelLinear,
-                        linear_q_up_proj=TEColumnParallelLinear,
-                        linear_kv_down_proj=TEColumnParallelLinear,
-                        linear_kv_up_proj=TEColumnParallelLinear,
+                        linear_q_down_proj=TELinear,
+                        linear_q_up_proj=(
+                            TELayerNormColumnParallelLinear
+                            if qk_layernorm
+                            else TEColumnParallelLinear
+                        ),
+                        linear_kv_down_proj=TELinear,
+                        linear_kv_up_proj=(
+                            TELayerNormColumnParallelLinear
+                            if qk_layernorm
+                            else TEColumnParallelLinear
+                        ),
                         core_attention=TEDotProductAttention,
                         linear_proj=TERowParallelLinear,
-                        q_layernorm=TENorm if qk_layernorm else IdentityOp,
-                        kv_layernorm=TENorm if qk_layernorm else IdentityOp,
+                        q_layernorm=IdentityOp,
+                        kv_layernorm=IdentityOp,
                     ),
                 ),
                 self_attn_bda=get_bias_dropout_add,
@@ -172,7 +185,7 @@ def get_gpt_layer_local_spec(
             ' and will be removed soon. Please update your code accordingly.'
         )
 
-    mlp = _get_mlp_module_spec(
+    mlp = get_mlp_module_spec(
         use_te=False,
         num_experts=num_experts,
         moe_grouped_gemm=moe_grouped_gemm,
@@ -234,6 +247,27 @@ def get_gpt_layer_local_spec(
 
 
 def _get_mlp_module_spec(
+    use_te: Optional[bool] = True,
+    num_experts: Optional[int] = None,
+    moe_grouped_gemm: Optional[bool] = False,
+    fp8: Optional[str] = None,  # pylint: disable=unused-arguments
+    moe_use_legacy_grouped_gemm: Optional[bool] = False,
+):
+    warnings.warn(
+        """This private function is on a deprecation track. Please switch to `get_mlp_module_spec`
+        since it will be removed in a future release."""
+    )
+
+    return get_mlp_module_spec(
+        use_te=use_te,
+        num_experts=num_experts,
+        moe_grouped_gemm=moe_grouped_gemm,
+        fp8=fp8,
+        moe_use_legacy_grouped_gemm=moe_use_legacy_grouped_gemm,
+    )
+
+
+def get_mlp_module_spec(
     use_te: Optional[bool] = True,
     num_experts: Optional[int] = None,
     moe_grouped_gemm: Optional[bool] = False,
@@ -343,7 +377,7 @@ def get_gpt_decoder_block_spec(
 
     # Slice the layer specs to only include the layers that are built in this pipeline stage.
     # Note: MCore layer_number starts at 1
-    offset = TransformerLayer._get_layer_offset(config)
+    offset = get_transformer_layer_offset(config)
     num_layers_to_build = get_num_layers_to_build(config)
     layer_specs = layer_specs[offset : offset + num_layers_to_build]
 

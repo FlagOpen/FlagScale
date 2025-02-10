@@ -16,10 +16,11 @@ pixel_statistics = {
     "clip": (CLIP_PIXEL_MEAN, CLIP_PIXEL_STD),
     "siglip": (SIGLIP_PIXEL_MEAN, SIGLIP_PIXEL_STD),
     "internvit": (IMAGENET_PIXEL_MEAN, IMAGENET_PIXEL_STD),
+    "radio": (CLIP_PIXEL_MEAN, CLIP_PIXEL_STD),
 }
 
 
-def get_visual_transform(img, img_h, img_w, use_tiling=False, max_num_tiles=1, use_thumbnail=False, augment=False, vision_model_type="clip"):
+def get_visual_transform(img, img_h, img_w, use_tiling=False, max_num_tiles=1, use_thumbnail=False, augment=False, vision_model_type="clip", target_aspect_ratio=None):
     pixel_mean, pixel_std = pixel_statistics[vision_model_type]
 
     assert not augment, "Image augmentation not implemented."
@@ -27,7 +28,9 @@ def get_visual_transform(img, img_h, img_w, use_tiling=False, max_num_tiles=1, u
 
     if use_tiling:
         assert img_h == img_w, "dynamic tiling expects equal tile height and width"
-        imgs = dynamic_preprocess(img, min_num=1, max_num=max_num_tiles, image_size=img_h, use_thumbnail=use_thumbnail)
+        imgs = dynamic_preprocess(
+            img, min_num=1, max_num=max_num_tiles, image_size=img_h, use_thumbnail=use_thumbnail,
+            target_aspect_ratio=target_aspect_ratio)
         imgs = [transform(img) for img in imgs]
     else:
         imgs = [transform(img)]
@@ -56,7 +59,7 @@ def find_closest_aspect_ratio(aspect_ratio, target_ratios, width, height, image_
 
 # From https://github.com/OpenGVLab/InternVL/blob/c62fa4f7c850165d7386bdc48ac6bc5a6fab0864/internvl_chat/internvl/train/dataset.py#L702
 # Copyright (c) 2023 OpenGVLab.
-def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnail=False):
+def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnail=False, target_aspect_ratio=None):
     orig_width, orig_height = image.size
     aspect_ratio = orig_width / orig_height
 
@@ -67,8 +70,9 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
     target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
 
     # find the closest aspect ratio to the target
-    target_aspect_ratio = find_closest_aspect_ratio(
-        aspect_ratio, target_ratios, orig_width, orig_height, image_size)
+    if target_aspect_ratio is None:
+        target_aspect_ratio = find_closest_aspect_ratio(
+            aspect_ratio, target_ratios, orig_width, orig_height, image_size)
 
     # calculate the target width and height
     target_width = image_size * target_aspect_ratio[0]
@@ -98,7 +102,7 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
 # Based on https://github.com/openai/CLIP/blob/dcba3cb2e2827b402d2701e7e1c7d9fed8a20ef1/clip/clip.py#L79
 # and https://github.com/OpenGVLab/InternVL/blob/aa521e6eb1df4cf153aa4118fcf13e673c055d46/internvl_chat/internvl/train/dataset.py#L276
 def build_transform(input_size, pixel_mean, pixel_std, vision_model_type):
-    if vision_model_type in ("siglip", "internvit"):
+    if vision_model_type in ("siglip", "internvit", "radio"):
         transform = T.Compose([
             T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
             T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
