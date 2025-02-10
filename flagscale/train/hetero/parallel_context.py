@@ -1627,7 +1627,6 @@ class ParallelContext:
                         get_blend_from_list(args.valid_data_path),
                         get_blend_from_list(args.test_data_path)
                     ],
-                    renormalize_blend_weights=args.renormalize_blend_weights,
                     split=args.split,
                     num_dataset_builder_threads=args.num_dataset_builder_threads,
                     path_to_cache=args.data_cache_path,
@@ -1651,7 +1650,6 @@ class ParallelContext:
                         get_blend_from_list(args.valid_data_path),
                         get_blend_from_list(args.test_data_path)
                     ],
-                    renormalize_blend_weights=args.renormalize_blend_weights,
                     split=args.split,
                     num_dataset_builder_threads=args.num_dataset_builder_threads,
                     path_to_cache=args.data_cache_path,
