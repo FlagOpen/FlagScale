@@ -96,8 +96,36 @@ def _generate_run_script_serve(
             master_ip = nodes[0][0]
             target_port = nodes[0][1].get("port")
             master_port = target_port if target_port else get_free_port()
+
+            f.write(f"# clear node \n")
+
+            if len(nodes) > 1:
+                f.write(f"\n")
+                for ip, node in nodes[1:]:
+                    if not node.get("type", None):
+                        raise ValueError(
+                            f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
+                        )
+                    if not node.get("slots", None):
+                        raise ValueError(
+                            f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+                        )
+                    node_cmd = f"ray stop"
+
+                    if node.get("port", None):
+                        ssh_cmd = f'ssh -n -p {node.port} {ip} "{node_cmd}"'
+                    else:
+                        ssh_cmd = f'ssh -n {ip} "{node_cmd}"'
+
+                    if node.get("docker", None):
+                        ssh_cmd = f"ssh -n {ip} \"docker exec {node.docker} /bin/bash -c '{node_cmd}'\""
+                    f.write(f"{ssh_cmd}\n")
+            f.write(f"ray stop\n")
+            f.write(f"\n")
+
+            f.write(f"start cluster\n")
             f.write(f"# master node\n")
-            f.write(f"ray stop && ray start --head --port={master_port}")
+            f.write(f"ray start --head --port={master_port}\n")
             if len(nodes) > 1:
                 f.write(f"\n")
                 f.write(f"# worker nodes\n")
@@ -112,15 +140,21 @@ def _generate_run_script_serve(
                             f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
                         )
                     if node.type == "gpu":
-                        node_cmd = f"ray stop && ray start --address={address} --num-gpus={node.slots}"
+                        node_cmd = (
+                            f"ray start --address={address} --num-gpus={node.slots}"
+                        )
 
                     elif node.type == "cpu":
-                        node_cmd = f"ray stop && ray start --address={address} --num-cpus={node.slots}"
+                        node_cmd = (
+                            f"ray start --address={address} --num-cpus={node.slots}"
+                        )
                     else:
                         resource = json.dumps({node.type: node.slots}).replace(
                             '"', '\\"'
                         )
-                        node_cmd = f"ray stop && ray start --address={address} --resources='{resource}'"
+                        node_cmd = (
+                            f"ray start --address={address} --resources='{resource}'"
+                        )
                     if config.experiment.get("cmds", "") and config.experiment.cmds.get(
                         "before_start", ""
                     ):
