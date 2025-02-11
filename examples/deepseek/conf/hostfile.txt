@@ -2,4 +2,4 @@
 # master node
 x.x.x.x slots=8 type=gpu 
 # worker nodes
-x.x.x.x slots=8 type=gpu docker=cz-ds
+x.x.x.x slots=8 type=gpu docker=ds

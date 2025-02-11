@@ -16,7 +16,7 @@ experiment:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     USE_FLAGGEMMS: true
   cmds:
-    before_start: source /root/miniconda3/bin/activate flagscale && export GLOO_SOCKET_IFNAME=bond0 # replace "bond0" with your own network card
+    before_start: source /root/miniconda3/bin/activate flagscale-inference && export GLOO_SOCKET_IFNAME=bond0 # replace "bond0" with your own network card
   
 
 action: run

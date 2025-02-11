@@ -54,99 +54,6 @@ def vllm_model(args):
 
     return process.returncode
 
-def start_cluster(task_config):
-    hostfile = task_config.serve.hostfile
-    head_ip, head_port = next(
-        (
-            (node.master.ip, node.master.get("port", None))
-            for node in hostfile.nodes
-            if "master" in node
-        ),
-        (None, None),
-    )
-    if head_ip is None:
-        raise ValueError(
-            f"Failed to start Ray cluster using hostfile {hostfile} due to master node missing. Please ensure that the file exists and has the correct format."
-        )
-    if head_port is None:
-        port = check_and_get_port()
-    else:
-        port = check_and_get_port(target_port=int(head_port))
-    cmd = f"ray stop && ray start --head --port={port}"
-    logger.info(f"head node command: {cmd}")
-    head_result = subprocess.run(
-        cmd,
-        shell=True,
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    if head_result.returncode != 0:
-        logger.warning(
-            f"Head Node cmd {ssh_cmd} failed with return code {head_result.returncode}."
-        )
-        logger.warning(f"Output: {head_result.stdout}")
-        logger.warning(f"Error: {head_result.stderr}")
-        sys.exit(head_result.returncode)
-    address = f"{head_ip}:{port}"
-
-    for item in hostfile.nodes:
-        if "node" in item:
-            node = item.node
-            if node.type == "gpu":
-                node_cmd = (
-                    f"ray stop && ray start --address={address} --num-gpus={node.slots}"
-                )
-
-            elif node.type == "cpu":
-                node_cmd = (
-                    f"ray stop && ray start --address={address} --num-cpus={node.slots}"
-                )
-            else:
-                resource = json.dumps({node.type: node.slots}).replace(
-                    '"', '\\"'
-                )
-                node_cmd = (
-                    f"ray stop && ray start --address={address} --resources='{resource}'"
-                )
-            if task_config.experiment.get("cmds", "") and task_config.experiment.cmds.get(
-                "before_start", ""
-            ):
-                before_start_cmd = task_config.experiment.cmds.before_start
-                node_cmd = (
-                    f"{before_start_cmd} && "
-                    + node_cmd
-                )
-
-            if node.get("port", None):
-                ssh_cmd = f'ssh -n -p {node.port} {node.ip} "{node_cmd}"'
-            else:
-                ssh_cmd = f'ssh -n {node.ip} "{node_cmd}"'
-
-            if node.get("docker", None):
-                ssh_cmd = f'ssh -n {node.ip} "docker exec {node.docker} /bin/bash -c \'{node_cmd}\'"'
-
-            logger.info(f"worker node command: {cmd}")
-            print("=========== ssh_cmd =============== ", ssh_cmd)
-
-            result = subprocess.run(
-                ssh_cmd,
-                shell=True,
-                check=True,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
-            if result.returncode != 0:
-                logger.warning(
-                    f"SSH command {ssh_cmd} failed with return code {result.returncode}."
-                )
-                logger.warning(f"Output: {result.stdout}")
-                logger.warning(f"Error: {result.stderr}")
-                sys.exit(result.returncode)
 
 def vllm_multiple_nodes_serve(args):
     vllm_args = args["serve"]["model_args"]["vllm_model"]
@@ -189,7 +96,6 @@ def vllm_multiple_nodes_serve(args):
 def main():
     hostfile = serve.task_config.experiment.runner.get("hostfile", None)
     if hostfile:
-        start_cluster(serve.task_config)
         return_code = vllm_multiple_nodes_serve(serve.task_config)
     else:
         # Note: Custom log dir here may cause "OSError: AF_UNIX path length cannot exceed 107 bytes:"
