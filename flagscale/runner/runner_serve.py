@@ -92,12 +92,14 @@ def _generate_run_script_serve(
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("set -x\n")
+        f.write(f"\n")
+        f.write(f"{before_start}\n")
+
         if nodes:
             master_ip = nodes[0][0]
             target_port = nodes[0][1].get("port")
 
             f.write(f"# clear node \n")
-
             if len(nodes) > 1:
                 f.write(f"\n")
                 for ip, node in nodes[1:]:
@@ -171,8 +173,6 @@ def _generate_run_script_serve(
                         ssh_cmd = f"ssh -n {ip} \"docker exec {node.docker} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
 
-        f.write(f"\n")
-        f.write(f"{before_start}\n")
         f.write(f"mkdir -p {logging_config.log_dir}\n")
         f.write(f"mkdir -p {logging_config.pids_dir}\n")
         f.write(f"\n")
