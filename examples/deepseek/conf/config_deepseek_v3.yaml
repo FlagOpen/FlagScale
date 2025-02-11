@@ -10,6 +10,7 @@ experiment:
     backend: vllm
     entrypoint: null
   runner:
+    hostfile: examples/deepseek/conf/hostfile.txt
     ssh_port: 22 # replace with your ssh port
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
