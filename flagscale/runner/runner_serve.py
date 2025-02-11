@@ -94,14 +94,14 @@ def _generate_run_script_serve(
         f.write("set -x\n")
         f.write(f"\n")
         f.write(f"{before_start}\n")
+        f.write(f"\n")
 
         if nodes:
             master_ip = nodes[0][0]
             target_port = nodes[0][1].get("port")
 
-            f.write(f"# clear node \n")
+            f.write(f"# clean nodes \n")
             if len(nodes) > 1:
-                f.write(f"\n")
                 for ip, node in nodes[1:]:
                     if not node.get("type", None):
                         raise ValueError(
