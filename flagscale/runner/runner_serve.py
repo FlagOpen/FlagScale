@@ -1,3 +1,4 @@
+import json
 import os
 import shlex
 
@@ -60,6 +61,7 @@ def _update_config_serve(config: DictConfig):
 def _generate_run_script_serve(
     config, host, node_rank, cmd, background=True, with_test=False
 ):
+    nodes = config.serve.get("nodes", None)
     logging_config = config.serve.logging
 
     no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
@@ -90,6 +92,50 @@ def _generate_run_script_serve(
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("set -x\n")
+        if nodes:
+            master_ip = nodes[0][0]
+            target_port = nodes[0][1].get("port")
+            master_port = target_port if target_port else get_free_port()
+            f.write(f"# master node\n")
+            f.write(f"ray stop && ray start --head --port={master_port}")
+            if len(nodes) > 1:
+                f.write(f"\n")
+                f.write(f"# worker nodes\n")
+                address = f"{master_ip}:{master_port}"
+                for node in nodes[1:]:
+                    if not node.get("type", None):
+                        raise ValueError(
+                            f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
+                        )
+                    if not node.get("slots", None):
+                        raise ValueError(
+                            f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+                        )
+                    if node.type == "gpu":
+                        node_cmd = f"ray stop && ray start --address={address} --num-gpus={node.slots}"
+
+                    elif node.type == "cpu":
+                        node_cmd = f"ray stop && ray start --address={address} --num-cpus={node.slots}"
+                    else:
+                        resource = json.dumps({node.type: node.slots}).replace(
+                            '"', '\\"'
+                        )
+                        node_cmd = f"ray stop && ray start --address={address} --resources='{resource}'"
+                    if config.experiment.get("cmds", "") and config.experiment.cmds.get(
+                        "before_start", ""
+                    ):
+                        before_start_cmd = config.experiment.cmds.before_start
+                        node_cmd = f"{before_start_cmd} && " + node_cmd
+
+                    if node.get("port", None):
+                        ssh_cmd = f'ssh -n -p {node.port} {node.ip} "{node_cmd}"'
+                    else:
+                        ssh_cmd = f'ssh -n {node.ip} "{node_cmd}"'
+
+                    if node.get("docker", None):
+                        ssh_cmd = f"ssh -n {node.ip} \"docker exec {node.docker} /bin/bash -c '{node_cmd}'\""
+                    f.write(f"{ssh_cmd}")
+
         f.write(f"{before_start}\n")
         f.write(f"mkdir -p {logging_config.log_dir}\n")
         f.write(f"mkdir -p {logging_config.pids_dir}\n")
@@ -174,7 +220,8 @@ class SSHServeRunner(RunnerBase):
         self.resources = parse_hostfile(
             self.config.experiment.runner.get("hostfile", None)
         )
-        self.config.serve["nodes"] = list(self.resources.items())
+        if self.resources:
+            self.config.serve["nodes"] = list(self.resources.items())
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
