@@ -134,8 +134,9 @@ def _generate_run_script_serve(
 
                     if node.get("docker", None):
                         ssh_cmd = f"ssh -n {ip} \"docker exec {node.docker} /bin/bash -c '{node_cmd}'\""
-                    f.write(f"{ssh_cmd}")
+                    f.write(f"{ssh_cmd}\n")
 
+        f.write(f"\n")
         f.write(f"{before_start}\n")
         f.write(f"mkdir -p {logging_config.log_dir}\n")
         f.write(f"mkdir -p {logging_config.pids_dir}\n")
