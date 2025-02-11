@@ -95,7 +95,6 @@ def _generate_run_script_serve(
         if nodes:
             master_ip = nodes[0][0]
             target_port = nodes[0][1].get("port")
-            master_port = target_port if target_port else get_free_port()
 
             f.write(f"# clear node \n")
 
@@ -123,7 +122,9 @@ def _generate_run_script_serve(
             f.write(f"ray stop\n")
             f.write(f"\n")
 
-            f.write(f"start cluster\n")
+            master_port = target_port if target_port else get_free_port()
+
+            f.write(f"# start cluster\n")
             f.write(f"# master node\n")
             f.write(f"ray start --head --port={master_port}\n")
             if len(nodes) > 1:
