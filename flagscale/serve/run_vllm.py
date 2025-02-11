@@ -55,18 +55,12 @@ def vllm_model(args):
     return process.returncode
 
 def start_cluster(task_config):
-    hostfile = task_config.serve.hostfile
-    head_ip, head_port = next(
-        (
-            (node.master.ip, node.master.get("port", None))
-            for node in hostfile.nodes
-            if "master" in node
-        ),
-        (None, None),
-    )
+    nodes = task_config.serve.nodes
+    head_ip = nodes[0][0]
+    head_port = nodes[0][1].get("port", None)
     if head_ip is None:
         raise ValueError(
-            f"Failed to start Ray cluster using hostfile {hostfile} due to master node missing. Please ensure that the file exists and has the correct format."
+            f"Failed to start Ray cluster using hostfile due to master node missing. Please ensure that the file exists and has the correct format."
         )
     if head_port is None:
         port = check_and_get_port()
@@ -92,61 +86,67 @@ def start_cluster(task_config):
         sys.exit(head_result.returncode)
     address = f"{head_ip}:{port}"
 
-    for item in hostfile.nodes:
-        if "node" in item:
-            node = item.node
-            if node.type == "gpu":
-                node_cmd = (
-                    f"ray stop && ray start --address={address} --num-gpus={node.slots}"
-                )
-
-            elif node.type == "cpu":
-                node_cmd = (
-                    f"ray stop && ray start --address={address} --num-cpus={node.slots}"
-                )
-            else:
-                resource = json.dumps({node.type: node.slots}).replace(
-                    '"', '\\"'
-                )
-                node_cmd = (
-                    f"ray stop && ray start --address={address} --resources='{resource}'"
-                )
-            if task_config.experiment.get("cmds", "") and task_config.experiment.cmds.get(
-                "before_start", ""
-            ):
-                before_start_cmd = task_config.experiment.cmds.before_start
-                node_cmd = (
-                    f"{before_start_cmd} && "
-                    + node_cmd
-                )
-
-            if node.get("port", None):
-                ssh_cmd = f'ssh -n -p {node.port} {node.ip} "{node_cmd}"'
-            else:
-                ssh_cmd = f'ssh -n {node.ip} "{node_cmd}"'
-
-            if node.get("docker", None):
-                ssh_cmd = f'ssh -n {node.ip} "docker exec {node.docker} /bin/bash -c \'{node_cmd}\'"'
-
-            logger.info(f"worker node command: {cmd}")
-            print("=========== ssh_cmd =============== ", ssh_cmd)
-
-            result = subprocess.run(
-                ssh_cmd,
-                shell=True,
-                check=True,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+    for node in nodes[1:]:
+        if not node.get("type", None):
+            raise ValueError(
+                f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
             )
-            if result.returncode != 0:
-                logger.warning(
-                    f"SSH command {ssh_cmd} failed with return code {result.returncode}."
-                )
-                logger.warning(f"Output: {result.stdout}")
-                logger.warning(f"Error: {result.stderr}")
-                sys.exit(result.returncode)
+        if not node.get("slots", None):
+            raise ValueError(
+                f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+            )
+        if node.type == "gpu":
+            node_cmd = (
+                f"ray stop && ray start --address={address} --num-gpus={node.slots}"
+            )
+
+        elif node.type == "cpu":
+            node_cmd = (
+                f"ray stop && ray start --address={address} --num-cpus={node.slots}"
+            )
+        else:
+            resource = json.dumps({node.type: node.slots}).replace(
+                '"', '\\"'
+            )
+            node_cmd = (
+                f"ray stop && ray start --address={address} --resources='{resource}'"
+            )
+        if task_config.experiment.get("cmds", "") and task_config.experiment.cmds.get(
+            "before_start", ""
+        ):
+            before_start_cmd = task_config.experiment.cmds.before_start
+            node_cmd = (
+                f"{before_start_cmd} && "
+                + node_cmd
+            )
+
+        if node.get("port", None):
+            ssh_cmd = f'ssh -n -p {node.port} {node.ip} "{node_cmd}"'
+        else:
+            ssh_cmd = f'ssh -n {node.ip} "{node_cmd}"'
+
+        if node.get("docker", None):
+            ssh_cmd = f'ssh -n {node.ip} "docker exec {node.docker} /bin/bash -c \'{node_cmd}\'"'
+
+        logger.info(f"worker node command: {cmd}")
+        print("=========== ssh_cmd =============== ", ssh_cmd)
+
+        result = subprocess.run(
+            ssh_cmd,
+            shell=True,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if result.returncode != 0:
+            logger.warning(
+                f"SSH command {ssh_cmd} failed with return code {result.returncode}."
+            )
+            logger.warning(f"Output: {result.stdout}")
+            logger.warning(f"Error: {result.stderr}")
+            sys.exit(result.returncode)
 
 def vllm_multiple_nodes_serve(args):
     vllm_args = args["serve"]["model_args"]["vllm_model"]
@@ -187,8 +187,8 @@ def vllm_multiple_nodes_serve(args):
 
 
 def main():
-    hostfile = serve.task_config.serve.get("hostfile", None)
-    if hostfile:
+    nodes = serve.task_config.serve.get("nodes", None)
+    if nodes:
         start_cluster(serve.task_config)
         return_code = vllm_multiple_nodes_serve(serve.task_config)
     else:

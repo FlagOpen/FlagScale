@@ -174,6 +174,7 @@ class SSHServeRunner(RunnerBase):
         self.resources = parse_hostfile(
             self.config.experiment.runner.get("hostfile", None)
         )
+        self.config.serve["nodes"] = list(self.resources.items())
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
@@ -194,33 +195,11 @@ class SSHServeRunner(RunnerBase):
 
         cmd = shlex.join(export_cmd + ["python"] + [self.user_script] + self.user_args)
 
-        logging_config = self.config.serve.logging
         host_run_script_file = _generate_run_script_serve(
             self.config, host, node_rank, cmd, background=True, with_test=with_test
         )
 
-        if host != "localhost":
-            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
-            # Step 1: make sure the scripts_dir exists on the remote host
-            run_ssh_command(
-                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, dryrun
-            )
-
-            # Step 2: copy the host_run_script_file to the remote host
-            no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
-            if no_shared_fs:
-                run_scp_command(
-                    host,
-                    host_run_script_file,
-                    logging_config.scripts_dir,
-                    ssh_port,
-                    dryrun,
-                )
-
-            # Step 3: run the host_run_script_file on the remote host
-            run_ssh_command(host, f"bash {host_run_script_file}", ssh_port, dryrun)
-        else:
-            run_local_command(f"bash {host_run_script_file}", dryrun)
+        run_local_command(f"bash {host_run_script_file}", dryrun)
 
     def run(self, with_test=False, dryrun=False):
         num_visible_devices = None
@@ -231,51 +210,21 @@ class SSHServeRunner(RunnerBase):
 
         runner_config = self.config.experiment.runner
 
-        # If hostfile is provided, use the resources from the hostfile
-        if self.resources is not None:
-            nnodes_from_hostfile = len(self.resources.keys())
-            nnodes_from_args = runner_config.get("nnodes", None)
-            nnodes = get_nnodes(nnodes_from_hostfile, nnodes_from_args)
-            available_ip = list(self.resources.keys())[0]
-            available_port = get_free_port()
-            for node_rank, (host, resource_info) in enumerate(self.resources.items()):
-                if node_rank >= nnodes:
-                    break
-                nproc_from_hostfile = resource_info["slots"]
-                nproc_from_args = runner_config.get("nproc_per_node", None)
-                nproc_per_node = get_nproc_per_node(
-                    nproc_from_hostfile, nproc_from_args, num_visible_devices
-                )
-                master_addr = runner_config.get("master_addr", available_ip)
-                master_port = runner_config.get("master_port", available_port)
-                self._run_each(
-                    host,
-                    master_addr,
-                    master_port,
-                    nnodes,
-                    node_rank,
-                    nproc_per_node,
-                    with_test=with_test,
-                    dryrun=dryrun,
-                )
-        else:
-            # If hostfile is not provided, run the job on localhost
-            nproc_from_args = runner_config.get("nproc_per_node", None)
-            nproc_per_node = get_nproc_per_node(
-                None, nproc_from_args, num_visible_devices
-            )
-            available_addr = runner_config.get("master_addr", "localhost")
-            available_port = runner_config.get("master_port", get_free_port())
-            self._run_each(
-                "localhost",
-                available_addr,
-                available_port,
-                1,
-                0,
-                nproc_per_node,
-                with_test=with_test,
-                dryrun=dryrun,
-            )
+        # If hostfile is not provided, run the job on localhost
+        nproc_from_args = runner_config.get("nproc_per_node", None)
+        nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
+        available_addr = runner_config.get("master_addr", "localhost")
+        available_port = runner_config.get("master_port", get_free_port())
+        self._run_each(
+            "localhost",
+            available_addr,
+            available_port,
+            1,
+            0,
+            nproc_per_node,
+            with_test=with_test,
+            dryrun=dryrun,
+        )
 
     def _stop_each(self, host, node_rank):
         host_stop_script_file = _generate_stop_script(self.config, host, node_rank)
