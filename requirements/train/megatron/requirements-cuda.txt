@@ -2,7 +2,7 @@ torch
 pybind11
 einops
 flask-restful
-nltk 
+nltk==3.8.1
 sentencepiece
 tiktoken
 wrapt
@@ -10,6 +10,9 @@ zarr
 tensorstore==0.1.45
 wandb
 triton
+s3fs
+
+git+https://github.com/fanshiqing/grouped_gemm@v1.1.4
 
 # git+https://github.com/Dao-AILab/causal-conv1d.git@v1.2.2.post1
 
