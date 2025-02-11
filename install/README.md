@@ -1,13 +1,13 @@
 # Install the Development Version of FlagScale Environment
 
 ```bash
-./install-flagscale-base.sh dev
-./install-flagscale-inference.sh dev
+./install-base-requirements.sh dev
+./install-inference-requirements.sh dev
 ```
 
 # Install the Stable Version of FlagScale Environment
 
 ```bash
-./install-flagscale-base.sh
-./install-flagscale-inference.sh
+./install-base-requirements.sh
+./install-inference-requirements.sh
 ```
