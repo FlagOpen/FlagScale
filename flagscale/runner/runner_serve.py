@@ -102,7 +102,7 @@ def _generate_run_script_serve(
                 f.write(f"\n")
                 f.write(f"# worker nodes\n")
                 address = f"{master_ip}:{master_port}"
-                for node in nodes[1:]:
+                for ip, node in nodes[1:]:
                     if not node.get("type", None):
                         raise ValueError(
                             f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
@@ -128,12 +128,12 @@ def _generate_run_script_serve(
                         node_cmd = f"{before_start_cmd} && " + node_cmd
 
                     if node.get("port", None):
-                        ssh_cmd = f'ssh -n -p {node.port} {node.ip} "{node_cmd}"'
+                        ssh_cmd = f'ssh -n -p {node.port} {ip} "{node_cmd}"'
                     else:
-                        ssh_cmd = f'ssh -n {node.ip} "{node_cmd}"'
+                        ssh_cmd = f'ssh -n {ip} "{node_cmd}"'
 
                     if node.get("docker", None):
-                        ssh_cmd = f"ssh -n {node.ip} \"docker exec {node.docker} /bin/bash -c '{node_cmd}'\""
+                        ssh_cmd = f"ssh -n {ip} \"docker exec {node.docker} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}")
 
         f.write(f"{before_start}\n")
