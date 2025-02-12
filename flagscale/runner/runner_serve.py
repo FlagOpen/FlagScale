@@ -99,6 +99,11 @@ def _generate_run_script_serve(
         if nodes:
             master_ip = nodes[0][0]
             target_port = nodes[0][1].get("port")
+            before_start_cmd = None
+            if config.experiment.get("cmds", "") and config.experiment.cmds.get(
+                "before_start", ""
+            ):
+                before_start_cmd = config.experiment.cmds.before_start
 
             f.write(f"# clean nodes \n")
             if len(nodes) > 1:
@@ -113,6 +118,9 @@ def _generate_run_script_serve(
                         )
                     node_cmd = f"ray stop"
 
+                    if before_start_cmd:
+                        node_cmd = f"{before_start_cmd} && " + node_cmd
+
                     if node.get("port", None):
                         ssh_cmd = f'ssh -n -p {node.port} {ip} "{node_cmd}"'
                     else:
@@ -121,14 +129,23 @@ def _generate_run_script_serve(
                     if node.get("docker", None):
                         ssh_cmd = f"ssh -n {ip} \"docker exec {node.docker} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
-            f.write(f"ray stop\n")
+            if before_start_cmd:
+                f.write(f"{before_start_cmd} && ray stop\n")
+            else:
+                f.write(f"ray stop\n")
             f.write(f"\n")
 
             master_port = target_port if target_port else get_free_port()
 
             f.write(f"# start cluster\n")
             f.write(f"# master node\n")
-            f.write(f"ray start --head --port={master_port}\n")
+            if before_start_cmd:
+                f.write(
+                    f"{before_start_cmd} && ray start --head --port={master_port}\n"
+                )
+            else:
+                f.write(f"ray start --head --port={master_port}\n")
+
             if len(nodes) > 1:
                 f.write(f"\n")
                 f.write(f"# worker nodes\n")
