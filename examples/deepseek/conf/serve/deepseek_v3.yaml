@@ -1,0 +1,26 @@
+model_args:
+  vllm_model:
+    model-tag: /models/deepseek_v3/model # path of weight of deepseek v3
+    tensor-parallel-size: 8
+    pipeline-parallel-size: 2
+    gpu-memory-utilization: 0.9
+    max-num-seqs: 256
+    port: 9010 # port to serve
+    action-args:
+      - trust-remote-code
+      - enable-chunked-prefill
+
+deploy:
+  command-line-mode: true
+
+hostfile:
+  nodes:
+    - master:
+        ip: x.x.x.x
+        slots: 8
+        type: gpu
+    - node:
+        ip: x.x.x.x
+        slots: 8
+        type: gpu
+        docker: ds
