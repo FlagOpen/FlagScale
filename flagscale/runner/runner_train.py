@@ -21,6 +21,8 @@ from flagscale.runner.runner_utils import (
     run_ssh_command,
 )
 
+_MAX_CPU_COUNT = multiprocessing.cpu_count()
+
 
 def _get_args_megatron(config: DictConfig):
     assert (
@@ -416,7 +418,8 @@ class SSHTrainRunner(RunnerBase):
             nnodes = get_nnodes(nnodes_from_hostfile, nnodes_from_args)
             available_ip = list(self.resources.keys())[0]
             available_port = get_free_port()
-            with multiprocessing.Pool(processes=nnodes) as pool:
+            num_processes = min(nnodes, _MAX_CPU_COUNT)
+            with multiprocessing.Pool(processes=num_processes) as pool:
                 tasks = []
                 for node_rank, (host, resource_info) in enumerate(
                     self.resources.items()
@@ -437,7 +440,9 @@ class SSHTrainRunner(RunnerBase):
                         dryrun,
                     )
                     tasks.append(args)
-                pool.starmap(run_node, tasks)
+
+                for i in range(0, len(tasks), num_processes):
+                    pool.starmap(run_node, tasks[i : i + num_processes])
         else:
             # If hostfile is not provided, run the job on localhost
             visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
@@ -505,7 +510,8 @@ class SSHTrainRunner(RunnerBase):
             len(self.resources), self.config.experiment.runner.get("nnodes", None)
         )
 
-        with multiprocessing.Pool(processes=nnodes) as pool:
+        num_processes = min(nnodes, _MAX_CPU_COUNT)
+        with multiprocessing.Pool(processes=num_processes) as pool:
             tasks = []
             for node_rank, (host, _) in enumerate(self.resources.items()):
                 if node_rank >= nnodes:
@@ -515,7 +521,9 @@ class SSHTrainRunner(RunnerBase):
                     node_rank,
                 )
                 tasks.append(args)
-            pool.starmap(self._stop_each, tasks)
+
+            for i in range(0, len(tasks), num_processes):
+                pool.starmap(self._stop_each, tasks[i : i + num_processes])
 
     def _generate_query_script(self, host, node_rank):
         """Genetrate the query script for each host."""
