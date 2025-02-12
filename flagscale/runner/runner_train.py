@@ -1,3 +1,4 @@
+import multiprocessing
 import os
 import shlex
 import time
@@ -145,24 +146,18 @@ def _get_runner_cmd_train(
         del runner_args["hostfile"]
     if "ssh_port" in runner_args:
         del runner_args["ssh_port"]
+    if "master_addr" in runner_args:
+        del runner_args["master_addr"]
+    if "master_port" in runner_args:
+        del runner_args["master_port"]
     runner_args["rdzv_id"] = rdzv_id
-
-    if "master_addr" in runner_args and "master_port" in runner_args:
-        runner_args["master_addr"] = master_addr
-        runner_args["master_port"] = master_port
-    else:
-        if "master_addr" in runner_args:
-            del runner_args["master_addr"]
-        if "master_port" in runner_args:
-            del runner_args["master_port"]
-
+    # runner_args["master_addr"] = master_addr
+    # runner_args["master_port"] = master_port
     runner_args["nnodes"] = nnodes
     runner_args["node_rank"] = node_rank
     runner_args["nproc_per_node"] = nproc_per_node
-
-    if not ("master_addr" in runner_args and "master_port" in runner_args):
-        runner_args["rdzv_backend"] = rdzv_backend
-        runner_args["rdzv_endpoint"] = rdzv_endpoint
+    runner_args["rdzv_backend"] = rdzv_backend
+    runner_args["rdzv_endpoint"] = rdzv_endpoint
 
     runner_args["log_dir"] = (
         log_dir if backend == "torchrun" else os.path.join(log_dir, rdzv_id)
@@ -286,6 +281,45 @@ def _generate_stop_script_train(config, host, node_rank):
     return host_stop_script_file
 
 
+def run_node(
+    func,
+    node_rank,
+    host,
+    resource_info,
+    user_envs,
+    runner_config,
+    nnodes,
+    available_ip,
+    available_port,
+    with_test,
+    dryrun,
+):
+    cur_envs = add_decive_extra_config(user_envs, resource_info["type"])
+    visible_devices = cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+    if visible_devices is not None and isinstance(visible_devices, str):
+        visible_devices = visible_devices.split(",")
+        num_visible_devices = len(visible_devices)
+    nproc_from_hostfile = resource_info["slots"]
+    nproc_from_args = runner_config.get("nproc_per_node", None)
+    nproc_per_node = get_nproc_per_node(
+        nproc_from_hostfile, nproc_from_args, num_visible_devices
+    )
+    master_addr = runner_config.get("master_addr", available_ip)
+    master_port = runner_config.get("master_port", available_port)
+    func(
+        host,
+        master_addr,
+        master_port,
+        nnodes,
+        node_rank,
+        nproc_per_node,
+        device_type=resource_info["type"],
+        with_test=with_test,
+        dryrun=dryrun,
+        cur_envs=cur_envs,
+    )
+
+
 class SSHTrainRunner(RunnerBase):
     def __init__(self, config: DictConfig):
         super().__init__(config)
@@ -298,7 +332,6 @@ class SSHTrainRunner(RunnerBase):
         self.user_args = _get_args_megatron(self.config)
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         self.user_envs = self.config.experiment.get("envs", {})
-        self.cur_envs = None  # current node envs
         self.user_script = self.config.experiment.task.entrypoint
         self.resources = parse_hostfile(
             self.config.experiment.runner.get("hostfile", None)
@@ -317,10 +350,11 @@ class SSHTrainRunner(RunnerBase):
         device_type=None,
         with_test=False,
         dryrun=False,
+        cur_envs=None,
     ):
         export_cmd = []
 
-        for k, v in self.cur_envs.items():
+        for k, v in cur_envs.items():
             export_cmd += [f"{k}={v}"]
 
         runner_cmd = _get_runner_cmd_train(
@@ -382,38 +416,31 @@ class SSHTrainRunner(RunnerBase):
             nnodes = get_nnodes(nnodes_from_hostfile, nnodes_from_args)
             available_ip = list(self.resources.keys())[0]
             available_port = get_free_port()
-            for node_rank, (host, resource_info) in enumerate(self.resources.items()):
-                if node_rank >= nnodes:
-                    break
-                self.cur_envs = add_decive_extra_config(
-                    self.user_envs, resource_info["type"]
-                )
-                visible_devices = self.cur_envs.get("CUDA_VISIBLE_DEVICES", None)
-                if visible_devices is not None and isinstance(visible_devices, str):
-                    visible_devices = visible_devices.split(",")
-                    num_visible_devices = len(visible_devices)
-                nproc_from_hostfile = resource_info["slots"]
-                nproc_from_args = runner_config.get("nproc_per_node", None)
-                nproc_per_node = get_nproc_per_node(
-                    nproc_from_hostfile, nproc_from_args, num_visible_devices
-                )
-                master_addr = runner_config.get("master_addr", available_ip)
-                master_port = runner_config.get("master_port", available_port)
-                self._run_each(
-                    host,
-                    master_addr,
-                    master_port,
-                    nnodes,
-                    node_rank,
-                    nproc_per_node,
-                    device_type=resource_info["type"],
-                    with_test=with_test,
-                    dryrun=dryrun,
-                )
+            with multiprocessing.Pool(processes=nnodes) as pool:
+                tasks = []
+                for node_rank, (host, resource_info) in enumerate(
+                    self.resources.items()
+                ):
+                    if node_rank >= nnodes:
+                        break
+                    args = (
+                        self._run_each,
+                        node_rank,
+                        host,
+                        resource_info,
+                        self.user_envs,
+                        runner_config,
+                        nnodes,
+                        available_ip,
+                        available_port,
+                        with_test,
+                        dryrun,
+                    )
+                    tasks.append(args)
+                pool.starmap(run_node, tasks)
         else:
             # If hostfile is not provided, run the job on localhost
-            self.cur_envs = self.user_envs
-            visible_devices = self.cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+            visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
             if visible_devices is not None and isinstance(visible_devices, str):
                 visible_devices = visible_devices.split(",")
                 num_visible_devices = len(visible_devices)
@@ -478,10 +505,17 @@ class SSHTrainRunner(RunnerBase):
             len(self.resources), self.config.experiment.runner.get("nnodes", None)
         )
 
-        for node_rank, (host, _) in enumerate(self.resources.items()):
-            if node_rank >= nnodes:
-                break
-            self._stop_each(host, node_rank)
+        with multiprocessing.Pool(processes=nnodes) as pool:
+            tasks = []
+            for node_rank, (host, _) in enumerate(self.resources.items()):
+                if node_rank >= nnodes:
+                    break
+                args = (
+                    host,
+                    node_rank,
+                )
+                tasks.append(args)
+            pool.starmap(self._stop_each, tasks)
 
     def _generate_query_script(self, host, node_rank):
         """Genetrate the query script for each host."""
