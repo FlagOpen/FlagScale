@@ -84,6 +84,8 @@ def _generate_run_script_serve(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
     cmds_config = config.experiment.get("cmds", None)
+    ssh_port = config.experiment.runner.get("ssh_port", None)
+    docker_name = config.experiment.runner.get("docker", None)
     if cmds_config:
         before_start = cmds_config.get("before_start", "")
     else:
@@ -121,13 +123,13 @@ def _generate_run_script_serve(
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
 
-                    if node.get("port", None):
-                        ssh_cmd = f'ssh -n -p {node.port} {ip} "{node_cmd}"'
+                    if ssh_port:
+                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
                     else:
                         ssh_cmd = f'ssh -n {ip} "{node_cmd}"'
 
-                    if node.get("docker", None):
-                        ssh_cmd = f"ssh -n {ip} \"docker exec {node.docker} /bin/bash -c '{node_cmd}'\""
+                    if docker_name:
+                        ssh_cmd = f"ssh -n {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
             if before_start_cmd:
                 f.write(f"{before_start_cmd} && ray stop\n")
@@ -181,13 +183,13 @@ def _generate_run_script_serve(
                         before_start_cmd = config.experiment.cmds.before_start
                         node_cmd = f"{before_start_cmd} && " + node_cmd
 
-                    if node.get("port", None):
-                        ssh_cmd = f'ssh -n -p {node.port} {ip} "{node_cmd}"'
+                    if ssh_port:
+                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
                     else:
                         ssh_cmd = f'ssh -n {ip} "{node_cmd}"'
 
-                    if node.get("docker", None):
-                        ssh_cmd = f"ssh -n {ip} \"docker exec {node.docker} /bin/bash -c '{node_cmd}'\""
+                    if docker_name:
+                        ssh_cmd = f"ssh -n {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
 
         f.write(f"mkdir -p {logging_config.log_dir}\n")

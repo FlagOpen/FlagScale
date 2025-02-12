@@ -1,5 +1,5 @@
-# ip slots type=xxx[optional] port=xxx[optional] docker=xxx[optional]
+# ip slots type=xxx[optional]
 # master node
 x.x.x.x slots=8 type=gpu 
 # worker nodes
-x.x.x.x slots=8 type=gpu docker=ds
+x.x.x.x slots=8 type=gpu

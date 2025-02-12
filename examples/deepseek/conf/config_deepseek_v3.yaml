@@ -11,7 +11,7 @@ experiment:
     entrypoint: null
   runner:
     hostfile: examples/deepseek/conf/hostfile.txt
-    ssh_port: 22 # replace with your ssh port
+    docker: ds
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     USE_FLAGGEMMS: true

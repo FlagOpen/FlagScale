@@ -22,10 +22,8 @@ def parse_hostfile(hostfile_path):
         )
         return None
 
-    # e.g., ip slots=8 type=A100[optional] port=xxx[optional] docker=my_docker[optional]
-    pattern = re.compile(
-        r"^(\S+)\s+slots=(\d+)(?:\s+type=(\S+))?(?:\s+port=(\S+))?(?:\s+docker=(\S+))?"
-    )
+    # e.g., ip slots=8 type=A100[optional]
+    pattern = re.compile(r"^(\S+)\s+slots=(\d+)(?:\s+type=(\S+))?")
 
     resources = collections.OrderedDict()
 
@@ -42,21 +40,11 @@ def parse_hostfile(hostfile_path):
             host = match.group(1)
             num_slots = int(match.group(2))
             machine_type = match.group(3) if match.group(3) else None
-            port = match.group(4) if match.group(4) else None
-            docker_name = match.group(5) if match.group(5) else None
             if host in resources:
                 log_and_raise_error(
                     f"Hostfile contains multiple entries for host: {host}."
                 )
-            if port or docker_name:
-                resources[host] = {
-                    "slots": num_slots,
-                    "type": machine_type,
-                    "port": int(port) if port else None,
-                    "docker": docker_name,
-                }
-            else:
-                resources[host] = {"slots": num_slots, "type": machine_type}
+            resources[host] = {"slots": num_slots, "type": machine_type}
         else:
             log_and_raise_error(f"Invalid entry in hostfile: {line}.")
 
