@@ -143,7 +143,6 @@ class TestLLaVAModel:
             inference_params,
             image_token_index,
             num_image_tiles,
-            image_token_mask,
         )
 
         img_seq_len = 577
@@ -320,21 +319,27 @@ class TestLLaVAModel:
         # Try with labels and PackedSeqParams. Only micro batch size 1 is supported in this mode.
         packed_seq_params = PackedSeqParams(
             qkv_format="thd",
-            cu_seqlens_q=[0, 512, 1024, 1600],  # Just example values.
-            cu_seqlens_kv=[0, 512, 1024, 1600],
-            max_seqlen_q=[1600],
-            max_seqlen_kv=[1600],
+            cu_seqlens_q=torch.tensor(
+                [0, 512, 1024, 1600], dtype=torch.int32
+            ).cuda(),  # Just example values.
+            cu_seqlens_kv=torch.tensor([0, 512, 1024, 1600], dtype=torch.int32).cuda(),
+            max_seqlen_q=torch.tensor(1600, dtype=torch.int32).cuda(),
+            max_seqlen_kv=torch.tensor(1600, dtype=torch.int32).cuda(),
         )
 
+        # NOTE: Packing is only supported with BF16. Use BF16 here and switch back to default.
+        self.model.to(torch.bfloat16)
         loss, new_loss_mask = self.model.forward(
-            img[:1],
+            img[:1].to(torch.bfloat16),
             input_ids[:1],
             position_ids[:1],
             attention_mask,
             labels[:1],
             loss_mask[:1],
             num_image_tiles=num_image_tiles[:1],
+            packed_seq_params=packed_seq_params,
         )
+        self.model.to(torch.float32)
 
         # 1600 = 577 (img_seq_len) + 1024 (text tokens in the first sample) - 1 (image token).
         assert loss.shape == new_loss_mask.shape == torch.Size((1, 1600))
@@ -563,12 +568,14 @@ class TestLLaVAModelTokenParallel:
 
     @pytest.mark.internal
     @pytest.mark.parametrize(
-        "cp_size,tp_size,sequence_parallel", [(1, 8, True), (2, 4, False), (2, 4, True)]
+        "cp_size,tp_size,sequence_parallel,padding",
+        [(1, 8, True, True), (2, 4, False, True), (2, 4, True, False), (2, 4, True, True)],
     )
-    def test_process_embedding_token_parallel(self, cp_size, tp_size, sequence_parallel):
+    def test_process_embedding_token_parallel(self, cp_size, tp_size, sequence_parallel, padding):
         self.cp_size = cp_size
         self.tp_size = tp_size
         self.sequence_parallel = sequence_parallel
+        self.padding = padding
         Utils.initialize_model_parallel(
             tensor_model_parallel_size=self.tp_size, context_parallel_size=self.cp_size
         )
@@ -585,8 +592,13 @@ class TestLLaVAModelTokenParallel:
         set_args(args)
 
         batch_size = 2
-        combined_valid_seqlen = 2049
-        combined_padded_seqlen = 2056
+        if self.padding:
+            combined_valid_seqlen = 2049
+            combined_padded_seqlen = 2064
+        else:
+            combined_valid_seqlen = 2048
+            combined_padded_seqlen = 2048
+
         if self.cp_size > 1:
             combined_embeddings = torch.ones(
                 [batch_size, combined_padded_seqlen, 4096], device='cuda', dtype=torch.bfloat16
@@ -617,6 +629,20 @@ class TestLLaVAModelTokenParallel:
             device=combined_embeddings.device,
         )
 
+        qkv_format = 'sbhd'  # Default format when not using padding
+        if self.cp_size > 1 and self.padding:
+            # Reshape from [B,S] to [1,T]
+            combined_embeddings = (
+                combined_embeddings.contiguous()
+                .view(combined_embeddings.shape[0] * combined_embeddings.shape[1], -1)
+                .unsqueeze(0)
+            )
+            new_labels = new_labels.view(new_labels.shape[0] * new_labels.shape[1]).unsqueeze(0)
+            new_loss_mask = new_loss_mask.view(
+                new_loss_mask.shape[0] * new_loss_mask.shape[1]
+            ).unsqueeze(0)
+            qkv_format = 'thd'
+
         packed_seq_params = PackedSeqParams(
             cu_seqlens_q=cu_seqlens,
             cu_seqlens_kv=cu_seqlens,
@@ -624,7 +650,7 @@ class TestLLaVAModelTokenParallel:
             cu_seqlens_kv_padded=cu_seqlens_padded,
             max_seqlen_q=combined_padded_seqlen,
             max_seqlen_kv=combined_padded_seqlen,
-            qkv_format='thd',
+            qkv_format=qkv_format,
         )
 
         combined_embeddings, new_labels, new_loss_mask, packed_seq_params = (
@@ -633,32 +659,34 @@ class TestLLaVAModelTokenParallel:
             )
         )
 
-        # Calculate the expected padded seq length
-        if self.cp_size > 1 and self.sequence_parallel:
-            padding_factor = self.tp_size * self.cp_size * 2
-        elif self.cp_size > 1:
-            padding_factor = self.cp_size * 2
-        elif self.sequence_parallel:
-            padding_factor = self.tp_size
-
-        padded_seq_len = int(
-            (combined_padded_seqlen + (padding_factor - 1)) // padding_factor * padding_factor
-        )
-
         # Check if output shape is as expected
         if self.cp_size > 1 and self.sequence_parallel:
-            # THD format
-            assert combined_embeddings.shape[0] == batch_size * (
-                padded_seq_len / (self.tp_size * self.cp_size)
-            )
-            assert combined_embeddings.shape[1] == 1
+            if self.padding:
+                # THD format
+                assert combined_embeddings.shape[0] == batch_size * (
+                    combined_padded_seqlen / (self.tp_size * self.cp_size)
+                )
+                assert combined_embeddings.shape[1] == 1
+            else:
+                # SBHD format
+                assert combined_embeddings.shape[0] == (
+                    combined_padded_seqlen / (self.tp_size * self.cp_size)
+                )
+                assert combined_embeddings.shape[1] == batch_size
         elif self.cp_size > 1:
-            # THD format
-            assert combined_embeddings.shape[0] == batch_size * (padded_seq_len / self.cp_size)
-            assert combined_embeddings.shape[1] == 1
+            if self.padding:
+                # THD format
+                assert combined_embeddings.shape[0] == batch_size * (
+                    combined_padded_seqlen / self.cp_size
+                )
+                assert combined_embeddings.shape[1] == 1
+            else:
+                # SBHD format
+                assert combined_embeddings.shape[0] == (combined_padded_seqlen / self.cp_size)
+                assert combined_embeddings.shape[1] == batch_size
         else:
             # SBHD format
-            assert combined_embeddings.shape[0] == padded_seq_len / self.tp_size
+            assert combined_embeddings.shape[0] == combined_padded_seqlen / self.tp_size
             assert combined_embeddings.shape[1] == batch_size
 
 
@@ -666,6 +694,12 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters())
 
 
+"""
+    Author: lizhiyu
+    Date: 2024-02-11
+    Action: 
+    Reason: This test always fails. You change `(2, 3, 2, 1) -> (2, 1, 2, 1)` to fix it temporarily.
+"""
 @pytest.mark.internal  # The model is under active development and its methods may change.
 @pytest.mark.parametrize(
     'dtp, dpp, etp, epp', [(1, 1, 1, 0), (1, 1, 1, 1), (2, 1, 2, 0), (2, 3, 2, 1), (2, 4, 2, 0)]

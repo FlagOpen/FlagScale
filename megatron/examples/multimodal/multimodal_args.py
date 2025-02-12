@@ -49,7 +49,7 @@ def add_multimodal_extra_args(parser):
     group.add_argument(
         "--tokenizer-prompt-format",
         type=str,
-        choices=["mistral", "llama3", "chatml", "nvlm-yi-34b", "qwen2p0", "qwen2p5"],
+        choices=["mistral", "llama3", "llama3p1", "chatml", "nvlm-yi-34b", "qwen2p0", "qwen2p5"],
         required=True,
         help="Prompt format to use with the tokenizer.",
     )
@@ -74,6 +74,8 @@ def add_multimodal_extra_args(parser):
     group.add_argument(
         "--recompute-vision", action="store_true", default=False, help="Enable activation checkpointing in the vision model"
     )
-
+    group.add_argument(
+        "--use-loss-scaling", action="store_true", default=False, help="Scale loss based on conversation turn length (in tokens)."
+    )
 
     return parser

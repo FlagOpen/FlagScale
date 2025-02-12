@@ -1,4 +1,6 @@
 #!/bin/bash
+echo "Set fd limit to 65535"
+ulimit -n 65535
 
 if [ -d "/workspace/report/0/cov-report-megatron" ]; then rm -r /workspace/report/0/cov-report-megatron; fi
 if [ -d "/workspace/report/0/cov-temp-megatron" ]; then rm -r /workspace/report/0/cov-temp-megatron; fi

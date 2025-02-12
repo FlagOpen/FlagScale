@@ -1,6 +1,7 @@
 # Copyright (c) 2023, NVIDIA CORPORATION.  All rights reserved.
 
 """ Storage writer for PyT Distributed format allowing asynchronous save. """
+import dataclasses
 import gc
 import logging
 import os
@@ -112,6 +113,8 @@ class FileSystemWriterAsync(FileSystemWriter):
                 'single_file_per_rank flag not supported for FileSystemWriterAsync'
             )
 
+        self.can_run_decentralized_global_plan: bool = True
+
         # Intermediate state between preparation and finalization
         self.write_buckets: Optional[List[WriteBucket]] = None
         self.results_queue: Optional[mp.Queue] = None
@@ -161,6 +164,18 @@ class FileSystemWriterAsync(FileSystemWriter):
                 set_previous_count(file_count)
             return file_name
 
+        def _copy_to_cpu(ten: torch.Tensor):
+            """Pinned D2H copy (or a simple clone() if already on the CPU).
+
+            Makes sure we perform a `clone` only if we detect incontiguous storage,
+            so that we don't blow up host memory unnecessarily.
+            """
+            ten = ten.detach()
+            if ten.device.type != "cpu":
+                return ten.to("cpu", non_blocking=True)
+            is_view = ten.untyped_storage().size() != ten.numel() * ten.itemsize
+            return ten.clone() if is_view else ten
+
         # Prepare bytes / tensor data in each bucket, which will be assigned to each writer process
         self.write_buckets = []
         for group_name, group_buckets in _split_by_separation_hint(
@@ -173,7 +188,7 @@ class FileSystemWriterAsync(FileSystemWriter):
                     if item.type == WriteItemType.BYTE_IO
                 ]
                 tensor_data = [
-                    (item, planner.resolve_data(item).detach().to("cpu", non_blocking=True))
+                    (item, _copy_to_cpu(planner.resolve_data(item)))
                     for item in bucket
                     if item.type != WriteItemType.BYTE_IO
                 ]
@@ -381,6 +396,21 @@ class FileSystemWriterAsync(FileSystemWriter):
                 f' got {len(write_results)}. This probably indicates a worker failure.'
             )
         return list(chain.from_iterable(write_results.values()))
+
+    def prepare_decentralized_global_plan(self, local_plan: SavePlan) -> SavePlan:
+        """Instead of assigning indices by plan order, uses PyT rank (same outcome).
+
+        Args:
+            local_plan (SavePlan): local plan to turn to a global plan
+                (without interactions with other ranks)
+
+        Returns:
+            SavePlan - locally transformed plan equivalent to the plan that would be
+                created by the coordinator
+        """
+        return dataclasses.replace(
+            local_plan, storage_data=_StoragePrefix(f"__{torch.distributed.get_rank()}_")
+        )
 
     def finish(self, metadata: Metadata, results: List[List[WriteResult]]) -> None:
         # Modify based on the original implementation from torch.distributed.checkpoint.filesystem.FileSystemWriter

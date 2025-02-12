@@ -3,7 +3,7 @@ format_version: 1
 maintainers: [mcore]
 loggers: [stdout]
 spec:
-  name: '{test_case}'
+  name: '{test_case}_{environment}_{tag}'
   model: unit-tests
   nodes: 1
   build: mcore-pyt-{environment}
@@ -60,21 +60,70 @@ spec:
       fi
     done <<< "$IGNORE_TEST_CASES"
 
+    echo "------ARGUMENTS for SLURM ---"
+    MASTER_ADDR=${{MASTER_ADDR:-localhost}}
+    MASTER_PORT=${{MASTER_PORT:-6000}}
+    NUM_NODES=${{NUM_NODES:-${{SLURM_NNODES}}}}
+    GPUS_PER_NODE=${{GPUS_PER_NODE:-8}}
+    NODE_RANK=${{SLURM_NODEID:-${{SLURM_NODEID}}}}
+    DISTRIBUTED_ARGS=(
+        --nproc_per_node $GPUS_PER_NODE
+        --nnodes $NUM_NODES
+        --master_addr $MASTER_ADDR
+        --master_port $MASTER_PORT
+        --node_rank $SLURM_NODEID
+        --log-dir {assets_dir}
+        --tee "0:3"
+        --redirects "3"
+    )
+
     for i in $(seq $UNIT_TEST_REPEAT); do
-      CMD=$(echo pytest -xvs --cov-report=term --cov-report=html --cov=megatron/core --no-cov-on-fail ${{IGNORE_ARGS[@]}} -m "'${{MARKER_ARG}}'" $BUCKET)
-      eval "$CMD"
+      CMD=$(echo torchrun ${{DISTRIBUTED_ARGS[@]}} -m pytest -xvs --cov-report=term --cov-report=html --cov=megatron/core --no-cov-on-fail ${{IGNORE_ARGS[@]}} -m "'${{MARKER_ARG}}'" $BUCKET)
+      
+      eval "$CMD" || EXIT_CODE=$?
+
     done
 
 products:
-  - environment: [lts, dev]
-    tag: [latest, legacy]
-    scope: [unit-tests]
-    n_repeat: [1]
-    time_limit: [1800]
-    test_case:
-      - tests/unit_tests/data/
-      - tests/unit_tests/dist_checkpointing/*.py
-      - tests/unit_tests/dist_checkpointing/models/
-      - tests/unit_tests/transformer/*.py
-      - tests/unit_tests/transformer/moe
-      - tests/unit_tests
+  - test_case: [tests/unit_tests/data/]
+    products:
+      - environment: [lts, dev]
+        tag: [latest, legacy]
+        scope: [unit-tests]
+        n_repeat: [1]
+        time_limit: [1800]
+  - test_case: [tests/unit_tests/dist_checkpointing/*.py]
+    products:
+      - environment: [lts, dev]
+        tag: [latest, legacy]
+        scope: [unit-tests]
+        n_repeat: [1]
+        time_limit: [1800]
+  - test_case: [tests/unit_tests/dist_checkpointing/models/]
+    products:
+      - environment: [lts, dev]
+        tag: [latest, legacy]
+        scope: [unit-tests]
+        n_repeat: [1]
+        time_limit: [1800]
+  - test_case: [tests/unit_tests/transformer/*.py]
+    products:
+      - environment: [lts, dev]
+        tag: [latest, legacy]
+        scope: [unit-tests]
+        n_repeat: [1]
+        time_limit: [1800]
+  - test_case: [tests/unit_tests/transformer/moe]
+    products:
+      - environment: [lts, dev]
+        tag: [latest, legacy]
+        scope: [unit-tests]
+        n_repeat: [1]
+        time_limit: [1800]
+  - test_case: [tests/unit_tests]
+    products:
+      - environment: [lts, dev]
+        tag: [latest, legacy]
+        scope: [unit-tests]
+        n_repeat: [1]
+        time_limit: [1800]
