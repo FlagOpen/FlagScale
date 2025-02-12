@@ -7,6 +7,7 @@ experiment:
   seed: 2025
   save_steps: 1000
   load: None
+  # load: /mnt/share/code/lixianduo/FlagScale/tools/checkpoint/deepseek_v3/converted_fake_bf16_model
   exp_dir: /mnt/share/code/lixianduo/FlagScale/outputs_deepseek/${experiment.exp_name}
   ckpt_format: torch
   task:

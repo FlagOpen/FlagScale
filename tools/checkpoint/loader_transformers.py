@@ -174,6 +174,13 @@ def _load_checkpoint(queue, args):
         message = {"weight": hf_model.lm_head.weight.data}
         queue_put("output layer", message)
 
+    message = dict()
+    if margs.num_multi_token_prediction_modules is not None:
+        for mtp_layer_id in range(margs.num_multi_token_prediction_modules):
+            message = dict()
+            ckpt_plugin.get_hf_mtp_ckpt(message, hf_model, mtp_layer_id, margs)
+            queue_put(f"mtp module {mtp_layer_id}", message)
+            
     queue.put("done")
 
 
