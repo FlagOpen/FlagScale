@@ -15,12 +15,16 @@ pip install -r ../requirements/train/megatron/requirements-cuda.txt
 # apex train
 git clone https://github.com/NVIDIA/apex
 cd apex
-pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings '--build-option=--cpp_ext' --config-settings '--build-option=--cuda_ext' ./
+pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --global-option="--use-ninja" --config-settings '--build-option=--cpp_ext' --config-settings '--build-option=--cuda_ext' ./
 cd ..
 rm -r ./apex
 
 # If the dev argument is passed, execute the following command
 if [ "$dev" == "dev" ]; then
-    pip install -r ../requirements/train/megatron/requirements-dev.txt
+    pip install -r ../requirements/train/megatron/requirements-lint.txt
     python -m nltk.downloader -d /root/nltk_data punkt
 fi
+
+rm -r /root/miniconda3/envs/flagscale-train/lib/python3.10/test
+
+conda clean --all -y

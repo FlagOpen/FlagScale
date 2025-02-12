@@ -2,6 +2,7 @@
 
 ```bash
 ./install-base-requirements.sh dev
+./install-train-requirements.sh dev
 ./install-inference-requirements.sh dev
 ```
 
@@ -9,5 +10,6 @@
 
 ```bash
 ./install-base-requirements.sh
+./install-train-requirements.sh
 ./install-inference-requirements.sh
 ```

@@ -19,5 +19,9 @@ if [ "$dev" == "dev" ]; then
     pip install -r ../vllm/requirements-dev.txt
 fi
 
+MAX_JOBS=96 pip install --no-build-isolation -v -e ../vllm/.
+
 # Navigate to requirements directory and install serving dependencies
 pip install -r ../requirements/serving/requirements.txt
+
+conda clean --all -y

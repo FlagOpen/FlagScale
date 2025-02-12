@@ -16,7 +16,6 @@ pip install -r ../requirements/requirements-common.txt
 git clone -b stable https://github.com/NVIDIA/TransformerEngine.git
 cd TransformerEngine
 git submodule update --init --recursive
-pip install pybind11
 pip install .
 cd ..
 rm -r ./TransformerEngine
@@ -25,3 +24,5 @@ rm -r ./TransformerEngine
 if [ "$dev" == "dev" ]; then
     pip install -r ../requirements/requirements-dev.txt
 fi
+
+conda clean --all -y
