@@ -5,6 +5,7 @@ For production use, we recommend using our OpenAI compatible server.
 We are also not going to accept PRs modifying this file, please
 change `vllm/entrypoints/openai/api_server.py` instead.
 """
+import os
 import asyncio
 import json
 import ssl
@@ -110,6 +111,15 @@ async def init_app(
               if llm_engine is not None else AsyncLLMEngine.from_engine_args(
                   engine_args, usage_context=UsageContext.API_SERVER))
 
+    if os.getenv("USE_FLAGGEMMS", "false").lower() in ("1", "true", "yes"):
+        try:
+            import flag_gems
+            flag_gems.enable()
+            logger.info("Successfully enabled flag_gems as default ops implementation.")
+        except ImportError:
+            logger.warning("Failed to import 'flag_gems'. Falling back to default implementation.")
+        except Exception as e:
+            logger.warning(f"Failed to enable 'flag_gems': {e}. Falling back to default implementation.")
     return app
 
 
