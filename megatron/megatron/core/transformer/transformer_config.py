@@ -263,6 +263,16 @@ class TransformerConfig(ModelParallelConfig):
     tp_only_amax_red: bool = False
     """When set to True, reduce the FP8 AMAX only in the TP or TP-CP domain"""
 
+
+    ####################
+    # MTP related
+    ####################
+    num_multi_token_prediction_modules: int = None
+    """The num of multi token prediction modules added to model"""
+
+
+
+
     ####################
     # MoE related
     ####################
@@ -329,6 +339,9 @@ class TransformerConfig(ModelParallelConfig):
 
     moe_router_score_function: str = "softmax"
     """Score function for MoE routing. Can be "softmax" or "sigmoid"."""
+
+    moe_num_first_k_dense_layers: int = None
+    """Determines first k dense layers when using moe."""
 
     moe_router_enable_expert_bias: bool = False
     """TopK routing with dynamic per-expert bias in the aux-loss-free load balancing strategy.
@@ -909,3 +922,4 @@ class MLATransformerConfig(TransformerConfig):
 
     mscale_all_dim: float = 0.707
     """Mscale all dimensions for YaRN RoPE in Multi-Latent Attention."""
+

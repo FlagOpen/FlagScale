@@ -48,6 +48,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_autoresume_args(parser)
     parser = _add_biencoder_args(parser)
     parser = _add_vision_args(parser)
+    parser = _add_mtp_args(parser)
     parser = _add_moe_args(parser)
     parser = _add_mla_args(parser)
     parser = _add_logging_args(parser)
@@ -451,10 +452,14 @@ def validate_args(args, defaults={}):
     }
     map_dtype = lambda d: d if isinstance(d, torch.dtype) else dtype_map[d]
 
-    args.main_grads_dtype = map_dtype(args.main_grads_dtype)
-    args.main_params_dtype = map_dtype(args.main_params_dtype)
-    args.exp_avg_dtype = map_dtype(args.exp_avg_dtype)
-    args.exp_avg_sq_dtype = map_dtype(args.exp_avg_sq_dtype)
+    if args.main_grads_dtype in dtype_map.keys():
+        args.main_grads_dtype = dtype_map[args.main_grads_dtype]
+    if args.main_params_dtype in dtype_map.keys():
+        args.main_params_dtype = dtype_map[args.main_params_dtype]
+    if args.exp_avg_dtype in dtype_map.keys():
+        args.exp_avg_dtype = dtype_map[args.exp_avg_dtype]
+    if args.exp_avg_sq_dtype in dtype_map.keys():
+        args.exp_avg_sq_dtype = dtype_map[args.exp_avg_sq_dtype]
 
     if args.fp8_param_gather:
         assert args.use_distributed_optimizer, \
@@ -2221,6 +2226,16 @@ def _add_biencoder_args(parser):
     return parser
 
 
+def _add_mtp_args(parser):
+    # add args for Multi-token Prediction module
+    group = parser.add_argument_group(title="mtp")
+
+    # general mtp arguements
+    group.add_argument('--num-multi-token-prediction-modules', type=int, default=1,
+                       help='num of multi token prediction modules')
+
+    return parser
+
 def _add_vision_args(parser):
     group = parser.add_argument_group(title="vision")
 
@@ -2329,6 +2344,9 @@ def _add_moe_args(parser):
                        choices=['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'],
                        default='aux_loss',
                        help='Determines the load balancing strategy for the router. "aux_loss" corresponds to the load balancing loss used in GShard and SwitchTransformer; "seq_aux_loss" corresponds to the load balancing loss used in DeepSeekV2, which computes the loss for each individual sample; "sinkhorn" corresponds to the balancing algorithm used in S-BASE, and "none" implies no load balancing. The default is "aux_loss".')
+    group.add_argument('--moe-num-first-k-dense-layers', type=int,
+                       default=None,
+                       help='Determines first k dense layers when using moe.')
     group.add_argument('--moe-router-score-function', type=str,
                        choices=['softmax', 'sigmoid'],
                        default='softmax',
@@ -2481,3 +2499,4 @@ def _add_auto_skip_spiky_loss(parser):
     group.add_argument('--spiky-loss-threshold', type=float, default=0.2,
                           help='Threshold for skipping spiky loss iterations.')
     return parser
+

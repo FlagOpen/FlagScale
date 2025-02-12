@@ -273,6 +273,8 @@ class GPTModel(LanguageModule):
             **(extra_block_kwargs or {}),
         )
 
+        self.hidden_states_for_mtp = hidden_states
+        
         if not self.post_process:
             return hidden_states
 
@@ -329,3 +331,4 @@ class GPTModel(LanguageModule):
         ), f'Expected output layer extra state to be empty, got: {output_extra_state}'
 
         return sharded_state_dict
+

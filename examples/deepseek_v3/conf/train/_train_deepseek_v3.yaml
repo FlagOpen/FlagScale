@@ -1,0 +1,129 @@
+      
+system:
+  no_shared_fs: ${experiment.runner.no_shared_fs}
+  num_workers: 16
+  tensor_model_parallel_size: 1
+  pipeline_model_parallel_size: 1
+  expert_model_parallel_size: 1
+  context_parallel_size: 1
+  disable_bias_linear: true
+  add_qkv_bias: true
+  qk_layernorm: true
+  sequence_parallel: true
+  use_distributed_optimizer: true
+  # recompute_method: "uniform"
+  # recompute_granularity: "full"
+  # recompute_num_layers: 1
+  overlap_grad_reduce: true
+  overlap_param_gather: true
+  precision:
+    bf16: true
+    attention_softmax_in_fp32: true
+    accumulate_allreduce_grads_in_fp32: true
+  logging:
+    log_interval: 1
+    tensorboard_log_interval: 1
+    wandb_project: ${experiment.exp_name}
+    wandb_exp_name: ${experiment.exp_name}
+    # wandb_mode: "online"
+    # wandb_api_key: "731c4d248b7b7352da8d1f0772d4ad26aaed49c4"
+    log_timers_to_tensorboard: true
+    log_validation_ppl_to_tensorboard: true
+    log_throughput: true
+    log_params_norm: true
+    log_num_zeros_in_grad: true
+    log_memory_to_tensorboard: true
+  checkpoint:
+    save_interval: ${experiment.save_steps}
+    load: ${experiment.load}
+    ckpt_format: ${experiment.ckpt_format}
+
+
+
+
+model:
+  transformer_impl: transformer_engine
+  num_layers: 8
+  hidden_size: 256
+  ffn_hidden_size: 1192
+  num_attention_heads: 128
+  group_query_attention: true
+  num_query_groups: 128 # num_key_value_heads
+  seq_length: 5120
+  max_position_embeddings: 5120
+  norm_epsilon: 1e-6
+  use_rotary_position_embeddings: true
+  rotary_base: 1000000
+  norm_init_weight: 0.5
+  swiglu: true
+  normalization: RMSNorm
+  init_method_std: 0.02
+  attention_dropout: 0.0
+  hidden_dropout: 0.0
+  untie_embeddings_and_output_weights: true
+  no_position_embedding: true
+
+  # mla args ==================
+  multi_latent_attention: true
+  q_lora_rank: 128
+  kv_lora_rank: 128
+  qk_head_dim: 64
+  qk_pos_emb_head_dim: 64
+  v_head_dim: 128
+
+  # mtp args ==================
+  num_multi_token_prediction_modules: 1
+
+  # moe no route args ===================
+  # moe-use-upcycling: true
+  # moe_layer_recompute: true
+  moe_shared_expert_intermediate_size: 1192
+  num_experts: 8
+  moe_router_load_balancing_type: "aux_loss"
+  moe_num_first_k_dense_layers: 3
+  moe_router_score_function: sigmoid
+  moe_router_enable_expert_bias: true
+  moe_router_bias_update_rate: 0.001
+  moe_router_topk: 2
+  moe_aux_loss_coeff: 0.02
+
+  # training
+  seed: ${experiment.seed}
+  # finetune: true
+  # skip_train: true
+  # finetune: false
+  train_iters: 120000
+  micro_batch_size: 1
+  # global_batch_size: 512
+  global_batch_size: 64
+  eval_interval: 1000
+  # eval_iters: 0 
+  eval_iters: 5
+  # extra_valid_interval: 0
+
+  # optimizer
+  no_load_optim: True
+  no_load_rng: True
+  optimizer: adam
+  lr: 0.0005
+  min_lr: 0.00005
+  weight_decay: 0.1
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  adam_eps: 1.0e-6
+  clip_grad: 1.0
+  lr_warmup_fraction: 0.02
+  lr_decay_iters: 120000
+  lr_decay_style: cosine
+
+
+data:
+  no_create_attention_mask_in_dataloader: true
+  data_path: [569.67,/mnt/share/hetero_data/datasets/Nemotron-CC-HQ/Nemotron-CC-high-synthetic-diverse_qa_pairs_text_document,630.33,/mnt/share/hetero_data/datasets/Nemotron-CC-HQ/Nemotron-CC-high-actual-actual_text_document,100.24,/mnt/share/hetero_data/datasets/K76/CNEDU/wxb_edu_qwen_text_document,62.75,/mnt/share/hetero_data/datasets/K76/CNEDU/k73_edu_qwen_text_document,4.2,/mnt/share/hetero_data/datasets/K76/K73/book-pg19-v3_text_document,0.9,/mnt/share/hetero_data/datasets/K76/K73/book-pile2-v3_text_document,14.39,/mnt/share/hetero_data/datasets/K76/K73/book-pile3-v3_text_document,1.8,/mnt/share/hetero_data/datasets/K76/K73/book-pilepg19-v3_text_document,14.39,/mnt/share/hetero_data/datasets/K76/K73/book-redpg19-v3_text_document,39.57,/mnt/share/hetero_data/datasets/K76/K73/book-zliben-v3_text_document,22.48,/mnt/share/hetero_data/datasets/K76/K73/book-zlibzh-v3_text_document,8.39,/mnt/share/hetero_data/datasets/K76/K73/qa-csdn-v3_text_document,5.1,/mnt/share/hetero_data/datasets/K76/K73/qa-pilestack-v3_text_document,10.79,/mnt/share/hetero_data/datasets/K76/K73/qa-restack-v3_text_document,7.79,/mnt/share/hetero_data/datasets/K76/K73/qa-zhihu-v3_text_document,8.99,/mnt/share/hetero_data/datasets/K76/K73/wiki-baike-v3_text_document,14.39,/mnt/share/hetero_data/datasets/K76/K73/wiki-en-v3_text_document,20.38,/mnt/share/hetero_data/datasets/K76/K73/wiki-other-v3_text_document,0.3,/mnt/share/hetero_data/datasets/K76/K72/code_exercises-norm-part1_text_document,0.3,/mnt/share/hetero_data/datasets/K76/K72/code_exercises-norm-part0_text_document,5.58,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-arxiv-norm-part1_text_document,1.38,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-pubmed_abstracts-norm-part1_text_document,7.19,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-pubmed_central-norm-part1_text_document,8.39,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-red-arxiv-norm-part1_text_document,5.82,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-arxiv-norm-part0_text_document,0.36,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-philpapers-norm-part0_text_document,1.38,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-pubmed_abstracts-norm-part0_text_document,7.37,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-pubmed_central-norm-part0_text_document,8.93,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-red-arxiv-norm-part0_text_document,10.79,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/c_text_document,8.69,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/cpp_text_document,4.44,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/go_text_document,11.99,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/java_text_document,10.19,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/javascript_text_document,1.08,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/json_text_document,1.32,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/jupyter-scripts-dedup-filtered_text_document,1.02,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/jupyter-structured-clean-dedup_text_document,12.29,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/markdown_text_document,14.99,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/python_text_document,0.6,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/shell_text_document]
+  split: 1
+  no_mmap_bin_files: true
+  tokenizer:
+    tokenizer_type: QwenTokenizerFS
+    tokenizer_path: examples/aquila/qwentokenizer
+    vocab_size: 151851
+    make_vocab_size_divisible_by: 64

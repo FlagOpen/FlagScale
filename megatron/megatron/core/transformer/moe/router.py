@@ -104,6 +104,10 @@ class TopKRouter(Router):
         self.routing_type = self.config.moe_router_load_balancing_type
         self.score_function = self.config.moe_router_score_function
         self.input_jitter = None
+        
+        self.score_bias = torch.nn.Parameter(
+            torch.empty((self.config.num_moe_experts))
+        )
 
         self.enable_expert_bias = self.config.moe_router_enable_expert_bias
         if self.enable_expert_bias:
@@ -308,6 +312,8 @@ class TopKRouter(Router):
         """
         seq_length, bsz = logits.shape[:2]
         logits = logits.view(-1, self.config.num_moe_experts)
+        
+        logits = logits + self.score_bias.to(logits.dtype)
 
         # Apply Z-Loss
         logits = self.apply_z_loss(logits)
@@ -362,3 +368,4 @@ class TopKRouter(Router):
         scores, routing_map = self.routing(logits)
 
         return scores, routing_map
+
