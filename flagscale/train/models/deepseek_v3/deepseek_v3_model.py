@@ -83,6 +83,9 @@ class DeepSeekV3Model(GPTModel):
         scatter_embedding_sequence_parallel: bool = True,
         seq_len_interpolation_factor: Optional[float] = None,
     ) -> None:
+        self.pre_process = pre_process
+        self.post_process = post_process
+        
         super().__init__(
             config=config,
             transformer_layer_spec=transformer_layer_spec,
@@ -101,24 +104,26 @@ class DeepSeekV3Model(GPTModel):
             seq_len_interpolation_factor=seq_len_interpolation_factor,
         )
         
-        self.use_mtp = True if config.num_multi_token_prediction_modules is not None else False
-        self.num_mtp_modules = config.num_multi_token_prediction_modules if self.use_mtp else None
-        
-        if self.use_mtp:
-            mtp_config = copy.deepcopy(config)
-            mtp_config.num_layers = 1
-            self.mtp_predictor = DeepSeekMultiTokenPredictor(
-                config=mtp_config,
-                transformer_layer_spec=transformer_layer_spec,
-                vocab_size=vocab_size,
-                max_sequence_length=max_sequence_length,
-                position_embedding_type=position_embedding_type,
-                scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
-                parallel_output=self.parallel_output,
-                pre_process=self.pre_process,
-                post_process=self.post_process,
-                share_embeddings_and_output_weights=self.share_embeddings_and_output_weights,
-                embedding_activation_buffer=self.embedding_activation_buffer,
+        if self.post_process:
+            self.use_mtp = True if config.num_multi_token_prediction_modules is not None else False
+            self.num_mtp_modules = config.num_multi_token_prediction_modules if self.use_mtp else None
+            
+            if self.use_mtp:
+                mtp_config = copy.deepcopy(config)
+                mtp_config.pipeline_model_parallel_size = 1
+                mtp_config.num_layers = 1
+                self.mtp_predictor = DeepSeekMultiTokenPredictor(
+                    config=mtp_config,
+                    transformer_layer_spec=transformer_layer_spec,
+                    vocab_size=vocab_size,
+                    max_sequence_length=max_sequence_length,
+                    position_embedding_type=position_embedding_type,
+                    scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
+                    parallel_output=self.parallel_output,
+                    pre_process=True,
+                    post_process=True,
+                    share_embeddings_and_output_weights=self.share_embeddings_and_output_weights,
+                    embedding_activation_buffer=self.embedding_activation_buffer,
                 grad_output_buffer=self.grad_output_buffer,
             )
 
@@ -156,11 +161,12 @@ class DeepSeekV3Model(GPTModel):
             extra_block_kwargs=extra_block_kwargs,
             runtime_gather_output=runtime_gather_output,
         )
+        if not self.post_process:
+            return logits
         
         if self.use_mtp:
             # get hidden_states (after transformer block, before output head) from main model
             hidden_states_for_mtp = self.hidden_states_for_mtp
-            
             logits_mtps = self.mtp_predictor(
                 input_ids=input_ids,
                 position_ids=position_ids,
@@ -168,7 +174,7 @@ class DeepSeekV3Model(GPTModel):
                 pre_hidden_states=hidden_states_for_mtp,
                 decoder_input=None,
             )
-            
             return [logits, logits_mtps]            
-        
-        return logits
+        else:
+            return logits
+
