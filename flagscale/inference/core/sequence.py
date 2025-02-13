@@ -1,4 +1,5 @@
 # This file is modified from 'FlagScale/vllm/vllm/sequence.py'
+# SPDX-License-Identifier: Apache-2.0
 """Sequence and its related classes."""
 import copy
 import enum
