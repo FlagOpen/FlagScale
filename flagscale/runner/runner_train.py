@@ -440,9 +440,7 @@ class SSHTrainRunner(RunnerBase):
                         dryrun,
                     )
                     tasks.append(args)
-
-                for i in range(0, len(tasks), num_processes):
-                    pool.starmap(run_node, tasks[i : i + num_processes])
+                pool.starmap(run_node, tasks)
         else:
             # If hostfile is not provided, run the job on localhost
             visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
@@ -464,6 +462,7 @@ class SSHTrainRunner(RunnerBase):
                 nproc_per_node,
                 with_test=with_test,
                 dryrun=dryrun,
+                cur_envs=self.user_envs,
             )
         # If need monitor, query status continually
         if monitor:
@@ -521,9 +520,7 @@ class SSHTrainRunner(RunnerBase):
                     node_rank,
                 )
                 tasks.append(args)
-
-            for i in range(0, len(tasks), num_processes):
-                pool.starmap(self._stop_each, tasks[i : i + num_processes])
+            pool.starmap(self._stop_each, tasks)
 
     def _generate_query_script(self, host, node_rank):
         """Genetrate the query script for each host."""
@@ -805,3 +802,4 @@ class CloudTrainRunner(RunnerBase):
             with_test=with_test,
             dryrun=dryrun,
         )
+
