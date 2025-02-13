@@ -4,7 +4,8 @@ defaults:
 
 experiment:
   exp_name: DeepSeek-V3-Test
-  seed: 2025
+  # seed: 2025
+  seed: 42 # same as aquila
   save_steps: 1000
   load: None
   # load: /mnt/share/code/lixianduo/FlagScale/tools/checkpoint/deepseek_v3/converted_fake_bf16_model
@@ -55,4 +56,5 @@ action: run
 hydra:
   run:
     dir: ${experiment.exp_dir}/hydra
+
 

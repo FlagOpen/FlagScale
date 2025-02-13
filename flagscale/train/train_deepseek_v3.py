@@ -207,12 +207,12 @@ def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tenso
     # cal loss for main model
     labels = labels.transpose(0, 1).contiguous() # [b s] => [s b]
     logits = logits.transpose(0, 1).contiguous() # [b s h] => [s b h]
-
+        
     losses = tensor_parallel.vocab_parallel_cross_entropy(logits.float(), labels)
     losses = losses.transpose(0, 1).contiguous().float()
     
     loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
-    
+        
     # cal loss for mtp modules
     if args.num_multi_token_prediction_modules is not None:
         labels_mtps = []
@@ -244,14 +244,9 @@ def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tenso
         
         loss_mtps = loss_mtps / args.num_multi_token_prediction_modules
         
-
-
     # merge loss, how to process?
     if args.num_multi_token_prediction_modules is not None:
         loss = loss + loss_mtps
-    
-    if torch.distributed.get_rank() == 0:
-        print(f"loss is {loss}")
     
     # loss printing
     if args.context_parallel_size > 1:
@@ -426,4 +421,5 @@ if __name__ == "__main__":
         args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
         extra_valid_dataset_provider=extra_valid_datasets_provider
     )
+
 
