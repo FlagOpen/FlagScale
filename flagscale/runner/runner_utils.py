@@ -22,7 +22,7 @@ def parse_hostfile(hostfile_path):
         )
         return None
 
-    # e.g., ip slots=8 type=A100[optional]
+    # e.g., worker0 slots=8 type=A100
     pattern = re.compile(r"^(\S+)\s+slots=(\d+)(?:\s+type=(\S+))?")
 
     resources = collections.OrderedDict()
