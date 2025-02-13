@@ -175,8 +175,8 @@ def _load_checkpoint(queue, args):
         queue_put("output layer", message)
 
     message = dict()
-    if margs.num_multi_token_prediction_modules is not None:
-        for mtp_layer_id in range(margs.num_multi_token_prediction_modules):
+    if margs.use_mtp_predictor:
+        for mtp_layer_id in range(margs.num_mtp_predictor):
             message = dict()
             ckpt_plugin.get_hf_mtp_ckpt(message, hf_model, mtp_layer_id, margs)
             queue_put(f"mtp module {mtp_layer_id}", message)
@@ -190,3 +190,4 @@ def load_checkpoint(queue, args):
     except:
         queue.put("exit")
         raise
+
