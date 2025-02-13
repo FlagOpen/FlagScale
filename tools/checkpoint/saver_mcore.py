@@ -300,7 +300,8 @@ def save_checkpoint(queue, args):
 
         for layer_id in range(len(models[0].decoder.layers)):
             msg = queue_get(f"transformer layer {total_layer_num}")
-
+            margs.total_layer_num = total_layer_num
+            
             ckpt_plugin.set_attn_ckpt(msg, models, layer_id, md, margs)
             ckpt_plugin.set_mlp_ckpt(msg, models, layer_id, md, margs)
 

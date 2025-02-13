@@ -7,7 +7,7 @@ python convert.py \
     --load-dir deepseek_v3/fake_bf16_model \
     --save-dir deepseek_v3/converted_fake_bf16_model \
     --target-tensor-parallel-size 1 \
-    --target-pipeline-parallel-size 1 \
+    --target-pipeline-parallel-size 8 \
     --target-expert-parallel-size 1 \
     --target-params-dtype bf16 \
     --true-vocab-size 151851 \

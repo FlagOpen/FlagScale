@@ -128,7 +128,7 @@ def set_attn_ckpt(message, models, layer_id, md, args):
 
 
 def set_mlp_ckpt(message, model, layer_id, md, args):
-    if layer_id < args.moe_num_first_k_dense_layers:
+    if args.total_layer_num < args.moe_num_first_k_dense_layers:
         set_dense_mlp_ckpt(message, model, layer_id, md, args)
     else:
         set_moe_mlp_ckpt(message, model, layer_id, md, args)
@@ -246,5 +246,6 @@ def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
         mtp_layer.output_head.head.weight.data.copy_(mtp_full_shared_head_head_weight)
     
         
+
 
 
