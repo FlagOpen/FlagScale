@@ -199,7 +199,7 @@ def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tenso
     total_tokens = loss_mask.sum()
     
     # get logits from main model and mtp modules
-    if args.num_multi_token_prediction_modules is not None:
+    if args.use_mtp_predictor:
         logits, logits_mtps = logits # [b s h]
     roll_labels = labels # [b s]
     roll_loss_mask = loss_mask # [b*s]
@@ -214,7 +214,7 @@ def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tenso
     loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
         
     # cal loss for mtp modules
-    if args.num_multi_token_prediction_modules is not None:
+    if args.use_mtp_predictor:
         labels_mtps = []
         loss_mask_mtps = []
         total_tokens_mtps = 0
@@ -242,10 +242,10 @@ def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tenso
         
         loss_mtps = torch.cat([torch.sum(losses_mtps.view(-1) * loss_mask_mtps).view(1), total_tokens_mtps.view(1)])
         
-        loss_mtps = loss_mtps / args.num_multi_token_prediction_modules
+        loss_mtps = loss_mtps / args.num_mtp_predictor
         
     # merge loss, how to process?
-    if args.num_multi_token_prediction_modules is not None:
+    if args.use_mtp_predictor:
         loss = loss + loss_mtps
     
     # loss printing
@@ -421,5 +421,6 @@ if __name__ == "__main__":
         args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
         extra_valid_dataset_provider=extra_valid_datasets_provider
     )
+
 
 

@@ -248,7 +248,7 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
         super().__init__(config=config)
 
         self.config = config
-        self.num_mtp_layers = config.num_multi_token_prediction_modules
+        self.num_mtp_predictor = config.num_mtp_predictor
         
         self.mtp_modules = torch.nn.ModuleList([
             DeepSeekMultiTokenPredictorLayer(
@@ -264,7 +264,7 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
                     share_embeddings_and_output_weights=share_embeddings_and_output_weights,
                     embedding_activation_buffer=embedding_activation_buffer,
                     grad_output_buffer=grad_output_buffer,
-            ) for i in range(self.num_mtp_layers)
+            ) for i in range(self.num_mtp_predictor)
         ])
 
 
@@ -295,7 +295,7 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
         input_mask = roll_input_mask(input_mask)
         
         logits_mtps = []
-        for i in range(self.num_mtp_layers):
+        for i in range(self.num_mtp_predictor):
             logits_mtp, pre_hidden_states = self.mtp_modules[i](
                 input_ids=input_ids,
                 position_ids=position_ids,

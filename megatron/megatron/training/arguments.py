@@ -2231,7 +2231,9 @@ def _add_mtp_args(parser):
     group = parser.add_argument_group(title="mtp")
 
     # general mtp arguements
-    group.add_argument('--num-multi-token-prediction-modules', type=int, default=1,
+    group.add_argument('--use-mtp-predictor', action='store_true', default=False,
+                       help='whether to use multi token predictor')
+    group.add_argument('--num-mtp-predictor', type=int, default=1,
                        help='num of multi token prediction modules')
 
     return parser
@@ -2499,4 +2501,5 @@ def _add_auto_skip_spiky_loss(parser):
     group.add_argument('--spiky-loss-threshold', type=float, default=0.2,
                           help='Threshold for skipping spiky loss iterations.')
     return parser
+
 

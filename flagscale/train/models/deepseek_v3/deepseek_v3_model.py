@@ -21,10 +21,6 @@ from typing import List
 
 from flagscale.train.models.deepseek_v3.multi_token_predictor import DeepSeekMultiTokenPredictor
 
-def print_rank0(string):
-    if torch.distributed.get_rank() == 0:
-        print(string)
-
 class DeepSeekV3Model(GPTModel):
     """DeepSeek-V3 language model.
 
@@ -85,6 +81,8 @@ class DeepSeekV3Model(GPTModel):
     ) -> None:
         self.pre_process = pre_process
         self.post_process = post_process
+        self.use_mtp_predictor = config.use_mtp_predictor
+        self.num_mtp_predictor = config.num_mtp_predictor
         
         super().__init__(
             config=config,
@@ -105,10 +103,7 @@ class DeepSeekV3Model(GPTModel):
         )
         
         if self.post_process:
-            self.use_mtp = True if config.num_multi_token_prediction_modules is not None else False
-            self.num_mtp_modules = config.num_multi_token_prediction_modules if self.use_mtp else None
-            
-            if self.use_mtp:
+            if self.use_mtp_predictor:
                 mtp_config = copy.deepcopy(config)
                 mtp_config.pipeline_model_parallel_size = 1
                 mtp_config.num_layers = 1
@@ -164,7 +159,7 @@ class DeepSeekV3Model(GPTModel):
         if not self.post_process:
             return logits
         
-        if self.use_mtp:
+        if self.use_mtp_predictor:
             # get hidden_states (after transformer block, before output head) from main model
             hidden_states_for_mtp = self.hidden_states_for_mtp
             logits_mtps = self.mtp_predictor(
@@ -177,4 +172,5 @@ class DeepSeekV3Model(GPTModel):
             return [logits, logits_mtps]            
         else:
             return logits
+
 
