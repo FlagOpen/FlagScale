@@ -199,6 +199,8 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
             decoder_input = None
         
         if input_mask is not None:
+            # scatter
+            input_mask = tensor_parallel.scatter_to_sequence_parallel_region(input_mask)
             decoder_input = torch.masked_fill(decoder_input, input_mask.expand(decoder_input.shape), 0)
 
         # two RMSNorm
@@ -306,3 +308,4 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
             input_mask = roll_input_mask(input_mask)
         
         return logits_mtps
+
