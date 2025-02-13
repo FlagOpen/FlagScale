@@ -1,4 +1,5 @@
 # This file is modified from 'FlagScale/vllm/vllm/sampling_params.py'
+# SPDX-License-Identifier: Apache-2.0
 """Sampling parameters for text generation."""
 import copy
 from dataclasses import dataclass
