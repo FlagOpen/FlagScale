@@ -1,4 +1,6 @@
 # This file is modified from 'FlagScale/vllm/vllm/engine/output_processor/single_step.py'
+# SPDX-License-Identifier: Apache-2.0
+
 from typing import List
 
 from vllm.config import SchedulerConfig
