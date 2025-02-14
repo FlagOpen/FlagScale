@@ -117,10 +117,12 @@ def set_attn_ckpt(message, models, layer_id, md, args):
         
         tf_layer = model.decoder.layers[layer_id]
         tf_layer.self_attention.linear_q_down_proj.weight.data.copy_(q_a_weight)
-        tf_layer.self_attention.q_layernorm.weight.data.copy_(q_a_norm_weight)
+        # tf_layer.self_attention.q_layernorm.weight.data.copy_(q_a_norm_weight)
+        tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data.copy_(q_a_norm_weight)
         tf_layer.self_attention.linear_q_up_proj.weight.data.copy_(q_b_weight)
         tf_layer.self_attention.linear_kv_down_proj.weight.data.copy_(kv_a_weight)
-        tf_layer.self_attention.kv_layernorm.weight.data.copy_(kv_a_norm_weight)
+        # tf_layer.self_attention.kv_layernorm.weight.data.copy_(kv_a_norm_weight)
+        tf_layer.self_attention.linear_kv_up_proj.layer_norm_weight.data.copy_(kv_a_norm_weight)
         tf_layer.self_attention.linear_kv_up_proj.weight.data.copy_(kv_b_weight)
         tf_layer.self_attention.linear_proj.weight.data.copy_(o_weight)
         tf_layer.input_layernorm.weight.data.copy_(input_norm_weight)
@@ -248,6 +250,7 @@ def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
         mtp_layer.output_head.head.weight.data.copy_(mtp_full_shared_head_head_weight)
     
         
+
 
 
 

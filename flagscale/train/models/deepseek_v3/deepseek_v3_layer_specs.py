@@ -21,7 +21,9 @@ from megatron.core.transformer.transformer_block import (
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
 from megatron.core.utils import is_te_min_version
-
+from megatron.core.models.gpt.gpt_layer_specs import (
+    get_mlp_module_spec,
+)
 try:
     from megatron.core.extensions.transformer_engine import (
         TEColumnParallelLinear,
@@ -78,101 +80,74 @@ def get_deepseek_v3_with_transformer_engine_spec(
             ' and will be removed soon. Please update your code accordingly.'
         )
 
-    mlp = _get_mlp_module_spec(
+    mlp = get_mlp_module_spec(
         use_te=True,
         num_experts=num_experts,
         moe_grouped_gemm=moe_grouped_gemm,
         moe_use_legacy_grouped_gemm=moe_use_legacy_grouped_gemm,
     )
-    self_attn = _get_self_attn_module_spec(
-        qk_layernorm=qk_layernorm,
-        multi_latent_attention=multi_latent_attention
-    )
 
-    return ModuleSpec(
-        module=TransformerLayer,
-        submodules=TransformerLayerSubmodules(
-            input_layernorm=TENorm,
-            self_attention=self_attn,
-            self_attn_bda=get_bias_dropout_add,
-            pre_mlp_layernorm=TENorm,
-            mlp=mlp,
-            mlp_bda=get_bias_dropout_add,
-        ),
-    )
-
-
-def _get_self_attn_module_spec(
-    qk_layernorm: Optional[bool] = False,
-    multi_latent_attention: Optional[bool] = False,
-):
     if multi_latent_attention:
         return ModuleSpec(
-            module=MLASelfAttention,
-            params={"attn_mask_type": AttnMaskType.causal},
-            submodules=MLASelfAttentionSubmodules(
-                linear_q_proj=TEColumnParallelLinear,
-                linear_q_down_proj=TELinear,
-                linear_q_up_proj=TEColumnParallelLinear,
-                linear_kv_down_proj=TELinear,
-                linear_kv_up_proj=TEColumnParallelLinear,
-                core_attention=TEDotProductAttention,
-                linear_proj=TERowParallelLinear,
-                q_layernorm=TENorm if qk_layernorm else IdentityOp,
-                kv_layernorm=TENorm if qk_layernorm else IdentityOp,
+            module=TransformerLayer,
+            submodules=TransformerLayerSubmodules(
+                input_layernorm=TENorm,
+                self_attention=ModuleSpec(
+                    module=MLASelfAttention,
+                    params={"attn_mask_type": AttnMaskType.causal},
+                    submodules=MLASelfAttentionSubmodules(
+                        linear_q_proj=TEColumnParallelLinear,
+                        linear_q_down_proj=TELinear,
+                        linear_q_up_proj=(
+                            TELayerNormColumnParallelLinear
+                            if qk_layernorm
+                            else TEColumnParallelLinear
+                        ),
+                        linear_kv_down_proj=TELinear,
+                        linear_kv_up_proj=(
+                            TELayerNormColumnParallelLinear
+                            if qk_layernorm
+                            else TEColumnParallelLinear
+                        ),
+                        core_attention=TEDotProductAttention,
+                        linear_proj=TERowParallelLinear,
+                        q_layernorm=IdentityOp,
+                        kv_layernorm=IdentityOp,
+                    ),
+                ),
+                self_attn_bda=get_bias_dropout_add,
+                pre_mlp_layernorm=TENorm,
+                mlp=mlp,
+                mlp_bda=get_bias_dropout_add,
             ),
         )
     else:
-
         # TENorm significantly harms convergence when used
         # for QKLayerNorm if TE Version < 1.9;
         # we instead use the Apex implementation.
         qk_norm = TENorm if is_te_min_version("1.9.0") else FusedLayerNorm
 
         return ModuleSpec(
-            module=SelfAttention,
-            params={"attn_mask_type": AttnMaskType.causal},
-            submodules=SelfAttentionSubmodules(
-                linear_qkv=TEColumnParallelLinear,
-                core_attention=TEDotProductAttention,
-                linear_proj=TERowParallelLinear,
-                q_layernorm=qk_norm if qk_layernorm else IdentityOp,
-                k_layernorm=qk_norm if qk_layernorm else IdentityOp,
+            module=TransformerLayer,
+            submodules=TransformerLayerSubmodules(
+                self_attention=ModuleSpec(
+                    module=SelfAttention if parallel_state.get_ulysses_sp_parallel_world_size() <= 1 else USPSelfAttention,
+                    params={"attn_mask_type": AttnMaskType.causal},
+                    submodules=SelfAttentionSubmodules(
+                        linear_qkv=TELayerNormColumnParallelLinear,
+                        core_attention=TEDotProductAttention,
+                        linear_proj=TERowParallelLinear,
+                        q_layernorm=qk_norm if qk_layernorm else IdentityOp,
+                        k_layernorm=qk_norm if qk_layernorm else IdentityOp,
+                    ),
+                ),
+                self_attn_bda=get_bias_dropout_add,
+                pre_mlp_layernorm=TENorm if num_experts else IdentityOp,
+                mlp=mlp,
+                mlp_bda=get_bias_dropout_add,
             ),
         )
 
-
-def _get_mlp_module_spec(
-    use_te: Optional[bool] = True,
-    num_experts: Optional[int] = None,
-    moe_grouped_gemm: Optional[bool] = False,
-    fp8: Optional[str] = None,  # pylint: disable=unused-arguments
-    moe_use_legacy_grouped_gemm: Optional[bool] = False,
-) -> ModuleSpec:
-    """Helper function to get module spec for MLP/MoE"""
-    if fp8 is not None:
-        warnings.warn(
-            'The fp8 argument in "_get_mlp_module_spec" has been deprecated'
-            ' and will be removed soon. Please update your code accordingly.'
-        )
-
-    if num_experts is None:
-        # Dense MLP w/ or w/o TE modules.
-        return ModuleSpec(
-            module=MLP,
-            submodules=MLPSubmodules(
-                linear_fc1=TEColumnParallelLinear if use_te else ColumnParallelLinear,
-                linear_fc2=TERowParallelLinear if use_te else RowParallelLinear,
-            ),
-        )
-    else:
-        # Mixture of experts with modules in megatron core.
-        return get_moe_module_spec(
-            use_te=use_te,
-            num_experts=num_experts,
-            moe_grouped_gemm=moe_grouped_gemm,
-            moe_use_legacy_grouped_gemm=moe_use_legacy_grouped_gemm,
-        )
 
 
 def get_deepseek_v3_decoder_block_spec(
@@ -240,5 +215,6 @@ def get_deepseek_v3_decoder_block_spec(
     block_spec = TransformerBlockSubmodules(layer_specs=layer_specs, layer_norm=layer_norm_impl)
 
     return block_spec
+
 
 
