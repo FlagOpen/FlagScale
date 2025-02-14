@@ -1,9 +1,9 @@
 system:
   no_shared_fs: ${experiment.runner.no_shared_fs}
   num_workers: 16
-  tensor_model_parallel_size: 1
-  pipeline_model_parallel_size: 8
-  expert_model_parallel_size: 1
+  tensor_model_parallel_size: 2
+  pipeline_model_parallel_size: 2
+  expert_model_parallel_size: 2
   context_parallel_size: 1
   disable_bias_linear: true
   reset_position_ids: True
@@ -11,7 +11,6 @@ system:
   add_qkv_bias: true
   qk_layernorm: true
   sequence_parallel: true
-  # use_flash_attention: true
   use_distributed_optimizer: true
   overlap_grad_reduce: true
   overlap_param_gather: true
@@ -68,10 +67,6 @@ model:
   qk_pos_emb_head_dim: 64
   v_head_dim: 128
 
-  # mtp args ==================
-  use_mtp_predictor: true
-  num_mtp_predictor: 1
-
   # moe args ===================
   moe_shared_expert_intermediate_size: 1408
   num_experts: 64
@@ -88,19 +83,11 @@ model:
 
   # training
   seed: ${experiment.seed}
-  # finetune: true
-  # skip_train: true
-  # finetune: false
   train_iters: 10000
   micro_batch_size: 1
   global_batch_size: 32
-  # aquila batch size config
-  # micro_batch_size: 2
-  # global_batch_size: 2048
   eval_interval: 1000
-  # eval_iters: 0 
   eval_iters: 5
-  # extra_valid_interval: 0
 
   # optimizer
   no_load_optim: True
@@ -117,23 +104,6 @@ model:
   lr_decay_iters: 120000
   lr_decay_style: cosine
   
-# aquila optimizer config
-# optimizer:
-#   weight_decay: 0.1
-#   adam_beta1: 0.9
-#   adam_beta2: 0.95
-#   lr_scheduler:
-#     lr: 3.0e-3
-#     min_lr: 3.0e-4
-#     #lr: 5.0e-3
-#     #min_lr: 5.0e-4
-#     lr_warmup_samples: 2048000
-#     #lr_decay_style: cosine 
-#     lr_decay_style: WSD
-#     lr_wsd_decay_style: cosine
-#     lr_wsd_decay_samples: 2048
-
-# aquila dataset
 data:
   no_create_attention_mask_in_dataloader: true
   data_path: /path
@@ -144,5 +114,3 @@ data:
     tokenizer_path: examples/aquila/qwentokenizer
     vocab_size: 151851
     make_vocab_size_divisible_by: 64
-
-

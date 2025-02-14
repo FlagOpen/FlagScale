@@ -2498,6 +2498,3 @@ def _add_auto_skip_spiky_loss(parser):
     group.add_argument('--spiky-loss-threshold', type=float, default=0.2,
                           help='Threshold for skipping spiky loss iterations.')
     return parser
-
-
-

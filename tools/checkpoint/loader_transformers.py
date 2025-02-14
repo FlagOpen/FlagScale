@@ -190,4 +190,3 @@ def load_checkpoint(queue, args):
     except:
         queue.put("exit")
         raise
-
