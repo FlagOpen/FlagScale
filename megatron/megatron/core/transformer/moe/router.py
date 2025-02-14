@@ -104,6 +104,9 @@ class TopKRouter(Router):
         self.routing_type = self.config.moe_router_load_balancing_type
         self.score_function = self.config.moe_router_score_function
         self.input_jitter = None
+        self.score_bias = torch.nn.Parameter(
+            torch.zeros(self.config.num_moe_experts), requires_grad=False
+        )
 
         self.enable_expert_bias = self.config.moe_router_enable_expert_bias
         if self.enable_expert_bias:
@@ -112,8 +115,9 @@ class TopKRouter(Router):
                 torch.zeros(self.config.num_moe_experts, dtype=torch.float32),
                 persistent=False,
             )
+            expert_bias = self.score_bias.data
             self.register_buffer(
-                'expert_bias', torch.zeros(self.config.num_moe_experts, dtype=torch.float32)
+                'expert_bias', expert_bias
             )
         else:
             self.local_tokens_per_expert = None

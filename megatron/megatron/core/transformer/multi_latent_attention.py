@@ -116,6 +116,7 @@ class MultiLatentAttention(Attention):
         attention_bias=None,
         packed_seq_params=None,
         position_ids=None,
+        sequence_len_offset=None,
     ):
         """Forward pass for multi-latent attention"""
         assert rotary_pos_emb is None, "Rotary position embeddings should not be passed into MLA."
