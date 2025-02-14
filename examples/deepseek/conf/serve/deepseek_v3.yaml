@@ -12,15 +12,3 @@ model_args:
 
 deploy:
   command-line-mode: true
-
-hostfile:
-  nodes:
-    - master:
-        ip: x.x.x.x
-        slots: 8
-        type: gpu
-    - node:
-        ip: x.x.x.x
-        slots: 8
-        type: gpu
-        docker: ds

@@ -1,3 +1,4 @@
+import json
 import os
 import shlex
 
@@ -60,6 +61,7 @@ def _update_config_serve(config: DictConfig):
 def _generate_run_script_serve(
     config, host, node_rank, cmd, background=True, with_test=False
 ):
+    nodes = config.serve.get("nodes", None)
     logging_config = config.serve.logging
 
     no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
@@ -82,6 +84,8 @@ def _generate_run_script_serve(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
     cmds_config = config.experiment.get("cmds", None)
+    ssh_port = config.experiment.runner.get("ssh_port", None)
+    docker_name = config.experiment.runner.get("docker", None)
     if cmds_config:
         before_start = cmds_config.get("before_start", "")
     else:
@@ -90,7 +94,104 @@ def _generate_run_script_serve(
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("set -x\n")
+        f.write(f"\n")
         f.write(f"{before_start}\n")
+        f.write(f"\n")
+
+        if nodes:
+            master_ip = nodes[0][0]
+            target_port = nodes[0][1].get("port")
+            before_start_cmd = None
+            if config.experiment.get("cmds", "") and config.experiment.cmds.get(
+                "before_start", ""
+            ):
+                before_start_cmd = config.experiment.cmds.before_start
+
+            f.write(f"# clean nodes \n")
+            if len(nodes) > 1:
+                for ip, node in nodes[1:]:
+                    if not node.get("type", None):
+                        raise ValueError(
+                            f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
+                        )
+                    if not node.get("slots", None):
+                        raise ValueError(
+                            f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+                        )
+                    node_cmd = f"ray stop"
+
+                    if before_start_cmd:
+                        node_cmd = f"{before_start_cmd} && " + node_cmd
+
+                    if ssh_port:
+                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
+                    else:
+                        ssh_cmd = f'ssh -n {ip} "{node_cmd}"'
+
+                    if docker_name:
+                        ssh_cmd = f"ssh -n {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                    f.write(f"{ssh_cmd}\n")
+            if before_start_cmd:
+                f.write(f"{before_start_cmd} && ray stop\n")
+            else:
+                f.write(f"ray stop\n")
+            f.write(f"\n")
+
+            master_port = target_port if target_port else get_free_port()
+
+            f.write(f"# start cluster\n")
+            f.write(f"# master node\n")
+            if before_start_cmd:
+                f.write(
+                    f"{before_start_cmd} && ray start --head --port={master_port}\n"
+                )
+            else:
+                f.write(f"ray start --head --port={master_port}\n")
+
+            if len(nodes) > 1:
+                f.write(f"\n")
+                f.write(f"# worker nodes\n")
+                address = f"{master_ip}:{master_port}"
+                for ip, node in nodes[1:]:
+                    if not node.get("type", None):
+                        raise ValueError(
+                            f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
+                        )
+                    if not node.get("slots", None):
+                        raise ValueError(
+                            f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+                        )
+                    if node.type == "gpu":
+                        node_cmd = (
+                            f"ray start --address={address} --num-gpus={node.slots}"
+                        )
+
+                    elif node.type == "cpu":
+                        node_cmd = (
+                            f"ray start --address={address} --num-cpus={node.slots}"
+                        )
+                    else:
+                        resource = json.dumps({node.type: node.slots}).replace(
+                            '"', '\\"'
+                        )
+                        node_cmd = (
+                            f"ray start --address={address} --resources='{resource}'"
+                        )
+                    if config.experiment.get("cmds", "") and config.experiment.cmds.get(
+                        "before_start", ""
+                    ):
+                        before_start_cmd = config.experiment.cmds.before_start
+                        node_cmd = f"{before_start_cmd} && " + node_cmd
+
+                    if ssh_port:
+                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
+                    else:
+                        ssh_cmd = f'ssh -n {ip} "{node_cmd}"'
+
+                    if docker_name:
+                        ssh_cmd = f"ssh -n {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                    f.write(f"{ssh_cmd}\n")
+
         f.write(f"mkdir -p {logging_config.log_dir}\n")
         f.write(f"mkdir -p {logging_config.pids_dir}\n")
         f.write(f"\n")
@@ -174,6 +275,8 @@ class SSHServeRunner(RunnerBase):
         self.resources = parse_hostfile(
             self.config.experiment.runner.get("hostfile", None)
         )
+        if self.resources:
+            self.config.serve["nodes"] = list(self.resources.items())
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
@@ -194,33 +297,11 @@ class SSHServeRunner(RunnerBase):
 
         cmd = shlex.join(export_cmd + ["python"] + [self.user_script] + self.user_args)
 
-        logging_config = self.config.serve.logging
         host_run_script_file = _generate_run_script_serve(
             self.config, host, node_rank, cmd, background=True, with_test=with_test
         )
 
-        if host != "localhost":
-            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
-            # Step 1: make sure the scripts_dir exists on the remote host
-            run_ssh_command(
-                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, dryrun
-            )
-
-            # Step 2: copy the host_run_script_file to the remote host
-            no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
-            if no_shared_fs:
-                run_scp_command(
-                    host,
-                    host_run_script_file,
-                    logging_config.scripts_dir,
-                    ssh_port,
-                    dryrun,
-                )
-
-            # Step 3: run the host_run_script_file on the remote host
-            run_ssh_command(host, f"bash {host_run_script_file}", ssh_port, dryrun)
-        else:
-            run_local_command(f"bash {host_run_script_file}", dryrun)
+        run_local_command(f"bash {host_run_script_file}", dryrun)
 
     def run(self, with_test=False, dryrun=False):
         num_visible_devices = None
@@ -231,51 +312,21 @@ class SSHServeRunner(RunnerBase):
 
         runner_config = self.config.experiment.runner
 
-        # If hostfile is provided, use the resources from the hostfile
-        if self.resources is not None:
-            nnodes_from_hostfile = len(self.resources.keys())
-            nnodes_from_args = runner_config.get("nnodes", None)
-            nnodes = get_nnodes(nnodes_from_hostfile, nnodes_from_args)
-            available_ip = list(self.resources.keys())[0]
-            available_port = get_free_port()
-            for node_rank, (host, resource_info) in enumerate(self.resources.items()):
-                if node_rank >= nnodes:
-                    break
-                nproc_from_hostfile = resource_info["slots"]
-                nproc_from_args = runner_config.get("nproc_per_node", None)
-                nproc_per_node = get_nproc_per_node(
-                    nproc_from_hostfile, nproc_from_args, num_visible_devices
-                )
-                master_addr = runner_config.get("master_addr", available_ip)
-                master_port = runner_config.get("master_port", available_port)
-                self._run_each(
-                    host,
-                    master_addr,
-                    master_port,
-                    nnodes,
-                    node_rank,
-                    nproc_per_node,
-                    with_test=with_test,
-                    dryrun=dryrun,
-                )
-        else:
-            # If hostfile is not provided, run the job on localhost
-            nproc_from_args = runner_config.get("nproc_per_node", None)
-            nproc_per_node = get_nproc_per_node(
-                None, nproc_from_args, num_visible_devices
-            )
-            available_addr = runner_config.get("master_addr", "localhost")
-            available_port = runner_config.get("master_port", get_free_port())
-            self._run_each(
-                "localhost",
-                available_addr,
-                available_port,
-                1,
-                0,
-                nproc_per_node,
-                with_test=with_test,
-                dryrun=dryrun,
-            )
+        # If hostfile is not provided, run the job on localhost
+        nproc_from_args = runner_config.get("nproc_per_node", None)
+        nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
+        available_addr = runner_config.get("master_addr", "localhost")
+        available_port = runner_config.get("master_port", get_free_port())
+        self._run_each(
+            "localhost",
+            available_addr,
+            available_port,
+            1,
+            0,
+            nproc_per_node,
+            with_test=with_test,
+            dryrun=dryrun,
+        )
 
     def _stop_each(self, host, node_rank):
         host_stop_script_file = _generate_stop_script(self.config, host, node_rank)
