@@ -33,6 +33,5 @@ def get_mg_model(dtype, pre_process, post_process):
     from flagscale.train.train_deepseek_v3 import model_provider
     s_time = time.time()
     model = model_provider(pre_process, post_process).to(dtype)
-    print(f"model in ckpt is {model}")
     print("> build megatron model elapsed time:", time.time() - s_time)
     return model

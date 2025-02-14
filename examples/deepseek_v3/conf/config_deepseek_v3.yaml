@@ -1,3 +1,5 @@
+# Demo for testing
+# TODO: Release 671B version
 defaults:
   - _self_
   - train: train_deepseek_v3.yaml
