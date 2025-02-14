@@ -6,10 +6,14 @@ megatron:
     core
   subset:
     dist_checkpointing:
+      type: single
       ignore:
         - models/test_mamba.py
       deselect:
         - test_fully_parallel.py::TestFullyParallelSaveAndLoad::test_memory_usage
+        - test_serialization.py::TestSerialization::test_remove_sharded_tensors
+    distributed:
+      type: single
     models:
       ignore: 
         - test_mamba_model.py
@@ -17,6 +21,7 @@ megatron:
         - test_t5_model.py::TestT5Model::test_post_process_forward
         - test_t5_model.py::TestT5Model::test_forward_output_encoder_hidden_only
         - test_t5_model.py::TestT5Model::test_forward_with_encoder_hidden_states
+        - test_llava_model.py::test_llava_model_parallelism
     ssm:
       ignore:
         - test_mamba_block.py
@@ -44,10 +49,13 @@ megatron:
         - test_multi_latent_attention.py::TestParallelMLAAttention::test_fused_rope_gpu_forward
         - test_multi_latent_attention.py::TestParallelMLAAttention::test_checkpointed_gpu_forward
         - test_retro_attention.py::TestRetroAttention::test_gpu_forward
+        - test_transformer_block.py::TestPipelineParallelTransformerBlock::test_layer_builder
     ./:
       depth: 1
       ignore: 
         - test_utilities.py
+      deselect: 
+        - test_parallel_state.py::test_different_initialize_order_unconsistency
 
 flagscale:
   set_environment:

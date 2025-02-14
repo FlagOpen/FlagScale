@@ -3,14 +3,17 @@ format_version: 1
 maintainers: [mcore]
 loggers: [stdout]
 spec:
-  name: "{test_case}"
+  name: '{test_case}_{environment}'
   model: bert
   nodes: 1
   build: mcore-pyt-{environment}
   gpus: 8
   platforms: dgx_a100
-  artifacts: 
+  time_limit:
+  n_repeat:
+  artifacts:
     /workspace/data/bert_data: text/the_pile/bert_shard00
+    /workspace/checkpoints/bert_mr_mcore_tp2_pp2_frozen_resume_torch_dist_dgx_a100_1N8G_dev: model/mcore_bert/bert_mr_mcore_tp2_pp2_frozen_resume_torch_dist_dgx_a100_1N8G_dev/22410107
   script: |-
     ls
     cd /opt/megatron-lm
@@ -20,7 +23,8 @@ spec:
         "DATA_CACHE_PATH=/workspace/data/cache" 
         "OUTPUT_PATH={assets_dir}"
         "TENSORBOARD_PATH={assets_dir}/tensorboard"
-        "CHECKPOINT_PATH=/workspace/checkpoints"
+        "CHECKPOINT_SAVE_PATH={artifacts_dir}/checkpoints"
+        "CHECKPOINT_LOAD_PATH=/workspace/checkpoints/{name}"
         "TRAINING_SCRIPT_PATH=pretrain_bert.py"
         "TRAINING_PARAMS_PATH=./tests/functional_tests/test_cases/{model}/{test_case}/model_config.yaml"
         "GOLDEN_VALUES_PATH=./tests/functional_tests/test_cases/{model}/{test_case}/golden_values_{environment}.json"
@@ -30,26 +34,75 @@ spec:
     bash ./tests/functional_tests/shell_test_utils/run_ci_test.sh ${{ARGUMENTS[@]}}
 
 products:
-  - environment: [lts, dev]
-    scope: [mr]
-    time_limit: [1800]
-    n_repeat: [5]
-    test_case: 
-    - bert_mr_mcore_tp2_pp2_dgx_a100_1N8G
-    - bert_mr_mcore_tp2_pp2_local_spec_dgx_a100_1N8G
-    - bert_mr_mcore_tp2_pp2_resume_torch_dist_dgx_a100_1N8G
-    - bert_mr_mcore_tp2_pp2_resume_torch_dist_local_spec_dgx_a100_1N8G
-    - bert_mr_tp1_pp4_vp2_dgx_a100_1N8G
-    - bert_mr_tp1_pp4_vp2_resume_torch_dgx_a100_1N8G
-    - bert_mr_tp2_pp2_dgx_a100_1N8G
-    - bert_mr_tp2_pp2_resume_torch_dgx_a100_1N8G
-  - environment: [lts, dev]
-    scope: [nightly]
-    n_repeat: [5]
-    time_limit: [3600]
-    test_case:
-    - bert_nightly_dgx_a100_1N8G_mcore_tp1_pp2
-    - bert_nightly_dgx_a100_1N8G_mcore_tp1_pp4_vp2
-    - bert_nightly_dgx_a100_1N8G_mcore_tp4_pp1
-    - bert_nightly_dgx_a100_1N8G_tp1_pp2
-    - bert_nightly_dgx_a100_1N8G_tp4_pp1
+  - test_case: [bert_mr_mcore_tp2_pp2_dgx_a100_1N8G]
+    products:
+      - environment: [dev]
+        scope: [mr]
+      - environment: [lts]
+        scope: [nightly]
+  - test_case: [bert_mr_mcore_tp2_pp2_local_spec_dgx_a100_1N8G]
+    products:
+      - environment: [dev]
+        scope: [mr]
+      - environment: [lts]
+        scope: [nightly]
+  - test_case: [bert_mr_mcore_tp2_pp2_resume_torch_dist_dgx_a100_1N8G]
+    products:
+      - environment: [dev]
+        scope: [mr]
+      - environment: [lts]
+        scope: [nightly]
+  - test_case: [bert_mr_mcore_tp2_pp2_resume_torch_dist_local_spec_dgx_a100_1N8G]
+    products:
+      - environment: [dev]
+        scope: [mr]
+      - environment: [lts]
+        scope: [nightly]
+  - test_case: [bert_mr_tp1_pp4_vp2_dgx_a100_1N8G]
+    products:
+      - environment: [dev]
+        scope: [mr]
+      - environment: [lts]
+        scope: [nightly]
+  - test_case: [bert_mr_tp1_pp4_vp2_resume_torch_dgx_a100_1N8G]
+    products:
+      - environment: [dev]
+        scope: [mr]
+      - environment: [lts]
+        scope: [nightly]
+  - test_case: [bert_mr_tp2_pp2_dgx_a100_1N8G]
+    products:
+      - environment: [dev]
+        scope: [mr]
+      - environment: [lts]
+        scope: [nightly]
+  - test_case: [bert_mr_tp2_pp2_resume_torch_dgx_a100_1N8G]
+    products:
+      - environment: [dev]
+        scope: [mr]
+      - environment: [lts]
+        scope: [nightly]
+  - test_case: [bert_nightly_dgx_a100_1N8G_mcore_tp1_pp2]
+    products:
+      - environment: [dev, lts]
+        scope: [nightly]
+  - test_case: [bert_nightly_dgx_a100_1N8G_mcore_tp1_pp4_vp2]
+    products:
+      - environment: [dev, lts]
+        scope: [nightly]
+  - test_case: [bert_nightly_dgx_a100_1N8G_mcore_tp4_pp1]
+    products:
+      - environment: [dev, lts]
+        scope: [nightly]
+  - test_case: [bert_nightly_dgx_a100_1N8G_tp1_pp2]
+    products:
+      - environment: [dev, lts]
+        scope: [nightly]
+  - test_case: [bert_nightly_dgx_a100_1N8G_tp4_pp1]
+    products:
+      - environment: [dev, lts]
+        scope: [nightly]
+  # - test_case: [bert_mr_mcore_tp2_pp2_frozen_resume_torch_dist_dgx_a100_1N8G]
+  #   products:
+  #     - environment: [dev] Update checkpoint
+  #       scope: [mr]
