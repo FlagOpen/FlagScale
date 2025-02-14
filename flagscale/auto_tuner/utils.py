@@ -4,7 +4,7 @@ import socket
 import subprocess
 from types import SimpleNamespace
 
-from flagscale.runner.runner import parse_hostfile
+from flagscale.runner.runner_utils import parse_hostfile
 
 
 def divisible(x, y):
