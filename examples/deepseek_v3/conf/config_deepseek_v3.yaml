@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - train: _train_deepseek_v3.yaml
+  - train: train_deepseek_v3.yaml
 
 experiment:
   exp_name: DeepSeek-V3-Test

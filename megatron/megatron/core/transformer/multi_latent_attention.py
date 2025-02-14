@@ -389,4 +389,3 @@ class MLASelfAttention(MultiLatentAttention):
         value = value.contiguous()
 
         return query, key, value
-
