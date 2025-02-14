@@ -110,7 +110,10 @@ def set_attn_ckpt(message, models, layer_id, md, args):
     kv_b_weight = message.pop("kv b weight")
     o_weight = message.pop("o weight")
     input_norm_weight = message.pop("input norm weight")
-    post_norm_weight = message.pop("post norm weight")
+    
+    first_k_dense_replace = args.moe_layer_freq.index(1)
+    if args.total_layer_num >= first_k_dense_replace:
+        post_norm_weight = message.pop("post norm weight")
 
     # set data to transformer layer's self-attention
     for tp_ep_rank, model in enumerate(models):
@@ -126,7 +129,9 @@ def set_attn_ckpt(message, models, layer_id, md, args):
         tf_layer.self_attention.linear_kv_up_proj.weight.data.copy_(kv_b_weight)
         tf_layer.self_attention.linear_proj.weight.data.copy_(o_weight)
         tf_layer.input_layernorm.weight.data.copy_(input_norm_weight)
-        tf_layer.pre_mlp_layernorm.weight.data.copy_(post_norm_weight)
+        
+        if args.total_layer_num >= first_k_dense_replace:
+            tf_layer.pre_mlp_layernorm.weight.data.copy_(post_norm_weight)
 
 
 
@@ -143,6 +148,7 @@ def set_dense_mlp_ckpt(message, models, layer_id, md, args):
     tp_size, _, ep_size, _ = _get_parallel_size(args)
     assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
     
+    post_norm_weight = message.pop("post norm weight")
     gate_weight = message.pop("gate weight")
     up_weight = message.pop("up weight")
     linear1_weight = torch.cat([gate_weight, up_weight], dim=0)
@@ -150,7 +156,7 @@ def set_dense_mlp_ckpt(message, models, layer_id, md, args):
     
     for tp_ep_rank, model in enumerate(models):
         tf_layer = model.decoder.layers[layer_id]
-        print(f"tf_layer.mlp.linear_fc1.weight shape is {tf_layer.mlp.linear_fc1.weight.shape}")
+        tf_layer.mlp.linear_fc1.layer_norm_weight.data.copy_(post_norm_weight)
         tf_layer.mlp.linear_fc1.weight.data.copy_(linear1_weight)
         tf_layer.mlp.linear_fc2.weight.data.copy_(linear2_weight)
 
@@ -250,6 +256,7 @@ def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
         mtp_layer.output_head.head.weight.data.copy_(mtp_full_shared_head_head_weight)
     
         
+
 
 
 

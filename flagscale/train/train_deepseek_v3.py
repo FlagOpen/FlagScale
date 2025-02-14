@@ -48,10 +48,6 @@ from flagscale.train.train import pretrain
 from flagscale.train.global_vars import get_parallel_context
 
 from flagscale.train.models.deepseek_v3.deepseek_v3_model import DeepSeekV3Model
-from flagscale.train.models.deepseek_v3.deepseek_v3_layer_specs import (
-    get_deepseek_v3_decoder_block_spec,
-    get_deepseek_v3_with_transformer_engine_spec,
-)
 
 stimer = StragglerDetector()
 
@@ -119,7 +115,7 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
         if args.spec is not None:
             transformer_layer_spec = import_module(args.spec)
         else:
-            transformer_layer_spec = get_deepseek_v3_decoder_block_spec(config, use_transformer_engine=use_te)
+            transformer_layer_spec = get_gpt_decoder_block_spec(config, use_transformer_engine=use_te)
 
         build_model_context = nullcontext
         build_model_context_args = {}
@@ -421,6 +417,7 @@ if __name__ == "__main__":
         args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
         extra_valid_dataset_provider=extra_valid_datasets_provider
     )
+
 
 
 
