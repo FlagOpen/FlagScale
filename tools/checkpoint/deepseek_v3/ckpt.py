@@ -32,7 +32,6 @@ def get_hf_mlp_ckpt(message, model, layer_id, args):
         get_hf_moe_mlp_ckpt(message, model, layer_id, args)
 
 
-
 def get_hf_dense_mlp_ckpt(message, model, layer_id, args):
     tf_layer = model.model.layers[layer_id]
     
@@ -56,11 +55,13 @@ def get_hf_moe_mlp_ckpt(message, model, layer_id, args):
         message[f"expert{id} up weight"] = expert.up_proj.weight.data
         message[f"expert{id} down weight"] = expert.down_proj.weight.data
 
+
 def _get_parallel_size(args):
     return args.tensor_model_parallel_size, \
         args.pipeline_model_parallel_size, \
         args.expert_model_parallel_size, \
         args.virtual_pipeline_model_parallel_size or 1
+
 
 def set_embedding_ckpt(message, models, md, args):
     tp_size, _, _, _ = _get_parallel_size(args)
@@ -106,11 +107,9 @@ def set_attn_ckpt(message, models, layer_id, md, args):
         
         tf_layer = model.decoder.layers[layer_id]
         tf_layer.self_attention.linear_q_down_proj.weight.data.copy_(q_a_weight)
-        # tf_layer.self_attention.q_layernorm.weight.data.copy_(q_a_norm_weight)
         tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data.copy_(q_a_norm_weight)
         tf_layer.self_attention.linear_q_up_proj.weight.data.copy_(q_b_weight)
         tf_layer.self_attention.linear_kv_down_proj.weight.data.copy_(kv_a_weight)
-        # tf_layer.self_attention.kv_layernorm.weight.data.copy_(kv_a_norm_weight)
         tf_layer.self_attention.linear_kv_up_proj.layer_norm_weight.data.copy_(kv_a_norm_weight)
         tf_layer.self_attention.linear_kv_up_proj.weight.data.copy_(kv_b_weight)
         tf_layer.self_attention.linear_proj.weight.data.copy_(o_weight)
@@ -120,14 +119,12 @@ def set_attn_ckpt(message, models, layer_id, md, args):
             tf_layer.pre_mlp_layernorm.weight.data.copy_(post_norm_weight)
 
 
-
 def set_mlp_ckpt(message, model, layer_id, md, args):
     first_k_dense_replace = args.moe_layer_freq.index(1)
     if args.total_layer_num < first_k_dense_replace:
         set_dense_mlp_ckpt(message, model, layer_id, md, args)
     else:
         set_moe_mlp_ckpt(message, model, layer_id, md, args)
-
 
 
 def set_dense_mlp_ckpt(message, models, layer_id, md, args):
