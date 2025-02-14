@@ -4,11 +4,9 @@ defaults:
 
 experiment:
   exp_name: DeepSeek-V3-Test
-  # seed: 2025
-  seed: 42 # same as aquila
+  seed: 42
   save_steps: 10000
   load: None
-  # load: /mnt/share/code/lixianduo/FlagScale/tools/checkpoint/deepseek_v3/converted_fake_bf16_model
   exp_dir: /mnt/share/code/lixianduo/FlagScale/outputs_deepseek/${experiment.exp_name}
   ckpt_format: torch
   task:
@@ -20,41 +18,18 @@ experiment:
     no_shared_fs: false
     rdzv_backend: static
     hostfile: null
-  # runner:
-  #   type: cloud
-  #   rdzv_id: xxx
-  #   rdzv_conf: join_timeout=3600,read_timeout=3600,timeout=3600
-  #   nnodes: ${oc.env:WORLD_SIZE}
-  #   node_rank: ${oc.env:RANK}
-  #   nproc_per_node: 8
-  #   master_addr: ${oc.env:MASTER_ADDR}
-  #   master_port: 12345
-  #   max_restarts: 6553600
-  #   no_shared_fs: false
   cmds:
-    # before_start: "ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale  && export NCCL_IB_GID_INDEX=$(bash /client-tools/get_roce_gid.sh) && export https_proxy=http://10.3.0.25:2080 && export http_proxy=http://10.3.0.25:2080" 
     before_start: "ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale"
   envs:
     LOGLEVEL: "INFO"
     CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
     CUDA_DEVICE_MAX_CONNECTIONS: 1
-    # CUDA_LAUNCH_BLOCKING: 1
-    # NCCL_SOCKET_IFNAME: eth0
-    # GLOO_SOCKET_IFNAME: eth0
-    # #NCCL_SOCKET_IFNAME: eth0x,eth1x,eth2x,eth3x,eth4x,eth5x,eth6x,eth7x
-    # #GLOO_SOCKET_IFNAME: eth0x,eth1x,eth2x,eth3x,eth4x,eth5x,eth6x,eth7x
-    # NCCL_IB_DISABLE: 0
-    # NCCL_IB_CUDA_SUPPORT: 1
-    # # NCCL_IB_GID_INDEX: 7
-    # NCCL_IB_TIMEOUT: 22
-    # gCCL_IB_RETRY_CNT: 13
-    # OMP_NUM_THREADS: 4
-    # NCCL_IB_HCA: mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7
 
 action: run
 
 hydra:
   run:
     dir: ${experiment.exp_dir}/hydra
+
 
 

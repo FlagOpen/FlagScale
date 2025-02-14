@@ -136,7 +136,7 @@ model:
 # aquila dataset
 data:
   no_create_attention_mask_in_dataloader: true
-  data_path: [569.67,/mnt/share/hetero_data/datasets/Nemotron-CC-HQ/Nemotron-CC-high-synthetic-diverse_qa_pairs_text_document,630.33,/mnt/share/hetero_data/datasets/Nemotron-CC-HQ/Nemotron-CC-high-actual-actual_text_document,100.24,/mnt/share/hetero_data/datasets/K76/CNEDU/wxb_edu_qwen_text_document,62.75,/mnt/share/hetero_data/datasets/K76/CNEDU/k73_edu_qwen_text_document,4.2,/mnt/share/hetero_data/datasets/K76/K73/book-pg19-v3_text_document,0.9,/mnt/share/hetero_data/datasets/K76/K73/book-pile2-v3_text_document,14.39,/mnt/share/hetero_data/datasets/K76/K73/book-pile3-v3_text_document,1.8,/mnt/share/hetero_data/datasets/K76/K73/book-pilepg19-v3_text_document,14.39,/mnt/share/hetero_data/datasets/K76/K73/book-redpg19-v3_text_document,39.57,/mnt/share/hetero_data/datasets/K76/K73/book-zliben-v3_text_document,22.48,/mnt/share/hetero_data/datasets/K76/K73/book-zlibzh-v3_text_document,8.39,/mnt/share/hetero_data/datasets/K76/K73/qa-csdn-v3_text_document,5.1,/mnt/share/hetero_data/datasets/K76/K73/qa-pilestack-v3_text_document,10.79,/mnt/share/hetero_data/datasets/K76/K73/qa-restack-v3_text_document,7.79,/mnt/share/hetero_data/datasets/K76/K73/qa-zhihu-v3_text_document,8.99,/mnt/share/hetero_data/datasets/K76/K73/wiki-baike-v3_text_document,14.39,/mnt/share/hetero_data/datasets/K76/K73/wiki-en-v3_text_document,20.38,/mnt/share/hetero_data/datasets/K76/K73/wiki-other-v3_text_document,0.3,/mnt/share/hetero_data/datasets/K76/K72/code_exercises-norm-part1_text_document,0.3,/mnt/share/hetero_data/datasets/K76/K72/code_exercises-norm-part0_text_document,5.58,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-arxiv-norm-part1_text_document,1.38,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-pubmed_abstracts-norm-part1_text_document,7.19,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-pubmed_central-norm-part1_text_document,8.39,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-red-arxiv-norm-part1_text_document,5.82,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-arxiv-norm-part0_text_document,0.36,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-philpapers-norm-part0_text_document,1.38,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-pubmed_abstracts-norm-part0_text_document,7.37,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-dedup-md5-pile-pubmed_central-norm-part0_text_document,8.93,/mnt/share/hetero_data/datasets/K76/K72/arxiv_merged-red-arxiv-norm-part0_text_document,10.79,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/c_text_document,8.69,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/cpp_text_document,4.44,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/go_text_document,11.99,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/java_text_document,10.19,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/javascript_text_document,1.08,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/json_text_document,1.32,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/jupyter-scripts-dedup-filtered_text_document,1.02,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/jupyter-structured-clean-dedup_text_document,12.29,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/markdown_text_document,14.99,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/python_text_document,0.6,/mnt/share/hetero_data/datasets/K76/code_filter_qwen05_loss3/shell_text_document]
+  data_path: /path
   split: 1
   no_mmap_bin_files: true
   tokenizer:
@@ -144,16 +144,5 @@ data:
     tokenizer_path: examples/aquila/qwentokenizer
     vocab_size: 151851
     make_vocab_size_divisible_by: 64
-
-# data:
-#   data_path: build/data/pile_wikipedia_demo
-#   split: 1
-#   tokenizer:
-#     tokenizer_type: AquilaTokenizerFS
-#     vocab_file: ./examples/aquila/tokenizer/vocab.json
-#     merge_file: ./examples/aquila/tokenizer/merges.txt
-#     special_tokens_file: ./examples/aquila/tokenizer/special_tokens.txt
-#     vocab_size: 100008
-#     make_vocab_size_divisible_by: 64
 
 
