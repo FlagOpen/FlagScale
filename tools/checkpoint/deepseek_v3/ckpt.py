@@ -75,6 +75,7 @@ def _get_parallel_size(args):
         args.expert_model_parallel_size, \
         args.virtual_pipeline_model_parallel_size or 1
 
+
 def set_embedding_ckpt(message, models, md, args):
     tp_size, _, _, _ = _get_parallel_size(args)
     assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
