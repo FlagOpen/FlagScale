@@ -263,16 +263,6 @@ class TransformerConfig(ModelParallelConfig):
     tp_only_amax_red: bool = False
     """When set to True, reduce the FP8 AMAX only in the TP or TP-CP domain"""
 
-
-    ####################
-    # MTP related
-    ####################
-    use_mtp_predictor: bool = False
-    """Whether to use multi token predictor"""
-    num_mtp_predictor: int = 1
-    """The num of multi token prediction modules added to model"""
-
-
     ####################
     # MoE related
     ####################
@@ -919,6 +909,3 @@ class MLATransformerConfig(TransformerConfig):
 
     mscale_all_dim: float = 0.707
     """Mscale all dimensions for YaRN RoPE in Multi-Latent Attention."""
-
-
-

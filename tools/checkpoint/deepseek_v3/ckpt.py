@@ -55,20 +55,6 @@ def get_hf_moe_mlp_ckpt(message, model, layer_id, args):
         message[f"expert{id} gate weight"] = expert.gate_proj.weight.data
         message[f"expert{id} up weight"] = expert.up_proj.weight.data
         message[f"expert{id} down weight"] = expert.down_proj.weight.data
-    
-def get_hf_mtp_ckpt(message, model, mtp_layer_id, args):
-    # Send transformer layers
-    mtp_layer = model.model.layers[args.num_layers+mtp_layer_id]
-    
-    message["mtp word embeddings weight"] = mtp_layer.embed_tokens.weight.data
-    message["mtp enorm weight"] = mtp_layer.enorm.weight.data
-    message["mtp hnorm weight"] = mtp_layer.hnorm.weight.data
-    message["mtp eh weight"] = mtp_layer.eh_proj.weight.data
-    message["mtp shared head norm weight"] = mtp_layer.shared_head.norm.weight.data
-    message["mtp shared head head weight"] = mtp_layer.shared_head.head.weight.data
-    
-    get_hf_attn_ckpt(message, model, args.num_layers+mtp_layer_id, args)
-    get_hf_moe_mlp_ckpt(message, model, args.num_layers+mtp_layer_id, args)
 
 def _get_parallel_size(args):
     return args.tensor_model_parallel_size, \
@@ -222,40 +208,9 @@ def set_output_layer_ckpt(message, models, md, args):
     output_layer_weight = full_output_layer_weight
     for tp_ep_rank, model in enumerate(models):
         model.output_layer.weight.data.copy_(output_layer_weight)
-
-
-def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
-    tp_size, _, _, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
-
-    mtp_layers = []
-    for tp_ep_rank, model in enumerate(models):
-        mtp_layer = model.mtp_predictor.mtp_modules[mtp_layer_id]
-        mtp_layers.append(mtp_layer)
-
-    # get and set transformer weights
-    set_attn_ckpt(message, mtp_layers, 0, md, args)
-    set_moe_mlp_ckpt(message, mtp_layers, 0, md, args)
-        
-    # get and set other weights
-    mtp_embedding_weight = message.pop("mtp word embeddings weight")
-    mtp_full_word_embedding_weight = padding_vocab_size(mtp_embedding_weight, md, args)
-    mtp_enorm_weight = message.pop("mtp enorm weight")
-    mtp_hnorm_weight = message.pop("mtp hnorm weight")
-    mtp_eh_weight = message.pop("mtp eh weight")
-    mtp_shared_head_norm_weight = message.pop("mtp shared head norm weight")
-    mtp_shared_head_head_weight = message.pop("mtp shared head head weight")
-    mtp_full_shared_head_head_weight = padding_vocab_size(mtp_shared_head_head_weight, md, args)
-    for tp_ep_rank, model in enumerate(models):
-        mtp_layer = model.mtp_predictor.mtp_modules[mtp_layer_id]
-        mtp_layer.embedding.embedding.word_embeddings.weight.data.copy_(mtp_full_word_embedding_weight)
-        mtp_layer.norm1.weight.data.copy_(mtp_enorm_weight)
-        mtp_layer.norm2.weight.data.copy_(mtp_hnorm_weight)
-        mtp_layer.linear_proj.weight.data.copy_(mtp_eh_weight)
-        mtp_layer.decoder.final_layernorm.weight.data.copy_(mtp_shared_head_norm_weight)
-        mtp_layer.output_head.head.weight.data.copy_(mtp_full_shared_head_head_weight)
     
         
+
 
 
 

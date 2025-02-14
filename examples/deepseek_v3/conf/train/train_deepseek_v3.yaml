@@ -68,10 +68,6 @@ model:
   qk_pos_emb_head_dim: 64
   v_head_dim: 128
 
-  # mtp args ==================
-  use_mtp_predictor: true
-  num_mtp_predictor: 1
-
   # moe args ===================
   moe_shared_expert_intermediate_size: 1408
   num_experts: 64

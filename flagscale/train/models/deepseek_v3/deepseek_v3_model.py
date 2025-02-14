@@ -19,8 +19,6 @@ from megatron.core.transformer.transformer_block import (
 
 from typing import List
 
-from flagscale.train.models.deepseek_v3.multi_token_predictor import DeepSeekMultiTokenPredictor
-
 class DeepSeekV3Model(GPTModel):
     """DeepSeek-V3 language model.
 
@@ -81,8 +79,6 @@ class DeepSeekV3Model(GPTModel):
     ) -> None:
         self.pre_process = pre_process
         self.post_process = post_process
-        self.use_mtp_predictor = config.use_mtp_predictor
-        self.num_mtp_predictor = config.num_mtp_predictor
         
         super().__init__(
             config=config,
@@ -101,26 +97,6 @@ class DeepSeekV3Model(GPTModel):
             scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
             seq_len_interpolation_factor=seq_len_interpolation_factor,
         )
-        
-        if self.post_process:
-            if self.use_mtp_predictor:
-                mtp_config = copy.deepcopy(config)
-                mtp_config.pipeline_model_parallel_size = 1
-                mtp_config.num_layers = 1
-                self.mtp_predictor = DeepSeekMultiTokenPredictor(
-                    config=mtp_config,
-                    transformer_layer_spec=transformer_layer_spec,
-                    vocab_size=vocab_size,
-                    max_sequence_length=max_sequence_length,
-                    position_embedding_type=position_embedding_type,
-                    scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
-                    parallel_output=self.parallel_output,
-                    pre_process=True,
-                    post_process=True,
-                    share_embeddings_and_output_weights=self.share_embeddings_and_output_weights,
-                    embedding_activation_buffer=self.embedding_activation_buffer,
-                grad_output_buffer=self.grad_output_buffer,
-            )
 
     def forward(
         self,
@@ -156,21 +132,7 @@ class DeepSeekV3Model(GPTModel):
             extra_block_kwargs=extra_block_kwargs,
             runtime_gather_output=runtime_gather_output,
         )
-        if not self.post_process:
-            return logits
-        
-        if self.use_mtp_predictor:
-            # get hidden_states (after transformer block, before output head) from main model
-            hidden_states_for_mtp = self.hidden_states_for_mtp
-            logits_mtps = self.mtp_predictor(
-                input_ids=input_ids,
-                position_ids=position_ids,
-                attention_mask=attention_mask,
-                pre_hidden_states=hidden_states_for_mtp,
-                decoder_input=None,
-            )
-            return [logits, logits_mtps]            
-        else:
-            return logits
+        return logits
+
 
 

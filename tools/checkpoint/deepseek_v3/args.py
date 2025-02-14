@@ -16,8 +16,6 @@ def load_args_hf2mg(args):
     moe_intermediate_size = deepseek_v3_args["intermediate_size"]
     assert moe_intermediate_size == args.ffn_hidden_size, "mlp intermediate size is not matched with moe"
     args.num_layers = deepseek_v3_args["num_hidden_layers"]
-    args.use_mtp_predictor = True
-    args.num_mtp_predictor = deepseek_v3_args["num_nextn_predict_layers"]
     args.num_attention_heads = deepseek_v3_args["num_attention_heads"]
     n_shared_experts = deepseek_v3_args["n_shared_experts"]
     if n_shared_experts > 0:
@@ -82,3 +80,4 @@ def load_args_hf2mg(args):
     args.tokenizer_type = "Emu3TokenizerFS"
     
     return args, args
+
