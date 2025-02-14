@@ -451,14 +451,10 @@ def validate_args(args, defaults={}):
     }
     map_dtype = lambda d: d if isinstance(d, torch.dtype) else dtype_map[d]
 
-    if args.main_grads_dtype in dtype_map.keys():
-        args.main_grads_dtype = dtype_map[args.main_grads_dtype]
-    if args.main_params_dtype in dtype_map.keys():
-        args.main_params_dtype = dtype_map[args.main_params_dtype]
-    if args.exp_avg_dtype in dtype_map.keys():
-        args.exp_avg_dtype = dtype_map[args.exp_avg_dtype]
-    if args.exp_avg_sq_dtype in dtype_map.keys():
-        args.exp_avg_sq_dtype = dtype_map[args.exp_avg_sq_dtype]
+    args.main_grads_dtype = dtype_map[args.main_grads_dtype]
+    args.main_params_dtype = dtype_map[args.main_params_dtype]
+    args.exp_avg_dtype = dtype_map[args.exp_avg_dtype]
+    args.exp_avg_sq_dtype = dtype_map[args.exp_avg_sq_dtype]
 
     if args.fp8_param_gather:
         assert args.use_distributed_optimizer, \

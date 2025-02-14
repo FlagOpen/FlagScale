@@ -208,12 +208,3 @@ def set_output_layer_ckpt(message, models, md, args):
     output_layer_weight = full_output_layer_weight
     for tp_ep_rank, model in enumerate(models):
         model.output_layer.weight.data.copy_(output_layer_weight)
-    
-        
-
-
-
-
-
-
-

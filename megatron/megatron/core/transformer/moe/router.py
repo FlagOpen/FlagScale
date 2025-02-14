@@ -104,7 +104,6 @@ class TopKRouter(Router):
         self.routing_type = self.config.moe_router_load_balancing_type
         self.score_function = self.config.moe_router_score_function
         self.input_jitter = None
-        
         self.score_bias = torch.nn.Parameter(
             torch.zeros(self.config.num_moe_experts), requires_grad=False
         )
@@ -367,5 +366,3 @@ class TopKRouter(Router):
         scores, routing_map = self.routing(logits)
 
         return scores, routing_map
-
-

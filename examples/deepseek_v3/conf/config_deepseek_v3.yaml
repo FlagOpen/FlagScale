@@ -7,7 +7,7 @@ experiment:
   seed: 42
   save_steps: 10000
   load: None
-  exp_dir: /mnt/share/code/lixianduo/FlagScale/outputs_deepseek/${experiment.exp_name}
+  exp_dir: /xxx
   ckpt_format: torch
   task:
     type: train
@@ -30,6 +30,3 @@ action: run
 hydra:
   run:
     dir: ${experiment.exp_dir}/hydra
-
-
-

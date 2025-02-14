@@ -94,4 +94,3 @@ python convert.py \
     --target-params-dtype bf16 \
     --true-vocab-size 128256 \
     --megatron-path <xxx>
-
