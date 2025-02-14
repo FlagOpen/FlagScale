@@ -340,9 +340,6 @@ class TransformerConfig(ModelParallelConfig):
     moe_router_score_function: str = "softmax"
     """Score function for MoE routing. Can be "softmax" or "sigmoid"."""
 
-    moe_num_first_k_dense_layers: int = None
-    """Determines first k dense layers when using moe."""
-
     moe_router_enable_expert_bias: bool = False
     """TopK routing with dynamic per-expert bias in the aux-loss-free load balancing strategy.
     The routing decision is based on the sum of the routing scores and the expert bias.
@@ -922,5 +919,6 @@ class MLATransformerConfig(TransformerConfig):
 
     mscale_all_dim: float = 0.707
     """Mscale all dimensions for YaRN RoPE in Multi-Latent Attention."""
+
 
 

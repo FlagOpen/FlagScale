@@ -76,12 +76,11 @@ model:
   moe_shared_expert_intermediate_size: 1408
   num_experts: 64
   moe_router_load_balancing_type: "aux_loss"
-  moe_num_first_k_dense_layers: 1
   moe_router_score_function: sigmoid
   moe_router_enable_expert_bias: true
   moe_router_bias_update_rate: 0.001
   moe_aux_loss_coeff: 0.02
-  moe_layer_freq: 1
+  moe_layer_freq: "[0]+[1]*23"
   # node limited routing
   moe_router_num_groups: 1
   moe_router_group_topk: 1
@@ -156,3 +155,4 @@ data:
 #     special_tokens_file: ./examples/aquila/tokenizer/special_tokens.txt
 #     vocab_size: 100008
 #     make_vocab_size_divisible_by: 64
+

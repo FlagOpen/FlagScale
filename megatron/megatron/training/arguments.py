@@ -2346,9 +2346,6 @@ def _add_moe_args(parser):
                        choices=['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'],
                        default='aux_loss',
                        help='Determines the load balancing strategy for the router. "aux_loss" corresponds to the load balancing loss used in GShard and SwitchTransformer; "seq_aux_loss" corresponds to the load balancing loss used in DeepSeekV2, which computes the loss for each individual sample; "sinkhorn" corresponds to the balancing algorithm used in S-BASE, and "none" implies no load balancing. The default is "aux_loss".')
-    group.add_argument('--moe-num-first-k-dense-layers', type=int,
-                       default=None,
-                       help='Determines first k dense layers when using moe.')
     group.add_argument('--moe-router-score-function', type=str,
                        choices=['softmax', 'sigmoid'],
                        default='softmax',
@@ -2501,5 +2498,6 @@ def _add_auto_skip_spiky_loss(parser):
     group.add_argument('--spiky-loss-threshold', type=float, default=0.2,
                           help='Threshold for skipping spiky loss iterations.')
     return parser
+
 
 

@@ -25,7 +25,8 @@ def get_hf_attn_ckpt(message, model, layer_id, args):
 
 
 def get_hf_mlp_ckpt(message, model, layer_id, args):
-    if layer_id < args.moe_num_first_k_dense_layers:
+    first_k_dense_replace = args.moe_layer_freq.index(1)
+    if layer_id < first_k_dense_replace:
         get_hf_dense_mlp_ckpt(message, model, layer_id, args)
     else:
         get_hf_moe_mlp_ckpt(message, model, layer_id, args)
@@ -128,7 +129,8 @@ def set_attn_ckpt(message, models, layer_id, md, args):
 
 
 def set_mlp_ckpt(message, model, layer_id, md, args):
-    if args.total_layer_num < args.moe_num_first_k_dense_layers:
+    first_k_dense_replace = args.moe_layer_freq.index(1)
+    if args.total_layer_num < first_k_dense_replace:
         set_dense_mlp_ckpt(message, model, layer_id, md, args)
     else:
         set_moe_mlp_ckpt(message, model, layer_id, md, args)
@@ -246,6 +248,7 @@ def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
         mtp_layer.output_head.head.weight.data.copy_(mtp_full_shared_head_head_weight)
     
         
+
 
 
 

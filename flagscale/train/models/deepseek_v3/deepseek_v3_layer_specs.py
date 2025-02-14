@@ -197,8 +197,6 @@ def get_deepseek_v3_decoder_block_spec(
         multi_latent_attention=config.multi_latent_attention,
         moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
     )
-
-    num_rest_layers = config.num_layers - config.moe_num_first_k_dense_layers
     
     # Parse config.moe_layer_freq to determine the pattern of expert/dense layers.
     # 0 stands for dense layers, 1 stands for expert layers.
@@ -206,13 +204,13 @@ def get_deepseek_v3_decoder_block_spec(
     # For string pattern: Evaluates the str directly (e.g. "[1,0,1]" for alternating expert/dense).
     if isinstance(config.moe_layer_freq, int):
         moe_layer_pattern = [
-            1 if (i % config.moe_layer_freq == 0) else 0 for i in range(num_rest_layers)
+            1 if (i % config.moe_layer_freq == 0) else 0 for i in range(config.num_layers)
         ]
     elif isinstance(config.moe_layer_freq, list):
         moe_layer_pattern = config.moe_layer_freq
-        assert len(moe_layer_pattern) == num_rest_layers, (
+        assert len(moe_layer_pattern) == config.num_layers, (
             f"Invalid length of moe_layer_pattern: {len(moe_layer_pattern)}, "
-            f"expected {num_rest_layers}, "
+            f"expected {config.num_layers}, "
             f"current moe layer pattern: {config.moe_layer_freq}"
         )
     else:
@@ -220,7 +218,6 @@ def get_deepseek_v3_decoder_block_spec(
             f"Invalid moe_layer_freq: {type(config.moe_layer_freq)}, {config.moe_layer_freq}"
         )
     
-    moe_layer_pattern = [0 for i in range(config.moe_num_first_k_dense_layers)] + moe_layer_pattern
     assert len(moe_layer_pattern) == config.num_layers, "layer pattern is not matched with config.num_layers"
 
     # Create the layer specs for the model.
@@ -243,4 +240,5 @@ def get_deepseek_v3_decoder_block_spec(
     block_spec = TransformerBlockSubmodules(layer_specs=layer_specs, layer_norm=layer_norm_impl)
 
     return block_spec
+
 

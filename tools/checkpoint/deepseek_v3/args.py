@@ -29,7 +29,10 @@ def load_args_hf2mg(args):
     topk_group = deepseek_v3_args["topk_group"]
     args.moe_router_topk = deepseek_v3_args["num_experts_per_tok"]
     args.moe_layer_freq = deepseek_v3_args["moe_layer_freq"]
-    args.moe_num_first_k_dense_layers = deepseek_v3_args["first_k_dense_replace"]
+    # if set first k dense replace, then updating moe_layer_freq
+    first_k_dense_replace = deepseek_v3_args["first_k_dense_replace"]    
+    args.moe_layer_freq = eval("[0]*" + str(first_k_dense_replace) + "+[1]*" + str(args.num_layers-first_k_dense_replace))
+    
     norm_topk_prob = deepseek_v3_args["norm_topk_prob"]
     args.moe_router_score_function = deepseek_v3_args["scoring_func"]
     aux_loss_alpha = deepseek_v3_args["aux_loss_alpha"]
@@ -79,38 +82,3 @@ def load_args_hf2mg(args):
     args.tokenizer_type = "Emu3TokenizerFS"
     
     return args, args
-
-
-# def save_args_mg2hf(args):
-#     from transformers import DeepseekV3Config
-
-#     config = DeepseekV3Config(
-#         vocab_size = args.vocab_size,
-#         hidden_size = args.hidden_size,
-#         intermediate_size = args.ffn_hidden_size,
-#         num_hidden_layers = args.encoder_num_layers,
-#         num_nextn_predict_layers = args.num_multi_token_prediction_modules,
-#         num_attention_heads = args.num_attention_heads,
-#         n_routed_experts = args.num_experts,
-#         num_experts_per_tok = args.moe_router_topk,
-#         moe_layer_freq = args.moe_layer_freq,
-#         first_k_dense_replace = args.moe_num_first_k_dense_layers,
-#         max_position_embeddings = args.max_position_embeddings,
-#         rms_norm_eps = args.norm_epsilon,
-#         num_key_value_heads = args.num_query_groups,
-#         max_position_embeddings = args.max_position_embeddings,
-#         tie_word_embeddings = not args.untie_embeddings_and_output_weights,
-#         rope_theta = args.rotary_base,
-#         attention_dropout = args.attention_dropout,
-#         initializer_range = args.init_method_std,
-#         q_lora_rank = args.q_lora_rank,
-#         kv_lora_rank = args.kv_lora_rank,
-#         qk_nope_head_dim = args.qk_head_dim,
-#         qk_rope_head_dim = args.qk_pos_emb_head_dim,
-#         v_head_dim = args.v_head_dim,
-#     )
-#     config.save_pretrained(args.save)
-
-#     return config
-
-
