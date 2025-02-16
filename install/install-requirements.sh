@@ -40,7 +40,7 @@ fi
 source ~/miniconda3/etc/profile.d/conda.sh
 
 # Create and activate Conda virtual environment
-conda create --name flagscale-${env} python=3.12.9 -y
+conda create --name flagscale-${env} python=3.12 -y
 conda activate flagscale-${env}
 
 # Navigate to requirements directory and install basic dependencies
