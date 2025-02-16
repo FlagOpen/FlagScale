@@ -1,4 +1,17 @@
 # sparse model change the parallel config
+
+python convert.py \
+    --model-type deepseek_v3 \
+    --loader transformers \
+    --saver mcore \
+    --load-dir deepseek_v3/fake_bf16_model \
+    --save-dir deepseek_v3/converted_fake_bf16_model \
+    --target-tensor-parallel-size 1 \
+    --target-pipeline-parallel-size 8 \
+    --target-expert-parallel-size 1 \
+    --target-params-dtype bf16 \
+    --true-vocab-size 151851 \
+
 python convert.py \
     --model-type mixtral \
     --loader transformers \
