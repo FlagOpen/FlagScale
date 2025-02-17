@@ -39,16 +39,38 @@ fi
 # Load conda environment
 source ~/miniconda3/etc/profile.d/conda.sh
 
+# Check if PYTHON_VISION environment variable exists; if not, prompt to specify the version
+if [ -z "$PYTHON_VISION" ]; then
+    echo "Error: PYTHON_VISION environment variable is not set. Please specify the Python version."
+    exit 1
+fi
+
 # Create and activate Conda virtual environment
-conda create --name flagscale-${env} -y
+conda create --name flagscale-${env} python=${PYTHON_VISION} -y
 conda activate flagscale-${env}
 
 # Navigate to requirements directory and install basic dependencies
 pip install -r ../requirements/requirements-common.txt
 
 # Used for automatic fault tolerance
-sed -i 's/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' /root/miniconda3/envs/flagscale-inference/lib/python3.10/site-packages/torch/distributed/elastic/agent/server/api.py
-sed -i '/self._restart_workers(self._worker_group)/i\        self._remaining_restarts -= 1' /root/miniconda3/envs/flagscale-inference/lib/python3.10/site-packages/torch/distributed/elastic/agent/server/api.py
+# Set the path to the target Python file
+FILE="/root/miniconda3/envs/flagscale-inference/lib/python3.10/site-packages/torch/distributed/elastic/agent/server/api.py"
+
+# Check if 'if num_nodes_waiting' appears only once in line 894
+if [ "$(awk 'NR==894 {print $0}' $FILE | grep -c 'if num_nodes_waiting')" -ne 1 ]; then
+    echo "Error: 'if num_nodes_waiting' does not appear exactly once at line 894."
+    exit 1
+fi
+# If the check passes, perform the sed substitution
+sed -i 's/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' $FILE
+
+# Check if 'if num_nodes_waiting' appears only once in line 903
+if [ "$(awk 'NR==894 {print $0}' $FILE | grep -c 'self._restart_workers(self._worker_group)')" -ne 1 ]; then
+    echo "Error: 'self._restart_workers(self._worker_group)' does not appear exactly once at line 903."
+    exit 1
+fi
+# If the check passes, perform the sed substitution
+sed -i '/self._restart_workers(self._worker_group)/i\                    self._remaining_restarts -= 1' /root/miniconda3/envs/flagscale-inference/lib/python3.10/site-packages/torch/distributed/elastic/agent/server/api.py
 
 # Install flagscale-common: TransformerEngine
 git clone -b stable https://github.com/NVIDIA/TransformerEngine.git
