@@ -267,9 +267,7 @@ class TransformerConfig(ModelParallelConfig):
     ####################
     # MTP related
     ####################
-    use_mtp_predictor: bool = False
-    """Whether to use multi token predictor"""
-    num_mtp_predictor: int = 1
+    num_mtp_predictor: int = 0
     """The num of multi token predictors"""
 
 

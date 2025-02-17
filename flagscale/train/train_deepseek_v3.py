@@ -255,7 +255,8 @@ def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tenso
     total_tokens = loss_mask.sum()
     
     # get logits from main model and mtp modules
-    if args.use_mtp_predictor:
+    use_mtp_predictor = True if args.num_mtp_predictor > 0 else False
+    if use_mtp_predictor:
         logits, logits_mtps = logits # [b s h]
     roll_labels = labels # [b s]
     roll_loss_mask = loss_mask # [b*s]
@@ -270,7 +271,7 @@ def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tenso
     loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
         
     # cal loss for mtp modules
-    if args.use_mtp_predictor:
+    if use_mtp_predictor:
         labels_mtps = []
         loss_mask_mtps = []
         total_tokens_mtps = 0
@@ -301,7 +302,7 @@ def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tenso
         loss_mtps = loss_mtps / args.num_mtp_predictor
         
     # merge loss, how to process?
-    if args.use_mtp_predictor:
+    if use_mtp_predictor:
         loss = loss + loss_mtps
     
     # loss printing

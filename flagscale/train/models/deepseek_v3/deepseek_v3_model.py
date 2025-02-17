@@ -83,7 +83,7 @@ class DeepSeekV3Model(GPTModel):
     ) -> None:
         self.pre_process = pre_process
         self.post_process = post_process
-        self.use_mtp_predictor = config.use_mtp_predictor
+        self.use_mtp_predictor = True if config.num_mtp_predictor > 0 else False
         self.num_mtp_predictor = config.num_mtp_predictor
         
         super().__init__(
