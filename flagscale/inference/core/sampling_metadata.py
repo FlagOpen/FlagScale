@@ -1,4 +1,6 @@
 # This file is modified from 'FlagScale/vllm/vllm/model_executor/sampling_metadata.py'
+# SPDX-License-Identifier: Apache-2.0
+
 from array import array
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple

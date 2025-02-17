@@ -4,6 +4,9 @@ echo "The current directory is: $(pwd)"
 
 source tests/scripts/_gpu_check.sh
 
+echo "Set fd limit to 65535"
+ulimit -n 65535
+
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in

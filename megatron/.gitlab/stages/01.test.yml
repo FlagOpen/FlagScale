@@ -28,9 +28,9 @@ test:build_image:
         BASE_IMAGE: nvcr.io/nvidia/pytorch:24.01-py3
       - IMAGE: CI_MCORE_DEV_IMAGE
         FILE: Dockerfile.ci.dev
-        BASE_IMAGE: nvcr.io/nvidia/pytorch:24.07-py3
+        BASE_IMAGE: nvcr.io/nvidia/pytorch:24.10-py3
       - IMAGE: CI_NEMO_IMAGE
-        FILE: Dockerfile.ci.lts
+        FILE: Dockerfile.ci.dev
         BASE_IMAGE: nvcr.io/nvidian/nemo:nightly
       - IMAGE: UTILITY_IMAGE
         FILE: Dockerfile.linting
@@ -75,7 +75,7 @@ test:build_image:
           --build-arg CACHEBUST=$(cat /proc/sys/kernel/random/uuid) \
           --build-arg MCORE_REPO=${CI_REPOSITORY_URL} \
           --build-arg MCORE_REF=$CI_COMMIT_SHA \
-          --build-arg MCORE_BACKWARDS_REF="core_r0.9.0" \
+          --build-arg MCORE_BACKWARDS_REF="core_r0.10.0" \
           --cache-to type=registry,ref=${IMAGE}-buildcache:${CI_PIPELINE_ID} \
           --cache-to type=registry,ref=${IMAGE}-buildcache:${CI_MERGE_REQUEST_IID:-noop} \
           --cache-from type=registry,ref=${IMAGE}-buildcache:main \
@@ -104,66 +104,52 @@ test:unit_tests_configure:
       A100_CLUSTER=$([[ "$FUNCTIONAL_TEST_CLUSTER_A100" != "" ]] && echo $FUNCTIONAL_TEST_CLUSTER_A100 || echo $DEFAULT_A100_CLUSTER)
       H100_CLUSTER=$([[ "$FUNCTIONAL_TEST_CLUSTER_H100" != "" ]] && echo $FUNCTIONAL_TEST_CLUSTER_H100 || echo $DEFAULT_H100_CLUSTER)
     - |
+      ARGS=(
+        "--scope unit-tests"
+        "--n-repeat ${UNIT_TEST_REPEAT}"
+        "--time-limit $(( UNIT_TEST_TIMEOUT * 60 ))"
+        "--test-cases all"
+        "--a100-cluster dgxa100_dracooci-ord"
+        "--h100-cluster dgxh100_coreweave"
+        "--h100-partition batch_short,batch"
+        "--container-image ${UTILITY_IMAGE}"
+        "--container-tag ${CI_PIPELINE_ID}"
+        "--dependent-job test:unit_tests_configure"
+      )
+    - |
       export PYTHONPATH=$(pwd)
       python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
-        --scope "unit-tests" \
-        --environment lts \
-        --n-repeat "${UNIT_TEST_REPEAT}" \
-        --time-limit "$(( UNIT_TEST_TIMEOUT * 60 ))" \
-        --test-cases "all" \
-        --a100-cluster "dgxa100_dracooci-ord" \
-        --h100-cluster "dgxh100_coreweave" \
-        --container-image ${UTILITY_IMAGE} \
-        --container-tag ${CI_PIPELINE_ID} \
-        --dependent-job "test:unit_tests_configure" \
+        ${ARGS[@]} \
+        --environment "lts" \
         --tag "legacy" \
         --output-path "unit-test-job-lts-legacy.yaml"
     - |
       export PYTHONPATH=$(pwd)
       python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
-        --scope "unit-tests" \
-        --environment lts \
-        --n-repeat "${UNIT_TEST_REPEAT}" \
-        --time-limit "$(( UNIT_TEST_TIMEOUT * 60 ))" \
-        --test-cases "all" \
-        --a100-cluster "dgxa100_dracooci-ord" \
-        --h100-cluster "dgxh100_coreweave" \
-        --container-image ${UTILITY_IMAGE} \
-        --container-tag ${CI_PIPELINE_ID} \
-        --dependent-job "test:unit_tests_configure" \
+        ${ARGS[@]} \
+        --environment "lts" \
         --tag "latest" \
         --output-path "unit-test-job-lts-latest.yaml"
     - |
       export PYTHONPATH=$(pwd)
       python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
-        --scope "unit-tests" \
-        --environment dev \
-        --n-repeat "${UNIT_TEST_REPEAT}" \
-        --time-limit "$(( UNIT_TEST_TIMEOUT * 60 ))" \
-        --test-cases "all" \
-        --a100-cluster "dgxa100_dracooci-ord" \
-        --h100-cluster "dgxh100_coreweave" \
-        --container-image ${UTILITY_IMAGE} \
-        --container-tag ${CI_PIPELINE_ID} \
-        --dependent-job "test:unit_tests_configure" \
+        ${ARGS[@]} \
+        --environment "dev" \
         --tag "legacy" \
         --output-path "unit-test-job-dev-legacy.yaml"
     - |
       export PYTHONPATH=$(pwd)
       python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
-        --scope "unit-tests" \
-        --environment dev \
-        --n-repeat "${UNIT_TEST_REPEAT}" \
-        --time-limit "$(( UNIT_TEST_TIMEOUT * 60 ))" \
-        --test-cases "all" \
-        --a100-cluster "dgxa100_dracooci-ord" \
-        --h100-cluster "dgxh100_coreweave" \
-        --container-image ${UTILITY_IMAGE} \
-        --container-tag ${CI_PIPELINE_ID} \
-        --dependent-job "test:unit_tests_configure" \
+        ${ARGS[@]} \
+        --environment "dev" \
         --tag "latest" \
         --output-path "unit-test-job-dev-latest.yaml"
-
+  rules:
+    - if: $UNIT_TEST == 'yes' && $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
+      allow_failure: true
+      when: on_success
+    - if: $UNIT_TEST == 'yes' && $UNIT_TEST_REPEAT != '0'
+      when: on_success
   artifacts:
     paths:
       - unit-test-job-dev-legacy.yaml
@@ -209,13 +195,13 @@ test:unit_tests_pyt(DEV)_mcore(legacy):
 test:unit_tests_pyt(LTS)_mcore(legacy):
   extends: [.unit_tests_run]
   variables:
-    ENVIRONMENT: dev
+    ENVIRONMENT: lts
     TAG: legacy
 
 test:unit_tests_pyt(DEV)_mcore(latest):
   extends: [.unit_tests_run]
   variables:
-    ENVIRONMENT: lts
+    ENVIRONMENT: dev
     TAG: latest
 
 test:unit_tests_pyt(LTS)_mcore(latest):
@@ -276,13 +262,13 @@ test:formatting:
         exit 0
       fi
     - set +e
-    - git fetch origin $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
     - git fetch origin main:main
-    - git checkout $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
     - |
       if [[ "$CI_MERGE_REQUEST_PROJECT_PATH" == "$CI_MERGE_REQUEST_SOURCE_PROJECT_PATH" ]]; then 
         bash tools/autoformat.sh
         set -e
+        git fetch origin $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+        git checkout $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
         git config --global user.email "mcore-bot@nvidia.com"
         git config --global user.name "Mcore Bot"
         git remote set-url origin "https://gitlab-ci-token:${PAT}@${GITLAB_ENDPOINT}/$CI_PROJECT_NAMESPACE/megatron-lm.git"
@@ -336,7 +322,7 @@ test:pypi_build_wheel:
   tags: [mcore-docker-node-small]
   variables:
     PUBLISH_DRYRUN: 'yes'
-    PY_ENV: pytorch:24.07
+    PY_ENV: pytorch_24.10
   script:
     - echo $PUBLISH_DRYRUN
     - >
@@ -344,29 +330,39 @@ test:pypi_build_wheel:
         PRE_RELEASE=$(sed -n "s/.*PRE_RELEASE = '\(.*\)'/\1/p" megatron/core/package_info.py)
         sed -i "/^PRE_RELEASE/c\PRE_RELEASE = '${PRE_RELEASE}.dev$((RANDOM % 900000 + 100000))'" megatron/core/package_info.py 
       fi
-    - /opt/python/cp310-cp310/bin/python -m build
+
+
     - /opt/python/cp311-cp311/bin/python -m build
     - auditwheel repair dist/*.whl
+
+    # Install with no-deps since we
+    - /opt/python/cp311-cp311/bin/pip install --no-deps .
+    - /opt/python/cp311-cp311/bin/pip install numpy torch
+    - EXPECTED_RELEASE_NUMBER=$(/opt/python/cp311-cp311/bin/python -c "from megatron import core; print(core.__version__)")
+    - echo "EXPECTED_RELEASE_NUMBER=$EXPECTED_RELEASE_NUMBER" | tee -a build.env
   artifacts:
     paths:
       - megatron/core/package_info.py
       - wheelhouse/
+    reports:
+      dotenv: build.env
 
 test:pypi_test_wheel:
   extends: [.test_rules]
-  image: nvcr.io/nvidia/pytorch:24.01-py3
+  image: python:3.11
   needs: [test:pypi_build_wheel]
   tags: [mcore-docker-node-small]
   variables:
     PUBLISH_DRYRUN: 'yes'
   script:
-    - EXPECTED_RELEASE_NUMBER=$(python -c "from megatron import core; print(core.__version__)")
     - rm -rf megatron
-    - pip install wheelhouse/*cp310*.whl
+    - pip install wheelhouse/*cp311*.whl
 
     - RELEASE_NUMBER=$(python -c "from megatron import core; print(core.__version__)")
     - >
       echo "$EXPECTED_RELEASE_NUMBER" == "$RELEASE_NUMBER"
+
+
     - test "$EXPECTED_RELEASE_NUMBER" == "$RELEASE_NUMBER"
     - echo "RELEASE_NUMBER=$EXPECTED_RELEASE_NUMBER" | tee -a build.env
   artifacts:
@@ -377,7 +373,7 @@ test:pypi_test_wheel:
 
 test:pypi_push_wheel:
   extends: [.test_rules]
-  image: python:3.10
+  image: python:3.11
   tags: [mcore-docker-node-small]
   needs: [test:pypi_test_wheel]
   variables:
@@ -394,11 +390,15 @@ test:pypi_push_wheel:
         export TWINE_USERNAME=$TWINE_PROD_USERNAME
         export TWINE_PASSWORT=$TWINE_PROD_PASSWORD
       fi
+
+
     - pip install twine
     - >
       for i in 1 2 3 4 5; do 
         twine upload --verbose -u $TWINE_USERNAME -p $TWINE_PASSWORT --repository $REPOSITORY wheelhouse/* && break || sleep $(( 60*2**i )); 
       done
+
+
   rules:
     - if: $UNIT_TEST == 'yes' && $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
       allow_failure: true
@@ -432,6 +432,8 @@ test:gh_release:
                       "generate_release_notes": false
                   }'
               )
+
+
     - >
       CMD=$(echo curl -L \
         -X POST \
@@ -441,12 +443,13 @@ test:gh_release:
         https://api.github.com/repos/NVIDIA/Megatron-LM/releases \
         -d "$PAYLOAD"
       )
-
+      
       if [[ "$PUBLISH_DRYRUN" == "yes" ]]; then
         echo "$CMD"
       else
         eval "$CMD"
       fi
+
 
 test:notify_release:
   needs: [test:pypi_test_wheel, test:pypi_push_wheel, test:gh_release]
@@ -469,6 +472,8 @@ test:notify_release:
             }
           ]
         }'
+
+
     - echo "$MESSAGE"
     - >
       CMD=$(echo curl \
@@ -476,10 +481,10 @@ test:notify_release:
         -H "Content-type: application/json" \
         --data "$MESSAGE" ${MCORE_NOTIFICATION_HOOK_MAIN}
       )
-
+      
       if [[ "$PUBLISH_DRYRUN" == "yes" ]]; then
         echo "$CMD"
       else
         eval "$CMD"
       fi
-      
+

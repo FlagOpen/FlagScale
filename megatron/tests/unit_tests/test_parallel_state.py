@@ -178,12 +178,17 @@ def test_encoder_tensor_pipeline_parallelism(order):
     if rank < 2:
         assert ps.get_tensor_model_parallel_world_size() == 3
         assert isinstance(ps._PIPELINE_GLOBAL_RANKS[0], list)
+        last_ranks = ps.get_pipeline_model_parallel_last_rank()
+        assert isinstance(last_ranks, list)
+        assert len(last_ranks) == 2
     elif rank == 2:
         assert ps.get_tensor_model_parallel_world_size() == 3
         assert isinstance(ps._PIPELINE_GLOBAL_RANKS[0], int)
+        assert isinstance(ps.get_pipeline_model_parallel_last_rank(), int)
     else:
         assert ps.get_tensor_model_parallel_world_size() == 5
         assert isinstance(ps._PIPELINE_GLOBAL_RANKS[0], int)
+        assert isinstance(ps.get_pipeline_model_parallel_last_rank(), int)
     Utils.destroy_model_parallel()
 
 
@@ -250,7 +255,13 @@ def test_different_initialize_order_consistency(src_tp_pp, ep_size):
 
     Utils.destroy_model_parallel()
 
-
+"""
+    Author: lizhiyu
+    Date: 2024-02-11
+    Action: 
+    Reason: This test always fails. The retated commit is
+            https://github.com/NVIDIA/Megatron-LM/commit/3e7ceda6b750a31fd3eb3a8bff3d811b4eabd289#diff-354da93a3dc4df1cd3362bba49b91f3145c6902f84839c4a8341079cbe7603a8
+"""
 @pytest.mark.parametrize(
     'src_tp_pp, ep_size',
     [((1, 2), 1), ((1, 4), 1), ((2, 2), 1), ((1, 2), 2), ((1, 4), 2), ((2, 2), 2)],
