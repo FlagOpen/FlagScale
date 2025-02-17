@@ -115,8 +115,6 @@ class DeepSeekV3Model(GPTModel):
                     position_embedding_type=position_embedding_type,
                     scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
                     parallel_output=self.parallel_output,
-                    pre_process=True,
-                    post_process=True,
                     share_embeddings_and_output_weights=self.share_embeddings_and_output_weights,
                     embedding_activation_buffer=self.embedding_activation_buffer,
                 grad_output_buffer=self.grad_output_buffer,

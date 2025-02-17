@@ -114,8 +114,6 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         position_embedding_type: Literal['learned_absolute', 'rope', 'none'] = 'learned_absolute',
         scatter_embedding_sequence_parallel: bool = True,
         parallel_output: bool = True,
-        pre_process: bool = False,
-        post_process: bool = False,
         share_embeddings_and_output_weights: bool = True,
         embedding_activation_buffer: Optional[List[torch.Tensor]] = None,
         grad_output_buffer: Optional[List[torch.Tensor]] = None,
@@ -123,17 +121,14 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         super().__init__(config=config)
 
         self.config = config
-        self.pre_process = pre_process
-        self.post_process = post_process
         
-        if pre_process:
-            self.embedding = DeepSeekSharedEmbedding(
-                config=self.config,
-                vocab_size=vocab_size,
-                max_sequence_length=max_sequence_length,
-                position_embedding_type=position_embedding_type,
-                scatter_to_sequence_parallel=scatter_embedding_sequence_parallel,
-            )
+        self.embedding = DeepSeekSharedEmbedding(
+            config=self.config,
+            vocab_size=vocab_size,
+            max_sequence_length=max_sequence_length,
+            position_embedding_type=position_embedding_type,
+            scatter_to_sequence_parallel=scatter_embedding_sequence_parallel,
+        )
 
         if HAVE_TE:   
             self.norm1 = TENorm(config, config.hidden_size, config.layernorm_epsilon)
@@ -150,23 +145,22 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         self.decoder = TransformerBlock(
             config=config,
             spec=transformer_layer_spec,
-            pre_process=pre_process,
-            post_process=post_process,
+            pre_process=True,
+            post_process=True,
         )
         
-        if post_process:
-            self.output_head = DeepSeekSharedHead(
-                config.hidden_size,
-                vocab_size,
-                config=config,
-                init_method=config.init_method,
-                bias=False,
-                skip_bias_add=False,
-                gather_output=not parallel_output,
-                skip_weight_param_allocation=pre_process and share_embeddings_and_output_weights,
-                embedding_activation_buffer=embedding_activation_buffer,
-                grad_output_buffer=grad_output_buffer,
-            )
+        self.output_head = DeepSeekSharedHead(
+            config.hidden_size,
+            vocab_size,
+            config=config,
+            init_method=config.init_method,
+            bias=False,
+            skip_bias_add=False,
+            gather_output=not parallel_output,
+            skip_weight_param_allocation=share_embeddings_and_output_weights,
+            embedding_activation_buffer=embedding_activation_buffer,
+            grad_output_buffer=grad_output_buffer,
+        )
 
     def forward(
         self,
@@ -192,11 +186,8 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         
         if decoder_input is not None:
             pass
-        elif self.pre_process:
-            decoder_input = self.embedding(input_ids=input_ids, position_ids=position_ids)
         else:
-            # intermediate stage of pipeline
-            decoder_input = None
+            decoder_input = self.embedding(input_ids=input_ids, position_ids=position_ids)
         
         if input_mask is not None:
             # scatter
@@ -218,8 +209,7 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         hidden_states_mtp = hidden_states
         
         # output head
-        if self.post_process:
-            logits_mtp, _ = self.output_head(hidden_states)
+        logits_mtp, _ = self.output_head(hidden_states)
         
         return logits_mtp, hidden_states_mtp
 
@@ -239,8 +229,6 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
         position_embedding_type: Literal['learned_absolute', 'rope', 'none'] = 'learned_absolute',
         scatter_embedding_sequence_parallel: bool = True,
         parallel_output: bool = True,
-        pre_process: bool = False,
-        post_process: bool = False,
         share_embeddings_and_output_weights: bool = True,
         embedding_activation_buffer: Optional[List[torch.Tensor]] = None,
         grad_output_buffer: Optional[List[torch.Tensor]] = None,
@@ -259,8 +247,6 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
                     position_embedding_type=position_embedding_type,
                     scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
                     parallel_output=parallel_output,
-                    pre_process=pre_process,
-                    post_process=post_process,
                     share_embeddings_and_output_weights=share_embeddings_and_output_weights,
                     embedding_activation_buffer=embedding_activation_buffer,
                     grad_output_buffer=grad_output_buffer,
