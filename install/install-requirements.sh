@@ -39,14 +39,9 @@ fi
 # Load conda environment
 source ~/miniconda3/etc/profile.d/conda.sh
 
-# Check if PYTHON_VISION environment variable exists; if not, prompt to specify the version
-if [ -z "$PYTHON_VISION" ]; then
-    echo "Error: PYTHON_VISION environment variable is not set. Please specify the Python version."
-    exit 1
-fi
-
 # Create and activate Conda virtual environment
-conda create --name flagscale-${env} python=${PYTHON_VISION} -y
+# The Python version used has been written into the conda config
+conda create --name flagscale-${env} -y
 conda activate flagscale-${env}
 
 # Navigate to requirements directory and install basic dependencies
