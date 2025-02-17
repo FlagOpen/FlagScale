@@ -1,4 +1,6 @@
 # This file is modified from 'FlagScale/vllm/vllm/inputs/preprocess.py'
+# SPDX-License-Identifier: Apache-2.0
+
 import asyncio
 from typing import List, Mapping, Optional, Union
 

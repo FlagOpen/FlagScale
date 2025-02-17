@@ -208,7 +208,9 @@ def save_checkpoint(queue, args):
                         'encoder_num_layers', 'encoder_seq_length',
                         'distribute_saved_activations', 'fp16', 'bf16',
                         'train_iters', 'lr_decay_iters', 'lr_warmup_iters', 'lr_warmup_fraction',
-                        'start_weight_decay', 'end_weight_decay']
+                        'start_weight_decay', 'end_weight_decay',
+                        'main_grads_dtype', 'main_params_dtype', 'exp_avg_dtype', 'exp_avg_sq_dtype'
+        ]
 
         for arg, value in vars(md.checkpoint_args).items():
             if arg in args_to_keep:
@@ -300,7 +302,7 @@ def save_checkpoint(queue, args):
 
         for layer_id in range(len(models[0].decoder.layers)):
             msg = queue_get(f"transformer layer {total_layer_num}")
-
+            margs.total_layer_num = total_layer_num
             ckpt_plugin.set_attn_ckpt(msg, models, layer_id, md, margs)
             ckpt_plugin.set_mlp_ckpt(msg, models, layer_id, md, margs)
 
