@@ -52,6 +52,7 @@ try:
 except ImportError:
     ALL_MODULE_WRAPPER_CLASSNAMES = (DDP, Float16Module)
 
+from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
 
 def unwrap_model(model, module_instances=ALL_MODULE_WRAPPER_CLASSNAMES):
     return_list = True
@@ -207,10 +208,18 @@ def reduce_max_stat_across_model_parallel_group(stat: float) -> float:
     """
     if stat is None:
         stat = -1.0
-    stat = torch.tensor([stat], dtype=torch.float32, device=torch.cuda.current_device())
-    torch.distributed.all_reduce(
-        stat, op=torch.distributed.ReduceOp.MAX, group=mpu.get_model_parallel_group()
-    )
+    model_parallel_groups = mpu.get_model_parallel_group()
+    if not isinstance(model_parallel_groups, list):
+        stat = torch.tensor([stat], dtype=torch.float32, device=get_device_type_for_comm(model_parallel_groups))
+        torch.distributed.all_reduce(
+            stat, op=torch.distributed.ReduceOp.MAX, group=mpu.get_model_parallel_group()
+        )
+    else:
+        stat = torch.tensor([stat], dtype=torch.float32, device=get_device_type_for_comm(model_parallel_groups[0]))
+        for model_parallel_group in model_parallel_groups:
+            torch.distributed.all_reduce(
+                stat, op=torch.distributed.ReduceOp.MAX, group=model_parallel_group
+            )
     if stat.item() == -1.0:
         return None
     else:
@@ -225,10 +234,18 @@ def logical_and_across_model_parallel_group(input: bool) -> bool:
         input = 1
     else:
         input = 0
-    input = torch.tensor([input], dtype=torch.int, device=torch.cuda.current_device())
-    torch.distributed.all_reduce(
-        input, op=torch.distributed.ReduceOp.MIN, group=mpu.get_model_parallel_group()
-    )
+    model_parallel_groups = mpu.get_model_parallel_group()
+    if not isinstance(model_parallel_groups, list):
+        input = torch.tensor([input], dtype=torch.int, device=get_device_type_for_comm(model_parallel_groups))
+        torch.distributed.all_reduce(
+            input, op=torch.distributed.ReduceOp.MIN, group=mpu.get_model_parallel_group()
+        )
+    else:
+        input = torch.tensor([input], dtype=torch.int, device=get_device_type_for_comm(model_parallel_groups[0]))
+        for model_parallel_group in model_parallel_groups:
+            torch.distributed.all_reduce(
+                input, op=torch.distributed.ReduceOp.MIN, group=model_parallel_group
+            )
     return bool(input.item())
 
 

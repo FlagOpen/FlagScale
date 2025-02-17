@@ -304,7 +304,7 @@ def pretrain(
     # This will be closer to what scheduler will see (outside of
     # image ... launches.
     global _TRAIN_START_TIME
-    if "gloo" in torch.distributed.get_backend():
+    if "cpu:gloo" == torch.distributed.get_backend():
         start_time_tensor = torch.tensor([_TRAIN_START_TIME],
                                          dtype=torch.double,
                                          device='cpu')

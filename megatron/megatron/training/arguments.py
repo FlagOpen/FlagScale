@@ -1891,7 +1891,7 @@ def _add_distributed_args(parser):
                        default=False, help='if set, overlap pipeline parallel communication in warmup and flush',
                        dest='overlap_p2p_comm_warmup_flush')
     group.add_argument('--distributed-backend', default='nccl',
-                       choices=['nccl', 'gloo'],
+                       choices=['nccl', 'gloo', 'flagcx'],
                        help='Which backend to use for distributed training.')
     group.add_argument('--distributed-timeout-minutes', type=int, default=10,
                        help='Timeout minutes for torch.distributed.')
