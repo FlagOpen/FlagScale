@@ -54,15 +54,15 @@ class DeepSeekSharedEmbedding(MegatronModule):
             scatter_to_sequence_parallel=scatter_to_sequence_parallel,
         )
         self.embedding.word_embeddings.weight.is_embedding_or_output_parameter = True
-        
-    
+
     def forward(
         self,
         input_ids,
         position_ids,
     ) -> Tensor:
         return self.embedding(input_ids=input_ids, position_ids=position_ids)
-        
+
+
 class DeepSeekSharedHead(MegatronModule):
     def __init__(
         self,
@@ -98,6 +98,7 @@ class DeepSeekSharedHead(MegatronModule):
     ) -> Tensor:
         return self.head(hidden_states)
 
+
 class DeepSeekMultiTokenPredictorLayer(MegatronModule):
     """Multi Token Prediction Layer of DeepSeek V3
 
@@ -121,7 +122,6 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         super().__init__(config=config)
 
         self.config = config
-        
         self.embedding = DeepSeekSharedEmbedding(
             config=self.config,
             vocab_size=vocab_size,
@@ -197,21 +197,18 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         # two RMSNorm
         decoder_input = self.norm1(decoder_input)
         pre_hidden_states = self.norm2(pre_hidden_states)
-        
         # concat
         hidden_states = torch.cat([pre_hidden_states, decoder_input], dim=-1)
-        
         # linear projection
         hidden_states = self.linear_proj(hidden_states)
-        
         # transformer block
         hidden_states = self.decoder(hidden_states, attention_mask)
         hidden_states_mtp = hidden_states
-        
         # output head
         logits_mtp, _ = self.output_head(hidden_states)
         
         return logits_mtp, hidden_states_mtp
+
 
 class DeepSeekMultiTokenPredictor(MegatronModule):
     """Multi Token Predictor of DeepSeek V3
@@ -252,7 +249,6 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
                     grad_output_buffer=grad_output_buffer,
             ) for i in range(self.num_mtp_predictor)
         ])
-
 
     def forward(
         self,
