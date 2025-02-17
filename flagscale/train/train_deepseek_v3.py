@@ -220,7 +220,6 @@ def get_batch(data_iterator):
         return None, None, None, None, None
 
     # get batches based on the TP rank you are on
-    # batch = get_batch_on_this_tp_rank(data_iterator)
     batch = _get_batch_on_this_tp_rank(data_iterator)
 
     # slice batch along sequence dimension for context parallelism
@@ -478,3 +477,4 @@ if __name__ == "__main__":
         args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
         extra_valid_dataset_provider=extra_valid_datasets_provider
     )
+

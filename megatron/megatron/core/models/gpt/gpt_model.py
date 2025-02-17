@@ -273,10 +273,12 @@ class GPTModel(LanguageModule):
             **(extra_block_kwargs or {}),
         )
 
-        self.hidden_states_for_mtp = hidden_states
-        
         if not self.post_process:
             return hidden_states
+
+        # mtp predictors are added at the end of the model
+        # the hidden states need to be passed to the mtp predictor
+        self.hidden_states_for_mtp = hidden_states
 
         # logits and loss
         output_weight = None
@@ -331,3 +333,4 @@ class GPTModel(LanguageModule):
         ), f'Expected output layer extra state to be empty, got: {output_extra_state}'
 
         return sharded_state_dict
+

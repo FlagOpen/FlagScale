@@ -270,7 +270,7 @@ class TransformerConfig(ModelParallelConfig):
     use_mtp_predictor: bool = False
     """Whether to use multi token predictor"""
     num_mtp_predictor: int = 1
-    """The num of multi token prediction modules added to model"""
+    """The num of multi token predictors"""
 
 
     ####################
@@ -919,3 +919,4 @@ class MLATransformerConfig(TransformerConfig):
 
     mscale_all_dim: float = 0.707
     """Mscale all dimensions for YaRN RoPE in Multi-Latent Attention."""
+

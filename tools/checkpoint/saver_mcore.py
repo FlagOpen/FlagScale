@@ -320,7 +320,7 @@ def save_checkpoint(queue, args):
                 assert hasattr(models[0], 'output_layer'), "ERROR: got an output layer, but model does not have one"
                 ckpt_plugin.set_output_layer_ckpt(msg, models, md, margs)
 
-            if margs.use_mtp_predictor is not None:
+            if margs.use_mtp_predictor:
                 for mtp_layer_id in range(margs.num_mtp_predictor):
                     msg = queue_get(f"mtp module {mtp_layer_id}")
                     ckpt_plugin.set_mtp_ckpt(msg, models, md, mtp_layer_id, margs)  
@@ -340,3 +340,4 @@ def save_checkpoint(queue, args):
                             num_floating_point_operations_so_far=0)
 
     print("SAVE DONE!!!")
+
