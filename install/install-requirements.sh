@@ -60,7 +60,7 @@ fi
 sed -i 's/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' $FILE
 
 # Check if 'if num_nodes_waiting' appears only once in line 903
-if [ "$(awk 'NR==894 {print $0}' $FILE | grep -c 'self._restart_workers(self._worker_group)')" -ne 1 ]; then
+if [ "$(awk 'NR==903 {print $0}' $FILE | grep -c 'self._restart_workers(self._worker_group)')" -ne 1 ]; then
     echo "Error: 'self._restart_workers(self._worker_group)' does not appear exactly once at line 903."
     exit 1
 fi
