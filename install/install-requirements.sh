@@ -49,23 +49,20 @@ pip install -r ../requirements/requirements-common.txt
 
 # Used for automatic fault tolerance
 # Set the path to the target Python file
-FILE="/root/miniconda3/envs/flagscale-inference/lib/python3.10/site-packages/torch/distributed/elastic/agent/server/api.py"
+SITE_PACKAGES_DIR=$(python3 -c "import site; print(site.getsitepackages()[0])")
+FILE="$SITE_PACKAGES_DIR/torch/distributed/elastic/agent/server/api.py"
 
-# Check if 'if num_nodes_waiting' appears only once in line 894
-if [ "$(awk 'NR==894 {print $0}' $FILE | grep -c 'if num_nodes_waiting')" -ne 1 ]; then
-    echo "Error: 'if num_nodes_waiting' does not appear exactly once at line 894."
+# Replace the code in line 894 and its surrounding lines (893 and 895)
+if ! sed -i '893,895s/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' "$FILE"; then
+    echo "Error: Replacement failed on line 894."
     exit 1
 fi
-# If the check passes, perform the sed substitution
-sed -i 's/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' $FILE
 
-# Check if 'if num_nodes_waiting' appears only once in line 903
-if [ "$(awk 'NR==903 {print $0}' $FILE | grep -c 'self._restart_workers(self._worker_group)')" -ne 1 ]; then
-    echo "Error: 'self._restart_workers(self._worker_group)' does not appear exactly once at line 903."
+# Replace the code in line 903 and its surrounding lines (902 and 904)
+if ! sed -i '902,904s/^                    self\._restart_workers(self\._worker_group)/                    self._remaining_restarts -= 1\n                    self._restart_workers(self._worker_group)/' "$FILE"; then
+    echo "Error: Replacement failed on line 903."
     exit 1
 fi
-# If the check passes, perform the sed substitution
-sed -i '/self._restart_workers(self._worker_group)/i\                    self._remaining_restarts -= 1' /root/miniconda3/envs/flagscale-inference/lib/python3.10/site-packages/torch/distributed/elastic/agent/server/api.py
 
 # Install flagscale-common: TransformerEngine
 git clone -b stable https://github.com/NVIDIA/TransformerEngine.git
