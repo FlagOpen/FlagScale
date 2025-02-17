@@ -340,4 +340,3 @@ def save_checkpoint(queue, args):
                             num_floating_point_operations_so_far=0)
 
     print("SAVE DONE!!!")
-

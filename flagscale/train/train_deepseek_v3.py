@@ -237,7 +237,7 @@ SPIKY_LOSS_PERC = 0.2
 
 
 def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tensor):
-    """Multimodal loss function.
+    """Loss function.
 
     Args:
         labels  (torch.Tensor): Used to compute loss with logits
@@ -477,4 +477,3 @@ if __name__ == "__main__":
         args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
         extra_valid_dataset_provider=extra_valid_datasets_provider
     )
-
