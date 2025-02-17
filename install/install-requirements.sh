@@ -40,11 +40,15 @@ fi
 source ~/miniconda3/etc/profile.d/conda.sh
 
 # Create and activate Conda virtual environment
-conda create --name flagscale-${env} python=3.12 -y
+conda create --name flagscale-${env} -y
 conda activate flagscale-${env}
 
 # Navigate to requirements directory and install basic dependencies
 pip install -r ../requirements/requirements-common.txt
+
+# Used for automatic fault tolerance
+sed -i 's/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' /root/miniconda3/envs/flagscale-inference/lib/python3.10/site-packages/torch/distributed/elastic/agent/server/api.py
+sed -i '/self._restart_workers(self._worker_group)/i\        self._remaining_restarts -= 1' /root/miniconda3/envs/flagscale-inference/lib/python3.10/site-packages/torch/distributed/elastic/agent/server/api.py
 
 # Install flagscale-common: TransformerEngine
 git clone -b stable https://github.com/NVIDIA/TransformerEngine.git
@@ -84,7 +88,7 @@ if [ "${env}" == "inference" ]; then
         pip install -r ../vllm/requirements-dev.txt
     fi
 
-    MAX_JOBS=96 pip install --no-build-isolation -v ../vllm/.
+    MAX_JOBS=$(nproc) pip install --no-build-isolation -v ../vllm/.
 
     # Navigate to requirements directory and install serving dependencies
     pip install -r ../requirements/serving/requirements.txt

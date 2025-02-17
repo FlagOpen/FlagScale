@@ -4,4 +4,4 @@ s3fs
 git+https://github.com/fanshiqing/grouped_gemm@v1.1.4
 git+https://github.com/Dao-AILab/causal-conv1d.git@v1.2.2.post1
 
--r ../../../megatron/requirements/pytorch:24.01/requirements.txt
+-r ../../../megatron/requirements/pytorch_24.10/requirements.txt
