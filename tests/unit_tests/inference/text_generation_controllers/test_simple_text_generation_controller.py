@@ -59,6 +59,8 @@ class TestTextGenerationController:
         inference_wrapper_config = InferenceWrapperConfig(
             hidden_size=self.hidden_size,
             inference_batch_times_seqlen_threshold=-1,
+            inference_max_seq_length=2048,
+            inference_max_requests=self.batch_size,
             fp32_residual_connection=False,
             params_dtype=dtype,
             padded_vocab_size=self.vocab_size,
@@ -147,9 +149,15 @@ class TestTextGenerationController:
 
         self.mock_tokenizer.vocab_size = self.vocab_size
         self.mock_tokenizer.eod = self.vocab_size - 1
-        self.mock_tokenizer.detokenize.return_value = ''.join(
-            random.choices(string.ascii_letters, k=random.randint(4, 10))
+        self.mock_tokenizer.detokenize.side_effect = lambda x: ' '.join(
+            [
+                ''.join(random.choices(string.ascii_letters, k=random.randint(4, 10)))
+                for _ in range(len(x))
+            ]
         )
+        self.mock_tokenizer.offsets.side_effect = lambda _, s: [
+            i for i, c in enumerate(s) if c == ' '
+        ] + [len(s)]
 
         active_requests: Dict[str, InferenceRequest] = OrderedDict()
         all_prompt_tokens: Dict[str, List[int]] = OrderedDict()
@@ -166,7 +174,9 @@ class TestTextGenerationController:
             inference_request = InferenceRequest(
                 request_id=request_id,
                 prompt=prompt,
-                inference_parameters=SamplingParams(num_tokens_to_generate=10),
+                inference_parameters=SamplingParams(
+                    num_tokens_to_generate=10, return_log_probs=True, return_segments=True
+                ),
                 arrival_time=time.time(),
                 prompt_tokens=prompt_tokens,
                 status=Status.ACTIVE_BUT_NOT_GENERATING_TOKENS,
@@ -201,9 +211,15 @@ class TestTextGenerationController:
         self.mock_tokenizer.vocab_size = self.vocab_size
         self.mock_tokenizer.bos = 0
         self.mock_tokenizer.eod = self.vocab_size - 1
-        self.mock_tokenizer.detokenize.return_value = ''.join(
-            random.choices(string.ascii_letters, k=random.randint(4, 10))
+        self.mock_tokenizer.detokenize.side_effect = lambda x: ' '.join(
+            [
+                ''.join(random.choices(string.ascii_letters, k=random.randint(4, 10)))
+                for _ in range(len(x))
+            ]
         )
+        self.mock_tokenizer.offsets.side_effect = lambda _, s: [
+            i for i, c in enumerate(s) if c == ' '
+        ] + [len(s)]
 
         prompt = ""
         active_requests: Dict[int, InferenceRequest] = OrderedDict()
@@ -234,3 +250,42 @@ class TestTextGenerationController:
             assert request.generated_length > 0, f"Generated length should be greater than zero"
             assert request.generated_text is not None, "Generated text should not be None"
             assert len(request.generated_log_probs) == request.generated_length
+
+    def test_token_overflow(self):
+        self.setup_model(torch.float32)
+
+        self.mock_tokenizer.vocab_size = self.vocab_size
+        self.mock_tokenizer.bos = 0
+        self.mock_tokenizer.eod = self.vocab_size - 1
+        self.mock_tokenizer.detokenize.side_effect = lambda x: ' '.join(
+            [
+                ''.join(random.choices(string.ascii_letters, k=random.randint(4, 10)))
+                for _ in range(len(x))
+            ]
+        )
+        self.mock_tokenizer.offsets.side_effect = lambda _, s: [
+            i for i, c in enumerate(s) if c == ' '
+        ] + [len(s)]
+
+        prompt = ""
+        active_requests: Dict[int, InferenceRequest] = OrderedDict()
+        for i in range(self.batch_size):
+            self.mock_tokenizer.tokenize.return_value = torch.randn(
+                self.batch_size, self.vocab_size
+            ).cuda()
+            inference_request = InferenceRequest(
+                request_id=i,
+                prompt=prompt,
+                inference_parameters=SamplingParams(
+                    num_tokens_to_generate=4096, return_log_probs=True
+                ),
+                arrival_time=time.time(),
+                prompt_tokens=[self.mock_tokenizer.bos],
+                status=Status.ACTIVE_BUT_NOT_GENERATING_TOKENS,
+            )
+            active_requests[i] = inference_request
+
+        with pytest.raises(AssertionError):
+            requests = self.text_generation_controller.generate_all_output_tokens_static_batch(
+                active_requests
+            )
