@@ -112,7 +112,8 @@ async def init_app(
               if llm_engine is not None else AsyncLLMEngine.from_engine_args(
                   engine_args, usage_context=UsageContext.API_SERVER))
 
-    if os.getenv("USE_FLAGGEMMS", "false").lower() in ("1", "true", "yes"):
+    # Know more about FlagGems: https://github.com/FlagOpen/FlagGems
+    if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
         try:
             import flag_gems
             flag_gems.enable()

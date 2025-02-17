@@ -651,7 +651,8 @@ class AsyncLLMEngine(EngineClient):
             stat_loggers=stat_loggers,
         )
 
-        if os.getenv("USE_FLAGGEMMS", "false").lower() in ("1", "true", "yes"):
+        # Know more about FlagGems: https://github.com/FlagOpen/FlagGems
+        if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
             try:
                 import flag_gems
                 flag_gems.enable()
