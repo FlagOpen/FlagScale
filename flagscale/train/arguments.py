@@ -4,9 +4,18 @@ import torch
 import types
 import ast
 import itertools
+import warnings
 from datetime import timedelta
 
 import torch
+
+try:
+    import flagcx
+except:
+    warnings.warn(
+            "flagcx is not installed, you can't use flagcx backend for communication.",
+            ImportWarning,
+        )
 
 from flagscale.train.hetero.parallel_context import RankMapper
 
@@ -58,10 +67,12 @@ class FSTrainArguments:
                 'rank': args.rank,
                 'timeout': timedelta(minutes=args.distributed_timeout_minutes),
             }
+            if args.distributed_backend == 'flagcx':
+                init_process_group_kwargs['backend'] = 'cpu:gloo,cuda:flagcx'
             # for communication based cpu
             if args.enable_hetero and args.hetero_use_cpu_communication:
                 # if not all(device_type == args.hetero_device_types[0] for device_type in args.hetero_device_types):
-                #     init_process_group_kwargs['backend'] = 'gloo'
+                #     init_process_group_kwargs['backend'] = 'cpu:gloo'
                 # Force the group of backend gloo only support cpu
                 init_process_group_kwargs['backend'] = 'cpu:gloo'
             torch.distributed.init_process_group(**init_process_group_kwargs)

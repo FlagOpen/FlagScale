@@ -3,6 +3,7 @@ import math
 import warnings
 import itertools
 import operator
+import warnings
 import dataclasses
 from typing import List, Optional
 from datetime import timedelta
@@ -11,6 +12,14 @@ from collections import defaultdict
 from typing import Callable, List, Optional
 
 import torch
+
+try:
+    import flagcx
+except:
+    warnings.warn(
+            "flagcx is not installed, you can't use flagcx backend for communication.",
+            ImportWarning,
+        )
 
 def get_nccl_options(pg_name, nccl_comm_cfgs):
     from megatron.core.parallel_state import get_nccl_options 
