@@ -288,7 +288,7 @@ def _communicate(
         return torch.empty(
             recv_prev_shape,
             requires_grad=True,
-            device=torch.cuda.current_device() if "gloo" not in group.name() else torch.device("cpu"),
+            device=torch.cuda.current_device() if "cpu:gloo" != group.name() else torch.device("cpu"),
             dtype=config.pipeline_dtype,
         )
 
@@ -296,7 +296,7 @@ def _communicate(
         return torch.empty(
             recv_next_shape,
             requires_grad=True,
-            device=torch.cuda.current_device() if "gloo" not in group.name() else torch.device("cpu"),
+            device=torch.cuda.current_device() if "cpu:gloo" != group.name() else torch.device("cpu"),
             dtype=config.pipeline_dtype,
         )
 

@@ -48,6 +48,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_autoresume_args(parser)
     parser = _add_biencoder_args(parser)
     parser = _add_vision_args(parser)
+    parser = _add_mtp_args(parser)
     parser = _add_moe_args(parser)
     parser = _add_mla_args(parser)
     parser = _add_logging_args(parser)
@@ -1891,7 +1892,7 @@ def _add_distributed_args(parser):
                        default=False, help='if set, overlap pipeline parallel communication in warmup and flush',
                        dest='overlap_p2p_comm_warmup_flush')
     group.add_argument('--distributed-backend', default='nccl',
-                       choices=['nccl', 'gloo'],
+                       choices=['nccl', 'gloo', 'flagcx'],
                        help='Which backend to use for distributed training.')
     group.add_argument('--distributed-timeout-minutes', type=int, default=10,
                        help='Timeout minutes for torch.distributed.')
@@ -2220,6 +2221,18 @@ def _add_biencoder_args(parser):
                        'report progress')
     return parser
 
+
+def _add_mtp_args(parser):
+    # add args for Multi-token Prediction module
+    group = parser.add_argument_group(title="mtp")
+
+    # general mtp arguements
+    group.add_argument('--use-mtp-predictor', action='store_true', default=False,
+                       help='whether to use multi token predictor')
+    group.add_argument('--num-mtp-predictor', type=int, default=1,
+                       help='num of multi token predictors')
+
+    return parser
 
 def _add_vision_args(parser):
     group = parser.add_argument_group(title="vision")

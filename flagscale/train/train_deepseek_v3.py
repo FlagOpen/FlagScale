@@ -51,6 +51,18 @@ from flagscale.train.models.deepseek_v3.deepseek_v3_model import DeepSeekV3Model
 
 stimer = StragglerDetector()
 
+def roll_mtp(labels, loss_mask):
+
+    labels_mpt = torch.roll(labels, shifts=-1, dims=1)
+    labels_mpt[:,-1] = 0
+    
+    loss_mask_mpt = torch.roll(loss_mask, shifts=-1, dims=0)
+    loss_mask_mpt[-1] = 0
+    
+    total_tokens_mpt = loss_mask_mpt.sum()
+
+    return labels_mpt, loss_mask_mpt, total_tokens_mpt
+
 
 def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megatron.legacy.model.GPTModel]:
     """Builds the model.
@@ -140,6 +152,66 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
     return model
 
 
+
+def _get_batch_on_this_tp_rank(data_iterator):
+
+    args = get_args()
+
+    def _broadcast(item):
+       if item is not None:
+           torch.distributed.broadcast(item, mpu.get_tensor_model_parallel_src_rank(), group=mpu.get_tensor_model_parallel_group())
+
+    if mpu.get_tensor_model_parallel_rank() == 0:
+
+       if data_iterator is not None:
+           data = next(data_iterator)
+       else:
+           data = None
+
+       batch = {
+           'tokens': data["tokens"].cuda(non_blocking = True),
+           'labels': data["labels"].cuda(non_blocking = True),
+           'loss_mask': data["loss_mask"].cuda(non_blocking = True),
+           'attention_mask': None if "attention_mask" not in data else data["attention_mask"].cuda(non_blocking = True),
+           'position_ids': data["position_ids"].cuda(non_blocking = True)
+       }
+
+       _broadcast(batch['tokens'])
+       _broadcast(batch['labels'])
+       _broadcast(batch['loss_mask'])
+       _broadcast(batch['attention_mask'])
+       _broadcast(batch['position_ids'])
+
+    else:
+
+       tokens=torch.empty((args.micro_batch_size,args.seq_length), dtype = torch.int64 , device = torch.cuda.current_device())
+       labels=torch.empty((args.micro_batch_size,args.seq_length), dtype = torch.int64 , device = torch.cuda.current_device())
+       loss_mask=torch.empty((args.micro_batch_size,args.seq_length), dtype = torch.float32 , device = torch.cuda.current_device())
+       if args.create_attention_mask_in_dataloader:
+           attention_mask=torch.empty(
+                (args.micro_batch_size,1,args.seq_length,args.seq_length), dtype = torch.bool , device = torch.cuda.current_device()
+            )
+       else:
+           attention_mask=None
+       position_ids=torch.empty((args.micro_batch_size,args.seq_length), dtype = torch.int64 , device = torch.cuda.current_device())
+
+       _broadcast(tokens)
+       _broadcast(labels)
+       _broadcast(loss_mask)
+       _broadcast(attention_mask)
+       _broadcast(position_ids)
+
+       batch = {
+           'tokens': tokens,
+           'labels': labels,
+           'loss_mask': loss_mask,
+           'attention_mask': attention_mask,
+           'position_ids': position_ids
+       }
+
+    return batch
+
+
 def get_batch(data_iterator):
     """Generate a batch."""
 
@@ -148,7 +220,7 @@ def get_batch(data_iterator):
         return None, None, None, None, None
 
     # get batches based on the TP rank you are on
-    batch = get_batch_on_this_tp_rank(data_iterator)
+    batch = _get_batch_on_this_tp_rank(data_iterator)
 
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
@@ -165,7 +237,7 @@ SPIKY_LOSS_PERC = 0.2
 
 
 def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tensor):
-    """Multimodal loss function.
+    """Loss function.
 
     Args:
         labels  (torch.Tensor): Used to compute loss with logits
@@ -182,6 +254,12 @@ def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tenso
     loss_mask = loss_mask.view(-1).float() # [b*s]
     total_tokens = loss_mask.sum()
     
+    # get logits from main model and mtp modules
+    if args.use_mtp_predictor:
+        logits, logits_mtps = logits # [b s h]
+    roll_labels = labels # [b s]
+    roll_loss_mask = loss_mask # [b*s]
+    
     # cal loss for main model
     labels = labels.transpose(0, 1).contiguous() # [b s] => [s b]
     logits = logits.transpose(0, 1).contiguous() # [b s h] => [s b h]
@@ -190,7 +268,42 @@ def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tenso
     losses = losses.transpose(0, 1).contiguous().float()
     
     loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
-
+        
+    # cal loss for mtp modules
+    if args.use_mtp_predictor:
+        labels_mtps = []
+        loss_mask_mtps = []
+        total_tokens_mtps = 0
+        # does labels need to be clamped
+        # roll_labels = torch.clamp(labels - 151845, min=0)
+        
+        num_mtps = len(logits_mtps)
+        
+        for i in range(num_mtps):
+            labels_mtp, loss_mask_mtp, total_tokens_mtp = roll_mtp(roll_labels, roll_loss_mask)
+            roll_labels = labels_mtp
+            roll_loss_mask = loss_mask_mtp
+            
+            labels_mtp = labels_mtp.transpose(0, 1).contiguous() # [b s] ==> [s b]
+            total_tokens_mtps += total_tokens_mtp
+            labels_mtps.append(labels_mtp)
+            loss_mask_mtps.append(loss_mask_mtp)
+        
+        logits_mtps = torch.cat(logits_mtps, 0).transpose(0, 1).contiguous()
+        labels_mtps = torch.cat(labels_mtps, 1)
+        loss_mask_mtps = torch.cat(loss_mask_mtps, 0)
+        
+        losses_mtps = tensor_parallel.vocab_parallel_cross_entropy(logits_mtps.float(), labels_mtps)
+        losses_mtps = losses_mtps.transpose(0, 1).contiguous().float() # [b s]
+        
+        loss_mtps = torch.cat([torch.sum(losses_mtps.view(-1) * loss_mask_mtps).view(1), total_tokens_mtps.view(1)])
+        
+        loss_mtps = loss_mtps / args.num_mtp_predictor
+        
+    # merge loss, how to process?
+    if args.use_mtp_predictor:
+        loss = loss + loss_mtps
+    
     # loss printing
     if args.context_parallel_size > 1:
         torch.distributed.all_reduce(loss, group=mpu.get_context_parallel_group())

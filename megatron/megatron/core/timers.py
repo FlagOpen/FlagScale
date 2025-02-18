@@ -280,7 +280,7 @@ class Timers:
                 # groups inside their class.
                 rank_name_to_time[rank, i] = self._timers[name].elapsed(reset=reset)
 
-        if 'gloo' in torch.distributed.get_backend():
+        if "cpu:gloo" == torch.distributed.get_backend():
             rank_name_to_time = rank_name_to_time.cpu()
         # See the note above for why we are not using gather.
         dist_all_gather_func(rank_name_to_time.view(-1), rank_name_to_time[rank, :].view(-1))
