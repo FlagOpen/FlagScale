@@ -2,8 +2,8 @@ ARG CUDA_VERSION=12.4.1
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 ARG PYTHON_VERSION=3.12
 ARG TORCH_VERSION=2.5.1
-# ENV_VERSION is used to mark the code and environment version corresponding to the image
-ARG ENV_VERSION
+# FS_VERSION is used to mark the FlagScale and environment version corresponding to the image
+ARG FS_VERSION
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
@@ -130,7 +130,7 @@ RUN cd ${STAGE_DIR} && \
 RUN cd ${WORK_DIR} && \
     git clone https://github.com/FlagOpen/FlagScale.git && \
     cd FlagScale/install && \
-    git checkout $ENV_VERSION && \
+    git checkout $FS_VERSION && \
     chmod +x install-requirements.sh && \
     # flagscale-train
     ./install-requirements.sh --env train && \
