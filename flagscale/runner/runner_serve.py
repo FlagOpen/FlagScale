@@ -1,12 +1,15 @@
-import json
 import os
 import shlex
+import asyncio
+import psutil
+import contextlib
+import signal
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
-from flagscale.runner.runner_base import RunnerBase
+from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.runner_utils import (
     get_free_port,
     get_nnodes,
@@ -16,22 +19,35 @@ from flagscale.runner.runner_utils import (
     run_local_command,
     run_scp_command,
     run_ssh_command,
+    dummy_random_input,
+    benchmark
 )
 
 
 def _get_args_vllm(config: DictConfig):
     # see the following link for more details
     # https://github.com/facebookresearch/hydra/discussions/2750
-    OmegaConf.set_struct(config, False)
+    config_dict = OmegaConf.to_container(config, resolve=True)
 
-    hydra_config = HydraConfig.get()
-    output_dir = hydra_config.runtime.output_dir
-    output_subdir = hydra_config.output_subdir
-    config_path = os.path.join(output_dir, f"{output_subdir}/config.yaml")
-    config_path = hydra.utils.to_absolute_path(config_path)
+    # step2: restructuring the config
+    # config_dict = config_dict["serve"]
+    config_dict["serve"]["logging"].pop("log_dir")
+    config_dict["serve"]["logging"].pop("scripts_dir")
+    config_dict["serve"]["logging"].pop("pids_dir")
+    if not config_dict["serve"].get("logging"):
+        config_dict["serve"].pop("logging")
+
+    # step3: dict -> yaml
+    logging_config = config.serve.logging
+    new_config = OmegaConf.create(config_dict)
+    new_conf_file = os.path.join(logging_config.scripts_dir, f"serve.yaml")
+
+    # step4: write the new yaml file to `outputs_dir/serve_logs/scripts/serve.yaml`
+    with open(new_conf_file, "w") as f:
+        OmegaConf.save(config=new_config, f=f.name, resolve=True)
 
     args = []
-    args.append(f"--config-path={config_path}")
+    args.append(f"--config-path={new_conf_file}")
 
     return args
 
@@ -55,6 +71,7 @@ def _update_config_serve(config: DictConfig):
     config.serve.logging.scripts_dir = scripts_dir
     config.serve.logging.pids_dir = pids_dir
 
+    os.makedirs(config.serve.logging.scripts_dir, exist_ok=True)
     OmegaConf.set_struct(config, True)
 
 
@@ -238,13 +255,31 @@ def _generate_stop_script(config, host, node_rank):
     with open(host_stop_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("ray stop\n")
-        f.write("pkill -f 'python'\n")
+        f.write("pkill -f 'vllm'\n")
         f.write(f"{after_stop}\n")
         f.flush()
         os.fsync(f.fileno())
     os.chmod(host_stop_script_file, 0o755)
 
     return host_stop_script_file
+
+def kill_process_tree(pid):
+    try:
+        parent = psutil.Process(pid)
+    except psutil.NoSuchProcess:
+        return
+
+    # Get all children recursively
+    children = parent.children(recursive=True)
+
+    # Send SIGKILL to all children first
+    for child in children:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(child.pid, signal.SIGKILL)
+
+    # Finally kill the parent
+    with contextlib.suppress(ProcessLookupError):
+        os.kill(pid, signal.SIGKILL)
 
 
 class SSHServeRunner(RunnerBase):
@@ -256,6 +291,8 @@ class SSHServeRunner(RunnerBase):
             self.config.serve.deploy, "command-line-mode", None
         )
         self._prepare()
+        self.host = None
+        self.port = self.config.serve.model_args.vllm_model.port
 
     def _prepare(self):
         _update_config_serve(self.config)
@@ -327,25 +364,18 @@ class SSHServeRunner(RunnerBase):
             with_test=with_test,
             dryrun=dryrun,
         )
+        self.host = available_addr
 
     def _stop_each(self, host, node_rank):
-        host_stop_script_file = _generate_stop_script(self.config, host, node_rank)
         logging_config = self.config.serve.logging
+        host_pid_file = os.path.join(
+                logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
+            )
+        with open(host_pid_file, "r") as f:
+            pid=f.readlines()[0]
+            pid = int(pid.strip())
+        kill_process_tree(pid)
 
-        if host != "localhost":
-            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
-            # Step 1: make sure the scripts_dir exists on the remote host
-            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port)
-            # Step 2: copy the host_run_script_file to the remote host
-            no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
-            if no_shared_fs:
-                run_scp_command(
-                    host, host_stop_script_file, logging_config.scripts_dir, ssh_port
-                )
-            # Step 3: run the host_run_script_file on the remote host
-            run_ssh_command(host, f"bash {host_stop_script_file}", ssh_port)
-        else:
-            run_local_command(f"bash {host_stop_script_file}")
 
     def stop(self):
         if self.resources is None:
@@ -360,3 +390,131 @@ class SSHServeRunner(RunnerBase):
             if node_rank >= nnodes:
                 break
             self._stop_each(host, node_rank)
+
+    def _generate_query_script(self, host, node_rank):
+        """Genetrate the query script for each host."""
+        logging_config = self.config.serve.logging
+
+        host_query_script_file = os.path.join(
+            logging_config.scripts_dir, f"host_{node_rank}_{host}_query.sh"
+        )
+
+        host_pid_file = os.path.join(
+            logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
+        )
+        os.makedirs(logging_config.scripts_dir, exist_ok=True)
+
+        with open(host_query_script_file, "w") as f:
+            f.write("#!/bin/bash\n\n")
+            f.write("if [ -f " + host_pid_file + " ]; then\n")
+            f.write("    pid=$(cat " + host_pid_file + ")\n")
+            f.write("    ps -p $pid -o state --no-headers\n")
+            f.write("else\n")
+            # TODO: This is a temporary fix. We need to find a better way to query the job.
+            f.write(
+                "    pid=$(ps aux | grep 'run_vllm' | grep -v grep | head -n 1 | awk '{print $2}')\n"
+            )
+            f.write("    ps -p $pid -o state --no-headers\n")
+            f.write("fi\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(host_query_script_file, 0o755)
+
+        return host_query_script_file
+
+    def _query_each(self, host, node_rank):
+        "Query each node status."
+        host_query_script_file = self._generate_query_script(host, node_rank)
+        logging_config = self.config.serve.logging
+        result = ""
+        if host != "localhost":
+            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
+            # Step 1: make sure the scripts_dir exists on the remote host
+            run_ssh_command(
+                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, query=True
+            )
+            # Step 2: copy the host_run_script_file to the remote host
+            no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
+            if no_shared_fs:
+                run_scp_command(
+                    host, host_query_script_file, logging_config.scripts_dir, ssh_port
+                )
+            # Step 3: run the host_run_script_file on the remote host
+            try:
+                result = run_ssh_command(
+                    host, f"bash {host_query_script_file}", ssh_port, query=True
+                )
+            except Exception as e:
+                logger.error(f"Failed to query job status on {host}: {e}")
+        else:
+            try:
+                result = run_local_command(f"bash {host_query_script_file}", query=True)
+            except Exception as e:
+                logger.error(f"Failed to query job status on {host}: {e}")
+        result = result.stdout.rstrip() if result else ""
+        return result
+
+    def _query_status(self):
+        "Query Job status."
+        results = []
+        if self.resources is None:
+            result = self._query_each("localhost", 0)
+            results.append(result)
+
+        else:
+            host_list = list(self.resources.keys())
+            for host, _ in self.resources.items():
+                node_rank = host_list.index(host)
+                result = self._query_each(host, node_rank)
+                results.append(result)
+        if all((status != "" and status != "Z") for status in results):
+            job_status = JobStatus.RUNNING
+        elif all((status == "" or status == "Z") for status in results):
+            job_status = JobStatus.COMPLETED_OR_IDLE
+        else:
+            job_status = JobStatus.TRANSITIONAL
+        return job_status
+
+    def _serve_alive(self):
+        config = self.config
+        model_name = config.serve.model_args.vllm_model["model-tag"]
+        from openai import OpenAI
+
+        # Modify OpenAI's API key and API base to use vLLM's API server.
+        api_key = "EMPTY"
+        api_url = f"http://{self.host}:{self.port}/v1"
+
+        try:
+            client = OpenAI(
+                api_key=api_key,
+                base_url=api_url,
+            )
+            messages = [{"role": "user", "content": "who are you?"}]
+            response = client.chat.completions.create(model=model_name, messages=messages)
+        except Exception as e:
+            # logger.info(f"API {api_url} is not ready, please wait a moment")
+            return False
+
+        return True
+
+    def _profile_serve(self):
+        from vllm.transformers_utils.tokenizer import get_tokenizer
+        model = self.config.serve.model_args.vllm_model["model-tag"]
+        tokenizer_mode = "auto"
+        trust_remote_code = "trust-remote-code" in self.config.serve.model_args.vllm_model["action-args"]
+        tokenizer = get_tokenizer(model,
+                            tokenizer_mode=tokenizer_mode,
+                            trust_remote_code=trust_remote_code)
+        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=10)
+        api_url = f"http://{self.host}:{self.port}/v1/completions"
+        ### allow metric = [\"ttft\", \"tpot\", \"itl\", \"e2el\"]
+        ### allow percentiles = [\"25,50,75\"]
+        result = asyncio.run(
+            benchmark(
+            api_url,
+            model=model,
+            tokenizer=tokenizer,
+            input_requests=dummy_input_requests,
+            selected_percentile_metrics="ttft,tpot,itl,e2el".split(","),
+            selected_percentiles=[float(99)]))
+        return result

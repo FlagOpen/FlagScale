@@ -50,11 +50,21 @@ def main(config: DictConfig) -> None:
         else:
             raise ValueError(f"Unknown action {config.action}")
     elif task_type == "serve":
-        runner = SSHServeRunner(config)
-        if config.action == "run":
-            runner.run()
-        elif config.action == "test":
-            runner.run(with_test=True)
+        if config.action == "auto_tune":
+            from flagscale.auto_tuner import ServeAutoTunner
+            # For MPIRUN scene, just one autotuner process.
+            # NOTE: This is a temporary solution and will be updated with cloud runner.
+            from flagscale.auto_tuner.utils import is_master
+            #print("=============================", config, is_master(config))
+            #if is_master(config):
+            tuner = ServeAutoTunner(config)
+            tuner.tune()
+        else:
+            runner = SSHServeRunner(config)
+            if config.action == "run":
+                runner.run()
+            elif config.action == "test":
+                runner.run(with_test=True)
     elif task_type == "compress":
         runner = SSHCompressRunner(config)
         if config.action == "run":
