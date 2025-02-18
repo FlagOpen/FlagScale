@@ -338,7 +338,7 @@ def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torc
             pp_group = [pp_group]
 
         # need to do a broadcast for every pp group, even though num_tokens should be the same.
-        if "gloo" in pp_group[0].name():
+        if "cpu:gloo" == pp_group[0].name():
             num_tokens = num_tokens.cpu()
 
         num_tokens_list = []
