@@ -7,4 +7,4 @@ docker build --build-arg CUDA_VERSION=12.4.1 --build-arg PYTHON_VERSION=3.12 --b
 * `CUDA_VERSION`: Can be manually specified, default value is 12.4.1.
 * `PYTHON_VERSION`: Can be manually specified, default value is 3.12.
 * `TORCH_VERSION`: Can be manually specified, default value is 2.5.1.
-* `FS_VERSION`: Must be explicitly specified, enter the specified commit ID, used to mark the FlagScale and environment version corresponding to the image.
+* `FS_VERSION`: Must be explicitly specified, enter the FlagScale commit ID, used to mark the FlagScale and environment version corresponding to the image.
