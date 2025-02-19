@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 import dataclasses
 import gc
 import inspect
@@ -73,6 +74,18 @@ TModelInputForGPU = TypeVar('TModelInputForGPU', bound="ModelInputForGPU")
 # For now, bump up cache limits for recompilations during CUDA graph warmups.
 torch._dynamo.config.cache_size_limit = 128
 torch._dynamo.config.accumulated_cache_size_limit = 128
+
+
+# Know more about FlagGems: https://github.com/FlagOpen/FlagGems
+if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
+    try:
+        import flag_gems
+        flag_gems.enable()
+        logger.info("Successfully enabled flag_gems as default ops implementation.")
+    except ImportError:
+        logger.warning("Failed to import 'flag_gems'. Falling back to default implementation.")
+    except Exception as e:
+        logger.warning(f"Failed to enable 'flag_gems': {e}. Falling back to default implementation.")
 
 
 @dataclass(frozen=True)
