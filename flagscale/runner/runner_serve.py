@@ -87,25 +87,27 @@ def _generate_run_script_serve(
     ssh_port = config.experiment.runner.get("ssh_port", None)
     docker_name = config.experiment.runner.get("docker", None)
     if cmds_config:
-        before_start = cmds_config.get("before_start", "")
+        before_start_cmd = cmds_config.get("before_start", "")
     else:
-        before_start = ""
+        before_start_cmd = ""
     cmd += f" --log-dir={logging_config.log_dir}"
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("set -x\n")
         f.write(f"\n")
-        f.write(f"{before_start}\n")
+        f.write(f"{before_start_cmd}\n")
+        f.write(f"\n")
+
+        f.write(f'if [ -z "$PYTHONPATH" ]; then\n')
+        f.write(f"    export PYTHONPATH={root_dir}\n")
+        f.write(f"else\n")
+        f.write(f'    export PYTHONPATH="$PYTHONPATH:{root_dir}"\n')
+        f.write(f"fi\n")
         f.write(f"\n")
 
         if nodes:
             master_ip = nodes[0][0]
             target_port = nodes[0][1].get("port")
-            before_start_cmd = None
-            if config.experiment.get("cmds", "") and config.experiment.cmds.get(
-                "before_start", ""
-            ):
-                before_start_cmd = config.experiment.cmds.before_start
 
             f.write(f"# clean nodes \n")
             if len(nodes) > 1:
@@ -139,28 +141,38 @@ def _generate_run_script_serve(
 
             master_port = target_port if target_port else get_free_port()
 
-            f.write(f"# start cluster\n")
-            f.write(f"# master node\n")
-            if before_start_cmd:
-                f.write(
-                    f"{before_start_cmd} && ray start --head --port={master_port}\n"
-                )
-            else:
-                f.write(f"ray start --head --port={master_port}\n")
+            address = f"{master_ip}:{master_port}"
+            for index, (ip, node) in enumerate(nodes):
+                if not node.get("type", None):
+                    raise ValueError(
+                        f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
+                    )
+                if not node.get("slots", None):
+                    raise ValueError(
+                        f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+                    )
+                if index == 0:
+                    # master node
+                    f.write(f"# start cluster\n")
+                    f.write(f"# master node\n")
+                    if node.type == "gpu":
+                        node_cmd = f"ray start --head --port={master_port} --num-gpus={node.slots}"
+                    elif node.type == "cpu":
+                        node_cmd = f"ray start --head --port={master_port} --num-cpus={node.slots}"
+                    else:
+                        resource = json.dumps({node.type: node.slots}).replace(
+                            '"', '\\"'
+                        )
+                        node_cmd = f"ray start --head --port={master_port} --resources='{resource}'"
+                    if before_start_cmd:
+                        node_cmd = f"{before_start_cmd} && " + node_cmd
+                    f.write(f"{node_cmd}\n")
 
-            if len(nodes) > 1:
-                f.write(f"\n")
-                f.write(f"# worker nodes\n")
-                address = f"{master_ip}:{master_port}"
-                for ip, node in nodes[1:]:
-                    if not node.get("type", None):
-                        raise ValueError(
-                            f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
-                        )
-                    if not node.get("slots", None):
-                        raise ValueError(
-                            f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
-                        )
+                else:
+                    # worker nodes
+                    if index == 1:
+                        f.write(f"\n")
+                        f.write(f"# worker nodes\n")
                     if node.type == "gpu":
                         node_cmd = (
                             f"ray start --address={address} --num-gpus={node.slots}"
@@ -177,10 +189,7 @@ def _generate_run_script_serve(
                         node_cmd = (
                             f"ray start --address={address} --resources='{resource}'"
                         )
-                    if config.experiment.get("cmds", "") and config.experiment.cmds.get(
-                        "before_start", ""
-                    ):
-                        before_start_cmd = config.experiment.cmds.before_start
+                    if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
 
                     if ssh_port:
@@ -191,13 +200,35 @@ def _generate_run_script_serve(
                     if docker_name:
                         ssh_cmd = f"ssh -n {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
+        else:
+            device_type = None
+            nproc_per_node = None
+            if config.experiment.get("runner", None) and config.experiment.runner.get(
+                "device_type", None
+            ):
+                device_type = config.experiment.runner.get("device_type", None)
+                nproc_per_node = config.experiment.runner.get("nproc_per_node", None)
+                if nproc_per_node is None:
+                    raise ValueError(
+                        f"nproc_per_node must be specified when device_type {device_type} is specified."
+                    )
+            if not device_type:
+                node_cmd = f"ray start --head"
+            if device_type == "gpu":
+                node_cmd = f"ray start --head --num-gpus={nproc_per_node}"
+            elif device_type == "cpu":
+                node_cmd = f"ray start --head --num-cpus={nproc_per_node}"
+            else:
+                resource = json.dumps({device_type: nproc_per_node}).replace('"', '\\"')
+                node_cmd = f"ray start --head --resources='{resource}'"
+            if before_start_cmd:
+                node_cmd = f"{before_start_cmd} && " + node_cmd
+            f.write(f"{node_cmd}\n")
 
         f.write(f"mkdir -p {logging_config.log_dir}\n")
         f.write(f"mkdir -p {logging_config.pids_dir}\n")
         f.write(f"\n")
         f.write(f"cd {root_dir}\n")
-        f.write(f"\n")
-        f.write(f"export PYTHONPATH={root_dir}\n")
         f.write(f"\n")
         f.write(f'cmd="{cmd}"\n')
         f.write(f"\n")
