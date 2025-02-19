@@ -1,13 +1,15 @@
 from typing import Literal, Optional
 
 import copy
+import logging
 import torch
 from torch import Tensor
 
 from collections import OrderedDict
 from megatron.training import get_args
-from megatron.core import InferenceParams, tensor_parallel
+from megatron.core import InferenceParams, tensor_parallel, parallel_state
 from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
+from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.models.gpt import GPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.spec_utils import ModuleSpec
@@ -21,7 +23,10 @@ from megatron.core.transformer.transformer_block import (
 
 from typing import List
 
-from flagscale.train.models.deepseek_v3.multi_token_predictor import DeepSeekMultiTokenPredictor
+from flagscale.train.models.deepseek_v3.multi_token_predictor import (
+    DeepSeekMultiTokenPredictor,
+    roll_tensor,
+)
 
 class DeepSeekV3Model(GPTModel):
     """DeepSeek-V3 language model.
@@ -83,7 +88,7 @@ class DeepSeekV3Model(GPTModel):
     ) -> None:
         self.pre_process = pre_process
         self.post_process = post_process
-        self.use_mtp_predictor = config.use_mtp_predictor
+        self.use_mtp_predictor = True if config.num_mtp_predictor > 0 else False
         self.num_mtp_predictor = config.num_mtp_predictor
         
         super().__init__(
@@ -103,23 +108,32 @@ class DeepSeekV3Model(GPTModel):
             scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
             seq_len_interpolation_factor=seq_len_interpolation_factor,
         )
-        
-        if self.post_process and self.use_mtp_predictor:
+
+        if self.use_mtp_predictor and self.post_process:
+            # init mtp embeddings
+            self.mtp_embedding = LanguageModelEmbedding(
+                config=config,
+                vocab_size=vocab_size,
+                max_sequence_length=max_sequence_length,
+                position_embedding_type=position_embedding_type,
+                scatter_to_sequence_parallel=scatter_embedding_sequence_parallel,
+            )
+            # init mtp norm, linar_proj and transformer block
             mtp_config = copy.deepcopy(config)
             mtp_config.pipeline_model_parallel_size = 1
             mtp_config.num_layers = 1
             self.mtp_predictor = DeepSeekMultiTokenPredictor(
                 config=mtp_config,
                 transformer_layer_spec=transformer_layer_spec,
-                vocab_size=vocab_size,
-                max_sequence_length=max_sequence_length,
-                position_embedding_type=position_embedding_type,
-                scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
-                parallel_output=self.parallel_output,
-                share_embeddings_and_output_weights=self.share_embeddings_and_output_weights,
-                embedding_activation_buffer=self.embedding_activation_buffer,
-            grad_output_buffer=self.grad_output_buffer,
-        )
+            )
+            # mtp output lm head is the same with main model output layer
+
+        # Mtp embedding shares weight with main model embedding
+        # In a pipelined setup with more than one stage, the initial
+        # embedding layer and the mtp embedding are on different workers,
+        # thus call an all-reduce to ensure that first and last stages have the same initial parameter values
+        if self.use_mtp_predictor and (self.pre_process or self.post_process):
+            self.setup_mtp_embeddings()
 
     def forward(
         self,
@@ -205,7 +219,6 @@ class DeepSeekV3Model(GPTModel):
         if not self.post_process:
             return hidden_states
 
-        # logits and loss
         # logits of main model
         output_weight = None
         if self.share_embeddings_and_output_weights:
@@ -213,17 +226,27 @@ class DeepSeekV3Model(GPTModel):
         logits, _ = self.output_layer(
             hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output
         )
+        logging_logits = logits
+
         # logits of mtp predictors
         if self.use_mtp_predictor:
-            logits_mtps = self.mtp_predictor(
-                input_ids=input_ids,
-                position_ids=position_ids,
+            # mtp embedding
+            decoder_input_mtps = self.mtp_embedding(input_ids=input_ids, position_ids=position_ids)
+            # mtp norm, linear proj and transformer block
+            hidden_states_mtps = self.mtp_predictor(
+                decoder_input=decoder_input_mtps,
                 attention_mask=attention_mask,
                 pre_hidden_states=hidden_states,
-                decoder_input=None,
             )
+            # mtp output lm head
+            logits_mtps = []
+            for idx, hidden_states_mtp in enumerate(hidden_states_mtps):
+                logits_mtp, _ = self.output_layer(
+                    hidden_states_mtp, weight=output_weight, runtime_gather_output=runtime_gather_output
+                )
+                logits_mtps.append(logits_mtp)
+            logging_logits = torch.cat([logits, torch.cat(logits_mtps, dim=1)], dim=1)
 
-        # TODO: log mtp logits
         if has_config_logger_enabled(self.config):
             payload = OrderedDict(
                 {
@@ -231,18 +254,120 @@ class DeepSeekV3Model(GPTModel):
                     'position_ids': position_ids,
                     'attention_mask': attention_mask,
                     'decoder_input': decoder_input,
-                    'logits': logits,
+                    'logits': logging_logits,
                 }
             )
             log_config_to_disk(self.config, payload, prefix='input_and_logits')
         
-        # TODO: compute loss when labels is not None
-        # TODO: support sp, cp in mtp predictor
         if labels is None:
             logits = logits.transpose(0, 1).contiguous()
+            if not self.use_mtp_predictor:
+                return logits
+            for idx, logit in enumerate(logits_mtps):
+                logits_mtps[idx] = logit.transpose(0, 1).contiguous()
+            return [logits, logits_mtps]
 
-        if self.use_mtp_predictor:
-            return [logits, logits_mtps]            
-        else:
-            return logits
+        # compute loss
+        loss = self.compute_language_model_loss(labels, logits)
+        if not self.use_mtp_predictor:
+            return loss
+        loss_mtps = self.compute_mtp_predictor_loss(labels, logits_mtps)
+        return [loss, loss_mtps]
 
+    def compute_mtp_predictor_loss(self, labels: Tensor, logits_mtps: Tensor):
+        roll_labels = labels # [b s]
+        labels_mtps = []
+
+        num_mtps = len(logits_mtps)
+        for i in range(num_mtps):
+            labels_mtp, _= roll_tensor(roll_labels, dims=1)
+            roll_labels = labels_mtp
+            labels_mtp = labels_mtp.transpose(0, 1).contiguous() # [b s] ==> [s b]
+            labels_mtps.append(labels_mtp)
+
+        logits_mtps = torch.cat(logits_mtps, 1) # [s b h]
+        labels_mtps = torch.cat(labels_mtps, 1) # [s b h]
+        losses_mtps = tensor_parallel.vocab_parallel_cross_entropy(logits_mtps.float(), labels_mtps)
+        losses_mtps = losses_mtps.transpose(0, 1).contiguous().float() # [b s]
+
+        return losses_mtps
+
+    def share_embedding_or_mtp_embedding(self) -> Tensor:
+        """Gets the emedding weight or mtp embedding weight when share embeddings between main model and mtp modules
+
+        Returns:
+            Tensor: During pre processing it returns the input embeddings weight while during post processing it returns the mtp embeddings weight
+        """
+        if self.pre_process:
+            return self.embedding.word_embeddings.weight
+        elif self.post_process:
+            return self.mtp_embedding.word_embeddings.weight
+        return None
+
+    def setup_mtp_embeddings(self) -> None:
+        """Sets up embedding layer in first stage and mtp embedding layer in last stage.
+        """
+
+        # Set `is_embedding_or_output_parameter` attribute.
+        if self.pre_process:
+            self.embedding.word_embeddings.weight.is_embedding_or_output_parameter = True
+        if self.post_process and self.mtp_embedding.word_embeddings.weight is not None:
+            self.mtp_embedding.word_embeddings.weight.is_embedding_or_output_parameter = True
+
+        if parallel_state.get_pipeline_model_parallel_world_size() == 1:
+            # Zero out wgrad if sharing embeddings between two layers on same
+            # pipeline stage to make sure grad accumulation into main_grad is
+            # correct and does not include garbage values (e.g., from torch.empty).
+            self.share_embedding_or_mtp_embedding().zero_out_wgrad = True
+            return
+
+        if parallel_state.is_pipeline_first_stage() and self.pre_process and not self.post_process:
+            self.share_embedding_or_mtp_embedding().shared_embedding = True
+
+        if self.post_process and not self.pre_process:
+            assert not parallel_state.is_pipeline_first_stage()
+            # set word_embeddings weights to 0 here, then copy first
+            # stage's weights using all_reduce below.
+            self.mtp_embedding.word_embeddings.weight.data.fill_(0)
+            self.mtp_embedding.word_embeddings.weight.shared = True
+            self.mtp_embedding.word_embeddings.weight.shared_embedding = True
+
+        # Parameters are shared between the word embeddings layers, and the
+        # mtp embeddings at the end of the model. In a pipelined setup with more than
+        # one stage, the initial embedding layer and the mtp embedding are on different
+        # workers, so we do the following:
+        # 1. Create a second copy of word_embeddings on the last stage, with
+        #    initial parameters of 0.0.
+        # 2. Do an all-reduce between the first and last stage to ensure that
+        #    the two copies of word_embeddings start off with the same
+        #    parameter values.
+        # 3. In the training loop, before an all-reduce between the grads of
+        #    the two word_embeddings layers to ensure that every applied weight
+        #    update is the same on both stages.
+
+        # Ensure that first and last stages have the same initial parameter
+        # values.
+        if torch.distributed.is_initialized():
+            if parallel_state.is_rank_in_embedding_group():
+                weight = self.share_embedding_or_mtp_embedding()
+                weight.data = weight.data.cuda()
+                embedding_group = parallel_state.get_embedding_group()
+                if not isinstance(embedding_group, list):
+                    torch.distributed.all_reduce(
+                        weight.data, group=parallel_state.get_embedding_group()
+                    )
+                else:
+                    original_weight = weight.clone().detach().data
+                    for group in embedding_group:
+                        weight.data.copy_(original_weight)
+                        torch.distributed.all_reduce(weight.data, group=group)
+
+        elif not getattr(DeepSeekV3Model, "embedding_warning_printed", False):
+            logging.getLogger(__name__).warning(
+                "Distributed processes aren't initialized, so the mtp embeddings "
+                "is not initialized with weights from the word embeddings. "
+                "If you are just manipulating a model this is fine, but "
+                "this needs to be handled manually. If you are training "
+                "something is definitely wrong."
+            )
+            DeepSeekV3Model.embedding_warning_printed = True

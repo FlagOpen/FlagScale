@@ -234,19 +234,15 @@ def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
     set_moe_mlp_ckpt(message, mtp_layers, 0, md, args)
         
     # get and set other weights
-    mtp_embedding_weight = message.pop("mtp word embeddings weight")
-    mtp_full_word_embedding_weight = padding_vocab_size(mtp_embedding_weight, md, args)
+    # mtp embeddings weight is shared with main model embeddings
     mtp_enorm_weight = message.pop("mtp enorm weight")
     mtp_hnorm_weight = message.pop("mtp hnorm weight")
     mtp_eh_weight = message.pop("mtp eh weight")
     mtp_shared_head_norm_weight = message.pop("mtp shared head norm weight")
-    mtp_shared_head_head_weight = message.pop("mtp shared head head weight")
-    mtp_full_shared_head_head_weight = padding_vocab_size(mtp_shared_head_head_weight, md, args)
     for tp_ep_rank, model in enumerate(models):
         mtp_layer = model.mtp_predictor.mtp_modules[mtp_layer_id]
-        mtp_layer.embedding.embedding.word_embeddings.weight.data.copy_(mtp_full_word_embedding_weight)
         mtp_layer.norm1.weight.data.copy_(mtp_enorm_weight)
         mtp_layer.norm2.weight.data.copy_(mtp_hnorm_weight)
         mtp_layer.linear_proj.weight.data.copy_(mtp_eh_weight)
         mtp_layer.decoder.final_layernorm.weight.data.copy_(mtp_shared_head_norm_weight)
-        mtp_layer.output_head.head.weight.data.copy_(mtp_full_shared_head_head_weight)
+    # mtp output lm head is the same with main model output lm head
