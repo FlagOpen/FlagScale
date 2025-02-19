@@ -9,7 +9,7 @@ experiment:
   task:
     type: train
     backend: megatron
-    entrypoint: ./flagscale/train/train_aquila.py
+    entrypoint: ./flagscale/train/train_gpt.py
   runner:
     backend: torchrun
     nnodes: 2 
