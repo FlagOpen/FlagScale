@@ -336,3 +336,63 @@ class Recorder:
         if "stopped_by_tuner" in df.columns:
             df = df.drop(columns=["stopped_by_tuner"])
         df.to_csv(self.path, index=False, escapechar="\\")
+
+
+class ServeRecorder(Recorder):
+    def __init__(self, config):
+        self.config = config
+        if (
+            "auto_tuner" in self.config.experiment
+            and "performance" in self.config.experiment.auto_tuner
+        ):
+            self.metric = self.config.experiment.auto_tuner.performance.get(
+                "metric", "itl"
+            )
+        else:
+            self.metric = "itl"
+
+        # Sort order of performance, order just in [ascend, and descend], default ascend
+        if (
+            "auto_tuner" in self.config.experiment
+            and "performance" in self.config.experiment.auto_tuner
+        ):
+            self.sorted_order = self.config.experiment.auto_tuner.performance.get(
+                "order", "ascend"
+            )
+        else:
+            self.sorted_order = "ascend"
+        self.logger = logging.getLogger("FlagScale-AutoTuner")
+        self.cur_strategy = None
+
+    def record(self, strategy, performance):
+        strategy["e2e_latency"] = round(performance["mean_e2el_ms"], 2)
+        strategy["request_throughput"] = round(performance["request_throughput"], 2)
+        strategy["token_throughput"] = round(performance["total_token_throughput"], 2)
+        strategy["ttft"] = round(performance["mean_ttft_ms"], 2)
+        strategy["itl"] = round(performance["mean_itl_ms"], 2)
+        strategy["topt"] = round(performance["mean_tpot_ms"], 2)
+        self.cur_strategy = strategy
+
+    def sort(self, history):
+        sorted_history = None
+        if self.sorted_order == "ascend":
+            sorted_history = sorted(
+                history,
+                key=lambda x: (
+                    x[self.metric] if x[self.metric] is not None else float("inf")
+                ),
+            )
+        elif self.sorted_order == "descend":
+            sorted_history = sorted(
+                history,
+                key=lambda x: (
+                    x[self.metric] if x[self.metric] is not None else float("-inf")
+                ),
+                reverse=True,
+            )
+        else:
+            raise ValueError(f"The sorted order {self.sorted_order} is not supported.")
+        assert sorted_history is not None
+        return sorted_history
+
+        

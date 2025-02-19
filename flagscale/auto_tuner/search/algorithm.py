@@ -45,6 +45,7 @@ class GridAlgo(Algo):
                     self.strategies[self.idx :], key=sort_by_performance
                 )
 
+
     def search(self):
         """Return a task iteratively."""
         strategy = None
