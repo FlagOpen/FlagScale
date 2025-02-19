@@ -201,6 +201,7 @@ def _generate_run_script_serve(
                         ssh_cmd = f"ssh -n {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
         else:
+            # Note: config key device_type is specified for single node serving in neither gpu or cpu.
             device_type = None
             nproc_per_node = None
             if config.experiment.get("runner", None) and config.experiment.runner.get(
