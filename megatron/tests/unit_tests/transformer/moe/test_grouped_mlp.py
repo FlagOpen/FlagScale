@@ -277,7 +277,13 @@ class TestTEGroupedMLP:
 
     def teardown_method(self, method):
         Utils.destroy_model_parallel()
-
+        
+    """
+        Author: lizhiyu
+        Date: 2024-02-18
+        Action: Add extra 'self.num_experts' for 'expected_num_weights' because router.sore_bias is added in the model.
+        Reason: Releted RP: https://github.com/FlagOpen/FlagScale/pull/336
+    """
     @pytest.mark.internal
     def test_constructor(self):
         assert isinstance(self.sequential_mlp, MoELayer)
@@ -295,6 +301,7 @@ class TestTEGroupedMLP:
             + self.hidden_size
             * (self.fc1_ffn_hidden_size + self.fc2_ffn_hidden_size)
             * self.num_experts
+            + self.num_experts # for score_bias
         )
         assert num_weights_smm == expected_num_weights
 
