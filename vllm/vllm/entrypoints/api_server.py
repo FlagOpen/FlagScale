@@ -6,7 +6,6 @@ For production use, we recommend using our OpenAI compatible server.
 We are also not going to accept PRs modifying this file, please
 change `vllm/entrypoints/openai/api_server.py` instead.
 """
-import os
 import asyncio
 import json
 import ssl
@@ -111,6 +110,7 @@ async def init_app(
     engine = (llm_engine
               if llm_engine is not None else AsyncLLMEngine.from_engine_args(
                   engine_args, usage_context=UsageContext.API_SERVER))
+    return app
 
 
 async def run_server(args: Namespace,

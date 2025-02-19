@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-import os
 import asyncio
 import copy
 import time
@@ -650,7 +649,6 @@ class AsyncLLMEngine(EngineClient):
             usage_context=usage_context,
             stat_loggers=stat_loggers,
         )
-
         return engine
 
     @property
