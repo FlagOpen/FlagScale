@@ -190,13 +190,17 @@ class AutoTuner:
         # 2. Whether prune by pruner
         # 3. If not pruned, generate the task by generator
         strategy = self.searcher.search()
-        while strategy and (self.pruner is not None and self.pruner.prune(strategy, self.history)):
+        while strategy and (
+            self.pruner is not None and self.pruner.prune(strategy, self.history)
+        ):
             strategy = self.searcher.search()
         if strategy:
             self.idx += 1
             strategy["idx"] = self.idx
             pruned_count = self.pruner.pruned_count if self.pruner is not None else 0
-            pruned_by_memory_model = self.pruner.pruned_by_memory_model if self.pruner is not None else 0
+            pruned_by_memory_model = (
+                self.pruner.pruned_by_memory_model if self.pruner is not None else 0
+            )
             if "memory_model" in self.config.experiment.auto_tuner:
                 self.logger.info(
                     f"Searching {self.idx+pruned_count} / {len(self.searcher.strategies)} strategy, Pruned {pruned_count} strategy, {pruned_by_memory_model} by memory model."
@@ -406,8 +410,8 @@ class ServeAutoTunner(AutoTuner):
             # get best strategy
             best_strategy = self.get_best()
             if best_strategy:
-                TP = best_strategy['tensor_model_parallel_size']
-                PP = best_strategy['pipeline_model_parallel_size']
+                TP = best_strategy["tensor_model_parallel_size"]
+                PP = best_strategy["pipeline_model_parallel_size"]
                 self.logger.info(
                     f"Best strategy tuned so far: tensor_parallel_size: {TP} pipeline_parallel_size: {PP}, and {self.recorder.metric} is {best_strategy[self.recorder.metric]}."
                 )
@@ -429,7 +433,6 @@ class ServeAutoTunner(AutoTuner):
             best_task.action = "run"
             runner = SSHServeRunner(best_task)
             runner.run()
-
 
     def run(self, task=None):
         # Instantiate a runner and run the task
@@ -486,7 +489,7 @@ class ServeAutoTunner(AutoTuner):
             result = self.runner._profile_serve()
             self.cur_result = result
         if running:
-           self.runner.stop()
+            self.runner.stop()
 
         end_time = time.time()
 
@@ -510,8 +513,10 @@ class ServeAutoTunner(AutoTuner):
 
     def get_best(self):
         sorted_history = self.recorder.sort(self.history)
-        if sorted_history and sorted_history[0] and sorted_history[0][self.recorder.metric]:
+        if (
+            sorted_history
+            and sorted_history[0]
+            and sorted_history[0][self.recorder.metric]
+        ):
             return sorted_history[0]
         return None
-
-

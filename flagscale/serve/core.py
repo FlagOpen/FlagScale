@@ -2,7 +2,6 @@ import ray
 
 
 def auto_remote(gpu=0, cpu=1, custom={}):
-    import pdb;pdb.set_trace()
     def decorator(cls):
         if not custom:
             original_cls = ray.remote(num_gpus=gpu, num_cpus=cpu)(cls)

@@ -20,7 +20,7 @@ from flagscale.runner.runner_utils import (
     run_scp_command,
     run_ssh_command,
     dummy_random_input,
-    benchmark
+    benchmark,
 )
 
 
@@ -263,6 +263,7 @@ def _generate_stop_script(config, host, node_rank):
 
     return host_stop_script_file
 
+
 def kill_process_tree(pid):
     try:
         parent = psutil.Process(pid)
@@ -370,13 +371,12 @@ class SSHServeRunner(RunnerBase):
     def _stop_each(self, host, node_rank):
         logging_config = self.config.serve.logging
         host_pid_file = os.path.join(
-                logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-            )
+            logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
+        )
         with open(host_pid_file, "r") as f:
-            pid=f.readlines()[0]
+            pid = f.readlines()[0]
             pid = int(pid.strip())
         kill_process_tree(pid)
-
 
     def stop(self):
         self._stop_each("localhost", 0)
@@ -453,7 +453,9 @@ class SSHServeRunner(RunnerBase):
                 base_url=api_url,
             )
             messages = [{"role": "user", "content": "who are you?"}]
-            response = client.chat.completions.create(model=model_name, messages=messages)
+            response = client.chat.completions.create(
+                model=model_name, messages=messages
+            )
         except Exception as e:
             # logger.info(f"API {api_url} is not ready, please wait a moment")
             return False
@@ -462,22 +464,28 @@ class SSHServeRunner(RunnerBase):
 
     def _profile_serve(self):
         from vllm.transformers_utils.tokenizer import get_tokenizer
+
         model = self.config.serve.model_args.vllm_model["model-tag"]
         tokenizer_mode = "auto"
-        trust_remote_code = "trust-remote-code" in self.config.serve.model_args.vllm_model["action-args"]
-        tokenizer = get_tokenizer(model,
-                            tokenizer_mode=tokenizer_mode,
-                            trust_remote_code=trust_remote_code)
+        trust_remote_code = (
+            "trust-remote-code"
+            in self.config.serve.model_args.vllm_model["action-args"]
+        )
+        tokenizer = get_tokenizer(
+            model, tokenizer_mode=tokenizer_mode, trust_remote_code=trust_remote_code
+        )
         dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=1000)
         api_url = f"http://{self.host}:{self.port}/v1/completions"
         ### allow metric = [\"ttft\", \"tpot\", \"itl\", \"e2el\"]
         ### allow percentiles = [\"25,50,75\"]
         result = asyncio.run(
             benchmark(
-            api_url,
-            model=model,
-            tokenizer=tokenizer,
-            input_requests=dummy_input_requests,
-            selected_percentile_metrics="ttft,tpot,itl,e2el".split(","),
-            selected_percentiles=[float(99)]))
+                api_url,
+                model=model,
+                tokenizer=tokenizer,
+                input_requests=dummy_input_requests,
+                selected_percentile_metrics="ttft,tpot,itl,e2el".split(","),
+                selected_percentiles=[float(99)],
+            )
+        )
         return result

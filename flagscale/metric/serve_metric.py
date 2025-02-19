@@ -4,6 +4,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
+
 @dataclass
 class Metrics:
     completed: int
@@ -32,6 +33,7 @@ class Metrics:
     std_e2el_ms: float
     percentiles_e2el_ms: List[Tuple[float, float]]
 
+
 def calculate_metrics(
     input_requests,
     outputs,
@@ -39,7 +41,7 @@ def calculate_metrics(
     tokenizer,
     selected_percentile_metrics,
     selected_percentiles,
-) :
+):
     actual_output_lens = []
     total_input = 0
     completed = 0
@@ -60,8 +62,10 @@ def calculate_metrics(
                 # bundled together
                 # Note : this may inflate the output token count slightly
                 output_len = len(
-                    tokenizer(outputs[i].generated_text,
-                              add_special_tokens=False).input_ids)
+                    tokenizer(
+                        outputs[i].generated_text, add_special_tokens=False
+                    ).input_ids
+                )
             actual_output_lens.append(output_len)
             total_input += input_requests[i][1]
             tpot = 0
@@ -81,7 +85,8 @@ def calculate_metrics(
         warnings.warn(
             "All requests failed. This is likely due to a misconfiguration "
             "on the benchmark arguments.",
-            stacklevel=2)
+            stacklevel=2,
+        )
     metrics = Metrics(
         completed=completed,
         total_input=total_input,
@@ -89,27 +94,31 @@ def calculate_metrics(
         request_throughput=completed / dur_s,
         output_throughput=sum(actual_output_lens) / dur_s,
         total_token_throughput=(total_input + sum(actual_output_lens)) / dur_s,
-        mean_ttft_ms=np.mean(ttfts or 0) *
-        1000,  # ttfts is empty if streaming is not supported by backend
+        mean_ttft_ms=np.mean(ttfts or 0)
+        * 1000,  # ttfts is empty if streaming is not supported by backend
         std_ttft_ms=np.std(ttfts or 0) * 1000,
         median_ttft_ms=np.median(ttfts or 0) * 1000,
-        percentiles_ttft_ms=[(p, np.percentile(ttfts or 0, p) * 1000)
-                             for p in selected_percentiles],
+        percentiles_ttft_ms=[
+            (p, np.percentile(ttfts or 0, p) * 1000) for p in selected_percentiles
+        ],
         mean_tpot_ms=np.mean(tpots or 0) * 1000,
         std_tpot_ms=np.std(tpots or 0) * 1000,
         median_tpot_ms=np.median(tpots or 0) * 1000,
-        percentiles_tpot_ms=[(p, np.percentile(tpots or 0, p) * 1000)
-                             for p in selected_percentiles],
+        percentiles_tpot_ms=[
+            (p, np.percentile(tpots or 0, p) * 1000) for p in selected_percentiles
+        ],
         mean_itl_ms=np.mean(itls or 0) * 1000,
         std_itl_ms=np.std(itls or 0) * 1000,
         median_itl_ms=np.median(itls or 0) * 1000,
-        percentiles_itl_ms=[(p, np.percentile(itls or 0, p) * 1000)
-                            for p in selected_percentiles],
+        percentiles_itl_ms=[
+            (p, np.percentile(itls or 0, p) * 1000) for p in selected_percentiles
+        ],
         mean_e2el_ms=np.mean(e2els or 0) * 1000,
         std_e2el_ms=np.std(e2els or 0) * 1000,
         median_e2el_ms=np.median(e2els or 0) * 1000,
-        percentiles_e2el_ms=[(p, np.percentile(e2els or 0, p) * 1000)
-                             for p in selected_percentiles],
+        percentiles_e2el_ms=[
+            (p, np.percentile(e2els or 0, p) * 1000) for p in selected_percentiles
+        ],
     )
 
     return metrics, actual_output_lens
