@@ -19,8 +19,6 @@ from megatron.core.transformer.transformer_block import (
 
 from typing import List
 
-from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
-
 try:
     from megatron.core.extensions.transformer_engine import (
         TENorm,
@@ -29,74 +27,6 @@ try:
     HAVE_TE = True
 except ImportError:
     HAVE_TE = False
-
-def roll_input_mask(input_mask):
-    input_mask = torch.roll(input_mask, shifts=-1, dims=0)
-    input_mask[-1,:,:] = True
-    return input_mask
-
-class DeepSeekSharedEmbedding(MegatronModule):
-    def __init__(
-        self,
-        config: TransformerConfig,
-        vocab_size: int,
-        max_sequence_length: int,
-        position_embedding_type: Literal['learned_absolute', 'rope', 'none'] = 'learned_absolute',
-        scatter_to_sequence_parallel: bool = True,
-    ):
-        super().__init__(config=config)
-        
-        self.embedding = LanguageModelEmbedding(
-            config=self.config,
-            vocab_size=vocab_size,
-            max_sequence_length=max_sequence_length,
-            position_embedding_type=position_embedding_type,
-            scatter_to_sequence_parallel=scatter_to_sequence_parallel,
-        )
-        self.embedding.word_embeddings.weight.is_embedding_or_output_parameter = True
-
-    def forward(
-        self,
-        input_ids,
-        position_ids,
-    ) -> Tensor:
-        return self.embedding(input_ids=input_ids, position_ids=position_ids)
-
-
-class DeepSeekSharedHead(MegatronModule):
-    def __init__(
-        self,
-        hidden_size,
-        vocab_size,
-        config,
-        init_method,
-        bias=True,
-        skip_bias_add=False,
-        gather_output=False,
-        skip_weight_param_allocation: bool = False,
-        embedding_activation_buffer: Optional[List[torch.Tensor]] = None,
-        grad_output_buffer: Optional[List[torch.Tensor]] = None,
-    ):
-        super().__init__(config=config)
-        self.head = tensor_parallel.ColumnParallelLinear(
-            hidden_size,
-            vocab_size,
-            config=config,
-            init_method=init_method,
-            bias=bias,
-            skip_bias_add=skip_bias_add,
-            gather_output=gather_output,
-            skip_weight_param_allocation=skip_weight_param_allocation,
-            embedding_activation_buffer=embedding_activation_buffer,
-            grad_output_buffer=grad_output_buffer,
-        )
-        self.head.weight.is_embedding_or_output_parameter = True
-    
-    def forward(
-        self,
-        hidden_states,
-    ) -> Tensor:
-        return self.head(hidden_states)
 
 
 class DeepSeekMultiTokenPredictorLayer(MegatronModule):
@@ -110,25 +40,10 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         self,
         config: TransformerConfig,
         transformer_layer_spec: ModuleSpec,
-        vocab_size: int,
-        max_sequence_length: int,
-        position_embedding_type: Literal['learned_absolute', 'rope', 'none'] = 'learned_absolute',
-        scatter_embedding_sequence_parallel: bool = True,
-        parallel_output: bool = True,
-        share_embeddings_and_output_weights: bool = True,
-        embedding_activation_buffer: Optional[List[torch.Tensor]] = None,
-        grad_output_buffer: Optional[List[torch.Tensor]] = None,
     ):
         super().__init__(config=config)
 
         self.config = config
-        self.embedding = DeepSeekSharedEmbedding(
-            config=self.config,
-            vocab_size=vocab_size,
-            max_sequence_length=max_sequence_length,
-            position_embedding_type=position_embedding_type,
-            scatter_to_sequence_parallel=scatter_embedding_sequence_parallel,
-        )
 
         if HAVE_TE:   
             self.norm1 = TENorm(config, config.hidden_size, config.layernorm_epsilon)
@@ -148,51 +63,17 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
             pre_process=True,
             post_process=True,
         )
-        
-        self.output_head = DeepSeekSharedHead(
-            config.hidden_size,
-            vocab_size,
-            config=config,
-            init_method=config.init_method,
-            bias=False,
-            skip_bias_add=False,
-            gather_output=not parallel_output,
-            skip_weight_param_allocation=share_embeddings_and_output_weights,
-            embedding_activation_buffer=embedding_activation_buffer,
-            grad_output_buffer=grad_output_buffer,
-        )
 
     def forward(
         self,
-        input_ids: Tensor,
-        position_ids: Tensor,
+        decoder_input: Tensor,
         attention_mask: Tensor,
         pre_hidden_states: Tensor,
-        decoder_input: Tensor = None,
-        input_mask: Tensor = None,
+        
     ) -> Tensor:
-        """Forward pass of the multi token prediction module.
-
-        Args:
-            input_ids (Tensor): The input tokens or input embeddings
-            pre_hidden_states (Tensor): The hidden states from previous multi token prediction module or main model
-
-        Returns:
-            Tensor: The output logits
+        """Forward pass of the multi token prediction layer.
         """
-        ### TODO: fix it
-        ### if init self.embedding, but do not use it, will cause gradient sync error in grad bucket of DDP
-        assert decoder_input is None, "currently only support embedding input_ids"
-        
-        if decoder_input is not None:
-            pass
-        else:
-            decoder_input = self.embedding(input_ids=input_ids, position_ids=position_ids)
-        
-        if input_mask is not None:
-            # scatter
-            input_mask = tensor_parallel.scatter_to_sequence_parallel_region(input_mask)
-            decoder_input = torch.masked_fill(decoder_input, input_mask.expand(decoder_input.shape), 0)
+        assert decoder_input is not None, "Input ids need to be embedded before mtp predictor"
 
         # two RMSNorm
         decoder_input = self.norm1(decoder_input)
@@ -203,11 +84,8 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         hidden_states = self.linear_proj(hidden_states)
         # transformer block
         hidden_states = self.decoder(hidden_states, attention_mask)
-        hidden_states_mtp = hidden_states
-        # output head
-        logits_mtp, _ = self.output_head(hidden_states)
         
-        return logits_mtp, hidden_states_mtp
+        return hidden_states
 
 
 class DeepSeekMultiTokenPredictor(MegatronModule):
@@ -221,14 +99,6 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
         self,
         config: TransformerConfig,
         transformer_layer_spec: ModuleSpec,
-        vocab_size: int,
-        max_sequence_length: int,
-        position_embedding_type: Literal['learned_absolute', 'rope', 'none'] = 'learned_absolute',
-        scatter_embedding_sequence_parallel: bool = True,
-        parallel_output: bool = True,
-        share_embeddings_and_output_weights: bool = True,
-        embedding_activation_buffer: Optional[List[torch.Tensor]] = None,
-        grad_output_buffer: Optional[List[torch.Tensor]] = None,
     ):
         super().__init__(config=config)
 
@@ -239,55 +109,35 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
             DeepSeekMultiTokenPredictorLayer(
                     config=self.config,
                     transformer_layer_spec=transformer_layer_spec,
-                    vocab_size=vocab_size,
-                    max_sequence_length=max_sequence_length,
-                    position_embedding_type=position_embedding_type,
-                    scatter_embedding_sequence_parallel=scatter_embedding_sequence_parallel,
-                    parallel_output=parallel_output,
-                    share_embeddings_and_output_weights=share_embeddings_and_output_weights,
-                    embedding_activation_buffer=embedding_activation_buffer,
-                    grad_output_buffer=grad_output_buffer,
             ) for i in range(self.num_mtp_predictor)
         ])
 
     def forward(
         self,
-        input_ids: Tensor,
-        position_ids: Tensor,
+        decoder_input: Tensor,
         attention_mask: Tensor,
         pre_hidden_states: Tensor,
-        decoder_input: Tensor = None,
     ) -> Tensor:
         """Forward pass of the multi token prediction module.
-
-        Args:
-            input_ids (Tensor): The input tokens or input embeddings
-            pre_hidden_states (Tensor): The hidden states from previous multi token prediction module or main model
-
-        Returns:
-            Tensor: The output logits
         """
-        
-        # init input mask
-        if decoder_input is not None:
-            s, b, _ = decoder_input.shape
-        else:
-            b, s = input_ids.shape
-        input_mask = torch.zeros(s, b).unsqueeze(2).cuda().type(torch.bool)
-        input_mask = roll_input_mask(input_mask)
-        
-        logits_mtps = []
+
+        hidden_states_mtps = []
         for i in range(self.num_mtp_predictor):
-            logits_mtp, pre_hidden_states = self.mtp_modules[i](
-                input_ids=input_ids,
-                position_ids=position_ids,
+            decoder_input, _ = roll_tensor(decoder_input, dims=0)
+            hidden_states = self.mtp_modules[i](
+                decoder_input=decoder_input,
                 attention_mask=attention_mask,
                 pre_hidden_states=pre_hidden_states,
-                decoder_input=decoder_input,
-                input_mask=input_mask,
             )
-            logits_mtps.append(logits_mtp.transpose(0, 1).contiguous())
-            input_mask = roll_input_mask(input_mask)
+            hidden_states_mtps.append(hidden_states)
+            pre_hidden_states = hidden_states
         
-        return logits_mtps
+        return hidden_states_mtps
 
+def roll_tensor(tensor, dims=0):
+    rolled_tensor = torch.roll(tensor, shifts=-1, dims=dims)
+    index = [slice(None)] * rolled_tensor.ndim
+    index[dims] = -1
+    index = tuple(index)
+    rolled_tensor[index] = 0
+    return rolled_tensor, rolled_tensor.sum()

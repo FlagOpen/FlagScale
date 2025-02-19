@@ -2269,9 +2269,7 @@ def _add_mtp_args(parser):
     group = parser.add_argument_group(title="mtp")
 
     # general mtp arguements
-    group.add_argument('--use-mtp-predictor', action='store_true', default=False,
-                       help='whether to use multi token predictor')
-    group.add_argument('--num-mtp-predictor', type=int, default=1,
+    group.add_argument('--num-mtp-predictor', type=int, default=0,
                        help='num of multi token predictors')
 
     return parser

@@ -1,5 +1,6 @@
 import copy
 import os
+from omegaconf import OmegaConf
 
 
 class Generator:
@@ -84,6 +85,45 @@ class Generator:
             )
         else:
             config.train.model.train_iters = 5
+
+        # log dir
+        config.experiment.exp_dir = os.path.join(
+            config.experiment.exp_dir, "auto_tuner", f"task_{strategy['idx']}"
+        )
+
+        return config
+
+    def gen_best_task(self, strategy, config):
+        self._set_value(strategy, config)
+        return config
+
+
+class ServeGenerator(Generator):
+    def __init__(self, config):
+        self.config = config
+        if "args_mapping" in config.experiment.auto_tuner:
+            self.args_mapping = config.experiment.auto_tuner.args_mapping
+        else:
+            self.args_mapping = {
+                "tensor_model_parallel_size": "tensor-parallel-size",
+                "pipeline_model_parallel_size": "pipeline-parallel-size",
+            }
+
+    def _set_value(self, strategy, config):
+        # import pdb;pdb.set_trace()
+        for key, value in self.args_mapping.items():
+            if strategy[key] is None:
+                if value in config.serve.model_args.vllm_model:
+                    del config.serve.model_args.vllm_model[value]
+                continue
+            if value not in config.serve.model_args.vllm_model:
+                config.serve.model_args.vllm_model = OmegaConf.merge(config.serve.model_args.vllm_model, {value: strategy[key]})
+            else:
+                config.serve.model_args.vllm_model[value] = strategy[key]
+
+    def gen(self, strategy):
+        config = copy.deepcopy(self.config)
+        self._set_value(strategy, config)
 
         # log dir
         config.experiment.exp_dir = os.path.join(
