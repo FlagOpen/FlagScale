@@ -313,6 +313,7 @@ class SSHServeRunner(RunnerBase):
             self.config.experiment.runner.get("hostfile", None)
         )
         if self.resources:
+            OmegaConf.set_struct(self.config, False)
             self.config.serve["nodes"] = list(self.resources.items())
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
@@ -378,18 +379,8 @@ class SSHServeRunner(RunnerBase):
 
 
     def stop(self):
-        if self.resources is None:
-            self._stop_each("localhost", 0)
-            return
-
-        nnodes = get_nnodes(
-            len(self.resources), self.config.experiment.runner.get("nnodes", None)
-        )
-
-        for node_rank, (host, _) in enumerate(self.resources.items()):
-            if node_rank >= nnodes:
-                break
-            self._stop_each(host, node_rank)
+        self._stop_each("localhost", 0)
+        return
 
     def _generate_query_script(self, host, node_rank):
         """Genetrate the query script for each host."""
@@ -427,46 +418,18 @@ class SSHServeRunner(RunnerBase):
         host_query_script_file = self._generate_query_script(host, node_rank)
         logging_config = self.config.serve.logging
         result = ""
-        if host != "localhost":
-            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
-            # Step 1: make sure the scripts_dir exists on the remote host
-            run_ssh_command(
-                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, query=True
-            )
-            # Step 2: copy the host_run_script_file to the remote host
-            no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
-            if no_shared_fs:
-                run_scp_command(
-                    host, host_query_script_file, logging_config.scripts_dir, ssh_port
-                )
-            # Step 3: run the host_run_script_file on the remote host
-            try:
-                result = run_ssh_command(
-                    host, f"bash {host_query_script_file}", ssh_port, query=True
-                )
-            except Exception as e:
-                logger.error(f"Failed to query job status on {host}: {e}")
-        else:
-            try:
-                result = run_local_command(f"bash {host_query_script_file}", query=True)
-            except Exception as e:
-                logger.error(f"Failed to query job status on {host}: {e}")
+        try:
+            result = run_local_command(f"bash {host_query_script_file}", query=True)
+        except Exception as e:
+            logger.error(f"Failed to query job status on {host}: {e}")
         result = result.stdout.rstrip() if result else ""
         return result
 
     def _query_status(self):
         "Query Job status."
         results = []
-        if self.resources is None:
-            result = self._query_each("localhost", 0)
-            results.append(result)
-
-        else:
-            host_list = list(self.resources.keys())
-            for host, _ in self.resources.items():
-                node_rank = host_list.index(host)
-                result = self._query_each(host, node_rank)
-                results.append(result)
+        result = self._query_each("localhost", 0)
+        results.append(result)
         if all((status != "" and status != "Z") for status in results):
             job_status = JobStatus.RUNNING
         elif all((status == "" or status == "Z") for status in results):
@@ -505,7 +468,7 @@ class SSHServeRunner(RunnerBase):
         tokenizer = get_tokenizer(model,
                             tokenizer_mode=tokenizer_mode,
                             trust_remote_code=trust_remote_code)
-        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=10)
+        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=1000)
         api_url = f"http://{self.host}:{self.port}/v1/completions"
         ### allow metric = [\"ttft\", \"tpot\", \"itl\", \"e2el\"]
         ### allow percentiles = [\"25,50,75\"]

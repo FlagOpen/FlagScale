@@ -55,8 +55,6 @@ def main(config: DictConfig) -> None:
             # For MPIRUN scene, just one autotuner process.
             # NOTE: This is a temporary solution and will be updated with cloud runner.
             from flagscale.auto_tuner.utils import is_master
-            #print("=============================", config, is_master(config))
-            #if is_master(config):
             tuner = ServeAutoTunner(config)
             tuner.tune()
         else:

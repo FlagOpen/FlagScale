@@ -359,7 +359,7 @@ class ServeAutoTunner(AutoTuner):
         # The max time per task, unit: second
         # NOTE: The task will be stopped if the time is reached or done.
         self.max_time_per_task = self.config.experiment.auto_tuner.control.get(
-            "max_time_per_task", 300
+            "max_time_per_task", 3000
         )
 
         # The max time of auto tuner, if None, no limit.
