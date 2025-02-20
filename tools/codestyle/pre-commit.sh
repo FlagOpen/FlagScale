@@ -6,7 +6,7 @@ fi
 
 diff_files=$(git diff --name-only --diff-filter=ACMR ${BRANCH})
 num_diff_files=$(echo "$diff_files" | wc -l)
-echo "Different files between pr and ${BRANCH}:\n${diff_files} ..."
+echo -e "Different files between pr and ${BRANCH}:\n${diff_files}\n"
 
 echo "Checking codestyle by pre-commit ..."
 pre-commit run --files ${diff_files};check_error=$?
