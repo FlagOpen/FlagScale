@@ -48,21 +48,9 @@ from flagscale.train.train import pretrain
 from flagscale.train.global_vars import get_parallel_context
 
 from flagscale.train.models.deepseek_v3.deepseek_v3_model import DeepSeekV3Model
+from flagscale.train.models.deepseek_v3.multi_token_predictor import roll_tensor
 
 stimer = StragglerDetector()
-
-def roll_mtp(labels, loss_mask):
-
-    labels_mpt = torch.roll(labels, shifts=-1, dims=1)
-    labels_mpt[:,-1] = 0
-    
-    loss_mask_mpt = torch.roll(loss_mask, shifts=-1, dims=0)
-    loss_mask_mpt[-1] = 0
-    
-    total_tokens_mpt = loss_mask_mpt.sum()
-
-    return labels_mpt, loss_mask_mpt, total_tokens_mpt
-
 
 def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megatron.legacy.model.GPTModel]:
     """Builds the model.
@@ -102,7 +90,7 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
             config = core_transformer_config_from_args(args)
 
     assert args.use_legacy_models is False
-    
+    assert args.untie_embeddings_and_output_weights is True, "Current do not support share embeddings and lm head of main model."
     if args.use_legacy_models:
         model = megatron.legacy.model.GPTModel(
             config,
@@ -236,13 +224,12 @@ SPIKY_LOSS_PERC = 0.2
 
 
 
-def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tensor):
+def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
     """Loss function.
 
     Args:
-        labels  (torch.Tensor): Used to compute loss with logits
         loss_mask (torch.Tensor): Used to mask out some portions of the loss
-        logits (torch.Tensor): The output tensor of transformer
+        output_tensor (torch.Tensor): The tensor with the losses
 
     Returns:
         the loss scalar for this micro-batch
@@ -254,54 +241,29 @@ def loss_func(labels: torch.Tensor, loss_mask: torch.Tensor, logits: torch.Tenso
     loss_mask = loss_mask.view(-1).float() # [b*s]
     total_tokens = loss_mask.sum()
     
-    # get logits from main model and mtp modules
-    if args.use_mtp_predictor:
-        logits, logits_mtps = logits # [b s h]
-    roll_labels = labels # [b s]
+    loss = output_tensor
+    use_mtp_predictor = True if args.num_mtp_predictor > 0 else False
+    if use_mtp_predictor:
+        loss, loss_mtps = output_tensor # [b s]
     roll_loss_mask = loss_mask # [b*s]
     
     # cal loss for main model
-    labels = labels.transpose(0, 1).contiguous() # [b s] => [s b]
-    logits = logits.transpose(0, 1).contiguous() # [b s h] => [s b h]
-        
-    losses = tensor_parallel.vocab_parallel_cross_entropy(logits.float(), labels)
-    losses = losses.transpose(0, 1).contiguous().float()
-    
-    loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
-        
+    loss = torch.cat([torch.sum(loss.view(-1) * loss_mask).view(1), total_tokens.view(1)])
     # cal loss for mtp modules
-    if args.use_mtp_predictor:
-        labels_mtps = []
+    if use_mtp_predictor:
         loss_mask_mtps = []
         total_tokens_mtps = 0
-        # does labels need to be clamped
-        # roll_labels = torch.clamp(labels - 151845, min=0)
-        
-        num_mtps = len(logits_mtps)
-        
-        for i in range(num_mtps):
-            labels_mtp, loss_mask_mtp, total_tokens_mtp = roll_mtp(roll_labels, roll_loss_mask)
-            roll_labels = labels_mtp
+        for i in range(args.num_mtp_predictor):
+            loss_mask_mtp, total_tokens_mtp = roll_tensor(roll_loss_mask, dims=0)
             roll_loss_mask = loss_mask_mtp
-            
-            labels_mtp = labels_mtp.transpose(0, 1).contiguous() # [b s] ==> [s b]
             total_tokens_mtps += total_tokens_mtp
-            labels_mtps.append(labels_mtp)
             loss_mask_mtps.append(loss_mask_mtp)
-        
-        logits_mtps = torch.cat(logits_mtps, 0).transpose(0, 1).contiguous()
-        labels_mtps = torch.cat(labels_mtps, 1)
         loss_mask_mtps = torch.cat(loss_mask_mtps, 0)
-        
-        losses_mtps = tensor_parallel.vocab_parallel_cross_entropy(logits_mtps.float(), labels_mtps)
-        losses_mtps = losses_mtps.transpose(0, 1).contiguous().float() # [b s]
-        
-        loss_mtps = torch.cat([torch.sum(losses_mtps.view(-1) * loss_mask_mtps).view(1), total_tokens_mtps.view(1)])
-        
+        loss_mtps = torch.cat([torch.sum(loss_mtps.view(-1) * loss_mask_mtps).view(1), total_tokens_mtps.view(1)])
         loss_mtps = loss_mtps / args.num_mtp_predictor
-        
+
     # merge loss, how to process?
-    if args.use_mtp_predictor:
+    if use_mtp_predictor:
         loss = loss + loss_mtps
     
     # loss printing
@@ -359,9 +321,9 @@ def forward_step(data_iterator, model: GPTModel):
 
     with stimer:
         output_tensor = model(tokens, position_ids, attention_mask,
-                              labels=None)
+                              labels=labels)
 
-    return output_tensor, partial(loss_func, labels, loss_mask)
+    return output_tensor, partial(loss_func, loss_mask)
 
 
 def is_dataset_built_on_rank():

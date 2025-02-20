@@ -1,0 +1,28 @@
+defaults:
+  - _self_
+  - serve: serve_qwen2.5_7b
+
+experiment:
+  exp_name: qwen2.5_7b
+  exp_dir: ./outputs
+  task:
+    type: serve
+    backend: vllm
+    entrypoint: null
+  runner:
+    nnodes: 1
+    nproc_per_node: 4
+  auto_tuner:
+    space:
+      tensor_model_parallel_size: [1, 2]
+      pipeline_model_parallel_size: "auto"
+    control:
+      interval: 10
+      run_best: False
+
+action: auto_tune
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra 
+

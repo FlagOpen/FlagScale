@@ -184,6 +184,8 @@ class TestPipelineParallelTransformerBlock:
             (4, 4, 4, False, False, None, None, True),
         ],
     )
+    @pytest.mark.flaky
+    @pytest.mark.flaky_in_dev
     def test_layer_builder(
         self,
         num_layers,

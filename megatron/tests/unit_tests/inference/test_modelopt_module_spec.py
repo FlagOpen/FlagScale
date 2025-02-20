@@ -2,6 +2,7 @@
 import inspect
 import tempfile
 
+import pytest
 import torch
 
 from megatron.core import InferenceParams, dist_checkpointing
@@ -96,7 +97,7 @@ class TestModelOptGPTModel:
     def test_inference(self):
         config: TransformerConfig = self.modelopt_gpt_model.config
         model = self.modelopt_gpt_model.cuda()
-        model_forward(config, model)
+        model_forward(model, config)
 
     def teardown_method(self, method):
         Utils.destroy_model_parallel()
@@ -143,7 +144,7 @@ class TestModelOptMambaModel:
     def test_inference(self):
         config: TransformerConfig = self.modelopt_mamba_model.config
         model = self.modelopt_mamba_model.cuda()
-        model_forward(config, model)
+        model_forward(model, config)
 
     def teardown_method(self, method):
         Utils.destroy_model_parallel()

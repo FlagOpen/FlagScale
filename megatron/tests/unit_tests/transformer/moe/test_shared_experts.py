@@ -18,6 +18,12 @@ class TestSharedExperts:
     def teardown_method(self, method):
         Utils.destroy_model_parallel()
 
+    """
+        Author: lizhiyu
+        Date: 2024-02-18
+        Action: Add extra 'num_experts' for 'num_weights' because `router.sore_bias` is added in the model.
+        Reason: Releted RP: https://github.com/FlagOpen/FlagScale/pull/336
+    """
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
     @pytest.mark.internal
     def test_gpu_forward(self):
@@ -49,7 +55,7 @@ class TestSharedExperts:
         assert isinstance(self.moe_layer, MoELayer)
 
         num_weights = sum([p.numel() for p in self.moe_layer.parameters()])
-        assert num_weights == 3480 + 1152
+        assert num_weights == 3480 + 1152 + self.moe_layer.config.num_moe_experts
         assert self.moe_layer.shared_experts is not None
         assert self.moe_layer.shared_experts.stream is None
         assert self.moe_layer.token_dispatcher.shared_experts is None
@@ -108,7 +114,7 @@ class TestSharedExpertsOverlap:
         assert isinstance(self.moe_layer, MoELayer)
 
         num_weights = sum([p.numel() for p in self.moe_layer.parameters()])
-        assert num_weights == 3480 + 1152
+        assert num_weights == 3480 + 1152 + self.moe_layer.config.num_moe_experts
         assert self.moe_layer.shared_experts is not None
         assert self.moe_layer.shared_experts.stream is not None
         assert self.moe_layer.token_dispatcher.shared_experts is not None

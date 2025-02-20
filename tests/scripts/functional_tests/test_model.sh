@@ -39,7 +39,7 @@ test_model() {
     _case=${_case#-}
 
     # Attempt to run the test 5 times
-    for attempt_i in {1..5}; do
+    for attempt_i in {1}; do
       wait_for_gpu
 
       echo "---------"

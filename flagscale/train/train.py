@@ -52,6 +52,10 @@ from megatron.core.rerun_state_machine import (
 from megatron.training.initialize import initialize_megatron
 from megatron.training.initialize import write_args_to_tensorboard
 from megatron.training.initialize import set_jit_fusion_options
+from megatron.training.utils import (
+    get_batch_on_this_cp_rank,
+    get_batch_on_this_tp_rank,
+)
 from megatron.legacy.data.data_samplers import build_pretraining_data_loader
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.transformer.moe import upcycling_utils
@@ -633,6 +637,11 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
                 kwargs[f.name] = getattr(args, f.name)
         kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
         kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
+        # Use getattr to get the check_for_large_grads flag from args so that this doesn't
+        # fail if the flag isn't present in args. This circumvents a backward compatibility
+        # unittests failure (old unittest + new codebase). The underlying issue is that
+        # unittest mocks up its own args directly rather than use the codebase to populate it.
+        kwargs['check_for_large_grads'] = getattr(args, 'check_for_large_grads', False)
         kwargs['bucket_size'] = args.ddp_bucket_size
         kwargs['average_in_collective'] = args.ddp_average_in_collective
         ddp_config = DistributedDataParallelConfig(**kwargs)
@@ -825,6 +834,15 @@ def setup_model_and_optimizer(model_provider_func,
         exit()
 
     return model, optimizer, opt_param_scheduler
+
+
+def dummy_train_step(data_iterator):
+    """Single dummy training step."""
+    num_microbatches = get_num_microbatches()
+    for _ in range(num_microbatches):
+        # Re-use methods used in get_batch() from pretrain_{gpt, mamba}.py.
+        batch = get_batch_on_this_tp_rank(data_iterator)
+        batch = get_batch_on_this_cp_rank(batch)
 
 
 def train_step(forward_step_func, data_iterator,
@@ -1101,6 +1119,11 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
                 writer.add_scalar(
                     "mem-allocated-bytes",
                     mem_stats["allocated_bytes.all.current"],
+                    iteration,
+                )
+                writer.add_scalar(
+                    "mem-max-allocated-bytes",
+                    mem_stats["allocated_bytes.all.peak"],
                     iteration,
                 )
                 writer.add_scalar(
@@ -1437,6 +1460,11 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
 
     # Iterations.
     iteration = args.iteration
+    # Make sure rerun_state_machine has the right iteration loaded from checkpoint.
+    rerun_state_machine = get_rerun_state_machine()
+    if rerun_state_machine.current_iteration != iteration:
+        print_rank_0(f"Setting rerun_state_machine.current_iteration to {iteration}...")
+        rerun_state_machine.current_iteration = iteration
 
     # Track E2E metrics at the start of training.
     one_logger_utils.on_train_start(iteration=iteration, consumed_train_samples=args.consumed_train_samples,
@@ -1621,6 +1649,9 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                 iteration += 1
                 
             args.curr_iteration = iteration
+            if rerun_state_machine.current_iteration != iteration:
+                print_rank_0(f"Setting rerun_state_machine.current_iteration to {iteration}...")
+                rerun_state_machine.current_iteration = iteration
         ########## FlagScale Begin ##########
                 
         ft_integration.on_training_step_start()
