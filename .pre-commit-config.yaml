@@ -62,5 +62,11 @@ repos:
 #                 megatron/.*|
 #                 vllm/.*|
 #                 megatron-energon/.*|
-#                 hardware/.*\.patch
+#                 hardware/.*\.patch|
+#                 flagscale/inference/core/.*|
+#                 flagscale/train/train.*\.py|
+#                 flagscale/train/models/.*|
+#                 flagscale/train/hetero/.*|
+#                 tools/checkpoint/loader.*\.py|
+#                 tools/checkpoint/saver.*\.py
 #             )$
