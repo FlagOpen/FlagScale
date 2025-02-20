@@ -6,7 +6,6 @@ import torch
 from torch import Tensor
 
 from collections import OrderedDict
-from megatron.training import get_args
 from megatron.core import InferenceParams, tensor_parallel, parallel_state
 from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
@@ -14,17 +13,18 @@ from megatron.core.models.gpt import GPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.transformer.transformer_layer import TransformerLayer, make_viewless_tensor
-from megatron.core.transformer.module import MegatronModule
-from megatron.core.transformer.transformer_block import (
-    TransformerBlock,
-    TransformerBlockSubmodules,
+from megatron.core.models.gpt.gpt_layer_specs import (
+    get_gpt_layer_with_transformer_engine_spec,
 )
-
-from typing import List
+from megatron.core.extensions.transformer_engine import (
+    TENorm,
+    TELinear,
+)
 
 from flagscale.train.models.deepseek_v3.multi_token_predictor import (
     DeepSeekMultiTokenPredictor,
+    DeepSeekMultiTokenPredictorLayer,
+    DeepSeekMultiTokenPredictorLayerSubmodules,
     roll_tensor,
 )
 
@@ -118,13 +118,26 @@ class DeepSeekV3Model(GPTModel):
                 position_embedding_type=position_embedding_type,
                 scatter_to_sequence_parallel=scatter_embedding_sequence_parallel,
             )
-            # init mtp norm, linar_proj and transformer block
-            mtp_config = copy.deepcopy(config)
-            mtp_config.pipeline_model_parallel_size = 1
-            mtp_config.num_layers = 1
+            # init mtp norm, linar_proj and transformer layer
+            mtp_transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(
+                num_experts=config.num_moe_experts,
+                moe_grouped_gemm=config.moe_grouped_gemm,
+                qk_layernorm=config.qk_layernorm,
+                multi_latent_attention=config.multi_latent_attention,
+                moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
+            )
             self.mtp_predictor = DeepSeekMultiTokenPredictor(
-                config=mtp_config,
-                transformer_layer_spec=transformer_layer_spec,
+                config,
+                ModuleSpec(
+                    module=DeepSeekMultiTokenPredictorLayer,
+                    submodules=DeepSeekMultiTokenPredictorLayerSubmodules(
+                        norm1=TENorm,
+                        norm2=TENorm,
+                        transformer_layer=mtp_transformer_layer_spec,
+                        linear_proj=TELinear,
+                        final_norm=TENorm,
+                    ),
+                ),
             )
             # mtp output lm head is the same with main model output layer
 
@@ -292,7 +305,7 @@ class DeepSeekV3Model(GPTModel):
 
         return losses_mtps
 
-    def share_embedding_or_mtp_embedding(self) -> Tensor:
+    def shared_embedding_or_mtp_embedding(self) -> Tensor:
         """Gets the emedding weight or mtp embedding weight when share embeddings between main model and mtp modules
 
         Returns:
@@ -307,7 +320,6 @@ class DeepSeekV3Model(GPTModel):
     def setup_mtp_embeddings(self) -> None:
         """Sets up embedding layer in first stage and mtp embedding layer in last stage.
         """
-
         # Set `is_embedding_or_output_parameter` attribute.
         if self.pre_process:
             self.embedding.word_embeddings.weight.is_embedding_or_output_parameter = True
@@ -318,11 +330,11 @@ class DeepSeekV3Model(GPTModel):
             # Zero out wgrad if sharing embeddings between two layers on same
             # pipeline stage to make sure grad accumulation into main_grad is
             # correct and does not include garbage values (e.g., from torch.empty).
-            self.share_embedding_or_mtp_embedding().zero_out_wgrad = True
+            self.shared_embedding_or_mtp_embedding().zero_out_wgrad = True
             return
 
         if parallel_state.is_pipeline_first_stage() and self.pre_process and not self.post_process:
-            self.share_embedding_or_mtp_embedding().shared_embedding = True
+            self.shared_embedding_or_mtp_embedding().shared_embedding = True
 
         if self.post_process and not self.pre_process:
             assert not parallel_state.is_pipeline_first_stage()
@@ -349,7 +361,7 @@ class DeepSeekV3Model(GPTModel):
         # values.
         if torch.distributed.is_initialized():
             if parallel_state.is_rank_in_embedding_group():
-                weight = self.share_embedding_or_mtp_embedding()
+                weight = self.shared_embedding_or_mtp_embedding()
                 weight.data = weight.data.cuda()
                 embedding_group = parallel_state.get_embedding_group()
                 if not isinstance(embedding_group, list):
@@ -361,6 +373,11 @@ class DeepSeekV3Model(GPTModel):
                     for group in embedding_group:
                         weight.data.copy_(original_weight)
                         torch.distributed.all_reduce(weight.data, group=group)
+
+                if self.share_embeddings_and_output_weights and self.post_process:
+                    output_layer_weight = self.shared_embedding_or_output_weight()
+                    mtp_embedding_weight = self.shared_embedding_or_mtp_embedding()
+                    output_layer_weight.data.copy_(mtp_embedding_weight.data)
 
         elif not getattr(DeepSeekV3Model, "embedding_warning_printed", False):
             logging.getLogger(__name__).warning(
