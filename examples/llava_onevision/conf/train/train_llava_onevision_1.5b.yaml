@@ -16,7 +16,7 @@ system:
   logging:
     log_interval: 1
     tensorboard_log_interval: 1
-    wandb_project: "train-llava-ov" 
+    wandb_project: "train-llava-ov"
     wandb_exp_name: "train-llava-ov"
     log_params_norm: True
     log_num_zeros_in_grad: True
@@ -29,8 +29,8 @@ system:
     async_save: False
 
 model:
-  num_layers: 28  
-  hidden_size: 1536 
+  num_layers: 28
+  hidden_size: 1536
   ffn_hidden_size: 8960
   num_attention_heads: 12
   num_query_groups: 2

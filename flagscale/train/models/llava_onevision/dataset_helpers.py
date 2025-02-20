@@ -96,7 +96,7 @@ class AnyResTaskEncoder(DefaultTaskEncoder[InterleavedSample, InterleavedSample,
                 modalities_list.append(torch.tensor([2]))
             else:
                 raise ValueError(f"Unsupported modality: {modalities}")
-        
+
         modalities = modalities_list
         return AnyResTaskSample(
             __key__=sample.__key__,

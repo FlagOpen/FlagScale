@@ -11,13 +11,13 @@ This directory contains scripts for converting checkpoints between DCP (Distribu
 
 **Convert DCP to SFPT:**
 1. Get the DCP checkpoint non-homogeneous layers from the training run.
-    * Add the environment variable to experiment-level configuration file: 
+    * Add the environment variable to experiment-level configuration file:
         ```yaml
         envs:
           FS_NON_HOMOGENEOUS_LAYERS: True
         ```
 
-    * Add the following to the task-level configuration file: 
+    * Add the following to the task-level configuration file:
         ```yaml
           use_dist_ckpt: True
           ckpt_format: torch_dist
@@ -55,19 +55,19 @@ This directory contains scripts for converting checkpoints between DCP (Distribu
     ```
 
 3. Use the DCP checkpoint for further fine-tuning.
-    * Add the environment variables to experiment-level configuration file: 
+    * Add the environment variables to experiment-level configuration file:
         ```yaml
         envs:
           FS_NON_HOMOGENEOUS_LAYERS: True
-          FS_SFPT_CKPT_LOAD: True 
+          FS_SFPT_CKPT_LOAD: True
         ```
 
-    * Add the following to the task-level configuration file: 
+    * Add the following to the task-level configuration file:
         ```yaml
           use_dist_ckpt: True
           ckpt_format: torch_dist
           ckpt_fully_parallel_save: True
           ckpt_fully_parallel_load: True
           finetune: True
-          load: /path/to/output_dcp_checkpoint 
+          load: /path/to/output_dcp_checkpoint
         ```

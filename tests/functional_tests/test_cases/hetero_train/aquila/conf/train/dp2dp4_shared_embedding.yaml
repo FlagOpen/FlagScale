@@ -13,7 +13,7 @@ system:
     hetero_pipeline_layer_split: [4, 4]
     hetero_process_meshes: [1,1,1,2,1, 1,1,1,4,1]
     hetero_device_types: ["A800", "A800"]
-    
+
     standalone_embedding_stage: False
     hetero_current_device_type: "A800"
   precision:
@@ -36,10 +36,10 @@ model:
   deterministic_mode: true
   use_mcore_models: true
   transformer_impl: transformer_engine
-  num_layers: 8 
-  hidden_size: 512 
-  num_attention_heads: 8 
-  seq_length: 1024 
+  num_layers: 8
+  hidden_size: 512
+  num_attention_heads: 8
+  seq_length: 1024
   max_position_embeddings: 1024
   norm_epsilon: 1e-5
   use_rotary_position_embeddings: true
@@ -55,8 +55,8 @@ model:
   weight_decay: 0.1
   clip_grad: 1.0
   train_iters: 10
-  micro_batch_size: 4 
-  global_batch_size: 1024 
+  micro_batch_size: 4
+  global_batch_size: 1024
   seed: 42
 
   optimizer:
@@ -67,8 +67,8 @@ model:
       lr: 2.0e-5
       min_lr: 2.0e-6
       lr_warmup_samples: 0
-      lr_warmup_fraction: 0.01 
-      lr_decay_style: cosine 
+      lr_warmup_fraction: 0.01
+      lr_decay_style: cosine
 
 data:
   data_path: /home/gitlab-runner/data/pile_wikipedia_demo/pile_wikipedia_demo

@@ -1,14 +1,14 @@
 defaults:
   - _self_
   - train: tp4
-  
+
 experiment:
   exp_name: tp4
   exp_dir: tests/functional_tests/test_cases/train/llava_onevision/results_test/tp4
   task:
-    type: train 
-    backend: megatron 
-    entrypoint: flagscale/train/train_llava_onevision.py 
+    type: train
+    backend: megatron
+    entrypoint: flagscale/train/train_llava_onevision.py
   runner:
     backend: torchrun
     ssh_port: null

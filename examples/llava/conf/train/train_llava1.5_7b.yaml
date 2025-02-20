@@ -12,7 +12,7 @@ system:
   logging:
     log_interval: 1
     tensorboard_log_interval: 1
-    wandb_project: "train-llava-1.5" 
+    wandb_project: "train-llava-1.5"
     wandb_exp_name: "train-llava-1.5"
     log_params_norm: True
     log_num_zeros_in_grad: True
@@ -25,10 +25,10 @@ system:
     async_save: False
 
 model:
-  num_layers: 32  
-  hidden_size: 4096 
+  num_layers: 32
+  hidden_size: 4096
   ffn_hidden_size: 11008
-  num_attention_heads: 32 
+  num_attention_heads: 32
   seq_length: 2048
   max_position_embeddings: 4096
   swiglu: True

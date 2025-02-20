@@ -25,7 +25,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }} 
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           ssh-strict: true
           ssh-user: git
@@ -37,7 +37,7 @@ jobs:
           lfs: false
           submodules: false
           set-safe-directory: true
-      
+
       - name: Coverage Online Report
         run: |
           REPORT_ADDR=$(cat "/workspace/config/report_address")
@@ -47,6 +47,6 @@ jobs:
         run: |
           # Execute the test coverage script with the appropriate backend and id (commit SHA)
           tests/scripts/unit_tests/test_coverage.sh --backend ${{ inputs.backend }} --id ${{ github.sha }} --status online
-      
 
-        
+
+

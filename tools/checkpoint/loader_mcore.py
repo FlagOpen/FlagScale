@@ -93,7 +93,7 @@ def _load_checkpoint(queue, args):
     _set_arg("expert_model_parallel_size")
     _set_arg("num_experts")
     _set_arg("sequence_parallel")
-    
+
     # for hetero
     _set_arg("enable_hetero")
     _set_arg("hetero_process_meshes")
@@ -108,7 +108,7 @@ def _load_checkpoint(queue, args):
     # Arguments do sanity checks on the world size, but we don't care,
     # so trick it into thinking we are plenty of processes
     margs.world_size = margs.tensor_model_parallel_size * margs.pipeline_model_parallel_size * margs.expert_model_parallel_size
-    
+
     # Explicitly copy data types from checkpoint.
     margs.fp16 = checkpoint_args.fp16
     margs.bf16 = checkpoint_args.bf16
@@ -241,7 +241,7 @@ def _load_checkpoint(queue, args):
                     model_.append(this_model)
             else:
                 pre_process = mpu.is_pipeline_first_stage()
-                post_process = mpu.is_pipeline_last_stage() 
+                post_process = mpu.is_pipeline_last_stage()
                 model_ = [model_plugin.get_mg_model(dtype, pre_process, post_process)]
 
             margs.consumed_train_samples = 0

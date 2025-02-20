@@ -1,18 +1,20 @@
+import asyncio
 import collections
+import json
 import os
 import re
 import socket
 import subprocess
 import sys
 import time
-import json
-import numpy as np
-import asyncio
-from tqdm.asyncio import tqdm
+import traceback
 from dataclasses import dataclass, field
 from typing import List, Optional, Union
-import traceback
+
 import aiohttp
+import numpy as np
+from tqdm.asyncio import tqdm
+
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 
 from omegaconf import DictConfig, OmegaConf
@@ -264,6 +266,7 @@ def add_decive_extra_config(config, device_type):
             cur_node_config[key] = value
     return cur_node_config
 
+
 @dataclass
 class RequestFuncInput:
     prompt: str
@@ -278,6 +281,7 @@ class RequestFuncInput:
     multi_modal_content: Optional[dict] = None
     ignore_eos: bool = False
 
+
 @dataclass
 class RequestFuncOutput:
     generated_text: str = ""
@@ -285,16 +289,23 @@ class RequestFuncOutput:
     latency: float = 0.0
     output_tokens: int = 0
     ttft: float = 0.0  # Time to first token
-    itl: List[float] = field(
-        default_factory=list)  # List of inter-token latencies
+    itl: List[float] = field(default_factory=list)  # List of inter-token latencies
     tpot: float = 0.0  # avg next-token latencies
     prompt_len: int = 0
     error: str = ""
 
-def dummy_random_input(tokenizer, prefix_len=0, input_len=1024, output_len=128, num_prompts=1000, range_ratio=1.0):
-    prefix_token_ids = np.random.randint(0,
-                                         tokenizer.vocab_size,
-                                         size=prefix_len).tolist()
+
+def dummy_random_input(
+    tokenizer,
+    prefix_len=0,
+    input_len=1024,
+    output_len=128,
+    num_prompts=1000,
+    range_ratio=1.0,
+):
+    prefix_token_ids = np.random.randint(
+        0, tokenizer.vocab_size, size=prefix_len
+    ).tolist()
 
     input_lens = np.random.randint(
         int(input_len * range_ratio),
@@ -309,29 +320,39 @@ def dummy_random_input(tokenizer, prefix_len=0, input_len=1024, output_len=128, 
     offsets = np.random.randint(0, tokenizer.vocab_size, size=num_prompts)
     input_requests = []
     for i in range(num_prompts):
-        prompt = tokenizer.decode(prefix_token_ids +
-                                  [(offsets[i] + i + j) % tokenizer.vocab_size
-                                   for j in range(input_lens[i])])
+        prompt = tokenizer.decode(
+            prefix_token_ids
+            + [
+                (offsets[i] + i + j) % tokenizer.vocab_size
+                for j in range(input_lens[i])
+            ]
+        )
 
-        input_requests.append((prompt, int(prefix_len + input_lens[i]),
-                               int(output_lens[i]), None))
+        input_requests.append(
+            (prompt, int(prefix_len + input_lens[i]), int(output_lens[i]), None)
+        )
 
     return input_requests
 
+
 async def async_request_openai_completions(
     request_func_input,
-    pbar = None,
+    pbar=None,
 ):
     api_url = request_func_input.api_url
     assert api_url.endswith(
         ("completions", "profile")
     ), "OpenAI Completions API URL must end with 'completions' or 'profile'."
 
-    async with aiohttp.ClientSession(trust_env=True,
-                                     timeout=AIOHTTP_TIMEOUT) as session:
+    async with aiohttp.ClientSession(
+        trust_env=True, timeout=AIOHTTP_TIMEOUT
+    ) as session:
         payload = {
-            "model": request_func_input.model_name \
-                if request_func_input.model_name else request_func_input.model,
+            "model": (
+                request_func_input.model_name
+                if request_func_input.model_name
+                else request_func_input.model
+            ),
             "prompt": request_func_input.prompt,
             "temperature": 0.0,
             "best_of": request_func_input.best_of,
@@ -346,9 +367,7 @@ async def async_request_openai_completions(
             payload["ignore_eos"] = request_func_input.ignore_eos
         if request_func_input.extra_body:
             payload.update(request_func_input.extra_body)
-        headers = {
-            "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"
-        }
+        headers = {"Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"}
 
         output = RequestFuncOutput()
         output.prompt_len = request_func_input.prompt_len
@@ -357,8 +376,9 @@ async def async_request_openai_completions(
         st = time.perf_counter()
         most_recent_timestamp = st
         try:
-            async with session.post(url=api_url, json=payload,
-                                    headers=headers) as response:
+            async with session.post(
+                url=api_url, json=payload, headers=headers
+            ) as response:
                 if response.status == 200:
                     first_chunk_received = False
                     async for chunk_bytes in response.content:
@@ -366,8 +386,7 @@ async def async_request_openai_completions(
                         if not chunk_bytes:
                             continue
 
-                        chunk = chunk_bytes.decode("utf-8").removeprefix(
-                            "data: ")
+                        chunk = chunk_bytes.decode("utf-8").removeprefix("data: ")
                         if chunk != "[DONE]":
                             data = json.loads(chunk)
 
@@ -387,21 +406,20 @@ async def async_request_openai_completions(
 
                                 # Decoding phase
                                 else:
-                                    output.itl.append(timestamp -
-                                                      most_recent_timestamp)
+                                    output.itl.append(timestamp - most_recent_timestamp)
 
                                 most_recent_timestamp = timestamp
                                 generated_text += text or ""
                             elif usage := data.get("usage"):
-                                output.output_tokens = usage.get(
-                                    "completion_tokens")
+                                output.output_tokens = usage.get("completion_tokens")
                     if first_chunk_received:
                         output.success = True
                     else:
                         output.success = False
                         output.error = (
                             "Never received a valid chunk to calculate TTFT."
-                            "This response will be marked as failed!")
+                            "This response will be marked as failed!"
+                        )
                     output.generated_text = generated_text
                     output.latency = most_recent_timestamp - st
                 else:
@@ -415,6 +433,7 @@ async def async_request_openai_completions(
     if pbar:
         pbar.update(1)
     return output
+
 
 async def get_request(
     input_requests,
@@ -435,9 +454,8 @@ async def benchmark(
 ):
 
     async def limited_request_func(request_func_input, pbar):
-        return await request_func(request_func_input=request_func_input,
-                                    pbar=pbar)
-                                      
+        return await request_func(request_func_input=request_func_input, pbar=pbar)
+
     request_func = async_request_openai_completions
     req_model_id = req_model_name = model
     pbar = tqdm(total=len(input_requests))
@@ -447,17 +465,20 @@ async def benchmark(
     async for request in get_request(input_requests):
         prompt, prompt_len, output_len, mm_content = request
 
-        request_func_input = RequestFuncInput(model=req_model_id,
-                                              model_name=req_model_name,
-                                              prompt=prompt,
-                                              api_url=api_url,
-                                              prompt_len=prompt_len,
-                                              output_len=output_len,
-                                              multi_modal_content=mm_content)
+        request_func_input = RequestFuncInput(
+            model=req_model_id,
+            model_name=req_model_name,
+            prompt=prompt,
+            api_url=api_url,
+            prompt_len=prompt_len,
+            output_len=output_len,
+            multi_modal_content=mm_content,
+        )
         tasks.append(
             asyncio.create_task(
-                limited_request_func(request_func_input=request_func_input,
-                                     pbar=pbar)))
+                limited_request_func(request_func_input=request_func_input, pbar=pbar)
+            )
+        )
     outputs = await asyncio.gather(*tasks)
     pbar.close()
 
@@ -472,19 +493,26 @@ async def benchmark(
         selected_percentiles=selected_percentiles,
     )
 
-    print("{s:{c}^{n}}".format(s=' Serving Benchmark Result ', n=50, c='='))
+    print("{s:{c}^{n}}".format(s=" Serving Benchmark Result ", n=50, c="="))
     print("{:<40} {:<10}".format("Successful requests:", metrics.completed))
-    print("{:<40} {:<10.2f}".format("Benchmark duration (s):",
-                                    benchmark_duration))
+    print("{:<40} {:<10.2f}".format("Benchmark duration (s):", benchmark_duration))
     print("{:<40} {:<10}".format("Total input tokens:", metrics.total_input))
-    print("{:<40} {:<10}".format("Total generated tokens:",
-                                 metrics.total_output))
-    print("{:<40} {:<10.2f}".format("Request throughput (req/s):",
-                                    metrics.request_throughput))
-    print("{:<40} {:<10.2f}".format("Output token throughput (tok/s):",
-                                    metrics.output_throughput))
-    print("{:<40} {:<10.2f}".format("Total Token throughput (tok/s):",
-                                    metrics.total_token_throughput))
+    print("{:<40} {:<10}".format("Total generated tokens:", metrics.total_output))
+    print(
+        "{:<40} {:<10.2f}".format(
+            "Request throughput (req/s):", metrics.request_throughput
+        )
+    )
+    print(
+        "{:<40} {:<10.2f}".format(
+            "Output token throughput (tok/s):", metrics.output_throughput
+        )
+    )
+    print(
+        "{:<40} {:<10.2f}".format(
+            "Total Token throughput (tok/s):", metrics.total_token_throughput
+        )
+    )
 
     result = {
         "duration": benchmark_duration,
@@ -508,29 +536,35 @@ async def benchmark(
         # metric.
         if metric_attribute_name not in selected_percentile_metrics:
             return
-        print("{s:{c}^{n}}".format(s=metric_header, n=50, c='-'))
-        print("{:<40} {:<10.2f}".format(
-            f"Mean {metric_name} (ms):",
-            getattr(metrics, f"mean_{metric_attribute_name}_ms")))
-        print("{:<40} {:<10.2f}".format(
-            f"Median {metric_name} (ms):",
-            getattr(metrics, f"median_{metric_attribute_name}_ms")))
+        print("{s:{c}^{n}}".format(s=metric_header, n=50, c="-"))
+        print(
+            "{:<40} {:<10.2f}".format(
+                f"Mean {metric_name} (ms):",
+                getattr(metrics, f"mean_{metric_attribute_name}_ms"),
+            )
+        )
+        print(
+            "{:<40} {:<10.2f}".format(
+                f"Median {metric_name} (ms):",
+                getattr(metrics, f"median_{metric_attribute_name}_ms"),
+            )
+        )
         result[f"mean_{metric_attribute_name}_ms"] = getattr(
-            metrics, f"mean_{metric_attribute_name}_ms")
+            metrics, f"mean_{metric_attribute_name}_ms"
+        )
         result[f"median_{metric_attribute_name}_ms"] = getattr(
-            metrics, f"median_{metric_attribute_name}_ms")
+            metrics, f"median_{metric_attribute_name}_ms"
+        )
         result[f"std_{metric_attribute_name}_ms"] = getattr(
-            metrics, f"std_{metric_attribute_name}_ms")
-        for p, value in getattr(metrics,
-                                f"percentiles_{metric_attribute_name}_ms"):
+            metrics, f"std_{metric_attribute_name}_ms"
+        )
+        for p, value in getattr(metrics, f"percentiles_{metric_attribute_name}_ms"):
             p_word = str(int(p)) if int(p) == p else str(p)
-            print("{:<40} {:<10.2f}".format(f"P{p_word} {metric_name} (ms):",
-                                            value))
+            print("{:<40} {:<10.2f}".format(f"P{p_word} {metric_name} (ms):", value))
             result[f"p{p_word}_{metric_attribute_name}_ms"] = value
 
     process_one_metric("ttft", "TTFT", "Time to First Token")
-    process_one_metric("tpot", "TPOT",
-                       "Time per Output Token (excl. 1st token)")
+    process_one_metric("tpot", "TPOT", "Time per Output Token (excl. 1st token)")
     process_one_metric("itl", "ITL", "Inter-token Latency")
     process_one_metric("e2el", "E2EL", "End-to-end Latency")
 

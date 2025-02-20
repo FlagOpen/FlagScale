@@ -118,4 +118,3 @@ def get_norm_mlp_module_spec_te() -> ModuleSpec:
             linear_fc1=TELayerNormColumnParallelLinear, linear_fc2=TERowParallelLinear
         ),
     )
-

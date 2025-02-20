@@ -32,11 +32,11 @@ system:
     hetero_pipeline_layer_split: [6, 2, 4]
     hetero_process_meshes: [2, 1, 1, 1, 1, 4, 1, 1, 1, 1, 2, 1, 1, 1, 1]
     hetero_device_types: ["A800", "A800", "A800"]
-    
+
     standalone_embedding_stage: False
     hetero_current_device_type: "A800"
   recompute:
-    recompute_granularity: "full" 
+    recompute_granularity: "full"
     recompute_method: "uniform"
     recompute_num_layers: 1
 
@@ -72,14 +72,14 @@ system:
     log_interval: 1
     log_throughput: true
     tensorboard_log_interval: 1
-    wandb_project: "aquila2" 
-    wandb_exp_name: "test" 
+    wandb_project: "aquila2"
+    wandb_exp_name: "test"
   checkpoint:
-    save_interval: 1000 
+    save_interval: 1000
 
 
 model:
-  num_layers: 12 
+  num_layers: 12
   hidden_size: 4096
   num_attention_heads: 32
   seq_length: 2048
@@ -97,8 +97,8 @@ model:
   hidden_dropout: 0.0
   weight_decay: 0.1
   clip_grad: 1.0
-  train_samples: 100000 
-  global_batch_size: 32 
+  train_samples: 100000
+  global_batch_size: 32
   micro_batch_size: 1
   # rampup_batch_size: [32, 32, 2000000]
   seed: 42
@@ -112,16 +112,16 @@ model:
       lr: 1.5e-4
       min_lr: 1.5e-5
       lr_warmup_samples: 500
-      lr_decay_style: cosine 
+      lr_decay_style: cosine
 
 data:
-  data_path: xxxx # Please replace with your actual data path 
+  data_path: xxxx # Please replace with your actual data path
   split: 1
   tokenizer:
-    tokenizer_type: xxxx # Please replace with your actual tokenizer type 
+    tokenizer_type: xxxx # Please replace with your actual tokenizer type
     tokenizer_path: xxxx # Please replace with your actual tokenizer path
-    vocab_file: null 
-    merge_file: null 
+    vocab_file: null
+    merge_file: null
     special_tokens_file: null
     vocab_size: xxxx # Please replace with your actual vocab size
     make_vocab_size_divisible_by: 64

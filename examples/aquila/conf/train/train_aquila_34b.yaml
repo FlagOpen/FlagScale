@@ -8,20 +8,20 @@ system:
   use_distributed_optimizer: True
   precision:
     bf16: True
-    attention_softmax_in_fp32: True 
-    accumulate_allreduce_grads_in_fp32: True 
-  logging: 
-    log_interval: 1 
-    tensorboard_log_interval: 1 
-    wandb_project: "train-aquila-34B" 
-    wandb_exp_name: "train-test-34B" 
+    attention_softmax_in_fp32: True
+    accumulate_allreduce_grads_in_fp32: True
+  logging:
+    log_interval: 1
+    tensorboard_log_interval: 1
+    wandb_project: "train-aquila-34B"
+    wandb_exp_name: "train-test-34B"
   checkpoint:
-    save_interval: 1000 
-    rampup_save_interval: 5000 
+    save_interval: 1000
+    rampup_save_interval: 5000
 
 model:
-  num_layers: 60 
-  hidden_size: 6144 
+  num_layers: 60
+  hidden_size: 6144
   num_attention_heads: 48
   group_query_attention: True
   num_query_groups: 8
@@ -46,7 +46,7 @@ model:
   eval_iters: 0
   eval_interval: 2000
   micro_batch_size: 1
-  global_batch_size: 1024 
+  global_batch_size: 1024
   seed: 42
 
   optimizer:
@@ -57,7 +57,7 @@ model:
       lr: 1.5e-4
       min_lr: 1.5e-5
       lr_warmup_samples: 500000
-      lr_decay_style: cosine 
+      lr_decay_style: cosine
 
 data:
   data_path: ${data_path:??}

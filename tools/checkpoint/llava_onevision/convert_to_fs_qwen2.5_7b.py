@@ -1,10 +1,9 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 import argparse
-import os
 import json
+import os
 
 import torch
-
 from safetensors.torch import load_file
 
 
@@ -262,7 +261,7 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
     for name in weight_map:
         file_name = weight_map[name]
         tensor = caches[file_name][name]
-        
+
         if "model.vision_tower.vision_tower.vision_model" not in name:
             continue
 
@@ -302,12 +301,12 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
                 if new_name not in qkv_params:
                     # q_proj, k_proj, v_proj
                     split_name = name.split(".")
-                    
+
                     split_name[-2] = "q_proj"
                     q_name = ".".join(split_name)
                     file_name = weight_map[q_name]
                     q_tensor = caches[file_name][q_name]
-                    
+
                     split_name[-2] = "k_proj"
                     k_name = ".".join(split_name)
                     file_name = weight_map[k_name]
@@ -339,12 +338,12 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
                 if new_name not in qkv_params:
                     # q_proj, k_proj, v_proj
                     split_name = name.split(".")
-                    
+
                     split_name[-2] = "q_proj"
                     q_name = ".".join(split_name)
                     file_name = weight_map[q_name]
                     q_tensor = caches[file_name][q_name]
-                    
+
                     split_name[-2] = "k_proj"
                     k_name = ".".join(split_name)
                     file_name = weight_map[k_name]
@@ -425,7 +424,6 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
                     )  # Replace the weight name.
                     new_state_dicts[i]["model"][extra_state_name] = None
 
-
     # Process projection
     for name in weight_map:
         file_name = weight_map[name]
@@ -459,7 +457,6 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
         for i in range(tensor_parallel_size):
             # chunk() creates a view of a bigger tensor. clone() is used here to avoid excessive storage.
             new_state_dicts[i]["model"][new_name] = new_tensors[i].clone()
-
 
     for i in range(tensor_parallel_size):
         output_dir_tp = os.path.join(output_path, "iter_0000001", f"mp_rank_0{i}")
@@ -499,7 +496,7 @@ python convert_to_fs_qwen2.5_7b.py --input /some/input/folder --output /some/out
     parser.add_argument("--use-te", action="store_true", help="Use Transformer Engine")
 
     args = parser.parse_args()
-    
+
     print(args.input, args.output, args.tensor_parallel_size, args.use_te)
 
     convert(args.input, args.output, args.tensor_parallel_size, args.use_te)

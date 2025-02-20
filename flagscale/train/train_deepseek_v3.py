@@ -212,10 +212,10 @@ def get_batch(data_iterator):
 
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
-    
+
     # slice batch along sequence dimension for ulysses sequence parallelism
     batch = get_batch_on_this_ulysses_sp_rank(batch)
-    
+
     return batch.values()
 
 
@@ -237,16 +237,16 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
         a dict containing reporting metrics on the loss and number of tokens across
             the data parallel ranks
     """
-    args = get_args()    
+    args = get_args()
     loss_mask = loss_mask.view(-1).float() # [b*s]
     total_tokens = loss_mask.sum()
-    
+
     loss = output_tensor
     use_mtp_predictor = True if args.num_mtp_predictor > 0 else False
     if use_mtp_predictor:
         loss, loss_mtps = output_tensor # [b s]
     roll_loss_mask = loss_mask # [b*s]
-    
+
     # cal loss for main model
     loss = torch.cat([torch.sum(loss.view(-1) * loss_mask).view(1), total_tokens.view(1)])
     # cal loss for mtp modules
@@ -265,7 +265,7 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
     # merge loss, how to process?
     if use_mtp_predictor:
         loss = loss + loss_mtps
-    
+
     # loss printing
     if args.context_parallel_size > 1:
         torch.distributed.all_reduce(loss, group=mpu.get_context_parallel_group())

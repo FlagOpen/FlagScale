@@ -3,7 +3,7 @@ defaults:
   - _self_
 
 data:
-  data_path: 
+  data_path:
   num_calibration_samples: 16
   max_seq_length: 9216
   tokenzier_args:
@@ -14,11 +14,9 @@ data:
 compress_args:
   quantization:
     - algo:
-        gptq: 
+        gptq:
           blocksize: 128
           percdamp: 0.01
       ignore: ["lm_head"]
       targets: ["Linear"]
       scheme: W4A16
-
-

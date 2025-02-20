@@ -1,7 +1,8 @@
-import time
-import json
-import requests
 import argparse
+import json
+import time
+
+import requests
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ip", type=str)
@@ -22,20 +23,20 @@ prompt0 = "请用二百字回答生命的意义：我认为，生命的意义在
 prompt1 = "How many 4-letter words with at least one consonant can be constructed from the letters $A$, $B$, $C$, $D$, and $E$?  (Note that $B$, $C$, and $D$ are consonants, any word is valid, not just English language words, and letters may be used more than once.)"
 
 raw_request = {
-            "prompts": prompt0, # 模型输入
-            "temperature": 0.9,
-            "max_new_tokens": 128, # 输出最大长度
-            "top_p": 0.9, # top p 
-            "top_k_per_token": 200, # top k
-            "seed": 1234,
-            "sft": False, # 测试base模型设置为False，测试sft模型时设置为True
-            "template": "aquila-legacy",
-            "history": [],
-            "max_gen_time": 15, # for stream mode
-        }
+    "prompts": prompt0,  # 模型输入
+    "temperature": 0.9,
+    "max_new_tokens": 128,  # 输出最大长度
+    "top_p": 0.9,  # top p
+    "top_k_per_token": 200,  # top k
+    "seed": 1234,
+    "sft": False,  # 测试base模型设置为False，测试sft模型时设置为True
+    "template": "aquila-legacy",
+    "history": [],
+    "max_gen_time": 15,  # for stream mode
+}
 
-port = 5050 # 部署服务对应的本机端口
-url = f'http://{args.ip}:{port}/Aquila/Batch'# 模型调用地址
+port = 5050  # 部署服务对应的本机端口
+url = f"http://{args.ip}:{port}/Aquila/Batch"  # 模型调用地址
 
 s_time = time.time()
 print("Posting...")

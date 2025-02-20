@@ -1,13 +1,14 @@
 import argparse
 import os
 import shutil
+
 from common import (
-    check_path,
-    process_commit_id,
-    git_init,
-    save_patch_to_tmp,
     check_branch_name,
+    check_path,
     get_now_branch_name,
+    git_init,
+    process_commit_id,
+    save_patch_to_tmp,
 )
 
 path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -113,7 +114,9 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
         repo.git.branch(unpatch_branch)
 
     # Check the different between in-place code and patch code.
-    auto_check(repo, file_name, base_commit_id, now_branch,origin_patch_branch, unpatch_branch)
+    auto_check(
+        repo, file_name, base_commit_id, now_branch, origin_patch_branch, unpatch_branch
+    )
     shutil.rmtree(tmp_path)
     device_path, patch_path = get_output_path(device_type, base_commit_id)
 
@@ -151,10 +154,9 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     now_branch = get_now_branch_name(repo)
     repo.git.stash()
     repo.git.checkout(current_commit_id)
-    
 
     # Create in-place code branch to compare different.
-    
+
     origin_patch_branch = "origin_patch_code"
     if check_branch_name(repo, origin_patch_branch):
         repo.git.branch("-D", origin_patch_branch)
@@ -182,7 +184,9 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
         repo.git.branch(unpatch_branch)
 
     # Check the different between in-place code and patch code.
-    auto_check(repo, file_name, base_commit_id, now_branch,origin_patch_branch, unpatch_branch)
+    auto_check(
+        repo, file_name, base_commit_id, now_branch, origin_patch_branch, unpatch_branch
+    )
     shutil.rmtree(tmp_path)
     device_path, patch_path = get_output_path(now_device_type, base_commit_id)
 
@@ -231,7 +235,9 @@ def update_patch(
         f.write(patch_str)
 
 
-def auto_check(repo, file_name, base_commit_id, now_branch,origin_branch, unpatch_branch):
+def auto_check(
+    repo, file_name, base_commit_id, now_branch, origin_branch, unpatch_branch
+):
     """Check if origin code and unpatch code have different."""
     repo.git.checkout(unpatch_branch)
     repo.git.am(file_name)

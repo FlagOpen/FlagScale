@@ -1,19 +1,21 @@
-import os, importlib
-import sys
-import uvicorn
-import subprocess
+import importlib
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import omegaconf
-import matplotlib.pyplot as plt
-from pathlib import Path
-from pydantic import create_model
-from fastapi import FastAPI, HTTPException, Request
 import ray
+import uvicorn
+from dag_utils import check_and_get_port
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import create_model
 from ray import workflow
 
 from flagscale.logger import logger
-from dag_utils import check_and_get_port
 
 
 class ServeEngine:
@@ -43,7 +45,6 @@ class ServeEngine:
                 f"There should only have one final node but there are {len(output_node)} nodes {output_node}."
             )
         return list(output_node)[0]
-
 
     def check_dag(self, visibilization=True):
         # Ensure that all dependencies are valid

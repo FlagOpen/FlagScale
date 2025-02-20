@@ -1,9 +1,10 @@
+import argparse
+import json
 import os
+import random
 import sys
 import time
-import json
-import random
-import argparse
+
 import torch
 
 pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
@@ -32,26 +33,32 @@ def sampling_requests(data_path, tokenizer, num_requests, generate_len):
 
 def add_text_generate_args():
     parser = argparse.ArgumentParser(description="Benchmark vllm text generation")
-    parser.add_argument("--num-requests", type=int, default=1,
-                       help='Number of requests to process.')
-    parser.add_argument("--temperature", type=float, default=1.0,
-                       help='Sampling temperature.')
-    parser.add_argument("--top-p", type=float, default=0.0,
-                       help='Top p sampling.')
-    parser.add_argument("--top-k", type=int, default=0,
-                       help='Top k sampling.')
-    parser.add_argument("--prompt-len", type=int, default=None,
-                       help='Length of each prompt')
-    parser.add_argument("--generate-len", type=int, default=None,
-                       help='The maximum numbers of tokens to generate.')
-    parser.add_argument("--dataset-path", type=str, default=None,
-                       help='Path to the requests data.')
+    parser.add_argument(
+        "--num-requests", type=int, default=1, help="Number of requests to process."
+    )
+    parser.add_argument(
+        "--temperature", type=float, default=1.0, help="Sampling temperature."
+    )
+    parser.add_argument("--top-p", type=float, default=0.0, help="Top p sampling.")
+    parser.add_argument("--top-k", type=int, default=0, help="Top k sampling.")
+    parser.add_argument(
+        "--prompt-len", type=int, default=None, help="Length of each prompt"
+    )
+    parser.add_argument(
+        "--generate-len",
+        type=int,
+        default=None,
+        help="The maximum numbers of tokens to generate.",
+    )
+    parser.add_argument(
+        "--dataset-path", type=str, default=None, help="Path to the requests data."
+    )
 
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--model", type=str, default="BAAI/AquilaChat2-7B")
     # parser.add_argument("--tokenizer", type=str, default=None)
     parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1)
-    parser.add_argument('--pipeline-parallel-size', '-pp', type=int, default=1)
+    parser.add_argument("--pipeline-parallel-size", "-pp", type=int, default=1)
 
     return parser.parse_args()
 
@@ -81,7 +88,9 @@ if __name__ == "__main__":
     if args.dataset_path is not None and os.path.exists(args.dataset_path):
         print(f"loading data from {args.dataset_path} ...")
         print("'prompt_len' and 'generate_len' will be rewritten by real data")
-        requests = sampling_requests(args.dataset_path, tokenizer, args.num_requests, args.generate_len)
+        requests = sampling_requests(
+            args.dataset_path, tokenizer, args.num_requests, args.generate_len
+        )
     else:
         print("making fake data ...")
         prompt = "我" * args.prompt_len
@@ -120,13 +129,22 @@ if __name__ == "__main__":
         print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
 
     num_totol_tokens = sum([il + ol for _, il, ol in requests])
-    memory_used = torch.cuda.max_memory_allocated() / (1024 ** 3)
-    memory_pct = memory_used / (torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory / (1024 ** 3)) * 100
+    memory_used = torch.cuda.max_memory_allocated() / (1024**3)
+    memory_pct = (
+        memory_used
+        / (
+            torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory
+            / (1024**3)
+        )
+        * 100
+    )
 
     print("------------ SUMMARY ------------")
     print(f"Num Request: {len(requests)}")
     print(f"Num totol tokens: {num_totol_tokens}")
     print(f"Batch Size: {1}")
-    print(f"Throughput: {args.num_requests / (end - start):.2f} requests/s, {num_totol_tokens / (end - start):.2f} tokens/s")
+    print(
+        f"Throughput: {args.num_requests / (end - start):.2f} requests/s, {num_totol_tokens / (end - start):.2f} tokens/s"
+    )
     print(f"Max Memory: {memory_used:.2f} GB ({memory_pct:.2f}%)")
     print("---------------------------------")

@@ -495,7 +495,7 @@ def pretrain(
     one_logger and one_logger.log_metrics({
         'app_finish_time': one_logger_utils.get_timestamp_in_ms()
     })
-    
+
     ft_integration.shutdown()
     one_logger_utils.finish()
 
@@ -884,7 +884,7 @@ def train_step(forward_step_func, data_iterator,
         if is_spiky_loss > 0:
             return {}, True, should_checkpoint, should_exit, exit_code, None, None
     ########## FlagScale Begin ##########
-    
+
     # Empty unused memory.
     if args.empty_unused_memory_level >= 1:
         torch.cuda.empty_cache()
@@ -1527,7 +1527,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     wandb_writer = get_wandb_writer()
     if wandb_writer and args.wandb_log_model:
         # wandb.watch's log_freg needs to take the accumulated number of microbatches into account
-        log_freq = args.wandb_log_model_interval * num_microbatches 
+        log_freq = args.wandb_log_model_interval * num_microbatches
         wandb_writer.watch(unwrap_model(model), log="all", log_freq=log_freq)
 
     eval_duration = 0.0
@@ -1647,13 +1647,13 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                                            get_num_microbatches()
                 update_num_microbatches(args.consumed_train_samples, consistency_check=True, verbose=True)
                 iteration += 1
-                
+
             args.curr_iteration = iteration
             if rerun_state_machine.current_iteration != iteration:
                 print_rank_0(f"Setting rerun_state_machine.current_iteration to {iteration}...")
                 rerun_state_machine.current_iteration = iteration
         ########## FlagScale Begin ##########
-                
+
         ft_integration.on_training_step_start()
         loss_dict, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad = \
             train_step(forward_step_func,
