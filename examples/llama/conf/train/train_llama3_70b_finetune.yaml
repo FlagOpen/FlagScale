@@ -72,5 +72,3 @@ data:
     tokenizer_type: Llama3TokenizerFS
     tokenizer_path: ${tokenizer_path:??}
     vocab_size: 128256
-
-
