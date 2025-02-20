@@ -21,7 +21,7 @@ RUN apt-get update && \
     apt-get install -y openssh-server openssh-client 
 
 ##############################################################################
-# Client Liveness & Uncomment Port 22 for SSH Daemon
+# The client validity of SSH daemon and uncomment port 22 and replace it with the specified port
 ##############################################################################
 # Keep SSH client alive from server side
 RUN echo "ClientAliveInterval 30" >> /etc/ssh/sshd_config \
