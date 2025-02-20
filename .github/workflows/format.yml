@@ -5,22 +5,11 @@ on:
     branches: [ "main" ]
     types: [opened, synchronize, reopened]
 
-env:
-  INCLUDE_FILES: >-
-    flagscale/auto_tuner/*.py
-    flagscale/auto_tuner/prune/*.py
-    flagscale/auto_tuner/record/*.py
-    flagscale/auto_tuner/search/*.py
-    flagscale/runner/*.py
-    flagscale/logger.py
-    flagscale/patches_utils.py
-    flagscale/datasets/sft_dataset.py
-    flagscale/inference/inference_*.py
-    flagscale/inference/arguments.py
-
 jobs:
   format:
     runs-on: ubuntu-22.04
+    env:
+      BRANCH: develop
 
     steps:
     - name: Checkout Code
@@ -33,13 +22,10 @@ jobs:
 
     - name: Install dependencies
       run: |
-        pip install black isort
+        pip install black==24.4.2 isort==5.13.2 pre-commit==2.17.0
 
-    - name: Run Black
-      run: |
-        black --verbose --include "$INCLUDE_FILES" ./ --check || { echo "Code formatting does not comply with Black's rules. Please reformat the code according to Black and resubmit."; exit 1; }
-
-    - name: Run Isort
-      run: |
-        isort --verbose --profile black $INCLUDE_FILES --check-only --diff --known-local-folder flagscale || { echo "Import order does not comply with isort rules. Please fix the import order and resubmit."; exit 1; }
-
+    - name: Check Pre-Commit
+      run:  |
+        set +e
+        bash -x tools/codestyle/pre-commit.sh;EXCODE=$?
+        exit $EXCODE

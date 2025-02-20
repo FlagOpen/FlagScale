@@ -1,9 +1,66 @@
+exclude: |
+    (?x)^(
+        megatron/.*|
+        vllm/.*|
+        megatron-energon/.*|
+        hardware/.*\.patch|
+        flagscale/inference/core/.*
+    )$
 repos:
-  - repo: local
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
     hooks:
-      - id: run-black-and-isort
-        name: Run black and isort
-        entry: ./tests/scripts/format_tests/test_format.sh
-        language: script
-        types: [python]
-        pass_filenames: false
+    -   id: check-merge-conflict
+    -   id: check-symlinks
+    -   id: detect-private-key
+    -   id: end-of-file-fixer
+    -   id: trailing-whitespace
+-   repo: https://github.com/psf/black
+    rev: 24.4.2
+    hooks:
+    -   id: black
+        exclude: |
+            (?x)^(
+                megatron/.*|
+                vllm/.*|
+                megatron-energon/.*|
+                hardware/.*\.patch|
+                flagscale/inference/core/.*|
+                flagscale/train/train.*\.py|
+                flagscale/train/models/.*|
+                flagscale/train/hetero/.*|
+                tools/checkpoint/loader.*\.py|
+                tools/checkpoint/saver.*\.py
+            )$
+-   repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+    -   id: isort
+        args: ['--profile', 'black', '--known-local-folder', 'flagscale']
+        exclude: |
+            (?x)^(
+                megatron/.*|
+                vllm/.*|
+                megatron-energon/.*|
+                hardware/.*\.patch|
+                flagscale/inference/core/.*|
+                flagscale/train/train.*\.py|
+                flagscale/train/models/.*|
+                flagscale/train/hetero/.*|
+                tools/checkpoint/loader.*\.py|
+                tools/checkpoint/saver.*\.py
+            )$
+# -   repo: local
+#     hooks:
+#     -   id: check-header
+#         name: check-header
+#         entry: python ./tools/codestyle/check_header.py
+#         language: python
+#         types: [python]
+#         exclude: |
+#             (?x)^(
+#                 megatron/.*|
+#                 vllm/.*|
+#                 megatron-energon/.*|
+#                 hardware/.*\.patch
+#             )$
