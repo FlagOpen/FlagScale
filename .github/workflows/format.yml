@@ -9,7 +9,7 @@ jobs:
   format:
     runs-on: ubuntu-22.04
     env:
-      BRANCH: develop
+      BRANCH: main
 
     steps:
     - name: Checkout Code

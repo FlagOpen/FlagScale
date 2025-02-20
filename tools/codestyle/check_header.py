@@ -1,16 +1,12 @@
-# Copyright (c) 2024, BAAI. All rights reserved.
-
-import argparse
 import datetime
 import os
 import re
 import sys
 
 COPYRIGHT = "# Copyright (c) {year}, BAAI. All rights reserved."
-
-RE_HEADER = re.compile(r".*Copyright \(c\) \d{4}", re.IGNORECASE)
-RE_ENCODE = re.compile(r"^[ \t\v]*#.*?coding[:=]", re.IGNORECASE)
-RE_SHEBANG = re.compile(r"^[ \t\v]*#[ \t]?\!")
+RE_HEADER = re.compile(r".*Copyright \(c\) \d{4}", flags=re.IGNORECASE)
+RE_ENCODE = re.compile(r"^[\t\v ]*#.*?coding[:=]", flags=re.IGNORECASE)
+RE_SHEBANG = re.compile(r"^[\t\v ]*#[ \t]?\!")
 
 
 def _check_header(path):
@@ -45,15 +41,10 @@ def generate_header(path):
             f.writelines(lines[insert_index:])
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description='Checker for header declaration.')
-    parser.add_argument('filenames', nargs='*', help='Filenames to check')
-    args = parser.parse_args(argv)
-
-    for path in args.filenames:
+def main():
+    for path in sys.argv[1:]:
         if _check_header(path):
             continue
-
         generate_header(path)
 
 
