@@ -1,67 +1,74 @@
-from typing import Literal, Optional
+from typing import Union
 
 import copy
 import torch
 from torch import Tensor
 
-from megatron.training import get_args
-from megatron.core import InferenceParams, tensor_parallel
-from megatron.core.models.gpt import GPTModel
-from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.transformer.spec_utils import ModuleSpec
+from dataclasses import dataclass
+from megatron.core.transformer.identity_op import IdentityOp
+from megatron.core.transformer.spec_utils import ModuleSpec, build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.transformer.transformer_layer import TransformerLayer, make_viewless_tensor
 from megatron.core.transformer.module import MegatronModule
-from megatron.core.transformer.transformer_block import (
-    TransformerBlock,
-    TransformerBlockSubmodules,
-)
 
-from typing import List
 
-try:
-    from megatron.core.extensions.transformer_engine import (
-        TENorm,
-    )
-
-    HAVE_TE = True
-except ImportError:
-    HAVE_TE = False
+@dataclass
+class DeepSeekMultiTokenPredictorLayerSubmodules:
+    """
+    Configuration class for specifying the submodules of a multi token predictor layer.
+    """
+    norm1: Union[ModuleSpec, type] = IdentityOp
+    norm2: Union[ModuleSpec, type] = IdentityOp
+    linear_proj: Union[ModuleSpec, type] = IdentityOp
+    transformer_layer: Union[ModuleSpec, type] = IdentityOp
+    final_norm: Union[ModuleSpec, type] = IdentityOp
 
 
 class DeepSeekMultiTokenPredictorLayer(MegatronModule):
-    """Multi Token Prediction Layer of DeepSeek V3
-
-    Args:
-        config (TransformerConfig): config object with all necessary configs for TransformerBlock
-    """
-
     def __init__(
         self,
         config: TransformerConfig,
-        transformer_layer_spec: ModuleSpec,
+        submodules: DeepSeekMultiTokenPredictorLayerSubmodules,
     ):
         super().__init__(config=config)
 
-        self.config = config
+        self.submodules_config = submodules
 
-        if HAVE_TE:   
-            self.norm1 = TENorm(config, config.hidden_size, config.layernorm_epsilon)
-            self.norm2 = TENorm(config, config.hidden_size, config.layernorm_epsilon)
-        else:
-            self.norm1 = torch.nn.RMSNorm(normalized_shape=config.hidden_size, eps=config.layernorm_epsilon)
-            self.norm2 = torch.nn.RMSNorm(normalized_shape=config.hidden_size, eps=config.layernorm_epsilon)
-            
-        self.linear_proj = torch.nn.Linear(config.hidden_size*2, config.hidden_size, bias=False)
-        
-        # the transformer block, fork from main model or use a user-defined transformer layer spec?
-        if isinstance(transformer_layer_spec, TransformerBlockSubmodules):
-            transformer_layer_spec = transformer_layer_spec.layer_specs[-1]
-        self.decoder = TransformerBlock(
-            config=config,
-            spec=transformer_layer_spec,
-            pre_process=True,
-            post_process=True,
+        self.norm1 = build_module(
+            submodules.norm1,
+            config=self.config,
+            hidden_size=self.config.hidden_size,
+            eps=self.config.layernorm_epsilon,
+        )
+        self.norm2 = build_module(
+            submodules.norm2,
+            config=self.config,
+            hidden_size=self.config.hidden_size,
+            eps=self.config.layernorm_epsilon
+        )
+        self.linear_proj = build_module(
+            submodules.linear_proj,
+            config.hidden_size*2,
+            config.hidden_size,
+            parallel_mode="duplicated",
+            config=self.config,
+            init_method=self.config.init_method,
+            bias=False,
+            skip_bias_add=False,
+            skip_weight_param_allocation=False,
+        )
+        decoder_config = copy.deepcopy(config)
+        decoder_config.pipeline_model_parallel_size = 1
+        self.transformer_layer = build_module(
+            submodules.transformer_layer,
+            config=decoder_config,
+            layer_number=1,
+            hidden_dropout=None,
+        )
+        self.final_norm = build_module(
+            submodules.norm1,
+            config=self.config,
+            hidden_size=self.config.hidden_size,
+            eps=self.config.layernorm_epsilon,
         )
 
     def forward(
@@ -75,16 +82,13 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         """
         assert decoder_input is not None, "Input ids need to be embedded before mtp predictor"
 
-        # two RMSNorm
         decoder_input = self.norm1(decoder_input)
         pre_hidden_states = self.norm2(pre_hidden_states)
-        # concat
         hidden_states = torch.cat([pre_hidden_states, decoder_input], dim=-1)
-        # linear projection
-        hidden_states = self.linear_proj(hidden_states)
-        # transformer block
-        hidden_states = self.decoder(hidden_states, attention_mask)
-        
+        hidden_states, _ = self.linear_proj(hidden_states)
+        hidden_states, _ = self.transformer_layer(hidden_states, attention_mask=attention_mask)
+        hidden_states = self.final_norm(hidden_states)
+
         return hidden_states
 
 
@@ -98,7 +102,7 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
     def __init__(
         self,
         config: TransformerConfig,
-        transformer_layer_spec: ModuleSpec,
+        deepseek_multi_token_predictor_layer_spec: ModuleSpec,
     ):
         super().__init__(config=config)
 
@@ -106,9 +110,9 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
         self.num_mtp_predictor = config.num_mtp_predictor
         
         self.mtp_modules = torch.nn.ModuleList([
-            DeepSeekMultiTokenPredictorLayer(
-                    config=self.config,
-                    transformer_layer_spec=transformer_layer_spec,
+            build_module(
+                deepseek_multi_token_predictor_layer_spec,
+                config=config,
             ) for i in range(self.num_mtp_predictor)
         ])
 
