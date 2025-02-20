@@ -31,7 +31,7 @@ RUN apt-get update && \
     echo "N" | apt-get install -y --no-install-recommends pkg-config && \
     apt-get install -y --no-install-recommends \
         autotools-dev build-essential ca-certificates ccache cmake curl emacs \
-        gcc git g++ htop iftop iotop \ 
+        gcc git g++ htop iftop iotop openssh-server openssh-client \ 
         libcairo2-dev libfontconfig-dev libibverbs1 libibverbs-dev libnuma-dev libx11-dev \
         lsb-release net-tools nfs-common ninja-build pdsh psmisc rsync \
         screen software-properties-common sudo tmux tzdata \
