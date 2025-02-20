@@ -26,6 +26,7 @@ repos:
                 megatron-energon/.*|
                 hardware/.*\.patch|
                 flagscale/inference/core/.*|
+                flagscale/inference/processing_emu3.py|
                 flagscale/train/train.*\.py|
                 flagscale/train/models/.*|
                 flagscale/train/hetero/.*|
@@ -44,6 +45,7 @@ repos:
                 megatron-energon/.*|
                 hardware/.*\.patch|
                 flagscale/inference/core/.*|
+                flagscale/inference/processing_emu3.py|
                 flagscale/train/train.*\.py|
                 flagscale/train/models/.*|
                 flagscale/train/hetero/.*|

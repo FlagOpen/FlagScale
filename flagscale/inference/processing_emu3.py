@@ -3,19 +3,21 @@
 #   https://github.com/baaivision/Emu3/blob/main/emu3/mllm/utils_emu3.py
 """ Processor class for Emu3. """
 
-import math
 import re
-from functools import partial
-from typing import Callable, List, Optional, Sequence
-
+import math
 import torch
+
+from typing import List, Optional, Sequence, Callable
+from functools import partial
 from PIL import Image
 from torch.nn import functional as F
+
 from transformers.feature_extraction_utils import BatchFeature
-from transformers.generation import LogitsProcessor
 from transformers.processing_utils import ProcessorMixin
-from transformers.tokenization_utils_base import PreTokenizedInput, TextInput
+from transformers.tokenization_utils_base import TextInput, PreTokenizedInput
 from transformers.utils import logging
+from transformers.generation import LogitsProcessor
+
 
 logger = logging.get_logger(__name__)
 
@@ -53,10 +55,7 @@ class Emu3Processor(ProcessorMixin):
         tokenizer=None,
         chat_template="You are a helpful assistant. USER: {image_prompt}{text_prompt}. ASSISTANT:",
         prefix_template="{H}*{W}",
-        visual_template=(
-            "<|visual token {token_id:0>6d}|>",
-            r"<\|visual token (\d+)\|>",
-        ),
+        visual_template=("<|visual token {token_id:0>6d}|>", r"<\|visual token (\d+)\|>"),
         **kwargs,
     ):
         assert vision_tokenizer is not None, "image tokenizer can not be None"
@@ -64,9 +63,7 @@ class Emu3Processor(ProcessorMixin):
         self.vision_tokenizer = vision_tokenizer
         self.prefix_template = prefix_template
         self.visual_template = visual_template
-        self.vis_tok_spatial_factor = 2 ** (
-            len(self.vision_tokenizer.config.ch_mult) - 1
-        )
+        self.vis_tok_spatial_factor = 2 ** (len(self.vision_tokenizer.config.ch_mult) - 1)
 
         super().__init__(image_processor, tokenizer, chat_template=chat_template)
         self.const_helper = self.build_const_helper()
@@ -114,7 +111,7 @@ class Emu3Processor(ProcessorMixin):
             - **input_ids** -- List of token ids to be fed to a model.
             - **image_size** -- List of image size of input images or generated images.
         """
-        assert mode in ("G", "U"), "mode must be 'G' or 'U'."
+        assert mode in ('G', 'U'), "mode must be 'G' or 'U'."
         if isinstance(text, str):
             text = [text]
 
@@ -125,7 +122,7 @@ class Emu3Processor(ProcessorMixin):
             raise ValueError("`text` must be string or list of string")
 
         image_tokens = None
-        if mode == "G":
+        if mode == 'G':
             if image is not None:
                 raise ValueError("You have to specify only `text` in generation mode")
 
@@ -136,19 +133,13 @@ class Emu3Processor(ProcessorMixin):
                 raise ValueError("ratio number must match text number")
         else:
             if image is None:
-                raise ValueError(
-                    "Invalid input image. Please provide exactly one PIL.Image.Image per text."
-                )
+                raise ValueError("Invalid input image. Please provide exactly one PIL.Image.Image per text.")
 
             if not isinstance(image, Sequence) and not isinstance(image, Image.Image):
-                raise ValueError(
-                    "Invalid input image. Please provide PIL.Image.Image or List[PIL.Image.Image]."
-                )
+                raise ValueError("Invalid input image. Please provide PIL.Image.Image or List[PIL.Image.Image].")
 
             if isinstance(image, Sequence) and not isinstance(image[0], Image.Image):
-                raise ValueError(
-                    "Invalid input image. Please provide PIL.Image.Image or List[PIL.Image.Image]."
-                )
+                raise ValueError("Invalid input image. Please provide PIL.Image.Image or List[PIL.Image.Image].")
 
             image_tokens = self.tokenize_image(image, padding_image=padding_image)
             if len(text) != len(image_tokens):
@@ -157,40 +148,33 @@ class Emu3Processor(ProcessorMixin):
         prompt_list, size_list = [], []
         for idx, text_prompt in enumerate(text):
             prompt = self.tokenizer.bos_token
-            if mode == "U":
+            if mode == 'U':
                 h, w = image_tokens[idx].shape
                 imgstr = self.to_imgstr(image_tokens[idx])
                 image_prompt = (
-                    self.tokenizer.boi_token
-                    + self.prefix_template.format(H=h, W=w)
-                    + self.tokenizer.img_token
-                    + imgstr
-                    + self.tokenizer.eol_token
-                    + self.tokenizer.eof_token
-                    + self.tokenizer.eoi_token
+                    self.tokenizer.boi_token +
+                    self.prefix_template.format(H=h, W=w) +
+                    self.tokenizer.img_token +
+                    imgstr +
+                    self.tokenizer.eol_token +
+                    self.tokenizer.eof_token +
+                    self.tokenizer.eoi_token
                 )
-                prompt += self.chat_template.format(
-                    image_prompt=image_prompt, text_prompt=text_prompt
-                )
+                prompt += self.chat_template.format(image_prompt=image_prompt, text_prompt=text_prompt)
             else:
-                h, w = self.calculate_generate_size(
-                    ratio[idx], image_area, self.vision_tokenizer.spatial_scale_factor
-                )
+                h, w = self.calculate_generate_size(ratio[idx], image_area, self.vision_tokenizer.spatial_scale_factor)
                 image_prompt = (
-                    self.tokenizer.boi_token
-                    + self.prefix_template.format(H=h, W=w)
-                    + self.tokenizer.img_token
+                    self.tokenizer.boi_token +
+                    self.prefix_template.format(H=h, W=w) +
+                    self.tokenizer.img_token
                 )
-                prompt += text_prompt + image_prompt
+                prompt += (text_prompt + image_prompt)
 
             prompt_list.append(prompt)
             size_list.append([h, w])
 
         text_inputs = self.tokenizer(prompt_list, **kwargs)
-        return BatchFeature(
-            data={**text_inputs, "image_size": size_list},
-            tensor_type=kwargs.get("return_tensors"),
-        )
+        return BatchFeature(data={**text_inputs, "image_size": size_list}, tensor_type=kwargs.get("return_tensors"))
 
     @torch.no_grad()
     def batch_decode(self, *args, **kwargs):
@@ -213,7 +197,7 @@ class Emu3Processor(ProcessorMixin):
     @torch.no_grad()
     def multimodal_decode(self, doc):
         multimodal_output = []
-        pattern = rf"({re.escape(self.tokenizer.boi_token)}.*?{re.escape(self.tokenizer.eoi_token)})"
+        pattern = rf'({re.escape(self.tokenizer.boi_token)}.*?{re.escape(self.tokenizer.eoi_token)})'
         chunks = re.split(pattern, doc)
         for c in chunks:
             if len(c) == 0:
@@ -227,9 +211,7 @@ class Emu3Processor(ProcessorMixin):
                     if len(token_ids) > 0:
                         row_token = [int(m) for m in token_ids]
                         image.append(row_token)
-                image = torch.tensor(
-                    image, dtype=torch.long, device=self.vision_tokenizer.device
-                )
+                image = torch.tensor(image, dtype=torch.long, device=self.vision_tokenizer.device)
                 image = self.vision_tokenizer.decode(image[None]).float()
                 image = self.image_processor.postprocess(image)["pixel_values"][0]
                 multimodal_output.append(image)
@@ -270,57 +252,36 @@ class Emu3Processor(ProcessorMixin):
         is_all_same_size, prev_size = True, None
         for im in image:
             if prev_size is not None:
-                is_all_same_size &= prev_size == im.size
+                is_all_same_size &= (prev_size == im.size)
             prev_size = im.size
 
         if is_all_same_size:
-            image_inputs = self.image_processor(image, return_tensors="pt")[
-                "pixel_values"
-            ]
-            image_inputs = image_inputs.to(
-                self.vision_tokenizer.device, self.vision_tokenizer.dtype
-            )
+            image_inputs = self.image_processor(image, return_tensors="pt")["pixel_values"]
+            image_inputs = image_inputs.to(self.vision_tokenizer.device, self.vision_tokenizer.dtype)
             image_tokens = self.vision_tokenizer.encode(image_inputs)
         elif padding_image:
-            image_inputs = [
-                self.image_processor(im, return_tensors="pt")["pixel_values"]
-                for im in image
-            ]
+            image_inputs = [self.image_processor(im, return_tensors="pt")["pixel_values"] for im in image]
             image_shapes = [im.shape[2:] for im in image_inputs]
             max_shape = (
                 max([im_shape[0] for im_shape in image_shapes]),
                 max([im_shape[1] for im_shape in image_shapes]),
             )
             image_inputs = [
-                F.pad(
-                    im_inp,
-                    (0, max_shape[1] - im_shape[1], 0, max_shape[0] - im_shape[0]),
-                )
+                F.pad(im_inp, (0, max_shape[1] - im_shape[1], 0, max_shape[0] - im_shape[0]))
                 for im_inp, im_shape in zip(image_inputs, image_shapes)
             ]
-            image_inputs = torch.cat(image_inputs, dim=0).to(
-                self.vision_tokenizer.device, self.vision_tokenizer.dtype
-            )
+            image_inputs = torch.cat(image_inputs, dim=0).to(self.vision_tokenizer.device, self.vision_tokenizer.dtype)
             image_tokens = self.vision_tokenizer.encode(image_inputs)
             image_tokens = [
-                im_tok[
-                    : math.ceil(im_shape[0] / self.vis_tok_spatial_factor),
-                    : math.ceil(im_shape[1] / self.vis_tok_spatial_factor),
-                ]
+                im_tok[:math.ceil(im_shape[0] / self.vis_tok_spatial_factor), :math.ceil(im_shape[1] / self.vis_tok_spatial_factor)]
                 for im_tok, im_shape in zip(image_tokens, image_shapes)
             ]
         else:
             image_tokens = []
             for im in image:
-                image_input = self.image_processor(im, return_tensors="pt")[
-                    "pixel_values"
-                ]
-                image_input = image_input.to(
-                    self.vision_tokenizer.device, self.vision_tokenizer.dtype
-                )
-                image_tokens.append(
-                    self.vision_tokenizer.encode(image_input).squeeze(0)
-                )
+                image_input = self.image_processor(im, return_tensors="pt")["pixel_values"]
+                image_input = image_input.to(self.vision_tokenizer.device, self.vision_tokenizer.dtype)
+                image_tokens.append(self.vision_tokenizer.encode(image_input).squeeze(0))
 
         return image_tokens
 
@@ -334,20 +295,16 @@ class Emu3Processor(ProcessorMixin):
             pad_token,
             vis_start,
             vis_end,
-        ) = self.tokenizer.encode(
-            [
-                self.tokenizer.img_token,
-                self.tokenizer.eoi_token,
-                self.tokenizer.eos_token,
-                self.tokenizer.eol_token,
-                self.tokenizer.eof_token,
-                self.tokenizer.pad_token,
-                self.visual_template[0].format(token_id=0),
-                self.visual_template[0].format(
-                    token_id=self.vision_tokenizer.config.codebook_size - 1
-                ),
-            ]
-        )
+        ) = self.tokenizer.encode([
+            self.tokenizer.img_token,
+            self.tokenizer.eoi_token,
+            self.tokenizer.eos_token,
+            self.tokenizer.eol_token,
+            self.tokenizer.eof_token,
+            self.tokenizer.pad_token,
+            self.visual_template[0].format(token_id=0),
+            self.visual_template[0].format(token_id=self.vision_tokenizer.config.codebook_size - 1),
+        ])
 
         const_helper = partial(
             Emu3PrefixConstrainedLogitsHelper,
@@ -412,33 +369,27 @@ class Emu3PrefixConstrainedLogitsHelper:
         offset = len(input_ids) - self.offset_cache[batch_id]
 
         if offset % (width + 1) == 0:
-            return (self.eol_token,)
+            return (self.eol_token, )
         elif offset == (width + 1) * height + 1:
-            return (self.eof_token,)
+            return (self.eof_token, )
         elif offset == (width + 1) * height + 2:
-            return (self.eoi_token,)
+            return (self.eoi_token, )
         elif offset == (width + 1) * height + 3:
-            return (self.eos_token,)
+            return (self.eos_token, )
         elif offset > (width + 1) * height + 3:
-            return (self.pad_token,)
+            return (self.pad_token, )
         else:
             return self.visual_tokens
 
 
 class CachedPrefixConstrainedLogitsProcessor(LogitsProcessor):
 
-    def __init__(
-        self,
-        prefix_allowed_tokens_fn: Callable[[int, torch.Tensor], List[int]],
-        num_beams: int,
-    ):
+    def __init__(self, prefix_allowed_tokens_fn: Callable[[int, torch.Tensor], List[int]], num_beams: int):
         self._prefix_allowed_tokens_fn = prefix_allowed_tokens_fn
         self._cached_prefix_allowed_tokens = None
         self._cache_mask: Optional[torch.Tensor] = None
 
-    def __call__(
-        self, input_ids: List[int], scores: torch.FloatTensor
-    ) -> torch.FloatTensor:
+    def __call__(self, input_ids: List[int], scores: torch.FloatTensor) -> torch.FloatTensor:
         prefix_allowed_tokens = self._prefix_allowed_tokens_fn(0, input_ids)
         if prefix_allowed_tokens == self._cached_prefix_allowed_tokens:
             mask = self._cache_mask
