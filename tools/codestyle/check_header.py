@@ -3,10 +3,9 @@ import os
 import re
 import sys
 
+COPYRIGHT = """Copyright © {year} BAAI. All rights reserved.
 
-COPYRIGHT = '''Copyright © {year} BAAI. All rights reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License")'''
+Licensed under the Apache License, Version 2.0 (the "License")"""
 
 
 RE_FS_HEADER = re.compile(r".*Copyright \(c\) \d{4}", flags=re.IGNORECASE)
@@ -15,7 +14,7 @@ RE_SHEBANG = re.compile(r"^[\t\v ]*#[ \t]?\!")
 
 
 def _check_header(path):
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(path, "r", encoding="utf-8") as f:
         lines = f.readlines()
         for line in lines[:5]:
             if not lines:
@@ -26,7 +25,7 @@ def _check_header(path):
 
 
 def generate_header(path):
-    with open(path, 'r+', encoding='utf-8') as f:
+    with open(path, "r+", encoding="utf-8") as f:
         lines = f.readlines()
 
         insert_index = 0
@@ -61,5 +60,5 @@ def main():
         generate_header(path)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
