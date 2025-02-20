@@ -35,12 +35,13 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     git clone https://github.com/FlagOpen/FlagScale.git
     ```
 
-2. Install the dependencies:
+2. Install the requirements:
     ```sh
-    cd FlagScale
-    pip install -r requirements/requirements-dev.txt
+    cd FlagScale/install
+    ./install-requirements.sh --env train
+    ./install-requirements.sh --env inference
     ```
-    You can install only the required packages for the specific backend engine you need by modifying the requirements.
+    The above instructions create two conda environments: `flagscale-train` and `flagscale-inference`, which contain the dependency environments for training and inference, respectively.
 
 3. Install the packages with customized extensions:
     ```sh
