@@ -19,9 +19,9 @@ jobs:
         ref: ${{ github.event.pull_request.base.ref }}
 
     - name: Merge PR to Sub-branch
-        run: |
-          git fetch origin pull/${PRID}/merge
-          git checkout -b test FETCH_HEAD
+      run: |
+        git fetch origin pull/${PRID}/merge
+        git checkout -b test FETCH_HEAD
 
     - name: Set up Python 3.10
       uses: actions/setup-python@v5
