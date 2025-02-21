@@ -45,15 +45,15 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
 
         self.config = config
 
-        if HAVE_TE:   
+        if HAVE_TE:
             self.norm1 = TENorm(config, config.hidden_size, config.layernorm_epsilon)
             self.norm2 = TENorm(config, config.hidden_size, config.layernorm_epsilon)
         else:
             self.norm1 = torch.nn.RMSNorm(normalized_shape=config.hidden_size, eps=config.layernorm_epsilon)
             self.norm2 = torch.nn.RMSNorm(normalized_shape=config.hidden_size, eps=config.layernorm_epsilon)
-            
+
         self.linear_proj = torch.nn.Linear(config.hidden_size*2, config.hidden_size, bias=False)
-        
+
         # the transformer block, fork from main model or use a user-defined transformer layer spec?
         if isinstance(transformer_layer_spec, TransformerBlockSubmodules):
             transformer_layer_spec = transformer_layer_spec.layer_specs[-1]
@@ -69,7 +69,7 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         decoder_input: Tensor,
         attention_mask: Tensor,
         pre_hidden_states: Tensor,
-        
+
     ) -> Tensor:
         """Forward pass of the multi token prediction layer.
         """
@@ -84,7 +84,7 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         hidden_states = self.linear_proj(hidden_states)
         # transformer block
         hidden_states = self.decoder(hidden_states, attention_mask)
-        
+
         return hidden_states
 
 
@@ -104,7 +104,7 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
 
         self.config = config
         self.num_mtp_predictor = config.num_mtp_predictor
-        
+
         self.mtp_modules = torch.nn.ModuleList([
             DeepSeekMultiTokenPredictorLayer(
                     config=self.config,
@@ -131,7 +131,7 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
             )
             hidden_states_mtps.append(hidden_states)
             pre_hidden_states = hidden_states
-        
+
         return hidden_states_mtps
 
 def roll_tensor(tensor, dims=0):

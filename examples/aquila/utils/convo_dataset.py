@@ -12,12 +12,15 @@ from megatron import print_rank_0
 from megatron.core import mpu
 from megatron.data.data_samplers import RandomSeedDataset
 
+
 class ConversationDatasetCPT(torch.utils.data.Dataset):
-    def __init__(self, conversations, tokenizer, maxlen, seed, num_samples, role_sep="\n\n"):
+    def __init__(
+        self, conversations, tokenizer, maxlen, seed, num_samples, role_sep="\n\n"
+    ):
         super(ConversationDatasetCPT, self).__init__()
         self.conversations = conversations
         self.tokenizer = tokenizer
-        self.maxlen = maxlen+1
+        self.maxlen = maxlen + 1
         self.seed = seed
         self.num_samples = num_samples
 
@@ -31,8 +34,8 @@ class ConversationDatasetCPT(torch.utils.data.Dataset):
     def __getitem__(self, i):
         source = self.conversations[i]
 
-        instruction = source['instruction']
-        conversations = source['conversations']
+        instruction = source["instruction"]
+        conversations = source["conversations"]
 
         BOS_TOKEN = self.tokenizer.cls
         EOS_TOKEN = self.tokenizer.eod
@@ -45,14 +48,14 @@ class ConversationDatasetCPT(torch.utils.data.Dataset):
         labels = [-100] * len(example)
 
         for conversation in conversations:
-            role = conversation['from']
-            content = conversation['value']
+            role = conversation["from"]
+            content = conversation["value"]
             content += self.sep
 
             content = self.tokenizer.tokenize(f"{content}")
 
             example += content
-            if role == 'gpt':
+            if role == "gpt":
                 role_labels = copy.deepcopy(content)
             else:
                 # masking
@@ -63,14 +66,14 @@ class ConversationDatasetCPT(torch.utils.data.Dataset):
         labels.append(EOS_TOKEN)
 
         # maxlen
-        example = example[:self.maxlen]
-        labels = labels[:self.maxlen]
+        example = example[: self.maxlen]
+        labels = labels[: self.maxlen]
 
         # padding
         delta = self.maxlen - len(example)
         if delta > 0:
-            example.extend([self.tokenizer.pad]*delta)
-            labels.extend([-100]*delta)
+            example.extend([self.tokenizer.pad] * delta)
+            labels.extend([-100] * delta)
 
         output = {
             "tokens": np.array(example, dtype=np.int64),
@@ -80,14 +83,14 @@ class ConversationDatasetCPT(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.conversations)
-    
+
 
 class ConversationDatasetV2(torch.utils.data.Dataset):
     def __init__(self, conversations, tokenizer, maxlen, seed, num_samples):
         super(ConversationDatasetV2, self).__init__()
         self.conversations = conversations
         self.tokenizer = tokenizer
-        self.maxlen = maxlen+1
+        self.maxlen = maxlen + 1
         self.seed = seed
         self.num_samples = num_samples
 
@@ -95,19 +98,17 @@ class ConversationDatasetV2(torch.utils.data.Dataset):
         np_rng = np.random.RandomState(seed=seed)
         np_rng.shuffle(self.conversations)
 
-
     def __getitem__(self, i):
-        from examples.aquila.utils.convo_prompt import _add_speaker_and_signal
-        from examples.aquila.utils.convo_prompt import header
+        from examples.aquila.utils.convo_prompt import _add_speaker_and_signal, header
 
-        #source = self.conversations[self.sample_idx[i]]
+        # source = self.conversations[self.sample_idx[i]]
         source = self.conversations[i]
         _add_speaker_and_signal(source)
 
         source["chat_desc"] = header
-        chat_desc = source['chat_desc']
-        instruction = source['instruction']
-        conversations = source['conversations']
+        chat_desc = source["chat_desc"]
+        instruction = source["instruction"]
+        conversations = source["conversations"]
 
         BOS_TOKEN = self.tokenizer.cls
         EOS_TOKEN = self.tokenizer.eod
@@ -122,14 +123,14 @@ class ConversationDatasetV2(torch.utils.data.Dataset):
 
         labels = copy.deepcopy(example)
         # add zero-out
-        #labels = [-100] * len(example)
+        # labels = [-100] * len(example)
 
         for conversation in conversations:
-            role = conversation['from']
-            content = conversation['value']
+            role = conversation["from"]
+            content = conversation["value"]
             content = self.tokenizer.tokenize(f"{content}")
             example += content
-            if role == 'gpt':
+            if role == "gpt":
                 role_labels = copy.deepcopy(content)
             else:
                 # masking
@@ -140,14 +141,14 @@ class ConversationDatasetV2(torch.utils.data.Dataset):
         labels.append(EOS_TOKEN)
 
         # maxlen
-        example = example[:self.maxlen]
-        labels = labels[:self.maxlen]
+        example = example[: self.maxlen]
+        labels = labels[: self.maxlen]
 
         # padding
         delta = self.maxlen - len(example)
         if delta > 0:
-            example.extend([self.tokenizer.pad]*delta)
-            labels.extend([-100]*delta)
+            example.extend([self.tokenizer.pad] * delta)
+            labels.extend([-100] * delta)
 
         output = {
             "tokens": np.array(example, dtype=np.int64),
@@ -156,16 +157,20 @@ class ConversationDatasetV2(torch.utils.data.Dataset):
         return output
 
     def __len__(self):
-        #return len(self.sample_idx)
+        # return len(self.sample_idx)
         return len(self.conversations)
-    
 
-def build_train_valid_test_datasets(train_valid_test_num_samples,
-                                    seq_length, seed, tokenizer,
-                                    train_data_prefix,
-                                    valid_data_prefix,
-                                    test_data_prefix=None,
-                                    finetune_dataset_type=None):
+
+def build_train_valid_test_datasets(
+    train_valid_test_num_samples,
+    seq_length,
+    seed,
+    tokenizer,
+    train_data_prefix,
+    valid_data_prefix,
+    test_data_prefix=None,
+    finetune_dataset_type=None,
+):
     """Build train, valid, and test datasets."""
     suppored_dataset_types = dict(CPT=ConversationDatasetCPT)
     dataset_cls = ConversationDatasetV2
@@ -174,6 +179,7 @@ def build_train_valid_test_datasets(train_valid_test_num_samples,
 
     def read_file(jsonl_file):
         import jsonlines
+
         conversations = []
         with jsonlines.open(jsonl_file) as reader:
             for line in reader:
@@ -189,7 +195,8 @@ def build_train_valid_test_datasets(train_valid_test_num_samples,
             tokenizer=tokenizer,
             maxlen=seq_length,
             seed=seed,
-            num_samples=train_valid_test_num_samples[0])
+            num_samples=train_valid_test_num_samples[0],
+        )
         train_dataset = RandomSeedDataset(train_dataset)
 
     if valid_data_prefix is not None:
@@ -199,7 +206,8 @@ def build_train_valid_test_datasets(train_valid_test_num_samples,
             tokenizer=tokenizer,
             maxlen=seq_length,
             seed=seed,
-            num_samples=train_valid_test_num_samples[1])
+            num_samples=train_valid_test_num_samples[1],
+        )
         valid_dataset = RandomSeedDataset(valid_dataset)
 
     if test_data_prefix is not None:
@@ -209,29 +217,35 @@ def build_train_valid_test_datasets(train_valid_test_num_samples,
             tokenizer=tokenizer,
             maxlen=seq_length,
             seed=seed,
-            num_samples=train_valid_test_num_samples[2])
+            num_samples=train_valid_test_num_samples[2],
+        )
         test_dataset = RandomSeedDataset(test_dataset)
 
     return (train_dataset, valid_dataset, test_dataset)
 
+
 if __name__ == "__main__":
-    train_valid_test_num_samples = [12000,2000,0]
+    train_valid_test_num_samples = [12000, 2000, 0]
     seq_length = 2048
     seed = 1234
     from megatron.tokenizer.tokenizer import _AquilaTokenizer
+
     tokenizer = _AquilaTokenizer(
-        '../examples/aquila/tokenizer/vocab.json',
-        '../examples/aquila/tokenizer/merges.txt')
+        "../examples/aquila/tokenizer/vocab.json",
+        "../examples/aquila/tokenizer/merges.txt",
+    )
     print(f"{dir(tokenizer)}")
-    train_data_prefix = ['path/to/train/set']
-    valid_data_prefix = ['path/to/valid/set']
+    train_data_prefix = ["path/to/train/set"]
+    valid_data_prefix = ["path/to/valid/set"]
     train_dataset, valid_dataset, test_dataset = build_train_valid_test_datasets(
         train_valid_test_num_samples,
-        seq_length, seed, tokenizer,
+        seq_length,
+        seed,
+        tokenizer,
         train_data_prefix,
         valid_data_prefix,
-        test_data_prefix=None)
+        test_data_prefix=None,
+    )
     for idx, sample in enumerate(train_dataset):
         print(f"idx={idx} sample={type(sample['labels'])}")
         break
-

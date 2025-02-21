@@ -154,7 +154,7 @@ class Emu3Processor(ProcessorMixin):
                 image_prompt = (
                     self.tokenizer.boi_token +
                     self.prefix_template.format(H=h, W=w) +
-                    self.tokenizer.img_token + 
+                    self.tokenizer.img_token +
                     imgstr +
                     self.tokenizer.eol_token +
                     self.tokenizer.eof_token +

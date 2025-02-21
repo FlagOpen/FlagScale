@@ -1,4 +1,4 @@
-# NOTE: 
+# NOTE:
 #   1. This construction method is not secure and is only for internal development use. Do not leak the built image.
 #   2. It is recommended to rebuild the image for different tasks each time to avoid environmental interference caused by the same key.
 
@@ -18,7 +18,7 @@ RUN sed -i "s#\S\+#http://apt.ksyun.cn/ubuntu/#2" /etc/apt/sources.list && \
 # Install SSH
 ##############################################################################
 RUN apt-get update && \
-    apt-get install -y openssh-server openssh-client 
+    apt-get install -y openssh-server openssh-client
 
 ##############################################################################
 # The client validity of SSH daemon and uncomment port 22 and replace it with the specified port

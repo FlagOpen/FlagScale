@@ -38,7 +38,7 @@ RUN apt-get update && \
         iftop iotop \
         libcairo2-dev libfontconfig-dev libibverbs1 libibverbs-dev libnuma-dev libx11-dev lsb-release \
         net-tools nfs-common ninja-build \
-        openssh-server openssh-client \ 
+        openssh-server openssh-client \
         pdsh psmisc \
         rsync \
         screen software-properties-common sudo \
@@ -47,7 +47,7 @@ RUN apt-get update && \
         vim \
         wget&& \
         apt-get clean && \
-        rm -rf /var/lib/apt/lists/* 
+        rm -rf /var/lib/apt/lists/*
 
 ##############################################################################
 # Install Python
@@ -62,9 +62,9 @@ RUN add-apt-repository ppa:deadsnakes/ppa && \
         python3 --version && python3 -m pip --version && \
         ln -s /usr/bin/python3 /usr/bin/python && \
         apt-get clean && \
-        rm -rf /var/lib/apt/lists/* 
+        rm -rf /var/lib/apt/lists/*
 
-##############################################################################        
+##############################################################################
 # Install CUDNN https://gitlab.com/nvidia/container-images/cuda/-/blob/master/dist/12.4.1/ubuntu2204/devel/cudnn/Dockerfile?ref_type=heads
 ##############################################################################
 ENV NV_CUDNN_VERSION 9.1.0.70-1
@@ -114,7 +114,7 @@ RUN mv /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun.real && \
         chmod a+x /usr/local/mpi/bin/mpirun
 
 ##############################################################################
-# Install Miniconda 
+# Install Miniconda
 ##############################################################################
 RUN cd ${STAGE_DIR} && \
         mkdir -p ~/miniconda3 && \

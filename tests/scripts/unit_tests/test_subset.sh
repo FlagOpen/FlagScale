@@ -77,7 +77,7 @@ eval "$set_environment"
 check_reports_complete() {
     local xml_report="$1"
     local html_report="$2"
-    
+
     local xml_previous_size=0
     local html_previous_size=0
     local xml_current_size
@@ -147,11 +147,11 @@ run_tests() {
 
     if [ "$_type" == "batch" ]; then
         wait_for_gpu
-        
+
         echo "Running batch test:"
         echo "torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_files"
         torchrun --nproc_per_node=8 -m pytest --import-mode=importlib --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_files
-        
+
         # Check the exit status of pytest
         if [ $? -ne 0 ]; then
             echo "Test failed: $_test_files"
@@ -160,7 +160,7 @@ run_tests() {
 
         # Check if both report files are complete
         check_reports_complete "$xml_report" "$html_report"
-        
+
         if [ $? -ne 0 ]; then
             echo "Check reports failed: $xml_report $html_report"
             exit 1

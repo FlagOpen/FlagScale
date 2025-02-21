@@ -1,40 +1,51 @@
-import re
 import os
+import re
 
 import torch
-from llmcompressor.modifiers.quantization.gptq.utils.gptq_wrapper import GPTQWrapper
-from llmcompressor.modifiers.utils.layer_compressor import LayerCompressor
-from llmcompressor.utils.fsdp.context import fix_fsdp_module_name
-from llmcompressor.modifiers.utils.pytorch_helpers import run_calibration_forward
 from compressed_tensors.quantization import (
-    QuantizationScheme, 
-    QuantizationStatus, 
-    QuantizationConfig, 
-    is_preset_scheme, 
-    preset_name_to_scheme, 
-    apply_quantization_config
-    )
-from compressed_tensors.quantization.lifecycle.apply import find_name_or_class_matches
-from llmcompressor.modifiers.quantization.gptq.utils import get_output_error
-from llmcompressor.utils.helpers import DisableKVCache
-from compressed_tensors.quantization import (
+    QuantizationConfig,
     QuantizationScheme,
+    QuantizationStatus,
+    apply_quantization_config,
     disable_quantization,
     enable_quantization,
+    is_preset_scheme,
+    preset_name_to_scheme,
 )
-from llmcompressor.modifiers.quantization.calibration import initialize_observer, update_weight_zp_scale, freeze_module_quantization
-from llmcompressor.transformers.sparsification.compressed_tensors_utils import modify_save_pretrained
+from compressed_tensors.quantization.lifecycle.apply import find_name_or_class_matches
+from llmcompressor.modifiers.quantization.calibration import (
+    freeze_module_quantization,
+    initialize_observer,
+    update_weight_zp_scale,
+)
+from llmcompressor.modifiers.quantization.gptq.utils import get_output_error
+from llmcompressor.modifiers.quantization.gptq.utils.gptq_wrapper import GPTQWrapper
+from llmcompressor.modifiers.utils.layer_compressor import LayerCompressor
+from llmcompressor.modifiers.utils.pytorch_helpers import run_calibration_forward
+from llmcompressor.transformers.sparsification.compressed_tensors_utils import (
+    modify_save_pretrained,
+)
+from llmcompressor.utils.fsdp.context import fix_fsdp_module_name
+from llmcompressor.utils.helpers import DisableKVCache
 
 from flagscale.runner.runner_utils import logger
 
 __all__ = ["LLMCompressorAdapter"]
 
-QUANT_MAPPING_NAMES = {
-        "gptq": GPTQWrapper
-    }
+QUANT_MAPPING_NAMES = {"gptq": GPTQWrapper}
+
 
 class LLMCompressorAdapter:
-    def __init__(self, model, scheme, targets, algo=None, ignore=None, dataset=None, num_calibration_steps=384):
+    def __init__(
+        self,
+        model,
+        scheme,
+        targets,
+        algo=None,
+        ignore=None,
+        dataset=None,
+        num_calibration_steps=384,
+    ):
         self.model = model
         modify_save_pretrained(self.model)
         if algo is not None:
@@ -52,8 +63,12 @@ class LLMCompressorAdapter:
         self.num_calibration_steps = num_calibration_steps
         self.dataset = dataset
 
-        if (self.algo is None and is_preset_scheme(self.scheme)) or self.algo in list(QUANT_MAPPING_NAMES.keys()):
-            self.wrapper_cls = QUANT_MAPPING_NAMES[self.algo] if self.algo is not None else None
+        if (self.algo is None and is_preset_scheme(self.scheme)) or self.algo in list(
+            QUANT_MAPPING_NAMES.keys()
+        ):
+            self.wrapper_cls = (
+                QUANT_MAPPING_NAMES[self.algo] if self.algo is not None else None
+            )
             quant_config = self.init_quant_config()
 
             ### find ignore and target to quant, initialize module for quant
@@ -66,7 +81,6 @@ class LLMCompressorAdapter:
         if self.dataset is not None:
             self.run_blockwise_calib_forward()
         self.model.apply(freeze_module_quantization)
-        
 
     def init_quant_config(self):
         if self.scheme is not None:
@@ -96,7 +110,7 @@ class LLMCompressorAdapter:
 
         return QuantizationConfig(
             config_groups=self.config_groups,
-            kv_cache_scheme=None, ### TODO(lvmengsi): not support kv cache quant for now
+            kv_cache_scheme=None,  ### TODO(lvmengsi): not support kv cache quant for now
             quantization_status=QuantizationStatus.INITIALIZED,
             ignore=self.ignore,
         )
@@ -114,7 +128,9 @@ class LLMCompressorAdapter:
             if matches := find_name_or_class_matches(name, layer, self.ignore):
                 continue
             logger.info(f"prepare compressor for layer {name}")
-            compressor = LayerCompressor(self.wrapper_cls, self.model, layer, idx, name, self.algo_args)
+            compressor = LayerCompressor(
+                self.wrapper_cls, self.model, layer, idx, name, self.algo_args
+            )
             self.layer_compressors_.append(compressor)
         self.layer_compressors_[0].set_early_stop()
 
@@ -132,10 +148,13 @@ class LLMCompressorAdapter:
         self.model.apply(disable_quantization)
         with DisableKVCache(self.model):
             intermediates = run_calibration_forward(
-                    self.model, self.dataset, num_calibration_steps=self.num_calibration_steps, mask_padding=False
-                )
+                self.model,
+                self.dataset,
+                num_calibration_steps=self.num_calibration_steps,
+                mask_padding=False,
+            )
             self.layer_compressors_[0].clear_early_stop()
-            
+
             for idx, layer_compressor in enumerate(self.layer_compressors_):
                 logger.info(f"start calibration layer {layer_compressor.name}")
                 layer_compressor.pre_compress()

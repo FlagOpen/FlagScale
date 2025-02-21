@@ -1,11 +1,19 @@
 import os
+
 import torch
-from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer, AutoImageProcessor
+from transformers import (
+    AutoImageProcessor,
+    AutoModel,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+)
+
 from flagscale.compress.adapter import LLMCompressorAdapter
 from flagscale.inference.processing_emu3 import (
     CachedPrefixConstrainedLogitsProcessor,
     Emu3Processor,
 )
+
 
 def test_llmcompressor_adpter_without_dataset():
     model_path = "BAAI/Emu3-Gen"
@@ -16,11 +24,12 @@ def test_llmcompressor_adpter_without_dataset():
         attn_implementation="flash_attention_2",
         trust_remote_code=True,
     )
-    
-    quant_args = {"targets": ['Linear'], "scheme": 'FP8_DYNAMIC', "ignore":['lm_head']}
+
+    quant_args = {"targets": ["Linear"], "scheme": "FP8_DYNAMIC", "ignore": ["lm_head"]}
     adapter = LLMCompressorAdapter(model=model, **quant_args)
     adapter.model.save_pretrained("test_output", save_compressed=True)
     os.remove("test_output")
+
 
 def test_llmcompressor_adpter_with_dataset():
     EMU_HUB = "BAAI/Emu3-Gen"
@@ -34,9 +43,13 @@ def test_llmcompressor_adpter_with_dataset():
         trust_remote_code=True,
     )
     model.eval()
-    tokenizer = AutoTokenizer.from_pretrained(EMU_HUB, trust_remote_code=True, padding_side="left")
+    tokenizer = AutoTokenizer.from_pretrained(
+        EMU_HUB, trust_remote_code=True, padding_side="left"
+    )
     image_processor = AutoImageProcessor.from_pretrained(VQ_HUB, trust_remote_code=True)
-    image_tokenizer = AutoModel.from_pretrained(VQ_HUB, device_map="cuda:0", trust_remote_code=True).eval()
+    image_tokenizer = AutoModel.from_pretrained(
+        VQ_HUB, device_map="cuda:0", trust_remote_code=True
+    ).eval()
     processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
 
     # prepare input
@@ -45,7 +58,7 @@ def test_llmcompressor_adpter_with_dataset():
     prompt = ["a portrait of young girl.", "a shiba inu"]
     prompt = [p + POSITIVE_PROMPT for p in prompt]
     kwargs = dict(
-        mode='G',
+        mode="G",
         ratio=["1:1", "16:9"],
         image_area=model.config.image_area,
         return_tensors="pt",
@@ -53,8 +66,13 @@ def test_llmcompressor_adpter_with_dataset():
     )
     pos_inputs = processor(text=prompt, **kwargs)
     neg_inputs = processor(text=[NEGATIVE_PROMPT] * len(prompt), **kwargs)
-    quant_args = {"targets": ['Linear'], "scheme": 'W4A16', "ignore":['lm_head'], "algo": {"gptq": {"blocksize": 128, "percdamp": 0.01}}, "dataset": pos_inputs.input_ids.to("cuda:0")}
+    quant_args = {
+        "targets": ["Linear"],
+        "scheme": "W4A16",
+        "ignore": ["lm_head"],
+        "algo": {"gptq": {"blocksize": 128, "percdamp": 0.01}},
+        "dataset": pos_inputs.input_ids.to("cuda:0"),
+    }
     adapter = LLMCompressorAdapter(model=model, **quant_args)
     adapter.model.save_pretrained("test_output", save_compressed=True)
     os.remove("test_output")
-

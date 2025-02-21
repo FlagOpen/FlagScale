@@ -26,7 +26,7 @@ test_model() {
 
   # Convert the parsed test cases to an array
   IFS=' ' read -r -a _cases <<< "$_cases"
-  
+
   # Check if _cases is not an empty list
   if [ ${#_cases[@]} -eq 0 ]; then
     echo "No test cases found for model '$_model' with test type '$_type'. Exiting."

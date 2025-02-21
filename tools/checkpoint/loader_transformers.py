@@ -180,7 +180,7 @@ def _load_checkpoint(queue, args):
             message = dict()
             ckpt_plugin.get_hf_mtp_ckpt(message, hf_model, mtp_layer_id, margs)
             queue_put(f"mtp module {mtp_layer_id}", message)
-            
+
     queue.put("done")
 
 

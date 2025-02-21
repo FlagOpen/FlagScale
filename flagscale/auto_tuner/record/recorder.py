@@ -394,5 +394,3 @@ class ServeRecorder(Recorder):
             raise ValueError(f"The sorted order {self.sorted_order} is not supported.")
         assert sorted_history is not None
         return sorted_history
-
-        

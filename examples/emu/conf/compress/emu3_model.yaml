@@ -6,12 +6,12 @@ system:
   logging:
     log_interval: 1
     tensorboard_log_interval: 1
-    wandb_project: "compress-emu3-7B" 
-    wandb_exp_name: "compress-test-7B" 
-  save_dir: 
+    wandb_project: "compress-emu3-7B"
+    wandb_exp_name: "compress-test-7B"
+  save_dir:
 
 
-model: 
+model:
   model_cls: AutoModelForCausalLM
   model_path: BAAI/Emu3-Gen/
   device_map: cuda:0

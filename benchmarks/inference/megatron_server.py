@@ -1,31 +1,33 @@
 import os
 import sys
+import threading
 import time
+from abc import ABCMeta, abstractmethod
+from collections import defaultdict
+from enum import Enum
+from typing import Optional, Union
+
+import fastapi
 import torch
 import uvicorn
-import threading
-import fastapi
-from enum import Enum
-from collections import defaultdict
-from typing import Optional, Union
-from pydantic import BaseModel
-from abc import ABCMeta, abstractmethod
 from benchmark_megatron_throughout import model_provider
+from pydantic import BaseModel
 
 pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 sys.path.append(os.path.join(pardir, "megatron"))
 
-from megatron import get_tokenizer
-from megatron import get_args
-from megatron import print_rank_0
-from megatron.core import mpu
+from tools.stream_conversation.conversation_convo_v2 import (
+    covert_prompt_to_input_ids_with_history,
+)
+
+from megatron import get_args, get_tokenizer, print_rank_0
+from megatron.arguments import core_transformer_config_from_args
 from megatron.checkpointing import load_checkpoint
+from megatron.core import mpu
 from megatron.initialize import initialize_megatron
 from megatron.model import GPTModel
-from megatron.training import get_model
-from megatron.arguments import core_transformer_config_from_args
 from megatron.text_generation import generate_and_post_process
-from tools.stream_conversation.conversation_convo_v2 import covert_prompt_to_input_ids_with_history
+from megatron.training import get_model
 
 
 class GenerateStatus(Enum):
@@ -99,7 +101,9 @@ class AquilaGenerationBatch(ModelGeneration):
         if sft:
             new_prompts = []
             for p in prompts:
-                p = covert_prompt_to_input_ids_with_history(p, history, self._tokenizer, max_token=4096, template=template)
+                p = covert_prompt_to_input_ids_with_history(
+                    p, history, self._tokenizer, max_token=4096, template=template
+                )
                 new_prompts.append(p)
             prompts = new_prompts
 
@@ -107,24 +111,23 @@ class AquilaGenerationBatch(ModelGeneration):
         try:
             choice = torch.cuda.LongTensor([1])
             torch.distributed.broadcast(choice, 0)
-            responses, _, response_logprobs, _ = \
-                            generate_and_post_process(
-                            model,
-                            prompts=prompts,
-                            tokens_to_generate=max_new_tokens,
-                            return_output_log_probs=True,
-                            top_k_sampling=top_k_per_token,
-                            top_p_sampling=top_p,
-                            top_p_decay=0.0,
-                            top_p_bound=0.0,
-                            temperature=temperature,
-                            add_BOS=False,
-                            use_eod_token_for_early_termination=True,
-                            stop_on_double_eol=False,
-                            stop_on_eol=False,
-                            prevent_newline_after_colon=False,
-                            random_seed=seed,
-                        )
+            responses, _, response_logprobs, _ = generate_and_post_process(
+                model,
+                prompts=prompts,
+                tokens_to_generate=max_new_tokens,
+                return_output_log_probs=True,
+                top_k_sampling=top_k_per_token,
+                top_p_sampling=top_p,
+                top_p_decay=0.0,
+                top_p_bound=0.0,
+                temperature=temperature,
+                add_BOS=False,
+                use_eod_token_for_early_termination=True,
+                stop_on_double_eol=False,
+                stop_on_eol=False,
+                prevent_newline_after_colon=False,
+                random_seed=seed,
+            )
             torch.cuda.empty_cache()
             res_dict["prompts"] = prompts
             res_dict["responses"] = responses
@@ -145,7 +148,7 @@ class AquilaGenerationBatch(ModelGeneration):
         def convert_ids_to_tokens(ids):
             convert_tokens = []
             vocab = self._tokenizer.vocab
-            id2word = {v:k for k, v in vocab.items()}
+            id2word = {v: k for k, v in vocab.items()}
             for t in ids:
                 if t == 100006:
                     convert_tokens.append("[CLS]")
@@ -158,19 +161,24 @@ class AquilaGenerationBatch(ModelGeneration):
         max_output_length = 0
         if output["status"] == GenerateStatus.SUCCESS:
             for i, prompt in enumerate(output["prompts"]):
-                max_input_length = max(max_input_length, len(self._tokenizer.tokenize(prompt)))
-                max_output_length = max(max_output_length, len(self._tokenizer.tokenize(output["responses"][i])))
+                max_input_length = max(
+                    max_input_length, len(self._tokenizer.tokenize(prompt))
+                )
+                max_output_length = max(
+                    max_output_length,
+                    len(self._tokenizer.tokenize(output["responses"][i])),
+                )
 
                 response = output["responses"][i]
                 response_logprob = output["response_logprobs"]
 
                 if request.max_new_tokens != 0:
-                    response = response[len(prompt):]
+                    response = response[len(prompt) :]
                     if response.endswith("</s>"):
                         response_logprob = response_logprob[:-1]
                         response = response.replace("</s>", "")
                     ids = self._tokenizer.tokenize(response)
-                    response_logprob = response_logprob[-len(ids):]
+                    response_logprob = response_logprob[-len(ids) :]
                     if len(ids) == 0:
                         response_logprob = []
                     if len(response) > 0 and response[0] == " ":
@@ -181,24 +189,28 @@ class AquilaGenerationBatch(ModelGeneration):
                     response_logprob = [0.0] + response_logprob
                 convert_tokens = convert_ids_to_tokens(ids)
 
-                completions[i]['text'] = response
-                completions[i]['tokens'] = convert_tokens
-                completions[i]['logprob'] = response_logprob
+                completions[i]["text"] = response
+                completions[i]["tokens"] = convert_tokens
+                completions[i]["logprob"] = response_logprob
                 tld = [{k: v} for k, v in zip(convert_tokens, response_logprob)]
-                completions[i]['top_logprobs_dicts'] = tld
+                completions[i]["top_logprobs_dicts"] = tld
         else:
             for prompt in output["prompts"]:
                 ids = self._tokenizer.tokenize(prompt)
                 response_logprob = [0.0] * len(ids)
                 convert_tokens = convert_ids_to_tokens(ids)
 
-                completions[i]['text'] = prompt
-                completions[i]['tokens'] = convert_tokens
-                completions[i]['logprob'] = response_logprob
+                completions[i]["text"] = prompt
+                completions[i]["tokens"] = convert_tokens
+                completions[i]["logprob"] = response_logprob
                 tld = [{k: v} for k, v in zip(convert_tokens, response_logprob)]
-                completions[i]['top_logprobs_dicts'] = tld
+                completions[i]["top_logprobs_dicts"] = tld
 
-        return {"completions": completions, "max_input_length": max_input_length, "max_output_length": max_output_length}
+        return {
+            "completions": completions,
+            "max_input_length": max_input_length,
+            "max_output_length": max_output_length,
+        }
 
 
 class AquilaGenerationStream(ModelGeneration):
@@ -224,28 +236,31 @@ class AquilaGenerationStream(ModelGeneration):
 
         assert type(prompts) is str
         if sft:
-            prompts = covert_prompt_to_input_ids_with_history(prompts, history, self._tokenizer, 2048, template)
+            prompts = covert_prompt_to_input_ids_with_history(
+                prompts, history, self._tokenizer, 2048, template
+            )
 
         prompts = [prompts]
         choice = torch.cuda.LongTensor([1])
         torch.distributed.broadcast(choice, 0)
         tokens = generate_and_post_process(
-                                    model,
-                                    prompts=prompts,
-                                    tokens_to_generate=max_new_tokens,
-                                    return_output_log_probs=True,
-                                    top_k_sampling=top_k_per_token,
-                                    top_p_sampling=top_p,
-                                    top_p_decay=0.0,
-                                    top_p_bound=0.0,
-                                    temperature=temperature,
-                                    add_BOS=False,
-                                    use_eod_token_for_early_termination=True,
-                                    stop_on_double_eol=False,
-                                    stop_on_eol=False,
-                                    prevent_newline_after_colon=False,
-                                    random_seed=seed,
-                                    stream=True)
+            model,
+            prompts=prompts,
+            tokens_to_generate=max_new_tokens,
+            return_output_log_probs=True,
+            top_k_sampling=top_k_per_token,
+            top_p_sampling=top_p,
+            top_p_decay=0.0,
+            top_p_bound=0.0,
+            temperature=temperature,
+            add_BOS=False,
+            use_eod_token_for_early_termination=True,
+            stop_on_double_eol=False,
+            stop_on_eol=False,
+            prevent_newline_after_colon=False,
+            random_seed=seed,
+            stream=True,
+        )
         torch.cuda.empty_cache()
         return {"tokens": tokens}
 
@@ -290,18 +305,23 @@ class UvicornServer:
 
 
 if __name__ == "__main__":
-    initialize_megatron(extra_args_provider=None,
-                        args_defaults={'tokenizer_type': 'GPT2BPETokenizer',
-                                       'no_load_rng': True,
-                                       'no_load_optim': True})
+    initialize_megatron(
+        extra_args_provider=None,
+        args_defaults={
+            "tokenizer_type": "GPT2BPETokenizer",
+            "no_load_rng": True,
+            "no_load_optim": True,
+        },
+    )
 
     args = get_args()
     print(f"args is {args}")
     if args.num_layers_per_virtual_pipeline_stage is not None:
         print("Interleaved pipeline schedule is not yet supported for text generation.")
         exit()
-    print_rank_0("WARNING: Forcing exit_on_missing_checkpoint to True for text "
-                 "generation.")
+    print_rank_0(
+        "WARNING: Forcing exit_on_missing_checkpoint to True for text " "generation."
+    )
     args.exit_on_missing_checkpoint = True
     # Set up model and load checkpoint
     model = get_model(model_provider, wrap_with_ddp=False)

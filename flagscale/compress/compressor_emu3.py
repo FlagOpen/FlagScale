@@ -1,15 +1,18 @@
-import os
-import sys
 import argparse
+import os
 import random
-import yaml
 import shutil
-from omegaconf import OmegaConf
+import sys
+
 import torch
-from megatron.core.datasets.indexed_dataset import IndexedDataset
+import yaml
+from omegaconf import OmegaConf
 from torch.utils.data import Dataset
 
+from megatron.core.datasets.indexed_dataset import IndexedDataset
+
 from flagscale.compress.compressor import compress, prepare_config
+
 
 class CusDataset(Dataset):
     def __init__(self, ds):
@@ -25,7 +28,10 @@ class CusDataset(Dataset):
         index = self.indices[idx]
         cur_ds = self.ds[index]
         slice_idx = cur_ds.tolist().index(151643)  ### mask padding
-        return {"input_ids": torch.tensor(cur_ds[:slice_idx]).unsqueeze(0), "attention_mask": torch.ones(slice_idx, dtype=torch.int64)}
+        return {
+            "input_ids": torch.tensor(cur_ds[:slice_idx]).unsqueeze(0),
+            "attention_mask": torch.ones(slice_idx, dtype=torch.int64),
+        }
 
     def shuffle(self):
         random.shuffle(self.indices)
@@ -46,7 +52,7 @@ def prepare_dataset(cfg):
     ds = IndexedDataset(cfg.data.data_path, mmap=True)
     dataset = CusDataset(ds)
     return dataset
-    
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

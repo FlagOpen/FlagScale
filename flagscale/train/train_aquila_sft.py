@@ -153,10 +153,10 @@ def get_batch(data_iterator):
 
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
-    
+
     # slice batch along sequence dimension for ulysses sequence parallelism
     batch = get_batch_on_this_ulysses_sp_rank(batch)
-    
+
     return batch.values()
 
 

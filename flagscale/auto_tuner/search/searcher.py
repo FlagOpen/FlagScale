@@ -1,7 +1,7 @@
 import copy
+import itertools
 import logging
 import time
-import itertools
 
 from ..utils import divisible
 
@@ -25,6 +25,7 @@ __BUILT_IN_SERVE_STRATEGY_DIMS__ = [
     "tensor_model_parallel_size",
     "pipeline_model_parallel_size",
 ]
+
 
 class Searcher:
 
@@ -545,6 +546,7 @@ class Searcher:
         """Return True if search is finished."""
         return self.algo.has_done()
 
+
 class ServeSearcher(Searcher):
     def __init__(self, config):
         super(ServeSearcher, self).__init__(config)
@@ -561,7 +563,7 @@ class ServeSearcher(Searcher):
         dim1 = __BUILT_IN_SERVE_STRATEGY_DIMS__[1]
         space = getattr(config.experiment.auto_tuner, "space", {})
         if len(space) != 0:
-            space[dim0] = getattr(space, dim0, None) 
+            space[dim0] = getattr(space, dim0, None)
             space[dim1] = getattr(space, dim1, None)
         else:
             space[dim0] = []
@@ -572,7 +574,7 @@ class ServeSearcher(Searcher):
             if space[dim1] == "auto" or len(space[dim1]) == 0:
                 space[dim1] = []
                 for i in range(1, cards + 1):
-                    if cards % i != 0: 
+                    if cards % i != 0:
                         continue
                     space[dim0].append(i)
                     space[dim1].append(cards // i)
@@ -595,7 +597,7 @@ class ServeSearcher(Searcher):
         if "algo" not in self.config.experiment.auto_tuner:
             self.config.experiment.auto_tuner.algo = {"name": "grid", "priority": None}
         return space
-                
+
     def build_strategies(self, space, config):
         """Build strategies by Cartesian product search space."""
         if self.auto:
@@ -605,8 +607,8 @@ class ServeSearcher(Searcher):
             values = list(self.space.values())
             cartesian_product_values = list(itertools.product(*values))
         strategies = [
-            dict(zip(self.space.keys(), combination))  
+            dict(zip(self.space.keys(), combination))
             for combination in cartesian_product_values
         ]
-        
+
         return strategies
