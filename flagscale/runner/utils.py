@@ -8,13 +8,13 @@ import subprocess
 import sys
 import time
 import traceback
-import aiohttp
-import numpy as np
-
 from dataclasses import dataclass, field
 from typing import List, Optional
-from tqdm.asyncio import tqdm
+
+import aiohttp
+import numpy as np
 from omegaconf import DictConfig, OmegaConf
+from tqdm.asyncio import tqdm
 
 from flagscale.logger import logger
 from flagscale.metric import calculate_metrics

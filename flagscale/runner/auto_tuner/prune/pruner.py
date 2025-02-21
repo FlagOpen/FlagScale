@@ -1,5 +1,8 @@
 from flagscale.runner.auto_tuner.prune.history import _HISTORY_BASED_PRUNE_FUNC
-from flagscale.runner.auto_tuner.prune.memory import prune_by_memory_model, prune_by_memory_model_util
+from flagscale.runner.auto_tuner.prune.memory import (
+    prune_by_memory_model,
+    prune_by_memory_model_util,
+)
 
 
 class Pruner:

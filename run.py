@@ -1,11 +1,11 @@
 import hydra
 from omegaconf import DictConfig
 
+from flagscale.runner.auto_tuner import AutoTuner, ServeAutoTunner
 from flagscale.runner.runner_compress import SSHCompressRunner
 from flagscale.runner.runner_inference import SSHInferenceRunner
 from flagscale.runner.runner_serve import SSHServeRunner
 from flagscale.runner.runner_train import CloudTrainRunner, SSHTrainRunner
-from flagscale.runner.auto_tuner import AutoTuner, ServeAutoTunner
 from flagscale.runner.utils import is_master
 
 
