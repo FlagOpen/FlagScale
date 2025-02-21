@@ -1,14 +1,13 @@
 import os
 import shlex
-import time
 from datetime import datetime
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
-from flagscale.runner.runner_base import JobStatus, RunnerBase
-from flagscale.runner.runner_utils import (
+from flagscale.runner.runner_base import RunnerBase
+from flagscale.runner.utils import (
     add_decive_extra_config,
     flatten_dict_to_args,
     get_free_port,

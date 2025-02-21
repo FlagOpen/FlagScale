@@ -3,7 +3,7 @@ import itertools
 import logging
 import time
 
-from ..utils import divisible
+from flagscale.runner.auto_tuner.utils import divisible
 
 __BUILT_IN_STRATEGY_DIMS__ = [
     "data_parallel_size",

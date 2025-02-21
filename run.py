@@ -5,6 +5,8 @@ from flagscale.runner.runner_compress import SSHCompressRunner
 from flagscale.runner.runner_inference import SSHInferenceRunner
 from flagscale.runner.runner_serve import SSHServeRunner
 from flagscale.runner.runner_train import CloudTrainRunner, SSHTrainRunner
+from flagscale.runner.auto_tuner import AutoTuner, ServeAutoTunner
+from flagscale.runner.utils import is_master
 
 
 @hydra.main(version_base=None, config_name="config")
@@ -12,12 +14,8 @@ def main(config: DictConfig) -> None:
     task_type = config.experiment.task.get("type", "train")
     if task_type == "train":
         if config.action == "auto_tune":
-            from flagscale.auto_tuner import AutoTuner
-
             # For MPIRUN scene, just one autotuner process.
             # NOTE: This is a temporary solution and will be updated with cloud runner.
-            from flagscale.auto_tuner.utils import is_master
-
             if is_master(config):
                 tuner = AutoTuner(config)
                 tuner.tune()
@@ -53,12 +51,8 @@ def main(config: DictConfig) -> None:
             raise ValueError(f"Unknown action {config.action}")
     elif task_type == "serve":
         if config.action == "auto_tune":
-            from flagscale.auto_tuner import ServeAutoTunner
-
             # For MPIRUN scene, just one autotuner process.
             # NOTE: This is a temporary solution and will be updated with cloud runner.
-            from flagscale.auto_tuner.utils import is_master
-
             tuner = ServeAutoTunner(config)
             tuner.tune()
         else:
