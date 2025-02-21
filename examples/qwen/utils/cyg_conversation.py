@@ -1,10 +1,11 @@
 import dataclasses
-from enum import auto, Enum
-from typing import List, Tuple, Any
+from enum import Enum, auto
+from typing import Any, List, Tuple
 
 
 class SeparatorStyle(Enum):
     """Different separator style."""
+
     SINGLE = auto()
     TWO = auto()
 
@@ -12,6 +13,7 @@ class SeparatorStyle(Enum):
 @dataclasses.dataclass
 class Conversation:
     """A class that keeps all conversation history."""
+
     system: str
     instruction: str
     roles: List[str]
@@ -54,7 +56,7 @@ class Conversation:
 
     def to_gradio_chatbot(self):
         ret = []
-        for i, (role, msg) in enumerate(self.messages[self.offset:]):
+        for i, (role, msg) in enumerate(self.messages[self.offset :]):
             if i % 2 == 0:
                 ret.append([msg, None])
             else:
@@ -71,7 +73,8 @@ class Conversation:
             sep_style=self.sep_style,
             sep=self.sep,
             sep2=self.sep2,
-            conv_id=self.conv_id)
+            conv_id=self.conv_id,
+        )
 
     def dict(self):
         return {
@@ -88,7 +91,7 @@ class Conversation:
 
 conv_v1 = Conversation(
     system="A chat between a curious human and an artificial intelligence assistant. "
-           "The assistant gives helpful, detailed, and polite answers to the human's questions.",
+    "The assistant gives helpful, detailed, and polite answers to the human's questions.",
     instruction="",
     roles=("Human", "Assistant", "System"),
     messages=(),
@@ -99,7 +102,7 @@ conv_v1 = Conversation(
 
 conv_v1_2 = Conversation(
     system="A chat between a curious human and an artificial intelligence assistant. "
-           "The assistant gives helpful, detailed, and polite answers to the human's questions.",
+    "The assistant gives helpful, detailed, and polite answers to the human's questions.",
     instruction="",
     roles=("Human", "Assistant", "System"),
     messages=(),
@@ -133,25 +136,31 @@ def covert_prompt_to_input_ids_with_history(text, history, tokenizer, max_token)
     conv.append_message(conv.roles[1], None)
     conv.append_message(conv.roles[0], text)
 
-    example = tokenizer.encode_plus(f"{conv.get_prompt()} ", None, max_length=None)['input_ids']
+    example = tokenizer.encode_plus(f"{conv.get_prompt()} ", None, max_length=None)[
+        "input_ids"
+    ]
 
-    while(len(history) > 0 and (len(example) < max_token)):
+    while len(history) > 0 and (len(example) < max_token):
         tmp = history.pop()
-        if tmp[0] == 'ASSISTANT':
+        if tmp[0] == "ASSISTANT":
             conv.append_message(conv.roles[1], tmp[1])
         else:
             conv.append_message(conv.roles[0], tmp[1])
-        example = tokenizer.encode_plus(f"{conv.get_prompt()} ", None, max_length=None)['input_ids']
+        example = tokenizer.encode_plus(f"{conv.get_prompt()} ", None, max_length=None)[
+            "input_ids"
+        ]
 
     if len(example) >= max_token:
         conv.messages.pop()
     conv.messages = conv.messages[::-1]
-    print('model in:', conv.get_prompt())
-    example = tokenizer.encode_plus(f"{conv.get_prompt()} ", None, max_length=None)['input_ids']
-    #example = example[1:-1]
+    print("model in:", conv.get_prompt())
+    example = tokenizer.encode_plus(f"{conv.get_prompt()} ", None, max_length=None)[
+        "input_ids"
+    ]
+    # example = example[1:-1]
 
     return example
 
+
 if __name__ == "__main__":
     print(default_conversation.get_prompt())
-

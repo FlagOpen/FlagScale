@@ -239,7 +239,7 @@ def save_checkpoint(queue, args):
     hf_model = model_plugin.get_hf_model(margs.params_dtype, config=hf_config)
 
     """
-    start receive and process ckpt 
+    start receive and process ckpt
     """
 
     # process embedding

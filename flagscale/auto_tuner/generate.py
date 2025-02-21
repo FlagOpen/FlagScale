@@ -1,5 +1,6 @@
 import copy
 import os
+
 from omegaconf import OmegaConf
 
 
@@ -117,7 +118,9 @@ class ServeGenerator(Generator):
                     del config.serve.model_args.vllm_model[value]
                 continue
             if value not in config.serve.model_args.vllm_model:
-                config.serve.model_args.vllm_model = OmegaConf.merge(config.serve.model_args.vllm_model, {value: strategy[key]})
+                config.serve.model_args.vllm_model = OmegaConf.merge(
+                    config.serve.model_args.vllm_model, {value: strategy[key]}
+                )
             else:
                 config.serve.model_args.vllm_model[value] = strategy[key]
 

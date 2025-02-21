@@ -1,7 +1,6 @@
+import importlib
 import os
 import sys
-import importlib
-
 
 _vLLM_replace_modules = {
     "vllm.sampling_params": "flagscale/inference/core/sampling_params.py",
@@ -21,7 +20,7 @@ _hook_modules = {"transformer_engine"} | set(_vLLM_replace_modules.keys())
 
 class Empty:
     def __init__(self, *args):
-       pass
+        pass
 
 
 class CustomModuleFinder:
@@ -32,7 +31,7 @@ class CustomModuleFinder:
 
 
 class CustomModuleLoader:
-    device_type = os.environ.get('DEVICE_TYPE',None)
+    device_type = os.environ.get("DEVICE_TYPE", None)
 
     def load_module(self, fullname):
 

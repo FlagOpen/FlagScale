@@ -15,8 +15,8 @@ system:
   logging:
     log_interval: 1
     tensorboard_log_interval: 1
-    wandb_project: "train-llama3-70B" 
-    wandb_exp_name: "train-llama3-70B" 
+    wandb_project: "train-llama3-70B"
+    wandb_exp_name: "train-llama3-70B"
   checkpoint:
     load: ${ckpt_path:??}
     ckpt_format: torch
@@ -67,10 +67,8 @@ model:
 
 data:
   data_path: ${data_path:??}
-  split: 1 
+  split: 1
   tokenizer:
     tokenizer_type: Llama3TokenizerFS
     tokenizer_path: ${tokenizer_path:??}
     vocab_size: 128256
-
-    

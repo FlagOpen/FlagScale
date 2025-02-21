@@ -1,5 +1,5 @@
 defaults:
-  - train: demo 
+  - train: demo
   - _self_
 
 experiment:
@@ -10,11 +10,11 @@ experiment:
     backend: megatron
     entrypoint: ./flagscale/train/train_gpt.py
   runner:
-    type: cloud 
+    type: cloud
     rdzv_id: demo
-    nnodes: ${env:WORLD_SIZE} 
+    nnodes: ${env:WORLD_SIZE}
     node_rank: ${env:RANK}
-    nproc_per_node: 8 
+    nproc_per_node: 8
     master_addr: ${env:MASTER_ADDR}
     master_port: 12345
   envs:
@@ -25,4 +25,4 @@ action: run
 
 hydra:
   run:
-    dir: ${experiment.exp_dir}/hydra/${oc.env:RANK} 
+    dir: ${experiment.exp_dir}/hydra/${oc.env:RANK}

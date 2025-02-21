@@ -103,7 +103,7 @@ model:
   lr_warmup_fraction: 0.02
   lr_decay_iters: 120000
   lr_decay_style: cosine
-  
+
 data:
   no_create_attention_mask_in_dataloader: true
   data_path: /path

@@ -1,16 +1,17 @@
-import os
-import sys
+import argparse
 import datetime
 import inspect
-import subprocess
-import argparse
 import json
 import logging as logger
-from omegaconf import OmegaConf
-import ray
-from flagscale import serve
-from dag_utils import check_and_get_port
+import os
+import subprocess
+import sys
 
+import ray
+from dag_utils import check_and_get_port
+from omegaconf import OmegaConf
+
+from flagscale import serve
 
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
@@ -103,7 +104,9 @@ def main():
             log_to_driver=True,
             logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"),
         )
-        link_dir = os.path.join(serve.task_config.log_dir, f"session_latest_{timestamp}")
+        link_dir = os.path.join(
+            serve.task_config.log_dir, f"session_latest_{timestamp}"
+        )
         tar_dir = ray._private.worker.global_worker.node._logs_dir
         os.symlink(tar_dir, link_dir)
 

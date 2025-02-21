@@ -1,17 +1,21 @@
 import math
+
 import torch
 
+
 class SpikyLossDetector:
-    '''This class represents a Spiky Loss Detector.
-        It is used to detect spikes in loss values during training.
-    '''
-    def __init__(self, threshold=0.2, loss = None):
+    """This class represents a Spiky Loss Detector.
+    It is used to detect spikes in loss values during training.
+    """
+
+    def __init__(self, threshold=0.2, loss=None):
         self.last_loss = loss
         self.threshold = threshold
 
     def reduce_losses(self, losses_reduced):
         loss_reduced = {}
         from megatron.core import mpu
+
         if mpu.is_pipeline_last_stage(ignore_virtual=True):
             # Average loss across microbatches.
             for key in losses_reduced[0].keys():
@@ -30,8 +34,8 @@ class SpikyLossDetector:
                         numerator += val
                         denominator += 1
                 loss_reduced[key] = numerator / denominator
-        return loss_reduced.get('lm loss')
-    
+        return loss_reduced.get("lm loss")
+
     def is_spkiy_loss(self, loss):
         if loss is None:
             return False
@@ -49,4 +53,3 @@ class SpikyLossDetector:
         else:
             self.last_loss = loss
         return False
-    

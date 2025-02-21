@@ -1,6 +1,7 @@
-import re
 import os
+import re
 import shutil
+
 from git.repo import Repo
 
 path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -13,8 +14,6 @@ def check_path():
     a = re.match(pattern_1, path)
     if a is None:
         raise FileNotFoundError("the FlagScale is not in your path")
-
-    
 
 
 def process_commit_id(patch_commit_id, base_commit_id=None):
@@ -79,12 +78,12 @@ def check_branch_name(repo, branch_name):
 
 def get_now_branch_name(repo):
     """Get the now branch name when use this function"""
-    branch_list = repo.git.branch("--list").split('\n')
+    branch_list = repo.git.branch("--list").split("\n")
     for branch_name in branch_list:
-        if '*' in branch_name:
+        if "*" in branch_name:
             branch_name = branch_name.split()[-1]
             return branch_name
-    return 'main'
+    return "main"
 
 
 def save_patch_to_tmp(patch_name, patch_str):

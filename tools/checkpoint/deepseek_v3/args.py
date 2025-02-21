@@ -1,5 +1,5 @@
-import os
 import json
+import os
 
 
 def load_args_hf2mg(args):
@@ -14,7 +14,9 @@ def load_args_hf2mg(args):
     args.hidden_size = deepseek_v3_args["hidden_size"]
     args.ffn_hidden_size = deepseek_v3_args["intermediate_size"]
     moe_intermediate_size = deepseek_v3_args["intermediate_size"]
-    assert moe_intermediate_size == args.ffn_hidden_size, "mlp intermediate size is not matched with moe"
+    assert (
+        moe_intermediate_size == args.ffn_hidden_size
+    ), "mlp intermediate size is not matched with moe"
     args.num_layers = deepseek_v3_args["num_hidden_layers"]
     args.num_mtp_predictor = deepseek_v3_args["num_nextn_predict_layers"]
     args.num_attention_heads = deepseek_v3_args["num_attention_heads"]
@@ -29,9 +31,14 @@ def load_args_hf2mg(args):
     args.moe_router_topk = deepseek_v3_args["num_experts_per_tok"]
     args.moe_layer_freq = deepseek_v3_args["moe_layer_freq"]
     # if set first k dense replace, then updating moe_layer_freq
-    first_k_dense_replace = deepseek_v3_args["first_k_dense_replace"]    
-    args.moe_layer_freq = eval("[0]*" + str(first_k_dense_replace) + "+[1]*" + str(args.num_layers-first_k_dense_replace))
-    
+    first_k_dense_replace = deepseek_v3_args["first_k_dense_replace"]
+    args.moe_layer_freq = eval(
+        "[0]*"
+        + str(first_k_dense_replace)
+        + "+[1]*"
+        + str(args.num_layers - first_k_dense_replace)
+    )
+
     norm_topk_prob = deepseek_v3_args["norm_topk_prob"]
     args.moe_router_score_function = deepseek_v3_args["scoring_func"]
     aux_loss_alpha = deepseek_v3_args["aux_loss_alpha"]
@@ -46,7 +53,9 @@ def load_args_hf2mg(args):
     bos_token_id = deepseek_v3_args["bos_token_id"]
     eos_token_id = deepseek_v3_args["eos_token_id"]
     pretraining_tp = deepseek_v3_args["pretraining_tp"]
-    args.untie_embeddings_and_output_weights = not deepseek_v3_args["tie_word_embeddings"]
+    args.untie_embeddings_and_output_weights = not deepseek_v3_args[
+        "tie_word_embeddings"
+    ]
     args.rotary_base = deepseek_v3_args["rope_theta"]
     rope_scaling = deepseek_v3_args["rope_scaling"]
     attention_bias = deepseek_v3_args["attention_bias"]
@@ -63,10 +72,10 @@ def load_args_hf2mg(args):
     args.fp16 = deepseek_v3_args["torch_dtype"] == "float16"
     args.moe_router_enable_expert_bias = True
     args.moe_router_bias_update_rate = 0.001
-    
+
     args.seq_length = 4096
     args.global_batch_size = 800
-    args.iteration = 1 # '0', 'release' don't work
+    args.iteration = 1  # '0', 'release' don't work
     args.add_position_embedding = False
     args.group_query_attention = True
     args.normalization = "RMSNorm"
@@ -79,6 +88,5 @@ def load_args_hf2mg(args):
     args.consumed_valid_samples = 0
     args.norm_has_bias = False
     args.tokenizer_type = "Emu3TokenizerFS"
-    
-    return args, args
 
+    return args, args

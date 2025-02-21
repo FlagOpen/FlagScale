@@ -12,11 +12,11 @@ system:
   logging:
     log_interval: 1
     tensorboard_log_interval: 1
-    wandb_project: "train-aquila-70B" 
-    wandb_exp_name: "train-test-70B" 
+    wandb_project: "train-aquila-70B"
+    wandb_exp_name: "train-test-70B"
   checkpoint:
     save_interval: 500
-    rampup_save_interval: 5000 
+    rampup_save_interval: 5000
 
 
 model:
@@ -46,7 +46,7 @@ model:
   eval_iters: 0
   eval_interval: 2000
   micro_batch_size: 2
-  global_batch_size: 1056 
+  global_batch_size: 1056
   seed: 42
 
   optimizer:
@@ -57,7 +57,7 @@ model:
       lr: 1.5e-4
       min_lr: 1.5e-5
       lr_warmup_samples: 500000
-      lr_decay_style: cosine 
+      lr_decay_style: cosine
 
 data:
   data_path: ${data_path:??}

@@ -22,7 +22,7 @@ except:
         )
 
 def get_nccl_options(pg_name, nccl_comm_cfgs):
-    from megatron.core.parallel_state import get_nccl_options 
+    from megatron.core.parallel_state import get_nccl_options
     return get_nccl_options(pg_name, nccl_comm_cfgs)
 
 def create_group(
@@ -76,7 +76,7 @@ class RankMapper:
         ), "torch.distributed is not initialized"
         self._world_size = torch.distributed.get_world_size()
         # The order of device types is very import for creating the logical rank.
-        # Users should make sure the order satisfies their needs. 
+        # Users should make sure the order satisfies their needs.
         self._hetero_device_types = args.hetero_device_types
         self._hetero_current_device_type = args.hetero_current_device_type
         self._rank_infos = {}
@@ -115,7 +115,7 @@ class RankMapper:
 
         # Build the mapping between physical rank and logical rank
         for logical_rank, physical_rank in enumerate(sorted_physical_ranks):
-            self._physical_rank_to_logical_rank[physical_rank] = logical_rank 
+            self._physical_rank_to_logical_rank[physical_rank] = logical_rank
             self._logical_rank_to_physical_rank[logical_rank] = physical_rank
 
     def to_physical_ranks(self, logical_ranks: list) -> list:
@@ -209,7 +209,7 @@ class ProcessMesh:
             with open(nccl_communicator_config_path, "r") as stream:
                 self._nccl_comm_cfgs = yaml.safe_load(stream)
 
-        from megatron.core.parallel_state import RankGenerator 
+        from megatron.core.parallel_state import RankGenerator
         self._rank_generator = RankGenerator(
             tp=self._tensor_model_parallel_size,
             ep=1,
@@ -244,9 +244,9 @@ class ProcessMesh:
             order=self._order,
         )
 
-        self._rank_mapper = rank_mapper 
-        self._group_ranks = {} # group_ranks belongs to the current rank 
-        self._all_group_ranks = defaultdict(list) # group_ranks belongs to the current process mesh 
+        self._rank_mapper = rank_mapper
+        self._group_ranks = {} # group_ranks belongs to the current rank
+        self._all_group_ranks = defaultdict(list) # group_ranks belongs to the current process mesh
         self._process_groups = {} # process groups belongs to the current rank
         self._process_groups_gloo = {} # process groups belongs to the current rank with gloo backend
 
@@ -262,10 +262,10 @@ class ProcessMesh:
         # Add the offset for each ranks of the current process mesh
         for logical_ranks in logical_ranks_list:
             for i in range(len(logical_ranks)):
-                logical_ranks[i] += self._offset 
+                logical_ranks[i] += self._offset
 
         for logical_ranks in logical_ranks_list:
-            group_name = self.get_group_name(token, is_expert=is_expert) 
+            group_name = self.get_group_name(token, is_expert=is_expert)
             nccl_option_name = self.get_nccl_option_name(token, is_expert=is_expert)
             pg_options = get_nccl_options(nccl_option_name, self._nccl_comm_cfgs)
             ranks = self._rank_mapper.to_physical_ranks(logical_ranks)
@@ -321,8 +321,8 @@ class ProcessMesh:
                     group_desc=group_name+"_gloo")
 
                 if self._rank in intra_partial_data_parallel_ranks_with_cp:
-                    self._group_ranks[group_name] = intra_partial_data_parallel_ranks_with_cp 
-                    self._process_groups[group_name] = intra_partial_data_parallel_group_with_cp 
+                    self._group_ranks[group_name] = intra_partial_data_parallel_ranks_with_cp
+                    self._process_groups[group_name] = intra_partial_data_parallel_group_with_cp
                     self._process_groups_gloo[group_name] = intra_partial_data_parallel_group_with_cp_gloo
 
             for i in range(self._intra_partial_data_parallel_size):
@@ -348,7 +348,7 @@ class ProcessMesh:
                 )
 
                 if self._rank in inter_partial_data_parallel_ranks_with_cp:
-                    self._process_groups[group_name] = inter_partial_data_parallel_group_with_cp 
+                    self._process_groups[group_name] = inter_partial_data_parallel_group_with_cp
         else:
             if token == "dp-cp":
                 group_name = "intra-dp-cp"
@@ -358,13 +358,13 @@ class ProcessMesh:
                 raise ValueError(f"Invalid token: {token}")
             self._all_group_ranks[group_name].append(ranks)
             if self._rank in ranks:
-                self._process_groups[group_name] = group 
+                self._process_groups[group_name] = group
                 self._process_groups_gloo[group_name] = group_gloo
 
     def _build_hierarchical_cp_groups(self, ranks, pg_options):
         if self._hierarchical_context_parallel_sizes:
             group_name = "hierarchical-cp"
-            from megatron.core.parallel_state import create_hierarchical_parallel_groups 
+            from megatron.core.parallel_state import create_hierarchical_parallel_groups
             hierarchical_cp_groups = self._process_groups.get(group_name, [])
             hierarchical_cp_groups += create_hierarchical_parallel_groups(
                 self._rank,
@@ -435,15 +435,15 @@ class ProcessMesh:
         if not is_expert:
             return token
         else:
-            return f"exp_{token}" 
+            return f"exp_{token}"
 
     def get_nccl_option_name(self, token, is_expert=False):
         if not is_expert:
             names = {
                 "dp": "dp",
-                "dp-cp": "dp_cp", 
-                "intra-dp-cp": "dp_cp", 
-                "inter-dp-cp": "dp_cp", 
+                "dp-cp": "dp_cp",
+                "intra-dp-cp": "dp_cp",
+                "inter-dp-cp": "dp_cp",
                 "dp-usp-cp": "dp_usp_cp",
                 "dp-usp": "dp_usp",
                 "cp": "cp",
@@ -535,7 +535,7 @@ class ProcessMesh:
                 init = init * v
                 r.append(init)
             return r
-        for coord in coords:  
+        for coord in coords:
             assert len(coord) == 4
         if not is_expert:
             sizes = self._rank_generator.ordered_size
@@ -547,7 +547,7 @@ class ProcessMesh:
         assert len(new_sizes) == len(coords[0]), f"new_sizes: {new_sizes}, coords[0]: {coords[0]}"
         strides = _prefix_product(new_sizes)
         logical_ranks = []
-        for coord in coords:  
+        for coord in coords:
             logical_rank = sum([c * s for c, s in zip(coord, strides)]) + self._offset
             logical_ranks.append(logical_rank)
         ranks = self._rank_mapper.to_physical_ranks(logical_ranks)
@@ -559,12 +559,12 @@ class ParallelContext:
         assert args.expert_model_parallel_size == 1, "Expert model parallelism is not supported."
         assert args.ulysses_sp_parallel_size == 1, "Ulysses parallelism is not supported."
         assert torch.distributed.is_initialized()
-        self._is_initialized = False 
+        self._is_initialized = False
         self._args = args
-        self._current_process_mesh_index = 0 
-        self._process_meshes = [] 
+        self._current_process_mesh_index = 0
+        self._process_meshes = []
         self._rank_to_process_mesh = {}
-        self._inter_mesh_group_ranks = defaultdict(list) 
+        self._inter_mesh_group_ranks = defaultdict(list)
         self._inter_mesh_process_groups_pp = {} # (src_rank, dst_rank) -> bool
         self._inter_mesh_process_groups_dp = {} # (src_rank, dst_rank) -> bool
         # (src_rank, local_tensor_shape, next) -> (dst_rank, (dp_start, dp_end), (sp_start, sp_end), local_hidden_size)
@@ -572,7 +572,7 @@ class ParallelContext:
 
         self._global_group_ranks = defaultdict(list)
         self._global_all_group_ranks = defaultdict(list)
-        self._global_process_groups = defaultdict(list) 
+        self._global_process_groups = defaultdict(list)
         self._global_process_group_to_ranks = {}
         self._global_parallel_world_sizes = {}
         self._global_parallel_ranks = {}
@@ -717,7 +717,7 @@ class ParallelContext:
             )
 
     def build_global_process_groups(self):
-        """ Build global process groups across all process meshes. The global process groups are used for the communication 
+        """ Build global process groups across all process meshes. The global process groups are used for the communication
             between different pipeline stages. Heteregonous process groups except for the default process groups are all here"""
         # build global pipeline process groups
         def _backtrack(mesh_index, prev_rank, path, token = "pp", is_expert=False):
@@ -845,7 +845,7 @@ class ParallelContext:
             sp1 = tp1 * cp1
             sp2 = tp2 * cp2
         else:
-            global_seq_len = local_seq_len * cp1 
+            global_seq_len = local_seq_len * cp1
             sp1 = cp1
             sp2 = cp2
         global_batch_size = local_batch_size * dp1
@@ -873,7 +873,7 @@ class ParallelContext:
                     dst_rank = process_mesh2.logical_coords_to_physical_ranks([dst_coord])[0]
                     sp_start, dp_start = src_starts[i]
                     sp_end, dp_end = src_ends[i]
-                    if (src_rank, local_tensor_shape, next) not in self._inter_mesh_tensor_slices: 
+                    if (src_rank, local_tensor_shape, next) not in self._inter_mesh_tensor_slices:
                         self._inter_mesh_tensor_slices[(src_rank, local_tensor_shape, next)] = []
                     self._inter_mesh_tensor_slices[
                         (src_rank, local_tensor_shape, next)
@@ -892,7 +892,7 @@ class ParallelContext:
         return self._process_meshes[self._current_process_mesh_index]
 
     def get_prev_process_mesh(self):
-        assert self._current_process_mesh_index - 1 >= 0 
+        assert self._current_process_mesh_index - 1 >= 0
         return self._process_meshes[self._current_process_mesh_index - 1]
 
     def get_next_process_mesh(self):
@@ -1025,7 +1025,7 @@ class ParallelContext:
         """Get the embedding group the caller rank belongs to."""
         groups = self._global_process_groups.get("embd", None)
         assert groups is not None, 'embedding group is not initialized'
-        return groups 
+        return groups
 
     def get_position_embedding_group(self):
         """Get the position embedding group the caller rank belongs to."""
@@ -1177,7 +1177,7 @@ class ParallelContext:
                 group = group[0]
         ranks = self._global_process_group_to_ranks[group]
         if ignore_virtual:
-            return rank in ranks 
+            return rank in ranks
         if rank in ranks:
             if rank == ranks[0]:
                 return self.is_pipeline_first_stage(ignore_virtual=False, group=group)
@@ -1197,7 +1197,7 @@ class ParallelContext:
             else:
                 group = group[0]
         ranks = self._global_process_group_to_ranks[group]
-        return rank in ranks 
+        return rank in ranks
 
     def is_pipeline_stage_before_split(self, rank=None, group=None):
         """Return True if pipeline stage executes encoder block for a model
@@ -1235,7 +1235,7 @@ class ParallelContext:
             return True
         if rank is None:
             rank = self.get_pipeline_model_parallel_rank()
-        pipeline_model_parallel_decoder_start = self.get_pipeline_model_parallel_decoder_start() 
+        pipeline_model_parallel_decoder_start = self.get_pipeline_model_parallel_decoder_start()
         # _PIPELINE_MODEL_PARALLEL_DECODER_START == None means that the
         # encoder shares the first pipeline rank with the decoder
         if pipeline_model_parallel_decoder_start is None and rank == 0:
@@ -1244,7 +1244,7 @@ class ParallelContext:
         # encoder is on it's own pipeline ranks before the decoder
         if (
             pipeline_model_parallel_decoder_start is not None
-            and rank < pipeline_model_parallel_decoder_start 
+            and rank < pipeline_model_parallel_decoder_start
         ):
             return True
         return False
@@ -1384,7 +1384,7 @@ class ParallelContext:
         """Return world size for the data parallel group."""
         size = self._global_parallel_world_sizes.get("dp", None)
         if size is not None:
-            return size 
+            return size
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             return torch.distributed.get_world_size(
                 group=self.get_data_parallel_group(
@@ -1475,7 +1475,7 @@ class ParallelContext:
         """Return world size for the expert-model-parallel group."""
         size = self._global_parallel_world_sizes.get("ep", None)
         if size is not None:
-            return size 
+            return size
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             return torch.distributed.get_world_size(group=self.get_expert_model_parallel_group())
         else:
@@ -1510,7 +1510,7 @@ class ParallelContext:
         """Return world size for the expert tensor parallel group."""
         size = self._global_parallel_world_sizes.get("exp_tp", None)
         if size is not None:
-            return size 
+            return size
         # Use tensor parallel group world size for backward compability otherwise
         if not self.get_expert_tensor_parallel_group():
             return self.get_tensor_model_parallel_world_size()

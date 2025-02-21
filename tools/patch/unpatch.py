@@ -1,14 +1,15 @@
 import argparse
 import os
 import shutil
-from git.repo import Repo
+
 from common import (
     check_path,
-    process_commit_id,
-    git_init,
     crete_tmp_dir,
+    git_init,
+    process_commit_id,
     save_unpatch_to_tmp,
 )
+from git.repo import Repo
 
 path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

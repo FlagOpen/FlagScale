@@ -1,16 +1,16 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
 import argparse
-import os
 import json
+import os
 
 import torch
-
 from safetensors.torch import load_file, save_file
 
 
 def check_model(name, model):
     assert name in model, f"unexpected name {name}"
+
 
 def check_model_file(name, hf_models):
     """
@@ -28,8 +28,10 @@ def check_model_file(name, hf_models):
         raise Exception(f"unexpected name {name}")
     else:
         import warnings
+
         warnings.warn(f"unexpected name {name}")
         return None
+
 
 def is_chunked(name, chunk_names):
     for chunk_name in chunk_names:
@@ -235,9 +237,15 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
                 qkv_weight = torch.split(
                     mc_tensor, [hidden_dim, kv_projection_size, kv_projection_size]
                 )
-                file_name = check_model_file(f"{base}.self_attn.q_proj.weight", hf_models)
-                file_name = check_model_file(f"{base}.self_attn.k_proj.weight", hf_models)
-                file_name = check_model_file(f"{base}.self_attn.v_proj.weight", hf_models)
+                file_name = check_model_file(
+                    f"{base}.self_attn.q_proj.weight", hf_models
+                )
+                file_name = check_model_file(
+                    f"{base}.self_attn.k_proj.weight", hf_models
+                )
+                file_name = check_model_file(
+                    f"{base}.self_attn.v_proj.weight", hf_models
+                )
                 hf_models[file_name][f"{base}.self_attn.q_proj.weight"] = qkv_weight[0]
                 hf_models[file_name][f"{base}.self_attn.k_proj.weight"] = qkv_weight[1]
                 hf_models[file_name][f"{base}.self_attn.v_proj.weight"] = qkv_weight[2]
@@ -254,13 +262,17 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
                 hf_models[file_name][f"{base}.self_attn.k_proj.bias"] = qkv_bias[1]
                 hf_models[file_name][f"{base}.self_attn.v_proj.bias"] = qkv_bias[2]
             elif "self_attention.linear_proj.weight" in mc_name:
-                file_name = check_model_file(f"{base}.self_attn.o_proj.weight", hf_models)
+                file_name = check_model_file(
+                    f"{base}.self_attn.o_proj.weight", hf_models
+                )
                 hf_models[file_name][f"{base}.self_attn.o_proj.weight"] = mc_tensor
             elif "self_attention.linear_proj.bias" in mc_name:
                 file_name = check_model_file(f"{base}.self_attn.o_proj.bias", hf_models)
                 hf_models[file_name][f"{base}.self_attn.o_proj.bias"] = mc_tensor
             elif input_layer_norm_weight in mc_name:
-                file_name = check_model_file(f"{base}.input_layernorm.weight", hf_models)
+                file_name = check_model_file(
+                    f"{base}.input_layernorm.weight", hf_models
+                )
                 hf_models[file_name][f"{base}.input_layernorm.weight"] = mc_tensor
             elif "mlp.linear_fc1.weight" in mc_name:
                 mc_tensor = mc_tensor[deorder_gate_up_indices]
@@ -276,8 +288,12 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
                 hf_models[file_name][f"{base}.mlp.down_proj.weight"] = mc_tensor
 
             elif post_attention_layer_norm_weight in mc_name:
-                file_name = check_model_file(f"{base}.post_attention_layernorm.weight", hf_models)
-                hf_models[file_name][f"{base}.post_attention_layernorm.weight"] = mc_tensor
+                file_name = check_model_file(
+                    f"{base}.post_attention_layernorm.weight", hf_models
+                )
+                hf_models[file_name][
+                    f"{base}.post_attention_layernorm.weight"
+                ] = mc_tensor
 
             else:
                 raise ValueError(f"{name} is not converted.")
@@ -338,23 +354,37 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
             file_name = check_model_file(
                 f"{hf_base_name}.embeddings.position_embedding.weight", hf_models
             )
-            hf_models[file_name][f"{hf_base_name}.embeddings.position_embedding.weight"] = mc_tensor
+            hf_models[file_name][
+                f"{hf_base_name}.embeddings.position_embedding.weight"
+            ] = mc_tensor
 
         elif "vision_model.ln_post.weight" in mc_name:
-            file_name = check_model_file(f"{hf_base_name}.post_layernorm.weight", hf_models)
+            file_name = check_model_file(
+                f"{hf_base_name}.post_layernorm.weight", hf_models
+            )
             hf_models[file_name][f"{hf_base_name}.post_layernorm.weight"] = mc_tensor
 
         elif "vision_model.ln_post.bias" in mc_name:
-            file_name = check_model_file(f"{hf_base_name}.post_layernorm.bias", hf_models)
+            file_name = check_model_file(
+                f"{hf_base_name}.post_layernorm.bias", hf_models
+            )
             hf_models[file_name][f"{hf_base_name}.post_layernorm.bias"] = mc_tensor
 
         elif "vision_model.conv1.weight" in mc_name:
-            file_name = check_model_file(f"{hf_base_name}.embeddings.patch_embedding.weight", hf_models)
-            hf_models[file_name][f"{hf_base_name}.embeddings.patch_embedding.weight"] = mc_tensor
+            file_name = check_model_file(
+                f"{hf_base_name}.embeddings.patch_embedding.weight", hf_models
+            )
+            hf_models[file_name][
+                f"{hf_base_name}.embeddings.patch_embedding.weight"
+            ] = mc_tensor
 
         elif "vision_model.conv1.bias" in mc_name:
-            file_name = check_model_file(f"{hf_base_name}.embeddings.patch_embedding.bias", hf_models)
-            hf_models[file_name][f"{hf_base_name}.embeddings.patch_embedding.bias"] = mc_tensor
+            file_name = check_model_file(
+                f"{hf_base_name}.embeddings.patch_embedding.bias", hf_models
+            )
+            hf_models[file_name][
+                f"{hf_base_name}.embeddings.patch_embedding.bias"
+            ] = mc_tensor
 
         elif "vision_model.decoder.layers" in mc_name:
             layer_idx = mc_name.split(".")[3]
@@ -365,9 +395,15 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
                 qkv_weight = torch.split(
                     mc_tensor, [hidden_dim, kv_projection_size, kv_projection_size]
                 )
-                file_name = check_model_file(f"{base}.self_attn.q_proj.weight", hf_models)
-                file_name = check_model_file(f"{base}.self_attn.k_proj.weight", hf_models)
-                file_name = check_model_file(f"{base}.self_attn.v_proj.weight", hf_models)
+                file_name = check_model_file(
+                    f"{base}.self_attn.q_proj.weight", hf_models
+                )
+                file_name = check_model_file(
+                    f"{base}.self_attn.k_proj.weight", hf_models
+                )
+                file_name = check_model_file(
+                    f"{base}.self_attn.v_proj.weight", hf_models
+                )
                 hf_models[file_name][f"{base}.self_attn.q_proj.weight"] = qkv_weight[0]
                 hf_models[file_name][f"{base}.self_attn.k_proj.weight"] = qkv_weight[1]
                 hf_models[file_name][f"{base}.self_attn.v_proj.weight"] = qkv_weight[2]
@@ -385,11 +421,15 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
                 hf_models[file_name][f"{base}.self_attn.v_proj.bias"] = qkv_bias[2]
 
             elif "self_attention.linear_proj.weight" in mc_name:
-                file_name = check_model_file(f"{base}.self_attn.out_proj.weight", hf_models)
+                file_name = check_model_file(
+                    f"{base}.self_attn.out_proj.weight", hf_models
+                )
                 hf_models[file_name][f"{base}.self_attn.out_proj.weight"] = mc_tensor
 
             elif "self_attention.linear_proj.bias" in mc_name:
-                file_name = check_model_file(f"{base}.self_attn.out_proj.bias", hf_models)
+                file_name = check_model_file(
+                    f"{base}.self_attn.out_proj.bias", hf_models
+                )
                 hf_models[file_name][f"{base}.self_attn.out_proj.bias"] = mc_tensor
 
             elif input_layer_norm_weight in mc_name:
@@ -448,15 +488,16 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
     metadata = {"format": "pt"}
     # Ensure the output directory exists
     os.makedirs(output_path, exist_ok=True)
-    
+
     # Iterate through hf_models and save each value with metadata
     for file_name, data in hf_models.items():
         file_path = os.path.join(output_path, file_name)
-        save_file(data, file_path, metadata=metadata)  # save_file is assumed to accept metadata
+        save_file(
+            data, file_path, metadata=metadata
+        )  # save_file is assumed to accept metadata
         print(f"Saved {file_name} to {file_path} with metadata: {metadata}")
-    
-    print(f"All files saved successfully with metadata in {output_path}")
 
+    print(f"All files saved successfully with metadata in {output_path}")
 
 
 if __name__ == "__main__":

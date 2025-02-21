@@ -1,8 +1,9 @@
 import asyncio
 import warnings
-import numpy as np
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
+
+import numpy as np
 
 
 @dataclass

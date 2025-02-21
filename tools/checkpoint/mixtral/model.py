@@ -1,11 +1,13 @@
 import time
+
 from megatron.core.enums import ModelType
 
-model_type = ModelType.encoder_or_decoder # Megatron's model_type
+model_type = ModelType.encoder_or_decoder  # Megatron's model_type
 
 
 def get_hf_model(dtype, model_path=None, config=None):
     from transformers import AutoModelForCausalLM
+
     s_time = time.time()
     if model_path and not config:
         model = AutoModelForCausalLM.from_pretrained(
@@ -32,6 +34,7 @@ def get_hf_model(dtype, model_path=None, config=None):
 
 def get_mg_model(dtype, pre_process, post_process):
     from pretrain_gpt import model_provider
+
     s_time = time.time()
     model = model_provider(pre_process, post_process).to(dtype)
     print("> build megatron model elapsed time:", time.time() - s_time)

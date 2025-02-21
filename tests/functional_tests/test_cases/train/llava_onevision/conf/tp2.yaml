@@ -1,18 +1,18 @@
 defaults:
   - _self_
   - train: tp2
-  
+
 experiment:
   exp_name: tp2
   exp_dir: tests/functional_tests/test_cases/train/llava_onevision/results_test/tp2
   task:
-    type: train 
-    backend: megatron 
-    entrypoint: flagscale/train/train_llava_onevision.py 
+    type: train
+    backend: megatron
+    entrypoint: flagscale/train/train_llava_onevision.py
   runner:
     backend: torchrun
     ssh_port: null
-  shell_cmds: null 
+  shell_cmds: null
   cmds:
     before_start: cp -r ./megatron-energon/src/megatron/energon ./megatron/megatron
   envs:

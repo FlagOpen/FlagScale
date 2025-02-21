@@ -1,9 +1,9 @@
-import sys
-import copy
 import argparse
+import copy
 import importlib
-import torch.multiprocessing as mp
+import sys
 
+import torch.multiprocessing as mp
 from utils import validate_args
 
 
@@ -20,7 +20,7 @@ def load_plugin(plugin_type, name):
             print(e)
             sys.exit(f"Unable to load {plugin_type} plugin {name}. Exiting.")
 
-    if not hasattr(plugin, 'add_arguments'):
+    if not hasattr(plugin, "add_arguments"):
         sys.exit(f"{module_name} module is not a plugin. Exiting.")
 
     print(f"Loaded {module_name} as the {plugin_type}.")
@@ -28,27 +28,63 @@ def load_plugin(plugin_type, name):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Convert checkpoint",
-                                     allow_abbrev=False, conflict_handler='resolve')
+    parser = argparse.ArgumentParser(
+        description="Convert checkpoint", allow_abbrev=False, conflict_handler="resolve"
+    )
     # convert args
-    parser.add_argument('--model-type', type=str, default=[], nargs="+", required=True,
-                        choices=['aquila3_dense', 'aquila3_moe', 'mistral', 'mixtral', 'llama', 'deepseek_v3'],
-                        help='Type of the model.')
-    parser.add_argument('--loader', type=str, default='mcore', choices=['mcore', 'transformers'],
-                        help='Module name to load checkpoint, should be on python path')
-    parser.add_argument('--saver', type=str, default='mcore', choices=['mcore', 'transformers'],
-                        help='Module name to save checkpoint, shdoul be on python path')
-    parser.add_argument('--load-dir', type=str, required=True,
-                        help='Directory to load model checkpoint from')
-    parser.add_argument('--save-dir', type=str, required=True,
-                        help='Directory to save model checkpoint to')
-    parser.add_argument('--max-queue-size', type=int, default=50,
-                        help='Maximum number of tensors in the queue')
-    extend_cases = [['mistral', 'mixtral'], ['aquila3_dense', 'aquila3_moe']]
+    parser.add_argument(
+        "--model-type",
+        type=str,
+        default=[],
+        nargs="+",
+        required=True,
+        choices=[
+            "aquila3_dense",
+            "aquila3_moe",
+            "mistral",
+            "mixtral",
+            "llama",
+            "deepseek_v3",
+        ],
+        help="Type of the model.",
+    )
+    parser.add_argument(
+        "--loader",
+        type=str,
+        default="mcore",
+        choices=["mcore", "transformers"],
+        help="Module name to load checkpoint, should be on python path",
+    )
+    parser.add_argument(
+        "--saver",
+        type=str,
+        default="mcore",
+        choices=["mcore", "transformers"],
+        help="Module name to save checkpoint, shdoul be on python path",
+    )
+    parser.add_argument(
+        "--load-dir",
+        type=str,
+        required=True,
+        help="Directory to load model checkpoint from",
+    )
+    parser.add_argument(
+        "--save-dir",
+        type=str,
+        required=True,
+        help="Directory to save model checkpoint to",
+    )
+    parser.add_argument(
+        "--max-queue-size",
+        type=int,
+        default=50,
+        help="Maximum number of tensors in the queue",
+    )
+    extend_cases = [["mistral", "mixtral"], ["aquila3_dense", "aquila3_moe"]]
 
     known_args, _ = parser.parse_known_args()
-    loader = load_plugin('loader', known_args.loader)
-    saver = load_plugin('saver', known_args.saver)
+    loader = load_plugin("loader", known_args.loader)
+    saver = load_plugin("saver", known_args.saver)
 
     loader.add_arguments(parser)
     saver.add_arguments(parser)
@@ -63,7 +99,11 @@ def main():
     if len(args.model_type) == 1:
         saver_args.model_type = args.model_type[0]
     elif len(args.model_type) == 2:
-        assert args.model_type == ['mistral', 'mixtral', 'llama'], "Only support convert dense model mistral to sparse model mixtral"
+        assert args.model_type == [
+            "mistral",
+            "mixtral",
+            "llama",
+        ], "Only support convert dense model mistral to sparse model mixtral"
         saver_args.model_type = args.model_type[1]
     else:
         raise ValueError("")
@@ -75,7 +115,11 @@ def main():
     if len(args.model_type) == 1:
         loader_args.model_type = args.model_type[0]
     elif len(args.model_type) == 2:
-        assert args.model_type == ['mistral', 'mixtral', 'llama'], "Only support convert dense model mistral to sparse model mixtral"
+        assert args.model_type == [
+            "mistral",
+            "mixtral",
+            "llama",
+        ], "Only support convert dense model mistral to sparse model mixtral"
         loader_args.model_type = args.model_type[0]
     else:
         raise ValueError("")
@@ -85,5 +129,5 @@ def main():
     saver_proc.join()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

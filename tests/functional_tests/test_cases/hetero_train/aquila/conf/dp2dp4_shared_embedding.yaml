@@ -1,18 +1,18 @@
 defaults:
   - _self_
   - train: dp2dp4_shared_embedding
-  
+
 experiment:
   exp_name: dp2dp4_shared_embedding
   exp_dir: tests/functional_tests/test_cases/hetero_train/aquila/results_test/dp2dp4_shared_embedding
   task:
-    type: train 
-    backend: megatron 
-    entrypoint: flagscale/train/train_gpt.py 
+    type: train
+    backend: megatron
+    entrypoint: flagscale/train/train_gpt.py
   runner:
     backend: torchrun
     ssh_port: null
-  shell_cmds: null 
+  shell_cmds: null
   envs:
     HYDRA_FULL_ERROR: 1
     CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5"

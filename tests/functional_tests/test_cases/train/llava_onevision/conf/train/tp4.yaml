@@ -24,8 +24,8 @@ system:
 
 model:
   attention_backend: unfused
-  num_layers: 28  
-  hidden_size: 1536 
+  num_layers: 28
+  hidden_size: 1536
   ffn_hidden_size: 8960
   num_attention_heads: 12
   num_query_groups: 4
