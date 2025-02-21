@@ -13,4 +13,7 @@ tensorboard
 PyYAML
 pybind11==2.13.6
 transformers
-https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp312-cp312-linux_x86_64.whl
+# flash-attn may provide important feature support or performance improvement. Please install flash-attn >= 2.1.1, <= 2.7.3
+flash-attn==2.7.3
+# To install the latest stable version of Transformer Engine,
+git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.1
