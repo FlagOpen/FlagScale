@@ -1,4 +1,5 @@
 import os
+import sys
 from types import SimpleNamespace
 
 
@@ -10,7 +11,7 @@ def divisible(x, y):
 
 def beside(keys, strategy, history):
     """Compare strategy with history strategies Whether same besides given keys"""
-    from .search.searcher import __BUILT_IN_STRATEGY_DIMS__
+    from flagscale.runner.auto_tuner.search.searcher import __BUILT_IN_STRATEGY_DIMS__
 
     retrieval = []
     for task in history:
@@ -177,12 +178,11 @@ def convert_config_to_megatron_args(config, strategy):
     args.tensor_model_parallel_size = strategy["tensor_model_parallel_size"]
     if "padded_vocab_size" not in flagscale_args:
         # To append megatron path to PYTHONPATH
-        import sys
-
         autotuner_dir = os.path.dirname(__file__)
-        sys.path.insert(
-            0, os.path.join(os.path.dirname(os.path.dirname(autotuner_dir)), "megatron")
+        great_grandparent_dir = os.path.dirname(
+            os.path.dirname(os.path.dirname(autotuner_dir))
         )
+        sys.path.insert(0, os.path.join(great_grandparent_dir, "megatron"))
         from megatron.training.tokenizer.tokenizer import _vocab_size_with_padding
 
         args.rank = -1
