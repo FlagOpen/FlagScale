@@ -90,7 +90,6 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
             config = core_transformer_config_from_args(args)
 
     assert args.use_legacy_models is False
-    assert args.untie_embeddings_and_output_weights is True, "Current do not support share embeddings and lm head of main model."
     if args.use_legacy_models:
         model = megatron.legacy.model.GPTModel(
             config,

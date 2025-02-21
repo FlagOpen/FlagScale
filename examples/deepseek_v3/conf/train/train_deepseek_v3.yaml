@@ -58,6 +58,7 @@ model:
   position_embedding_type: rope
   untie_embeddings_and_output_weights: true
   no_position_embedding: true
+  no_rope_fusion: true
 
   # mla args ==================
   multi_latent_attention: true
