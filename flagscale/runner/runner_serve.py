@@ -12,13 +12,10 @@ from flagscale.runner.utils import (
     benchmark,
     dummy_random_input,
     get_free_port,
-    get_nnodes,
     get_nproc_per_node,
     logger,
     parse_hostfile,
     run_local_command,
-    run_scp_command,
-    run_ssh_command,
 )
 
 
