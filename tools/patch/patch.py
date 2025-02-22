@@ -5,6 +5,8 @@ import shutil
 from common import (
     check_branch_name,
     check_path,
+    decrypt_file,
+    encrypt_file,
     get_now_branch_name,
     git_init,
     process_commit_id,
@@ -39,6 +41,12 @@ def _add_auto_generate_args():
         default=None,
         help="The commit-id that want to patch.",
     )
+    group.add_argument(
+        "--key-path",
+        type=str,
+        default=None,
+        help="The path for storing public and private keys. Be careful not to upload to the Git repository.",
+    )
     args = parser.parse_args()
     return args
 
@@ -70,7 +78,7 @@ def check_hetero_txt(device_type, base_commit_id):
     return False
 
 
-def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
+def get_patch(repo, device_type, base_commit_id, current_commit_id=None, key_path=None):
     """The main function to get the patch file in homogeneous scenarios."""
     if repo is None:
         raise FileNotFoundError("Repo is None")
@@ -101,7 +109,7 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
 
     # Save .patch file to tmp directory.
     patch_name = "".join([base_commit_id, ".patch"])
-    file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
+    file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str, key_path)
     repo.git.stash()
     repo.git.checkout(base_commit_id)
 
@@ -115,10 +123,17 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
 
     # Check the different between in-place code and patch code.
     auto_check(
-        repo, file_name, base_commit_id, now_branch, origin_patch_branch, unpatch_branch
+        repo,
+        file_name,
+        base_commit_id,
+        now_branch,
+        origin_patch_branch,
+        unpatch_branch,
+        key_path,
     )
     shutil.rmtree(tmp_path)
     device_path, patch_path = get_output_path(device_type, base_commit_id)
+    print(device_path, patch_path)
 
     # Recover the patch/ directory.
     if not os.path.exists(patch_file_path):
@@ -127,11 +142,13 @@ def get_patch(repo, device_type, base_commit_id, current_commit_id=None):
         shutil.rmtree(os.path.join(path, "tools/patch"))
         shutil.copytree(tmp_patch_file_path, os.path.join(path, "tools/patch"))
     shutil.rmtree(tmp_patch_file_path)
-    update_patch(patch_str, patch_name, device_path, patch_path)
+    update_patch(patch_str, patch_name, device_path, patch_path, key_path=key_path)
     auto_commit(repo, device_type, device_path, current_commit_id)
 
 
-def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
+def get_hetero_patch(
+    repo, device_type, base_commit_id, current_commit_id=None, key_path=None
+):
     """The main function to get the patch file in heterogeneous scenarios."""
     global path
     if repo is None:
@@ -170,7 +187,7 @@ def get_hetero_patch(repo, device_type, base_commit_id, current_commit_id=None):
     patch_name = "".join([base_commit_id, ".patch"])
 
     # Create in-place code branch to compare different.
-    file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str)
+    file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str, key_path=None)
     patch_file_path = os.path.join(path, "tools/patch")
     repo.git.stash()
 
@@ -219,6 +236,7 @@ def update_patch(
     hetero_str=None,
     device_type=None,
     base_commit_id=None,
+    key_path=None,
 ):
     """Hetero_path is not None then hetero_str must be not None."""
     assert bool(hetero_path) == bool(hetero_str)
@@ -233,13 +251,28 @@ def update_patch(
     file_name = os.path.join(patch_path, patch_name)
     with open(file_name, "w") as f:
         f.write(patch_str)
+    if key_path is not None:
+        public_key_path = os.path.join(key_path, "public_key.pem")
+        encrypt_file(file_name, public_key_path)  # Encrypt the specified file
+        # Delete the original patch file
+        os.remove(file_name)
 
 
 def auto_check(
-    repo, file_name, base_commit_id, now_branch, origin_branch, unpatch_branch
+    repo,
+    file_name,
+    base_commit_id,
+    now_branch,
+    origin_branch,
+    unpatch_branch,
+    key_path=None,
 ):
     """Check if origin code and unpatch code have different."""
     repo.git.checkout(unpatch_branch)
+    if key_path is not None:
+        private_key_path = os.path.join(key_path, "private_key.pem")
+        decrypt_file(file_name, private_key_path)  # Decrypt the file
+        file_name = os.path.splitext(file_name)[0]  # This will remove the extension
     repo.git.am(file_name)
     diff_str = repo.git.diff(origin_branch, unpatch_branch)
     if len(diff_str) > 0:
@@ -311,7 +344,9 @@ def main():
         get_hetero_patch(repo, args.device_type, base_commit_id, current_commit_id)
     else:
         # Homogeneous scenarios.
-        get_patch(repo, args.device_type[0], base_commit_id, current_commit_id)
+        get_patch(
+            repo, args.device_type[0], base_commit_id, current_commit_id, args.key_path
+        )
     print("Patch successfully!")
 
 
