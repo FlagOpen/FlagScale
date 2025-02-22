@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
-import os
 import json
+import os
 import shlex
 import signal
 
@@ -188,21 +188,15 @@ def _generate_run_script_serve(
                         f.write(f"\n")
                         f.write(f"# worker nodes\n")
                     if node.type == "gpu":
-                        node_cmd = (
-                            f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
-                        )
+                        node_cmd = f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
 
                     elif node.type == "cpu":
-                        node_cmd = (
-                            f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
-                        )
+                        node_cmd = f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
                     else:
                         resource = json.dumps({node.type: node.slots}).replace(
                             '"', '\\"'
                         )
-                        node_cmd = (
-                            f"${{ray_path}} start --address={address} --resources='{resource}'"
-                        )
+                        node_cmd = f"${{ray_path}} start --address={address} --resources='{resource}'"
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
 
