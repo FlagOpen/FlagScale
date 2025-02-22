@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import os
+import json
 import shlex
 import signal
 
@@ -127,6 +128,7 @@ def _generate_run_script_serve(
             target_port = nodes[0][1].get("port")
 
             f.write(f"# clean nodes \n")
+            f.write(f"ray_path=$(realpath $(which ray))\n")
             if len(nodes) > 1:
                 for ip, node in nodes[1:]:
                     if not node.get("type", None):
@@ -137,7 +139,7 @@ def _generate_run_script_serve(
                         raise ValueError(
                             f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
                         )
-                    node_cmd = f"ray stop"
+                    node_cmd = f"${{ray_path}} stop"
 
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
@@ -151,9 +153,9 @@ def _generate_run_script_serve(
                         ssh_cmd = f"ssh -n {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
             if before_start_cmd:
-                f.write(f"{before_start_cmd} && ray stop\n")
+                f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
             else:
-                f.write(f"ray stop\n")
+                f.write(f"${{ray_path}} stop\n")
             f.write(f"\n")
 
             master_port = target_port if target_port else get_free_port()
@@ -173,14 +175,14 @@ def _generate_run_script_serve(
                     f.write(f"# start cluster\n")
                     f.write(f"# master node\n")
                     if node.type == "gpu":
-                        node_cmd = f"ray start --head --port={master_port} --num-gpus={node.slots}"
+                        node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
                     elif node.type == "cpu":
-                        node_cmd = f"ray start --head --port={master_port} --num-cpus={node.slots}"
+                        node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
                     else:
                         resource = json.dumps({node.type: node.slots}).replace(
                             '"', '\\"'
                         )
-                        node_cmd = f"ray start --head --port={master_port} --resources='{resource}'"
+                        node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
                     f.write(f"{node_cmd}\n")
@@ -192,19 +194,19 @@ def _generate_run_script_serve(
                         f.write(f"# worker nodes\n")
                     if node.type == "gpu":
                         node_cmd = (
-                            f"ray start --address={address} --num-gpus={node.slots}"
+                            f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
                         )
 
                     elif node.type == "cpu":
                         node_cmd = (
-                            f"ray start --address={address} --num-cpus={node.slots}"
+                            f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
                         )
                     else:
                         resource = json.dumps({node.type: node.slots}).replace(
                             '"', '\\"'
                         )
                         node_cmd = (
-                            f"ray start --address={address} --resources='{resource}'"
+                            f"${{ray_path}} start --address={address} --resources='{resource}'"
                         )
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
@@ -231,14 +233,14 @@ def _generate_run_script_serve(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
             if not device_type:
-                node_cmd = f"ray start --head"
+                node_cmd = f"${{ray_path}} start --head"
             if device_type == "gpu":
-                node_cmd = f"ray start --head --num-gpus={nproc_per_node}"
+                node_cmd = f"${{ray_path}} start --head --num-gpus={nproc_per_node}"
             elif device_type == "cpu":
-                node_cmd = f"ray start --head --num-cpus={nproc_per_node}"
+                node_cmd = f"${{ray_path}} start --head --num-cpus={nproc_per_node}"
             else:
                 resource = json.dumps({device_type: nproc_per_node}).replace('"', '\\"')
-                node_cmd = f"ray start --head --resources='{resource}'"
+                node_cmd = f"${{ray_path}} start --head --resources='{resource}'"
             if before_start_cmd:
                 node_cmd = f"{before_start_cmd} && " + node_cmd
             f.write(f"{node_cmd}\n")
