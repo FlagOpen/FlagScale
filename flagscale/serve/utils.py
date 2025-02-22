@@ -24,7 +24,7 @@ def load_once(func):
 
 
 @load_once
-def _load() -> None:
+def load_args() -> None:
     """Load configuration for cluster init"""
     parser = argparse.ArgumentParser(description="Start vllm serve with Ray")
 
@@ -64,7 +64,7 @@ def stop():
 
 def remote(*args, **kwargs):
     """Transform a function into a Ray task"""
-    _load()
+    load_args()
 
     def _merge_kwargs(func_name, **kwargs):
         new_kwargs = kwargs.copy()
@@ -79,9 +79,3 @@ def remote(*args, **kwargs):
     new_kwargs = _merge_kwargs(kwargs["name"], **kwargs)
 
     return ray.remote(*args, **new_kwargs)
-
-
-def prepare() -> None:
-    # Load config
-    _load()
-    return
