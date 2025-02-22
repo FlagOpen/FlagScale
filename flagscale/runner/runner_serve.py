@@ -325,6 +325,7 @@ class SSHServeRunner(RunnerBase):
         self.command_line_mode = getattr(
             self.config.serve.deploy, "command-line-mode", None
         )
+        self.keep_backend = getattr(self.config.serve.deploy, "keep-backend", None)
         self._prepare()
         self.host = None
         self.port = self.config.serve.model_args.vllm_model.port
@@ -335,6 +336,8 @@ class SSHServeRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
         if self.command_line_mode:
+            if self.keep_backend:
+                self.user_script = "flagscale/serve/run_backend.py"
             self.user_script = "flagscale/serve/run_vllm.py"
         elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
             self.user_script = entrypoint
