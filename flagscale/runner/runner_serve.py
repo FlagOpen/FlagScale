@@ -128,9 +128,9 @@ def _generate_run_script_serve(
         f.write(f'    export PYTHONPATH="$PYTHONPATH:{vllm_path}:{root_dir}"\n')
         f.write(f"fi\n")
         f.write(f"\n")
-        f.write(f"ray_path=$(realpath $(which ray))\n")
 
         if nodes:
+            f.write(f"ray_path=$(realpath $(which ray))\n")
             master_ip = nodes[0][0]
             target_port = nodes[0][1].get("port")
 
@@ -234,6 +234,7 @@ def _generate_run_script_serve(
                     )
             node_cmd = None
             if not getattr(config.serve.deploy, "keep-backend", None):
+                f.write(f"ray_path=$(realpath $(which ray))\n")
                 if not device_type:
                     node_cmd = f"${{ray_path}} start --head"
                 elif device_type == "gpu":
