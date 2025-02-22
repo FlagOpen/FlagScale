@@ -5,15 +5,14 @@ torchaudio
 --extra-index-url https://download.pytorch.org/whl/cu124
 
 # base
-hydra-core
-deepspeed
 accelerate
-matplotlib
-tensorboard
-PyYAML
-pybind11==2.13.6
-transformers
-# flash-attn may provide important feature support or performance improvement. Please install flash-attn >= 2.1.1, <= 2.7.3
-flash-attn==2.7.3
+cryptography
+deepspeed
 # To install the latest stable version of Transformer Engine,
 git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.1
+hydra-core
+matplotlib
+PyYAML
+pybind11==2.13.6
+tensorboard
+transformers

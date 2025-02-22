@@ -32,7 +32,13 @@ source ~/miniconda3/etc/profile.d/conda.sh
 
 # Create and activate Conda virtual environment
 # The Python version used has been written into the conda config
-conda create --name flagscale-${env} -y
+if conda env list | grep -q "${env}"; then
+    # Check if the environment already exists
+    echo "Conda environment '${env}' already exists."
+else
+    echo "Creating conda environment '${env}'..."
+    conda create --name "flagscale-${env}" python=$(python --version | awk '{print $2}') -y
+fi
 conda activate flagscale-${env}
 
 # Blinker 1.4 version is installed using the distutls installation tool, which is an old Python package installation method.
@@ -44,8 +50,14 @@ rm /usr/lib/python3/dist-packages/blinker-1.4.egg-info
 # Exit immediately if any command fails
 set -e
 
+# This command updates `setuptools` to the latest version, ensuring compatibility and access to the latest features for Python package management.
+pip install --upgrade setuptools
+
 # Navigate to requirements directory and install basic dependencies
 pip install -r ../requirements/requirements-common.txt
+# flash-attn may provide important feature support or performance improvement. Please install flash-attn >= 2.1.1, <= 2.7.3
+MAX_JOBS=$(nproc) pip install flash-attn==2.7.3 --no-build-isolation
+
 pip install -r ../requirements/requirements-dev.txt
 
 # If env equals 'train'
