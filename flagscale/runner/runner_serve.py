@@ -128,13 +128,13 @@ def _generate_run_script_serve(
         f.write(f'    export PYTHONPATH="$PYTHONPATH:{vllm_path}:{root_dir}"\n')
         f.write(f"fi\n")
         f.write(f"\n")
+        f.write(f"ray_path=$(realpath $(which ray))\n")
 
         if nodes:
             master_ip = nodes[0][0]
             target_port = nodes[0][1].get("port")
 
             f.write(f"# clean nodes \n")
-            f.write(f"ray_path=$(realpath $(which ray))\n")
             if len(nodes) > 1:
                 for ip, node in nodes[1:]:
                     if not node.get("type", None):
@@ -232,15 +232,18 @@ def _generate_run_script_serve(
                     raise ValueError(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
-            if not device_type:
-                node_cmd = f"${{ray_path}} start --head"
-            if device_type == "gpu":
-                node_cmd = f"${{ray_path}} start --head --num-gpus={nproc_per_node}"
-            elif device_type == "cpu":
-                node_cmd = f"${{ray_path}} start --head --num-cpus={nproc_per_node}"
-            else:
-                resource = json.dumps({device_type: nproc_per_node}).replace('"', '\\"')
-                node_cmd = f"${{ray_path}} start --head --resources='{resource}'"
+            if not getattr(config.serve.deploy, "keep-backend", None):
+                if not device_type:
+                    node_cmd = f"${{ray_path}} start --head"
+                elif device_type == "gpu":
+                    node_cmd = f"${{ray_path}} start --head --num-gpus={nproc_per_node}"
+                elif device_type == "cpu":
+                    node_cmd = f"${{ray_path}} start --head --num-cpus={nproc_per_node}"
+                else:
+                    resource = json.dumps({device_type: nproc_per_node}).replace(
+                        '"', '\\"'
+                    )
+                    node_cmd = f"${{ray_path}} start --head --resources='{resource}'"
             if before_start_cmd:
                 node_cmd = f"{before_start_cmd} && " + node_cmd
             f.write(f"{node_cmd}\n")
@@ -338,7 +341,8 @@ class SSHServeRunner(RunnerBase):
         if self.command_line_mode:
             if self.keep_backend:
                 self.user_script = "flagscale/serve/run_backend.py"
-            self.user_script = "flagscale/serve/run_vllm.py"
+            else:
+                self.user_script = "flagscale/serve/run_vllm.py"
         elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
             self.user_script = entrypoint
         elif entrypoint is None:
