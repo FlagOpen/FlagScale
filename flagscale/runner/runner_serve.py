@@ -232,6 +232,7 @@ def _generate_run_script_serve(
                     raise ValueError(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
+            node_cmd = None
             if not getattr(config.serve.deploy, "keep-backend", None):
                 if not device_type:
                     node_cmd = f"${{ray_path}} start --head"
@@ -245,8 +246,13 @@ def _generate_run_script_serve(
                     )
                     node_cmd = f"${{ray_path}} start --head --resources='{resource}'"
             if before_start_cmd:
-                node_cmd = f"{before_start_cmd} && " + node_cmd
-            f.write(f"{node_cmd}\n")
+                node_cmd = (
+                    f"{before_start_cmd} && {node_cmd}"
+                    if node_cmd
+                    else before_start_cmd
+                )
+            if node_cmd:
+                f.write(f"{node_cmd}\n")
 
         f.write(f"mkdir -p {logging_config.log_dir}\n")
         f.write(f"mkdir -p {logging_config.pids_dir}\n")
