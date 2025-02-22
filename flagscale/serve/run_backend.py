@@ -81,6 +81,7 @@ def vllm_serve(args):
 
 
 def main():
+    serve.load_args()
     backend = serve.task_config.experiment.runner.get("backend", None)
     print(
         "================== task_config ====================",
