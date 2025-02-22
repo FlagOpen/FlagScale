@@ -25,8 +25,8 @@ experiment:
     NVTE_FUSED_ATTN: 0
     CUDNN_BENCHMARK: "false"
     CUDNN_DETERMINISTIC: "true"
-  # cmds:
-  #   before_start: source /root/miniconda3/bin/activate flagscale
+  cmds:
+    before_start: source /root/miniconda3/bin/activate flagscale-train
 action: run
 
 hydra:

@@ -11,3 +11,6 @@ log_file/*
 outputs
 *.log
 *.out
+
+# test results
+tests/functional_tests/test_cases/*/*/results_test
