@@ -2,5 +2,6 @@
 hydre-core
 numpy
 psutil
+pytest
 PyYaml
 tqdm
