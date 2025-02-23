@@ -233,7 +233,7 @@ def _generate_run_script_serve(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
             node_cmd = None
-            if not getattr(config.serve.deploy, "keep-backend", None):
+            if getattr(config.serve.deploy, "use_native_serve", True):
                 f.write(f"ray_path=$(realpath $(which ray))\n")
                 if not device_type:
                     node_cmd = f"${{ray_path}} start --head"
