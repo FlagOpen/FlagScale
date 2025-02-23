@@ -130,11 +130,11 @@ def _generate_run_script_serve(
         f.write(f"\n")
 
         if nodes:
+            f.write(f"ray_path=$(realpath $(which ray))\n")
             master_ip = nodes[0][0]
             target_port = nodes[0][1].get("port")
 
             f.write(f"# clean nodes \n")
-            f.write(f"ray_path=$(realpath $(which ray))\n")
             if len(nodes) > 1:
                 for ip, node in nodes[1:]:
                     if not node.get("type", None):
@@ -232,18 +232,28 @@ def _generate_run_script_serve(
                     raise ValueError(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
-            if not device_type:
-                node_cmd = f"${{ray_path}} start --head"
-            if device_type == "gpu":
-                node_cmd = f"${{ray_path}} start --head --num-gpus={nproc_per_node}"
-            elif device_type == "cpu":
-                node_cmd = f"${{ray_path}} start --head --num-cpus={nproc_per_node}"
-            else:
-                resource = json.dumps({device_type: nproc_per_node}).replace('"', '\\"')
-                node_cmd = f"${{ray_path}} start --head --resources='{resource}'"
+            node_cmd = None
+            if getattr(config.serve.deploy, "use_native_serve", True):
+                f.write(f"ray_path=$(realpath $(which ray))\n")
+                if not device_type:
+                    node_cmd = f"${{ray_path}} start --head"
+                elif device_type == "gpu":
+                    node_cmd = f"${{ray_path}} start --head --num-gpus={nproc_per_node}"
+                elif device_type == "cpu":
+                    node_cmd = f"${{ray_path}} start --head --num-cpus={nproc_per_node}"
+                else:
+                    resource = json.dumps({device_type: nproc_per_node}).replace(
+                        '"', '\\"'
+                    )
+                    node_cmd = f"${{ray_path}} start --head --resources='{resource}'"
             if before_start_cmd:
-                node_cmd = f"{before_start_cmd} && " + node_cmd
-            f.write(f"{node_cmd}\n")
+                node_cmd = (
+                    f"{before_start_cmd} && {node_cmd}"
+                    if node_cmd
+                    else before_start_cmd
+                )
+            if node_cmd:
+                f.write(f"{node_cmd}\n")
 
         f.write(f"mkdir -p {logging_config.log_dir}\n")
         f.write(f"mkdir -p {logging_config.pids_dir}\n")
@@ -323,7 +333,10 @@ class SSHServeRunner(RunnerBase):
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
         self.command_line_mode = getattr(
-            self.config.serve.deploy, "command-line-mode", None
+            self.config.serve.deploy, "command_line_mode", None
+        )
+        self.use_native_serve = getattr(
+            self.config.serve.deploy, "use_native_serve", True
         )
         self._prepare()
         self.host = None
@@ -335,7 +348,10 @@ class SSHServeRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
         if self.command_line_mode:
-            self.user_script = "flagscale/serve/run_vllm.py"
+            if not self.use_native_serve:
+                self.user_script = "flagscale/serve/run_serve_engine.py"
+            else:
+                self.user_script = "flagscale/serve/run_vllm.py"
         elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
             self.user_script = entrypoint
         elif entrypoint is None:
@@ -344,9 +360,16 @@ class SSHServeRunner(RunnerBase):
             raise ValueError(
                 f"Invalid config entrypoint: {entrypoint}, must be a python file path or null."
             )
-        self.resources = parse_hostfile(
-            self.config.experiment.runner.get("hostfile", None)
-        )
+        hostfile_path = self.config.experiment.runner.get("hostfile", None)
+        if hostfile_path:
+            if os.path.isabs(hostfile_path):
+                hostfile_path = hostfile_path
+            else:
+                hostfile_path = os.path.join(os.getcwd(), hostfile_path)
+            if not os.path.exists(hostfile_path):
+                raise ValueError(f"The hostfile {hostfile_path} does not exist")
+
+        self.resources = parse_hostfile(hostfile_path)
         if self.resources:
             OmegaConf.set_struct(self.config, False)
             self.config.serve["nodes"] = list(self.resources.items())

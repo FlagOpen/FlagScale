@@ -83,7 +83,7 @@ model_args:
       - enable-chunked-prefill
 
 deploy:
-  command-line-mode: true
+  command_line_mode: true
   models:
     vllm_model:
       num_gpus: 1
