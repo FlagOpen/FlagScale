@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
-import os
 import json
+import os
 import shlex
 import signal
 
@@ -109,6 +109,12 @@ def _generate_run_script_serve(
     else:
         before_start_cmd = ""
     cmd += f" --log-dir={logging_config.log_dir}"
+    try:
+        import vllm
+
+        vllm_path = os.path.dirname(vllm.__path__[0])
+    except Exception as e:
+        vllm_path = f"{root_dir}/vllm"
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("set -x\n")
@@ -117,9 +123,9 @@ def _generate_run_script_serve(
         f.write(f"\n")
 
         f.write(f'if [ -z "$PYTHONPATH" ]; then\n')
-        f.write(f"    export PYTHONPATH={root_dir}\n")
+        f.write(f"    export PYTHONPATH={vllm_path}:{root_dir}\n")
         f.write(f"else\n")
-        f.write(f'    export PYTHONPATH="$PYTHONPATH:{root_dir}"\n')
+        f.write(f'    export PYTHONPATH="$PYTHONPATH:{vllm_path}:{root_dir}"\n')
         f.write(f"fi\n")
         f.write(f"\n")
 
@@ -193,21 +199,15 @@ def _generate_run_script_serve(
                         f.write(f"\n")
                         f.write(f"# worker nodes\n")
                     if node.type == "gpu":
-                        node_cmd = (
-                            f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
-                        )
+                        node_cmd = f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
 
                     elif node.type == "cpu":
-                        node_cmd = (
-                            f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
-                        )
+                        node_cmd = f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
                     else:
                         resource = json.dumps({node.type: node.slots}).replace(
                             '"', '\\"'
                         )
-                        node_cmd = (
-                            f"${{ray_path}} start --address={address} --resources='{resource}'"
-                        )
+                        node_cmd = f"${{ray_path}} start --address={address} --resources='{resource}'"
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
 
