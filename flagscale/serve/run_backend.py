@@ -34,11 +34,6 @@ def vllm_serve(args):
 def main():
     serve.load_args()
     backend = serve.task_config.experiment.task.get("backend", None)
-    print(
-        "================== task_config ====================",
-        serve.task_config,
-        flush=True,
-    )
     if backend == "vllm":
         return_code = vllm_serve(serve.task_config)
     else:

@@ -12,7 +12,6 @@ model_args:
 
 deploy:
   command-line-mode: true
-  keep-backend: true
   models:
     vllm_model:
       num_gpus: 1
