@@ -5,6 +5,12 @@ import sys
 
 from flagscale import serve
 
+# Compatible with both command-line execution and source code execution.
+try:
+    import flag_scale
+except Exception as e:
+    pass
+
 
 def vllm_serve(args):
     vllm_args = args["serve"]["model_args"]["vllm_model"]
