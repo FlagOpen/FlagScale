@@ -1,5 +1,5 @@
 # Install outside of the conda environment
-hydre-core
+hydra-core
 numpy
 psutil
 pytest
