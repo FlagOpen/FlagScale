@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+
 import click
 
 from run import main as run_main
@@ -84,22 +85,41 @@ def serve(model_name, yaml_path=None):
     ]
     run_main()
 
+
 @flagscale.command()
 # Input the name of the Docker image (required)
-@click.argument("image_name", type=str)
+@click.option(
+    "--image",
+    "image_name",
+    required=True,
+    type=str,
+    help="The name of the Docker image",
+)
 # Input the address of the Git repository (required)
-@click.argument("model_name", type=str)
+@click.option(
+    "--ckpt",
+    "ckpt_name",
+    required=True,
+    type=str,
+    help="The address of the ckpt's git repository",
+)
 # Input the address of the local directory (optional)
-@click.argument("model_path", type=click.Path(), required=False)
-def pull(image_name, model_name, model_path):
-    # If model_path is not provided, use the default download directory
-    if model_path is None:
-        model_path = os.path.join(os.getcwd(), "model_download")
+@click.option(
+    "--ckpt-path",
+    "ckpt_path",
+    type=click.Path(),
+    required=False,
+    help="The path to save ckpt",
+)
+def pull(image_name, ckpt_name, ckpt_path):
+    # If ckpt_path is not provided, use the default download directory
+    if ckpt_path is None:
+        ckpt_path = os.path.join(os.getcwd(), "model_download")
 
     # Check and create the directory
-    if not os.path.exists(model_path):
-        os.makedirs(model_path)
-        print(f"Directory {model_path} created.")
+    if not os.path.exists(ckpt_path):
+        os.makedirs(ckpt_path)
+        print(f"Directory {ckpt_path} created.")
 
     # Pull the Docker image
     try:
@@ -112,21 +132,22 @@ def pull(image_name, model_name, model_path):
 
     # Clone the Git repository
     try:
-        print(f"Cloning Git repository: {model_name} into {model_path}...")
-        subprocess.run(["git", "clone", model_name, model_path], check=True)
-        print(f"Successfully cloned Git repository: {model_name}")
+        print(f"Cloning Git repository: {ckpt_name} into {ckpt_path}...")
+        subprocess.run(["git", "clone", ckpt_name, ckpt_path], check=True)
+        print(f"Successfully cloned Git repository: {ckpt_name}")
     except subprocess.CalledProcessError:
-        print(f"Failed to clone Git repository: {model_name}")
+        print(f"Failed to clone Git repository: {ckpt_name}")
         return
 
     # Pull large files using Git LFS
     print("Pulling Git LFS files...")
     try:
-        subprocess.run(["git", "lfs", "pull"], cwd=model_path, check=True)
+        subprocess.run(["git", "lfs", "pull"], cwd=ckpt_path, check=True)
         print("Successfully pulled Git LFS files")
     except subprocess.CalledProcessError:
         print("Failed to pull Git LFS files")
         return
+
 
 if __name__ == "__main__":
     flagscale()
