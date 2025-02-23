@@ -11,4 +11,5 @@ model_args:
       - enable-chunked-prefill
 
 deploy:
-  command_line_mode: true
+  command_line_mode: true # 注意下划线 _
+  use_native_serve: false
