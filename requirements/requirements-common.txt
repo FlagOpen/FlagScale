@@ -8,8 +8,6 @@ torchaudio
 accelerate
 cryptography
 deepspeed
-# To install the latest stable version of Transformer Engine,
-git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.1
 hydra-core
 matplotlib
 PyYAML

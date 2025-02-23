@@ -1,5 +1,7 @@
 #!/bin/bash
 
+pip install PyYaml
+
 # Initialize the variable
 env=""
 
@@ -32,11 +34,11 @@ source ~/miniconda3/etc/profile.d/conda.sh
 
 # Create and activate Conda virtual environment
 # The Python version used has been written into the conda config
-if conda env list | grep -q "${env}"; then
+if conda env list | grep -q "flagscale-${env}"; then
     # Check if the environment already exists
-    echo "Conda environment '${env}' already exists."
+    echo "Conda environment 'flagscale-${env}' already exists."
 else
-    echo "Creating conda environment '${env}'..."
+    echo "Creating conda environment 'flagscale-${env}'..."
     conda create --name "flagscale-${env}" python=$(python --version | awk '{print $2}') -y
 fi
 conda activate flagscale-${env}
@@ -55,9 +57,18 @@ pip install --upgrade setuptools
 
 # Navigate to requirements directory and install basic dependencies
 pip install -r ../requirements/requirements-common.txt
-# flash-attn may provide important feature support or performance improvement. Please install flash-attn >= 2.1.1, <= 2.7.3
-MAX_JOBS=$(nproc) pip install flash-attn==2.7.3 --no-build-isolation
 
+# TransformerEngine
+# Megatron-LM requires fTE >= 2.1.0.
+git clone --branch release_v2.1 --recursive https://github.com/NVIDIA/TransformerEngine.git
+cd TransformerEngine
+export NVTE_FRAMEWORK=pytorch   # Optionally set framework
+pip install .                   # Build and install
+cd ..
+rm -r ./TransformerEngine
+
+# Megatron-LM requires flash-attn >= 2.1.1, <= 2.7.3
+MAX_JOBS=$(nproc) pip install flash-attn==2.7.3 --no-build-isolation
 pip install -r ../requirements/requirements-dev.txt
 
 # If env equals 'train'
