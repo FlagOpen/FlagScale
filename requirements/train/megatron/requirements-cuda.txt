@@ -1,7 +1,7 @@
-nltk==3.8.1
-numpy==1.23.2
-s3fs
-git+https://github.com/fanshiqing/grouped_gemm@v1.1.4
 git+https://github.com/Dao-AILab/causal-conv1d.git@v1.2.2.post1
+grouped-gemm==0.1.4
+mock
+nltk==3.8.1
+s3fs
 
 -r ../../../megatron/requirements/pytorch_24.10/requirements.txt

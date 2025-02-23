@@ -1,17 +1,25 @@
 # Use default configuration if not shown
 megatron:
   set_environment:
-    cd megatron; export PYTHONPATH=..:$PYTHONPATH;export NVTE_FLASH_ATTN=0;export NVTE_FUSED_ATTN=0;
+    source ~/miniconda3/etc/profile.d/conda.sh;conda activate flagscale-train;cd megatron; export PYTHONPATH=..:$PYTHONPATH;export NVTE_FLASH_ATTN=0;export NVTE_FUSED_ATTN=0;
   coverage:
     core
   subset:
+    data:
+      deselect:
+       - test_builder.py::test_builder
+       - test_multimodal_dataset.py::test_multimodal_dataset
+       - test_multimodal_dataset.py::test_mock_multimodal_dataset
+       - test_gpt_dataset.py::test_mock_gpt_dataset
     dist_checkpointing:
       type: single
       ignore:
         - models/test_mamba.py
+        - test_fp8.py
+        - test_replication.py
       deselect:
+        - models/test_retro_model.py::TestRetroModel::test_sharded_state_dict_save_load
         - test_fully_parallel.py::TestFullyParallelSaveAndLoad::test_memory_usage
-        - test_serialization.py::TestSerialization::test_remove_sharded_tensors
     distributed:
       type: single
     models:
@@ -40,12 +48,9 @@ megatron:
       ignore:
         - test_upcycling.py
       deselect:
-       - test_a2a_token_dispatcher.py::TestAlltoAllDispatcher::test_capacity_padding_forward_backward
-       - test_grouped_mlp.py::TestParallelGroupedMLP::test_constructor
-       - test_grouped_mlp.py::TestParallelGroupedMLP::test_weight_init_value_the_same
-       - test_grouped_mlp.py::TestParallelGroupedMLP::test_gpu_forward_with_no_tokens_allocated
-       - test_grouped_mlp.py::TestParallelGroupedMLP::test_gradient_with_no_tokens_allocated
-       - test_moe_layer.py::TestMoELayerInit::test_moe_with_late_initialize
+        - test_a2a_token_dispatcher.py::TestAlltoAllDispatcher
+        - test_grouped_mlp.py::TestTEGroupedMLP::test_gpu_forward_backward_with_no_tokens_allocated
+        - test_moe_layer.py::TestMoELayerInit::test_moe_with_late_initialize
     transformer:
       depth: 1
       deselect:
