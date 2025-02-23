@@ -1,6 +1,6 @@
 import os
+import subprocess
 import sys
-
 import click
 
 from run import main as run_main
@@ -84,6 +84,49 @@ def serve(model_name, yaml_path=None):
     ]
     run_main()
 
+@flagscale.command()
+# Input the name of the Docker image (required)
+@click.argument("image_name", type=str)
+# Input the address of the Git repository (required)
+@click.argument("model_name", type=str)
+# Input the address of the local directory (optional)
+@click.argument("model_path", type=click.Path(), required=False)
+def pull(image_name, model_name, model_path):
+    # If model_path is not provided, use the default download directory
+    if model_path is None:
+        model_path = os.path.join(os.getcwd(), "model_download")
+
+    # Check and create the directory
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+        print(f"Directory {model_path} created.")
+
+    # Pull the Docker image
+    try:
+        print(f"Pulling Docker image: {image_name}...")
+        subprocess.run(["docker", "pull", image_name], check=True)
+        print(f"Successfully pulled Docker image: {image_name}")
+    except subprocess.CalledProcessError:
+        print(f"Failed to pull Docker image: {image_name}")
+        return
+
+    # Clone the Git repository
+    try:
+        print(f"Cloning Git repository: {model_name} into {model_path}...")
+        subprocess.run(["git", "clone", model_name, model_path], check=True)
+        print(f"Successfully cloned Git repository: {model_name}")
+    except subprocess.CalledProcessError:
+        print(f"Failed to clone Git repository: {model_name}")
+        return
+
+    # Pull large files using Git LFS
+    print("Pulling Git LFS files...")
+    try:
+        subprocess.run(["git", "lfs", "pull"], cwd=model_path, check=True)
+        print("Successfully pulled Git LFS files")
+    except subprocess.CalledProcessError:
+        print("Failed to pull Git LFS files")
+        return
 
 if __name__ == "__main__":
     flagscale()
