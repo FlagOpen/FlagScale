@@ -34,12 +34,16 @@ Vendors must ensure the correctness of the adapted code, and in the future, Flag
 
 ```
 cd FlagScale
-python tools/patch/patch.py --device-type A_X100 --base-commit-id aaaa --current-commit-id bbbb
+python tools/patch/patch.py --device-type A_X100 --base-commit-id aaaa --current-commit-id bbbb [--key-path <KEY_PATH>]
 ```
 
 * `device-type`: Chip type.
 * `base-commit-id`: The FlagScale commit ID based during vendor adaptation.
 * `current-commit-id`: The commit ID after local modifications.
+* `key-path`: Optional, used to store the key path when encrypting a patch. If not entered, the patch will not be encrypted.
+NOTE:
+1. Do not set `key-path`  as a path within the warehouse.
+2. Please keep your key properly and do not disclose it to ensure the security of your code and data.
 
 After generating the patch, the file structure will appear as follows. You can see that Vendor A’s adaptation code is placed in the `FlagScale/hardware/A_X100` directory, under a folder named after the `base-commit-id` (i.e., aaaa). The patch file contains the actual adaptation content, with the `base-commit-id` being the name of the patch file. If the `current-commit-id` option is not provided, the tool defaults to using the latest commit ID of the current branch as the `current-commit-id`.
 
@@ -50,10 +54,11 @@ FlagScale/
 ├── hardware/
 │   └── A_X100/
 │       └── aaaa/
-│           └── aaaa.patch
+│           └── aaaa.patch or aaaa.patch.encrypted(If encrypted)
 ```
 
 3. Submit Patch: After the tool successfully generates the patch, you can directly submit a pull request to the FlagScale main branch. The commit message should follow the commit message of the current-commit-id.
+NOTE: Before submitting the patch, please manually check to avoid uploading key or unencrypted patche.
 
 #### Heterogeneous Scenario
 
@@ -106,6 +111,7 @@ python tools/patch/unpatch.py --device-type A_X100 --commit-id aaaa --dir build
 * `device-type`: Chip type.
 * `commit-id`: The commit id to unpatch.
 * `dir`: The directory path to place the FlagScale files after unpatching.
+* `key-path`: Optional, used to decrypt the patch, with the same path as encryption. When not entered, the patch will not be decrypted.
 
 The generated code structure is as follows. If `dir` is not provided, the tool defaults to placing the generated code in the FlagScale source directory.
 
@@ -120,7 +126,7 @@ FlagScale/
 |-- hardware
 |   |-- A_X100/
 |       |-- aaaa/
-|           |-- aaaa.patch
+|           |-- aaaa.patch or aaaa.patch.encrypted(If encrypted)
 |   |-- B_Y100/
 |       |-- aaaa/
 |           |-- aaaa.patch

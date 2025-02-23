@@ -11,6 +11,12 @@ import ray
 from dag_utils import check_and_get_port
 from omegaconf import OmegaConf
 
+# Compatible with both command-line execution and source code execution.
+try:
+    import flag_scale
+except Exception as e:
+    pass
+
 from flagscale import serve
 
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
