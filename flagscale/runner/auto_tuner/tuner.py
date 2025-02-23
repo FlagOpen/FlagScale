@@ -6,11 +6,11 @@ import time
 
 from omegaconf import DictConfig, OmegaConf
 
-from .generate import Generator, ServeGenerator
-from .platform import set_jiuding_platform_args
-from .prune import Pruner
-from .record import Recorder, ServeRecorder
-from .search import Searcher, ServeSearcher
+from flagscale.runner.auto_tuner.generate import Generator, ServeGenerator
+from flagscale.runner.auto_tuner.platform import set_jiuding_platform_args
+from flagscale.runner.auto_tuner.prune.pruner import Pruner
+from flagscale.runner.auto_tuner.record.recorder import Recorder, ServeRecorder
+from flagscale.runner.auto_tuner.search.searcher import Searcher, ServeSearcher
 from flagscale.runner.runner_base import JobStatus
 from flagscale.runner.runner_serve import SSHServeRunner
 from flagscale.runner.runner_train import SSHTrainRunner

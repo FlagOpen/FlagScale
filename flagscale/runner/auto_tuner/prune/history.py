@@ -1,6 +1,6 @@
 import logging
 
-from ..utils import beside, compare_by_recompute
+from flagscale.runner.auto_tuner.utils import beside, compare_by_recompute
 
 _HISTORY_BASED_PRUNE_FUNC = []
 logger = logging.getLogger("FlagScale-AutoTuner")

@@ -1,6 +1,6 @@
 import pytest
 
-from flagscale.runner.runner_utils import parse_hostfile
+from flagscale.runner.utils import parse_hostfile
 
 
 @pytest.fixture

@@ -5,23 +5,18 @@ import os
 import shlex
 import signal
 
-import hydra
 import psutil
-from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.runner_base import JobStatus, RunnerBase
-from flagscale.runner.runner_utils import (
+from flagscale.runner.utils import (
     benchmark,
     dummy_random_input,
     get_free_port,
-    get_nnodes,
     get_nproc_per_node,
     logger,
     parse_hostfile,
     run_local_command,
-    run_scp_command,
-    run_ssh_command,
 )
 
 

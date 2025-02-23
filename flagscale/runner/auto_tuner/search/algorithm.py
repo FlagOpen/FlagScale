@@ -1,5 +1,11 @@
 from abc import ABC, abstractmethod
 
+from flagscale.runner.auto_tuner.utils import (
+    sort_by_memory,
+    sort_by_memory_model,
+    sort_by_performance,
+)
+
 
 class Algo(ABC):
     def __init__(self, strategies, config):
@@ -26,20 +32,13 @@ class GridAlgo(Algo):
 
     def checkout(self, mode):
         if mode == "memory":
-            from ..utils import sort_by_memory
-
             if self.idx > 0 and self.idx < len(self.strategies):
                 self.strategies = self.strategies[: self.idx] + sorted(
                     self.strategies[self.idx :], key=sort_by_memory
                 )
         elif mode == "memory_model":
-            from ..utils import sort_by_memory_model
-
             self.strategies = sorted(self.strategies, key=sort_by_memory_model)
-
         elif mode == "performance":
-            from ..utils import sort_by_performance
-
             if self.idx > 0 and self.idx < len(self.strategies):
                 self.strategies = self.strategies[: self.idx] + sorted(
                     self.strategies[self.idx :], key=sort_by_performance

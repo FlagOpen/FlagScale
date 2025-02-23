@@ -3,7 +3,9 @@ import itertools
 import logging
 import time
 
-from ..utils import divisible
+from flagscale.runner.auto_tuner.memory_model import default_model
+from flagscale.runner.auto_tuner.search.algorithm import GridAlgo
+from flagscale.runner.auto_tuner.utils import divisible
 
 __BUILT_IN_STRATEGY_DIMS__ = [
     "data_parallel_size",
@@ -63,12 +65,11 @@ class Searcher:
                 raise NotImplementedError(
                     "The memory model {} is not implemented yet.".format(model_name)
                 )
-            from ..memory_model import default_model
 
             for strategy in self.strategies:
                 strategy["memory_model"] = default_model(strategy, self.config)
                 self.logger.info(
-                    "Searcher: strategy {} memory model is {} MB".format(
+                    "Searcher: strategy is {}, memory model is {} MB".format(
                         strategy, strategy["memory_model"]
                     )
                 )
@@ -269,8 +270,6 @@ class Searcher:
     def build_algo(self, strategies, config):
         name = self.config.experiment.auto_tuner.algo.name
         if name == "grid":
-            from .algorithm import GridAlgo
-
             return GridAlgo(strategies, self.config)
         else:
             raise NotImplementedError("Currently only grid search is supported.")
