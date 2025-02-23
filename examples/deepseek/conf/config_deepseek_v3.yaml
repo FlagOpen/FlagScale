@@ -10,7 +10,7 @@ experiment:
     backend: vllm
     entrypoint: null
   runner:
-    hostfile: examples/deepseek/conf/hostfile.txt # absolute path to hostfile
+    hostfile: examples/deepseek/conf/hostfile.txt
     docker: ds
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1

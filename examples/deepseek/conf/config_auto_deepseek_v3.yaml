@@ -12,7 +12,7 @@ experiment:
   runner:
     nnodes: 2
     nproc_per_node: 8
-    hostfile: examples/deepseek/conf/hostfile.txt # absolute path to hostfile
+    hostfile: examples/deepseek/conf/hostfile.txt
     docker: ds
   auto_tuner:
     space:

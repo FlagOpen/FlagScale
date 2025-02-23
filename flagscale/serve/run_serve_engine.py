@@ -33,13 +33,13 @@ def vllm_serve(args):
 
 def main():
     serve.load_args()
-    backend = serve.task_config.experiment.task.get("backend", None)
-    if backend == "vllm":
+    engine = serve.task_config.experiment.task.get("inference_engine", None)
+    if engine == "vllm":
         return_code = vllm_serve(serve.task_config)
     else:
-        raise ValueError(f"Unsupported backend: {backend}")
+        raise ValueError(f"Unsupported backend: {engine}")
 
-    logger.info(f"[Serve]: {backend} serve exited with return code: {return_code}")
+    logger.info(f"[Serve]: {engine} serve exited with return code: {return_code}")
 
 
 if __name__ == "__main__":
