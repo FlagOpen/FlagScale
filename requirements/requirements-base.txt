@@ -1,0 +1,6 @@
+# Install outside of the conda environment
+hydre-core
+numpy
+psutil
+PyYaml
+tqdm
