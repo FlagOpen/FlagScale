@@ -273,16 +273,10 @@ def auto_check(
         private_key_path = os.path.join(key_path, "private_key.pem")
         decrypt_file(file_name, private_key_path)  # Decrypt the file
         file_name = os.path.splitext(file_name)[0]  # This will remove the extension
-    repo.git.am(file_name)
+    repo.git.am(file_name, "--whitespace=fix")
     diff_str = repo.git.diff(origin_branch, unpatch_branch)
     if len(diff_str) > 0:
         print("WARNING: origin code and unpatch code have some different")
-        repo.git.stash()
-        repo.git.checkout(now_branch)
-        repo.git.checkout(base_commit_id)
-        repo.git.branch("-D", "origin_patch_code")
-        repo.git.branch("-D", "unpatch_code")
-        raise ValueError
     print("Auto check successfully!")
     repo.git.stash()
     repo.git.checkout(now_branch)

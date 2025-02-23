@@ -97,7 +97,7 @@ def apply_patch(
 
     # Apply the patch file
     try:
-        repo.git.am(file_name)
+        repo.git.am(file_name, "--whitespace=fix")
     except:
         raise ValueError("Git apply {} falied!".format(file_name))
     shutil.rmtree(tmp_path)
