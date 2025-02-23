@@ -333,7 +333,7 @@ class SSHServeRunner(RunnerBase):
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
         self.command_line_mode = getattr(
-            self.config.serve.deploy, "command-line-mode", None
+            self.config.serve.deploy, "command_line_mode", None
         )
         self.use_native_serve = getattr(
             self.config.serve.deploy, "use_native_serve", True
