@@ -60,7 +60,7 @@ pip install --upgrade setuptools
 pip install -r ../requirements/requirements-common.txt
 
 # TransformerEngine
-# Megatron-LM requires fTE >= 2.1.0.
+# Megatron-LM requires TE >= 2.1.0.
 git clone --branch release_v2.1 --recursive https://github.com/NVIDIA/TransformerEngine.git
 cd TransformerEngine
 export NVTE_FRAMEWORK=pytorch   # Optionally set framework
