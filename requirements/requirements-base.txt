@@ -1,0 +1,7 @@
+# Install outside of the conda environment
+hydra-core
+numpy
+psutil
+pytest
+PyYaml
+tqdm

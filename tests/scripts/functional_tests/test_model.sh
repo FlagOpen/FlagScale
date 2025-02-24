@@ -38,8 +38,9 @@ test_model() {
     # Remove leading '-'
     _case=${_case#-}
 
+    test_times=1
     # Attempt to run the test 5 times
-    for attempt_i in {1}; do
+    for attempt_i in {$test_times}; do
       wait_for_gpu
 
       echo "---------"
@@ -122,7 +123,7 @@ test_model() {
       # Ensure that pytest check is completed before deleting the folder
       sleep 10s
     done
-    echo "All 5 attempts successful for case $_case for model ${_model}."
+    echo "All $test_times attempts successful for case $_case for model ${_model}."
   done
 }
 

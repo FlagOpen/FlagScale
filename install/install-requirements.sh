@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Packages that need to be installed outside of the conda environment
+pip install -r ../requirements/requirements-base.txt
+
 # Initialize the variable
 env=""
 
@@ -27,51 +30,50 @@ fi
 # Proceed with setup based on the value of 'env'
 echo "Setting up environment for: $env"
 
-# Further logic based on 'train' or 'inference'
-if [ "$env" == "train" ]; then
-    # Implement the logic for training environment setup
-    echo "Installing requirements for training..."
-elif [ "$env" == "inference" ]; then
-    # Implement the logic for inference environment setup
-    echo "Installing requirements for inference..."
-fi
-
 # Load conda environment
 source ~/miniconda3/etc/profile.d/conda.sh
 
 # Create and activate Conda virtual environment
 # The Python version used has been written into the conda config
-conda create --name flagscale-${env} -y
+if conda env list | grep -q "flagscale-${env}"; then
+    # Check if the environment already exists
+    echo "Conda environment 'flagscale-${env}' already exists."
+else
+    echo "Creating conda environment 'flagscale-${env}'..."
+    conda create --name "flagscale-${env}" python=$(python --version | awk '{print $2}') -y
+fi
 conda activate flagscale-${env}
+
+# Blinker 1.4 version is installed using the distutls installation tool, which is an old Python package installation method.
+# When installing an updated version with pip, an attempt will be made to uninstall the old version,
+# but the uninstallation will fail and manual deletion is required.
+rm -r /usr/lib/python3/dist-packages/blinker
+rm /usr/lib/python3/dist-packages/blinker-1.4.egg-info
+
+# Exit immediately if any command fails
+set -e
+
+# This command updates `setuptools` to the latest version, ensuring compatibility and access to the latest features for Python package management.
+pip install --upgrade setuptools
 
 # Navigate to requirements directory and install basic dependencies
 pip install -r ../requirements/requirements-common.txt
 
-# Used for automatic fault tolerance
-# Set the path to the target Python file
-SITE_PACKAGES_DIR=$(python3 -c "import site; print(site.getsitepackages()[0])")
-FILE="$SITE_PACKAGES_DIR/torch/distributed/elastic/agent/server/api.py"
-
-# Replace the code in line 894 and its surrounding lines (893 and 895)
-if ! sed -i '893,895s/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' "$FILE"; then
-    echo "Error: Replacement failed on line 894."
-    exit 1
-fi
-
-# Replace the code in line 903 and its surrounding lines (902 and 904)
-if ! sed -i '902,904s/^                    self\._restart_workers(self\._worker_group)/                    self._remaining_restarts -= 1\n                    self._restart_workers(self._worker_group)/' "$FILE"; then
-    echo "Error: Replacement failed on line 903."
-    exit 1
-fi
-
-# Install flagscale-common: TransformerEngine
-git clone -b stable https://github.com/NVIDIA/TransformerEngine.git
+# TransformerEngine
+# Megatron-LM requires TE >= 2.1.0.
+git clone --branch release_v2.1 --recursive https://github.com/NVIDIA/TransformerEngine.git
 cd TransformerEngine
-git submodule update --init --recursive
-pip install .
+export NVTE_FRAMEWORK=pytorch   # Optionally set framework
+pip install .                   # Build and install
 cd ..
 rm -r ./TransformerEngine
 
+# Megatron-LM requires flash-attn >= 2.1.1, <= 2.7.3
+cu=$(nvcc --version | grep "Cuda compilation tools" | awk '{print $5}' | cut -d '.' -f 1)
+torch=$(pip show torch | grep Version | awk '{print $2}' | cut -d '+' -f 1 | cut -d '.' -f 1,2)
+cp=$(python3 --version | awk '{print $2}' | awk -F. '{print $1$2}')
+cxx=$(g++ --version | grep 'g++' | awk '{print $3}' | cut -d '.' -f 1)
+pip install flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
 pip install -r ../requirements/requirements-dev.txt
 
 # If env equals 'train'
@@ -110,3 +112,20 @@ fi
 
 # Clean all conda caches
 conda clean --all -y
+
+# Used for automatic fault tolerance
+# Set the path to the target Python file
+SITE_PACKAGES_DIR=$(python3 -c "import site; print(site.getsitepackages()[0])")
+FILE="$SITE_PACKAGES_DIR/torch/distributed/elastic/agent/server/api.py"
+
+# Replace the code in line 894 and its surrounding lines (893 and 895)
+if ! sed -i '893,895s/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' "$FILE"; then
+    echo "Error: Replacement failed on line 894."
+    exit 1
+fi
+
+# Replace the code in line 903 and its surrounding lines (902 and 904)
+if ! sed -i '902,904s/^                    self\._restart_workers(self\._worker_group)/                    self._remaining_restarts -= 1\n                    self._restart_workers(self._worker_group)/' "$FILE"; then
+    echo "Error: Replacement failed on line 903."
+    exit 1
+fi
