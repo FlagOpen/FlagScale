@@ -93,7 +93,7 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
 
 
 class DeepSeekMultiTokenPredictor(MegatronModule):
-    """Multi Token Predictor of DeepSeek V3
+    """Multi Token Predictor for DeepSeek V3
 
     Args:
         config (TransformerConfig): config object with all necessary configs for TransformerBlock

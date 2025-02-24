@@ -73,7 +73,6 @@ def load_args_hf2mg(args):
     args.moe_router_enable_expert_bias = True
     args.moe_router_bias_update_rate = 0.001
     args.apply_rope_fusion = False
-    
     args.seq_length = 4096
     args.global_batch_size = 800
     args.iteration = 1  # '0', 'release' don't work

@@ -201,6 +201,11 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
                         torch.distributed.all_reduce(grad, group=group)
             setattr(weight, grad_attr, _reshard_if_dtensor(grad, orig_grad))
 
+            # Note: If the system supports both the sharing of the embedding and the output layer within the main model,
+            # as well as the sharing of the embedding in the main model with the embedding in the MTP predictor,
+            # it is necessary to copy the data to the main model's output layer after two all-reduce synchronizations.
+            # Since the main model output layer and the MTP embedding are both located in the last PP stage,
+            # the data from the MTP embedding can be directly copied to the main model output layer.
             if model_module.share_embeddings_and_output_weights:
                 output_layer_weight = model_module.shared_embedding_or_output_weight()
                 mtp_embedding_weight = model_module.shared_embedding_or_mtp_embedding()

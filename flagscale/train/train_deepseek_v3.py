@@ -261,7 +261,7 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
         loss_mtps = torch.cat([torch.sum(loss_mtps.view(-1) * loss_mask_mtps).view(1), total_tokens_mtps.view(1)])
         loss_mtps = loss_mtps / args.num_mtp_predictor
 
-    # merge loss, how to process?
+    # merge main model loss and mtp predictor loss
     if use_mtp_predictor:
         loss = loss + loss_mtps
 

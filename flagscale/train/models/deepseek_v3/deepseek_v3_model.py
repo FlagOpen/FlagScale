@@ -141,7 +141,7 @@ class DeepSeekV3Model(GPTModel):
             )
             # mtp output lm head is the same with main model output layer
 
-        # Mtp embedding shares weight with main model embedding
+        # Mtp embedding shares weight with main model embedding.
         # In a pipelined setup with more than one stage, the initial
         # embedding layer and the mtp embedding are on different workers,
         # thus call an all-reduce to ensure that first and last stages have the same initial parameter values
