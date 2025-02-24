@@ -1,16 +1,19 @@
+import asyncio
+import contextlib
+import json
 import os
 import shlex
-import asyncio
-import psutil
-import contextlib
 import signal
 
 import hydra
+import psutil
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.runner_utils import (
+    benchmark,
+    dummy_random_input,
     get_free_port,
     get_nnodes,
     get_nproc_per_node,
@@ -19,8 +22,6 @@ from flagscale.runner.runner_utils import (
     run_local_command,
     run_scp_command,
     run_ssh_command,
-    dummy_random_input,
-    benchmark,
 )
 
 
@@ -108,6 +109,12 @@ def _generate_run_script_serve(
     else:
         before_start_cmd = ""
     cmd += f" --log-dir={logging_config.log_dir}"
+    try:
+        import vllm
+
+        vllm_path = os.path.dirname(vllm.__path__[0])
+    except Exception as e:
+        vllm_path = f"{root_dir}/vllm"
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("set -x\n")
@@ -116,13 +123,14 @@ def _generate_run_script_serve(
         f.write(f"\n")
 
         f.write(f'if [ -z "$PYTHONPATH" ]; then\n')
-        f.write(f"    export PYTHONPATH={root_dir}\n")
+        f.write(f"    export PYTHONPATH={vllm_path}:{root_dir}\n")
         f.write(f"else\n")
-        f.write(f'    export PYTHONPATH="$PYTHONPATH:{root_dir}"\n')
+        f.write(f'    export PYTHONPATH="$PYTHONPATH:{vllm_path}:{root_dir}"\n')
         f.write(f"fi\n")
         f.write(f"\n")
 
         if nodes:
+            f.write(f"ray_path=$(realpath $(which ray))\n")
             master_ip = nodes[0][0]
             target_port = nodes[0][1].get("port")
 
@@ -137,7 +145,7 @@ def _generate_run_script_serve(
                         raise ValueError(
                             f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
                         )
-                    node_cmd = f"ray stop"
+                    node_cmd = f"${{ray_path}} stop"
 
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
@@ -151,9 +159,9 @@ def _generate_run_script_serve(
                         ssh_cmd = f"ssh -n {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
             if before_start_cmd:
-                f.write(f"{before_start_cmd} && ray stop\n")
+                f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
             else:
-                f.write(f"ray stop\n")
+                f.write(f"${{ray_path}} stop\n")
             f.write(f"\n")
 
             master_port = target_port if target_port else get_free_port()
@@ -173,14 +181,14 @@ def _generate_run_script_serve(
                     f.write(f"# start cluster\n")
                     f.write(f"# master node\n")
                     if node.type == "gpu":
-                        node_cmd = f"ray start --head --port={master_port} --num-gpus={node.slots}"
+                        node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
                     elif node.type == "cpu":
-                        node_cmd = f"ray start --head --port={master_port} --num-cpus={node.slots}"
+                        node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
                     else:
                         resource = json.dumps({node.type: node.slots}).replace(
                             '"', '\\"'
                         )
-                        node_cmd = f"ray start --head --port={master_port} --resources='{resource}'"
+                        node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
                     f.write(f"{node_cmd}\n")
@@ -191,21 +199,15 @@ def _generate_run_script_serve(
                         f.write(f"\n")
                         f.write(f"# worker nodes\n")
                     if node.type == "gpu":
-                        node_cmd = (
-                            f"ray start --address={address} --num-gpus={node.slots}"
-                        )
+                        node_cmd = f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
 
                     elif node.type == "cpu":
-                        node_cmd = (
-                            f"ray start --address={address} --num-cpus={node.slots}"
-                        )
+                        node_cmd = f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
                     else:
                         resource = json.dumps({node.type: node.slots}).replace(
                             '"', '\\"'
                         )
-                        node_cmd = (
-                            f"ray start --address={address} --resources='{resource}'"
-                        )
+                        node_cmd = f"${{ray_path}} start --address={address} --resources='{resource}'"
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
 
@@ -230,18 +232,28 @@ def _generate_run_script_serve(
                     raise ValueError(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
-            if not device_type:
-                node_cmd = f"ray start --head"
-            if device_type == "gpu":
-                node_cmd = f"ray start --head --num-gpus={nproc_per_node}"
-            elif device_type == "cpu":
-                node_cmd = f"ray start --head --num-cpus={nproc_per_node}"
-            else:
-                resource = json.dumps({device_type: nproc_per_node}).replace('"', '\\"')
-                node_cmd = f"ray start --head --resources='{resource}'"
+            node_cmd = None
+            if getattr(config.serve.deploy, "use_native_serve", True):
+                f.write(f"ray_path=$(realpath $(which ray))\n")
+                if not device_type:
+                    node_cmd = f"${{ray_path}} start --head"
+                elif device_type == "gpu":
+                    node_cmd = f"${{ray_path}} start --head --num-gpus={nproc_per_node}"
+                elif device_type == "cpu":
+                    node_cmd = f"${{ray_path}} start --head --num-cpus={nproc_per_node}"
+                else:
+                    resource = json.dumps({device_type: nproc_per_node}).replace(
+                        '"', '\\"'
+                    )
+                    node_cmd = f"${{ray_path}} start --head --resources='{resource}'"
             if before_start_cmd:
-                node_cmd = f"{before_start_cmd} && " + node_cmd
-            f.write(f"{node_cmd}\n")
+                node_cmd = (
+                    f"{before_start_cmd} && {node_cmd}"
+                    if node_cmd
+                    else before_start_cmd
+                )
+            if node_cmd:
+                f.write(f"{node_cmd}\n")
 
         f.write(f"mkdir -p {logging_config.log_dir}\n")
         f.write(f"mkdir -p {logging_config.pids_dir}\n")
@@ -321,7 +333,10 @@ class SSHServeRunner(RunnerBase):
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
         self.command_line_mode = getattr(
-            self.config.serve.deploy, "command-line-mode", None
+            self.config.serve.deploy, "command_line_mode", None
+        )
+        self.use_native_serve = getattr(
+            self.config.serve.deploy, "use_native_serve", True
         )
         self._prepare()
         self.host = None
@@ -333,7 +348,10 @@ class SSHServeRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
         if self.command_line_mode:
-            self.user_script = "flagscale/serve/run_vllm.py"
+            if not self.use_native_serve:
+                self.user_script = "flagscale/serve/run_serve_engine.py"
+            else:
+                self.user_script = "flagscale/serve/run_vllm.py"
         elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
             self.user_script = entrypoint
         elif entrypoint is None:
@@ -342,9 +360,16 @@ class SSHServeRunner(RunnerBase):
             raise ValueError(
                 f"Invalid config entrypoint: {entrypoint}, must be a python file path or null."
             )
-        self.resources = parse_hostfile(
-            self.config.experiment.runner.get("hostfile", None)
-        )
+        hostfile_path = self.config.experiment.runner.get("hostfile", None)
+        if hostfile_path:
+            if os.path.isabs(hostfile_path):
+                hostfile_path = hostfile_path
+            else:
+                hostfile_path = os.path.join(os.getcwd(), hostfile_path)
+            if not os.path.exists(hostfile_path):
+                raise ValueError(f"The hostfile {hostfile_path} does not exist")
+
+        self.resources = parse_hostfile(hostfile_path)
         if self.resources:
             OmegaConf.set_struct(self.config, False)
             self.config.serve["nodes"] = list(self.resources.items())

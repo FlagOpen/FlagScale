@@ -1,4 +1,5 @@
 import socket
+
 from flagscale.logger import logger
 
 

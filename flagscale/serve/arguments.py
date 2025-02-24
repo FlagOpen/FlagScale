@@ -1,4 +1,5 @@
 import argparse
+
 import yaml
 from omegaconf import OmegaConf
 
@@ -13,7 +14,9 @@ def parse_config():
         required=True,
         help="Path to the configuration YAML file",
     )
-    parser.add_argument("--log-dir", type=str, default="outputs", help="Path to the model")
+    parser.add_argument(
+        "--log-dir", type=str, default="outputs", help="Path to the model"
+    )
     args = parser.parse_args()
 
     # Open the YAML file and convert it into a dictionary

@@ -21,4 +21,3 @@ class RunnerBase(ABC):
     def stop(self, *args, **kwargs):
         """Optional method to override."""
         pass
-

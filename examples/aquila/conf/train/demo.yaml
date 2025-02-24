@@ -12,14 +12,14 @@ system:
   logging:
     log_interval: 1
     tensorboard_log_interval: 1
-    wandb_project: "aquila2" 
-    wandb_exp_name: "test" 
+    wandb_project: "aquila2"
+    wandb_exp_name: "test"
   checkpoint:
-    save_interval: 1000 
+    save_interval: 1000
 
 
 model:
-  num_layers: 12 
+  num_layers: 12
   hidden_size: 4096
   num_attention_heads: 32
   seq_length: 2048
@@ -36,8 +36,8 @@ model:
   hidden_dropout: 0.0
   weight_decay: 0.1
   clip_grad: 1.0
-  train_samples: 100000 
-  global_batch_size: 32 
+  train_samples: 100000
+  global_batch_size: 32
   micro_batch_size: 1
   # rampup_batch_size: [32, 32, 2000000]
   seed: 42
@@ -51,16 +51,16 @@ model:
       lr: 1.5e-4
       min_lr: 1.5e-5
       lr_warmup_samples: 500
-      lr_decay_style: cosine 
+      lr_decay_style: cosine
 
 data:
   data_path: ${data_path:??}
   split: 1
   tokenizer:
     tokenizer_type: null
-    tokenizer_path: null 
-    vocab_file: null 
-    merge_file: null 
-    special_tokens_file: null 
+    tokenizer_path: null
+    vocab_file: null
+    merge_file: null
+    special_tokens_file: null
     vocab_size: null
     make_vocab_size_divisible_by: 64

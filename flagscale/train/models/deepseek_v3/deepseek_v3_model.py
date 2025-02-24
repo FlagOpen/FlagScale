@@ -90,7 +90,7 @@ class DeepSeekV3Model(GPTModel):
         self.post_process = post_process
         self.use_mtp_predictor = True if config.num_mtp_predictor > 0 else False
         self.num_mtp_predictor = config.num_mtp_predictor
-        
+
         super().__init__(
             config=config,
             transformer_layer_spec=transformer_layer_spec,
@@ -271,7 +271,7 @@ class DeepSeekV3Model(GPTModel):
                 }
             )
             log_config_to_disk(self.config, payload, prefix='input_and_logits')
-        
+
         if labels is None:
             logits = logits.transpose(0, 1).contiguous()
             if not self.use_mtp_predictor:

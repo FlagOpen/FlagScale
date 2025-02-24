@@ -1,5 +1,7 @@
-from vllm import LLM, SamplingParams
 from util_models.util_model import fn
+
+from vllm import LLM, SamplingParams
+
 from flagscale.serve.core import auto_remote
 
 
@@ -10,20 +12,17 @@ class LLMActor:
         self.llm = LLM(
             model="/home/gitlab-runner/data/Qwen2.5-0.5B-Instruct",
             tensor_parallel_size=1,
-            gpu_memory_utilization=0.5
+            gpu_memory_utilization=0.5,
         )
-    
-    def generate(self, prompt: str) -> str:                    
-        sampling_params = SamplingParams(
-            temperature=0.7,
-            top_p=0.95,
-            max_tokens=1000
-        )
+
+    def generate(self, prompt: str) -> str:
+        sampling_params = SamplingParams(temperature=0.7, top_p=0.95, max_tokens=1000)
         result = self.llm.generate([prompt], sampling_params=sampling_params)
         return result[0].outputs[0].text
 
 
 llm = LLMActor()
+
 
 def model_A(prompt):
     result = llm.generate(prompt)

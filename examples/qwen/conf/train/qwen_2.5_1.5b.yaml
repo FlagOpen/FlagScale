@@ -9,12 +9,12 @@ system:
   distributed-timeout-minutes: 60
   precision:
     bf16: True
-    attention_softmax_in_fp32: True 
-    accumulate_allreduce_grads_in_fp32: True 
-  logging: 
-    log_interval: 1 
-    tensorboard_log_interval: 1 
-    wandb_project: "train-qwen2.5-1.5B" 
+    attention_softmax_in_fp32: True
+    accumulate_allreduce_grads_in_fp32: True
+  logging:
+    log_interval: 1
+    tensorboard_log_interval: 1
+    wandb_project: "train-qwen2.5-1.5B"
     wandb_exp_name: "train-qwen2.5-1.5B"
   checkpoint:
     load: ${megatron_model__path:}
@@ -23,7 +23,7 @@ system:
     ckpt_convert_format: torch # ${experiment.ckpt_convert_format}
     ckpt_convert_save: ${experiment.ckpt_convert_save}
     save_interval: 5000000
-    rampup_save_interval: 50000 
+    rampup_save_interval: 50000
 
 model:
   use_mcore_models: true
@@ -38,7 +38,7 @@ model:
   norm_epsilon: 1e-6
   norm_init_weight: 0.02
   use_rotary_position_embeddings: true
-  rotary_base: 1000000.0  
+  rotary_base: 1000000.0
   no_position_embedding: true
   reset_position_ids: true
   add_qkv_bias: true
@@ -68,7 +68,7 @@ model:
       lr: 1e-5
       min_lr: 0
       lr_warmup_samples: 21120
-      lr_decay_style: cosine 
+      lr_decay_style: cosine
 
 data:
   data_path: ${data_path:??}

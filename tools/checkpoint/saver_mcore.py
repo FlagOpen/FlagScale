@@ -35,7 +35,7 @@ def save_checkpoint(queue, args):
     """
     prepare import module
     """
-    
+
     # Search in directory above this
     root_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__),
@@ -281,7 +281,7 @@ def save_checkpoint(queue, args):
         return models
 
     """
-    start receive and process ckpt 
+    start receive and process ckpt
     """
 
     # process embedding
@@ -323,8 +323,8 @@ def save_checkpoint(queue, args):
             if margs.num_mtp_predictor > 0:
                 for mtp_layer_id in range(margs.num_mtp_predictor):
                     msg = queue_get(f"mtp module {mtp_layer_id}")
-                    ckpt_plugin.set_mtp_ckpt(msg, models, md, mtp_layer_id, margs)  
-                    
+                    ckpt_plugin.set_mtp_ckpt(msg, models, md, mtp_layer_id, margs)
+
             msg = queue_get()
             if msg != "done":
                 print("ERROR: got some more data but was expecting to be done")

@@ -76,7 +76,7 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
         decoder_input: Tensor,
         attention_mask: Tensor,
         pre_hidden_states: Tensor,
-        
+
     ) -> Tensor:
         """Forward pass of the multi token prediction layer.
         """
@@ -108,7 +108,7 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
 
         self.config = config
         self.num_mtp_predictor = config.num_mtp_predictor
-        
+
         self.mtp_modules = torch.nn.ModuleList([
             build_module(
                 deepseek_multi_token_predictor_layer_spec,
@@ -135,7 +135,7 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
             )
             hidden_states_mtps.append(hidden_states)
             pre_hidden_states = hidden_states
-        
+
         return hidden_states_mtps
 
 def roll_tensor(tensor, dims=0):

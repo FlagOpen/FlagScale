@@ -1,24 +1,30 @@
 import sys
+
 import torch
+
 sys.path.append("..")
 from utils import padding_vocab_size
 
 
 def get_hf_attn_ckpt(message, model, layer_id, args):
     nh = args.num_attention_heads
-    ng = args.num_query_groups if args.group_query_attention else args.num_attention_heads
+    ng = (
+        args.num_query_groups
+        if args.group_query_attention
+        else args.num_attention_heads
+    )
     dim = args.hidden_size
     assert nh % ng == 0
 
     tf_layer = model.model.layers[layer_id]
-    
+
     message["q a weight"] = tf_layer.self_attn.q_a_proj.weight.data
     message["q a norm weight"] = tf_layer.self_attn.q_a_layernorm.weight.data
     message["q b weight"] = tf_layer.self_attn.q_b_proj.weight.data
     message["kv a weight"] = tf_layer.self_attn.kv_a_proj_with_mqa.weight.data
     message["kv a norm weight"] = tf_layer.self_attn.kv_a_layernorm.weight.data
     message["kv b weight"] = tf_layer.self_attn.kv_b_proj.weight.data
-    message["o weight"] =  tf_layer.self_attn.o_proj.weight.data
+    message["o weight"] = tf_layer.self_attn.o_proj.weight.data
 
     message["input norm weight"] = tf_layer.input_layernorm.weight.data
     message["post norm weight"] = tf_layer.post_attention_layernorm.weight.data
@@ -34,55 +40,63 @@ def get_hf_mlp_ckpt(message, model, layer_id, args):
 
 def get_hf_dense_mlp_ckpt(message, model, layer_id, args):
     tf_layer = model.model.layers[layer_id]
-    
+
     message["gate weight"] = tf_layer.mlp.gate_proj.weight.data
     message["up weight"] = tf_layer.mlp.up_proj.weight.data
     message["down weight"] = tf_layer.mlp.down_proj.weight.data
-    
+
 
 def get_hf_moe_mlp_ckpt(message, model, layer_id, args):
     tf_layer = model.model.layers[layer_id]
-    
+
     message["router weight"] = tf_layer.mlp.gate.weight.data
     message["router e score bias"] = tf_layer.mlp.gate.e_score_correction_bias.data
-    message["shared expert gate weight"] = tf_layer.mlp.shared_experts.gate_proj.weight.data
+    message["shared expert gate weight"] = (
+        tf_layer.mlp.shared_experts.gate_proj.weight.data
+    )
     message["shared expert up weight"] = tf_layer.mlp.shared_experts.up_proj.weight.data
-    message["shared expert down weight"] = tf_layer.mlp.shared_experts.down_proj.weight.data
+    message["shared expert down weight"] = (
+        tf_layer.mlp.shared_experts.down_proj.weight.data
+    )
 
     for id in range(args.num_experts):
         expert = tf_layer.mlp.experts[id]
         message[f"expert{id} gate weight"] = expert.gate_proj.weight.data
         message[f"expert{id} up weight"] = expert.up_proj.weight.data
         message[f"expert{id} down weight"] = expert.down_proj.weight.data
-    
+
+
 def get_hf_mtp_ckpt(message, model, mtp_layer_id, args):
     # Send transformer layers
-    mtp_layer = model.model.layers[args.num_layers+mtp_layer_id]
-    
+    mtp_layer = model.model.layers[args.num_layers + mtp_layer_id]
+
     message["mtp word embeddings weight"] = mtp_layer.embed_tokens.weight.data
     message["mtp enorm weight"] = mtp_layer.enorm.weight.data
     message["mtp hnorm weight"] = mtp_layer.hnorm.weight.data
     message["mtp eh weight"] = mtp_layer.eh_proj.weight.data
     message["mtp shared head norm weight"] = mtp_layer.shared_head.norm.weight.data
     message["mtp shared head head weight"] = mtp_layer.shared_head.head.weight.data
-    
-    get_hf_attn_ckpt(message, model, args.num_layers+mtp_layer_id, args)
-    get_hf_moe_mlp_ckpt(message, model, args.num_layers+mtp_layer_id, args)
+
+    get_hf_attn_ckpt(message, model, args.num_layers + mtp_layer_id, args)
+    get_hf_moe_mlp_ckpt(message, model, args.num_layers + mtp_layer_id, args)
+
 
 def _get_parallel_size(args):
-    return args.tensor_model_parallel_size, \
-        args.pipeline_model_parallel_size, \
-        args.expert_model_parallel_size, \
-        args.virtual_pipeline_model_parallel_size or 1
+    return (
+        args.tensor_model_parallel_size,
+        args.pipeline_model_parallel_size,
+        args.expert_model_parallel_size,
+        args.virtual_pipeline_model_parallel_size or 1,
+    )
 
 
 def set_embedding_ckpt(message, models, md, args):
     tp_size, _, _, _ = _get_parallel_size(args)
     assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
-    
+
     # embedding
     pos_embed = None
-    if md.position_embedding_type == 'learned_absolute':
+    if md.position_embedding_type == "learned_absolute":
         pos_embed = message.pop("position embeddings")
     orig_word_embed = message.pop("word embeddings")
     full_word_embed = padding_vocab_size(orig_word_embed, md, args)
@@ -110,7 +124,7 @@ def set_attn_ckpt(message, models, layer_id, md, args):
     kv_b_weight = message.pop("kv b weight")
     o_weight = message.pop("o weight")
     input_norm_weight = message.pop("input norm weight")
-    
+
     first_k_dense_replace = args.moe_layer_freq.index(1)
     if args.total_layer_num >= first_k_dense_replace:
         post_norm_weight = message.pop("post norm weight")
@@ -122,14 +136,18 @@ def set_attn_ckpt(message, models, layer_id, md, args):
         else:
             tf_layer = model.transformer_layer # for mtp transformer layer
         tf_layer.self_attention.linear_q_down_proj.weight.data.copy_(q_a_weight)
-        tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data.copy_(q_a_norm_weight)
+        tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data.copy_(
+            q_a_norm_weight
+        )
         tf_layer.self_attention.linear_q_up_proj.weight.data.copy_(q_b_weight)
         tf_layer.self_attention.linear_kv_down_proj.weight.data.copy_(kv_a_weight)
-        tf_layer.self_attention.linear_kv_up_proj.layer_norm_weight.data.copy_(kv_a_norm_weight)
+        tf_layer.self_attention.linear_kv_up_proj.layer_norm_weight.data.copy_(
+            kv_a_norm_weight
+        )
         tf_layer.self_attention.linear_kv_up_proj.weight.data.copy_(kv_b_weight)
         tf_layer.self_attention.linear_proj.weight.data.copy_(o_weight)
         tf_layer.input_layernorm.weight.data.copy_(input_norm_weight)
-        
+
         if args.total_layer_num >= first_k_dense_replace:
             tf_layer.pre_mlp_layernorm.weight.data.copy_(post_norm_weight)
 
@@ -145,13 +163,13 @@ def set_mlp_ckpt(message, model, layer_id, md, args):
 def set_dense_mlp_ckpt(message, models, layer_id, md, args):
     tp_size, _, ep_size, _ = _get_parallel_size(args)
     assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
-    
+
     post_norm_weight = message.pop("post norm weight")
     gate_weight = message.pop("gate weight")
     up_weight = message.pop("up weight")
     linear1_weight = torch.cat([gate_weight, up_weight], dim=0)
     linear2_weight = message.pop("down weight")
-    
+
     for tp_ep_rank, model in enumerate(models):
         if hasattr(model, 'decoder'):
             tf_layer = model.decoder.layers[layer_id]
@@ -166,19 +184,21 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
     tp_size, _, ep_size, _ = _get_parallel_size(args)
     assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
     assert args.num_experts is not None, "deepseeks's num_experts cannot be None"
-    
+
     assert md.previous_num_experts is not None
-        
+
     # router
     router_weight = message.pop("router weight")
     router_score_bias = message.pop("router e score bias")
-    
+
     # shared expert
     shared_expert_gate_weight = message.pop("shared expert gate weight")
     shared_expert_up_weight = message.pop("shared expert up weight")
-    shared_expert_linear1_weight = torch.cat([shared_expert_gate_weight, shared_expert_up_weight], dim=0)
+    shared_expert_linear1_weight = torch.cat(
+        [shared_expert_gate_weight, shared_expert_up_weight], dim=0
+    )
     shared_expert_linear2_weight = message.pop("shared expert down weight")
-    
+
     # routed expert
     num_local_experts = md.previous_num_experts // ep_size
     for expert_id in range(num_local_experts):
@@ -220,7 +240,7 @@ def set_final_norm_ckpt(message, models, md, args):
 def set_output_layer_ckpt(message, models, md, args):
     tp_size, _, _, _ = _get_parallel_size(args)
     assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
-    
+
     orig_output_layer_weight = message.pop("weight")
     full_output_layer_weight = padding_vocab_size(orig_output_layer_weight, md, args)
     output_layer_weight = full_output_layer_weight
@@ -240,7 +260,7 @@ def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
     # get and set transformer weights
     set_attn_ckpt(message, mtp_layers, 0, md, args)
     set_moe_mlp_ckpt(message, mtp_layers, 0, md, args)
-        
+
     # get and set other weights
     # mtp embeddings weight is shared with main model embeddings
     mtp_enorm_weight = message.pop("mtp enorm weight")

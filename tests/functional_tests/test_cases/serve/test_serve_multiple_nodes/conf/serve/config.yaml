@@ -1,10 +1,10 @@
 deploy:
   models:
     A:
-      module: ./tests/functional_tests/test_cases/serve/multiple_nodes/main.py 
+      module: ./tests/functional_tests/test_cases/serve/multiple_nodes/main.py
       name: model_A
       resources:
-        gpu: 0 
+        gpu: 0
     B:
       module: ./tests/functional_tests/test_cases/serve/multiple_nodes/main.py
       depends:
@@ -14,7 +14,7 @@ deploy:
         gpu: 0
     C:
       module: ./tests/functional_tests/test_cases/serve/multiple_nodes/custom/models.py
-      depends: 
+      depends:
         - A
       name: model_C
       resources:
@@ -30,7 +30,7 @@ deploy:
 
   service:
     name: /generate
-    port: 6701 
+    port: 6701
     request:
       names:
         - prompt

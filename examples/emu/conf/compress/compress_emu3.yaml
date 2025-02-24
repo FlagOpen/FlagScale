@@ -17,6 +17,3 @@ compress_args:
       targets: ["Linear"]
       ignore: ["lm_head"]
       scheme: FP8_DYNAMIC
-
-
-

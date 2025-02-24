@@ -15,7 +15,7 @@ megatron:
     distributed:
       type: single
     models:
-      ignore: 
+      ignore:
         - test_mamba_model.py
       deselect:
         - test_t5_model.py::TestT5Model::test_post_process_forward
@@ -36,8 +36,8 @@ megatron:
         - test_mamba_layer.py
         - test_mamba_mixer.py
     transformer/moe:
-      type: single 
-      ignore: 
+      type: single
+      ignore:
         - test_upcycling.py
       deselect:
        - test_a2a_token_dispatcher.py::TestAlltoAllDispatcher::test_capacity_padding_forward_backward
@@ -59,9 +59,9 @@ megatron:
         - test_transformer_block.py::TestPipelineParallelTransformerBlock::test_layer_builder
     ./:
       depth: 1
-      ignore: 
+      ignore:
         - test_utilities.py
-      deselect: 
+      deselect:
         - test_parallel_state.py::test_different_initialize_order_unconsistency
 
 flagscale:

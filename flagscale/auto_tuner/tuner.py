@@ -12,8 +12,8 @@ from .prune import Pruner
 from .record import Recorder, ServeRecorder
 from .search import Searcher, ServeSearcher
 from flagscale.runner.runner_base import JobStatus
-from flagscale.runner.runner_train import SSHTrainRunner
 from flagscale.runner.runner_serve import SSHServeRunner
+from flagscale.runner.runner_train import SSHTrainRunner
 
 
 class AutoTuner:

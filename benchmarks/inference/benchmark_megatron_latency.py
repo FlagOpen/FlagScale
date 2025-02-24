@@ -1,58 +1,73 @@
 import os
 import sys
-import torch
 import time
+
+import torch
+from benchmark_megatron_throughout import model_provider, sampling_requests
 from tqdm import tqdm
-from benchmark_megatron_throughout import sampling_requests, model_provider
 
 pardir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 sys.path.append(os.path.join(pardir, "megatron"))
 
-from megatron import get_tokenizer
-from megatron import get_args
-from megatron import get_timers
-from megatron import print_rank_0
+from megatron import get_args, get_timers, get_tokenizer, print_rank_0
+from megatron.arguments import core_transformer_config_from_args
 from megatron.checkpointing import load_checkpoint
 from megatron.initialize import initialize_megatron
 from megatron.model import GPTModel
-from megatron.training import get_model
-from megatron.arguments import core_transformer_config_from_args
 from megatron.text_generation import generate_and_post_process
+from megatron.training import get_model
 
 
 def add_text_generate_args(parser):
-    group = parser.add_argument_group(title='Benchmark latency for a single batch request')
+    group = parser.add_argument_group(
+        title="Benchmark latency for a single batch request"
+    )
 
-    group.add_argument("--num-iters", type=int, default=1,
-                       help='Number of iters to run generation for a single batch request.')
-    group.add_argument("--temperature", type=float, default=1.0,
-                       help='Sampling temperature.')
-    group.add_argument("--top-p", type=float, default=0.0,
-                       help='Top p sampling.')
-    group.add_argument("--top-k", type=int, default=0,
-                       help='Top k sampling.')
-    group.add_argument("--prompt-len", type=int, default=32,
-                       help='Length of each prompt')
-    group.add_argument("--generate-len", type=int, default=1024,
-                       help='The maximum numbers of tokens to generate.')
-    group.add_argument("--dataset-path", type=str, default=None,
-                       help='Path to the requests data.')
+    group.add_argument(
+        "--num-iters",
+        type=int,
+        default=1,
+        help="Number of iters to run generation for a single batch request.",
+    )
+    group.add_argument(
+        "--temperature", type=float, default=1.0, help="Sampling temperature."
+    )
+    group.add_argument("--top-p", type=float, default=0.0, help="Top p sampling.")
+    group.add_argument("--top-k", type=int, default=0, help="Top k sampling.")
+    group.add_argument(
+        "--prompt-len", type=int, default=32, help="Length of each prompt"
+    )
+    group.add_argument(
+        "--generate-len",
+        type=int,
+        default=1024,
+        help="The maximum numbers of tokens to generate.",
+    )
+    group.add_argument(
+        "--dataset-path", type=str, default=None, help="Path to the requests data."
+    )
 
     return parser
 
-if __name__=="__main__":
-    initialize_megatron(extra_args_provider=add_text_generate_args,
-                        args_defaults={'tokenizer_type': 'AquilaTokenizer',
-                                       'no_load_rng': True,
-                                       'no_load_optim': True})
+
+if __name__ == "__main__":
+    initialize_megatron(
+        extra_args_provider=add_text_generate_args,
+        args_defaults={
+            "tokenizer_type": "AquilaTokenizer",
+            "no_load_rng": True,
+            "no_load_optim": True,
+        },
+    )
     args = get_args()
     timers = get_timers()
     print(f"args is {args}")
     if args.num_layers_per_virtual_pipeline_stage is not None:
         print("Interleaved pipeline schedule is not yet supported for text generation.")
         exit()
-    print_rank_0("WARNING: Forcing exit_on_missing_checkpoint to True for text "
-                 "generation.")
+    print_rank_0(
+        "WARNING: Forcing exit_on_missing_checkpoint to True for text " "generation."
+    )
     args.exit_on_missing_checkpoint = True
 
     # Set up model and load checkpoint
@@ -79,32 +94,36 @@ if __name__=="__main__":
     if args.dataset_path is not None and os.path.exists(args.dataset_path):
         print_rank_0(f"loading data from {args.dataset_path} ...")
         print_rank_0("'prompt_len' and 'generate_len' will be rewritten by real data")
-        requests = sampling_requests(args.dataset_path, tokenizer, args.micro_batch_size)
+        requests = sampling_requests(
+            args.dataset_path, tokenizer, args.micro_batch_size
+        )
     else:
         print_rank_0("making fake data ...")
         prompt = "我" * args.prompt_len
         input_len = len(tokenizer.tokenize(prompt))
         assert input_len == args.prompt_len
-        requests = [(prompt, args.prompt_len, args.generate_len)] * args.micro_batch_size
+        requests = [
+            (prompt, args.prompt_len, args.generate_len)
+        ] * args.micro_batch_size
 
     print("warming up....")
     prompt, input_len, output_len = requests[0]
     generate_and_post_process(
-            model,
-            prompts=[prompt],
-            tokens_to_generate=output_len,
-            return_output_log_probs=True,
-            top_k_sampling=args.top_k,
-            top_p_sampling=args.top_p,
-            top_p_decay=0.0,
-            top_p_bound=0.0,
-            temperature=args.temperature,
-            add_BOS=False,
-            use_eod_token_for_early_termination=True,
-            stop_on_double_eol=False,
-            stop_on_eol=False,
-            prevent_newline_after_colon=False,
-            random_seed=args.seed,
+        model,
+        prompts=[prompt],
+        tokens_to_generate=output_len,
+        return_output_log_probs=True,
+        top_k_sampling=args.top_k,
+        top_p_sampling=args.top_p,
+        top_p_decay=0.0,
+        top_p_bound=0.0,
+        temperature=args.temperature,
+        add_BOS=False,
+        use_eod_token_for_early_termination=True,
+        stop_on_double_eol=False,
+        stop_on_eol=False,
+        prevent_newline_after_colon=False,
+        random_seed=args.seed,
     )
 
     prompts = []
@@ -140,12 +159,19 @@ if __name__=="__main__":
 
     for i, respose in enumerate(responses):
         prompt = prompts[i]
-        generated_text = respose[len(prompt):]
+        generated_text = respose[len(prompt) :]
         print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
 
     num_totol_tokens = sum([il + ol for _, il, ol in requests])
-    memory_used = torch.cuda.max_memory_allocated() / (1024 ** 3)
-    memory_pct = memory_used / (torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory / (1024 ** 3)) * 100
+    memory_used = torch.cuda.max_memory_allocated() / (1024**3)
+    memory_pct = (
+        memory_used
+        / (
+            torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory
+            / (1024**3)
+        )
+        * 100
+    )
 
     print("------------ SUMMARY ------------")
     print(f"Num Request: {len(requests)}")

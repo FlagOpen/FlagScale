@@ -24,6 +24,3 @@ python run.py -cp examples/emu/conf/ -cn config_chat.yaml
 ```
 
 ## Performance
-
-
-

@@ -1,14 +1,15 @@
 import argparse
 import os
 import shutil
-from git.repo import Repo
+
 from common import (
     check_path,
-    process_commit_id,
-    git_init,
     crete_tmp_dir,
+    git_init,
+    process_commit_id,
     save_unpatch_to_tmp,
 )
+from git.repo import Repo
 
 path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -37,6 +38,12 @@ def _add_auto_generate_args():
         default=None,
         help="The commit-id that want to patch.",
     )
+    group.add_argument(
+        "--key-path",
+        type=str,
+        default=None,
+        help="The path for storing public and private keys. Be careful not to upload to the Git repository.",
+    )
     args = parser.parse_args()
     return args
 
@@ -58,7 +65,9 @@ def check_hetero_txt(device_type, base_commit_id):
     return False
 
 
-def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
+def apply_patch(
+    repo, device_type, base_commit_id, dir_path, tmp_str=None, key_path=None
+):
     """Convert FlagScale to in-place status by applying patch."""
     global path
     patch_dir = os.path.join(path, "hardware", device_type)
@@ -81,29 +90,25 @@ def apply_patch(repo, device_type, base_commit_id, dir_path, tmp_str=None):
     files_and_folders_1 = os.listdir(base_commit_id_dir)
     if len(files_and_folders_1) == 0:
         raise FileNotFoundError(base_commit_id_dir, " have no file!")
-    patch_file = [
-        f
-        for f in files_and_folders_1
-        if os.path.isfile(os.path.join(base_commit_id_dir, f))
-    ][0]
+    patch_file = base_commit_id_dir + "/" + base_commit_id + ".patch"
     tmp_path = crete_tmp_dir(dir_path, tmp_str)
-    file_name = save_unpatch_to_tmp(tmp_path, base_commit_id_dir, patch_file)
+    file_name = save_unpatch_to_tmp(tmp_path, base_commit_id_dir, patch_file, key_path)
     repo.git.checkout(base_commit_id)
 
     # Apply the patch file
     try:
-        repo.git.am(file_name)
+        repo.git.am(file_name, "--whitespace=fix")
     except:
         raise ValueError("Git apply {} falied!".format(file_name))
     shutil.rmtree(tmp_path)
 
 
-def build_dir(repo, device_type, commit_id, directory=None):
+def build_dir(repo, device_type, commit_id, directory=None, key_path=None):
     """Build directory for homogeneous scenarios."""
     global path
     if directory is None:
         print("Now device is {} , processing....".format(device_type))
-        apply_patch(repo, device_type, commit_id, path, "../tmp")
+        apply_patch(repo, device_type, commit_id, path, "../tmp", key_path)
     else:
         print("Now device is {} , processing....".format(device_type))
         if os.path.exists(os.path.join(path, directory)):
@@ -127,7 +132,7 @@ def build_dir(repo, device_type, commit_id, directory=None):
         # Step into build dir.
         dir_path = os.path.join(dir_path, "FlagScale")
         repo = Repo(dir_path)
-        apply_patch(repo, device_type, commit_id, dir_path, "../../../tmp")
+        apply_patch(repo, device_type, commit_id, dir_path, "../../../tmp", key_path)
 
 
 def build_hetero_dir(repo, device_type, commit_id, directory):
@@ -178,7 +183,7 @@ def main():
     else:
         # Homogeneous scenarios.
         device_type = args.device_type[0]
-        build_dir(repo, device_type, commit_id, args.dir)
+        build_dir(repo, device_type, commit_id, args.dir, args.key_path)
     print("Unpatch successfully!")
 
 

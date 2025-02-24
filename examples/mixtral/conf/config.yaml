@@ -8,7 +8,7 @@ experiment:
   task:
     type: train
     backend: megatron
-    entrypoint: flagscale/train/train_gpt.py 
+    entrypoint: flagscale/train/train_gpt.py
   runner:
     backend: torchrun
     hostfile: <xxxx>
@@ -21,4 +21,4 @@ action: run
 
 hydra:
   run:
-    dir: ${experiment.exp_dir}/hydra 
+    dir: ${experiment.exp_dir}/hydra

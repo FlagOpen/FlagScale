@@ -1,7 +1,7 @@
 [<img src="flagopen.png">](https://flagopen.baai.ac.cn/)
 
 ## Latest News
-- **[2024/11]** Released [v0.6.0](https://github.com/FlagOpen/FlagScale/tree/release/v0.6.0): 
+- **[2024/11]** Released [v0.6.0](https://github.com/FlagOpen/FlagScale/tree/release/v0.6.0):
   - Introduced general multi-dimensional heterogeneous parallelism and CPU-based communication between different chips.
   - Added the full support for LLaVA-OneVision, achieving SOTA results on the [Infinity-MM](https://arxiv.org/abs/2410.18558) dataset.
   - Open-sourced the optimized CFG implementation and accelerated the generation and understanding tasks for [Emu3](https://arxiv.org/abs/2409.18869).
@@ -10,7 +10,7 @@
 - **[2023/11]** Released [v0.2](https://github.com/FlagOpen/FlagScale/tree/v0.2): Introduced training support for Aquila2-70B-Expr, enabling heterogeneous training across chips with the same or compatible architectures.
 - **[2023/10]** Released [v0.1](https://github.com/FlagOpen/FlagScale/tree/v0.1): Supported Aquila models with optimized training schemes for Aquila2-7B and Aquila2-34B, including parallel strategies, optimizations, and hyper-parameter settings.
 
-## About 
+## About
 
 [FlagScale](https://github.com/FlagOpen/FlagScale.git) is a comprehensive toolkit designed to support the entire lifecycle of large models, developed with the backing of the Beijing Academy of Artificial Intelligence (BAAI). It builds on the strengths of several prominent open-source projects, including [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) and [vllm](https://github.com/vllm-project/vllm), to provide a robust, end-to-end solution for managing and scaling large models.
 
@@ -27,7 +27,7 @@ FlagScale leverages [Hydra](https://github.com/facebookresearch/hydra) for confi
 
 All valid configurations in the task-level YAML file correspond to the arguments used in backend engines such as Megatron-LM and vllm, with hyphens (-) replaced by underscores (_). For a complete list of available configurations, please refer to the backend engine documentation. Simply copy and modify the existing YAML files in the [examples](./examples) folder to get started.
 
-### Setup 
+### Setup
 We recommend using the latest release of [NGC's PyTorch container](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/pytorch) for setup.
 
 1. Clone the repository:
@@ -35,12 +35,13 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     git clone https://github.com/FlagOpen/FlagScale.git
     ```
 
-2. Install the dependencies:
+2. Install the requirements:
     ```sh
-    cd FlagScale
-    pip install -r requirements/requirements-dev.txt
+    cd FlagScale/install
+    ./install-requirements.sh --env train
+    ./install-requirements.sh --env inference
     ```
-    You can install only the required packages for the specific backend engine you need by modifying the requirements.
+    The above instructions create two conda environments: `flagscale-train` and `flagscale-inference`, which contain the dependency environments for training and inference, respectively.
 
 3. Install the packages with customized extensions:
     ```sh
@@ -51,7 +52,7 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     cp -r megatron-energon/src/megatron/energon megatron/megatron
     ```
 
-### Run a Task 
+### Run a Task
 
 FlagScale provides a unified runner for various tasks, including training，inference and serve. Simply specify the configuration file to run the task with a single command. The runner will automatically load the configurations and execute the task. The following example demonstrates how to run a distributed training task.
 

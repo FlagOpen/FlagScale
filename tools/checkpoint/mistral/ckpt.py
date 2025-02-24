@@ -1,15 +1,16 @@
+import sys
+
 import torch
 
-import sys
 sys.path.append("..")
 from mixtral.ckpt import (
-    get_hf_attn_ckpt, 
-    set_hf_attn_ckpt,
     get_embedding_ckpt,
     get_final_norm_ckpt,
+    get_hf_attn_ckpt,
     get_output_layer_ckpt,
     set_embedding_ckpt,
     set_final_norm_ckpt,
+    set_hf_attn_ckpt,
     set_output_layer_ckpt,
 )
 
@@ -44,10 +45,12 @@ def set_hf_mlp_ckpt(message, model, layer_id, md, args):
 
 def _get_parallel_size(args):
     assert args.expert_model_parallel_size == 1
-    return args.tensor_model_parallel_size, \
-        args.pipeline_model_parallel_size, \
-        args.expert_model_parallel_size, \
-        args.virtual_pipeline_model_parallel_size or 1
+    return (
+        args.tensor_model_parallel_size,
+        args.pipeline_model_parallel_size,
+        args.expert_model_parallel_size,
+        args.virtual_pipeline_model_parallel_size or 1,
+    )
 
 
 def get_attn_ckpt(message, models, layer_id, args):
@@ -132,8 +135,8 @@ def get_mlp_ckpt(message, models, layer_id, args):
         if args.swiglu:
             for tp_rank in range(tp_size):
                 l0_bias[tp_rank] = torch.chunk(l0_bias[tp_rank], 2, dim=0)
-            message["mlp l0 bias W"] = torch.cat([b[0] for b in l0_bias],dim=0)
-            message["mlp l0 bias V"] = torch.cat([b[1] for b in l0_bias],dim=0)
+            message["mlp l0 bias W"] = torch.cat([b[0] for b in l0_bias], dim=0)
+            message["mlp l0 bias V"] = torch.cat([b[1] for b in l0_bias], dim=0)
         else:
             message["mlp l0 bias"] = torch.cat(l0_bias, dim=0)
 
@@ -160,10 +163,14 @@ def set_attn_ckpt(message, models, layer_id, md, args):
         tf_layer = model.decoder.layers[layer_id]
         tf_layer.self_attention.linear_qkv.weight.data.copy_(qkv_weight[tp_rank])
         tf_layer.self_attention.linear_proj.weight.data.copy_(proj_weight[tp_rank])
-        tf_layer.self_attention.linear_qkv.layer_norm_weight.data.copy_(input_norm_weight)
+        tf_layer.self_attention.linear_qkv.layer_norm_weight.data.copy_(
+            input_norm_weight
+        )
         tf_layer.mlp.linear_fc1.layer_norm_weight.data.copy_(post_norm_weight)
         if md.norm_has_bias:
-            tf_layer.self_attention.linear_qkv.layer_norm_bias.data.copy_(input_norm_bias)
+            tf_layer.self_attention.linear_qkv.layer_norm_bias.data.copy_(
+                input_norm_bias
+            )
             tf_layer.mlp.linear_fc1.layer_norm_bias.data.copy(post_norm_bias)
         if md.add_qkv_bias or md.add_bias_linear:
             tf_layer.self_attention.linear_qkv.bias.data.copy_(qkv_bias[tp_rank])
@@ -179,7 +186,9 @@ def set_mlp_ckpt(message, models, layer_id, md, args):
     if md.swiglu:
         l0_weight_W = torch.chunk(message.pop("mlp l0 weight W"), tp_size, dim=0)
         l0_weight_V = torch.chunk(message.pop("mlp l0 weight V"), tp_size, dim=0)
-        l0_weight = [torch.cat(weights, dim=0) for weights in zip(l0_weight_W, l0_weight_V)]
+        l0_weight = [
+            torch.cat(weights, dim=0) for weights in zip(l0_weight_W, l0_weight_V)
+        ]
     else:
         l0_weight = torch.chunk(message.pop("mlp l0 weight"), tp_size, dim=0)
     # bias
@@ -197,7 +206,7 @@ def set_mlp_ckpt(message, models, layer_id, md, args):
         tf_layer = model.decoder.layers[layer_id]
         tf_layer.mlp.linear_fc1.weight.data.copy_(l0_weight[tp_rank])
         tf_layer.mlp.linear_fc2.weight.data.copy_(l1_weight[tp_rank])
-        
+
         if md.add_bias_linear:
             tf_layer.mlp.linear_fc1.bias.data.copy_(l0_bias[tp_rank])
             tf_layer.mlp.linear_fc2.bias.data.copy_(l1_bias)

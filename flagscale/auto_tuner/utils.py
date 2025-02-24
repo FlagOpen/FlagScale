@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from flagscale.runner.runner_utils import parse_hostfile
 
+
 def divisible(x, y):
     if x % y == 0:
         return True

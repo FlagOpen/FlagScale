@@ -23,7 +23,7 @@ jobs:
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
-        subset: 
+        subset:
           - data
           - dist_checkpointing
           - distributed
@@ -54,8 +54,8 @@ jobs:
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
-        subset: 
-          - runner 
+        subset:
+          - runner
           - ./
     name: "flagscale-${{ matrix.subset == './' && 'root' || matrix.subset }}"
     with:
@@ -70,7 +70,7 @@ jobs:
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
-        model: 
+        model:
           - aquila
           - mixtral
           # - llava_onevision
@@ -84,7 +84,7 @@ jobs:
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
-        model: 
+        model:
           - aquila
     name: "hetero_train-${{ matrix.model }}"
     with:
@@ -96,7 +96,7 @@ jobs:
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
-        model: 
+        model:
           - test_serve_base
           # - test_serve_vllm_model
           # - test_serve_multiple_nodes
@@ -121,7 +121,7 @@ jobs:
     with:
       backend: flagscale
 
-  # Check All Tests 
+  # Check All Tests
   all-tests:
     needs:
       - megatron-unit-tests
@@ -142,7 +142,7 @@ jobs:
 #   uses: ./.github/workflows/functional-tests.yml
 #   strategy:
 #     matrix:
-#       model: 
+#       model:
 #         - from_vllm
 #   name: "inference-${{ matrix.model }}"
 #   with:

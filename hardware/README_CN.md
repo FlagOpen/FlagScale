@@ -34,12 +34,16 @@
 
 ```
 cd FlagScale
-python tools/patch/patch.py --device-type A_X100 --base-commit-id aaaa --current-commit-id bbbb
+python tools/patch/patch.py --device-type A_X100 --base-commit-id aaaa --current-commit-id bbbb [--key-path <KEY_PATH>]
 ```
 
 * `device-type`：芯片型号。
 * `base-commit-id`：厂商适配时的FlagScale commit id。
 * `current-commit-id`: 厂商适配时本地修改后的commit id。
+* `key-path`: 可选项，用于加密patch时，密钥的存储路径，不输入时，不对patch进行加密。
+注意：
+1. `key-path` 不要设为仓库内的路径。
+2. 请妥善保存您的密钥，切勿泄露以确保您的代码与数据安全。
 
 生成的文件结构如下所示，可以看出厂商A的适配代码会放到`FlagScale/hardware/A_X100`中以`base-commit-id`为名的文件夹中（即aaaa），其中patch文件存放实际的适配内容，`base-commit-id`即是patch文件名。如果没有提供`current-commit-id`，工具默认以当前分支的最新commit id作为`current-commit-id`。
 ```
@@ -47,10 +51,11 @@ FlagScale/
 ├── hardware/
 │   └── A_X100/
 │       └── aaaa/
-│           └── aaaa.patch
+│           └── aaaa.patch 或者 aaaa.patch.encrypted（如果加密）
 ```
 
 3. 提交patch：工具提示成功生成patch后，可以直接提交pull request到FlagScale main分支。commit-msg以`current-commit-id`的commit-msg为准。
+注意：提交patch之前，请您人工进行检查，避免将密钥或者未加密patch上传。
 
 #### 异构场景
 
@@ -97,12 +102,13 @@ FlagScale/
 
 ```
 cd FlagScale
-python tools/patch/unpatch.py --device-type A_X100 --commit-id aaaa --dir build
+python tools/patch/unpatch.py --device-type A_X100 --commit-id aaaa --dir build [--key-path <KEY_PATH>]
 ```
 
 * `device-type`：芯片型号。
 * `commit-id`：要unpatch回去的commit id。
 * `dir`：放置unpatch后的FlagScale的目录地址。
+* `key-path`: 可选项，用于解密patch，路径与加密时相同，不输入时，不对patch进行解密。
 
 生成代码结构如下所示，如果没有提供`dir`，工具默认将生成代码放在FlagScale源码目录中。
 
@@ -115,7 +121,7 @@ FlagScale/
 |-- hardware
 |   |-- A_X100/
 |       |-- aaaa/
-|           |-- aaaa.patch
+|           |-- aaaa.patch 或者 aaaa.patch.encrypted（如果加密）
 |   |-- B_Y100/
 |       |-- aaaa/
 |           |-- aaaa.patch
