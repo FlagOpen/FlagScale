@@ -1,6 +1,10 @@
 [<img src="flagopen.png">](https://flagopen.baai.ac.cn/)
 
 ## Latest News
+- **[2025/02]** Released [v0.6.5](https://github.com/FlagOpen/FlagScale/tree/release/v0.6.5):
+  - Added support for DeepSeek-V3 distributed pre-training (beta) and [DeepSeek-V3/R1 serving](#deepseek-r1-serving) across multiple chips.
+  - Introduced an auto-tuning feature for serving and a new CLI feature for one-click deployment.
+  - Enhanced the CI/CD system to support more chips and integrated the workflow of [FlagRelease](https://huggingface.co/FlagRelease).
 - **[2024/11]** Released [v0.6.0](https://github.com/FlagOpen/FlagScale/tree/release/v0.6.0):
   - Introduced general multi-dimensional heterogeneous parallelism and CPU-based communication between different chips.
   - Added the full support for LLaVA-OneVision, achieving SOTA results on the [Infinity-MM](https://arxiv.org/abs/2410.18558) dataset.
@@ -43,43 +47,13 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     ```
     The above instructions create two conda environments: `flagscale-train` and `flagscale-inference`, which contain the dependency environments for training and inference, respectively.
 
-3. Install the packages with customized extensions:
+3. Install the packages with customized extensions (options):
     ```sh
     cd vllm
     pip install .
 
     pip install -e ./megatron-energon
     cp -r megatron-energon/src/megatron/energon megatron/megatron
-    ```
-
-### DeepSeek-R1 Serve
-
-We support the model serving of DeepSeek R1 and have implemented the flagscale serve command for one-click deployment.
-Only configure two YAML files, then use the `flagscale serve` command to serve.
-
-1. Configure the yaml files:
-```
-Flagscale/
-├── examples/
-│   └── deepseek_r1/
-│       └── config_deepseek_r1.yaml # set hostfile
-│       └── serve/
-│           └── deepseek_r1.yaml # set model parameters and server port
-```
-2. Install FlagScale CLI:
-    ```
-    cd FlagScale
-    pip install .
-    ```
-
-3. One-click serve:
-    ```
-    flagscale serve deepseek_r1
-    ```
-
-4. When custom service parameters, users can run:
-    ```
-    flagscale serve <model_name> <MODEL_CONFIG_YAML>
     ```
 
 ### Run a Task
@@ -110,6 +84,38 @@ FlagScale provides a unified runner for various tasks, including training，infe
     python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=stop
     ```
 For more details, please refer to [Quick Start](./flagscale/serve/README.md).
+
+### DeepSeek-R1 Serving <a name="deepseek-r1-serving"></a>
+
+We support the model serving of DeepSeek R1 and have implemented the `flagscale serve` command for one-click deployment. By configuring just two YAML files, you can easily serve the model using the `flagscale serve` command.
+
+1. **Configure the YAML files:**
+    ```
+    Flagscale/
+    ├── examples/
+    │   └── deepseek_r1/
+    │       └── config_deepseek_r1.yaml # Set hostfile
+    │       └── serve/
+    │           └── deepseek_r1.yaml # Set model parameters and server port
+    ```
+
+2. **Install FlagScale CLI:**
+    ```sh
+    cd FlagScale
+    pip install .
+    ```
+
+3. **One-click serve:**
+    ```sh
+    flagscale serve deepseek_r1
+    ```
+
+4. **Custom service parameters:**
+    ```sh
+    flagscale serve <MODEL_NAME> <MODEL_CONFIG_YAML>
+    ```
+
+The configuration files allow you to specify the necessary parameters and settings for your deployment, ensuring a smooth and efficient serving process.
 
 ## License
 
