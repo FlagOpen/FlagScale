@@ -11,7 +11,7 @@ jobs:
   clean-report:
     runs-on: self-hosted
     container:
-      image: localhost:5000/flagscale_cicd:v2.0-pytorch-2.5.1-cuda-12.4.131-ngc-24.05
+      image: localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11 .
       ports:
         - 80
       volumes:
