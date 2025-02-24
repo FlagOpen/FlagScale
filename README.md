@@ -52,6 +52,36 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     cp -r megatron-energon/src/megatron/energon megatron/megatron
     ```
 
+### DeepSeek-R1 Serve
+
+We support the model serving of DeepSeek R1 and have implemented the flagscale serve command for one-click deployment.
+Only configure two YAML files, then use the `flagscale serve` command to serve.
+
+1. Configure the yaml files:
+```
+Flagscale/
+├── examples/
+│   └── deepseek_r1/
+│       └── config_deepseek_r1.yaml # set hostfile
+│       └── serve/
+│           └── deepseek_r1.yaml # set model parameters and server port
+```
+2. Install FlagScale CLI:
+    ```
+    cd FlagScale
+    pip install .
+    ```
+
+3. One-click serve:
+    ```
+    flagscale serve deepseek_r1
+    ```
+
+4. When custom service parameters, users can run:
+    ```
+    flagscale serve <model_name> <MODEL_CONFIG_YAML>
+    ```
+
 ### Run a Task
 
 FlagScale provides a unified runner for various tasks, including training，inference and serve. Simply specify the configuration file to run the task with a single command. The runner will automatically load the configurations and execute the task. The following example demonstrates how to run a distributed training task.
