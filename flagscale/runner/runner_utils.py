@@ -31,7 +31,7 @@ def log_and_raise_error(message):
 def parse_hostfile(hostfile_path):
     if hostfile_path is None or not os.path.isfile(hostfile_path):
         logger.warning(
-            "Hostfile not found. The training will proceed using only local resources."
+            f"Hostfile {hostfile_path} not found. The training will proceed using only local resources."
         )
         return None
 
