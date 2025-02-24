@@ -131,8 +131,10 @@ def set_attn_ckpt(message, models, layer_id, md, args):
 
     # set data to transformer layer's self-attention
     for tp_ep_rank, model in enumerate(models):
-
-        tf_layer = model.decoder.layers[layer_id]
+        if hasattr(model, "decoder"):
+            tf_layer = model.decoder.layers[layer_id]
+        else:
+            tf_layer = model.transformer_layer  # for mtp
         tf_layer.self_attention.linear_q_down_proj.weight.data.copy_(q_a_weight)
         tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data.copy_(
             q_a_norm_weight
@@ -169,7 +171,10 @@ def set_dense_mlp_ckpt(message, models, layer_id, md, args):
     linear2_weight = message.pop("down weight")
 
     for tp_ep_rank, model in enumerate(models):
-        tf_layer = model.decoder.layers[layer_id]
+        if hasattr(model, "decoder"):
+            tf_layer = model.decoder.layers[layer_id]
+        else:
+            tf_layer = model.transformer_layer  # for mtp
         tf_layer.mlp.linear_fc1.layer_norm_weight.data.copy_(post_norm_weight)
         tf_layer.mlp.linear_fc1.weight.data.copy_(linear1_weight)
         tf_layer.mlp.linear_fc2.weight.data.copy_(linear2_weight)
@@ -208,7 +213,10 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
             # set data
             for tp_rank in range(tp_size):
                 tp_ep_rank = ep_rank * tp_size + tp_rank
-                tf_layer = models[tp_ep_rank].decoder.layers[layer_id]
+                if hasattr(models[tp_ep_rank], "decoder"):
+                    tf_layer = models[tp_ep_rank].decoder.layers[layer_id]
+                else:
+                    tf_layer = models[tp_ep_rank].transformer_layer  # for mtp
                 # router
                 router = tf_layer.mlp.router
                 router.weight.data.copy_(router_weight)
@@ -264,5 +272,5 @@ def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
         mtp_layer.norm1.weight.data.copy_(mtp_enorm_weight)
         mtp_layer.norm2.weight.data.copy_(mtp_hnorm_weight)
         mtp_layer.linear_proj.weight.data.copy_(mtp_eh_weight)
-        mtp_layer.decoder.final_layernorm.weight.data.copy_(mtp_shared_head_norm_weight)
+        mtp_layer.final_norm.weight.data.copy_(mtp_shared_head_norm_weight)
     # mtp output lm head is the same with main model output lm head

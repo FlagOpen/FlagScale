@@ -1,6 +1,3 @@
-import os
-import re
-
 import torch
 from compressed_tensors.quantization import (
     QuantizationConfig,
@@ -28,7 +25,7 @@ from llmcompressor.transformers.sparsification.compressed_tensors_utils import (
 from llmcompressor.utils.fsdp.context import fix_fsdp_module_name
 from llmcompressor.utils.helpers import DisableKVCache
 
-from flagscale.runner.runner_utils import logger
+from flagscale.runner.utils import logger
 
 __all__ = ["LLMCompressorAdapter"]
 
