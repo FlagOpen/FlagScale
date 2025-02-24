@@ -70,9 +70,10 @@ rm -r ./TransformerEngine
 
 # Megatron-LM requires flash-attn >= 2.1.1, <= 2.7.3
 cu=$(nvcc --version | grep "Cuda compilation tools" | awk '{print $5}' | cut -d '.' -f 1)
-cp=$(python3 --version | awk '{print $2}' | awk -F. '{print $1$2}')
 torch=$(pip show torch | grep Version | awk '{print $2}' | cut -d '+' -f 1 | cut -d '.' -f 1,2)
-pip install flash_attn-2.7.3+cu${cu}torch${torch}cxx11abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
+cp=$(python3 --version | awk '{print $2}' | awk -F. '{print $1$2}')
+cxx=$(g++ --version | grep 'g++' | awk '{print $3}' | cut -d '.' -f 1)
+pip install flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
 pip install -r ../requirements/requirements-dev.txt
 
 # If env equals 'train'
