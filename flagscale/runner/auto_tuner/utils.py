@@ -1,10 +1,6 @@
 import os
-import re
-import socket
-import subprocess
+import sys
 from types import SimpleNamespace
-
-from flagscale.runner.runner_utils import parse_hostfile
 
 
 def divisible(x, y):
@@ -15,7 +11,7 @@ def divisible(x, y):
 
 def beside(keys, strategy, history):
     """Compare strategy with history strategies Whether same besides given keys"""
-    from .search.searcher import __BUILT_IN_STRATEGY_DIMS__
+    from flagscale.runner.auto_tuner.search.searcher import __BUILT_IN_STRATEGY_DIMS__
 
     retrieval = []
     for task in history:
@@ -78,60 +74,6 @@ def sort_by_performance(strategy):
             else float("inf")
         ),
     )
-
-
-def is_ip_addr(master):
-    """Check if master is ip address."""
-
-    if not isinstance(master, str):
-        return False
-    pattern = (
-        r"^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$"
-    )
-    result = re.match(pattern, master)
-    if result:
-        return True
-    else:
-        return False
-
-
-def get_ip_addr():
-    """Get ip address."""
-    try:
-        hostname = socket.gethostname()
-        ip = socket.gethostbyname(socket.getfqdn(hostname))
-    except:
-        ip = "127.0.0.1"
-    return ip
-
-
-def is_master(config):
-    """Check if current node is master."""
-    nnodes = config.experiment.runner.get("nnodes", 1)
-
-    hostfile = None
-    if config.experiment.runner.get("hostfile", None):
-        hostfile = config.experiment.runner["hostfile"]
-    if os.environ.get("AIRS_SWITCH", None):
-        if os.environ.get("AIRS_HOSTFILE_PATH", None):
-            hostfile = os.environ["AIRS_HOSTFILE_PATH"]
-
-    resources = parse_hostfile(hostfile)
-    if not resources and nnodes > 1:
-        raise ValueError("In the multi-node mode, please set the hostfile")
-
-    if resources:
-        master = list(resources.keys())[0]
-        if is_ip_addr(master):
-            return get_ip_addr() == master
-        else:
-            output = subprocess.run(
-                "hostname", check=True, shell=True, text=True, capture_output=True
-            )
-            hostname = output.stdout.strip()
-            return hostname == master
-    # Local host Scene
-    return True
 
 
 def compare_by_recompute(strategy1, strategy2):
@@ -236,12 +178,11 @@ def convert_config_to_megatron_args(config, strategy):
     args.tensor_model_parallel_size = strategy["tensor_model_parallel_size"]
     if "padded_vocab_size" not in flagscale_args:
         # To append megatron path to PYTHONPATH
-        import sys
-
         autotuner_dir = os.path.dirname(__file__)
-        sys.path.insert(
-            0, os.path.join(os.path.dirname(os.path.dirname(autotuner_dir)), "megatron")
+        great_grandparent_dir = os.path.dirname(
+            os.path.dirname(os.path.dirname(autotuner_dir))
         )
+        sys.path.insert(0, os.path.join(great_grandparent_dir, "megatron"))
         from megatron.training.tokenizer.tokenizer import _vocab_size_with_padding
 
         args.rank = -1

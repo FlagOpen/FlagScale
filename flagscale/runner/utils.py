@@ -9,18 +9,17 @@ import sys
 import time
 import traceback
 from dataclasses import dataclass, field
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import aiohttp
 import numpy as np
-from tqdm.asyncio import tqdm
-
-AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
-
 from omegaconf import DictConfig, OmegaConf
+from tqdm.asyncio import tqdm
 
 from flagscale.logger import logger
 from flagscale.metric import calculate_metrics
+
+AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 
 
 def log_and_raise_error(message):
@@ -265,6 +264,60 @@ def add_decive_extra_config(config, device_type):
         else:
             cur_node_config[key] = value
     return cur_node_config
+
+
+def is_ip_addr(master):
+    """Check if master is ip address."""
+
+    if not isinstance(master, str):
+        return False
+    pattern = (
+        r"^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$"
+    )
+    result = re.match(pattern, master)
+    if result:
+        return True
+    else:
+        return False
+
+
+def get_ip_addr():
+    """Get ip address."""
+    try:
+        hostname = socket.gethostname()
+        ip = socket.gethostbyname(socket.getfqdn(hostname))
+    except:
+        ip = "127.0.0.1"
+    return ip
+
+
+def is_master(config):
+    """Check if current node is master."""
+    nnodes = config.experiment.runner.get("nnodes", 1)
+
+    hostfile = None
+    if config.experiment.runner.get("hostfile", None):
+        hostfile = config.experiment.runner["hostfile"]
+    if os.environ.get("AIRS_SWITCH", None):
+        if os.environ.get("AIRS_HOSTFILE_PATH", None):
+            hostfile = os.environ["AIRS_HOSTFILE_PATH"]
+
+    resources = parse_hostfile(hostfile)
+    if not resources and nnodes > 1:
+        raise ValueError("In the multi-node mode, please set the hostfile")
+
+    if resources:
+        master = list(resources.keys())[0]
+        if is_ip_addr(master):
+            return get_ip_addr() == master
+        else:
+            output = subprocess.run(
+                "hostname", check=True, shell=True, text=True, capture_output=True
+            )
+            hostname = output.stdout.strip()
+            return hostname == master
+    # Local host Scene
+    return True
 
 
 @dataclass
