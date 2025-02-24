@@ -91,7 +91,7 @@ We support the model serving of DeepSeek R1 and have implemented the `flagscale 
 
 1. **Configure the YAML files:**
     ```
-    Flagscale/
+    FlagScale/
     ├── examples/
     │   └── deepseek_r1/
     │       └── config_deepseek_r1.yaml # Set hostfile
