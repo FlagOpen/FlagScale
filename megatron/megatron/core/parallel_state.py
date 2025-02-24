@@ -461,7 +461,7 @@ def initialize_model_parallel(
     pipeline_model_parallel_size: int = 1,
     virtual_pipeline_model_parallel_size: Optional[int] = None,
     pipeline_model_parallel_split_rank: Optional[int] = None,
-    pipeline_model_parallel_comm_backend: Optional[str] = "nccl",
+    pipeline_model_parallel_comm_backend: Optional[str] = None,
     use_sharp: bool = False,
     ulysses_parallel_size: int  = 1,
     context_parallel_size: int = 1,
@@ -1143,7 +1143,8 @@ def initialize_model_parallel(
             group_desc='PIPELINE_MODEL_PARALLEL_GROUP',
         )
         assert (
-            pipeline_model_parallel_comm_backend == 'nccl'
+            pipeline_model_parallel_comm_backend == None
+            or pipeline_model_parallel_comm_backend == 'nccl'
             or pipeline_model_parallel_comm_backend == 'ucc'
         ), f'"{pipeline_model_parallel_comm_backend}" backend for PP communication is currently not supported'
 
