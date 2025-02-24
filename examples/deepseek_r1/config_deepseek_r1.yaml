@@ -8,8 +8,8 @@ experiment:
     type: serve
     inference_engine: vllm
   runner:
-    hostfile: examples/deepseek/conf/hostfile.txt
-    docker: ds
+    hostfile: examples/deepseek_r1/conf/hostfile.txt
+    docker: flagrelease_nv
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
   cmds:
