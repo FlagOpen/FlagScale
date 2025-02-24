@@ -47,7 +47,7 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     ```
     The above instructions create two conda environments: `flagscale-train` and `flagscale-inference`, which contain the dependency environments for training and inference, respectively.
 
-3. Install the packages with customized extensions (options):
+3. Install the packages with customized extensions:
     ```sh
     cd vllm
     pip install .
