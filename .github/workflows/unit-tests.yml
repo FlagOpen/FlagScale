@@ -23,22 +23,18 @@ jobs:
         - /home/flagscale_cicd/flask/config:/workspace/config
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
         - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
-      options: --gpus all --shm-size=500g --hostname flagscale_cicd --user root
+      options: --gpus all --shm-size=500g --hostname flagscale_cicd
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
-          ssh-strict: true
-          ssh-user: git
+          # ssh-strict: true
+          # ssh-user: git
           persist-credentials: true
           clean: true
-          sparse-checkout-cone-mode: true
-          fetch-tags: false
           show-progress: true
-          lfs: false
-          submodules: false
           set-safe-directory: true
 
       - name: Unit Test Coverage Online Report
