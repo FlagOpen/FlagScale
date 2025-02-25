@@ -14,6 +14,6 @@ experiment:
     CUDA_VISIBLE_DEVICES: 0,1,2,3
     CUDA_DEVICE_MAX_CONNECTIONS: 1
   cmds:
-    before_start: source "$(dirname "$(which conda)")/../../etc/profile.d/conda.sh";conda activate flagscale-train
+    before_start: source /root/miniconda3/etc/profile.d/conda.sh;conda activate flagscale-train
 
 action: run

@@ -26,7 +26,7 @@ experiment:
     CUDNN_BENCHMARK: "false"
     CUDNN_DETERMINISTIC: "true"
   cmds:
-    before_start: source "$(dirname "$(which conda)")/../../etc/profile.d/conda.sh";conda activate flagscale-train
+    before_start: source /root/miniconda3/etc/profile.d/conda.sh;conda activate flagscale-train
 action: run
 
 hydra:
