@@ -1,7 +1,7 @@
 # Use default configuration if not shown
 megatron:
   set_environment:
-    source /root/miniconda3/etc/profile.d/conda.sh;conda activate flagscale-train;cd megatron; export PYTHONPATH=..:$PYTHONPATH;export NVTE_FLASH_ATTN=0;export NVTE_FUSED_ATTN=0;
+    source "$(dirname "$(which conda)")/../../etc/profile.d/conda.sh";conda activate flagscale-train;cd megatron; export PYTHONPATH=..:$PYTHONPATH;export NVTE_FLASH_ATTN=0;export NVTE_FUSED_ATTN=0;
   coverage:
     core
   subset:
@@ -71,7 +71,7 @@ megatron:
 
 flagscale:
   set_environment:
-      source /root/miniconda3/etc/profile.d/conda.sh;conda activate flagscale-train;export PYTHONPATH=./megatron:$PYTHONPATH;export NVTE_FLASH_ATTN=0;export NVTE_FUSED_ATTN=0;
+      source "$(dirname "$(which conda)")/../../etc/profile.d/conda.sh";conda activate flagscale-train;export PYTHONPATH=./megatron:$PYTHONPATH;export NVTE_FLASH_ATTN=0;export NVTE_FUSED_ATTN=0;
   subset:
     runner:
       type: batch
