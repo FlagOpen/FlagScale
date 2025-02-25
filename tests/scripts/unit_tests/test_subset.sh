@@ -147,6 +147,7 @@ run_tests() {
 
     echo "************************"
     echo $(which python)
+    echo $(which conda)
     echo "************************"
 
     if [ "$_type" == "batch" ]; then
