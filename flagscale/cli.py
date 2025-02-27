@@ -4,7 +4,6 @@ import sys
 
 import click
 
-from run import main as run_main
 
 VERSION = "0.6.0"
 
@@ -27,6 +26,7 @@ def train(yaml_path):
     """
     Train model from yaml.
     """
+    from run import main as run_main
     click.echo(f"Start training from the yaml {yaml_path}...")
     yaml_path = os.path.abspath(yaml_path)
     config_path = os.path.dirname(yaml_path)
@@ -49,6 +49,7 @@ def serve(model_name, yaml_path=None):
     """
     Serve model from yaml.
     """
+    from run import main as run_main
     if yaml_path:
         if os.path.isabs(yaml_path):
             yaml_path = yaml_path
@@ -112,6 +113,7 @@ def serve(model_name, yaml_path=None):
     help="The path to save ckpt",
 )
 def pull(image_name, ckpt_name, ckpt_path):
+    "Docker pull image and git clone ckpt."
     # If ckpt_path is not provided, use the default download directory
     if ckpt_path is None:
         ckpt_path = os.path.join(os.getcwd(), "model_download")
