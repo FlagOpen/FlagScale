@@ -1,0 +1,70 @@
+# Demo for testing
+# TODO: Release 671B version
+defaults:
+  - _self_
+  - train: train_deepseek_v3_16b.yaml
+
+experiment:
+  exp_name: DeepSeek-V3-Cold-Start-Exp1
+  seed: 42
+  save_steps: 200
+  load: None
+  exp_dir: ./DeekSeek-V3-Cold-Start-Exp-27-02-2025
+  ckpt_format: torch
+  task:
+    type: train
+    backend: megatron
+    entrypoint: flagscale/train/train_deepseek_v3.py
+  runner:
+    no_shared_fs: false
+    backend: torchrun
+    rdzv_backend: static
+    ssh_port: 22
+    nnodes: 8
+    nproc_per_node: 8
+    hostfile: /share/project/lixianduo/hostfiles/hostfile.8
+  cmds:
+    before_start: "ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale"
+  envs:
+    # NVTE_DEBUG: 1
+    # NVTE_DEBUG_LEVEL: 2
+    # CUDNN_LOGERR_DBG: 1
+    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+    CCL_IB_DISABLE: 0
+    NCCL_IB_CUDA_SUPPORT: 1
+    NCCL_IB_GID_INDEX: 0
+    #TORCH_NCCL_USE_COMM_NONBLOCKING: 1
+    OMP_NUM_THREADS: 4
+    ENABLE_FLASH_ATTENTION_WITH_IXDNN: 0
+    NCCL_NET_PLUGIN: none
+    #NCCL_SHM_DISABLE=1
+    NCCL_ALGO: Ring
+    NCCL_P2P_NET_CHUNKSIZE: 1048576
+    NCCL_CHUNK_SIZE: 1048576
+    NCCL_BUFFSIZE: 8388608
+    NCCL_MAX_NCHANNELS: 4
+    NCCL_MIN_NCHANNELS: 4
+    NCCL_MAX_P2P_NCHANNELS: 1
+    NCCL_PROTO: Simple
+    NCCL_NET_SHARED_BUFFERS: 0
+    NCCL_P2P_LL_THRESHOLD: 0
+    IXCCL_MIX_NV: 1
+    IXCCL_FUSED_ENABLE: 0
+    NCCL_IB_DISABLE: 0
+    NCCL_IB_HCA: mlx5_2,mlx5_8
+    # A800:
+    #   CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
+    #   NCCL_SOCKET_IFNAME: eth0
+    #   GLOO_SOCKET_IFNAME: eth0
+    #   OPAL_PREFIX: /opt/hpcx/ompi
+      # PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
+      # LD_LIBRARY_PATH: /usr/local/lib/python3.10/dist-packages/torch/lib:/usr/local/lib/python3.10/dist-packages/torch_tensorrt/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+      # PATH: /usr/local/nvm/versions/node/v16.20.2/bin:/usr/local/lib/python3.10/dist-packages/torch_tensorrt/bin:/usr/local/mpi/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/ucx/bin:/opt/tensorrt/bin
+
+action: run
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra
+
