@@ -10,6 +10,7 @@ experiment:
   runner:
     hostfile: examples/deepseek_r1/conf/hostfile.txt
     docker: flagrelease_nv
+    ssh_port: 22
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
   cmds:
