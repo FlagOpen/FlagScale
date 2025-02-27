@@ -145,10 +145,10 @@ def _generate_run_script_serve(
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
 
-                    ssh_cmd = f'ssh -n {ip} -p {ssh_port} "{node_cmd}"'
+                    ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
 
                     if docker_name:
-                        ssh_cmd = f"ssh -n {ip} -p {ssh_port} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
             if before_start_cmd:
                 f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
@@ -203,10 +203,10 @@ def _generate_run_script_serve(
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
 
-                    ssh_cmd = f'ssh -n {ip} -p {ssh_port} "{node_cmd}"'
+                    ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
 
                     if docker_name:
-                        ssh_cmd = f"ssh -n {ip} -p {ssh_port} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
         else:
             # Note: config key device_type is specified for single node serving in neither gpu or cpu.
