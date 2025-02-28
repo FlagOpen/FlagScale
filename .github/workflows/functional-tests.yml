@@ -47,5 +47,5 @@ jobs:
       - name: Run Functional Test
         shell: bash
         run: |
-          pip install pandas
+          pip install pandas aiohttp
           tests/scripts/functional_tests/test_model.sh --type ${{ inputs.type }} --model ${{ inputs.model }}
