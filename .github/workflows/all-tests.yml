@@ -2,9 +2,9 @@ name: All Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 concurrency:
   group: ${{ github.event.pull_request.number }}-${{ github.actor }}
@@ -19,7 +19,7 @@ jobs:
       - name: Set Environment Variable
         id: set-env  # Assign an ID to this step
         run: |
-          echo "::set-output name=ci_image::localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11"  # Set output variable
+          echo "ci_image=localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11" >> $GITHUB_ENV  # Set environment variable
 
   # Megatron Report Clean
   megatron-report-clean:
@@ -170,7 +170,6 @@ jobs:
     steps:
       - name: All Tests Completed
         run: echo "All tests completed successfully!"
-
 
 # Add in the feature for inference
 # functional-tests-inference:
