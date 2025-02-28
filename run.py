@@ -8,6 +8,9 @@ from flagscale.runner.runner_serve import SSHServeRunner
 from flagscale.runner.runner_train import CloudTrainRunner, SSHTrainRunner
 from flagscale.runner.utils import is_master
 
+# To accommodate the scenario where the before_start field is used to switch to the actual environment during program execution,
+# we have placed the import statements inside the function body rather than at the beginning of the file.
+
 
 @hydra.main(version_base=None, config_name="config")
 def main(config: DictConfig) -> None:
