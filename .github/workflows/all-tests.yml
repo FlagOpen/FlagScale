@@ -21,20 +21,20 @@ jobs:
         run: |
           echo "ci_image=localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11" >> $GITHUB_ENV  # Set environment variable
 
-  # # Megatron Report Clean
-  # megatron-report-clean:
-  #   needs:
-  #     - set-env
-  #   uses: ./.github/workflows/report-clean.yml
-  #   with:
-  #     backend: megatron
-  #     image: ${{ needs.set-env.outputs.ci_image }}
+  # Megatron Report Clean
+  megatron-report-clean:
+    needs:
+      - set-env
+    uses: ./.github/workflows/report-clean.yml
+    with:
+      backend: megatron
+      image: ${{ needs.set-env.outputs.ci_image }}
 
   # Megatron Unit Tests with Matrix
   megatron-unit-tests:
     needs:
       - set-env
-      # - megatron-report-clean
+      - megatron-report-clean
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
@@ -58,20 +58,20 @@ jobs:
       subset: ${{ matrix.subset }}
       image: ${{ needs.set-env.outputs.ci_image }}
 
-  # # FlagScale Report Clean
-  # flagscale-report-clean:
-  #   needs:
-  #     - set-env
-  #   uses: ./.github/workflows/report-clean.yml
-  #   with:
-  #     backend: flagscale
-  #     image: ${{ needs.set-env.outputs.ci_image }}
+  # FlagScale Report Clean
+  flagscale-report-clean:
+    needs:
+      - set-env
+    uses: ./.github/workflows/report-clean.yml
+    with:
+      backend: flagscale
+      image: ${{ needs.set-env.outputs.ci_image }}
 
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
     needs:
       - set-env
-      # - flagscale-report-clean
+      - flagscale-report-clean
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
