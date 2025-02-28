@@ -2,9 +2,9 @@ name: All Tests
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
   pull_request:
-    branches: ["main"]
+    branches: [ "main" ]
 
 concurrency:
   group: ${{ github.event.pull_request.number }}-${{ github.actor }}
@@ -19,7 +19,7 @@ jobs:
       - name: Set Environment Variable
         id: set-env  # Assign an ID to this step
         run: |
-          echo "ci_image=localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11" >> $GITHUB_ENV  # Set environment variable
+          echo "ci_image=localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11" >> $GITHUB_ENV  # Set output variable
 
   # Megatron Report Clean
   megatron-report-clean:
@@ -28,7 +28,7 @@ jobs:
     uses: ./.github/workflows/report-clean.yml
     with:
       backend: megatron
-      image: ${{ needs.set-env.outputs.ci_image }}
+      image: ${{ env.ci_image }}  # Use the output variable from set-env job
 
   # Megatron Unit Tests with Matrix
   megatron-unit-tests:
@@ -56,7 +56,7 @@ jobs:
     with:
       backend: megatron
       subset: ${{ matrix.subset }}
-      image: ${{ needs.set-env.outputs.ci_image }}
+      image: ${{ env.ci_image }}  # Use the output variable
 
   # FlagScale Report Clean
   flagscale-report-clean:
@@ -65,7 +65,7 @@ jobs:
     uses: ./.github/workflows/report-clean.yml
     with:
       backend: flagscale
-      image: ${{ needs.set-env.outputs.ci_image }}
+      image: ${{ env.ci_image }}  # Use the output variable
 
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
@@ -82,7 +82,7 @@ jobs:
     with:
       backend: flagscale
       subset: ${{ matrix.subset }}
-      image: ${{ needs.set-env.outputs.ci_image }}
+      image: ${{ env.ci_image }}  # Use the output variable
 
   # Functional Tests with Model and Type Matrix
   functional-tests-train:
@@ -100,7 +100,7 @@ jobs:
     with:
       model: ${{ matrix.model }}
       type: train
-      image: ${{ needs.set-env.outputs.ci_image }}
+      image: ${{ env.ci_image }}  # Use the output variable
 
   functional-tests-hetero:
     needs:
@@ -115,7 +115,7 @@ jobs:
     with:
       model: ${{ matrix.model }}
       type: hetero_train
-      image: ${{ needs.set-env.outputs.ci_image }}
+      image: ${{ env.ci_image }}  # Use the output variable
 
   functional-tests-serve:
     needs:
@@ -132,7 +132,7 @@ jobs:
     with:
       model: ${{ matrix.model }}
       type: serve
-      image: ${{ needs.set-env.outputs.ci_image }}
+      image: ${{ env.ci_image }}  # Use the output variable
 
   # Megatron Coverage Test
   megatron-coverage-test:
@@ -143,7 +143,7 @@ jobs:
     uses: ./.github/workflows/coverage-tests.yml
     with:
       backend: megatron
-      image: ${{ needs.set-env.outputs.ci_image }}
+      image: ${{ env.ci_image }}  # Use the output variable
 
   # Flagscale Coverage Test
   flagscale-coverage-test:
@@ -154,7 +154,7 @@ jobs:
     uses: ./.github/workflows/coverage-tests.yml
     with:
       backend: flagscale
-      image: ${{ needs.set-env.outputs.ci_image }}
+      image: ${{ env.ci_image }}  # Use the output variable
 
   # Check All Tests
   all-tests:
@@ -170,6 +170,7 @@ jobs:
     steps:
       - name: All Tests Completed
         run: echo "All tests completed successfully!"
+
 
 # Add in the feature for inference
 # functional-tests-inference:
