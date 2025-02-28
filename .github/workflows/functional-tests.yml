@@ -10,12 +10,15 @@ on:
       model:
         required: true
         type: string
+      image:
+        required: true
+        type: string
 
 jobs:
   functional-test:
     runs-on: self-hosted
     container:
-      image: localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11
+      image: ${{ inputs.image }}
       ports:
         - 80
       volumes:
@@ -42,4 +45,7 @@ jobs:
           set-safe-directory: true
 
       - name: Run Functional Test
-        run: tests/scripts/functional_tests/test_model.sh --type ${{ inputs.type }} --model ${{ inputs.model }}
+        shell: bash
+        run: |
+          pip install pandas
+          tests/scripts/functional_tests/test_model.sh --type ${{ inputs.type }} --model ${{ inputs.model }}

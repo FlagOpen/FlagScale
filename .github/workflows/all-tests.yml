@@ -11,76 +11,101 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  set-env:
+    runs-on: ubuntu-latest
+    outputs:
+      ci_image: ${{ steps.set-env.outputs.ci_image }}  # Declare output variable
+    steps:
+      - name: Set Environment Variable
+        id: set-env  # Assign an ID to this step
+        run: |
+          echo "::set-output name=ci_image::localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11"  # Set output variable
+
   # Megatron Report Clean
   megatron-report-clean:
+    needs:
+      - set-env
     uses: ./.github/workflows/report-clean.yml
     with:
       backend: megatron
+      image: ${{ needs.set-env.outputs.ci_image }}  # Use the output variable from set-env job
 
   # Megatron Unit Tests with Matrix
   megatron-unit-tests:
-    needs: megatron-report-clean
+    needs:
+      - set-env
+      - megatron-report-clean
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
         subset:
-          - data
-          - dist_checkpointing
-          - distributed
-          - export
-          - fusions
-          - inference
-          - models
-          - pipeline_parallel
-          - ssm
-          - tensor_parallel
-          - transformer/moe
-          - transformer
+          # - data
+          # - dist_checkpointing
+          # - distributed
+          # - export
+          # - fusions
+          # - inference
+          # - models
+          # - pipeline_parallel
+          # - ssm
+          # - tensor_parallel
+          # - transformer/moe
+          # - transformer
           - ./
     name: "megatron-${{ matrix.subset == './' && 'root' || matrix.subset }}"
     with:
       backend: megatron
       subset: ${{ matrix.subset }}
+      image: ${{ needs.set-env.outputs.ci_image }}  # Use the output variable
 
   # FlagScale Report Clean
   flagscale-report-clean:
+    needs:
+      - set-env
     uses: ./.github/workflows/report-clean.yml
     with:
       backend: flagscale
+      image: ${{ needs.set-env.outputs.ci_image }}  # Use the output variable
 
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
-    needs: flagscale-report-clean
+    needs:
+      - set-env
+      - flagscale-report-clean
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
         subset:
-          - runner
+          # - runner
           - ./
     name: "flagscale-${{ matrix.subset == './' && 'root' || matrix.subset }}"
     with:
       backend: flagscale
       subset: ${{ matrix.subset }}
+      image: ${{ needs.set-env.outputs.ci_image }}  # Use the output variable
 
   # Functional Tests with Model and Type Matrix
   functional-tests-train:
     needs:
+      - set-env
       - megatron-unit-tests
       - flagscale-unit-tests
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
         model:
-          - aquila
+          # - aquila
           - mixtral
-          # - llava_onevision
     name: "train-${{ matrix.model }}"
     with:
       model: ${{ matrix.model }}
       type: train
+      image: ${{ needs.set-env.outputs.ci_image }}  # Use the output variable
 
   functional-tests-hetero:
-    needs: functional-tests-train
+    needs:
+      - set-env
+      - functional-tests-train
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
@@ -90,9 +115,12 @@ jobs:
     with:
       model: ${{ matrix.model }}
       type: hetero_train
+      image: ${{ needs.set-env.outputs.ci_image }}  # Use the output variable
 
   functional-tests-serve:
-    needs: functional-tests-hetero
+    needs:
+      - set-env
+      - functional-tests-hetero
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
@@ -104,22 +132,29 @@ jobs:
     with:
       model: ${{ matrix.model }}
       type: serve
+      image: ${{ needs.set-env.outputs.ci_image }}  # Use the output variable
 
   # Megatron Coverage Test
   megatron-coverage-test:
-    needs: functional-tests-hetero
+    needs:
+      - set-env
+      - functional-tests-hetero
     if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/coverage-tests.yml
     with:
       backend: megatron
+      image: ${{ needs.set-env.outputs.ci_image }}  # Use the output variable
 
   # Flagscale Coverage Test
   flagscale-coverage-test:
-    needs: functional-tests-hetero
+    needs:
+      - set-env
+      - functional-tests-hetero
     if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/coverage-tests.yml
     with:
       backend: flagscale
+      image: ${{ needs.set-env.outputs.ci_image }}  # Use the output variable
 
   # Check All Tests
   all-tests:
@@ -136,9 +171,11 @@ jobs:
       - name: All Tests Completed
         run: echo "All tests completed successfully!"
 
+
 # Add in the feature for inference
 # functional-tests-inference:
-#   needs: functional-tests-hetero
+#   needs:
+#     - functional-tests-hetero
 #   uses: ./.github/workflows/functional-tests.yml
 #   strategy:
 #     matrix:

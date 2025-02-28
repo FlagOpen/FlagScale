@@ -6,12 +6,15 @@ on:
       backend:
         required: true
         type: string
+      image:
+        required: true
+        type: string
 
 jobs:
   clean-report:
     runs-on: self-hosted
     container:
-      image: localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11
+      image: ${{ inputs.image }}
       ports:
         - 80
       volumes:
