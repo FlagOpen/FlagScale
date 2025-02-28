@@ -19,7 +19,7 @@ jobs:
       - name: Set Environment Variable
         id: set-env  # Assign an ID to this step
         run: |
-          echo "::set-output name=ci_image::localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11"  # Set output variable
+          echo "ci_image=localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11" >> $GITHUB_OUTPUT  # Set output variable
 
   # Megatron Report Clean
   megatron-report-clean:
