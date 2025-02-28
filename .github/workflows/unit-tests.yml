@@ -18,7 +18,7 @@ jobs:
   unit-test:
     runs-on: self-hosted
     container:
-      image: ${{ inputs.image }}
+      image: localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11
       ports:
         - 80
       volumes:
