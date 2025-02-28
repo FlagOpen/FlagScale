@@ -329,7 +329,11 @@ class SSHServeRunner(RunnerBase):
         )
         self._prepare()
         self.host = None
-        self.port = self.config.serve.model_args.vllm_model.port
+        self.port = (
+            self.config.serve.model_args.vllm_model.get("port", get_free_port())
+            if self.config.serve.get("model_args", None)
+            else get_free_port()
+        )
 
     def _prepare(self):
         _update_config_serve(self.config)
