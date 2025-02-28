@@ -1,2 +1,3 @@
 # pre-commit
 pre-commit>=2.20.0
+diff-cover
