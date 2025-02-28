@@ -2124,6 +2124,9 @@ def build_train_valid_test_data_loaders(
     args.do_valid = getattr(args, "do_valid", False) or flags[1].item()
     args.do_test = getattr(args, "do_test", False) or flags[2].item()
 
+    if args.enable_simulator:
+        args.do_train = 1
+
     return train_dataloader, valid_dataloader, test_dataloader
 
 

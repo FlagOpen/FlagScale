@@ -82,6 +82,7 @@ class RankMapper:
         self._rank_infos = {}
         self._physical_rank_to_logical_rank = {}
         self._logical_rank_to_physical_rank = {}
+        self._enable_simulator = args.enable_simulator
         self.build_rank_mapping()
 
     def build_rank_mapping(self):
@@ -91,8 +92,14 @@ class RankMapper:
         all_rank_infos = [None] * world_size
         cur_rank_info = {'rank': rank,
                          'device_type': self._hetero_current_device_type}
-        torch.distributed.all_gather_object(
-            all_rank_infos, cur_rank_info)
+        if self._enable_simulator:
+            for index, value in enumerate(all_rank_infos):
+                corresponding_rank_info = {'rank': index, 'device_type': self._hetero_current_device_type}
+                all_rank_infos[index] = corresponding_rank_info
+        else:
+            torch.distributed.all_gather_object(
+                all_rank_infos, cur_rank_info)
+
         physical_ranks = []
         for info in all_rank_infos:
             self._rank_infos[info['rank']] = info
@@ -271,7 +278,10 @@ class ProcessMesh:
             ranks = self._rank_mapper.to_physical_ranks(logical_ranks)
             group = create_group(ranks, timeout=self._timeout, backend=self._distributed_backend, pg_options=pg_options, group_desc=group_name)
             if gloo:
-                group_gloo = create_group(ranks, timeout=self._timeout, backend="gloo", group_desc=group_name+"_gloo")
+                if self._args.enable_simulator:
+                    group_gloo = create_group(ranks, timeout=self._timeout, backend=self._distributed_backend, group_desc=group_name+"_gloo")
+                else:
+                    group_gloo = create_group(ranks, timeout=self._timeout, backend="gloo", group_desc=group_name+"_gloo")
             self._all_group_ranks[group_name].append(ranks)
             if self._rank in ranks:
                 self._group_ranks[group_name] = ranks
@@ -637,9 +647,14 @@ class ParallelContext:
             "rank": rank,
             "process_mesh_idx": self._current_process_mesh_index,
         }
-        torch.distributed.all_gather_object(
-            all_rank_to_process_mesh, cur_rank_to_process_mesh
-        )
+        if self._args.enable_simulator:
+            for index, value in enumerate(all_rank_to_process_mesh):
+                corresponding_mesh_info = {'rank': index, 'process_mesh_idx': self._current_process_mesh_index}
+                all_rank_to_process_mesh[index] = corresponding_mesh_info
+        else:
+            torch.distributed.all_gather_object(
+                all_rank_to_process_mesh, cur_rank_to_process_mesh
+            )
         for item in all_rank_to_process_mesh:
             self._rank_to_process_mesh[item["rank"]] = self._process_meshes[
                 item["process_mesh_idx"]
@@ -755,7 +770,10 @@ class ParallelContext:
             )
             ranks = list(itertools.chain.from_iterable(ranks_list))
             self._global_all_group_ranks["mp"].append(ranks)
-            group = create_group(ranks, timeout=self._timeout, use_local_synchronization=True, group_desc="mp")
+            if self._args.enable_simulator:
+                group = create_group(ranks, timeout=self._timeout, use_local_synchronization=True, backend=self._args.distributed_backend, group_desc="mp")
+            else:
+                group = create_group(ranks, timeout=self._timeout, use_local_synchronization=True, group_desc="mp")
             if self._rank in ranks:
                 self._global_group_ranks["mp"] = ranks
                 self._global_process_groups["mp"] = group
@@ -791,15 +809,20 @@ class ParallelContext:
             else:
                 embedding_ranks = ranks
                 position_embedding_ranks = ranks
-            group = create_group(embedding_ranks, timeout=self._timeout, use_local_synchronization=True, group_desc="embd")
+            if self._args.enable_simulator:
+                group = create_group(embedding_ranks, timeout=self._timeout, use_local_synchronization=True, backend=self._args.distributed_backend, group_desc="embd")
+            else:
+                group = create_group(embedding_ranks, timeout=self._timeout, use_local_synchronization=True, group_desc="embd")
             if self._rank in embedding_ranks:
                 self._global_process_groups["embd"].append(group)
                 self._global_process_group_to_ranks[group] = embedding_ranks
 
             if self._rank in ranks:
                 self._global_group_ranks["embd"].append(embedding_ranks)
-
-            group = create_group(position_embedding_ranks, timeout=self._timeout, use_local_synchronization=True, group_desc="embd_pos")
+            if self._args.enable_simulator:
+                group = create_group(position_embedding_ranks, timeout=self._timeout, use_local_synchronization=True, backend=self._args.distributed_backend, group_desc="embd_pos")
+            else:
+                group = create_group(position_embedding_ranks, timeout=self._timeout, use_local_synchronization=True, group_desc="embd_pos")
             if self._rank in position_embedding_ranks:
                 self._global_process_groups["embd_pos"].append(group)
                 self._global_process_group_to_ranks[group] = position_embedding_ranks
@@ -1617,6 +1640,8 @@ class ParallelContext:
                 if hasattr(args, f.name):
                     kwargs[f.name] = getattr(args, f.name)
             kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
+            if args.enable_simulator:
+                args.check_for_nan_in_loss_and_grad = False
             kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
             kwargs['bucket_size'] = args.ddp_bucket_size
             kwargs['average_in_collective'] = args.ddp_average_in_collective
