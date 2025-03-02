@@ -222,7 +222,9 @@ def _generate_run_script_serve(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
             node_cmd = None
-            if getattr(config.serve.deploy, "use_native_serve", True):
+            if getattr(config.serve.deploy, "use_native_serve", True) and getattr(
+                config.serve.deploy, "command_line_mode", False
+            ):
                 f.write(f"ray_path=$(realpath $(which ray))\n")
                 if not device_type:
                     node_cmd = f"${{ray_path}} start --head"
