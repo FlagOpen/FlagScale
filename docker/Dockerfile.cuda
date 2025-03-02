@@ -17,13 +17,6 @@ ENV WORK_DIR=/workspace
 RUN mkdir -p ${WORK_DIR}
 
 ##############################################################################
-# Change apt source to Ksyun
-##############################################################################
-RUN sed -i "s#\S\+#http://apt.ksyun.cn/ubuntu/#2" /etc/apt/sources.list && \
-    > /etc/apt/apt.conf.d/docker-clean && \
-    > /etc/dpkg/dpkg.cfg.d/pkg-config-hook-config
-
-##############################################################################
 # Install Basic Utilities
 ##############################################################################
 RUN apt-get update && \
