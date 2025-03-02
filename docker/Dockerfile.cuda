@@ -45,7 +45,7 @@ RUN apt-get update && \
         tmux tzdata \
         unzip \
         vim \
-        wget&& \
+        wget && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
@@ -125,16 +125,24 @@ RUN cd ${STAGE_DIR} && \
         ~/miniconda3/bin/conda config --set default_python ${PYTHON_VERSION}
 
 ##############################################################################
-# Install flagscale requirements
+# Clone FlagScale
 ##############################################################################
 RUN cd ${WORK_DIR} && \
-    git clone https://github.com/FlagOpen/FlagScale.git && \
+    git clone -b CI_250301 https://github.com/phoenixdong/FlagScale.git && \
     cd FlagScale/install && \
-    git checkout $FS_VERSION && \
-    chmod +x install-requirements.sh && \
-    # flagscale-train
-    ./install-requirements.sh --env train && \
-    # flagscale-infernece
+#     git checkout $FS_VERSION && \
+    chmod +x install-requirements.sh
+
+##############################################################################
+# Install flagscale=train requirements
+##############################################################################
+RUN cd ${WORK_DIR}/FlagScale/install && \
+    ./install-requirements.sh --env train
+
+##############################################################################
+# Install flagscale=inference requirements
+##############################################################################
+RUN cd ${WORK_DIR}/FlagScale/install && \
     ./install-requirements.sh --env inference
 
 ##############################################################################
