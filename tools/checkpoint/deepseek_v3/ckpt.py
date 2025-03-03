@@ -17,15 +17,18 @@ def get_hf_attn_ckpt(message, model, layer_id, args):
     assert nh % ng == 0
 
     tf_layer = model.model.layers[layer_id]
-
-    message["q a weight"] = tf_layer.self_attn.q_a_proj.weight.data
-    message["q a norm weight"] = tf_layer.self_attn.q_a_layernorm.weight.data
-    message["q b weight"] = tf_layer.self_attn.q_b_proj.weight.data
+    
+    if args.q_lora_rank is not None:
+        message["q a weight"] = tf_layer.self_attn.q_a_proj.weight.data
+        message["q a norm weight"] = tf_layer.self_attn.q_a_layernorm.weight.data
+        message["q b weight"] = tf_layer.self_attn.q_b_proj.weight.data
+    else:
+        message["q weight"] = tf_layer.self_attn.q_proj.weight.data
+    
     message["kv a weight"] = tf_layer.self_attn.kv_a_proj_with_mqa.weight.data
     message["kv a norm weight"] = tf_layer.self_attn.kv_a_layernorm.weight.data
     message["kv b weight"] = tf_layer.self_attn.kv_b_proj.weight.data
     message["o weight"] = tf_layer.self_attn.o_proj.weight.data
-
     message["input norm weight"] = tf_layer.input_layernorm.weight.data
     message["post norm weight"] = tf_layer.post_attention_layernorm.weight.data
 
@@ -50,7 +53,8 @@ def get_hf_moe_mlp_ckpt(message, model, layer_id, args):
     tf_layer = model.model.layers[layer_id]
 
     message["router weight"] = tf_layer.mlp.gate.weight.data
-    message["router e score bias"] = tf_layer.mlp.gate.e_score_correction_bias.data
+    if hasattr(tf_layer.mlp.gate, "e_score_correction_bias"):
+        message["router e score bias"] = tf_layer.mlp.gate.e_score_correction_bias.data
     message["shared expert gate weight"] = (
         tf_layer.mlp.shared_experts.gate_proj.weight.data
     )
@@ -116,9 +120,13 @@ def set_attn_ckpt(message, models, layer_id, md, args):
     assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     # weight
-    q_a_weight = message.pop("q a weight")
-    q_a_norm_weight = message.pop("q a norm weight")
-    q_b_weight = message.pop("q b weight")
+    if args.q_lora_rank is not None:
+        q_a_weight = message.pop("q a weight")
+        q_a_norm_weight = message.pop("q a norm weight")
+        q_b_weight = message.pop("q b weight")
+    else:
+        q_weight = message.pop("q weight")
+
     kv_a_weight = message.pop("kv a weight")
     kv_a_norm_weight = message.pop("kv a norm weight")
     kv_b_weight = message.pop("kv b weight")
@@ -135,11 +143,15 @@ def set_attn_ckpt(message, models, layer_id, md, args):
             tf_layer = model.decoder.layers[layer_id]
         else:
             tf_layer = model.transformer_layer  # for mtp
-        tf_layer.self_attention.linear_q_down_proj.weight.data.copy_(q_a_weight)
-        tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data.copy_(
-            q_a_norm_weight
-        )
-        tf_layer.self_attention.linear_q_up_proj.weight.data.copy_(q_b_weight)
+        if args.q_lora_rank is not None:
+            tf_layer.self_attention.linear_q_down_proj.weight.data.copy_(q_a_weight)
+            tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data.copy_(
+                q_a_norm_weight
+            )
+            tf_layer.self_attention.linear_q_up_proj.weight.data.copy_(q_b_weight)
+        else:
+            tf_layer.self_attention.linear_q_proj.weight.data.copy_(q_weight)
+
         tf_layer.self_attention.linear_kv_down_proj.weight.data.copy_(kv_a_weight)
         tf_layer.self_attention.linear_kv_up_proj.layer_norm_weight.data.copy_(
             kv_a_norm_weight
@@ -189,7 +201,9 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
 
     # router
     router_weight = message.pop("router weight")
-    router_score_bias = message.pop("router e score bias")
+    router_score_bias = None
+    if "router e score bias" in message.keys():
+        router_score_bias = message.pop("router e score bias")
 
     # shared expert
     shared_expert_gate_weight = message.pop("shared expert gate weight")
@@ -199,7 +213,7 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
     )
     shared_expert_linear2_weight = message.pop("shared expert down weight")
 
-    # routed expert
+    # if not args.moe_grouped_gemm:
     num_local_experts = md.previous_num_experts // ep_size
     for expert_id in range(num_local_experts):
         for ep_rank in range(ep_size):
@@ -220,15 +234,22 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
                 # router
                 router = tf_layer.mlp.router
                 router.weight.data.copy_(router_weight)
-                router.score_bias.data.copy_(router_score_bias)
+                if router_score_bias is not None:
+                    router.score_bias.data.copy_(router_score_bias)
                 # shared expert
                 shared_expert = tf_layer.mlp.shared_experts
                 shared_expert.linear_fc1.weight.data.copy_(shared_expert_linear1_weight)
                 shared_expert.linear_fc2.weight.data.copy_(shared_expert_linear2_weight)
                 # routed expert
-                expert = tf_layer.mlp.experts.local_experts[expert_id]
-                expert.linear_fc1.weight.data.copy_(linear1_weight)
-                expert.linear_fc2.weight.data.copy_(linear2_weight)
+                if not args.moe_grouped_gemm:
+                    expert = tf_layer.mlp.experts.local_experts[expert_id]
+                    expert.linear_fc1.weight.data.copy_(linear1_weight)
+                    expert.linear_fc2.weight.data.copy_(linear2_weight)
+                else: # using TEGroupedMLP
+                    expert_linear_fc1_weight = getattr(tf_layer.mlp.experts.linear_fc1, f"weight{expert_id}", None)
+                    expert_linear_fc2_weight = getattr(tf_layer.mlp.experts.linear_fc2, f"weight{expert_id}", None)
+                    expert_linear_fc1_weight.data.copy_(linear1_weight)
+                    expert_linear_fc2_weight.data.copy_(linear2_weight)
 
 
 def set_final_norm_ckpt(message, models, md, args):
