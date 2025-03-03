@@ -138,7 +138,7 @@ jobs:
   megatron-coverage-test:
     needs:
       - set-env
-      - functional-tests-hetero
+      - functional-tests-serve
     if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/coverage-tests.yml
     with:
@@ -149,7 +149,7 @@ jobs:
   flagscale-coverage-test:
     needs:
       - set-env
-      - functional-tests-hetero
+      - functional-tests-serve
     if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/coverage-tests.yml
     with:

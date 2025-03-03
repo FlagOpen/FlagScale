@@ -6,4 +6,5 @@ pandas
 psutil
 pytest
 PyYaml
+requests
 tqdm
