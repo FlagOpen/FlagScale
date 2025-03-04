@@ -2519,6 +2519,8 @@ def _add_hetero_args(parser):
     group.add_argument('--hetero-process-meshes', nargs='*', type=int, default=None,
                        help='Use this arg to set TP-CP-DP-PP of each process mesh.'
                        'This argument must be in the form: TP0, CP0, DP0, PP0, TP1, CP0, DP1, PP1...TPN, CPN, DPN, PPN. CP and TP size can be different, sum of PP should match pipeline-model-parallel-size, DP size should be the same.')
+    group.add_argument('--expert-tensor-parallel-size-per-process-mesh', nargs='*', type=int, default=None,
+                       help='The number of tensor parallel experts for each process-mesh. The number of the list should be equal to the number of process-meshes.')
     group.add_argument('--hetero-use-cpu-communication', action='store_true', help='Use CPU for communication for heterogeneous communication.')
     
     return parser

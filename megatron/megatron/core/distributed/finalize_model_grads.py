@@ -17,6 +17,18 @@ from ..transformer.moe.moe_utils import get_updated_expert_bias
 from ..transformer.transformer_config import TransformerConfig
 from ..utils import get_attr_wrapped_model, get_model_config
 
+def get_device_type_for_comm(model_parallel_group=None):
+    ''''Copy from flagscale/train/hetero/p2p_communication.py'''
+    device = 'cuda'
+    # "cpu:gloo": gloo only supports cpu tensor.
+    # "gloo" & "cpu:gloo,cuda:gloo": gloo supports both cpu and cuda tensor.
+    if isinstance(model_parallel_group, list):
+        if 'cpu:gloo' == torch.distributed.get_backend(model_parallel_group[0]):
+            device = 'cpu'
+    else:
+        if 'cpu:gloo' == torch.distributed.get_backend(model_parallel_group):
+            device = 'cpu'
+    return device
 
 def _unshard_if_dtensor(tensor: Union[torch.Tensor, "DTensor"]) -> torch.Tensor:
     """
@@ -140,6 +152,9 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
             grad_attr = "main_grad" if hasattr(weight, "main_grad") else "grad"
             orig_grad = getattr(weight, grad_attr)
             grad = _unshard_if_dtensor(orig_grad)
+            com_device = get_device_type_for_comm(embed_group)
+            if com_device == "cpu":
+                grad = grad.cpu()
             if use_dist_opt:
                 if config.use_partial_reduce_for_shared_embedding:
                     dp_world_size = parallel_state.get_data_parallel_world_size()
@@ -166,6 +181,8 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
                     for group in embed_group:
                         grad.data.copy_(original_grad_data)
                         torch.distributed.all_reduce(grad, group=group)
+            if grad.device == torch.device('cpu'):
+                grad.to(torch.cuda.current_device())
             setattr(weight, grad_attr, _reshard_if_dtensor(grad, orig_grad))
 
         if getattr(model_module, "use_mtp_predictor", None):
@@ -173,6 +190,9 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
             grad_attr = "main_grad" if hasattr(weight, "main_grad") else "grad"
             orig_grad = getattr(weight, grad_attr)
             grad = _unshard_if_dtensor(orig_grad)
+            com_device = get_device_type_for_comm(embed_group)
+            if com_device == "cpu":
+                grad = grad.cpu()
             if use_dist_opt:
                 if config.use_partial_reduce_for_shared_embedding:
                     dp_world_size = parallel_state.get_data_parallel_world_size()
@@ -199,6 +219,8 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
                     for group in embed_group:
                         grad.data.copy_(original_grad_data)
                         torch.distributed.all_reduce(grad, group=group)
+            if grad.device == torch.device('cpu'):
+                grad.to(torch.cuda.current_device())
             setattr(weight, grad_attr, _reshard_if_dtensor(grad, orig_grad))
 
             # Note: If the system supports both the sharing of the embedding and the output layer within the main model,

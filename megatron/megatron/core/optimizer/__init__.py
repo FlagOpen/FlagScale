@@ -507,9 +507,14 @@ def get_megatron_optimizer(
         buffer_name='expert_parallel_buffers',
     )
     if len(moe_param_groups) > 0:
-        model_parallel_rank = torch.distributed.get_rank(
+        expert_mp_group = mpu.get_expert_tensor_model_pipeline_parallel_group()
+        if not isinstance(expert_mp_group, list):
+            model_parallel_rank = torch.distributed.get_rank(
             mpu.get_expert_tensor_model_pipeline_parallel_group()
         )
+        else:
+            model_parallel_rank = torch.distributed.get_rank(expert_mp_group[0])
+        
         optimizers.append(
             _get_megatron_optimizer_based_on_param_groups(
                 config,
