@@ -67,6 +67,7 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
     """
     args = get_args()
     use_te = args.transformer_impl == "transformer_engine"
+    assert use_te is True, "DeepSeek V3 requires Transformer Engine"
 
     if args.record_memory_history:
         torch.cuda.memory._record_memory_history(True,
