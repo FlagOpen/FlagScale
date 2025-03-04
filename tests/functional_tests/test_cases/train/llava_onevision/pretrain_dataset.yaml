@@ -4,6 +4,6 @@ splits:
   train:
     datasets:
       - weight: 1.
-        path: /home/gitlab-runner/data/llava_onevision
+        path: /home/gitlab-runner/data/llava_onevision/new_stage1
         subflavors:
           augmentation: false
