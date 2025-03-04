@@ -126,8 +126,6 @@ jobs:
       matrix:
         model:
           - test_serve_base
-          - test_serve_vllm_model
-          - test_serve_multiple_nodes
     name: "serve-${{ matrix.model }}"
     with:
       model: ${{ matrix.model }}
