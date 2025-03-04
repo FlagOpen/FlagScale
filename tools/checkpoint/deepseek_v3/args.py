@@ -51,7 +51,9 @@ def load_args_hf2mg(args):
     args.moe_ffn_hidden_size = deepseek_v3_args["moe_intermediate_size"]
     n_shared_experts = deepseek_v3_args["n_shared_experts"]
     if n_shared_experts > 0:
-        args.moe_shared_expert_intermediate_size = n_shared_experts * args.moe_ffn_hidden_size
+        args.moe_shared_expert_intermediate_size = (
+            n_shared_experts * args.moe_ffn_hidden_size
+        )
     args.moe_grouped_gemm = True
     args.num_experts = deepseek_v3_args["n_routed_experts"]
     args.moe_router_topk_scaling_factor = deepseek_v3_args["routed_scaling_factor"]
@@ -92,6 +94,7 @@ def load_args_hf2mg(args):
 
     return args, args
 
+
 def save_args_mg2hf(args):
     from .hg_deepseek.configuration_deepseek import DeepseekV3Config
 
@@ -106,7 +109,8 @@ def save_args_mg2hf(args):
         num_nextn_predict_layers=args.num_mtp_predictor,
         num_attention_heads=args.num_attention_heads,
         num_key_value_heads=args.num_query_groups,
-        n_shared_experts=args.moe_shared_expert_intermediate_size // args.moe_ffn_hidden_size,
+        n_shared_experts=args.moe_shared_expert_intermediate_size
+        // args.moe_ffn_hidden_size,
         n_routed_experts=args.num_experts,
         routed_scaling_factor=args.moe_router_topk_scaling_factor,
         kv_lora_rank=args.kv_lora_rank,
@@ -116,7 +120,7 @@ def save_args_mg2hf(args):
         qk_nope_head_dim=args.qk_head_dim,
         n_group=args.moe_router_num_groups,
         topk_group=args.moe_router_group_topk,
-        num_experts_per_tok=args.args.moe_router_topk,
+        num_experts_per_tok=args.moe_router_topk,
         first_k_dense_replace=first_k_dense_replace,
         scoring_func=args.moe_router_score_function,
         seq_aux=seq_aux,
@@ -125,7 +129,6 @@ def save_args_mg2hf(args):
         rms_norm_eps=args.norm_epsilon,
         tie_word_embeddings=not args.untie_embeddings_and_output_weights,
         rope_theta=args.rotary_base,
-        attention_bias=not args.disable_bias_linear,
         attention_dropout=args.attention_dropout,
     )
     config.save_pretrained(args.save)

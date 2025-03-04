@@ -175,7 +175,7 @@ def _load_checkpoint(queue, args):
         queue_put("output layer", message)
 
     message = dict()
-    if margs.num_mtp_predictor > 0:
+    if margs.num_mtp_predictor:
         for mtp_layer_id in range(margs.num_mtp_predictor):
             message = dict()
             ckpt_plugin.get_hf_mtp_ckpt(message, hf_model, mtp_layer_id, margs)

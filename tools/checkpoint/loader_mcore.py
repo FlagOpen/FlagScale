@@ -94,6 +94,22 @@ def _load_checkpoint(queue, args):
     _set_arg("num_experts")
     _set_arg("sequence_parallel")
 
+    # for mla
+    _set_arg("q_lora_rank")
+    _set_arg("kv_lora_rank")
+    _set_arg("q_head_dim")
+    _set_arg("qk_pos_emb_head_dim")
+    _set_arg("v_head_dim")
+    _set_arg("multi_latent_attention")
+    _set_arg("apply_rope_fusion")
+    _set_arg("qk_layernorm")
+    # for moe
+    _set_arg("moe_grouped_gemm")
+    _set_arg("moe_router_enable_expert_bias")
+    _set_arg("moe_router_score_function")
+    # for mtp
+    _set_arg("num_mtp_predictor")
+
     # for hetero
     _set_arg("enable_hetero")
     _set_arg("hetero_process_meshes")
@@ -294,7 +310,7 @@ def _load_checkpoint(queue, args):
             models = all_models[pp_rank][vp_rank]
             for layer_id in range(len(models[0].decoder.layers)):
                 message = dict()
-
+                margs.total_layer_num = total_layer_num
                 ckpt_plugin.get_attn_ckpt(message, models, layer_id, margs)
                 ckpt_plugin.get_mlp_ckpt(message, models, layer_id, margs)
 
@@ -310,6 +326,13 @@ def _load_checkpoint(queue, args):
         message = dict()
         ckpt_plugin.get_output_layer_ckpt(message, models, margs)
         queue_put("output layer", message)
+
+    message = dict()
+    if margs.num_mtp_predictor:
+        for mtp_layer_id in range(margs.num_mtp_predictor):
+            message = dict()
+            ckpt_plugin.get_mtp_ckpt(message, models, mtp_layer_id, margs)
+            queue_put(f"mtp module {mtp_layer_id}", message)
 
     queue.put("done")
 

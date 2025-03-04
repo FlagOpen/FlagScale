@@ -254,6 +254,7 @@ def save_checkpoint(queue, args):
     for layer_id in range(md.num_layers):
         msg = queue_get(f"transformer layer {layer_id}")
 
+        margs.total_layer_num = layer_id
         ckpt_plugin.set_hf_attn_ckpt(msg, hf_model, layer_id, md, margs)
         ckpt_plugin.set_hf_mlp_ckpt(msg, hf_model, layer_id, md, margs)
 
@@ -274,6 +275,11 @@ def save_checkpoint(queue, args):
         full_output_layer_weight = padding_vocab_size(orig_output_layer_weight, md, margs)[:margs.vocab_size, :]
         hf_model.lm_head.weight.data.copy_(full_output_layer_weight)
         check_message(msg)
+
+    if margs.num_mtp_predictor:
+        for mtp_layer_id in range(margs.num_mtp_predictor):
+            msg = queue_get(f"mtp module {mtp_layer_id}")
+            ckpt_plugin.set_hf_mtp_ckpt(msg, hf_model, mtp_layer_id, md, margs)
 
     print(f"hf model is saving to {args.save_dir} ...")
     hf_model.save_pretrained(args.save_dir)
