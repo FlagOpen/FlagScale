@@ -592,14 +592,40 @@ def reduce_aux_losses_tracker_across_ranks():
             torch.distributed.all_reduce(
                 values, group=tracker[name]['avg_group'], op=torch.distributed.ReduceOp.AVG
             )
+            
+def reduce_aux_losses_tracker_across_ranks_hetero():
+    """Collect and reduce the auxiliary losses across ranks."""
+    tracker = parallel_state.get_moe_layer_wise_logging_tracker()
+    for name in tracker:
+        values = tracker[name]["values"]
+        # Reduce aux losses across ranks.
+        if tracker[name].get('reduce_group') is not None:
+            torch.distributed.all_reduce(values, group=tracker[name].get('reduce_group'))
+        if tracker[name].get('avg_group') is not None:
+            torch.distributed.all_reduce(
+                values, group=tracker[name]['avg_group'], op=torch.distributed.ReduceOp.AVG
+            )
+        pp_groups = parallel_state.get_pipeline_model_parallel_group()
+        assert isinstance(pp_groups, list), "pp_groups should be a list for hetero."
+        if len(pp_groups) > 1:
+            origin_values = values.clone().detach()
+            for pp_group in pp_groups:
+                values.copy_(origin_values)
+                torch.distributed.all_reduce(values, group=pp_group)
+        else:
+            torch.distributed.all_reduce(values, group=pp_groups[0])
 
 
 def track_moe_metrics(
-    loss_scale, iteration, writer, wandb_writer=None, total_loss_dict=None, per_layer_logging=False
+    loss_scale, iteration, writer, wandb_writer=None, total_loss_dict=None, per_layer_logging=False, enable_hetero=False
 ):
     """Track the MoE metrics for logging."""
     # Aux loss logging
-    reduce_aux_losses_tracker_across_ranks()
+    if not enable_hetero:
+        reduce_aux_losses_tracker_across_ranks()
+    else:
+        reduce_aux_losses_tracker_across_ranks_hetero()
+
     tracker = parallel_state.get_moe_layer_wise_logging_tracker()
     if writer is not None:
         aux_losses = {k: v['values'].float() * loss_scale for k, v in tracker.items()}
