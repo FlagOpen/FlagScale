@@ -96,6 +96,7 @@ jobs:
         model:
           - aquila
           - mixtral
+          - llava_onevision
     name: "train-${{ matrix.model }}"
     with:
       model: ${{ matrix.model }}

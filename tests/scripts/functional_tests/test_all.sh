@@ -4,7 +4,7 @@
 commands=(
     "tests/scripts/functional_tests/test_model.sh --type train --model aquila"
     "tests/scripts/functional_tests/test_model.sh --type train --model mixtral"
-    # "tests/scripts/functional_tests/test_model.sh --type train --model llava_onevision"
+    "tests/scripts/functional_tests/test_model.sh --type train --model llava_onevision"
     # for hetero-train
     "tests/scripts/functional_tests/test_model.sh --type hetero_train --model aquila"
     # Add in the feature
