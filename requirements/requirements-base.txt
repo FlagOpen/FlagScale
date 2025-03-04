@@ -1,7 +1,10 @@
 # Install outside of the conda environment
+aiohttp
 hydra-core
 numpy
+pandas
 psutil
 pytest
 PyYaml
+requests
 tqdm

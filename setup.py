@@ -12,7 +12,7 @@ def is_nvidia_chip():
         )
         if result.returncode == 0:
             return True
-    except FileNotFoundError:
+    except Exception as e:
         pass
     return False
 
@@ -64,7 +64,14 @@ setup(
         "flag_scale.flagscale": ["**/*"],
         "flag_scale.examples": ["**/*"],
     },
-    install_requires=["click", "cryptography"],
+    install_requires=[
+        "click",
+        "cryptography",
+        "setuptools>=75.1.0",
+        "packaging>=24.1",
+        "importlib_metadata>=8.5.0"
+    ],
+
     entry_points={
         "console_scripts": [
             "flagscale=flag_scale.flagscale.cli:flagscale",

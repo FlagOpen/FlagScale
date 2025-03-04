@@ -145,6 +145,11 @@ run_tests() {
     local html_report="/workspace/report/$id/cov-report-${backend}"
     export COMMIT_ID=$id
 
+    echo "************************"
+    echo $(which python)
+    echo $(which conda)
+    echo "************************"
+
     if [ "$_type" == "batch" ]; then
         wait_for_gpu
 
