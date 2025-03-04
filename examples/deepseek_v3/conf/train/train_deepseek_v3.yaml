@@ -3,10 +3,7 @@ system:
   num_workers: 16
   tensor_model_parallel_size: 1
   pipeline_model_parallel_size: 1
-  # decoder_first_pipeline_num_layers: 13
   expert_model_parallel_size: 1
-  # recompute_method: block
-  # recompute_num_layers: 4
   context_parallel_size: 1
   disable_bias_linear: true
   reset_position_ids: True
@@ -17,7 +14,6 @@ system:
   overlap_grad_reduce: true
   overlap_param_gather: true
   finetune: false
-  attention_backend: unfused
   precision:
     bf16: true
     attention_softmax_in_fp32: true
@@ -40,7 +36,7 @@ system:
 
 model:
   transformer_impl: transformer_engine
-  num_layers: 4
+  num_layers: 27
   hidden_size: 2048
   num_attention_heads: 16
   group_query_attention: true
@@ -73,13 +69,13 @@ model:
   moe_ffn_hidden_size: 1408
   moe_grouped_gemm: true
   moe_shared_expert_intermediate_size: 2816
-  num_experts: 16
+  num_experts: 64
   moe_router_load_balancing_type: "seq_aux_loss"
   moe_router_score_function: sigmoid
   moe_router_enable_expert_bias: true
   moe_router_bias_update_rate: 0.001
   moe_aux_loss_coeff: 0.02
-  moe_layer_freq: "[0]+[1]*3"
+  moe_layer_freq: "[0]+[1]*26"
   # node limited routing
   moe_router_num_groups: 1
   moe_router_group_topk: 1
@@ -88,14 +84,11 @@ model:
   moe_token_dispatcher_type: "alltoall"
   # moe_permute_fusion: true
 
-  # mtp args ====================
-  num_mtp_predictor: 1
-
   # training
   seed: ${experiment.seed}
   # finetune: false
   micro_batch_size: 1
-  global_batch_size: 128
+  global_batch_size: 2048
   eval_iters: 0
   train_samples: 244141056 #1T #29297664 #120B tokens
 
@@ -113,8 +106,7 @@ model:
 
 
 data:
-  # exp02: K77
-  data_path: /datasets/pile/pile_wikipedia_demo
+  data_path: /path
   split: 1
   no_mmap_bin_files: true
   tokenizer:
