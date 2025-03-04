@@ -17,6 +17,9 @@ def add_arguments(parser):
     group.add_argument('--target-pipeline-parallel-size', type=int,
                        help='Target tensor model parallel size, default to the pipeline parall size '
                        'in the input checkpoint if provided by the loader, otherwise to 1')
+    group.add_argument('--target-decoder-first-pipeline-num-layers', type=int,
+                       help='Target num layers of first pipeline stage '
+                       'in the input checkpoint if provided by the loader, otherwise to None')
     group.add_argument("--target-expert-parallel-size", type=int,
                       help='Target expert model parallel size, default to the expert parallel size '
                       'in the input checkpoint if provided by the loader, otherwise to 1.')
@@ -112,6 +115,14 @@ def save_checkpoint(queue, args):
                   "Default to 1.")
             args.target_pipeline_parallel_size = 1
 
+    if args.target_decoder_first_pipeline_num_layers is None:
+        if hasattr(md, 'previous_decoder_first_pipeline_num_layers'):
+            args.target_decoder_first_pipeline_num_layers = md.previous_decoder_first_pipeline_num_layers
+        else:
+            print("loader did not provide a pipeline parallel size and --target-decoder-first-pipeline-num-layers not provided on command line. "
+                  "Default to None.")
+            args.target_decoder_first_pipeline_num_layers = None
+
     if args.target_expert_parallel_size is None:
         if hasattr(md, 'previous_expert_parallel_size'):
             args.target_expert_parallel_size = md.previous_expert_parallel_size
@@ -147,6 +158,7 @@ def save_checkpoint(queue, args):
         '--position-embedding-type', str(md.position_embedding_type),
         '--tensor-model-parallel-size', str(args.target_tensor_parallel_size),
         '--pipeline-model-parallel-size', str(args.target_pipeline_parallel_size),
+        '--decoder-first-pipeline-num-layers', str(args.target_decoder_first_pipeline_num_layers),
         '--expert-model-parallel-size', str(args.target_expert_parallel_size),
         '--no-masked-softmax-fusion',
         '--no-bias-gelu-fusion',
@@ -209,7 +221,8 @@ def save_checkpoint(queue, args):
                         'distribute_saved_activations', 'fp16', 'bf16',
                         'train_iters', 'lr_decay_iters', 'lr_warmup_iters', 'lr_warmup_fraction',
                         'start_weight_decay', 'end_weight_decay',
-                        'main_grads_dtype', 'main_params_dtype', 'exp_avg_dtype', 'exp_avg_sq_dtype'
+                        'main_grads_dtype', 'main_params_dtype', 'exp_avg_dtype', 'exp_avg_sq_dtype',
+                        'decoder_first_pipeline_num_layers',
         ]
 
         for arg, value in vars(md.checkpoint_args).items():
@@ -320,7 +333,7 @@ def save_checkpoint(queue, args):
                 assert hasattr(models[0], 'output_layer'), "ERROR: got an output layer, but model does not have one"
                 ckpt_plugin.set_output_layer_ckpt(msg, models, md, margs)
 
-            if margs.num_mtp_predictor > 0:
+            if margs.num_mtp_predictor:
                 for mtp_layer_id in range(margs.num_mtp_predictor):
                     msg = queue_get(f"mtp module {mtp_layer_id}")
                     ckpt_plugin.set_mtp_ckpt(msg, models, md, mtp_layer_id, margs)

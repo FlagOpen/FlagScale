@@ -1,4 +1,7 @@
+import sys
 import time
+
+import torch
 
 from megatron.core.enums import ModelType
 
@@ -17,14 +20,26 @@ def get_hf_model(dtype, model_path=None, config=None):
         from accelerate import init_empty_weights
         from accelerate.utils import set_module_tensor_to_device
 
+        # with init_empty_weights():
+        #     model = AutoModelForCausalLM.from_config(
+        #         config=config, trust_remote_code=True, torch_dtype=dtype
+        #     )
+        # for name, param in model.named_parameters():
+        #     set_module_tensor_to_device(
+        #         model, name, "cpu", torch.empty(*param.size(), dtype=dtype)
+        #     )
+        from .hg_deepseek.modeling_deepseek import DeepseekV3ForCausalLM
+
         with init_empty_weights():
-            model = AutoModelForCausalLM.from_config(
-                config=config, trust_remote_code=True, torch_dtype=dtype
-            )
+            # model = DeepseekV3ForCausalLM.from_config(
+            #     config=config, trust_remote_code=True, torch_dtype=dtype
+            # )
+            model = DeepseekV3ForCausalLM(config)
         for name, param in model.named_parameters():
             set_module_tensor_to_device(
                 model, name, "cpu", torch.empty(*param.size(), dtype=dtype)
             )
+
     else:
         raise ValueError("Need one args, model_path or config, to build HF model.")
     print("> build huggingface model elapsed time:", time.time() - s_time)
@@ -32,7 +47,6 @@ def get_hf_model(dtype, model_path=None, config=None):
 
 
 def get_mg_model(dtype, pre_process, post_process):
-    # from pretrain_gpt import model_provider
     from flagscale.train.train_deepseek_v3 import model_provider
 
     s_time = time.time()
