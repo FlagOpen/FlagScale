@@ -20,6 +20,7 @@ python convert.py \
     --save-dir converted_bf16_model \
     --target-tensor-parallel-size 1 \
     --target-pipeline-parallel-size 2 \
+    --target-decoder-first-pipeline-num-layers 13 \
     --target-expert-parallel-size 2 \
     --target-params-dtype bf16 \
     --true-vocab-size 151851 \
