@@ -130,6 +130,7 @@ def save_args_mg2hf(args):
         tie_word_embeddings=not args.untie_embeddings_and_output_weights,
         rope_theta=args.rotary_base,
         attention_dropout=args.attention_dropout,
+        torch_dtype=args.params_dtype,
     )
     config.save_pretrained(args.save)
 

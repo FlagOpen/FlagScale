@@ -90,6 +90,8 @@ def _load_checkpoint(queue, args):
         ckpt_value = getattr(checkpoint_args, arg_name, None)
         setattr(margs, arg_name, ckpt_value)
 
+    _set_arg("tensor_model_parallel_size")
+    _set_arg("pipeline_model_parallel_size")
     _set_arg("expert_model_parallel_size")
     _set_arg("num_experts")
     _set_arg("sequence_parallel")
