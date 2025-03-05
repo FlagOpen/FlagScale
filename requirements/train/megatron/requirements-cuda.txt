@@ -1,7 +1,9 @@
 git+https://github.com/Dao-AILab/causal-conv1d.git@v1.2.2.post1
 git+https://github.com/fanshiqing/grouped_gemm@v1.1.2
+braceexpand
 mock
 nltk==3.8.1
 s3fs
+webdataset
 
 -r ../../../megatron/requirements/pytorch_24.10/requirements.txt
