@@ -12,11 +12,11 @@ def find_directory(start_path, target_dir_name):
     return None
 
 
-@pytest.mark.usefixtures("test_path", "test_type", "test_model", "test_case")
-def test_equal(test_path, test_type, test_model, test_case):
+@pytest.mark.usefixtures("test_path", "test_type", "test_mission", "test_case")
+def test_equal(test_path, test_type, test_mission, test_case):
     # Construct the test_result_path using the provided fixtures
     test_result_path = os.path.join(
-        test_path, test_type, test_model, "results_test", test_case
+        test_path, test_type, test_mission, "results_test", test_case
     )
     start_path = os.path.join(test_result_path, "logs/details/host_0_localhost")
 
@@ -49,7 +49,7 @@ def test_equal(test_path, test_type, test_model, test_case):
                     )
 
     gold_value_path = os.path.join(
-        test_path, test_type, test_model, "results_gold", test_case + ".json"
+        test_path, test_type, test_mission, "results_gold", test_case + ".json"
     )
     assert os.path.exists(
         gold_value_path

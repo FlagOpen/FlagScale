@@ -32,8 +32,8 @@ megatron:
         - test_llava_model.py::test_llava_model_parallelism
     inference:
       ignore:
-        - test_modelopt_module_spec.py
         - engines/test_mcore_engine.py
+        - test_modelopt_module_spec.py
         - text_generation_controllers/test_encoder_decoder_text_generation_controller.py
         - text_generation_controllers/test_simple_text_generation_controller.py
         - text_generation_controllers/test_vlm_text_generation_controller.py

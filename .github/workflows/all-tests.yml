@@ -84,7 +84,7 @@ jobs:
       subset: ${{ matrix.subset }}
       image: ${{ needs.set-env.outputs.ci_image }}
 
-  # Functional Tests with Model and Type Matrix
+  # Functional Tests with Mision and Type Matrix
   functional-tests-train:
     needs:
       - set-env
@@ -93,13 +93,13 @@ jobs:
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
-        model:
+        mission:
           - aquila
           - mixtral
           - llava_onevision
-    name: "train-${{ matrix.model }}"
+    name: "train-${{ matrix.mission }}"
     with:
-      model: ${{ matrix.model }}
+      mission: ${{ matrix.mission }}
       type: train
       image: ${{ needs.set-env.outputs.ci_image }}
 
@@ -110,11 +110,11 @@ jobs:
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
-        model:
+        mission:
           - aquila
-    name: "hetero_train-${{ matrix.model }}"
+    name: "hetero_train-${{ matrix.mission }}"
     with:
-      model: ${{ matrix.model }}
+      mission: ${{ matrix.mission }}
       type: hetero_train
       image: ${{ needs.set-env.outputs.ci_image }}
 
@@ -125,11 +125,11 @@ jobs:
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
-        model:
-          - test_serve_base
-    name: "serve-${{ matrix.model }}"
+        mission:
+          - base
+    name: "serve-${{ matrix.mission }}"
     with:
-      model: ${{ matrix.model }}
+      mission: ${{ matrix.mission }}
       type: serve
       image: ${{ needs.set-env.outputs.ci_image }}
 
@@ -177,9 +177,9 @@ jobs:
 #   uses: ./.github/workflows/functional-tests.yml
 #   strategy:
 #     matrix:
-#       model:
+#       mission:
 #         - from_vllm
-#   name: "inference-${{ matrix.model }}"
+#   name: "inference-${{ matrix.mission }}"
 #   with:
-#     model: ${{ matrix.model }}
+#     mission: ${{ matrix.mission }}
 #     type: inference
