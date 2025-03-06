@@ -2,9 +2,9 @@ system:
   no_shared_fs: ${experiment.runner.no_shared_fs}
   num_workers: 16
   tensor_model_parallel_size: 1
-  pipeline_model_parallel_size: 1
-  # decoder_first_pipeline_num_layers: 13
-  expert_model_parallel_size: 4
+  pipeline_model_parallel_size: 2
+  decoder_first_pipeline_num_layers: 13
+  expert_model_parallel_size: 1
   # recompute_method: block
   # recompute_num_layers: 4
   context_parallel_size: 1
@@ -16,6 +16,7 @@ system:
   use_distributed_optimizer: true
   overlap_grad_reduce: true
   overlap_param_gather: true
+  finetune: false
   precision:
     bf16: true
     attention_softmax_in_fp32: true
@@ -84,6 +85,7 @@ model:
   moe_router_topk: 6
   moe_router_topk_scaling_factor: 2.446
   moe_token_dispatcher_type: "alltoall"
+  # moe_permute_fusion: true
 
   # training
   seed: ${experiment.seed}
