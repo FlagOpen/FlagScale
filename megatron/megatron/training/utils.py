@@ -150,11 +150,9 @@ def calc_params_l2_norm(model, force_create_fp32_copy=False):
     # Sum across all model-parallel GPUs(tensor + pipeline).
     mp_groups = mpu.get_model_parallel_group()
     if isinstance(mp_groups, list):
-        if len(mp_groups) > 1:
-            assert mpu.get_expert_model_parallel_world_size() <= 1, f"Expert model parallelism is not supported with  heterogeneous model parallelism"
         original_norm_2 = norm_2.clone().detach()
         for mp_group in mp_groups:
-            norm_2 = original_norm_2.clone()
+            norm_2.copy_(original_norm_2)
             torch.distributed.all_reduce(norm_2,
                                             op=torch.distributed.ReduceOp.SUM,
                                             group=mp_group)
@@ -176,11 +174,20 @@ def calc_params_l2_norm(model, force_create_fp32_copy=False):
         )
         moe_norm_2 = moe_norm * moe_norm
         # Sum across expert tensor, model and pipeline parallel GPUs.
-        torch.distributed.all_reduce(
-            moe_norm_2,
-            op=torch.distributed.ReduceOp.SUM,
-            group=mpu.get_expert_tensor_model_pipeline_parallel_group()
-        )
+        emp_groups = mpu.get_expert_tensor_model_pipeline_parallel_group()
+        if isinstance(emp_groups, list):
+            original_norm_2 = moe_norm_2.clone().detach()
+            for emp_group in emp_groups:
+                moe_norm_2.copy_(original_norm_2)
+                torch.distributed.all_reduce(moe_norm_2,
+                                                op=torch.distributed.ReduceOp.SUM,
+                                                group=emp_group)
+        else:
+            torch.distributed.all_reduce(
+                moe_norm_2,
+                op=torch.distributed.ReduceOp.SUM,
+                group=mpu.get_expert_tensor_model_pipeline_parallel_group()
+            )
         norm_2 += moe_norm_2
 
     return norm_2.item() ** 0.5

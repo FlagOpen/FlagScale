@@ -56,11 +56,9 @@ model:
 data:
   data_path: ${data_path:??}
   split: 1
-  tokenizer:
-    tokenizer_type: null
-    tokenizer_path: null
-    vocab_file: null
-    merge_file: null
-    special_tokens_file: null
-    vocab_size: null
-    make_vocab_size_divisible_by: 64
+  tokenizer_type: AquilaTokenizerFS
+  vocab_file: ./examples/aquila/tokenizer/vocab.json
+  merge_file: ./examples/aquila/tokenizer/merges.txt
+  special_tokens_file: ./examples/aquila/tokenizer/special_tokens.txt
+  vocab_size: 100008
+  make_vocab_size_divisible_by: 64

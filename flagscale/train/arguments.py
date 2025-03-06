@@ -95,6 +95,11 @@ class FSTrainArguments:
         hetero_process_meshes_dp = self.args.hetero_process_meshes[3::5]
         hetero_process_meshes_pp = self.args.hetero_process_meshes[4::5]
 
+        # Expert tensor parallel size
+        if self.expert_tensor_parallel_size_per_process_mesh is not None:
+            assert len(self.expert_tensor_parallel_size_per_process_mesh) == len(
+                hetero_process_meshes_tp
+            ), f"length of expert_tensor_parallel_size_per_process_mesh {len(self.expert_tensor_parallel_size_per_process_mesh)} should be equal to length of hetero_process_meshes_tp {len(hetero_process_meshes_tp)}"
         # Data parallel size
         # NOTE: Use the first data parallel size as the global data parallel size to loader data
         self.args.data_parallel_size = hetero_process_meshes_dp[0]
@@ -108,10 +113,11 @@ class FSTrainArguments:
             hetero_cp == hetero_process_meshes_cp[0]
             for hetero_cp in hetero_process_meshes_cp
         ), f"all hetero_process_meshes_cp {hetero_process_meshes_cp} should be the same!"
-        assert all(
-            hetero_ep == hetero_process_meshes_ep[0]
-            for hetero_ep in hetero_process_meshes_ep
-        ), f"all hetero_process_meshes_ep {hetero_process_meshes_ep} should be the same!"
+
+        # Note: Ep size should all be 1 or all be not 1
+        assert all(1 == hetero_ep for hetero_ep in hetero_process_meshes_ep) or any(
+            1 != hetero_ep for hetero_ep in hetero_process_meshes_ep
+        ), f"all hetero_process_meshes_ep {hetero_process_meshes_ep} should be the 1 or none of hetero_process_meshes_ep is not 1!"
 
         # Pipeline model parallel size
         assert self.args.pipeline_model_parallel_size == sum(
@@ -128,14 +134,25 @@ class FSTrainArguments:
         )
 
         # if untie_embeddings_and_output_weights is False, the first and last stage should have the same tp degree
-        if self.args.untie_embeddings_and_output_weights == False:
+        if (
+            self.args.untie_embeddings_and_output_weights == False
+            or self.args.num_mtp_predictor > 0
+        ):
             assert (
                 hetero_process_meshes_tp[0] == hetero_process_meshes_tp[-1]
-            ), f"if untie_embeddings_and_output_weights is False, the first and last stage should have the same tp degree!"
-            assert (
-                self.args.hetero_use_cpu_communication == False
-            ), f"if untie_embeddings_and_output_weights is False, the hetero_use_cpu_communication should be False currently!"
-            if hetero_process_meshes_dp[0] != hetero_process_meshes_dp[-1]:
+            ), f"if untie_embeddings_and_output_weights is False or num_mtp_predictor is not 0, the first and last stage should have the same tp degree!"
+
+            if (
+                hetero_process_meshes_dp[0] != hetero_process_meshes_dp[-1]
+                and self.args.use_distributed_optimizer
+            ):
+                assert (
+                    hetero_process_meshes_dp[0] % hetero_process_meshes_dp[-1] == 0
+                    or hetero_process_meshes_dp[-1] % hetero_process_meshes_dp[0] == 0
+                ), (
+                    f"if untie_embeddings_and_output_weights is False and  hetero_process_meshes_dp[0] and hetero_process_meshes_dp[-1] are different, "
+                    "the hetero_process_meshes_dp[0] should be divisible by hetero_process_meshes_dp[-1] or hetero_process_meshes_dp[-1] should be divisible by hetero_process_meshes_dp[0] currently!"
+                )
                 assert self.args.use_partial_reduce_for_shared_embedding == True, (
                     f"if untie_embeddings_and_output_weights is False and  hetero_process_meshes_dp[0] and hetero_process_meshes_dp[-1] are different, "
                     "the use_partial_reduce_for_shared_embedding should be True currently!"
@@ -182,6 +199,7 @@ class FSTrainArguments:
             self.args.hetero_current_device_type in self.args.hetero_device_types
         ), f"hetero_current_device_type {self.args.hetero_current_device_type} should be in hetero_device_types {self.args.hetero_device_types}"
 
+        current_process_mesh_idx = 0
         accumulated_world_size = 0
         rank = torch.distributed.get_rank()
         logical_rank = self.rank_mapper.to_logical_ranks([rank])[0]
@@ -202,6 +220,14 @@ class FSTrainArguments:
                 self.args.expert_model_parallel_size = ep
                 self.args.data_parallel_size = dp
                 self.args.pipeline_model_parallel_size = pp
+                if self.args.expert_tensor_parallel_size_per_process_mesh is not None:
+                    self.args.expert_tensor_parallel_size = (
+                        self.args.expert_tensor_parallel_size_per_process_mesh[
+                            current_process_mesh_idx
+                        ]
+                    )
+                else:
+                    self.args.expert_tensor_parallel_size = tp
 
                 # Sequence parallel
                 if self.args.tensor_model_parallel_size == 1:
@@ -210,6 +236,7 @@ class FSTrainArguments:
                 # TODO: update other args if need
 
             accumulated_world_size += temp_world_size
+            current_process_mesh_idx += 1
 
     def post_validate_args(self):
         """Post-validate the arguments after Megatron function `validate_args`."""
