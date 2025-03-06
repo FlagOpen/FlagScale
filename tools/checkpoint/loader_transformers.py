@@ -134,6 +134,7 @@ def _load_checkpoint(queue, args):
     md.previous_num_experts = margs.num_experts
     md.previous_tensor_parallel_size = margs.tensor_model_parallel_size
     md.previous_pipeline_parallel_size = margs.pipeline_model_parallel_size
+    md.previous_decoder_first_pipeline_num_layers = margs.decoder_first_pipeline_num_layers
     md.previous_expert_parallel_size = margs.expert_model_parallel_size
     md.previous_virtual_pipeline_parallel_size = margs.virtual_pipeline_model_parallel_size
     md.true_vocab_size = args.true_vocab_size
@@ -175,7 +176,7 @@ def _load_checkpoint(queue, args):
         queue_put("output layer", message)
 
     message = dict()
-    if margs.num_mtp_predictor > 0:
+    if margs.num_mtp_predictor:
         for mtp_layer_id in range(margs.num_mtp_predictor):
             message = dict()
             ckpt_plugin.get_hf_mtp_ckpt(message, hf_model, mtp_layer_id, margs)

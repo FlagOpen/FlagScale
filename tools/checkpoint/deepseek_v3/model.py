@@ -1,16 +1,18 @@
 import time
 
+import torch
+
 from megatron.core.enums import ModelType
 
 model_type = ModelType.encoder_or_decoder  # Megatron's model_type
 
 
 def get_hf_model(dtype, model_path=None, config=None):
-    from transformers import AutoModelForCausalLM
+    from .moonlight_deepseek.modeling_deepseek import DeepseekV3ForCausalLM
 
     s_time = time.time()
     if model_path and not config:
-        model = AutoModelForCausalLM.from_pretrained(
+        model = DeepseekV3ForCausalLM.from_pretrained(
             model_path, device_map="cpu", trust_remote_code=True, torch_dtype=dtype
         )
     elif not model_path and config:
@@ -18,9 +20,7 @@ def get_hf_model(dtype, model_path=None, config=None):
         from accelerate.utils import set_module_tensor_to_device
 
         with init_empty_weights():
-            model = AutoModelForCausalLM.from_config(
-                config=config, trust_remote_code=True, torch_dtype=dtype
-            )
+            model = DeepseekV3ForCausalLM(config)
         for name, param in model.named_parameters():
             set_module_tensor_to_device(
                 model, name, "cpu", torch.empty(*param.size(), dtype=dtype)
@@ -32,7 +32,6 @@ def get_hf_model(dtype, model_path=None, config=None):
 
 
 def get_mg_model(dtype, pre_process, post_process):
-    # from pretrain_gpt import model_provider
     from flagscale.train.train_deepseek_v3 import model_provider
 
     s_time = time.time()
