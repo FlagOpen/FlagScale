@@ -97,7 +97,7 @@ def _generate_run_script_serve(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
     cmds_config = config.experiment.get("cmds", None)
-    ssh_port = config.experiment.runner.get("ssh_port", None)
+    ssh_port = config.experiment.runner.get("ssh_port", 22)
     docker_name = config.experiment.runner.get("docker", None)
     if cmds_config:
         before_start_cmd = cmds_config.get("before_start", "")
@@ -145,13 +145,10 @@ def _generate_run_script_serve(
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
 
-                    if ssh_port:
-                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
-                    else:
-                        ssh_cmd = f'ssh -n {ip} "{node_cmd}"'
+                    ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
 
                     if docker_name:
-                        ssh_cmd = f"ssh -n {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
             if before_start_cmd:
                 f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
@@ -206,13 +203,10 @@ def _generate_run_script_serve(
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
 
-                    if ssh_port:
-                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
-                    else:
-                        ssh_cmd = f'ssh -n {ip} "{node_cmd}"'
+                    ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
 
                     if docker_name:
-                        ssh_cmd = f"ssh -n {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
         else:
             # Note: config key device_type is specified for single node serving in neither gpu or cpu.
@@ -228,7 +222,9 @@ def _generate_run_script_serve(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
             node_cmd = None
-            if getattr(config.serve.deploy, "use_native_serve", True):
+            if getattr(config.serve.deploy, "use_native_serve", True) and getattr(
+                config.serve.deploy, "command_line_mode", False
+            ):
                 f.write(f"ray_path=$(realpath $(which ray))\n")
                 if not device_type:
                     node_cmd = f"${{ray_path}} start --head"
@@ -335,7 +331,11 @@ class SSHServeRunner(RunnerBase):
         )
         self._prepare()
         self.host = None
-        self.port = self.config.serve.model_args.vllm_model.port
+        self.port = (
+            self.config.serve.model_args.vllm_model.get("port", get_free_port())
+            if self.config.serve.get("model_args", None)
+            else get_free_port()
+        )
 
     def _prepare(self):
         _update_config_serve(self.config)

@@ -5,3 +5,5 @@ imageio
 python-multipart
 imageio[ffmpeg]
 ks3sdk
+pyarrow
+pandas

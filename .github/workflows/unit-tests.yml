@@ -10,12 +10,15 @@ on:
       subset:
         required: true
         type: string
+      image:
+        required: true
+        type: string
 
 jobs:
   unit-test:
     runs-on: self-hosted
     container:
-      image: localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-a803e11 .
+      image: ${{ inputs.image }}
       ports:
         - 80
       volumes:
@@ -23,7 +26,7 @@ jobs:
         - /home/flagscale_cicd/flask/config:/workspace/config
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
         - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
-      options: --gpus all --shm-size=500g --hostname flagscale_cicd
+      options: --gpus all --shm-size=500g --hostname flagscale_cicd --user root --ulimit nofile=65535:65535
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
