@@ -1,8 +1,8 @@
 #!/bin/bash
 
-echo "The current directory is: $(pwd)"
-
 source tests/scripts/_gpu_check.sh
+
+echo "The current directory is: $(pwd)"
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -65,54 +65,36 @@ check_reports_complete() {
     local xml_current_size
     local html_current_size
 
-    # Continuously check size stability for both reports
     while true; do
         xml_current_size=$(stat --format=%s "$xml_report" 2>/dev/null || echo 0)
         html_current_size=$(stat --format=%s "$html_report" 2>/dev/null || echo 0)
 
+        # Check if sizes are stable
         if [ "$xml_previous_size" -eq "$xml_current_size" ] && [ "$html_previous_size" -eq "$html_current_size" ]; then
-            break
+            echo "Reports are complete: $xml_report $html_report"
+            return  # Exit the function normally if reports are complete
         fi
 
         xml_previous_size=$xml_current_size
         html_previous_size=$html_current_size
         sleep 5s
     done
+
+    # If the loop exits without returning, it means reports are not stable
+    echo "Check reports failed: $xml_report $html_report"
+    exit 1  # Exit with error code if checks fail
 }
 
-# Function to run tests (either single or batch)
-run_tests_case() {
-    local _test_files="$1"
-    local _backend="$2"
-    local _coverage="$3"
-    local _xml_report="$4"
-    local _html_report="$5"
-    local _ignore_cmd="$6"
-    local _deselect_cmd="$7"
-
+# Function to execute a command and handle failures
+run_command() {
+    echo $(which conda) $(which python)
     wait_for_gpu
-
-    if [[ -n "$_test_files" ]]; then
-        for _test_file in $_test_files; do
-            echo "Running test: ${_test_file}"
-            tests_case = "torchrun --nproc_per_node=8 -m pytest --cov=${_backend}/${_coverage} --cov-append --cov-report=xml:${_xml_report} --cov-report=html:${_html_report} -q -x -p no:warnings ${_ignore_cmd} ${_deselect_cmd} ${_test_file}"
-            echo "$tests_case"
-            eval "$tests_case"
-
-            # Check the exit status of pytest
-            if [ $? -ne 0 ]; then
-                echo "Test failed: ${_test_file}"
-                exit 1
-            fi
-
-            # Check if both report files are complete
-            check_reports_complete "${_xml_report}" "${_html_report}"
-
-            if [ $? -ne 0 ]; then
-                echo "Check reports failed: ${_xml_report} ${_html_report}"
-                exit 1
-            fi
-        done
+    echo "$1"
+    eval "$1"
+    # Check the exit status of pytest
+    if [ $? -ne 0 ]; then
+        echo "Failed: $1"
+        exit 1
     fi
 }
 
@@ -135,7 +117,9 @@ run_tests() {
     # Process the raw ignore into bash-friendly --ignore parameters
     ignore_cmd=""
     if [ -n "$_ignore" ]; then
+        # Handle the entire string as a list of files
         for item in $_ignore; do
+            # Remove the leading '-' from each item if it exists
             _clean_item=${item#-}
             _clean_item=$(echo "$_clean_item" | tr -d "',[]")
             ignore_cmd+="--ignore=${path}/${_clean_item} "
@@ -148,23 +132,28 @@ run_tests() {
     # Process the raw deselect into bash-friendly --deselect parameters
     deselect_cmd=""
     if [ -n "$_deselect" ]; then
+        # Handle the entire string as a list of files
         for item in $_deselect; do
+            # Remove the leading '-' from each item if it exists
             _clean_item=${item#-}
             _clean_item=$(echo "$_clean_item" | tr -d "',[]")
             deselect_cmd+="--deselect=${path}/${_clean_item} "
         done
     fi
 
-    local xml_report="/workspace/report/$id/cov-report-${backend}/coverage.xml"
     local html_report="/workspace/report/$id/cov-report-${backend}"
+    local xml_report="$html_report/coverage.xml"
     export COMMIT_ID=$id
 
-    echo "************************"
-    echo $(which python)
-    echo $(which conda)
-    echo "************************"
-
-    run_tests_case "$_test_files" "$backend" "$coverage" "$xml_report" "$html_report" "$ignore_cmd" "$deselect_cmd"
+    if [ "$_type" == "batch" ]; then
+        run_command "torchrun --nproc_per_node=8 -m pytest --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_files"
+        check_reports_complete "$xml_report" "$html_report"
+    elif [ "$_type" == "single" ]; then
+        for _test_file in $_test_files; do
+            run_command "torchrun --nproc_per_node=8 -m pytest --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_file"
+            check_reports_complete "$xml_report" "$html_report"
+        done
+    fi
 }
 
 # Run tests based on type, path, and depth
