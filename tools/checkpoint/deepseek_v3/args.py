@@ -75,7 +75,7 @@ def load_args_hf2mg(args):
         args.moe_router_bias_update_rate = 0.001
     seq_aux = deepseek_v3_args["seq_aux"]
     if seq_aux:
-        args.moe_router_load_balancing_type == "seq_aux_loss"
+        args.moe_router_load_balancing_type = "seq_aux_loss"
 
     # MLA Related
     if deepseek_v3_args["q_lora_rank"] != "null":
@@ -131,6 +131,12 @@ def save_args_mg2hf(args):
         attention_dropout=args.attention_dropout,
         torch_dtype=args.params_dtype,
     )
+
+    auto_map = dict()
+    auto_map["AutoConfig"] = "configuration_deepseek.DeepseekV3Config"
+    auto_map["AutoModel"] = "modeling_deepseek.DeepseekV3Model"
+    auto_map["AutoModelForCausalLM"] = "modeling_deepseek.DeepseekV3ForCausalLM"
+    config.auto_map = auto_map
     config.save_pretrained(args.save)
 
     return config
