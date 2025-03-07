@@ -32,31 +32,15 @@ fi
 config=$(python3 tests/scripts/unit_tests/parse_config.py "$config_file" "$backend" "$subset")
 echo "config:" $config
 
-# Split the Python output
+# Split the Python output and set default values
 set_environment=$(echo $config | cut -d '|' -f 1)
-root=$(echo $config | cut -d '|' -f 2)
+root=$(echo $config | cut -d '|' -f 2);root=${root:-"tests/unit_tests"}
 coverage=$(echo $config | cut -d '|' -f 3)
-type=$(echo $config | cut -d '|' -f 4)
-depth=$(echo $config | cut -d '|' -f 5)
+type=$(echo $config | cut -d '|' -f 4);type=${type:-"batch"}
+depth=$(echo $config | cut -d '|' -f 5);depth=${depth:-"all"}
 ignore=$(echo $config | cut -d '|' -f 6)
 deselect=$(echo $config | cut -d '|' -f 7)
-
-# Set default values
-if [ -z "$root" ]; then
-    root="tests/unit_tests"
-fi
-
-if [ -z "$type" ]; then
-    type="batch"
-fi
-
-if [ -z "$depth" ]; then
-    depth="all"
-fi
-
-if [ -z "$id" ]; then
-    id=0
-fi
+id=${id:-0}
 
 # Set the test path based on root and subset
 if [[ "$subset" =~ [./]$ ]]; then
@@ -111,8 +95,9 @@ run_tests_case() {
     if [[ -n "$_test_files" ]]; then
         for _test_file in $_test_files; do
             echo "Running test: ${_test_file}"
-            echo "torchrun --nproc_per_node=8 -m pytest --cov=${_backend}/${_coverage} --cov-append --cov-report=xml:${_xml_report} --cov-report=html:${_html_report} -q -x -p no:warnings ${_ignore_cmd} ${_deselect_cmd} ${_test_file}"
-            torchrun --nproc_per_node=8 -m pytest --cov=${_backend}/${_coverage} --cov-append --cov-report=xml:${_xml_report} --cov-report=html:${_html_report} -q -x -p no:warnings ${_ignore_cmd} ${_deselect_cmd} ${_test_file}
+            tests_case = "torchrun --nproc_per_node=8 -m pytest --cov=${_backend}/${_coverage} --cov-append --cov-report=xml:${_xml_report} --cov-report=html:${_html_report} -q -x -p no:warnings ${_ignore_cmd} ${_deselect_cmd} ${_test_file}"
+            echo "$tests_case"
+            eval "$tests_case"
 
             # Check the exit status of pytest
             if [ $? -ne 0 ]; then
