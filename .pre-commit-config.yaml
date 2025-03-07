@@ -4,7 +4,8 @@ exclude: |
         vllm/.*|
         megatron-energon/.*|
         hardware/.*\.patch|
-        flagscale/inference/core/.*
+        flagscale/inference/core/.*|
+        .*\.sh$  # Exclude all .sh files
     )$
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
@@ -31,7 +32,8 @@ repos:
                 flagscale/train/models/.*|
                 flagscale/train/hetero/.*|
                 tools/checkpoint/loader.*\.py|
-                tools/checkpoint/saver.*\.py
+                tools/checkpoint/saver.*\.py|
+                .*\.sh$  # Exclude all .sh files
             )$
 -   repo: https://github.com/PyCQA/isort
     rev: 5.13.2
@@ -50,7 +52,8 @@ repos:
                 flagscale/train/models/.*|
                 flagscale/train/hetero/.*|
                 tools/checkpoint/loader.*\.py|
-                tools/checkpoint/saver.*\.py
+                tools/checkpoint/saver.*\.py|
+                .*\.sh$  # Exclude all .sh files
             )$
 # -   repo: local
 #     hooks:
@@ -70,5 +73,6 @@ repos:
 #                 flagscale/train/models/.*|
 #                 flagscale/train/hetero/.*|
 #                 tools/checkpoint/loader.*\.py|
-#                 tools/checkpoint/saver.*\.py
+#                 tools/checkpoint/saver.*\.py|
+#                 .*\.sh$  # Exclude all .sh files
 #             )$
