@@ -21,6 +21,7 @@ def get_hf_model(dtype, model_path=None, config=None):
 
         with init_empty_weights():
             model = DeepseekV3ForCausalLM._from_config(config=config, torch_dtype=dtype)
+
         for name, param in model.named_parameters():
             set_module_tensor_to_device(
                 model, name, "cpu", torch.empty(*param.size(), dtype=dtype)

@@ -421,7 +421,6 @@ def get_dense_mlp_ckpt(message, models, layer_id, args):
         else:
             tf_layer = model.transformer_layer  # for mtp
         post_norm_weight = tf_layer.mlp.linear_fc1.layer_norm_weight.data
-
         linear_fc1_weight = tf_layer.mlp.linear_fc1.weight.data
         gate_weight, up_weight = torch.chunk(linear_fc1_weight, chunks=2, dim=0)
         down_weight = tf_layer.mlp.linear_fc2.weight.data
@@ -460,18 +459,24 @@ def get_moe_mlp_ckpt(message, models, layer_id, args):
                     router_score_bias = router.score_bias.data
                 # shared experts
                 shared_expert = tf_layer.mlp.shared_experts
-                shared_expert_gate_weight, shared_expert_up_weight = torch.chunk(shared_expert.linear_fc1.weight.data, chunks=2, dim=0)
+                shared_expert_gate_weight, shared_expert_up_weight = torch.chunk(
+                    shared_expert.linear_fc1.weight.data, chunks=2, dim=0
+                )
                 shared_expert_down_weight = shared_expert.linear_fc2.weight.data
                 # routed experts
                 if not args.moe_grouped_gemm:
                     expert = tf_layer.mlp.experts.local_experts[expert_id]
-                    expert_gate_weight, expert_up_weight = torch.chunk(expert.linear_fc1.weight.data, chunks=2, dim=0)
+                    expert_gate_weight, expert_up_weight = torch.chunk(
+                        expert.linear_fc1.weight.data, chunks=2, dim=0
+                    )
                     expert_down_weight = expert.lienar_fc2.weight.data
                 else:  # using TEGroupedMLP
                     expert_linear_fc1_weight = getattr(
                         tf_layer.mlp.experts.linear_fc1, f"weight{expert_id}", None
                     )
-                    expert_gate_weight, expert_up_weight = torch.chunk(expert_linear_fc1_weight.data, chunks=2, dim=0)
+                    expert_gate_weight, expert_up_weight = torch.chunk(
+                        expert_linear_fc1_weight.data, chunks=2, dim=0
+                    )
                     expert_down_weight = getattr(
                         tf_layer.mlp.experts.linear_fc2, f"weight{expert_id}", None
                     )

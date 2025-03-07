@@ -131,6 +131,7 @@ def save_args_mg2hf(args):
         attention_dropout=args.attention_dropout,
         torch_dtype=args.params_dtype,
     )
+
     auto_map = dict()
     auto_map["AutoConfig"] = "configuration_deepseek.DeepseekV3Config"
     auto_map["AutoModel"] = "modeling_deepseek.DeepseekV3Model"
