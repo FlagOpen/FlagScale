@@ -66,9 +66,9 @@ test_mission() {
       fi
 
       if [ "${_type}" = "serve" ]; then
-        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_mission}/conf --config-name ${_case} action=run; sleep 1m" $attempt_i $_mission $_type $_case # Serve start
-        run_command "pytest tests/functional_tests/test_utils/test_call.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_mission=${_mission} --test_case=${_case}" $attempt_i $_mission $_type $_case # Call
-        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_mission}/conf --config-name ${_case} action=stop" $attempt_i $_mission $_type $_case # Serve stop
+        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_mission}/conf --config-name ${_case} action=run; sleep 1m" $attempt_i $_mission $_type $_case
+        run_command "pytest tests/functional_tests/test_utils/test_call.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_mission=${_mission} --test_case=${_case}" $attempt_i $_mission $_type $_case
+        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_mission}/conf --config-name ${_case} action=stop" $attempt_i $_mission $_type $_case
       fi
 
       # Ensure that pytest check is completed before deleting the folder

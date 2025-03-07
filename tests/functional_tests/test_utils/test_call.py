@@ -11,7 +11,7 @@ def test_equal(test_path, test_type, test_mission, test_case):
     response = requests.post(url, headers=headers, json=test_data)
 
     # Assert that the response status code is 200
-    assert response.status_code == 200, response_message
+    assert response.status_code == 200
 
     # Assert that the generated text is not empty
     assert len(response.text) > 0, "Generated text should not be empty"
