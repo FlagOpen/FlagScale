@@ -6,7 +6,7 @@ import yaml
 def parse_config(config_file, type, mission):
     with open(config_file, "r") as file:
         config = yaml.safe_load(file)
-    
+
     # Check if type exists in the configuration
     if type not in config:
         raise ValueError(f"Test type '{type}' not found in configuration file.")
