@@ -5,6 +5,7 @@ python -m pip install --upgrade setuptools
 
 # Packages that need to be installed outside of the conda environment
 pip install -r ../requirements/requirements-base.txt
+pip install -r ../requirements/requirements-lint.txt
 
 # Initialize the variable
 env=""
@@ -94,7 +95,6 @@ if [ "${env}" == "train" ]; then
     cd ..
     rm -r ./apex
 
-    pip install -r ../requirements/train/megatron/requirements-lint.txt
     python -m nltk.downloader -d /root/nltk_data punkt
 fi
 
