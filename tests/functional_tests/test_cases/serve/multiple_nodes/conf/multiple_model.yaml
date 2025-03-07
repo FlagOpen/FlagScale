@@ -4,7 +4,7 @@ defaults:
 
 experiment:
   exp_name: multiple_model
-  exp_dir: FlagScale/tests/functional_tests/test_cases/serve/multiple_nodes/results_test/multiple_model
+  exp_dir: tests/functional_tests/test_cases/serve/multiple_nodes/results_test/multiple_model
   task:
     type: serve
     entrypoint: null
