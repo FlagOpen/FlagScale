@@ -138,10 +138,6 @@ def num_floating_point_operations(args, batch_size):
         if args.moe_shared_expert_intermediate_size is None
         else args.moe_shared_expert_intermediate_size
     )
-    if args.num_experts is None:
-        ffn_hidden_size = args.ffn_hidden_size
-    else:
-        ffn_hidden_size = args.moe_ffn_hidden_size
 
     # The 12x term below comes from the following factors; for more details, see
     # "APPENDIX: FLOATING-POINT OPERATIONS" in https://arxiv.org/abs/2104.04473.
@@ -171,7 +167,7 @@ def num_floating_point_operations(args, batch_size):
             )
             # MLP.
             + (
-                (ffn_hidden_size / args.hidden_size)
+                (args.ffn_hidden_size / args.hidden_size)
                 * num_experts_routed_to
                 * gated_linear_multiplier
             )
@@ -366,7 +362,7 @@ def pretrain(
     else:
         checkpointing_context = {}
 
-    report_theoretical_memory(args, get_num_microbatches(), verbose=True)
+    report_theoretical_memory(args, None, verbose=True)
 
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
