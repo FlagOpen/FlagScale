@@ -19,11 +19,24 @@ def compute_activated_weight_number(args, verbose=False):
         args.num_query_groups = args.num_attention_heads
     # MoE.
     # NOTE(zhaoyingli): We only compute the number of activated parameters by topk routing.
-    num_experts = args.moe_router_topk
+    num_experts_routed_to = args.moe_router_topk
     gated_linear_multiplier = 3 / 2 if args.swiglu else 1
+    shared_expert_ffn_hidden_size = (
+        0
+        if args.moe_shared_expert_intermediate_size is None
+        else args.moe_shared_expert_intermediate_size
+    )
+    if isinstance(args.moe_layer_freq, int):
+        moe_num_layers = args.num_layers
+        dense_num_layers = 0
+    else:
+        moe_num_layers = sum(args.moe_layer_freq)
+        dense_num_layers = args.num_layers - moe_num_layers
+    print(f"{moe_num_layers=}")
+    print(f"{dense_num_layers=}")
     num_parameters_in_transformer_layers = (
         2
-        * args.num_layers
+        * dense_num_layers
         * args.hidden_size
         * args.hidden_size
         * (
@@ -33,11 +46,32 @@ def compute_activated_weight_number(args, verbose=False):
                 * query_projection_to_hidden_size_ratio
             )
             # MLP.
-            + ((args.ffn_hidden_size / args.hidden_size) * num_experts * gated_linear_multiplier)
+            + ((args.ffn_hidden_size / args.hidden_size) * gated_linear_multiplier)
             # Transformer layernorms.
             + (2 / args.hidden_size)
             # Final layernorm.
-            + (1 / (args.num_layers * args.hidden_size))
+            + (1 / (dense_num_layers * args.hidden_size))
+        )
+    )
+    num_parameters_in_transformer_layers += (
+        2
+        * moe_num_layers
+        * args.hidden_size
+        * args.hidden_size
+        * (
+            # Attention.
+            (
+                (1 + (args.num_query_groups / args.num_attention_heads))
+                * query_projection_to_hidden_size_ratio
+            )
+            # MLP.
+            + ((args.moe_ffn_hidden_size / args.hidden_size) * num_experts_routed_to * gated_linear_multiplier)
+            # Shared Experts.
+            + ((shared_expert_ffn_hidden_size / args.hidden_size) * gated_linear_multiplier)
+            # Transformer layernorms.
+            + (2 / args.hidden_size)
+            # Final layernorm.
+            + (1 / (moe_num_layers * args.hidden_size))
         )
     )
     embedding_size = args.hidden_size * args.padded_vocab_size
@@ -67,10 +101,27 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
         args.num_query_groups = args.num_attention_heads
     # MoE.
     num_experts = 1 if args.num_experts is None else args.num_experts
+    shared_expert_ffn_hidden_size = (
+        0
+        if args.moe_shared_expert_intermediate_size is None
+        else args.moe_shared_expert_intermediate_size
+    )
+    if args.num_experts is None:
+        moe_num_layers = 0
+        dense_num_layers = args.num_layers
+    else:
+        if isinstance(args.moe_layer_freq, int):
+            moe_num_layers = args.num_layers
+            dense_num_layers = 0
+        else:
+            moe_num_layers = sum(args.moe_layer_freq)
+            dense_num_layers = args.num_layers - moe_num_layers
+    print(f"{moe_num_layers=}")
+    print(f"{dense_num_layers=}")
     gated_linear_multiplier = 3 / 2 if args.swiglu else 1
     num_parameters_in_transformer_layers = (
         2
-        * args.num_layers
+        * dense_num_layers
         * args.hidden_size
         * args.hidden_size
         * (
@@ -80,11 +131,32 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
                 * query_projection_to_hidden_size_ratio
             )
             # MLP.
-            + ((args.ffn_hidden_size / args.hidden_size) * num_experts * gated_linear_multiplier)
+            + ((args.ffn_hidden_size / args.hidden_size) * gated_linear_multiplier)
             # Transformer layernorms.
             + (2 / args.hidden_size)
             # Final layernorm.
-            + (1 / (args.num_layers * args.hidden_size))
+            + (1 / (dense_num_layers * args.hidden_size))
+        )
+    )
+    num_parameters_in_transformer_layers += (
+        2
+        * moe_num_layers
+        * args.hidden_size
+        * args.hidden_size
+        * (
+            # Attention.
+            (
+                (1 + (args.num_query_groups / args.num_attention_heads))
+                * query_projection_to_hidden_size_ratio
+            )
+            # MLP.
+            + ((args.moe_ffn_hidden_size / args.hidden_size) * num_experts * gated_linear_multiplier)
+            # Shared Experts.
+            + ((shared_expert_ffn_hidden_size / args.hidden_size) * gated_linear_multiplier)
+            # Transformer layernorms.
+            + (2 / args.hidden_size)
+            # Final layernorm.
+            + (1 / (moe_num_layers * args.hidden_size))
         )
     )
     embedding_size = args.hidden_size * args.padded_vocab_size
@@ -213,12 +285,96 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
     return activation_memory / args.tensor_model_parallel_size
 
 
+def num_floating_point_operations(args, batch_size):
+    # Attention projection size.
+    query_projection_size = args.kv_channels * args.num_attention_heads
+    query_projection_to_hidden_size_ratio = query_projection_size / args.hidden_size
+    # Group Query Attention.
+    if not args.group_query_attention:
+        args.num_query_groups = args.num_attention_heads
+    # MoE.
+    num_experts_routed_to = args.moe_router_topk
+    gated_linear_multiplier = 3 / 2 if args.swiglu else 1
+    shared_expert_ffn_hidden_size = (
+        0
+        if args.moe_shared_expert_intermediate_size is None
+        else args.moe_shared_expert_intermediate_size
+    )
+
+    # The 12x term below comes from the following factors; for more details, see
+    # "APPENDIX: FLOATING-POINT OPERATIONS" in https://arxiv.org/abs/2104.04473.
+    # - 3x: Each GEMM in the model needs to be performed 3 times (forward pass,
+    #       backward wgrad [weight gradient], backward dgrad [data gradient]).
+    # - 2x: GEMMs of a particular size are stacked twice in the standard Transformer model
+    #       architectures implemented in this codebase (e.g., h->ffn_h GEMM and ffn_h->h GEMM
+    #       in MLP layer).
+    # - 2x: A GEMM of a m*n tensor with a n*k tensor requires 2mnk floating-point operations.
+    expansion_factor = 3 * 2 * 2
+
+    return (
+        expansion_factor
+        * batch_size
+        * args.seq_length
+        * args.num_layers
+        * args.hidden_size
+        * args.hidden_size
+        * ( # Dense
+            # Attention.
+            (
+                (
+                    1
+                    + (args.num_query_groups / args.num_attention_heads)
+                    + (args.seq_length / args.hidden_size)
+                ) * query_projection_to_hidden_size_ratio
+            )
+            # MLP.
+            + (
+                (args.ffn_hidden_size / args.hidden_size)
+                * gated_linear_multiplier
+            )
+            # Logit.
+            + (args.padded_vocab_size / (2 * args.num_layers * args.hidden_size))
+        )
+        +
+        ( # MoE
+            # Attention.
+            (
+                (
+                    1
+                    + (args.num_query_groups / args.num_attention_heads)
+                    + (args.seq_length / args.hidden_size)
+                ) * query_projection_to_hidden_size_ratio
+            )
+            # MLP.
+            + (
+                (args.moe_ffn_hidden_size / args.hidden_size)
+                * num_experts_routed_to
+                * gated_linear_multiplier
+            )
+            # Shared Experts.
+            + ((shared_expert_ffn_hidden_size / args.hidden_size) * gated_linear_multiplier)
+            # Logit.
+            + (args.padded_vocab_size / (2 * args.num_layers * args.hidden_size))
+        )
+    )
+
+
 def report_theoretical_memory(args, num_microbatches=None, verbose=False):
     compute_activated_weight_number(args, verbose=verbose)
 
     weight_and_optimizer_memory = (
         compute_weight_and_optimizer_memory(args, verbose=verbose) / NUM_BYTES_IN_MEGABYTE
     )
+
+    batch_size = 2048
+    world_size = 64
+    elapsed_time_per_iteration = 29.6622 # seconds
+
+    throughput = num_floating_point_operations(args, batch_size) / (
+            elapsed_time_per_iteration * 10**12 * world_size)
+    print(f"{throughput=}")
+
+    exit(0)
 
     # Formulae here assume sequence parallelism and selective activation recomputation.
     if not args.sequence_parallel or args.recompute_granularity != 'selective':
@@ -237,3 +393,6 @@ def report_theoretical_memory(args, num_microbatches=None, verbose=False):
         f"Theoretical memory footprints: weight and optimizer={weight_and_optimizer_memory:.2f} MB, "
         f"activation={activation_memory:.2f} MB, total={total_memory:.2f} MB\n"
     )
+
+
+

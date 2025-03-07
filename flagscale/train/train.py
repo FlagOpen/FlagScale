@@ -362,6 +362,8 @@ def pretrain(
     else:
         checkpointing_context = {}
 
+    report_theoretical_memory(args, None, verbose=True)
+
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
     app_metrics['app_build_optimizer_start_time'] = one_logger_utils.get_timestamp_in_ms()
