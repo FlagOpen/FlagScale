@@ -20,8 +20,6 @@ run_command() {
 }
 
 source tests/scripts/_gpu_check.sh
-source tests/scripts/_tests_stop.sh
-source tests/scripts/_tests_log.sh
 
 # Path to the YAML configuration file
 CONFIG_FILE="tests/scripts/functional_tests/config.yml"
@@ -68,8 +66,9 @@ test_mission() {
       fi
 
       if [ "${_type}" = "serve" ]; then
-        run_command "stop_serve;python run.py --config-path tests/functional_tests/test_cases/${_type}/${_mission}/conf --config-name ${_case} action=run; sleep 1m" $attempt_i $_mission $_type $_case # Serve
-        run_command "python tests/functional_tests/test_cases/${_type}/${_mission}/test_call.py;stop_serve" $attempt_i $_mission $_type $_case # Call
+        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_mission}/conf --config-name ${_case} action=run; sleep 1m" $attempt_i $_mission $_type $_case # Serve start
+        run_command "python tests/functional_tests/test_cases/${_type}/${_mission}/test_call.py" $attempt_i $_mission $_type $_case # Call
+        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_mission}/conf --config-name ${_case} action=stop" $attempt_i $_mission $_type $_case # Serve stop
       fi
 
       # Ensure that pytest check is completed before deleting the folder

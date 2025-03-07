@@ -17,3 +17,7 @@ experiment:
     before_start: ulimit -n 65535 && export no_proxy="127.0.0.1,localhost" && source /root/miniconda3/bin/activate flagscale-inference
 
 action: run
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra

@@ -21,10 +21,3 @@ stop_all() {
         kill -9 $pid
     done
 }
-
-# Function to execute a command and clear serve process
-stop_serve() {
-    ray stop
-    pkill -f "python"
-    return 0
-}
