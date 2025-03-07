@@ -2,15 +2,15 @@
 
 # Run each command and capture its return value
 commands=(
-    "tests/scripts/functional_tests/test_model.sh --type train --model aquila"
-    "tests/scripts/functional_tests/test_model.sh --type train --model mixtral"
-    "tests/scripts/functional_tests/test_model.sh --type train --model llava_onevision"
+    "tests/scripts/functional_tests/test_mission.sh --type train --mission aquila"
+    "tests/scripts/functional_tests/test_mission.sh --type train --mission mixtral"
+    "tests/scripts/functional_tests/test_mission.sh --type train --mission llava_onevision"
     # for hetero-train
-    "tests/scripts/functional_tests/test_model.sh --type hetero_train --model aquila"
+    "tests/scripts/functional_tests/test_mission.sh --type hetero_train --mission aquila"
     # Add in the feature
-    # "tests/scripts/functional_tests/test_model.sh --type inference --model vllm"
+    # "tests/scripts/functional_tests/test_mission.sh --type inference --mission vllm"
     # For serve
-    "tests/scripts/functional_tests/test_model.sh --type serve --model test_serve_base"
+    "tests/scripts/functional_tests/test_mission.sh --type serve --mission base"
 )
 
 for cmd in "${commands[@]}"; do
