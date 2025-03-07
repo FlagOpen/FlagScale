@@ -62,12 +62,12 @@ test_mission() {
 
       if [ "${_type}" = "train" ]; then
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_mission}/conf --config-name ${_case} action=test" $attempt_i $_mission $_type $_case
-        run_command "pytest -p no:warnings -s tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_mission=${_mission} --test_case=${_case}" $attempt_i $_mission $_type $_case
+        run_command "pytest tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_mission=${_mission} --test_case=${_case}" $attempt_i $_mission $_type $_case
       fi
 
       if [ "${_type}" = "serve" ]; then
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_mission}/conf --config-name ${_case} action=run; sleep 1m" $attempt_i $_mission $_type $_case # Serve start
-        run_command "python tests/functional_tests/test_cases/${_type}/${_mission}/test_call.py" $attempt_i $_mission $_type $_case # Call
+        run_command "pytest tests/functional_tests/test_utils/test_call.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_mission=${_mission} --test_case=${_case}" $attempt_i $_mission $_type $_case # Call
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_mission}/conf --config-name ${_case} action=stop" $attempt_i $_mission $_type $_case # Serve stop
       fi
 
