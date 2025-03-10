@@ -60,7 +60,7 @@ test_task() {
         rm -r "$result_path"
       fi
 
-      if [ "${_type}" = "train" ]; then
+      if [ "${_type}" = "train" ] || [ "${_type}" = "hetero_train" ]; then
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_task}/conf --config-name ${_case} action=test" $attempt_i $_task $_type $_case
         run_command "pytest tests/functional_tests/test_utils/test_equal.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_task=${_task} --test_case=${_case}" $attempt_i $_task $_type $_case
       fi
