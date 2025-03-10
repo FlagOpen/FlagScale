@@ -14,7 +14,8 @@ import torch.distributed
 from megatron.training.log_handler import CustomHandler
 # Make default logging level INFO, but filter out all log messages not from MCore.
 logging.basicConfig(handlers=[CustomHandler()], level=logging.INFO)
-from megatron.training.theoretical_memory_usage import report_theoretical_memory
+# from megatron.training.theoretical_memory_usage import report_theoretical_memory
+from megatron.training.theoretical_memory_usage_zyl import report_theoretical_memory
 import time
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
@@ -361,6 +362,8 @@ def pretrain(
         }
     else:
         checkpointing_context = {}
+
+    report_theoretical_memory(args, None, verbose=True)
 
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
