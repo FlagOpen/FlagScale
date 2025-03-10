@@ -3,7 +3,7 @@ import argparse
 import yaml
 
 
-def parse_config(config_file, type, mission):
+def parse_config(config_file, type, task):
     with open(config_file, "r") as file:
         config = yaml.safe_load(file)
 
@@ -11,13 +11,13 @@ def parse_config(config_file, type, mission):
     if type not in config:
         raise ValueError(f"Test type '{type}' not found in configuration file.")
 
-    # Check if mission exists within the specified type
-    if mission not in config[type]:
+    # Check if task exists within the specified type
+    if task not in config[type]:
         raise ValueError(
-            f"Test mission '{mission}' not found under test type '{type}' in configuration file."
+            f"Test task '{task}' not found under test type '{type}' in configuration file."
         )
 
-    return config[type][mission]
+    return config[type][task]
 
 
 def main():
@@ -29,15 +29,15 @@ def main():
         "--type", required=True, help="Test type to run (e.g., 'train' or 'inference')."
     )
     parser.add_argument(
-        "--mission",
+        "--task",
         required=True,
-        help="Test mission to run (e.g., 'aquila' or 'mixtral').",
+        help="Test task to run (e.g., 'aquila' or 'mixtral').",
     )
 
     args = parser.parse_args()
 
     try:
-        result = parse_config(args.config, args.type, args.mission)
+        result = parse_config(args.config, args.type, args.task)
         print(result)
     except ValueError as e:
         print(str(e))

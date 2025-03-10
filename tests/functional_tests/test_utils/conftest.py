@@ -17,7 +17,7 @@ def pytest_addoption(parser):
         help="Different Types of Testing (train/inference/....)",
     )
     parser.addoption(
-        "--test_mission",
+        "--test_task",
         action="store",
         default="none",
         help="Model name for the test cases",
@@ -38,8 +38,8 @@ def test_type(request):
 
 
 @pytest.fixture
-def test_mission(request):
-    return request.config.getoption("--test_mission")
+def test_task(request):
+    return request.config.getoption("--test_task")
 
 
 @pytest.fixture

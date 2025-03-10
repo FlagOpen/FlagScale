@@ -7,7 +7,7 @@ on:
       type:
         required: true
         type: string
-      mission:
+      task:
         required: true
         type: string
       image:
@@ -46,4 +46,4 @@ jobs:
 
       - name: Run Functional Test
         run: |
-          tests/scripts/functional_tests/test_mission.sh --type ${{ inputs.type }} --mission ${{ inputs.mission }}
+          tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}

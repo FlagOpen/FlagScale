@@ -93,13 +93,13 @@ jobs:
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
-        mission:
+        task:
           - aquila
           - mixtral
           - llava_onevision
-    name: "train-${{ matrix.mission }}"
+    name: "train-${{ matrix.task }}"
     with:
-      mission: ${{ matrix.mission }}
+      task: ${{ matrix.task }}
       type: train
       image: ${{ needs.set-env.outputs.ci_image }}
 
@@ -110,11 +110,11 @@ jobs:
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
-        mission:
+        task:
           - aquila
-    name: "hetero_train-${{ matrix.mission }}"
+    name: "hetero_train-${{ matrix.task }}"
     with:
-      mission: ${{ matrix.mission }}
+      task: ${{ matrix.task }}
       type: hetero_train
       image: ${{ needs.set-env.outputs.ci_image }}
 
@@ -125,11 +125,11 @@ jobs:
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
-        mission:
+        task:
           - base
-    name: "serve-${{ matrix.mission }}"
+    name: "serve-${{ matrix.task }}"
     with:
-      mission: ${{ matrix.mission }}
+      task: ${{ matrix.task }}
       type: serve
       image: ${{ needs.set-env.outputs.ci_image }}
 
@@ -177,9 +177,9 @@ jobs:
 #   uses: ./.github/workflows/functional-tests.yml
 #   strategy:
 #     matrix:
-#       mission:
+#       task:
 #         - from_vllm
-#   name: "inference-${{ matrix.mission }}"
+#   name: "inference-${{ matrix.task }}"
 #   with:
-#     mission: ${{ matrix.mission }}
+#     task: ${{ matrix.task }}
 #     type: inference
