@@ -1,31 +1,25 @@
 train:
   aquila:
-    test_cases:
-      -tp2_pp2
-      -tp4_pp2
+    -tp2_pp2
+    -tp4_pp2
   mixtral:
-    test_cases:
-      -tp2_pp1_ep2
-      -tp4_pp1_ep2
+    -tp2_pp1_ep2
+    -tp4_pp1_ep2
   llava_onevision:
-    test_cases:
-      -tp2
-      -tp4
+    -tp2
+    -tp4
 
 hetero_train:
   aquila:
-    test_cases:
-      -tp2pp1_tp4pp1_tp2pp1
-      -tp2dp1pp1_tp2dp2pp1_tp1dp2pp1
-      -dp2dp4_shared_embedding
+    -tp2pp1_tp4pp1_tp2pp1
+    -tp2dp1pp1_tp2dp2pp1_tp1dp2pp1
+    -dp2dp4_shared_embedding
 
 serve:
-  test_serve_base:
-    test_cases:
-      -multiple_model
+  base:
+    -multiple_model
 
 # Add in the feature
 # inference:
 #   from_vllm:
-#     test_cases:
 #       ...

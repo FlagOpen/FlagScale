@@ -3,7 +3,7 @@
 The test module supports:
 
 1. Unit testing for different backends and operation modes.
-2. Functional testing for multiple models, strategies, and heterogeneous hardware.
+2. Functional testing revolves around the training, compression, inference, and service of large language models.
 3. Monitoring incremental code test coverage and viewing test reports online.
 4. Ensuring code style consistency.
 
@@ -161,13 +161,13 @@ When you create a PR using your forked repository, the testing workflow will aut
 ### Run Specific Functional Tests Locally
 
 ```bash
-tests/scripts/functional_tests/test_model.sh --type ${TYPE} --model ${MODEL}
+tests/scripts/functional_tests/test_task.sh --type ${TYPE} --task ${TASK}
 ```
 
 Please set the following variables:
 
 - `TYPE`: The type of functional testing, supporting `train` or `hetero_train`.
-- `MODEL`: The model used for functional testing, in conjunction with `TYPE`. Specific models can be found under the `tests/functional_tests/test_cases` directory.
+- `TASK`: The task used for functional testing, in conjunction with `TYPE`. Specific tasks can be found under the `tests/functional_tests/test_cases` directory.
 
 ### Run All Functional Tests Locally
 
@@ -189,10 +189,9 @@ Find the corresponding action for your [PR](https://github.com/FlagOpen/FlagScal
    train:
      # Models used
      aquila:
-       test_cases:
-         # Parallel modes
-         -tp2_pp2
-         -tp4_pp2
+        # Parallel modes
+        -tp2_pp2
+        -tp4_pp2
    ...
    ```
 
@@ -212,7 +211,7 @@ Find the corresponding action for your [PR](https://github.com/FlagOpen/FlagScal
    └── results_test
    ```
 
-   *Note: We have included data and model files that you can use. For more details, consult the training configuration file of the respective test case. If you need to add your own test data or model files, please contact us.*
+   *Note: We have included data and task files that you can use. For more details, consult the training configuration file of the respective test case. If you need to add your own test data or task files, please contact us.*
 
 3. Modify the yml configuration file in the workflow to enable online testing:
 
@@ -227,14 +226,14 @@ Find the corresponding action for your [PR](https://github.com/FlagOpen/FlagScal
      uses: ./.github/workflows/functional-tests.yml
      strategy:
        matrix:
-         model:
-           # Add the new model if applicable
-           - {NEW_MODEL}
+         task:
+           # Add the new task if applicable
+           - {NEW_TASK}
            - aquila
            - mixtral
-     name: "train-${{ matrix.model }}"
+     name: "train-${{ matrix.task }}"
      with:
-       model: ${{ matrix.model }}
+       task: ${{ matrix.task }}
        type: train
 
    ...
