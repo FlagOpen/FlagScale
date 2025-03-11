@@ -14,6 +14,12 @@ except:
         ImportWarning,
     )
 
+import os
+import threading
+import datetime
+import multiprocessing
+import dummy_collectives
+
 from flagscale.train.hetero.parallel_context import RankMapper
 
 
@@ -52,26 +58,53 @@ class FSTrainArguments:
             # Manually set the device ids.
             if device_count > 0:
                 torch.cuda.set_device(args.local_rank)
-                device_id = torch.device(f"cuda:{args.local_rank}")
+                device_id = torch.device(f'cuda:{args.local_rank}')
             else:
                 device_id = None
+            if args.enable_simulator:
+                # Define a function to initialize and run operations with a virtual rank
+                def run_virtual_rank(rank, world_size, timeout):
+                    os.environ["MASTER_ADDR"] = "127.0.0.1"
+                    os.environ["MASTER_PORT"] = "37832"
+                    init_process_group_kwargs = {
+                        'backend' : args.distributed_backend,
+                        'world_size': world_size,
+                        'rank': rank,
+                        'timeout': datetime.timedelta(minutes=timeout),
+                    }
+                    torch.distributed.init_process_group(**init_process_group_kwargs)
+                    torch.distributed.barrier()
 
-            # Call the init process
-            init_process_group_kwargs = {
-                "backend": args.distributed_backend,
-                "world_size": args.world_size,
-                "rank": args.rank,
-                "timeout": timedelta(minutes=args.distributed_timeout_minutes),
-            }
-            if args.distributed_backend == "flagcx":
-                init_process_group_kwargs["backend"] = "cpu:gloo,cuda:flagcx"
-            # for communication based cpu
-            if args.enable_hetero and args.hetero_use_cpu_communication:
-                # if not all(device_type == args.hetero_device_types[0] for device_type in args.hetero_device_types):
-                #     init_process_group_kwargs['backend'] = 'cpu:gloo'
-                # Force the group of backend gloo only support cpu
-                init_process_group_kwargs["backend"] = "cpu:gloo"
-            torch.distributed.init_process_group(**init_process_group_kwargs)
+                # Call the init process with multithreads
+                args.distributed_timeout_minutes = 1
+                threads = []
+                # Start a thread for each virtual rank
+                for rank in range(1, 2): # 2 for skipping launching thousands of threads
+                # for rank in range(1, args.world_size):
+                    thread = threading.Thread(target=run_virtual_rank, args=(rank, args.world_size, args.distributed_timeout_minutes))
+                    thread.start()
+                    threads.append(thread)
+                rank = 0
+                gpu_task = multiprocessing.Process(target=run_virtual_rank, args=(rank, args.world_size, args.distributed_timeout_minutes))
+                gpu_task.start()
+                # Wait for all threads to complete
+                for thread in threads:
+                    thread.join()
+            else:
+                # Call the init process
+                init_process_group_kwargs = {
+                    "backend": args.distributed_backend,
+                    "world_size": args.world_size,
+                    "rank": args.rank,
+                    "timeout": timedelta(minutes=args.distributed_timeout_minutes),
+                }
+                # for communication based cpu
+                if args.enable_hetero and args.hetero_use_cpu_communication:
+                    # if not all(device_type == args.hetero_device_types[0] for device_type in args.hetero_device_types):
+                    #     init_process_group_kwargs['backend'] = 'gloo'
+                    # Force the group of backend gloo only support cpu
+                    init_process_group_kwargs['backend'] = 'cpu:gloo'
+                torch.distributed.init_process_group(**init_process_group_kwargs)
 
     def _build_rank_mapper(self):
         self._initialize_distributed()
