@@ -11,6 +11,7 @@ log_file/*
 outputs
 *.log
 *.out
+megatron/megatron/energon
 
 # test results
 tests/functional_tests/test_cases/*/*/results_test

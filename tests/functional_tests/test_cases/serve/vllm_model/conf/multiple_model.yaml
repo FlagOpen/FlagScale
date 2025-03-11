@@ -4,7 +4,7 @@ defaults:
 
 experiment:
   exp_name: multiple_model
-  exp_dir: outputs/${experiment.exp_name}
+  exp_dir: tests/functional_tests/test_cases/serve/vllm_model/results_test/multiple_model
   task:
     type: serve
     entrypoint: null
@@ -14,6 +14,10 @@ experiment:
     CUDA_VISIBLE_DEVICES: 0,1,2,3
     CUDA_DEVICE_MAX_CONNECTIONS: 1
   cmds:
-    before_start: source /root/miniconda3/bin/activate flagscale-train
+    before_start: source /root/miniconda3/bin/activate flagscale-inference
 
 action: run
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra

@@ -1,5 +1,4 @@
-# Demo for testing
-# TODO: Release 671B version
+# DeepSeek 16B, 2.4A Model
 defaults:
   - _self_
   - train: train_deepseek_v3.yaml

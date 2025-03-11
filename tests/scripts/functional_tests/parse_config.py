@@ -3,7 +3,7 @@ import argparse
 import yaml
 
 
-def parse_config(config_file, type, model):
+def parse_config(config_file, type, task):
     with open(config_file, "r") as file:
         config = yaml.safe_load(file)
 
@@ -11,17 +11,13 @@ def parse_config(config_file, type, model):
     if type not in config:
         raise ValueError(f"Test type '{type}' not found in configuration file.")
 
-    # Check if model exists within the specified type
-    if model not in config[type]:
+    # Check if task exists within the specified type
+    if task not in config[type]:
         raise ValueError(
-            f"Test model '{model}' not found under test type '{type}' in configuration file."
+            f"Test task '{task}' not found under test type '{type}' in configuration file."
         )
 
-    # Return the test cases for the specified test model under the test type
-    if "test_cases" in config[type][model]:
-        return config[type][model]["test_cases"]
-
-    return []
+    return config[type][task]
 
 
 def main():
@@ -33,15 +29,15 @@ def main():
         "--type", required=True, help="Test type to run (e.g., 'train' or 'inference')."
     )
     parser.add_argument(
-        "--model",
+        "--task",
         required=True,
-        help="Test model to run (e.g., 'aquila' or 'mixtral').",
+        help="Test task to run (e.g., 'aquila' or 'mixtral').",
     )
 
     args = parser.parse_args()
 
     try:
-        result = parse_config(args.config, args.type, args.model)
+        result = parse_config(args.config, args.type, args.task)
         print(result)
     except ValueError as e:
         print(str(e))

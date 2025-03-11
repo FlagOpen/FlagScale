@@ -354,7 +354,7 @@ class InputPreprocessor:
             prompt_text = text_content["prompt"]
             multi_modal_data = text_content.get("multi_modal_data")
             mm_processor_kwargs = text_content.get("mm_processor_kwargs")
-            negative_prompt_text = tokens_content.get("negative_prompt") # --- FLAGSCALE MODIFICATION ---
+            negative_prompt_text = text_content.get("negative_prompt") # --- FLAGSCALE MODIFICATION ---
 
             if multi_modal_data is not None and self._can_process_multimodal():
                 return self._process_multimodal(
@@ -386,7 +386,7 @@ class InputPreprocessor:
                 multi_modal_data=multi_modal_data,
                 mm_processor_kwargs=mm_processor_kwargs,
                 # --- FLAGSCALE MODIFICATION BEG ---
-                negative_prompt_text=negative_prompt_text,
+                negative_prompt=negative_prompt_text,
                 negative_prompt_token_ids=negative_prompt_token_ids,
                 # --- FLAGSCALE MODIFICATION END ---
             )
@@ -444,7 +444,7 @@ class InputPreprocessor:
             prompt_text = text_content["prompt"]
             multi_modal_data = text_content.get("multi_modal_data")
             mm_processor_kwargs = text_content.get("mm_processor_kwargs")
-            negative_prompt_text = tokens_content.get("negative_prompt") # --- FLAGSCALE MODIFICATION ---
+            negative_prompt_text = text_content.get("negative_prompt") # --- FLAGSCALE MODIFICATION ---
 
             if multi_modal_data is not None and self._can_process_multimodal():
                 return await self._process_multimodal_async(
@@ -476,7 +476,7 @@ class InputPreprocessor:
                 multi_modal_data=multi_modal_data,
                 mm_processor_kwargs=mm_processor_kwargs,
                 # --- FLAGSCALE MODIFICATION BEG ---
-                negative_prompt_text=negative_prompt_text,
+                negative_prompt=negative_prompt_text,
                 negative_prompt_token_ids=negative_prompt_token_ids
                 # --- FLAGSCALE MODIFICATION END ---
             )

@@ -222,7 +222,9 @@ def _generate_run_script_serve(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
             node_cmd = None
-            if getattr(config.serve.deploy, "use_native_serve", True):
+            if getattr(config.serve.deploy, "use_native_serve", True) and getattr(
+                config.serve.deploy, "command_line_mode", False
+            ):
                 f.write(f"ray_path=$(realpath $(which ray))\n")
                 if not device_type:
                     node_cmd = f"${{ray_path}} start --head"
@@ -329,7 +331,11 @@ class SSHServeRunner(RunnerBase):
         )
         self._prepare()
         self.host = None
-        self.port = self.config.serve.model_args.vllm_model.port
+        self.port = (
+            self.config.serve.model_args.vllm_model.get("port", get_free_port())
+            if self.config.serve.get("model_args", None)
+            else get_free_port()
+        )
 
     def _prepare(self):
         _update_config_serve(self.config)

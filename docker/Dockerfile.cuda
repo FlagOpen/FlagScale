@@ -3,7 +3,7 @@ FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 ARG PYTHON_VERSION=3.12
 ARG TORCH_VERSION=2.5.1
 # FS_VERSION is used to mark the FlagScale and environment version corresponding to the image
-ARG FS_VERSION
+ARG FS_VERSION=HEAD
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
@@ -15,13 +15,6 @@ ENV STAGE_DIR=/tmp
 RUN mkdir -p ${STAGE_DIR}
 ENV WORK_DIR=/workspace
 RUN mkdir -p ${WORK_DIR}
-
-##############################################################################
-# Change apt source to Ksyun
-##############################################################################
-RUN sed -i "s#\S\+#http://apt.ksyun.cn/ubuntu/#2" /etc/apt/sources.list && \
-    > /etc/apt/apt.conf.d/docker-clean && \
-    > /etc/dpkg/dpkg.cfg.d/pkg-config-hook-config
 
 ##############################################################################
 # Install Basic Utilities
@@ -45,7 +38,7 @@ RUN apt-get update && \
         tmux tzdata \
         unzip \
         vim \
-        wget&& \
+        wget && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
@@ -125,19 +118,27 @@ RUN cd ${STAGE_DIR} && \
         ~/miniconda3/bin/conda config --set default_python ${PYTHON_VERSION}
 
 ##############################################################################
-# Install flagscale requirements
+# Clone FlagScale
 ##############################################################################
 RUN cd ${WORK_DIR} && \
     git clone https://github.com/FlagOpen/FlagScale.git && \
     cd FlagScale/install && \
     git checkout $FS_VERSION && \
-    chmod +x install-requirements.sh && \
-    # flagscale-train
-    ./install-requirements.sh --env train && \
-    # flagscale-infernece
+    chmod +x install-requirements.sh
+
+##############################################################################
+# Install flagscale=train requirements
+##############################################################################
+RUN cd ${WORK_DIR}/FlagScale/install && \
+    ./install-requirements.sh --env train
+
+##############################################################################
+# Install flagscale=inference requirements
+##############################################################################
+RUN cd ${WORK_DIR}/FlagScale/install && \
     ./install-requirements.sh --env inference
 
 ##############################################################################
 # Clear
 ##############################################################################
-RUN rm -r ${STAGE_DIR}
+RUN rm -rf ${STAGE_DIR}/*

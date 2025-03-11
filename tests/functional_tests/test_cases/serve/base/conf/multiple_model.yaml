@@ -1,0 +1,23 @@
+defaults:
+  - _self_
+  - serve: multiple_model
+
+experiment:
+  exp_name: multiple_model
+  exp_dir: tests/functional_tests/test_cases/serve/base/results_test/multiple_model
+  task:
+    type: serve
+    entrypoint: null
+  runner:
+    hostfile: null
+  envs:
+    CUDA_VISIBLE_DEVICES: 0,1,2,3
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+  cmds:
+    before_start: ulimit -n 65535 && export no_proxy="127.0.0.1,localhost" && source /root/miniconda3/bin/activate flagscale-inference
+
+action: run
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra

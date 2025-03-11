@@ -1,11 +1,8 @@
 #!/bin/bash
 
-echo "The current directory is: $(pwd)"
-
 source tests/scripts/_gpu_check.sh
 
-echo "Set fd limit to 65535"
-ulimit -n 65535
+echo "The current directory is: $(pwd)"
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -33,38 +30,23 @@ fi
 
 # Call the Python script to extract the relevant configuration
 config=$(python3 tests/scripts/unit_tests/parse_config.py "$config_file" "$backend" "$subset")
+echo "config:" $config
 
-# Split the Python output
+# Split the Python output and set default values
 set_environment=$(echo $config | cut -d '|' -f 1)
-root=$(echo $config | cut -d '|' -f 2)
+root=$(echo $config | cut -d '|' -f 2);root=${root:-"tests/unit_tests"}
 coverage=$(echo $config | cut -d '|' -f 3)
-type=$(echo $config | cut -d '|' -f 4)
-depth=$(echo $config | cut -d '|' -f 5)
+type=$(echo $config | cut -d '|' -f 4);type=${type:-"batch"}
+depth=$(echo $config | cut -d '|' -f 5);depth=${depth:-"all"}
 ignore=$(echo $config | cut -d '|' -f 6)
 deselect=$(echo $config | cut -d '|' -f 7)
-
-# Set default value
-if [ -z "$root" ]; then
-    root="tests/unit_tests"
-fi
-
-if [ -z "$type" ]; then
-    type="batch"
-fi
-
-if [ -z "$depth" ]; then
-    depth="all"
-fi
-
-if [ -z "$id" ]; then
-    id=0
-fi
+id=${id:-0}
 
 # Set the test path based on root and subset
 if [[ "$subset" =~ [./]$ ]]; then
     subset="${subset##*[./]}"
 fi
-path="${root}"/"${subset}"
+path="${root}/${subset}"
 path="${path%/}"
 
 # Output the test name
@@ -83,19 +65,37 @@ check_reports_complete() {
     local xml_current_size
     local html_current_size
 
-    # Continuously check size stability for both reports
     while true; do
         xml_current_size=$(stat --format=%s "$xml_report" 2>/dev/null || echo 0)
         html_current_size=$(stat --format=%s "$html_report" 2>/dev/null || echo 0)
 
+        # Check if sizes are stable
         if [ "$xml_previous_size" -eq "$xml_current_size" ] && [ "$html_previous_size" -eq "$html_current_size" ]; then
-            break
+            echo "Reports are complete: $xml_report $html_report"
+            return  # Exit the function normally if reports are complete
         fi
 
         xml_previous_size=$xml_current_size
         html_previous_size=$html_current_size
         sleep 5s
     done
+
+    # If the loop exits without returning, it means reports are not stable
+    echo "Check reports failed: $xml_report $html_report"
+    exit 1  # Exit with error code if checks fail
+}
+
+# Function to execute a command and handle failures
+run_command() {
+    echo $(which conda) $(which python)
+    wait_for_gpu
+    echo "$1"
+    eval "$1"
+    # Check the exit status of pytest
+    if [ $? -ne 0 ]; then
+        echo "Failed: $1"
+        exit 1
+    fi
 }
 
 # Function to run tests at a specific depth
@@ -141,52 +141,17 @@ run_tests() {
         done
     fi
 
-    local xml_report="/workspace/report/$id/cov-report-${backend}/coverage.xml"
     local html_report="/workspace/report/$id/cov-report-${backend}"
+    local xml_report="$html_report/coverage.xml"
     export COMMIT_ID=$id
 
     if [ "$_type" == "batch" ]; then
-        wait_for_gpu
-
-        echo "Running batch test:"
-        echo "torchrun --nproc_per_node=8 -m pytest --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_files"
-        torchrun --nproc_per_node=8 -m pytest --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_files
-
-        # Check the exit status of pytest
-        if [ $? -ne 0 ]; then
-            echo "Test failed: $_test_files"
-            exit 1
-        fi
-
-        # Check if both report files are complete
+        run_command "torchrun --nproc_per_node=8 -m pytest --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_files"
         check_reports_complete "$xml_report" "$html_report"
-
-        if [ $? -ne 0 ]; then
-            echo "Check reports failed: $xml_report $html_report"
-            exit 1
-        fi
-
     elif [ "$_type" == "single" ]; then
         for _test_file in $_test_files; do
-            wait_for_gpu
-            echo "Running single test: $_test_file"
-            echo "torchrun --nproc_per_node=8 -m pytest --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_file"
-            torchrun --nproc_per_node=8 -m pytest --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_file
-
-            # Check the exit status of pytest
-            if [ $? -ne 0 ]; then
-                echo "Test failed: $_test_file"
-                exit 1
-            fi
-
-            # Check if both report files are complete
+            run_command "torchrun --nproc_per_node=8 -m pytest --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_file"
             check_reports_complete "$xml_report" "$html_report"
-
-            if [ $? -ne 0 ]; then
-                echo "Check reports failed: $xml_report $html_report"
-                exit 1
-            fi
-
         done
     fi
 }

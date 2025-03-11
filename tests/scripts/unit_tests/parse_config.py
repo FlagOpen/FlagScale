@@ -9,7 +9,7 @@ def parse_config(config_file, backend, subset):
 
         backend_config = config.get(backend, {})
         config_str = ""
-        config_str += f"{backend_config.get('set_environment', '')}" + "|"
+        config_str += ";".join(backend_config.get("set_environment", [])) + "|"
         config_str += f"{backend_config.get('root', '')}" + "|"
         config_str += f"{backend_config.get('coverage', '')}" + "|"
 
