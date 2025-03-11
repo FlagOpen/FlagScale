@@ -1631,7 +1631,8 @@ def _add_training_args(parser):
                        choices=['nccl', 'ucc'],
                        help='Select a communicator backend for pipeline parallel communication. '
                        'If None, the default backend will be used.')
-
+    group.add_argument('--enable-zero-bubble', action='store_true',
+                       help='Use Zero Bubble (ZB-H1) scheduling, which splits BW into B and W.')
     return parser
 
 
