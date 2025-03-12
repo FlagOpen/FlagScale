@@ -3,3 +3,7 @@ directory = coverage
 
 [run]
 data_file = /workspace/report/$COMMIT_ID/cov-temp-megatron/.coverage_$LOCAL_RANK
+
+# The original meagatron code
+#data_file = .coverage_$LOCAL_RANK
+#relative_files = true

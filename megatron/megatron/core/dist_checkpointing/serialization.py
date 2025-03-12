@@ -347,22 +347,8 @@ def save(
 
     if torch.distributed.get_rank() == 0:
         if not checkpoint_dir.exists():
-            raise CheckpointingException(
-                f'Checkpoint destination directory does not exist: {checkpoint_dir}'
-            )
-
-        # Skip this if the env var exists, otherwise default to False
-        single_file_per_tensor_ckpt = os.getenv('FS_SFPT_CKPT_SAVE', 'False').lower() in (
-            'true',
-            '1',
-            't',
-        )
-        if not single_file_per_tensor_ckpt:
-            if next(checkpoint_dir.iterdir(), None) is not None:
-                raise CheckpointingException(
-                    f'Checkpoint destination directory ({checkpoint_dir}) is not empty'
-                )
-
+            if torch.distributed.get_rank() == 0:
+                            logger.warning("Overwriting old incomplete / corrupted checkpoint...")
     if common_strategy is not None:
         raise NotImplementedError('The only supported common strategy is torch')
 

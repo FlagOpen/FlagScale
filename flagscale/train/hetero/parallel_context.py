@@ -220,6 +220,7 @@ class ProcessMesh:
         self._order = order
         self._offset = offset
         self._args = args
+        self.create_gloo_process_groups = not args.disable_gloo_process_groups
 
         self._timeout = timedelta(minutes=distributed_timeout_minutes)
         self._rank = torch.distributed.get_rank()
@@ -297,7 +298,7 @@ class ProcessMesh:
         self.build_all_process_groups()
 
     def build_process_group(
-        self, token, is_expert=False, gloo=False
+        self, token, is_expert=False, gloo=False, create_gloo_process_groups=True
     ):
         if not is_expert:
             logical_ranks_list = self._rank_generator.get_ranks(token)
@@ -315,7 +316,10 @@ class ProcessMesh:
             ranks = self._rank_mapper.to_physical_ranks(logical_ranks)
             group = create_group(ranks, timeout=self._timeout, backend=self._distributed_backend, pg_options=pg_options, group_desc=group_name)
             if gloo:
-                group_gloo = create_group(ranks, timeout=self._timeout, backend="gloo", group_desc=group_name+"_gloo")
+                if create_gloo_process_groups:
+                    group_gloo = create_group(ranks, timeout=self._timeout, backend="gloo", group_desc=group_name+"_gloo")
+                else:
+                    group_gloo = None
             self._all_group_ranks[group_name].append(ranks)
             if self._rank in ranks:
                 self._group_ranks[group_name] = ranks
@@ -332,7 +336,7 @@ class ProcessMesh:
             if token == "cp" and not is_expert:
                 self._build_hierarchical_cp_groups(ranks, pg_options)
 
-    def _build_dist_opt_process_groups(self, token, ranks, pg_options, group, group_gloo):
+    def _build_dist_opt_process_groups(self, token, ranks, pg_options, group, group_gloo, create_gloo_process_groups=True):
         if self._num_distributed_optimizer_instances > 1:
             # Create groups for Partial DistOpt, one for intra-partial DP domain
             # Another for inter-partial DP domain
@@ -358,11 +362,14 @@ class ProcessMesh:
                     pg_options=pg_options,
                     group_desc=group_name,
                 )
-                intra_partial_data_parallel_group_with_cp_gloo = create_group(
-                    intra_partial_data_parallel_ranks_with_cp,
-                    timeout=self._timeout,
-                    backend="gloo",
-                    group_desc=group_name+"_gloo")
+                if create_gloo_process_groups:
+                    intra_partial_data_parallel_group_with_cp_gloo = create_group(
+                        intra_partial_data_parallel_ranks_with_cp,
+                        timeout=self._timeout,
+                        backend="gloo",
+                        group_desc=group_name+"_gloo")
+                else:
+                    intra_partial_data_parallel_group_with_cp_gloo = None
 
                 if self._rank in intra_partial_data_parallel_ranks_with_cp:
                     self._group_ranks[group_name] = intra_partial_data_parallel_ranks_with_cp
