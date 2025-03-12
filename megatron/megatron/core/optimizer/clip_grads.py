@@ -142,6 +142,7 @@ def get_grad_norm_fp32(
         # Sum across all model-parallel GPUs.
         # For cpu comminication
         tensor_device = get_device_type_for_comm(grad_stats_parallel_group)
+        total_norm = total_norm.to(tensor_device)
         if isinstance(grad_stats_parallel_group, list):
             original_total_norm = total_norm.clone().detach()
             for mp_group in grad_stats_parallel_group:
@@ -151,7 +152,6 @@ def get_grad_norm_fp32(
                     total_norm, op=torch.distributed.ReduceOp.SUM, group=mp_group
                 )
         else:
-            total_norm = total_norm.to(tensor_device)
             torch.distributed.all_reduce(
                 total_norm, op=torch.distributed.ReduceOp.SUM, group=grad_stats_parallel_group
             )

@@ -561,13 +561,14 @@ def get_megatron_optimizer(
             model_parallel_rank = torch.distributed.get_rank(
             mpu.get_expert_tensor_model_pipeline_parallel_group()
         )
+        else:
+            model_parallel_rank = torch.distributed.get_rank(expert_mp_group[0])
+
         # Pass Gloo process groups into optimizer only if needed.
         if use_gloo_process_groups:
             data_parallel_group_gloo = mpu.get_expert_data_parallel_group_gloo()
         else:
             data_parallel_group_gloo = None
-        else:
-            model_parallel_rank = torch.distributed.get_rank(expert_mp_group[0])
         
         optimizers.append(
             _get_megatron_optimizer_based_on_param_groups(

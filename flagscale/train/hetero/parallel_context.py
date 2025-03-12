@@ -220,7 +220,7 @@ class ProcessMesh:
         self._order = order
         self._offset = offset
         self._args = args
-        self.create_gloo_process_groups = not args.disable_gloo_process_groups
+        self.create_gloo_process_groups = args.enable_gloo_process_groups
 
         self._timeout = timedelta(minutes=distributed_timeout_minutes)
         self._rank = torch.distributed.get_rank()
