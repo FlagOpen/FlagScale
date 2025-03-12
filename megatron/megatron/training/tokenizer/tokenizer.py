@@ -871,7 +871,6 @@ class _NullTokenizer(MegatronTokenizer):
     def additional_special_tokens_ids(self):
         return None
 
-<<<<<<< HEAD
 
 class _AquilaTokenizerFS(MegatronTokenizer):
     """Aquila tokenizer."""
@@ -1051,7 +1050,6 @@ class _Qwen2TokenizerFS(_HFTokenizerFS):
     @property
     def vocab_size(self):
         return self._vocab_size
-=======
 class _NullMultimodalTokenizer(MegatronTokenizer):
     def __init__(self, vocab_size, image_token=None, image_token_id=None):
         super().__init__(None, vocab_size=vocab_size)
@@ -1111,4 +1109,3 @@ class _NullMultimodalTokenizer(MegatronTokenizer):
     @property
     def additional_special_tokens_ids(self):
         return None
->>>>>>> 4c19ce172a5f81263fa0cfa7eeb9038ee7b2e144

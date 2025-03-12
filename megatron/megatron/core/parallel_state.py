@@ -2650,21 +2650,52 @@ def destroy_model_parallel():
     _ULYSSES_SP_PARALLEL_GLOBAL_RANKS = None
     global _DATA_PARALLEL_GROUP_WITH_USP
     _DATA_PARALLEL_GROUP_WITH_USP = None
+    
     global _DATA_PARALLEL_GROUP_WITH_USP_GLOO
+    if (
+        _DATA_PARALLEL_GROUP_WITH_USP_GLOO is not None
+        and torch.distributed.distributed_c10d._world.pg_map.get(
+            _DATA_PARALLEL_GROUP_WITH_USP_GLOO, None
+        )
+        is not None
+    ):
+        torch.distributed.destroy_process_group(_DATA_PARALLEL_GROUP_WITH_USP_GLOO)
     _DATA_PARALLEL_GROUP_WITH_USP_GLOO = None
+    
+
     global _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP
     _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP = None
     global _DATA_PARALLEL_GROUP_WITH_USP_CP
     _DATA_PARALLEL_GROUP_WITH_USP_CP = None
+    
     global _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO
+    if (
+        _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO is not None
+        and torch.distributed.distributed_c10d._world.pg_map.get(
+            _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO, None
+        )
+        is not None
+    ):
+        torch.distributed.destroy_process_group(_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO)
     _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO = None
+    
     global _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP_CP
     _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP_CP = None
 
     global _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP 
     _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP = None
+    
     global _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO
+    if (
+        _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO is not None
+        and torch.distributed.distributed_c10d._world.pg_map.get(
+            _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO, None
+        )
+        is not None
+    ):
+        torch.distributed.destroy_process_group(_INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO)
     _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO = None
+    
     global _INTER_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP
     _INTER_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP = None
     

@@ -328,10 +328,10 @@ class ProcessMesh:
                     self._process_groups_gloo[group_name] = group_gloo
 
             if token == "dp-cp" and not is_expert:
-                self._build_dist_opt_process_groups(token, ranks, pg_options, group, group_gloo)
+                self._build_dist_opt_process_groups(token, ranks, pg_options, group, group_gloo, create_gloo_process_groups=create_gloo_process_groups)
 
             if token == "dp-usp-cp" and not is_expert:
-                self._build_dist_opt_process_groups(token, ranks, pg_options, group, group_gloo)
+                self._build_dist_opt_process_groups(token, ranks, pg_options, group, group_gloo, create_gloo_process_groups=create_gloo_process_groups)
 
             if token == "cp" and not is_expert:
                 self._build_hierarchical_cp_groups(ranks, pg_options)
@@ -427,8 +427,8 @@ class ProcessMesh:
             self._process_groups[group_name] = hierarchical_cp_groups
 
     def build_all_process_groups(self):
-        self.build_process_group("dp", is_expert=False, gloo=True)
-        self.build_process_group("dp-cp", is_expert=False, gloo=True)
+        self.build_process_group("dp", is_expert=False, gloo=True, create_gloo_process_groups=self.create_gloo_process_groups)
+        self.build_process_group("dp-cp", is_expert=False, gloo=True, create_gloo_process_groups=self.create_gloo_process_groups)
 
         # Apply SHARP to DP process groups
         if self._use_sharp:
@@ -450,8 +450,8 @@ class ProcessMesh:
             # Set `NCCL_COLLNET_ENABLE=0` to restrict SHARP application to DP process groups
             os.environ["NCCL_COLLNET_ENABLE"] = "0"
 
-        self.build_process_group("dp-usp-cp", is_expert=False, gloo=True)
-        self.build_process_group("dp-usp", is_expert=False, gloo=True)
+        self.build_process_group("dp-usp-cp", is_expert=False, gloo=True, create_gloo_process_groups=self.create_gloo_process_groups)
+        self.build_process_group("dp-usp", is_expert=False, gloo=True, create_gloo_process_groups=self.create_gloo_process_groups)
         self.build_process_group("cp", is_expert=False, gloo=False)
         self.build_process_group("usp", is_expert=False, gloo=False)
         self.build_process_group("tp-pp", is_expert=False, gloo=False)
@@ -465,7 +465,7 @@ class ProcessMesh:
         self.build_process_group("tp", is_expert=True, gloo=False)
         self.build_process_group("tp-ep", is_expert=True, gloo=False)
         self.build_process_group("tp-ep-pp", is_expert=True, gloo=False)
-        self.build_process_group("dp", is_expert=True, gloo=True)
+        self.build_process_group("dp", is_expert=True, gloo=True, create_gloo_process_groups=self.create_gloo_process_groups)
 
     def get_parallel_size(self, token, is_expert=False):
         if not is_expert:
