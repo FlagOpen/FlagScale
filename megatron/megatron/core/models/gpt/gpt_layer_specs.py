@@ -36,7 +36,6 @@ try:
         TEColumnParallelLinear,
         TEDotProductAttention,
         TELayerNormColumnParallelLinear,
-        TELinear,
         TENorm,
         TERowParallelLinear,
     )
@@ -104,13 +103,13 @@ def get_gpt_layer_with_transformer_engine_spec(
                     params={"attn_mask_type": AttnMaskType.causal},
                     submodules=MLASelfAttentionSubmodules(
                         linear_q_proj=TEColumnParallelLinear,
-                        linear_q_down_proj=TELinear,
+                        linear_q_down_proj=TEColumnParallelLinear,
                         linear_q_up_proj=(
                             TELayerNormColumnParallelLinear
                             if qk_layernorm
                             else TEColumnParallelLinear
                         ),
-                        linear_kv_down_proj=TELinear,
+                        linear_kv_down_proj=TEColumnParallelLinear,
                         linear_kv_up_proj=(
                             TELayerNormColumnParallelLinear
                             if qk_layernorm

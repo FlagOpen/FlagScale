@@ -165,6 +165,7 @@ class MambaModel(LanguageModule):
         decoder_input: Tensor = None,
         labels: Tensor = None,
         inference_params: InferenceParams = None,
+        runtime_gather_output: Optional[bool] = None,
     ) -> Tensor:
         """Forward function of the Mamba model. This function passes the input tensors
         through the embedding layer, and then the decoder and finally into the post
@@ -217,7 +218,16 @@ class MambaModel(LanguageModule):
         output_weight = None
         if self.share_embeddings_and_output_weights:
             output_weight = self.shared_embedding_or_output_weight()
-        logits, _ = self.output_layer(hidden_states, weight=output_weight)
+        if (
+            not self.training
+            and inference_params is not None
+            and inference_params.materialize_only_last_token_logits
+        ):
+            hidden_states = hidden_states[-1, :, :]
+
+        logits, _ = self.output_layer(
+            hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output
+        )
 
         if labels is None:
             # [s b h] => [b s h]

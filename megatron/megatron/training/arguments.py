@@ -24,7 +24,10 @@ from megatron.core.models.retro.utils import (
 from megatron.core.rerun_state_machine import RerunStateMachine
 from megatron.core.transformer import TransformerConfig, MLATransformerConfig
 from megatron.core.transformer.enums import AttnBackend
-from megatron.core.utils import is_torch_min_version
+from megatron.core.utils import (
+    is_torch_min_version,
+    get_torch_version,
+)
 from megatron.training.activations import squared_relu
 from megatron.training.utils import update_use_dist_ckpt, get_device_arch_version
 
@@ -54,6 +57,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_mla_args(parser)
     parser = _add_logging_args(parser)
     parser = _add_straggler_detector_args(parser)
+    parser = _add_workload_inspector_server_args(parser)
     parser = _add_inference_args(parser)
     parser = _add_transformer_engine_args(parser)
     parser = _add_retro_args(parser)
@@ -410,8 +414,16 @@ def validate_args(args, defaults={}):
                 if args.enable_hetero is False:
                     assert num_layers % args.transformer_pipeline_model_parallel_size == 0, \
                         'Number of layers should be divisible by the pipeline-model-parallel size'
+    if args.rank == 0:
+        print(f"Number of virtual stages per pipeline stage: {args.virtual_pipeline_model_parallel_size}")
 
-    print("Virtual model parallel size ", args.virtual_pipeline_model_parallel_size)
+    if args.data_parallel_sharding_strategy == "optim_grads_params":
+        args.overlap_param_gather = True
+        args.overlap_grad_reduce = True
+
+    if args.data_parallel_sharding_strategy == "optim_grads":
+        args.overlap_grad_reduce = True
+
     if args.overlap_param_gather:
         assert args.use_distributed_optimizer, \
             '--overlap-param-gather only supported with distributed optimizer'
@@ -420,7 +432,7 @@ def validate_args(args, defaults={}):
         assert not args.use_legacy_models, \
             '--overlap-param-gather only supported with MCore models'
 
-    if getattr(args, "use_torch_fsdp2", False):
+    if args.use_torch_fsdp2:
         assert is_torch_min_version("2.4.0"), \
             'FSDP2 requires PyTorch >= 2.4.0 with FSDP 2 support.'
         assert args.pipeline_model_parallel_size == 1, \
@@ -437,6 +449,8 @@ def validate_args(args, defaults={}):
             '--use-torch-fsdp2 requires --untie-embeddings-and-output-weights'
         assert not args.fp16, \
             '--use-torch-fsdp2 not supported with fp16 yet'
+        assert os.environ.get('CUDA_DEVICE_MAX_CONNECTIONS') != "1", \
+            'FSDP always requires CUDA_DEVICE_MAX_CONNECTIONS value large than one'
 
     if args.overlap_param_gather_with_optimizer_step:
         assert args.use_distributed_optimizer, \
@@ -459,8 +473,24 @@ def validate_args(args, defaults={}):
     args.exp_avg_sq_dtype = map_dtype(args.exp_avg_sq_dtype)
 
     if args.fp8_param_gather:
+        assert args.use_distributed_optimizer or args.use_torch_fsdp2, \
+            '--fp8-param-gather only supported with distributed optimizer or torch fsdp2'
+
+    if args.use_custom_fsdp:
         assert args.use_distributed_optimizer, \
-            '--fp8-param-gather only supported with distributed optimizer'
+            '--use-custom-fsdp only supported with distributed optimizer'
+
+        if args.data_parallel_sharding_strategy in ["optim_grads_params", "optim_grads"]:
+            warnings.warn('Please make sure your TransformerEngine support FSDP + gradient accumulation fusion')
+            assert args.gradient_accumulation_fusion is False, \
+                "optim_grads_params optim_grads are not supported with gradient accumulation fusion"
+
+        if args.data_parallel_sharding_strategy == "optim_grads_params":
+            assert args.check_weight_hash_across_dp_replicas_interval is None, \
+                'check_weight_hash_across_dp_replicas_interval is not supported with optim_grads_params'
+        
+        assert os.environ.get('CUDA_DEVICE_MAX_CONNECTIONS') != "1", \
+            'FSDP always requires CUDA_DEVICE_MAX_CONNECTIONS value large than one'
 
     # Parameters dtype.
     args.params_dtype = torch.float
@@ -479,12 +509,13 @@ def validate_args(args, defaults={}):
         args.params_dtype = torch.bfloat16
         # bfloat16 requires gradient accumulation and all-reduce to
         # be done in fp32.
-
         if args.accumulate_allreduce_grads_in_fp32:
             assert args.main_grads_dtype == torch.float32, \
                 "--main-grads-dtype can only be fp32 when --accumulate-allreduce-grads-in-fp32 is set"
-
-        if not args.accumulate_allreduce_grads_in_fp32 and args.main_grads_dtype == torch.float32:
+    
+        if args.grad_reduce_in_bf16:
+            args.accumulate_allreduce_grads_in_fp32 = False
+        elif not args.accumulate_allreduce_grads_in_fp32 and args.main_grads_dtype == torch.float32:
             args.accumulate_allreduce_grads_in_fp32 = True
             if args.rank == 0:
                 print('accumulate and all-reduce gradients in fp32 for '
@@ -682,33 +713,23 @@ def validate_args(args, defaults={}):
 
     if args.tp_comm_overlap:
         assert args.sequence_parallel == True, 'Tensor parallel communication/GEMM overlap can happen only when sequence parallelism is enabled'
-        
-    if args.multi_latent_attention:
-        if args.tensor_model_parallel_size > 1:
-            assert args.sequence_parallel == True, 'Sequence parallelism should be enabled when MLA is used with tensor parallel'
 
     # disable async_tensor_model_parallel_allreduce when
     # model parallel memory optimization is enabled
-    if args.sequence_parallel:
-        args.async_tensor_model_parallel_allreduce = False
-        if getattr(args, "use_torch_fsdp2", False):
-            warnings.warn(
-                "Using sequence parallelism with FSDP2 together. Try not to using them "
-                "together since they require different CUDA_MAX_CONNECTIONS settings "
-                "for best performance. sequence parallelism requires setting the "
-                "environment variable CUDA_DEVICE_MAX_CONNECTIONS to 1 while FSDP2 "
-                "requires not setting CUDA_DEVICE_MAX_CONNECTIONS=1 for better parallelization.")
-
-    if os.environ.get('CUDA_DEVICE_MAX_CONNECTIONS') != "1" and get_device_arch_version() < 10:
+    if args.tensor_model_parallel_size > 1 or args.context_parallel_size > 1 and get_device_arch_version() < 10:
         # CUDA_DEVICE_MAX_CONNECTIONS requirement no longer exists since the Blackwell architecture
-        if args.sequence_parallel:
-            raise RuntimeError(
-                "Using sequence parallelism requires setting the environment variable "
-                "CUDA_DEVICE_MAX_CONNECTIONS to 1")
-        if args.async_tensor_model_parallel_allreduce:
-            raise RuntimeError(
-                "Using async gradient all reduce requires setting the environment "
-                "variable CUDA_DEVICE_MAX_CONNECTIONS to 1")
+        if args.use_torch_fsdp2 or args.use_custom_fsdp:
+            fsdp_impl = "Torch-FSDP2" if args.use_torch_fsdp2 else "Custom-FSDP"
+            warnings.warn(
+                f"Using tensor model parallelism or context parallelism with {fsdp_impl} together. "
+                "Try not to using them together since they require different CUDA_MAX_CONNECTIONS "
+                "settings for best performance. sequence parallelism requires setting the "
+                f"environment variable CUDA_DEVICE_MAX_CONNECTIONS to 1 while {fsdp_impl} "
+                "requires not setting CUDA_DEVICE_MAX_CONNECTIONS=1 for better parallelization.")
+        else:
+            assert os.environ.get('CUDA_DEVICE_MAX_CONNECTIONS') == "1", \
+                "Using tensor model parallelism or context parallelism require setting the environment variable " \
+                "CUDA_DEVICE_MAX_CONNECTIONS to 1"
 
     # Disable bias gelu fusion if we are disabling bias altogether
     if not args.add_bias_linear:
@@ -766,7 +787,7 @@ def validate_args(args, defaults={}):
 
     if args.moe_ffn_hidden_size is None:
         args.moe_ffn_hidden_size = args.ffn_hidden_size
-
+    
     # Context parallel
     if args.context_parallel_size > 1:
         assert not args.use_legacy_models, "Context parallelism is not supported in legacy models."
@@ -810,12 +831,19 @@ def validate_args(args, defaults={}):
         args.attention_softmax_in_fp32 = True
 
     if args.result_rejected_tracker_filename is not None:
-        # Append to passed-in args.iterations_to_slip.
+        # Append to passed-in args.iterations_to_skip.
         iterations_to_skip_from_file = RerunStateMachine.get_skipped_iterations_from_tracker_file(
             args.result_rejected_tracker_filename
         )
         args.iterations_to_skip.extend(iterations_to_skip_from_file)
 
+    # Make sure all functionality that requires Gloo process groups is disabled.
+    if not args.enable_gloo_process_groups:
+        if args.use_distributed_optimizer:
+            # If using distributed optimizer, must use distributed checkpointing.
+            # Legacy checkpointing uses Gloo process groups to collect full distributed
+            # optimizer state in the CPU memory of DP rank 0.
+            assert args.use_dist_ckpt
 
     # Checkpointing
     if args.ckpt_fully_parallel_save_deprecated and args.rank == 0:
@@ -1018,7 +1046,7 @@ def _add_inference_args(parser):
                        help='Maximum number of requests for inference.',
                        dest='inference_max_batch_size')
     group.add_argument('--inference-max-seq-length', type=int, default=2560,
-                       help='Maximum sequence length allocated for prefill during inference.',
+                       help='Maximum sequence length expected for inference (prefill + decode).',
                        dest='inference_max_seq_length')
     return parser
 
@@ -1180,6 +1208,11 @@ def _add_straggler_detector_args(parser):
                        help='Number of ranks to report with high/low estimated throughput')
     return parser
 
+def _add_workload_inspector_server_args(parser):
+    group = parser.add_argument_group(title='workload inspector')
+    group.add_argument('--run-workload-inspector-server', action='store_true',
+                       help='If set, enables workload inspector server for on-demand profiling.')
+    return parser
 
 def _add_one_logger_args(parser):
     group = parser.add_argument_group(title='one logger')
@@ -1452,6 +1485,9 @@ def _add_training_args(parser):
                        help='List of iterations to skip, empty by default.')
     group.add_argument('--result-rejected-tracker-filename', type=str, default=None,
                        help='Optional name of file tracking `result_rejected` events.')
+    group.add_argument('--disable-gloo-process-groups', action='store_false',
+                       dest='enable_gloo_process_groups',
+                       help='Disables creation and usage of Gloo process groups.')
     group.add_argument('--use-pytorch-profiler', action='store_true',
                        help='Use the built-in pytorch profiler. '
                        'Useful if you wish to view profiles in tensorboard.',
@@ -1810,6 +1846,9 @@ def _add_checkpointing_args(parser):
     group.add_argument('--use-dist-ckpt', action='store_true',
                        dest='use_dist_ckpt_deprecated',
                        help='Deprecated: see --ckpt-format.')
+    group.add_argument('--use-persistent-ckpt-worker', action='store_true',
+                       help='Enables a persitent checkpoint worker for async save')
+
     group.add_argument('--auto-detect-ckpt-format', action='store_true',
                        help='Determine if the checkpoint format is in legacy or distributed format.'
                             ' If False, expects distributed checkpoint iff args.ckpt_format != "torch".'
@@ -1865,6 +1904,8 @@ def _add_mixed_precision_args(parser):
                        help='Run model in fp16 mode.')
     group.add_argument('--bf16', action='store_true',
                        help='Run model in bfloat16 mode.')
+    group.add_argument('--grad-reduce-in-bf16', action='store_true',
+                       help='Reduce gradients in bfloat16.')
     group.add_argument('--loss-scale', type=float, default=None,
                        help='Static loss scaling, positive power of 2 '
                        'values can improve fp16 convergence. If None, dynamic'
@@ -1952,8 +1993,15 @@ def _add_distributed_args(parser):
                        help='If not set, all PP stages will launch gradient reduces simultaneously. '
                        'Otherwise, each PP stage will independently launch as needed.',
                        dest='align_grad_reduce')
+    group.add_argument('--ddp-num-buckets', type=int, default=None,
+                       help='Number of buckets for data-parallel communication')
     group.add_argument('--ddp-bucket-size', type=int, default=None,
                        help='Bucket size for data-parallel communication')
+    group.add_argument('--ddp-pad-buckets-for-high-nccl-busbw', action='store_true',
+                       default=False, help='If set, make sure the bucket size is divisible by a large power '
+                       'of 2 (2^16) to ensure NCCL collectives have high bus bandwidth at large DP counts, '
+                       'since NCCL message size (which for ring algorithms is bucket_size / dp_size) '
+                       'apparently needs to be divisible by a power of 2 for high busbw.')
     group.add_argument('--ddp-average-in-collective', action='store_true',
                        default=False, help='If set, average directly in data-parallel communication collective.')
     group.add_argument('--overlap-param-gather', action='store_true',
@@ -1976,7 +2024,7 @@ def _add_distributed_args(parser):
     group.add_argument('--lazy-mpu-init', type=bool, required=False,
                        help='If set to True, initialize_megatron() '
                        'skips DDP initialization and returns function to '
-                       'complete it instead.Also turns on '
+                       'complete it instead. Also turns on '
                        '--use-cpu-initialization flag. This is for '
                        'external DDP manager.' )
     group.add_argument('--standalone-embedding-stage', action='store_true',
@@ -1992,6 +2040,19 @@ def _add_distributed_args(parser):
                        'layer in the context of partition and placement for pipeline parallelism.')
     group.add_argument('--use-distributed-optimizer', action='store_true',
                        help='Use distributed optimizer.')
+    group.add_argument('--use-custom-fsdp', action='store_true',
+                       help='Use the Megatron FSDP code path in DDP.')
+    group.add_argument('--init-model-with-meta-device', action='store_true')
+    group.add_argument('--data-parallel-sharding-strategy', type=str, default='no_shard',
+                       choices=['no_shard', 'optim', 'optim_grads', 'optim_grads_params'],
+                       help='Sharding strategy of data parallelism.')
+    group.add_argument('--no-gradient-reduce-div-fusion', action='store_false', dest='gradient_reduce_div_fusion',
+                       help='If not set, fuse the division in gradient reduce.')
+    group.add_argument('--suggested-communication-unit-size', type=int, default=400_000_000,
+                       help='When batch communication is needed across multiple buckets, '
+                       'this environment variable guides the size of communication unit size.')
+    group.add_argument('--keep-fp8-transpose-cache-when-using-custom-fsdp', action='store_true',
+                       help='If set, keep the fp8 transpose cache when using custom FSDP.')
     group.add_argument('--use-partial-reduce-for-shared-embedding', action='store_true',
                        help='Use partial reduce for shared word embedding.')
     group.add_argument('--no-shared-fs', action='store_true', 
@@ -2089,7 +2150,8 @@ def _add_tokenizer_args(parser):
                                 'Llama3TokenizerFS',
                                 'QwenTokenizerFS',
                                 'Qwen2TokenizerFS',
-                                'NullTokenizer'],
+                                'NullTokenizer',
+                                'NullMultimodalTokenizer'],
                        help='What type of tokenizer to use.')
     group.add_argument('--tokenizer-path', type=str, default=None,
                        help='Path to the huggingface tokenizer.')
@@ -2383,6 +2445,13 @@ def _add_moe_args(parser):
                        choices=['aux_loss', 'seq_aux_loss', 'sinkhorn', 'none'],
                        default='aux_loss',
                        help='Determines the load balancing strategy for the router. "aux_loss" corresponds to the load balancing loss used in GShard and SwitchTransformer; "seq_aux_loss" corresponds to the load balancing loss used in DeepSeekV2, which computes the loss for each individual sample; "sinkhorn" corresponds to the balancing algorithm used in S-BASE, and "none" implies no load balancing. The default is "aux_loss".')
+    group.add_argument('--moe-router-dtype', type=str, 
+                       choices=['fp32', 'fp64'], 
+                       default=None,
+                       help='Data type for routing computation and expert output weighted averaging. '
+                            'Fp32/fp64 enhances numerical stability, especially with numerous experts. '
+                            'The perf impact should be negligible when used with permute fusion. '
+                            'None means no changes for dtype.')
     group.add_argument('--moe-router-score-function', type=str,
                        choices=['softmax', 'sigmoid'],
                        default='softmax',
@@ -2416,9 +2485,11 @@ def _add_moe_args(parser):
     group.add_argument('--moe-input-jitter-eps', type=float, default=None,
                        help='Add noise to the input tensor by applying jitter with a specified epsilon value.')
     group.add_argument('--moe-token-dispatcher-type', type=str,
-                       choices=['allgather', 'alltoall', 'alltoall_seq'],
+                       choices=['allgather', 'alltoall', 'flex', 'alltoall_seq'],
                        default='allgather',
                        help="The type of token dispatcher to use. The default is 'allgather'. Options are 'allgather', 'alltoall' and 'alltoall_seq'. We recommend using 'alltoall' when applying expert parallelism. For more information, please refer to the documentation in core/moe/README.")
+    group.add_argument('--moe-enable-deepep', action='store_true',
+                       help='[Experimental] Enable DeepSeek/DeepEP for efficient token dispatching and combine in MoE models. Only works with flex token dispatcher by setting --moe-token-dispatcher-type=flex.')
     group.add_argument('--moe-per-layer-logging', action='store_true',
                        help='Enable per-layer logging for MoE, currently supports auxiliary loss and z loss.')
     # Token dropping arguments
