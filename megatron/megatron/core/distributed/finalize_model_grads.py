@@ -324,11 +324,13 @@ def _update_router_expert_bias(model: List[torch.nn.Module], config: Transformer
     """
     tokens_per_expert_list = []
     expert_bias_list = []
+    score_bias_list = []
     for model_chunk in model:
         for module in get_attr_wrapped_model(model_chunk, 'modules')():
             if hasattr(module, 'expert_bias'):
                 tokens_per_expert_list.append(module.local_tokens_per_expert)
                 expert_bias_list.append(module.expert_bias)
+                score_bias_list.append(module.score_bias)
     # For hybrid models with both MoE and Dense layers, this list can be empty.
     if len(expert_bias_list) == 0:
         return
@@ -338,11 +340,14 @@ def _update_router_expert_bias(model: List[torch.nn.Module], config: Transformer
         stacked_tokens_per_expert, stacked_expert_bias, config.moe_router_bias_update_rate
     )
 
-    for tokens_per_expert, expert_bias, updated_expert_bias in zip(
-        tokens_per_expert_list, expert_bias_list, stacked_updated_expert_bias
+    for tokens_per_expert, expert_bias, score_bias, updated_expert_bias in zip(
+        tokens_per_expert_list, expert_bias_list, score_bias_list, stacked_updated_expert_bias
     ):
         tokens_per_expert.zero_()
         expert_bias.copy_(updated_expert_bias)
+        # add score_bias as a Parameter for ckpt saving and loading
+        # thus update score_bias after every iteration
+        score_bias.data.copy_(updated_expert_bias)
 
 
 def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torch.Tensor] = None):

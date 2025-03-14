@@ -110,9 +110,6 @@ class TopKRouter(Router):
         self.routing_type = self.config.moe_router_load_balancing_type
         self.score_function = self.config.moe_router_score_function
         self.input_jitter = None
-        self.score_bias = torch.nn.Parameter(
-            torch.zeros(self.config.num_moe_experts), requires_grad=False
-        )
 
         self.enable_expert_bias = self.config.moe_router_enable_expert_bias
         if self.enable_expert_bias:
@@ -120,6 +117,10 @@ class TopKRouter(Router):
                 'local_tokens_per_expert',
                 torch.zeros(self.config.num_moe_experts, dtype=torch.float32),
                 persistent=False,
+            )
+            # add score_bias as a Parameter for ckpt saving and loading, keeping score_bias.data always the same with expert_bias
+            self.score_bias = torch.nn.Parameter(
+                torch.zeros(self.config.num_moe_experts), requires_grad=False
             )
             expert_bias = self.score_bias.data
             self.register_buffer(
@@ -325,6 +326,11 @@ class TopKRouter(Router):
         if self.config.moe_token_dispatcher_type == "alltoall_seq":
             # Gather the logits from the TP region
             logits = gather_from_sequence_parallel_region(logits)
+
+        # add score_bias as a Parameter for ckpt saving and loading
+        # thus load expert_bias from score_bias.data when routing
+        if self.enable_expert_bias:
+            self.expert_bias.copy_(self.score_bias.data)
 
         if self.routing_type == "sinkhorn":
             scores, routing_map = self.sinkhorn_load_balancing(logits)
