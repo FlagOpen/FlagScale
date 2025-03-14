@@ -2,8 +2,7 @@ system:
   no_shared_fs: ${experiment.runner.no_shared_fs}
   num_workers: 16
   tensor_model_parallel_size: 1
-  pipeline_model_parallel_size: 2
-  decoder_first_pipeline_num_layers: 6
+  pipeline_model_parallel_size: 1
   expert_model_parallel_size: 1
   context_parallel_size: 1
   disable_bias_linear: true
@@ -15,8 +14,6 @@ system:
   overlap_grad_reduce: true
   overlap_param_gather: true
   finetune: false
-  attention_backend: unfused
-  # async_save: true
   precision:
     bf16: true
     attention_softmax_in_fp32: true
@@ -33,38 +30,13 @@ system:
     log_num_zeros_in_grad: true
     log_memory_to_tensorboard: true
   checkpoint:
-    # # cold start, torch format
-    # save_interval: 10
-    # load: None
-    # ckpt_format: torch
-
-    # warm start, torch format
-    save_interval: 10
-    load: /workspace/baai-opensp/FlagScale/Deepseek_test/converted_checkpoints/torch
-    ckpt_format: torch
-
-    # # convert: torch -> torch_dist
-    # save_interval: 10
-    # load: /workspace/baai-opensp/FlagScale/Deepseek_test/checkpoints
-    # ckpt_format: torch
-    # ckpt_convert_format: torch_dist
-    # ckpt_convert_save: /workspace/baai-opensp/FlagScale/Deepseek_test/converted_dist_checkpoints
-
-    # convert: torch_dist -> torch
-    # save_interval: 10
-    # load: /workspace/baai-opensp/FlagScale/Deepseek_test/checkpoints
-    # ckpt_format: torch_dist
-    # ckpt_convert_format: torch
-    # ckpt_convert_save: /workspace/baai-opensp/FlagScale/Deepseek_test/converted_checkpoints
-
-    # # warm start, torch_dist format
-    # save_interval: 10
-    # load: /workspace/baai-opensp/FlagScale/Deepseek_test/converted_dist_checkpoints/torch_dist
-    # ckpt_format: torch_dist
+    save_interval: ${experiment.save_steps}
+    load: ${experiment.load}
+    ckpt_format: ${experiment.ckpt_format}
 
 model:
   transformer_impl: transformer_engine
-  num_layers: 13
+  num_layers: 27
   hidden_size: 2048
   num_attention_heads: 16
   group_query_attention: true
@@ -103,7 +75,7 @@ model:
   moe_router_enable_expert_bias: true
   moe_router_bias_update_rate: 0.001
   moe_aux_loss_coeff: 0.02
-  moe_layer_freq: "[0]+[1]*12"
+  moe_layer_freq: "[0]+[1]*26"
   # node limited routing
   moe_router_num_groups: 1
   moe_router_group_topk: 1
@@ -112,14 +84,11 @@ model:
   moe_token_dispatcher_type: "alltoall"
   # moe_permute_fusion: true
 
-  # mtp_args
-  num_mtp_predictor: 1
-
   # training
-  seed: 42
+  seed: ${experiment.seed}
   # finetune: false
   micro_batch_size: 1
-  global_batch_size: 128
+  global_batch_size: 2048
   eval_iters: 0
   train_samples: 244141056 #1T #29297664 #120B tokens
 
@@ -137,7 +106,7 @@ model:
 
 
 data:
-  data_path: ./data/pile_wikipedia_demo
+  data_path: /path
   split: 1
   no_mmap_bin_files: true
   tokenizer:
