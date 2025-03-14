@@ -1,10 +1,16 @@
 from typing import Any, Dict
-from flagscale.runner.estimator.meta_base import ModelConfig, register_model, get_registry
+
+from flagscale.runner.estimator.meta_base import (
+    ModelConfig,
+    get_registry,
+    register_model,
+)
+
 
 def compute_memory(config: ModelConfig, params: int, acts: int) -> int:
     """
     Compute memory requirements for the model.
-    
+
     Parameters:
     -----------
     config : ModelConfig
@@ -13,7 +19,7 @@ def compute_memory(config: ModelConfig, params: int, acts: int) -> int:
         Number of parameters
     acts : int
         Number of activations
-        
+
     Returns:
     --------
     int
@@ -28,15 +34,15 @@ def compute_memory(config: ModelConfig, params: int, acts: int) -> int:
         "float16": 2,
         "bfloat16": 2,
     }
-    
+
     # Use bf16 as default if dtype is not specified or not recognized
     param_dtype = getattr(config, "dtype", "bf16")
     param_bytes = dtype_bytes.get(param_dtype, 2)
-    
+
     # Check if distributed optimizer is enabled
     use_distributed_optimizer = getattr(config, "use_distributed_optimizer", False)
     data_parallel_size = getattr(config, "data_parallel_size", 1)
-    
+
     # Calculate parameter memory based on optimizer type and data type
     if use_distributed_optimizer:
         # Distributed optimizer memory formulas based on README.md
@@ -66,20 +72,20 @@ def compute_memory(config: ModelConfig, params: int, acts: int) -> int:
         else:
             # Default to bf16 formula if unknown dtype
             param_memory = params * 18
-    
+
     # Determine activation bytes based on model dtype
     act_bytes = dtype_bytes.get(param_dtype, 2)
-    
+
     # Dynamic memory for activations
     act_memory = acts * act_bytes
-    
+
     return param_memory, act_memory
 
 
 def print_banner(text: str) -> None:
     """
     Print a banner with the specified text.
-    
+
     Parameters:
     -----------
     text : str
@@ -94,7 +100,7 @@ def print_banner(text: str) -> None:
 def print_results(results: Dict[str, Any], show_details: bool = False) -> None:
     """
     Print resource estimation results in a formatted table.
-    
+
     Parameters:
     -----------
     results : dict
@@ -105,36 +111,36 @@ def print_results(results: Dict[str, Any], show_details: bool = False) -> None:
     model_id = results["model_id"]
     params = results["model_size"]
     flops = results["flops"]
-    params_memory = results["params_memory"] 
+    params_memory = results["params_memory"]
     act_memory = results["activation_memory"]
     total_memory = results["total_memory"]
-    
+
     # Convert to GB for display
     params_memory_gb = params_memory / (1024**3)
     act_memory_gb = act_memory / (1024**3)
     total_memory_gb = total_memory / (1024**3)
-    
+
     # Format model name for display
     display_name = model_id.upper()
-    
+
     # Print main banner
     print_banner(f"{display_name} MODEL ESTIMATION")
-    
+
     # Model size information
     print("\nMODEL SIZE:")
     print(f"Parameters:        {params/1e9:.3f} B")
-    
+
     # Compute information
     print("\nCOMPUTATION:")
     print(f"FLOPs:            {flops/1e9:.3f} B")
-    
+
     # Memory usage
     print("\nMEMORY USAGE:")
     if params_memory > 0:  # Only show breakdown if we have it
         print(f"Parameter Memory: {params_memory_gb:.2f} GB")
         print(f"Activation Memory: {act_memory_gb:.2f} GB")
     print(f"Total Memory:     {total_memory_gb:.2f} GB")
-    
+
     if show_details:
         # Get registry with detailed metrics
         registry = get_registry(model_id)
