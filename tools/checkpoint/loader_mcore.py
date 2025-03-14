@@ -229,6 +229,7 @@ def _load_checkpoint(queue, args):
     md.previous_tensor_parallel_size = margs.tensor_model_parallel_size
     md.previous_pipeline_parallel_size = margs.pipeline_model_parallel_size
     md.previous_expert_parallel_size = margs.expert_model_parallel_size
+    md.previous_decoder_first_pipeline_num_layers = margs.decoder_first_pipeline_num_layers
     md.true_vocab_size = args.true_vocab_size # true (non-padded) vocab size
     md.make_vocab_size_divisible_by = margs.make_vocab_size_divisible_by
     md.checkpoint_args = checkpoint_args

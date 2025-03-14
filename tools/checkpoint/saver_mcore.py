@@ -67,8 +67,8 @@ def save_checkpoint(queue, args):
         exit(1)
 
     try:
-        ckpt_plugin = importlib.import_module(args.model_type + ".ckpt")
-        model_plugin = importlib.import_module(args.model_type + ".model")
+        ckpt_plugin = importlib.import_module(args.model_type  ".ckpt")
+        model_plugin = importlib.import_module(args.model_type  ".model")
     except ModuleNotFoundError:
         raise ModuleNotFoundError("Please check model_type or model.py")
 
@@ -115,13 +115,16 @@ def save_checkpoint(queue, args):
                   "Default to 1.")
             args.target_pipeline_parallel_size = 1
 
-    if args.target_decoder_first_pipeline_num_layers is None:
-        if hasattr(md, 'previous_decoder_first_pipeline_num_layers'):
-            args.target_decoder_first_pipeline_num_layers = md.previous_decoder_first_pipeline_num_layers
-        else:
-            print("loader did not provide a pipeline parallel size and --target-decoder-first-pipeline-num-layers not provided on command line. "
-                  "Default to None.")
-            args.target_decoder_first_pipeline_num_layers = None
+    if args.target_pipeline_parallel_size > 1:
+        if args.target_decoder_first_pipeline_num_layers is None:
+            if hasattr(md, 'previous_decoder_first_pipeline_num_layers'):
+                args.target_decoder_first_pipeline_num_layers = md.previous_decoder_first_pipeline_num_layers
+            else:
+                print("loader did not provide a pipeline parallel size and --target-decoder-first-pipeline-num-layers not provided on command line. "
+                    "Default to None.")
+                args.target_decoder_first_pipeline_num_layers = None
+    else:
+        args.target_decoder_first_pipeline_num_layers = None
 
     if args.target_expert_parallel_size is None:
         if hasattr(md, 'previous_expert_parallel_size'):
@@ -158,7 +161,6 @@ def save_checkpoint(queue, args):
         '--position-embedding-type', str(md.position_embedding_type),
         '--tensor-model-parallel-size', str(args.target_tensor_parallel_size),
         '--pipeline-model-parallel-size', str(args.target_pipeline_parallel_size),
-        '--decoder-first-pipeline-num-layers', str(args.target_decoder_first_pipeline_num_layers),
         '--expert-model-parallel-size', str(args.target_expert_parallel_size),
         '--no-masked-softmax-fusion',
         '--no-bias-gelu-fusion',
@@ -175,6 +177,8 @@ def save_checkpoint(queue, args):
         '--save-interval', '1',
         '--save', args.save_dir
     ]
+    if args.target_decoder_first_pipeline_num_layers is not None:
+        sys.argv.extend(['--decoder-first-pipeline-num-layers', str(args.target_decoder_first_pipeline_num_layers)])
     if args.target_num_experts is not None:
         sys.argv.extend(['--num-experts', str(args.target_num_experts)])
         sys.argv.append('--sequence-parallel')
@@ -235,7 +239,7 @@ def save_checkpoint(queue, args):
                 print(f"Overwriting default {arg} value {getattr(margs, arg)} with value from checkpoint {value}.")
                 setattr(margs, arg, value)
 
-    print("*"*20 + "validate saver arguments" + "*"*20)
+    print("*"*20  "validate saver arguments"  "*"*20)
     margs = validate_args(margs)
 
     # validate consumed_samples
@@ -319,7 +323,7 @@ def save_checkpoint(queue, args):
             ckpt_plugin.set_attn_ckpt(msg, models, layer_id, md, margs)
             ckpt_plugin.set_mlp_ckpt(msg, models, layer_id, md, margs)
 
-            total_layer_num = total_layer_num + 1
+            total_layer_num = total_layer_num  1
             check_message(msg)
 
         # process final layernorm and linear

@@ -5,10 +5,7 @@ defaults:
 
 experiment:
   exp_name: DeepSeek-V3-Test
-  seed: 42
-  save_steps: 10000
-  load: None
-  exp_dir: /xxx
+  exp_dir: ./Deepseek_test
   ckpt_format: torch
   task:
     type: train
