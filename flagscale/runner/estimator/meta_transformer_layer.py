@@ -71,7 +71,6 @@ class TransformerLayer(MetaModule):
         self.attention_norm = NormClass(
             normalized_shape=self.hidden_size,
             eps=self.layernorm_epsilon,
-            bias=norm_bias,
             shard_specs=[[1, 1]],
             model_id=model_id,
         )
@@ -79,7 +78,6 @@ class TransformerLayer(MetaModule):
         self.mlp_norm = NormClass(
             normalized_shape=self.hidden_size,
             eps=self.layernorm_epsilon,
-            bias=norm_bias,
             shard_specs=[[1, 1]],
             model_id=model_id,
         )
