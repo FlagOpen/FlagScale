@@ -59,7 +59,6 @@ def get_deploy_config(model_name):
             resource_config["ray_actor_options"] = ray_actor_options
         if "num_replicas" in models_resource_config:
             resource_config["num_replicas"] = models_resource_config["num_replicas"]
-
     if not resource_config:
         resource_config = {"num_replicas": 1}
     return resource_config
@@ -77,13 +76,6 @@ app = FastAPI()
 
 from ray import serve
 
-print(" config =============================== ", TASK_CONFIG, flush=True)
-print(
-    "model resource ========================= ",
-    get_deploy_config("LLMActor"),
-    flush=True,
-)
-
 
 @serve.deployment(**get_deploy_config("LLMActor"))
 class LLMActor:
@@ -96,8 +88,7 @@ class LLMActor:
         )
         return self.llm.generate(prompt, sampling_params)
 
-
-@serve.deployment
+@serve.deployment(num_replicas="auto")
 @serve.ingress(app)
 class LLMService:
     def __init__(self, llm_actor):
@@ -112,9 +103,9 @@ class LLMService:
 
         # Format the response in OpenAI style
         response = {
-            "id": "cmpl-1234567890",  # You can generate a unique ID here
+            "id": "cmpl-1234567890",
             "object": "text_completion",
-            "created": int(time.time()),  # Placeholder for timestamp
+            "created": int(time.time()),
             "model": request.model,
             "choices": [
                 {
