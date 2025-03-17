@@ -40,9 +40,9 @@ NNodes=`wc -l ${HOSTFILE} | cut -d " " -f1`
 MASTER_ADDR=`head -n 1 ${HOSTFILE} | cut -d " " -f1`
 echo "Master node: ${MASTER_ADDR}"
 echo ${NNodes}
+echo ${i}
+echo ${MASTER_ADDR}
 
-
-mpirun
 for ip in `cat ${HOSTFILE} | cut -d " " -f1`
 do
     echo "Starting node ${i}/${NNodes}: ${ip}"
@@ -53,7 +53,7 @@ do
     export ACCELERATE_CPU_AFFINITY=1 && \
     export PYTHONPATH=$LLaVA_NeXT_HOME:$PYTHONPATH && \
     source /root/miniconda3/bin/activate flagscale && \
-    torchrun --nproc_per_node=8 --nnodes=${NNodes} --node_rank=${rank} --master_addr=${MASTER_ADDR} --master_port=13888 llava_ov_wds_by_cpu.py \
+    torchrun --nproc_per_node=8 --nnodes=${NNodes} --node_rank=${rank} --master_addr=${MASTER_ADDR} --master_port=13888 llava_ov_index.py \
         --model_name_or_path ${CKPT_PATH} \
         --version ${PROMPT_VERSION} \
         --data_path $DATA_PATH \
