@@ -5,7 +5,7 @@ model_args:
     pipeline_parallel_size: 1
     gpu_memory_utilization: 0.9
     max_model_len: 32768
-    max_model_len: 256
+    max_num_seqs: 256
     trust_remote_code: True
     enable_chunked_prefill: True
     port: 4567
@@ -15,3 +15,5 @@ deploy:
     LLMActor:
       num_replicas: 8
       num_gpus: 1
+  service:
+    port: 6701

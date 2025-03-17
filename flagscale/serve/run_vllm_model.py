@@ -26,7 +26,7 @@ serve.load_args()
 TASK_CONFIG = serve.task_config
 
 
-def get_deploy_config(model_name):
+def get_model_config(model_name):
     if not TASK_CONFIG.get("serve", None):
         raise ValueError("No 'serve' section found in task config.")
     if not TASK_CONFIG.serve.get("model_args", None):
@@ -39,7 +39,7 @@ def get_deploy_config(model_name):
         raise ValueError(f"No model config found for model {model_name}.")
 
 
-def get_model_config(model_name):
+def get_deploy_config(model_name):
     if not TASK_CONFIG.get("serve", None):
         raise ValueError("No 'serve' section found in task config.")
     if not TASK_CONFIG.serve.get("deploy", None):
