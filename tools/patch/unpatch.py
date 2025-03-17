@@ -99,7 +99,7 @@ def apply_patch(
     try:
         repo.git.am(file_name, "--whitespace=fix")
     except:
-        raise ValueError("Git apply {} falied!".format(file_name))
+        raise ValueError("Git apply {} falied! When this problem occurs, you can try the following operations: 1. Re-download FlagScale and unpatch again. 2. Use the git config command to set your email and name.".format(file_name))
     shutil.rmtree(tmp_path)
 
 
