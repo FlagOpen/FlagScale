@@ -1,17 +1,17 @@
 model_args:
   LLMActor:
     model: /models/Qwen2.5-7B-Instruct
-    tensor-parallel-size: 1
-    gpu-memory-utilization: 0.9
-    max-model-len: 32768
-    max-num-seqs: 256
+    tensor_parallel_size: 1
+    pipeline_parallel_size: 1
+    gpu_memory_utilization: 0.9
+    max_model_len: 32768
+    max_model_len: 256
+    trust_remote_code: True
+    enable_chunked_prefill: True
     port: 4567
-    action-args:
-      - trust-remote-code
-      - enable-chunked-prefill
 
 deploy:
   models:
     LLMActor:
-      num_replicas: 8 
+      num_replicas: 8
       num_gpus: 1
