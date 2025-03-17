@@ -13,5 +13,5 @@ model_args:
 deploy:
   models:
     LLMActor:
-      num_replicas: 8
+      num_replicas: 8 
       num_gpus: 1

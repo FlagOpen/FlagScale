@@ -5,7 +5,6 @@ import time
 import ray
 from fastapi import FastAPI
 from pydantic import BaseModel
-from ray import serve
 
 from vllm import LLM, SamplingParams
 
@@ -63,15 +62,19 @@ class OpenAIRequest(BaseModel):
 
 app = FastAPI()
 
+from ray import serve
+
+print(" config =============================== ", TASK_CONFIG, flush=True)
+print("model resource ========================= ", get_deploy_config("LLMActor"), flush=True)
 
 @serve.deployment(**get_deploy_config("LLMActor"))
 class LLMActor:
     def __init__(self):
         self.llm = LLM(
-            model="/models/Qwen2.5-72B-Instruct",
+            model="/models/Qwen2.5-7B-Instruct",
             gpu_memory_utilization=0.9,
             dtype="bfloat16",
-            tensor_parallel_size=4,
+            tensor_parallel_size=1,
             trust_remote_code=True,
             enforce_eager=True,
         )
@@ -122,7 +125,7 @@ class LLMService:
 
 
 if __name__ == "__main__":
-    ray.init(log_to_driver=True)
+    #ray.init(log_to_driver=True)
     serve.start(http_options={"host": "0.0.0.0", "port": 9000})
 
     llm_actor = LLMActor.bind()
