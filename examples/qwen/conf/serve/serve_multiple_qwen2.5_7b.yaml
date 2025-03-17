@@ -8,7 +8,6 @@ model_args:
     max_num_seqs: 256
     trust_remote_code: True
     enable_chunked_prefill: True
-    port: 4567
 
 deploy:
   models:
@@ -17,3 +16,4 @@ deploy:
       num_gpus: 1
   service:
     port: 6701
+  command_line_mode: true
