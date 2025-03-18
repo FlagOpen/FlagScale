@@ -48,6 +48,23 @@ def _get_args_vllm(config: DictConfig):
     return args
 
 
+def _get_serve_port(config):
+    if (
+        config.serve.get("deploy", None)
+        and config.serve.deploy.get("service", None)
+        and config.serve.deploy.service.get("port", None)
+    ):
+        return config.serve.deploy.service.get("port", None)
+    elif (
+        config.serve.get("model_args", None)
+        and config.serve.model_args.get("vllm_model", None)
+        and config.serve.model_args.vllm_model.get("port", None)
+    ):
+        return config.serve.model_args.vllm_model.get("port", None)
+    else:
+        return get_free_port()
+
+
 def _update_config_serve(config: DictConfig):
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     if not os.path.isdir(exp_dir):
@@ -331,12 +348,7 @@ class SSHServeRunner(RunnerBase):
         )
         self._prepare()
         self.host = None
-        self.port = get_free_port()
-        #self.port = (
-        #    self.config.serve.model_args.vllm_model.get("port", get_free_port())
-        #    if self.config.serve.get("model_args", None)
-        #    else get_free_port()
-        #)
+        self.port = _get_serve_port()
 
     def _prepare(self):
         _update_config_serve(self.config)
