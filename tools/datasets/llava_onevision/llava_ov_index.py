@@ -2263,89 +2263,21 @@ def train(attn_implementation=None):
     output = training_args.output_dir
     if not os.path.exists(output):
         os.mkdir(output)
-    start_time = time.time()
-    with wds.ShardWriter(
-        os.path.join(output, f"llava-ov-{dist.get_rank()}-%d.tar"), maxcount=10000
-    ) as shard_writer:
-        dataloader = trainer.get_train_dataloader()
-        print(f"sample num: {len(dataloader)}")
-        global_id = 0
-        for entry in tqdm(dataloader):
-            if global_id == 0:
-                for x in entry.keys():
-                    # print(f"key={x}, type={type(entry[x])}")
-                    pass
 
-            sequence = []
-            sequence.append(entry["input_ids"][0].cpu())
-            sequence.append(entry["labels"][0].cpu())
+    # Save the indexes
+    dataloader = trainer.get_train_dataloader()
+    iterator = dataloader.base_dataloader.batch_sampler.__iter__()
+    indexes = []
+    for batch_index in iterator:
+        assert len(batch_index) == 1
+        index = batch_index[0]
+        indexes.append(index)
+    assert len(indexes) == len(dataloader)
 
-            assert "images" in entry
-            # single image or video
-            multi_images = False
-            if len(entry["images"]) > 1:
-                assert len(entry["images"]) == len(entry["image_sizes"])
-                assert len(entry["images"]) == len(entry["modalities"])
-                multi_images = True
-
-            if not multi_images:
-                images = entry["images"][0].cpu()
-                images_shape = list(images.shape)
-                if len(images_shape) == 3:
-                    images = images.reshape([1, *images_shape])
-                sequence.append([images])
-                sequence.append([torch.tensor(entry["image_sizes"][0])])
-                sequence.append([entry["modalities"][0]])
-                if entry["modalities"][0] == "video":
-                    print(
-                        f"Processing video and image_sizes: {entry['image_sizes'][0]}, {images.shape}"
-                    )
-                elif entry["modalities"][0] == "text":
-                    print("Processing text.")
-                elif entry["modalities"][0] == "image":
-                    print("Processing single image.")
-                else:
-                    raise ValueError()
-            else:
-                # Process images
-                images = []
-                each_image_shape = None
-                for image in entry["images"]:
-                    image_cpu = image.cpu()
-                    image_shape = list(image_cpu.shape)
-                    if not each_image_shape:
-                        each_image_shape = image_shape
-                    # Image shape should be the same when in multi images scene
-                    assert each_image_shape == image_shape
-                    if len(image_shape) == 3:
-                        image_cpu = image_cpu.reshape([1, *image_shape])
-                    images.append(image_cpu)
-
-                # Process image_sizes
-                image_sizes = []
-                for image_size in entry["image_sizes"]:
-                    image_sizes.append(torch.tensor(image_size))
-
-                # Process modalities
-                modalities = []
-                for modality in entry["modalities"]:
-                    modalities.append(modality)
-
-                sequence.append(images)
-                sequence.append(image_sizes)
-                sequence.append(modalities)
-
-            sample = {
-                "__key__": str(global_id),
-                "sequence.pyd": sequence,
-            }
-
-            shard_writer.write(sample)
-            global_id += 1
-    end_time = time.time()
-    print(
-        f"rank {dist.get_rank()} datasets saved to {training_args.output_dir} in {end_time-start_time:.2f}s."
-    )
+    file_path = os.path.join(output, f"llava-ov-{dist.get_rank()}-indexes.pkl")
+    with open(file_path, "wb") as f:
+        pickle.dump(indexes, f)
+    print(f"rank {dist.get_rank()} saved indexes to {file_path}")
 
 
 if __name__ == "__main__":
