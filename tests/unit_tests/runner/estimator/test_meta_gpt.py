@@ -2,12 +2,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from flagscale.runner.estimator.meta_base import (
-    MetaTensor,
-    ShardedDim,
-    get_registry,
-    register_model,
-)
 from flagscale.runner.estimator.meta_gpt import GPTModel
 from flagscale.runner.estimator.meta_modules import (
     Dropout,
@@ -16,6 +10,8 @@ from flagscale.runner.estimator.meta_modules import (
     Linear,
     RMSNorm,
 )
+from flagscale.runner.estimator.meta_registry import get_registry, register_model
+from flagscale.runner.estimator.meta_tensor import MetaTensor, ShardedDim
 from flagscale.runner.estimator.meta_transformer_layer import TransformerLayer
 
 

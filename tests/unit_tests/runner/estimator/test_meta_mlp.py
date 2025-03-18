@@ -2,13 +2,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from flagscale.runner.estimator.meta_base import (
-    MetaTensor,
-    get_registry,
-    register_model,
-)
 from flagscale.runner.estimator.meta_mlp import MLP, SwiGLUMLP
 from flagscale.runner.estimator.meta_modules import GELU, Linear, SwiGLU
+from flagscale.runner.estimator.meta_registry import get_registry, register_model
+from flagscale.runner.estimator.meta_tensor import MetaTensor
 
 
 # Setup function to be run before any tests

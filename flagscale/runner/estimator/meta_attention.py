@@ -1,9 +1,4 @@
-from flagscale.runner.estimator.meta_base import (
-    MetaModule,
-    MetaTensor,
-    get_registry,
-    register_model,
-)
+from flagscale.runner.estimator.meta_base import MetaModule
 from flagscale.runner.estimator.meta_modules import (
     Baddbmm,
     Bmm,
@@ -14,6 +9,8 @@ from flagscale.runner.estimator.meta_modules import (
     RotaryEmbedding,
     Softmax,
 )
+from flagscale.runner.estimator.meta_registry import get_registry, register_model
+from flagscale.runner.estimator.meta_tensor import MetaTensor
 
 
 class CoreAttention(MetaModule):

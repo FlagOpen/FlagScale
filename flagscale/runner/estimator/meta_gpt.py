@@ -1,4 +1,4 @@
-from flagscale.runner.estimator.meta_base import MetaModule, MetaTensor, ShardedDim
+from flagscale.runner.estimator.meta_base import MetaModule
 from flagscale.runner.estimator.meta_modules import (
     Dropout,
     Embedding,
@@ -6,6 +6,7 @@ from flagscale.runner.estimator.meta_modules import (
     Linear,
     RMSNorm,
 )
+from flagscale.runner.estimator.meta_tensor import MetaTensor, ShardedDim
 from flagscale.runner.estimator.meta_transformer_layer import TransformerLayer
 
 
