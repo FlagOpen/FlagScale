@@ -80,13 +80,14 @@ from ray import serve
 @serve.deployment(**get_deploy_config("LLMActor"))
 class LLMActor:
     def __init__(self):
-        self.llm = LLM(**get_model_config("LLMActor"))
+        self.llm = LLM(**get_model_config(self.__class__.__name__))
 
     def generate(self, prompt, max_tokens, temperature, top_p):
         sampling_params = SamplingParams(
             temperature=temperature, top_p=top_p, max_tokens=max_tokens
         )
         return self.llm.generate(prompt, sampling_params)
+
 
 @serve.deployment(num_replicas="auto")
 @serve.ingress(app)
@@ -133,7 +134,7 @@ if __name__ == "__main__":
     llm_actor = LLMActor.bind()
     serve.run(
         LLMService.bind(llm_actor),
-        name="llm_service",
+        name="vllm_service",
         route_prefix="/",
         blocking=True,
     )
