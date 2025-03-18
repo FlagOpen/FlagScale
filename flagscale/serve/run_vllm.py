@@ -1,9 +1,12 @@
+import asyncio
+import json
 import logging
 import sys
 import time
 
 import ray
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from vllm import LLM, SamplingParams
@@ -70,6 +73,7 @@ class OpenAIRequest(BaseModel):
     max_tokens: int = 32000
     temperature: float = 1.0
     top_p: float = 1.0
+    stream: bool = False  # New field to trigger streaming
 
 
 app = FastAPI()
@@ -88,6 +92,16 @@ class LLMActor:
         )
         return self.llm.generate(prompt, sampling_params)
 
+    def stream_generate(self, prompt, max_tokens, temperature, top_p):
+        sampling_params = SamplingParams(
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+            stream=True,  # Enable streaming generation
+        )
+        # Call generate in streaming mode and convert the generator to a list.
+        return list(self.llm.generate(prompt, sampling_params))
+
 
 @serve.deployment(num_replicas="auto")
 @serve.ingress(app)
@@ -97,34 +111,59 @@ class LLMService:
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: OpenAIRequest):
-        # Generate through separate LLM deployment
-        generation_result = await self.llm_actor.generate.remote(
-            request.prompt, request.max_tokens, request.temperature, request.top_p
-        )
+        if request.stream:
+            # In streaming mode, retrieve tokens from the LLMActor.
+            tokens = await self.llm_actor.stream_generate.remote(
+                request.prompt, request.max_tokens, request.temperature, request.top_p
+            )
 
-        # Format the response in OpenAI style
-        response = {
-            "id": "cmpl-1234567890",
-            "object": "text_completion",
-            "created": int(time.time()),
-            "model": request.model,
-            "choices": [
-                {
-                    "text": generation_result[0].outputs[0].text,
-                    "index": 0,
-                    "logprobs": None,
-                    "finish_reason": "length",
-                }
-            ],
-            "usage": {
-                "prompt_tokens": len(request.prompt.split()),
-                "completion_tokens": len(generation_result[0].outputs[0].text.split()),
-                "total_tokens": len(request.prompt.split())
-                + len(generation_result[0].outputs[0].text.split()),
-            },
-        }
+            async def token_generator():
+                for token in tokens:
+                    # Format each token as a delta response chunk per OpenAI SSE style.
+                    chunk = {
+                        "id": "cmpl-1234567890",
+                        "object": "text_completion",
+                        "created": int(time.time()),
+                        "model": request.model,
+                        "choices": [
+                            {
+                                "delta": {"content": token},
+                                "index": 0,
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                    yield f"data: {json.dumps(chunk)}\n\n"
+                    await asyncio.sleep(0)
 
-        return response
+            return StreamingResponse(token_generator(), media_type="text/event-stream")
+        else:
+            # Non-streaming mode: call the regular generate method.
+            generation_result = await self.llm_actor.generate.remote(
+                request.prompt, request.max_tokens, request.temperature, request.top_p
+            )
+            full_text = generation_result[0].outputs[0].text
+            response = {
+                "id": "cmpl-1234567890",
+                "object": "text_completion",
+                "created": int(time.time()),
+                "model": request.model,
+                "choices": [
+                    {
+                        "text": full_text,
+                        "index": 0,
+                        "logprobs": None,
+                        "finish_reason": "length",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": len(request.prompt.split()),
+                    "completion_tokens": len(full_text.split()),
+                    "total_tokens": len(request.prompt.split())
+                    + len(full_text.split()),
+                },
+            }
+            return response
 
 
 if __name__ == "__main__":
