@@ -6,6 +6,7 @@ class WeightGradStore:
     cache = []
     weight_grad_queue = queue.Queue()
     split_bw = True
+    enable_zero_bubble = False
 
     @classmethod
     def is_supported(cls):

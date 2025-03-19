@@ -37,7 +37,6 @@ from .mappings import (
 from .random import get_cuda_rng_tracker, get_expert_parallel_rng_tracker_name
 from .utils import VocabUtility, divide
 from flagscale.train.weight_grad_store import WeightGradStore
-import megatron.training.global_vars as global_vars
 
 _grad_accum_fusion_available = True
 try:
@@ -510,7 +509,7 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         if ctx.gradient_accumulation_fusion:
             if wgrad_compute:
                 if weight.main_grad.dtype == torch.float32:
-                    if global_vars.get_args().enable_zero_bubble:
+                    if WeightGradStore.enable_zero_bubble:
                         # capture the weight gradient computation of linear layers
                         WeightGradStore.put(
                             total_input, grad_output, weight, fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32,
@@ -520,7 +519,7 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
                             total_input, grad_output, weight.main_grad
                         )
                 elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
-                    if global_vars.get_args().enable_zero_bubble:
+                    if WeightGradStore.enable_zero_bubble:
                         # capture the weight gradient computation of linear layers
                         WeightGradStore.put(
                             total_input, grad_output, weight, fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16,

@@ -19,13 +19,12 @@ from megatron.core.utils import (
     get_model_xattn,
 )
 from flagscale.train.weight_grad_store import WeightGradStore
-import megatron.training.global_vars as global_vars
 
 # Types
 Shape = Union[List[int], torch.Size]
 
 
-def get_forward_backward_func():
+def get_forward_backward_func(enable_zero_bubble = False):
     """Retrieves the appropriate forward_backward function given the
     configuration of parallel_state.
 
@@ -108,7 +107,8 @@ def get_forward_backward_func():
         if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
             forward_backward_func = forward_backward_pipelining_with_interleaving
         else:
-            if global_vars.get_args().enable_zero_bubble:
+            if enable_zero_bubble:
+                WeightGradStore.enable_zero_bubble = True
                 forward_backward_func = forward_backward_pipelining_without_interleaving_with_zb
             else:    
                 forward_backward_func = forward_backward_pipelining_without_interleaving
@@ -2121,13 +2121,13 @@ def forward_backward_pipelining_without_interleaving_with_zb(
                 input_tensor, output_tensor, output_tensor_grad, model_type, config
             )
 
-            if global_vars.get_args().enable_zero_bubble and WeightGradStore.split_bw:
+            if WeightGradStore.split_bw:
                 WeightGradStore.flush()
 
             if last_iteration:
                 input_tensor = None
                 send_backward(input_tensor_grad, recv_tensor_shapes, config)
-                if global_vars.get_args().enable_zero_bubble and i >= rank > 0:  # delay W by rank
+                if i >= rank > 0:  # delay W by rank
                     WeightGradStore.pop()  # W
             else:
                 input_tensor = send_backward_recv_forward(
@@ -2158,13 +2158,12 @@ def forward_backward_pipelining_without_interleaving_with_zb(
             )
 
             send_backward(input_tensor_grad, recv_tensor_shapes, config)
-            if global_vars.get_args().enable_zero_bubble and WeightGradStore.split_bw:
+            if WeightGradStore.split_bw:
                     WeightGradStore.flush()
                     if num_microbatches_remaining + i >= rank:
                         WeightGradStore.pop()  # W
 
-        if global_vars.get_args().enable_zero_bubble:
-            WeightGradStore.pop_all()  # W
+        WeightGradStore.pop_all()  # W
         # Launch any remaining grad reductions.
         if no_sync_context is not None:
             enable_grad_sync()
