@@ -2,7 +2,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from flagscale.runner.estimator.meta_base import MetaTensor, ShardedDim, register_model
 from flagscale.runner.estimator.meta_modules import (
     GELU,
     Baddbmm,
@@ -14,10 +13,12 @@ from flagscale.runner.estimator.meta_modules import (
     Linear,
     RMSNorm,
     RotaryEmbedding,
+    SiLU,
     Softmax,
     SwiGLU,
-    Swish,
 )
+from flagscale.runner.estimator.meta_registry import register_model
+from flagscale.runner.estimator.meta_tensor import MetaTensor
 
 
 # Setup function to be run before any tests
@@ -697,12 +698,12 @@ class TestGELU:
         assert output.shard_spec == input_tensor.shard_spec
 
 
-class TestSwish:
-    """Test suite for Swish module."""
+class TestSiLU:
+    """Test suite for SiLU module."""
 
     def test_add_flops(self):
-        """Test FLOPs computation for Swish operation."""
-        module = Swish()
+        """Test FLOPs computation for SiLU operation."""
+        module = SiLU()
 
         input_tensor = MetaTensor([16, 32, 64])
         flops = module.add_flops(input_tensor)
@@ -711,8 +712,8 @@ class TestSwish:
         assert flops == expected_flops
 
     def test_add_params(self):
-        """Test parameter count computation for Swish operation."""
-        module = Swish()
+        """Test parameter count computation for SiLU operation."""
+        module = SiLU()
 
         # No learnable parameters
         input_tensor = MetaTensor([16, 32, 64])
@@ -720,8 +721,8 @@ class TestSwish:
         assert params == 0
 
     def test_add_acts(self):
-        """Test activation memory computation for Swish operation."""
-        module = Swish()
+        """Test activation memory computation for SiLU operation."""
+        module = SiLU()
 
         input_tensor = MetaTensor([16, 32, 64])
         acts = module.add_acts(input_tensor)
@@ -730,8 +731,8 @@ class TestSwish:
         assert acts == expected_acts
 
     def test_forward(self):
-        """Test forward method for Swish operation."""
-        module = Swish()
+        """Test forward method for SiLU operation."""
+        module = SiLU()
 
         # Output should have same shape as input
         input_tensor = MetaTensor([16, 32, 64])
@@ -763,7 +764,7 @@ class TestSwiGLU:
         flops = module.add_flops(gate_tensor, value_tensor)
         gate_elements = gate_tensor.total_elements(apply_sharding=True)
 
-        # Swish operation: sigmoid(gate) * gate
+        # SiLU operation: sigmoid(gate) * gate
         # - Sigmoid: 4 ops per element
         # - Multiplication: 1 op per element
         swish_flops = gate_elements * 5

@@ -1,4 +1,203 @@
-from flagscale.runner.estimator.meta_base import MetaModule, MetaTensor, ShardedDim
+from flagscale.runner.estimator.meta_base import MetaModule
+from flagscale.runner.estimator.meta_tensor import MetaTensor, ShardedDim
+
+
+class Elementwise(MetaModule):
+    """
+    Elementwise operations module for MetaTensor.
+
+    Supports various elementwise operations like addition, subtraction,
+    multiplication, division, and other unary/binary elementwise functions.
+    """
+
+    def __init__(
+        self,
+        operation="add",  # Options: "add", "sub", "mul", "div", "pow", "relu", "tanh", etc.
+        alpha=1.0,  # Scaling factor for certain operations
+        inplace=False,  # Whether to perform the operation in-place
+        shard_specs=None,
+        model_id="default",
+    ):
+        super().__init__(shard_specs, model_id)
+
+        # Store configuration
+        self.operation = operation
+        self.alpha = alpha
+        self.inplace = inplace
+
+        # Define FLOPs cost for different operations
+        self.op_flops_cost = {
+            "add": 1,
+            "sub": 1,
+            "mul": 1,
+            "div": 1,
+            "pow": 3,  # More expensive
+            "sqrt": 2,
+            "exp": 3,
+            "log": 3,
+            "sin": 4,
+            "cos": 4,
+            "tan": 5,
+            "relu": 1,
+            "sigmoid": 4,
+            "tanh": 5,
+        }
+
+    def add_flops(self, *inputs):
+        """
+        Compute FLOPs for elementwise operation.
+
+        Parameters:
+        -----------
+        *inputs : list of MetaTensor
+            Input tensors for the operation
+
+        Returns:
+        --------
+        int
+            Number of FLOPs for the elementwise operation
+        """
+        # Binary operations require at least two inputs
+        binary_ops = ["add", "sub", "mul", "div", "pow"]
+        if self.operation in binary_ops and len(inputs) < 2:
+            raise ValueError(
+                f"Operation '{self.operation}' requires at least two inputs"
+            )
+
+        # Get the cost for this operation
+        op_cost = self.op_flops_cost.get(self.operation, 1)
+
+        # For most elementwise operations, we perform one operation per element
+        # For binary ops, we use the first two inputs
+        if self.operation in binary_ops:
+            # Ensure inputs have compatible shapes
+            if inputs[0].shape != inputs[1].shape:
+                raise ValueError(
+                    f"Input shapes must match for elementwise operation: "
+                    f"{inputs[0].shape} vs {inputs[1].shape}"
+                )
+
+            num_elements = inputs[0].total_elements(apply_sharding=True)
+        # For unary ops, we only need the first input
+        else:
+            num_elements = inputs[0].total_elements(apply_sharding=True)
+
+        # Calculate total FLOPs
+        total_flops = num_elements * op_cost
+
+        return total_flops
+
+    def add_params(self, *inputs):
+        """
+        Compute number of parameters for elementwise operation.
+
+        Elementwise operations have no learnable parameters.
+
+        Returns:
+        --------
+        int
+            Number of parameters (0 for elementwise operations)
+        """
+        return 0
+
+    def add_acts(self, *inputs):
+        """
+        Compute activation memory for elementwise operation.
+
+        For backward computation of elementwise operations, we need to store:
+        1. Input tensors (depending on operation)
+        2. Output tensor (for certain operations)
+
+        Parameters:
+        -----------
+        *inputs : list of MetaTensor
+            Input tensors for the operation
+
+        Returns:
+        --------
+        int
+            Number of activation elements needed for backward computation
+        """
+        if not inputs or inputs[0] is None:
+            return 0
+
+        # For operations that need inputs during backward pass:
+        # - mul, div, pow need both inputs
+        # - add, sub only need the operation itself (not inputs)
+        # - Most unary ops need the input
+        binary_ops_requiring_inputs = ["mul", "div", "pow"]
+        unary_ops_requiring_inputs = ["exp", "log", "sqrt", "sigmoid", "tanh"]
+
+        total_elements = 0
+
+        # Binary operations that need inputs for backward
+        if self.operation in binary_ops_requiring_inputs and len(inputs) >= 2:
+            total_elements += inputs[0].total_elements(apply_sharding=True)
+            total_elements += inputs[1].total_elements(apply_sharding=True)
+
+        # Unary operations that need input for backward
+        elif self.operation in unary_ops_requiring_inputs:
+            total_elements += inputs[0].total_elements(apply_sharding=True)
+
+        # For operations like ReLU that need to know where the zeros were
+        elif self.operation == "relu":
+            # We only need to store a boolean mask, which is smaller than the full tensor
+            # But for simplicity, we count the full size
+            total_elements += inputs[0].total_elements(apply_sharding=True)
+
+        # If not performing in-place, we need to allocate space for output
+        if not self.inplace:
+            total_elements += inputs[0].total_elements(apply_sharding=True)
+
+        return total_elements
+
+    def forward(self, *inputs):
+        """
+        Apply elementwise operation to the input tensors.
+
+        Parameters:
+        -----------
+        *inputs : list of MetaTensor
+            Input tensors for the operation
+
+        Returns:
+        --------
+        MetaTensor
+            Output tensor after elementwise operation (same shape as input)
+        """
+        # Validate inputs
+        if not inputs:
+            raise ValueError("No inputs provided to elementwise operation")
+
+        # Binary operations require at least two inputs
+        binary_ops = ["add", "sub", "mul", "div", "pow"]
+        if self.operation in binary_ops:
+            if len(inputs) < 2:
+                raise ValueError(
+                    f"Operation '{self.operation}' requires at least two inputs"
+                )
+
+            # Ensure inputs have compatible shapes
+            if inputs[0].shape != inputs[1].shape:
+                raise ValueError(
+                    f"Input shapes must match for elementwise operation: "
+                    f"{inputs[0].shape} vs {inputs[1].shape}"
+                )
+
+            # Also ensure they have compatible sharding
+            for i, (sdim1, sdim2) in enumerate(
+                zip(inputs[0]._sharded_dims, inputs[1]._sharded_dims)
+            ):
+                if sdim1.shard != sdim2.shard:
+                    raise ValueError(
+                        f"Cannot perform element-wise operation with tensors that have different "
+                        f"sharding at dimension {i}: {sdim1.shard} vs {sdim2.shard}"
+                    )
+
+        # Output has same shape and sharding as input
+        output = inputs[0].clone() if not self.inplace else inputs[0]
+
+        return output
 
 
 class Linear(MetaModule):
@@ -361,7 +560,7 @@ class RotaryEmbedding(MetaModule):
             Output tensor with rotary embeddings applied (same shape as input)
         """
         # Output has same shape as input
-        output = input.copy()
+        output = input.clone()
 
         return output
 
@@ -811,6 +1010,320 @@ class Bmm(MetaModule):
         return output
 
 
+class Matmul(MetaModule):
+    """
+    Matrix multiplication operation.
+
+    Performs: out = input1 @ input2
+    Similar to torch.matmul, supports broadcasting and handles various dimensions.
+    """
+
+    def __init__(
+        self,
+        shard_specs=None,
+        model_id="default",
+    ):
+        super().__init__(shard_specs, model_id)
+
+    def add_flops(self, input1: MetaTensor, input2: MetaTensor):
+        """
+        Compute FLOPs for matrix multiplication.
+
+        For the operation: out = input1 @ input2
+
+        Handles various cases:
+        - Vector-vector: Dot product
+        - Matrix-vector: Matrix-vector multiplication
+        - Matrix-matrix: Standard matrix multiplication
+        - Batched versions of the above
+
+        Parameters:
+        -----------
+        input1 : MetaTensor
+            First input tensor
+        input2 : MetaTensor
+            Second input tensor
+
+        Returns:
+        --------
+        float
+            Total FLOPs required for the operation
+        """
+        # Validate inputs
+        if input1 is None or input2 is None:
+            return 0
+
+        # Extract dimensions with proper handling for different cases
+        dim1 = len(input1)
+        dim2 = len(input2)
+
+        # Case 1: Vector-vector (1D @ 1D -> scalar)
+        if dim1 == 1 and dim2 == 1:
+            # Dot product: n multiplications and n-1 additions
+            n = input1[0].sharded_dim()
+            if n != input2[0].sharded_dim():
+                raise ValueError(
+                    f"Vector dimensions must match for dot product: {n} vs {input2[0].sharded_dim()}"
+                )
+            return 2 * n - 1  # n multiplies and n-1 adds
+
+        # Case 2: Matrix-vector (2D @ 1D -> 1D)
+        elif dim1 == 2 and dim2 == 1:
+            m = input1[0].sharded_dim()  # rows of matrix
+            n = input1[1].sharded_dim()  # cols of matrix
+            if n != input2[0].sharded_dim():
+                raise ValueError(
+                    f"Matrix columns must match vector size: {n} vs {input2[0].sharded_dim()}"
+                )
+            # Each output element requires n multiply-adds
+            return 2 * m * n  # 2 for multiply-add
+
+        # Case 3: Vector-matrix (1D @ 2D -> 1D)
+        elif dim1 == 1 and dim2 == 2:
+            n = input1[0].sharded_dim()  # vector size
+            k = input2[1].sharded_dim()  # cols of matrix
+            if n != input2[0].sharded_dim():
+                raise ValueError(
+                    f"Vector size must match matrix rows: {n} vs {input2[0].sharded_dim()}"
+                )
+            # Each output element requires n multiply-adds
+            return 2 * n * k  # 2 for multiply-add
+
+        # Case 4: Matrix-matrix (2D @ 2D -> 2D)
+        elif dim1 == 2 and dim2 == 2:
+            m = input1[0].sharded_dim()  # rows of first matrix
+            n = input1[1].sharded_dim()  # cols of first matrix
+            k = input2[1].sharded_dim()  # cols of second matrix
+            if n != input2[0].sharded_dim():
+                raise ValueError(
+                    f"Matrix dimensions mismatch: {n} vs {input2[0].sharded_dim()}"
+                )
+            # Each output element requires n multiply-adds
+            return 2 * m * n * k  # 2 for multiply-add
+
+        # Case 5: Batched matrix multiplication (>2D @ >2D -> >2D)
+        else:
+            # Ensure the last 2 dimensions are compatible for matrix multiplication
+            if dim1 >= 2 and dim2 >= 2:
+                m = input1[-2].sharded_dim()  # rows of first matrix
+                n = input1[-1].sharded_dim()  # cols of first matrix
+                k = input2[-1].sharded_dim()  # cols of second matrix
+
+                if n != input2[-2].sharded_dim():
+                    raise ValueError(
+                        f"Matrix dimensions mismatch for multiplication: "
+                        f"{n} vs {input2[-2].sharded_dim()}"
+                    )
+
+                # Calculate batch size by multiplying all batch dimensions
+                batch_size = 1
+                # Determine how many batch dimensions we have
+                batch_dims = min(dim1 - 2, dim2 - 2)
+
+                for i in range(batch_dims):
+                    # For batched matrix multiplication, batch dimensions must be broadcastable
+                    if (
+                        input1[i].dim != input2[i].dim
+                        and input1[i].dim != 1
+                        and input2[i].dim != 1
+                    ):
+                        raise ValueError(
+                            f"Batch dimension {i} mismatch and not broadcastable: "
+                            f"{input1[i].dim} vs {input2[i].dim}"
+                        )
+                    # Use the maximum dimension for broadcasting
+                    batch_dim = max(input1[i].sharded_dim(), input2[i].sharded_dim())
+                    batch_size *= batch_dim
+
+                # Each output element requires n multiply-adds
+                return 2 * batch_size * m * n * k  # 2 for multiply-add
+            else:
+                raise ValueError(
+                    f"Unsupported dimensions for matrix multiplication: {dim1}D @ {dim2}D"
+                )
+
+    def add_params(self, input1: MetaTensor, input2: MetaTensor):
+        """
+        Compute number of parameters for matrix multiplication.
+
+        Matrix multiplication is an operation, not a layer with parameters.
+
+        Returns:
+        --------
+        int
+            Number of parameters (0 for matmul)
+        """
+        return 0
+
+    def add_acts(self, input1: MetaTensor, input2: MetaTensor):
+        """
+        Compute activation memory for matrix multiplication.
+
+        For backward computation, we need to store:
+        1. input1 (needed for gradient w.r.t. input2)
+        2. input2 (needed for gradient w.r.t. input1)
+
+        Parameters:
+        -----------
+        input1 : MetaTensor
+            First input tensor
+        input2 : MetaTensor
+            Second input tensor
+
+        Returns:
+        --------
+        int
+            Number of activation elements needed for backward computation
+        """
+        if input1 is None or input2 is None:
+            return 0
+
+        # Need to store both inputs for backward
+        input1_elements = input1.total_elements(apply_sharding=True)
+        input2_elements = input2.total_elements(apply_sharding=True)
+
+        return input1_elements + input2_elements
+
+    def forward(self, input1: MetaTensor, input2: MetaTensor):
+        """
+        Perform matrix multiplication between input1 and input2.
+
+        Handles various cases:
+        - Vector-vector: Dot product
+        - Matrix-vector: Matrix-vector multiplication
+        - Matrix-matrix: Standard matrix multiplication
+        - Batched versions of the above
+
+        Parameters:
+        -----------
+        input1 : MetaTensor
+            First input tensor
+        input2 : MetaTensor
+            Second input tensor
+
+        Returns:
+        --------
+        MetaTensor
+            Output tensor after matrix multiplication
+        """
+        # Validate inputs
+        if input1 is None or input2 is None:
+            raise ValueError("Inputs cannot be None")
+
+        # Extract dimensions
+        dim1 = len(input1)
+        dim2 = len(input2)
+
+        # Case 1: Vector-vector (1D @ 1D -> scalar)
+        if dim1 == 1 and dim2 == 1:
+            # Validate dimensions match
+            if input1[0].dim != input2[0].dim:
+                raise ValueError(
+                    f"Vector dimensions must match for dot product: {input1[0].dim} vs {input2[0].dim}"
+                )
+            # Result is a scalar
+            return MetaTensor([1], [1])
+
+        # Case 2: Matrix-vector (2D @ 1D -> 1D)
+        elif dim1 == 2 and dim2 == 1:
+            # Validate inner dimensions match
+            if input1[1].dim != input2[0].dim:
+                raise ValueError(
+                    f"Matrix columns must match vector size: {input1[1].dim} vs {input2[0].dim}"
+                )
+            # Result has shape [m]
+            return MetaTensor([input1[0].dim], [input1[0].shard])
+
+        # Case 3: Vector-matrix (1D @ 2D -> 1D)
+        elif dim1 == 1 and dim2 == 2:
+            # Validate inner dimensions match
+            if input1[0].dim != input2[0].dim:
+                raise ValueError(
+                    f"Vector size must match matrix rows: {input1[0].dim} vs {input2[0].dim}"
+                )
+            # Result has shape [k]
+            return MetaTensor([input2[1].dim], [input2[1].shard])
+
+        # Case 4: Matrix-matrix (2D @ 2D -> 2D)
+        elif dim1 == 2 and dim2 == 2:
+            # Validate inner dimensions match
+            if input1[1].dim != input2[0].dim:
+                raise ValueError(
+                    f"Matrix dimensions mismatch: {input1[1].dim} vs {input2[0].dim}"
+                )
+            # Result has shape [m, k]
+            return MetaTensor(
+                [input1[0].dim, input2[1].dim], [input1[0].shard, input2[1].shard]
+            )
+
+        # Case 5: Batched matrix multiplication (>2D @ >2D -> >2D)
+        else:
+            # Ensure the last 2 dimensions are compatible for matrix multiplication
+            if dim1 >= 2 and dim2 >= 2:
+                if input1[-1].dim != input2[-2].dim:
+                    raise ValueError(
+                        f"Matrix dimensions mismatch for multiplication: "
+                        f"{input1[-1].dim} vs {input2[-2].dim}"
+                    )
+
+                # Determine output batch dimensions
+                batch_dims1 = input1[:-2]
+                batch_dims2 = input2[:-2]
+
+                # If both inputs have batch dimensions
+                if batch_dims1 and batch_dims2:
+                    # Create output shape with broadcasting
+                    out_batch_shape = []
+                    out_batch_shard = []
+
+                    # Apply broadcasting rules to batch dimensions
+                    max_batch_dims = max(len(batch_dims1), len(batch_dims2))
+
+                    # Pad the shorter batch dimensions with 1s
+                    padded_batch1 = [
+                        (ShardedDim(1, 1))
+                        for _ in range(max_batch_dims - len(batch_dims1))
+                    ] + batch_dims1
+                    padded_batch2 = [
+                        (ShardedDim(1, 1))
+                        for _ in range(max_batch_dims - len(batch_dims2))
+                    ] + batch_dims2
+
+                    # Apply broadcasting rules
+                    for dim1, dim2 in zip(padded_batch1, padded_batch2):
+                        # If dimensions are compatible for broadcasting
+                        if dim1.dim == dim2.dim or dim1.dim == 1 or dim2.dim == 1:
+                            # Use the larger dimension
+                            out_dim = max(dim1.dim, dim2.dim)
+                            # Use the corresponding sharding
+                            out_shard = (
+                                dim1.shard if dim1.dim > dim2.dim else dim2.shard
+                            )
+                            out_batch_shape.append(out_dim)
+                            out_batch_shard.append(out_shard)
+                        else:
+                            raise ValueError(
+                                f"Batch dimensions not broadcastable: {dim1.dim} vs {dim2.dim}"
+                            )
+
+                    # Create output shape with batch dimensions and matrix dimensions
+                    shape = out_batch_shape + [input1[-2].dim, input2[-1].dim]
+                    shard_spec = out_batch_shard + [input1[-2].shard, input2[-1].shard]
+
+                    return MetaTensor(shape, shard_spec)
+                else:
+                    # One or both inputs don't have batch dimensions
+                    # Just use the matrix dimensions
+                    return MetaTensor(
+                        [input1[-2].dim, input2[-1].dim],
+                        [input1[-2].shard, input2[-1].shard],
+                    )
+            else:
+                raise ValueError(
+                    f"Unsupported dimensions for matrix multiplication: {dim1}D @ {dim2}D"
+                )
+
+
 class Softmax(MetaModule):
     """
     Softmax activation function.
@@ -891,7 +1404,7 @@ class Softmax(MetaModule):
         MetaTensor
             Output tensor after softmax (same shape as input)
         """
-        output = input.copy()
+        output = input.clone()
         return output
 
 
@@ -978,7 +1491,7 @@ class Dropout(MetaModule):
         MetaTensor
             Output tensor after dropout (same shape as input)
         """
-        output = input.copy()
+        output = input.clone()
         return output
 
 
@@ -1078,19 +1591,19 @@ class GELU(MetaModule):
             Output tensor with GELU activation applied (same shape as input)
         """
         # Output has the same shape and sharding as input
-        output = input.copy()
+        output = input.clone()
         return output
 
 
-class Swish(MetaModule):
+class SiLU(MetaModule):
     """
-    Swish activation function.
+    SiLU activation function.
 
-    Implements the Swish activation function as described in:
+    Implements the SiLU activation function as described in:
     "Searching for Activation Functions" (Ramachandran et al., 2017)
     https://arxiv.org/abs/1710.05941
 
-    Swish(x) = x * sigmoid(x)
+    SiLU(x) = x * sigmoid(x)
     """
 
     def __init__(self, shard_specs=None, model_id="default"):
@@ -1098,9 +1611,9 @@ class Swish(MetaModule):
 
     def add_flops(self, input: MetaTensor):
         """
-        Compute FLOPs for Swish activation.
+        Compute FLOPs for SiLU activation.
 
-        Swish involves:
+        SiLU involves:
         - 1 sigmoid operation
         - 1 multiplication
         Per element
@@ -1113,10 +1626,10 @@ class Swish(MetaModule):
         Returns:
         --------
         int
-            Number of FLOPs for Swish activation
+            Number of FLOPs for SiLU activation
         """
         # Count total number of elements after applying sharding
-        num_elements = input.total_elements()
+        num_elements = input.total_elements(apply_sharding=True)
 
         # Estimate operations: sigmoid + multiply
         ops_per_element = 2
@@ -1125,22 +1638,22 @@ class Swish(MetaModule):
 
     def add_params(self, input: MetaTensor):
         """
-        Compute number of parameters for Swish activation.
+        Compute number of parameters for SiLU activation.
 
-        Swish has no learnable parameters.
+        SiLU has no learnable parameters.
 
         Returns:
         --------
         int
-            Number of parameters (0 for Swish)
+            Number of parameters (0 for SiLU)
         """
         return 0
 
     def add_acts(self, input: MetaTensor):
         """
-        Compute activation memory for Swish activation.
+        Compute activation memory for SiLU activation.
 
-        For Swish, we need to store the input tensor and the output tensor.
+        For SiLU, we need to store the input tensor and the output tensor.
 
         Parameters:
         -----------
@@ -1152,11 +1665,11 @@ class Swish(MetaModule):
         int
             Number of activation elements
         """
-        return input.total_elements()
+        return input.total_elements(apply_sharding=True)
 
     def forward(self, input: MetaTensor):
         """
-        Apply Swish activation to the input tensor.
+        Apply SiLU activation to the input tensor.
 
         Parameters:
         -----------
@@ -1166,25 +1679,25 @@ class Swish(MetaModule):
         Returns:
         --------
         MetaTensor
-            Output tensor with Swish activation applied (same shape as input)
+            Output tensor with SiLU activation applied (same shape as input)
         """
         # Output has the same shape and sharding as input
-        output = input.copy()
+        output = input.clone()
 
         return output
 
 
 class SwiGLU(MetaModule):
     """
-    Swish-Gated Linear Unit (SwiGLU) activation.
+    SiLU-Gated Linear Unit (SwiGLU) activation.
 
     Implements SwiGLU as described in:
     "GLU Variants Improve Transformer" (Noam Shazeer, 2020)
     https://arxiv.org/abs/2002.05202
 
-    SwiGLU(x, W, V, b, c) = Swish(xW + b) ⊗ (xV + c)
+    SwiGLU(x, W, V, b, c) = SiLU(xW + b) ⊗ (xV + c)
 
-    Where Swish(x) = x * sigmoid(x)
+    Where SiLU(x) = x * sigmoid(x)
     """
 
     def __init__(self, shard_specs=[[1, 1]], model_id="default"):
@@ -1247,7 +1760,7 @@ class SwiGLU(MetaModule):
         Compute activation memory for SwiGLU activation.
 
         For backward computation of SwiGLU, we need:
-        1. Gate tensor (for Swish gradient calculation)
+        1. Gate tensor (for SiLU gradient calculation)
         2. Value tensor (for gradient calculation)
         3. Sigmoid(gate) tensor (for gradient calculation)
 
@@ -1280,9 +1793,9 @@ class SwiGLU(MetaModule):
 
     def forward(self, gate: MetaTensor, value: MetaTensor):
         """
-        Apply SwiGLU activation: Swish(gate) * value.
+        Apply SwiGLU activation: SiLU(gate) * value.
 
-        Where Swish(x) = x * sigmoid(x)
+        Where SiLU(x) = x * sigmoid(x)
 
         Parameters:
         -----------
@@ -1296,7 +1809,7 @@ class SwiGLU(MetaModule):
         MetaTensor
             Output tensor with SwiGLU activation applied
         """
-        output = value.copy()
+        output = value.clone()
 
         return output
 
@@ -1511,7 +2024,7 @@ class LayerNorm(MetaModule):
             )
 
         # Output has the same shape and sharding as input
-        output = input.copy()
+        output = input.clone()
 
         return output
 
@@ -1708,7 +2221,7 @@ class RMSNorm(MetaModule):
             )
 
         # Output has the same shape and sharding as input
-        output = input.copy()
+        output = input.clone()
 
         return output
 
@@ -1939,10 +2452,10 @@ class CrossEntropy(MetaModule):
             # or remove the class dimension for classification tasks
             if len(logits) == len(targets) + 1:
                 # Classification case: logits [B, C], targets [B]
-                output = targets.copy()
+                output = targets.clone()
             else:
                 # Sequence case: logits [B, S, C], targets [B, S]
                 # Keep same shape as targets
-                output = targets.copy()
+                output = targets.clone()
 
         return output

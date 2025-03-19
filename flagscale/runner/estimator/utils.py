@@ -1,10 +1,7 @@
 from typing import Any, Dict
 
-from flagscale.runner.estimator.meta_base import (
-    ModelConfig,
-    get_registry,
-    register_model,
-)
+from flagscale.runner.estimator.meta_base import ModelConfig
+from flagscale.runner.estimator.meta_registry import get_registry, register_model
 
 
 def compute_memory(config: ModelConfig, params: int, acts: int) -> int:

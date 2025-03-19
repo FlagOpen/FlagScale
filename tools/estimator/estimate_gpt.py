@@ -10,13 +10,10 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from flagscale.runner.estimator.meta_base import (
-    MetaTensor,
-    ModelConfig,
-    get_registry,
-    register_model,
-)
+from flagscale.runner.estimator.meta_base import ModelConfig
 from flagscale.runner.estimator.meta_gpt import GPTModel
+from flagscale.runner.estimator.meta_registry import get_registry, register_model
+from flagscale.runner.estimator.meta_tensor import MetaTensor
 from flagscale.runner.estimator.utils import compute_memory, print_results
 
 # Expanded model selection

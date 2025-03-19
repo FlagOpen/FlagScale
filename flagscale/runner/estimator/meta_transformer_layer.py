@@ -1,7 +1,8 @@
 from flagscale.runner.estimator.meta_attention import SelfAttention
-from flagscale.runner.estimator.meta_base import MetaModule, MetaTensor, get_registry
+from flagscale.runner.estimator.meta_base import MetaModule, get_registry
 from flagscale.runner.estimator.meta_mlp import MLP, SwiGLUMLP
 from flagscale.runner.estimator.meta_modules import LayerNorm, RMSNorm
+from flagscale.runner.estimator.meta_tensor import MetaTensor
 
 
 class TransformerLayer(MetaModule):
