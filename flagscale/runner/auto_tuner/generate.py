@@ -108,11 +108,17 @@ class ServeGenerator(Generator):
             self.args_mapping = {
                 "tensor_model_parallel_size": "tensor-parallel-size",
                 "pipeline_model_parallel_size": "pipeline-parallel-size",
+                "instance": "instance",
+                "block_size": "block-size",
+                "max_num_batched_tokens": "max-num-batched-tokens",
+                "max_num_seqs": "max-num-seqs",
+                "swap_space": "swap-space",
             }
 
     def _set_value(self, strategy, config):
-        # import pdb;pdb.set_trace()
         for key, value in self.args_mapping.items():
+            if key not in strategy:
+                continue
             if strategy[key] is None:
                 if value in config.serve.model_args.vllm_model:
                     del config.serve.model_args.vllm_model[value]

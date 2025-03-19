@@ -290,7 +290,7 @@ def _generate_stop_script(config, host, node_rank):
     with open(host_stop_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("ray stop\n")
-        f.write("pkill -f 'vllm'\n")
+        f.write("pkill -f 'run_serve_engine'\n")
         f.write(f"{after_stop}\n")
         f.flush()
         os.fsync(f.fileno())
@@ -429,6 +429,8 @@ class SSHServeRunner(RunnerBase):
             pid = f.readlines()[0]
             pid = int(pid.strip())
         kill_process_tree(pid)
+        os.system("pkill -f run_serve_engine")
+        os.system("pkill -f vllm")
 
     def stop(self):
         self._stop_each("localhost", 0)
@@ -491,8 +493,8 @@ class SSHServeRunner(RunnerBase):
         return job_status
 
     def _serve_alive(self):
-        config = self.config
-        model_name = config.serve.model_args.vllm_model["model-tag"]
+        model_name = self.config.serve.model_args.vllm_model["served_model_name"] if "served_model_name" in \
+            self.config.serve.model_args.vllm_model else self.config.serve.model_args.vllm_model["model-tag"]
         from openai import OpenAI
 
         # Modify OpenAI's API key and API base to use vLLM's API server.
@@ -526,14 +528,17 @@ class SSHServeRunner(RunnerBase):
         tokenizer = get_tokenizer(
             model, tokenizer_mode=tokenizer_mode, trust_remote_code=trust_remote_code
         )
+        model_name = self.config.serve.model_args.vllm_model["served_model_name"] if "served_model_name" in \
+            self.config.serve.model_args.vllm_model else self.config.serve.model_args.vllm_model["model-tag"]
+
         dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=1000)
-        api_url = f"http://{self.host}:{self.port}/v1/completions"
+        api_url = f"http://{self.host}:{self.port}/v1/chat/completions"
         ### allow metric = [\"ttft\", \"tpot\", \"itl\", \"e2el\"]
         ### allow percentiles = [\"25,50,75\"]
         result = asyncio.run(
             benchmark(
                 api_url,
-                model=model,
+                model=model_name,
                 tokenizer=tokenizer,
                 input_requests=dummy_input_requests,
                 selected_percentile_metrics="ttft,tpot,itl,e2el".split(","),
