@@ -1,3 +1,4 @@
+# ref: https://github.com/sail-sg/zero-bubble-pipeline-parallelism/tree/zb-h1-quick-start
 import queue
 
 class WeightGradStore:

@@ -219,6 +219,12 @@ def validate_args(args, defaults={}):
     
     if args.attention_backend == AttnBackend.local:
             assert args.spec[0] == 'local' , '--attention-backend local is only supported with --spec local'
+    
+    if args.enable_zero_bubble:
+        assert args.sequence_parallel == False, \
+            "Zero Bubble is temporarily not compatible with Sequence Parallel"
+        assert args.transformer_impl == 'local', \
+            "Zero Bubble is temporarily not compatible with Transformer Engine"
 
     if not args.enable_hetero:
         # NOTE(zhaoyinglia): raise assert error when ckpt convert for decode-only dense model

@@ -36,7 +36,7 @@ from .mappings import (
 )
 from .random import get_cuda_rng_tracker, get_expert_parallel_rng_tracker_name
 from .utils import VocabUtility, divide
-from ..weight_grad_store import WeightGradStore
+from flagscale.train.weight_grad_store import WeightGradStore
 import megatron.training.global_vars as global_vars
 
 _grad_accum_fusion_available = True
