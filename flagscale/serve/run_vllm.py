@@ -16,11 +16,13 @@ from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.entrypoints.openai.protocol import (
     ChatCompletionRequest,
     ChatCompletionResponse,
+    ChatCompletionResponseStreamChoice,
     ChatCompletionStreamResponse,
     CompletionRequest,
     CompletionResponse,
     CompletionResponseStreamChoice,
     CompletionStreamResponse,
+    DeltaMessage,
 )
 from vllm.utils import random_uuid
 
@@ -31,12 +33,6 @@ except Exception as e:
     pass
 
 from flagscale import serve
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("serve.log"), logging.StreamHandler(sys.stdout)],
-)
 
 serve.load_args()
 TASK_CONFIG = serve.task_config
@@ -80,18 +76,15 @@ def get_deploy_config(model_name):
     return resource_config
 
 
-# class OpenAIRequest(BaseModel):
-#     model: str
-#     prompt: str
-#     max_tokens: int = 32000
-#     temperature: float = 1.0
-#     top_p: float = 1.0
-#     stream: bool = False  # New field to trigger streaming
-
-
 app = FastAPI()
 
 from ray import serve
+
+# ray.init(log_to_driver=True, configure_logging=True, logging_level=logging.INFO)
+logger = logging.getLogger("ray.serve")
+
+logger.setLevel(logging.INFO)
+logger.addHandler(logging.FileHandler("serve.log"))
 
 
 @serve.deployment(**get_deploy_config("LLMActor"))
@@ -113,7 +106,7 @@ class LLMService:
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
         print("receive request ==============", request, flush=True)
-        logging.info(f"Received request --------------- {request}")
+        logger.info(f"Received request --------------- {request}")
         # request = await req.json()
         prompt = request.prompt
         stream = request.stream
@@ -138,10 +131,6 @@ class LLMService:
                     text_outputs = "".join(
                         output.text for output in request_output.outputs
                     )
-                    # text_outputs = [
-                    #     prompt + output.text for output in request_output.outputs
-                    # ][0]
-                    # ret = {"text": text_outputs}
 
                     chunk = CompletionStreamResponse(
                         id=request_id,
@@ -177,7 +166,6 @@ class LLMService:
             assert final_output is not None
             prompt = final_output.prompt
             assert prompt is not None
-            # text_outputs = [prompt + output.text for output in final_output.outputs][0]
             text_outputs = "".join(output.text for output in final_output.outputs)
 
             ret = CompletionResponse(
@@ -196,6 +184,92 @@ class LLMService:
                     "prompt_tokens": len(request.prompt.split()),
                     "completion_tokens": len(text_outputs.split()),
                     "total_tokens": len(request.prompt.split())
+                    + len(text_outputs.split()),
+                },
+            )
+
+            return JSONResponse(content=ret.model_dump())
+
+    @app.post("/v1/chat/completions")
+    async def generate_handler(self, request: ChatCompletionRequest):
+        print("receive request ==============", request, flush=True)
+        logger.info(f"Received request --------------- {request}")
+        user_message = request.messages[-1]["content"]
+        stream = request.stream
+        request_id = "cmpl-" + random_uuid()
+        sampling_params = SamplingParams(
+            temperature=request.temperature,
+            top_p=request.top_p,
+            max_tokens=request.max_tokens,
+        )
+        results_generator = self.llm_actor.generate.options(stream=True).remote(
+            user_message,
+            sampling_params,
+            request_id,
+        )
+
+        if stream:
+            # In streaming mode, retrieve tokens from the LLMActor.
+            async def stream_results() -> AsyncGenerator[bytes, None]:
+                async for request_output in results_generator:
+                    prompt = request_output.prompt
+                    assert prompt is not None
+                    text_outputs = "".join(
+                        output.text for output in request_output.outputs
+                    )
+
+                    chunk = ChatCompletionStreamResponse(
+                        id=request_id,
+                        created=int(time.time()),
+                        model=request.model,
+                        choices=[
+                            {
+                                "index": 0,
+                                "delta": {"role": "assistant", "content": text_outputs},
+                                "logprobs": None,
+                                "finish_reason": None,
+                                "stop_reason": None,
+                            }
+                        ],
+                    )
+                    response_json = chunk.model_dump_json(exclude_unset=True)
+                    yield f"data: {response_json}\n\n"
+                yield "data: [DONE]\n\n"
+
+                # yield (json.dumps(ret) + "\n").encode("utf-8")
+
+            return StreamingResponse(stream_results(), media_type="text/event-stream")
+        else:
+            # Non-streaming mode: call the regular generate method.
+
+            final_output = None
+            try:
+                async for request_output in results_generator:
+                    final_output = request_output
+            except asyncio.CancelledError:
+                return Response(status_code=499)
+
+            assert final_output is not None
+            prompt = final_output.prompt
+            assert prompt is not None
+            text_outputs = "".join(output.text for output in final_output.outputs)
+
+            ret = ChatCompletionResponse(
+                id=request_id,
+                created=int(time.time()),
+                model=request.model,
+                choices=[
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": text_outputs},
+                        "logprobs": None,
+                        "finish_reason": None,
+                    }
+                ],
+                usage={
+                    "prompt_tokens": len(user_message.split()),
+                    "completion_tokens": len(text_outputs.split()),
+                    "total_tokens": len(user_message.split())
                     + len(text_outputs.split()),
                 },
             )

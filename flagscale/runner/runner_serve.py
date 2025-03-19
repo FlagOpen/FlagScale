@@ -532,14 +532,15 @@ class SSHServeRunner(RunnerBase):
     def _profile_serve(self):
         from vllm.transformers_utils.tokenizer import get_tokenizer
 
-        model = self.config.serve.model_args.vllm_model["model-tag"]
+        # model = self.config.serve.model_args.vllm_model["model-tag"]
         tokenizer_mode = "auto"
-        trust_remote_code = (
-            "trust-remote-code"
-            in self.config.serve.model_args.vllm_model["action-args"]
-        )
+        # trust_remote_code = (
+        #     "trust-remote-code"
+        #     in self.config.serve.model_args.vllm_model["action-args"]
+        # )
+        model = self.config.serve.model_args.LLMActor.model
         tokenizer = get_tokenizer(
-            model, tokenizer_mode=tokenizer_mode, trust_remote_code=trust_remote_code
+            model, tokenizer_mode=tokenizer_mode, trust_remote_code=True
         )
         model_name = self.config.serve.model_args.vllm_model["served_model_name"] if "served_model_name" in \
             self.config.serve.model_args.vllm_model else self.config.serve.model_args.vllm_model["model-tag"]

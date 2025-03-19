@@ -10,11 +10,18 @@ experiment:
     inference_engine: vllm
     entrypoint: null
   runner:
-    hostfile: null
-  envs:
-    CUDA_DEVICE_MAX_CONNECTIONS: 1
+    nnodes: 1
+    nproc_per_node: 8
+  auto_tuner:
+    space:
+      tensor_model_parallel_size: [1, 2]
+      pipeline_model_parallel_size: ["auto"]
+      instance_num: ["auto"]
+    control:
+      interval: 10
+      run_best: False
 
-action: run
+action: auto_tune
 
 hydra:
   run:
