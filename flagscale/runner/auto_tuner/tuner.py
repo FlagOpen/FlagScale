@@ -436,7 +436,6 @@ class ServeAutoTunner(AutoTuner):
         # Instantiate a runner and run the task
         if task is None:
             task = self.cur_task
-        # import pdb;pdb.set_trace()
         self.runner = SSHServeRunner(task)
         self.runner.run()
         # set start time
