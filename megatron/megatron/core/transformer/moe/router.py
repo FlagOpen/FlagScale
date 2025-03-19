@@ -59,7 +59,13 @@ class Router(ABC, MegatronModule):
         if self.weight.device.type == 'cpu':
             # move weights to GPU
             self.weight.data = self.weight.data.to(device=torch.cuda.current_device())
-        logits = torch.nn.functional.linear(input, self.weight)
+        # Convert to specified datatype for routing computation if enabled
+        router_dtype = input.dtype
+        if self.config.moe_router_dtype == 'fp32':
+            router_dtype = torch.float32
+        elif self.config.moe_router_dtype == 'fp64':
+            router_dtype = torch.float64
+        logits = torch.nn.functional.linear(input.to(router_dtype), self.weight.to(router_dtype))
         return logits
 
     @abstractmethod
@@ -104,9 +110,6 @@ class TopKRouter(Router):
         self.routing_type = self.config.moe_router_load_balancing_type
         self.score_function = self.config.moe_router_score_function
         self.input_jitter = None
-        self.score_bias = torch.nn.Parameter(
-            torch.zeros(self.config.num_moe_experts), requires_grad=False
-        )
 
         self.enable_expert_bias = self.config.moe_router_enable_expert_bias
         if self.enable_expert_bias:
@@ -115,9 +118,8 @@ class TopKRouter(Router):
                 torch.zeros(self.config.num_moe_experts, dtype=torch.float32),
                 persistent=False,
             )
-            expert_bias = self.score_bias.data
             self.register_buffer(
-                'expert_bias', expert_bias
+                'expert_bias', torch.zeros(self.config.num_moe_experts, dtype=torch.float32)
             )
         else:
             self.local_tokens_per_expert = None

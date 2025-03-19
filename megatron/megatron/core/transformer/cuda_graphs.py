@@ -739,10 +739,9 @@ class CudaGraphManager(torch.nn.Module):
 
         rng_tracker = get_cuda_rng_tracker()
         assert (
-            (HAVE_TE_GRAPHS and isinstance(rng_tracker, TECudaRNGStatesTracker))
-            or (
-                isinstance(rng_tracker, CudaRNGStatesTracker) and rng_tracker.use_cudagraphable_rng
-            ),
+            rng_tracker.is_inference_rng_tracker
+            or (HAVE_TE_GRAPHS and isinstance(rng_tracker, TECudaRNGStatesTracker))
+            or (isinstance(rng_tracker, CudaRNGStatesTracker) and rng_tracker.use_cudagraphable_rng)
         ), "RNG tracker does not support cudagraphs!"
 
         self.cudagraph_runners = []

@@ -240,7 +240,10 @@ class Attention(MegatronModule, ABC):
         assert batch_end <= inference_key_memory.size(1)
         sequence_start = inference_params.sequence_len_offset
         sequence_end = sequence_start + key.size(0)
-        assert sequence_end <= inference_key_memory.size(0)
+        assert sequence_end <= inference_key_memory.size(0), (
+            "Current sequence length is longer than expected maximum sequence length! "
+            "Increase inference_max_seq_length."
+        )
 
         if self.config.flash_decode:
             assert (
@@ -310,7 +313,6 @@ class Attention(MegatronModule, ABC):
             "Flash Decoding requires the flash_attn_with_kvcache kernel, "
             "available in the flash-attn package."
         )
-        cache_seqlens = sequence_len_offset - 1
         q = query_layer.permute(1, 0, 2, 3)
         k = key_layer.permute(1, 0, 2, 3)
         v = value_layer.permute(1, 0, 2, 3)
@@ -330,7 +332,7 @@ class Attention(MegatronModule, ABC):
             v=v,
             rotary_cos=rotary_cos,
             rotary_sin=rotary_sin,
-            cache_seqlens=cache_seqlens,
+            cache_seqlens=sequence_len_offset,
             rotary_interleaved=False,
         )
         return out
@@ -353,7 +355,7 @@ class Attention(MegatronModule, ABC):
         """
 
         # hidden_states: [sq, b, h]
-        if self.config.flash_decode:
+        if self.config.flash_decode and not self.training:
             rotary_pos_emb = None
         else:
             assert rotary_pos_cos is None and rotary_pos_sin is None
@@ -379,6 +381,7 @@ class Attention(MegatronModule, ABC):
             self.config.flash_decode
             and inference_params is not None
             and inference_params.decode_mode
+            and not self.training
         ):
             assert self.layer_number in inference_params.key_value_memory_dict
             assert inference_params.sequence_len_offset is not None

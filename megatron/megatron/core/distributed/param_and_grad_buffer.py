@@ -2,6 +2,7 @@
 
 import logging
 import math
+import warnings
 from contextlib import nullcontext
 from enum import Enum
 from functools import partial
@@ -12,7 +13,8 @@ from torch.distributed import _coalescing_manager
 
 from megatron.core.rerun_state_machine import get_rerun_state_machine
 
-from ..utils import is_float8tensor, is_torch_min_version, log_on_each_pipeline_stage
+from ..fp8_utils import is_float8tensor
+from ..utils import is_torch_min_version, log_on_each_pipeline_stage
 from .distributed_data_parallel_config import DistributedDataParallelConfig
 
 logger = logging.getLogger(__name__)
@@ -262,9 +264,17 @@ class _ParamAndGradBucketGroup:
         if self.param_gather_handle is not None:
             self.param_gather_handle.wait()
             self.param_gather_handle = None
-            # Dispatch next bucket's asynchronous param AG.
+            # Dispatch next bucket's asynchronous param AG only if it has not been dispatched yet.
             if self.next_param_gather_bucket_group is not None and not skip_next_bucket_dispatch:
-                self.next_param_gather_bucket_group.start_param_sync()
+                if self.next_param_gather_bucket_group.param_gather_dispatched:
+                    warnings.warn(
+                        "The next bucket's parameter all-gather operation has already been "
+                        "dispatched. This may be caused by a mismatch between the order of "
+                        "parameter registration and forward pass execution, which will "
+                        "hurt the communication-computation overlap performance."
+                    )
+                else:
+                    self.next_param_gather_bucket_group.start_param_sync()
 
     def start_grad_sync(self):
         """
@@ -353,6 +363,7 @@ class _ParamAndGradBucketGroup:
             and self.ddp_config.num_distributed_optimizer_instances > 1
         ):
 
+            assert self.inter_distributed_optimizer_instance_group is not None
             # Create a new coalescing manager for the inter-instance all-reduce.
             with stream_context, _coalescing_manager(
                 self.inter_distributed_optimizer_instance_group, async_ops=async_op
@@ -496,7 +507,15 @@ class _ParamAndGradBuffer:
                 # This also helps cuBLAS pick more efficient algorithms for GEMMs.
                 # We now ensure that all buckets start at a memory address that is 256-byte
                 # aligned (128 values since params and grads use >= 16-bit precision).
-                return _pad(bucket_end_index, math.lcm(self.data_parallel_world_size, 128))
+                if self.ddp_config.pad_buckets_for_high_nccl_busbw:
+                    # Make sure the bucket size is divisible by a large power of 2 (2^16) to
+                    # ensure NCCL collectives have high bus bandwidth at large DP counts,
+                    # since NCCL message size (which for ring algorithms is bucket_size /
+                    # dp_size) apparently needs to be divisible by a power of 2 for high busbw.
+                    bucket_size_divisor = math.lcm(self.data_parallel_world_size, 128, 2**16)
+                else:
+                    bucket_size_divisor = math.lcm(self.data_parallel_world_size, 128)
+                return _pad(bucket_end_index, bucket_size_divisor)
             return bucket_end_index
 
         def _pad_start_of_param_if_needed(param_start_index: int) -> int:
@@ -678,7 +697,10 @@ class _ParamAndGradBuffer:
             numel = 0
             for param in bucket.params:
                 numel += param.data.nelement()
-            log_strs.append(f'Params for bucket {index+1} ({numel} elements):')
+            log_strs.append(
+                f"Params for bucket {index+1} ({numel} elements, "
+                f"{bucket.grad_data.nelement()} padded size):"
+            )
             for param in bucket.params:
                 log_strs.append(f'\t{param_to_name[param]}')
         log_on_each_pipeline_stage(logger, logging.INFO, '\n'.join(log_strs))

@@ -5,6 +5,7 @@ python -m pip install --upgrade setuptools
 
 # Packages that need to be installed outside of the conda environment
 pip install -r ../requirements/requirements-base.txt
+pip install -r ../requirements/requirements-dev.txt
 pip install -r ../requirements/requirements-lint.txt
 
 # Initialize the variable
@@ -80,8 +81,6 @@ cxx=$(g++ --version | grep 'g++' | awk '{print $3}' | cut -d '.' -f 1)
 wget https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
 pip install flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
 rm flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
-
-pip install -r ../requirements/requirements-dev.txt
 
 # If env equals 'train'
 if [ "${env}" == "train" ]; then

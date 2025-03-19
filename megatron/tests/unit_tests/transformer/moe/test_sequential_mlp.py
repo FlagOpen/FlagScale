@@ -45,18 +45,12 @@ class TestParallelSequentialMLP:
     def teardown_method(self, method):
         Utils.destroy_model_parallel()
 
-    """
-        Author: lizhiyu
-        Date: 2024-02-18
-        Action: Add extra 'num_experts' for 'num_weights' because `router.sore_bias` is added in the model.
-        Reason: Releted RP: https://github.com/FlagOpen/FlagScale/pull/336
-    """
     @pytest.mark.internal
     def test_constructor(self):
         assert isinstance(self.sequential_mlp, MoELayer)
 
         num_weights = sum([p.numel() for p in self.sequential_mlp.parameters()])
-        assert num_weights == 3696 + self.sequential_mlp.config.num_moe_experts
+        assert num_weights == 3696
 
     @pytest.mark.internal
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
