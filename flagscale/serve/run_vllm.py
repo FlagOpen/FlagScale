@@ -3,13 +3,26 @@ import json
 import logging
 import sys
 import time
+from typing import Any, AsyncGenerator, Optional
 
 import ray
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from vllm import LLM, SamplingParams
+from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.engine.async_llm_engine import AsyncLLMEngine
+from vllm.entrypoints.openai.protocol import (
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    ChatCompletionStreamResponse,
+    CompletionRequest,
+    CompletionResponse,
+    CompletionResponseStreamChoice,
+    CompletionStreamResponse,
+)
+from vllm.utils import random_uuid
 
 # Compatible with both command-line execution and source code execution.
 try:
@@ -67,13 +80,13 @@ def get_deploy_config(model_name):
     return resource_config
 
 
-class OpenAIRequest(BaseModel):
-    model: str
-    prompt: str
-    max_tokens: int = 32000
-    temperature: float = 1.0
-    top_p: float = 1.0
-    stream: bool = False  # New field to trigger streaming
+# class OpenAIRequest(BaseModel):
+#     model: str
+#     prompt: str
+#     max_tokens: int = 32000
+#     temperature: float = 1.0
+#     top_p: float = 1.0
+#     stream: bool = False  # New field to trigger streaming
 
 
 app = FastAPI()
@@ -84,23 +97,11 @@ from ray import serve
 @serve.deployment(**get_deploy_config("LLMActor"))
 class LLMActor:
     def __init__(self):
-        self.llm = LLM(**get_model_config(self.__class__.__name__))
+        engine_args = AsyncEngineArgs(**get_model_config(self.__class__.__name__))
+        self.engine = AsyncLLMEngine.from_engine_args(engine_args)
 
-    def generate(self, prompt, max_tokens, temperature, top_p):
-        sampling_params = SamplingParams(
-            temperature=temperature, top_p=top_p, max_tokens=max_tokens
-        )
-        return self.llm.generate(prompt, sampling_params)
-
-    def stream_generate(self, prompt, max_tokens, temperature, top_p):
-        sampling_params = SamplingParams(
-            temperature=temperature,
-            top_p=top_p,
-            max_tokens=max_tokens,
-            stream=True,  # Enable streaming generation
-        )
-        # Call generate in streaming mode and convert the generator to a list.
-        return list(self.llm.generate(prompt, sampling_params))
+    def generate(self, prompt, sampling_params, request_id):
+        return self.engine.generate(prompt, sampling_params, request_id)
 
 
 @serve.deployment(num_replicas="auto")
@@ -110,60 +111,96 @@ class LLMService:
         self.llm_actor = llm_actor
 
     @app.post("/v1/completions")
-    async def generate_handler(self, request: OpenAIRequest):
-        if request.stream:
+    async def generate_handler(self, request: CompletionRequest):
+        print("receive request ==============", request, flush=True)
+        logging.info(f"Received request --------------- {request}")
+        # request = await req.json()
+        prompt = request.prompt
+        stream = request.stream
+        request_id = "cmpl-" + random_uuid()
+        sampling_params = SamplingParams(
+            temperature=request.temperature,
+            top_p=request.top_p,
+            max_tokens=request.max_tokens,
+        )
+        results_generator = self.llm_actor.generate.options(stream=True).remote(
+            prompt,
+            sampling_params,
+            request_id,
+        )
+
+        if stream:
             # In streaming mode, retrieve tokens from the LLMActor.
-            tokens = await self.llm_actor.stream_generate.remote(
-                request.prompt, request.max_tokens, request.temperature, request.top_p
-            )
+            async def stream_results() -> AsyncGenerator[bytes, None]:
+                async for request_output in results_generator:
+                    prompt = request_output.prompt
+                    assert prompt is not None
+                    text_outputs = "".join(
+                        output.text for output in request_output.outputs
+                    )
+                    # text_outputs = [
+                    #     prompt + output.text for output in request_output.outputs
+                    # ][0]
+                    # ret = {"text": text_outputs}
 
-            async def token_generator():
-                for token in tokens:
-                    # Format each token as a delta response chunk per OpenAI SSE style.
-                    chunk = {
-                        "id": "cmpl-1234567890",
-                        "object": "text_completion",
-                        "created": int(time.time()),
-                        "model": request.model,
-                        "choices": [
-                            {
-                                "delta": {"content": token},
-                                "index": 0,
-                                "finish_reason": None,
-                            }
+                    chunk = CompletionStreamResponse(
+                        id=request_id,
+                        created=int(time.time()),
+                        model=request.model,
+                        choices=[
+                            CompletionResponseStreamChoice(
+                                index=0,
+                                text=text_outputs,
+                                logprobs=None,
+                                finish_reason=None,
+                                stop_reason=None,
+                            )
                         ],
-                    }
-                    yield f"data: {json.dumps(chunk)}\n\n"
-                    await asyncio.sleep(0)
+                    )
+                    response_json = chunk.model_dump_json(exclude_unset=False)
+                    yield f"data: {response_json}\n\n"
+                yield "data: [DONE]\n\n"
 
-            return StreamingResponse(token_generator(), media_type="text/event-stream")
+                # yield (json.dumps(ret) + "\n").encode("utf-8")
+
+            return StreamingResponse(stream_results(), media_type="text/event-stream")
         else:
             # Non-streaming mode: call the regular generate method.
-            generation_result = await self.llm_actor.generate.remote(
-                request.prompt, request.max_tokens, request.temperature, request.top_p
-            )
-            full_text = generation_result[0].outputs[0].text
-            response = {
-                "id": "cmpl-1234567890",
-                "object": "text_completion",
-                "created": int(time.time()),
-                "model": request.model,
-                "choices": [
+
+            final_output = None
+            try:
+                async for request_output in results_generator:
+                    final_output = request_output
+            except asyncio.CancelledError:
+                return Response(status_code=499)
+
+            assert final_output is not None
+            prompt = final_output.prompt
+            assert prompt is not None
+            # text_outputs = [prompt + output.text for output in final_output.outputs][0]
+            text_outputs = "".join(output.text for output in final_output.outputs)
+
+            ret = CompletionResponse(
+                id=request_id,
+                created=int(time.time()),
+                model=request.model,
+                choices=[
                     {
-                        "text": full_text,
+                        "text": text_outputs,
                         "index": 0,
                         "logprobs": None,
-                        "finish_reason": "length",
+                        "finish_reason": None,
                     }
                 ],
-                "usage": {
+                usage={
                     "prompt_tokens": len(request.prompt.split()),
-                    "completion_tokens": len(full_text.split()),
+                    "completion_tokens": len(text_outputs.split()),
                     "total_tokens": len(request.prompt.split())
-                    + len(full_text.split()),
+                    + len(text_outputs.split()),
                 },
-            }
-            return response
+            )
+
+            return JSONResponse(content=ret.model_dump())
 
 
 if __name__ == "__main__":
