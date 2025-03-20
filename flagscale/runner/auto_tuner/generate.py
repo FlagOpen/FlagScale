@@ -108,7 +108,7 @@ class ServeGenerator(Generator):
             self.args_mapping = {
                 "tensor_model_parallel_size": "tensor-parallel-size",
                 "pipeline_model_parallel_size": "pipeline-parallel-size",
-                "instance": "instance",
+                "instance": "num_replicas",
                 "block_size": "block-size",
                 "max_num_batched_tokens": "max-num-batched-tokens",
                 "max_num_seqs": "max-num-seqs",
@@ -119,16 +119,28 @@ class ServeGenerator(Generator):
         for key, value in self.args_mapping.items():
             if key not in strategy:
                 continue
-            if strategy[key] is None:
-                if value in config.serve.model_args.vllm_model:
-                    del config.serve.model_args.vllm_model[value]
-                continue
-            if value not in config.serve.model_args.vllm_model:
-                config.serve.model_args.vllm_model = OmegaConf.merge(
-                    config.serve.model_args.vllm_model, {value: strategy[key]}
-                )
+            if key == "num_instance":
+                if strategy[key] is None:
+                    if value in config.serve.deploy.models.vllm_model:
+                        del config.serve.deploy.models.vllm_model[value]
+                    continue
+                if value not in config.serve.model_args.vllm_model:
+                    config.serve.deploy.models.vllm_model = OmegaConf.merge(
+                        config.serve.deploy.models.vllm_model, {value: strategy[key]}
+                    )
+                else:
+                    config.serve.deploy.models.vllm_model[value] = strategy[key]
             else:
-                config.serve.model_args.vllm_model[value] = strategy[key]
+                if strategy[key] is None:
+                    if value in config.serve.model_args.vllm_model:
+                        del config.serve.model_args.vllm_model[value]
+                    continue
+                if value not in config.serve.model_args.vllm_model:
+                    config.serve.model_args.vllm_model = OmegaConf.merge(
+                        config.serve.model_args.vllm_model, {value: strategy[key]}
+                    )
+                else:
+                    config.serve.model_args.vllm_model[value] = strategy[key]
 
     def gen(self, strategy):
         config = copy.deepcopy(self.config)

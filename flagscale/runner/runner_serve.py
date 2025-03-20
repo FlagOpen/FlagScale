@@ -508,6 +508,9 @@ class SSHServeRunner(RunnerBase):
     def _serve_alive(self):
         model_name = self.config.serve.model_args.vllm_model["served_model_name"] if "served_model_name" in \
             self.config.serve.model_args.vllm_model else self.config.serve.model_args.vllm_model["model-tag"]
+        # config = self.config
+        # # model_name = config.serve.model_args.vllm_model["model-tag"]
+        # model_name = self.config.serve.model_args.vllm_model.model
         from openai import OpenAI
 
         # Modify OpenAI's API key and API base to use vLLM's API server.
@@ -538,7 +541,7 @@ class SSHServeRunner(RunnerBase):
         #     "trust-remote-code"
         #     in self.config.serve.model_args.vllm_model["action-args"]
         # )
-        model = self.config.serve.model_args.LLMActor.model
+        model = self.config.serve.model_args.vllm_model.model
         tokenizer = get_tokenizer(
             model, tokenizer_mode=tokenizer_mode, trust_remote_code=True
         )

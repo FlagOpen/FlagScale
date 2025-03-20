@@ -87,10 +87,10 @@ logger.setLevel(logging.INFO)
 logger.addHandler(logging.FileHandler("serve.log"))
 
 
-@serve.deployment(**get_deploy_config("LLMActor"))
+@serve.deployment(**get_deploy_config("vllm_model"))
 class LLMActor:
     def __init__(self):
-        engine_args = AsyncEngineArgs(**get_model_config(self.__class__.__name__))
+        engine_args = AsyncEngineArgs(**get_model_config("vllm_model"))
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
 
     def generate(self, prompt, sampling_params, request_id):
