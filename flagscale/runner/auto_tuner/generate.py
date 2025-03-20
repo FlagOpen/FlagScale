@@ -141,6 +141,23 @@ class ServeGenerator(Generator):
                     )
                 else:
                     config.serve.model_args.vllm_model[value] = strategy[key]
+        if (
+            config.serve.get("deploy", {})
+            .get("model_args", {})
+            .get("vllm_model", {})
+            .get("num_gpus", None)
+        ):
+            current_tp = (
+                config.serve.get("model_args", {})
+                .get("vllm_model", {})
+                .get("tensor_parallel_size", 1)
+            )
+            current_pp = (
+                config.serve.get("model_args", {})
+                .get("vllm_model", {})
+                .get("pipeline_parallel_size", 1)
+            )
+            config.serve.deploy.models.vllm_model["num_gpus"] = current_tp * current_pp
 
     def gen(self, strategy):
         config = copy.deepcopy(self.config)
