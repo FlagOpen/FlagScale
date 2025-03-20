@@ -23,6 +23,7 @@ from vllm.entrypoints.openai.protocol import (
     CompletionResponseStreamChoice,
     CompletionStreamResponse,
     DeltaMessage,
+    UsageInfo,
 )
 from vllm.utils import random_uuid
 
@@ -241,13 +242,19 @@ class LLMService:
         if stream:
             # In streaming mode, retrieve tokens from the LLMActor.
             async def stream_results() -> AsyncGenerator[bytes, None]:
+                num_choices = 1 if request.n is None else request.n
+                previous_num_tokens = [0] * num_choices
+                num_prompt_tokens = 0
+                
                 async for request_output in results_generator:
                     prompt = request_output.prompt
                     assert prompt is not None
                     text_outputs = "".join(
                         output.text for output in request_output.outputs
                     )
-
+                    for output in request_output.outputs:
+                        i = output.index
+                        previous_num_tokens[i] += len(output.token_ids)
                     chunk = ChatCompletionStreamResponse(
                         id=request_id,
                         created=int(time.time()),
@@ -264,6 +271,26 @@ class LLMService:
                     )
                     response_json = chunk.model_dump_json(exclude_unset=True)
                     yield f"data: {response_json}\n\n"
+                if request.stream_options and request.stream_options.include_usage:
+                    completion_tokens = sum(previous_num_tokens)
+                    if request_output.prompt_token_ids is not None:
+                        num_prompt_tokens = len(request_output.prompt_token_ids)
+                    num_prompt_tokens = len(user_message.split())
+                    final_usage = UsageInfo(prompt_tokens=num_prompt_tokens,
+                                            completion_tokens=completion_tokens,
+                                            total_tokens=num_prompt_tokens +
+                                            completion_tokens)
+
+                    final_usage_chunk = ChatCompletionStreamResponse(
+                        id=request_id,
+                        object="chat.completion.chunk",
+                        created=int(time.time()),
+                        choices=[],
+                        model=request.model,
+                        usage=final_usage)
+                    final_usage_data = (final_usage_chunk.model_dump_json(
+                        exclude_unset=True, exclude_none=True))
+                    yield f"data: {final_usage_data}\n\n"
                 yield "data: [DONE]\n\n"
 
                 # yield (json.dumps(ret) + "\n").encode("utf-8")
