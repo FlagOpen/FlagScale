@@ -348,7 +348,7 @@ class SSHServeRunner(RunnerBase):
         )
         self._prepare()
         self.host = None
-        self.port = _get_serve_port()
+        self.port = _get_serve_port(config)
 
     def _prepare(self):
         _update_config_serve(self.config)
