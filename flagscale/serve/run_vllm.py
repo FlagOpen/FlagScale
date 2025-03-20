@@ -37,6 +37,8 @@ from flagscale import serve
 serve.load_args()
 TASK_CONFIG = serve.task_config
 
+SERVICE_NAME = "vllm_service"
+
 
 def get_model_config(model_name):
     if not TASK_CONFIG.get("serve", None):
@@ -92,6 +94,17 @@ logger.setLevel(logging.INFO)
 logger.addHandler(logging.FileHandler("serve.log"))
 
 
+def check_health(service_name):
+    status = serve.status()
+    if service_name in status.applications:
+        service_status = status.applications[service_name].status
+        logger.info(f"service {service_name} status: {service_status}")
+        if service_status == "RUNNING":
+            return True
+    logger.info(f"service {service_name} is not ready")
+    return False
+
+
 @serve.deployment(**get_deploy_config("vllm_model"))
 class LLMActor:
     def __init__(self):
@@ -107,11 +120,17 @@ class LLMActor:
 class LLMService:
     def __init__(self, llm_actor):
         self.llm_actor = llm_actor
+        logger.info(f"llm actor ready -------------------------")
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
         print("receive request ==============", request, flush=True)
         logger.info(f"Received request --------------- {request}")
+        if not check_health(SERVICE_NAME):
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Service is not ready, please try again later."},
+            )
         # request = await req.json()
         prompt = request.prompt
         stream = request.stream
@@ -196,6 +215,11 @@ class LLMService:
     async def generate_handler(self, request: ChatCompletionRequest):
         print("receive request ==============", request, flush=True)
         logger.info(f"Received request --------------- {request}")
+        if not check_health(SERVICE_NAME):
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Service is not ready, please try again later."},
+            )
         user_message = request.messages[-1]["content"]
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
@@ -283,7 +307,7 @@ if __name__ == "__main__":
     llm_actor = LLMActor.bind()
     serve.run(
         LLMService.bind(llm_actor),
-        name="vllm_service",
+        name=SERVICE_NAME,
         route_prefix="/",
         blocking=True,
     )
