@@ -513,7 +513,7 @@ class SSHServeRunner(RunnerBase):
             else self.config.serve.model_args.vllm_model["model"]
         )
         # config = self.config
-        # # model_name = config.serve.model_args.vllm_model["model-tag"]
+        # # model_name = config.serve.model_args.vllm_model["model"]
         # model_name = self.config.serve.model_args.vllm_model.model
         from openai import OpenAI
 
@@ -539,7 +539,7 @@ class SSHServeRunner(RunnerBase):
     def _profile_serve(self):
         from vllm.transformers_utils.tokenizer import get_tokenizer
 
-        # model = self.config.serve.model_args.vllm_model["model-tag"]
+        # model = self.config.serve.model_args.vllm_model["model"]
         tokenizer_mode = "auto"
         # trust_remote_code = (
         #     "trust-remote-code"
@@ -552,7 +552,7 @@ class SSHServeRunner(RunnerBase):
         model_name = (
             self.config.serve.model_args.vllm_model["served_model_name"]
             if "served_model_name" in self.config.serve.model_args.vllm_model
-            else self.config.serve.model_args.vllm_model["model-tag"]
+            else self.config.serve.model_args.vllm_model["model"]
         )
 
         dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=1000)
