@@ -120,16 +120,17 @@ class LLMActor:
 class LLMService:
     def __init__(self, llm_actor):
         self.llm_actor = llm_actor
-        logger.info(f"llm actor ready -------------------------")
+        self.ready = False
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
         print("receive request ==============", request, flush=True)
         logger.info(f"Received request --------------- {request}")
-        if not check_health(SERVICE_NAME):
+        if not self.ready:
+            self.ready = check_health(SERVICE_NAME)
             return JSONResponse(
                 status_code=503,
-                content={"error": "Service is not ready, please try again later."},
+                content={"message": "Service is not ready, please try again later."},
             )
         # request = await req.json()
         prompt = request.prompt
@@ -215,10 +216,11 @@ class LLMService:
     async def generate_handler(self, request: ChatCompletionRequest):
         print("receive request ==============", request, flush=True)
         logger.info(f"Received request --------------- {request}")
-        if not check_health(SERVICE_NAME):
+        if not self.ready:
+            self.ready = check_health(SERVICE_NAME)
             return JSONResponse(
                 status_code=503,
-                content={"error": "Service is not ready, please try again later."},
+                content={"message": "Service is not ready, please try again later."},
             )
         user_message = request.messages[-1]["content"]
         stream = request.stream
