@@ -76,6 +76,11 @@ def get_deploy_config(model_name):
     return resource_config
 
 
+def get_sample_args(request):
+    pre_args = {"temperature", "top_p", "top_k", "max_tokens", "logprobs"}
+    return {item: request[item] for item in pre_args if item in request}
+
+
 app = FastAPI()
 
 from ray import serve
@@ -111,11 +116,8 @@ class LLMService:
         prompt = request.prompt
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
-        sampling_params = SamplingParams(
-            temperature=request.temperature,
-            top_p=request.top_p,
-            max_tokens=request.max_tokens,
-        )
+        sample_args = get_sample_args(request)
+        sampling_params = SamplingParams(**sample_args)
         results_generator = self.llm_actor.generate.options(stream=True).remote(
             prompt,
             sampling_params,
@@ -197,11 +199,8 @@ class LLMService:
         user_message = request.messages[-1]["content"]
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
-        sampling_params = SamplingParams(
-            temperature=request.temperature,
-            top_p=request.top_p,
-            max_tokens=request.max_tokens,
-        )
+        sample_args = get_sample_args(request)
+        sampling_params = SamplingParams(**sample_args)
         results_generator = self.llm_actor.generate.options(stream=True).remote(
             user_message,
             sampling_params,
