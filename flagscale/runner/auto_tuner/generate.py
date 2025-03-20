@@ -143,7 +143,7 @@ class ServeGenerator(Generator):
                     config.serve.model_args.vllm_model[value] = strategy[key]
         if (
             config.serve.get("deploy", {})
-            .get("model_args", {})
+            .get("models", {})
             .get("vllm_model", {})
             .get("num_gpus", None)
         ):

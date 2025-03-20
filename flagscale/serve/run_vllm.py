@@ -223,6 +223,11 @@ class LLMService:
                 content={"message": "Service is not ready, please try again later."},
             )
         user_message = request.messages[-1]["content"]
+        if isinstance(user_message, list):
+            user_message = " ".join(
+                [item["text"] for item in user_message if item["type"] == "text"]
+            )
+
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
         sample_args = get_sample_args(request)
@@ -266,7 +271,6 @@ class LLMService:
             return StreamingResponse(stream_results(), media_type="text/event-stream")
         else:
             # Non-streaming mode: call the regular generate method.
-
             final_output = None
             try:
                 async for request_output in results_generator:
