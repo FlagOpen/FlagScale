@@ -555,7 +555,7 @@ class SSHServeRunner(RunnerBase):
             else self.config.serve.model_args.vllm_model["model"]
         )
 
-        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=100)
+        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=10)
         api_url = f"http://{self.host}:{self.port}/v1/chat/completions"
         ### allow metric = [\"ttft\", \"tpot\", \"itl\", \"e2el\"]
         ### allow percentiles = [\"25,50,75\"]

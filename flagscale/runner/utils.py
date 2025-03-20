@@ -351,7 +351,7 @@ class RequestFuncOutput:
 def dummy_random_input(
     tokenizer,
     prefix_len=0,
-    input_len=1024,
+    input_len=128,
     output_len=128,
     num_prompts=1000,
     range_ratio=1.0,
@@ -387,6 +387,7 @@ def dummy_random_input(
 
     return input_requests
 
+
 async def async_request_openai_chat_completions(
     request_func_input: RequestFuncInput,
     pbar: Optional[tqdm] = None,
@@ -396,19 +397,20 @@ async def async_request_openai_chat_completions(
         ("chat/completions", "profile")
     ), "OpenAI Chat Completions API URL must end with 'chat/completions'."
 
-    async with aiohttp.ClientSession(trust_env=True,
-                                     timeout=AIOHTTP_TIMEOUT) as session:
+    async with aiohttp.ClientSession(
+        trust_env=True, timeout=AIOHTTP_TIMEOUT
+    ) as session:
         content = [{"type": "text", "text": request_func_input.prompt}]
         if request_func_input.multi_modal_content:
             content.append(request_func_input.multi_modal_content)
         payload = {
-            "model": request_func_input.model_name \
-                if request_func_input.model_name else request_func_input.model,
+            "model": (
+                request_func_input.model_name
+                if request_func_input.model_name
+                else request_func_input.model
+            ),
             "messages": [
-                {
-                    "role": "user",
-                    "content": content
-                },
+                {"role": "user", "content": content},
             ],
             "temperature": 0.0,
             "max_completion_tokens": request_func_input.output_len,
@@ -434,16 +436,16 @@ async def async_request_openai_chat_completions(
         st = time.perf_counter()
         most_recent_timestamp = st
         try:
-            async with session.post(url=api_url, json=payload,
-                                    headers=headers) as response:
+            async with session.post(
+                url=api_url, json=payload, headers=headers
+            ) as response:
                 if response.status == 200:
                     async for chunk_bytes in response.content:
                         chunk_bytes = chunk_bytes.strip()
                         if not chunk_bytes:
                             continue
 
-                        chunk = chunk_bytes.decode("utf-8").removeprefix(
-                            "data: ")
+                        chunk = chunk_bytes.decode("utf-8").removeprefix("data: ")
                         if chunk != "[DONE]":
                             timestamp = time.perf_counter()
                             data = json.loads(chunk)
@@ -457,13 +459,11 @@ async def async_request_openai_chat_completions(
 
                                 # Decoding phase
                                 else:
-                                    output.itl.append(timestamp -
-                                                      most_recent_timestamp)
+                                    output.itl.append(timestamp - most_recent_timestamp)
 
                                 generated_text += content or ""
                             elif usage := data.get("usage"):
-                                output.output_tokens = usage.get(
-                                    "completion_tokens")
+                                output.output_tokens = usage.get("completion_tokens")
 
                             most_recent_timestamp = timestamp
 
@@ -481,6 +481,7 @@ async def async_request_openai_chat_completions(
     if pbar:
         pbar.update(1)
     return output
+
 
 async def get_request(
     input_requests,

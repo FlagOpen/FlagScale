@@ -14,11 +14,11 @@ experiment:
     nproc_per_node: 8
   auto_tuner:
     space:
-      tensor_model_parallel_size: [1, 2, 4, 8]
-      pipeline_model_parallel_size: [2, 2, 1, 1]
-      instance: [4, 2, 2, 1]
+      tensor_model_parallel_size: [1, 2, 4]
+      pipeline_model_parallel_size: [1, 2, 4]
+      instance: [1 ,2, 4, 8]
     control:
-      interval: 30
+      interval: 20
       run_best: False
 
 action: auto_tune
