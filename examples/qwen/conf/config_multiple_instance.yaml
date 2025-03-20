@@ -18,7 +18,7 @@ experiment:
       pipeline_model_parallel_size: [2, 2, 1, 1]
       instance: [4, 2, 2, 1]
     control:
-      interval: 10
+      interval: 30
       run_best: False
 
 action: auto_tune

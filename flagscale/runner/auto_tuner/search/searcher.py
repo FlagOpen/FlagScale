@@ -2,8 +2,9 @@ import copy
 import itertools
 import logging
 import time
-from omegaconf import OmegaConf
 from functools import reduce
+
+from omegaconf import OmegaConf
 
 from flagscale.runner.auto_tuner.memory_model import default_model
 from flagscale.runner.auto_tuner.search.algorithm import GridAlgo
@@ -41,6 +42,7 @@ DEFAULT_SERVE_TUNE_SPACE = {
     "max_num_seqs": [64, 128, 256],
     "swap_space": [0, 4, 8, 16],
 }
+
 
 class Searcher:
 
@@ -561,9 +563,13 @@ class Searcher:
 
 class ServeSearcher(Searcher):
     def __init__(self, config):
-        self._nodes_aware_dims = [item for item in __BUILT_IN_SERVE_STRATEGY_DIMS__ if item not in DEFAULT_SERVE_TUNE_SPACE.keys()]
+        self._nodes_aware_dims = [
+            item
+            for item in __BUILT_IN_SERVE_STRATEGY_DIMS__
+            if item not in DEFAULT_SERVE_TUNE_SPACE.keys()
+        ]
         super(ServeSearcher, self).__init__(config)
-        
+
     def _create_space_aware_nodes(self, space, cards):
         if cards == 1:
             for k in self._nodes_aware_dims:
@@ -574,14 +580,16 @@ class ServeSearcher(Searcher):
             if key in space and space[key] != "auto":
                 fixed_dims[idx] = space[key]
 
-        nodes_aware_strategies = self._find_combinations(cards, len(self._nodes_aware_dims), fixed_dims)
+        nodes_aware_strategies = self._find_combinations(
+            cards, len(self._nodes_aware_dims), fixed_dims
+        )
         for key_idx, key in enumerate(self._nodes_aware_dims):
             space[key] = list(set([v[key_idx] for v in nodes_aware_strategies]))
         return space, nodes_aware_strategies
 
     def _find_combinations(self, target, num_dims, fixed_dims={}, current=[]):
         results = []
-        dim_index = len(current) 
+        dim_index = len(current)
 
         if num_dims == 1:
             if dim_index in fixed_dims and target not in fixed_dims[dim_index]:
@@ -595,18 +603,22 @@ class ServeSearcher(Searcher):
 
         for i in candidates:
             if target % i == 0:
-                results.extend(self._find_combinations(target // i, num_dims - 1, fixed_dims, current + [i]))
-        
+                results.extend(
+                    self._find_combinations(
+                        target // i, num_dims - 1, fixed_dims, current + [i]
+                    )
+                )
+
         return results
-    
+
     def _create_default_space(self, cards):
-        space = dict.fromkeys(self._nodes_aware_dims, "auto") 
+        space = dict.fromkeys(self._nodes_aware_dims, "auto")
         space.update(DEFAULT_SERVE_TUNE_SPACE)
         return self._create_space_aware_nodes(space, cards)
 
     def _create_space(self, space, cards):
         if len(space) == 0:
-            space, nodes_aware_strategies = self._create_default_space(cards) 
+            space, nodes_aware_strategies = self._create_default_space(cards)
             return space, nodes_aware_strategies
 
         space, nodes_aware_strategies = self._create_space_aware_nodes(space, cards)
@@ -616,7 +628,10 @@ class ServeSearcher(Searcher):
                 if key in DEFAULT_SERVE_TUNE_SPACE.keys():
                     space[key] = DEFAULT_SERVE_TUNE_SPACE[key]
             else:
-                assert type(OmegaConf.to_object(value)) in [tuple, list], f"type of {key} in search space must be list or tuple, but now is {type(value)}"
+                assert type(OmegaConf.to_object(value)) in [
+                    tuple,
+                    list,
+                ], f"type of {key} in search space must be list or tuple, but now is {type(value)}"
         return space, nodes_aware_strategies
 
     def build_space(self, config):
@@ -626,7 +641,9 @@ class ServeSearcher(Searcher):
         cards = config.experiment.auto_tuner.cards
         space = getattr(config.experiment.auto_tuner, "space", {})
         if len(space) != 0:
-            self._nodes_aware_dims = [item for item in space if item in self._nodes_aware_dims]
+            self._nodes_aware_dims = [
+                item for item in space if item in self._nodes_aware_dims
+            ]
         space, nodes_aware_strategies = self._create_space(space, cards)
         self._nodes_aware_strategies = nodes_aware_strategies
 
@@ -637,14 +654,25 @@ class ServeSearcher(Searcher):
 
     def build_strategies(self, space, config):
         """Build strategies by Cartesian product search space."""
-        node_unaware_tune_space = {key:value for key, value in space.items() if key in DEFAULT_SERVE_TUNE_SPACE}
+        node_unaware_tune_space = {
+            key: value
+            for key, value in space.items()
+            if key in DEFAULT_SERVE_TUNE_SPACE
+        }
         values = list(node_unaware_tune_space.values())
         cartesian_product_unaware_values = list(itertools.product(*values))
-        cartesian_product_values = list(itertools.product(self._nodes_aware_strategies, cartesian_product_unaware_values))
-        cartesian_product_values = [tuple(tuple(a) + b) for a, b in cartesian_product_values]
+        cartesian_product_values = list(
+            itertools.product(
+                self._nodes_aware_strategies, cartesian_product_unaware_values
+            )
+        )
+        cartesian_product_values = [
+            tuple(tuple(a) + b) for a, b in cartesian_product_values
+        ]
         strategies = [
             dict(zip(self.space.keys(), combination))
             for combination in cartesian_product_values
         ]
+        print("=========== grid search space: ================== ", strategies)
 
         return strategies

@@ -484,7 +484,7 @@ class ServeAutoTunner(AutoTuner):
             time.sleep(self.interval)
 
         if serve_alive:
-            try: 
+            try:
                 result = self.runner._profile_serve()
                 self.cur_result = result
             except Exception as e:
@@ -512,6 +512,7 @@ class ServeAutoTunner(AutoTuner):
     def record(self):
         self.recorder.record(self.cur_strategy, self.cur_result)
         self.history.append(self.recorder.cur_strategy)
+        self.recorder.save(self.history)
 
     def get_best(self):
         sorted_history = self.recorder.sort(self.history)
