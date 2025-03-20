@@ -1,6 +1,6 @@
 model_args:
   vllm_model:
-    model: /models/Qwen2.5-7B-Instruct
+    model: /models/Qwen2.5-3B-Instruct
     tensor_parallel_size: 1
     pipeline_parallel_size: 1
     gpu_memory_utilization: 0.9
