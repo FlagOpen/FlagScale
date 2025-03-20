@@ -16,7 +16,7 @@ experiment:
     space:
       tensor_model_parallel_size: [1, 2, 4, 8]
       pipeline_model_parallel_size: [2, 2, 1, 1]
-      num_instance: [4, 2, 2, 1]
+      instance: [4, 2, 2, 1]
     control:
       interval: 10
       run_best: False

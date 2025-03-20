@@ -308,6 +308,7 @@ def _generate_stop_script(config, host, node_rank):
         f.write("#!/bin/bash\n\n")
         f.write("ray stop\n")
         f.write("pkill -f 'run_serve_engine'\n")
+        f.write("pkill -f 'vllm'\n")
         f.write(f"{after_stop}\n")
         f.flush()
         os.fsync(f.fileno())
@@ -506,8 +507,11 @@ class SSHServeRunner(RunnerBase):
         return job_status
 
     def _serve_alive(self):
-        model_name = self.config.serve.model_args.vllm_model["served_model_name"] if "served_model_name" in \
-            self.config.serve.model_args.vllm_model else self.config.serve.model_args.vllm_model["model-tag"]
+        model_name = (
+            self.config.serve.model_args.vllm_model["served_model_name"]
+            if "served_model_name" in self.config.serve.model_args.vllm_model
+            else self.config.serve.model_args.vllm_model["model-tag"]
+        )
         # config = self.config
         # # model_name = config.serve.model_args.vllm_model["model-tag"]
         # model_name = self.config.serve.model_args.vllm_model.model
@@ -545,8 +549,11 @@ class SSHServeRunner(RunnerBase):
         tokenizer = get_tokenizer(
             model, tokenizer_mode=tokenizer_mode, trust_remote_code=True
         )
-        model_name = self.config.serve.model_args.vllm_model["served_model_name"] if "served_model_name" in \
-            self.config.serve.model_args.vllm_model else self.config.serve.model_args.vllm_model["model-tag"]
+        model_name = (
+            self.config.serve.model_args.vllm_model["served_model_name"]
+            if "served_model_name" in self.config.serve.model_args.vllm_model
+            else self.config.serve.model_args.vllm_model["model-tag"]
+        )
 
         dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=1000)
         api_url = f"http://{self.host}:{self.port}/v1/chat/completions"
