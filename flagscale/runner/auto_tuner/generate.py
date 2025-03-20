@@ -106,8 +106,8 @@ class ServeGenerator(Generator):
             self.args_mapping = config.experiment.auto_tuner.args_mapping
         else:
             self.args_mapping = {
-                "tensor_model_parallel_size": "tensor-parallel-size",
-                "pipeline_model_parallel_size": "pipeline-parallel-size",
+                "tensor_model_parallel_size": "tensor_parallel_size",
+                "pipeline_model_parallel_size": "pipeline_parallel_size",
                 "instance": "num_replicas",
                 "block_size": "block-size",
                 "max_num_batched_tokens": "max-num-batched-tokens",
@@ -119,7 +119,7 @@ class ServeGenerator(Generator):
         for key, value in self.args_mapping.items():
             if key not in strategy:
                 continue
-            if key == "num_instance":
+            if key == "instance":
                 if strategy[key] is None:
                     if value in config.serve.deploy.models.vllm_model:
                         del config.serve.deploy.models.vllm_model[value]

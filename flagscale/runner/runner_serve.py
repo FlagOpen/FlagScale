@@ -510,7 +510,7 @@ class SSHServeRunner(RunnerBase):
         model_name = (
             self.config.serve.model_args.vllm_model["served_model_name"]
             if "served_model_name" in self.config.serve.model_args.vllm_model
-            else self.config.serve.model_args.vllm_model["model-tag"]
+            else self.config.serve.model_args.vllm_model["model"]
         )
         # config = self.config
         # # model_name = config.serve.model_args.vllm_model["model-tag"]
