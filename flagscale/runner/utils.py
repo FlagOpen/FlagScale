@@ -351,8 +351,8 @@ class RequestFuncOutput:
 def dummy_random_input(
     tokenizer,
     prefix_len=0,
-    input_len=128,
-    output_len=128,
+    input_len=1024,
+    output_len=1024,
     num_prompts=1000,
     range_ratio=1.0,
 ):

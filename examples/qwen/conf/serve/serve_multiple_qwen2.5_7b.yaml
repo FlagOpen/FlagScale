@@ -1,7 +1,7 @@
 model_args:
   vllm_model:
-    model: /models/Qwen2.5-3B-Instruct
-    tensor_parallel_size: 1
+    model: /models/Qwen2.5-32B-Instruct
+    tensor_parallel_size: 2
     pipeline_parallel_size: 1
     gpu_memory_utilization: 0.9
     max_model_len: 32768
@@ -13,7 +13,7 @@ model_args:
 deploy:
   models:
     vllm_model:
-      num_replicas: 8
+      num_replicas: 4
       num_gpus: 1
   service:
     port: 6701
