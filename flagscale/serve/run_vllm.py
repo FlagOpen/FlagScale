@@ -83,7 +83,10 @@ def get_deploy_config(model_name):
 def get_sample_args(request):
     pre_args = {"temperature", "top_p", "top_k", "max_tokens", "logprobs"}
     items = request.model_dump(exclude_unset=True)
-    return {key: items[key] for key in pre_args if key in items}
+    sample_args = {key: items[key] for key in pre_args if key in items}
+    if "max_completion_tokens" in items:
+        sample_args["max_tokens"] = items["max_completion_tokens"]
+    return sample_args
 
 
 app = FastAPI()
