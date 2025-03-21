@@ -82,7 +82,8 @@ def get_deploy_config(model_name):
 
 def get_sample_args(request):
     pre_args = {"temperature", "top_p", "top_k", "max_tokens", "logprobs"}
-    return {item: request[item] for item in pre_args if item in request}
+    items = request.model_dump(exclude_unset=True)
+    return {key: items[key] for key in pre_args if key in items}
 
 
 app = FastAPI()
@@ -130,15 +131,17 @@ class LLMService:
         logger.info(f"Received request --------------- {request}")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
-            return JSONResponse(
-                status_code=503,
-                content={"message": "Service is not ready, please try again later."},
-            )
+            if not self.ready:
+                return JSONResponse(
+                    status_code=503,
+                    content={"message": "Service is not ready, please try again later."},
+                )
         # request = await req.json()
         prompt = request.prompt
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
         sample_args = get_sample_args(request)
+        logger.info(f"Sampling params***************** {sample_args}")
         sampling_params = SamplingParams(**sample_args)
         results_generator = self.llm_actor.generate.options(stream=True).remote(
             prompt,
@@ -220,10 +223,11 @@ class LLMService:
         #logger.info(f"Receivedx request --------------- ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
-            return JSONResponse(
-                status_code=503,
-                content={"message": "Service is not ready, please try again later."},
-            )
+            if not self.ready:
+                return JSONResponse(
+                    status_code=503,
+                    content={"message": "Service is not ready, please try again later."},
+                )
         logger.info(f"Receivedx request --------------- ")
         user_message = request.messages[-1]["content"]
         if isinstance(user_message, list):

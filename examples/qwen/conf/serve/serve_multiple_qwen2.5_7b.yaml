@@ -14,7 +14,7 @@ deploy:
   models:
     vllm_model:
       num_replicas: 4
-      num_gpus: 1
+      num_gpus: 2
   service:
     port: 6701
   command_line_mode: true
