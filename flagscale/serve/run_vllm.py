@@ -76,6 +76,7 @@ def get_deploy_config(model_name):
             resource_config["num_replicas"] = models_resource_config["num_replicas"]
     if not resource_config:
         resource_config = {"num_replicas": 1}
+    resource_config["max_ongoing_requests"] = 1000
     return resource_config
 
 
@@ -116,7 +117,7 @@ class LLMActor:
         return self.engine.generate(prompt, sampling_params, request_id)
 
 
-@serve.deployment(num_replicas="auto")
+@serve.deployment(num_replicas="auto", max_ongoing_requests=2000)
 @serve.ingress(app)
 class LLMService:
     def __init__(self, llm_actor):
@@ -215,14 +216,15 @@ class LLMService:
 
     @app.post("/v1/chat/completions")
     async def generate_handler(self, request: ChatCompletionRequest):
-        print("receive request ==============", request, flush=True)
-        logger.info(f"Received request --------------- {request}")
+        #print("receive request ==============", request, flush=True)
+        #logger.info(f"Receivedx request --------------- ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             return JSONResponse(
                 status_code=503,
                 content={"message": "Service is not ready, please try again later."},
             )
+        logger.info(f"Receivedx request --------------- ")
         user_message = request.messages[-1]["content"]
         if isinstance(user_message, list):
             user_message = " ".join(
@@ -240,6 +242,7 @@ class LLMService:
         )
 
         if stream:
+            logger.info(f"Streamx request --------------- ")
             # In streaming mode, retrieve tokens from the LLMActor.
             async def stream_results() -> AsyncGenerator[bytes, None]:
                 num_choices = 1 if request.n is None else request.n
@@ -295,6 +298,7 @@ class LLMService:
 
                 # yield (json.dumps(ret) + "\n").encode("utf-8")
 
+            logger.info(f"Returnx reponse --------------- ")
             return StreamingResponse(stream_results(), media_type="text/event-stream")
         else:
             # Non-streaming mode: call the regular generate method.

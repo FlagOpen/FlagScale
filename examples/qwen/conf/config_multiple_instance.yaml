@@ -14,12 +14,14 @@ experiment:
     nproc_per_node: 8
   auto_tuner:
     space:
-      tensor_model_parallel_size: [2, 4]
-      pipeline_model_parallel_size: [1, 2, 4]
-      instance: [1 ,2, 4]
+      tensor_model_parallel_size: [4]
+      pipeline_model_parallel_size: [1]
+      instance: [2]
     control:
       interval: 20
       run_best: False
+  cmds:
+    before_start: export RAY_DEDUP_LOGS=0
 
 action: auto_tune
 
