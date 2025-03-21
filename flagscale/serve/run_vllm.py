@@ -238,6 +238,7 @@ class LLMService:
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
         sample_args = get_sample_args(request)
+        logger.info(f"Sampling params***************** {sample_args}")
         sampling_params = SamplingParams(**sample_args)
         results_generator = self.llm_actor.generate.options(stream=True).remote(
             user_message,
