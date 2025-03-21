@@ -109,10 +109,10 @@ class ServeGenerator(Generator):
                 "tensor_model_parallel_size": "tensor_parallel_size",
                 "pipeline_model_parallel_size": "pipeline_parallel_size",
                 "instance": "num_replicas",
-                "block_size": "block-size",
-                "max_num_batched_tokens": "max-num-batched-tokens",
-                "max_num_seqs": "max-num-seqs",
-                "swap_space": "swap-space",
+                "block_size": "block_size",
+                "max_num_batched_tokens": "max_num_batched_tokens",
+                "max_num_seqs": "max_num_seqs",
+                "swap_space": "swap_space",
             }
 
     def _set_value(self, strategy, config):
