@@ -266,8 +266,10 @@ class LLMService:
                     )
                     for output in request_output.outputs:
                         logger.info(f" ##req {request_id}  num_choices {num_choices} len(output.token_ids) {len(output.token_ids)} --------------- previous_num_tokens {previous_num_tokens} ")
+
                         i = output.index
                         previous_num_tokens[i] += len(output.token_ids)
+                        final_num_tokens = len(output.token_ids)
                     chunk = ChatCompletionStreamResponse(
                         id=request_id,
                         created=int(time.time()),
@@ -281,7 +283,7 @@ class LLMService:
                                 "stop_reason": None,
                             }
                         ],
-                        final_num_tokens = len(output.token_ids)
+                        
                     )
                     response_json = chunk.model_dump_json(exclude_unset=True)
                     yield f"data: {response_json}\n\n"
