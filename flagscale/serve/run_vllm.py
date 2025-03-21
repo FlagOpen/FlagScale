@@ -256,6 +256,7 @@ class LLMService:
                 num_choices = 1 if request.n is None else request.n
                 previous_num_tokens = [0] * num_choices
                 num_prompt_tokens = 0
+                final_num_tokens = 0
                 
                 async for request_output in results_generator:
                     prompt = request_output.prompt
@@ -264,6 +265,7 @@ class LLMService:
                         output.text for output in request_output.outputs
                     )
                     for output in request_output.outputs:
+                        logger.info(f" ##req {request_id}  num_choices {num_choices} len(output.token_ids) {len(output.token_ids)} --------------- previous_num_tokens {previous_num_tokens} ")
                         i = output.index
                         previous_num_tokens[i] += len(output.token_ids)
                     chunk = ChatCompletionStreamResponse(
@@ -279,11 +281,13 @@ class LLMService:
                                 "stop_reason": None,
                             }
                         ],
+                        final_num_tokens = len(output.token_ids)
                     )
                     response_json = chunk.model_dump_json(exclude_unset=True)
                     yield f"data: {response_json}\n\n"
                 if request.stream_options and request.stream_options.include_usage:
-                    completion_tokens = sum(previous_num_tokens)
+                    #completion_tokens = sum(previous_num_tokens)
+                    completion_tokens = final_num_tokens
                     if request_output.prompt_token_ids is not None:
                         num_prompt_tokens = len(request_output.prompt_token_ids)
                     num_prompt_tokens = len(user_message.split())
