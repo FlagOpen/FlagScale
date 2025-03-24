@@ -116,7 +116,10 @@ class ServeGenerator(Generator):
             }
 
     def _set_value(self, strategy, config):
+
         for key, value in self.args_mapping.items():
+            if config.serve.model_args.vllm_model.get("model-tag", None):
+                value = value.replace("_", "-")
             if key not in strategy:
                 continue
             if key == "instance":
@@ -141,6 +144,7 @@ class ServeGenerator(Generator):
                     )
                 else:
                     config.serve.model_args.vllm_model[value] = strategy[key]
+        model_args = config.serve.model_args.get("vllm_model", {})
         if (
             config.serve.get("deploy", {})
             .get("models", {})
@@ -148,14 +152,14 @@ class ServeGenerator(Generator):
             .get("num_gpus", None)
         ):
             current_tp = (
-                config.serve.get("model_args", {})
-                .get("vllm_model", {})
-                .get("tensor_parallel_size", 1)
+                model_args.get("tensor_parallel_size", 0)
+                or model_args.get("tensor-parallel-size", 0)
+                or 1
             )
             current_pp = (
-                config.serve.get("model_args", {})
-                .get("vllm_model", {})
-                .get("pipeline_parallel_size", 1)
+                model_args.get("pipeline_parallel_size", 0)
+                or model_args.get("pipeline_parallel_size", 0)
+                or 1
             )
             config.serve.deploy.models.vllm_model["num_gpus"] = current_tp * current_pp
 
