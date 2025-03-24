@@ -309,8 +309,8 @@ class LLMService:
                 num_choices = 1 if request.n is None else request.n
                 previous_num_tokens = [0] * num_choices
                 num_prompt_tokens = 0
-                i = 0
-                j = 0
+                aa = 0
+                bb = 0
                 length = 0
 
                 async for request_output in results_generator:
