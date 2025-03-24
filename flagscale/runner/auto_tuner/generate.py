@@ -151,15 +151,11 @@ class ServeGenerator(Generator):
             .get("vllm_model", {})
             .get("num_gpus", None)
         ):
-            current_tp = (
-                model_args.get("tensor_parallel_size", 0)
-                or model_args.get("tensor-parallel-size", 0)
-                or 1
+            current_tp = model_args.get("tensor_parallel_size", 0) or model_args.get(
+                "tensor-parallel-size", 1
             )
-            current_pp = (
-                model_args.get("pipeline_parallel_size", 0)
-                or model_args.get("pipeline_parallel_size", 0)
-                or 1
+            current_pp = model_args.get("pipeline_parallel_size", 0) or model_args.get(
+                "pipeline_parallel_size", 1
             )
             config.serve.deploy.models.vllm_model["num_gpus"] = current_tp * current_pp
 
