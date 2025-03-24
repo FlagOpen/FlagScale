@@ -1,15 +1,13 @@
 import asyncio
-import json
 import logging
-import sys
 import time
-from typing import Any, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator
 
 import ray
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from vllm import LLM, SamplingParams
+from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.entrypoints.openai.protocol import (
@@ -24,7 +22,6 @@ from vllm.entrypoints.openai.protocol import (
 )
 from vllm.utils import random_uuid
 
-# Compatible with both command-line execution and source code execution.
 try:
     import flag_scale
 except Exception as e:
@@ -208,8 +205,6 @@ class LLMService:
 
             return StreamingResponse(stream_results(), media_type="text/event-stream")
         else:
-            # Non-streaming mode: call the regular generate method.
-
             final_output = None
             try:
                 async for request_output in results_generator:
