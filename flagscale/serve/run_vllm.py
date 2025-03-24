@@ -6,9 +6,8 @@ import time
 from typing import Any, AsyncGenerator, Optional
 
 import ray
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pydantic import BaseModel
 
 from vllm import LLM, SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -16,13 +15,11 @@ from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.entrypoints.openai.protocol import (
     ChatCompletionRequest,
     ChatCompletionResponse,
-    ChatCompletionResponseStreamChoice,
     ChatCompletionStreamResponse,
     CompletionRequest,
     CompletionResponse,
     CompletionResponseStreamChoice,
     CompletionStreamResponse,
-    DeltaMessage,
     UsageInfo,
 )
 from vllm.utils import random_uuid
@@ -93,7 +90,6 @@ app = FastAPI()
 
 from ray import serve
 
-# ray.init(log_to_driver=True, configure_logging=True, logging_level=logging.INFO)
 logger = logging.getLogger("ray.serve")
 
 logger.setLevel(logging.INFO)
@@ -140,12 +136,10 @@ class LLMService:
                         "message": "Service is not ready, please try again later."
                     },
                 )
-        # request = await req.json()
         prompt = request.prompt
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
         sample_args = get_sample_args(request)
-        # logger.info(f"Sampling params***************** {sample_args}")
         sampling_params = SamplingParams(**sample_args)
         results_generator = self.llm_actor.generate.options(stream=True).remote(
             prompt,
@@ -154,7 +148,7 @@ class LLMService:
         )
 
         if stream:
-            # In streaming mode, retrieve tokens from the LLMActor.
+
             async def stream_results() -> AsyncGenerator[bytes, None]:
                 num_choices = 1 if request.n is None else request.n
                 previous_num_tokens = [0] * num_choices
@@ -165,7 +159,6 @@ class LLMService:
                     assert prompt is not None
                     text_outputs = ""
                     for item in request_output.outputs:
-                        # logger.debug(f" ##req {request_id}  num_choices {num_choices} len(output.token_ids) {len(output.token_ids)} --------------- previous_num_tokens {previous_num_tokens} ")
 
                         i = item.index
                         previous_num_tokens[i] = len(item.token_ids)
@@ -212,8 +205,6 @@ class LLMService:
                     yield f"data: {final_usage_data}\n\n"
 
                 yield "data: [DONE]\n\n"
-
-                # yield (json.dumps(ret) + "\n").encode("utf-8")
 
             return StreamingResponse(stream_results(), media_type="text/event-stream")
         else:
@@ -289,7 +280,7 @@ class LLMService:
         )
 
         if stream:
-            # In streaming mode, retrieve tokens from the LLMActor.
+
             async def stream_results() -> AsyncGenerator[bytes, None]:
                 num_choices = 1 if request.n is None else request.n
                 previous_num_tokens = [0] * num_choices
@@ -300,7 +291,6 @@ class LLMService:
                     assert prompt is not None
                     text_outputs = ""
                     for item in request_output.outputs:
-                        # logger.debug(f" ##req {request_id}  num_choices {num_choices} len(output.token_ids) {len(output.token_ids)} --------------- previous_num_tokens {previous_num_tokens} ")
 
                         i = item.index
                         previous_num_tokens[i] = len(item.token_ids)
@@ -346,12 +336,9 @@ class LLMService:
                     yield f"data: {final_usage_data}\n\n"
                 yield "data: [DONE]\n\n"
 
-                # yield (json.dumps(ret) + "\n").encode("utf-8")
-
             logger.debug(f"Return reponse for request {request_id} ")
             return StreamingResponse(stream_results(), media_type="text/event-stream")
         else:
-            # Non-streaming mode: call the regular generate method.
             final_output = None
             try:
                 async for request_output in results_generator:
