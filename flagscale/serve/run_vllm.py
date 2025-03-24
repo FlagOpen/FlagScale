@@ -323,6 +323,9 @@ class LLMService:
 
                         i = item.index
                         content = item.text
+                        logger.info(
+                            f"----------- {aa} {bb} idx {i} len(item.text) {len(item.text)} length {length} -------------"
+                        )
                         current_text = content[length:]
                         length = len(item.token_ids)
                         previous_num_tokens[i] = length
