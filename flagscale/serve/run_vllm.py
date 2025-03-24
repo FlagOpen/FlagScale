@@ -323,6 +323,7 @@ class LLMService:
 
                         chunk = ChatCompletionStreamResponse(
                             id=request_id,
+                            object="chat.completion.chunk",
                             created=int(time.time()),
                             model=request.model,
                             choices=[
