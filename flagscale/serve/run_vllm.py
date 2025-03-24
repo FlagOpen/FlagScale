@@ -317,12 +317,13 @@ class LLMService:
                     for item in request_output.outputs:
 
                         i = item.index
+                        content = item.text
+                        current_text = content[length:]
                         length = len(item.token_ids)
                         previous_num_tokens[i] = length
                         logger.info(
-                            f"-----------idx {i} len(item.token_ids) {len(item.token_ids)}  {item.text[length:]} -------------"
+                            f"-----------idx {i} len(item.token_ids) {len(item.token_ids)}  {current_text} -------------"
                         )
-                        logger.info(f"----------- {dir(item)} -------------")
 
                         finish_reason = item.finish_reason
                         stop_reason = item.stop_reason
