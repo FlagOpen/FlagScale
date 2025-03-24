@@ -324,7 +324,23 @@ class LLMService:
             assert final_output is not None
             prompt = final_output.prompt
             assert prompt is not None
-            text_outputs = "".join(output.text for output in final_output.outputs)
+            logger.info(
+                f"------------- dir(final_output) {dir(final_output)}------------"
+            )
+            logger.info(
+                f"------------- dir(final_output) {dir(final_output.outputs)}------------"
+            )
+
+            # text_outputs = "".join(output.text for output in final_output.outputs)
+            text_outputs = ""
+            prompt_tokens = 0
+            completion_tokens = 0
+
+            for item in final_output.outputs:
+                logger.info(f"------------- dir(item) {dir(item)}------------")
+                text_outputs += item.text
+                completion_tokens += len(item.token_ids)
+                prompt_tokens = len(item.prompt_token_ids)
 
             ret = ChatCompletionResponse(
                 id=request_id,
@@ -339,10 +355,9 @@ class LLMService:
                     }
                 ],
                 usage={
-                    "prompt_tokens": len(user_message.split()),
-                    "completion_tokens": len(text_outputs.split()),
-                    "total_tokens": len(user_message.split())
-                    + len(text_outputs.split()),
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
                 },
             )
 
