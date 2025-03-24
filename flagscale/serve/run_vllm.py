@@ -309,29 +309,18 @@ class LLMService:
                 num_choices = 1 if request.n is None else request.n
                 previous_num_tokens = [0] * num_choices
                 num_prompt_tokens = 0
-                aa = 0
-                bb = 0
                 length = 0
 
                 async for request_output in results_generator:
-                    aa += 1
-
                     prompt = request_output.prompt
                     assert prompt is not None
                     for item in request_output.outputs:
-                        bb += 1
 
                         i = item.index
                         content = item.text
-                        logger.info(
-                            f"----------- {aa} {bb} idx {i} len(item.text) {len(item.text)} length {length} -------------"
-                        )
                         current_text = content[length:]
                         length = len(content)
                         previous_num_tokens[i] = length
-                        logger.info(
-                            f"----------- {aa} {bb} idx {i} len(item.token_ids) {len(item.token_ids)}  {current_text} -------------"
-                        )
 
                         finish_reason = item.finish_reason
                         stop_reason = item.stop_reason
