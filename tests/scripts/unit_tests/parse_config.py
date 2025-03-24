@@ -11,7 +11,7 @@ def parse_config(config_file, backend, subset):
         config_str = ""
         config_str += ";".join(backend_config.get("set_environment", [])) + "|"
         config_str += f"{backend_config.get('root', '')}" + "|"
-        config_str += f"{backend_config.get('coverage', '')}" + "|"
+        config_str += f"{backend_config.get('coverage_fold', '')}" + "|"
 
         if subset not in backend_config.get("subset", {}):
             print(config_str + "|||")

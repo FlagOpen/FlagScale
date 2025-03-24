@@ -8,7 +8,7 @@ megatron:
     - export NVTE_FLASH_ATTN=0
     - export NVTE_FUSED_ATTN=0
     - ulimit -n 65535
-  coverage:
+  coverage_fold:
     core
   subset:
     data:
@@ -83,6 +83,8 @@ flagscale:
     - export NVTE_FLASH_ATTN=0
     - export NVTE_FUSED_ATTN=0
     - ulimit -n 65535
+  coverage_fold:
+    flagscale
   subset:
     runner:
       type: batch

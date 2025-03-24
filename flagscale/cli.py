@@ -150,6 +150,60 @@ def pull(image_name, ckpt_name, ckpt_path):
         print("Failed to pull Git LFS files")
         return
 
+# Define the list of valid subsets for each backend
+VALID_BACKENDS_SUBSETS = {
+    "megatron": [
+        "data",
+        "dist_checkpointing",
+        "distributed",
+        "export",
+        "fusions",
+        "inference",
+        "models",
+        "pipeline_parallel",
+        "ssm",
+        "tensor_parallel",
+        "transformer/moe",
+        "transformer",
+        "./"
+    ],
+    "flagscale": [
+        "runner",
+        "./"
+    ]
+}
+@flagscale.command()
+@click.option(
+    "--backend",
+    "backend_name",
+    required=True,
+    type=str,
+    help="The backend engine for testing",
+)
+@click.option(
+    "--subset",
+    "subset_name",
+    required=True,
+    type=str,
+    help="Module name to be tested",
+)
+def test(backend_name, subset_name):
+    # Validate the provided backend and subset
+    if backend_name not in VALID_BACKENDS_SUBSETS:
+        click.echo(f"Unsupported backend: {backend_name}. Supported backends: {', '.join(VALID_BACKENDS_SUBSETS.keys())}")
+        return
+
+    if subset_name not in VALID_BACKENDS_SUBSETS[backend_name]:
+        # Generate supported combinations of backend and subset
+        valid_combinations = [f"{backend} -> {subset}" for backend, subsets in VALID_BACKENDS_SUBSETS.items() for subset in subsets]
+        click.echo(f"Unsupported subset: {subset_name} for backend: {backend_name}. Supported combinations: {', '.join(valid_combinations)}")
+        return
+
+    # Find the path of the flag_scale package
+    flagscale_path = os.path.dirname(os.path.abspath(__file__))
+    flag_scale_path = flagscale_path + "/../"
+    os.chdir(flag_scale_path)
+    subprocess.run(["tests/scripts/unit_tests/test_subset.sh", "--backend", backend_name, "--subset", subset_name, "--coverage", "False"], check=True)
 
 if __name__ == "__main__":
     flagscale()

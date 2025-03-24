@@ -52,17 +52,20 @@ setup(
         "flag_scale.megatron",
         "flag_scale.flagscale",
         "flag_scale.examples",
+        "flag_scale.tests",
     ],
     package_dir={
         "flag_scale": "",
         "flag_scale.megatron": "megatron",
         "flag_scale.flagscale": "flagscale",
         "flag_scale.examples": "examples",
+        "flag_scale.tests": "tests",
     },
     package_data={
         "flag_scale.megatron": ["**/*"],
         "flag_scale.flagscale": ["**/*"],
         "flag_scale.examples": ["**/*"],
+        "flag_scale.tests": ["**/*"],
     },
     install_requires=[
         "click",
