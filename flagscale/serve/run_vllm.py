@@ -156,6 +156,10 @@ class LLMService:
         if stream:
             # In streaming mode, retrieve tokens from the LLMActor.
             async def stream_results() -> AsyncGenerator[bytes, None]:
+                num_choices = 1 if request.n is None else request.n
+                previous_num_tokens = [0] * num_choices
+                num_prompt_tokens = 0
+
                 async for request_output in results_generator:
                     prompt = request_output.prompt
                     assert prompt is not None
@@ -177,8 +181,52 @@ class LLMService:
                             )
                         ],
                     )
-                    response_json = chunk.model_dump_json(exclude_unset=False)
+                    if request_output.prompt_token_ids is not None:
+                        num_prompt_tokens = len(request_output.prompt_token_ids)
+                    response_json = chunk.model_dump_json(exclude_unset=True)
                     yield f"data: {response_json}\n\n"
+                if request.stream_options and request.stream_options.include_usage:
+                    completion_tokens = sum(previous_num_tokens)
+                    final_usage = UsageInfo(
+                        prompt_tokens=num_prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=num_prompt_tokens + completion_tokens,
+                    )
+
+                    final_usage_chunk = ChatCompletionStreamResponse(
+                        id=request_id,
+                        object="chat.completion.chunk",
+                        created=int(time.time()),
+                        choices=[],
+                        model=request.model,
+                        usage=final_usage,
+                    )
+                    final_usage_data = final_usage_chunk.model_dump_json(
+                        exclude_unset=True, exclude_none=True
+                    )
+                    yield f"data: {final_usage_data}\n\n"
+
+                if request.stream_options and request.stream_options.include_usage:
+                    completion_tokens = sum(previous_num_tokens)
+                    final_usage = UsageInfo(
+                        prompt_tokens=num_prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=num_prompt_tokens + completion_tokens,
+                    )
+
+                    final_usage_chunk = CompletionStreamResponse(
+                        id=request_id,
+                        object="text_completion",
+                        created=int(time.time()),
+                        choices=[],
+                        model=request.model,
+                        usage=final_usage,
+                    )
+                    final_usage_data = final_usage_chunk.model_dump_json(
+                        exclude_unset=True, exclude_none=True
+                    )
+                    yield f"data: {final_usage_data}\n\n"
+
                 yield "data: [DONE]\n\n"
 
                 # yield (json.dumps(ret) + "\n").encode("utf-8")
@@ -194,10 +242,17 @@ class LLMService:
             except asyncio.CancelledError:
                 return Response(status_code=499)
 
+            text_outputs = ""
+            prompt_tokens = len(final_output.prompt_token_ids)
+            completion_tokens = 0
+
             assert final_output is not None
             prompt = final_output.prompt
             assert prompt is not None
-            text_outputs = "".join(output.text for output in final_output.outputs)
+
+            for item in final_output.outputs:
+                text_outputs += item.text
+                completion_tokens += len(item.token_ids)
 
             ret = CompletionResponse(
                 id=request_id,
@@ -212,10 +267,9 @@ class LLMService:
                     }
                 ],
                 usage={
-                    "prompt_tokens": len(request.prompt.split()),
-                    "completion_tokens": len(text_outputs.split()),
-                    "total_tokens": len(request.prompt.split())
-                    + len(text_outputs.split()),
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
                 },
             )
 
@@ -325,7 +379,6 @@ class LLMService:
             prompt = final_output.prompt
             assert prompt is not None
 
-            # text_outputs = "".join(output.text for output in final_output.outputs)
             text_outputs = ""
             prompt_tokens = len(final_output.prompt_token_ids)
             completion_tokens = 0
