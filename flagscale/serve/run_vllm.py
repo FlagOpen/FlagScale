@@ -311,12 +311,18 @@ class LLMService:
                 num_prompt_tokens = 0
 
                 async for request_output in results_generator:
+                    length = 0
                     prompt = request_output.prompt
                     assert prompt is not None
                     for item in request_output.outputs:
 
                         i = item.index
-                        previous_num_tokens[i] = len(item.token_ids)
+                        length = len(item.token_ids)
+                        previous_num_tokens[i] = length
+                        logger.info(
+                            f"-----------idx {i} len(item.token_ids) {len(item.token_ids)}  {item.text[length:]} -------------"
+                        )
+                        logger.info(f"----------- {dir(item)} -------------")
 
                         finish_reason = item.finish_reason
                         stop_reason = item.stop_reason
