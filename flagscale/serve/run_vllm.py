@@ -327,7 +327,7 @@ class LLMService:
                             f"----------- {aa} {bb} idx {i} len(item.text) {len(item.text)} length {length} -------------"
                         )
                         current_text = content[length:]
-                        length = len(item.token_ids)
+                        length = len(content)
                         previous_num_tokens[i] = length
                         logger.info(
                             f"----------- {aa} {bb} idx {i} len(item.token_ids) {len(item.token_ids)}  {current_text} -------------"
@@ -346,7 +346,7 @@ class LLMService:
                                     "index": 0,
                                     "delta": {
                                         "role": "assistant",
-                                        "content": item.text,
+                                        "content": current_text,
                                     },
                                     "logprobs": None,
                                     "finish_reason": finish_reason,
