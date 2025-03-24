@@ -185,26 +185,6 @@ class LLMService:
                         num_prompt_tokens = len(request_output.prompt_token_ids)
                     response_json = chunk.model_dump_json(exclude_unset=True)
                     yield f"data: {response_json}\n\n"
-                if request.stream_options and request.stream_options.include_usage:
-                    completion_tokens = sum(previous_num_tokens)
-                    final_usage = UsageInfo(
-                        prompt_tokens=num_prompt_tokens,
-                        completion_tokens=completion_tokens,
-                        total_tokens=num_prompt_tokens + completion_tokens,
-                    )
-
-                    final_usage_chunk = ChatCompletionStreamResponse(
-                        id=request_id,
-                        object="chat.completion.chunk",
-                        created=int(time.time()),
-                        choices=[],
-                        model=request.model,
-                        usage=final_usage,
-                    )
-                    final_usage_data = final_usage_chunk.model_dump_json(
-                        exclude_unset=True, exclude_none=True
-                    )
-                    yield f"data: {final_usage_data}\n\n"
 
                 if request.stream_options and request.stream_options.include_usage:
                     completion_tokens = sum(previous_num_tokens)
