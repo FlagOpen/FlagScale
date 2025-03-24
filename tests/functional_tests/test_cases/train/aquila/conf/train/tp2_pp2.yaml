@@ -58,7 +58,8 @@ model:
       lr_decay_style: cosine
 
 data:
-  data_path: /home/gitlab-runner/data/pile_wikipedia_demo/pile_wikipedia_demo
+  # data_path: /home/gitlab-runner/data/pile_wikipedia_demo/pile_wikipedia_demo
+  data_path: /home/gitlab-runner/data/pile_wikipedia_demo/pile_wikipedia_demo1
   split: 1
   tokenizer:
     tokenizer_type: AquilaTokenizerFS

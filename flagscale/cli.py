@@ -150,14 +150,22 @@ def pull(image_name, ckpt_name, ckpt_path):
         print("Failed to pull Git LFS files")
         return
 
-def get_valid_backends_subsets(config_path="tests/scripts/unit_tests/config.yml"):
+def change_to_flagscale():
+    flagscale_path = os.path.dirname(os.path.abspath(__file__))
+    flag_scale_path = flagscale_path + "/../"
+    os.chdir(flag_scale_path)
+    
+    return flag_scale_path
+
+def get_valid_backends_subsets(config_path):
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
 
-    VALID_BACKENDS_SUBSETS = {
-        backend: list(subset_config["subset"].keys())
-        for backend, subset_config in config.items()
-    }
+    VALID_BACKENDS_SUBSETS = {}
+
+    for backend, subset_config in config.items():
+        subsets = list(subset_config["subset"].keys())
+        VALID_BACKENDS_SUBSETS[backend] = subsets
     
     return VALID_BACKENDS_SUBSETS
 
@@ -177,21 +185,15 @@ def get_valid_backends_subsets(config_path="tests/scripts/unit_tests/config.yml"
     help="Module name to be tested",
 )
 def unit_test(backend_name, subset_name):
-    
-    # Find the path of the flag_scale package
-    flagscale_path = os.path.dirname(os.path.abspath(__file__))
-    flag_scale_path = flagscale_path + "/../"
-    os.chdir(flag_scale_path)
+    change_to_flagscale()
 
-    VALID_BACKENDS_SUBSETS = get_valid_backends_subsets()
+    VALID_BACKENDS_SUBSETS = get_valid_backends_subsets("tests/scripts/unit_tests/config.yml")
     
-    # Validate the provided backend and subset
     if backend_name not in VALID_BACKENDS_SUBSETS:
         click.echo(f"Unsupported backend: {backend_name}. Supported backends: {', '.join(VALID_BACKENDS_SUBSETS.keys())}")
         return
 
     if subset_name not in VALID_BACKENDS_SUBSETS[backend_name]:
-        # Generate supported combinations of backend and subset
         valid_combinations = [f"{backend} -> {subset}" for backend, subsets in VALID_BACKENDS_SUBSETS.items() for subset in subsets]
         click.echo(f"Unsupported subset: {subset_name} for backend: {backend_name}. Supported combinations: {', '.join(valid_combinations)}")
         return
@@ -201,15 +203,12 @@ def unit_test(backend_name, subset_name):
 
 @flagscale.command()
 def unit_test_all():
-    # Find the path of the flag_scale package
-    flagscale_path = os.path.dirname(os.path.abspath(__file__))
-    flag_scale_path = flagscale_path + "/../"
-    os.chdir(flag_scale_path)
+    
+    change_to_flagscale()
 
-    VALID_BACKENDS_SUBSETS = get_valid_backends_subsets()
+    VALID_BACKENDS_SUBSETS = get_valid_backends_subsets("tests/scripts/unit_tests/config.yml")
     print(VALID_BACKENDS_SUBSETS)
     
-    # Find the path of the flag_scale package
     flagscale_path = os.path.dirname(os.path.abspath(__file__))
     flag_scale_path = flagscale_path + "/../"
     os.chdir(flag_scale_path)
@@ -224,6 +223,61 @@ def unit_test_all():
                 ],
                 check=True
             )
+
+def get_valid_types_tasks_cases(config_path="tests/scripts/functional_tests/config.yml"):
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
+
+    VALID_TYPES_TASKS_CASES = {}
+
+    for test_type, test_config in config.items():
+        VALID_TYPES_TASKS_CASES[test_type] = {}
+
+        for task_name, cases in test_config.items():
+            VALID_TYPES_TASKS_CASES[test_type][task_name] = [
+                case.lstrip("-").strip() for case in cases
+            ]
+    
+    return VALID_TYPES_TASKS_CASES
+
+@flagscale.command()
+@click.option(
+    "--type",
+    "type_name",
+    required=True,
+    type=str,
+    help="Task classification for functional testing, including train, serve, etc",
+)
+@click.option(
+    "--task",
+    "task_name",
+    required=True,
+    type=str,
+    help="Testing tasks that match the type",
+)
+def functional_test(type_name, task_name):
+    
+    flag_scale_path = change_to_flagscale()
+
+    VALID_TYPES_TASKS_CASES = get_valid_types_tasks_cases("tests/scripts/functional_tests/config.yml")
+    
+    if type_name not in VALID_TYPES_TASKS_CASES:
+        click.echo(f"Unsupported type: {type_name}. Supported types: {', '.join(VALID_TYPES_TASKS_CASES.keys())}")
+        return
+
+    if task_name not in VALID_TYPES_TASKS_CASES[type_name]:
+        valid_combinations = [f"{type_name} -> {task_name}" for type_name, tasks_name in VALID_TYPES_TASKS_CASES.items() for task_name in tasks_name]
+        click.echo(f"Unsupported task: {task_name} for type: {type_name}. Supported combinations: {', '.join(valid_combinations)}")
+        return
+
+    try:
+        subprocess.run(["tests/scripts/functional_tests/test_task.sh", "--type", type_name, "--task", task_name], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e} \n")
+        print("*" * 200)
+        print(f"Also, please check the configuration file in path'{flag_scale_path}/tests/functional_tests/test_cases/{type_name}/{task_name}/conf' to ensure that the dependent files already exist.")
+        print("*" * 200)
+        raise
 
 
 if __name__ == "__main__":
