@@ -75,7 +75,36 @@ def get_deploy_config(model_name):
 
 
 def get_sample_args(request):
-    pre_args = {"temperature", "top_p", "top_k", "max_tokens", "logprobs"}
+    # same as args of vllm.SamplingParams
+    pre_args = {
+        "n",
+        "best_of",
+        "presence_penalty",
+        "frequency_penalty",
+        "repetition_penalty",
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p",
+        "seed",
+        "stop",
+        "stop_token_ids",
+        "bad_words",
+        "include_stop_str_in_output",
+        "ignore_eos",
+        "max_tokens",
+        "min_tokens",
+        "logprobs",
+        "prompt_logprobs",
+        "detokenize",
+        "skip_special_tokens",
+        "spaces_between_special_tokens",
+        "logits_processors",
+        "truncate_prompt_tokens",
+        "guided_decoding",
+        "logit_bias",
+        "allowed_token_ids",
+    }
     items = request.model_dump(exclude_unset=True)
     sample_args = {key: items[key] for key in pre_args if key in items}
     if "max_completion_tokens" in items:
