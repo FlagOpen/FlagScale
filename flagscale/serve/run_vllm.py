@@ -163,9 +163,13 @@ class LLMService:
                 async for request_output in results_generator:
                     prompt = request_output.prompt
                     assert prompt is not None
-                    text_outputs = "".join(
-                        output.text for output in request_output.outputs
-                    )
+                    text_outputs = ""
+                    for item in request_output.outputs:
+                        # logger.debug(f" ##req {request_id}  num_choices {num_choices} len(output.token_ids) {len(output.token_ids)} --------------- previous_num_tokens {previous_num_tokens} ")
+
+                        i = item.index
+                        previous_num_tokens[i] = len(item.token_ids)
+                        text_outputs += item.text
 
                     chunk = CompletionStreamResponse(
                         id=request_id,
@@ -294,14 +298,14 @@ class LLMService:
                 async for request_output in results_generator:
                     prompt = request_output.prompt
                     assert prompt is not None
-                    text_outputs = "".join(
-                        output.text for output in request_output.outputs
-                    )
-                    for output in request_output.outputs:
+                    text_outputs = ""
+                    for item in request_output.outputs:
                         # logger.debug(f" ##req {request_id}  num_choices {num_choices} len(output.token_ids) {len(output.token_ids)} --------------- previous_num_tokens {previous_num_tokens} ")
 
-                        i = output.index
-                        previous_num_tokens[i] = len(output.token_ids)
+                        i = item.index
+                        previous_num_tokens[i] = len(item.token_ids)
+                        text_outputs += item.text
+
                     chunk = ChatCompletionStreamResponse(
                         id=request_id,
                         created=int(time.time()),
