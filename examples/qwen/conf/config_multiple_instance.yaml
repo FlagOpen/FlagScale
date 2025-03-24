@@ -17,7 +17,7 @@ experiment:
       tensor_model_parallel_size: [2,4]
       pipeline_model_parallel_size: [1,2,4]
       instance: [1,2,4]
-      block_size: [8, 16, 32]
+      block_size: [16]
       max_num_batched_tokens: [512, 1024, 2048]
       max_num_seqs: [128, 256]
     control:
