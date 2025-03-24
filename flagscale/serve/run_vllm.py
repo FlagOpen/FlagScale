@@ -313,31 +313,35 @@ class LLMService:
                 async for request_output in results_generator:
                     prompt = request_output.prompt
                     assert prompt is not None
-                    text_outputs = ""
                     for item in request_output.outputs:
 
                         i = item.index
                         previous_num_tokens[i] = len(item.token_ids)
-                        text_outputs += item.text
 
-                    chunk = ChatCompletionStreamResponse(
-                        id=request_id,
-                        created=int(time.time()),
-                        model=request.model,
-                        choices=[
-                            {
-                                "index": 0,
-                                "delta": {"role": "assistant", "content": text_outputs},
-                                "logprobs": None,
-                                "finish_reason": None,
-                                "stop_reason": None,
-                            }
-                        ],
-                    )
-                    if request_output.prompt_token_ids is not None:
-                        num_prompt_tokens = len(request_output.prompt_token_ids)
-                    response_json = chunk.model_dump_json(exclude_unset=True)
-                    yield f"data: {response_json}\n\n"
+                        finish_reason = item.finish_reason
+                        stop_reason = item.stop_reason
+
+                        chunk = ChatCompletionStreamResponse(
+                            id=request_id,
+                            created=int(time.time()),
+                            model=request.model,
+                            choices=[
+                                {
+                                    "index": 0,
+                                    "delta": {
+                                        "role": "assistant",
+                                        "content": item.text,
+                                    },
+                                    "logprobs": None,
+                                    "finish_reason": finish_reason,
+                                    "stop_reason": stop_reason,
+                                }
+                            ],
+                        )
+                        if request_output.prompt_token_ids is not None:
+                            num_prompt_tokens = len(request_output.prompt_token_ids)
+                        response_json = chunk.model_dump_json(exclude_unset=True)
+                        yield f"data: {response_json}\n\n"
                 if request.stream_options and request.stream_options.include_usage:
                     completion_tokens = sum(previous_num_tokens)
                     final_usage = UsageInfo(
