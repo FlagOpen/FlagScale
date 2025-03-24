@@ -130,21 +130,22 @@ class LLMService:
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
-        print("receive request ==============", request, flush=True)
-        #logger.info(f"Received request --------------- {request}")
+        logger.debug(f"========== Receive request {request}========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
                 return JSONResponse(
                     status_code=503,
-                    content={"message": "Service is not ready, please try again later."},
+                    content={
+                        "message": "Service is not ready, please try again later."
+                    },
                 )
         # request = await req.json()
         prompt = request.prompt
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
         sample_args = get_sample_args(request)
-        #logger.info(f"Sampling params***************** {sample_args}")
+        # logger.info(f"Sampling params***************** {sample_args}")
         sampling_params = SamplingParams(**sample_args)
         results_generator = self.llm_actor.generate.options(stream=True).remote(
             prompt,
@@ -222,13 +223,15 @@ class LLMService:
 
     @app.post("/v1/chat/completions")
     async def generate_handler(self, request: ChatCompletionRequest):
-        logger.debug(f"========== Receive request ========== ")
+        logger.debug(f"========== Receive request {request}========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
                 return JSONResponse(
                     status_code=503,
-                    content={"message": "Service is not ready, please try again later."},
+                    content={
+                        "message": "Service is not ready, please try again later."
+                    },
                 )
         user_message = request.messages[-1]["content"]
         if isinstance(user_message, list):
@@ -248,14 +251,12 @@ class LLMService:
         )
 
         if stream:
-            #logger.info(f"Streamx request --------------- ")
             # In streaming mode, retrieve tokens from the LLMActor.
             async def stream_results() -> AsyncGenerator[bytes, None]:
                 num_choices = 1 if request.n is None else request.n
                 previous_num_tokens = [0] * num_choices
                 num_prompt_tokens = 0
-                final_num_tokens = 0
-                
+
                 async for request_output in results_generator:
                     prompt = request_output.prompt
                     assert prompt is not None
@@ -263,11 +264,10 @@ class LLMService:
                         output.text for output in request_output.outputs
                     )
                     for output in request_output.outputs:
-                        #logger.debug(f" ##req {request_id}  num_choices {num_choices} len(output.token_ids) {len(output.token_ids)} --------------- previous_num_tokens {previous_num_tokens} ")
+                        # logger.debug(f" ##req {request_id}  num_choices {num_choices} len(output.token_ids) {len(output.token_ids)} --------------- previous_num_tokens {previous_num_tokens} ")
 
                         i = output.index
-                        previous_num_tokens[i] += len(output.token_ids)
-                        final_num_tokens = len(output.token_ids)
+                        previous_num_tokens[i] = len(output.token_ids)
                     chunk = ChatCompletionStreamResponse(
                         id=request_id,
                         created=int(time.time()),
@@ -281,20 +281,18 @@ class LLMService:
                                 "stop_reason": None,
                             }
                         ],
-                        
                     )
+                    if request_output.prompt_token_ids is not None:
+                        num_prompt_tokens = len(request_output.prompt_token_ids)
                     response_json = chunk.model_dump_json(exclude_unset=True)
                     yield f"data: {response_json}\n\n"
                 if request.stream_options and request.stream_options.include_usage:
-                    #completion_tokens = sum(previous_num_tokens)
-                    completion_tokens = final_num_tokens
-                    if request_output.prompt_token_ids is not None:
-                        num_prompt_tokens = len(request_output.prompt_token_ids)
-                    num_prompt_tokens = len(user_message.split())
-                    final_usage = UsageInfo(prompt_tokens=num_prompt_tokens,
-                                            completion_tokens=completion_tokens,
-                                            total_tokens=num_prompt_tokens +
-                                            completion_tokens)
+                    completion_tokens = sum(previous_num_tokens)
+                    final_usage = UsageInfo(
+                        prompt_tokens=num_prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=num_prompt_tokens + completion_tokens,
+                    )
 
                     final_usage_chunk = ChatCompletionStreamResponse(
                         id=request_id,
@@ -302,9 +300,11 @@ class LLMService:
                         created=int(time.time()),
                         choices=[],
                         model=request.model,
-                        usage=final_usage)
-                    final_usage_data = (final_usage_chunk.model_dump_json(
-                        exclude_unset=True, exclude_none=True))
+                        usage=final_usage,
+                    )
+                    final_usage_data = final_usage_chunk.model_dump_json(
+                        exclude_unset=True, exclude_none=True
+                    )
                     yield f"data: {final_usage_data}\n\n"
                 yield "data: [DONE]\n\n"
 
