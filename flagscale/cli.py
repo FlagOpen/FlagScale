@@ -1,8 +1,8 @@
+import click
 import os
 import subprocess
 import sys
-
-import click
+import yaml
 
 
 VERSION = "0.6.0"
@@ -150,28 +150,17 @@ def pull(image_name, ckpt_name, ckpt_path):
         print("Failed to pull Git LFS files")
         return
 
-# Define the list of valid subsets for each backend
-VALID_BACKENDS_SUBSETS = {
-    "megatron": [
-        "data",
-        "dist_checkpointing",
-        "distributed",
-        "export",
-        "fusions",
-        "inference",
-        "models",
-        "pipeline_parallel",
-        "ssm",
-        "tensor_parallel",
-        "transformer/moe",
-        "transformer",
-        "./"
-    ],
-    "flagscale": [
-        "runner",
-        "./"
-    ]
-}
+def get_valid_backends_subsets(config_path="tests/scripts/unit_tests/config.yml"):
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
+
+    VALID_BACKENDS_SUBSETS = {
+        backend: list(subset_config["subset"].keys())
+        for backend, subset_config in config.items()
+    }
+    
+    return VALID_BACKENDS_SUBSETS
+
 @flagscale.command()
 @click.option(
     "--backend",
@@ -187,7 +176,15 @@ VALID_BACKENDS_SUBSETS = {
     type=str,
     help="Module name to be tested",
 )
-def test(backend_name, subset_name):
+def unit_test(backend_name, subset_name):
+    
+    # Find the path of the flag_scale package
+    flagscale_path = os.path.dirname(os.path.abspath(__file__))
+    flag_scale_path = flagscale_path + "/../"
+    os.chdir(flag_scale_path)
+
+    VALID_BACKENDS_SUBSETS = get_valid_backends_subsets()
+    
     # Validate the provided backend and subset
     if backend_name not in VALID_BACKENDS_SUBSETS:
         click.echo(f"Unsupported backend: {backend_name}. Supported backends: {', '.join(VALID_BACKENDS_SUBSETS.keys())}")
@@ -199,11 +196,35 @@ def test(backend_name, subset_name):
         click.echo(f"Unsupported subset: {subset_name} for backend: {backend_name}. Supported combinations: {', '.join(valid_combinations)}")
         return
 
+    subprocess.run(["tests/scripts/unit_tests/test_subset.sh", "--backend", backend_name, "--subset", subset_name, "--coverage", "False"], check=True)
+
+
+@flagscale.command()
+def unit_test_all():
     # Find the path of the flag_scale package
     flagscale_path = os.path.dirname(os.path.abspath(__file__))
     flag_scale_path = flagscale_path + "/../"
     os.chdir(flag_scale_path)
-    subprocess.run(["tests/scripts/unit_tests/test_subset.sh", "--backend", backend_name, "--subset", subset_name, "--coverage", "False"], check=True)
+
+    VALID_BACKENDS_SUBSETS = get_valid_backends_subsets()
+    print(VALID_BACKENDS_SUBSETS)
+    
+    # Find the path of the flag_scale package
+    flagscale_path = os.path.dirname(os.path.abspath(__file__))
+    flag_scale_path = flagscale_path + "/../"
+    os.chdir(flag_scale_path)
+    for backend in VALID_BACKENDS_SUBSETS:
+        for subset in VALID_BACKENDS_SUBSETS[backend]:
+            subprocess.run(
+                [
+                    "tests/scripts/unit_tests/test_subset.sh",
+                    "--backend", backend,
+                    "--subset", subset,
+                    "--coverage", "False"
+                ],
+                check=True
+            )
+
 
 if __name__ == "__main__":
     flagscale()
