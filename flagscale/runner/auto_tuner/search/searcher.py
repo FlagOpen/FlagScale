@@ -3,6 +3,7 @@ import itertools
 import logging
 import time
 from functools import reduce
+from pprint import pprint
 
 from omegaconf import OmegaConf
 
@@ -673,6 +674,8 @@ class ServeSearcher(Searcher):
             dict(zip(self.space.keys(), combination))
             for combination in cartesian_product_values
         ]
-        print("=========== grid search space: ================== ", strategies)
+        pprint(
+            "=========== grid search space: ================== \n", strategies, indent=2
+        )
 
         return strategies
