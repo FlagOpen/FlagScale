@@ -2334,6 +2334,8 @@ def _add_mtp_args(parser):
     # general mtp arguements
     group.add_argument('--num-mtp-predictor', type=int, default=0,
                        help='num of multi token predictors')
+    group.add_argument('--mtp-loss-coeff', type=float, default=0.3,
+                       help='Scaling coefficient for mtp loss: 0.3 is recommended in DeepSeekV3.')
 
     return parser
 
