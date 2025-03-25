@@ -250,6 +250,8 @@ class LLMService:
             text_outputs = ""
             prompt_tokens = len(final_output.prompt_token_ids)
             completion_tokens = 0
+            finish_reason = None
+            stop_reason = None
 
             assert final_output is not None
             prompt = final_output.prompt
@@ -258,6 +260,8 @@ class LLMService:
             for item in final_output.outputs:
                 text_outputs += item.text
                 completion_tokens += len(item.token_ids)
+                finish_reason = item.finish_reason
+                stop_reason = item.stop_reason
 
             ret = CompletionResponse(
                 id=request_id,
@@ -268,7 +272,8 @@ class LLMService:
                         "text": text_outputs,
                         "index": 0,
                         "logprobs": None,
-                        "finish_reason": None,
+                        "finish_reason": finish_reason,
+                        "stop_reason": stop_reason,
                     }
                 ],
                 usage={
@@ -392,12 +397,14 @@ class LLMService:
             text_outputs = ""
             prompt_tokens = len(final_output.prompt_token_ids)
             completion_tokens = 0
-            logger.info(f"------ dir(final_output) {dir(final_output)} -----------")
+            finish_reason = None
+            stop_reason = None
 
             for item in final_output.outputs:
                 text_outputs += item.text
                 completion_tokens += len(item.token_ids)
-                logger.info(f"------ dir(item) {dir(item)} -----------")
+                finish_reason = item.finish_reason
+                stop_reason = item.stop_reason
 
             ret = ChatCompletionResponse(
                 id=request_id,
@@ -408,7 +415,8 @@ class LLMService:
                         "index": 0,
                         "message": {"role": "assistant", "content": text_outputs},
                         "logprobs": None,
-                        "finish_reason": None,
+                        "finish_reason": finish_reason,
+                        "stop_reason": stop_reason,
                     }
                 ],
                 usage={
