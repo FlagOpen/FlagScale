@@ -514,9 +514,7 @@ class SSHServeRunner(RunnerBase):
         )
 
         if not model_name:
-            raise ValueError(
-                "No model specified. Please specify a model using either `--model`."
-            )
+            raise ValueError("No model specified in config file.")
 
         from openai import OpenAI
 
@@ -557,9 +555,7 @@ class SSHServeRunner(RunnerBase):
         )
 
         if not model_name:
-            raise ValueError(
-                "No model specified. Please specify a model using either `--model`"
-            )
+            raise ValueError("No model specified in config file.")
 
         tokenizer = get_tokenizer(
             model_name,
