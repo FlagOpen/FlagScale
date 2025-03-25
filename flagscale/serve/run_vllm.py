@@ -179,35 +179,41 @@ class LLMService:
                 num_choices = 1 if request.n is None else request.n
                 previous_num_tokens = [0] * num_choices
                 num_prompt_tokens = 0
+                length = 0
 
                 async for request_output in results_generator:
                     prompt = request_output.prompt
                     assert prompt is not None
-                    text_outputs = ""
                     for item in request_output.outputs:
 
                         i = item.index
-                        previous_num_tokens[i] = len(item.token_ids)
-                        text_outputs += item.text
 
-                    chunk = CompletionStreamResponse(
-                        id=request_id,
-                        created=int(time.time()),
-                        model=request.model,
-                        choices=[
-                            CompletionResponseStreamChoice(
-                                index=0,
-                                text=text_outputs,
-                                logprobs=None,
-                                finish_reason=None,
-                                stop_reason=None,
-                            )
-                        ],
-                    )
-                    if request_output.prompt_token_ids is not None:
-                        num_prompt_tokens = len(request_output.prompt_token_ids)
-                    response_json = chunk.model_dump_json(exclude_unset=True)
-                    yield f"data: {response_json}\n\n"
+                        content = item.text
+                        current_text = content[length:]
+                        length = len(content)
+                        previous_num_tokens[i] = len(item.token_ids)
+
+                        finish_reason = item.finish_reason
+                        stop_reason = item.stop_reason
+
+                        chunk = CompletionStreamResponse(
+                            id=request_id,
+                            created=int(time.time()),
+                            model=request.model,
+                            choices=[
+                                CompletionResponseStreamChoice(
+                                    index=i,
+                                    text=current_text,
+                                    logprobs=None,
+                                    finish_reason=finish_reason,
+                                    stop_reason=stop_reason,
+                                )
+                            ],
+                        )
+                        if request_output.prompt_token_ids is not None:
+                            num_prompt_tokens = len(request_output.prompt_token_ids)
+                        response_json = chunk.model_dump_json(exclude_unset=True)
+                        yield f"data: {response_json}\n\n"
 
                 if request.stream_options and request.stream_options.include_usage:
                     completion_tokens = sum(previous_num_tokens)
@@ -320,7 +326,7 @@ class LLMService:
                         content = item.text
                         current_text = content[length:]
                         length = len(content)
-                        previous_num_tokens[i] = length
+                        previous_num_tokens[i] = len(item.token_ids)
 
                         finish_reason = item.finish_reason
                         stop_reason = item.stop_reason
@@ -332,7 +338,7 @@ class LLMService:
                             model=request.model,
                             choices=[
                                 {
-                                    "index": 0,
+                                    "index": i,
                                     "delta": {
                                         "role": "assistant",
                                         "content": current_text,
