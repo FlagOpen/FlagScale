@@ -6,6 +6,7 @@ The test module supports:
 2. Functional testing revolves around the training, compression, inference, and service of large language models.
 3. Monitoring incremental code test coverage and viewing test reports online.
 4. Ensuring code style consistency.
+5. The test function has been added to the flagscale instruction system.
 
 This section introduces how to use these features.
 
@@ -15,8 +16,16 @@ This section introduces how to use these features.
 
 ### Run Specific Unit Tests Locally
 
+Use script to run:
+
 ```bash
 tests/scripts/unit_tests/test_subset.sh --backend ${BACKEND} --subset ${SUBSET}
+```
+
+Use 'test' command to run:
+
+```bash
+flagscale unit-test --backend ${BACKEND} --subset ${SUBSET}
 ```
 
 Please set the following variables:
@@ -26,8 +35,16 @@ Please set the following variables:
 
 ### Run All Unit Tests Locally
 
+Use script to run:
+
 ```bash
 tests/scripts/unit_tests/test_all.sh
+```
+
+Use 'test' command to run:
+
+```bash
+flagscale unit-test-all
 ```
 
 ### Run Unit Tests Online
@@ -51,9 +68,10 @@ When you create a PR using your forked repository, the testing workflow will aut
      megatron:
        # Set the environment required before running unit tests
        set_environment:
-         cd megatron; export PYTHONPATH=..:$PYTHONPATH
+        - cd megatron
+        - export PYTHONPATH=..:$PYTHONPATH
        # Specify the target folder for test coverage
-       coverage:
+       coverage_fold:
          core
        # Select different tests for different test directories
        subset:
@@ -160,8 +178,16 @@ When you create a PR using your forked repository, the testing workflow will aut
 
 ### Run Specific Functional Tests Locally
 
+Use script to run:
+
 ```bash
 tests/scripts/functional_tests/test_task.sh --type ${TYPE} --task ${TASK}
+```
+
+Use 'test' command to run:
+
+```bash
+flagscale functional-test --type ${TYPE} --task ${TASK}
 ```
 
 Please set the following variables:
@@ -171,8 +197,16 @@ Please set the following variables:
 
 ### Run All Functional Tests Locally
 
+Use script to run:
+
 ```bash
 tests/scripts/functional_tests/test_all.sh
+```
+
+Use 'test' command to run:
+
+```bash
+flagscale functional-test-all
 ```
 
 ### Run Functional Tests Online
