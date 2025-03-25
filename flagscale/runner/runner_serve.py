@@ -508,9 +508,9 @@ class SSHServeRunner(RunnerBase):
 
     def _serve_alive(self):
         model_name = (
-            self.config.serve.model_args.vllm_model["served_model_name"]
-            if "served_model_name" in self.config.serve.model_args.vllm_model
-            else self.config.serve.model_args.vllm_model["model"]
+            self.config.serve.model_args.vllm_model.get("model", None)
+            or self.config.serve.model_args.vllm_model.get("model-tag", None)
+            or self.config.serve.model_args.vllm_model.get("served_model_name", None)
         )
 
         if not model_name:
