@@ -1,7 +1,7 @@
 # Use Dockerfile.cuda to build image.
 
 ```bash
-docker build --build-arg CUDA_VERSION=12.4.1 --build-arg CUDNN_VERSION=9.5.0 --build-arg PYTHON_VERSION=3.12 --build-arg TORCH_VERSION=2.5.1 -f Dockerfile.cuda -t flagscale:cuda12.4.1-python3.12-torch2.5.1-time2503251131 .
+docker build --build-arg CUDA_VERSION=12.4.1 --build-arg CUDNN_VERSION=9.5.0 --build-arg PYTHON_VERSION=3.12 --build-arg TORCH_VERSION=2.5.1 -f Dockerfile.cuda -t flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.5.1-time2503251131 .
 ```
 
 * `CUDA_VERSION`: Can be manually specified, default value is 12.4.1.
