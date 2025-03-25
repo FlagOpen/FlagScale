@@ -118,8 +118,7 @@ RUN cd ${STAGE_DIR} && \
 ##############################################################################
 RUN cd ${WORK_DIR} && \
     git clone https://github.com/FlagOpen/FlagScale.git && \
-    cd FlagScale/install && \
-    chmod +x install-requirements.sh
+    chmod +x FlagScale/install/install-requirements.sh
 
 ##############################################################################
 # Install flagscale=train requirements
