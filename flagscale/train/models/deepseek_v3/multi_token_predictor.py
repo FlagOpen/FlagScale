@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Optional, Dict
 
 import copy
 import torch
@@ -9,7 +9,7 @@ from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.spec_utils import ModuleSpec, build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.module import MegatronModule
-
+from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 
 @dataclass
 class DeepSeekMultiTokenPredictorLayerSubmodules:
@@ -91,6 +91,22 @@ class DeepSeekMultiTokenPredictorLayer(MegatronModule):
 
         return hidden_states
 
+    def sharded_state_dict(
+        self, prefix: str = '', sharded_offsets: tuple = (), metadata: Optional[Dict] = None
+    ) -> ShardedStateDict:
+        """Sharded state dict implementation for multi token predictor layer
+
+        Args:
+            prefix (str): Module name prefix.
+            sharded_offsets (tuple): PP related offsets, expected to be empty, because the whole mtp is placed on the last pp stage
+            metadata (Optional[Dict]): metadata controlling sharded state dict creation.
+
+        Returns:
+            ShardedStateDict: sharded state dict for the multi token predictor layer
+        """
+        sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets, metadata)
+        return sharded_state_dict
+
 
 class DeepSeekMultiTokenPredictor(MegatronModule):
     """Multi Token Predictor for DeepSeek V3
@@ -137,6 +153,31 @@ class DeepSeekMultiTokenPredictor(MegatronModule):
             pre_hidden_states = hidden_states
 
         return hidden_states_mtps
+
+    def sharded_state_dict(
+        self, prefix: str = '', sharded_offsets: tuple = (), metadata: Optional[Dict] = None
+    ) -> ShardedStateDict:
+        """Sharded state dict implementation for multi token predictor
+
+        Args:
+            prefix (str): Module name prefix.
+            sharded_offsets (tuple): PP related offsets, expected to be empty, because the whole mtp is placed on the last pp stage
+            metadata (Optional[Dict]): metadata controlling sharded state dict creation.
+
+        Returns:
+            ShardedStateDict: sharded state dict for the multi token predictor
+        """
+
+        sharded_state_dict = {}
+        for layer_id, mtp_layer in enumerate(self.mtp_modules):
+            layer_prefix = f'{prefix}mtp_modules.{layer_id}.'
+            sharded_pp_offset = []
+            layer_sharded_state_dict = mtp_layer.sharded_state_dict(
+                layer_prefix, sharded_pp_offset, metadata
+            )
+            sharded_state_dict.update(layer_sharded_state_dict)
+        return sharded_state_dict
+
 
 def roll_tensor(tensor, dims=0):
     rolled_tensor = torch.roll(tensor, shifts=-1, dims=dims)
