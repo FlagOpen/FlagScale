@@ -5,8 +5,6 @@ python -m pip install --upgrade setuptools
 
 # Packages that need to be installed outside of the conda environment
 pip install -r ../requirements/requirements-base.txt
-pip install -r ../requirements/requirements-dev.txt
-pip install -r ../requirements/requirements-lint.txt
 
 # Initialize the variable
 env=""
@@ -103,17 +101,16 @@ if [ "${env}" == "inference" ]; then
     pip install -r ../vllm/requirements-build.txt
     pip install -r ../vllm/requirements-cuda.txt
     pip install -r ../vllm/requirements-common.txt
-
-    # If the dev argument is passed, execute the following command
-    if [ "$2" == "dev" ]; then
-        pip install -r ../vllm/requirements-dev.txt
-    fi
+    pip install -r ../vllm/requirements-dev.txt
 
     MAX_JOBS=$(nproc) pip install --no-build-isolation -v ../vllm/.
 
     # Navigate to requirements directory and install serving dependencies
     pip install -r ../requirements/serving/requirements.txt
 fi
+
+# For developers
+pip install -r ../requirements/requirements-dev.txt
 
 # Clean all conda caches
 conda clean --all -y
