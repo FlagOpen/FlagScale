@@ -10,5 +10,5 @@ model_args:
       - trust-remote-code
       - enable-chunked-prefill
 deploy:
-  command_line_mode: true
+  command_line_mode: True
   use_native_serve: False

@@ -17,4 +17,4 @@ deploy:
       num_gpus: 2
   service:
     port: 6701
-  command_line_mode: true
+  command_line_mode: True
