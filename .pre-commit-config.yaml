@@ -5,7 +5,9 @@ exclude: |
         megatron-energon/.*|
         hardware/.*\.patch|
         flagscale/inference/core/.*|
-        .*\.sh$  # Exclude all .sh files
+        .*\.sh$|  # Exclude all .sh files
+        .*\.md$|  # Exclude all .md files
+        .*\.yml$  # Exclude all .yml files
     )$
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
@@ -33,7 +35,9 @@ repos:
                 flagscale/train/hetero/.*|
                 tools/checkpoint/loader.*\.py|
                 tools/checkpoint/saver.*\.py|
-                .*\.sh$  # Exclude all .sh files
+                .*\.sh$|  # Exclude all .sh files
+                .*\.md$|  # Exclude all .md files
+                .*\.yml$  # Exclude all .yml files
             )$
 -   repo: https://github.com/PyCQA/isort
     rev: 5.13.2
@@ -53,7 +57,9 @@ repos:
                 flagscale/train/hetero/.*|
                 tools/checkpoint/loader.*\.py|
                 tools/checkpoint/saver.*\.py|
-                .*\.sh$  # Exclude all .sh files
+                .*\.sh$|  # Exclude all .sh files
+                .*\.md$|  # Exclude all .md files
+                .*\.yml$  # Exclude all .yml files
             )$
 # -   repo: local
 #     hooks:
@@ -74,5 +80,7 @@ repos:
 #                 flagscale/train/hetero/.*|
 #                 tools/checkpoint/loader.*\.py|
 #                 tools/checkpoint/saver.*\.py|
-#                 .*\.sh$  # Exclude all .sh files
+#                 .*\.sh$|  # Exclude all .sh files
+#                 .*\.md$|  # Exclude all .md files
+#                 .*\.yml$  # Exclude all .yml files
 #             )$
