@@ -100,7 +100,7 @@ We support the model serving of DeepSeek R1 and have implemented the `flagscale 
     │           └── serve/
     │               └── deepseek_r1.yaml # Set model parameters and server port
     ```
-    ["hostfile.txt"](./flagscale/serve/README.md) example.
+    [hostfile.txt](./examples/deepseek/conf/hostfile.txt) example.
 
 2. **Install FlagScale CLI:**
     ```sh
