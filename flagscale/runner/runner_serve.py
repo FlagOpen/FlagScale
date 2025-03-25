@@ -512,9 +512,12 @@ class SSHServeRunner(RunnerBase):
             if "served_model_name" in self.config.serve.model_args.vllm_model
             else self.config.serve.model_args.vllm_model["model"]
         )
-        # config = self.config
-        # # model_name = config.serve.model_args.vllm_model["model"]
-        # model_name = self.config.serve.model_args.vllm_model.model
+
+        if not model_name:
+            raise ValueError(
+                "No model specified. Please specify a model using either `--model`."
+            )
+
         from openai import OpenAI
 
         # Modify OpenAI's API key and API base to use vLLM's API server.
@@ -547,16 +550,21 @@ class SSHServeRunner(RunnerBase):
             in self.config.serve.model_args.vllm_model.get("action-args", [])
         )
 
-        model = self.config.serve.model_args.vllm_model.get(
-            "model", None
-        ) or self.config.serve.model_args.vllm_model.get("model-tag", None)
-        tokenizer = get_tokenizer(
-            model, tokenizer_mode=tokenizer_mode, trust_remote_code=trust_remote_code
-        )
         model_name = (
-            self.config.serve.model_args.vllm_model["served_model_name"]
-            if "served_model_name" in self.config.serve.model_args.vllm_model
-            else self.config.serve.model_args.vllm_model["model"]
+            self.config.serve.model_args.vllm_model.get("model", None)
+            or self.config.serve.model_args.vllm_model.get("model-tag", None)
+            or self.config.serve.model_args.vllm_model.get("served_model_name", None)
+        )
+
+        if not model_name:
+            raise ValueError(
+                "No model specified. Please specify a model using either `--model`"
+            )
+
+        tokenizer = get_tokenizer(
+            model_name,
+            tokenizer_mode=tokenizer_mode,
+            trust_remote_code=trust_remote_code,
         )
 
         dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=200)

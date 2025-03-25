@@ -674,8 +674,7 @@ class ServeSearcher(Searcher):
             dict(zip(self.space.keys(), combination))
             for combination in cartesian_product_values
         ]
-        pprint(
-            "=========== grid search space: ================== \n", strategies, indent=2
-        )
+        print("================== grid search space: ================== \n")
+        pprint(strategies, indent=2)
 
         return strategies
