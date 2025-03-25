@@ -52,8 +52,8 @@ python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b
 ## logs
 
 Since serve is the distributed mode, the logs are stored separately. \
-The default logs of are loacated in `/tmp/ray/session_latest/logs`.\
-The log of each work is named as `worker-[worker_id]-[job_id]-[pid].[out|err]`.
+The default logs of are loacated in `/outputs`.\
+
 
 ## Config Template
 
@@ -83,10 +83,8 @@ model_args:
       - enable-chunked-prefill
 
 deploy:
-  command_line_mode: true
-  models:
-    vllm_model:
-      num_gpus: 1
+  command_line_mode: True
+  use_native_serve: False
 ```
 
 ### How to config serve parameters
