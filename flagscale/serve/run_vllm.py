@@ -392,10 +392,12 @@ class LLMService:
             text_outputs = ""
             prompt_tokens = len(final_output.prompt_token_ids)
             completion_tokens = 0
+            logger.info("------ dir(final_output) {dir(final_output)} -----------")
 
             for item in final_output.outputs:
                 text_outputs += item.text
                 completion_tokens += len(item.token_ids)
+                logger.info("------ dir(item) {dir(item)} -----------")
 
             ret = ChatCompletionResponse(
                 id=request_id,
