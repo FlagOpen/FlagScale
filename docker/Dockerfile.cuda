@@ -1,5 +1,6 @@
 ARG CUDA_VERSION=12.4.1
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
+ARG CUDNN_VERSION=9.5.0
 ARG PYTHON_VERSION=3.12
 ARG TORCH_VERSION=2.5.1
 # FS_VERSION is used to mark the FlagScale and environment version corresponding to the image
@@ -57,17 +58,14 @@ RUN add-apt-repository ppa:deadsnakes/ppa && \
         rm -rf /var/lib/apt/lists/*
 
 ##############################################################################
-# Install CUDNN https://gitlab.com/nvidia/container-images/cuda/-/blob/master/dist/12.4.1/ubuntu2204/devel/cudnn/Dockerfile?ref_type=heads
+# Install CUDNN
 ##############################################################################
-ENV NV_CUDNN_VERSION 9.1.0.70-1
-ENV NV_CUDNN_PACKAGE_NAME libcudnn9-cuda-12
-ENV NV_CUDNN_PACKAGE libcudnn9-cuda-12=${NV_CUDNN_VERSION}
-ENV NV_CUDNN_PACKAGE_DEV libcudnn9-dev-cuda-12=${NV_CUDNN_VERSION}
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ${NV_CUDNN_PACKAGE} \
-    ${NV_CUDNN_PACKAGE_DEV} \
-    && apt-mark hold ${NV_CUDNN_PACKAGE_NAME} \
-    && rm -rf /var/lib/apt/lists/*
+RUN cd ${STAGE_DIR} && \
+        wget https://developer.download.nvidia.com/compute/cudnn/9.5.0/local_installers/cudnn-local-repo-ubuntu2204-${CUDNN_VERSION}_1.0-1_amd64.deb && \
+        dpkg -i cudnn-local-repo-ubuntu2204-${CUDNN_VERSION}_1.0-1_amd64.deb && \
+        cp /var/cudnn-local-repo-ubuntu2204-${CUDNN_VERSION}/cudnn-*-keyring.gpg /usr/share/keyrings/ && \
+        apt-get update && \
+        apt-get -y install cudnn-cuda-12
 
 ##############################################################################
 # SCCACHE

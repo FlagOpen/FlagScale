@@ -4,6 +4,9 @@ torchvision
 torchaudio
 --extra-index-url https://download.pytorch.org/whl/cu124
 
+# cudnn-frontend
+git+https://github.com/NVIDIA/cudnn-frontend.git
+
 # base
 accelerate
 cryptography
