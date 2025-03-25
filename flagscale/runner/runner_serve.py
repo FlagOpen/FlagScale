@@ -307,7 +307,7 @@ def _generate_stop_script(config, host, node_rank):
     with open(host_stop_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("ray stop\n")
-        f.write("pkill -f 'run_serve_engine'\n")
+        f.write("pkill -f 'run_inference_engine'\n")
         f.write("pkill -f 'vllm'\n")
         f.write(f"{after_stop}\n")
         f.flush()
@@ -358,9 +358,9 @@ class SSHServeRunner(RunnerBase):
         entrypoint = self.config.experiment.task.get("entrypoint", None)
         if self.command_line_mode:
             if not self.use_native_serve:
-                self.user_script = "flagscale/serve/run_serve_engine.py"
+                self.user_script = "flagscale/serve/run_inference_engine.py"
             else:
-                self.user_script = "flagscale/serve/run_vllm.py"
+                self.user_script = "flagscale/serve/run_native_vllm_serve.py"
         elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
             self.user_script = entrypoint
         elif entrypoint is None:
@@ -443,7 +443,7 @@ class SSHServeRunner(RunnerBase):
             pid = f.readlines()[0]
             pid = int(pid.strip())
         kill_process_tree(pid)
-        os.system("pkill -f run_serve_engine")
+        os.system("pkill -f run_inference_engine")
         os.system("pkill -f vllm")
 
     def stop(self):
@@ -471,7 +471,7 @@ class SSHServeRunner(RunnerBase):
             f.write("else\n")
             # TODO: This is a temporary fix. We need to find a better way to query the job.
             f.write(
-                "    pid=$(ps aux | grep 'run_vllm' | grep -v grep | head -n 1 | awk '{print $2}')\n"
+                "    pid=$(ps aux | grep -E 'run_native_vllm_serve|run_inference_engine' | grep -v grep | head -n 1 | awk '{print $2}')\n"
             )
             f.write("    ps -p $pid -o state --no-headers\n")
             f.write("fi\n")
