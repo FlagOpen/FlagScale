@@ -248,8 +248,10 @@ def count_zeros_fp32(
             total_num_zeros, op=torch.distributed.ReduceOp.SUM, group=data_parallel_group
         )
     # Sum across all model-parallel GPUs.
-    comm_device = get_device_type_for_comm(grad_stats_parallel_group)
-    total_num_zeros.to(comm_device)
+    comm_device = get_device_type_for_comm(grad_stats_parallel_group)    
+    if comm_device == "cpu":
+        total_num_zeros = total_num_zeros.cpu()
+
     if isinstance(grad_stats_parallel_group, list):
         original_total_num_zeros = total_num_zeros.clone().detach()
         for group in grad_stats_parallel_group:

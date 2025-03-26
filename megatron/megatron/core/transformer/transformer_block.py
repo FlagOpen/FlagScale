@@ -97,7 +97,7 @@ def get_num_layers_to_build(config: TransformerConfig) -> int:
             and config.num_layers_in_last_pipeline_stage is not None
         ):
             num_layers_per_pipeline_rank = config.num_layers_in_last_pipeline_stage
-    else:
+    elif not config.enable_hetero:
         # Include the embedding layer and loss layer into pipeline parallelism partition
         num_layers = config.num_layers
         if config.account_for_embedding_in_pipeline_split:
