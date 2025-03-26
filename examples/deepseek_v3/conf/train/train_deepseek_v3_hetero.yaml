@@ -41,7 +41,7 @@ system:
     enable_hetero: true
     hetero_pipeline_layer_split: [11, 6, 7]
     hetero_process_meshes: [1,1,2,4,1, 1,1,2,2,1, 1,1,2,2,1]
-    hetero_expert_tensor_parallel_size: [1, 1, 1]
+    expert_tensor_parallel_size_per_process_mesh: [1, 1, 1]
     use_partial_reduce_for_shared_embedding: True
     hetero_device_types: ["A800", "A800", "A800"]
     standalone_embedding_stage: False
