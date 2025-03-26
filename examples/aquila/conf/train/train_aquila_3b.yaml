@@ -1,9 +1,10 @@
 system:
+  distributed_backend: nccl
   reset_position_ids: True
   reset_attention_mask: True
   add_qkv_bias: True
   tensor_model_parallel_size: 1
-  pipeline_model_parallel_size: 2
+  pipeline_model_parallel_size: 1
   disable_bias_linear: True
   use_flash_attn: True
   use_distributed_optimizer: True
@@ -24,7 +25,7 @@ system:
   checkpoint:
     load: outputs_llama3/checkpoint_mc
     ckpt_format: torch
-    save_interval: 2385
+    save_interval: 1193 #2385
 
   # hetero:
   #   enable_hetero: True
@@ -32,16 +33,19 @@ system:
   #   use_partial_reduce_for_shared_embedding: True
   #   # mesh format [tp1,cp1,ep1,dp1,pp1,(tp2,cp2...)]
 
-  #   hetero_pipeline_layer_split: [12,12]
-  #   hetero_process_meshes: [1,1,1,4,1, 1,1,1,4,1]
-  #   hetero_device_types: ["A800", "A800"]
+  #   hetero_pipeline_layer_split: [26,10]
+  #   #hetero_pipeline_layer_split: [18,18]
+  #   #hetero_process_meshes: [1, 1, 1, 32, 1, 1,1,1,32,1]
+  #   hetero_process_meshes: [1, 1, 1, 32, 1, 1,1,1,64,1]
+  #   #hetero_device_types: ["B150","B150"]
+  #   hetero_device_types: ["A800","B150"]
 
   #   standalone_embedding_stage: False
   #   hetero_current_device_type: "A800"
 model:
   transformer_impl: transformer_engine
-  num_layers: 24
-  hidden_size: 1024
+  num_layers: 36
+  hidden_size: 2048
   num_attention_heads: 16
   group_query_attention: True
   num_query_groups: 2
@@ -62,10 +66,10 @@ model:
   hidden_dropout: 0.0
   weight_decay: 0.1
   clip_grad: 1.0
-  train_samples: 29297664 #120B tokens
+  train_samples: 244141056 #1TB tokens #29297664 #120B tokens
   eval_iters: 0
   micro_batch_size: 2
-  global_batch_size: 1024
+  global_batch_size: 2048
   seed: 42
 
   optimizer:
@@ -73,17 +77,18 @@ model:
     adam_beta1: 0.9
     adam_beta2: 0.95
     lr_scheduler:
-      lr: 5.0e-3
-      min_lr: 5.0e-4
-      lr_warmup_samples: 10
-      lr_decay_style: cosine
+      lr: 3.0e-3
+      min_lr: 3.0e-4
+      lr_warmup_samples: 2048
+      lr_decay_style: WSD
+      lr_wsd_decay_style: cosine
 
 data:
-  data_path: {data_path:??}
+  data_path: ${data_path:??}
   split: 1
   no_mmap_bin_files: true
   tokenizer:
     tokenizer_type: QwenTokenizerFS
-    tokenizer_path: examples/aquila/qwentokenizer
+    tokenizer_path: ${tokenizer_model_path:??}
     vocab_size: 151851
     make_vocab_size_divisible_by: 64

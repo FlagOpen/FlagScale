@@ -226,8 +226,6 @@ class FSTrainArguments:
                             current_process_mesh_idx
                         ]
                     )
-                else:
-                    self.args.expert_tensor_parallel_size = tp
 
                 # Sequence parallel
                 if self.args.tensor_model_parallel_size == 1:
