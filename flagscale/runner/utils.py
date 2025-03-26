@@ -403,9 +403,6 @@ async def async_request_openai_chat_completions(
         content = [{"type": "text", "text": request_func_input.prompt}]
         if request_func_input.multi_modal_content:
             content.append(request_func_input.multi_modal_content)
-        print(
-            f"setting max_completion_tokens=========== {request_func_input.output_len}"
-        )
         payload = {
             "model": (
                 request_func_input.model_name
@@ -467,10 +464,6 @@ async def async_request_openai_chat_completions(
                                 generated_text += content or ""
                             elif usage := data.get("usage"):
                                 output.output_tokens = usage.get("completion_tokens")
-
-                                print(
-                                    f"return completion_tokens=========== {output.output_tokens}"
-                                )
 
                             most_recent_timestamp = timestamp
 
