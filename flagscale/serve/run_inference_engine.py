@@ -10,7 +10,7 @@ except Exception as e:
     pass
 
 from flagscale import serve
-from flagscale.serve.utils import flatten_dict_to_args
+from flagscale.utils import flatten_dict_to_args
 
 
 def vllm_serve(args):
