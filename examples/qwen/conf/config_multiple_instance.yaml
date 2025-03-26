@@ -22,7 +22,7 @@ experiment:
       max_num_seqs: [128, 256]
     control:
       interval: 20
-      run_best: False
+      run_best: false
   cmds:
     before_start: export RAY_DEDUP_LOGS=0
 
