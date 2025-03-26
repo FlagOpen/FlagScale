@@ -7,15 +7,20 @@ experiment:
   exp_dir: ./outputs
   task:
     type: serve
-    backend: vllm
-    entrypoint: null
+    inference_engine: vllm
   runner:
     nnodes: 1
     nproc_per_node: 4
   auto_tuner:
     space:
-      tensor_model_parallel_size: [1, 2]
-      pipeline_model_parallel_size: "auto"
+      tensor_model_parallel_size: "auto"
+      pipeline_model_parallel_size: [1, 2]
+      # instance: "auto"
+      block_size: [8, 16, 32]
+      max_num_batched_tokens: [512, 1024, 2048]
+      max_num_seqs: [128, 256]
+      # swap_space: [0, 2, 4, 8, 16]
+
     control:
       interval: 10
       run_best: False
