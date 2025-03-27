@@ -383,7 +383,6 @@ class DeepSeekV3Model(GPTModel):
                             weight = weight.to(original_dtype)
                         if weight.device == torch.device('cpu'):
                             weight.data = weight.data.cuda()
-                    original_weight = weight.clone().detach().data
 
                 if self.share_embeddings_and_output_weights and self.post_process:
                     output_layer_weight = self.shared_embedding_or_output_weight()
