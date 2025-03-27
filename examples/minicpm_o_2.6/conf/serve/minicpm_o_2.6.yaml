@@ -1,15 +1,15 @@
 model_args:
   vllm_model:
-    model-tag: /models/Qwen2.5-7B-Instruct
+    model-tag: /models/minicpm_o_2.6 # path of weight of minicpm_o_2.6
     tensor-parallel-size: 1
+    pipeline-parallel-size: 1
     gpu-memory-utilization: 0.9
-    max-model-len: 32768
     max-num-seqs: 256
-    port: 4567
+    limit-mm-per-prompt: image=18
+    port: 9010 # port to serve
     action-args:
       - trust-remote-code
       - enable-chunked-prefill
-
 deploy:
-  command_line_mode: True
+  command_line_mode: true
   use_native_serve: False
