@@ -577,16 +577,13 @@ class SSHServeRunner(RunnerBase):
         trust_remote_code = self.config.serve.model_args.vllm_model.get(
             "trust_remote_code", False
         ) or (
-            "trust-remote-code"
-            in self.config.serve.model_args.vllm_model.get("action-args", [])
+            "trust_remote_code"
+            in self.config.serve.model_args.vllm_model.get("action_args", [])
         )
 
-        model_name = (
-            self.config.serve.model_args.vllm_model.get("model", None)
-            or self.config.serve.model_args.vllm_model.get("model_tag", None)
-            or self.config.serve.model_args.vllm_model.get("model-tag", None)
-            or self.config.serve.model_args.vllm_model.get("served_model_name", None)
-        )
+        model_name = self.config.serve.model_args.vllm_model.get(
+            "model", None
+        ) or self.config.serve.model_args.vllm_model.get("served_model_name", None)
 
         if not model_name:
             raise ValueError("No model specified in config file.")

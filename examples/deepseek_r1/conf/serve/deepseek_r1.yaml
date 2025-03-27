@@ -1,14 +1,14 @@
 model_args:
   vllm_model:
     model_tag: /models/deepseek_r1 # path of weight of deepseek r1
-    tensor-parallel-size: 8
+    tensor_parallel_size: 8
     pipeline-parallel-size: 4
     gpu-memory-utilization: 0.9
     max-num-seqs: 256
     port: 9010 # port to serve
-    action-args:
-      - trust-remote-code
-      - enable-chunked-prefill
+    action_args:
+      - trust_remote_code
+      - enable_chunked_prefill
 
 deploy:
   use_fs_serve: false

@@ -67,7 +67,7 @@ If origin model is excuted in command line mode with vLLM, we can use Flagscale.
 vllm serve /models/Qwen2.5-7B-Instruct --tensor-parallel-size=1 --gpu-memory-utilization=0.9 --max-model-len=32768 --max-num-seqs=256 --port=4567 --trust-remote-code --enable-chunked-prefill
 ```
 
-All the args remain the same as vLLM. Note that action args without value, like trust-remote-code and enable-chunked-prefill, are located in **action-args** block in config file.
+All the args remain the same as vLLM. Note that action args without value, like trust-remote-code and enable-chunked-prefill, are located in **action_args** block in config file.
 
 ```YAML
 model_args:
@@ -78,9 +78,9 @@ model_args:
     max-model-len: 32768
     max-num-seqs: 256
     port: 4567
-    action-args:
-      - trust-remote-code
-      - enable-chunked-prefill
+    action_args:
+      - trust_remote_code
+      - enable_chunked_prefill
 
 deploy:
   use_fs_serve: false

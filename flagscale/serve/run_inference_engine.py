@@ -14,25 +14,14 @@ from flagscale.utils import flatten_dict_to_args
 
 
 def vllm_serve(args):
-    vllm_args = args["serve"]["model_args"]["vllm_model"]
-
+    vllm_args = args["serve"]["vllm_model"]["engine_args"]
     command = ["vllm", "serve"]
-    model_tag = vllm_args.get("model_tag") or vllm_args.get("model-tag")
-    if model_tag:
-        command.append(model_tag)
-        for item in vllm_args:
-            if item not in {"model_tag", "model-tag", "action-args"}:
-                command.append(f"--{item}={vllm_args[item]}")
-        for arg in vllm_args["action-args"]:
-            command.append(f"--{arg}")
-    elif vllm_args.get("model"):
+    if vllm_args.get("model", None):
         command.append(vllm_args["model"])
-        other_args = flatten_dict_to_args(
-            vllm_args, ["model_tag", "model-tag", "model"]
-        )
+        other_args = flatten_dict_to_args(vllm_args, ["model"])
         command.extend(other_args)
     else:
-        raise ValueError("Either model_tag or model must be specified in vllm_model.")
+        raise ValueError("Either model must be specified in vllm_model.")
 
     # Start the subprocess
     logger.info(f"[Serve]: Starting vllm serve with command: {' '.join(command)}")
@@ -50,11 +39,15 @@ def vllm_serve(args):
 
 def main():
     serve.load_args()
-    engine = serve.task_config.experiment.task.get("inference_engine", None)
+    engine = (
+        serve.task_config.get("serve", {}).get("vllm_model", {}).get("engine", None)
+    )
     if engine == "vllm":
         return_code = vllm_serve(serve.task_config)
     else:
-        raise ValueError(f"Unsupported backend: {engine}")
+        raise ValueError(
+            f"Unsupported inference engine: {engine}, current config {serve.task_config}"
+        )
 
     logger.info(f"[Serve]: {engine} serve exited with return code: {return_code}")
 

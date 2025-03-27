@@ -7,8 +7,10 @@ experiment:
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
-    inference_engine: vllm
     entrypoint: null
+  deploy:
+    port: 6701
+    use_fs_serve: true
   runner:
     nnodes: 1
     nproc_per_node: 8
