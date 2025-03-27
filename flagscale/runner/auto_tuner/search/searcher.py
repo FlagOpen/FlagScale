@@ -11,7 +11,7 @@ from flagscale.runner.auto_tuner.memory_model import default_model
 from flagscale.runner.auto_tuner.search.algorithm import GridAlgo
 from flagscale.runner.auto_tuner.utils import divisible
 
-__BUILT_IN_STRATEGY_DIMS__ = [
+BUILT_IN_STRATEGY_DIMS = [
     "data_parallel_size",
     "use_distributed_optimizer",
     "tensor_model_parallel_size",
@@ -27,7 +27,7 @@ __BUILT_IN_STRATEGY_DIMS__ = [
     "expert_model_parallel_size",
 ]
 
-__BUILT_IN_SERVE_STRATEGY_DIMS__ = [
+_BUILT_IN_SERVE_STRATEGY_DIMS = [
     "tensor_model_parallel_size",
     "pipeline_model_parallel_size",
     "instance",
@@ -37,7 +37,7 @@ __BUILT_IN_SERVE_STRATEGY_DIMS__ = [
     "swap_space",
 ]
 
-DEFAULT_SERVE_TUNE_SPACE = {
+_DEFAULT_SERVE_TUNE_SPACE = {
     "block_size": [8, 16, 32],
     "max_num_batched_tokens": [512, 1024, 2048],
     "max_num_seqs": [64, 128, 256],
@@ -566,8 +566,8 @@ class ServeSearcher(Searcher):
     def __init__(self, config):
         self._nodes_aware_dims = [
             item
-            for item in __BUILT_IN_SERVE_STRATEGY_DIMS__
-            if item not in DEFAULT_SERVE_TUNE_SPACE.keys()
+            for item in _BUILT_IN_SERVE_STRATEGY_DIMS
+            if item not in _DEFAULT_SERVE_TUNE_SPACE.keys()
         ]
         super(ServeSearcher, self).__init__(config)
 
@@ -614,7 +614,7 @@ class ServeSearcher(Searcher):
 
     def _create_default_space(self, cards):
         space = dict.fromkeys(self._nodes_aware_dims, "auto")
-        space.update(DEFAULT_SERVE_TUNE_SPACE)
+        space.update(_DEFAULT_SERVE_TUNE_SPACE)
         return self._create_space_aware_nodes(space, cards)
 
     def _create_space(self, space, cards):
@@ -626,8 +626,8 @@ class ServeSearcher(Searcher):
 
         for key, value in space.items():
             if value == "auto":
-                if key in DEFAULT_SERVE_TUNE_SPACE.keys():
-                    space[key] = DEFAULT_SERVE_TUNE_SPACE[key]
+                if key in _DEFAULT_SERVE_TUNE_SPACE.keys():
+                    space[key] = _DEFAULT_SERVE_TUNE_SPACE[key]
             else:
                 assert type(OmegaConf.to_object(value)) in [
                     tuple,
@@ -658,7 +658,7 @@ class ServeSearcher(Searcher):
         node_unaware_tune_space = {
             key: value
             for key, value in space.items()
-            if key in DEFAULT_SERVE_TUNE_SPACE
+            if key in _DEFAULT_SERVE_TUNE_SPACE
         }
         values = list(node_unaware_tune_space.values())
         cartesian_product_unaware_values = list(itertools.product(*values))
