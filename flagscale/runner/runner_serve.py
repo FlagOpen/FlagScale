@@ -380,7 +380,7 @@ class SSHServeRunner(RunnerBase):
             if not self.use_fs_serve:
                 self.user_script = "flagscale/serve/run_inference_engine.py"
             else:
-                self.user_script = "flagscale/serve/run_native_vllm_serve.py"
+                self.user_script = "flagscale/serve/run_fs_serve_vllm.py"
         elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
             self.user_script = entrypoint
         elif entrypoint is None:
@@ -503,7 +503,7 @@ class SSHServeRunner(RunnerBase):
             f.write("else\n")
             # TODO: This is a temporary fix. We need to find a better way to query the job.
             f.write(
-                "    pid=$(ps aux | grep -E 'run_native_vllm_serve|run_inference_engine' | grep -v grep | head -n 1 | awk '{print $2}')\n"
+                "    pid=$(ps aux | grep -E 'run_fs_serve_vllm|run_inference_engine' | grep -v grep | head -n 1 | awk '{print $2}')\n"
             )
             f.write("    ps -p $pid -o state --no-headers\n")
             f.write("fi\n")
