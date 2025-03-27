@@ -350,12 +350,24 @@ class SSHServeRunner(RunnerBase):
         self.command_line_mode = self.config.serve.get("deploy", {}).get(
             "command_line_mode", False
         )
+        if self.command_line_mode:
+            logger.warning(
+                "Key 'command_line_mode' is deprecated in next version. Please remove it."
+            )
+        self.use_native_serve = self.config.serve.get("deploy", {}).get(
+            "use_native_serve", True
+        )
+        if self.use_native_serve:
+            logger.warning(
+                "Key 'use_native_serve' is deprecated in next version. Please replace it by `use_fs_serve`"
+            )
         self.inference_engine = self.config.experiment.task.get(
             "inference_engine", None
         )
-        self.use_fs_serve = self.config.serve.get("deploy", {}).get(
-            "use_fs_serve", True
-        ) and self.config.serve.get("deploy", {}).get("use_native_serve", True)
+        self.use_fs_serve = (
+            self.config.serve.get("deploy", {}).get("use_fs_serve", True)
+            and self.use_native_serve
+        )
         self._prepare()
         self.host = None
         self.port = _get_serve_port(config)
