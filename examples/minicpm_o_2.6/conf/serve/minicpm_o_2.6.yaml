@@ -11,4 +11,4 @@ model_args:
       - trust-remote-code
       - enable-chunked-prefill
 deploy:
-  use_fs_serve: False
+  use_fs_serve: false
