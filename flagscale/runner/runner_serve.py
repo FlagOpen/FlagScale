@@ -3,6 +3,7 @@ import contextlib
 import json
 import os
 import shlex
+import shutil
 import signal
 
 import psutil
@@ -351,15 +352,13 @@ class SSHServeRunner(RunnerBase):
             "command_line_mode", False
         )
         if self.command_line_mode:
-            logger.warning(
-                "Key 'command_line_mode' is deprecated in next version. Please remove it."
-            )
+            logger.warning("Key 'command_line_mode' is deprecated in future.")
         self.use_native_serve = self.config.serve.get("deploy", {}).get(
             "use_native_serve", True
         )
         if self.use_native_serve:
             logger.warning(
-                "Key 'use_native_serve' is deprecated in next version. Please replace it by `use_fs_serve`"
+                "Key 'use_native_serve' is deprecated in future. Please replace it by `use_fs_serve`"
             )
         self.inference_engine = self.config.experiment.task.get(
             "inference_engine", None
@@ -399,10 +398,13 @@ class SSHServeRunner(RunnerBase):
             if not os.path.exists(hostfile_path):
                 raise ValueError(f"The hostfile {hostfile_path} does not exist")
 
-        self.resources = parse_hostfile(hostfile_path)
-        if self.resources:
-            OmegaConf.set_struct(self.config, False)
-            self.config.serve["nodes"] = list(self.resources.items())
+        self.resources = None
+
+        if hostfile_path:
+            self.resources = parse_hostfile(hostfile_path)
+            if self.resources:
+                OmegaConf.set_struct(self.config, False)
+                self.config.serve["nodes"] = list(self.resources.items())
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
@@ -465,12 +467,11 @@ class SSHServeRunner(RunnerBase):
             pid = int(pid.strip())
         kill_process_tree(pid)
 
-        ray_path_cmd = "ray_path=$(realpath $(which ray))"
-        exit_code = os.system(ray_path_cmd)
-
-        if exit_code == 0:
-            stop_cmd = "${ray_path} stop"
-            os.system(stop_cmd)
+        ray_executable = shutil.which("ray")
+        print(ray_executable)
+        if ray_executable:
+            ray_path = os.path.realpath(ray_executable)
+            os.system(f"{ray_path} stop")
         else:
             logger.info("Failed to find ray path")
 
