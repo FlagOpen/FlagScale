@@ -7,7 +7,7 @@ experiment:
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
-    backend: vllm
+    inference_engine: vllm
     entrypoint: null
   runner:
     hostfile: null
