@@ -162,6 +162,10 @@ def calc_params_l2_norm(model, force_create_fp32_copy=False):
 
     # Sum across all model-parallel GPUs(tensor + pipeline).
     mp_groups = mpu.get_model_parallel_group()
+    comm_device = get_device_type_for_comm(mp_groups)
+    if comm_device=='cpu':
+        norm_2 = norm_2.cpu()
+
     if isinstance(mp_groups, list):
         original_norm_2 = norm_2.clone().detach()
         for mp_group in mp_groups:
@@ -194,6 +198,10 @@ def calc_params_l2_norm(model, force_create_fp32_copy=False):
 
         # Sum across expert tensor, model and pipeline parallel GPUs.
         emp_groups = mpu.get_expert_tensor_model_pipeline_parallel_group()
+        comm_device = get_device_type_for_comm(emp_groups)
+        if comm_device == 'cpu':
+            moe_norm_2 = moe_norm_2.cpu()
+
         if isinstance(emp_groups, list):
             original_norm_2 = moe_norm_2.clone().detach()
             for emp_group in emp_groups:
@@ -208,6 +216,10 @@ def calc_params_l2_norm(model, force_create_fp32_copy=False):
                 group=mpu.get_expert_tensor_model_pipeline_parallel_group()
             )
         norm_2 += moe_norm_2
+        
+        if comm_device == 'cpu':
+            norm_2 = norm_2.cuda()
+            moe_norm_2 = moe_norm_2.cuda()
 
     return norm_2.item() ** 0.5
 
