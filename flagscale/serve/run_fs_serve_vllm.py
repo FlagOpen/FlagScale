@@ -141,6 +141,7 @@ class LLMActor:
         return self.engine.generate(prompt, sampling_params, request_id)
 
 
+# refer to openai-type endpoints of vLLM
 @serve.deployment(num_replicas="auto", max_ongoing_requests=1000)
 @serve.ingress(app)
 class LLMService:
