@@ -81,7 +81,7 @@ pip install flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${c
 rm flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
 
 # From Megatron-LM log
-pip install "git+https://github.com/Dao-AILab/flash-attention.git@v2.7.3#egg=flashattn-hopper&subdirectory=hopper"
+pip install "git+https://github.com/Dao-AILab/flash-attention.git@v2.7.2#egg=flashattn-hopper&subdirectory=hopper"
 python_path=`python -c "import site; print(site.getsitepackages()[0])"`
 mkdir -p $python_path/flashattn_hopper
 wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILab/flash-attention/v2.7.2/hopper/flash_attn_interface.py
