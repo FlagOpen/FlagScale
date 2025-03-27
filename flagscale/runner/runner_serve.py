@@ -597,7 +597,7 @@ class SSHServeRunner(RunnerBase):
             trust_remote_code=trust_remote_code,
         )
 
-        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=20)
+        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=200)
         api_url = f"http://{self.host}:{self.port}/v1/chat/completions"
         ### allow metric = [\"ttft\", \"tpot\", \"itl\", \"e2el\"]
         ### allow percentiles = [\"25,50,75\"]
