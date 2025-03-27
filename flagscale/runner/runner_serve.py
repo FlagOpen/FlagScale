@@ -245,7 +245,7 @@ def _generate_run_script_serve(
                 and getattr(config.serve.deploy, "use_native_serve", True)
                 and (
                     getattr(config.serve.deploy, "command_line_mode", False)
-                    or getattr(config.experiment.task.get("inference_engine", None))
+                    or getattr(config.experiment.task, "inference_engine", None)
                 )
             ):
                 f.write(f"ray_path=$(realpath $(which ray))\n")
