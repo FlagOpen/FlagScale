@@ -55,7 +55,9 @@ def get_deploy_config(model_name):
         raise ValueError("No 'deploy' section found in task config.")
     resource_config = {}
 
-    if TASK_CONFIG.serve.get("resource", {}).get(model_name, None):
+    if TASK_CONFIG.serve.deploy.get("models", None) and TASK_CONFIG.serve.resource.get(
+        model_name, None
+    ):
         models_resource_config = TASK_CONFIG.serve.resource.get(model_name, None)
         ray_actor_options = {}
         resource_set = {"num_gpus", "num_cpus"}

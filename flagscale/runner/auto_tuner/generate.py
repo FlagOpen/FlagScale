@@ -126,15 +126,15 @@ class ServeGenerator(Generator):
                 continue
             if key == "instance":
                 if strategy[key] is None:
-                    if value in config.serve.deploy.models.vllm_model:
-                        del config.serve.deploy.models.vllm_model[value]
+                    if value in config.serve.resource.vllm_model:
+                        del config.serve.resource.vllm_model[value]
                     continue
                 if value not in config.serve.model_args.vllm_model:
-                    config.serve.deploy.models.vllm_model = OmegaConf.merge(
-                        config.serve.deploy.models.vllm_model, {value: strategy[key]}
+                    config.serve.resource.vllm_model = OmegaConf.merge(
+                        config.serve.resource.vllm_model, {value: strategy[key]}
                     )
                 else:
-                    config.serve.deploy.models.vllm_model[value] = strategy[key]
+                    config.serve.resource.vllm_model[value] = strategy[key]
             else:
                 if strategy[key] is None:
                     if value in config.serve.model_args.vllm_model:
@@ -159,7 +159,7 @@ class ServeGenerator(Generator):
             current_pp = model_args.get("pipeline_parallel_size", 0) or model_args.get(
                 "pipeline_parallel_size", 1
             )
-            config.serve.deploy.models.vllm_model["num_gpus"] = current_tp * current_pp
+            config.serve.resource.vllm_model["num_gpus"] = current_tp * current_pp
 
     def gen(self, strategy):
         config = copy.deepcopy(self.config)
