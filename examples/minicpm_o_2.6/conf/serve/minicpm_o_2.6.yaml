@@ -1,6 +1,6 @@
 model_args:
   vllm_model:
-    model-tag: /models/minicpm_o_2.6 # path of weight of minicpm_o_2.6
+    model_tag: /models/minicpm_o_2.6 # path of weight of minicpm_o_2.6
     tensor-parallel-size: 1
     pipeline-parallel-size: 1
     gpu-memory-utilization: 0.9

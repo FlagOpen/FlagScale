@@ -118,7 +118,9 @@ class ServeGenerator(Generator):
     def _set_value(self, strategy, config):
 
         for key, value in self.args_mapping.items():
-            if config.serve.model_args.vllm_model.get("model-tag", None):
+            if config.serve.model_args.vllm_model.get(
+                "model_tag", None
+            ) or config.serve.model_args.vllm_model.get("model-tag", None):
                 value = value.replace("_", "-")
             if key not in strategy:
                 continue

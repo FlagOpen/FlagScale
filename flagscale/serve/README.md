@@ -72,7 +72,7 @@ All the args remain the same as vLLM. Note that action args without value, like 
 ```YAML
 model_args:
   vllm_model:
-    model-tag: /models/Qwen2.5-7B-Instruct
+    model_tag: /models/Qwen2.5-7B-Instruct
     tensor-parallel-size: 1
     gpu-memory-utilization: 0.9
     max-model-len: 32768

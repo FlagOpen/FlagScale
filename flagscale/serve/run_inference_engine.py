@@ -17,19 +17,22 @@ def vllm_serve(args):
     vllm_args = args["serve"]["model_args"]["vllm_model"]
 
     command = ["vllm", "serve"]
-    if vllm_args.get("model-tag"):
-        command.append(vllm_args["model-tag"])
+    model_tag = vllm_args.get("model_tag") or vllm_args.get("model-tag")
+    if model_tag:
+        command.append(model_tag)
         for item in vllm_args:
-            if item not in {"model-tag", "action-args"}:
+            if item not in {"model_tag", "model-tag", "action-args"}:
                 command.append(f"--{item}={vllm_args[item]}")
         for arg in vllm_args["action-args"]:
             command.append(f"--{arg}")
     elif vllm_args.get("model"):
         command.append(vllm_args["model"])
-        other_args = flatten_dict_to_args(vllm_args, ["model-tag", "model"])
+        other_args = flatten_dict_to_args(
+            vllm_args, ["model_tag", "model-tag", "model"]
+        )
         command.extend(other_args)
     else:
-        raise ValueError("Either model-tag or model must be specified in vllm_model.")
+        raise ValueError("Either model_tag or model must be specified in vllm_model.")
 
     # Start the subprocess
     logger.info(f"[Serve]: Starting vllm serve with command: {' '.join(command)}")

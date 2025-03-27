@@ -1,6 +1,6 @@
 model_args:
   vllm_model:
-    model-tag: /models/deepseek_r1 # path of weight of deepseek r1
+    model_tag: /models/deepseek_r1 # path of weight of deepseek r1
     tensor-parallel-size: 8
     pipeline-parallel-size: 4
     gpu-memory-utilization: 0.9

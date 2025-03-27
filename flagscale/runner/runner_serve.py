@@ -541,6 +541,7 @@ class SSHServeRunner(RunnerBase):
     def _serve_alive(self):
         model_name = (
             self.config.serve.model_args.vllm_model.get("model", None)
+            or self.config.serve.model_args.vllm_model.get("model_tag", None)
             or self.config.serve.model_args.vllm_model.get("model-tag", None)
             or self.config.serve.model_args.vllm_model.get("served_model_name", None)
         )
@@ -582,6 +583,7 @@ class SSHServeRunner(RunnerBase):
 
         model_name = (
             self.config.serve.model_args.vllm_model.get("model", None)
+            or self.config.serve.model_args.vllm_model.get("model_tag", None)
             or self.config.serve.model_args.vllm_model.get("model-tag", None)
             or self.config.serve.model_args.vllm_model.get("served_model_name", None)
         )
