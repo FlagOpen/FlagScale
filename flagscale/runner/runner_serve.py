@@ -239,8 +239,13 @@ def _generate_run_script_serve(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
             node_cmd = None
-            if getattr(config.serve.deploy, "use_native_serve", True) and getattr(
-                config.serve.deploy, "command_line_mode", False
+            if (
+                getattr(config.serve.deploy, "use_fs_serve", True)
+                and getattr(config.serve.deploy, "use_native_serve", True)
+                and (
+                    getattr(config.serve.deploy, "command_line_mode", False)
+                    or getattr(config.experiment.task.get("inference_engine", None))
+                )
             ):
                 f.write(f"ray_path=$(realpath $(which ray))\n")
                 if not device_type:
@@ -306,7 +311,8 @@ def _generate_stop_script(config, host, node_rank):
         after_stop = ""
     with open(host_stop_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
-        f.write("ray stop\n")
+        f.write(f"ray_path=$(realpath $(which ray))\n")
+        f.write(f"${{ray_path}} stop\n")
         f.write("pkill -f 'run_inference_engine'\n")
         f.write("pkill -f 'vllm'\n")
         f.write(f"{after_stop}\n")
@@ -341,12 +347,15 @@ class SSHServeRunner(RunnerBase):
         super().__init__(config)
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
-        self.command_line_mode = getattr(
-            self.config.serve.deploy, "command_line_mode", None
+        self.command_line_mode = self.config.serve.get("deploy", {}).get(
+            "command_line_mode", False
         )
-        self.use_native_serve = getattr(
-            self.config.serve.deploy, "use_native_serve", True
+        self.inference_engine = self.config.experiment.task.get(
+            "inference_engine", None
         )
+        self.use_fs_serve = self.config.serve.get("deploy", {}).get(
+            "use_fs_serve", True
+        ) and self.config.serve.get("deploy", {}).get("use_native_serve", True)
         self._prepare()
         self.host = None
         self.port = _get_serve_port(config)
@@ -356,8 +365,8 @@ class SSHServeRunner(RunnerBase):
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
-        if self.command_line_mode:
-            if not self.use_native_serve:
+        if self.command_line_mode or self.inference_engine:
+            if not self.use_fs_serve:
                 self.user_script = "flagscale/serve/run_inference_engine.py"
             else:
                 self.user_script = "flagscale/serve/run_native_vllm_serve.py"
@@ -443,6 +452,16 @@ class SSHServeRunner(RunnerBase):
             pid = f.readlines()[0]
             pid = int(pid.strip())
         kill_process_tree(pid)
+
+        ray_path_cmd = "ray_path=$(realpath $(which ray))"
+        exit_code = os.system(ray_path_cmd)
+
+        if exit_code == 0:
+            stop_cmd = "${ray_path} stop"
+            os.system(stop_cmd)
+        else:
+            logger.info("Failed to find ray path")
+
         os.system("pkill -f run_inference_engine")
         os.system("pkill -f vllm")
 

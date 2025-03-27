@@ -83,8 +83,7 @@ model_args:
       - enable-chunked-prefill
 
 deploy:
-  command_line_mode: true
-  use_native_serve: false
+  use_fs_serve: false
 ```
 
 ### How to config serve parameters
