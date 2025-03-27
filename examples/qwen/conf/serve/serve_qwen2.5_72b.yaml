@@ -11,7 +11,4 @@ model_args:
       - enable-chunked-prefill
 
 deploy:
-  command_line_mode: true
-  models:
-    vllm_model:
-      num_gpus: 4
+  use_fs_serve: false
