@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import json
 import re
@@ -8,34 +9,31 @@ from email.mime.text import MIMEText
 from getpass import getpass
 
 import paramiko
+import requests
 import yaml
 
 
-# Function to read configuration from a YAML file
 def read_config(config_file):
+    """Read and parse configuration from YAML file"""
     try:
         with open(config_file, "r") as file:
-            # Parse YAML file
             config = yaml.safe_load(file)
         print("Loaded configuration:")
-        print(yaml.dump(config))  # Output the loaded configuration
+        print(yaml.dump(config))
         return config
     except FileNotFoundError:
         print(f"{datetime.datetime.now()} - Configuration file not found.")
-        print("Error: Configuration file not found.")
         sys.exit(1)
     except yaml.YAMLError as e:
         print(f"{datetime.datetime.now()} - Error parsing configuration file: {e}")
-        print(f"Error: Error parsing configuration file: {e}")
         sys.exit(1)
     except Exception as e:
         print(f"{datetime.datetime.now()} - Error reading configuration file: {e}")
-        print(f"Error: Error reading configuration file: {e}")
         sys.exit(1)
 
 
-# Function to connect to remote host and read log file
 def read_logs(remote_host, remote_user, remote_port, remote_log_path):
+    """Connect to remote host and read log file using SSH/SFTP"""
     print(f"{datetime.datetime.now()} - Connecting to remote host...")
     try:
         ssh = paramiko.SSHClient()
@@ -54,12 +52,11 @@ def read_logs(remote_host, remote_user, remote_port, remote_log_path):
         return contents
     except Exception as e:
         print(f"{datetime.datetime.now()} - Error reading remote log file: {e}")
-        print(f"Error: Error reading remote log file: {e}")
         sys.exit(1)
 
 
-# Function to parse log file contents
 def parse_logs(log_lines):
+    """Parse log file contents using regex pattern matching"""
     print(f"{datetime.datetime.now()} - Parsing log content...")
 
     pattern = (
@@ -91,8 +88,8 @@ def parse_logs(log_lines):
     return lines_to_keep
 
 
-# Function to check training status based on parsed logs
 def check_logs(logs):
+    """Analyze log entries to detect training issues"""
     print(f"{datetime.datetime.now()} - Checking log content...")
     recent_logs = logs[-10:]
     last_log = logs[-1]
@@ -123,10 +120,10 @@ def check_logs(logs):
     return status_code, message, recent_logs
 
 
-# Function to send email alerts
 def send_email(
     smtp_server, source_email, source_email_password, target_email, subject, body
 ):
+    """Send email notification using SMTP"""
     print(f"{datetime.datetime.now()} - Sending email...")
     try:
         msg = MIMEText(body)
@@ -138,55 +135,72 @@ def send_email(
         server.login(source_email, source_email_password)
         server.sendmail(source_email, [target_email], msg.as_string())
         server.quit()
-        print(f"{datetime.datetime.now()} - Sending email finish.")
+        print(f"{datetime.datetime.now()} - Email sent successfully.")
     except Exception as e:
         print(f"{datetime.datetime.now()} - Error sending email: {e}")
-        print(f"Error: Error sending email: {e}")
 
 
-# Main function
+def send_feishu(webhook_url, secret, message):
+    # do something
+    pass
+
+
 def main():
-    config_file = "config.yaml"
-    config = read_config(config_file)
+    """Main function to handle command line arguments and monitoring loop"""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Training Monitor")
+    parser.add_argument("--notice", 
+                        type=str, 
+                        choices=["email", "feishu"],
+                        required=True,
+                        help="Notification method (email/feishu)")
+    args = parser.parse_args()
 
-    remote_host = config["remote_host"]
-    remote_user = config["remote_user"]
-    remote_port = int(config["remote_port"])
-    remote_log_path = config["remote_log_path"]
-    target_email = config["target_email"]
-    smtp_server = config["smtp_server"]
-    source_email = config["source_email"]
-    check_interval = int(config["check_interval"])
+    if args.notice == "email":
+        # Load configuration from YAML file
+        config = read_config("config-email.yaml")
+    
+        # Email notification configuration
+        smtp_server = config["smtp_server"]
+        source_email = config["source_email"]
+        target_email = config["target_email"]
+        check_interval = int(config["check_interval"])
 
-    # Securely get the password without displaying it
-    source_email_password = getpass(f"Enter the password for {source_email}: ")
+        # Securely get email password
+        source_email_password = getpass(f"Enter the password for {source_email}: ")
 
+    
+    elif args.notice == "feishu":
+        # Load configuration from YAML file
+        config = read_config("config-email.yaml")
+        check_interval = config.get("check_interval", 300)
+                
     while True:
-        logs = read_logs(remote_host, remote_user, remote_port, remote_log_path)
+        logs = read_logs(
+            config["remote_host"],
+            config["remote_user"],
+            int(config["remote_port"]),
+            config["remote_log_path"]
+        )
         useful_logs = parse_logs(logs)
         status_code, message, recent_logs = check_logs(useful_logs)
-        recent_logs = json.dumps(recent_logs, indent=4)
+        recent_logs_str = json.dumps(recent_logs, indent=4)
 
-        if status_code == 1:
-            send_email(
-                smtp_server,
-                source_email,
-                source_email_password,
-                target_email,
-                message,
-                recent_logs,
-            )
-        elif status_code == 2:
-            send_email(
-                smtp_server,
-                source_email,
-                source_email_password,
-                target_email,
-                message,
-                recent_logs,
-            )
+        if status_code in [1, 2]:
+            if args.notice == "email":
+                send_email(
+                    smtp_server,
+                    source_email,
+                    source_email_password,
+                    target_email,
+                    message,
+                    recent_logs_str,
+                )
+            if args.notice == "feishu":
+                # do something
+                pass
 
-        print("Waiting for next checking...")
+        print(f"Waiting {check_interval} seconds for next check...")
         time.sleep(check_interval)
 
 
