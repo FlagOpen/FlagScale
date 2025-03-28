@@ -74,6 +74,26 @@ def _get_inference_engine(config):
     return engine
 
 
+def _get_engine_args(config, model="vllm_model"):
+    serve_config = config.get("serve", [])
+    if not serve_config:
+        raise ValueError(
+            f"No 'serve' configuration found in task config: {serve_config}"
+        )
+    engine_args = {}
+
+    for item in serve_config:
+        if item.get("model", None) == model:
+            engine_args = item.get("engine_args", {})
+            break
+    if not engine_args:
+        raise ValueError(
+            f"No 'engine_args' configuration found in task config: {serve_config}"
+        )
+
+    return engine_args
+
+
 def _update_config_serve(config: DictConfig):
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     if not os.path.isdir(exp_dir):
@@ -528,9 +548,10 @@ class SSHServeRunner(RunnerBase):
         return job_status
 
     def _serve_alive(self):
-        model_name = self.config.serve.model_args.vllm_model.get(
-            "served_model_name", None
-        ) or self.config.serve.model_args.vllm_model.get("model", None)
+        engine_args = _get_engine_args(self.config)
+        model_name = engine_args.get("served_model_name", None) or engine_args.get(
+            "model", None
+        )
 
         if not model_name:
             raise ValueError("No model specified in config file.")
@@ -560,10 +581,7 @@ class SSHServeRunner(RunnerBase):
         from vllm.transformers_utils.tokenizer import get_tokenizer
 
         tokenizer_mode = "auto"
-
-        model_config = self.config.serve[0]
-        model_args = next(iter(model_config.values()))
-        engine_args = model_args.get("engine_args", {})
+        engine_args = _get_engine_args(self.config)
 
         trust_remote_code = engine_args.get("trust_remote_code", False)
 
