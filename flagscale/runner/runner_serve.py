@@ -85,7 +85,7 @@ def _update_config_serve(config: DictConfig):
 def _generate_run_script_serve(
     config, host, node_rank, cmd, background=True, with_test=False
 ):
-    nodes = config.serve.get("nodes", None)
+    nodes = config.get("nodes", None)
     logging_config = config.logging
 
     no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
@@ -378,7 +378,7 @@ class SSHServeRunner(RunnerBase):
             self.resources = parse_hostfile(hostfile_path)
             if self.resources:
                 OmegaConf.set_struct(self.config, False)
-                self.config.serve["nodes"] = list(self.resources.items())
+                self.config["nodes"] = list(self.resources.items())
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
