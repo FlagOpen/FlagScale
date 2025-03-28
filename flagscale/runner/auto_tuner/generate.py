@@ -123,6 +123,8 @@ class ServeGenerator(Generator):
                 model_config = item
                 break
 
+        if not model_config.get("resources", None):
+            model_config["resources"] = {}
         if model_config is None:
             raise ValueError(
                 f"No 'vllm_model' configuration found in task config: {serve_config}"
