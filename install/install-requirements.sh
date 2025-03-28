@@ -5,8 +5,6 @@ python -m pip install --upgrade setuptools
 
 # Packages that need to be installed outside of the conda environment
 pip install -r ../requirements/requirements-base.txt
-pip install -r ../requirements/requirements-dev.txt
-pip install -r ../requirements/requirements-lint.txt
 
 # Initialize the variable
 env=""
@@ -82,6 +80,12 @@ wget https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash
 pip install flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
 rm flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
 
+# From Megatron-LM log
+pip install "git+https://github.com/Dao-AILab/flash-attention.git@v2.7.2#egg=flashattn-hopper&subdirectory=hopper"
+python_path=`python -c "import site; print(site.getsitepackages()[0])"`
+mkdir -p $python_path/flashattn_hopper
+wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILab/flash-attention/v2.7.2/hopper/flash_attn_interface.py
+
 # If env equals 'train'
 if [ "${env}" == "train" ]; then
     # Navigate to requirements directory and install training dependencies
@@ -103,11 +107,7 @@ if [ "${env}" == "inference" ]; then
     pip install -r ../vllm/requirements-build.txt
     pip install -r ../vllm/requirements-cuda.txt
     pip install -r ../vllm/requirements-common.txt
-
-    # If the dev argument is passed, execute the following command
-    if [ "$2" == "dev" ]; then
-        pip install -r ../vllm/requirements-dev.txt
-    fi
+    pip install -r ../vllm/requirements-dev.txt
 
     MAX_JOBS=$(nproc) pip install --no-build-isolation -v ../vllm/.
 

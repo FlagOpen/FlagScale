@@ -18,6 +18,7 @@ commands=(
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset inference"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset models"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset pipeline_parallel"
+    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset post_training"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset ssm"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset tensor_parallel"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset transformer/moe"
