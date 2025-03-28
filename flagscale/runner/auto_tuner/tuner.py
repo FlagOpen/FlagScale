@@ -326,6 +326,13 @@ class ServeAutoTunner(AutoTuner):
         self.logger = logger
         self.handler = handler
 
+        if config.experiment.get("deploy", {}).get("port", None):
+            for item in config.serve:
+                if item.get("model") == "vllm_model":
+                    item.engine_args["port"] = config.experiment.get("deploy", {}).get(
+                        "port", None
+                    )
+
         # Deepcopy the original config to isolate from each task config
         # Modify the orig config when run best task
         self.orig_config = config
