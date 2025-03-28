@@ -410,10 +410,8 @@ class ServeAutoTunner(AutoTuner):
             # get best strategy
             best_strategy = self.get_best()
             if best_strategy:
-                TP = best_strategy["tensor_model_parallel_size"]
-                PP = best_strategy["pipeline_model_parallel_size"]
                 self.logger.info(
-                    f"Best strategy tuned so far: tensor_parallel_size: {TP} pipeline_parallel_size: {PP}, and {self.recorder.metric} is {best_strategy[self.recorder.metric]}."
+                    f"Best strategy tuned so far: {best_strategy}, and {self.recorder.metric} is {best_strategy[self.recorder.metric]}."
                 )
             else:
                 self.logger.info(f"No strategy can run so far.")
@@ -486,8 +484,12 @@ class ServeAutoTunner(AutoTuner):
             time.sleep(self.interval)
 
         if serve_alive:
-            result = self.runner._profile_serve()
-            self.cur_result = result
+            try: 
+                result = self.runner._profile_serve()
+                self.cur_result = result
+            except Exception as e:
+                self.logger.info(f"fail to get profile result {e}")
+        time.sleep(self.interval)
         if running:
             self.runner.stop()
 

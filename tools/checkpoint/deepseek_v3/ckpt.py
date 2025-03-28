@@ -64,7 +64,7 @@ def get_hf_moe_mlp_ckpt(message, model, layer_id, args):
 
     message["router weight"] = tf_layer.mlp.gate.weight.data
     if hasattr(tf_layer.mlp.gate, "e_score_correction_bias"):
-        message["router e score bias"] = tf_layer.mlp.gate.e_score_correction_bias.data
+        message["router expert bias"] = tf_layer.mlp.gate.e_score_correction_bias.data
     message["shared expert gate weight"] = (
         tf_layer.mlp.shared_experts.gate_proj.weight.data
     )
@@ -203,11 +203,11 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
 
     # router
     router_weight = message.pop("router weight")
-    router_score_bias = None
-    use_router_score_bias = False
-    if "router e score bias" in message.keys():
-        use_router_score_bias = True
-        router_score_bias = message.pop("router e score bias")
+    router_expert_bias = None
+    use_router_expert_bias = False
+    if "router expert bias" in message.keys():
+        use_router_expert_bias = True
+        router_expert_bias = message.pop("router expert bias")
 
     # shared expert
     shared_expert_gate_weight = message.pop("shared expert gate weight")
@@ -238,8 +238,8 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
                 # router
                 router = tf_layer.mlp.router
                 router.weight.data.copy_(router_weight)
-                if use_router_score_bias:
-                    router.score_bias.data.copy_(router_score_bias)
+                if use_router_expert_bias:
+                    router.expert_bias.data.copy_(router_expert_bias)
                 # shared expert
                 shared_expert = tf_layer.mlp.shared_experts
                 shared_expert.linear_fc1.weight.data.copy_(shared_expert_linear1_weight)
@@ -443,7 +443,7 @@ def get_moe_mlp_ckpt(message, models, layer_id, args):
             global_expert_id = num_local_experts * ep_rank + expert_id
 
             # local experts
-            use_router_score_bias = False
+            use_router_expert_bias = False
             for tp_rank in range(tp_size):
                 tp_ep_rank = ep_rank * tp_size + tp_rank
                 if hasattr(models[tp_ep_rank], "decoder"):
@@ -454,9 +454,9 @@ def get_moe_mlp_ckpt(message, models, layer_id, args):
                 # router
                 router = tf_layer.mlp.router
                 router_weight = router.weight.data
-                if hasattr(router, "score_bias"):
-                    use_router_score_bias = True
-                    router_score_bias = router.score_bias.data
+                if hasattr(router, "expert_bias"):
+                    use_router_expert_bias = True
+                    router_expert_bias = router.expert_bias.data
                 # shared experts
                 shared_expert = tf_layer.mlp.shared_experts
                 shared_expert_gate_weight, shared_expert_up_weight = torch.chunk(
@@ -482,8 +482,8 @@ def get_moe_mlp_ckpt(message, models, layer_id, args):
                     )
 
             message["router weight"] = router_weight
-            if use_router_score_bias:
-                message["router e score bias"] = router_score_bias
+            if use_router_expert_bias:
+                message["router expert bias"] = router_expert_bias
             message["shared expert gate weight"] = shared_expert_gate_weight
             message["shared expert up weight"] = shared_expert_up_weight
             message["shared expert down weight"] = shared_expert_down_weight
@@ -619,17 +619,17 @@ def set_hf_moe_mlp_ckpt(message, model, layer_id, md, args):
     tf_layer = model.model.layers[layer_id]
 
     router_weight = message.pop("router weight")
-    use_router_score_bias = False
-    if "router e score bias" in message.keys():
-        use_router_score_bias = True
-        router_score_bias = message.pop("router e score bias")
+    use_router_expert_bias = False
+    if "router expert bias" in message.keys():
+        use_router_expert_bias = True
+        router_expert_bias = message.pop("router expert bias")
     shared_expert_gate_weight = message.pop("shared expert gate weight")
     shared_expert_up_weight = message.pop("shared expert up weight")
     shared_expert_down_weight = message.pop("shared expert down weight")
 
     tf_layer.mlp.gate.weight.data.copy_(router_weight)
-    if use_router_score_bias:
-        tf_layer.mlp.gate.e_score_correction_bias.data.copy_(router_score_bias)
+    if use_router_expert_bias:
+        tf_layer.mlp.gate.e_score_correction_bias.data.copy_(router_expert_bias)
     tf_layer.mlp.shared_experts.gate_proj.weight.data.copy_(shared_expert_gate_weight)
     tf_layer.mlp.shared_experts.up_proj.weight.data.copy_(shared_expert_up_weight)
     tf_layer.mlp.shared_experts.down_proj.weight.data.copy_(shared_expert_down_weight)

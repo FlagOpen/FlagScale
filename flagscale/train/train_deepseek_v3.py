@@ -272,7 +272,7 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
 
     # merge main model loss and mtp predictor loss
     if use_mtp_predictor:
-        loss = loss + loss_mtps
+        loss = loss + loss_mtps * args.mtp_loss_coeff
 
     # loss printing
     if args.context_parallel_size > 1:
