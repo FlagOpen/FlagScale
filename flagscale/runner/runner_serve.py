@@ -59,6 +59,21 @@ def _get_serve_port(config):
     return model_port or deploy_port or get_free_port()
 
 
+def _get_inference_engine(config):
+    serve_config = config.get("serve", [])
+    if not serve_config:
+        raise ValueError(
+            f"No 'serve' configuration found in task config: {serve_config}"
+        )
+    if serve_config and len(serve_config) > 1:
+        logger.warning(
+            f"Multiple 'serve' configurations found in task config: {serve_config}"
+        )
+
+    engine = serve_config[0].get("engine", None)
+    return engine
+
+
 def _update_config_serve(config: DictConfig):
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     if not os.path.isdir(exp_dir):
@@ -234,8 +249,8 @@ def _generate_run_script_serve(
                     )
             node_cmd = None
             deploy_config = config.experiment.get("deploy", {})
-            if deploy_config.get("use_fs_serve", True) and deploy_config.get(
-                "inference_engine", True
+            if deploy_config.get("use_fs_serve", True) and config.serve[0].get(
+                "engine", None
             ):
                 f.write(f"ray_path=$(realpath $(which ray))\n")
                 if not device_type:
@@ -338,7 +353,7 @@ class SSHServeRunner(RunnerBase):
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
         self.deploy_config = self.config.experiment.get("deploy", {})
-        self.inference_engine = self.deploy_config.get("inference_engine", None)
+        self.inference_engine = _get_inference_engine(self.config)
         self.use_fs_serve = self.deploy_config.get("use_fs_serve", True)
 
         self._prepare()
