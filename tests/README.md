@@ -25,7 +25,7 @@ tests/scripts/unit_tests/test_subset.sh --backend ${BACKEND} --subset ${SUBSET}
 Use 'test' command to run:
 
 ```bash
-flagscale unit-test --backend ${BACKEND} --subset ${SUBSET}
+flagscale test --unit --backend ${BACKEND} --subset ${SUBSET}
 ```
 
 Please set the following variables:
@@ -44,7 +44,7 @@ tests/scripts/unit_tests/test_all.sh
 Use 'test' command to run:
 
 ```bash
-flagscale unit-test-all
+flagscale test --unit-all
 ```
 
 ### Run Unit Tests Online
@@ -187,7 +187,7 @@ tests/scripts/functional_tests/test_task.sh --type ${TYPE} --task ${TASK}
 Use 'test' command to run:
 
 ```bash
-flagscale functional-test --type ${TYPE} --task ${TASK}
+flagscale test --functional --type ${TYPE} --task ${TASK}
 ```
 
 Please set the following variables:
@@ -206,7 +206,7 @@ tests/scripts/functional_tests/test_all.sh
 Use 'test' command to run:
 
 ```bash
-flagscale functional-test-all
+flagscale test --functional-all
 ```
 
 ### Run Functional Tests Online
