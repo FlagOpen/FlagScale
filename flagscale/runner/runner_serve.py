@@ -51,12 +51,22 @@ def _get_args_vllm(config: DictConfig):
 
 def _get_serve_port(config):
     model_port = None
+    deploy_port = config.experiment.get("deploy", {}).get("port", None)
+
     for item in config.serve:
         if item.get("model", None) == "vllm_model":
-            model_port = item.get("engine_args", {}).get("port", None)
+            if deploy_port:
+                model_port = deploy_port
+            elif item.engine_args.get("port", None):
+                model_port = item.engine_args.get("port", None)
+                item.engine_args["port"] = deploy_port
+            else:
+                model_port = get_free_port()
+                item.engine_args["port"] = model_port
             break
-    deploy_port = config.experiment.get("deploy", {}).get("port", None)
-    return model_port or deploy_port or get_free_port()
+    if not model_port:
+        logger.warning(f"No 'model_port' configuration found in task config: {config}")
+    return model_port or get_free_port()
 
 
 def _get_inference_engine(config):

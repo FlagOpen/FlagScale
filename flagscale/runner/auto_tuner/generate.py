@@ -155,7 +155,7 @@ class ServeGenerator(Generator):
                     )
                 else:
                     model_config.engine_args[value] = strategy[key]
-        if model_config.resources.get("num_gpus", None):
+        if not model_config.resources.get("num_gpus", None):
             current_tp = model_config.engine_args.get("tensor_parallel_size", 1)
             current_pp = model_config.engine_args.get("pipeline_parallel_size", 1)
             model_config.resources["num_gpus"] = current_tp * current_pp

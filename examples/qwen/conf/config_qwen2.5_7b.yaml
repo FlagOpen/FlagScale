@@ -8,7 +8,6 @@ experiment:
   task:
     type: serve
   deploy:
-    inference_engine: vllm
     use_fs_serve: false
   runner:
     hostfile: null
