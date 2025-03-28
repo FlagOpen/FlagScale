@@ -90,10 +90,15 @@ def get_deploy_config(model_name, device="gpu"):
     else:
         resource_config["num_replicas"] = 1
 
-    if "num_gpus" not in resource_config and device == "gpu":
-        resource_config["num_gpus"] = model_config.engine_args.get(
+    if (
+        "num_gpus" not in resource_config.get("ray_actor_options", {})
+        and device == "gpu"
+    ):
+        ray_actor_options["num_gpus"] = model_config.engine_args.get(
             "tensor_parallel_size", 1
         ) * model_config.engine_args.get("pipeline_parallel_size", 1)
+        resource_config["ray_actor_options"] = ray_actor_options
+
     resource_config["max_ongoing_requests"] = 1000
     return resource_config
 
