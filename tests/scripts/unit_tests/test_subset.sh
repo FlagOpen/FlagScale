@@ -9,6 +9,7 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         --backend) backend="$2"; shift ;;
         --subset) subset="$2"; shift ;;
+        --coverage) coverage="$2"; shift ;;
         --id) id="$2"; shift ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
@@ -35,7 +36,7 @@ echo "config:" $config
 # Split the Python output and set default values
 set_environment=$(echo $config | cut -d '|' -f 1)
 root=$(echo $config | cut -d '|' -f 2);root=${root:-"tests/unit_tests"}
-coverage=$(echo $config | cut -d '|' -f 3)
+coverage_fold=$(echo $config | cut -d '|' -f 3)
 type=$(echo $config | cut -d '|' -f 4);type=${type:-"batch"}
 depth=$(echo $config | cut -d '|' -f 5);depth=${depth:-"all"}
 ignore=$(echo $config | cut -d '|' -f 6)
@@ -145,13 +146,22 @@ run_tests() {
     local xml_report="$html_report/coverage.xml"
     export COMMIT_ID=$id
 
+    # Set coverage_parameters based on the value of coverage
+    if [ "$coverage" == "False" ]; then
+        coverage_parameters=""  # If coverage is False, set coverage_parameters to an empty string
+    else
+        # If coverage is not False, set coverage_parameters to include coverage-related flags
+        coverage_parameters="--cov=${backend}/${coverage_fold} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report"
+        check_reports="check_reports_complete $xml_report $html_report"
+    fi
+
     if [ "$_type" == "batch" ]; then
-        run_command "torchrun --nproc_per_node=8 -m pytest --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_files"
-        check_reports_complete "$xml_report" "$html_report"
+        run_command "torchrun --nproc_per_node=8 -m pytest $coverage_parameters -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_files"
+        eval $check_reports
     elif [ "$_type" == "single" ]; then
         for _test_file in $_test_files; do
-            run_command "torchrun --nproc_per_node=8 -m pytest --cov=${backend}/${coverage} --cov-append --cov-report=xml:$xml_report --cov-report=html:$html_report -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_file"
-            check_reports_complete "$xml_report" "$html_report"
+            run_command "torchrun --nproc_per_node=8 -m pytest $coverage_parameters -q -x -p no:warnings $ignore_cmd $deselect_cmd $_test_file"
+            eval $check_reports
         done
     fi
 }

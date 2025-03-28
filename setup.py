@@ -52,26 +52,28 @@ setup(
         "flag_scale.megatron",
         "flag_scale.flagscale",
         "flag_scale.examples",
+        "flag_scale.tests",
     ],
     package_dir={
         "flag_scale": "",
         "flag_scale.megatron": "megatron",
         "flag_scale.flagscale": "flagscale",
         "flag_scale.examples": "examples",
+        "flag_scale.tests": "tests",
     },
     package_data={
         "flag_scale.megatron": ["**/*"],
         "flag_scale.flagscale": ["**/*"],
         "flag_scale.examples": ["**/*"],
+        "flag_scale.tests": ["**/*"],
     },
     install_requires=[
         "click",
         "cryptography",
         "setuptools>=75.1.0",
         "packaging>=24.1",
-        "importlib_metadata>=8.5.0"
+        "importlib_metadata>=8.5.0",
     ],
-
     entry_points={
         "console_scripts": [
             "flagscale=flag_scale.flagscale.cli:flagscale",
