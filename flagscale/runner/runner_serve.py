@@ -57,9 +57,9 @@ def _get_serve_port(config):
         if item.get("model", None) == "vllm_model":
             if deploy_port:
                 model_port = deploy_port
+                item.engine_args["port"] = deploy_port
             elif item.engine_args.get("port", None):
                 model_port = item.engine_args.get("port", None)
-                item.engine_args["port"] = deploy_port
             else:
                 model_port = get_free_port()
                 item.engine_args["port"] = model_port

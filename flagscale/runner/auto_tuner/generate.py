@@ -160,6 +160,9 @@ class ServeGenerator(Generator):
             current_pp = model_config.engine_args.get("pipeline_parallel_size", 1)
             model_config.resources["num_gpus"] = current_tp * current_pp
 
+        if not config.experiment.get("deploy", {}).get("use_fs_serve", True):
+            del model_config["resources"]
+
     def gen(self, strategy):
         config = copy.deepcopy(self.config)
         self._set_value(strategy, config)
