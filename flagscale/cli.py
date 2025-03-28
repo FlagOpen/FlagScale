@@ -174,21 +174,23 @@ def get_valid_backends_subsets(config_path):
     return VALID_BACKENDS_SUBSETS
 
 
-@flagscale.command()
-@click.option(
-    "--backend",
-    "backend_name",
-    required=True,
-    type=str,
-    help="The backend engine for testing",
-)
-@click.option(
-    "--subset",
-    "subset_name",
-    required=True,
-    type=str,
-    help="Module name to be tested",
-)
+def get_valid_types_tasks_cases(config_path):
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
+
+    VALID_TYPES_TASKS_CASES = {}
+
+    for test_type, test_config in config.items():
+        VALID_TYPES_TASKS_CASES[test_type] = {}
+
+        for task_name, cases in test_config.items():
+            VALID_TYPES_TASKS_CASES[test_type][task_name] = [
+                case.lstrip("-").strip() for case in cases
+            ]
+
+    return VALID_TYPES_TASKS_CASES
+
+
 def unit_test(backend_name, subset_name):
     change_to_flagscale()
 
@@ -227,7 +229,6 @@ def unit_test(backend_name, subset_name):
     )
 
 
-@flagscale.command()
 def unit_test_all():
 
     change_to_flagscale()
@@ -253,40 +254,6 @@ def unit_test_all():
             )
 
 
-def get_valid_types_tasks_cases(
-    config_path="tests/scripts/functional_tests/config.yml",
-):
-    with open(config_path, "r") as file:
-        config = yaml.safe_load(file)
-
-    VALID_TYPES_TASKS_CASES = {}
-
-    for test_type, test_config in config.items():
-        VALID_TYPES_TASKS_CASES[test_type] = {}
-
-        for task_name, cases in test_config.items():
-            VALID_TYPES_TASKS_CASES[test_type][task_name] = [
-                case.lstrip("-").strip() for case in cases
-            ]
-
-    return VALID_TYPES_TASKS_CASES
-
-
-@flagscale.command()
-@click.option(
-    "--type",
-    "type_name",
-    required=True,
-    type=str,
-    help="Task classification for functional testing, including train, serve, etc",
-)
-@click.option(
-    "--task",
-    "task_name",
-    required=True,
-    type=str,
-    help="Testing tasks that match the type",
-)
 def functional_test(type_name, task_name):
 
     flag_scale_path = change_to_flagscale()
@@ -333,7 +300,6 @@ def functional_test(type_name, task_name):
         raise
 
 
-@flagscale.command()
 def functional_test_all():
 
     flag_scale_path = change_to_flagscale()
@@ -364,6 +330,70 @@ def functional_test_all():
                     )
                     print("*" * 200)
                     raise
+
+
+@flagscale.command()
+@click.option(
+    "--unit",
+    is_flag=True,
+    help="Run specific unit test (requires --backend and --subset)",
+)
+@click.option(
+    "--unit-all",
+    is_flag=True,
+    help="Run all unit tests (no additional parameters needed)",
+)
+@click.option(
+    "--functional",
+    is_flag=True,
+    help="Run specific functional test (requires --type and --task)",
+)
+@click.option(
+    "--functional-all",
+    is_flag=True,
+    help="Run all functional tests (no additional parameters needed)",
+)
+@click.option(
+    "--backend", "backend_name", type=str, help="Backend name for unit testing"
+)
+@click.option("--subset", "subset_name", type=str, help="Subset name for unit testing")
+@click.option(
+    "--type", "type_name", type=str, help="Task classification for functional testing"
+)
+@click.option("--task", "task_name", type=str, help="Testing tasks that match the type")
+def test(
+    unit,
+    unit_all,
+    functional,
+    functional_all,
+    backend_name,
+    subset_name,
+    type_name,
+    task_name,
+):
+    """Execute test command with flexible parameter requirements"""
+
+    # Validate mutual exclusivity
+    if unit and unit_all:
+        raise click.UsageError("Cannot use both --unit and --unit-all")
+    if functional and functional_all:
+        raise click.UsageError("Cannot use both --functional and --functional-all")
+    if (unit or unit_all) and (functional or functional_all):
+        raise click.UsageError(
+            "Cannot use both --unit/--unit-all with --functional/--functional-all"
+        )
+
+    # Unit test validation
+    if unit:
+        unit_test(backend_name, subset_name)
+    elif unit_all:
+        unit_test_all()
+
+    # Functional test validation
+    if functional:
+        functional_test(type_name, task_name)
+    elif functional_all:
+        functional_test_all()
 
 
 if __name__ == "__main__":
