@@ -1,5 +1,4 @@
-- Model:
-  name: vllm_model
+- model: vllm_model
   engine: vllm
   engine_args:
     model: /models/Qwen2.5-7B-Instruct

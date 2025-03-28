@@ -14,7 +14,7 @@ from flagscale.utils import flatten_dict_to_args
 
 
 def vllm_serve(args):
-    vllm_args = args["serve"]["vllm_model"]["engine_args"]
+    vllm_args = args.get("engine_args", {})
     command = ["vllm", "serve"]
     if vllm_args.get("model", None):
         command.append(vllm_args["model"])
@@ -39,11 +39,27 @@ def vllm_serve(args):
 
 def main():
     serve.load_args()
-    engine = (
-        serve.task_config.get("serve", {}).get("vllm_model", {}).get("engine", None)
-    )
+    serve_config = serve.task_config.get("serve", [])
+    if not serve_config:
+        raise ValueError(
+            f"No 'serve' configuration found in task config: {serve.task_config}"
+        )
+
+    model_config = None
+    for item in serve_config:
+        if item.get("model", None) == "vllm_model":
+            model_config = item
+            break
+
+    if model_config is None:
+        raise ValueError(
+            f"No 'vllm_model' configuration found in task config: {serve.task_config}"
+        )
+
+    engine = model_config.get("engine", None)
+
     if engine == "vllm":
-        return_code = vllm_serve(serve.task_config)
+        return_code = vllm_serve(model_config)
     else:
         raise ValueError(
             f"Unsupported inference engine: {engine}, current config {serve.task_config}"

@@ -28,14 +28,14 @@ def _get_args_vllm(config: DictConfig):
 
     # step2: restructuring the config
     # config_dict = config_dict["serve"]
-    config_dict["serve"]["logging"].pop("log_dir")
-    config_dict["serve"]["logging"].pop("scripts_dir")
-    config_dict["serve"]["logging"].pop("pids_dir")
-    if not config_dict["serve"].get("logging"):
-        config_dict["serve"].pop("logging")
+    config_dict["logging"].pop("log_dir")
+    config_dict["logging"].pop("scripts_dir")
+    config_dict["logging"].pop("pids_dir")
+    if not config_dict.get("logging"):
+        config_dict.pop("logging")
 
     # step3: dict -> yaml
-    logging_config = config.serve.logging
+    logging_config = config.logging
     new_config = OmegaConf.create(config_dict)
     new_conf_file = os.path.join(logging_config.scripts_dir, f"serve.yaml")
 
@@ -75,17 +75,17 @@ def _update_config_serve(config: DictConfig):
     OmegaConf.set_struct(config, False)
 
     if config.get("logging", None) is None:
-        config.serve.logging = DictConfig({})
+        config.logging = DictConfig({})
 
     log_dir = os.path.join(exp_dir, f"serve_logs")
     scripts_dir = os.path.join(log_dir, "scripts")
     pids_dir = os.path.join(log_dir, "pids")
 
-    config.serve.logging.log_dir = log_dir
-    config.serve.logging.scripts_dir = scripts_dir
-    config.serve.logging.pids_dir = pids_dir
+    config.logging.log_dir = log_dir
+    config.logging.scripts_dir = scripts_dir
+    config.logging.pids_dir = pids_dir
 
-    os.makedirs(config.serve.logging.scripts_dir, exist_ok=True)
+    os.makedirs(config.logging.scripts_dir, exist_ok=True)
     OmegaConf.set_struct(config, True)
 
 
@@ -93,7 +93,7 @@ def _generate_run_script_serve(
     config, host, node_rank, cmd, background=True, with_test=False
 ):
     nodes = config.serve.get("nodes", None)
-    logging_config = config.serve.logging
+    logging_config = config.logging
 
     no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
     if no_shared_fs:
@@ -240,13 +240,9 @@ def _generate_run_script_serve(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
             node_cmd = None
-            if (
-                getattr(config.serve.deploy, "use_fs_serve", True)
-                and getattr(config.serve.deploy, "use_native_serve", True)
-                and (
-                    getattr(config.serve.deploy, "command_line_mode", False)
-                    or getattr(config.experiment.task, "inference_engine", None)
-                )
+            deploy_config = config.experiment.get("deploy", {})
+            if deploy_config.get("use_fs_serve", True) and deploy_config.get(
+                "inference_engine", True
             ):
                 f.write(f"ray_path=$(realpath $(which ray))\n")
                 if not device_type:
@@ -293,7 +289,7 @@ def _generate_run_script_serve(
 
 
 def _generate_stop_script(config, host, node_rank):
-    logging_config = config.serve.logging
+    logging_config = config.logging
 
     host_stop_script_file = os.path.join(
         logging_config.scripts_dir, f"host_{node_rank}_{host}_stop.sh"
@@ -348,25 +344,10 @@ class SSHServeRunner(RunnerBase):
         super().__init__(config)
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
-        self.command_line_mode = self.config.serve.get("deploy", {}).get(
-            "command_line_mode", False
-        )
-        if self.command_line_mode:
-            logger.warning("Key 'command_line_mode' is deprecated in future.")
-        self.use_native_serve = self.config.serve.get("deploy", {}).get(
-            "use_native_serve", True
-        )
-        if self.use_native_serve:
-            logger.warning(
-                "Key 'use_native_serve' is deprecated in future. Please replace it by `use_fs_serve`"
-            )
-        self.inference_engine = self.config.experiment.task.get(
-            "inference_engine", None
-        )
-        self.use_fs_serve = (
-            self.config.serve.get("deploy", {}).get("use_fs_serve", True)
-            and self.use_native_serve
-        )
+        self.deploy_config = self.config.experiment.get("deploy", {})
+        self.inference_engine = self.deploy_config.get("inference_engine", None)
+        self.use_fs_serve = self.deploy_config.get("use_fs_serve", True)
+
         self._prepare()
         self.host = None
         self.port = _get_serve_port(config)
@@ -376,7 +357,7 @@ class SSHServeRunner(RunnerBase):
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
-        if self.command_line_mode or self.inference_engine:
+        if self.inference_engine:
             if not self.use_fs_serve:
                 self.user_script = "flagscale/serve/run_inference_engine.py"
             else:
@@ -458,7 +439,7 @@ class SSHServeRunner(RunnerBase):
         self.host = available_addr
 
     def _stop_each(self, host, node_rank):
-        logging_config = self.config.serve.logging
+        logging_config = self.config.logging
         host_pid_file = os.path.join(
             logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
         )
@@ -484,7 +465,7 @@ class SSHServeRunner(RunnerBase):
 
     def _generate_query_script(self, host, node_rank):
         """Genetrate the query script for each host."""
-        logging_config = self.config.serve.logging
+        logging_config = self.config.logging
 
         host_query_script_file = os.path.join(
             logging_config.scripts_dir, f"host_{node_rank}_{host}_query.sh"
@@ -516,7 +497,7 @@ class SSHServeRunner(RunnerBase):
     def _query_each(self, host, node_rank):
         "Query each node status."
         host_query_script_file = self._generate_query_script(host, node_rank)
-        logging_config = self.config.serve.logging
+        logging_config = self.config.logging
         result = ""
         try:
             result = run_local_command(f"bash {host_query_script_file}", query=True)
@@ -539,12 +520,9 @@ class SSHServeRunner(RunnerBase):
         return job_status
 
     def _serve_alive(self):
-        model_name = (
-            self.config.serve.model_args.vllm_model.get("model", None)
-            or self.config.serve.model_args.vllm_model.get("model_tag", None)
-            or self.config.serve.model_args.vllm_model.get("model-tag", None)
-            or self.config.serve.model_args.vllm_model.get("served_model_name", None)
-        )
+        model_name = self.config.serve.model_args.vllm_model.get(
+            "served_model_name", None
+        ) or self.config.serve.model_args.vllm_model.get("model", None)
 
         if not model_name:
             raise ValueError("No model specified in config file.")
@@ -574,16 +552,16 @@ class SSHServeRunner(RunnerBase):
         from vllm.transformers_utils.tokenizer import get_tokenizer
 
         tokenizer_mode = "auto"
-        trust_remote_code = self.config.serve.model_args.vllm_model.get(
-            "trust_remote_code", False
-        ) or (
-            "trust_remote_code"
-            in self.config.serve.model_args.vllm_model.get("action_args", [])
-        )
 
-        model_name = self.config.serve.model_args.vllm_model.get(
+        model_config = self.config.serve[0]
+        model_args = next(iter(model_config.values()))
+        engine_args = model_args.get("engine_args", {})
+
+        trust_remote_code = engine_args.get("trust_remote_code", False)
+
+        model_name = engine_args.get("served_model_name", None) or engine_args.get(
             "model", None
-        ) or self.config.serve.model_args.vllm_model.get("served_model_name", None)
+        )
 
         if not model_name:
             raise ValueError("No model specified in config file.")

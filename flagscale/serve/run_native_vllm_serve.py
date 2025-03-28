@@ -35,41 +35,65 @@ TASK_CONFIG = serve.task_config
 SERVICE_NAME = "vllm_service"
 
 
-def get_model_config(model_name):
+def get_engine_args(model_name):
     if not TASK_CONFIG.get("serve", None):
         raise ValueError("No 'serve' section found in task config.")
-    if not TASK_CONFIG.serve.get("model_args", None):
-        raise ValueError("No 'model_args' section found in task config.")
-    model_config = TASK_CONFIG.serve.model_args.get(model_name, None)
 
-    if model_config:
-        return model_config
+    model_config = None
+    for item in TASK_CONFIG.serve:
+        if item.get("model", None) == model_name:
+            model_config = item
+            break
+    if model_config is None:
+        raise ValueError(
+            f"No {model_name} configuration found in task config: {TASK_CONFIG}"
+        )
+
+    engine_args = model_config.get("engine_args", None)
+
+    if engine_args:
+        return engine_args
     else:
-        raise ValueError(f"No model config found for model {model_name}.")
+        raise ValueError(f"No vllm args found for model {model_name}.")
 
 
-def get_deploy_config(model_name):
+def get_deploy_config(model_name, device="gpu"):
     if not TASK_CONFIG.get("serve", None):
         raise ValueError("No 'serve' section found in task config.")
-    if not TASK_CONFIG.serve.get("deploy", None):
-        raise ValueError("No 'deploy' section found in task config.")
-    resource_config = {}
 
-    if TASK_CONFIG.serve.deploy.get("models", None) and TASK_CONFIG.serve.resource.get(
-        model_name, None
-    ):
-        models_resource_config = TASK_CONFIG.serve.resource.get(model_name, None)
-        ray_actor_options = {}
-        resource_set = {"num_gpus", "num_cpus"}
-        for item in resource_set:
-            if item in models_resource_config:
-                ray_actor_options[item] = models_resource_config[item]
-        if ray_actor_options:
-            resource_config["ray_actor_options"] = ray_actor_options
-        if "num_replicas" in models_resource_config:
-            resource_config["num_replicas"] = models_resource_config["num_replicas"]
-    if not resource_config:
-        resource_config = {"num_replicas": 1}
+    model_config = None
+    for item in TASK_CONFIG.serve:
+        if item.get("model", None) == model_name:
+            model_config = item
+            break
+    if model_config is None:
+        raise ValueError(
+            f"No {model_name} configuration found in task config: {TASK_CONFIG}"
+        )
+
+    resources = model_config.get("resources", {})
+    if not resources:
+        raise ValueError("No 'resources' section found in task config.")
+
+    resource_config = {}
+    ray_actor_options = {}
+
+    resource_set = {"num_gpus", "num_cpus"}
+    for item in resource_set:
+        if item in resources:
+            ray_actor_options[item] = resources[item]
+    if ray_actor_options:
+        resource_config["ray_actor_options"] = ray_actor_options
+
+    if "num_replicas" in resources:
+        resource_config["num_replicas"] = resources["num_replicas"]
+    else:
+        resource_config["num_replicas"] = 1
+
+    if "num_gpus" not in resource_config and device == "gpu":
+        resource_config["num_gpus"] = model_config.engine_args.get(
+            "tensor_parallel_size", 1
+        ) * model_config.engine_args.get("pipeline_parallel_size", 1)
     resource_config["max_ongoing_requests"] = 1000
     return resource_config
 
@@ -136,7 +160,7 @@ def check_health(service_name):
 @serve.deployment(**get_deploy_config("vllm_model"))
 class LLMActor:
     def __init__(self):
-        engine_args = AsyncEngineArgs(**get_model_config("vllm_model"))
+        engine_args = AsyncEngineArgs(**get_engine_args("vllm_model"))
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
 
     def generate(self, prompt, sampling_params, request_id):
@@ -431,7 +455,10 @@ class LLMService:
 
 if __name__ == "__main__":
     serve.start(
-        http_options={"host": "0.0.0.0", "port": TASK_CONFIG.serve.deploy.service.port}
+        http_options={
+            "host": "0.0.0.0",
+            "port": TASK_CONFIG.experiment.get("deploy", {}).get("port", 8000),
+        }
     )
     llm_actor = LLMActor.bind()
     serve.run(
