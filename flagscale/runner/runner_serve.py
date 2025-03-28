@@ -210,7 +210,7 @@ def _generate_run_script_serve(
             else:
                 f.write(f"${{ray_path}} stop\n")
             f.write("pkill -f 'run_inference_engine'\n")
-            f.write("pkill -f 'vllm'\n")
+            f.write("pkill -f 'run_fs_serve_vllm'\n")
             f.write(f"\n")
 
             master_port = target_port if target_port else get_free_port()
@@ -350,7 +350,7 @@ def _generate_stop_script(config, host, node_rank):
         f.write(f"ray_path=$(realpath $(which ray))\n")
         f.write(f"${{ray_path}} stop\n")
         f.write("pkill -f 'run_inference_engine'\n")
-        f.write("pkill -f 'vllm'\n")
+        f.write("pkill -f 'run_fs_serve_vllm'\n")
         f.write(f"{after_stop}\n")
         f.flush()
         os.fsync(f.fileno())
@@ -497,7 +497,7 @@ class SSHServeRunner(RunnerBase):
             logger.info("Failed to find ray path")
 
         os.system("pkill -f run_inference_engine")
-        os.system("pkill -f vllm")
+        os.system("pkill -f run_fs_serve_vllm")
 
     def stop(self):
         self._stop_each("localhost", 0)
