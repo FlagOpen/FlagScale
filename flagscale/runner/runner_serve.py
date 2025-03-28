@@ -52,6 +52,7 @@ def _get_args_vllm(config: DictConfig):
 def _get_serve_port(config):
     model_port = None
     deploy_port = config.experiment.get("deploy", {}).get("port", None)
+    OmegaConf.set_struct(config, False)
 
     for item in config.serve:
         if item.get("model", None) == "vllm_model":
@@ -64,6 +65,7 @@ def _get_serve_port(config):
                 model_port = get_free_port()
                 item.engine_args["port"] = model_port
             break
+    OmegaConf.set_struct(config, True)
     if not model_port:
         logger.warning(f"No 'model_port' configuration found in task config: {config}")
     return model_port or get_free_port()
@@ -424,6 +426,7 @@ class SSHServeRunner(RunnerBase):
             if self.resources:
                 OmegaConf.set_struct(self.config, False)
                 self.config["nodes"] = list(self.resources.items())
+                OmegaConf.set_struct(self.config, True)
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
