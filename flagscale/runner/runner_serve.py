@@ -209,6 +209,8 @@ def _generate_run_script_serve(
                 f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
             else:
                 f.write(f"${{ray_path}} stop\n")
+            f.write("pkill -f 'run_inference_engine'\n")
+            f.write("pkill -f 'vllm'\n")
             f.write(f"\n")
 
             master_port = target_port if target_port else get_free_port()
