@@ -7,8 +7,8 @@ experiment:
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
-    inference_engine: vllm
-    entrypoint: null
+  deploy:
+    use_fs_serve: false
   runner:
     hostfile: examples/deepseek/conf/hostfile.txt
     docker: ds
