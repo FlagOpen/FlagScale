@@ -1,14 +1,15 @@
 defaults:
-  - _self_
-  - serve: serve_qwen2.5_72b
+- _self_
+- serve: serve_qwen2.5_72b
 
 experiment:
   exp_name: qwen2.5_72b
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
-    inference_engine: vllm
     entrypoint: null
+  deploy:
+    use_fs_serve: false
   runner:
     hostfile: null
   envs:
