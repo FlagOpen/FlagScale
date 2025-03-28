@@ -115,9 +115,6 @@ if [ "${env}" == "inference" ]; then
     pip install -r ../requirements/serving/requirements.txt
 fi
 
-# For developers
-pip install -r ../requirements/requirements-dev.txt
-
 # Clean all conda caches
 conda clean --all -y
 
