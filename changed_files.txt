@@ -1,7 +1,0 @@
-docker/Dockerfile.cuda
-docker/README.md
-install/install-requirements.sh
-requirements/requirements-common.txt
-requirements/requirements-dev.txt
-requirements/requirements-lint.txt
-requirements/train/megatron/requirements-cuda.txt
