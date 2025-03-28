@@ -116,50 +116,49 @@ class ServeGenerator(Generator):
             }
 
     def _set_value(self, strategy, config):
+        print(f"before set config --------------------{config}")
+        serve_config = config.serve
+        model_config = None
+        for item in serve_config:
+            if item.get("model", None) == "vllm_model":
+                model_config = item
+                break
+
+        if model_config is None:
+            raise ValueError(
+                f"No 'vllm_model' configuration found in task config: {serve_config}"
+            )
 
         for key, value in self.args_mapping.items():
-            if config.serve.model_args.vllm_model.get(
-                "model_tag", None
-            ) or config.serve.model_args.vllm_model.get("model-tag", None):
-                value = value.replace("_", "-")
             if key not in strategy:
                 continue
             if key == "instance":
                 if strategy[key] is None:
-                    if value in config.serve.resource.vllm_model:
-                        del config.serve.resource.vllm_model[value]
+                    if value in model_config.resources:
+                        del model_config.resources[value]
                     continue
-                if value not in config.serve.model_args.vllm_model:
-                    config.serve.resource.vllm_model = OmegaConf.merge(
-                        config.serve.resource.vllm_model, {value: strategy[key]}
+                if value not in model_config.engine_args:
+                    model_config.resources = OmegaConf.merge(
+                        model_config.resources, {value: strategy[key]}
                     )
                 else:
-                    config.serve.resource.vllm_model[value] = strategy[key]
+                    model_config.resources[value] = strategy[key]
             else:
                 if strategy[key] is None:
-                    if value in config.serve.model_args.vllm_model:
-                        del config.serve.model_args.vllm_model[value]
+                    if value in model_config.engine_args:
+                        del model_config.engine_args[value]
                     continue
-                if value not in config.serve.model_args.vllm_model:
-                    config.serve.model_args.vllm_model = OmegaConf.merge(
-                        config.serve.model_args.vllm_model, {value: strategy[key]}
+                if value not in model_config.engine_args:
+                    model_config.engine_args = OmegaConf.merge(
+                        model_config.engine_args, {value: strategy[key]}
                     )
                 else:
-                    config.serve.model_args.vllm_model[value] = strategy[key]
-        model_args = config.serve.model_args.get("vllm_model", {})
-        if (
-            config.serve.get("deploy", {})
-            .get("models", {})
-            .get("vllm_model", {})
-            .get("num_gpus", None)
-        ):
-            current_tp = model_args.get("tensor_parallel_size", 0) or model_args.get(
-                "tensor-parallel-size", 1
-            )
-            current_pp = model_args.get("pipeline_parallel_size", 0) or model_args.get(
-                "pipeline_parallel_size", 1
-            )
-            config.serve.resource.vllm_model["num_gpus"] = current_tp * current_pp
+                    model_config.engine_args[value] = strategy[key]
+        if model_config.resources.get("num_gpus", None):
+            current_tp = model_config.engine_args.get("tensor_parallel_size", 1)
+            current_pp = model_config.engine_args.get("pipeline_parallel_size", 1)
+            model_config.resources["num_gpus"] = current_tp * current_pp
+        print(f"after set config --------------------{config}")
 
     def gen(self, strategy):
         config = copy.deepcopy(self.config)
