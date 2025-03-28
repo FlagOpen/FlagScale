@@ -116,7 +116,6 @@ class ServeGenerator(Generator):
             }
 
     def _set_value(self, strategy, config):
-        print(f"before set config --------------------{config}")
         serve_config = config.serve
         model_config = None
         for item in serve_config:
@@ -158,7 +157,6 @@ class ServeGenerator(Generator):
             current_tp = model_config.engine_args.get("tensor_parallel_size", 1)
             current_pp = model_config.engine_args.get("pipeline_parallel_size", 1)
             model_config.resources["num_gpus"] = current_tp * current_pp
-        print(f"after set config --------------------{config}")
 
     def gen(self, strategy):
         config = copy.deepcopy(self.config)
