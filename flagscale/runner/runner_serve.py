@@ -49,7 +49,7 @@ def _get_args_vllm(config: DictConfig):
     return args
 
 
-def _get_serve_port(config):
+def _reset_serve_port(config):
     model_port = None
     deploy_port = config.experiment.get("deploy", {}).get("port", None)
     OmegaConf.set_struct(config, False)
@@ -59,16 +59,13 @@ def _get_serve_port(config):
             if deploy_port:
                 model_port = deploy_port
                 item.engine_args["port"] = deploy_port
-            elif item.engine_args.get("port", None):
-                model_port = item.engine_args.get("port", None)
             else:
-                model_port = get_free_port()
-                item.engine_args["port"] = model_port
+                model_port = item.engine_args.get("port", 8000)
             break
     OmegaConf.set_struct(config, True)
     if not model_port:
         logger.warning(f"No 'model_port' configuration found in task config: {config}")
-    return model_port or get_free_port()
+    return model_port
 
 
 def _get_inference_engine(config):
@@ -390,7 +387,7 @@ class SSHServeRunner(RunnerBase):
 
         self._prepare()
         self.host = None
-        self.port = _get_serve_port(config)
+        self.port = _reset_serve_port(config)
 
     def _prepare(self):
         _update_config_serve(self.config)
