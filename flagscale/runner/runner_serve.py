@@ -50,20 +50,13 @@ def _get_args_vllm(config: DictConfig):
 
 
 def _get_serve_port(config):
-    if (
-        config.serve.get("deploy", None)
-        and config.serve.deploy.get("service", None)
-        and config.serve.deploy.service.get("port", None)
-    ):
-        return config.serve.deploy.service.get("port", None)
-    elif (
-        config.serve.get("model_args", None)
-        and config.serve.model_args.get("vllm_model", None)
-        and config.serve.model_args.vllm_model.get("port", None)
-    ):
-        return config.serve.model_args.vllm_model.get("port", None)
-    else:
-        return get_free_port()
+    model_port = None
+    for item in config.serve:
+        if item.get("model", None) == "vllm_model":
+            model_port = item.get("engine_args", {}).get("port", None)
+            break
+    deploy_port = config.experiment.get("deploy", {}).get("port", None)
+    return model_port or deploy_port or get_free_port()
 
 
 def _update_config_serve(config: DictConfig):
