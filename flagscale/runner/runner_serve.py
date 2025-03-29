@@ -500,7 +500,7 @@ class SSHServeRunner(RunnerBase):
 
         os.system("pkill -f run_inference_engine")
         os.system("pkill -f run_fs_serve_vllm")
-        os.system("pkill -f vllm serve")
+        os.system("pkill -f 'vllm serve'")
 
     def stop(self):
         self._stop_each("localhost", 0)
