@@ -573,6 +573,7 @@ class SSHServeRunner(RunnerBase):
         # Modify OpenAI's API key and API base to use vLLM's API server.
         api_key = "EMPTY"
         api_url = f"http://{self.host}:{self.port}/v1"
+        logger.info(f"Testing API {api_url}")
 
         try:
             client = OpenAI(
@@ -612,6 +613,8 @@ class SSHServeRunner(RunnerBase):
 
         dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=200)
         api_url = f"http://{self.host}:{self.port}/v1/chat/completions"
+        logger.info(f"Profiling API {api_url}")
+
         ### allow metric = [\"ttft\", \"tpot\", \"itl\", \"e2el\"]
         ### allow percentiles = [\"25,50,75\"]
         result = asyncio.run(
