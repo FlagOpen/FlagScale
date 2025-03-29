@@ -17,7 +17,7 @@ hetero_train:
 
 serve:
   base:
-    -multiple_model
+    #-multiple_model # TODO: open this case
 
 # Add in the feature
 # inference:
