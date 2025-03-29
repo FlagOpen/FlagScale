@@ -325,8 +325,9 @@ class ServeAutoTunner(AutoTuner):
         logger.addHandler(handler)
         self.logger = logger
         self.handler = handler
+        deploy_config = config.experiment.get("deploy", {})
 
-        if config.experiment.get("deploy", {}).get("port", None):
+        if deploy_config.get("use_fs_serve", True) and deploy_config.get("port", None):
             for item in config.serve:
                 if item.get("model") == "vllm_model":
                     item.engine_args["port"] = config.experiment.get("deploy", {}).get(
