@@ -211,6 +211,7 @@ def _generate_run_script_serve(
                 f.write(f"${{ray_path}} stop\n")
             f.write("pkill -f 'run_inference_engine'\n")
             f.write("pkill -f 'run_fs_serve_vllm'\n")
+            f.write("pkill -f 'vllm serve'\n")
             f.write(f"\n")
 
             master_port = target_port if target_port else get_free_port()
@@ -351,6 +352,7 @@ def _generate_stop_script(config, host, node_rank):
         f.write(f"${{ray_path}} stop\n")
         f.write("pkill -f 'run_inference_engine'\n")
         f.write("pkill -f 'run_fs_serve_vllm'\n")
+        f.write("pkill -f 'vllm serve'\n")
         f.write(f"{after_stop}\n")
         f.flush()
         os.fsync(f.fileno())
@@ -498,6 +500,7 @@ class SSHServeRunner(RunnerBase):
 
         os.system("pkill -f run_inference_engine")
         os.system("pkill -f run_fs_serve_vllm")
+        os.system("pkill -f vllm serve")
 
     def stop(self):
         self._stop_each("localhost", 0)
