@@ -424,6 +424,12 @@ class SSHServeRunner(RunnerBase):
 
         if hostfile_path:
             self.resources = parse_hostfile(hostfile_path)
+            for key, value in self.resources.items():
+                if not value.get("type", None):
+                    logger.warning(
+                        f"The hostfile key type is not set for host {key}, using gpu by default"
+                    )
+                    self.resources[key]["type"] = "gpu"
             if self.resources:
                 OmegaConf.set_struct(self.config, False)
                 self.config["nodes"] = list(self.resources.items())
