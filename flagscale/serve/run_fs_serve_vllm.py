@@ -52,6 +52,7 @@ def get_engine_args(model_name):
     engine_args = model_config.get("engine_args", None)
 
     if engine_args:
+        engine_args.pop("port", None)
         return engine_args
     else:
         raise ValueError(f"No vllm args found for model {model_name}.")
