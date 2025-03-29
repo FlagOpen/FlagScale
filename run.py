@@ -64,6 +64,10 @@ def main(config: DictConfig) -> None:
                 runner.run()
             elif config.action == "test":
                 runner.run(with_test=True)
+            elif config.action == "stop":
+                runner.stop()
+            else:
+                raise ValueError(f"Unknown action {config.action}")
     elif task_type == "compress":
         runner = SSHCompressRunner(config)
         if config.action == "run":

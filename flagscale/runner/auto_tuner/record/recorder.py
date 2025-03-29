@@ -363,6 +363,11 @@ class ServeRecorder(Recorder):
             self.sorted_order = "ascend"
         self.logger = logging.getLogger("FlagScale-AutoTuner")
         self.cur_strategy = None
+        self.path = os.path.join(
+            config.experiment.exp_dir,
+            "auto_tuner",
+            "history.csv",
+        )
 
     def record(self, strategy, performance):
         strategy["e2e_latency"] = round(performance["mean_e2el_ms"], 2)

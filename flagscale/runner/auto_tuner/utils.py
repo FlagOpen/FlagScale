@@ -11,13 +11,13 @@ def divisible(x, y):
 
 def beside(keys, strategy, history):
     """Compare strategy with history strategies Whether same besides given keys"""
-    from flagscale.runner.auto_tuner.search.searcher import __BUILT_IN_STRATEGY_DIMS__
+    from flagscale.runner.auto_tuner.search.searcher import BUILT_IN_STRATEGY_DIMS
 
     retrieval = []
     for task in history:
         is_same = True
         for dim in task:
-            if dim not in __BUILT_IN_STRATEGY_DIMS__:
+            if dim not in BUILT_IN_STRATEGY_DIMS:
                 continue
             if dim in keys:
                 continue
