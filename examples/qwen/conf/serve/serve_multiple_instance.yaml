@@ -1,7 +1,7 @@
 - serve_id: vllm_model
   engine: vllm
   engine_args:
-    model: /models/DeepSeek-R1-Distill-Qwen-32B
+    model: /models/Qwen2.5-7B-Instruct #DeepSeek-R1-Distill-Qwen-32B
     tensor_parallel_size: 2
     pipeline_parallel_size: 1
     gpu_memory_utilization: 0.9
@@ -11,5 +11,5 @@
     trust_remote_code: true
     enable_chunked_prefill: true
   resources:
-    num_replicas: 4
+    num_replicas: 8
     num_gpus: 2

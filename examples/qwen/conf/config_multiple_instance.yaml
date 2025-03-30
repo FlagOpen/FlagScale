@@ -9,10 +9,12 @@ experiment:
     type: serve
     entrypoint: null
   deploy:
-    port: 6701
-    use_fs_serve: true
+    use_fs_serve: false
   runner:
-    nnodes: 1
+    hostfile: examples/deepseek_r1/conf/hostfile.txt
+    docker: fr-v2
+    ssh_port: 22
+    nnodes: 2
     nproc_per_node: 8
   auto_tuner:
     space:
