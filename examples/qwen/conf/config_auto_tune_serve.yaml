@@ -7,7 +7,9 @@ experiment:
   exp_dir: ./outputs
   task:
     type: serve
-    inference_engine: vllm
+  deploy:
+    port: 6701
+    use_fs_serve: false
   runner:
     nnodes: 1
     nproc_per_node: 4

@@ -325,6 +325,16 @@ class ServeAutoTunner(AutoTuner):
         logger.addHandler(handler)
         self.logger = logger
         self.handler = handler
+        deploy_config = config.experiment.get("deploy", {})
+
+        if not deploy_config.get("use_fs_serve", True) and deploy_config.get(
+            "port", None
+        ):
+            for item in config.serve:
+                if item.get("serve_id") == "vllm_model":
+                    item.engine_args["port"] = config.experiment.get("deploy", {}).get(
+                        "port", None
+                    )
 
         # Deepcopy the original config to isolate from each task config
         # Modify the orig config when run best task
@@ -484,7 +494,7 @@ class ServeAutoTunner(AutoTuner):
             time.sleep(self.interval)
 
         if serve_alive:
-            try: 
+            try:
                 result = self.runner._profile_serve()
                 self.cur_result = result
             except Exception as e:
@@ -512,6 +522,7 @@ class ServeAutoTunner(AutoTuner):
     def record(self):
         self.recorder.record(self.cur_strategy, self.cur_result)
         self.history.append(self.recorder.cur_strategy)
+        self.recorder.save(self.history)
 
     def get_best(self):
         sorted_history = self.recorder.sort(self.history)

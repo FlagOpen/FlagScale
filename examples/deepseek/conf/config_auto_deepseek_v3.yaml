@@ -7,8 +7,8 @@ experiment:
   exp_dir: ./outputs/${experiment.exp_name}
   task:
     type: serve
-    backend: vllm
-    entrypoint: null
+  deploy:
+    use_fs_serve: false
   runner:
     nnodes: 2
     nproc_per_node: 8
@@ -20,7 +20,7 @@ experiment:
       pipeline_model_parallel_size: "auto"
     control:
       interval: 10
-      run_best: False
+      run_best: false
   cmds:
     before_start: source /root/miniconda3/bin/activate flagscale-inference && export GLOO_SOCKET_IFNAME=bond0 # replace "bond0" with your own network card
 

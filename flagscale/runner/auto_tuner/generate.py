@@ -106,29 +106,61 @@ class ServeGenerator(Generator):
             self.args_mapping = config.experiment.auto_tuner.args_mapping
         else:
             self.args_mapping = {
-                "tensor_model_parallel_size": "tensor-parallel-size",
-                "pipeline_model_parallel_size": "pipeline-parallel-size",
-                "instance": "instance",
-                "block_size": "block-size",
-                "max_num_batched_tokens": "max-num-batched-tokens",
-                "max_num_seqs": "max-num-seqs",
-                "swap_space": "swap-space",
+                "tensor_model_parallel_size": "tensor_parallel_size",
+                "pipeline_model_parallel_size": "pipeline_parallel_size",
+                "instance": "num_replicas",
+                "block_size": "block_size",
+                "max_num_batched_tokens": "max_num_batched_tokens",
+                "max_num_seqs": "max_num_seqs",
+                "swap_space": "swap_space",
             }
 
     def _set_value(self, strategy, config):
+        serve_config = config.serve
+        model_config = None
+        for item in serve_config:
+            if item.get("serve_id", None) == "vllm_model":
+                model_config = item
+                break
+
+        if not model_config.get("resources", None):
+            model_config["resources"] = {}
+        if model_config is None:
+            raise ValueError(
+                f"No 'vllm_model' configuration found in task config: {serve_config}"
+            )
+
         for key, value in self.args_mapping.items():
             if key not in strategy:
                 continue
-            if strategy[key] is None:
-                if value in config.serve.model_args.vllm_model:
-                    del config.serve.model_args.vllm_model[value]
-                continue
-            if value not in config.serve.model_args.vllm_model:
-                config.serve.model_args.vllm_model = OmegaConf.merge(
-                    config.serve.model_args.vllm_model, {value: strategy[key]}
-                )
+            if key == "instance":
+                if strategy[key] is None:
+                    if value in model_config.resources:
+                        del model_config.resources[value]
+                    continue
+                if value not in model_config.engine_args:
+                    model_config.resources = OmegaConf.merge(
+                        model_config.resources, {value: strategy[key]}
+                    )
+                else:
+                    model_config.resources[value] = strategy[key]
             else:
-                config.serve.model_args.vllm_model[value] = strategy[key]
+                if strategy[key] is None:
+                    if value in model_config.engine_args:
+                        del model_config.engine_args[value]
+                    continue
+                if value not in model_config.engine_args:
+                    model_config.engine_args = OmegaConf.merge(
+                        model_config.engine_args, {value: strategy[key]}
+                    )
+                else:
+                    model_config.engine_args[value] = strategy[key]
+        current_tp = model_config.engine_args.get("tensor_parallel_size", 1)
+        current_pp = model_config.engine_args.get("pipeline_parallel_size", 1)
+        model_config.resources["num_gpus"] = current_tp * current_pp
+
+        if not config.experiment.get("deploy", {}).get("use_fs_serve", True):
+            del model_config["resources"]
 
     def gen(self, strategy):
         config = copy.deepcopy(self.config)
