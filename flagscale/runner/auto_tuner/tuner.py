@@ -331,7 +331,7 @@ class ServeAutoTunner(AutoTuner):
             "port", None
         ):
             for item in config.serve:
-                if item.get("model") == "vllm_model":
+                if item.get("serve_id") == "vllm_model":
                     item.engine_args["port"] = config.experiment.get("deploy", {}).get(
                         "port", None
                     )
