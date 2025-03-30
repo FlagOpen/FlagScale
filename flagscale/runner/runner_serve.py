@@ -55,7 +55,7 @@ def _reset_serve_port(config):
     OmegaConf.set_struct(config, False)
 
     for item in config.serve:
-        if item.get("model", None) == "vllm_model":
+        if item.get("serve_id", None) == "vllm_model":
             if deploy_port:
                 model_port = deploy_port
                 item.engine_args["port"] = deploy_port
@@ -92,7 +92,7 @@ def _get_engine_args(config, model="vllm_model"):
     engine_args = {}
 
     for item in serve_config:
-        if item.get("model", None) == model:
+        if item.get("serve_id", None) == model:
             engine_args = item.get("engine_args", {})
             break
     if not engine_args:

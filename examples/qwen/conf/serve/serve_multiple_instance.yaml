@@ -1,4 +1,4 @@
-- model: vllm_model
+- serve_id: vllm_model
   engine: vllm
   engine_args:
     model: /models/DeepSeek-R1-Distill-Qwen-32B

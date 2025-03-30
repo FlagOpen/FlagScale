@@ -70,7 +70,7 @@ vllm serve /models/Qwen2.5-7B-Instruct --tensor-parallel-size=1 --gpu-memory-uti
 All the args remain the same as vLLM.
 
 ```YAML
-- model: vllm_model
+- serve_id: vllm_model
   engine: vllm
   engine_args:
     model: /models/Qwen2.5-7B-Instruct

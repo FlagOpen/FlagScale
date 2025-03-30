@@ -47,7 +47,7 @@ def main():
 
     model_config = None
     for item in serve_config:
-        if item.get("model", None) == "vllm_model":
+        if item.get("serve_id", None) == "vllm_model":
             model_config = item
             break
 

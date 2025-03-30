@@ -1,4 +1,4 @@
-- model: vllm_model
+- serve_id: vllm_model
   engine: vllm
   engine_args:
     model: /models/deepseek_v3/model # path of weight of deepseek v3

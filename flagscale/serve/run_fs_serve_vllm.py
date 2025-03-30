@@ -41,7 +41,7 @@ def get_engine_args(model_name):
 
     model_config = None
     for item in TASK_CONFIG.serve:
-        if item.get("model", None) == model_name:
+        if item.get("serve_id", None) == model_name:
             model_config = item
             break
     if model_config is None:
@@ -55,7 +55,7 @@ def get_engine_args(model_name):
         engine_args.pop("port", None)
         return engine_args
     else:
-        raise ValueError(f"No vllm args found for model {model_name}.")
+        raise ValueError(f"No vllm args found for serve_id {model_name}.")
 
 
 def get_deploy_config(model_name, device="gpu"):
@@ -64,7 +64,7 @@ def get_deploy_config(model_name, device="gpu"):
 
     model_config = None
     for item in TASK_CONFIG.serve:
-        if item.get("model", None) == model_name:
+        if item.get("serve_id", None) == model_name:
             model_config = item
             break
     if model_config is None:
