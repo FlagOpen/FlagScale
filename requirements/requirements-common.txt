@@ -22,3 +22,8 @@ transformers
 # test
 coverage
 pytest
+pytest_asyncio
+pytest-cov
+pytest_mock
+pytest-random-order
+wandb
