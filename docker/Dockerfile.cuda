@@ -59,11 +59,11 @@ RUN add-apt-repository ppa:deadsnakes/ppa && \
 # Install CUDNN
 ##############################################################################
 RUN cd ${STAGE_DIR} && \
-        wget https://developer.download.nvidia.com/compute/cudnn/9.5.0/local_installers/cudnn-local-repo-ubuntu2204-${CUDNN_VERSION}_1.0-1_amd64.deb && \
+        wget https://developer.download.nvidia.com/compute/cudnn/${CUDNN_VERSION}/local_installers/cudnn-local-repo-ubuntu2204-${CUDNN_VERSION}_1.0-1_amd64.deb && \
         dpkg -i cudnn-local-repo-ubuntu2204-${CUDNN_VERSION}_1.0-1_amd64.deb && \
         cp /var/cudnn-local-repo-ubuntu2204-${CUDNN_VERSION}/cudnn-*-keyring.gpg /usr/share/keyrings/ && \
         apt-get update && \
-        apt-get -y install cudnn-cuda-12
+        apt-get -y install cudnn
 
 ##############################################################################
 # SCCACHE
