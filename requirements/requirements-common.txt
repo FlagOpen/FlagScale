@@ -15,6 +15,7 @@ hydra-core
 matplotlib
 PyYAML
 pybind11==2.13.6
+pytest
 sentencepiece
 tensorboard
 transformers

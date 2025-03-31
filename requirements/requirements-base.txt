@@ -17,6 +17,5 @@ pylint==3.2.6
 
 # pre-commit
 pre-commit>=2.20.0
-pytest
 diff-cover
 
