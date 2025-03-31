@@ -1,0 +1,38 @@
+defaults:
+  - _self_
+  - serve: serve_qwen2.5_vl
+
+experiment:
+  exp_name: Qwen2.5_VL
+  exp_dir: outputs/${experiment.exp_name}
+  task:
+    type: serve
+    entrypoint: null
+  deploy:
+    port: 6701
+    use_fs_serve: true
+  runner:
+    hostfile: null #examples/deepseek_r1/conf/hostfile.txt
+    docker: fr-v2
+    ssh_port: 22
+    nnodes: 1
+    nproc_per_node: 8
+  auto_tuner:
+    space:
+      tensor_model_parallel_size: [2,4]
+      pipeline_model_parallel_size: [1,2,4]
+      instance: [1,2,4]
+      block_size: [16] # [8, 16, 32]
+      max_num_batched_tokens: [512, 1024, 2048]
+      max_num_seqs: [256] # [128, 256]
+    control:
+      interval: 20
+      run_best: false
+  cmds:
+    before_start: export RAY_DEDUP_LOGS=0
+
+action: auto_tune
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra
