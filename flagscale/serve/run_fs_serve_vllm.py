@@ -366,7 +366,7 @@ class LLMService:
         if mm_data:
             prompt["multi_modal_data"] = {"image": mm_data}
         # logger.info(f"processed prompt ==== {prompt}")
-        logger.info(f"========== finish processec prompt {prompt}========== ")
+        logger.info(f"========== finish processec prompt ========== ")
 
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
