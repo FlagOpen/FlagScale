@@ -1,6 +1,7 @@
 ARG CUDA_VERSION=12.4.1
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
-ARG CUDNN_VERSION=9.5.0
+ARG CUDA_VERSION
+ARG CUDNN_VERSION=9.8.0
 ARG PYTHON_VERSION=3.12
 ARG TORCH_VERSION=2.6.0
 
@@ -24,7 +25,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         autotools-dev \
         build-essential \
-        ca-certificates ccache cmake curl emacs \
+        ca-certificates ccache cmake curl \
+        emacs \
         gcc git git-lfs g++ \
         htop \
         iftop iotop \
@@ -42,6 +44,13 @@ RUN apt-get update && \
         rm -rf /var/lib/apt/lists/*
 
 ##############################################################################
+# Install cudnn
+##############################################################################
+RUN CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
+        CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
+        apt-get -y install cudnn${CUDNN_MAJOR}-cuda-12-${CUDNN_MINOR}
+
+##############################################################################
 # Install Python
 ##############################################################################
 RUN add-apt-repository ppa:deadsnakes/ppa && \
@@ -54,16 +63,6 @@ RUN add-apt-repository ppa:deadsnakes/ppa && \
         apt install python3-distutils python3-pip -y && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
-
-##############################################################################
-# Install CUDNN
-##############################################################################
-RUN cd ${STAGE_DIR} && \
-        wget https://developer.download.nvidia.com/compute/cudnn/${CUDNN_VERSION}/local_installers/cudnn-local-repo-ubuntu2204-${CUDNN_VERSION}_1.0-1_amd64.deb && \
-        dpkg -i cudnn-local-repo-ubuntu2204-${CUDNN_VERSION}_1.0-1_amd64.deb && \
-        cp /var/cudnn-local-repo-ubuntu2204-${CUDNN_VERSION}/cudnn-*-keyring.gpg /usr/share/keyrings/ && \
-        apt-get update && \
-        apt-get -y install cudnn
 
 ##############################################################################
 # SCCACHE

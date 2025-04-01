@@ -5,7 +5,7 @@ torchaudio
 --extra-index-url https://download.pytorch.org/whl/cu124
 
 # cudnn-frontend
-nvidia-cudnn-cu12==9.5.0.10
+nvidia-cudnn-cu12==9.8.0.87
 git+https://github.com/NVIDIA/cudnn-frontend.git
 
 # base
