@@ -376,6 +376,8 @@ def test(
 ):
     """Execute test command with flexible parameter requirements"""
 
+    print("unit, unit_all, functional, functional_all", unit, unit_all, functional, functional_all)
+
     # Validate mutual exclusivity
     if unit and unit_all:
         raise click.UsageError("Cannot use both --unit and --unit-all")
@@ -398,7 +400,7 @@ def test(
     elif functional_all:
         functional_test_all()
 
-    if not unit and not functional:
+    if (not unit) and (not functional) and (not unit_all) and (not functional_all):
         unit_test_all()
         functional_test_all()
 
