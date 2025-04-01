@@ -1,11 +1,14 @@
 import asyncio
+import base64
 import logging
 import time
+from io import BytesIO
 from typing import Any, AsyncGenerator
 
 import ray
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from PIL import Image
 
 from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -34,6 +37,20 @@ serve.load_args()
 TASK_CONFIG = serve.task_config
 
 SERVICE_NAME = "vllm_service"
+
+
+def decode_base64_to_image(base64_str: str) -> Image.Image:
+    # If the string looks like "data:image;base64,AAAA..."
+    # split off the prefix up to the comma
+    if "," in base64_str:
+        base64_str = base64_str.split(",", 1)[1]
+
+    # Decode the Base64 string into bytes
+    image_data = base64.b64decode(base64_str)
+
+    # Convert the bytes into a PIL Image
+    pil_img = Image.open(BytesIO(image_data)).convert("RGB")
+    return pil_img
 
 
 def get_engine_args(model_name):
@@ -149,7 +166,7 @@ from ray import serve
 
 logger = logging.getLogger("ray.serve")
 
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 logger.addHandler(logging.FileHandler("serve.log"))
 
 
@@ -184,7 +201,7 @@ class LLMService:
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
-        logger.debug(f"========== Receive request {request}========== ")
+        logger.info(f"========== Receive request {request}========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
@@ -321,7 +338,7 @@ class LLMService:
 
     @app.post("/v1/chat/completions")
     async def generate_handler(self, request: ChatCompletionRequest):
-        logger.debug(f"========== Receive request {request}========== ")
+        logger.info(f"========== Receive request {request}========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
@@ -332,18 +349,27 @@ class LLMService:
                     },
                 )
         user_message = request.messages[-1]["content"]
+        mm_data = None
         if isinstance(user_message, list):
             user_message = " ".join(
                 [item["text"] for item in user_message if item["type"] == "text"]
             )
+            mm_data = [
+                decode_base64_to_image(item["image_url"]["url"])
+                for item in user_message
+                if item["type"] == "image_url"
+            ]
 
         prompt_data = user_message
         prompt = TextPrompt(prompt=prompt_data)
+        if mm_data:
+            prompt["multi_modal_data"] = mm_data
+        logger.info(f"processed {request_id} prompt ==== {prompt}")
 
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
         sample_args = get_sample_args(request)
-        logger.debug(f"Request {request_id} sampling_params {sample_args}")
+        logger.info(f"Request {request_id} sampling_params {sample_args}")
         sampling_params = SamplingParams(**sample_args)
         results_generator = self.llm_actor.generate.options(stream=True).remote(
             prompt,
@@ -417,7 +443,7 @@ class LLMService:
                     yield f"data: {final_usage_data}\n\n"
                 yield "data: [DONE]\n\n"
 
-            logger.debug(f"Return reponse for request {request_id} ")
+            logger.info(f"Return reponse for request {request_id} ")
             return StreamingResponse(stream_results(), media_type="text/event-stream")
         else:
             final_output = None
