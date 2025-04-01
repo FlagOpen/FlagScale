@@ -266,8 +266,6 @@ class ProcessMesh:
         )
 
         # Build expert rank generator
-        if self._expert_tensor_parallel_size is None:
-            self._expert_tensor_parallel_size = self._tensor_model_parallel_size
         self._expert_tensor_model_pipeline_parallel_size = (
             self._expert_tensor_parallel_size
             * self._expert_model_parallel_size
@@ -617,7 +615,14 @@ class ParallelContext:
         world_size = torch.distributed.get_world_size()
         logical_rank = self._rank_mapper.to_logical_ranks([rank])[0]
         accumulated_world_size = 0
+        process_mesh_idx = 0
         for tp, cp, ep, dp, pp in self._args.hetero_process_meshes:
+            if self._args.expert_tensor_parallel_size_per_process_mesh is not None:
+                expert_tensor_parallel_size = self._args.expert_tensor_parallel_size_per_process_mesh[process_mesh_idx]
+            elif self._args.expert_tensor_parallel_size is None:
+                expert_tensor_parallel_size = tp
+            else:
+                expert_tensor_parallel_size = self._args.expert_tensor_parallel_size
             process_mesh = ProcessMesh(
                 data_parallel_size=dp,
                 tensor_model_parallel_size=tp,
@@ -630,6 +635,7 @@ class ParallelContext:
                 offset=accumulated_world_size,
                 rank_mapper=self._rank_mapper,
                 args=self._args,
+                expert_tensor_parallel_size=expert_tensor_parallel_size,
             )
             if (
                 logical_rank >= accumulated_world_size
@@ -638,6 +644,8 @@ class ParallelContext:
                 self._current_process_mesh_index = len(self._process_meshes)
             accumulated_world_size += process_mesh._world_size
             self._process_meshes.append(process_mesh)
+            process_mesh_idx += 1
+
         if world_size != accumulated_world_size:
             raise RuntimeError(
                 f"World size mismatch. Expected {world_size}, but got {accumulated_world_size}"

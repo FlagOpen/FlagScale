@@ -325,6 +325,16 @@ class ServeAutoTunner(AutoTuner):
         logger.addHandler(handler)
         self.logger = logger
         self.handler = handler
+        deploy_config = config.experiment.get("deploy", {})
+
+        if not deploy_config.get("use_fs_serve", True) and deploy_config.get(
+            "port", None
+        ):
+            for item in config.serve:
+                if item.get("serve_id") == "vllm_model":
+                    item.engine_args["port"] = config.experiment.get("deploy", {}).get(
+                        "port", None
+                    )
 
         # Deepcopy the original config to isolate from each task config
         # Modify the orig config when run best task
@@ -410,10 +420,8 @@ class ServeAutoTunner(AutoTuner):
             # get best strategy
             best_strategy = self.get_best()
             if best_strategy:
-                TP = best_strategy["tensor_model_parallel_size"]
-                PP = best_strategy["pipeline_model_parallel_size"]
                 self.logger.info(
-                    f"Best strategy tuned so far: tensor_parallel_size: {TP} pipeline_parallel_size: {PP}, and {self.recorder.metric} is {best_strategy[self.recorder.metric]}."
+                    f"Best strategy tuned so far: {best_strategy}, and {self.recorder.metric} is {best_strategy[self.recorder.metric]}."
                 )
             else:
                 self.logger.info(f"No strategy can run so far.")
@@ -486,8 +494,12 @@ class ServeAutoTunner(AutoTuner):
             time.sleep(self.interval)
 
         if serve_alive:
-            result = self.runner._profile_serve()
-            self.cur_result = result
+            try:
+                result = self.runner._profile_serve()
+                self.cur_result = result
+            except Exception as e:
+                self.logger.info(f"fail to get profile result {e}")
+        time.sleep(self.interval)
         if running:
             self.runner.stop()
 
@@ -510,6 +522,7 @@ class ServeAutoTunner(AutoTuner):
     def record(self):
         self.recorder.record(self.cur_strategy, self.cur_result)
         self.history.append(self.recorder.cur_strategy)
+        self.recorder.save(self.history)
 
     def get_best(self):
         sorted_history = self.recorder.sort(self.history)
