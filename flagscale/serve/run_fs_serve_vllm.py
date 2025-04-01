@@ -355,13 +355,14 @@ class LLMService:
             user_message = " ".join(
                 [item["text"] for item in user_message if item["type"] == "text"]
             )
-            logger.info(f"========== user_message {user_message}========== ")
+            user_message += " <image>"
+            logger.info(f"========== user_message ========== ")
             mm_data = [
                 decode_base64_to_image(item["image_url"]["url"])
                 for item in request.messages[-1]["content"]
                 if item["type"] == "image_url"
             ]
-        logger.info(f"========== finish processec prompt {len(mm_data)}========== ")
+        logger.info(f"========== finish processec prompt ========== ")
 
         prompt_data = user_message
         prompt = TextPrompt(prompt=prompt_data)
