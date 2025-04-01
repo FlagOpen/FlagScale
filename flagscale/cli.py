@@ -395,6 +395,10 @@ def test(
     elif functional_all:
         functional_test_all()
 
+    if not unit and not functional:
+        unit_test_all()
+        functional_test_all()
+
 
 if __name__ == "__main__":
     flagscale()
