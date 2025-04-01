@@ -9,7 +9,7 @@ experiment:
     type: serve
     entrypoint: null
   deploy:
-    use_fs_serve: false
+    use_fs_serve: true
   runner:
     hostfile: null #examples/deepseek_r1/conf/hostfile.txt
     docker: fr-v2
