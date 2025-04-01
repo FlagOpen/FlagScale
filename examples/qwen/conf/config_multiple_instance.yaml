@@ -11,7 +11,7 @@ experiment:
   deploy:
     use_fs_serve: false
   runner:
-    hostfile: examples/deepseek_r1/conf/hostfile.txt
+    hostfile: null #examples/deepseek_r1/conf/hostfile.txt
     docker: fr-v2
     ssh_port: 22
     nnodes: 2
