@@ -149,7 +149,7 @@ from ray import serve
 
 logger = logging.getLogger("ray.serve")
 
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.FileHandler("serve.log"))
 
 
