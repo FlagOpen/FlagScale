@@ -355,7 +355,7 @@ class LLMService:
             user_message = " ".join(
                 [item["text"] for item in user_message if item["type"] == "text"]
             )
-            user_message += " <image>"
+            user_message += " <|image_pad|>"
             logger.info(f"========== user_message ========== ")
             mm_data = [
                 decode_base64_to_image(item["image_url"]["url"])
