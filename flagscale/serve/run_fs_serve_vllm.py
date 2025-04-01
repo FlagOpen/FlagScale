@@ -20,6 +20,7 @@ from vllm.entrypoints.openai.protocol import (
     CompletionStreamResponse,
     UsageInfo,
 )
+from vllm.inputs import PromptType, SingletonPrompt, TextPrompt, TokensPrompt
 from vllm.utils import random_uuid
 
 try:
@@ -193,7 +194,9 @@ class LLMService:
                         "message": "Service is not ready, please try again later."
                     },
                 )
-        prompt = request.prompt
+        prompt_data = request.prompt
+        prompt = TextPrompt(prompt=prompt_data)
+
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
         sample_args = get_sample_args(request)
@@ -334,13 +337,16 @@ class LLMService:
                 [item["text"] for item in user_message if item["type"] == "text"]
             )
 
+        prompt_data = user_message
+        prompt = TextPrompt(prompt=prompt_data)
+
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
         sample_args = get_sample_args(request)
         logger.debug(f"Request {request_id} sampling_params {sample_args}")
         sampling_params = SamplingParams(**sample_args)
         results_generator = self.llm_actor.generate.options(stream=True).remote(
-            user_message,
+            prompt,
             sampling_params,
             request_id,
         )
