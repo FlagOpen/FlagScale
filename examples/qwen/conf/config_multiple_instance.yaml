@@ -9,6 +9,7 @@ experiment:
     type: serve
     entrypoint: null
   deploy:
+    port: 6701
     use_fs_serve: true
   runner:
     hostfile: null #examples/deepseek_r1/conf/hostfile.txt
