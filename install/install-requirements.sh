@@ -59,6 +59,8 @@ set -e
 # This command updates `setuptools` to the latest version, ensuring compatibility and access to the latest features for Python package management.
 pip install --upgrade setuptools
 
+# Install torch in advance to avoid dependency conflicts
+pip install torch==2.6.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu124
 # Navigate to requirements directory and install basic dependencies
 pip install -r ../requirements/requirements-common.txt
 
