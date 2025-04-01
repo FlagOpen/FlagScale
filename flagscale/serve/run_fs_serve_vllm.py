@@ -356,7 +356,7 @@ class LLMService:
             )
             mm_data = [
                 decode_base64_to_image(item["image_url"]["url"])
-                for item in user_message
+                for item in request.messages[-1]["content"]
                 if item["type"] == "image_url"
             ]
 
