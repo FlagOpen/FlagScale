@@ -5,7 +5,7 @@ git+https://github.com/NVIDIA/cudnn-frontend.git
 # base
 accelerate
 cryptography
-deepspeed
+deepspeed==0.16.5
 hydra-core
 matplotlib
 PyYAML
