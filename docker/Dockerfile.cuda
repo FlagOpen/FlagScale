@@ -48,7 +48,8 @@ RUN apt-get update && \
 ##############################################################################
 RUN CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
         CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
-        apt-get -y install cudnn${CUDNN_MAJOR}-cuda-12-${CUDNN_MINOR}&& \
+        CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
+        apt-get -y install cudnn${CUDNN_MAJOR}-cuda-${CUDA_MAJOR}-${CUDNN_MINOR}&& \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
