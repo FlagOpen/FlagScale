@@ -201,7 +201,7 @@ class LLMService:
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
-        logger.info(f"========== Receive request {request}========== ")
+        logger.info(f"========== /v1/completions Receive request ========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
@@ -338,7 +338,7 @@ class LLMService:
 
     @app.post("/v1/chat/completions")
     async def generate_handler(self, request: ChatCompletionRequest):
-        logger.info(f"========== Receive request ========== ")
+        logger.info(f"==========/v1/chat/completions Receive request ========== ")
         # logger.info(f"========== Receive request {request}========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
