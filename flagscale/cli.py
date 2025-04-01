@@ -171,7 +171,9 @@ def get_valid_backends_subsets(config_path):
         subsets = list(subset_config["subset"].keys())
         VALID_BACKENDS_SUBSETS[backend] = subsets
 
+    print(VALID_BACKENDS_SUBSETS)
     return VALID_BACKENDS_SUBSETS
+
 
 
 def get_valid_types_tasks_cases(config_path):
@@ -180,14 +182,16 @@ def get_valid_types_tasks_cases(config_path):
 
     VALID_TYPES_TASKS_CASES = {}
 
-    for test_type, test_config in config.items():
+    for test_type in config:
         VALID_TYPES_TASKS_CASES[test_type] = {}
 
-        for task_name, cases in test_config.items():
-            VALID_TYPES_TASKS_CASES[test_type][task_name] = [
-                case.lstrip("-").strip() for case in cases
-            ]
+        for task_name in config[test_type]:
+            VALID_TYPES_TASKS_CASES[test_type][task_name] = []
+            cases = config[test_type][task_name].strip().split()
+            for case in cases:
+                VALID_TYPES_TASKS_CASES[test_type][task_name].append(case.lstrip("-").strip())
 
+    print(VALID_TYPES_TASKS_CASES)
     return VALID_TYPES_TASKS_CASES
 
 
@@ -236,7 +240,6 @@ def unit_test_all():
     VALID_BACKENDS_SUBSETS = get_valid_backends_subsets(
         "tests/scripts/unit_tests/config.yml"
     )
-    print(VALID_BACKENDS_SUBSETS)
 
     for backend in VALID_BACKENDS_SUBSETS:
         for subset in VALID_BACKENDS_SUBSETS[backend]:
