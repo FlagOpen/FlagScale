@@ -338,7 +338,7 @@ class LLMService:
 
     @app.post("/v1/chat/completions")
     async def generate_handler(self, request: ChatCompletionRequest):
-        logger.info(f"========== Receive request {request}========== ")
+        # logger.info(f"========== Receive request {request}========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
@@ -364,7 +364,7 @@ class LLMService:
         prompt = TextPrompt(prompt=prompt_data)
         if mm_data:
             prompt["multi_modal_data"] = mm_data
-        logger.info(f"processed {request_id} prompt ==== {prompt}")
+        logger.info(f"processed prompt ==== {prompt}")
 
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
