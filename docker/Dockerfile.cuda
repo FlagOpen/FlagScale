@@ -48,7 +48,9 @@ RUN apt-get update && \
 ##############################################################################
 RUN CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
         CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
-        apt-get -y install cudnn${CUDNN_MAJOR}-cuda-12-${CUDNN_MINOR}
+        apt-get -y install cudnn${CUDNN_MAJOR}-cuda-12-${CUDNN_MINOR}&& \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
 
 ##############################################################################
 # Install Python
@@ -116,8 +118,8 @@ RUN cd ${STAGE_DIR} && \
 # Clone FlagScale
 ##############################################################################
 RUN cd ${WORK_DIR} && \
-    git clone https://github.com/FlagOpen/FlagScale.git && \
-    chmod +x FlagScale/install/install-requirements.sh
+        git clone -b IMAGE_2503251040 https://github.com/phoenixdong/FlagScale.git && \
+        chmod +x FlagScale/install/install-requirements.sh
 
 ##############################################################################
 # Install flagscale=train requirements
