@@ -364,7 +364,7 @@ class LLMService:
         prompt_data = user_message
         prompt = TextPrompt(prompt=prompt_data)
         if mm_data:
-            prompt["multi_modal_data"] = mm_data
+            prompt["multi_modal_data"] = {"image": mm_data}
         # logger.info(f"processed prompt ==== {prompt}")
         logger.info(f"========== finish processec prompt ========== ")
 
