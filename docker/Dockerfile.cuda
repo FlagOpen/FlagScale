@@ -56,8 +56,8 @@ RUN cd ${STAGE_DIR} && \
         cp cudnn-*-archive/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/ && \
         cp -P cudnn-*-archive/lib/libcudnn* /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/ && \
         chmod a+r /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/libcudnn* && \
-        echo 'export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:$PATH' >> /etc/profile.d/cuda.sh && \
-        echo 'export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:$LD_LIBRARY_PATH' >> /etc/profile.d/cuda.sh && \
+        echo 'export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:$PATH' >> ~/.bashrc && \
+        echo 'export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc && \
         cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
 
 ##############################################################################
