@@ -48,7 +48,7 @@ RUN cd ${STAGE_DIR} && \
         CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
         CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
         CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
-        CUDA_MINOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
+        CUDA_MINOR=$(echo "${CUDA_VERSION}" | cut -d. -f2) && \
         wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}.50_cuda${CUDA_MAJOR}-archive.tar.xz && \
         tar -xJvf cudnn-linux-x86_64-${CUDNN_VERSION}.50_cuda12-archive.tar.xz && \
         mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include && \
@@ -56,8 +56,8 @@ RUN cd ${STAGE_DIR} && \
         cp cudnn-*-archive/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/ && \
         cp -P cudnn-*-archive/lib/libcudnn* /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/ && \
         chmod a+r /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/libcudnn* && \
-        echo 'export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:$PATH' >> ~/.bashrc && \
-        echo 'export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc && \
+        echo "export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:\$PATH" >> ~/.bashrc && \
+        echo "export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:\$LD_LIBRARY_PATH" >> ~/.bashrc && \
         cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
 
 ##############################################################################
