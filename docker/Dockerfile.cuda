@@ -44,19 +44,16 @@ RUN apt-get update && \
 ##############################################################################
 # Install cudnn
 ##############################################################################
-RUN CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
-        CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
-        CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
-        CUDA_MINOR=$(echo "${CUDA_VERSION}" | cut -d. -f2) && \
-        wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_MAJOR}.${CUDNN_MINOR}.0.87_cuda${CUDA_MAJOR}-archive.tar.xz && \
-        tar -xvf cudnn-linux-x86_64-${CUDNN_MAJOR}.${CUDNN_MINOR}.0.87_cuda${CUDA_MAJOR}-archive.tar.xz && \
-        cp cudnn-*-archive/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/ && \
-        cp -P cudnn-*-archive/lib/libcudnn* /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/ && \
-        chmod a+r /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/libcudnn* && \
-        echo 'export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc && \
-        echo 'export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:$PATH' >> ~/.bashrc \
+RUN cd ${STAGE_DIR} && \
+        wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.5.0.50_cuda12-archive.tar.xz && \
+        tar -xvf cudnn-linux-x86_64-9.5.0.50_cuda12-archive.tar.xz && \
+        cp cudnn-*-archive/include/cudnn*.h /usr/local/cuda-12.4/include/ && \
+        cp -P cudnn-*-archive/lib/libcudnn* /usr/local/cuda-12.4/lib64/ && \
+        chmod a+r /usr/local/cuda-12.4/include/cudnn*.h /usr/local/cuda-12.4/lib64/libcudnn* && \
+        echo 'export PATH=/usr/local/cuda-12.4/bin:$PATH' >> ~/.bashrc && \
+        echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc && \
         source ~/.bashrc && \
-        cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
+        cat /usr/local/cuda-12.4/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
 
 ##############################################################################
 # Install Python
@@ -70,7 +67,14 @@ RUN add-apt-repository ppa:deadsnakes/ppa && \
         ln -s /usr/bin/python3 /usr/bin/python && \
         apt install python3-distutils python3-pip -y && \
         apt-get clean && \
-        rm -rf /var/lib/apt/lists/*
+        rm -rf /var/lib/apt/lists/* && \
+        python -m ensurepip --upgrade && \
+        python -m pip install --upgrade setuptools && \
+        # Blinker 1.4 version is installed using the distutls installation tool, which is an old Python package installation method.
+        # When installing an updated version with pip, an attempt will be made to uninstall the old version,
+        # but the uninstallation will fail and manual deletion is required.
+        rm -r /usr/lib/python3/dist-packages/blinker && \
+        rm /usr/lib/python3/dist-packages/blinker-1.4.egg-info
 
 ##############################################################################
 # SCCACHE

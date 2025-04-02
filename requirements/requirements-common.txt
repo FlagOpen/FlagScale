@@ -1,11 +1,13 @@
-# cudnn-frontend
-nvidia-cudnn-cu12==9.8.0.87
-git+https://github.com/NVIDIA/cudnn-frontend.git
+# torch
+torch==2.6.0
+torchvision
+torchaudio
+--extra-index-url https://download.pytorch.org/whl/cu124
 
 # base
 accelerate
 cryptography
-deepspeed==0.16.5
+deepspeed
 hydra-core
 matplotlib
 PyYAML
