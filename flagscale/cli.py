@@ -175,7 +175,6 @@ def get_valid_backends_subsets(config_path):
     return VALID_BACKENDS_SUBSETS
 
 
-
 def get_valid_types_tasks_cases(config_path):
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
@@ -189,7 +188,9 @@ def get_valid_types_tasks_cases(config_path):
             VALID_TYPES_TASKS_CASES[test_type][task_name] = []
             cases = config[test_type][task_name].strip().split()
             for case in cases:
-                VALID_TYPES_TASKS_CASES[test_type][task_name].append(case.lstrip("-").strip())
+                VALID_TYPES_TASKS_CASES[test_type][task_name].append(
+                    case.lstrip("-").strip()
+                )
 
     print(VALID_TYPES_TASKS_CASES)
     return VALID_TYPES_TASKS_CASES
@@ -376,7 +377,13 @@ def test(
 ):
     """Execute test command with flexible parameter requirements"""
 
-    print("unit, unit_all, functional, functional_all", unit, unit_all, functional, functional_all)
+    print(
+        "unit, unit_all, functional, functional_all",
+        unit,
+        unit_all,
+        functional,
+        functional_all,
+    )
 
     # Validate mutual exclusivity
     if unit and unit_all:
