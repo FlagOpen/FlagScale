@@ -7,3 +7,5 @@ s3fs
 webdataset
 
 -r ../../../megatron/requirements/pytorch_24.10/requirements.txt
+-r ../../../megatron/requirements_ci.txt
+-r ../../../megatron/requirements_mlm.txt

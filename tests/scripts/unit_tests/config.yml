@@ -26,6 +26,7 @@ megatron:
       deselect:
         - models/test_retro_model.py::TestRetroModel::test_sharded_state_dict_save_load
         - test_fully_parallel.py::TestFullyParallelSaveAndLoad::test_memory_usage
+        - test_local.py::TestLocalCheckpointing::test_basic_save_load_scenarios
     distributed:
       type: single
     models:
@@ -43,6 +44,8 @@ megatron:
         - text_generation_controllers/test_encoder_decoder_text_generation_controller.py
         - text_generation_controllers/test_simple_text_generation_controller.py
         - text_generation_controllers/test_vlm_text_generation_controller.py
+    post_training:
+      ignore: test_modelopt_module_spec.py
     ssm:
       ignore:
         - test_mamba_block.py

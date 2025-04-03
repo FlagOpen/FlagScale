@@ -2,6 +2,8 @@ train:
   aquila:
     -tp2_pp2
     -tp4_pp2
+  deepseek:
+    -tp2_pp2
   mixtral:
     -tp2_pp1_ep2
     -tp4_pp1_ep2
