@@ -12,5 +12,5 @@
     trust_remote_code: true
     enable_chunked_prefill: false
   resources:
-    num_replicas: 2
+    num_replicas: 1
     num_gpus: 1
