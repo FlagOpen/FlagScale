@@ -213,7 +213,7 @@ class LLMService:
         self.tokenizer = AutoTokenizer.from_pretrained(
             get_engine_args("vllm_model")["model"], trust_remote_code=True
         )
-        self.model_config = self.llm_actor.get_model_config.remote()
+        self.model_config = ray.get(self.llm_actor.get_model_config.remote())
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
