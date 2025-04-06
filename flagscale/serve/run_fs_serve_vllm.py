@@ -383,9 +383,11 @@ class LLMService:
 
             formatted_text = apply_hf_chat_template(
                 self.tokenizer,
-                trust_remote_code=True,
                 conversation=conversation,
                 chat_template=None,
+                tools=None,
+                trust_remote_code=True,
+                tokenize=False,
                 add_generation_prompt=True,
             )
 
