@@ -197,7 +197,7 @@ class LLMActor:
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
 
     def get_model_config(self):
-        return self.engine.model_config()
+        return self.engine.get_model_config()
 
     def generate(self, prompt, sampling_params, request_id):
         return self.engine.generate(prompt, sampling_params, request_id)
