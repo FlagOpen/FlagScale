@@ -213,7 +213,6 @@ class LLMService:
         self.tokenizer = AutoTokenizer.from_pretrained(
             get_engine_args("vllm_model")["model"], trust_remote_code=True
         )
-        self.model_config = ray.get(self.llm_actor.get_model_config.remote())
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
@@ -389,9 +388,10 @@ class LLMService:
                 tokenizer=self.tokenizer,
                 trust_remote_code=True,
             )
+            model_config = await self.llm_actor.get_model_config.remote()
             conversation, mm_data = parse_chat_messages(
                 request.messages,
-                self.model_config,
+                model_config,
                 self.tokenizer,
                 content_format=resolved_content_format,
             )
