@@ -193,7 +193,7 @@ class LLMActor:
 
 
 # refer to openai-type endpoints of vLLM
-@serve.deployment(num_replicas=4, max_ongoing_requests=1000)
+@serve.deployment(num_replicas="auto", max_ongoing_requests=1000)
 @serve.ingress(app)
 class LLMService:
     def __init__(self, llm_actor):
@@ -376,6 +376,8 @@ class LLMService:
         except Exception as e:
             logger.error(f"Failed to apply chat template: {str(e)}")
             formatted_text = user_message
+        logger.info(f"========== self.tokenizer ========== {self.tokenizer}")
+
         logger.info(f"========== finish processec prompt ========== {formatted_text}")
 
         prompt_data = formatted_text
