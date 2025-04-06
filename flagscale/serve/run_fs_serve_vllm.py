@@ -9,6 +9,7 @@ import ray
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from PIL import Image
+from transformers import AutoTokenizer
 
 from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -198,6 +199,9 @@ class LLMService:
     def __init__(self, llm_actor):
         self.llm_actor = llm_actor
         self.ready = False
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            get_engine_args("vllm_model")["model"], trust_remote_code=True
+        )
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
@@ -356,17 +360,25 @@ class LLMService:
                 [item["text"] for item in user_message if item["type"] == "text"]
             )
             # user_message += " <|image_pad|>"
-            #user_message = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>describe this picture<|im_end|>\n<|im_start|>assistant\n"
-            user_message = '<|im_start|>user\n<image>\ndescribe this picture <|im_end|>\n<|im_start|>assistant\n'
+            # user_message = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>describe this picture<|im_end|>\n<|im_start|>assistant\n"
+            # user_message = '<|im_start|>user\n<image>\ndescribe this picture <|im_end|>\n<|im_start|>assistant\n'
             logger.info(f"========== user_message ========== ")
             mm_data = [
                 decode_base64_to_image(item["image_url"]["url"])
                 for item in request.messages[-1]["content"]
                 if item["type"] == "image_url"
             ]
-        logger.info(f"========== finish processec prompt ========== ")
 
-        prompt_data = user_message
+        try:
+            formatted_text = self.tokenizer.apply_chat_template(
+                request.messages, tokenize=False, add_generation_prompt=True
+            )
+        except Exception as e:
+            logger.error(f"Failed to apply chat template: {str(e)}")
+            formatted_text = user_message
+        logger.info(f"========== finish processec prompt ========== {formatted_text}")
+
+        prompt_data = formatted_text
         prompt = TextPrompt(prompt=prompt_data)
         if mm_data:
             prompt["multi_modal_data"] = {"image": mm_data}
