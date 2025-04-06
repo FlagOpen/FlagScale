@@ -1,16 +1,16 @@
 - serve_id: vllm_model
   engine: vllm
   engine_args:
-    model: /models/Qwen2.5-VL-7B-Instruct
+    model: /models/danao_tianshu_model0307_hf # Qwen2.5-VL-7B-Instruct
     served_model_name: qwen_vl
-    tensor_parallel_size: 1
+    tensor_parallel_size: 2
     pipeline_parallel_size: 1
     gpu_memory_utilization: 0.9
     max_model_len: 32768 #limit_mm_per_prompt: image=8
     max_num_seqs: 16
     enforce_eager: true
     trust_remote_code: true
-    enable_chunked_prefill: true
+    enable_chunked_prefill: false
   resources:
-    num_replicas: 1
-    num_gpus: 1
+    num_replicas: 4 
+    num_gpus: 2

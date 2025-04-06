@@ -192,7 +192,7 @@ class LLMActor:
 
 
 # refer to openai-type endpoints of vLLM
-@serve.deployment(num_replicas="auto", max_ongoing_requests=1000)
+@serve.deployment(num_replicas=4, max_ongoing_requests=1000)
 @serve.ingress(app)
 class LLMService:
     def __init__(self, llm_actor):
@@ -356,7 +356,8 @@ class LLMService:
                 [item["text"] for item in user_message if item["type"] == "text"]
             )
             # user_message += " <|image_pad|>"
-            user_message = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>describe this picture<|im_end|>\n<|im_start|>assistant\n"
+            #user_message = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>describe this picture<|im_end|>\n<|im_start|>assistant\n"
+            user_message = '<|im_start|>user\n<image>\ndescribe this picture <|im_end|>\n<|im_start|>assistant\n'
             logger.info(f"========== user_message ========== ")
             mm_data = [
                 decode_base64_to_image(item["image_url"]["url"])
