@@ -384,8 +384,7 @@ class LLMService:
             # )
             resolved_content_format = resolve_chat_template_content_format(
                 chat_template=None,
-                tools=None,
-                chat_template_content_format="openai",
+                tools=None,  # chat_template_content_format="openai",
                 tokenizer=self.tokenizer,
                 trust_remote_code=True,
             )
