@@ -381,7 +381,7 @@ class LLMService:
                 for msg in request.messages
             ]
 
-            prompt_data = apply_hf_chat_template(
+            formatted_text = apply_hf_chat_template(
                 self.tokenizer,
                 trust_remote_code=True,
                 conversation=conversation,
