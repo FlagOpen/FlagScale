@@ -19,6 +19,8 @@ from vllm.entrypoints.chat_utils import (
     ChatTemplateContentFormatOption,
     ConversationMessage,
     apply_hf_chat_template,
+    parse_chat_messages,
+    resolve_chat_template_content_format,
 )
 from vllm.entrypoints.openai.protocol import (
     ChatCompletionRequest,
@@ -208,6 +210,7 @@ class LLMService:
         self.tokenizer = AutoTokenizer.from_pretrained(
             get_engine_args("vllm_model")["model"], trust_remote_code=True
         )
+        self.model_config = self.llm_actor.get_model_config.remote()
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
@@ -376,10 +379,24 @@ class LLMService:
             # formatted_text = self.tokenizer.apply_chat_template(
             #     request.messages, tokenize=False, add_generation_prompt=True
             # )
-            conversation = [
-                ConversationMessage(role="user", content=msg["content"])
-                for msg in request.messages
-            ]
+            resolved_content_format = resolve_chat_template_content_format(
+                chat_template=None,
+                tools=None,
+                chat_template_content_format="openai",
+                tokenizer=self.tokenizer,
+                trust_remote_code=True,
+            )
+            conversation, mm_data = parse_chat_messages(
+                request.messages,
+                self.model_config,
+                self.tokenizer,
+                content_format=resolved_content_format,
+            )
+
+            # conversation = [
+            #     ConversationMessage(role="user", content=msg["content"])
+            #     for msg in request.messages
+            # ]
 
             formatted_text = apply_hf_chat_template(
                 self.tokenizer,
