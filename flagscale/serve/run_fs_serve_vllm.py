@@ -389,12 +389,13 @@ class LLMService:
                 trust_remote_code=True,
             )
             model_config = await self.llm_actor.get_model_config.remote()
-            conversation, mm_data = parse_chat_messages(
+            conversation, mm_data_ = parse_chat_messages(
                 request.messages,
                 model_config,
                 self.tokenizer,
                 content_format=resolved_content_format,
             )
+            logger.info(f"========== mm_data_ ========== {mm_data_}")
 
             # conversation = [
             #     ConversationMessage(role="user", content=msg["content"])
