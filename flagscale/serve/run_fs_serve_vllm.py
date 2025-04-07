@@ -15,9 +15,6 @@ from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.entrypoints.chat_utils import (
-    ChatCompletionMessageParam,
-    ChatTemplateContentFormatOption,
-    ConversationMessage,
     apply_hf_chat_template,
     parse_chat_messages,
     resolve_chat_template_content_format,
@@ -62,6 +59,24 @@ def decode_base64_to_image(base64_str: str) -> Image.Image:
     return pil_img
 
 
+def parse_dict_arg(val: str):
+    """Parses a string of comma-separated KEY=VALUE pairs into a dict."""
+    if len(val) == 0:
+        return None
+    out = dict()
+    for item in val.split(","):
+        # split into key and value, lowercase & strip whitespace
+        key, value = [p.lower().strip() for p in item.split("=")]
+        if not key or not value:
+            raise ValueError("Each item should be in the form KEY=VALUE")
+        iv = int(value)
+        # disallow conflicting duplicates
+        if key in out and out[key] != iv:
+            raise ValueError(f"Conflicting values specified for key: {key}")
+        out[key] = iv
+    return out
+
+
 def get_engine_args(model_name):
     if not TASK_CONFIG.get("serve", None):
         raise ValueError("No 'serve' section found in task config.")
@@ -79,6 +94,9 @@ def get_engine_args(model_name):
     engine_args = model_config.get("engine_args", None)
 
     if engine_args:
+        if engine_args.get("limit_mm_per_prompt", ""):
+            parsed_value = parse_dict_arg(engine_args["limit_mm_per_prompt"])
+            engine_args["limit_mm_per_prompt"] = parsed_value
         engine_args.pop("port", None)
         return engine_args
     else:
