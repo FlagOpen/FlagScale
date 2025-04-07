@@ -513,7 +513,7 @@ class LLMService:
                     yield f"data: {final_usage_data}\n\n"
                 yield "data: [DONE]\n\n"
 
-            logger.debug(f"Return reponse for request {request_id} ")
+            logger.info(f"Return stream reponse for request {request_id} ")
             return StreamingResponse(stream_results(), media_type="text/event-stream")
         else:
             final_output = None
@@ -558,7 +558,7 @@ class LLMService:
                     "total_tokens": prompt_tokens + completion_tokens,
                 },
             )
-
+            logger.info(f"Return reponse for request {request_id} ")
             return JSONResponse(content=ret.model_dump())
 
 
