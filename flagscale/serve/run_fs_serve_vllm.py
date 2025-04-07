@@ -365,18 +365,6 @@ class LLMService:
                 )
         user_message = request.messages[-1]["content"]
         mm_data = dict()
-        if isinstance(user_message, list):
-            user_message = " ".join(
-                [item["text"] for item in user_message if item["type"] == "text"]
-            )
-            logger.info(f"========== user_message ========== ")
-            mm_data = {
-                "image": [
-                    decode_base64_to_image(item["image_url"]["url"])
-                    for item in request.messages[-1]["content"]
-                    if item["type"] == "image_url"
-                ]
-            }
 
         try:
             resolved_content_format = resolve_chat_template_content_format(
@@ -406,7 +394,19 @@ class LLMService:
             )
 
         except Exception as e:
-            logger.error(f"Failed to apply chat template: {str(e)}")
+            logger.warning(f"Failed to apply chat template: {str(e)}")
+            if isinstance(user_message, list):
+                user_message = " ".join(
+                    [item["text"] for item in user_message if item["type"] == "text"]
+                )
+                logger.info(f"========== user_message ========== ")
+                mm_data = {
+                    "image": [
+                        decode_base64_to_image(item["image_url"]["url"])
+                        for item in request.messages[-1]["content"]
+                        if item["type"] == "image_url"
+                    ]
+                }
             formatted_text = user_message
         logger.info(f"========== self.tokenizer ========== {self.tokenizer}")
 
@@ -416,7 +416,6 @@ class LLMService:
         prompt = TextPrompt(prompt=prompt_data)
         if mm_data:
             prompt["multi_modal_data"] = mm_data
-        # logger.info(f"processed prompt ==== {prompt}")
 
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
