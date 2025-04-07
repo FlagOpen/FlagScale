@@ -12,7 +12,7 @@ experiment:
     port: 6701
     use_fs_serve: true
   runner:
-    hostfile: null #examples/deepseek_r1/conf/hostfile.txt
+    hostfile: null # /path/to/hostfile.txt
     docker: ds
     ssh_port: 22
     nnodes: 2
