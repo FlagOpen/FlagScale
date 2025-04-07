@@ -235,7 +235,7 @@ class LLMService:
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
-        logger.debug(f"========== /v1/completions Receive request ========== ")
+        logger.debug(f"========== /v1/completions Receive request {request}========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
@@ -372,7 +372,9 @@ class LLMService:
 
     @app.post("/v1/chat/completions")
     async def generate_handler(self, request: ChatCompletionRequest):
-        logger.debug(f"==========/v1/chat/completions Receive request ========== ")
+        logger.debug(
+            f"==========/v1/chat/completions Receive request {request}========== "
+        )
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
@@ -511,7 +513,7 @@ class LLMService:
                     yield f"data: {final_usage_data}\n\n"
                 yield "data: [DONE]\n\n"
 
-            logger.info(f"Return reponse for request {request_id} ")
+            logger.debug(f"Return reponse for request {request_id} ")
             return StreamingResponse(stream_results(), media_type="text/event-stream")
         else:
             final_output = None
