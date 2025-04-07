@@ -94,7 +94,8 @@ def get_engine_args(model_name):
     engine_args = model_config.get("engine_args", None)
 
     if engine_args:
-        if engine_args.get("limit_mm_per_prompt", ""):
+        limit_mm_per_prompt = engine_args.get("limit_mm_per_prompt", None)
+        if isinstance(limit_mm_per_prompt, str):
             parsed_value = parse_dict_arg(engine_args["limit_mm_per_prompt"])
             engine_args["limit_mm_per_prompt"] = parsed_value
         engine_args.pop("port", None)
