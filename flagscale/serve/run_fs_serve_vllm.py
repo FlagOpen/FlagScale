@@ -385,7 +385,6 @@ class LLMService:
         mm_data = dict()
 
         try:
-            logger.debug(f"========== tokenizer ========== {self.tokenizer}")
             resolved_content_format = resolve_chat_template_content_format(
                 chat_template=None,
                 tools=None,
@@ -393,6 +392,7 @@ class LLMService:
                 tokenizer=self.tokenizer,
                 trust_remote_code=True,
             )
+            logger.debug(f"========== tokenizer ========== {self.tokenizer}")
             model_config = await self.llm_actor.get_model_config.remote()
             conversation, mm_data = parse_chat_messages(
                 request.messages,
