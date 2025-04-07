@@ -354,7 +354,6 @@ class LLMService:
     @app.post("/v1/chat/completions")
     async def generate_handler(self, request: ChatCompletionRequest):
         logger.info(f"==========/v1/chat/completions Receive request ========== ")
-        # logger.info(f"========== Receive request {request}========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
@@ -382,7 +381,7 @@ class LLMService:
         try:
             resolved_content_format = resolve_chat_template_content_format(
                 chat_template=None,
-                tools=None,  # chat_template_content_format="openai",
+                tools=None,
                 given_format="openai",
                 tokenizer=self.tokenizer,
                 trust_remote_code=True,
@@ -394,7 +393,7 @@ class LLMService:
                 self.tokenizer,
                 content_format=resolved_content_format,
             )
-            logger.info(f"========== mm_data_ ========== {mm_data}")
+            logger.info(f"========== mm_data ========== {mm_data}")
 
             formatted_text = apply_hf_chat_template(
                 self.tokenizer,

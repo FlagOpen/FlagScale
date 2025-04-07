@@ -1,7 +1,7 @@
 - serve_id: vllm_model
   engine: vllm
   engine_args:
-    model: /models/danao_tianshu_model0307_hf # Qwen2.5-VL-7B-Instruct
+    model: /models/Qwen2.5-VL-7B-Instruct #llava
     served_model_name: qwen_vl
     tensor_parallel_size: 1
     pipeline_parallel_size: 1
