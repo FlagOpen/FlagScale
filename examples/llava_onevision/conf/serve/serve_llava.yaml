@@ -2,7 +2,7 @@
   engine: vllm
   engine_args:
     model: /models/llava
-    served_model_name: qwen_vl
+    served_model_name: llava
     tensor_parallel_size: 1
     pipeline_parallel_size: 1
     gpu_memory_utilization: 0.9

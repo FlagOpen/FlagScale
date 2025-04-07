@@ -13,7 +13,7 @@ experiment:
     use_fs_serve: true
   runner:
     hostfile: null #examples/deepseek_r1/conf/hostfile.txt
-    docker: fr-v2
+    docker: ds
     ssh_port: 22
     nnodes: 2
     nproc_per_node: 8
