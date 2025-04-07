@@ -234,7 +234,7 @@ class LLMService:
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
-        logger.info(f"========== /v1/completions Receive request ========== ")
+        logger.debug(f"========== /v1/completions Receive request ========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
@@ -371,7 +371,7 @@ class LLMService:
 
     @app.post("/v1/chat/completions")
     async def generate_handler(self, request: ChatCompletionRequest):
-        logger.info(f"==========/v1/chat/completions Receive request ========== ")
+        logger.debug(f"==========/v1/chat/completions Receive request ========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
@@ -385,6 +385,7 @@ class LLMService:
         mm_data = dict()
 
         try:
+            logger.debug(f"========== tokenizer ========== {self.tokenizer}")
             resolved_content_format = resolve_chat_template_content_format(
                 chat_template=None,
                 tools=None,
@@ -399,7 +400,7 @@ class LLMService:
                 self.tokenizer,
                 content_format=resolved_content_format,
             )
-            logger.info(f"========== mm_data ========== {mm_data}")
+            logger.debug(f"========== mm_data ========== {mm_data}")
 
             formatted_text = apply_hf_chat_template(
                 self.tokenizer,
@@ -410,6 +411,7 @@ class LLMService:
                 tokenize=False,
                 add_generation_prompt=True,
             )
+            logger.debug(f"========== formatted_text ========== {formatted_text}")
 
         except Exception as e:
             logger.warning(f"Failed to apply chat template: {str(e)}")
@@ -417,7 +419,6 @@ class LLMService:
                 user_message = " ".join(
                     [item["text"] for item in user_message if item["type"] == "text"]
                 )
-                logger.info(f"========== user_message ========== ")
                 mm_data = {
                     "image": [
                         decode_base64_to_image(item["image_url"]["url"])
@@ -426,9 +427,6 @@ class LLMService:
                     ]
                 }
             formatted_text = user_message
-        logger.info(f"========== self.tokenizer ========== {self.tokenizer}")
-
-        logger.info(f"========== finish processec prompt ========== {formatted_text}")
 
         prompt_data = formatted_text
         prompt = TextPrompt(prompt=prompt_data)
@@ -438,7 +436,7 @@ class LLMService:
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
         sample_args = get_sample_args(request)
-        logger.info(f"Request {request_id} sampling_params {sample_args}")
+        logger.debug(f"Request {request_id} sampling_params {sample_args}")
         sampling_params = SamplingParams(**sample_args)
         results_generator = self.llm_actor.generate.options(stream=True).remote(
             prompt,
