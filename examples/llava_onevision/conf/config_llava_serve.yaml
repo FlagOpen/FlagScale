@@ -1,9 +1,9 @@
 defaults:
   - _self_
-  - serve: serve_qwen2.5_vl
+  - serve: serve_llava
 
 experiment:
-  exp_name: Qwen2.5_VL
+  exp_name: llava_onevision
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
@@ -12,16 +12,14 @@ experiment:
     port: 6701
     use_fs_serve: true
   runner:
-    hostfile: null #examples/deepseek_r1/conf/hostfile.txt
-    docker: fr-v2
+    hostfile: null #examples/llava_onevision/conf/hostfile.txt
+    docker: llava
     ssh_port: 22
-    nnodes: 1
-    nproc_per_node: 8
 
   cmds:
     before_start: export RAY_DEDUP_LOGS=0 && export CUDA_VISIBLE_DEVICES="4,5,6,7"
 
-action: auto_tune
+action: run
 
 hydra:
   run:
