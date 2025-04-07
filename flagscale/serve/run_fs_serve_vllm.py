@@ -365,22 +365,21 @@ class LLMService:
                     },
                 )
         user_message = request.messages[-1]["content"]
-        mm_data = []
+        mm_data = dict()
         if isinstance(user_message, list):
             user_message = " ".join(
                 [item["text"] for item in user_message if item["type"] == "text"]
             )
             logger.info(f"========== user_message ========== ")
-            mm_data = [
-                decode_base64_to_image(item["image_url"]["url"])
-                for item in request.messages[-1]["content"]
-                if item["type"] == "image_url"
-            ]
+            mm_data = {
+                "image": [
+                    decode_base64_to_image(item["image_url"]["url"])
+                    for item in request.messages[-1]["content"]
+                    if item["type"] == "image_url"
+                ]
+            }
 
         try:
-            # formatted_text = self.tokenizer.apply_chat_template(
-            #     request.messages, tokenize=False, add_generation_prompt=True
-            # )
             resolved_content_format = resolve_chat_template_content_format(
                 chat_template=None,
                 tools=None,  # chat_template_content_format="openai",
@@ -389,18 +388,13 @@ class LLMService:
                 trust_remote_code=True,
             )
             model_config = await self.llm_actor.get_model_config.remote()
-            conversation, mm_data_ = parse_chat_messages(
+            conversation, mm_data = parse_chat_messages(
                 request.messages,
                 model_config,
                 self.tokenizer,
                 content_format=resolved_content_format,
             )
-            logger.info(f"========== mm_data_ ========== {mm_data_}")
-
-            # conversation = [
-            #     ConversationMessage(role="user", content=msg["content"])
-            #     for msg in request.messages
-            # ]
+            logger.info(f"========== mm_data_ ========== {mm_data}")
 
             formatted_text = apply_hf_chat_template(
                 self.tokenizer,
@@ -422,7 +416,7 @@ class LLMService:
         prompt_data = formatted_text
         prompt = TextPrompt(prompt=prompt_data)
         if mm_data:
-            prompt["multi_modal_data"] = {"image": mm_data}
+            prompt["multi_modal_data"] = mm_data
         # logger.info(f"processed prompt ==== {prompt}")
 
         stream = request.stream
