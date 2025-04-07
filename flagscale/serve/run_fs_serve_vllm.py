@@ -411,7 +411,6 @@ class LLMService:
                 tokenize=False,
                 add_generation_prompt=True,
             )
-            logger.debug(f"========== formatted_text ========== {formatted_text}")
 
         except Exception as e:
             logger.warning(f"Failed to apply chat template: {str(e)}")
@@ -428,6 +427,7 @@ class LLMService:
                 }
             formatted_text = user_message
 
+        logger.debug(f"========== formatted_text ========== {formatted_text}")
         prompt_data = formatted_text
         prompt = TextPrompt(prompt=prompt_data)
         if mm_data:
