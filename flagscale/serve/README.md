@@ -52,8 +52,8 @@ python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b
 ## logs
 
 Since serve is the distributed mode, the logs are stored separately. \
-The default logs of are loacated in `/tmp/ray/session_latest/logs`.\
-The log of each work is named as `worker-[worker_id]-[job_id]-[pid].[out|err]`.
+The default logs of are loacated in `/outputs`.\
+
 
 ## Config Template
 
@@ -67,26 +67,20 @@ If origin model is excuted in command line mode with vLLM, we can use Flagscale.
 vllm serve /models/Qwen2.5-7B-Instruct --tensor-parallel-size=1 --gpu-memory-utilization=0.9 --max-model-len=32768 --max-num-seqs=256 --port=4567 --trust-remote-code --enable-chunked-prefill
 ```
 
-All the args remain the same as vLLM. Note that action args without value, like trust-remote-code and enable-chunked-prefill, are located in **action-args** block in config file.
+All the args remain the same as vLLM.
 
 ```YAML
-model_args:
-  vllm_model:
-    model-tag: /models/Qwen2.5-7B-Instruct
-    tensor-parallel-size: 1
-    gpu-memory-utilization: 0.9
-    max-model-len: 32768
-    max-num-seqs: 256
+- serve_id: vllm_model
+  engine: vllm
+  engine_args:
+    model: /models/Qwen2.5-7B-Instruct
+    tensor_parallel_size: 1
+    gpu_memory_utilization: 0.9
+    max_model_len: 32768
+    max_num_seqs: 256
     port: 4567
-    action-args:
-      - trust-remote-code
-      - enable-chunked-prefill
-
-deploy:
-  command_line_mode: true
-  models:
-    vllm_model:
-      num_gpus: 1
+    trust_remote_code: true
+    enable_chunked_prefill: true
 ```
 
 ### How to config serve parameters

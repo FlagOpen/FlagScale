@@ -3,6 +3,7 @@ import contextlib
 import json
 import os
 import shlex
+import shutil
 import signal
 
 import psutil
@@ -27,14 +28,14 @@ def _get_args_vllm(config: DictConfig):
 
     # step2: restructuring the config
     # config_dict = config_dict["serve"]
-    config_dict["serve"]["logging"].pop("log_dir")
-    config_dict["serve"]["logging"].pop("scripts_dir")
-    config_dict["serve"]["logging"].pop("pids_dir")
-    if not config_dict["serve"].get("logging"):
-        config_dict["serve"].pop("logging")
+    config_dict["logging"].pop("log_dir")
+    config_dict["logging"].pop("scripts_dir")
+    config_dict["logging"].pop("pids_dir")
+    if not config_dict.get("logging"):
+        config_dict.pop("logging")
 
     # step3: dict -> yaml
-    logging_config = config.serve.logging
+    logging_config = config.logging
     new_config = OmegaConf.create(config_dict)
     new_conf_file = os.path.join(logging_config.scripts_dir, f"serve.yaml")
 
@@ -48,6 +49,60 @@ def _get_args_vllm(config: DictConfig):
     return args
 
 
+def _reset_serve_port(config):
+    model_port = None
+    deploy_port = config.experiment.get("deploy", {}).get("port", None)
+    OmegaConf.set_struct(config, False)
+
+    for item in config.serve:
+        if item.get("serve_id", None) == "vllm_model":
+            if deploy_port:
+                model_port = deploy_port
+                item.engine_args["port"] = deploy_port
+            else:
+                model_port = item.engine_args.get("port", 8000)
+            break
+    OmegaConf.set_struct(config, True)
+    if not model_port:
+        logger.warning(f"No 'model_port' configuration found in task config: {config}")
+    return model_port
+
+
+def _get_inference_engine(config):
+    serve_config = config.get("serve", [])
+    if not serve_config:
+        raise ValueError(
+            f"No 'serve' configuration found in task config: {serve_config}"
+        )
+    if serve_config and len(serve_config) > 1:
+        logger.warning(
+            f"Multiple 'serve' configurations found in task config: {serve_config}"
+        )
+
+    engine = serve_config[0].get("engine", None)
+    return engine
+
+
+def _get_engine_args(config, model="vllm_model"):
+    serve_config = config.get("serve", [])
+    if not serve_config:
+        raise ValueError(
+            f"No 'serve' configuration found in task config: {serve_config}"
+        )
+    engine_args = {}
+
+    for item in serve_config:
+        if item.get("serve_id", None) == model:
+            engine_args = item.get("engine_args", {})
+            break
+    if not engine_args:
+        raise ValueError(
+            f"No 'engine_args' configuration found in task config: {serve_config}"
+        )
+
+    return engine_args
+
+
 def _update_config_serve(config: DictConfig):
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     if not os.path.isdir(exp_dir):
@@ -57,25 +112,25 @@ def _update_config_serve(config: DictConfig):
     OmegaConf.set_struct(config, False)
 
     if config.get("logging", None) is None:
-        config.serve.logging = DictConfig({})
+        config.logging = DictConfig({})
 
     log_dir = os.path.join(exp_dir, f"serve_logs")
     scripts_dir = os.path.join(log_dir, "scripts")
     pids_dir = os.path.join(log_dir, "pids")
 
-    config.serve.logging.log_dir = log_dir
-    config.serve.logging.scripts_dir = scripts_dir
-    config.serve.logging.pids_dir = pids_dir
+    config.logging.log_dir = log_dir
+    config.logging.scripts_dir = scripts_dir
+    config.logging.pids_dir = pids_dir
 
-    os.makedirs(config.serve.logging.scripts_dir, exist_ok=True)
+    os.makedirs(config.logging.scripts_dir, exist_ok=True)
     OmegaConf.set_struct(config, True)
 
 
 def _generate_run_script_serve(
     config, host, node_rank, cmd, background=True, with_test=False
 ):
-    nodes = config.serve.get("nodes", None)
-    logging_config = config.serve.logging
+    nodes = config.get("nodes", None)
+    logging_config = config.logging
 
     no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
     if no_shared_fs:
@@ -154,6 +209,9 @@ def _generate_run_script_serve(
                 f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
             else:
                 f.write(f"${{ray_path}} stop\n")
+            f.write("pkill -f 'run_inference_engine'\n")
+            f.write("pkill -f 'run_fs_serve_vllm'\n")
+            f.write("pkill -f 'vllm serve'\n")
             f.write(f"\n")
 
             master_port = target_port if target_port else get_free_port()
@@ -222,8 +280,9 @@ def _generate_run_script_serve(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
             node_cmd = None
-            if getattr(config.serve.deploy, "use_native_serve", True) and getattr(
-                config.serve.deploy, "command_line_mode", False
+            deploy_config = config.experiment.get("deploy", {})
+            if deploy_config.get("use_fs_serve", True) and config.serve[0].get(
+                "engine", None
             ):
                 f.write(f"ray_path=$(realpath $(which ray))\n")
                 if not device_type:
@@ -270,7 +329,7 @@ def _generate_run_script_serve(
 
 
 def _generate_stop_script(config, host, node_rank):
-    logging_config = config.serve.logging
+    logging_config = config.logging
 
     host_stop_script_file = os.path.join(
         logging_config.scripts_dir, f"host_{node_rank}_{host}_stop.sh"
@@ -289,8 +348,11 @@ def _generate_stop_script(config, host, node_rank):
         after_stop = ""
     with open(host_stop_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
-        f.write("ray stop\n")
-        f.write("pkill -f 'vllm'\n")
+        f.write(f"ray_path=$(realpath $(which ray))\n")
+        f.write(f"${{ray_path}} stop\n")
+        f.write("pkill -f 'run_inference_engine'\n")
+        f.write("pkill -f 'run_fs_serve_vllm'\n")
+        f.write("pkill -f 'vllm serve'\n")
         f.write(f"{after_stop}\n")
         f.flush()
         os.fsync(f.fileno())
@@ -323,30 +385,23 @@ class SSHServeRunner(RunnerBase):
         super().__init__(config)
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
-        self.command_line_mode = getattr(
-            self.config.serve.deploy, "command_line_mode", None
-        )
-        self.use_native_serve = getattr(
-            self.config.serve.deploy, "use_native_serve", True
-        )
+        self.deploy_config = self.config.experiment.get("deploy", {})
+        self.inference_engine = _get_inference_engine(self.config)
+        self.use_fs_serve = self.deploy_config.get("use_fs_serve", True)
+        self.port = _reset_serve_port(config)
         self._prepare()
         self.host = None
-        self.port = (
-            self.config.serve.model_args.vllm_model.get("port", get_free_port())
-            if self.config.serve.get("model_args", None)
-            else get_free_port()
-        )
 
     def _prepare(self):
         _update_config_serve(self.config)
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
-        if self.command_line_mode:
-            if not self.use_native_serve:
-                self.user_script = "flagscale/serve/run_serve_engine.py"
+        if self.inference_engine:
+            if not self.use_fs_serve:
+                self.user_script = "flagscale/serve/run_inference_engine.py"
             else:
-                self.user_script = "flagscale/serve/run_vllm.py"
+                self.user_script = "flagscale/serve/run_fs_serve_vllm.py"
         elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
             self.user_script = entrypoint
         elif entrypoint is None:
@@ -364,10 +419,20 @@ class SSHServeRunner(RunnerBase):
             if not os.path.exists(hostfile_path):
                 raise ValueError(f"The hostfile {hostfile_path} does not exist")
 
-        self.resources = parse_hostfile(hostfile_path)
-        if self.resources:
-            OmegaConf.set_struct(self.config, False)
-            self.config.serve["nodes"] = list(self.resources.items())
+        self.resources = None
+
+        if hostfile_path:
+            self.resources = parse_hostfile(hostfile_path)
+            for key, value in self.resources.items():
+                if not value.get("type", None):
+                    logger.warning(
+                        f"The hostfile key type is not set for host {key}, using gpu by default"
+                    )
+                    self.resources[key]["type"] = "gpu"
+            if self.resources:
+                OmegaConf.set_struct(self.config, False)
+                self.config["nodes"] = list(self.resources.items())
+                OmegaConf.set_struct(self.config, True)
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
@@ -421,7 +486,7 @@ class SSHServeRunner(RunnerBase):
         self.host = available_addr
 
     def _stop_each(self, host, node_rank):
-        logging_config = self.config.serve.logging
+        logging_config = self.config.logging
         host_pid_file = os.path.join(
             logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
         )
@@ -430,13 +495,25 @@ class SSHServeRunner(RunnerBase):
             pid = int(pid.strip())
         kill_process_tree(pid)
 
+        ray_executable = shutil.which("ray")
+        print(ray_executable)
+        if ray_executable:
+            ray_path = os.path.realpath(ray_executable)
+            os.system(f"{ray_path} stop")
+        else:
+            logger.info("Failed to find ray path")
+
+        os.system("pkill -f run_inference_engine")
+        os.system("pkill -f run_fs_serve_vllm")
+        os.system("pkill -f 'vllm serve'")
+
     def stop(self):
         self._stop_each("localhost", 0)
         return
 
     def _generate_query_script(self, host, node_rank):
         """Genetrate the query script for each host."""
-        logging_config = self.config.serve.logging
+        logging_config = self.config.logging
 
         host_query_script_file = os.path.join(
             logging_config.scripts_dir, f"host_{node_rank}_{host}_query.sh"
@@ -455,7 +532,7 @@ class SSHServeRunner(RunnerBase):
             f.write("else\n")
             # TODO: This is a temporary fix. We need to find a better way to query the job.
             f.write(
-                "    pid=$(ps aux | grep 'run_vllm' | grep -v grep | head -n 1 | awk '{print $2}')\n"
+                "    pid=$(ps aux | grep -E 'run_fs_serve_vllm|run_inference_engine' | grep -v grep | head -n 1 | awk '{print $2}')\n"
             )
             f.write("    ps -p $pid -o state --no-headers\n")
             f.write("fi\n")
@@ -468,7 +545,7 @@ class SSHServeRunner(RunnerBase):
     def _query_each(self, host, node_rank):
         "Query each node status."
         host_query_script_file = self._generate_query_script(host, node_rank)
-        logging_config = self.config.serve.logging
+        logging_config = self.config.logging
         result = ""
         try:
             result = run_local_command(f"bash {host_query_script_file}", query=True)
@@ -491,13 +568,20 @@ class SSHServeRunner(RunnerBase):
         return job_status
 
     def _serve_alive(self):
-        config = self.config
-        model_name = config.serve.model_args.vllm_model["model-tag"]
+        engine_args = _get_engine_args(self.config)
+        model_name = engine_args.get("served_model_name", None) or engine_args.get(
+            "model", None
+        )
+
+        if not model_name:
+            raise ValueError("No model specified in config file.")
+
         from openai import OpenAI
 
         # Modify OpenAI's API key and API base to use vLLM's API server.
         api_key = "EMPTY"
         api_url = f"http://{self.host}:{self.port}/v1"
+        logger.info(f"Testing API {api_url}")
 
         try:
             client = OpenAI(
@@ -517,23 +601,34 @@ class SSHServeRunner(RunnerBase):
     def _profile_serve(self):
         from vllm.transformers_utils.tokenizer import get_tokenizer
 
-        model = self.config.serve.model_args.vllm_model["model-tag"]
         tokenizer_mode = "auto"
-        trust_remote_code = (
-            "trust-remote-code"
-            in self.config.serve.model_args.vllm_model["action-args"]
+        engine_args = _get_engine_args(self.config)
+
+        trust_remote_code = engine_args.get("trust_remote_code", False)
+
+        model_name = engine_args.get("served_model_name", None) or engine_args.get(
+            "model", None
         )
+
+        if not model_name:
+            raise ValueError("No model specified in config file.")
+
         tokenizer = get_tokenizer(
-            model, tokenizer_mode=tokenizer_mode, trust_remote_code=trust_remote_code
+            model_name,
+            tokenizer_mode=tokenizer_mode,
+            trust_remote_code=trust_remote_code,
         )
-        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=1000)
-        api_url = f"http://{self.host}:{self.port}/v1/completions"
+
+        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=200)
+        api_url = f"http://{self.host}:{self.port}/v1/chat/completions"
+        logger.info(f"Profiling API {api_url}")
+
         ### allow metric = [\"ttft\", \"tpot\", \"itl\", \"e2el\"]
         ### allow percentiles = [\"25,50,75\"]
         result = asyncio.run(
             benchmark(
                 api_url,
-                model=model,
+                model=model_name,
                 tokenizer=tokenizer,
                 input_requests=dummy_input_requests,
                 selected_percentile_metrics="ttft,tpot,itl,e2el".split(","),

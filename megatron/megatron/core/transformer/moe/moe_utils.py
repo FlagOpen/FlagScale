@@ -612,6 +612,8 @@ def reduce_aux_losses_tracker_across_ranks_hetero():
                 values, group=tracker[name]['avg_group'], op=torch.distributed.ReduceOp.AVG
             )
         pp_groups = parallel_state.get_pipeline_model_parallel_group()
+        if 'cpu:gloo' == torch.distributed.get_backend(pp_groups[0]):
+            values = values.cpu()
         assert isinstance(pp_groups, list), "pp_groups should be a list for hetero."
         if len(pp_groups) > 1:
             origin_values = values.clone().detach()
