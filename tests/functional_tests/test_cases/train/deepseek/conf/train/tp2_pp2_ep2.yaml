@@ -3,7 +3,7 @@ system:
   num_workers: 16
   tensor_model_parallel_size: 2
   pipeline_model_parallel_size: 2
-  expert_model_parallel_size: 1
+  expert_model_parallel_size: 2
   finetune: false
   no_load_rng: true
   no_load_optim: true
@@ -16,7 +16,7 @@ system:
   use_distributed_optimizer: true
   overlap_grad_reduce: true
   overlap_param_gather: true
-  attention_backend: unfused
+  attention_backend: auto
   precision:
     bf16: true
     attention_softmax_in_fp32: true
