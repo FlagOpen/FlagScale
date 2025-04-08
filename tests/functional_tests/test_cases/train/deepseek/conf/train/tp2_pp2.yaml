@@ -1,5 +1,5 @@
 system:
-  no_shared_fs: ${experiment.runner.no_shared_fs}
+  no_shared_fs: false
   num_workers: 16
   tensor_model_parallel_size: 2
   pipeline_model_parallel_size: 2
@@ -8,12 +8,12 @@ system:
   no_load_rng: true
   no_load_optim: true
   context_parallel_size: 1
-  disable_bias_linear: True
-  reset_position_ids: True
-  reset_attention_mask: True
+  disable_bias_linear: true
+  reset_position_ids: true
+  reset_attention_mask: true
   qk_layernorm: true
   sequence_parallel: true
-  use_distributed_optimizer: True
+  use_distributed_optimizer: true
   overlap_grad_reduce: true
   overlap_param_gather: true
   attention_backend: unfused
@@ -88,7 +88,7 @@ model:
   micro_batch_size: 1
   global_batch_size: 16
   eval_iters: 0
-  train_samples: 244141056 
+  train_samples: 160
   
   optimizer:
     weight_decay: 0.1
@@ -97,17 +97,17 @@ model:
     lr_scheduler:
       lr: 3.0e-3
       min_lr: 3.0e-4
-      lr_warmup_samples: 2048000
+      lr_warmup_samples: 32
       lr_decay_style: WSD
       lr_wsd_decay_style: cosine
-      lr_wsd_decay_samples: 2048
+      lr_wsd_decay_samples: 16
 
 data:
-  data_path: /datasets/pile/pile_wikipedia_demo
+  data_path: /home/gitlab-runner/data/pile_wikipedia_demo/pile_wikipedia_demo
   split: 1
   no_mmap_bin_files: true
   tokenizer:
     tokenizer_type: QwenTokenizerFS
-    tokenizer_path: examples/aquila/qwentokenizer
+    tokenizer_path: /home/gitlab-runner/tokenizers/qwentokenizer
     vocab_size: 151851
     make_vocab_size_divisible_by: 64
