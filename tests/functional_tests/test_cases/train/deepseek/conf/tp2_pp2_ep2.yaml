@@ -23,6 +23,10 @@ experiment:
     NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
     CUDNN_BENCHMARK: "false"
     CUDNN_DETERMINISTIC: "true"
+    # Only for debug
+    # NVTE_DEBUG: 1
+    # NVTE_DEBUG_LEVEL: 2
+    # CUDNN_LOGERR_DBG: 1
     # The following parameters passed the local test
     # CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
     # CUDA_DEVICE_MAX_CONNECTIONS: 1
