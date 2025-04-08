@@ -1,5 +1,7 @@
 #!/bin/bash
 
+pip install sr
+
 # Packages that need to be installed outside of the conda environment
 pip install -r ../requirements/requirements-base.txt
 
@@ -129,4 +131,3 @@ fi
 
 # Clean all conda caches
 conda clean --all -y
-
