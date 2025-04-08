@@ -144,6 +144,14 @@ RUN cd ${WORK_DIR}/FlagScale/install && \
     ./install-requirements.sh --env train
 
 ##############################################################################
+# Clone FlagScale
+##############################################################################
+RUN echo "1802"
+RUN cd ${WORK_DIR} && rm -r FlagScale && \
+        git clone -b IMAGE_2503251040 https://github.com/phoenixdong/FlagScale.git && \
+        chmod +x FlagScale/install/install-requirements.sh
+
+##############################################################################
 # Install flagscale=inference requirements
 ##############################################################################
 RUN cd ${WORK_DIR}/FlagScale/install && \
