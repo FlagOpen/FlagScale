@@ -12,7 +12,10 @@ experiment:
     port: 6701
     use_fs_serve: true
   runner:
-    nnodes: 1
+    hostfile: null # /path/to/hostfile.txt
+    docker: ds
+    ssh_port: 22
+    nnodes: 2
     nproc_per_node: 8
   auto_tuner:
     space:

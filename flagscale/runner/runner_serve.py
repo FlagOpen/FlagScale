@@ -388,10 +388,9 @@ class SSHServeRunner(RunnerBase):
         self.deploy_config = self.config.experiment.get("deploy", {})
         self.inference_engine = _get_inference_engine(self.config)
         self.use_fs_serve = self.deploy_config.get("use_fs_serve", True)
-
+        self.port = _reset_serve_port(config)
         self._prepare()
         self.host = None
-        self.port = _reset_serve_port(config)
 
     def _prepare(self):
         _update_config_serve(self.config)

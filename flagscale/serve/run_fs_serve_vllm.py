@@ -1,15 +1,24 @@
 import asyncio
+import base64
 import logging
 import time
+from io import BytesIO
 from typing import Any, AsyncGenerator
 
 import ray
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from PIL import Image
+from transformers import AutoTokenizer
 
 from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
+from vllm.entrypoints.chat_utils import (
+    apply_hf_chat_template,
+    parse_chat_messages,
+    resolve_chat_template_content_format,
+)
 from vllm.entrypoints.openai.protocol import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -20,6 +29,7 @@ from vllm.entrypoints.openai.protocol import (
     CompletionStreamResponse,
     UsageInfo,
 )
+from vllm.inputs import PromptType, SingletonPrompt, TextPrompt, TokensPrompt
 from vllm.utils import random_uuid
 
 try:
@@ -33,6 +43,38 @@ serve.load_args()
 TASK_CONFIG = serve.task_config
 
 SERVICE_NAME = "vllm_service"
+
+
+def decode_base64_to_image(base64_str: str) -> Image.Image:
+    # If the string looks like "data:image;base64,AAAA..."
+    # split off the prefix up to the comma
+    if "," in base64_str:
+        base64_str = base64_str.split(",", 1)[1]
+
+    # Decode the Base64 string into bytes
+    image_data = base64.b64decode(base64_str)
+
+    # Convert the bytes into a PIL Image
+    pil_img = Image.open(BytesIO(image_data)).convert("RGB")
+    return pil_img
+
+
+def parse_dict_arg(val: str):
+    """Parses a string of comma-separated KEY=VALUE pairs into a dict."""
+    if len(val) == 0:
+        return None
+    out = dict()
+    for item in val.split(","):
+        # split into key and value, lowercase & strip whitespace
+        key, value = [p.lower().strip() for p in item.split("=")]
+        if not key or not value:
+            raise ValueError("Each item should be in the form KEY=VALUE")
+        iv = int(value)
+        # disallow conflicting duplicates
+        if key in out and out[key] != iv:
+            raise ValueError(f"Conflicting values specified for key: {key}")
+        out[key] = iv
+    return out
 
 
 def get_engine_args(model_name):
@@ -52,6 +94,10 @@ def get_engine_args(model_name):
     engine_args = model_config.get("engine_args", None)
 
     if engine_args:
+        limit_mm_per_prompt = engine_args.get("limit_mm_per_prompt", None)
+        if isinstance(limit_mm_per_prompt, str):
+            parsed_value = parse_dict_arg(engine_args["limit_mm_per_prompt"])
+            engine_args["limit_mm_per_prompt"] = parsed_value
         engine_args.pop("port", None)
         return engine_args
     else:
@@ -169,6 +215,9 @@ class LLMActor:
         engine_args = AsyncEngineArgs(**get_engine_args("vllm_model"))
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
 
+    def get_model_config(self):
+        return self.engine.get_model_config()
+
     def generate(self, prompt, sampling_params, request_id):
         return self.engine.generate(prompt, sampling_params, request_id)
 
@@ -180,10 +229,13 @@ class LLMService:
     def __init__(self, llm_actor):
         self.llm_actor = llm_actor
         self.ready = False
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            get_engine_args("vllm_model")["model"], trust_remote_code=True
+        )
 
     @app.post("/v1/completions")
     async def generate_handler(self, request: CompletionRequest):
-        logger.debug(f"========== Receive request {request}========== ")
+        logger.info(f"========== /v1/completions Receive request ========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
@@ -193,7 +245,9 @@ class LLMService:
                         "message": "Service is not ready, please try again later."
                     },
                 )
-        prompt = request.prompt
+        prompt_data = request.prompt
+        prompt = TextPrompt(prompt=prompt_data)
+
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
         sample_args = get_sample_args(request)
@@ -318,7 +372,7 @@ class LLMService:
 
     @app.post("/v1/chat/completions")
     async def generate_handler(self, request: ChatCompletionRequest):
-        logger.debug(f"========== Receive request {request}========== ")
+        logger.info(f"==========/v1/chat/completions Receive request ========== ")
         if not self.ready:
             self.ready = check_health(SERVICE_NAME)
             if not self.ready:
@@ -329,10 +383,56 @@ class LLMService:
                     },
                 )
         user_message = request.messages[-1]["content"]
-        if isinstance(user_message, list):
-            user_message = " ".join(
-                [item["text"] for item in user_message if item["type"] == "text"]
+        mm_data = dict()
+
+        try:
+            resolved_content_format = resolve_chat_template_content_format(
+                chat_template=None,
+                tools=None,
+                given_format="auto",
+                tokenizer=self.tokenizer,
+                trust_remote_code=True,
             )
+            logger.debug(f"========== tokenizer ========== {self.tokenizer}")
+            model_config = await self.llm_actor.get_model_config.remote()
+            conversation, mm_data = parse_chat_messages(
+                request.messages,
+                model_config,
+                self.tokenizer,
+                content_format=resolved_content_format,
+            )
+            logger.debug(f"========== mm_data ========== {mm_data}")
+
+            formatted_text = apply_hf_chat_template(
+                self.tokenizer,
+                conversation=conversation,
+                chat_template=None,
+                tools=None,
+                trust_remote_code=True,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to apply chat template: {str(e)}")
+            if isinstance(user_message, list):
+                user_message = " ".join(
+                    [item["text"] for item in user_message if item["type"] == "text"]
+                )
+                mm_data = {
+                    "image": [
+                        decode_base64_to_image(item["image_url"]["url"])
+                        for item in request.messages[-1]["content"]
+                        if item["type"] == "image_url"
+                    ]
+                }
+            formatted_text = user_message
+
+        logger.debug(f"========== formatted_text ========== {formatted_text}")
+        prompt_data = formatted_text
+        prompt = TextPrompt(prompt=prompt_data)
+        if mm_data:
+            prompt["multi_modal_data"] = mm_data
 
         stream = request.stream
         request_id = "cmpl-" + random_uuid()
@@ -340,7 +440,7 @@ class LLMService:
         logger.debug(f"Request {request_id} sampling_params {sample_args}")
         sampling_params = SamplingParams(**sample_args)
         results_generator = self.llm_actor.generate.options(stream=True).remote(
-            user_message,
+            prompt,
             sampling_params,
             request_id,
         )
@@ -411,7 +511,7 @@ class LLMService:
                     yield f"data: {final_usage_data}\n\n"
                 yield "data: [DONE]\n\n"
 
-            logger.debug(f"Return reponse for request {request_id} ")
+            logger.info(f"Return stream reponse for request {request_id} ")
             return StreamingResponse(stream_results(), media_type="text/event-stream")
         else:
             final_output = None
@@ -456,7 +556,7 @@ class LLMService:
                     "total_tokens": prompt_tokens + completion_tokens,
                 },
             )
-
+            logger.info(f"Return reponse for request {request_id} ")
             return JSONResponse(content=ret.model_dump())
 
 
