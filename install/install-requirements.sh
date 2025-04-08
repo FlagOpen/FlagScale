@@ -1,6 +1,6 @@
 #!/bin/bash
 
-pip install sr -i https://pypi.org/simple
+pip install sr==0.1.0
 
 # Packages that need to be installed outside of the conda environment
 pip install -r ../requirements/requirements-base.txt
