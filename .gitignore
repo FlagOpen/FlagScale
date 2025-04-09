@@ -11,6 +11,7 @@ log_file/*
 outputs
 *.log
 *.out
+.idea
 megatron/megatron/energon
 
 # test results
