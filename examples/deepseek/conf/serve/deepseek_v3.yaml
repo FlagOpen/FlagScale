@@ -1,14 +1,13 @@
-model_args:
-  vllm_model:
-    model-tag: /models/deepseek_v3/model # path of weight of deepseek v3
-    tensor-parallel-size: 8
-    pipeline-parallel-size: 2
-    gpu-memory-utilization: 0.9
-    max-num-seqs: 256
+- serve_id: vllm_model
+  engine: vllm
+  engine_args:
+    model: /models/deepseek_v3/model # path of weight of deepseek v3
+    tensor_parallel_size: 8
+    pipeline_parallel_size: 2
+    gpu_memory_utilization: 0.9
+    max_model_len: 32768
+    max_num_seqs: 256
     port: 9010 # port to serve
-    action-args:
-      - trust-remote-code
-      - enable-chunked-prefill
-
-deploy:
-  command_line_mode: true
+    enforce_eager: true
+    trust_remote_code: true
+    enable_chunked_prefill: true

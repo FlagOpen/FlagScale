@@ -245,8 +245,6 @@ def update_patch(
         if not check_hetero_txt(device_type, base_commit_id):
             with open(hetero_path, "a+") as f:
                 f.writelines(hetero_str + "\n")
-    if os.path.isdir(device_path):
-        shutil.rmtree(device_path)
     os.makedirs(patch_path)
     file_name = os.path.join(patch_path, patch_name)
     with open(file_name, "w") as f:

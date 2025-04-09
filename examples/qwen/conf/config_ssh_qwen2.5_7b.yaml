@@ -1,14 +1,14 @@
 defaults:
-  - _self_
-  - serve: serve_qwen2.5_7b
+- _self_
+- serve: serve_qwen2.5_7b
 
 experiment:
   exp_name: qwen2.5_7b
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
-    backend: vllm
-    entrypoint: null
+  deploy:
+    use_fs_serve: false
   runner:
     hostfile: /path/to/hostfile # type: {remote ip} slots={gpu num} type={gpu type} (like: x.x.x.x slots=8 type=A100)
     ssh_port: 22 # replace with your ssh port
