@@ -5,12 +5,12 @@ This monitoring tool is used to monitor training logs on remote servers, check f
 # NOTE
 
 For email reminders:
-   1. This program requires a password to be entered during runtime, so please ensure that it is used in a secure environment to avoid the risk of password leakage.
-   2. Training anomaly monitoring relies on historical training data analysis using various statistical methods. Please manually observe the logs for a period of time to ensure that at least the first 10 iterations are normal.
+   This program requires a password to be entered during runtime, so please ensure that it is used in a secure environment to avoid the risk of password leakage.
 
 For Feishu robot reminders:
-   1. This program requires a URL of Feishu Robot to be entered during runtime, so please ensure that it is used in a secure environment to avoid the risk of URL leakage.
-   2. Training anomaly monitoring relies on historical training data analysis using various statistical methods. Please manually observe the logs for a period of time to ensure that at least the first 10 iterations are normal.
+   This program requires a URL of Feishu Robot to be entered during runtime, so please ensure that it is used in a secure environment to avoid the risk of URL leakage. Configuration method reference link https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot, set the keyword to "monitor".
+
+Training anomaly monitoring relies on historical training data analysis using various statistical methods. Please manually observe the logs for a period of time to ensure that at least the first 10 iterations are normal.
 
 ## Features
 
