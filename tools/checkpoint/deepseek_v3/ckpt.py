@@ -98,7 +98,6 @@ def get_hf_mtp_ckpt(message, model, mtp_layer_id, args):
 #### set to megatron ckpt
 def set_embedding_ckpt(message, models, md, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    # assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     # embedding
     pos_embed = None
@@ -120,7 +119,6 @@ def set_embedding_ckpt(message, models, md, args):
 
 def set_attn_ckpt(message, models, layer_id, md, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    # assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     # weight
     if args.q_lora_rank is not None:
@@ -178,12 +176,10 @@ def set_mlp_ckpt(message, model, layer_id, md, args):
 
 def set_dense_mlp_ckpt(message, models, layer_id, md, args):
     tp_size, _, ep_size, _ = _get_parallel_size(args)
-    # assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     post_norm_weight = message.pop("post norm weight")
     gate_weight = torch.chunk(message.pop("gate weight"), tp_size, dim=0)
     up_weight = torch.chunk(message.pop("up weight"), tp_size, dim=0)
-    # linear1_weight = torch.cat([gate_weight, up_weight], dim=0)
     linear1_weight = [
         torch.cat(weights, dim=0) for weights in zip(gate_weight, up_weight)
     ]
@@ -202,7 +198,7 @@ def set_dense_mlp_ckpt(message, models, layer_id, md, args):
 
 def set_moe_mlp_ckpt(message, models, layer_id, md, args):
     tp_size, _, ep_size, _ = _get_parallel_size(args)
-    # assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
+
     assert args.num_experts is not None, "deepseeks's num_experts cannot be None"
     assert md.previous_num_experts is not None
 
@@ -275,7 +271,6 @@ def set_final_norm_ckpt(message, models, md, args):
 
 def set_output_layer_ckpt(message, models, md, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    # assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     orig_output_layer_weight = message.pop("weight")
     full_output_layer_weight = padding_vocab_size(orig_output_layer_weight, md, args)
@@ -287,7 +282,6 @@ def set_output_layer_ckpt(message, models, md, args):
 
 def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    # assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     mtp_layers = []
     for tp_ep_rank, model in enumerate(models):
@@ -321,7 +315,6 @@ def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
 #### load from megatron ckpt
 def get_embedding_ckpt(message, models, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    # assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     word_embeddings = []
     complete_tp_ranks = []
@@ -336,7 +329,6 @@ def get_embedding_ckpt(message, models, args):
 
 def get_attn_ckpt(message, models, layer_id, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    # assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     # parallel tensor
     q_a_weight = []
@@ -411,7 +403,6 @@ def get_mlp_ckpt(message, models, layer_id, args):
 
 def get_dense_mlp_ckpt(message, models, layer_id, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    # assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     # non parallel tensor
     post_norm_weight = None
@@ -446,7 +437,7 @@ def get_dense_mlp_ckpt(message, models, layer_id, args):
 
 def get_moe_mlp_ckpt(message, models, layer_id, args):
     tp_size, _, ep_size, _ = _get_parallel_size(args)
-    # assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
+
     assert args.num_experts is not None and args.num_experts % ep_size == 0
     num_local_experts = args.num_experts // ep_size
 
