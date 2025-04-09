@@ -1,8 +1,8 @@
 defaults:
   - _self_
-  - serve: deepSeek-r1-distill-qwen-32
+  - serve: qwq_32
 experiment:
-  exp_name: deepSeek-r1-distill-qwen-32
+  exp_name: qwq_32
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
