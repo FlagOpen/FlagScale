@@ -3,7 +3,7 @@ FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 ARG CUDA_VERSION
 ARG CUDNN_VERSION=9.5.0
 ARG PYTHON_VERSION=3.12
-ARG TORCH_VERSION=2.6.0
+ARG TORCH_VERSION=2.5.1
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
@@ -146,7 +146,6 @@ RUN cd ${WORK_DIR}/FlagScale/install && \
 ##############################################################################
 # Clone FlagScale
 ##############################################################################
-RUN echo "1802"
 RUN cd ${WORK_DIR} && rm -r FlagScale && \
         git clone -b IMAGE_2503251040 https://github.com/phoenixdong/FlagScale.git && \
         chmod +x FlagScale/install/install-requirements.sh

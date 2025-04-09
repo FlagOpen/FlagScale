@@ -1,7 +1,7 @@
 # Use Dockerfile.cuda to build image.
 
 ```bash
-docker build --build-arg CUDA_VERSION=12.4.1 --build-arg CUDNN_VERSION=9.5.0 --build-arg PYTHON_VERSION=3.12 --build-arg TORCH_VERSION=2.6.0 -f Dockerfile.cuda -t flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.6.0-time2503251131 .
+docker build --build-arg CUDA_VERSION=12.4.1 --build-arg CUDNN_VERSION=9.5.0 --build-arg PYTHON_VERSION=3.12 --build-arg TORCH_VERSION=2.5.1 -f Dockerfile.cuda -t flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.5.1-time2503251131 .
 ```
 
 * `CUDA_VERSION` `CUDNN_VERSION` `PYTHON_VERSION` `TORCH_VERSION`: Can be manually specified, default value is set in `docker/Dockerfile.cuda` and `install/install-requirements.sh`.
@@ -13,7 +13,7 @@ NOTE:
    2. It is recommended to rebuild the image for different tasks each time to avoid environmental interference caused by the same key.
 
 ```bash
-docker build --build-arg BASE_IMAGE=flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.6.0-time2503251131 --build-arg SSH_PORT=22 -f Dockerfile.ssh -t flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.6.0-time2503251131-ssh .
+docker build --build-arg BASE_IMAGE=flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.5.1-time2503251131 --build-arg SSH_PORT=22 -f Dockerfile.ssh -t flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.5.1-time2503251131-ssh .
 ```
 
 * `BASE_IMAGE`: Must be explicitly specified, enter the name of the base image used.

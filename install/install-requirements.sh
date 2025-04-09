@@ -1,5 +1,7 @@
 #!/bin/bash
 
+python -m pip install --upgrade pip
+
 # Packages that need to be installed outside of the conda environment
 pip install -r ../requirements/requirements-base.txt
 
