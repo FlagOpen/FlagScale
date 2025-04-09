@@ -132,26 +132,18 @@ RUN cd ${STAGE_DIR} && \
 ##############################################################################
 # Clone FlagScale
 ##############################################################################
-RUN echo "04081404"
 RUN cd ${WORK_DIR} && \
         git clone -b IMAGE_2503251040 https://github.com/phoenixdong/FlagScale.git && \
         chmod +x FlagScale/install/install-requirements.sh
 
 ##############################################################################
-# Install flagscale=train requirements
+# Install flagscale-train requirements
 ##############################################################################
 RUN cd ${WORK_DIR}/FlagScale/install && \
     ./install-requirements.sh --env train
 
 ##############################################################################
-# Clone FlagScale
-##############################################################################
-RUN cd ${WORK_DIR} && rm -r FlagScale && \
-        git clone -b IMAGE_2503251040 https://github.com/phoenixdong/FlagScale.git && \
-        chmod +x FlagScale/install/install-requirements.sh
-
-##############################################################################
-# Install flagscale=inference requirements
+# Install flagscale-inference requirements
 ##############################################################################
 RUN cd ${WORK_DIR}/FlagScale/install && \
     ./install-requirements.sh --env inference
