@@ -243,11 +243,11 @@ def update_patch(
     # Write to hetero.txt.
     if hetero_str:
         if not check_hetero_txt(device_type, base_commit_id):
-            with open(hetero_path, "a+") as f:
+            with open(hetero_path, "a+", encoding="utf-8") as f:
                 f.writelines(hetero_str + "\n")
     os.makedirs(patch_path)
     file_name = os.path.join(patch_path, patch_name)
-    with open(file_name, "w") as f:
+    with open(file_name, "w", encoding="utf-8") as f:
         f.write(patch_str)
     if key_path is not None:
         public_key_path = os.path.join(key_path, "public_key.pem")
