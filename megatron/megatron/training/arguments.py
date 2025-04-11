@@ -219,6 +219,12 @@ def validate_args(args, defaults={}):
     
     if args.attention_backend == AttnBackend.local:
             assert args.spec[0] == 'local' , '--attention-backend local is only supported with --spec local'
+    
+    if args.enable_zero_bubble:
+        assert args.sequence_parallel == False, \
+            "Zero Bubble is temporarily not compatible with Sequence Parallel"
+        assert args.transformer_impl == 'local', \
+            "Zero Bubble is temporarily not compatible with Transformer Engine"
 
     if not args.enable_hetero:
         # NOTE(zhaoyinglia): raise assert error when ckpt convert for decode-only dense model
@@ -1667,7 +1673,8 @@ def _add_training_args(parser):
                        choices=['nccl', 'ucc'],
                        help='Select a communicator backend for pipeline parallel communication. '
                        'If None, the default backend will be used.')
-
+    group.add_argument('--enable-zero-bubble', action='store_true',
+                       help='Use Zero Bubble (ZB-H1) scheduling, which splits BW into B and W.')
     return parser
 
 
