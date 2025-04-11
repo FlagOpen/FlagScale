@@ -1,12 +1,9 @@
 #!/bin/bash
 
-python -m ensurepip --upgrade
-python -m pip install --upgrade setuptools
+python -m pip install --upgrade pip
 
 # Packages that need to be installed outside of the conda environment
 pip install -r ../requirements/requirements-base.txt
-pip install -r ../requirements/requirements-dev.txt
-pip install -r ../requirements/requirements-lint.txt
 
 # Initialize the variable
 env=""
@@ -49,12 +46,6 @@ else
 fi
 conda activate flagscale-${env}
 
-# Blinker 1.4 version is installed using the distutls installation tool, which is an old Python package installation method.
-# When installing an updated version with pip, an attempt will be made to uninstall the old version,
-# but the uninstallation will fail and manual deletion is required.
-rm -r /usr/lib/python3/dist-packages/blinker
-rm /usr/lib/python3/dist-packages/blinker-1.4.egg-info
-
 # Exit immediately if any command fails
 set -e
 
@@ -73,6 +64,12 @@ pip install .
 cd ..
 rm -r ./TransformerEngine
 
+# cudnn frontend
+pip install nvidia-cudnn-cu12==9.5.0.50
+CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" pip install nvidia-cudnn-frontend
+python -c "import torch; print('cuDNN version:', torch.backends.cudnn.version());"
+python -c "from transformer_engine.pytorch.utils import get_cudnn_version; get_cudnn_version()"
+
 # Megatron-LM requires flash-attn >= 2.1.1, <= 2.7.3
 cu=$(nvcc --version | grep "Cuda compilation tools" | awk '{print $5}' | cut -d '.' -f 1)
 torch=$(pip show torch | grep Version | awk '{print $2}' | cut -d '+' -f 1 | cut -d '.' -f 1,2)
@@ -81,6 +78,12 @@ cxx=$(g++ --version | grep 'g++' | awk '{print $3}' | cut -d '.' -f 1)
 wget https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
 pip install flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
 rm flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
+
+# From Megatron-LM log
+pip install "git+https://github.com/Dao-AILab/flash-attention.git@v2.7.2#egg=flashattn-hopper&subdirectory=hopper"
+python_path=`python -c "import site; print(site.getsitepackages()[0])"`
+mkdir -p $python_path/flashattn_hopper
+wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILab/flash-attention/v2.7.2/hopper/flash_attn_interface.py
 
 # If env equals 'train'
 if [ "${env}" == "train" ]; then
@@ -95,6 +98,21 @@ if [ "${env}" == "train" ]; then
     rm -r ./apex
 
     python -m nltk.downloader -d /root/nltk_data punkt
+
+    # Used for automatic fault tolerance
+    # Set the path to the target Python file
+    SITE_PACKAGES_DIR=$(python3 -c "import site; print(site.getsitepackages()[0])")
+    FILE="$SITE_PACKAGES_DIR/torch/distributed/elastic/agent/server/api.py"
+    # Replace the code in line 894 and its surrounding lines (893 and 895)
+    if ! sed -i '893,895s/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' "$FILE"; then
+        echo "Error: Replacement failed on line 894."
+        exit 1
+    fi
+    # Replace the code in line 903 and its surrounding lines (902 and 904)
+    if ! sed -i '902,904s/^                    self\._restart_workers(self\._worker_group)/                    self._remaining_restarts -= 1\n                    self._restart_workers(self._worker_group)/' "$FILE"; then
+        echo "Error: Replacement failed on line 903."
+        exit 1
+    fi
 fi
 
 # If env equals 'inference'
@@ -103,11 +121,7 @@ if [ "${env}" == "inference" ]; then
     pip install -r ../vllm/requirements-build.txt
     pip install -r ../vllm/requirements-cuda.txt
     pip install -r ../vllm/requirements-common.txt
-
-    # If the dev argument is passed, execute the following command
-    if [ "$2" == "dev" ]; then
-        pip install -r ../vllm/requirements-dev.txt
-    fi
+    pip install -r ../vllm/requirements-dev.txt
 
     MAX_JOBS=$(nproc) pip install --no-build-isolation -v ../vllm/.
 
@@ -117,20 +131,3 @@ fi
 
 # Clean all conda caches
 conda clean --all -y
-
-# Used for automatic fault tolerance
-# Set the path to the target Python file
-SITE_PACKAGES_DIR=$(python3 -c "import site; print(site.getsitepackages()[0])")
-FILE="$SITE_PACKAGES_DIR/torch/distributed/elastic/agent/server/api.py"
-
-# Replace the code in line 894 and its surrounding lines (893 and 895)
-if ! sed -i '893,895s/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' "$FILE"; then
-    echo "Error: Replacement failed on line 894."
-    exit 1
-fi
-
-# Replace the code in line 903 and its surrounding lines (902 and 904)
-if ! sed -i '902,904s/^                    self\._restart_workers(self\._worker_group)/                    self._remaining_restarts -= 1\n                    self._restart_workers(self._worker_group)/' "$FILE"; then
-    echo "Error: Replacement failed on line 903."
-    exit 1
-fi

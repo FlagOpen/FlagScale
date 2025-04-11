@@ -1,4 +1,4 @@
-# pytorch
+# torch
 torch==2.5.1
 torchvision
 torchaudio
@@ -12,5 +12,15 @@ hydra-core
 matplotlib
 PyYAML
 pybind11==2.13.6
+sentencepiece
 tensorboard
 transformers
+
+# test
+coverage
+pytest
+pytest_asyncio
+pytest-cov
+pytest_mock
+pytest-random-order
+wandb
