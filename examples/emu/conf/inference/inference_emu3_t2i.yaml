@@ -12,8 +12,8 @@ llm:
 generate:
   mode: 'G'
   prompts: [
-    "a portrait of young girl.",
     "a shiba inu",
+    "a portrait of young girl.",
   ]
   ratios: [
     "1:1",
