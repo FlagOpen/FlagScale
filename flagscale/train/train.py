@@ -105,6 +105,7 @@ from flagscale.train.extra_valid import build_extra_valid_data_iterators
 from flagscale.train.stablelm2_scheduler import StableLM2SchedulerConfig
 from flagscale.train.global_vars import get_parallel_context, get_spiky_loss_detector
 from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
+from flagscale.train.theoretical_memory_usage import report_theoretical_memory as fs_report_theoretical_memory
 
 stimer = StragglerDetector()
 
@@ -125,90 +126,270 @@ def print_datetime(string):
 
 
 def num_floating_point_operations(args, batch_size):
-    # Attention projection size.
-    query_projection_size = args.kv_channels * args.num_attention_heads
-    query_projection_to_hidden_size_ratio = query_projection_size / args.hidden_size
-    # Group Query Attention.
-    if not args.group_query_attention:
-        args.num_query_groups = args.num_attention_heads
-    # MoE.
-    if args.num_experts is None:
-        # Every Transformer MLP is dense.
-        num_dense_layers = args.num_layers
-        num_moe_layers = 0
-        num_experts_routed_to = 0
-    else:
-        # Calculate number of dense and MoE Transformer MLPs.
-        if isinstance(args.moe_layer_freq, int):
-            moe_layer_pattern = [
-                1 if (i % args.moe_layer_freq == 0) else 0 for i in range(args.num_layers)
-            ]
-        elif isinstance(args.moe_layer_freq, list):
-            moe_layer_pattern = args.moe_layer_freq
+    def calculate_layer_counts():
+        """Calculate the number of attention, Mamba, and MLP layers."""
+        if args.hybrid_override_pattern:
+            counts = {'M': 0, '*': 0, '-': 0}
+            for layer_type in args.hybrid_override_pattern:
+                if layer_type in counts:
+                    counts[layer_type] += 1
+            return counts['*'], counts['M'], counts['-']
         else:
-            raise RuntimeError("Illegal --moe-layer-freq argument provided!")
-        assert len(moe_layer_pattern) == args.num_layers
-        num_moe_layers = sum(moe_layer_pattern)  # Number of 1s in `moe_layer_pattern`.
-        num_dense_layers = args.num_layers - num_moe_layers
-        num_experts_routed_to = args.moe_router_topk
+            num_attn_layers = round(args.num_layers * args.hybrid_attention_ratio)
+            num_mlp_layers = round(args.num_layers * args.hybrid_mlp_ratio)
+            num_mamba_layers = args.num_layers - num_attn_layers - num_mlp_layers
+            return num_attn_layers, num_mamba_layers, num_mlp_layers
 
-    moe_ffn_hidden_size = args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size
-    shared_expert_ffn_hidden_size = (
-        0
-        if args.moe_shared_expert_intermediate_size is None
-        else args.moe_shared_expert_intermediate_size
-    )
-    # SwiGLU.
-    gated_linear_multiplier = 3 / 2 if args.swiglu else 1
+    def mlp_layer_flops(batch_size, seq_len, hidden_size, expansion=4.0, swiglu=False):
+        """Calculate FLOPs for an MLP layer."""
+        scale_factor = 3.0 / 2.0 if swiglu else 1.0
+        return 4 * expansion * scale_factor * batch_size * seq_len * hidden_size ** 2
 
-    # The 12x term below comes from the following factors; for more details, see
-    # "APPENDIX: FLOATING-POINT OPERATIONS" in https://arxiv.org/abs/2104.04473.
-    # - 3x: Each GEMM in the model needs to be performed 3 times (forward pass,
-    #       backward wgrad [weight gradient], backward dgrad [data gradient]).
-    # - 2x: GEMMs of a particular size are stacked twice in the standard Transformer model
-    #       architectures implemented in this codebase (e.g., h->ffn_h GEMM and ffn_h->h GEMM
-    #       in MLP layer).
-    # - 2x: A GEMM of a m*n tensor with a n*k tensor requires 2mnk floating-point operations.
-    expansion_factor = 3 * 2 * 2
+    def attn_layer_flops(batch_size, seq_len, hidden_size, num_heads, gqa=True,
+                         gqa_groups=8, kv_channels=None):
+        """Calculate FLOPs for an attention layer."""
+        p = (kv_channels * num_heads / hidden_size) if kv_channels else 1
+        g = gqa_groups if gqa else num_heads
+        return 4 * batch_size * seq_len * hidden_size * p * (
+                hidden_size + (hidden_size * (g / num_heads)) + (seq_len / 2 ))
 
-    return (
-        expansion_factor
-        * batch_size
-        * args.seq_length
-        * args.num_layers
-        * args.hidden_size
-        * args.hidden_size
-        * (
-            # Attention.
-            (
-                (
-                    1
-                    + (args.num_query_groups / args.num_attention_heads)
-                    # Only half of the attention matrix is non-zero and needs to be multiplied with V.
-                    + (args.seq_length / args.hidden_size / 2)
-                ) * query_projection_to_hidden_size_ratio
-            )
-            # MLP.
-            + (
-                (
-                    # Dense.
-                    (args.ffn_hidden_size * num_dense_layers) +
-                    # MoE.
-                    (
-                        (
-                            # Routed experts.
-                            moe_ffn_hidden_size * num_experts_routed_to +
-                            # Shared experts.
-                            shared_expert_ffn_hidden_size
-                        )
-                        * num_moe_layers
-                    )
-                ) * gated_linear_multiplier / (args.num_layers * args.hidden_size)
-            )
-            # Logit.
-            + (args.padded_vocab_size / (2 * args.num_layers * args.hidden_size))
+    def mamba_layer_flops(batch_size, seq_len, hidden_size, state_dim=16,
+                          head_dim=64, num_groups=1):
+        """Calculate FLOPs for a Mamba layer."""
+        # Note (rwaleffe): flops estimate for scan should be updated based on new SSD kernels,
+        # but small percent of overall layer flops
+        d_in = 2 * hidden_size
+        nheads = d_in // head_dim
+        return (
+                (2 * batch_size * seq_len * hidden_size * (
+                        2 * d_in + 2 * num_groups * state_dim + nheads)) +  # in_proj
+                (7 * batch_size * seq_len * d_in * state_dim) +  # scan
+                (2 * batch_size * seq_len * d_in * hidden_size)  # out_proj
         )
-    )
+
+    def hybrid_flops(batch_size, seq_len, hidden_size,
+                     num_attn_layers, num_mamba_layers, num_mlp_layers,
+                     mamba_state_dim=128, mamba_head_dim=64,
+                     mamba_num_groups=8, num_attn_heads=32,
+                     gqa=True, gqa_groups=8, kv_channels=None,
+                     mlp_expansion=4.0, swiglu=False,
+                     vocab_size=256000):
+        """Calculate total FLOPs for the hybrid model."""
+        flops_fwd = (
+                num_attn_layers * attn_layer_flops(batch_size, seq_len, hidden_size,
+                                                   num_attn_heads, gqa, gqa_groups, kv_channels) +
+                num_mlp_layers * mlp_layer_flops(batch_size, seq_len, hidden_size,
+                                                 mlp_expansion, swiglu) +
+                num_mamba_layers * mamba_layer_flops(batch_size, seq_len, hidden_size,
+                                                     mamba_state_dim, mamba_head_dim,
+                                                     mamba_num_groups) +
+                (2 * batch_size * seq_len * hidden_size * vocab_size)  # logits computation
+        )
+        return flops_fwd * 3
+
+    def transformer_flops():
+
+        # Part 1: Attention ======================================================================
+        if args.multi_latent_attention:
+            # qkv proj
+            q_head_dim = args.qk_head_dim + args.qk_pos_emb_head_dim
+            # q lora + rope + q norm
+            if args.q_lora_rank is None:
+                num_flops_attn = (
+                    2
+                    * batch_size
+                    * args.seq_length
+                    * args.hidden_size
+                    * args.num_attention_heads
+                    * q_head_dim
+                )
+            else:
+                num_flops_attn = (
+                    2
+                    * batch_size
+                    * args.seq_length
+                    * (
+                        args.hidden_size * args.q_lora_rank
+                        + args.q_lora_rank * args.num_attention_heads * q_head_dim
+                        + args.q_lora_rank
+                    )
+                )
+            # kv lora + rope + kv norm
+            num_flops_attn += (
+                2
+                * batch_size
+                * args.seq_length
+                * (
+                    args.hidden_size * (args.kv_lora_rank + args.qk_pos_emb_head_dim)
+                    + args.kv_lora_rank * args.num_attention_heads * (args.qk_head_dim + args.v_head_dim)
+                    + args.kv_lora_rank
+                )
+            )
+            # core attn (QK^T)V
+            num_flops_attn += (
+                2 * batch_size * args.seq_length**2 * args.num_attention_heads * q_head_dim
+                + 2 * batch_size * args.seq_length**2 * args.num_attention_heads * args.v_head_dim
+            ) / 2
+            # out proj
+            query_projection_size = args.v_head_dim * args.num_attention_heads
+            num_flops_attn += (
+                2
+                * batch_size
+                * args.seq_length
+                * query_projection_size
+                * args.hidden_size
+            )
+        else:
+            # Attention projection size.
+            query_projection_size = args.kv_channels * args.num_attention_heads
+            kv_projection_size = args.kv_channels * args.num_query_groups
+            # Group Query Attention.
+            if not args.group_query_attention:
+                args.num_query_groups = args.num_attention_heads
+            # qkv proj
+            num_flops_attn = (
+                2
+                * batch_size
+                * args.seq_length
+                * args.hidden_size
+                * (query_projection_size + 2 * kv_projection_size)
+            )
+            # core attn (QK^T)V
+            num_flops_attn += (
+                2 * batch_size * args.seq_length**2 * query_projection_size
+                + 2 * batch_size * args.seq_length**2 * kv_projection_size
+            ) / 2
+            # out proj
+            num_flops_attn += (
+                2
+                * batch_size
+                * args.seq_length
+                * query_projection_size
+                * args.hidden_size
+            )
+
+        # Part 2: MLP or MoE =====================================================================
+        shared_expert_ffn_hidden_size = (
+            0
+            if args.moe_shared_expert_intermediate_size is None
+            else args.moe_shared_expert_intermediate_size
+        )
+        # SwiGLU.
+        gated_linear_multiplier = 3 / 2 if args.swiglu else 1
+
+        # MoE.
+        if args.num_experts is None:
+            # Every Transformer MLP is dense.
+            num_dense_layers = args.num_layers
+            num_moe_layers = 0
+            num_experts_routed_to = 0
+            num_experts = 0
+        else:
+            # Calculate number of dense and MoE Transformer MLPs.
+            if isinstance(args.moe_layer_freq, int):
+                moe_layer_pattern = [
+                    1 if (i % args.moe_layer_freq == 0) else 0 for i in range(args.num_layers)
+                ]
+            elif isinstance(args.moe_layer_freq, list):
+                moe_layer_pattern = args.moe_layer_freq
+            else:
+                raise RuntimeError("Illegal --moe-layer-freq argument provided!")
+            assert len(moe_layer_pattern) == args.num_layers
+            num_moe_layers = sum(moe_layer_pattern)  # Number of 1s in `moe_layer_pattern`.
+            num_dense_layers = args.num_layers - num_moe_layers
+            num_experts_routed_to = args.moe_router_topk
+            num_experts = args.num_experts
+
+        num_flops_dense_mlp = (
+            4 # mlp (two linear)
+            * batch_size
+            * args.seq_length
+            * args.hidden_size
+            * args.ffn_hidden_size
+            * gated_linear_multiplier
+        )
+
+        num_flops_sparse_mlp = (
+            4 # routed experts (two linear)
+            * batch_size
+            * args.seq_length
+            * args.hidden_size
+            * args.moe_ffn_hidden_size
+            * gated_linear_multiplier
+            * num_experts_routed_to
+            + 4 # shared experts (two linear)
+            * batch_size
+            * args.seq_length
+            * args.hidden_size
+            * shared_expert_ffn_hidden_size
+            * gated_linear_multiplier
+            + 2 # gate (one linear)
+            * batch_size
+            * args.seq_length
+            * args.hidden_size
+            * num_experts
+        )
+
+        num_flops_logits = (
+            2
+            * batch_size
+            * args.seq_length
+            * args.padded_vocab_size
+            * args.hidden_size
+        )
+
+        # Part3: MTP =============================================================================
+        num_flops_mtp = 0
+        num_mtp_predictor = 0 if not getattr(args, "num_mtp_predictor", None) else args.num_mtp_predictor
+        if num_mtp_predictor > 0:
+            num_flops_mtp = (
+                # MTP eh norm + final nrom
+                2 * 3 * args.hidden_size
+                + 2
+                * batch_size
+                * args.seq_length
+                * args.hidden_size
+                * args.hidden_size * 2
+                + num_flops_attn
+                + num_flops_sparse_mlp
+                + num_flops_logits
+            )
+
+        return (
+            num_dense_layers * (num_flops_attn + num_flops_dense_mlp)
+            + num_moe_layers * (num_flops_attn + num_flops_sparse_mlp)
+            + num_flops_logits
+            + num_mtp_predictor * num_flops_mtp
+        )
+
+    # Main entrypoint for FLOPs calculation.
+    if args.is_hybrid_model:
+        # Calculate the number of each type of layer.
+        num_attn_layers, num_mamba_layers, num_mlp_layers = calculate_layer_counts()
+
+        # Compute hybrid model FLOPs.
+        return hybrid_flops(
+            batch_size=batch_size,
+            seq_len=args.seq_length,
+            hidden_size=args.hidden_size,
+            num_attn_layers=num_attn_layers,
+            num_mamba_layers=num_mamba_layers,
+            num_mlp_layers=num_mlp_layers,
+            mamba_state_dim=args.mamba_state_dim,
+            mamba_head_dim=args.mamba_head_dim,
+            mamba_num_groups=args.mamba_num_groups,
+            num_attn_heads=args.num_attention_heads,
+            gqa=args.group_query_attention,
+            gqa_groups=args.num_query_groups,
+            kv_channels=args.kv_channels,
+            mlp_expansion=args.ffn_hidden_size / args.hidden_size,
+            swiglu=args.swiglu,
+            vocab_size=args.padded_vocab_size
+        )
+    else:
+        # Compute standard Transformer model FLOPs.
+        flops_fwd = transformer_flops()
+        return flops_fwd * 3
 
 
 def get_start_time_from_progress_log():
@@ -1104,12 +1285,6 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
         timers.write(timers_to_log, writer, iteration,
                      normalizer=total_iterations)
     if is_last_rank() and (iteration % args.tensorboard_log_interval == 0):
-        if args.record_memory_history:
-            snapshot = torch.cuda.memory._snapshot()
-            from pickle import dump
-            with open(args.memory_snapshot_path , 'wb') as f:
-                dump(snapshot, f)
-
         if wandb_writer:
             wandb_writer.log({'samples vs steps': args.consumed_train_samples},
                              iteration)
@@ -1294,8 +1469,9 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
                 if torch.distributed.get_rank() == 0:
                     num_microbatches = get_num_microbatches()
                     report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
+                    fs_report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
                 report_memory(f'(after {iteration} iterations)')
-                report_memory_flag = False
+                report_memory_flag = False if iteration > 3 else True
         else:
             report_memory(f'(after {iteration} iterations)')
             report_memory_flag = False
