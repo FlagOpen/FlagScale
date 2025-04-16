@@ -371,10 +371,11 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     card_ids_str = ",".join(map(str, card_ids))
                     ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
 
-                    p_kv_config_json = json.dumps(p_kv_config).replace('"', '\\"')
+                    p_kv_config_json = json.dumps(p_kv_config)
 
                     if p_address != master_ip:
-                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_json}'\\''"
+                        p_kv_config_formate_json = p_kv_config_json.replace('"', '\\"')
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_formate_json}'\\''"
                         if docker_name:
                             ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                         else:
@@ -404,9 +405,10 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     card_ids_str = ",".join(map(str, card_ids))
                     ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
 
-                    d_kv_config_json = json.dumps(d_kv_config).replace('"', '\\"')
+                    d_kv_config_json = json.dumps(d_kv_config)
                     if d_address != master_ip:
-                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_json}'\\''"
+                        d_kv_config_formate_json = d_kv_config_json.replace('"', '\\"')
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_formate_json}'\\''"
                         if docker_name:
                             ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                         else:
