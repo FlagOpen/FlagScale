@@ -420,8 +420,8 @@ def _generate_run_script_serve(
                         },
                     }
                     card_ids = resource_manager.get_available_card_ids(
-                        node_type=node["type"],
-                        slot_count=each_instance_card_num,
+                        resource_type=node["type"],
+                        num=each_instance_card_num,
                     )
                     card_ids_str = ",".join(map(str, card_ids))
                     ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
