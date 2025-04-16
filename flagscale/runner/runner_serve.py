@@ -97,7 +97,7 @@ class ResourceManager:
                 total += node["slots"] - node["used"]
         return total
 
-    def available_card_ids(self, resource_type="gpu", address="auto", num=1):
+    def get_available_card_ids(self, resource_type="gpu", address="auto", num=1):
         """
         Allocate 'num' resource cards from a node and return a list of card indices.
 
@@ -321,7 +321,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 command_items.extend(other_args)
                 vllm_command = " ".join(command_items)
                 if before_start_cmd:
-                    vllm_command = f"{before_start_cmd} && " + node_cmd
+                    vllm_command = f"{before_start_cmd} && " + vllm_command
                 p_address = deploy_config.get("prefill_address", "127.0.0.1")
                 d_address = deploy_config.get("decode_address", "127.0.0.1")
                 tensor_parallel_size = deploy_config.get("tensor_parallel_size", 1)
