@@ -2,7 +2,7 @@
   engine: vllm
   engine_args:
     model: /share/QwQ-32B # should be customized
-    served_model_name: qwq32-nv-flagos
+    served_model_name: qwq-32b-flagos
     tensor_parallel_size: 8
     max_model_len: 32768
     pipeline_parallel_size: 1
@@ -10,5 +10,5 @@
     gpu_memory_utilization: 0.9
     port: 9010
     trust_remote_code: true
-    enforce_eager: true # better compare to FlagGems
+    enforce_eager: true
     enable_chunked_prefill: true
