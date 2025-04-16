@@ -324,8 +324,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     vllm_command = f"{before_start_cmd} && " + vllm_command
                 p_address = deploy_config.get("prefill_address", "auto")
                 d_address = deploy_config.get("decode_address", "auto")
-                tensor_parallel_size = deploy_config.get("tensor_parallel_size", 1)
-                pipeline_parallel_size = deploy_config.get("pipeline_parallel_size", 1)
+                tensor_parallel_size = engine_args.get("tensor_parallel_size", 1)
+                pipeline_parallel_size = engine_args.get("pipeline_parallel_size", 1)
                 each_instance_card_num = tensor_parallel_size * pipeline_parallel_size
 
                 f.write(f"# clean nodes \n")
