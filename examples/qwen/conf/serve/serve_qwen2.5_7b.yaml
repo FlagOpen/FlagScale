@@ -2,6 +2,7 @@
   engine: vllm
   engine_args:
     model: /models/Qwen2.5-7B-Instruct
+    host: 0.0.0.0
     tensor_parallel_size: 2
     pipeline_parallel_size: 1
     gpu_memory_utilization: 0.9
