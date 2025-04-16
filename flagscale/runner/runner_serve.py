@@ -387,10 +387,10 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {p_instance_log_path} 2>&1 &'\""
                         else:
                             ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {p_instance_log_path} 2>&1 &"'
-                        f.write(f"{ssh_cmd}\n")
+                        f.write(f"{ssh_cmd}\n\n")
                     else:
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{p_kv_config_json}' > {p_instance_log_path} 2>&1 &"
-                        f.write(f"{node_cmd} &\n")
+                        f.write(f"{node_cmd}\n\n")
 
                 for _ in range(d_num):
                     kv_port = kv_related_ports.pop()
@@ -424,10 +424,10 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {d_instance_log_path} 2>&1 &'\""
                         else:
                             ssh_cmd = f'ssh -n -p {ssh_port} {d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
-                        f.write(f"{ssh_cmd}\n")
+                        f.write(f"{ssh_cmd}\n\n")
                     else:
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{d_kv_config_json}' > {d_instance_log_path} 2>&1 &"
-                        f.write(f"{node_cmd} &\n")
+                        f.write(f"{node_cmd}\n\n")
 
             else:
                 f.write(f"ray_path=$(realpath $(which ray))\n")
