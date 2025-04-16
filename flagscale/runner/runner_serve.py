@@ -374,11 +374,11 @@ def _generate_run_script_serve(
                     p_kv_config = {
                         "kv_connector": "P2pConnector",
                         "kv_role": "kv_producer",
-                        "kv_port": kv_port,
+                        "kv_port": str(kv_port),
                         "kv_connector_extra_config": {
                             "proxy_ip": master_ip,
-                            "proxy_port": kv_proxy_port,
-                            "http_port": http_port,
+                            "proxy_port": str(kv_proxy_port),
+                            "http_port": str(http_port),
                         },
                     }
                     card_ids = resource_manager.get_available_card_ids(
@@ -401,7 +401,7 @@ def _generate_run_script_serve(
                         f.write(f"{ssh_cmd}\n")
                     else:
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{p_kv_config_json}'"
-                        f.write(f"{node_cmd}\n")
+                        f.write(f"{node_cmd} &\n")
 
                 for _ in range(d_num):
                     kv_port = kv_related_ports.pop()
@@ -409,11 +409,11 @@ def _generate_run_script_serve(
                     d_kv_config = {
                         "kv_connector": "P2pConnector",
                         "kv_role": "kv_consumer",
-                        "kv_port": kv_port,
+                        "kv_port": str(kv_port),
                         "kv_connector_extra_config": {
                             "proxy_ip": master_ip,
-                            "proxy_port": kv_proxy_port,
-                            "http_port": http_port,
+                            "proxy_port": str(kv_proxy_port),
+                            "http_port": str(http_port),
                         },
                     }
                     card_ids = resource_manager.get_available_card_ids(
@@ -435,7 +435,7 @@ def _generate_run_script_serve(
                         f.write(f"{ssh_cmd}\n")
                     else:
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{d_kv_config_json}'"
-                        f.write(f"{node_cmd}\n")
+                        f.write(f"{node_cmd} &\n")
 
             else:
                 f.write(f"ray_path=$(realpath $(which ray))\n")
