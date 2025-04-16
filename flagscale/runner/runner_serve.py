@@ -320,6 +320,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 other_args = flatten_dict_to_args(engine_args, ["model", "port"])
                 command_items.extend(other_args)
                 vllm_command = " ".join(command_items)
+                vllm_command = "nohup " + vllm_command
                 if before_start_cmd:
                     vllm_command = f"{before_start_cmd} && " + vllm_command
                 p_address = deploy_config.get("prefill_address", "auto")
@@ -327,6 +328,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 tensor_parallel_size = engine_args.get("tensor_parallel_size", 1)
                 pipeline_parallel_size = engine_args.get("pipeline_parallel_size", 1)
                 each_instance_card_num = tensor_parallel_size * pipeline_parallel_size
+                default_log_dir = "/tmp/flagscale"
 
                 f.write(f"# clean nodes \n")
                 if len(nodes) > 1:
@@ -339,19 +341,21 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             raise ValueError(
                                 f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
                             )
-                        node_cmd = f"pkill -f 'vllm serve'"
+                        node_cmd = f"pkill -f vllm && mkdir -p {default_log_dir}"
 
                         ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
 
                         if docker_name:
                             ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                         f.write(f"{ssh_cmd}\n")
+
                 f.write("pkill -f 'run_inference_engine'\n")
                 f.write("pkill -f 'run_fs_serve_vllm'\n")
                 f.write("pkill -f 'vllm serve'\n")
+                f.write(f"mkdir -p {default_log_dir}\n")
                 f.write(f"\n")
 
-                for _ in range(p_num):
+                for i in range(p_num):
                     kv_port = kv_related_ports.pop()
                     http_port = kv_related_ports.pop()
                     p_kv_config = {
@@ -372,17 +376,20 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
 
                     p_kv_config_json = json.dumps(p_kv_config)
+                    p_instance_log_path = os.path.join(
+                        default_log_dir, f"prefill_{i}.log"
+                    )
 
                     if p_address != master_ip:
                         p_kv_config_formate_json = p_kv_config_json.replace('"', '\\"')
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_formate_json}'\\''"
                         if docker_name:
-                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {p_instance_log_path} 2>&1 &'\""
                         else:
-                            ssh_cmd = f'ssh -n -p {ssh_port} {d_address} "{node_cmd}"'
+                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {p_instance_log_path} 2>&1 &"'
                         f.write(f"{ssh_cmd}\n")
                     else:
-                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{p_kv_config_json}'"
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{p_kv_config_json}' > {p_instance_log_path} 2>&1 &"
                         f.write(f"{node_cmd} &\n")
 
                 for _ in range(d_num):
@@ -406,16 +413,20 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
 
                     d_kv_config_json = json.dumps(d_kv_config)
+                    d_instance_log_path = os.path.join(
+                        default_log_dir, f"decode_{i}.log"
+                    )
+
                     if d_address != master_ip:
                         d_kv_config_formate_json = d_kv_config_json.replace('"', '\\"')
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_formate_json}'\\''"
                         if docker_name:
-                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {d_instance_log_path} 2>&1 &'\""
                         else:
-                            ssh_cmd = f'ssh -n -p {ssh_port} {d_address} "{node_cmd}"'
+                            ssh_cmd = f'ssh -n -p {ssh_port} {d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
                         f.write(f"{ssh_cmd}\n")
                     else:
-                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{d_kv_config_json}'"
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{d_kv_config_json}' > {d_instance_log_path} 2>&1 &"
                         f.write(f"{node_cmd} &\n")
 
             else:
