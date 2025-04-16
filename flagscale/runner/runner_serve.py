@@ -341,18 +341,11 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             )
                         node_cmd = f"pkill -f 'vllm serve'"
 
-                        if before_start_cmd:
-                            node_cmd = f"{before_start_cmd} && " + node_cmd
-
                         ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
 
                         if docker_name:
                             ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                         f.write(f"{ssh_cmd}\n")
-                if before_start_cmd:
-                    f.write(f"{before_start_cmd} && pkill -f 'vllm serve'\n")
-                else:
-                    f.write(f"pkill -f 'vllm serve'\n")
                 f.write("pkill -f 'run_inference_engine'\n")
                 f.write("pkill -f 'run_fs_serve_vllm'\n")
                 f.write("pkill -f 'vllm serve'\n")
@@ -381,9 +374,10 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
 
                     node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_json}'\\''"
                     if p_address != master_ip:
-                        ssh_cmd = f'ssh -n -p {ssh_port} {p_address} "{node_cmd}"'
                         if docker_name:
                             ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        else:
+                            ssh_cmd = f'ssh -n -p {ssh_port} {d_address} "{node_cmd}"'
                         f.write(f"{ssh_cmd}\n")
                     else:
                         f.write(f"{node_cmd}\n")
@@ -408,12 +402,15 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
 
                     d_kv_config_json = json.dumps(d_kv_config).replace('"', '\\"')
-                    node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_json}'\\''"
                     if d_address != master_ip:
-                        ssh_cmd = f'ssh -n -p {ssh_port} {d_address} "{node_cmd}"'
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_json}'\\''"
                         if docker_name:
                             ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        else:
+                            ssh_cmd = f'ssh -n -p {ssh_port} {d_address} "{node_cmd}"'
+                        f.write(f"{ssh_cmd}\n")
                     else:
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{d_kv_config_json}'"
                         f.write(f"{node_cmd}\n")
 
             else:
