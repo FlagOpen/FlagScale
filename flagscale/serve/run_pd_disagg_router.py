@@ -149,7 +149,7 @@ async def handle_request():
 
 
 @app.route("/v1/chat/completions", methods=["POST"])
-async def handle_request():
+async def handle_chat_request():
     try:
         original_request_data = await request.get_json()
 
@@ -164,7 +164,7 @@ async def handle_request():
                 list(prefill_instances.items())
             )
             print(
-                "handle_request, prefill_addr: %s, zmq_addr: %s",
+                "handle_chat_request, prefill_addr: %s, zmq_addr: %s",
                 prefill_addr,
                 prefill_zmq_addr,
             )
@@ -174,7 +174,7 @@ async def handle_request():
         with decode_cv:
             decode_addr, decode_zmq_addr = random.choice(list(decode_instances.items()))
             print(
-                "handle_request, decode_addr: %s, zmq_addr: %s",
+                "handle_chat_request, decode_addr: %s, zmq_addr: %s",
                 decode_addr,
                 decode_zmq_addr,
             )
