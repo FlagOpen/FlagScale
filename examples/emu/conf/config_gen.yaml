@@ -14,8 +14,10 @@ experiment:
   runner:
     hostfile: null
   cmds:
-    before_start: source activate flagscale
+    before_start: source /root/miniconda3/bin/activate flagscale
   envs:
+    VLLM_USE_V1: 0 # Classifier-free-guidance is only supported in vllm v0
+    VLLM_LOGGING_LEVEL: "INFO"
     CUDA_VISIBLE_DEVICES: 4
     CUDA_DEVICE_MAX_CONNECTIONS: 1
 
