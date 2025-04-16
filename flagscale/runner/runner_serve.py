@@ -372,14 +372,15 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
 
                     p_kv_config_json = json.dumps(p_kv_config).replace('"', '\\"')
 
-                    node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_json}'\\''"
                     if p_address != master_ip:
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_json}'\\''"
                         if docker_name:
                             ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                         else:
                             ssh_cmd = f'ssh -n -p {ssh_port} {d_address} "{node_cmd}"'
                         f.write(f"{ssh_cmd}\n")
                     else:
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{p_kv_config_json}'"
                         f.write(f"{node_cmd}\n")
 
                 for _ in range(d_num):
