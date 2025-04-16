@@ -313,6 +313,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 ports_num = (p_num + d_num) * 2 + 1
                 kv_related_ports = _get_multiple_free_ports(ports_num)
                 kv_proxy_port = kv_related_ports.pop()
+                kv_proxy_port = 30001  # debug, tobe removed
 
                 engine_args = _get_engine_args(config)
                 command_items = ["vllm", "serve"]
@@ -645,8 +646,12 @@ class SSHServeRunner(RunnerBase):
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
-        if self.inference_engine:
-            if not self.use_fs_serve:
+        if self.inference_engine:  # pd_disagg_router
+            if self.config.experiment.get("deploy", {}).get(
+                "prefill_decode_disaggregation", False
+            ):
+                self.user_script = "flagscale/serve/run_pd_disagg_router.py"
+            elif not self.use_fs_serve:
                 self.user_script = "flagscale/serve/run_inference_engine.py"
             else:
                 self.user_script = "flagscale/serve/run_fs_serve_vllm.py"
