@@ -341,7 +341,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             raise ValueError(
                                 f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
                             )
-                        node_cmd = f"pkill -f vllm && mkdir -p {default_log_dir}"
+                        node_cmd = f"mkdir -p {default_log_dir} && pkill -f vllm"
 
                         ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
 
@@ -392,7 +392,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{p_kv_config_json}' > {p_instance_log_path} 2>&1 &"
                         f.write(f"{node_cmd}\n\n")
 
-                for _ in range(d_num):
+                for j in range(d_num):
                     kv_port = kv_related_ports.pop()
                     http_port = kv_related_ports.pop()
                     d_kv_config = {
@@ -414,7 +414,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
 
                     d_kv_config_json = json.dumps(d_kv_config)
                     d_instance_log_path = os.path.join(
-                        default_log_dir, f"decode_{i}.log"
+                        default_log_dir, f"decode_{j}.log"
                     )
 
                     if d_address != master_ip:
