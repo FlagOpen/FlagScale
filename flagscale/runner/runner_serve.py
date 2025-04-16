@@ -322,8 +322,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 vllm_command = " ".join(command_items)
                 if before_start_cmd:
                     vllm_command = f"{before_start_cmd} && " + vllm_command
-                p_address = deploy_config.get("prefill_address", "127.0.0.1")
-                d_address = deploy_config.get("decode_address", "127.0.0.1")
+                p_address = deploy_config.get("prefill_address", "auto")
+                d_address = deploy_config.get("decode_address", "auto")
                 tensor_parallel_size = deploy_config.get("tensor_parallel_size", 1)
                 pipeline_parallel_size = deploy_config.get("pipeline_parallel_size", 1)
                 each_instance_card_num = tensor_parallel_size * pipeline_parallel_size
@@ -365,7 +365,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         },
                     }
                     card_ids = resource_manager.get_available_card_ids(
-                        resource_type=node["type"], num=each_instance_card_num
+                        address=p_address,
+                        num=each_instance_card_num,
                     )
                     card_ids_str = ",".join(map(str, card_ids))
                     ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
@@ -397,7 +398,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         },
                     }
                     card_ids = resource_manager.get_available_card_ids(
-                        resource_type=node["type"], num=each_instance_card_num
+                        address=d_address,
+                        num=each_instance_card_num,
                     )
                     card_ids_str = ",".join(map(str, card_ids))
                     ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
