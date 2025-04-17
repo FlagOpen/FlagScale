@@ -23,9 +23,17 @@ class LoadManager:
         """Ensure this addr is known, with zero initial load."""
         with self._lock:
             self._load.setdefault(addr, 0)
+            print(
+                f"register-------------- self._load {self._load} -----------------",
+                flush=True,
+            )
 
     def acquire(self) -> str:
         """Pick the addr with minimal load and bump its count."""
+        print(
+            f"acquire-------------- self._load {self._load} -----------------",
+            flush=True,
+        )
         with self._lock:
             if not self._load:
                 raise RuntimeError("No instances registered")
