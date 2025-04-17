@@ -60,6 +60,10 @@ class ServiceRegistry:
             while not self._instances[itype]:
                 cond.wait()
             http, zmq_ = random.choice(list(self._instances[itype].items()))
+            print(
+                f"============== instance type: {itype}    self._instances {self._instances} =================",
+                flush=True,
+            )
             return http, zmq_
 
     def size(self, itype: InstanceType) -> int:
