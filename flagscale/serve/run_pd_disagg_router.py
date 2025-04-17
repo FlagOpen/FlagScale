@@ -22,7 +22,8 @@ class LoadManager:
     def register(self, addr: str):
         """Ensure this addr is known, with zero initial load."""
         with self._lock:
-            self._load.setdefault(addr, 0)
+            if addr not in self._load:
+                self._load[addr] = 0
             print(
                 f"register-------------- self._load {self._load} -----------------",
                 flush=True,
@@ -73,10 +74,13 @@ def _listen_for_register(poller, router_socket):
                 with prefill_cv:
                     prefill_instances[addr] = zmq_addr
                     prefill_load_manager.register(addr)
+                    print(f"[SERVICE DISCOVERY][PREFILL] registered {addr}")
+
             elif data["type"] == "D":
                 with decode_cv:
                     decode_instances[addr] = zmq_addr
                     decode_load_manager.register(addr)
+                    print(f"[SERVICE DISCOVERY][DECODE ] registered {addr}")
             else:
                 print(f"Unexpected message type from {remote_address}: {data}")
 
