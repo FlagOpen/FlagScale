@@ -370,6 +370,7 @@ def _generate_run_script_serve(
                 f.write("pkill -f 'run_inference_engine'\n")
                 f.write("pkill -f 'run_fs_serve_vllm'\n")
                 f.write("pkill -f 'vllm serve'\n")
+                f.write("pkill -f 'run_pd_disagg_router'\n")
                 f.write(f"mkdir -p {default_log_dir}\n")
                 f.write(f"\n")
 
