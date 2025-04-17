@@ -652,16 +652,20 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
             / args.tensor_model_parallel_size
             * args.expert_tensor_parallel_size
         )
-        shared_sparse_ffn_parallel_by_tp_activation_memory = (
-            4
-            * args.seq_length
-            * args.micro_batch_size
-            * args.moe_shared_expert_intermediate_size
-            * gated_linear_multiplier
-        )
-        shared_sparse_ffn_not_parallel_by_tp_activation_memory = (
-            3 * args.seq_length * args.micro_batch_size * args.hidden_size
-        )
+        if args.moe_shared_expert_intermediate_size is not None:
+            shared_sparse_ffn_parallel_by_tp_activation_memory = (
+                4
+                * args.seq_length
+                * args.micro_batch_size
+                * args.moe_shared_expert_intermediate_size
+                * gated_linear_multiplier
+            )
+            shared_sparse_ffn_not_parallel_by_tp_activation_memory = (
+                3 * args.seq_length * args.micro_batch_size * args.hidden_size
+            )
+        else:
+            shared_sparse_ffn_parallel_by_tp_activation_memory = 0
+            shared_sparse_ffn_not_parallel_by_tp_activation_memory = 0
     else:
         ffn_parallel_by_tp_activation_memory = (
             4
