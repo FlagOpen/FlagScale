@@ -120,6 +120,14 @@ async def handle_request():
                 decode_addr,
                 decode_zmq_addr,
             )
+        print(
+            f"======== {prefill_zmq_addr} /v1/completions prefill_instances {prefill_instances} ========== ",
+            flush=True,
+        )
+        print(
+            f"======== {decode_zmq_addr} /v1/completions decode_instances {decode_instances} ========== ",
+            flush=True,
+        )
 
         request_id = f"___prefill_addr_{prefill_zmq_addr}___decode_addr_{decode_zmq_addr}_{random_uuid()}"
 
@@ -178,7 +186,14 @@ async def handle_chat_request():
                 decode_addr,
                 decode_zmq_addr,
             )
-
+        print(
+            f"======== {prefill_zmq_addr} /v1/chat/completions prefill_instances {prefill_instances} ========== ",
+            flush=True,
+        )
+        print(
+            f"======== {decode_zmq_addr} /v1/chat/completions decode_instances {decode_instances} ========== ",
+            flush=True,
+        )
         request_id = f"___prefill_addr_{prefill_zmq_addr}___decode_addr_{decode_zmq_addr}_{random_uuid()}"
 
         # finish prefill
