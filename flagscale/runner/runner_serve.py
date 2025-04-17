@@ -391,6 +391,10 @@ def _generate_run_script_serve(
                             "http_port": str(http_port),
                         },
                     }
+                    print(
+                        f"============= prefill instance {i}, p_kv_config: {p_kv_config} =============",
+                        flush=True,
+                    )
                     card_ids = resource_manager.get_available_card_ids(
                         resource_type=node["type"],
                         address=p_address,
@@ -431,6 +435,10 @@ def _generate_run_script_serve(
                             "http_port": str(http_port),
                         },
                     }
+                    print(
+                        f"============= decode instance {i}, d_kv_config: {d_kv_config} =============",
+                        flush=True,
+                    )
                     card_ids = resource_manager.get_available_card_ids(
                         resource_type=node["type"],
                         address=d_address,
