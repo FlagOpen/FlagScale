@@ -14,7 +14,6 @@ def compute_activated_weight_number(args, verbose=False):
     if args.num_experts is None:
         return
 
-    print("\n>>> [FS]Computing activated weight number of MoE.")
     # Part 1: Attention ======================================================================
     if args.multi_latent_attention:
         q_head_dim = args.qk_head_dim + args.qk_pos_emb_head_dim
@@ -154,37 +153,35 @@ def compute_activated_weight_number(args, verbose=False):
     )
     if verbose:
         print(
-            f"Number of activated attn parameters in a transformer layer in billions: "
+            f"> Number of activated attn parameters in a transformer block in billions: "
             f"{attn_params / 10**9: .2f}"
         )
         print(
-            f"Number of activated dense mlp parameters in a transformer layer in billions: "
+            f"> Number of activated dense mlp parameters in a transformer block in billions: "
             f"{dense_mlp_params / 10**9: .2f}"
         )
         print(
-            f"Number of activated sparse mlp parameters in a transformer layer in billions: "
+            f"> Number of activated sparse mlp parameters in a transformer block in billions: "
             f"{sparse_mlp_params / 10**9: .2f}"
         )
-        print(f"{num_dense_layers=}, {num_moe_layers=}, {num_mtp_predictor=}")
         print(
-            f"Number of activated parameters in transformer layers in billions: "
+            f"> Number of activated parameters in transformer block in billions: "
             f"{num_parameters_in_transformer_block / 10**9: .2f}"
         )
         print(
-            f"Number of activated mtp parameters in a transformer layer in billions: "
+            f"> Number of activated parameters in mtp transformer block in billions: "
             f"{num_parameters_in_mtp_block / 10**9: .2f}"
         )
         print(
-            f"Number of activated parameters in embedding layers in billions: "
+            f"> Number of activated parameters in embedding layers in billions: "
             f"{num_parameters_in_embedding_layers / 10**9:.2f}"
         )
         print(
-            f"Total number of activated parameters in billions: {num_total_parameters / 10**9:.2f}"
+            f"> Total number of activated parameters in billions: {num_total_parameters / 10**9:.2f}"
         )
 
 
 def compute_weight_and_optimizer_memory(args, verbose=False):
-    print("\n>>> [FS]Computing weight number and weight&optimizer memory.")
     # Part 1: Attention =======================================================================
     if args.multi_latent_attention:
         q_head_dim = args.qk_head_dim + args.qk_pos_emb_head_dim
@@ -319,32 +316,31 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
     )
     if verbose:
         print(
-            f"Number of attn parameters in a transformer block in billions: "
+            f"> Number of attn parameters in a transformer block in billions: "
             f"{attn_params / 10**9: .2f}"
         )
         print(
-            f"Number of dense mlp parameters in a transformer block in billions: "
+            f"> Number of dense mlp parameters in a transformer block in billions: "
             f"{dense_mlp_params / 10**9: .2f}"
         )
         print(
-            f"Number of sparse mlp parameters in a transformer block in billions: "
+            f"> Number of sparse mlp parameters in a transformer block in billions: "
             f"{sparse_mlp_params / 10**9: .2f}"
         )
-        print(f"{num_dense_layers=}, {num_moe_layers=}, {num_mtp_predictor=}")
         print(
-            f"Number of parameters in transformer block in billions: "
+            f"> Number of parameters in transformer block in billions: "
             f"{num_parameters_in_transformer_block / 10**9: .2f}"
         )
         print(
-            f"Number of mtp parameters in a transformer block in billions: "
+            f"> Number of parameters in mtp transformer block in billions: "
             f"{num_parameters_in_mtp_block / 10**9: .2f}"
         )
         print(
-            f"Number of parameters in embedding layers in billions: "
+            f"> Number of parameters in embedding layers in billions: "
             f"{num_parameters_in_embedding_layers / 10**9:.2f}"
         )
         print(
-            f"Total number of parameters in billions: {num_total_parameters / 10**9:.2f}"
+            f"> Total number of parameters in billions: {num_total_parameters / 10**9:.2f}"
         )
 
     # PART5: Distributed =====================================================================
@@ -422,7 +418,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
             + num_parameters_on_most_loaded_model_shard_noddp
         )
         print(
-            f"Number of parameters in most loaded shard in billions: "
+            f"> Number of parameters in most loaded shard in billions: "
             f"{num_parameters_on_most_loaded_model_shard / 10**9:.4f}"
         )
 
@@ -434,7 +430,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
         ) / args.pipeline_model_parallel_size
         if verbose:
             print(
-                f"Number of parameters in other shards in billions: "
+                f"> Number of parameters in other shards in billions: "
                 f"{num_parameters_on_other_model_shards / 10**9:.4f}"
             )
 
@@ -470,7 +466,6 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
     # different from hidden_size.
     # But in FlagScale, we implement it.
 
-    print("\n>>> [FS]Computing theoretical activation memory.")
     # Memory footprint from transformer layer (self-attention and MLP).
     # In FlagScale, we provide the most detailed memory information, including each sub layer of transformer layer.
     # Pre-attn layernorm
@@ -601,13 +596,13 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
 
     # Split into two parts
     attention_parallel_by_tp_activation_memory = (
-        +QKT_activation_memory
+        QKT_activation_memory
         + softmax_activation_memory
         + softmax_dropout_activation_memory
         + attention_over_V_activation_memory
         + linear_activation_memory
     )
-    attnetion_not_parallel_by_tp_activation_memory = (
+    attention_not_parallel_by_tp_activation_memory = (
         pre_attn_layernorm_activation_memory
         + QKV_activation_memory
         + linear_dropout_activation_memory
@@ -758,13 +753,13 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
     if args.sequence_parallel:
         perlayer_activation = (
             attention_parallel_by_tp_activation_memory
+            + attention_not_parallel_by_tp_activation_memory
             + ffn_parallel_by_tp_activation_memory
-            + attnetion_not_parallel_by_tp_activation_memory
             + ffn_not_parallel_by_tp_activation_memory
         ) / args.tensor_model_parallel_size
         sparse_perlayer_activation = (
             attention_parallel_by_tp_activation_memory / args.tensor_model_parallel_size
-            + attnetion_not_parallel_by_tp_activation_memory
+            + attention_not_parallel_by_tp_activation_memory
             / args.tensor_model_parallel_size
             + sparse_ffn_parallel_by_tp_activation_memory
             + sparse_ffn_not_parallel_by_tp_activation_memory
@@ -777,12 +772,12 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
         perlayer_activation = (
             attention_parallel_by_tp_activation_memory / args.tensor_model_parallel_size
             + ffn_parallel_by_tp_activation_memory / args.tensor_model_parallel_size
-            + attnetion_not_parallel_by_tp_activation_memory
+            + attention_not_parallel_by_tp_activation_memory
             + ffn_not_parallel_by_tp_activation_memory
         )
         sparse_perlayer_activation = (
             attention_parallel_by_tp_activation_memory / args.tensor_model_parallel_size
-            + attnetion_not_parallel_by_tp_activation_memory
+            + attention_not_parallel_by_tp_activation_memory
             + sparse_ffn_parallel_by_tp_activation_memory
             / args.tensor_model_parallel_size
             + sparse_ffn_not_parallel_by_tp_activation_memory
@@ -809,6 +804,18 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
         assert len(moe_layer_pattern) == args.num_layers
         num_moe_layers = sum(moe_layer_pattern)  # Number of 1s in `moe_layer_pattern`.
         num_dense_layers = args.num_layers - num_moe_layers
+
+    if verbose:
+        if num_dense_layers > 0:
+            print(
+                f"> Activation memory footprint per dense transformer layer: "
+                f"{perlayer_activation / NUM_BYTES_IN_MEGABYTE:.1f} MB"
+            )
+        if num_moe_layers > 0:
+            print(
+                f"> Activation memory footprint per moe transformer layer: "
+                f"{sparse_perlayer_activation / NUM_BYTES_IN_MEGABYTE:.1f} MB"
+            )
 
     if args.recompute_method == "uniform" and args.recompute_granularity == "full":
         recompute_layers = args.recompute_num_layers
@@ -909,7 +916,7 @@ def report_theoretical_memory(args, num_microbatches=None, verbose=False):
     total_memory = weight_and_optimizer_memory + activation_memory
 
     print(
-        f">>> [FS]Theoretical memory footprints: weight and optimizer={weight_and_optimizer_memory:.2f} MB, "
+        f">>> [FS] Theoretical memory footprints: weight and optimizer={weight_and_optimizer_memory:.2f} MB, "
         f"activation={activation_memory:.2f} MB, total={total_memory:.2f} MB\n"
     )
 

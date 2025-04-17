@@ -126,67 +126,6 @@ def print_datetime(string):
 
 
 def num_floating_point_operations(args, batch_size):
-    def calculate_layer_counts():
-        """Calculate the number of attention, Mamba, and MLP layers."""
-        if args.hybrid_override_pattern:
-            counts = {'M': 0, '*': 0, '-': 0}
-            for layer_type in args.hybrid_override_pattern:
-                if layer_type in counts:
-                    counts[layer_type] += 1
-            return counts['*'], counts['M'], counts['-']
-        else:
-            num_attn_layers = round(args.num_layers * args.hybrid_attention_ratio)
-            num_mlp_layers = round(args.num_layers * args.hybrid_mlp_ratio)
-            num_mamba_layers = args.num_layers - num_attn_layers - num_mlp_layers
-            return num_attn_layers, num_mamba_layers, num_mlp_layers
-
-    def mlp_layer_flops(batch_size, seq_len, hidden_size, expansion=4.0, swiglu=False):
-        """Calculate FLOPs for an MLP layer."""
-        scale_factor = 3.0 / 2.0 if swiglu else 1.0
-        return 4 * expansion * scale_factor * batch_size * seq_len * hidden_size ** 2
-
-    def attn_layer_flops(batch_size, seq_len, hidden_size, num_heads, gqa=True,
-                         gqa_groups=8, kv_channels=None):
-        """Calculate FLOPs for an attention layer."""
-        p = (kv_channels * num_heads / hidden_size) if kv_channels else 1
-        g = gqa_groups if gqa else num_heads
-        return 4 * batch_size * seq_len * hidden_size * p * (
-                hidden_size + (hidden_size * (g / num_heads)) + (seq_len / 2 ))
-
-    def mamba_layer_flops(batch_size, seq_len, hidden_size, state_dim=16,
-                          head_dim=64, num_groups=1):
-        """Calculate FLOPs for a Mamba layer."""
-        # Note (rwaleffe): flops estimate for scan should be updated based on new SSD kernels,
-        # but small percent of overall layer flops
-        d_in = 2 * hidden_size
-        nheads = d_in // head_dim
-        return (
-                (2 * batch_size * seq_len * hidden_size * (
-                        2 * d_in + 2 * num_groups * state_dim + nheads)) +  # in_proj
-                (7 * batch_size * seq_len * d_in * state_dim) +  # scan
-                (2 * batch_size * seq_len * d_in * hidden_size)  # out_proj
-        )
-
-    def hybrid_flops(batch_size, seq_len, hidden_size,
-                     num_attn_layers, num_mamba_layers, num_mlp_layers,
-                     mamba_state_dim=128, mamba_head_dim=64,
-                     mamba_num_groups=8, num_attn_heads=32,
-                     gqa=True, gqa_groups=8, kv_channels=None,
-                     mlp_expansion=4.0, swiglu=False,
-                     vocab_size=256000):
-        """Calculate total FLOPs for the hybrid model."""
-        flops_fwd = (
-                num_attn_layers * attn_layer_flops(batch_size, seq_len, hidden_size,
-                                                   num_attn_heads, gqa, gqa_groups, kv_channels) +
-                num_mlp_layers * mlp_layer_flops(batch_size, seq_len, hidden_size,
-                                                 mlp_expansion, swiglu) +
-                num_mamba_layers * mamba_layer_flops(batch_size, seq_len, hidden_size,
-                                                     mamba_state_dim, mamba_head_dim,
-                                                     mamba_num_groups) +
-                (2 * batch_size * seq_len * hidden_size * vocab_size)  # logits computation
-        )
-        return flops_fwd * 3
-
     def transformer_flops():
 
         # Part 1: Attention ======================================================================
@@ -362,34 +301,9 @@ def num_floating_point_operations(args, batch_size):
             + num_mtp_predictor * num_flops_mtp
         )
 
-    # Main entrypoint for FLOPs calculation.
-    if args.is_hybrid_model:
-        # Calculate the number of each type of layer.
-        num_attn_layers, num_mamba_layers, num_mlp_layers = calculate_layer_counts()
-
-        # Compute hybrid model FLOPs.
-        return hybrid_flops(
-            batch_size=batch_size,
-            seq_len=args.seq_length,
-            hidden_size=args.hidden_size,
-            num_attn_layers=num_attn_layers,
-            num_mamba_layers=num_mamba_layers,
-            num_mlp_layers=num_mlp_layers,
-            mamba_state_dim=args.mamba_state_dim,
-            mamba_head_dim=args.mamba_head_dim,
-            mamba_num_groups=args.mamba_num_groups,
-            num_attn_heads=args.num_attention_heads,
-            gqa=args.group_query_attention,
-            gqa_groups=args.num_query_groups,
-            kv_channels=args.kv_channels,
-            mlp_expansion=args.ffn_hidden_size / args.hidden_size,
-            swiglu=args.swiglu,
-            vocab_size=args.padded_vocab_size
-        )
-    else:
-        # Compute standard Transformer model FLOPs.
-        flops_fwd = transformer_flops()
-        return flops_fwd * 3
+    # Compute standard Transformer model FLOPs.
+    flops_fwd = transformer_flops()
+    return flops_fwd * 3
 
 
 def get_start_time_from_progress_log():
@@ -574,6 +488,11 @@ def pretrain(
         }
     else:
         checkpointing_context = {}
+
+    ########## FlagScale Begin ##########
+    num_microbatches = get_num_microbatches()
+    fs_report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
+    ########## FlagScale End ##########
 
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
@@ -1469,9 +1388,8 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
                 if torch.distributed.get_rank() == 0:
                     num_microbatches = get_num_microbatches()
                     report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
-                    fs_report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
                 report_memory(f'(after {iteration} iterations)')
-                report_memory_flag = False if iteration > 3 else True
+                report_memory_flag = False
         else:
             report_memory(f'(after {iteration} iterations)')
             report_memory_flag = False
