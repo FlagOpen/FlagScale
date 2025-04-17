@@ -346,7 +346,9 @@ def _generate_run_script_serve(
                 tensor_parallel_size = engine_args.get("tensor_parallel_size", 1)
                 pipeline_parallel_size = engine_args.get("pipeline_parallel_size", 1)
                 each_instance_card_num = tensor_parallel_size * pipeline_parallel_size
-                default_log_dir = "/tmp/flagscale"
+                default_log_dir = deploy_config.get(
+                    "prefill_decode_log_dir", logging_config.log_dir
+                )
 
                 f.write(f"# clean nodes \n")
                 if len(nodes) > 1:
@@ -373,6 +375,8 @@ def _generate_run_script_serve(
                 f.write("pkill -f 'run_pd_disagg_router'\n")
                 f.write(f"mkdir -p {default_log_dir}\n")
                 f.write(f"\n")
+
+                f.write("echo '=========== launch prefill instance ==========='\n")
 
                 for i in range(p_num):
                     kv_port = kv_related_ports.pop()
@@ -411,6 +415,8 @@ def _generate_run_script_serve(
                     else:
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{p_kv_config_json}' > {p_instance_log_path} 2>&1 &"
                         f.write(f"{node_cmd}\n\n")
+
+                f.write("echo '=========== launch decode instance ==========='\n")
 
                 for j in range(d_num):
                     kv_port = kv_related_ports.pop()
@@ -584,6 +590,7 @@ def _generate_run_script_serve(
         f.write(f"\n")
         # TODO: need a option to control whether to append or overwrite the output file
         # Now, it always appends to the output file
+        f.write("echo '=========== launch task ==========='\n")
         if background:
             f.write(
                 f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
