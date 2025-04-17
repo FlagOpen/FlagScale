@@ -42,7 +42,7 @@ if conda env list | grep -q "flagscale-${env}"; then
     echo "Conda environment 'flagscale-${env}' already exists."
 else
     echo "Creating conda environment 'flagscale-${env}'..."
-    conda create --name "flagscale-${env}" python=$(python --version | awk '{print $2}') -y
+    conda create --name "flagscale-${env}" python=$(python --version | awk '{print $2}' | cut -d '.' -f 1,2) -y
 fi
 conda activate flagscale-${env}
 
