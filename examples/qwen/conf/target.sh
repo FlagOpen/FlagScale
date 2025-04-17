@@ -25,7 +25,7 @@ pkill -f 'vllm serve'
 source /root/miniconda3/bin/activate flagscale-inference && export GLOO_SOCKET_IFNAME=bond0 && ${ray_path} start --head --port=59081 --num-gpus=8
 
 # worker nodes
-ssh -n -p 22 10.1.1.108 "docker exec ds /bin/bash -c 'source /root/miniconda3/bin/activate flagscale-inference && export GLOO_SOCKET_IFNAME=bond0 && ${ray_path} start --address=10.1.1.122:59081 --num-gpus=8'"
+ssh -n -p 22 10.1.1.108 "docker exec ds /bin/bash -c 'source /root/miniconda3/bin/activate flagscale-inference && export CUDA_VISIBLE_DEVICES=7 && ${ray_path} start --address=10.1.1.122:59081 --num-gpus=8'"
 mkdir -p /mine/ip122/tune_qwen/github_flagscale/outputs/deepseek_v3/serve_logs
 mkdir -p /mine/ip122/tune_qwen/github_flagscale/outputs/deepseek_v3/serve_logs/pids
 
