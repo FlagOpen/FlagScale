@@ -1,9 +1,9 @@
 ARG CUDA_VERSION=12.4.1
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
+ARG CUDA_VERSION
+ARG CUDNN_VERSION=9.5.0
 ARG PYTHON_VERSION=3.12
 ARG TORCH_VERSION=2.5.1
-# FS_VERSION is used to mark the FlagScale and environment version corresponding to the image
-ARG FS_VERSION=HEAD
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
@@ -25,7 +25,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         autotools-dev \
         build-essential \
-        ca-certificates ccache cmake curl emacs \
+        ca-certificates ccache cmake curl \
+        emacs \
         gcc git git-lfs g++ \
         htop \
         iftop iotop \
@@ -38,9 +39,7 @@ RUN apt-get update && \
         tmux tzdata \
         unzip \
         vim \
-        wget && \
-        apt-get clean && \
-        rm -rf /var/lib/apt/lists/*
+        wget
 
 ##############################################################################
 # Install Python
@@ -54,20 +53,14 @@ RUN add-apt-repository ppa:deadsnakes/ppa && \
         ln -s /usr/bin/python3 /usr/bin/python && \
         apt install python3-distutils python3-pip -y && \
         apt-get clean && \
-        rm -rf /var/lib/apt/lists/*
-
-##############################################################################
-# Install CUDNN https://gitlab.com/nvidia/container-images/cuda/-/blob/master/dist/12.4.1/ubuntu2204/devel/cudnn/Dockerfile?ref_type=heads
-##############################################################################
-ENV NV_CUDNN_VERSION 9.1.0.70-1
-ENV NV_CUDNN_PACKAGE_NAME libcudnn9-cuda-12
-ENV NV_CUDNN_PACKAGE libcudnn9-cuda-12=${NV_CUDNN_VERSION}
-ENV NV_CUDNN_PACKAGE_DEV libcudnn9-dev-cuda-12=${NV_CUDNN_VERSION}
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ${NV_CUDNN_PACKAGE} \
-    ${NV_CUDNN_PACKAGE_DEV} \
-    && apt-mark hold ${NV_CUDNN_PACKAGE_NAME} \
-    && rm -rf /var/lib/apt/lists/*
+        rm -rf /var/lib/apt/lists/* && \
+        python -m ensurepip --upgrade && \
+        python -m pip install --upgrade setuptools && \
+        # Blinker 1.4 version is installed using the distutls installation tool, which is an old Python package installation method.
+        # When installing an updated version with pip, an attempt will be made to uninstall the old version,
+        # but the uninstallation will fail and manual deletion is required.
+        rm -r /usr/lib/python3/dist-packages/blinker && \
+        rm /usr/lib/python3/dist-packages/blinker-1.4.egg-info
 
 ##############################################################################
 # SCCACHE
@@ -118,27 +111,46 @@ RUN cd ${STAGE_DIR} && \
         ~/miniconda3/bin/conda config --set default_python ${PYTHON_VERSION}
 
 ##############################################################################
+# Install cuDNN (NVIDIA CUDA Deep Neural Network library)
+##############################################################################
+RUN cd ${STAGE_DIR} && \
+        CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
+        CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
+        CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
+        CUDA_MINOR=$(echo "${CUDA_VERSION}" | cut -d. -f2) && \
+        wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}.50_cuda${CUDA_MAJOR}-archive.tar.xz && \
+        tar -xJvf cudnn-linux-x86_64-${CUDNN_VERSION}.50_cuda12-archive.tar.xz && \
+        mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include && \
+        mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64 && \
+        cp cudnn-*-archive/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/ && \
+        cp -P cudnn-*-archive/lib/libcudnn* /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/ && \
+        chmod a+r /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/libcudnn* && \
+        echo "export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:\$PATH" >> ~/.bashrc && \
+        echo "export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:\$LD_LIBRARY_PATH" >> ~/.bashrc && \
+        cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
+
+##############################################################################
 # Clone FlagScale
 ##############################################################################
 RUN cd ${WORK_DIR} && \
-    git clone https://github.com/FlagOpen/FlagScale.git && \
-    cd FlagScale/install && \
-    git checkout $FS_VERSION && \
-    chmod +x install-requirements.sh
+        git clone -b IMAGE_2503251040 https://github.com/phoenixdong/FlagScale.git && \
+        chmod +x FlagScale/install/install-requirements.sh
 
 ##############################################################################
-# Install flagscale=train requirements
+# Install flagscale-train requirements
 ##############################################################################
 RUN cd ${WORK_DIR}/FlagScale/install && \
     ./install-requirements.sh --env train
 
 ##############################################################################
-# Install flagscale=inference requirements
+# Install flagscale-inference requirements
 ##############################################################################
 RUN cd ${WORK_DIR}/FlagScale/install && \
     ./install-requirements.sh --env inference
 
-##############################################################################
-# Clear
-##############################################################################
-RUN rm -rf ${STAGE_DIR}/*
+# ##############################################################################
+# # Clear
+# ##############################################################################
+RUN apt-get clean && \
+        rm -rf /var/lib/apt/lists/* && \
+        rm -rf ${STAGE_DIR}/*

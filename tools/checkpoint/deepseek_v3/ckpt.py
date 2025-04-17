@@ -98,7 +98,6 @@ def get_hf_mtp_ckpt(message, model, mtp_layer_id, args):
 #### set to megatron ckpt
 def set_embedding_ckpt(message, models, md, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     # embedding
     pos_embed = None
@@ -108,9 +107,10 @@ def set_embedding_ckpt(message, models, md, args):
     full_word_embed = padding_vocab_size(orig_word_embed, md, args)
 
     # process world embedding in first pp stage
-    out_word_embed = full_word_embed
+    out_word_embed = torch.chunk(full_word_embed, tp_size, dim=0)
     for tp_ep_rank, model in enumerate(models):
-        model.embedding.word_embeddings.weight.data.copy_(out_word_embed)
+        tp_rank = tp_ep_rank % tp_size
+        model.embedding.word_embeddings.weight.data.copy_(out_word_embed[tp_rank])
         if pos_embed is not None:
             model.embedding.position_embeddings.weight.data.copy_(pos_embed)
         else:
@@ -119,20 +119,19 @@ def set_embedding_ckpt(message, models, md, args):
 
 def set_attn_ckpt(message, models, layer_id, md, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     # weight
     if args.q_lora_rank is not None:
-        q_a_weight = message.pop("q a weight")
+        q_a_weight = torch.chunk(message.pop("q a weight"), tp_size, dim=0)
         q_a_norm_weight = message.pop("q a norm weight")
-        q_b_weight = message.pop("q b weight")
+        q_b_weight = torch.chunk(message.pop("q b weight"), tp_size, dim=0)
     else:
-        q_weight = message.pop("q weight")
+        q_weight = torch.chunk(message.pop("q weight"), tp_size, dim=0)
 
-    kv_a_weight = message.pop("kv a weight")
+    kv_a_weight = torch.chunk(message.pop("kv a weight"), tp_size, dim=0)
     kv_a_norm_weight = message.pop("kv a norm weight")
-    kv_b_weight = message.pop("kv b weight")
-    o_weight = message.pop("o weight")
+    kv_b_weight = torch.chunk(message.pop("kv b weight"), tp_size, dim=0)
+    o_weight = torch.chunk(message.pop("o weight"), tp_size, dim=1)
     input_norm_weight = message.pop("input norm weight")
 
     first_k_dense_replace = args.moe_layer_freq.index(1)
@@ -141,25 +140,34 @@ def set_attn_ckpt(message, models, layer_id, md, args):
 
     # set data to transformer layer's self-attention
     for tp_ep_rank, model in enumerate(models):
+        tp_rank = tp_ep_rank % tp_size
         if hasattr(model, "decoder"):
             tf_layer = model.decoder.layers[layer_id]
         else:
             tf_layer = model.transformer_layer  # for mtp
         if args.q_lora_rank is not None:
-            tf_layer.self_attention.linear_q_down_proj.weight.data.copy_(q_a_weight)
+            tf_layer.self_attention.linear_q_down_proj.weight.data.copy_(
+                q_a_weight[tp_rank]
+            )
             tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data.copy_(
                 q_a_norm_weight
             )
-            tf_layer.self_attention.linear_q_up_proj.weight.data.copy_(q_b_weight)
+            tf_layer.self_attention.linear_q_up_proj.weight.data.copy_(
+                q_b_weight[tp_rank]
+            )
         else:
-            tf_layer.self_attention.linear_q_proj.weight.data.copy_(q_weight)
+            tf_layer.self_attention.linear_q_proj.weight.data.copy_(q_weight[tp_rank])
 
-        tf_layer.self_attention.linear_kv_down_proj.weight.data.copy_(kv_a_weight)
+        tf_layer.self_attention.linear_kv_down_proj.weight.data.copy_(
+            kv_a_weight[tp_rank]
+        )
         tf_layer.self_attention.linear_kv_up_proj.layer_norm_weight.data.copy_(
             kv_a_norm_weight
         )
-        tf_layer.self_attention.linear_kv_up_proj.weight.data.copy_(kv_b_weight)
-        tf_layer.self_attention.linear_proj.weight.data.copy_(o_weight)
+        tf_layer.self_attention.linear_kv_up_proj.weight.data.copy_(
+            kv_b_weight[tp_rank]
+        )
+        tf_layer.self_attention.linear_proj.weight.data.copy_(o_weight[tp_rank])
         tf_layer.input_layernorm.weight.data.copy_(input_norm_weight)
 
         if args.total_layer_num >= first_k_dense_replace:
@@ -175,30 +183,31 @@ def set_mlp_ckpt(message, model, layer_id, md, args):
 
 
 def set_dense_mlp_ckpt(message, models, layer_id, md, args):
-    tp_size, _, ep_size, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
+    tp_size, _, _, _ = _get_parallel_size(args)
 
     post_norm_weight = message.pop("post norm weight")
-    gate_weight = message.pop("gate weight")
-    up_weight = message.pop("up weight")
-    linear1_weight = torch.cat([gate_weight, up_weight], dim=0)
-    linear2_weight = message.pop("down weight")
+    gate_weight = torch.chunk(message.pop("gate weight"), tp_size, dim=0)
+    up_weight = torch.chunk(message.pop("up weight"), tp_size, dim=0)
+    linear1_weight = [
+        torch.cat(weights, dim=0) for weights in zip(gate_weight, up_weight)
+    ]
+    linear2_weight = torch.chunk(message.pop("down weight"), tp_size, dim=1)
 
     for tp_ep_rank, model in enumerate(models):
+        tp_rank = tp_ep_rank % tp_size
         if hasattr(model, "decoder"):
             tf_layer = model.decoder.layers[layer_id]
         else:
             tf_layer = model.transformer_layer  # for mtp
         tf_layer.mlp.linear_fc1.layer_norm_weight.data.copy_(post_norm_weight)
-        tf_layer.mlp.linear_fc1.weight.data.copy_(linear1_weight)
-        tf_layer.mlp.linear_fc2.weight.data.copy_(linear2_weight)
+        tf_layer.mlp.linear_fc1.weight.data.copy_(linear1_weight[tp_rank])
+        tf_layer.mlp.linear_fc2.weight.data.copy_(linear2_weight[tp_rank])
 
 
 def set_moe_mlp_ckpt(message, models, layer_id, md, args):
     tp_size, _, ep_size, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
-    assert args.num_experts is not None, "deepseeks's num_experts cannot be None"
 
+    assert args.num_experts is not None, "deepseeks's num_experts cannot be None"
     assert md.previous_num_experts is not None
 
     # router
@@ -210,12 +219,19 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
         router_expert_bias = message.pop("router expert bias")
 
     # shared expert
-    shared_expert_gate_weight = message.pop("shared expert gate weight")
-    shared_expert_up_weight = message.pop("shared expert up weight")
-    shared_expert_linear1_weight = torch.cat(
-        [shared_expert_gate_weight, shared_expert_up_weight], dim=0
+    shared_expert_gate_weight = torch.chunk(
+        message.pop("shared expert gate weight"), tp_size, dim=0
     )
-    shared_expert_linear2_weight = message.pop("shared expert down weight")
+    shared_expert_up_weight = torch.chunk(
+        message.pop("shared expert up weight"), tp_size, dim=0
+    )
+    shared_expert_linear1_weight = [
+        torch.cat(weights, dim=0)
+        for weights in zip(shared_expert_gate_weight, shared_expert_up_weight)
+    ]
+    shared_expert_linear2_weight = torch.chunk(
+        message.pop("shared expert down weight"), tp_size, dim=1
+    )
 
     # if not args.moe_grouped_gemm:
     num_local_experts = md.previous_num_experts // ep_size
@@ -223,10 +239,18 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
         for ep_rank in range(ep_size):
             global_expert_id = ep_rank * num_local_experts + expert_id
             # weight
-            gate_weight = message.pop(f"expert{global_expert_id} gate weight")
-            up_weight = message.pop(f"expert{global_expert_id} up weight")
-            linear1_weight = torch.cat([gate_weight, up_weight], dim=0)
-            linear2_weight = message.pop(f"expert{global_expert_id} down weight")
+            gate_weight = torch.chunk(
+                message.pop(f"expert{global_expert_id} gate weight"), tp_size, dim=0
+            )
+            up_weight = torch.chunk(
+                message.pop(f"expert{global_expert_id} up weight"), tp_size, dim=0
+            )
+            linear1_weight = [
+                torch.cat(weights, dim=0) for weights in zip(gate_weight, up_weight)
+            ]
+            linear2_weight = torch.chunk(
+                message.pop(f"expert{global_expert_id} down weight"), tp_size, dim=1
+            )
 
             # set data
             for tp_rank in range(tp_size):
@@ -242,13 +266,17 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
                     router.expert_bias.data.copy_(router_expert_bias)
                 # shared expert
                 shared_expert = tf_layer.mlp.shared_experts
-                shared_expert.linear_fc1.weight.data.copy_(shared_expert_linear1_weight)
-                shared_expert.linear_fc2.weight.data.copy_(shared_expert_linear2_weight)
+                shared_expert.linear_fc1.weight.data.copy_(
+                    shared_expert_linear1_weight[tp_rank]
+                )
+                shared_expert.linear_fc2.weight.data.copy_(
+                    shared_expert_linear2_weight[tp_rank]
+                )
                 # routed expert
                 if not args.moe_grouped_gemm:
                     expert = tf_layer.mlp.experts.local_experts[expert_id]
-                    expert.linear_fc1.weight.data.copy_(linear1_weight)
-                    expert.linear_fc2.weight.data.copy_(linear2_weight)
+                    expert.linear_fc1.weight.data.copy_(linear1_weight[tp_rank])
+                    expert.linear_fc2.weight.data.copy_(linear2_weight[tp_rank])
                 else:  # using TEGroupedMLP
                     expert_linear_fc1_weight = getattr(
                         tf_layer.mlp.experts.linear_fc1, f"weight{expert_id}", None
@@ -256,8 +284,8 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
                     expert_linear_fc2_weight = getattr(
                         tf_layer.mlp.experts.linear_fc2, f"weight{expert_id}", None
                     )
-                    expert_linear_fc1_weight.data.copy_(linear1_weight)
-                    expert_linear_fc2_weight.data.copy_(linear2_weight)
+                    expert_linear_fc1_weight.data.copy_(linear1_weight[tp_rank])
+                    expert_linear_fc2_weight.data.copy_(linear2_weight[tp_rank])
 
 
 def set_final_norm_ckpt(message, models, md, args):
@@ -268,18 +296,17 @@ def set_final_norm_ckpt(message, models, md, args):
 
 def set_output_layer_ckpt(message, models, md, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     orig_output_layer_weight = message.pop("weight")
     full_output_layer_weight = padding_vocab_size(orig_output_layer_weight, md, args)
-    output_layer_weight = full_output_layer_weight
+    output_layer_weight = torch.chunk(full_output_layer_weight, tp_size, dim=0)
     for tp_ep_rank, model in enumerate(models):
-        model.output_layer.weight.data.copy_(output_layer_weight)
+        tp_rank = tp_ep_rank % tp_size
+        model.output_layer.weight.data.copy_(output_layer_weight[tp_rank])
 
 
 def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     mtp_layers = []
     for tp_ep_rank, model in enumerate(models):
@@ -294,12 +321,14 @@ def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
     # mtp embeddings weight is shared with main model embeddings
     mtp_embeddings_weight = message.pop("mtp word embeddings weight")
     full_word_embed = padding_vocab_size(mtp_embeddings_weight, md, args)
+    out_word_embed = torch.chunk(full_word_embed, tp_size, dim=0)
     mtp_enorm_weight = message.pop("mtp enorm weight")
     mtp_hnorm_weight = message.pop("mtp hnorm weight")
     mtp_eh_weight = message.pop("mtp eh weight")
     mtp_shared_head_norm_weight = message.pop("mtp shared head norm weight")
     for tp_ep_rank, model in enumerate(models):
-        model.mtp_embedding.weight.data.copy_(full_word_embed)
+        tp_rank = tp_ep_rank % tp_size
+        model.mtp_embedding.weight.data.copy_(out_word_embed[tp_rank])
         mtp_layer = model.mtp_predictor.mtp_modules[mtp_layer_id]
         mtp_layer.norm1.weight.data.copy_(mtp_enorm_weight)
         mtp_layer.norm2.weight.data.copy_(mtp_hnorm_weight)
@@ -311,33 +340,31 @@ def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
 #### load from megatron ckpt
 def get_embedding_ckpt(message, models, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
-    word_embeddings = None
+    word_embeddings = []
     complete_tp_ranks = []
     for tp_ep_rank, model in enumerate(models):
         tp_rank = tp_ep_rank % tp_size
         if tp_rank in complete_tp_ranks:
             continue
         complete_tp_ranks.append(tp_rank)
-        word_embeddings = model.embedding.word_embeddings.weight.data
-    message["word embeddings"] = word_embeddings
+        word_embeddings.append(model.embedding.word_embeddings.weight.data)
+    message["word embeddings"] = torch.cat(word_embeddings, dim=0)
 
 
 def get_attn_ckpt(message, models, layer_id, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     # parallel tensor
-    q_a_weight = None
-    q_a_norm_weight = None
-    q_b_weight = None
-    q_weight = None
-    kv_a_weight = None
-    kv_a_norm_weight = None
-    kv_b_weight = None
-    o_weight = None
+    q_a_weight = []
+    q_b_weight = []
+    q_weight = []
+    kv_a_weight = []
+    kv_b_weight = []
+    o_weight = []
     # non-parallel tensor
+    q_a_norm_weight = None
+    kv_a_norm_weight = None
     input_norm_weight = None
     post_norm_weight = None
 
@@ -355,20 +382,20 @@ def get_attn_ckpt(message, models, layer_id, args):
             tf_layer = model.transformer_layer  # for mtp
         # weight
         if args.q_lora_rank is not None:
-            q_a_weight = tf_layer.self_attention.linear_q_down_proj.weight.data
+            q_a_weight.append(tf_layer.self_attention.linear_q_down_proj.weight.data)
             q_a_norm_weight = (
                 tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data
             )
-            q_b_weight = tf_layer.self_attention.linear_q_up_proj.weight.data
+            q_b_weight.append(tf_layer.self_attention.linear_q_up_proj.weight.data)
         else:
-            q_weight = tf_layer.self_attention.linear_q_proj.weight.data
+            q_weight.append(tf_layer.self_attention.linear_q_proj.weight.data)
 
-        kv_a_weight = tf_layer.self_attention.linear_kv_down_proj.weight.data
+        kv_a_weight.append(tf_layer.self_attention.linear_kv_down_proj.weight.data)
         kv_a_norm_weight = (
             tf_layer.self_attention.linear_kv_up_proj.layer_norm_weight.data
         )
-        kv_b_weight = tf_layer.self_attention.linear_kv_up_proj.weight.data
-        o_weight = tf_layer.self_attention.linear_proj.weight.data
+        kv_b_weight.append(tf_layer.self_attention.linear_kv_up_proj.weight.data)
+        o_weight.append(tf_layer.self_attention.linear_proj.weight.data)
         input_norm_weight = tf_layer.input_layernorm.weight.data
 
         if args.total_layer_num >= first_k_dense_replace:
@@ -376,16 +403,16 @@ def get_attn_ckpt(message, models, layer_id, args):
 
     # weight
     if args.q_lora_rank is not None:
-        message["q a weight"] = q_a_weight
+        message["q a weight"] = torch.cat(q_a_weight, dim=0)
         message["q a norm weight"] = q_a_norm_weight
-        message["q b weight"] = q_b_weight
+        message["q b weight"] = torch.cat(q_b_weight, dim=0)
     else:
-        message["q weight"] = q_weight
+        message["q weight"] = torch.cat(q_weight, dim=0)
 
-    message["kv a weight"] = kv_a_weight
+    message["kv a weight"] = torch.cat(kv_a_weight, dim=0)
     message["kv a norm weight"] = kv_a_norm_weight
-    message["kv b weight"] = kv_b_weight
-    message["o weight"] = o_weight
+    message["kv b weight"] = torch.cat(kv_b_weight, dim=0)
+    message["o weight"] = torch.cat(o_weight, dim=1)
     message["input norm weight"] = input_norm_weight
     if args.total_layer_num >= first_k_dense_replace:
         message["post norm weight"] = post_norm_weight
@@ -401,13 +428,12 @@ def get_mlp_ckpt(message, models, layer_id, args):
 
 def get_dense_mlp_ckpt(message, models, layer_id, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
-    # parallel tensor
+    # non parallel tensor
     post_norm_weight = None
-    gate_weight = None
-    up_weight = None
-    down_weight = None
+    # parallal tensor
+    linear1_weight = []
+    linear2_weight = []
 
     complete_tp_ranks = []
     for tp_ep_rank, model in enumerate(models):
@@ -421,26 +447,37 @@ def get_dense_mlp_ckpt(message, models, layer_id, args):
         else:
             tf_layer = model.transformer_layer  # for mtp
         post_norm_weight = tf_layer.mlp.linear_fc1.layer_norm_weight.data
-        linear_fc1_weight = tf_layer.mlp.linear_fc1.weight.data
-        gate_weight, up_weight = torch.chunk(linear_fc1_weight, chunks=2, dim=0)
-        down_weight = tf_layer.mlp.linear_fc2.weight.data
+        linear1_weight.append(tf_layer.mlp.linear_fc1.weight.data)
+        linear2_weight.append(tf_layer.mlp.linear_fc2.weight.data)
+
+    for tp_rank in range(tp_size):
+        linear1_weight[tp_rank] = torch.chunk(linear1_weight[tp_rank], 2, dim=0)
 
     # weight
     message["post norm weight"] = post_norm_weight
-    message["gate weight"] = gate_weight
-    message["up weight"] = up_weight
-    message["down weight"] = down_weight
+    message["gate weight"] = torch.cat([w[0] for w in linear1_weight], dim=0)
+    message["up weight"] = torch.cat([w[1] for w in linear1_weight], dim=0)
+    message["down weight"] = torch.cat(linear2_weight, dim=1)
 
 
 def get_moe_mlp_ckpt(message, models, layer_id, args):
     tp_size, _, ep_size, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     assert args.num_experts is not None and args.num_experts % ep_size == 0
     num_local_experts = args.num_experts // ep_size
+
     for expert_id in range(num_local_experts):
         for ep_rank in range(ep_size):
             global_expert_id = num_local_experts * ep_rank + expert_id
+
+            # parallel tensor
+            shared_expert_linear1_weight = []
+            shared_expert_linear2_weight = []
+            expert_linear1_weight = []
+            expert_linear2_weight = []
+            # non parallel tensor
+            router_weight = None
+            router_expert_bias = None
 
             # local experts
             use_router_expert_bias = False
@@ -459,74 +496,82 @@ def get_moe_mlp_ckpt(message, models, layer_id, args):
                     router_expert_bias = router.expert_bias.data
                 # shared experts
                 shared_expert = tf_layer.mlp.shared_experts
-                shared_expert_gate_weight, shared_expert_up_weight = torch.chunk(
-                    shared_expert.linear_fc1.weight.data, chunks=2, dim=0
+                shared_expert_linear1_weight.append(
+                    shared_expert.linear_fc1.weight.data
                 )
-                shared_expert_down_weight = shared_expert.linear_fc2.weight.data
+                shared_expert_linear2_weight.append(
+                    shared_expert.linear_fc2.weight.data
+                )
+
                 # routed experts
                 if not args.moe_grouped_gemm:
                     expert = tf_layer.mlp.experts.local_experts[expert_id]
-                    expert_gate_weight, expert_up_weight = torch.chunk(
-                        expert.linear_fc1.weight.data, chunks=2, dim=0
-                    )
-                    expert_down_weight = expert.lienar_fc2.weight.data
+                    expert_linear1_weight.append(expert.linear_fc1.weight.data)
+                    expert_linear2_weight.append(expert.linear_fc2.weight.data)
                 else:  # using TEGroupedMLP
-                    expert_linear_fc1_weight = getattr(
-                        tf_layer.mlp.experts.linear_fc1, f"weight{expert_id}", None
+                    expert_linear1_weight.append(
+                        getattr(
+                            tf_layer.mlp.experts.linear_fc1, f"weight{expert_id}", None
+                        ).detach()
                     )
-                    expert_gate_weight, expert_up_weight = torch.chunk(
-                        expert_linear_fc1_weight.data, chunks=2, dim=0
-                    )
-                    expert_down_weight = getattr(
-                        tf_layer.mlp.experts.linear_fc2, f"weight{expert_id}", None
+                    expert_linear2_weight.append(
+                        getattr(
+                            tf_layer.mlp.experts.linear_fc2, f"weight{expert_id}", None
+                        ).detach()
                     )
 
             message["router weight"] = router_weight
             if use_router_expert_bias:
                 message["router expert bias"] = router_expert_bias
-            message["shared expert gate weight"] = shared_expert_gate_weight
-            message["shared expert up weight"] = shared_expert_up_weight
-            message["shared expert down weight"] = shared_expert_down_weight
 
-            message[f"expert{global_expert_id} gate weight"] = expert_gate_weight
-            message[f"expert{global_expert_id} up weight"] = expert_up_weight
-            message[f"expert{global_expert_id} down weight"] = expert_down_weight
+            for tp_rank in range(tp_size):
+                shared_expert_linear1_weight[tp_rank] = torch.chunk(
+                    shared_expert_linear1_weight[tp_rank], 2, dim=0
+                )
+                expert_linear1_weight[tp_rank] = torch.chunk(
+                    expert_linear1_weight[tp_rank], 2, dim=0
+                )
+
+            message["shared expert gate weight"] = torch.cat(
+                [w[0] for w in shared_expert_linear1_weight], dim=0
+            )
+            message["shared expert up weight"] = torch.cat(
+                [w[1] for w in shared_expert_linear1_weight], dim=0
+            )
+            message["shared expert down weight"] = torch.cat(
+                shared_expert_linear2_weight, dim=1
+            )
+            message[f"expert{global_expert_id} gate weight"] = torch.cat(
+                [w[0] for w in expert_linear1_weight], dim=0
+            )
+            message[f"expert{global_expert_id} up weight"] = torch.cat(
+                [w[1] for w in expert_linear1_weight], dim=0
+            )
+            message[f"expert{global_expert_id} down weight"] = torch.cat(
+                expert_linear2_weight, dim=1
+            )
 
 
 def get_final_norm_ckpt(message, models, args):
-    tp_size, _, _, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
-
-    final_layernorm_weight = None
-    complete_tp_ranks = []
-    for tp_ep_rank, model in enumerate(models):
-        tp_rank = tp_ep_rank % tp_size
-        if tp_rank in complete_tp_ranks:
-            continue
-        complete_tp_ranks.append(tp_rank)
-        final_layernorm_weight = model.decoder.final_layernorm.weight.data
-
-    message["weight"] = final_layernorm_weight
+    message["weight"] = models[0].decoder.final_layernorm.weight.data
 
 
 def get_output_layer_ckpt(message, models, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
-    output_layer_weight = None
+    output_layer_weight = []
     complete_tp_ranks = []
     for tp_ep_rank, model in enumerate(models):
         tp_rank = tp_ep_rank % tp_size
         if tp_rank in complete_tp_ranks:
             continue
         complete_tp_ranks.append(tp_rank)
-        output_layer_weight = model.output_layer.weight.data
-    message["weight"] = output_layer_weight
+        output_layer_weight.append(model.output_layer.weight.data)
+    message["weight"] = torch.cat(output_layer_weight, dim=0)
 
 
 def get_mtp_ckpt(message, models, mtp_layer_id, args):
     tp_size, _, _, _ = _get_parallel_size(args)
-    assert tp_size == 1, "do not support TP parallel for deepseek v3 currently"
 
     mtp_layers = []
     for tp_ep_rank, model in enumerate(models):
@@ -537,6 +582,8 @@ def get_mtp_ckpt(message, models, mtp_layer_id, args):
     get_attn_ckpt(message, mtp_layers, 0, args)
     get_moe_mlp_ckpt(message, mtp_layers, 0, args)
 
+    mtp_word_embedding_weight = []
+    mtp_output_layer_weight = []
     complete_tp_ranks = []
     for tp_ep_rank, model in enumerate(models):
         tp_rank = tp_ep_rank % tp_size
@@ -544,20 +591,22 @@ def get_mtp_ckpt(message, models, mtp_layer_id, args):
             continue
         complete_tp_ranks.append(tp_rank)
 
-        mtp_word_embedding_weight = model.mtp_embedding.word_embeddings.weight.data
+        mtp_word_embedding_weight.append(
+            model.mtp_embedding.word_embeddings.weight.data
+        )
         mtp_layer = model.mtp_predictor.mtp_modules[mtp_layer_id]
         mtp_enorm_weight = mtp_layer.norm1.weight.data
         mtp_hnorm_weight = mtp_layer.norm2.weight.data
         mtp_eh_weight = mtp_layer.linear_proj.weight.data
         mtp_norm_weight = mtp_layer.final_norm.weight.data
-        output_layer_weight = model.output_layer.weight.data
+        mtp_output_layer_weight.append(model.output_layer.weight.data)
 
-    message["mtp word embeddings weight"] = mtp_word_embedding_weight
+    message["mtp word embeddings weight"] = torch.cat(mtp_word_embedding_weight, dim=0)
     message["mtp enorm weight"] = mtp_enorm_weight
     message["mtp hnorm weight"] = mtp_hnorm_weight
     message["mtp eh weight"] = mtp_eh_weight
     message["mtp shared head norm weight"] = mtp_norm_weight
-    message["mtp shared head head weight"] = output_layer_weight
+    message["mtp shared head head weight"] = torch.cat(mtp_output_layer_weight, dim=0)
 
 
 #### set to huggingface ckpt

@@ -5,6 +5,8 @@ exclude: |
         megatron-energon/.*|
         hardware/.*\.patch|
         flagscale/inference/core/.*|
+        .*\.txt|
+        .*\.yaml|
         .*\.sh$  # Exclude all .sh files
     )$
 repos:
@@ -53,6 +55,8 @@ repos:
                 flagscale/train/hetero/.*|
                 tools/checkpoint/loader.*\.py|
                 tools/checkpoint/saver.*\.py|
+                .*\.txt|
+                .*\.yaml|
                 .*\.sh$  # Exclude all .sh files
             )$
 # -   repo: local

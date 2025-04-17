@@ -189,7 +189,7 @@ def save_patch_to_tmp(patch_name, patch_str, key_path=None):
     """Save patch str to tmp patch file."""
     tmp_path = crete_tmp_dir()
     file_name = os.path.join(tmp_path, patch_name)
-    with open(file_name, "w") as f:
+    with open(file_name, "w", encoding="utf-8") as f:
         f.write(patch_str)
     if key_path is not None:
         os.makedirs(
