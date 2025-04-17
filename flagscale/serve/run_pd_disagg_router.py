@@ -11,18 +11,18 @@ import zmq
 from quart import Quart, make_response, request
 
 # -----------------------------------------------------------------------------
-# 日志配置
+# Logging configuration
 # -----------------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
-# ResourceManager: 统一管理 P/D 实例及其负载
+# ResourceManager: unified management of P/D instances and their load
 # -----------------------------------------------------------------------------
 class ResourceManager:
     def __init__(self):
         self._lock = threading.Lock()
-        # 每个资源类型 'P' 或 'D' 映射到 {http_addr: {'zmq': zmq_addr, 'load': int}}
+        # Each resource type 'P' or 'D' maps to {http_addr: {'zmq': zmq_addr, 'load': int}}
         self._instances: dict[str, dict[str, dict[str, object]]] = {
             'P': {},
             'D': {},
@@ -34,7 +34,7 @@ class ResourceManager:
                 self._instances[rtype][http_addr] = {'zmq': zmq_addr, 'load': 0}
                 logger.info(f"Registered new {rtype}-instance {http_addr} (zmq={zmq_addr})")
             else:
-                # 如果 zmq 地址更新，则同步
+                # If zmq address changed, synchronize it
                 self._instances[rtype][http_addr]['zmq'] = zmq_addr
 
     def increment_load(self, rtype: str, http_addr: str):
@@ -60,21 +60,21 @@ class ResourceManager:
         return http_addr, info['zmq']
 
 # -----------------------------------------------------------------------------
-# 全局对象与配置
+# Globals & configuration
 # -----------------------------------------------------------------------------
 rm = ResourceManager()
 
-# 兼容旧版注册字典与 Condition，保留供外部等待
+# Legacy registration dicts & Conditions retained for external waiting
 prefill_instances: dict[str, str] = {}
 decode_instances: dict[str, str] = {}
 prefill_cv = threading.Condition()
 decode_cv = threading.Condition()
 
-# 调度策略：random 或 least（最少负载）
+# Scheduling strategy: 'random' or 'least' (least load)
 SCHEDULING_STRATEGY = os.environ.get('SCHEDULING_STRATEGY', 'random').lower()
 
 # -----------------------------------------------------------------------------
-# 服务发现：接收实例注册
+# Service discovery: receive instance registrations
 # -----------------------------------------------------------------------------
 def _listen_for_register(poller, router_socket):
     while True:
@@ -118,7 +118,7 @@ def start_service_discovery(hostname, port):
     return listener
 
 # -----------------------------------------------------------------------------
-# HTTP 代理与请求转发
+# HTTP proxy & request forwarding
 # -----------------------------------------------------------------------------
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 app = Quart(__name__)
@@ -140,47 +140,51 @@ async def forward_request(url, data, request_id):
                 content = await resp.read()
                 yield content
 
+# support both /v1/completions and /v1/chat/completions
 @app.route('/v1/completions', methods=['POST'])
+@app.route('/v1/chat/completions', methods=['POST'])
 async def handle_request():
     try:
         original_data = await request.get_json()
-        # 预填充请求：max_tokens=1
+        endpoint = request.path  # this will be '/v1/completions' or '/v1/chat/completions'
+        
+        # Prefill request: max_tokens=1
         prefill_request = original_data.copy()
         prefill_request['max_tokens'] = 1
 
-        # 选择 Prefill 实例
+        # Select Prefill instance
         if SCHEDULING_STRATEGY == 'least':
             prefill_addr, prefill_zmq = rm.get_least_loaded('P')
         else:
             prefill_addr, prefill_zmq = rm.get_random('P')
         logger.info(f"Selected P-instance {prefill_addr} via '{SCHEDULING_STRATEGY}'")
 
-        # 选择 Decode 实例
+        # Select Decode instance
         if SCHEDULING_STRATEGY == 'least':
             decode_addr, decode_zmq = rm.get_least_loaded('D')
         else:
             decode_addr, decode_zmq = rm.get_random('D')
         logger.info(f"Selected D-instance {decode_addr} via '{SCHEDULING_STRATEGY}'")
 
-        # 保持原始 request_id 组装格式
+        # Keep original request_id composition format
         request_id = (
             f"___prefill_addr_{prefill_zmq}___decode_addr_{decode_zmq}_{random_uuid()}"
         )
 
-        # 执行 Prefill，并更新负载
+        # Execute Prefill and update load
         rm.increment_load('P', prefill_addr)
         try:
-            async for _ in forward_request(f'http://{prefill_addr}/v1/completions',
+            async for _ in forward_request(f'http://{prefill_addr}{endpoint}',
                                            prefill_request, request_id):
                 pass
         finally:
             rm.decrement_load('P', prefill_addr)
 
-        # 执行 Decode，并更新负载
+        # Execute Decode and update load
         async def tracked_decode():
             rm.increment_load('D', decode_addr)
             try:
-                async for chunk in forward_request(f'http://{decode_addr}/v1/completions',
+                async for chunk in forward_request(f'http://{decode_addr}{endpoint}',
                                                    original_data, request_id):
                     yield chunk
             finally:
@@ -195,7 +199,7 @@ async def handle_request():
         return {"error": str(e)}, 500
 
 # -----------------------------------------------------------------------------
-# 启动
+# Startup
 # -----------------------------------------------------------------------------
 if __name__ == '__main__':
     listener = start_service_discovery("0.0.0.0", 30001)
