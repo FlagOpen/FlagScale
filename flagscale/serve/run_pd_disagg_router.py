@@ -1,4 +1,3 @@
-import asyncio
 import os
 import random
 import socket
@@ -11,81 +10,50 @@ import zmq
 from quart import Quart, make_response, request
 
 
-# ─── Load Manager ────────────────────────────────────────────────────────────
-class LoadManager:
-    """Track number of in-flight tasks per instance and pick the least-loaded one."""
-
+class ResourceManager:
+    """Thread-safe manager for prefill and decode instances."""
     def __init__(self):
         self._lock = threading.Lock()
-        self._load: dict[str, int] = {}
+        self._instances = {
+            "P": {},  # type: http_address -> zmq_address
+            "D": {},  # decode: http_address -> zmq_address
+        }
+        self._conds = {
+            "P": threading.Condition(self._lock),
+            "D": threading.Condition(self._lock),
+        }
 
-    def register(self, addr: str):
-        """Ensure this addr is known, with zero initial load."""
+    def register(self, itype: str, http_addr: str, zmq_addr: str):
+        """Register a new instance of type P or D."""
         with self._lock:
-            if addr not in self._load:
-                self._load[addr] = 0
-            print(
-                f"register-------------- self._load {self._load} -----------------",
-                flush=True,
-            )
+            self._instances[itype][http_addr] = zmq_addr
+            self._conds[itype].notify_all()
 
-    def acquire(self) -> str:
-        """Pick the addr with minimal load and bump its count."""
-        print(
-            f"acquire-------------- self._load {self._load} -----------------",
-            flush=True,
-        )
-        with self._lock:
-            if not self._load:
-                raise RuntimeError("No instances registered")
-            # find instance with smallest load
-            addr = min(self._load.items(), key=lambda kv: kv[1])[0]
-            self._load[addr] += 1
-            return addr
-
-    def release(self, addr: str):
-        """Decrement the load count for this addr."""
-        with self._lock:
-            if addr in self._load and self._load[addr] > 0:
-                self._load[addr] -= 1
+    def get_random(self, itype: str) -> tuple[str, str]:
+        """Get a random available instance, blocking until one is available."""
+        cond = self._conds[itype]
+        with cond:
+            while not self._instances[itype]:
+                cond.wait()
+            items = list(self._instances[itype].items())
+            http_addr, zmq_addr = random.choice(items)
+            return http_addr, zmq_addr
 
 
-# managers for prefill and decode pools
-prefill_load_manager = LoadManager()
-decode_load_manager = LoadManager()
-
-# ─── Service Discovery ───────────────────────────────────────────────────────
-prefill_instances: dict[str, str] = {}  # http_address -> zmq_address
-decode_instances: dict[str, str] = {}  # http_address -> zmq_address
-
-prefill_cv = threading.Condition()
-decode_cv = threading.Condition()
-
-
-def _listen_for_register(poller, router_socket):
+def _listen_for_register(poller, router_socket, manager: ResourceManager):
     while True:
         socks = dict(poller.poll())
         if router_socket in socks:
             remote_address, message = router_socket.recv_multipart()
             data = msgpack.loads(message)
-            addr = data["http_address"]
-            zmq_addr = data["zmq_address"]
-            if data["type"] == "P":
-                with prefill_cv:
-                    prefill_instances[addr] = zmq_addr
-                    prefill_load_manager.register(addr)
-                    print(f"[SERVICE DISCOVERY][PREFILL] registered {addr}")
-
-            elif data["type"] == "D":
-                with decode_cv:
-                    decode_instances[addr] = zmq_addr
-                    decode_load_manager.register(addr)
-                    print(f"[SERVICE DISCOVERY][DECODE ] registered {addr}")
+            itype = data.get("type")
+            if itype in ("P", "D"):
+                manager.register(itype, data["http_address"], data["zmq_address"])
             else:
-                print(f"Unexpected message type from {remote_address}: {data}")
+                print(f"Unexpected message from {remote_address}: {data}")
 
 
-def start_service_discovery(hostname, port):
+def start_service_discovery(hostname: str, port: int, manager: ResourceManager) -> threading.Thread:
     if not hostname:
         hostname = socket.gethostname()
     if port == 0:
@@ -99,16 +67,17 @@ def start_service_discovery(hostname, port):
     poller.register(router_socket, zmq.POLLIN)
 
     listener = threading.Thread(
-        target=_listen_for_register, args=[poller, router_socket], daemon=True
+        target=_listen_for_register,
+        args=(poller, router_socket, manager),
+        daemon=True
     )
     listener.start()
     return listener
 
 
-# ─── HTTP Proxy ───────────────────────────────────────────────────────────────
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 app = Quart(__name__)
-
+resource_manager = ResourceManager()
 
 def random_uuid() -> str:
     return uuid.uuid4().hex
@@ -118,95 +87,48 @@ async def forward_request(url, data, request_id):
     async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as session:
         headers = {
             "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
-            "X-Request-Id": request_id,
+            "X-Request-Id": request_id
         }
-        async with session.post(url=url, json=data, headers=headers) as resp:
-            resp.raise_for_status()
-            async for chunk in resp.content.iter_chunked(1024):
-                yield chunk
+        async with session.post(url=url, json=data, headers=headers) as response:
+            if response.status == 200:
+                async for chunk in response.content.iter_chunked(1024):
+                    yield chunk
+            else:
+                content = await response.read()
+                yield content
 
 
-async def _stream_and_release(gen, manager: LoadManager, addr: str):
-    try:
-        async for chunk in gen:
-            yield chunk
-    finally:
-        manager.release(addr)
-
-
-@app.route("/v1/completions", methods=["POST"])
+@app.route('/v1/completions', methods=['POST'])
 async def handle_request():
-    original = await request.get_json()
-    prefill_data = original.copy()
-    prefill_data["max_tokens"] = 1
+    try:
+        original_data = await request.get_json()
+        prefill_data = original_data.copy()
+        prefill_data['max_tokens'] = 1
 
-    # pick least-loaded prefill
-    with prefill_cv:
-        prefill_addr = prefill_load_manager.acquire()
-        prefill_zmq = prefill_instances[prefill_addr]
-        print(f"Selected prefill {prefill_addr} (load bumped)")
+        prefill_addr, prefill_zmq = resource_manager.get_random("P")
+        decode_addr, decode_zmq = resource_manager.get_random("D")
+        print(f"handle_request, prefill: {prefill_addr}/{prefill_zmq}, decode: {decode_addr}/{decode_zmq}")
 
-    # finish prefill stage
-    prefill_req_id = f"pre_{random_uuid()}"
-    async for _ in forward_request(
-        f"http://{prefill_addr}/v1/completions", prefill_data, prefill_req_id
-    ):
-        pass
-    # release prefill slot
-    prefill_load_manager.release(prefill_addr)
+        request_id = f"___prefill_addr_{prefill_zmq}___decode_addr_{decode_zmq}_{random_uuid()}"
 
-    # pick least-loaded decode
-    with decode_cv:
-        decode_addr = decode_load_manager.acquire()
-        decode_zmq = decode_instances[decode_addr]
-        print(f"Selected decode {decode_addr} (load bumped)")
+        # Prefill stage
+        async for _ in forward_request(
+                f"http://{prefill_addr}/v1/completions", prefill_data, request_id):
+            pass
 
-    # stream decode back to client, releasing when done
-    decode_req_id = f"dec_{random_uuid()}"
-    decoder = forward_request(
-        f"http://{decode_addr}/v1/completions", original, decode_req_id
-    )
-    wrapped = _stream_and_release(decoder, decode_load_manager, decode_addr)
-    response = await make_response(wrapped)
-    response.timeout = None
-    return response
+        # Decode stage and return
+        generator = forward_request(
+            f"http://{decode_addr}/v1/completions", original_data, request_id)
+        response = await make_response(generator)
+        response.timeout = None
+        return response
 
-
-@app.route("/v1/chat/completions", methods=["POST"])
-async def handle_chat_request():
-    original = await request.get_json()
-    prefill_data = original.copy()
-    prefill_data["max_tokens"] = 1
-
-    with prefill_cv:
-        prefill_addr = prefill_load_manager.acquire()
-        prefill_zmq = prefill_instances[prefill_addr]
-        print(f"Selected prefill(chat) {prefill_addr}")
-
-    prefill_req_id = f"pre_chat_{random_uuid()}"
-    async for _ in forward_request(
-        f"http://{prefill_addr}/v1/chat/completions",
-        prefill_data,
-        prefill_req_id,
-    ):
-        pass
-    prefill_load_manager.release(prefill_addr)
-
-    with decode_cv:
-        decode_addr = decode_load_manager.acquire()
-        decode_zmq = decode_instances[decode_addr]
-        print(f"Selected decode(chat) {decode_addr}")
-
-    decode_req_id = f"dec_chat_{random_uuid()}"
-    decoder = forward_request(
-        f"http://{decode_addr}/v1/chat/completions", original, decode_req_id
-    )
-    wrapped = _stream_and_release(decoder, decode_load_manager, decode_addr)
-    response = await make_response(wrapped)
-    response.timeout = None
-    return response
+    except Exception as e:
+        import traceback
+        print("Error in disagg proxy:", e)
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
-    start_service_discovery("0.0.0.0", 30001)
-    app.run(host="0.0.0.0", port=10001)
+    start_service_discovery("0.0.0.0", 30001, resource_manager)
+    app.run(host='0.0.0.0', port=10001)
