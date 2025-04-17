@@ -1,3 +1,4 @@
+import asyncio
 import os
 import random
 import socket
@@ -9,8 +10,44 @@ import msgpack
 import zmq
 from quart import Quart, make_response, request
 
-prefill_instances: dict[str, str] = {}  # http_address: zmq_address
-decode_instances: dict[str, str] = {}  # http_address: zmq_address
+
+# ─── Load Manager ────────────────────────────────────────────────────────────
+class LoadManager:
+    """Track number of in-flight tasks per instance and pick the least-loaded one."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._load: dict[str, int] = {}
+
+    def register(self, addr: str):
+        """Ensure this addr is known, with zero initial load."""
+        with self._lock:
+            self._load.setdefault(addr, 0)
+
+    def acquire(self) -> str:
+        """Pick the addr with minimal load and bump its count."""
+        with self._lock:
+            if not self._load:
+                raise RuntimeError("No instances registered")
+            # find instance with smallest load
+            addr = min(self._load.items(), key=lambda kv: kv[1])[0]
+            self._load[addr] += 1
+            return addr
+
+    def release(self, addr: str):
+        """Decrement the load count for this addr."""
+        with self._lock:
+            if addr in self._load and self._load[addr] > 0:
+                self._load[addr] -= 1
+
+
+# managers for prefill and decode pools
+prefill_load_manager = LoadManager()
+decode_load_manager = LoadManager()
+
+# ─── Service Discovery ───────────────────────────────────────────────────────
+prefill_instances: dict[str, str] = {}  # http_address -> zmq_address
+decode_instances: dict[str, str] = {}  # http_address -> zmq_address
 
 prefill_cv = threading.Condition()
 decode_cv = threading.Condition()
@@ -21,27 +58,19 @@ def _listen_for_register(poller, router_socket):
         socks = dict(poller.poll())
         if router_socket in socks:
             remote_address, message = router_socket.recv_multipart()
-            # data: {"type": "P", "http_address": "ip:port",
-            #        "zmq_address": "ip:port"}
             data = msgpack.loads(message)
-            # print("Received message from %s, data: %s",
-            #              remote_address.decode(), data)
+            addr = data["http_address"]
+            zmq_addr = data["zmq_address"]
             if data["type"] == "P":
-                global prefill_instances
-                global prefill_cv
                 with prefill_cv:
-                    prefill_instances[data["http_address"]] = data["zmq_address"]
+                    prefill_instances[addr] = zmq_addr
+                    prefill_load_manager.register(addr)
             elif data["type"] == "D":
-                global decode_instances
-                global decode_cv
                 with decode_cv:
-                    decode_instances[data["http_address"]] = data["zmq_address"]
+                    decode_instances[addr] = zmq_addr
+                    decode_load_manager.register(addr)
             else:
-                print(
-                    "Unexpected, Received message from %s, data: %s",
-                    remote_address,
-                    data,
-                )
+                print(f"Unexpected message type from {remote_address}: {data}")
 
 
 def start_service_discovery(hostname, port):
@@ -57,20 +86,20 @@ def start_service_discovery(hostname, port):
     poller = zmq.Poller()
     poller.register(router_socket, zmq.POLLIN)
 
-    _listener_thread = threading.Thread(
+    listener = threading.Thread(
         target=_listen_for_register, args=[poller, router_socket], daemon=True
     )
-    _listener_thread.start()
-    return _listener_thread
+    listener.start()
+    return listener
 
 
+# ─── HTTP Proxy ───────────────────────────────────────────────────────────────
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
-
 app = Quart(__name__)
 
 
 def random_uuid() -> str:
-    return str(uuid.uuid4().hex)
+    return uuid.uuid4().hex
 
 
 async def forward_request(url, data, request_id):
@@ -79,151 +108,93 @@ async def forward_request(url, data, request_id):
             "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
             "X-Request-Id": request_id,
         }
-        async with session.post(url=url, json=data, headers=headers) as response:
-            if response.status == 200:
-                # if response.headers.get('Transfer-Encoding') == 'chunked':
-                if True:
-                    async for chunk_bytes in response.content.iter_chunked(1024):
-                        yield chunk_bytes
-                else:
-                    content = await response.read()
-                    yield content
+        async with session.post(url=url, json=data, headers=headers) as resp:
+            resp.raise_for_status()
+            async for chunk in resp.content.iter_chunked(1024):
+                yield chunk
+
+
+async def _stream_and_release(gen, manager: LoadManager, addr: str):
+    try:
+        async for chunk in gen:
+            yield chunk
+    finally:
+        manager.release(addr)
 
 
 @app.route("/v1/completions", methods=["POST"])
 async def handle_request():
-    try:
-        original_request_data = await request.get_json()
+    original = await request.get_json()
+    prefill_data = original.copy()
+    prefill_data["max_tokens"] = 1
 
-        prefill_request = original_request_data.copy()
-        # change max_tokens = 1 to let it only do prefill
-        prefill_request["max_tokens"] = 1
+    # pick least-loaded prefill
+    with prefill_cv:
+        prefill_addr = prefill_load_manager.acquire()
+        prefill_zmq = prefill_instances[prefill_addr]
+        print(f"Selected prefill {prefill_addr} (load bumped)")
 
-        global prefill_instances
-        global prefill_cv
-        with prefill_cv:
-            prefill_addr, prefill_zmq_addr = random.choice(
-                list(prefill_instances.items())
-            )
-            print(
-                "handle_request, prefill_addr: %s, zmq_addr: %s",
-                prefill_addr,
-                prefill_zmq_addr,
-            )
+    # finish prefill stage
+    prefill_req_id = f"pre_{random_uuid()}"
+    async for _ in forward_request(
+        f"http://{prefill_addr}/v1/completions", prefill_data, prefill_req_id
+    ):
+        pass
+    # release prefill slot
+    prefill_load_manager.release(prefill_addr)
 
-        global decode_instances
-        global decode_cv
-        with decode_cv:
-            decode_addr, decode_zmq_addr = random.choice(list(decode_instances.items()))
-            print(
-                "handle_request, decode_addr: %s, zmq_addr: %s",
-                decode_addr,
-                decode_zmq_addr,
-            )
-        print(
-            f"======== {prefill_zmq_addr} /v1/completions prefill_instances {prefill_instances} ========== ",
-            flush=True,
-        )
-        print(
-            f"======== {decode_zmq_addr} /v1/completions decode_instances {decode_instances} ========== ",
-            flush=True,
-        )
+    # pick least-loaded decode
+    with decode_cv:
+        decode_addr = decode_load_manager.acquire()
+        decode_zmq = decode_instances[decode_addr]
+        print(f"Selected decode {decode_addr} (load bumped)")
 
-        request_id = f"___prefill_addr_{prefill_zmq_addr}___decode_addr_{decode_zmq_addr}_{random_uuid()}"
-
-        # finish prefill
-        async for _ in forward_request(
-            f"http://{prefill_addr}/v1/completions", prefill_request, request_id
-        ):
-            continue
-
-        # return decode
-        generator = forward_request(
-            f"http://{decode_addr}/v1/completions", original_request_data, request_id
-        )
-        response = await make_response(generator)
-        response.timeout = None
-
-        return response
-
-    except Exception as e:
-        import sys
-        import traceback
-
-        exc_info = sys.exc_info()
-        print("Error occurred in disagg prefill proxy server")
-        print(e)
-        print("".join(traceback.format_exception(*exc_info)))
+    # stream decode back to client, releasing when done
+    decode_req_id = f"dec_{random_uuid()}"
+    decoder = forward_request(
+        f"http://{decode_addr}/v1/completions", original, decode_req_id
+    )
+    wrapped = _stream_and_release(decoder, decode_load_manager, decode_addr)
+    response = await make_response(wrapped)
+    response.timeout = None
+    return response
 
 
 @app.route("/v1/chat/completions", methods=["POST"])
 async def handle_chat_request():
-    try:
-        original_request_data = await request.get_json()
+    original = await request.get_json()
+    prefill_data = original.copy()
+    prefill_data["max_tokens"] = 1
 
-        prefill_request = original_request_data.copy()
-        # change max_tokens = 1 to let it only do prefill
-        prefill_request["max_tokens"] = 1
+    with prefill_cv:
+        prefill_addr = prefill_load_manager.acquire()
+        prefill_zmq = prefill_instances[prefill_addr]
+        print(f"Selected prefill(chat) {prefill_addr}")
 
-        global prefill_instances
-        global prefill_cv
-        with prefill_cv:
-            prefill_addr, prefill_zmq_addr = random.choice(
-                list(prefill_instances.items())
-            )
-            print(
-                "handle_chat_request, prefill_addr: %s, zmq_addr: %s",
-                prefill_addr,
-                prefill_zmq_addr,
-            )
+    prefill_req_id = f"pre_chat_{random_uuid()}"
+    async for _ in forward_request(
+        f"http://{prefill_addr}/v1/chat/completions",
+        prefill_data,
+        prefill_req_id,
+    ):
+        pass
+    prefill_load_manager.release(prefill_addr)
 
-        global decode_instances
-        global decode_cv
-        with decode_cv:
-            decode_addr, decode_zmq_addr = random.choice(list(decode_instances.items()))
-            print(
-                "handle_chat_request, decode_addr: %s, zmq_addr: %s",
-                decode_addr,
-                decode_zmq_addr,
-            )
-        print(
-            f"======== {prefill_zmq_addr} /v1/chat/completions prefill_instances {prefill_instances} ========== ",
-            flush=True,
-        )
-        print(
-            f"======== {decode_zmq_addr} /v1/chat/completions decode_instances {decode_instances} ========== ",
-            flush=True,
-        )
-        request_id = f"___prefill_addr_{prefill_zmq_addr}___decode_addr_{decode_zmq_addr}_{random_uuid()}"
+    with decode_cv:
+        decode_addr = decode_load_manager.acquire()
+        decode_zmq = decode_instances[decode_addr]
+        print(f"Selected decode(chat) {decode_addr}")
 
-        # finish prefill
-        async for _ in forward_request(
-            f"http://{prefill_addr}/v1/chat/completions", prefill_request, request_id
-        ):
-            continue
-
-        # return decode
-        generator = forward_request(
-            f"http://{decode_addr}/v1/chat/completions",
-            original_request_data,
-            request_id,
-        )
-        response = await make_response(generator)
-        response.timeout = None
-
-        return response
-
-    except Exception as e:
-        import sys
-        import traceback
-
-        exc_info = sys.exc_info()
-        print("Error occurred in disagg prefill proxy server")
-        print(e)
-        print("".join(traceback.format_exception(*exc_info)))
+    decode_req_id = f"dec_chat_{random_uuid()}"
+    decoder = forward_request(
+        f"http://{decode_addr}/v1/chat/completions", original, decode_req_id
+    )
+    wrapped = _stream_and_release(decoder, decode_load_manager, decode_addr)
+    response = await make_response(wrapped)
+    response.timeout = None
+    return response
 
 
 if __name__ == "__main__":
-    t = start_service_discovery("0.0.0.0", 30001)
+    start_service_discovery("0.0.0.0", 30001)
     app.run(host="0.0.0.0", port=10001)
-    t.join()
