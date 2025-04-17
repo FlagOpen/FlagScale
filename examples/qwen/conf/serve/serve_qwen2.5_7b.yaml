@@ -1,11 +1,11 @@
 - serve_id: vllm_model
   engine: vllm
   engine_args:
-    model: /models/Qwen2.5-7B-Instruct
+    model: /models/Qwen2.5-0.5B-Instruct
     host: 0.0.0.0
     tensor_parallel_size: 2
     pipeline_parallel_size: 1
-    gpu_memory_utilization: 0.9
+    gpu_memory_utilization: 0.1
     max_model_len: 32768
     max_num_seqs: 256
     enforce_eager: true
