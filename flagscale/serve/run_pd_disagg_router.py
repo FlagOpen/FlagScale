@@ -1,229 +1,170 @@
+from __future__ import annotations
+
+import asyncio
 import os
 import random
 import socket
 import threading
 import uuid
+from enum import Enum
+from typing import Dict, Literal, Optional, Tuple
 
 import aiohttp
 import msgpack
 import zmq
 from quart import Quart, make_response, request
 
-prefill_instances: dict[str, str] = {}  # http_address: zmq_address
-decode_instances: dict[str, str] = {}  # http_address: zmq_address
 
-prefill_cv = threading.Condition()
-decode_cv = threading.Condition()
+# ─── Registry ──────────────────────────────────────────────────────────────────
+class InstanceType(Enum):
+    PREFILL = "P"
+    DECODE = "D"
 
 
-def _listen_for_register(poller, router_socket):
+class ServiceRegistry:
+    """Thread‑safe container for prefill / decode instance metadata."""
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._cond_prefill = threading.Condition(self._lock)
+        self._cond_decode = threading.Condition(self._lock)
+        self._instances: Dict[InstanceType, Dict[str, str]] = {
+            InstanceType.PREFILL: {},
+            InstanceType.DECODE: {},
+        }
+
+    # ---- public API ----------------------------------------------------------
+    def register(
+        self,
+        itype: InstanceType | Literal["P", "D"],
+        http_addr: str,
+        zmq_addr: str,
+    ) -> None:
+        itype = InstanceType(itype)  # cast if literal
+        with self._lock:
+            self._instances[itype][http_addr] = zmq_addr
+            # wake one waiter if someone is blocked on this pool
+            cond = (
+                self._cond_prefill
+                if itype is InstanceType.PREFILL
+                else self._cond_decode
+            )
+            cond.notify()
+
+    def random_instance(self, itype: InstanceType) -> Tuple[str, str]:
+        """Blocks until at least one instance of *itype* is present."""
+        cond = (
+            self._cond_prefill if itype is InstanceType.PREFILL else self._cond_decode
+        )
+        with cond:
+            while not self._instances[itype]:
+                cond.wait()
+            http, zmq_ = random.choice(list(self._instances[itype].items()))
+            return http, zmq_
+
+    def size(self, itype: InstanceType) -> int:
+        with self._lock:
+            return len(self._instances[itype])
+
+
+# ─── ZMQ listener -------------------------------------------------------------
+def _listen_for_register(registry: ServiceRegistry, router_socket, poller) -> None:
     while True:
         socks = dict(poller.poll())
         if router_socket in socks:
-            remote_address, message = router_socket.recv_multipart()
-            # data: {"type": "P", "http_address": "ip:port",
-            #        "zmq_address": "ip:port"}
-            data = msgpack.loads(message)
-            # print("Received message from %s, data: %s",
-            #              remote_address.decode(), data)
-            if data["type"] == "P":
-                global prefill_instances
-                global prefill_cv
-                with prefill_cv:
-                    prefill_instances[data["http_address"]] = data["zmq_address"]
-            elif data["type"] == "D":
-                global decode_instances
-                global decode_cv
-                with decode_cv:
-                    decode_instances[data["http_address"]] = data["zmq_address"]
-            else:
-                print(
-                    "Unexpected, Received message from %s, data: %s",
-                    remote_address,
-                    data,
+            _, message = router_socket.recv_multipart()
+            data = msgpack.loads(
+                message
+            )  # {"type":"P","http_address":..,"zmq_address":..}
+            try:
+                registry.register(
+                    data["type"], data["http_address"], data["zmq_address"]
                 )
+            except (KeyError, ValueError):
+                print("⚠️  malformed registration data:", data)
 
 
-def start_service_discovery(hostname, port):
-    if not hostname:
-        hostname = socket.gethostname()
+def start_service_discovery(
+    registry: ServiceRegistry, hostname: str, port: int
+) -> threading.Thread:
     if port == 0:
         raise ValueError("Port cannot be 0")
+    if not hostname:
+        hostname = socket.gethostname()
 
-    context = zmq.Context()
-    router_socket = context.socket(zmq.ROUTER)
-    router_socket.bind(f"tcp://{hostname}:{port}")
+    ctx, router = zmq.Context(), zmq.Context().socket(zmq.ROUTER)
+    router.bind(f"tcp://{hostname}:{port}")
 
     poller = zmq.Poller()
-    poller.register(router_socket, zmq.POLLIN)
-
-    _listener_thread = threading.Thread(
-        target=_listen_for_register, args=[poller, router_socket], daemon=True
+    poller.register(router, zmq.POLLIN)
+    t = threading.Thread(
+        target=_listen_for_register, daemon=True, args=(registry, router, poller)
     )
-    _listener_thread.start()
-    return _listener_thread
+    t.start()
+    return t
 
 
+# ─── HTTP proxy server --------------------------------------------------------
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
-
 app = Quart(__name__)
+registry = ServiceRegistry()  # <── NEW single global
 
 
-def random_uuid() -> str:
-    return str(uuid.uuid4().hex)
+def _uuid() -> str:
+    return uuid.uuid4().hex
 
 
-async def forward_request(url, data, request_id):
-    async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as session:
+async def forward_request(url: str, data: dict, request_id: str):
+    async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as sess:
         headers = {
-            "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
+            "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY', '')}",
             "X-Request-Id": request_id,
         }
-        async with session.post(url=url, json=data, headers=headers) as response:
-            if response.status == 200:
-                # if response.headers.get('Transfer-Encoding') == 'chunked':
-                if True:
-                    async for chunk_bytes in response.content.iter_chunked(1024):
-                        yield chunk_bytes
-                else:
-                    content = await response.read()
-                    yield content
+        async with sess.post(url, json=data, headers=headers) as resp:
+            if resp.status == 200:
+                async for chunk in resp.content.iter_chunked(1024):
+                    yield chunk
+            else:
+                raise RuntimeError(f"Upstream {url} returned {resp.status}")
 
 
-@app.route("/v1/completions", methods=["POST"])
-async def handle_request():
-    try:
-        original_request_data = await request.get_json()
+async def _handle_common(original_request: dict, api_path: str):
+    # pick instances
+    pre_http, pre_zmq = registry.random_instance(InstanceType.PREFILL)
+    dec_http, dec_zmq = registry.random_instance(InstanceType.DECODE)
+    request_id = f"___prefill_{pre_zmq}___decode_{dec_zmq}___{_uuid()}"
 
-        prefill_request = original_request_data.copy()
-        # change max_tokens = 1 to let it only do prefill
-        prefill_request["max_tokens"] = 1
+    # 1️⃣   prefill: max_tokens = 1
+    prefill_request = {**original_request, "max_tokens": 1}
+    async for _ in forward_request(
+        f"http://{pre_http}{api_path}", prefill_request, request_id
+    ):
+        continue
 
-        global prefill_instances
-        global prefill_cv
-        with prefill_cv:
-            prefill_addr, prefill_zmq_addr = random.choice(
-                list(prefill_instances.items())
-            )
-            print(
-                "handle_request, prefill_addr: %s, zmq_addr: %s",
-                prefill_addr,
-                prefill_zmq_addr,
-            )
-
-        global decode_instances
-        global decode_cv
-        with decode_cv:
-            decode_addr, decode_zmq_addr = random.choice(list(decode_instances.items()))
-            print(
-                "handle_request, decode_addr: %s, zmq_addr: %s",
-                decode_addr,
-                decode_zmq_addr,
-            )
-        print(
-            f"======== {prefill_zmq_addr} /v1/completions prefill_instances {prefill_instances} ========== ",
-            flush=True,
-        )
-        print(
-            f"======== {decode_zmq_addr} /v1/completions decode_instances {decode_instances} ========== ",
-            flush=True,
-        )
-
-        request_id = f"___prefill_addr_{prefill_zmq_addr}___decode_addr_{decode_zmq_addr}_{random_uuid()}"
-
-        # finish prefill
-        async for _ in forward_request(
-            f"http://{prefill_addr}/v1/completions", prefill_request, request_id
-        ):
-            continue
-
-        # return decode
-        generator = forward_request(
-            f"http://{decode_addr}/v1/completions", original_request_data, request_id
-        )
-        response = await make_response(generator)
-        response.timeout = None
-
-        return response
-
-    except Exception as e:
-        import sys
-        import traceback
-
-        exc_info = sys.exc_info()
-        print("Error occurred in disagg prefill proxy server")
-        print(e)
-        print("".join(traceback.format_exception(*exc_info)))
+    # 2️⃣   decode: stream back to client
+    generator = forward_request(
+        f"http://{dec_http}{api_path}", original_request, request_id
+    )
+    resp = await make_response(generator)
+    resp.timeout = None
+    return resp
 
 
-@app.route("/v1/chat/completions", methods=["POST"])
-async def handle_chat_request():
-    try:
-        original_request_data = await request.get_json()
-
-        prefill_request = original_request_data.copy()
-        # change max_tokens = 1 to let it only do prefill
-        prefill_request["max_tokens"] = 1
-
-        global prefill_instances
-        global prefill_cv
-        with prefill_cv:
-            prefill_addr, prefill_zmq_addr = random.choice(
-                list(prefill_instances.items())
-            )
-            print(
-                "handle_chat_request, prefill_addr: %s, zmq_addr: %s",
-                prefill_addr,
-                prefill_zmq_addr,
-            )
-
-        global decode_instances
-        global decode_cv
-        with decode_cv:
-            decode_addr, decode_zmq_addr = random.choice(list(decode_instances.items()))
-            print(
-                "handle_chat_request, decode_addr: %s, zmq_addr: %s",
-                decode_addr,
-                decode_zmq_addr,
-            )
-        print(
-            f"======== {prefill_zmq_addr} /v1/chat/completions prefill_instances {prefill_instances} ========== ",
-            flush=True,
-        )
-        print(
-            f"======== {decode_zmq_addr} /v1/chat/completions decode_instances {decode_instances} ========== ",
-            flush=True,
-        )
-        request_id = f"___prefill_addr_{prefill_zmq_addr}___decode_addr_{decode_zmq_addr}_{random_uuid()}"
-
-        # finish prefill
-        async for _ in forward_request(
-            f"http://{prefill_addr}/v1/chat/completions", prefill_request, request_id
-        ):
-            continue
-
-        # return decode
-        generator = forward_request(
-            f"http://{decode_addr}/v1/chat/completions",
-            original_request_data,
-            request_id,
-        )
-        response = await make_response(generator)
-        response.timeout = None
-
-        return response
-
-    except Exception as e:
-        import sys
-        import traceback
-
-        exc_info = sys.exc_info()
-        print("Error occurred in disagg prefill proxy server")
-        print(e)
-        print("".join(traceback.format_exception(*exc_info)))
+@app.post("/v1/completions")
+async def handle_request():  # legacy openai completions
+    return await _handle_common(await request.get_json(), "/v1/completions")
 
 
+@app.post("/v1/chat/completions")
+async def handle_chat_request():  # chat completions
+    return await _handle_common(await request.get_json(), "/v1/chat/completions")
+
+
+# ─── main ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    t = start_service_discovery("0.0.0.0", 30001)
-    app.run(host="0.0.0.0", port=10001)
-    t.join()
+    discovery_thread = start_service_discovery(registry, "0.0.0.0", 30001)
+    try:
+        # Quart uses asyncio, so run() is non‑blocking once the event loop starts.
+        app.run(host="0.0.0.0", port=10001)
+    finally:
+        discovery_thread.join()
