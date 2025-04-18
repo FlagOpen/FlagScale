@@ -16,7 +16,7 @@ experiment:
     decode_num: 2
     decode_address: 10.1.1.108
   runner:
-    hostfile: examples/deepseek/conf/hostfile.txt
+    hostfile: examples/qwen/conf/hostfile.txt
     docker: fr-v2
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
