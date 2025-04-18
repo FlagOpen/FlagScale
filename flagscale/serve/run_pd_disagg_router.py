@@ -66,7 +66,7 @@ class LoadManager:
         http_addr, info = random.choice(items)
         return http_addr, info["zmq"]
 
-    def get_least_loaded(self, rtype: str) -> tuple[str, str]:
+    def get_robin_loaded(self, rtype: str) -> tuple[str, str]:
         with self._lock:
             http_addr, info = min(
                 self._instances[rtype].items(), key=lambda kv: kv[1]["load"]
@@ -85,8 +85,8 @@ decode_instances: dict[str, str] = {}
 prefill_cv = threading.Condition()
 decode_cv = threading.Condition()
 
-# Scheduling strategy: 'random' or 'least' (least load)
-SCHEDULING_STRATEGY = os.environ.get("SCHEDULING_STRATEGY", "random").lower()
+# Scheduling strategy: 'random' or 'robin' (robin load)
+SCHEDULING_STRATEGY = os.environ.get("SCHEDULING_STRATEGY", "robin").lower()
 
 
 # -----------------------------------------------------------------------------
@@ -174,15 +174,15 @@ async def handle_request():
         prefill_request["max_tokens"] = 1
 
         # Select Prefill instance
-        if SCHEDULING_STRATEGY == "least":
-            prefill_addr, prefill_zmq = lm.get_least_loaded("P")
+        if SCHEDULING_STRATEGY == "robin":
+            prefill_addr, prefill_zmq = lm.get_robin_loaded("P")
         else:
             prefill_addr, prefill_zmq = lm.get_random("P")
         logger.info(f"Selected P-instance {prefill_addr} via '{SCHEDULING_STRATEGY}'")
 
         # Select Decode instance
-        if SCHEDULING_STRATEGY == "least":
-            decode_addr, decode_zmq = lm.get_least_loaded("D")
+        if SCHEDULING_STRATEGY == "robin":
+            decode_addr, decode_zmq = lm.get_robin_loaded("D")
         else:
             decode_addr, decode_zmq = lm.get_random("D")
         logger.info(f"Selected D-instance {decode_addr} via '{SCHEDULING_STRATEGY}'")
