@@ -19,8 +19,7 @@ from flagscale import serve
 from flagscale.logger import logger
 from flagscale.utils import flatten_dict_to_args
 
-# logging.basicConfig(level=logging.INFO)
-# logger = logging.getLogger(__name__)
+# Reference https://github.com/vllm-project/vllm/pull/15806
 
 
 # -----------------------------------------------------------------------------
