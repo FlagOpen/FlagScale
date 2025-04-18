@@ -181,58 +181,79 @@ def _p2p_ops(
         # Because the global communicator always uses the ‘nccl’ backend,
         # we must ensure the else path is followed for the ‘ucc’ backend.
         even_recv_odd_send_group = torch.distributed.group.WORLD
+        print("DEBUG: Using global process group for even_recv_odd_send_group")
     else:
         even_recv_odd_send_group = group
+        print("DEBUG: Using the same process group for all communications")
 
     if get_pipeline_model_parallel_rank() % 2 == 0:
         if tensor_send_next is not None:
+            print(f"DEBUG: Sending to next rank {next_pipeline_rank}")
             send_next_req = torch.distributed.isend(
                 tensor=tensor_send_next, dst=next_pipeline_rank, group=even_send_odd_recv_group
             )
             reqs["send_next"] = send_next_req
+            print("DEBUG: Issued send_next request")
 
         if tensor_recv_prev is not None:
+            print(f"DEBUG: Receiving from previous rank {prev_pipeline_rank}")
             recv_prev_req = torch.distributed.irecv(
                 tensor=tensor_recv_prev, src=prev_pipeline_rank, group=even_recv_odd_send_group
             )
             reqs["recv_prev"] = recv_prev_req
+            print("DEBUG: Issued recv_prev request")
 
         if tensor_send_prev is not None:
+            print(f"DEBUG: Sending to previous rank {prev_pipeline_rank}")
             send_prev_req = torch.distributed.isend(
                 tensor=tensor_send_prev, dst=prev_pipeline_rank, group=even_send_odd_recv_group
             )
             reqs["send_prev"] = send_prev_req
+            print("DEBUG: Issued send_prev request")
 
         if tensor_recv_next is not None:
+            print(f"DEBUG: Receiving from next rank {next_pipeline_rank}")
             recv_next_req = torch.distributed.irecv(
                 tensor=tensor_recv_next, src=next_pipeline_rank, group=even_recv_odd_send_group
             )
             reqs["recv_next"] = recv_next_req
+            print("DEBUG: Issued recv_next request")
 
     else:
+        print("DEBUG: Odd rank communication pattern")
         if tensor_recv_prev is not None:
+            print(f"DEBUG: Receiving from previous rank {prev_pipeline_rank}")
             recv_prev_req = torch.distributed.irecv(
                 tensor=tensor_recv_prev, src=prev_pipeline_rank, group=even_send_odd_recv_group
             )
             reqs["recv_prev"] = recv_prev_req
+            print("DEBUG: Issued recv_prev request")
 
         if tensor_send_next is not None:
+            print(f"DEBUG: Sending to next rank {next_pipeline_rank}")
             send_next_req = torch.distributed.isend(
                 tensor=tensor_send_next, dst=next_pipeline_rank, group=even_recv_odd_send_group
             )
             reqs["send_next"] = send_next_req
+            print("DEBUG: Issued send_next request")
 
         if tensor_recv_next is not None:
+            print(f"DEBUG: Receiving from next rank {next_pipeline_rank}")
             recv_next_req = torch.distributed.irecv(
                 tensor=tensor_recv_next, src=next_pipeline_rank, group=even_send_odd_recv_group
             )
             reqs["recv_next"] = recv_next_req
+            print("DEBUG: Issued recv_next request")
 
         if tensor_send_prev is not None:
+            print(f"DEBUG: Sending to previous rank {prev_pipeline_rank}")
             send_prev_req = torch.distributed.isend(
                 tensor=tensor_send_prev, dst=prev_pipeline_rank, group=even_recv_odd_send_group
             )
             reqs["send_prev"] = send_prev_req
+            print("DEBUG: Issued send_prev request")
+            
+    print(f"DEBUG: Exiting _p2p_ops function with {len(reqs)} pending requests")
     return reqs
 
 def _communicate(
@@ -285,12 +306,16 @@ def _communicate(
     if not config.variable_seq_lengths:
         recv_prev_shape = tensor_shape
         recv_next_shape = tensor_shape
+        print(f"DEBUG: Using fixed tensor shapes: {tensor_shape}")
     else:
+        print("DEBUG: Communicating shapes for variable sequence lengths")
         recv_prev_shape, recv_next_shape = _communicate_shapes(
             tensor_send_next, tensor_send_prev, recv_prev, recv_next, config
         )
+        print(f"DEBUG: Received shapes - prev: {recv_prev_shape}, next: {recv_next_shape}")
 
     def create_tensor_recv_prev():
+        print(f"DEBUG: Creating tensor_recv_prev with shape {recv_prev_shape}")
         return torch.empty(
             recv_prev_shape,
             requires_grad=True,
@@ -299,6 +324,7 @@ def _communicate(
         )
 
     def create_tensor_recv_next():
+        print(f"DEBUG: Creating tensor_recv_next with shape {recv_next_shape}")
         return torch.empty(
             recv_next_shape,
             requires_grad=True,
@@ -315,6 +341,7 @@ def _communicate(
                 "Common tensor_shape is (seq_length, micro_batch_size, hidden_size)"
             )
         tensor_recv_prev_func = create_tensor_recv_prev
+        print("DEBUG: Will receive from previous rank")
 
     if recv_next:
         if config.pipeline_dtype is None:
@@ -325,19 +352,24 @@ def _communicate(
                 "Common tensor_shape is (seq_length, micro_batch_size, hidden_size)"
             )
         tensor_recv_next_func = create_tensor_recv_next
+        print("DEBUG: Will receive from next rank")
 
     # Send tensors in both the forward and backward directions as appropriate.
     if config.use_ring_exchange_p2p:
+        print("DEBUG: Using ring_exchange for p2p communication")
 
         def _ring_exchange_wrapper(**kwargs):
+            print("DEBUG: Executing ring_exchange")
             torch.distributed.ring_exchange(**kwargs)
             return []
 
         p2p_func = _ring_exchange_wrapper
     elif config.batch_p2p_comm:
+        print("DEBUG: Using batched p2p communication")
         assert wait_on_reqs
         p2p_func = _batched_p2p_ops
     else:
+        print("DEBUG: Using regular p2p communication")
         p2p_func = _p2p_ops
 
     # Each rank can now be part of several different pipeline parallel groups
@@ -346,19 +378,25 @@ def _communicate(
     # several different decoder ranks. We therefore have to receive or send tensors
     # from several groups. For convenience, I wrap everything into lists.
     if config.enable_hetero: # Using the passed 'group' in the case of 'enable_hetero'
+        print("DEBUG: Using heterogeneous mode with provided group")
         pp_group = group
         next_rank = get_pipeline_model_parallel_next_rank(group=group)
         prev_rank = get_pipeline_model_parallel_prev_rank(group=group)
     else:
+        print("DEBUG: Using default pipeline parallel group")
         pp_group = get_pipeline_model_parallel_group()
         next_rank = get_pipeline_model_parallel_next_rank()
         prev_rank = get_pipeline_model_parallel_prev_rank()
+    print("pp_group: ",pp_group)
+    print("next_rank: ",next_rank)
+    print("prev_rank: ",prev_rank)
     if not isinstance(pp_group, list):
         pp_group = [pp_group]
         assert not isinstance(next_rank, list)
         next_rank = [next_rank]
         assert not isinstance(prev_rank, list)
         prev_rank = [prev_rank]
+        print("DEBUG: Converted single group/ranks to lists")
 
     if config.use_ring_exchange_p2p or config.batch_p2p_comm:
         reqs = []
@@ -371,15 +409,18 @@ def _communicate(
         if tensor_recv_prev_func is not None:
             tensor_recv_prev = tensor_recv_prev_func()
             tensor_recv_prev_list.append(tensor_recv_prev)
+            print(f"DEBUG: Created tensor_recv_prev for group {nr} {pr}")
         else:
             tensor_recv_prev = None
 
         if tensor_recv_next_func is not None:
             tensor_recv_next = tensor_recv_next_func()
             tensor_recv_next_list.append(tensor_recv_next)
+            print(f"DEBUG: Created tensor_recv_next for group {nr} {pr}")
         else:
             tensor_recv_next = None
 
+        print("DEBUG: Calling p2p communication function")
         p2p_reqs = p2p_func(
             tensor_send_prev=tensor_send_prev,
             tensor_recv_prev=tensor_recv_prev,
@@ -391,15 +432,20 @@ def _communicate(
         )
         if isinstance(p2p_reqs, list):
             reqs.extend(p2p_reqs)
+            print(f"DEBUG: Added {len(p2p_reqs)} requests to list")
         else:
             reqs.update(p2p_reqs)
+            print(f"DEBUG: Added {len(p2p_reqs)} requests to dict")
 
     if wait_on_reqs and len(reqs) > 0:
+        print(f"DEBUG: Waiting on {len(reqs)} requests")
         for req in reqs if isinstance(reqs, list) else reqs.values():
             req.wait()
         reqs = None
+        print("DEBUG: All requests completed")
 
     if config.batch_p2p_comm and config.batch_p2p_sync:
+        print("DEBUG: Synchronizing CUDA for batch p2p communication")
         # To protect against race condition when using batch_isend_irecv().
         # User should assert that we have a modern enough PyTorch to not need this
         torch.cuda.synchronize()
@@ -410,16 +456,23 @@ def _communicate(
         or everything returned is None, or everything returned is not None, and it has to be summed
         together."""
         if len(x) == 0:
+            print("DEBUG: Empty tensor list")
             return None
         if len(x) == 1:
+            print("DEBUG: Singleton tensor list")
             return x[0]
         if all(xx is None for xx in x):
+            print("DEBUG: All None tensor list")
             return None
+        print(f"DEBUG: Stacking and summing {len(x)} tensors")
         return torch.stack(x, dim=0).sum(dim=0, dtype=torch.float32).to(x[0].dtype)
 
+    print("DEBUG: Processing tensor_recv_prev_list")
     tensor_recv_prev = _handle_tensor_list(tensor_recv_prev_list)
+    print("DEBUG: Processing tensor_recv_next_list")
     tensor_recv_next = _handle_tensor_list(tensor_recv_next_list)
 
+    print("DEBUG: Exiting _communicate function")
     return tensor_recv_prev, tensor_recv_next, reqs
 
 def warm_up_comm_group(config):

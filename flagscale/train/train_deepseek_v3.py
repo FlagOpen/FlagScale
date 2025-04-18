@@ -257,6 +257,16 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
 
     # cal loss for main model
     loss = torch.cat([torch.sum(loss.view(-1) * loss_mask).view(1), total_tokens.view(1)])
+    # loss_view = loss.view(-1)
+    # if loss_view.size(0) != loss_mask.size(0):
+    #     if loss_view.size(0) > loss_mask.size(0):
+    #         loss_view = loss_view[:loss_mask.size(0)]
+    #     else:
+    #         padding = torch.zeros(loss_view.size(0) - loss_mask.size(0), device=loss_mask.device)
+    #         loss_mask = torch.cat([loss_mask, padding])
+    
+    # loss = torch.cat([torch.sum(loss_view * loss_mask).view(1), total_tokens.view(1)])
+    
     # cal loss for mtp modules
     if use_mtp_predictor:
         loss_mask_mtps = []
@@ -268,6 +278,16 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
             loss_mask_mtps.append(loss_mask_mtp)
         loss_mask_mtps = torch.cat(loss_mask_mtps, 0)
         loss_mtps = torch.cat([torch.sum(loss_mtps.view(-1) * loss_mask_mtps).view(1), total_tokens_mtps.view(1)])
+
+        # loss_mtps_view = loss_mtps.view(-1)
+        # if loss_mtps_view.size(0) != loss_mask_mtps.size(0):
+        #     if loss_mtps_view.size(0) > loss_mask_mtps.size(0):
+        #         loss_mtps_view = loss_mtps_view[:loss_mask_mtps.size(0)]
+        #     else:
+        #         padding = torch.zeros(loss_mtps_view.size(0) - loss_mask_mtps.size(0), device=loss_mask_mtps.device)
+        #         loss_mask_mtps = torch.cat([loss_mask_mtps, padding])
+                
+        # loss_mtps = torch.cat([torch.sum(loss_mtps_view * loss_mask_mtps).view(1), total_tokens_mtps.view(1)])
         loss_mtps = loss_mtps / args.num_mtp_predictor
 
     # merge main model loss and mtp predictor loss
