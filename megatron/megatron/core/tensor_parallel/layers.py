@@ -36,6 +36,7 @@ from .mappings import (
 )
 from .random import get_cuda_rng_tracker, get_expert_parallel_rng_tracker_name
 from .utils import VocabUtility, divide
+from flagscale.train.weight_grad_store import WeightGradStore
 
 _grad_accum_fusion_available = True
 try:
@@ -508,13 +509,25 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         if ctx.gradient_accumulation_fusion:
             if wgrad_compute:
                 if weight.main_grad.dtype == torch.float32:
-                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(
-                        total_input, grad_output, weight.main_grad
-                    )
+                    if WeightGradStore.enable_zero_bubble:
+                        # capture the weight gradient computation of linear layers
+                        WeightGradStore.put(
+                            total_input, grad_output, weight, fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32,
+                        )
+                    else:
+                        fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(
+                            total_input, grad_output, weight.main_grad
+                        )
                 elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
-                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(
-                        total_input, grad_output, weight.main_grad
-                    )
+                    if WeightGradStore.enable_zero_bubble:
+                        # capture the weight gradient computation of linear layers
+                        WeightGradStore.put(
+                            total_input, grad_output, weight, fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16,
+                        )
+                    else:
+                        fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(
+                            total_input, grad_output, weight.main_grad
+                        )
                 else:
                     raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
 

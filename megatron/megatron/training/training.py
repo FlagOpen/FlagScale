@@ -873,7 +873,7 @@ def train_step(forward_step_func, data_iterator,
         optimizer.zero_grad()
 
         # Forward pass.
-        forward_backward_func = get_forward_backward_func()
+        forward_backward_func = get_forward_backward_func(enable_zero_bubble = get_args().enable_zero_bubble)
         losses_reduced = forward_backward_func(
             forward_step_func=forward_step_func,
             data_iterator=data_iterator,
@@ -1787,7 +1787,7 @@ def evaluate(forward_step_func,
             if verbose:
                 print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
 
-            forward_backward_func = get_forward_backward_func()
+            forward_backward_func = get_forward_backward_func(enable_zero_bubble = get_args().enable_zero_bubble)
             # Don't care about timing during evaluation
             config.timers = None
             ft_integration.on_eval_step_start()
