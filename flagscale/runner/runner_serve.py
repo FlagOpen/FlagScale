@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import copy
 import json
 import os
 import shlex
@@ -13,12 +14,150 @@ from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.utils import (
     benchmark,
     dummy_random_input,
+    flatten_dict_to_args,
     get_free_port,
     get_nproc_per_node,
     logger,
     parse_hostfile,
     run_local_command,
 )
+
+
+def _get_multiple_free_ports(num=1, exclude_ports=[]):
+    allocated_ports = []
+    for i in range(num):
+        port = get_free_port()
+        while port in allocated_ports or port in exclude_ports:
+            port = get_free_port()
+        allocated_ports.append(port)
+    return allocated_ports
+
+
+class ResourceManager:
+    def __init__(self, nodes):
+        """
+        Initialize the ResourceManager with a list of nodes.
+        Each element in the list should be a two-item list:
+          - The first item is the node address (a string).
+          - The second item is a dictionary containing at least the key "slots".
+            If "type" is not provided, it defaults to "gpu" with a warning.
+        The first node is treated as the master node, and the rest are worker nodes.
+        """
+        self.nodes = self._initialize_nodes(nodes)
+
+    def _initialize_nodes(self, nodes):
+        """
+        Convert the input nodes list into the internal nodes representation.
+        Each node is converted into a dictionary with keys:
+          "address", "slots", "type", and "used" (initialized to 0).
+        If the "type" is not provided in a node, default it to "gpu" and issue a warning.
+        """
+        initialized_nodes = []
+        for node in nodes:
+            if len(node) != 2:
+                raise ValueError("Each node must include an address and node data")
+            address, info = node
+            if "slots" not in info:
+                raise ValueError("Node data must contain 'slots'")
+            if "type" not in info:
+                logger.warning(
+                    f"Node {address} does not provide a resource type. Defaulting to 'gpu'."
+                )
+            resource_type = info.get("type", "gpu")
+            initialized_nodes.append(
+                {
+                    "address": address,
+                    "slots": info["slots"],
+                    "type": resource_type,
+                    "used": 0,  # Initialize used slot count to 0
+                }
+            )
+        return initialized_nodes
+
+    def get_whole_card_num(self, resource_type="gpu"):
+        """
+        Return the total number of slots across all nodes with the specified resource type.
+        The return type is int.
+        """
+        total = 0
+        for node in self.nodes:
+            if node["type"] == resource_type:
+                total += node["slots"]
+        return total
+
+    def get_available_card_num(self, resource_type="gpu"):
+        """
+        Return the total number of available slots (slots minus used) across all nodes with the specified resource type.
+        The return type is int.
+        """
+        total = 0
+        for node in self.nodes:
+            if node["type"] == resource_type:
+                total += node["slots"] - node["used"]
+        return total
+
+    def get_available_card_ids(self, resource_type="gpu", address="auto", num=1):
+        """
+        Allocate 'num' resource cards from a node and return a list of card indices.
+
+        For the default case (address="auto"), traverse nodes in order: master node first, then worker nodes.
+        - If a node's available slots (slots - used) are >= num, allocate num consecutive indices (based on the current used value)
+          and update the node's used count, returning the allocated indices (0-indexed) as a list.
+        - If the available slots are insufficient at a particular node and address is "auto", continue searching through other nodes.
+        - If an explicit address is provided, check only that node; if it doesn't exist or lacks sufficient available slots, raise an error.
+        - If none of the nodes can satisfy the request, raise an error indicating insufficient resources.
+        """
+        # Check the specified node if address is not "auto"
+        if address != "auto":
+            node_found = None
+            for node in self.nodes:
+                if node["address"] == address and node["type"] == resource_type:
+                    node_found = node
+                    break
+            if node_found is None:
+                raise ValueError(
+                    f"Node {address} does not exist or resource type mismatch"
+                )
+            free = node_found["slots"] - node_found["used"]
+            if free < num:
+                raise ValueError("Insufficient resources")
+            allocated_ids = list(range(node_found["used"], node_found["used"] + num))
+            node_found["used"] += num
+            return allocated_ids
+
+        # For address == "auto", traverse all nodes (master node first, then worker nodes)
+        for node in self.nodes:
+            if node["type"] == resource_type:
+                free = node["slots"] - node["used"]
+                if free >= num:
+                    allocated_ids = list(range(node["used"], node["used"] + num))
+                    node["used"] += num
+                    return allocated_ids
+
+        # If no node satisfies the allocation request, raise an error.
+        resource_status = self.get_status()
+        raise ValueError(
+            f"Require number {num} of resource_type {resource_type} But there is insufficient resources: \n{resource_status}"
+        )
+
+    def get_status(self):
+        """
+        Return the status of all nodes as a dictionary.
+        Each key in the returned dictionary is the node's address, and its value is a dictionary with:
+          - type: the resource type.
+          - slots: the total number of slots.
+          - used: the number of allocated slots.
+          - available: the number of available slots (slots - used).
+        """
+        status = {}
+        for node in self.nodes:
+            status[node["address"]] = {
+                "type": node["type"],
+                "slots": node["slots"],
+                "used": node["used"],
+                "available": node["slots"] - node["used"],
+            }
+        return status
 
 
 def _get_args_vllm(config: DictConfig):
@@ -104,12 +243,17 @@ def _get_engine_args(config, model="vllm_model"):
 
 
 def _update_config_serve(config: DictConfig):
+    deploy_config = config.experiment.get("deploy", {})
+
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     if not os.path.isdir(exp_dir):
         os.makedirs(exp_dir)
     assert os.path.isdir(exp_dir), f"Directory {exp_dir} does not exist."
 
     OmegaConf.set_struct(config, False)
+
+    if deploy_config.get("prefill_decode_disaggregation", False):
+        deploy_config["pd_proxy_port"] = get_free_port()
 
     if config.get("logging", None) is None:
         config.logging = DictConfig({})
@@ -165,6 +309,8 @@ def _generate_run_script_serve(
         vllm_path = os.path.dirname(vllm.__path__[0])
     except Exception as e:
         vllm_path = f"{root_dir}/vllm"
+    deploy_config = config.experiment.get("deploy", {})
+    print(f"shell file ======================== {host_run_script_file}", flush=True)
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("set -x\n")
@@ -180,13 +326,195 @@ def _generate_run_script_serve(
         f.write(f"\n")
 
         if nodes:
-            f.write(f"ray_path=$(realpath $(which ray))\n")
-            master_ip = nodes[0][0]
-            target_port = nodes[0][1].get("port")
+            if deploy_config.get("prefill_decode_disaggregation", False):
+                resource_manager = ResourceManager(nodes)
+                master_ip = nodes[0][0]
+                target_port = nodes[0][1].get("port")
+                p_num = deploy_config.get("prefill_num", 1)
+                d_num = deploy_config.get("decode_num", 1)
+                ports_num = (p_num + d_num) * 2
+                kv_related_ports = _get_multiple_free_ports(ports_num)
+                pd_proxy_port = deploy_config.get("pd_proxy_port", None)
+                if not pd_proxy_port:
+                    raise ValueError(
+                        f"PD disaggregation requires a proxy port to be set."
+                    )
+                # pd_proxy_port = 30001  # debug, tobe removed
+                print(
+                    f"------------ update with port {pd_proxy_port} of new config {config} "
+                )
 
-            f.write(f"# clean nodes \n")
-            if len(nodes) > 1:
-                for ip, node in nodes[1:]:
+                engine_args = _get_engine_args(config)
+                command_items = ["vllm", "serve"]
+                command_items.append(engine_args["model"])
+                other_args = flatten_dict_to_args(engine_args, ["model", "port"])
+                command_items.extend(other_args)
+                vllm_command = " ".join(command_items)
+                vllm_command = "nohup " + vllm_command
+                if before_start_cmd:
+                    vllm_command = f"{before_start_cmd} && " + vllm_command
+                p_address = deploy_config.get("prefill_address", "auto")
+                d_address = deploy_config.get("decode_address", "auto")
+                tensor_parallel_size = engine_args.get("tensor_parallel_size", 1)
+                pipeline_parallel_size = engine_args.get("pipeline_parallel_size", 1)
+                each_instance_card_num = tensor_parallel_size * pipeline_parallel_size
+                default_log_dir = deploy_config.get(
+                    "prefill_decode_log_dir", logging_config.log_dir
+                )
+
+                f.write(f"# clean nodes \n")
+                if len(nodes) > 1:
+                    for ip, node in nodes[1:]:
+                        if not node.get("type", None):
+                            raise ValueError(
+                                f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
+                            )
+                        if not node.get("slots", None):
+                            raise ValueError(
+                                f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+                            )
+                        node_cmd = f"mkdir -p {default_log_dir} && pkill -f vllm"
+
+                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
+
+                        if docker_name:
+                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        f.write(f"{ssh_cmd}\n")
+
+                f.write("pkill -f 'run_inference_engine'\n")
+                f.write("pkill -f 'run_fs_serve_vllm'\n")
+                f.write("pkill -f 'vllm serve'\n")
+                f.write("pkill -f 'run_pd_disagg_router'\n")
+                f.write(f"mkdir -p {default_log_dir}\n")
+                f.write(f"\n")
+
+                f.write("echo '=========== launch prefill instance ==========='\n")
+
+                for i in range(p_num):
+                    kv_port = kv_related_ports.pop()
+                    http_port = kv_related_ports.pop()
+                    p_kv_config = {
+                        "kv_connector": "P2pConnector",
+                        "kv_role": "kv_producer",
+                        "kv_port": str(kv_port),
+                        "kv_connector_extra_config": {
+                            "proxy_ip": master_ip,
+                            "proxy_port": str(pd_proxy_port),
+                            "http_port": str(http_port),
+                        },
+                    }
+                    print(
+                        f"============= prefill instance {i}, p_kv_config: {p_kv_config} =============",
+                        flush=True,
+                    )
+                    card_ids = resource_manager.get_available_card_ids(
+                        resource_type=node["type"],
+                        address=p_address,
+                        num=each_instance_card_num,
+                    )
+                    card_ids_str = ",".join(map(str, card_ids))
+                    ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
+
+                    p_kv_config_json = json.dumps(p_kv_config)
+                    p_instance_log_path = os.path.join(
+                        default_log_dir, f"prefill_{i}.log"
+                    )
+
+                    if p_address != master_ip:
+                        p_kv_config_formate_json = p_kv_config_json.replace('"', '\\"')
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_formate_json}'\\''"
+                        if docker_name:
+                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {p_instance_log_path} 2>&1 &'\""
+                        else:
+                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {p_instance_log_path} 2>&1 &"'
+                        f.write(f"{ssh_cmd}\n\n")
+                    else:
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{p_kv_config_json}' > {p_instance_log_path} 2>&1 &"
+                        f.write(f"{node_cmd}\n\n")
+
+                f.write("echo '=========== launch decode instance ==========='\n")
+
+                for j in range(d_num):
+                    kv_port = kv_related_ports.pop()
+                    http_port = kv_related_ports.pop()
+                    d_kv_config = {
+                        "kv_connector": "P2pConnector",
+                        "kv_role": "kv_consumer",
+                        "kv_port": str(kv_port),
+                        "kv_connector_extra_config": {
+                            "proxy_ip": master_ip,
+                            "proxy_port": str(pd_proxy_port),
+                            "http_port": str(http_port),
+                        },
+                    }
+                    print(
+                        f"============= decode instance {i}, d_kv_config: {d_kv_config} =============",
+                        flush=True,
+                    )
+                    card_ids = resource_manager.get_available_card_ids(
+                        resource_type=node["type"],
+                        address=d_address,
+                        num=each_instance_card_num,
+                    )
+                    card_ids_str = ",".join(map(str, card_ids))
+                    ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
+
+                    d_kv_config_json = json.dumps(d_kv_config)
+                    d_instance_log_path = os.path.join(
+                        default_log_dir, f"decode_{j}.log"
+                    )
+
+                    if d_address != master_ip:
+                        d_kv_config_formate_json = d_kv_config_json.replace('"', '\\"')
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_formate_json}'\\''"
+                        if docker_name:
+                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {d_instance_log_path} 2>&1 &'\""
+                        else:
+                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
+                        f.write(f"{ssh_cmd}\n\n")
+                    else:
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{d_kv_config_json}' > {d_instance_log_path} 2>&1 &"
+                        f.write(f"{node_cmd}\n\n")
+
+            else:
+                f.write(f"ray_path=$(realpath $(which ray))\n")
+                master_ip = nodes[0][0]
+                target_port = nodes[0][1].get("port")
+
+                f.write(f"# clean nodes \n")
+                if len(nodes) > 1:
+                    for ip, node in nodes[1:]:
+                        if not node.get("type", None):
+                            raise ValueError(
+                                f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
+                            )
+                        if not node.get("slots", None):
+                            raise ValueError(
+                                f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+                            )
+                        node_cmd = f"${{ray_path}} stop"
+
+                        if before_start_cmd:
+                            node_cmd = f"{before_start_cmd} && " + node_cmd
+
+                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
+
+                        if docker_name:
+                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        f.write(f"{ssh_cmd}\n")
+                if before_start_cmd:
+                    f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
+                else:
+                    f.write(f"${{ray_path}} stop\n")
+                f.write("pkill -f 'run_inference_engine'\n")
+                f.write("pkill -f 'run_fs_serve_vllm'\n")
+                f.write("pkill -f 'vllm serve'\n")
+                f.write(f"\n")
+
+                master_port = target_port if target_port else get_free_port()
+
+                address = f"{master_ip}:{master_port}"
+                for index, (ip, node) in enumerate(nodes):
                     if not node.get("type", None):
                         raise ValueError(
                             f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
@@ -195,77 +523,46 @@ def _generate_run_script_serve(
                         raise ValueError(
                             f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
                         )
-                    node_cmd = f"${{ray_path}} stop"
+                    if index == 0:
+                        # master node
+                        f.write(f"# start cluster\n")
+                        f.write(f"# master node\n")
+                        if node.type == "gpu":
+                            node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
+                        elif node.type == "cpu":
+                            node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
+                        else:
+                            resource = json.dumps({node.type: node.slots}).replace(
+                                '"', '\\"'
+                            )
+                            node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
+                        if before_start_cmd:
+                            node_cmd = f"{before_start_cmd} && " + node_cmd
+                        f.write(f"{node_cmd}\n")
 
-                    if before_start_cmd:
-                        node_cmd = f"{before_start_cmd} && " + node_cmd
-
-                    ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
-
-                    if docker_name:
-                        ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
-                    f.write(f"{ssh_cmd}\n")
-            if before_start_cmd:
-                f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
-            else:
-                f.write(f"${{ray_path}} stop\n")
-            f.write("pkill -f 'run_inference_engine'\n")
-            f.write("pkill -f 'run_fs_serve_vllm'\n")
-            f.write("pkill -f 'vllm serve'\n")
-            f.write(f"\n")
-
-            master_port = target_port if target_port else get_free_port()
-
-            address = f"{master_ip}:{master_port}"
-            for index, (ip, node) in enumerate(nodes):
-                if not node.get("type", None):
-                    raise ValueError(
-                        f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
-                    )
-                if not node.get("slots", None):
-                    raise ValueError(
-                        f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
-                    )
-                if index == 0:
-                    # master node
-                    f.write(f"# start cluster\n")
-                    f.write(f"# master node\n")
-                    if node.type == "gpu":
-                        node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
-                    elif node.type == "cpu":
-                        node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
                     else:
-                        resource = json.dumps({node.type: node.slots}).replace(
-                            '"', '\\"'
-                        )
-                        node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
-                    if before_start_cmd:
-                        node_cmd = f"{before_start_cmd} && " + node_cmd
-                    f.write(f"{node_cmd}\n")
+                        # worker nodes
+                        if index == 1:
+                            f.write(f"\n")
+                            f.write(f"# worker nodes\n")
+                        if node.type == "gpu":
+                            node_cmd = f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
 
-                else:
-                    # worker nodes
-                    if index == 1:
-                        f.write(f"\n")
-                        f.write(f"# worker nodes\n")
-                    if node.type == "gpu":
-                        node_cmd = f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
+                        elif node.type == "cpu":
+                            node_cmd = f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
+                        else:
+                            resource = json.dumps({node.type: node.slots}).replace(
+                                '"', '\\"'
+                            )
+                            node_cmd = f"${{ray_path}} start --address={address} --resources='{resource}'"
+                        if before_start_cmd:
+                            node_cmd = f"{before_start_cmd} && " + node_cmd
 
-                    elif node.type == "cpu":
-                        node_cmd = f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
-                    else:
-                        resource = json.dumps({node.type: node.slots}).replace(
-                            '"', '\\"'
-                        )
-                        node_cmd = f"${{ray_path}} start --address={address} --resources='{resource}'"
-                    if before_start_cmd:
-                        node_cmd = f"{before_start_cmd} && " + node_cmd
+                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
 
-                    ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
-
-                    if docker_name:
-                        ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
-                    f.write(f"{ssh_cmd}\n")
+                        if docker_name:
+                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        f.write(f"{ssh_cmd}\n")
         else:
             # Note: config key device_type is specified for single node serving in neither gpu or cpu.
             device_type = None
@@ -280,7 +577,6 @@ def _generate_run_script_serve(
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
             node_cmd = None
-            deploy_config = config.experiment.get("deploy", {})
             if deploy_config.get("use_fs_serve", True) and config.serve[0].get(
                 "engine", None
             ):
@@ -314,6 +610,7 @@ def _generate_run_script_serve(
         f.write(f"\n")
         # TODO: need a option to control whether to append or overwrite the output file
         # Now, it always appends to the output file
+        f.write("echo '=========== launch task ==========='\n")
         if background:
             f.write(
                 f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
@@ -397,8 +694,12 @@ class SSHServeRunner(RunnerBase):
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
-        if self.inference_engine:
-            if not self.use_fs_serve:
+        if self.inference_engine:  # pd_disagg_router
+            if self.config.experiment.get("deploy", {}).get(
+                "prefill_decode_disaggregation", False
+            ):
+                self.user_script = "flagscale/serve/run_pd_disagg_router.py"
+            elif not self.use_fs_serve:
                 self.user_script = "flagscale/serve/run_inference_engine.py"
             else:
                 self.user_script = "flagscale/serve/run_fs_serve_vllm.py"
