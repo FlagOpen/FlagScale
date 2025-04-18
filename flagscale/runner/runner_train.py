@@ -169,6 +169,8 @@ def _get_runner_cmd_train(
 
     runner_cmd = [backend]
     for key, value in runner_args.items():
+        if key in ["no_shared_fs"]:
+            continue
         if isinstance(value, bool):
             if value:
                 runner_cmd.append(f"--{key}")
