@@ -365,8 +365,14 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
         + 2 * args.hidden_size
     )
 
+    # for hetero (TODO: suppot hetero train)
+    expert_tensor_parallel_size = (
+        args.expert_tensor_parallel_size
+        if args.expert_tensor_parallel_size is not None
+        else args.tensor_model_parallel_size
+    )
     num_parameters_in_transformer_layers_per_tp_ep_rank_ddp = +num_moe_layers * (
-        +sparse_mlp_params_per_ep_rank_ddp / args.expert_tensor_parallel_size
+        sparse_mlp_params_per_ep_rank_ddp / expert_tensor_parallel_size
     )
 
     num_parameters_in_transformer_layers_per_tp_ep_rank_noddp = (
@@ -380,7 +386,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
     )
 
     num_parameters_in_mtp_block_per_tp_ep_rank_ddp = num_mtp_predictor * (
-        sparse_mlp_params_per_ep_rank_ddp / args.expert_tensor_parallel_size
+        sparse_mlp_params_per_ep_rank_ddp / expert_tensor_parallel_size
     )
 
     num_parameters_in_mtp_block_per_tp_ep_rank_noddp = num_mtp_predictor * (
@@ -436,7 +442,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
 
     if args.use_distributed_optimizer:
         expert_tensor_model_pipeline_parallel_size = (
-            args.expert_tensor_parallel_size
+            expert_tensor_parallel_size
             * args.expert_model_parallel_size
             * args.pipeline_model_parallel_size
         )
@@ -614,6 +620,12 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
         2 * args.seq_length * args.micro_batch_size * args.hidden_size
     )
     gated_linear_multiplier = 3 / 2 if args.swiglu else 1
+    # for hetero (TODO: suppot hetero train)
+    expert_tensor_parallel_size = (
+        args.expert_tensor_parallel_size
+        if args.expert_tensor_parallel_size is not None
+        else args.tensor_model_parallel_size
+    )
     # In FFN, we split memory into two parts, one that can paralleled by tensor parallellism and the other that can't
     if args.num_experts is not None:
         ffn_parallel_by_tp_activation_memory = (
@@ -650,7 +662,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
             * args.hidden_size
             * args.moe_router_topk
             / args.tensor_model_parallel_size
-            * args.expert_tensor_parallel_size
+            * expert_tensor_parallel_size
         )
         if args.moe_shared_expert_intermediate_size is not None:
             shared_sparse_ffn_parallel_by_tp_activation_memory = (
