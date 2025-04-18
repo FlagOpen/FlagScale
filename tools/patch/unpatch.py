@@ -56,7 +56,7 @@ def init_submodule(dst, submodule_name):
         print(f"Skipping {submodule_name} initialization, as it already lexists.")
         return
     print(f"Initializing submodule {submodule_name}...")
-    repo = Repo(os.path.dirname(os.path.dirname(__file__)))
+    repo = Repo(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
     repo.submodule_update(init=True, recursive=True)
     print(f"Initialized {submodule_name} submodule.")
 
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     # FlagScale/tools
     script_dir = os.path.dirname(script_dir)
     # FlagScale
-    main_path = os.path.dirname(script_dir) # FlagScale
+    main_path = os.path.dirname(script_dir)
 
     submodule_name = f"third_party/{backend}"
     src = None
