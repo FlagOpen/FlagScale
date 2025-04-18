@@ -13,7 +13,7 @@ experiment:
     prefill_decode_disaggregation: true
     prefill_num: 1
     prefill_address: 10.1.1.122
-    decode_num: 1
+    decode_num: 2
     decode_address: 10.1.1.108
   runner:
     hostfile: examples/deepseek/conf/hostfile.txt

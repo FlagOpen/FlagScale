@@ -206,6 +206,14 @@ def _reset_serve_port(config):
     return model_port
 
 
+def _attach_kv_proxy_port(config, proxy_port):
+    deploy_config = config.experiment.get("deploy", {})
+    OmegaConf.set_struct(config, False)
+    deploy_config["proxy_port"] = proxy_port
+    OmegaConf.set_struct(config, True)
+    return
+
+
 def _get_inference_engine(config):
     serve_config = config.get("serve", [])
     if not serve_config:
@@ -312,8 +320,12 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 d_num = deploy_config.get("decode_num", 1)
                 ports_num = (p_num + d_num) * 2 + 1
                 kv_related_ports = _get_multiple_free_ports(ports_num)
-                kv_proxy_port = kv_related_ports.pop()
-                kv_proxy_port = 30001  # debug, tobe removed
+                pd_proxy_port = kv_related_ports.pop()
+                # pd_proxy_port = 30001  # debug, tobe removed
+                _attach_kv_proxy_port(config, pd_proxy_port)
+                print(
+                    f"------------ update with port {pd_proxy_port} of new config {config} "
+                )
 
                 engine_args = _get_engine_args(config)
                 command_items = ["vllm", "serve"]
@@ -370,7 +382,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         "kv_port": str(kv_port),
                         "kv_connector_extra_config": {
                             "proxy_ip": master_ip,
-                            "proxy_port": str(kv_proxy_port),
+                            "proxy_port": str(pd_proxy_port),
                             "http_port": str(http_port),
                         },
                     }
@@ -413,7 +425,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         "kv_port": str(kv_port),
                         "kv_connector_extra_config": {
                             "proxy_ip": master_ip,
-                            "proxy_port": str(kv_proxy_port),
+                            "proxy_port": str(pd_proxy_port),
                             "http_port": str(http_port),
                         },
                     }
