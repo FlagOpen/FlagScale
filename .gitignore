@@ -12,7 +12,8 @@ outputs
 *.log
 *.out
 megatron/megatron/energon
-third_party/*
+third_party/Megatron-LM/*
+third_party/vllm/*
 
 # test results
 tests/functional_tests/test_cases/*/*/results_test
