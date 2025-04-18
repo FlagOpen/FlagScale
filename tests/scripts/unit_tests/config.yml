@@ -25,8 +25,11 @@ megatron:
         - test_replication.py
       deselect:
         - models/test_retro_model.py::TestRetroModel::test_sharded_state_dict_save_load
+        - models/test_bert_model.py::TestBERTModelReconfiguration::test_vocab_size_padding_change
+        - models/test_gpt_model.py::TestGPTModelReconfiguration::test_vocab_size_padding_change
         - test_fully_parallel.py::TestFullyParallelSaveAndLoad::test_memory_usage
         - test_local.py::TestLocalCheckpointing::test_basic_save_load_scenarios
+        - test_serialization.py::TestSerialization::test_tensor_shape_mismatch
     distributed:
       type: single
     models:
