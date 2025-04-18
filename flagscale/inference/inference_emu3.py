@@ -1,11 +1,6 @@
 import os
 import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from flagscale.utils import CustomModuleFinder
-
-sys.meta_path.insert(0, CustomModuleFinder())
-
 import torch
 from PIL import Image
 from transformers import AutoImageProcessor, AutoModel, AutoTokenizer

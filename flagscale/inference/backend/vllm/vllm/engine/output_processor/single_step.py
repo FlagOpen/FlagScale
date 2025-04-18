@@ -139,3 +139,4 @@ class SingleStepOutputProcessor(SequenceGroupOutputProcessor):
         if seq.is_finished():
             for scheduler in self.scheduler:
                 scheduler.free_seq(seq)
+

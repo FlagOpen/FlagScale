@@ -659,3 +659,4 @@ class SamplingTensors:
             prompt_tokens=prompt_t.to(device=device, non_blocking=True),
             output_tokens=output_t.to(device=device, non_blocking=True),
         )
+

@@ -1547,3 +1547,4 @@ class ParallelSampleSequenceGroup(SequenceGroupBase):
             if self.output_produced:
                 return None
         return None
+

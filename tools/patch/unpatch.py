@@ -9,6 +9,7 @@ import argparse
 DELETED_FILE_NAME = "deleted_files.txt"
 def unpatch(src, dst, submodule_name):
     """Unpatch the backend with symlinks."""
+    print(f"UnPatching the backend {submodule_name}...")
     init_submodule(dst, submodule_name)
     _create_symlinks(src, dst)
     deleted_files_path = os.path.join(src, DELETED_FILE_NAME)
@@ -57,18 +58,20 @@ def init_submodule(dst, submodule_name):
         return
     print(f"Initializing submodule {submodule_name}...")
     repo = Repo(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-    repo.submodule_update(init=True, recursive=True)
+    submodule = repo.submodule(submodule_name)
+    submodule.update(init=True)
     print(f"Initialized {submodule_name} submodule.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Patch or unpatch backend with symlinks.")
-    parser.add_argument('--backend', choices=["Megatron-LM"], default="Megatron-LM",
-                        help="Backend to process (default: Megatron-LM)")
+    parser.add_argument('--backend', nargs='+', choices=["Megatron-LM", "vllm"], default=["Megatron-LM"],
+                        help="Backend to unpatch (default: Megatron-LM)")
 
     args = parser.parse_args()
-    backend = args.backend
-
+    backends = args.backend
+    if not isinstance(backends, list):
+        backends = [backends]
     # FlagScale/tools/patch
     script_dir = os.path.dirname(os.path.realpath(__file__)) 
     # FlagScale/tools
@@ -76,15 +79,18 @@ if __name__ == "__main__":
     # FlagScale
     main_path = os.path.dirname(script_dir)
 
-    submodule_name = f"third_party/{backend}"
-    src = None
-    dst = os.path.join(main_path, "third_party", backend)
+    for backend in backends:
+        submodule_name = f"third_party/{backend}"
+        src = None
+        dst = os.path.join(main_path, "third_party", backend)
+        # Megatron-LM
+        if backend == "Megatron-LM":
+            src = os.path.join(main_path, "flagscale", "train", "backend", backend)
+            assert src
+            unpatch(src, dst, submodule_name)
 
-    # Megatron-LM
-    if backend == "Megatron-LM":
-        src = os.path.join(main_path, "flagscale", "train", "backend", backend)
-    else:
-        raise ValueError(f"This backend {backend} is not supported.")
-    assert src
-    unpatch(src, dst, submodule_name)
-
+        # vllm
+        if backend == "vllm":
+            src = os.path.join(main_path, "flagscale", "inference", "backend", backend)
+            assert src
+            unpatch(src, dst, submodule_name)

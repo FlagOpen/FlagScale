@@ -4,3 +4,4 @@
 [submodule "third_party/vllm"]
 	path = third_party/vllm
 	url = https://github.com/vllm-project/vllm.git
+	branch = main

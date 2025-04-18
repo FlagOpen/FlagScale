@@ -10,6 +10,7 @@ def patch(main_path, submodule_name, src, dst):
     """
     Sync the submodule modifications to the corresponding backend in FlagScale.
     """
+    print(f"Patching the backend {submodule_name}...")
     main_repo = Repo(main_path)
     # raise ValueError(help(main_repo.submodule))
     submodule = main_repo.submodule(submodule_name)
@@ -220,11 +221,13 @@ def _create_file_and_symlink(source_file, target_file):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sync submodule modifications to the corresponding backend in FlagScale.")
-    parser.add_argument('--backend', choices=["Megatron-LM"], default="Megatron-LM",
-                        help="Backend to process (default: Megatron-LM)")
+    parser.add_argument('--backend', nargs='+', choices=["Megatron-LM", "vllm"], default=["Megatron-LM"],
+                        help="Backend to patch (default: Megatron-LM)")
 
     args = parser.parse_args()
-    backend = args.backend
+    backends = args.backend
+    if not isinstance(backends, list):
+        backends = [backends]
     # FlagScale/tools/patch
     script_dir = os.path.dirname(os.path.realpath(__file__)) 
     # FlagScale/tools
@@ -232,15 +235,17 @@ if __name__ == "__main__":
     # FlagScale
     main_path = os.path.dirname(script_dir)
 
-    submodule_name = f"third_party/{backend}"
-    src = None
-    dst = os.path.join(main_path, "third_party", backend)
-
-    # Megatron-LM
-    if backend == "Megatron-LM":
-        src = os.path.join(main_path, "flagscale", "train", "backend", backend)
-    else:
-        raise ValueError(f"This backend {backend} is not supported.")
-    assert src
-    patch(main_path, submodule_name, src, dst)
-
+    for backend in backends:
+        submodule_name = f"third_party/{backend}"
+        src = None
+        dst = os.path.join(main_path, "third_party", backend)
+        # Megatron-LM
+        if backend == "Megatron-LM":
+            src = os.path.join(main_path, "flagscale", "train", "backend", backend)
+            assert src
+            patch(main_path, submodule_name, src, dst)
+        # vllm
+        if backend == "vllm":
+            src = os.path.join(main_path, "flagscale", "inference", "backend", backend)
+            assert src
+            patch(main_path, submodule_name, src, dst)

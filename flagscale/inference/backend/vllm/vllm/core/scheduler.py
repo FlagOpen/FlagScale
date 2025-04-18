@@ -2186,3 +2186,4 @@ class Scheduler:
                              prefill_slot_budget)
 
         return num_new_tokens
+

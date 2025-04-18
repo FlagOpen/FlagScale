@@ -224,3 +224,4 @@ def _apply_logits_processors_single_seq(logits_row, logits_processors,
         else:
             logits_row = logits_processor(past_tokens_ids, logits_row)
     return logits_row
+

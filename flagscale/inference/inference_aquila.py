@@ -1,11 +1,6 @@
 import os
 import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from flagscale.utils import CustomModuleFinder
-
-sys.meta_path.insert(0, CustomModuleFinder())
-
 from transformers import AutoTokenizer
 
 from vllm import LLM
