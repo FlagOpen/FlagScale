@@ -2,7 +2,8 @@ system:
   no_shared_fs: ${experiment.runner.no_shared_fs}
   num_workers: 16
   tensor_model_parallel_size: 1
-  pipeline_model_parallel_size: 1
+  pipeline_model_parallel_size: 8
+  # virtual_pipeline_model_parallel_size: 2
   expert_model_parallel_size: 1
   context_parallel_size: 1
   disable_bias_linear: true
@@ -14,6 +15,7 @@ system:
   overlap_grad_reduce: true
   overlap_param_gather: true
   finetune: false
+  schedules_method: dualpipev
   precision:
     bf16: true
     attention_softmax_in_fp32: true
@@ -29,14 +31,22 @@ system:
     log_params_norm: true
     log_num_zeros_in_grad: true
     log_memory_to_tensorboard: true
+    timing-log-level: 2
   checkpoint:
     save_interval: ${experiment.save_steps}
     load: ${experiment.load}
     ckpt_format: ${experiment.ckpt_format}
+  profile: true
+  profile_step_start: 3
+  profile_step_end: 5
+  profile_ranks: [0,1,2,3,4,5,6,7]
+  # profile_ranks: [0,1,2,3]
+  use_pytorch_profiler: false
 
 model:
   transformer_impl: transformer_engine
-  num_layers: 27
+  num_layers: 8
+  # num_layers: 11
   hidden_size: 2048
   num_attention_heads: 16
   group_query_attention: true
@@ -75,7 +85,7 @@ model:
   moe_router_enable_expert_bias: true
   moe_router_bias_update_rate: 0.001
   moe_aux_loss_coeff: 0.02
-  moe_layer_freq: "[0]+[1]*26"
+  moe_layer_freq: "[0]+[1]*7"
   # node limited routing
   moe_router_num_groups: 1
   moe_router_group_topk: 1
@@ -88,9 +98,11 @@ model:
   seed: ${experiment.seed}
   # finetune: false
   micro_batch_size: 1
-  global_batch_size: 2048
+  # global_batch_size: 2048
+  global_batch_size: 40
   eval_iters: 0
-  train_samples: 244141056 #1T #29297664 #120B tokens
+  # train_samples: 244141056 #1T #29297664 #120B tokens
+  train_samples: 3200 
 
   optimizer:
     weight_decay: 0.1
@@ -99,18 +111,23 @@ model:
     lr_scheduler:
       lr: 3.0e-3
       min_lr: 3.0e-4
-      lr_warmup_samples: 2048000
+      # lr_warmup_samples: 2048000
+      lr_warmup_samples: 204
       lr_decay_style: WSD
       lr_wsd_decay_style: cosine
       lr_wsd_decay_samples: 2048
 
 
 data:
-  data_path: /path
+  data_path: /share/project/zhaoyingli/datasets/pile/pile_wikipedia_demo
   split: 1
   no_mmap_bin_files: true
   tokenizer:
     tokenizer_type: QwenTokenizerFS
-    tokenizer_path: examples/aquila/qwentokenizer
+    tokenizer_path: /share/project/daizijian/qwentokenizer
     vocab_size: 151851
     make_vocab_size_divisible_by: 64
+
+# profile: true
+# profile_step_start: 0
+# profile_step_end: 19

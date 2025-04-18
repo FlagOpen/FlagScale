@@ -1667,6 +1667,8 @@ def _add_training_args(parser):
                        choices=['nccl', 'ucc'],
                        help='Select a communicator backend for pipeline parallel communication. '
                        'If None, the default backend will be used.')
+    group.add_argument('--schedules-method', type=str, default=None, 
+                       choices=['dualpipev'])
 
     return parser
 
