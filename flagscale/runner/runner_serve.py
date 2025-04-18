@@ -206,10 +206,10 @@ def _reset_serve_port(config):
     return model_port
 
 
-def _attach_kv_proxy_port(config, proxy_port):
+def _attach_kv_proxy_port(config, pd_proxy_port):
     deploy_config = config.experiment.get("deploy", {})
     OmegaConf.set_struct(config, False)
-    deploy_config["proxy_port"] = proxy_port
+    deploy_config["pd_proxy_port"] = pd_proxy_port
     OmegaConf.set_struct(config, True)
     return
 
