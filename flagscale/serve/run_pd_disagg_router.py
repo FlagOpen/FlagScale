@@ -71,6 +71,10 @@ class LoadManager:
             http_addr, info = min(
                 self._instances[rtype].items(), key=lambda kv: kv[1]["load"]
             )
+            print(
+                f"========== whole instance status {self._instances}==========",
+                flush=True,
+            )
         return http_addr, info["zmq"]
 
 
