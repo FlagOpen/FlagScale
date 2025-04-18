@@ -52,17 +52,20 @@ setup(
         "flag_scale.megatron",
         "flag_scale.flagscale",
         "flag_scale.examples",
+        "flag_scale.communication",
     ],
     package_dir={
         "flag_scale": "",
         "flag_scale.megatron": "megatron",
         "flag_scale.flagscale": "flagscale",
         "flag_scale.examples": "examples",
+        "flag_scale.communication": "communication",
     },
     package_data={
         "flag_scale.megatron": ["**/*"],
         "flag_scale.flagscale": ["**/*"],
         "flag_scale.examples": ["**/*"],
+        "flag_scale.communication": ["**/*"],
     },
     install_requires=[
         "click",
