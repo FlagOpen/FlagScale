@@ -111,6 +111,8 @@ def get_num_layers_to_build(config: TransformerConfig) -> int:
         ), "num_layers should be divisible by pipeline_model_parallel_size"
         num_layers_per_pipeline_rank = num_layers // config.pipeline_model_parallel_size
 
+    from megatron.training import get_args
+    args = get_args()
     if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None and parallel_state.get_virtual_pipeline_model_parallel_world_size() > 1:
         # Interleaved pipeline parallelism:
         # Number of layers in each model chunk is the number of layers in the stage,
@@ -131,7 +133,9 @@ def get_num_layers_to_build(config: TransformerConfig) -> int:
         num_layers_per_virtual_rank = num_layers_per_pipeline_rank // vp_size
 
         num_layers_to_build = num_layers_per_virtual_rank
-
+    elif args.schedules_method == 'dualpipev':
+        num_layers_per_pipeline_rank = num_layers_per_pipeline_rank // 2
+        num_layers_to_build = num_layers_per_pipeline_rank
     else:
         # Non-interleaved pipeline parallelism:
         # Each stage gets a contiguous set of layers.

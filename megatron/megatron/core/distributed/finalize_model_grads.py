@@ -275,8 +275,12 @@ def _allreduce_embedding_grads(model: List[torch.nn.Module], config: Transformer
     """
     All-reduce both word and position embeddings.
     """
-    _allreduce_word_embedding_grads(model, config)
-    _allreduce_position_embedding_grads(model, config)
+    from megatron.training.global_vars import get_args
+    if get_args().schedules_method == 'dualpipev':
+        return
+    else:
+        _allreduce_word_embedding_grads(model, config)
+        _allreduce_position_embedding_grads(model, config)
 
 
 def _allreduce_layernorm_grads(model: List[torch.nn.Module], config: TransformerConfig):
