@@ -206,14 +206,6 @@ def _reset_serve_port(config):
     return model_port
 
 
-def _attach_kv_proxy_port(config, pd_proxy_port):
-    deploy_config = config.experiment.get("deploy", {})
-    OmegaConf.set_struct(config, False)
-    deploy_config["pd_proxy_port"] = pd_proxy_port
-    OmegaConf.set_struct(config, True)
-    return
-
-
 def _get_inference_engine(config):
     serve_config = config.get("serve", [])
     if not serve_config:
@@ -242,12 +234,17 @@ def _get_engine_args(config, model="vllm_model"):
 
 
 def _update_config_serve(config: DictConfig):
+    deploy_config = config.experiment.get("deploy", {})
+
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     if not os.path.isdir(exp_dir):
         os.makedirs(exp_dir)
     assert os.path.isdir(exp_dir), f"Directory {exp_dir} does not exist."
 
     OmegaConf.set_struct(config, False)
+
+    if deploy_config.get("prefill_decode_disaggregation", False):
+        deploy_config["pd_proxy_port"] = get_free_port()
 
     if config.get("logging", None) is None:
         config.logging = DictConfig({})
@@ -318,11 +315,14 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 target_port = nodes[0][1].get("port")
                 p_num = deploy_config.get("prefill_num", 1)
                 d_num = deploy_config.get("decode_num", 1)
-                ports_num = (p_num + d_num) * 2 + 1
+                ports_num = (p_num + d_num) * 2
                 kv_related_ports = _get_multiple_free_ports(ports_num)
-                pd_proxy_port = kv_related_ports.pop()
+                pd_proxy_port = deploy_config.get("pd_proxy_port", None)
+                if not pd_proxy_port:
+                    raise ValueError(
+                        f"PD disaggregation requires a proxy port to be set."
+                    )
                 # pd_proxy_port = 30001  # debug, tobe removed
-                _attach_kv_proxy_port(config, pd_proxy_port)
                 print(
                     f"------------ update with port {pd_proxy_port} of new config {config} "
                 )
