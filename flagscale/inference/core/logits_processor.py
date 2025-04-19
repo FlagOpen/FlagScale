@@ -1,4 +1,3 @@
-# This file is modified from 'FlagScale/vllm/vllm/model_executor/layers/logits_processor.py'
 # SPDX-License-Identifier: Apache-2.0
 """A layer that compute logits from hidden_stats."""
 import inspect

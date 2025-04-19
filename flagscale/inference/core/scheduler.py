@@ -1,4 +1,3 @@
-# This file is modified from 'FlagScale/vllm/vllm/core/scheduler.py'
 # SPDX-License-Identifier: Apache-2.0
 
 import enum

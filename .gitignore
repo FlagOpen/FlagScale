@@ -13,6 +13,8 @@ outputs
 *.out
 .idea/
 megatron/megatron/energon
+third_party/Megatron-LM/*
+third_party/vllm/*
 
 # test results
 tests/functional_tests/test_cases/*/*/results_test

@@ -1,4 +1,3 @@
-# This file is modified from 'FlagScale/vllm/vllm/engine/llm_engine.py'
 # SPDX-License-Identifier: Apache-2.0
 
 import copy
