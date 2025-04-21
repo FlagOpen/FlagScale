@@ -47,13 +47,28 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     ```
     The above instructions create two conda environments: `flagscale-train` and `flagscale-inference`, which contain the dependency environments for training and inference, respectively.
 
-3. Install the packages with customized extensions:
-    ```sh
-    cd vllm
-    pip install .
+3. Unpatch the backend code adaptation of FlagScale
+    ```
+    cd FlagScale
+    python tools/patch/unpatch.py --backend Megatron-LM
+    python tools/patch/unpatch.py --backend vllm
+    ```
 
+4. Install the packages with customized extensions:
+    ```sh
+    cd FlagScale/third_party/vllm
+    pip install .
+    
+    cd FlagScale
     pip install -e ./megatron-energon
-    cp -r megatron-energon/src/megatron/energon megatron/megatron
+    cp -r megatron-energon/src/megatron/energon third_party/Megatron-LM/megatron
+    ```
+
+5. Patch the modifications to the specified third_party backend for PR.
+    ```
+    cd FlagScale
+    python tools/patch/patch.py --backend Megatron-LM
+    python tools/patch/patch.py --backend vllm
     ```
 
 ### Run a Task
@@ -94,7 +109,7 @@ We support the model serving of DeepSeek R1 and have implemented the `flagscale 
     FlagScale/
     ├── examples/
     │   └── deepseek_r1/
-    │       └── config/
+    │       └── conf/
     │           └── config_deepseek_r1.yaml
     |           └── hostfile.txt # Set hostfile (optional)
     │           └── serve/

@@ -1,4 +1,3 @@
-# This file is modified from 'FlagScale/vllm/vllm/inputs/data.py'
 # SPDX-License-Identifier: Apache-2.0
 
 from collections.abc import Iterable

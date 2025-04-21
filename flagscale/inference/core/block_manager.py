@@ -1,4 +1,3 @@
-# This file is modified from 'FlagScale/vllm/vllm/core/block_manager.py'
 # SPDX-License-Identifier: Apache-2.0
 """A block manager that manages token blocks."""
 from typing import Dict, List, Optional
