@@ -169,8 +169,6 @@ def _get_runner_cmd_train(
 
     runner_cmd = [backend]
     for key, value in runner_args.items():
-        if key in ["no_shared_fs"]:
-            continue
         if isinstance(value, bool):
             if value:
                 runner_cmd.append(f"--{key}")
@@ -205,7 +203,7 @@ def _generate_run_script_train(
     root_dir = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
-    megatron_dir = os.path.join(root_dir, "megatron")
+    megatron_dir = os.path.join(root_dir, "third_party", "Megatron-LM")
     cmds_config = config.experiment.get("cmds", None)
     if cmds_config:
         before_start = cmds_config.get("before_start", "")
