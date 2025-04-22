@@ -4,6 +4,8 @@ import subprocess
 from setuptools import find_packages, setup
 from setuptools.command.install import install
 
+from tools.patch.unpatch import unpatch
+
 
 def is_nvidia_chip():
     try:
@@ -41,6 +43,12 @@ class InstallRequirement(install):
         # Continue to install
         install.run(self)
 
+# unpatch the Megatron-LM
+main_path = os.path.dirname(__file__)
+backend = "Megatron-LM"
+src = os.path.join(main_path, "flagscale", "train", "backends", backend)
+dst = os.path.join(main_path, "third_party", backend)
+unpatch(src, dst, "third_party/Megatron-LM", mode="copy")
 
 setup(
     name="flag_scale",
@@ -49,18 +57,18 @@ setup(
     url="https://github.com/FlagOpen/FlagScale",
     packages=[
         "flag_scale",
-        "flag_scale.megatron",
+        "flag_scale.third_party.Megatron-LM.megatron",
         "flag_scale.flagscale",
         "flag_scale.examples",
     ],
     package_dir={
         "flag_scale": "",
-        "flag_scale.megatron": "megatron",
+        "flag_scale.third_party.Megatron-LM.megatron": "third_party/Megatron-LM/megatron",
         "flag_scale.flagscale": "flagscale",
         "flag_scale.examples": "examples",
     },
     package_data={
-        "flag_scale.megatron": ["**/*"],
+        "flag_scale.third_party.Megatron-LM.megatron": ["**/*"],
         "flag_scale.flagscale": ["**/*"],
         "flag_scale.examples": ["**/*"],
     },
