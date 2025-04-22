@@ -159,6 +159,7 @@ _CROSS_ENCODER_MODELS = {
 
 _MULTIMODAL_MODELS = {
     # [Decoder-only]
+    # --- FLAGSCALE MODIFICATION ---
     "Emu3ForCausalLM": ("llama", "LlamaForCausalLM"),
     "AriaForConditionalGeneration": ("aria", "AriaForConditionalGeneration"),
     "Blip2ForConditionalGeneration": ("blip2", "Blip2ForConditionalGeneration"),

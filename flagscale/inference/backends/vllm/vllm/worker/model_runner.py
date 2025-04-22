@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
+
+# --- FLAGSCALE MODIFICATION ---
 import os
 import dataclasses
 import gc
@@ -76,6 +78,7 @@ torch._dynamo.config.cache_size_limit = 128
 torch._dynamo.config.accumulated_cache_size_limit = 128
 
 
+# --- FLAGSCALE MODIFICATION BEG ---
 # Know more about FlagGems: https://github.com/FlagOpen/FlagGems
 if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
     try:
@@ -86,6 +89,7 @@ if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
         logger.warning("Failed to import 'flag_gems'. Falling back to default implementation.")
     except Exception as e:
         logger.warning(f"Failed to enable 'flag_gems': {e}. Falling back to default implementation.")
+# --- FLAGSCALE MODIFICATION END ---
 
 
 @dataclass(frozen=True)
@@ -503,12 +507,18 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
         self.attn_metadata_builder.prepare()
 
     def _compute_lens(self, inter_data: InterDataForSeqGroup, seq_idx: int,
-                      seq_group_metadata: SequenceGroupMetadata):
+                      seq_group_metadata: SequenceGroupMetadata, is_negative: bool = False): # --- FLAGSCALE MODIFICATION ---
         """Compute context length, sequence length and tokens
         for the given sequence data.
         """
-        seq_data = seq_group_metadata.seq_data[inter_data.seq_ids[seq_idx]]
-        token_chunk_size = seq_group_metadata.token_chunk_size
+        # --- FLAGSCALE MODIFICATION BEG ---
+        if is_negative:
+            seq_data = seq_group_metadata.negative_seq_data[inter_data.seq_ids[seq_idx]]
+            token_chunk_size = seq_group_metadata.negative_token_chunk_size
+        # --- FLAGSCALE MODIFICATION END ---
+        else:
+            seq_data = seq_group_metadata.seq_data[inter_data.seq_ids[seq_idx]]
+            token_chunk_size = seq_group_metadata.token_chunk_size
 
         # Compute context length (the number of tokens that are
         # already computed) and sequence length (total number of tokens).
@@ -549,7 +559,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
 
     def _compute_for_prefix_cache_hit(
             self, inter_data: InterDataForSeqGroup, seq_idx: int,
-            seq_group_metadata: SequenceGroupMetadata):
+            seq_group_metadata: SequenceGroupMetadata, is_negative: bool = False): # --- FLAGSCALE MODIFICATION ---
         """Check if hit prefix cache (i.e., some blocks are already computed).
         If hit, update input tokens and positions to only compute the
         remaining blocks.
@@ -614,7 +624,8 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
 
     def _compute_for_sliding_window(self, inter_data: InterDataForSeqGroup,
                                     seq_idx: int,
-                                    seq_group_metadata: SequenceGroupMetadata):
+                                    seq_group_metadata: SequenceGroupMetadata,
+                                    is_negative: bool = False): # --- FLAGSCALE MODIFICATION ---
         """Update seq_len and curr_sliding_window_block for the given
         sequence data (only required by decoding) if sliding window is enabled.
         """
@@ -638,7 +649,8 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
 
     def _compute_lora_input(self, inter_data: InterDataForSeqGroup,
                             seq_idx: int,
-                            seq_group_metadata: SequenceGroupMetadata):
+                            seq_group_metadata: SequenceGroupMetadata,
+                            is_negative: bool = False): # --- FLAGSCALE MODIFICATION ---
         """If LoRA is enabled, compute LoRA index and prompt mapping."""
         if not self.enable_lora:
             return
@@ -658,7 +670,8 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
 
     def _compute_prompt_adapter_input(
             self, inter_data: InterDataForSeqGroup,
-            seq_group_metadata: SequenceGroupMetadata):
+            seq_group_metadata: SequenceGroupMetadata,
+            is_negative: bool = False): # --- FLAGSCALE MODIFICATION ---
         """If prompt adapter is enabled, compute index and prompt mapping.
         """
         # Note that when is_prompt=True, we expect only one sequence
@@ -685,7 +698,8 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             and seq_group_metadata.sampling_params.prompt_logprobs else 1)
 
     def _compute_multi_modal_input(self, inter_data: InterDataForSeqGroup,
-                                   seq_group_metadata: SequenceGroupMetadata):
+                                   seq_group_metadata: SequenceGroupMetadata,
+                                   is_negative: bool = False): # --- FLAGSCALE MODIFICATION ---
         """If multi-modal data is given, add it to the input."""
         # NOTE: mm_data only includes the subset of multi-modal items that
         # intersect with the current prefill positions.
@@ -771,6 +785,26 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                 per_seq_fn(inter_data, seq_idx, seq_group_metadata)
         for per_seq_group_fn in self.per_seq_group_compute_fns:
             per_seq_group_fn(inter_data, seq_group_metadata)
+
+        # --- FLAGSCALE MODIFICATION BEG ---
+        if seq_group_metadata.negative_seq_data:
+            negative_inter_data = self.init_cached_inter_data(
+                request_id=seq_group_metadata.request_id,
+                seq_ids=seq_ids,
+                is_prompt=is_prompt,
+                block_tables=seq_group_metadata.negative_block_tables,
+                computed_block_nums=[], # for prefix caching.
+                reinit=True,
+                reinit_use_defaults=True,
+                encoder_seq_len=encoder_seq_len)
+            self.inter_data_list.append(negative_inter_data)
+
+            for seq_idx in range(n_seqs):
+                for per_seq_fn in self.per_seq_compute_fns:
+                    per_seq_fn(negative_inter_data, seq_idx, seq_group_metadata, is_negative=True)
+            for per_seq_group_fn in self.per_seq_group_compute_fns:
+                per_seq_group_fn(negative_inter_data, seq_group_metadata)
+        # --- FLAGSCALE MODIFICATION END ---
 
     def _use_captured_graph(self,
                             batch_size: int,
