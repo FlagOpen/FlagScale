@@ -1,8 +1,16 @@
 import os
+import sys
 import subprocess
 
 from setuptools import find_packages, setup
 from setuptools.command.install import install
+
+try:
+    import git  # from GitPython
+except ImportError:
+    print("[INFO] GitPython not found. Installing...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "gitpython"])
+    import git
 
 from tools.patch.unpatch import unpatch
 
