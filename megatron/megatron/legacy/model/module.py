@@ -8,7 +8,7 @@ from torch.nn.parameter import Parameter
 
 from megatron.training import get_args
 from megatron.core import mpu, tensor_parallel
-
+from megatron.core.pipeline_parallel.dualpipev_schedules import get_dualpipe_chunk
 
 _FLOAT_TYPES = (torch.FloatTensor, torch.cuda.FloatTensor)
 _HALF_TYPES = (torch.HalfTensor, torch.cuda.HalfTensor)
@@ -184,12 +184,25 @@ class Float16Module(MegatronModule):
 
 
     def forward(self, *inputs, **kwargs):
-        if mpu.is_pipeline_first_stage():
-            inputs = fp32_to_float16(inputs, self.float16_convertor)
-        outputs = self.module(*inputs, **kwargs)
-        if mpu.is_pipeline_last_stage():
-            outputs = float16_to_fp32(outputs)
-        return outputs
+        if get_args().schedules_method == 'dualpipev':
+                
+            dualpipe_first_stage = mpu.is_pipeline_first_stage() and get_dualpipe_chunk() == 0
+            if dualpipe_first_stage:
+                inputs = fp32_to_float16(inputs, self.float16_convertor)
+            outputs = self.module(*inputs, **kwargs)
+            dualpipe_last_stage = mpu.is_pipeline_first_stage() and get_dualpipe_chunk() == 1
+            if dualpipe_last_stage:
+                outputs = float16_to_fp32(outputs)
+            return outputs
+
+        else:
+            if mpu.is_pipeline_first_stage():
+                inputs = fp32_to_float16(inputs, self.float16_convertor)
+            outputs = self.module(*inputs, **kwargs)
+            if mpu.is_pipeline_last_stage():
+                outputs = float16_to_fp32(outputs)
+            return outputs
+
 
 
     def state_dict(self, prefix='', keep_vars=False):

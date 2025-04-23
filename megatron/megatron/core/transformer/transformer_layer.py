@@ -159,14 +159,23 @@ def get_transformer_layer_offset(config: TransformerConfig):
                 ):
                     offset -= 1
             else:
-                offset = pipeline_rank * num_layers_per_pipeline_rank
+                from megatron.training import get_args
+                args = get_args()
+                if args.schedules_method != "dualpipev":
+                    offset = pipeline_rank * num_layers_per_pipeline_rank
 
-                # Reduce the offset of embedding layer from the total layer number
-                if (
-                    config.account_for_embedding_in_pipeline_split
-                    and not parallel_state.is_pipeline_first_stage()
-                ):
-                    offset -= 1
+                    # Reduce the offset of embedding layer from the total layer number
+                    if (
+                        config.account_for_embedding_in_pipeline_split
+                        and not parallel_state.is_pipeline_first_stage()
+                    ):
+                        offset -= 1
+                else:
+                    num_layers_per_pipeline_rank = num_layers_per_pipeline_rank // 2
+                    if args.dualpipev_first_chunk:
+                        offset = pipeline_rank * num_layers_per_pipeline_rank
+                    else:
+                        offset = config.num_layers - ((pipeline_rank+1) * num_layers_per_pipeline_rank)
     else:
         offset = 0
     return offset

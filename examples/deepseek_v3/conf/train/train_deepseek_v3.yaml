@@ -2,7 +2,7 @@ system:
   no_shared_fs: ${experiment.runner.no_shared_fs}
   num_workers: 16
   tensor_model_parallel_size: 1
-  pipeline_model_parallel_size: 8
+  pipeline_model_parallel_size: 4
   # virtual_pipeline_model_parallel_size: 2
   expert_model_parallel_size: 1
   context_parallel_size: 1
@@ -12,8 +12,8 @@ system:
   qk_layernorm: true
   sequence_parallel: true
   use_distributed_optimizer: true
-  overlap_grad_reduce: true
-  overlap_param_gather: true
+  # overlap_grad_reduce: true
+  # overlap_param_gather: true
   finetune: false
   schedules_method: dualpipev
   precision:
@@ -36,12 +36,12 @@ system:
     save_interval: ${experiment.save_steps}
     load: ${experiment.load}
     ckpt_format: ${experiment.ckpt_format}
-  profile: true
-  profile_step_start: 3
-  profile_step_end: 5
-  profile_ranks: [0,1,2,3,4,5,6,7]
-  # profile_ranks: [0,1,2,3]
-  use_pytorch_profiler: false
+  # profile: true
+  # profile_step_start: 3
+  # profile_step_end: 5
+  # # profile_ranks: [0,1,2,3,4,5,6,7]
+  # # profile_ranks: [0,1,2,3]
+  # use_pytorch_profiler: false
 
 model:
   transformer_impl: transformer_engine
@@ -99,7 +99,8 @@ model:
   # finetune: false
   micro_batch_size: 1
   # global_batch_size: 2048
-  global_batch_size: 40
+  # global_batch_size: 20
+  global_batch_size: 10
   eval_iters: 0
   # train_samples: 244141056 #1T #29297664 #120B tokens
   train_samples: 3200 

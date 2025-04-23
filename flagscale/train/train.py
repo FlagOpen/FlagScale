@@ -80,7 +80,7 @@ from megatron.training.utils import (
     check_adlr_autoresume_termination,
     logical_and_across_model_parallel_group,
     reduce_max_stat_across_model_parallel_group,
-    is_last_rank,
+    # is_last_rank,
     print_rank_0,
     print_rank_last,
     report_memory,
@@ -110,6 +110,17 @@ from flagscale.train.theoretical_memory_usage import report_theoretical_memory a
 stimer = StragglerDetector()
 
 
+def is_last_rank():
+    args = get_args()
+    if mpu.get_pipeline_model_parallel_world_size() > 1:
+        if args.schedules_method == "dualpipev":
+            return mpu.is_pipeline_first_stage(ignore_virtual=True)
+        else:
+            return torch.distributed.get_rank() == mpu.get_last_rank_when_using_pipeline() 
+    else:
+        return torch.distributed.get_rank() == (
+            torch.distributed.get_world_size() - 1)
+
 def destroy_global_state():
     destroy_global_vars()
     destroy_num_microbatches_calculator()
@@ -126,6 +137,7 @@ def print_datetime(string):
 
 
 def num_floating_point_operations(args, batch_size):
+    # print(f"in num_floating_point_operations")
     def transformer_flops():
 
         # Part 1: Attention ======================================================================
@@ -303,6 +315,7 @@ def num_floating_point_operations(args, batch_size):
 
     # Compute standard Transformer model FLOPs.
     flops_fwd = transformer_flops()
+    # print(f"in num_floating_point_operations, return flops_fwd")
     return flops_fwd * 3
 
 
@@ -680,186 +693,174 @@ def update_train_iters(args):
     print_rank_0(f'setting training iterations to {args.train_iters}')
 
 
-# def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap_with_ddp=True):
-#     """Build the model."""
-#     args = get_args()
-#     args.model_type = model_type
-
-#     # Build model.
-#     def build_model():
-#         if mpu.get_pipeline_model_parallel_world_size() > 1 and \
-#         args.virtual_pipeline_model_parallel_size is not None:
-#             assert model_type != ModelType.encoder_and_decoder, \
-#                 "Interleaved schedule not supported for model with both encoder and decoder"
-#             model = []
-#             for i in range(args.virtual_pipeline_model_parallel_size):
-#                 mpu.set_virtual_pipeline_model_parallel_rank(i)
-#                 # Set pre_process and post_process only after virtual rank is set.
-#                 pre_process = mpu.is_pipeline_first_stage()
-#                 post_process = mpu.is_pipeline_last_stage()
-#                 this_model = model_provider_func(
-#                     pre_process=pre_process,
-#                     post_process=post_process
-#                 )
-#                 this_model.model_type = model_type
-#                 model.append(this_model)
-#         elif args.schedules_method == 'dualpipev':
-#             model = []
-#             for _ in range(2):
-#                 # mpu.set_virtual_pipeline_model_parallel_rank(i)
-#                 # Set pre_process and post_process only after virtual rank is set.
-#                 pre_process = mpu.is_pipeline_first_stage()
-#                 post_process = mpu.is_pipeline_last_stage()
-#                 this_model = model_provider_func(
-#                     pre_process=pre_process,
-#                     post_process=post_process
-#                 )
-#                 this_model.model_type = model_type
-#                 model.append(this_model)
-#         else:
-#             pre_process = mpu.is_pipeline_first_stage()
-#             post_process = mpu.is_pipeline_last_stage()
-#             add_encoder = True
-#             add_decoder = True
-#             if model_type == ModelType.encoder_and_decoder:
-#                 if mpu.get_pipeline_model_parallel_world_size() > 1:
-#                     rank = mpu.get_pipeline_model_parallel_rank()
-#                     first_decoder_rank = args.encoder_pipeline_model_parallel_size
-#                     world_size = mpu.get_pipeline_model_parallel_world_size()
-#                     pre_process = rank == 0 or rank == first_decoder_rank
-#                     post_process = (rank == (first_decoder_rank - 1)) or (rank == (world_size - 1))
-#                     add_encoder = mpu.is_inside_encoder(rank)
-#                     add_decoder = mpu.is_inside_decoder(rank)
-#                 model = model_provider_func(
-#                     pre_process=pre_process,
-#                     post_process=post_process,
-#                     add_encoder=add_encoder,
-#                     add_decoder=add_decoder)
-#             else:
-#                 model = model_provider_func(
-#                     pre_process=pre_process,
-#                     post_process=post_process
-#                 )
-#             model.model_type = model_type
-#         return model
-#     if args.init_model_with_meta_device:
-#         with torch.device('meta'):
-#             model = build_model()
-#     else:
-#         model = build_model()
-
-#     if not isinstance(model, list):
-#         model = [model]
-
-#     # Set tensor model parallel attributes if not set.
-#     # Only parameters that are already tensor model parallel have these
-#     # attributes set for them. We should make sure the default attributes
-#     # are set for all params so the optimizer can use them.
-#     for model_module in model:
-#         for param in model_module.parameters():
-#             tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
-
-#     # Print number of parameters.
-#     num_parameters = sum(
-#         [sum([p.nelement() for p in model_module.parameters()])
-#          for model_module in model]
-#     )
-#     if mpu.get_data_parallel_rank() == 0:
-#         print(' > number of parameters on (tensor, pipeline) '
-#               'model parallel rank ({}, {}): {}'.format(
-#             mpu.get_tensor_model_parallel_rank(),
-#             mpu.get_pipeline_model_parallel_rank(),
-#             num_parameters), flush=True)
-
-#     # GPU allocation.
-#     # For FSDP2, we don't allocate GPU memory here. We allocate GPU memory
-#     # in the fully_shard function of FSDP2 instead.
-#     if not (args.use_torch_fsdp2 and args.use_cpu_initialization) and not args.init_model_with_meta_device:
-#         for model_module in model:
-#             model_module.cuda(torch.cuda.current_device())
-
-#     # Fp16 conversion.
-#     if args.fp16 or args.bf16:
-#         model = [Float16Module(model_module, args) for model_module in model]
-
-#     # The model_module.bfloat16()/model_module.half() above will call the inplace copy of TE's
-#     # Float8Tensor, which will write an unwanted value (amax calculated from the current fp8
-#     # param) to its amax_history. The following logic will correct the amax_history back.
-#     for model_module in model:
-#         for param in model_module.parameters():
-#             if is_float8tensor(param) and param._fp8_meta is not None:
-#                 fp8_meta = param._fp8_meta['scaling_fwd']
-#                 fp8_meta_index = param._fp8_meta_index
-#                 if hasattr(param, 'get_high_precision_init_val'):
-#                     fp8_meta.amax_history[0][fp8_meta_index].copy_(
-#                         param.get_high_precision_init_val().abs().max()
-#                     )
-#                 else:
-#                     fp8_meta.amax_history[0][fp8_meta_index] = 0
-
-#     if wrap_with_ddp:
-#         if args.use_torch_fsdp2:
-#             assert HAVE_FSDP2, "Torch FSDP2 requires torch>=2.4.0"
-#             DP = torch_FSDP
-#         elif args.use_custom_fsdp:
-#             DP = custom_FSDP
-#         else:
-#             DP = DDP
-
-#         config = get_model_config(model[0])
-
-#         kwargs = {}
-#         for f in dataclasses.fields(DistributedDataParallelConfig):
-#             if hasattr(args, f.name):
-#                 kwargs[f.name] = getattr(args, f.name)
-#         kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
-#         kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
-#         kwargs['check_for_large_grads'] = args.check_for_large_grads
-#         if args.ddp_num_buckets is not None:
-#             assert args.ddp_bucket_size is None, \
-#                 "Cannot specify both --ddp-num-buckets and --ddp-bucket-size"
-#             assert args.ddp_num_buckets > 0, \
-#                 "--ddp-num-buckets must be greater than 0"
-#             kwargs['bucket_size'] = num_parameters // args.ddp_num_buckets
-#         else:
-#             kwargs['bucket_size'] = args.ddp_bucket_size
-#         kwargs['pad_buckets_for_high_nccl_busbw'] = args.ddp_pad_buckets_for_high_nccl_busbw
-#         kwargs['average_in_collective'] = args.ddp_average_in_collective
-#         if args.use_custom_fsdp and args.use_precision_aware_optimizer:
-#             kwargs["preserve_fp32_weights"] = False
-#         ddp_config = DistributedDataParallelConfig(**kwargs)
-
-#         if not getattr(args, "use_torch_fsdp2", False):
-#             # In the custom FSDP and DDP use path, we need to initialize the bucket size.
-
-#             # If bucket_size is not provided as an input, use sane default.
-#             # If using very large dp_sizes, make buckets larger to ensure that chunks used in NCCL
-#             # ring-reduce implementations are large enough to remain bandwidth-bound rather than
-#             # latency-bound.
-#             if ddp_config.bucket_size is None:
-#                 ddp_config.bucket_size = max(
-#                     40000000, 1000000 * mpu.get_data_parallel_world_size(with_context_parallel=True)
-#                 )
-#             # Set bucket_size to infinity if overlap_grad_reduce is False.
-#             if not ddp_config.overlap_grad_reduce:
-#                 ddp_config.bucket_size = None
-
-#         model = [DP(config=config,
-#                      ddp_config=ddp_config,
-#                      module=model_chunk,
-#                      # Turn off bucketing for model_chunk 2 onwards, since communication for these
-#                      # model chunks is overlapped with compute anyway.
-#                      disable_bucketing=(model_chunk_idx > 0) or args.overlap_param_gather_with_optimizer_step)
-#                  for (model_chunk_idx, model_chunk) in enumerate(model)]
-
-#         # Broadcast params from data parallel src rank to other data parallel ranks.
-#         if args.data_parallel_random_init:
-#             for model_module in model:
-#                 model_module.broadcast_params()
-
-#     return model
-
 def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap_with_ddp=True):
+    """Build the model."""
+    args = get_args()
+    args.model_type = model_type
+
+    # Build model.
+    def build_model():
+        if mpu.get_pipeline_model_parallel_world_size() > 1 and \
+        args.virtual_pipeline_model_parallel_size is not None:
+            assert model_type != ModelType.encoder_and_decoder, \
+                "Interleaved schedule not supported for model with both encoder and decoder"
+            model = []
+            for i in range(args.virtual_pipeline_model_parallel_size):
+                mpu.set_virtual_pipeline_model_parallel_rank(i)
+                # Set pre_process and post_process only after virtual rank is set.
+                pre_process = mpu.is_pipeline_first_stage()
+                post_process = mpu.is_pipeline_last_stage()
+                this_model = model_provider_func(
+                    pre_process=pre_process,
+                    post_process=post_process
+                )
+                this_model.model_type = model_type
+                model.append(this_model)
+        else:
+            pre_process = mpu.is_pipeline_first_stage()
+            post_process = mpu.is_pipeline_last_stage()
+            add_encoder = True
+            add_decoder = True
+            if model_type == ModelType.encoder_and_decoder:
+                if mpu.get_pipeline_model_parallel_world_size() > 1:
+                    rank = mpu.get_pipeline_model_parallel_rank()
+                    first_decoder_rank = args.encoder_pipeline_model_parallel_size
+                    world_size = mpu.get_pipeline_model_parallel_world_size()
+                    pre_process = rank == 0 or rank == first_decoder_rank
+                    post_process = (rank == (first_decoder_rank - 1)) or (rank == (world_size - 1))
+                    add_encoder = mpu.is_inside_encoder(rank)
+                    add_decoder = mpu.is_inside_decoder(rank)
+                model = model_provider_func(
+                    pre_process=pre_process,
+                    post_process=post_process,
+                    add_encoder=add_encoder,
+                    add_decoder=add_decoder)
+            else:
+                model = model_provider_func(
+                    pre_process=pre_process,
+                    post_process=post_process
+                )
+            model.model_type = model_type
+        return model
+    if args.init_model_with_meta_device:
+        with torch.device('meta'):
+            model = build_model()
+    else:
+        model = build_model()
+
+    if not isinstance(model, list):
+        model = [model]
+
+    # Set tensor model parallel attributes if not set.
+    # Only parameters that are already tensor model parallel have these
+    # attributes set for them. We should make sure the default attributes
+    # are set for all params so the optimizer can use them.
+    for model_module in model:
+        for param in model_module.parameters():
+            tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
+
+    # Print number of parameters.
+    num_parameters = sum(
+        [sum([p.nelement() for p in model_module.parameters()])
+         for model_module in model]
+    )
+    if mpu.get_data_parallel_rank() == 0:
+        print(' > number of parameters on (tensor, pipeline) '
+              'model parallel rank ({}, {}): {}'.format(
+            mpu.get_tensor_model_parallel_rank(),
+            mpu.get_pipeline_model_parallel_rank(),
+            num_parameters), flush=True)
+
+    # GPU allocation.
+    # For FSDP2, we don't allocate GPU memory here. We allocate GPU memory
+    # in the fully_shard function of FSDP2 instead.
+    if not (args.use_torch_fsdp2 and args.use_cpu_initialization) and not args.init_model_with_meta_device:
+        for model_module in model:
+            model_module.cuda(torch.cuda.current_device())
+
+    # Fp16 conversion.
+    if args.fp16 or args.bf16:
+        model = [Float16Module(model_module, args) for model_module in model]
+
+    # The model_module.bfloat16()/model_module.half() above will call the inplace copy of TE's
+    # Float8Tensor, which will write an unwanted value (amax calculated from the current fp8
+    # param) to its amax_history. The following logic will correct the amax_history back.
+    for model_module in model:
+        for param in model_module.parameters():
+            if is_float8tensor(param) and param._fp8_meta is not None:
+                fp8_meta = param._fp8_meta['scaling_fwd']
+                fp8_meta_index = param._fp8_meta_index
+                if hasattr(param, 'get_high_precision_init_val'):
+                    fp8_meta.amax_history[0][fp8_meta_index].copy_(
+                        param.get_high_precision_init_val().abs().max()
+                    )
+                else:
+                    fp8_meta.amax_history[0][fp8_meta_index] = 0
+
+    if wrap_with_ddp:
+        if args.use_torch_fsdp2:
+            assert HAVE_FSDP2, "Torch FSDP2 requires torch>=2.4.0"
+            DP = torch_FSDP
+        elif args.use_custom_fsdp:
+            DP = custom_FSDP
+        else:
+            DP = DDP
+
+        config = get_model_config(model[0])
+
+        kwargs = {}
+        for f in dataclasses.fields(DistributedDataParallelConfig):
+            if hasattr(args, f.name):
+                kwargs[f.name] = getattr(args, f.name)
+        kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
+        kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
+        kwargs['check_for_large_grads'] = args.check_for_large_grads
+        if args.ddp_num_buckets is not None:
+            assert args.ddp_bucket_size is None, \
+                "Cannot specify both --ddp-num-buckets and --ddp-bucket-size"
+            assert args.ddp_num_buckets > 0, \
+                "--ddp-num-buckets must be greater than 0"
+            kwargs['bucket_size'] = num_parameters // args.ddp_num_buckets
+        else:
+            kwargs['bucket_size'] = args.ddp_bucket_size
+        kwargs['pad_buckets_for_high_nccl_busbw'] = args.ddp_pad_buckets_for_high_nccl_busbw
+        kwargs['average_in_collective'] = args.ddp_average_in_collective
+        if args.use_custom_fsdp and args.use_precision_aware_optimizer:
+            kwargs["preserve_fp32_weights"] = False
+        ddp_config = DistributedDataParallelConfig(**kwargs)
+
+        if not getattr(args, "use_torch_fsdp2", False):
+            # In the custom FSDP and DDP use path, we need to initialize the bucket size.
+
+            # If bucket_size is not provided as an input, use sane default.
+            # If using very large dp_sizes, make buckets larger to ensure that chunks used in NCCL
+            # ring-reduce implementations are large enough to remain bandwidth-bound rather than
+            # latency-bound.
+            if ddp_config.bucket_size is None:
+                ddp_config.bucket_size = max(
+                    40000000, 1000000 * mpu.get_data_parallel_world_size(with_context_parallel=True)
+                )
+            # Set bucket_size to infinity if overlap_grad_reduce is False.
+            if not ddp_config.overlap_grad_reduce:
+                ddp_config.bucket_size = None
+
+        model = [DP(config=config,
+                     ddp_config=ddp_config,
+                     module=model_chunk,
+                     # Turn off bucketing for model_chunk 2 onwards, since communication for these
+                     # model chunks is overlapped with compute anyway.
+                     disable_bucketing=(model_chunk_idx > 0) or args.overlap_param_gather_with_optimizer_step)
+                 for (model_chunk_idx, model_chunk) in enumerate(model)]
+
+        # Broadcast params from data parallel src rank to other data parallel ranks.
+        if args.data_parallel_random_init:
+            for model_module in model:
+                model_module.broadcast_params()
+
+    return model
+
+
+def get_model_for_dualpipev(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap_with_ddp=True):
     """Build the model."""
     args = get_args()
     args.model_type = model_type
@@ -1022,7 +1023,11 @@ def setup_model_and_optimizer(model_provider_func,
     timers = get_timers()
     one_logger = get_one_logger()
 
-    model = get_model(model_provider_func, model_type)
+    if args.schedules_method == "dualpipev":
+        model = get_model_for_dualpipev(model_provider_func, model_type)
+    else:
+        model = get_model(model_provider_func, model_type)
+
     unwrapped_model = unwrap_model(model)
 
     config = None
@@ -1125,140 +1130,52 @@ def dummy_train_step(data_iterator):
         batch = get_batch_on_this_cp_rank(batch)
 
 
-# def train_step(forward_step_func, data_iterator,
-#                model, optimizer, opt_param_scheduler, config):
-#     """Single training step."""
-#     args = get_args()
-#     timers = get_timers()
-
-#     rerun_state_machine = get_rerun_state_machine()
-#     while rerun_state_machine.should_run_forward_backward(data_iterator):
-#         # Set grad to zero.
-#         for model_chunk in model:
-#             model_chunk.zero_grad_buffer()
-#         optimizer.zero_grad()
-
-#         # Forward pass.
-#         forward_backward_func = get_forward_backward_func()
-#         losses_reduced = forward_backward_func(
-#             forward_step_func=forward_step_func,
-#             data_iterator=data_iterator,
-#             model=model,
-#             num_microbatches=get_num_microbatches(),
-#             seq_length=args.seq_length,
-#             micro_batch_size=args.micro_batch_size,
-#             decoder_seq_length=args.decoder_seq_length,
-#             forward_only=False)
-#     should_checkpoint, should_exit, exit_code = rerun_state_machine.should_checkpoint_and_exit()
-#     if should_exit:
-#         return {}, True, should_checkpoint, should_exit, exit_code, None, None
-
-#     ########## FlagScale Begin ##########
-#     if args.auto_skip_spiky_loss and (args.consumed_train_samples > args.lr_warmup_samples and args.curr_iteration > args.lr_warmup_iters):
-#         spiky_loss_detector = get_spiky_loss_detector()
-#         loss_ = spiky_loss_detector.reduce_losses(losses_reduced)
-#         is_spiky_loss = spiky_loss_detector.is_spkiy_loss(loss_)
-#         is_spiky_loss_tensor = torch.tensor(is_spiky_loss, dtype=torch.int, device="cuda")
-#         torch.distributed.all_reduce(is_spiky_loss_tensor, op=torch.distributed.ReduceOp.MAX)
-#         is_spiky_loss = is_spiky_loss_tensor.item()
-#         if is_spiky_loss > 0:
-#             return {}, True, should_checkpoint, should_exit, exit_code, None, None
-#     ########## FlagScale End ##########
-
-#     # Empty unused memory.
-#     if args.empty_unused_memory_level >= 1:
-#         torch.cuda.empty_cache()
-
-#     # Vision gradients.
-#     if args.vision_pretraining and args.vision_pretraining_type == "dino":
-#         unwrapped_model = unwrap_model(model[0])
-#         unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
-
-#     # Update parameters.
-
-#     timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
-#     update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
-#     timers('optimizer').stop()
-
-#     # when freezing sub-models we may have a mixture of successful and unsucessful ranks,
-#     # so we must gather across mp ranks
-#     update_successful = logical_and_across_model_parallel_group(update_successful)
-#     # grad_norm and num_zeros_in_grad will be None on ranks without trainable params,
-#     # so we must gather across mp ranks
-#     grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
-#     if args.log_num_zeros_in_grad:
-#         num_zeros_in_grad = reduce_max_stat_across_model_parallel_group(num_zeros_in_grad)
-
-#     # Vision momentum.
-#     if args.vision_pretraining and args.vision_pretraining_type == "dino":
-#         unwrapped_model = unwrap_model(model[0])
-#         unwrapped_model.update_momentum(args.curr_iteration)
-
-#     # Update learning rate.
-#     if update_successful:
-#         increment = get_num_microbatches() * \
-#                     args.micro_batch_size * \
-#                     args.data_parallel_size
-#         opt_param_scheduler.step(increment=increment)
-#         skipped_iter = 0
-#     else:
-#         skipped_iter = 1
-
-#     # Empty unused memory.
-#     if args.empty_unused_memory_level >= 2:
-#         torch.cuda.empty_cache()
-
-#     if mpu.is_pipeline_last_stage(ignore_virtual=True):
-#         # Average loss across microbatches.
-#         loss_reduced = {}
-#         for key in losses_reduced[0].keys():
-#             numerator = 0
-#             denominator = 0
-#             for x in losses_reduced:
-#                 val = x[key]
-#                 # there is one dict per microbatch. in new reporting, we average
-#                 # over the total number of tokens across the global batch.
-#                 if isinstance(val, tuple) or isinstance(val, list):
-#                     numerator += val[0]
-#                     denominator += val[1]
-#                 else:
-#                     # legacy behavior. we average over the number of microbatches,
-#                     # and so the denominator is 1.
-#                     numerator += val
-#                     denominator += 1
-#             loss_reduced[key] = numerator / denominator
-#         return loss_reduced, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
-#     return {}, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
-
 def train_step(forward_step_func, data_iterator,
                model, optimizer, opt_param_scheduler, config):
     """Single training step."""
     args = get_args()
     timers = get_timers()
 
-    # Set grad to zero.
-    for model_chunk in model:
-        model_chunk.zero_grad_buffer()
-    optimizer.zero_grad()
+    rerun_state_machine = get_rerun_state_machine()
+    while rerun_state_machine.should_run_forward_backward(data_iterator):
+        # Set grad to zero.
+        for model_chunk in model:
+            model_chunk.zero_grad_buffer()
+        optimizer.zero_grad()
 
-    # Forward pass.
-    forward_backward_func = get_forward_backward_func()
-    losses_reduced = forward_backward_func(
-        forward_step_func=forward_step_func,
-        data_iterator=data_iterator,
-        model=model,
-        num_microbatches=get_num_microbatches(),
-        seq_length=args.seq_length,
-        micro_batch_size=args.micro_batch_size,
-        decoder_seq_length=args.decoder_seq_length,
-        forward_only=False)
+        # Forward pass.
+        forward_backward_func = get_forward_backward_func()
+        losses_reduced = forward_backward_func(
+            forward_step_func=forward_step_func,
+            data_iterator=data_iterator,
+            model=model,
+            num_microbatches=get_num_microbatches(),
+            seq_length=args.seq_length,
+            micro_batch_size=args.micro_batch_size,
+            decoder_seq_length=args.decoder_seq_length,
+            forward_only=False)
+    should_checkpoint, should_exit, exit_code = rerun_state_machine.should_checkpoint_and_exit()
+    if should_exit:
+        return {}, True, should_checkpoint, should_exit, exit_code, None, None
+
+    ########## FlagScale Begin ##########
+    if args.auto_skip_spiky_loss and (args.consumed_train_samples > args.lr_warmup_samples and args.curr_iteration > args.lr_warmup_iters):
+        spiky_loss_detector = get_spiky_loss_detector()
+        loss_ = spiky_loss_detector.reduce_losses(losses_reduced)
+        is_spiky_loss = spiky_loss_detector.is_spkiy_loss(loss_)
+        is_spiky_loss_tensor = torch.tensor(is_spiky_loss, dtype=torch.int, device="cuda")
+        torch.distributed.all_reduce(is_spiky_loss_tensor, op=torch.distributed.ReduceOp.MAX)
+        is_spiky_loss = is_spiky_loss_tensor.item()
+        if is_spiky_loss > 0:
+            return {}, True, should_checkpoint, should_exit, exit_code, None, None
+    ########## FlagScale End ##########
 
     # Empty unused memory.
     if args.empty_unused_memory_level >= 1:
         torch.cuda.empty_cache()
 
     # Vision gradients.
-    if getattr(args, 'vision_pretraining', False) and args.vision_pretraining_type == "dino":
+    if args.vision_pretraining and args.vision_pretraining_type == "dino":
         unwrapped_model = unwrap_model(model[0])
         unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
 
@@ -1268,8 +1185,17 @@ def train_step(forward_step_func, data_iterator,
     update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
     timers('optimizer').stop()
 
+    # when freezing sub-models we may have a mixture of successful and unsucessful ranks,
+    # so we must gather across mp ranks
+    update_successful = logical_and_across_model_parallel_group(update_successful)
+    # grad_norm and num_zeros_in_grad will be None on ranks without trainable params,
+    # so we must gather across mp ranks
+    grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
+    if args.log_num_zeros_in_grad:
+        num_zeros_in_grad = reduce_max_stat_across_model_parallel_group(num_zeros_in_grad)
+
     # Vision momentum.
-    if getattr(args, 'vision_pretraining', False) and args.vision_pretraining_type == "dino":
+    if args.vision_pretraining and args.vision_pretraining_type == "dino":
         unwrapped_model = unwrap_model(model[0])
         unwrapped_model.update_momentum(args.curr_iteration)
 
@@ -1306,8 +1232,106 @@ def train_step(forward_step_func, data_iterator,
                     numerator += val
                     denominator += 1
             loss_reduced[key] = numerator / denominator
-        return loss_reduced, skipped_iter, grad_norm, num_zeros_in_grad
-    return {}, skipped_iter, grad_norm, num_zeros_in_grad
+        return loss_reduced, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
+    return {}, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
+
+def train_step_for_dualpipev(forward_step_func, data_iterator,
+               model, optimizer, opt_param_scheduler, config):
+    """Single training step."""
+    # print(f"call train step for dualpipev")
+    args = get_args()
+    timers = get_timers()
+
+    # print(f"call rerun state machine")
+    rerun_state_machine = get_rerun_state_machine()
+    while rerun_state_machine.should_run_forward_backward(data_iterator):
+        # Set grad to zero.
+        for model_chunk in model:
+            model_chunk.zero_grad_buffer()
+        optimizer.zero_grad()
+
+        # print(f"call forward backward func")
+        # Forward pass.
+        forward_backward_func = get_forward_backward_func()
+        losses_reduced = forward_backward_func(
+            forward_step_func=forward_step_func,
+            data_iterator=data_iterator,
+            model=model,
+            num_microbatches=get_num_microbatches(),
+            seq_length=args.seq_length,
+            micro_batch_size=args.micro_batch_size,
+            decoder_seq_length=args.decoder_seq_length,
+            forward_only=False)
+    should_checkpoint, should_exit, exit_code = rerun_state_machine.should_checkpoint_and_exit()
+    if should_exit:
+        return {}, True, should_checkpoint, should_exit, exit_code, None, None
+    
+    # Empty unused memory.
+    if args.empty_unused_memory_level >= 1:
+        torch.cuda.empty_cache()
+
+    # Vision gradients.
+    if args.vision_pretraining and args.vision_pretraining_type == "dino":
+        unwrapped_model = unwrap_model(model[0])
+        unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
+
+    # Update parameters.
+    # print(f"call optimizer step")
+    timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
+    update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
+    timers('optimizer').stop()
+
+    # when freezing sub-models we may have a mixture of successful and unsucessful ranks,
+    # so we must gather across mp ranks
+    update_successful = logical_and_across_model_parallel_group(update_successful)
+    # grad_norm and num_zeros_in_grad will be None on ranks without trainable params,
+    # so we must gather across mp ranks
+    grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
+    if args.log_num_zeros_in_grad:
+        num_zeros_in_grad = reduce_max_stat_across_model_parallel_group(num_zeros_in_grad)
+
+    # Vision momentum.
+    if args.vision_pretraining and args.vision_pretraining_type == "dino":
+        unwrapped_model = unwrap_model(model[0])
+        unwrapped_model.update_momentum(args.curr_iteration)
+
+    # Update learning rate.
+    if update_successful:
+        increment = get_num_microbatches() * \
+                    args.micro_batch_size * \
+                    args.data_parallel_size
+        opt_param_scheduler.step(increment=increment)
+        skipped_iter = 0
+    else:
+        skipped_iter = 1
+
+    # Empty unused memory.
+    if args.empty_unused_memory_level >= 2:
+        torch.cuda.empty_cache()
+
+    # print(f"call processing loss")
+    dualpipevlaststage = mpu.is_pipeline_first_stage(ignore_virtual=True)
+    if dualpipevlaststage:
+        # Average loss across microbatches.
+        loss_reduced = {}
+        for key in losses_reduced[0].keys():
+            numerator = 0
+            denominator = 0
+            for x in losses_reduced:
+                val = x[key]
+                # there is one dict per microbatch. in new reporting, we average
+                # over the total number of tokens across the global batch.
+                if isinstance(val, tuple) or isinstance(val, list):
+                    numerator += val[0]
+                    denominator += val[1]
+                else:
+                    # legacy behavior. we average over the number of microbatches,
+                    # and so the denominator is 1.
+                    numerator += val
+                    denominator += 1
+            loss_reduced[key] = numerator / denominator
+        return loss_reduced, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
+    return {}, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
 
 
 def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration,
@@ -1349,6 +1373,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
     total_loss_dict[nan_iters_key] = total_loss_dict.get(
         nan_iters_key, 0) + int(got_nan)
 
+    # print(f"call training log, set times to log")
     # Logging.
     timers_to_log = [
         'forward-backward',
@@ -1394,6 +1419,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
        (iteration % args.tensorboard_log_interval == 0):
         timers.write(timers_to_log, writer, iteration,
                      normalizer=total_iterations)
+    # print(f"call log to tensor board")
     if is_last_rank() and (iteration % args.tensorboard_log_interval == 0):
         if wandb_writer:
             wandb_writer.log({'samples vs steps': args.consumed_train_samples},
@@ -1498,25 +1524,31 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
                     iteration,
                 )
 
+    # print(f"call track moe metrics")
     if args.num_experts is not None:
         moe_loss_scale = 1 / get_num_microbatches()
         track_moe_metrics(moe_loss_scale, iteration, writer, wandb_writer, total_loss_dict, args.moe_per_layer_logging, args.enable_hetero)
 
+    # print(f"call training log, dump memory consumption")
     if iteration % args.log_interval == 0:
+        # print(f"call training log, dump")
         if args.record_memory_history and is_last_rank():
             snapshot = torch.cuda.memory._snapshot()
             from pickle import dump
             with open(args.memory_snapshot_path, 'wb') as f:
                 dump(snapshot, f)
-
+        # print(f"call training log, cal elapsed time and throughput")
         elapsed_time = timers('interval-time').elapsed(barrier=True)
         elapsed_time_per_iteration = elapsed_time / total_iterations
 
+        # print(f"call training log, call num_floating_point_operations")
         throughput = num_floating_point_operations(args, batch_size) / (
             elapsed_time_per_iteration * 10**12 * args.world_size)
 
+        # print(f"call training log, track e2e metrics")
         one_logger_utils.track_e2e_metrics(args.log_throughput, throughput)
 
+        # print(f"call training log, log times to tensorboard")
         if args.log_timers_to_tensorboard:
             if writer:
                 writer.add_scalar('iteration-time',
@@ -1573,6 +1605,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
         total_loss_dict[skipped_iters_key] = 0
         total_loss_dict[nan_iters_key] = 0
         print_rank_last(log_string)
+        # print(f"call training log, processes log string")
         if not args.auto_tune:
             if report_memory_flag:
                 # Report memory after optimizer state has been initialized.
@@ -1584,8 +1617,10 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
         else:
             report_memory(f'(after {iteration} iterations)')
             report_memory_flag = False
+        # print(f"call training log, call timers.log")
         timers.log(timers_to_log, normalizer=args.log_interval)
 
+    # print(f"call training log, return")
     return report_memory_flag
 
 
@@ -1630,10 +1665,11 @@ def enable_forward_pre_hook(model_chunks):
 
 
 def disable_forward_pre_hook(model_chunks, param_sync=True):
-    for model_chunk in model_chunks:
-        # assert isinstance(model_chunk, DDP)
-        print(f"disable_forward_pre_hook: ")
-        # model_chunk.disable_forward_pre_hook(param_sync=param_sync)
+    args = get_args()
+    if args.schedules_method != "dualpipev":
+        for model_chunk in model_chunks:
+            assert isinstance(model_chunk, DDP)
+            model_chunk.disable_forward_pre_hook(param_sync=param_sync)
 
 
 def save_checkpoint_and_time(iteration, model, optimizer, opt_param_scheduler,
@@ -1802,6 +1838,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
           process_non_loss_data_func, config, checkpointing_context, non_loss_data_func,
           extra_valid_dataset_provider=None):
     """Training function: run train_step desired number of times, run validation, checkpoint."""
+    # print(f"call train")
     args = get_args()
     timers = get_timers()
     one_logger = get_one_logger()
@@ -1814,9 +1851,11 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         except ModuleNotFoundError:
             print_rank_0("workload inspector module not found.")
 
+    # print(f"call write args to tensorboard")
     # Write args to tensorboard
     write_args_to_tensorboard()
 
+    # print(f"call turn module train mode")
     # Turn on training mode which enables dropout.
     for model_module in model:
         model_module.train()
@@ -1841,6 +1880,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
 
     num_floating_point_operations_so_far = args.num_floating_point_operations_so_far
 
+    # print(f"call configuration")
     # Setup some training config params.
     config.grad_scale_func = optimizer.scale_loss
     config.timers = timers
@@ -1924,6 +1964,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         with one_logger.get_context_manager():
             one_logger.store_set('get_e2e_base_metrics', get_e2e_base_metrics)
 
+    # print(f"call profile")
     prof = None
     if args.profile and torch.distributed.get_rank() in args.profile_ranks and args.use_pytorch_profiler:
         prof = torch.profiler.profile(
@@ -1955,8 +1996,10 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         torch.distributed.barrier()
         print_rank_0(f">>> Weight hashes match after {iteration} iterations...")
 
+    # print(f"call train cycle")
     # Run training iterations till done.
     while iteration < args.train_iters:
+        # print(f"call in train cycle, current iteration is {iteration}, train iters is {args.train_iters}")
         if args.profile and torch.distributed.get_rank() in args.profile_ranks:
             if args.use_pytorch_profiler:
                 prof.step()
@@ -2001,6 +2044,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         # Run training step.
         args.curr_iteration = iteration
 
+        # print(f"call skip samples range")
         ########## FlagScale Begin ##########
         if args.skip_samples_range or args.skip_iters_range:
             current_global_batch_size = get_current_global_batch_size()
@@ -2032,14 +2076,26 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                 rerun_state_machine.current_iteration = iteration
         ########## FlagScale end ##########
 
+        # print(f"call dualpipev or normal train step")
         ft_integration.on_training_step_start()
-        loss_dict, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad = \
-            train_step(forward_step_func,
-                       train_data_iterator,
-                       model,
-                       optimizer,
-                       opt_param_scheduler,
-                       config)
+        if args.schedules_method == "dualpipev":
+            loss_dict, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad = \
+                train_step_for_dualpipev(forward_step_func,
+                        train_data_iterator,
+                        model,
+                        optimizer,
+                        opt_param_scheduler,
+                        config)
+            print(f"train step for dualpipev output is loss_dict: {loss_dict}, skipped_iter: {skipped_iter}, should_checkpoint: {should_checkpoint}")
+            print(f"train step for dualpipev output is should_exit: {should_exit}, exit_code: {exit_code}, grad_norm: {grad_norm}, num_zeros_in_grad: {num_zeros_in_grad}")
+        else:
+            loss_dict, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad = \
+                train_step(forward_step_func,
+                        train_data_iterator,
+                        model,
+                        optimizer,
+                        opt_param_scheduler,
+                        config)
         ft_integration.on_training_step_end()
         if should_checkpoint:
             save_checkpoint_and_time(iteration, model, optimizer,
@@ -2063,10 +2119,11 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                 # forward passes will use the forward pre-hook / `param_sync_func` in
                 # `forward_backward_func`.
                 if should_disable_forward_pre_hook(args):
-                    enable_forward_pre_hook(model)
+                    # enable_forward_pre_hook(model)
                     config.param_sync_func = param_sync_func
                     pre_hook_enabled = True
 
+        # print(f"call iteration ++")
         iteration += 1
         batch_size = mpu.get_data_parallel_world_size() * \
                      args.micro_batch_size * \
@@ -2090,6 +2147,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             loss_scale = 1.0
         params_norm = None
 
+        # print(f"call reporting training log")
         if args.log_params_norm:
             params_norm = calc_params_l2_norm(model)
         learning_rate = None
@@ -2106,6 +2164,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                                           report_memory_flag, skipped_iter,
                                           grad_norm, params_norm, num_zeros_in_grad)
 
+        # print(f"call evaluation")
         # Evaluation.
         if args.eval_interval and iteration % args.eval_interval == 0 and \
             args.do_valid:
@@ -2132,7 +2191,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                 # Collect only the objects created and used in evaluation.
                 gc.collect(generation=0)
             if should_disable_forward_pre_hook(args):
-                enable_forward_pre_hook(model)
+                # enable_forward_pre_hook(model)
                 pre_hook_enabled = True
             timers('interval-time', log_level=0).start(barrier=True)
 
@@ -2185,7 +2244,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                     # Collect only the objects created and used in evaluation.
                     gc.collect(generation=0)
                 if args.use_distributed_optimizer and args.overlap_param_gather:
-                    enable_forward_pre_hook(model)
+                    # enable_forward_pre_hook(model)
                     pre_hook_enabled = True
                 timers('interval-time', log_level=0).start(barrier=True)
 
@@ -2213,6 +2272,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     if writer:
         writer.flush()
 
+    # print(f"disable pre hook")
     # Close out pre-hooks if using distributed optimizer and overlapped param gather.
     if pre_hook_enabled:
         disable_forward_pre_hook(model)
