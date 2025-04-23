@@ -326,7 +326,8 @@ def scheduler_running_outputs_builder():
 
 def scheduled_seq_group_builder():
     return ScheduledSequenceGroup(SequenceGroup.__new__(SequenceGroup),
-                                  token_chunk_size=0, negative_token_chunk_size=0) # --- FLAGSCALE MODIFICATION ---
+                                  token_chunk_size=0,
+                                  negative_token_chunk_size=0) # --- FLAGSCALE MODIFICATION ---
     # return ScheduledSequenceGroup(seq_group=None, token_chunk_size=0)
 
 
@@ -1192,7 +1193,11 @@ class Scheduler:
             if num_new_tokens + num_new_tokens_negative > prompt_limit: # --- FLAGSCALE MODIFICATION ---
                 logger.warning(
                     "Input prompt (%d tokens) (%d negative tokens) is too long"
-                    " and exceeds limit of %d", num_new_tokens, num_new_tokens_negative, prompt_limit) # --- FLAGSCALE MODIFICATION ---
+                    " and exceeds limit of %d",
+                    num_new_tokens,
+                    num_new_tokens_negative,
+                    prompt_limit,
+                ) # --- FLAGSCALE MODIFICATION ---
                 for seq in waiting_seqs:
                     seq.status = SequenceStatus.FINISHED_IGNORED
                 ignored_seq_groups.append(seq_group)
@@ -1213,7 +1218,10 @@ class Scheduler:
                 logger.warning(
                     "Input prompt (%d tokens) (%d negative tokens) + lookahead slots (%d) is "
                     "too long and exceeds the capacity of block_manager",
-                    num_new_tokens, num_new_tokens_negative, num_lookahead_slots) # --- FLAGSCALE MODIFICATION ---
+                    num_new_tokens,
+                    num_new_tokens_negative,
+                    num_lookahead_slots,
+                ) # --- FLAGSCALE MODIFICATION ---
                 for seq in waiting_seqs:
                     seq.status = SequenceStatus.FINISHED_IGNORED
                 ignored_seq_groups.append(seq_group)

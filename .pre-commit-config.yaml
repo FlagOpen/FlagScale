@@ -1,10 +1,9 @@
 exclude: |
     (?x)^(
-        megatron/.*|
-        vllm/.*|
+        flagscale/train/backends/.*|
+        flagscale/inference/backends/.*|
         megatron-energon/.*|
         hardware/.*\.patch|
-        flagscale/inference/core/.*|
         .*\.txt|
         .*\.yaml|
         .*\.sh$  # Exclude all .sh files
@@ -24,11 +23,10 @@ repos:
     -   id: black
         exclude: |
             (?x)^(
-                megatron/.*|
-                vllm/.*|
+                flagscale/train/backends/.*|
+                flagscale/inference/backends/.*|
                 megatron-energon/.*|
                 hardware/.*\.patch|
-                flagscale/inference/core/.*|
                 flagscale/inference/processing_emu3.py|
                 flagscale/train/train.*\.py|
                 flagscale/train/models/.*|
@@ -44,11 +42,10 @@ repos:
         args: ['--profile', 'black', '--known-local-folder', 'flagscale']
         exclude: |
             (?x)^(
-                megatron/.*|
-                vllm/.*|
+                flagscale/train/backends/.*|
+                flagscale/inference/backends/.*|
                 megatron-energon/.*|
                 hardware/.*\.patch|
-                flagscale/inference/core/.*|
                 flagscale/inference/processing_emu3.py|
                 flagscale/train/train.*\.py|
                 flagscale/train/models/.*|
@@ -68,11 +65,10 @@ repos:
 #         types: [python]
 #         exclude: |
 #             (?x)^(
-#                 megatron/.*|
-#                 vllm/.*|
+#                 flagscale/train/backends/.*|
+#                 flagscale/inference/backends/.*|
 #                 megatron-energon/.*|
 #                 hardware/.*\.patch|
-#                 flagscale/inference/core/.*|
 #                 flagscale/train/train.*\.py|
 #                 flagscale/train/models/.*|
 #                 flagscale/train/hetero/.*|
