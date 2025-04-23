@@ -188,8 +188,7 @@ def _sync(file_path, status, src, dst, f=None, mode="symlink"):
             raise ValueError(
                 "Modified symbolic links in the submodule is not supported except for those defined in FlagScale"
             )
-        if not os.path.lexists(src_file_path):
-            _create_file(src_file_path, dst_file_path, mode=mode)
+        _create_file(src_file_path, dst_file_path, mode=mode)
 
     elif change_type == "R":
         assert len(status) == 2
