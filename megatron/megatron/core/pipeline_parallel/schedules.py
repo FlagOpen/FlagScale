@@ -151,7 +151,6 @@ def custom_backward(output, grad_output):
         assert output.numel() == 1, "implicit grad requires scalar output."
         grad_output = torch.ones_like(output, memory_format=torch.preserve_format)
 
-    # print(f"in custom backward, output is {output}, grad_output is {grad_output}")
     # Call c++ engine [ see torch/csrc/autograd/python_engine.cpp ]
     Variable._execution_engine.run_backward(
         tensors=(output,),

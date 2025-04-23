@@ -4,5 +4,5 @@ from packaging.version import Version
 
 from .distributed_data_parallel import DistributedDataParallel
 from .distributed_data_parallel_config import DistributedDataParallelConfig
-from .finalize_model_grads import finalize_model_grads
+from .finalize_model_grads import finalize_model_grads, finalize_model_grads_for_dualpipev
 from .torch_fully_sharded_data_parallel import TorchFullyShardedDataParallel
