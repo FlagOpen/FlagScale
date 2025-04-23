@@ -1,23 +1,12 @@
 # Copyright (c) 2023, NVIDIA CORPORATION.  All rights reserved.
+
 """Pretrain GPT."""
 
-import os
-import sys
-from flagscale.utils import CustomModuleFinder
-sys.path.append(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))
-sys.meta_path.insert(0, CustomModuleFinder())
+from functools import partial
+from typing import List, Optional, Tuple, Union
 
 import torch
-from functools import partial
-from contextlib import nullcontext
-import inspect
 
-from typing import List, Optional, Tuple, Union
-from megatron.training import get_args
-from megatron.training import print_rank_0
-from megatron.training import get_timers
-from megatron.training import get_tokenizer
 from megatron.core import mpu
 from megatron.core.enums import ModelType
 from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
@@ -29,19 +18,33 @@ from megatron.core.models.gpt import GPTModel
 
 from megatron.core.utils import StragglerDetector
 from megatron.core.transformer.spec_utils import import_module
+from megatron.core.models.gpt.gpt_layer_specs import (
+    get_gpt_decoder_block_spec,
+    get_gpt_layer_local_spec,
+    get_gpt_layer_with_transformer_engine_spec,
+    get_gpt_mtp_block_spec,
+)
+from megatron.core.models.gpt.heterogeneous.heterogeneous_layer_specs import (
+    get_gpt_heterogeneous_layer_spec,
+)
+from megatron.training import get_args, get_timers, get_tokenizer, pretrain, print_rank_0
+from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.utils import (
     get_batch_on_this_cp_rank,
     get_batch_on_this_tp_rank,
     get_blend_and_blend_per_split,
     get_batch_on_this_ulysses_sp_rank,
 )
-from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.yaml_arguments import core_transformer_config_from_yaml
-from megatron.core.models.gpt.gpt_layer_specs import (
-    get_gpt_decoder_block_spec,
-    get_gpt_layer_local_spec,
-    get_gpt_layer_with_transformer_engine_spec,
-)
+
+try:
+    from megatron.post_training.arguments import add_modelopt_args, modelopt_args_enabled
+    from megatron.post_training.loss_func import loss_func as loss_func_modelopt
+    from megatron.post_training.model_provider import model_provider as model_provider_modelopt
+
+    has_nvidia_modelopt = True
+except ImportError:
+    has_nvidia_modelopt = False
 from flagscale.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
 from flagscale.train.extra_valid import extra_valid_datasets_provider
 from flagscale.train.train import pretrain
@@ -64,6 +67,10 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
         Union[GPTModel, megatron.legacy.model.GPTModel]: The returned model
     """
     args = get_args()
+
+    if has_nvidia_modelopt and modelopt_args_enabled(args):  # [ModelOpt]
+        return model_provider_modelopt(pre_process, post_process)
+
     use_te = args.transformer_impl == "transformer_engine"
 
     if args.record_memory_history:
@@ -110,7 +117,9 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
         else:
             if args.num_experts:
                 # Define the decoder block spec
-                transformer_layer_spec = get_gpt_decoder_block_spec(config, use_transformer_engine=use_te)
+                transformer_layer_spec = get_gpt_decoder_block_spec(config, use_transformer_engine=use_te, normalization=args.normalization)
+            elif args.heterogeneous_layers_config_path is not None:
+                transformer_layer_spec = get_gpt_heterogeneous_layer_spec(config, use_te)
             else:
                 # Define the decoder layer spec
                 if use_te:
@@ -120,39 +129,28 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
                 else:
                     transformer_layer_spec = get_gpt_layer_local_spec(
                         args.num_experts, args.moe_grouped_gemm,
-                        args.qk_layernorm, args.multi_latent_attention, args.moe_use_legacy_grouped_gemm)
+                        args.qk_layernorm, args.multi_latent_attention, args.moe_use_legacy_grouped_gemm,
+                        normalization=args.normalization)
+        mtp_block_spec = None
+        if args.mtp_num_layers is not None:
+            mtp_block_spec = get_gpt_mtp_block_spec(config, transformer_layer_spec, use_transformer_engine=use_te)
 
-        build_model_context = nullcontext
-        build_model_context_args = {}
-        if args.fp8_param_gather:
-            try:
-                from transformer_engine.pytorch import fp8_model_init
-
-                build_model_context = fp8_model_init
-                build_model_context_args["enabled"] = True
-
-                # Check if fp8_model_init supports preserve_high_precision_init_val
-                if "preserve_high_precision_init_val" in inspect.signature(fp8_model_init).parameters:
-                    build_model_context_args["preserve_high_precision_init_val"] = True
-            except:
-                raise RuntimeError("--fp8-param-gather requires `fp8_model_init` from TransformerEngine, but not found.")
-
-        with build_model_context(**build_model_context_args):
-            model = GPTModel(
-                config=config,
-                transformer_layer_spec=transformer_layer_spec,
-                vocab_size=args.padded_vocab_size,
-                max_sequence_length=args.max_position_embeddings,
-                pre_process=pre_process,
-                post_process=post_process,
-                fp16_lm_cross_entropy=args.fp16_lm_cross_entropy,
-                parallel_output=True,
-                share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
-                position_embedding_type=args.position_embedding_type,
-                rotary_percent=args.rotary_percent,
-                rotary_base=args.rotary_base,
-                rope_scaling=args.use_rope_scaling
-            )
+        model = GPTModel(
+            config=config,
+            transformer_layer_spec=transformer_layer_spec,
+            vocab_size=args.padded_vocab_size,
+            max_sequence_length=args.max_position_embeddings,
+            pre_process=pre_process,
+            post_process=post_process,
+            fp16_lm_cross_entropy=args.fp16_lm_cross_entropy,
+            parallel_output=True,
+            share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
+            position_embedding_type=args.position_embedding_type,
+            rotary_percent=args.rotary_percent,
+            rotary_base=args.rotary_base,
+            rope_scaling=args.use_rope_scaling,
+            mtp_block_spec=mtp_block_spec,
+        )
 
     return model
 
@@ -180,12 +178,13 @@ def get_batch(data_iterator):
 SPIKY_LOSS_FACTOR = 10
 
 
-def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
+def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor, model: Optional[GPTModel] = None):
     """Loss function.
 
     Args:
         loss_mask (torch.Tensor): Used to mask out some portions of the loss
         output_tensor (torch.Tensor): The tensor with the losses
+        model (GPTModel, optional): The model (can be wrapped)
 
     Returns:
         the loss scalar for this micro-batch
@@ -194,6 +193,9 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
             the data parallel ranks
     """
     args = get_args()
+
+    if has_nvidia_modelopt and modelopt_args_enabled(args):  # [ModelOpt]
+        return loss_func_modelopt(loss_mask, output_tensor, model=model)
 
     losses = output_tensor.float()
     loss_mask = loss_mask.view(-1).float()
@@ -270,10 +272,15 @@ def forward_step(data_iterator, model: GPTModel):
     timers('batch-generator').stop()
 
     with stimer:
-        output_tensor = model(tokens, position_ids, attention_mask,
-                              labels=labels)
+        if args.use_legacy_models:
+            output_tensor = model(tokens, position_ids, attention_mask,
+                                labels=labels)
+        else:
+            output_tensor = model(tokens, position_ids, attention_mask,
+                                labels=labels, loss_mask=loss_mask)
 
-    return output_tensor, partial(loss_func, loss_mask)
+    # [ModelOpt]: model is needed to access ModelOpt distillation losses
+    return output_tensor, partial(loss_func, loss_mask, model=model)
 
 
 def is_dataset_built_on_rank():
@@ -304,7 +311,8 @@ def core_gpt_dataset_config_from_args(args):
         reset_attention_mask=args.reset_attention_mask,
         eod_mask_loss=args.eod_mask_loss,
         create_attention_mask=args.create_attention_mask_in_dataloader,
-        s3_cache_path=args.s3_cache_path,
+        object_storage_cache_path=args.object_storage_cache_path,
+        mid_level_dataset_surplus=args.mid_level_dataset_surplus,
     )
 
 
@@ -387,5 +395,6 @@ if __name__ == "__main__":
         ModelType.encoder_or_decoder,
         forward_step,
         args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
+        extra_args_provider=add_modelopt_args if has_nvidia_modelopt else None,
         extra_valid_dataset_provider=extra_valid_datasets_provider
     )
