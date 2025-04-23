@@ -74,10 +74,11 @@ setup(
     },
     install_requires=[
         "click",
+        "gitpython",
         "cryptography",
         "setuptools>=75.1.0",
         "packaging>=24.1",
-        "importlib_metadata>=8.5.0"
+        "importlib_metadata>=8.5.0",
     ],
 
     entry_points={
