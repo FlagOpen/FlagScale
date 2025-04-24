@@ -41,6 +41,7 @@ def modify_logits_for_top_p_filtering(logits, top_p):
     logits.masked_fill_(filter_, float('-Inf'))
 
 
+
 def sample(logits, top_k=0, top_p=0.0, temperature=1.0, vocab_size=None, seed=123):
     """ Sample and generate a token.
     Note: logits has the dimension [b, v] where b is the batch size

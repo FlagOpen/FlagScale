@@ -66,27 +66,6 @@ def build_tokenizer(args, **kwargs):
     elif args.tokenizer_type == 'NullTokenizer':
         assert args.vocab_size is not None
         tokenizer = _NullTokenizer(args.vocab_size)
-    elif args.tokenizer_type == 'AquilaTokenizerFS':
-        assert args.vocab_file is not None
-        assert args.merge_file is not None
-        assert args.special_tokens_file is not None
-        tokenizer = _AquilaTokenizerFS(args.vocab_file, args.merge_file,
-                                     args.special_tokens_file)
-    elif args.tokenizer_type == "HFTokenizerFS":
-        assert args.tokenizer_path is not None
-        tokenizer = _HFTokenizerFS(args.tokenizer_path)
-    elif args.tokenizer_type == "Llama3TokenizerFS":
-        assert args.tokenizer_path is not None
-        tokenizer = _Llama3TokenizerFS(args.tokenizer_path)
-    elif args.tokenizer_type == "QwenTokenizerFS":
-        assert args.tokenizer_path is not None
-        tokenizer = _QwenTokenizerFS(args.tokenizer_path)
-    elif args.tokenizer_type == "HFTokenizersTokenizerFS":
-        assert args.tokenizer_path is not None
-        tokenizer = _HFTokenizersTokenizerFS(args.tokenizer_path)
-    elif args.tokenizer_type == "Qwen2TokenizerFS":
-        assert args.tokenizer_path is not None
-        tokenizer = _Qwen2TokenizerFS(args.tokenizer_path, args)
     elif args.tokenizer_type == "MultimodalTokenizer":
         try:
             import transformers
@@ -118,6 +97,27 @@ def build_tokenizer(args, **kwargs):
     elif args.tokenizer_type == 'NullMultimodalTokenizer':
         assert args.vocab_size is not None
         tokenizer = _NullMultimodalTokenizer(args.vocab_size)
+    elif args.tokenizer_type == 'AquilaTokenizerFS':
+        assert args.vocab_file is not None
+        assert args.merge_file is not None
+        assert args.special_tokens_file is not None
+        tokenizer = _AquilaTokenizerFS(args.vocab_file, args.merge_file,
+                                     args.special_tokens_file)
+    elif args.tokenizer_type == "HFTokenizerFS":
+        assert args.tokenizer_path is not None
+        tokenizer = _HFTokenizerFS(args.tokenizer_path)
+    elif args.tokenizer_type == "Llama3TokenizerFS":
+        assert args.tokenizer_path is not None
+        tokenizer = _Llama3TokenizerFS(args.tokenizer_path)
+    elif args.tokenizer_type == "QwenTokenizerFS":
+        assert args.tokenizer_path is not None
+        tokenizer = _QwenTokenizerFS(args.tokenizer_path)
+    elif args.tokenizer_type == "HFTokenizersTokenizerFS":
+        assert args.tokenizer_path is not None
+        tokenizer = _HFTokenizersTokenizerFS(args.tokenizer_path)
+    elif args.tokenizer_type == "Qwen2TokenizerFS":
+        assert args.tokenizer_path is not None
+        tokenizer = _Qwen2TokenizerFS(args.tokenizer_path, args)
     else:
         raise NotImplementedError('{} tokenizer is not ' 'implemented.'.format(args.tokenizer_type))
 
@@ -872,6 +872,66 @@ class _NullTokenizer(MegatronTokenizer):
     def additional_special_tokens_ids(self):
         return None
 
+class _NullMultimodalTokenizer(MegatronTokenizer):
+    def __init__(self, vocab_size, image_token=None, image_token_id=None):
+        super().__init__(None, vocab_size=vocab_size)
+        self._vocab_size_without_eod = int(vocab_size)
+        self._eod_id = self._vocab_size_without_eod
+
+        from megatron.core.models.multimodal.llava_model import DEFAULT_IMAGE_TOKEN_INDEX, IMAGE_TOKEN
+        self._image_token = image_token if image_token is not None else IMAGE_TOKEN
+        self._image_token_id = image_token_id if image_token_id is not None else DEFAULT_IMAGE_TOKEN_INDEX
+
+    def tokenize(self, text):
+        return [int(x) for x in text.split(' ')]
+
+    def detokenize(self, ids):
+        text = [str(x) for x in ids]
+        return ' '.join(text)
+
+    def offsets(self, ids: list[int], text: str) -> list[int]:
+        offsets, start_idx = [], 0
+        for id_ in ids:
+            offsets.append(start_idx)
+            start_idx += 1 + len(str(id_))
+        return offsets
+
+    def convert_tokens_to_ids(self, tokens):
+        ids = [(int(t) if t != self._image_token else self._image_token_id) for t in tokens.split('  ')]
+        return ids if len(ids) > 1 else ids[0]
+
+    @property
+    def vocab_size(self):
+        return self._vocab_size_without_eod + 1
+
+    @property
+    def vocab(self):
+        raise NotImplementedError
+
+    @property
+    def inv_vocab(self):
+        raise NotImplementedError
+
+    @property
+    def cls(self):
+        return -1
+
+    @property
+    def sep(self):
+        return -1
+
+    @property
+    def mask(self):
+        return -1
+
+    @property
+    def eod(self):
+        return self._eod_id
+
+    @property
+    def additional_special_tokens_ids(self):
+        return None
+
 
 class _AquilaTokenizerFS(MegatronTokenizer):
     """Aquila tokenizer."""
@@ -978,7 +1038,7 @@ class _Llama3TokenizerFS(_HFTokenizerFS):
     @property
     def vocab_size(self):
         return self.tokenizer.vocab_size + len(self.tokenizer.get_added_vocab())
-        
+
 
 class _QwenTokenizerFS(_HFTokenizerFS):
     """Adapted Qwen tokenizer."""
@@ -1039,7 +1099,7 @@ class _HFTokenizersTokenizerFS(MegatronTokenizer):
 
 class _Qwen2TokenizerFS(_HFTokenizerFS):
     """Adapted Qwen tokenizer."""
-    
+
     def __init__(self, tokenizer_path, args):
         super().__init__(tokenizer_path)
         self.eod_id = self.tokenizer.encode('<|extra_204|>')[0]
@@ -1047,66 +1107,7 @@ class _Qwen2TokenizerFS(_HFTokenizerFS):
         self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]
         assert args.vocab_size is not None
         self._vocab_size = args.vocab_size
-    
+
     @property
     def vocab_size(self):
         return self._vocab_size
-class _NullMultimodalTokenizer(MegatronTokenizer):
-    def __init__(self, vocab_size, image_token=None, image_token_id=None):
-        super().__init__(None, vocab_size=vocab_size)
-        self._vocab_size_without_eod = int(vocab_size)
-        self._eod_id = self._vocab_size_without_eod
-
-        from megatron.core.models.multimodal.llava_model import DEFAULT_IMAGE_TOKEN_INDEX, IMAGE_TOKEN
-        self._image_token = image_token if image_token is not None else IMAGE_TOKEN
-        self._image_token_id = image_token_id if image_token_id is not None else DEFAULT_IMAGE_TOKEN_INDEX
-
-    def tokenize(self, text):
-        return [int(x) for x in text.split(' ')]
-
-    def detokenize(self, ids):
-        text = [str(x) for x in ids]
-        return ' '.join(text)
-
-    def offsets(self, ids: list[int], text: str) -> list[int]:
-        offsets, start_idx = [], 0
-        for id_ in ids:
-            offsets.append(start_idx)
-            start_idx += 1 + len(str(id_))
-        return offsets
-
-    def convert_tokens_to_ids(self, tokens):
-        ids = [(int(t) if t != self._image_token else self._image_token_id) for t in tokens.split('  ')]
-        return ids if len(ids) > 1 else ids[0]
-
-    @property
-    def vocab_size(self):
-        return self._vocab_size_without_eod + 1
-
-    @property
-    def vocab(self):
-        raise NotImplementedError
-
-    @property
-    def inv_vocab(self):
-        raise NotImplementedError
-
-    @property
-    def cls(self):
-        return -1
-
-    @property
-    def sep(self):
-        return -1
-
-    @property
-    def mask(self):
-        return -1
-
-    @property
-    def eod(self):
-        return self._eod_id
-
-    @property
-    def additional_special_tokens_ids(self):
-        return None

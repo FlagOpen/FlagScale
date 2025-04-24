@@ -136,13 +136,15 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
     sync.
     """
 
-    if (parallel_state.is_rank_in_embedding_group(ignore_virtual=True)):
+    if (
+        parallel_state.is_rank_in_embedding_group(ignore_virtual=True)
+    ):
         embed_group = parallel_state.get_embedding_group()
         if not isinstance(embed_group, list):
             embed_group = [embed_group]
     else:
         return
-    
+
     if (torch.distributed.get_world_size(embed_group[0]) > 1):
         if parallel_state.is_pipeline_first_stage(ignore_virtual=True):
             model_module = model[0]
@@ -407,7 +409,7 @@ def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torc
         # to the other ranks in the pipeline parallel group.
         last_rank = parallel_state.get_pipeline_model_parallel_last_rank()
         pp_group = parallel_state.get_pipeline_model_parallel_group()
-        
+
         # NOTE: This is a hack to support multiple pipeline parallel groups. The origin
         #       parallel_state.get_pipeline_model_parallel_last_rank() only supports a single
         if isinstance(pp_group, list):
@@ -428,7 +430,7 @@ def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torc
             torch.distributed.broadcast(num_tokens, src=lr, group=group)
             num_tokens_list.append(torch.clone(num_tokens))
         assert all(x.item() == num_tokens_list[0] for x in num_tokens_list)
-        
+
         if num_tokens.device == torch.device('cpu'):
             num_tokens = num_tokens.cuda()
 

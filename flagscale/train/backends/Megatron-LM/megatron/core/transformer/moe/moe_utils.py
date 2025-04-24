@@ -655,7 +655,7 @@ def reduce_aux_losses_tracker_across_ranks(track_names: Optional[List[str]] = No
             torch.distributed.all_reduce(
                 values, group=tracker[name]['avg_group'], op=torch.distributed.ReduceOp.AVG
             )
-            
+
 
 def reduce_aux_losses_tracker_across_ranks_hetero(
     track_names: Optional[List[str]] = None,

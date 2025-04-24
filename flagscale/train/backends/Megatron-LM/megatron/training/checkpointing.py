@@ -446,7 +446,7 @@ def save_checkpoint(iteration, model, optimizer, opt_param_scheduler, num_floati
                             logger.debug("Failed to plug in the read metadata from the load strategy...")
 
                 if args.ckpt_fully_parallel_save:
-                    save_strategy = FullyParallelSaveStrategyWrapper(save_strategy, mpu.get_data_parallel_group(with_context_parallel=True,),
+                    save_strategy = FullyParallelSaveStrategyWrapper(save_strategy, mpu.get_data_parallel_group(with_context_parallel=True),
                                                                      args.ckpt_assume_constant_structure)
             # Store save strategy for future checkpoint saves
             if checkpointing_context is not None:

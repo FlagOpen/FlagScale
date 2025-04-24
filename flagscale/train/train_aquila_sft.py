@@ -32,7 +32,6 @@ from megatron.training.utils import (
     get_batch_on_this_cp_rank,
     get_batch_on_this_tp_rank,
     get_blend_and_blend_per_split,
-    get_batch_on_this_ulysses_sp_rank,
 )
 from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.yaml_arguments import core_transformer_config_from_yaml
@@ -154,9 +153,6 @@ def get_batch(data_iterator):
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
 
-    # slice batch along sequence dimension for ulysses sequence parallelism
-    batch = get_batch_on_this_ulysses_sp_rank(batch)
-
     return batch.values()
 
 
@@ -180,9 +176,6 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
     total_tokens = loss_mask.sum()
     loss = torch.cat([torch.sum(torch.masked_select(losses.view(-1) , loss_mask==1)).view(1), total_tokens.view(1)])
 
-    if args.ulysses_sp_parallel_size > 1:
-        torch.distributed.all_reduce(loss, group=mpu.get_ulysses_sp_parallel_group())
-
     if args.context_parallel_size > 1:
         torch.distributed.all_reduce(loss, group=mpu.get_context_parallel_group())
 
@@ -200,7 +193,7 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
 
     local_num_tokens = loss[1].clone().detach().to(torch.int)
     return (
-        loss[0] * args.context_parallel_size * args.ulysses_sp_parallel_size,
+        loss[0],
         local_num_tokens,
         {'lm loss': (reporting_loss[0], reporting_loss[1])},
     )

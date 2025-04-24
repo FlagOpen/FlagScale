@@ -3,7 +3,6 @@
 import warnings
 from typing import Optional, Union
 
-from megatron.core import parallel_state 
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core.models.gpt.moe_module_specs import get_moe_module_spec
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
@@ -35,8 +34,6 @@ from megatron.core.transformer.transformer_layer import (
     get_transformer_layer_offset,
 )
 from megatron.core.utils import is_te_min_version
-
-from flagscale.train.transformer.ulysses_sp_attention import USPSelfAttention
 
 try:
     from megatron.core.extensions.transformer_engine import (
@@ -151,7 +148,7 @@ def get_gpt_layer_with_transformer_engine_spec(
             module=TransformerLayer,
             submodules=TransformerLayerSubmodules(
                 self_attention=ModuleSpec(
-                    module=SelfAttention if parallel_state.get_ulysses_sp_parallel_world_size() <= 1 else USPSelfAttention,
+                    module=SelfAttention,
                     params={"attn_mask_type": AttnMaskType.causal},
                     submodules=SelfAttentionSubmodules(
                         linear_qkv=TELayerNormColumnParallelLinear,
@@ -250,7 +247,7 @@ def get_gpt_layer_local_spec(
             submodules=TransformerLayerSubmodules(
                 input_layernorm=LNImpl,
                 self_attention=ModuleSpec(
-                    module=SelfAttention if parallel_state.get_ulysses_sp_parallel_world_size() <= 1 else USPSelfAttention,
+                    module=SelfAttention,
                     params={"attn_mask_type": AttnMaskType.causal},
                     submodules=SelfAttentionSubmodules(
                         linear_qkv=ColumnParallelLinear,

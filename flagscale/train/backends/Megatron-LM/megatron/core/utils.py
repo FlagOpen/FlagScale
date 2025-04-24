@@ -1753,29 +1753,3 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
                 batch[key] = val
 
     return batch
-
-
-def get_batch_on_this_ulysses_sp_rank(batch):
-    """ Slice batch input along sequence dimension into multiple chunks,
-        which are parallelized across GPUs in a ulysses-sequence parallel group.
-    """
-
-    uly_sp_size = parallel_state.get_ulysses_sp_parallel_world_size()
-    if uly_sp_size > 1:
-        usp_rank = parallel_state.get_ulysses_sp_parallel_rank()
-        for key, val in batch.items():
-            if val is not None:
-                seq_dim = 1 if key != 'attention_mask' else 2
-                val = val.view(
-                    *val.shape[0:seq_dim],
-                    uly_sp_size,
-                    val.shape[seq_dim] // uly_sp_size,
-                    *val.shape[(seq_dim + 1) :],
-                )
-                index = torch.tensor([usp_rank], 
-                                     device="cpu", pin_memory=True).cuda(non_blocking=True)
-                val = val.index_select(seq_dim, index)
-                val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
-                batch[key] = val
-
-    return batch

@@ -33,6 +33,7 @@ from megatron.training.yaml_arguments import validate_yaml
 
 from flagscale.train import FSTrainArguments
 from flagscale.train import set_parallel_context, set_get_spiky_loss_detector
+
 logger = logging.getLogger(__name__)
 
 
@@ -90,7 +91,7 @@ def initialize_megatron(
         args = validate_yaml(args, args_defaults)
     else:
         validate_args(args, args_defaults)
-        
+
     if args.hetero_process_meshes is not None:
         fs_argument.post_validate_args()
 
@@ -120,7 +121,7 @@ def initialize_megatron(
         ),
         result_rejected_tracker_filename=args.result_rejected_tracker_filename,
     )
-    
+
     if args.auto_skip_spiky_loss:
         set_get_spiky_loss_detector(args=args)
 
@@ -149,7 +150,6 @@ def initialize_megatron(
 
         # Set tensorboard writer and wandb writer.
         set_global_writers(args)
-
 
     if skip_mpu_initialization:
         return None
@@ -375,14 +375,13 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
                 args.pipeline_model_parallel_split_rank,
                 pipeline_model_parallel_comm_backend=args.pipeline_model_parallel_comm_backend,
                 context_parallel_size=args.context_parallel_size,
-                ulysses_parallel_size=args.ulysses_sp_parallel_size,
                 hierarchical_context_parallel_sizes=args.hierarchical_context_parallel_sizes,
                 expert_model_parallel_size=args.expert_model_parallel_size,
                 num_distributed_optimizer_instances=args.num_distributed_optimizer_instances,
                 expert_tensor_parallel_size=args.expert_tensor_parallel_size,
                 distributed_timeout_minutes=args.distributed_timeout_minutes,
                 nccl_communicator_config_path=args.nccl_communicator_config_path,
-                order='tp-usp-cp-ep-dp-pp' if not args.use_tp_pp_dp_mapping else 'tp-cp-ep-pp-dp',
+                order='tp-cp-ep-dp-pp' if not args.use_tp_pp_dp_mapping else 'tp-cp-ep-pp-dp',
                 encoder_tensor_model_parallel_size=args.encoder_tensor_model_parallel_size,
                 encoder_pipeline_model_parallel_size=args.encoder_pipeline_model_parallel_size,
                 get_embedding_ranks=get_embedding_ranks,

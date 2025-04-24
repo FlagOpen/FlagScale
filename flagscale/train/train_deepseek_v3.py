@@ -33,7 +33,6 @@ from megatron.training.utils import (
     get_batch_on_this_cp_rank,
     get_batch_on_this_tp_rank,
     get_blend_and_blend_per_split,
-    get_batch_on_this_ulysses_sp_rank,
 )
 from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.yaml_arguments import core_transformer_config_from_yaml
@@ -221,9 +220,6 @@ def get_batch(data_iterator):
 
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch)
-
-    # slice batch along sequence dimension for ulysses sequence parallelism
-    batch = get_batch_on_this_ulysses_sp_rank(batch)
 
     return batch.values()
 

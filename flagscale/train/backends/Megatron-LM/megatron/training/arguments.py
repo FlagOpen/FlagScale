@@ -3,14 +3,11 @@
 """Megatron arguments."""
 
 import argparse
-import ast
 import dataclasses
 import json
 import os
 from pathlib import Path
 import types
-import itertools
-
 import warnings
 
 import torch
@@ -314,14 +311,13 @@ def validate_args(args, defaults={}):
         assert args.ckpt_format == "torch", \
             "legacy model format only supports the 'torch' checkpoint format."
     update_use_dist_ckpt(args)
-    
+
     if args.attention_backend == AttnBackend.local:
             assert args.spec[0] == 'local' , '--attention-backend local is only supported with --spec local'
 
     if not args.enable_hetero:
-        # NOTE(zhaoyinglia): raise assert error when ckpt convert for decode-only dense model
-        # if args.encoder_pipeline_model_parallel_size == 0 and args.num_experts == 0:
-        #     assert args.encoder_tensor_model_parallel_size == args.tensor_model_parallel_size,  "If non-MOE encoder shares first decoder pipeline rank it must have the same TP as the decoder."
+        if args.encoder_pipeline_model_parallel_size == 0 and args.num_experts == 0:
+            assert args.encoder_tensor_model_parallel_size == args.tensor_model_parallel_size,  "If non-MOE encoder shares first decoder pipeline rank it must have the same TP as the decoder."
 
         if args.encoder_tensor_model_parallel_size > 0:
             assert args.num_attention_heads % args.encoder_tensor_model_parallel_size == 0
@@ -342,7 +338,6 @@ def validate_args(args, defaults={}):
         if args.attention_backend == AttnBackend.local:
             assert args.spec[0] == 'local' , '--attention-backend local is only supported with --spec local'
 
-        # Pipeline model parallel size.        
         # Pipeline model parallel size.
         args.transformer_pipeline_model_parallel_size = (
             args.pipeline_model_parallel_size - 1
@@ -362,7 +357,6 @@ def validate_args(args, defaults={}):
                   'encoder-pipeline-model-parallel size: {}'.format(
                       args.world_size, args.data_parallel_size,
                       args.context_parallel_size,
-                      args.ulysses_sp_parallel_size,
                       args.hierarchical_context_parallel_sizes,
                       args.tensor_model_parallel_size,
                       args.encoder_tensor_model_parallel_size,
@@ -516,6 +510,7 @@ def validate_args(args, defaults={}):
 
                 if args.account_for_loss_in_pipeline_split:
                     num_layers += 1
+
                 if args.enable_hetero is False:
                     assert num_layers % args.transformer_pipeline_model_parallel_size == 0, \
                         'Number of layers should be divisible by the pipeline-model-parallel size'
@@ -720,22 +715,6 @@ def validate_args(args, defaults={}):
         assert args.hidden_size % args.num_attention_heads == 0
         args.kv_channels = args.hidden_size // args.num_attention_heads
 
-    if args.ulysses_sp_parallel_size > 1:
-        assert args.encoder_pipeline_model_parallel_size == 0, 'Encoder don\'t support ulysses parallel now.'
-        if args.group_query_attention:
-            assert args.num_query_groups % args.ulysses_sp_parallel_size == 0, \
-                'ulysses-sp-parallel-size should be a divisor of num_query_groups ' \
-                'if ulysses-sp-parallel-size > 1 and group-query-attention is enabled.'
-        else:
-            assert args.num_attention_heads % args.ulysses_sp_parallel_size == 0, \
-                'ulysses-sp-parallel-size should be a divisor of num_attention_heads ' \
-                'if ulysses-sp-parallel-size > 1 and group-query-attention is not enabled.'
-        
-        if args.seq_length is not None and args.context_parallel_size > 1:
-            assert args.seq_length % (args.context_parallel_size * 2 * args.ulysses_sp_parallel_size) == 0, \
-                'seq-length should be a multiple of 2 * context-parallel-size * args.ulysses_sp_parallel_size ' \
-                'if context-parallel-size > 1 and args.ulysses-sp_parallel-size > 1.'
-    
     if args.seq_length is not None and args.context_parallel_size > 1:
         assert args.seq_length % (args.context_parallel_size * 2) == 0, \
             'seq-length should be a multiple of 2 * context-parallel-size ' \
@@ -901,11 +880,6 @@ def validate_args(args, defaults={}):
     # Context parallel
     if args.context_parallel_size > 1:
         assert not args.use_legacy_models, "Context parallelism is not supported in legacy models."
-    
-    # Ulysses parallel
-    if args.ulysses_sp_parallel_size > 1:
-        assert not args.use_legacy_models, "Ulysses-sp parallelism is not supported in legacy models."
-        assert args.expert_model_parallel_size <= 1, "Ulysses-sp parallelism with expert model parallelims is not supported."
 
     # Expert parallelism check
     if args.expert_model_parallel_size  > 1:
@@ -2279,9 +2253,6 @@ def _add_distributed_args(parser):
                        help='Use partial reduce for shared word embedding.')
     group.add_argument('--no-shared-fs', action='store_true', 
                        help='Indicate whether not running on a shared file system.')
-    group.add_argument('--ulysses-sp-parallel-size', type=int, default=1,
-                       help='Degree of ulysses sequence parallelism. It must be the divisor of the '
-                       'head count.')
     group.add_argument('--num-distributed-optimizer-instances', type=int, default=1,
                        help='Number of Distributed Optimizer copies across Data Parallel domain.')
     group.add_argument('--use-torch-fsdp2', action='store_true',
@@ -2366,14 +2337,14 @@ def _add_tokenizer_args(parser):
                                 'Llama2Tokenizer',
                                 'TikTokenizer',
                                 'MultimodalTokenizer',
+                                'NullTokenizer',
+                                'NullMultimodalTokenizer',
                                 'AquilaTokenizerFS',
                                 'HFTokenizerFS', 
                                 'HFTokenizersTokenizerFS', 
                                 'Llama3TokenizerFS',
                                 'QwenTokenizerFS',
-                                'Qwen2TokenizerFS',
-                                'NullTokenizer',
-                                'NullMultimodalTokenizer'],
+                                'Qwen2TokenizerFS'],
                        help='What type of tokenizer to use.')
     group.add_argument('--tokenizer-path', type=str, default=None,
                        help='Path to the huggingface tokenizer.')
@@ -2562,6 +2533,7 @@ def _add_mtp_args(parser):
                        help='Scaling coefficient for mtp loss: 0.3 is recommended in DeepSeekV3.')
 
     return parser
+
 
 def _add_vision_args(parser):
     group = parser.add_argument_group(title="vision")
@@ -2866,6 +2838,7 @@ def _add_experimental_args(parser):
                        help='Dtype of exp_avg_sq when enabling precision-aware-optimizer')
     return parser
 
+
 def _add_msc_args(parser):
     group = parser.add_argument_group(title="msc")
     group.add_argument('--disable-msc', default=True, action='store_false', dest='enable_msc',
@@ -2911,53 +2884,4 @@ def _add_auto_skip_spiky_loss(parser):
                        help='Automatically skip spiky loss iterations.')
     group.add_argument('--spiky-loss-threshold', type=float, default=0.2,
                           help='Threshold for skipping spiky loss iterations.')
-    return parser
-
-
-
-def _add_hetero_args(parser):
-    group = parser.add_argument_group(title="heterogeneous training")
-
-    group.add_argument('--enable-hetero', action="store_true", 
-                       help='the mode of heterogeneous training')
-    group.add_argument('--hetero-device-types', nargs='*', type=str, default=None, 
-                       help='the list of device types: device_type_0 device_type_1 ...')
-    group.add_argument('--hetero-current-device-type', type=str, default=None, 
-                       help='the current device type')
-    group.add_argument('--hetero-pipeline-layer-split', nargs='*', type=int, default=None,
-                       help='Incompatible with --num-layers-per-virtual-pipeline-stage for now.'
-                       'hetero-pipeline-layer-split must be in the form: layers_0 layers_1 ... layers_n. The number of the list should be equal to pipeline-model-parallel-size.')
-    group.add_argument('--hetero-process-meshes', nargs='*', type=int, default=None,
-                       help='Use this arg to set TP-CP-DP-PP of each process mesh.'
-                       'This argument must be in the form: TP0, CP0, DP0, PP0, TP1, CP0, DP1, PP1...TPN, CPN, DPN, PPN. CP and TP size can be different, sum of PP should match pipeline-model-parallel-size, DP size should be the same.')
-    group.add_argument('--expert-tensor-parallel-size-per-process-mesh', nargs='*', type=int, default=None,
-                       help='The number of tensor parallel experts for each process-mesh. The number of the list should be equal to the number of process-meshes.')
-    group.add_argument('--hetero-use-cpu-communication', action='store_true', help='Use CPU for communication for heterogeneous communication.')
-    
-    return parser
-
-
-def _add_auto_tuner_args(parser):
-    group = parser.add_argument_group(title="auto tuner")
-
-    group.add_argument('--auto-tune', action='store_true',
-                       help='use auto tuner')
-
-    return parser
-
-
-def _add_auto_skip_spiky_loss(parser):
-    group = parser.add_argument_group(title='auto skip spiky loss')
-    
-    group.add_argument('--auto-skip-spiky-loss', action='store_true',
-                       help='Automatically skip spiky loss iterations.')
-    group.add_argument('--spiky-loss-threshold', type=float, default=0.2,
-                          help='Threshold for skipping spiky loss iterations.')
-    return parser
-
-
-def _add_msc_args(parser):
-    group = parser.add_argument_group(title="msc")
-    group.add_argument('--disable-msc', default=True, action='store_false', dest='enable_msc',
-                       help='Disable the usage of Multi-Storage Client (MSC) in Megatron Core.')
     return parser

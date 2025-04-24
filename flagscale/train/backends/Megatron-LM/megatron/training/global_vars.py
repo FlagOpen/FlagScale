@@ -13,7 +13,6 @@ from megatron.training import dist_signal_handler
 from megatron.training.tokenizer import build_tokenizer
 
 from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
-from flagscale.train import get_parallel_context  
 
 _GLOBAL_ARGS = None
 _GLOBAL_TOKENIZER = None
@@ -23,8 +22,6 @@ _GLOBAL_ONE_LOGGER = None
 _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
 _GLOBAL_SIGNAL_HANDLER = None
-_GLOBAL_PARALLEL_CONTEXT = None
-
 
 def get_args():
     """Return arguments."""
@@ -45,7 +42,7 @@ def get_tensorboard_writer():
 
 
 def get_wandb_writer():
-    """Return wandb writer. It can be None so no need
+    """Return tensorboard writer. It can be None so no need
     to check if it is initialized."""
     return _GLOBAL_WANDB_WRITER
 
@@ -76,6 +73,7 @@ def _set_signal_handler():
     global _GLOBAL_SIGNAL_HANDLER
     _ensure_var_is_not_initialized(_GLOBAL_SIGNAL_HANDLER, 'signal handler')
     _GLOBAL_SIGNAL_HANDLER = dist_signal_handler.DistributedSignalHandler().__enter__()
+
 
 
 def set_global_variables(args, build_tokenizer=True):
@@ -303,7 +301,6 @@ def _ensure_var_is_initialized(var, name):
 def _ensure_var_is_not_initialized(var, name):
     """Make sure the input variable is not None."""
     assert var is None, '{} is already initialized.'.format(name)
-
 
 def destroy_global_vars():
     global _GLOBAL_ARGS

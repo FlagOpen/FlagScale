@@ -41,11 +41,9 @@ def get_nccl_option_name(token, is_expert=False):
             "dp-cp": "dp_cp",
             "intra-dp-cp": "dp_cp",
             "inter-dp-cp": "dp_cp",
-            "dp-usp-cp": "dp_usp_cp",
-            "dp-usp": "dp_usp",
+            "dp-cp": "dp_cp",
             "cp": "cp",
             "hierachical-cp": "hcp",
-            "usp": "usp",
             "tp-pp": "mp",
             "tp": "tp",
             "pp": "pp",
@@ -190,7 +188,6 @@ class ProcessMesh:
         virtual_pipeline_model_parallel_size: Optional[int] = None,
         pipeline_model_parallel_split_rank: Optional[int] = None,
         use_sharp: bool = False,
-        ulysses_parallel_size: int  = 1,
         context_parallel_size: int = 1,
         hierarchical_context_parallel_sizes: Optional[List[int]] = None,
         expert_model_parallel_size: int = 1,
@@ -198,7 +195,7 @@ class ProcessMesh:
         expert_tensor_parallel_size: Optional[int] = None,
         nccl_communicator_config_path: Optional[str] = None,
         distributed_timeout_minutes: int = 30,
-        order: str = "tp-usp-cp-ep-dp-pp",
+        order: str = "tp-cp-ep-dp-pp",
         offset: int = 0,
         rank_mapper: RankMapper = None,
         args: dict = None,
@@ -210,7 +207,6 @@ class ProcessMesh:
         self._virtual_pipeline_model_parallel_size = virtual_pipeline_model_parallel_size
         self._pipeline_model_parallel_split_rank = pipeline_model_parallel_split_rank
         self._use_sharp = use_sharp
-        self._ulysses_parallel_size = ulysses_parallel_size
         self._context_parallel_size = context_parallel_size
         self._hierarchical_context_parallel_sizes = hierarchical_context_parallel_sizes
         self._expert_model_parallel_size = expert_model_parallel_size
@@ -261,7 +257,6 @@ class ProcessMesh:
             dp=self._data_parallel_size,
             pp=self._pipeline_model_parallel_size,
             cp=self._context_parallel_size,
-            usp=1,
             order=self._order,
         )
 
@@ -283,7 +278,6 @@ class ProcessMesh:
             dp=self._expert_data_parallel_size,
             pp=self._pipeline_model_parallel_size,
             cp=1,
-            usp=1,
             order=self._order,
         )
 
@@ -328,9 +322,6 @@ class ProcessMesh:
             if token == "dp-cp" and not is_expert:
                 self._build_dist_opt_process_groups(token, ranks, pg_options, group, group_gloo, create_gloo_process_groups=create_gloo_process_groups)
 
-            if token == "dp-usp-cp" and not is_expert:
-                self._build_dist_opt_process_groups(token, ranks, pg_options, group, group_gloo, create_gloo_process_groups=create_gloo_process_groups)
-
             if token == "cp" and not is_expert:
                 self._build_hierarchical_cp_groups(ranks, pg_options)
 
@@ -347,8 +338,6 @@ class ProcessMesh:
 
                 if token == "dp-cp":
                     group_name = "intra-dp-cp"
-                elif token == "dp-usp-cp":
-                    group_name = "intra-dp-usp-cp"
                 else:
                     raise ValueError(f"Invalid token: {token}")
                 self._all_group_ranks[group_name].append(intra_partial_data_parallel_ranks_with_cp)
@@ -381,8 +370,6 @@ class ProcessMesh:
 
                 if token == "dp-cp":
                     group_name = "intra-dp-cp"
-                elif token == "dp-usp-cp":
-                    group_name = "intra-dp-usp-cp"
                 else:
                     raise ValueError(f"Invalid token: {token}")
 
@@ -401,8 +388,6 @@ class ProcessMesh:
         else:
             if token == "dp-cp":
                 group_name = "intra-dp-cp"
-            elif token == "dp-usp-cp":
-                group_name = "intra-dp-usp-cp"
             else:
                 raise ValueError(f"Invalid token: {token}")
             self._all_group_ranks[group_name].append(ranks)
@@ -448,10 +433,7 @@ class ProcessMesh:
             # Set `NCCL_COLLNET_ENABLE=0` to restrict SHARP application to DP process groups
             os.environ["NCCL_COLLNET_ENABLE"] = "0"
 
-        self.build_process_group("dp-usp-cp", is_expert=False, gloo=True, create_gloo_process_groups=self.create_gloo_process_groups)
-        self.build_process_group("dp-usp", is_expert=False, gloo=True, create_gloo_process_groups=self.create_gloo_process_groups)
         self.build_process_group("cp", is_expert=False, gloo=False)
-        self.build_process_group("usp", is_expert=False, gloo=False)
         self.build_process_group("tp-pp", is_expert=False, gloo=False)
         self.build_process_group('tp', is_expert=False, gloo=False)
         self.build_process_group("pp", is_expert=False, gloo=False)
@@ -545,14 +527,14 @@ class ProcessMesh:
             assert len(coord) == 4
         if not is_expert:
             sizes = self._rank_generator.ordered_size
-            # Skip the axes related to ulysses sequence parallelism and expert parallelism
-            # given the order tp-usp-cp-ep-dp-pp --> tp-cp-dp-pp
-            new_sizes = [val for idx, val in enumerate(sizes) if (idx != 1 and idx != 3)]
+            # Skip the axes related to expert parallelism
+            # given the order tp-cp-ep-dp-pp --> tp-cp-dp-pp
+            new_sizes = [val for idx, val in enumerate(sizes) if idx != 3]
         else:
             sizes = self._expert_rank_generator.ordered_size
-            # Skip the axes related to ulysses sequence parallelism and cp parallelism
-            # given the order tp-usp-cp-ep-dp-pp --> tp-ep-dp-pp
-            new_sizes = [val for idx, val in enumerate(sizes) if (idx != 1 and idx != 2)]
+            # Skip the axes related to cp parallelism
+            # given the order tp-cp-ep-dp-pp --> tp-ep-dp-pp
+            new_sizes = [val for idx, val in enumerate(sizes) if idx != 2]
         assert len(new_sizes) == len(coords[0]), f"new_sizes: {new_sizes}, coords[0]: {coords[0]}"
         strides = _prefix_product(new_sizes)
         logical_ranks = []
@@ -566,7 +548,6 @@ class ProcessMesh:
 class ParallelContext:
     def __init__(self, args):
         assert args.context_parallel_size == 1, "Context parallelism is not supported."
-        assert args.ulysses_sp_parallel_size == 1, "Ulysses parallelism is not supported."
         assert torch.distributed.is_initialized()
         self._is_initialized = False
         self._args = args
@@ -631,7 +612,7 @@ class ParallelContext:
                 expert_model_parallel_size=ep,
                 nccl_communicator_config_path=self._args.nccl_communicator_config_path,
                 distributed_timeout_minutes=self._args.distributed_timeout_minutes,
-                order='tp-usp-cp-ep-dp-pp' if not self._args.use_tp_pp_dp_mapping else 'tp-pp-dp',
+                order='tp-cp-ep-dp-pp' if not self._args.use_tp_pp_dp_mapping else 'tp-pp-dp',
                 offset=accumulated_world_size,
                 rank_mapper=self._rank_mapper,
                 args=self._args,
@@ -992,18 +973,10 @@ class ParallelContext:
             assert group is not None, "pipeline_model parallel group is not initialized"
         return self._global_process_groups["pp"]
 
-    def get_data_parallel_group(self, with_context_parallel=False, partial_data_parallel=False, with_ulysses_sp_parallel=False):
+    def get_data_parallel_group(self, with_context_parallel=False, partial_data_parallel=False):
         """Get the data parallel group the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        if with_context_parallel and with_ulysses_sp_parallel:
-            if partial_data_parallel:
-                return current_process_mesh.get_process_group(
-                    "intra-dp-usp-cp", is_expert=False, gloo=False, check_initialized=True
-                )
-            return current_process_mesh.get_process_group(
-                "dp-usp-cp", is_expert=False, gloo=False, check_initialized=True
-            )
-        elif with_context_parallel:
+        if with_context_parallel:
             if partial_data_parallel:
                 return current_process_mesh.get_process_group(
                     "intra-dp-cp", is_expert=False, gloo=False, check_initialized=True
@@ -1011,39 +984,21 @@ class ParallelContext:
             return current_process_mesh.get_process_group(
                 "dp-cp", is_expert=False, gloo=False, check_initialized=True
             )
-        elif with_ulysses_sp_parallel:
-            assert partial_data_parallel is False, "Partial data parallel is not supported with Ulysses SP parallel"
-            return current_process_mesh.get_process_group(
-                "dp-usp", is_expert=False, gloo=False, check_initialized=True
-            )
         else:
             return current_process_mesh.get_process_group(
                 "dp", is_expert=False, gloo=False, check_initialized=True
             )
 
-    def get_data_parallel_group_gloo(self, with_context_parallel=False, partial_data_parallel=False, with_ulysses_sp_parallel=False):
+    def get_data_parallel_group_gloo(self, with_context_parallel=False, partial_data_parallel=False):
         """Get the data parallel group-gloo the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        if with_context_parallel and with_ulysses_sp_parallel:
-            if partial_data_parallel:
-                return current_process_mesh.get_process_group(
-                    "intra-dp-usp-cp", is_expert=False, gloo=True, check_initialized=True
-                )
-            return current_process_mesh.get_process_group(
-                "dp-usp-cp", is_expert=False, gloo=True, check_initialized=True
-            )
-        elif with_context_parallel:
+        if with_context_parallel:
             if partial_data_parallel:
                 return current_process_mesh.get_process_group(
                     "intra-dp-cp", is_expert=False, gloo=True, check_initialized=True
                 )
             return current_process_mesh.get_process_group(
                 "dp-cp", is_expert=False, gloo=True, check_initialized=True
-            )
-        elif with_ulysses_sp_parallel:
-            assert partial_data_parallel is False, "Partial data parallel is not supported with Ulysses SP parallel"
-            return current_process_mesh.get_process_group(
-                "dp-usp", is_expert=False, gloo=True, check_initialized=True
             )
         else:
             return current_process_mesh.get_process_group(
@@ -1069,20 +1024,6 @@ class ParallelContext:
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         return current_process_mesh.get_process_group_ranks(
             "cp", is_expert=False, check_initialized=check_initialized
-        )
-
-    def get_ulysses_sp_parallel_group(self, check_initialized=True):
-        """Get the ulysses sequence parallel group the caller rank belongs to."""
-        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        return current_process_mesh.get_process_group(
-            "usp", is_expert=False, gloo=False, check_initialized=check_initialized
-        )
-
-    def get_ulysses_sp_parallel_global_ranks(self, check_initialized=True):
-        """Get all global ranks of the ulysses sequence parallel group that the caller rank belongs to."""
-        current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        return current_process_mesh.get_process_group_ranks(
-            "usp", is_expert=False, check_initialized=check_initialized
         )
 
     def get_hierarchical_context_parallel_groups(self, check_initialized=True):
@@ -1370,21 +1311,13 @@ class ParallelContext:
         )
         return ranks[0]
 
-    def get_data_parallel_src_rank(self, with_context_parallel=False, with_ulysses_sp_parallel=False):
+    def get_data_parallel_src_rank(self, with_context_parallel=False):
         """Calculate the global rank corresponding to the first local rank
         in the data parallel group."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        if with_context_parallel and with_ulysses_sp_parallel:
-            ranks = current_process_mesh.get_process_group_ranks(
-                "dp-usp-cp", is_expert=False, check_initialized=True
-            )
-        elif with_context_parallel:
+        if with_context_parallel:
             ranks = current_process_mesh.get_process_group_ranks(
                 "dp-cp", is_expert=False, check_initialized=True
-            )
-        elif with_ulysses_sp_parallel:
-            ranks = current_process_mesh.get_process_group_ranks(
-                "usp", is_expert=False, check_initialized=True
             )
         else:
             ranks = current_process_mesh.get_process_group_ranks(
@@ -1454,7 +1387,6 @@ class ParallelContext:
         self,
         with_context_parallel=False,
         partial_data_parallel=False,
-        with_ulysses_sp_parallel=False,
     ):
         """Return world size for the data parallel group."""
         size = self._global_parallel_world_sizes.get("dp", None)
@@ -1465,7 +1397,6 @@ class ParallelContext:
                 group=self.get_data_parallel_group(
                     with_context_parallel=with_context_parallel,
                     partial_data_parallel=partial_data_parallel,
-                    with_ulysses_sp_parallel=with_ulysses_sp_parallel,
                 )
             )
         else:
@@ -1479,7 +1410,6 @@ class ParallelContext:
         self,
         with_context_parallel=False,
         partial_data_parallel=False,
-        with_ulysses_sp_parallel=False,
     ):
         """Return my rank for the data parallel group."""
         rank = self._global_parallel_ranks.get("dp", None)
@@ -1490,23 +1420,8 @@ class ParallelContext:
                 group=self.get_data_parallel_group(
                     with_context_parallel=with_context_parallel,
                     partial_data_parallel=partial_data_parallel,
-                    with_ulysses_sp_parallel=with_ulysses_sp_parallel,
                 )
             )
-        else:
-            return 0
-
-    def get_ulysses_sp_parallel_world_size(self):
-        """Return world size for the ulysses sequence parallel group."""
-        if torch.distributed.is_available() and torch.distributed.is_initialized():
-            return torch.distributed.get_world_size(group=self.get_ulysses_sp_parallel_group())
-        else:
-            return 0
-
-    def get_ulysses_sp_parallel_rank(self):
-        """Return my rank for the ulysses sequence parallel group."""
-        if torch.distributed.is_available() and torch.distributed.is_initialized():
-            return torch.distributed.get_rank(group=self.get_ulysses_sp_parallel_group())
         else:
             return 0
 

@@ -347,8 +347,16 @@ def save(
 
     if torch.distributed.get_rank() == 0:
         if not checkpoint_dir.exists():
+            raise CheckpointingException(
+                f'Checkpoint destination directory does not exist: {checkpoint_dir}'
+            )
+
+        if next(checkpoint_dir.iterdir(), None) is not None:
+            # Don't throw exception here since this could cause a cascade of failures
+            # without human intervention in cases where multiple jobs are queued up.
             if torch.distributed.get_rank() == 0:
-                            logger.warning("Overwriting old incomplete / corrupted checkpoint...")
+                logger.warning("Overwriting old incomplete / corrupted checkpoint...")
+
     if common_strategy is not None:
         raise NotImplementedError('The only supported common strategy is torch')
 
