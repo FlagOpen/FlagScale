@@ -968,10 +968,11 @@ class ParallelContext:
             ), f"Process group {group_name} is not initialized."
         return ranks
 
-    def get_model_parallel_group(self):
+    def get_model_parallel_group(self, check_initialized=True):
         """Get the model parallel group the caller rank belongs to."""
         group = self.get_global_process_group("tp-pp", is_expert=False, check_initialized=True)
-        assert group is not None, 'model parallel group is not initialized'
+        if check_initialized:
+            assert group is not None, 'model parallel group is not initialized'
         return group
 
     def get_tensor_model_parallel_group(self, check_initialized=True):
@@ -981,13 +982,14 @@ class ParallelContext:
             "tp", is_expert=False, gloo=False, check_initialized=check_initialized
         )
 
-    def get_pipeline_model_parallel_group(self, local_pp_group=False):
+    def get_pipeline_model_parallel_group(self, check_initialized=True, local_pp_group=False):
         """Get the pipeline model parallel group the caller rank belongs to."""
         if local_pp_group:
             current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-            return current_process_mesh.get_process_group("pp", is_expert=False, gloo=False, check_initialized=True)
+            return current_process_mesh.get_process_group("pp", is_expert=False, gloo=False, check_initialized=check_initialized)
         group = self._global_process_groups.get("pp", None)
-        assert group is not None, "pipeline_model parallel group is not initialized"
+        if check_initialized:
+            assert group is not None, "pipeline_model parallel group is not initialized"
         return self._global_process_groups["pp"]
 
     def get_data_parallel_group(self, with_context_parallel=False, partial_data_parallel=False, with_ulysses_sp_parallel=False):
@@ -1090,16 +1092,20 @@ class ParallelContext:
             "hierarchical-cp", is_expert=False, gloo=False, check_initialized=check_initialized
         )
 
-    def get_embedding_group(self):
+    def get_embedding_group(self, check_initialized=True):
         """Get the embedding group the caller rank belongs to."""
         groups = self._global_process_groups.get("embd", None)
-        assert groups is not None, 'embedding group is not initialized'
+        if check_initialized:
+            assert groups is not None, 'embedding group is not initialized'
         return groups
 
-    def get_position_embedding_group(self):
+    def get_position_embedding_group(self, check_initialized=True):
         """Get the position embedding group the caller rank belongs to."""
         groups = self._global_process_groups.get("embd_pos", None)
-        assert groups is not None, 'Position embedding group is not initialized'
+        if check_initialized:
+            assert groups is not None, 'Position embedding group is not initialized'
+        if groups is None:
+            return None
         for group in groups:
             if self._rank in self._global_process_group_to_ranks[group]:
                 pos_embd_group = group
@@ -1140,11 +1146,11 @@ class ParallelContext:
                 "tp-dp", is_expert=False, gloo=False, check_initialized=True
             )
 
-    def get_tensor_and_context_parallel_group(self):
+    def get_tensor_and_context_parallel_group(self, check_initialized=True):
         """Get the tensor- and context-parallel group the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
         return current_process_mesh.get_process_group(
-            "tp-cp", is_expert=False, gloo=False, check_initialized=True
+            "tp-cp", is_expert=False, gloo=False, check_initialized=check_initialized
         )
 
     def set_tensor_model_parallel_world_size(self, world_size):
@@ -1637,10 +1643,11 @@ class ParallelContext:
         else:
             return 0
 
-    def get_expert_tensor_model_pipeline_parallel_group(self):
+    def get_expert_tensor_model_pipeline_parallel_group(self, check_initialized=True):
         """Get expert tensor-model-pipeline parallel group."""
         group = self.get_global_process_group("tp-ep-pp", is_expert=True, check_initialized=True)
-        assert group is not None, 'expert tensor-model-pipeline parallel group is not initialized'
+        if check_initialized:
+            assert group is not None, 'expert tensor-model-pipeline parallel group is not initialized'
         return group
 
     def get_expert_data_parallel_group(self):
@@ -1758,7 +1765,8 @@ class ParallelContext:
                     reset_attention_mask=args.reset_attention_mask,
                     eod_mask_loss=args.eod_mask_loss,
                     create_attention_mask=args.create_attention_mask_in_dataloader,
-                    s3_cache_path = args.s3_cache_path,
+                    object_storage_cache_path=args.object_storage_cache_path,
+                    mid_level_dataset_surplus=args.mid_level_dataset_surplus,
                 )
 
         from megatron.training.arguments import core_transformer_config_from_args

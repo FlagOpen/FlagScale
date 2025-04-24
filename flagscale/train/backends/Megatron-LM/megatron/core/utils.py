@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import traceback
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from functools import reduce, wraps
@@ -46,6 +47,7 @@ except Exception:
     # This is a WAR for building docs, where torch is not actually imported
     _torch_version = PkgVersion("0.0.0")
 _te_version = None
+_fa_version = None
 
 
 class ExperimentalNotEnabledError(Exception):
@@ -89,7 +91,7 @@ def experimental_fn(introduced_with_version: str):
             < PkgVersion(mcore_version).minor
         ):
             logger.warning(
-                "{} has reached end of life. Please migrate to a non-experimental function.",
+                "%s has reached end of life. Please migrate to a non-experimental function.",
                 func.__name__,
             )
 
@@ -145,20 +147,80 @@ def experimental_cls(introduced_with_version: str):
             < PkgVersion(mcore_version).minor
         ):
             logger.warning(
-                "{} has reached end of life. Please migrate to a non-experimental function.",
+                "%s has reached end of life. Please migrate to a non-experimental function.",
                 cls.__name__,
             )
 
-        def wrapped_func():
+        def wrapped_func(cls):
 
-            if config.ENABLE_EXPERIMENTAL is not True:
-                raise ExperimentalNotEnabledError(f"Flag {config.ENABLE_EXPERIMENTAL} not enabled.")
+            def guard(super: super, attr: str):
+                """Pass-through to callee attribute if experimental flag is enabled.
 
-            logger.info("Setting ENABLE_EXPERIMENTAL=True will run experimental code.")
+                Args:
+                    super (super): Parent class of callee.
+                    attr (str): Attribute of callee that is being called.
 
-            return cls
+                Raises:
+                    ExperimentalNotEnabledError: Raised if flag is not set.
 
-        return wrapped_func
+                Returns:
+                    Attribute of callee.
+                """
+                if attr == "is_experimental":
+                    return config.ENABLE_EXPERIMENTAL
+
+                if config.ENABLE_EXPERIMENTAL is not True:
+                    raise ExperimentalNotEnabledError(
+                        f"Flag {config.ENABLE_EXPERIMENTAL} not enabled."
+                    )
+
+                logger.info("Setting ENABLE_EXPERIMENTAL=True will run experimental code.")
+                return super.__getattribute__(attr)
+
+            class ClassInterceptor(type):
+                """Metaclass to intercept calls from the uninitialized class."""
+
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.__class__ = type(cls.__qualname__, (ClassInterceptor,), {})
+
+                def __getattribute__(self, attr):
+                    """Intercepts calls like A.hello_world()"""
+                    return guard(super(), attr)
+
+            class Proxy(cls, metaclass=ClassInterceptor):
+                """Proxies calls from caller to the callee by relaying all
+                attribute calls through a guarding mechanism.
+
+                We use `__getattribute__` for relaying calls. Opposed to `__getattr__`,
+                this is called regardless of whether the attribute exists or not.
+
+                We need to distinguish two cases: callee is an instance vs. a class.
+
+                If callee is an instance, `__getattribute__` will look and find attributes
+                at the class level.
+
+                If callee is a class, `__getattribute__` will look for attributes at
+                _its_ class, which is `type`. Here, it won't find attributes.
+                We solve this a metaclass mixin which swaps `type` with a custom class
+                that supersets the callee's class. For mixins, any methods provided on
+                parent classes will be provided to the metaclass. We add a
+                `__getattribute__` to the metaclass as to allow it to fetch it from the
+                callees class.
+
+                """
+
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.__class__ = type(cls.__qualname__, (Proxy,), {})
+
+                def __getattribute__(self, attr):
+                    """Intercepts calls like a.hello_world()"""
+                    return guard(super(), attr)
+
+            return Proxy
+
+        return wrapped_func(cls)
 
     return validator
 
@@ -218,6 +280,30 @@ def is_torch_min_version(version, check_equality=True):
     return get_torch_version() > PkgVersion(version)
 
 
+def get_fa_version():
+    """Get Flash attention version from __version__; if not available use pip's. Use caching."""
+
+    def get_fa_version_str():
+        import flash_attn as fa
+
+        if hasattr(fa, '__version__'):
+            return str(fa.__version__)
+        else:
+            return version("flash-attn")
+
+    global _fa_version
+    if _fa_version is None:
+        _fa_version = PkgVersion(get_fa_version_str())
+    return _fa_version
+
+
+def is_fa_min_version(version, check_equality=True):
+    """Check if minimum version of `flash-attn` is installed."""
+    if check_equality:
+        return get_fa_version() >= PkgVersion(version)
+    return get_fa_version() > PkgVersion(version)
+
+
 def ensure_divisibility(numerator, denominator):
     """Ensure that numerator is divisible by the denominator."""
     assert numerator % denominator == 0, "{} is not divisible by {}".format(numerator, denominator)
@@ -228,6 +314,39 @@ def divide(numerator, denominator):
     the division value."""
     ensure_divisibility(numerator, denominator)
     return numerator // denominator
+
+
+def deprecate_inference_params(inference_context, inference_params):
+    """Print warning for deprecated `inference_params`."""
+    if inference_context is None and inference_params is not None:
+        warnings.warn(
+            "`inference_params` renamed to `inference_context`, and will be "
+            "removed in `megatron-core` 0.13."
+        )
+        return inference_params
+    return inference_context
+
+
+def get_tensor_model_parallel_group_if_none(tp_group, is_expert=False, check_initialized=True):
+    """Issue a deprecation warning if tp_group is None and return the default tp group."""
+    # TODO(zijiey): remove this function later.
+    if tp_group is None:
+        if torch.distributed.is_initialized() and torch.distributed.get_rank() == 0:
+            warnings.warn(
+                "Warning: tp_group is None, using default tp group. "
+                "Passing tp_group will be mandatory soon",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if is_expert:
+            tp_group = parallel_state.get_expert_tensor_parallel_group(
+                check_initialized=check_initialized
+            )
+        else:
+            tp_group = parallel_state.get_tensor_model_parallel_group(
+                check_initialized=check_initialized
+            )
+    return tp_group
 
 
 def get_attr_wrapped_model(model, attr, allow_none=True, return_model_obj=False):
@@ -314,6 +433,26 @@ def _kernel_make_viewless_tensor(inp, requires_grad):
     return out
 
 
+class WrappedTensor:
+    """
+    A wrapper for tensors that enables caller functions to pass an indirect reference
+    to callee functions. By wrapping the tensor, the caller's direct reference is removed,
+    allowing the tensor to be garbage collected once the callee unwraps and frees it.
+    """
+
+    def __init__(self, tensor: torch.Tensor):
+        self._wrapper = [tensor]
+
+    def unwrap(self):
+        """
+        Returns the wrapped tensor while deleting the internal reference.
+        Can only be called once.
+        """
+        if len(self._wrapper) == 0:
+            raise RuntimeError(f"WrappedTensor has already been unwrapped")
+        return self._wrapper.pop(0)
+
+
 class MakeViewlessTensor(torch.autograd.Function):
     """
     Autograd function to make a viewless tensor.
@@ -391,9 +530,9 @@ def init_method_normal(sigma):
     return functools.partial(torch.nn.init.normal_, mean=0.0, std=sigma)
 
 
-def scaled_init_method_normal(sigma, num_layers):
+def scaled_init_method_normal(sigma, num_layers, multiplier=2.0):
     """Init method based on N(0, sigma/sqrt(2*num_layers)."""
-    std = sigma / math.sqrt(2.0 * num_layers)
+    std = sigma / math.sqrt(multiplier * num_layers)
 
     return functools.partial(torch.nn.init.normal_, mean=0.0, std=std)
 

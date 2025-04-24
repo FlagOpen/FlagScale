@@ -154,7 +154,12 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
         ddp_config = model_module.ddp_config
         use_dist_opt = ddp_config.use_distributed_optimizer
         model_module = get_attr_wrapped_model(model_module, 'pre_process', return_model_obj=True)
-        if model_module.share_embeddings_and_output_weights:
+
+        # If share_embeddings_and_output_weights is True, we need to maintain duplicated
+        # embedding weights in post processing stage. If use Multi-Token Prediction (MTP),
+        # we also need to maintain duplicated embedding weights in mtp process stage.
+        # So we need to allreduce grads of embedding in the embedding group in these cases.
+        if model_module.share_embeddings_and_output_weights or getattr(config, 'mtp_num_layers', 0):
             weight = model_module.shared_embedding_or_output_weight()
             grad_attr = _get_main_grad_attr(weight, ddp_config.use_custom_fsdp)
             orig_grad = getattr(weight, grad_attr)
@@ -292,6 +297,7 @@ def _allreduce_layernorm_grads(model: List[torch.nn.Module], config: Transformer
         params = []
         grads = []
         for model_chunk in model:
+            ddp_config = model_chunk.ddp_config
             for name, param in get_attr_wrapped_model(model_chunk, 'named_parameters')():
                 if param.requires_grad and (
                     getattr(param, 'sequence_parallel', False)
@@ -299,7 +305,7 @@ def _allreduce_layernorm_grads(model: List[torch.nn.Module], config: Transformer
                     or 'k_layernorm' in name
                 ):
                     params.append(param)
-                    grad_attr = _get_main_grad_attr(param, config.use_custom_fsdp)
+                    grad_attr = _get_main_grad_attr(param, ddp_config.use_custom_fsdp)
                     grad = getattr(param, grad_attr)
                     grad = _unshard_if_dtensor(grad)
                     grads.append(grad.data)
@@ -312,7 +318,7 @@ def _allreduce_layernorm_grads(model: List[torch.nn.Module], config: Transformer
                 params, grads, _unflatten_dense_tensors(coalesced, grads)
             ):
                 buf.copy_(synced)
-                grad_attr = _get_main_grad_attr(param, config.use_custom_fsdp)
+                grad_attr = _get_main_grad_attr(param, ddp_config.use_custom_fsdp)
                 orig_grad = getattr(param, grad_attr)
                 setattr(param, grad_attr, _reshard_if_dtensor(buf, orig_grad))
 

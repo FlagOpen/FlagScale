@@ -15,11 +15,9 @@ from vllm.multimodal.inputs import (MultiModalDataDict, MultiModalEncDecInputs,
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.transformers_utils.tokenizer_group import BaseTokenizerGroup
 
-# --- FLAGSCALE MODIFICATION BEG ---
-from vllm.inputs.data import (DecoderOnlyInputs, EncoderDecoderInputs, ProcessorInputs,
+from .data import (DecoderOnlyInputs, EncoderDecoderInputs, ProcessorInputs,
                    PromptType, SingletonInputs, SingletonPrompt, token_inputs)
-from vllm.inputs.parse import is_explicit_encoder_decoder_prompt, parse_singleton_prompt
-# --- FLAGSCALE MODIFICATION END ---
+from .parse import is_explicit_encoder_decoder_prompt, parse_singleton_prompt
 
 logger = init_logger(__name__)
 
@@ -263,13 +261,13 @@ class InputPreprocessor:
         # initialized without a tokenizer while using also multi-modal
         # input.
         if not self.tokenizer:
-            tokenizer = None
+            tokenizer = object()  # Dummy
         else:
             tokenizer_group = self.get_tokenizer_group()
             tokenizer = tokenizer_group.get_lora_tokenizer(lora_request)
 
-        mm_processor = self.mm_registry.create_processor(
-            self.model_config, tokenizer)
+        mm_processor = self.mm_registry.create_processor(self.model_config,
+                                                         tokenizer=tokenizer)
 
         if mm_processor_kwargs is None:
             mm_processor_kwargs = {}
@@ -290,14 +288,14 @@ class InputPreprocessor:
         # initialized without a tokenizer while using also multi-modal
         # input.
         if not self.tokenizer:
-            tokenizer = None
+            tokenizer = object()  # Dummy
         else:
             tokenizer_group = self.get_tokenizer_group()
             tokenizer = await tokenizer_group.get_lora_tokenizer_async(
                 lora_request)
 
-        mm_processor = self.mm_registry.create_processor(
-            self.model_config, tokenizer)
+        mm_processor = self.mm_registry.create_processor(self.model_config,
+                                                         tokenizer=tokenizer)
         if mm_processor_kwargs is None:
             mm_processor_kwargs = {}
 
@@ -562,6 +560,7 @@ class InputPreprocessor:
                     prompt_token_ids=decoder_inputs_to_override[
                         "prompt_token_ids"],
                     mm_kwargs=inputs["mm_kwargs"],
+                    mm_hashes=inputs["mm_hashes"],
                     mm_placeholders=inputs["mm_placeholders"],
                 )
             else:
@@ -570,6 +569,7 @@ class InputPreprocessor:
                     prompt=inputs["prompt"],
                     prompt_token_ids=inputs["prompt_token_ids"],
                     mm_kwargs=inputs["mm_kwargs"],
+                    mm_hashes=inputs["mm_hashes"],
                     mm_placeholders=inputs["mm_placeholders"],
                 )
         elif inputs["type"] == "token":

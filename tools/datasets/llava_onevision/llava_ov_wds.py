@@ -1443,11 +1443,21 @@ class LazySupervisedDataset(Dataset):
                 cur_data_dict = json.load(file)
                 rank0_print(f"Loaded {len(cur_data_dict)} samples from {data_path}")
                 self.list_data_dict.extend(cur_data_dict)
+        total_len = len(self.list_data_dict)
+        launch_times = int(os.environ.get("FLAGSCALE_LAUNCH_TIMES", 1))
+        launch_index = int(os.environ.get("FLAGSCALE_LAUNCH_INDEX", 0))
 
         rank0_print(f"Loaded {len(self.list_data_dict)} samples from {data_path}")
         rank0_print("Formatting inputs...Skip in lazy mode")
+
+        per_launch = total_len // launch_times
+        start_index = launch_index * per_launch
+        end_index = (launch_index + 1) * per_launch if launch_index != launch_times - 1 else total_len
+        self.list_data_dict = self.list_data_dict[start_index:end_index]
+        print(f"Loaded {len(self.list_data_dict)} samples by {launch_index}-th launching.")
         self.tokenizer = tokenizer
         self.data_args = data_args
+
 
     def __len__(self):
         return len(self.list_data_dict)
@@ -2264,8 +2274,10 @@ def train(attn_implementation=None):
     if not os.path.exists(output):
         os.mkdir(output)
     start_time = time.time()
+    launch_index = int(os.environ.get("FLAGSCALE_LAUNCH_INDEX", 0))
+    launch_times = int(os.environ.get("FLAGSCALE_LAUNCH_TIMES", 1))
     with wds.ShardWriter(
-        os.path.join(output, f"llava-ov-{dist.get_rank()}-%d.tar"), maxcount=10000
+        os.path.join(output, f"llava-ov-{dist.get_rank()}-{launch_index}-%d.tar"), maxcount=10000
     ) as shard_writer:
         dataloader = trainer.get_train_dataloader()
         print(f"sample num: {len(dataloader)}")
@@ -2342,8 +2354,11 @@ def train(attn_implementation=None):
 
             shard_writer.write(sample)
             global_id += 1
-
-    print(f"rank {dist.get_rank()} datasets saved to {training_args.output_dir}")
+            
+    end_time = time.time()
+    print(
+        f"rank {dist.get_rank()} datasets saved to {training_args.output_dir} in {end_time-start_time:.2f}s."
+    )
 
 
 if __name__ == "__main__":
