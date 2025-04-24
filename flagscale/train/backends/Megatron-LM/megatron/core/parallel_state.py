@@ -6,7 +6,6 @@ import os
 import warnings
 from datetime import timedelta
 from functools import partial
-from itertools import cycle
 from typing import Callable, List, Optional
 
 import torch
@@ -143,9 +142,6 @@ _LAST_RANK_WHEN_USING_PIPELINE = None
 
 # Memory buffers to avoid dynamic memory allocation
 _GLOBAL_MEMORY_BUFFER = None
-
-# MOE logging
-_MOE_LAYER_WISE_LOGGING_TRACKER = {}
 
 
 def get_nccl_options(pg_name, nccl_comm_cfgs):
@@ -767,7 +763,16 @@ def initialize_model_parallel(
         tensor, pipeline, data, expert, and context parallelism. If we have an encoder,
         in addition to the default decoder, we essentially instantiate two `RankGenerator`
         classes to construct the parallelism for each module separately, and we then have
-        to stitch them together for the right groups. For now, this means pp and tp-pp."""
+        to stitch them together for the right groups. For now, this means pp and tp-pp.
+
+        Let's say we have a total of 6 GPUs denoted by g0 ... g5.
+        For encoder_tp=1, encoder_pp=1, decoder_tp=2, decoder_pp=1, dp=2,
+        g0, g1 belong to encoder and g2, ..., g5 belong to decoder.
+        The present function will create with "tp-dp-pp":
+        3 data-parallel groups: [g0, g1], [g2, g4], [g3, g5]
+        4 tensor model-parallel groups: [g0], [g1], [g2, g3], [g4, g5]
+        4 pipeline model-parallel groups: [g0, g2], [g0, g3], [g1, g4], [g1, g5]
+        """
         if is_expert:
             d_ranks = expert_decoder_rank_generator.get_ranks(group_type, **kwargs)
         else:
@@ -779,9 +784,21 @@ def initialize_model_parallel(
             return
         e_ranks = encoder_rank_generator.get_ranks(group_type, **kwargs)
         if group_type == 'pp':
-            # Map 1 encoder tp rank to several decoder tp ranks, because
-            # these won't be the same size.
-            for x, y in zip(cycle(e_ranks), d_ranks):
+            # Map one encoder tp rank to several decoder tp ranks, because
+            # encoder tp and decoder tp won't be the same size.
+            # Assign this way to avoid getting the DP ranks mixed up with the PP ranks.
+            # For example, if e_ranks = [0,1,2] and d_ranks = [3,4,5,6]
+            # Should yield [0,3], [0,4], [1,5], [2,6]
+            rep = len(d_ranks) // len(e_ranks)
+            remain = len(d_ranks) % len(e_ranks)
+            e_ind = 0
+            e_rep = rep + int(e_ind < remain)
+            for i, y in enumerate(d_ranks):
+                x = e_ranks[e_ind]
+                e_rep -= 1
+                if e_rep == 0:
+                    e_ind += 1
+                    e_rep = rep + int(e_ind < remain)
                 yield x + y
         elif group_type == 'tp-pp':
             # For this group, we can just return the concatenated
@@ -1361,13 +1378,13 @@ def model_parallel_is_initialized():
     return True
 
 
-def get_model_parallel_group():
+def get_model_parallel_group(check_initialized=True):
     """Get the model-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_model_parallel_group()
-
-    assert _MODEL_PARALLEL_GROUP is not None, 'model parallel group is not initialized'
+        return para_ctx.get_model_parallel_group(check_initialized=check_initialized)
+    if check_initialized:
+        assert _MODEL_PARALLEL_GROUP is not None, 'model parallel group is not initialized'
     return _MODEL_PARALLEL_GROUP
 
 
@@ -1384,15 +1401,16 @@ def get_tensor_model_parallel_group(check_initialized=True):
     return _TENSOR_MODEL_PARALLEL_GROUP
 
 
-def get_pipeline_model_parallel_group():
+def get_pipeline_model_parallel_group(check_initialized=True):
     """Get the pipeline-model-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_pipeline_model_parallel_group()
+        return para_ctx.get_pipeline_model_parallel_group(check_initialized=check_initialized)
 
-    assert (
-        _PIPELINE_MODEL_PARALLEL_GROUP is not None
-    ), 'pipeline_model parallel group is not initialized'
+    if check_initialized:
+        assert (
+                _PIPELINE_MODEL_PARALLEL_GROUP is not None
+            ), 'pipeline_model parallel group is not initialized'
     return _PIPELINE_MODEL_PARALLEL_GROUP
 
 
@@ -1545,23 +1563,24 @@ def get_hierarchical_context_parallel_groups(check_initialized=True):
     return _HIERARCHICAL_CONTEXT_PARALLEL_GROUPS
 
 
-def get_embedding_group():
+def get_embedding_group(check_initialized=True):
     """Get the embedding group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_embedding_group()
+        return para_ctx.get_embedding_group(check_initialized=check_initialized)
 
-    assert _EMBEDDING_GROUP is not None, 'embedding group is not initialized'
+    if check_initialized:
+        assert _EMBEDDING_GROUP is not None, 'embedding group is not initialized'
     return _EMBEDDING_GROUP
 
 
-def get_position_embedding_group():
+def get_position_embedding_group(check_initialized=True):
     """Get the position embedding group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_position_embedding_group()
-
-    assert _POSITION_EMBEDDING_GROUP is not None, 'position embedding group is not initialized'
+        return para_ctx.get_position_embedding_group(check_initialized=check_initialized)
+    if check_initialized:
+        assert _POSITION_EMBEDDING_GROUP is not None, 'position embedding group is not initialized'
     return _POSITION_EMBEDDING_GROUP
 
 
@@ -1613,15 +1632,15 @@ def get_tensor_and_data_parallel_group(with_context_parallel=False):
         return _TENSOR_AND_DATA_PARALLEL_GROUP
 
 
-def get_tensor_and_context_parallel_group():
+def get_tensor_and_context_parallel_group(check_initialized=True):
     """Get the tensor- and context-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_tensor_and_context_parallel_group()
-
-    assert (
-        _TENSOR_AND_CONTEXT_PARALLEL_GROUP is not None
-    ), 'tensor and context parallel group is not initialized'
+        return para_ctx.get_tensor_and_context_parallel_group(check_initialized=check_initialized)
+    if check_initialized:
+        assert (
+                _TENSOR_AND_CONTEXT_PARALLEL_GROUP is not None
+            ), 'tensor and context parallel group is not initialized'
     return _TENSOR_AND_CONTEXT_PARALLEL_GROUP
 
 
@@ -1916,7 +1935,7 @@ def is_inside_decoder(rank=None) -> bool:
     return False
 
 
-def get_pipeline_model_parallel_decoder_start() -> int:
+def get_pipeline_model_parallel_decoder_start() -> Optional[int]:
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_pipeline_model_parallel_decoder_start()
@@ -2399,16 +2418,16 @@ def get_expert_tensor_and_model_parallel_rank():
         return 0
 
 
-def get_expert_tensor_model_pipeline_parallel_group():
+def get_expert_tensor_model_pipeline_parallel_group(check_initialized=True):
     """Get expert tensor-model-pipeline parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_expert_tensor_model_pipeline_parallel_group()
-
-    assert (
-        _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP is not None
-    ), 'Expert tensor-model-pipeline parallel group is not initialized'
-    return _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP
+        return para_ctx.get_expert_tensor_model_pipeline_parallel_group(check_initialized=check_initialized)
+    if check_initialized:
+        assert (
+                _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP is not None
+            ), 'Expert tensor-model-pipeline parallel group is not initialized'
+        return _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP
 
 
 def get_expert_data_parallel_group():
@@ -2513,12 +2532,6 @@ def get_all_ranks():
     return '_'.join(map(lambda x: str(x or 0), ranks))
 
 
-def get_moe_layer_wise_logging_tracker():
-    """Return the moe layer wise tracker."""
-    global _MOE_LAYER_WISE_LOGGING_TRACKER
-    return _MOE_LAYER_WISE_LOGGING_TRACKER
-
-
 def destroy_model_parallel():
     """Set the groups to none."""
     global _MODEL_PARALLEL_GROUP
@@ -2550,6 +2563,9 @@ def destroy_model_parallel():
 
     global _POSITION_EMBEDDING_GROUP
     _POSITION_EMBEDDING_GROUP = None
+
+    global _POSITION_EMBEDDING_GLOBAL_RANKS
+    _POSITION_EMBEDDING_GLOBAL_RANKS = None
 
     global _TENSOR_AND_DATA_PARALLEL_GROUP
     _TENSOR_AND_DATA_PARALLEL_GROUP = None
@@ -2640,9 +2656,6 @@ def destroy_model_parallel():
         torch.distributed.destroy_process_group(_EXPERT_DATA_PARALLEL_GROUP_GLOO)
     _EXPERT_DATA_PARALLEL_GROUP_GLOO = None
     # End of expert parallelism destroy.
-
-    global _MOE_LAYER_WISE_LOGGING_TRACKER
-    _MOE_LAYER_WISE_LOGGING_TRACKER = {}
 
     global _ULYSSES_SP_PARALLEL_GROUP
     _ULYSSES_SP_PARALLEL_GROUP = None

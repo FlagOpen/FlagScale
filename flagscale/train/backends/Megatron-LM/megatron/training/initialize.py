@@ -1,4 +1,4 @@
-# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
 
 """Megatron initialization."""
 import logging
@@ -44,6 +44,7 @@ def initialize_megatron(
     skip_mpu_initialization=False,
     get_embedding_ranks=None,
     get_position_embedding_ranks=None,
+    parsed_args=None,
 ):
     """Set global variables, initialize distributed, and
     set autoresume and random seeds.
@@ -58,7 +59,10 @@ def initialize_megatron(
         assert torch.cuda.is_available(), "Megatron requires CUDA."
 
     # Parse arguments
-    args = parse_args(extra_args_provider, ignore_unknown_args)
+    if parsed_args is None:
+        args = parse_args(extra_args_provider, ignore_unknown_args)
+    else:
+        args = parsed_args
 
     # Prep for checkpoint conversion.
     if args.ckpt_convert_format is not None:
@@ -134,7 +138,14 @@ def initialize_megatron(
             args.data_parallel_random_init,
             args.te_rng_tracker,
             args.inference_rng_tracker,
+            use_cudagraphable_rng=args.enable_cuda_graph,
         )
+
+        # Setup MoE aux loss scale value.
+        if args.num_experts is not None:
+            from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler
+
+            MoEAuxLossAutoScaler.set_loss_scale(torch.ones(1, device=torch.cuda.current_device()))
 
         # Set tensorboard writer and wandb writer.
         set_global_writers(args)
@@ -324,6 +335,10 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
         else:
             device_id = None
 
+        # Set to non-default stream for cudagraph capturing.
+        if args.external_cuda_graph:
+            torch.cuda.set_stream(torch.cuda.Stream())
+
         # Call the init process
         init_process_group_kwargs = {
             'backend': args.distributed_backend,
@@ -395,7 +410,11 @@ def _init_autoresume():
 
 
 def _set_random_seed(
-    seed_, data_parallel_random_init=False, te_rng_tracker=False, inference_rng_tracker=False
+    seed_: int,
+    data_parallel_random_init: bool = False,
+    te_rng_tracker: bool = False,
+    inference_rng_tracker: bool = False,
+    use_cudagraphable_rng: bool = False,
 ):
     """Set random seed for reproducability."""
     if seed_ is not None and seed_ > 0:
@@ -409,7 +428,7 @@ def _set_random_seed(
         torch.manual_seed(seed)
         if torch.cuda.device_count() > 0:
             tensor_parallel.model_parallel_cuda_manual_seed(
-                seed, te_rng_tracker, inference_rng_tracker
+                seed, te_rng_tracker, inference_rng_tracker, use_cudagraphable_rng
             )
     else:
         raise ValueError("Seed ({}) should be a positive integer.".format(seed_))
