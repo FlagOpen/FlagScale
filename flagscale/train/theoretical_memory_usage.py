@@ -64,6 +64,7 @@ def compute_activated_weight_number(args, verbose=False):
                 attn_params += kv_projection_size
 
     # Part 2: MLP or MoE =====================================================================
+    moe_ffn_hidden_size = args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size
     shared_expert_ffn_hidden_size = (
         0
         if args.moe_shared_expert_intermediate_size is None
@@ -107,7 +108,7 @@ def compute_activated_weight_number(args, verbose=False):
         * args.hidden_size
         * (
             +(
-                args.moe_ffn_hidden_size
+                moe_ffn_hidden_size
                 * num_experts_routed_to
                 * gated_linear_multiplier
             )
@@ -232,6 +233,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
                 attn_params += kv_projection_size
 
     # Part 2: MLP or MoE ====================================================================
+    moe_ffn_hidden_size = args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size
     shared_expert_ffn_hidden_size = (
         0
         if args.moe_shared_expert_intermediate_size is None
@@ -272,7 +274,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
         * args.hidden_size
         * (
             # MoE mlp
-            +(args.moe_ffn_hidden_size * num_experts * gated_linear_multiplier)
+            +(moe_ffn_hidden_size * num_experts * gated_linear_multiplier)
             # Shared MoE mlp
             + (shared_expert_ffn_hidden_size * gated_linear_multiplier)
         )
@@ -349,7 +351,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
         * args.hidden_size
         # MoE mlp
         * (
-            args.moe_ffn_hidden_size
+            moe_ffn_hidden_size
             * gated_linear_multiplier
             * (num_experts / args.expert_model_parallel_size)
         )

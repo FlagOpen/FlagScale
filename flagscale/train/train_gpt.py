@@ -8,16 +8,10 @@ from typing import List, Optional, Tuple, Union
 import torch
 
 from megatron.core import mpu
-from megatron.core.enums import ModelType
 from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
-from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
-from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
-from megatron.core.rerun_state_machine import get_rerun_state_machine
-import megatron.legacy.model
+from megatron.core.datasets.gpt_dataset import GPTDataset, GPTDatasetConfig, MockGPTDataset
+from megatron.core.enums import ModelType
 from megatron.core.models.gpt import GPTModel
-
-from megatron.core.utils import StragglerDetector
-from megatron.core.transformer.spec_utils import import_module
 from megatron.core.models.gpt.gpt_layer_specs import (
     get_gpt_decoder_block_spec,
     get_gpt_layer_local_spec,
@@ -27,6 +21,9 @@ from megatron.core.models.gpt.gpt_layer_specs import (
 from megatron.core.models.gpt.heterogeneous.heterogeneous_layer_specs import (
     get_gpt_heterogeneous_layer_spec,
 )
+from megatron.core.rerun_state_machine import get_rerun_state_machine
+from megatron.core.transformer.spec_utils import import_module
+from megatron.core.utils import StragglerDetector
 from megatron.training import get_args, get_timers, get_tokenizer, pretrain, print_rank_0
 from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.utils import (
@@ -36,6 +33,9 @@ from megatron.training.utils import (
 )
 from megatron.training.yaml_arguments import core_transformer_config_from_yaml
 
+import megatron.legacy.model  # isort: skip
+# NOTE: Loading `megatron.legacy.model` earlier fails due to circular import
+
 try:
     from megatron.post_training.arguments import add_modelopt_args, modelopt_args_enabled
     from megatron.post_training.loss_func import loss_func as loss_func_modelopt
@@ -44,6 +44,7 @@ try:
     has_nvidia_modelopt = True
 except ImportError:
     has_nvidia_modelopt = False
+
 from flagscale.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
 from flagscale.train.extra_valid import extra_valid_datasets_provider
 from flagscale.train.train import pretrain
@@ -379,7 +380,6 @@ if __name__ == "__main__":
 
     # Temporary for transition to core datasets
     train_valid_test_datasets_provider.is_distributed = True
-
     extra_valid_datasets_provider.is_distributed = True
 
     pretrain(
