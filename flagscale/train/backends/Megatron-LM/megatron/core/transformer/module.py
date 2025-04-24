@@ -191,14 +191,6 @@ class Float16Module(MegatronModule):
             if parallel_state.is_pipeline_last_stage():
                 outputs = float16_to_fp32(outputs)
             return outputs
-        
-    def forward(self, *inputs, **kwargs):
-        if parallel_state.is_pipeline_first_stage():
-            inputs = fp32_to_float16(inputs, self.float16_convertor)
-        outputs = self.module(*inputs, **kwargs)
-        if parallel_state.is_pipeline_last_stage():
-            outputs = float16_to_fp32(outputs)
-        return outputs
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
         return self.module.state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
