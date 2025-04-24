@@ -2151,7 +2151,8 @@ def _add_tokenizer_args(parser):
                                 'QwenTokenizerFS',
                                 'Qwen2TokenizerFS',
                                 'NullTokenizer',
-                                'NullMultimodalTokenizer'],
+                                'NullMultimodalTokenizer',
+                                'Qwen2VLTokenizer',],
                        help='What type of tokenizer to use.')
     group.add_argument('--tokenizer-path', type=str, default=None,
                        help='Path to the huggingface tokenizer.')
