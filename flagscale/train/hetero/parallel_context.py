@@ -529,12 +529,12 @@ class ProcessMesh:
             sizes = self._rank_generator.ordered_size
             # Skip the axes related to expert parallelism
             # given the order tp-cp-ep-dp-pp --> tp-cp-dp-pp
-            new_sizes = [val for idx, val in enumerate(sizes) if (idx != 1 and idx != 3)]
+            new_sizes = [val for idx, val in enumerate(sizes) if idx != 3]
         else:
             sizes = self._expert_rank_generator.ordered_size
             # Skip the axes related to cp parallelism
             # given the order tp-cp-ep-dp-pp --> tp-ep-dp-pp
-            new_sizes = [val for idx, val in enumerate(sizes) if (idx != 1 and idx != 2)]
+            new_sizes = [val for idx, val in enumerate(sizes) if idx != 2]
         assert len(new_sizes) == len(coords[0]), f"new_sizes: {new_sizes}, coords[0]: {coords[0]}"
         strides = _prefix_product(new_sizes)
         logical_ranks = []
