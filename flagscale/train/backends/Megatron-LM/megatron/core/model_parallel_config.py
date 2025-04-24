@@ -43,9 +43,6 @@ class ModelParallelConfig:
 
     context_parallel_size: int = 1
     """Splits network input along sequence dimension across GPU ranks."""
-    
-    ulysses_sp_parallel_size: int = 1
-    """Splits network input along sequence dimension across GPU ranks using deepspeed-ulysses method."""
 
     hierarchical_context_parallel_sizes: Optional[list[int]] = None
     """Degrees of the hierarchical context parallelism. Users should provide a list to specify 

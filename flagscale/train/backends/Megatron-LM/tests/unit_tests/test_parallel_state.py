@@ -6,7 +6,7 @@ from tests.unit_tests.test_utilities import Utils
 
 rank = Utils.rank
 world_size = Utils.world_size
-test_parallel_order = ['tp-usp-cp-ep-dp-pp', 'tp-usp-cp-pp-ep-dp']
+test_parallel_order = ['tp-cp-ep-dp-pp', 'tp-cp-pp-ep-dp']
 
 
 @pytest.mark.parametrize('order', test_parallel_order)
@@ -297,120 +297,96 @@ def test_different_initialize_order_unconsistency(src_tp_pp, ep_size):
 
 @pytest.mark.internal
 @pytest.mark.parametrize(
-    'nodes, num_gpu, tp, pp, cp, ep, usp',
+    'nodes, num_gpu, tp, pp, cp, ep',
     [
-        (1, 1, 1, 1, 1, 1, 1),
-        (1, 1, 1, 1, 1, 1, 1),
-        (1, 8, 8, 1, 1, 1, 1),
-        (1, 8, 2, 2, 1, 1, 1),
-        (1, 8, 2, 4, 1, 1, 1),
-        (3, 8, 8, 3, 1, 1, 1),
-        (4, 8, 2, 4, 1, 1, 1),
-        (8, 8, 8, 8, 1, 1, 1),
-        (8, 8, 2, 1, 1, 4, 1),
-        (8, 8, 2, 2, 2, 4, 1),
-        (8, 8, 2, 1, 4, 8, 1),
-        (8, 8, 2, 2, 2, 8, 1),
-        (16, 8, 4, 8, 1, 1, 1),
-        (16, 8, 4, 8, 1, 4, 1),
-        (16, 8, 4, 8, 4, 1, 1),
-        (16, 8, 8, 8, 1, 1, 1),
-        (16, 8, 4, 8, 1, 1, 1),
-        (16, 8, 8, 8, 1, 1, 1),
-        (32, 8, 4, 8, 1, 1, 1),
-        (32, 8, 8, 8, 1, 1, 1),
-        (32, 8, 4, 8, 1, 4, 1),
-        (32, 8, 8, 8, 4, 1, 1),
-        (64, 8, 4, 2, 8, 8, 1),
-        (64, 8, 4, 8, 1, 1, 1),
-        (64, 8, 8, 8, 1, 1, 1),
-        (96, 8, 4, 8, 1, 1, 1),
-        (128, 8, 4, 2, 8, 8, 1),
-        (128, 8, 4, 8, 1, 1, 1),
-        (256, 8, 4, 8, 1, 1, 1),
-        (316, 8, 4, 8, 1, 1, 1),
-        (384, 8, 4, 8, 1, 1, 1),
-        (512, 8, 4, 8, 1, 1, 1),
-        (768, 8, 4, 8, 1, 1, 1),
-        (1024, 8, 4, 8, 1, 1, 1),
-        (1280, 8, 4, 8, 1, 1, 1),
-        (1344, 8, 4, 8, 1, 1, 1),
+        (1, 1, 1, 1, 1, 1),
+        (1, 8, 8, 1, 1, 1),
+        (1, 8, 2, 2, 1, 1),
+        (1, 8, 2, 4, 1, 1),
+        (3, 8, 8, 3, 1, 1),
+        (4, 8, 2, 4, 1, 1),
+        (8, 8, 8, 8, 1, 1),
+        (8, 8, 2, 1, 1, 4),
+        (8, 8, 2, 2, 2, 4),
+        (8, 8, 2, 1, 4, 8),
+        (8, 8, 2, 2, 2, 8),
+        (16, 8, 4, 8, 1, 1),
+        (16, 8, 4, 8, 1, 4),
+        (16, 8, 4, 8, 4, 1),
+        (16, 8, 8, 8, 1, 1),
+        (16, 8, 4, 8, 1, 1),
+        (16, 8, 8, 8, 1, 1),
+        (32, 8, 4, 8, 1, 1),
+        (32, 8, 8, 8, 1, 1),
+        (32, 8, 4, 8, 1, 4),
+        (32, 8, 8, 8, 4, 1),
+        (64, 8, 4, 2, 8, 8),
+        (64, 8, 4, 8, 1, 1),
+        (64, 8, 8, 8, 1, 1),
+        (96, 8, 4, 8, 1, 1),
+        (128, 8, 4, 2, 8, 8),
+        (128, 8, 4, 8, 1, 1),
+        (256, 8, 4, 8, 1, 1),
+        (316, 8, 4, 8, 1, 1),
+        (384, 8, 4, 8, 1, 1),
+        (512, 8, 4, 8, 1, 1),
+        (768, 8, 4, 8, 1, 1),
+        (1024, 8, 4, 8, 1, 1),
+        (1280, 8, 4, 8, 1, 1),
+        (1344, 8, 4, 8, 1, 1),
     ],
 )
-def test_rank_generator_for_tp_dp_pp(nodes, num_gpu, tp, pp, cp, ep, usp):
+def test_rank_generator_for_tp_dp_pp(nodes, num_gpu, tp, pp, cp, ep):
     def golden_rank_result_from_past_code(
         world_size: int,
         tensor_model_parallel_size: int = 1,
         pipeline_model_parallel_size: int = 1,
         context_parallel_size: int = 1,
         expert_model_parallel_size: int = 1,
-        ulysses_sp_parallel_size: int = 1,
     ):
         data_parallel_size: int = world_size // (
-            tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size * ulysses_sp_parallel_size
+            tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
         )
         num_tensor_model_parallel_groups: int = world_size // tensor_model_parallel_size
         num_pipeline_model_parallel_groups: int = world_size // pipeline_model_parallel_size
 
         dp_groups = []
         dp_groups_with_cp = []
-        dp_groups_with_cp_usp = []
 
-        all_data_parallel_group_ranks_with_cp_usp = []
+        all_data_parallel_group_ranks_with_cp = []
         for i in range(pipeline_model_parallel_size):
             start_rank = i * num_pipeline_model_parallel_groups
             end_rank = (i + 1) * num_pipeline_model_parallel_groups
-            for j in range(context_parallel_size * ulysses_sp_parallel_size * tensor_model_parallel_size):
+            for j in range(context_parallel_size * tensor_model_parallel_size):
                 ranks = range(
-                    start_rank + j, end_rank, context_parallel_size * ulysses_sp_parallel_size * tensor_model_parallel_size
+                    start_rank + j, end_rank, context_parallel_size * tensor_model_parallel_size
                 )
                 dp_groups.append(list(ranks))
-            for j in range(ulysses_sp_parallel_size * tensor_model_parallel_size):
-                ranks_with_cp = range(start_rank + j, end_rank, ulysses_sp_parallel_size * tensor_model_parallel_size)
-                dp_groups_with_cp.append(list(ranks_with_cp))
             for j in range(tensor_model_parallel_size):
-                ranks_with_cp_usp = range(start_rank + j, end_rank, tensor_model_parallel_size)
-                all_data_parallel_group_ranks_with_cp_usp.append(list(ranks_with_cp_usp))
-                dp_groups_with_cp_usp.append(list(ranks_with_cp_usp))
+                ranks_with_cp = range(start_rank + j, end_rank, tensor_model_parallel_size)
+                all_data_parallel_group_ranks_with_cp.append(list(ranks_with_cp))
+                dp_groups_with_cp.append(list(ranks_with_cp))
 
         cp_group = []
         for i in range(pipeline_model_parallel_size):
             for j in range(data_parallel_size):
                 start_rank = (
                     i * num_pipeline_model_parallel_groups
-                    + j * tensor_model_parallel_size * ulysses_sp_parallel_size * context_parallel_size
+                    + j * tensor_model_parallel_size * context_parallel_size
                 )
                 end_rank = (
                     i * num_pipeline_model_parallel_groups
-                    + (j + 1) * tensor_model_parallel_size * ulysses_sp_parallel_size * context_parallel_size
+                    + (j + 1) * tensor_model_parallel_size * context_parallel_size
                 )
-                for k in range(tensor_model_parallel_size * ulysses_sp_parallel_size):
-                    ranks = range(start_rank + k, end_rank, tensor_model_parallel_size * ulysses_sp_parallel_size)
+                for k in range(tensor_model_parallel_size):
+                    ranks = range(start_rank + k, end_rank, tensor_model_parallel_size)
                     cp_group.append(list(ranks))
-        
-        usp_group = []
-        for i in range(pipeline_model_parallel_size):
-            for j in range(data_parallel_size):
-                for k in range(context_parallel_size):
-                    start_rank = (
-                        i * num_pipeline_model_parallel_groups
-                        + j * tensor_model_parallel_size * ulysses_sp_parallel_size * context_parallel_size
-                        + k * tensor_model_parallel_size * ulysses_sp_parallel_size
-                    )
-                    end_rank = (
-                        i * num_pipeline_model_parallel_groups
-                        + j * tensor_model_parallel_size * ulysses_sp_parallel_size * context_parallel_size
-                        + (k + 1) * tensor_model_parallel_size * ulysses_sp_parallel_size
-                    )
-                    for t in range(tensor_model_parallel_size):
-                        ranks = range(start_rank + t, end_rank, tensor_model_parallel_size)
-                        usp_group.append(list(ranks))
 
         mp_group = []
         for i in range(data_parallel_size * context_parallel_size):
             ranks = [
                 data_parallel_group_ranks_with_cp[i]
-                for data_parallel_group_ranks_with_cp in all_data_parallel_group_ranks_with_cp_usp
+                for data_parallel_group_ranks_with_cp in all_data_parallel_group_ranks_with_cp
             ]
             mp_group.append(list(ranks))
 
@@ -483,8 +459,6 @@ def test_rank_generator_for_tp_dp_pp(nodes, num_gpu, tp, pp, cp, ep, usp):
         return (
             dp_groups,
             dp_groups_with_cp,
-            dp_groups_with_cp_usp,
-            usp_group,
             cp_group,
             mp_group,
             tp_group,
@@ -505,8 +479,6 @@ def test_rank_generator_for_tp_dp_pp(nodes, num_gpu, tp, pp, cp, ep, usp):
     (
         dp_groups,
         dp_groups_with_cp,
-        dp_groups_with_cp_usp,
-        usp_group,
         cp_group,
         mp_group,
         tp_group,
@@ -521,17 +493,10 @@ def test_rank_generator_for_tp_dp_pp(nodes, num_gpu, tp, pp, cp, ep, usp):
         pipeline_model_parallel_size=pp,
         context_parallel_size=cp,
         expert_model_parallel_size=ep,
-        ulysses_sp_parallel_size=usp,
     )
-    """
-    Author: phoenixdong
-    Date: 2024-12-17
-    Action: Add usp=1
-    Reason: FlagScale add usp in RankGenerator.
-    """
-    rank_generator = ps.RankGenerator(tp=tp, ep=1, dp=dp, pp=pp, cp=cp, usp=1, order="tp-cp-dp-pp")
+    rank_generator = ps.RankGenerator(tp=tp, ep=1, dp=dp, pp=pp, cp=cp, order="tp-cp-dp-pp")
     expert_rank_generator = ps.RankGenerator(
-        tp=tp, ep=ep, dp=expert_dp, pp=pp, cp=1, usp=1, order="tp-ep-dp-pp"
+        tp=tp, ep=ep, dp=expert_dp, pp=pp, cp=1, order="tp-ep-dp-pp"
     )
     assert dp_groups == rank_generator.get_ranks(
         "dp"
@@ -539,12 +504,6 @@ def test_rank_generator_for_tp_dp_pp(nodes, num_gpu, tp, pp, cp, ep, usp):
     assert dp_groups_with_cp == rank_generator.get_ranks(
         'dp-cp'
     ), f"{dp_groups_with_cp} != {rank_generator.get_ranks('dp-cp')}"
-    assert dp_groups_with_cp_usp == rank_generator.get_ranks(
-        'dp-cp-usp'
-    ), f"{dp_groups_with_cp_usp} != {rank_generator.get_ranks('dp-cp-usp')}"
-    assert usp_group == rank_generator.get_ranks(
-        'usp'
-    ), f"{usp_group} != {rank_generator.get_ranks('usp')}"
     assert cp_group == rank_generator.get_ranks(
         "cp"
     ), f"{cp_group} != {rank_generator.get_ranks('cp')}."

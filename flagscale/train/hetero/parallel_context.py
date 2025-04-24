@@ -992,29 +992,16 @@ class ParallelContext:
             assert group is not None, "pipeline_model parallel group is not initialized"
         return self._global_process_groups["pp"]
 
-    def get_data_parallel_group(self, with_context_parallel=False, partial_data_parallel=False, with_ulysses_sp_parallel=False):
+    def get_data_parallel_group(self, with_context_parallel=False, partial_data_parallel=False):
         """Get the data parallel group the caller rank belongs to."""
         current_process_mesh = self._process_meshes[self._current_process_mesh_index]
-        if with_context_parallel and with_ulysses_sp_parallel:
-            if partial_data_parallel:
-                return current_process_mesh.get_process_group(
-                    "intra-dp-usp-cp", is_expert=False, gloo=False, check_initialized=True
-                )
-            return current_process_mesh.get_process_group(
-                "dp-usp-cp", is_expert=False, gloo=False, check_initialized=True
-            )
-        elif with_context_parallel:
+        if with_context_parallel:
             if partial_data_parallel:
                 return current_process_mesh.get_process_group(
                     "intra-dp-cp", is_expert=False, gloo=False, check_initialized=True
                 )
             return current_process_mesh.get_process_group(
                 "dp-cp", is_expert=False, gloo=False, check_initialized=True
-            )
-        elif with_ulysses_sp_parallel:
-            assert partial_data_parallel is False, "Partial data parallel is not supported with Ulysses SP parallel"
-            return current_process_mesh.get_process_group(
-                "dp-usp", is_expert=False, gloo=False, check_initialized=True
             )
         else:
             return current_process_mesh.get_process_group(

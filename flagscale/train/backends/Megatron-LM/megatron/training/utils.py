@@ -4,7 +4,6 @@
 import json
 import os
 import sys
-import socket
 from datetime import datetime
 
 import torch
@@ -42,7 +41,6 @@ from megatron.core.utils import (
     get_batch_on_this_cp_rank,
     get_data_parallel_group_if_dtensor,
     to_local_if_dtensor,
-    get_batch_on_this_ulysses_sp_rank,
 )
 from megatron.core.transformer.module import Float16Module
 from megatron.legacy.model.module import param_is_not_shared
@@ -71,7 +69,7 @@ def unwrap_model(model, module_instances=ALL_MODULE_WRAPPER_CLASSNAMES):
 
 
 def calc_params_l2_norm(model, force_create_fp32_copy=False):
-    """Calculate l2 norm of parameters"""
+    """Calculate l2 norm of parameters """
     args = get_args()
     if not isinstance(model, list):
         model = [model]
@@ -84,23 +82,18 @@ def calc_params_l2_norm(model, force_create_fp32_copy=False):
     custom_fsdp_all_param_is_shared = False
     for model_chunk in model:
         for param in model_chunk.parameters():
-            data_parallel_group = get_data_parallel_group_if_dtensor(
-                param, data_parallel_group
-            )
+            data_parallel_group = get_data_parallel_group_if_dtensor(param, data_parallel_group)
             is_not_tp_duplicate = param_is_not_tensor_parallel_duplicate(param)
             if not is_not_tp_duplicate:
                 continue
             assert is_not_tp_duplicate
             if hasattr(param, "fully_shard_param_local_shard"):
                 param = param.fully_shard_param_local_shard
-                assert [
-                    getattr(p, "fully_shard_param_local_shard", None) is not None
-                    for p in model_chunk.parameters()
-                ]
+                assert [getattr(p, "fully_shard_param_local_shard", None) is not None for p in model_chunk.parameters()]
                 custom_fsdp_all_param_is_shared = True
                 if param.numel() == 0:
                     continue
-            if not getattr(param, "allreduce", True):
+            if not getattr(param, 'allreduce', True):
                 # TODO: Implement memory optimization for MoE parameters.
                 assert param_is_not_shared(param)
                 param = to_local_if_dtensor(param)
@@ -109,8 +102,8 @@ def calc_params_l2_norm(model, force_create_fp32_copy=False):
                 if param_is_not_shared(param):
                     param = to_local_if_dtensor(param)
                     if args.bf16:
-                        if not force_create_fp32_copy and hasattr(param, "main_param"):
-                            if getattr(param, "main_param_sharded", False):
+                        if not force_create_fp32_copy and hasattr(param, 'main_param'):
+                            if getattr(param, 'main_param_sharded', False):
                                 if param.main_param is not None:
                                     sharded_params_data.append(param.main_param)
                             else:
@@ -123,49 +116,47 @@ def calc_params_l2_norm(model, force_create_fp32_copy=False):
                         params_data.append(param.data)
 
     # Calculate norm.
-    dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device="cuda")
+    dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device='cuda')
     if len(params_data) > 0:
         norm, _ = multi_tensor_applier(
             multi_tensor_l2norm,
             dummy_overflow_buf,
             [params_data],
-            False,  # no per-parameter norm.
+            False # no per-parameter norm.
         )
         norm_2 = norm * norm
     else:
-        norm_2 = torch.zeros((1,), dtype=torch.float32, device="cuda")
+        norm_2 = torch.zeros((1,), dtype=torch.float32, device='cuda')
 
     if data_parallel_group is not None:
-        torch.distributed.all_reduce(
-            norm_2, op=torch.distributed.ReduceOp.SUM, group=data_parallel_group
-        )
+        torch.distributed.all_reduce(norm_2,
+                                     op=torch.distributed.ReduceOp.SUM,
+                                     group=data_parallel_group)
 
     # Add norm contribution from params with sharded main_params. These norms need to be
     # accumulated across the DP group since the main parameters are sharded because
     # of distributed optimizer.
     if len(sharded_params_data) > 0:
-        dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device="cuda")
+        dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device='cuda')
         sharded_norm, _ = multi_tensor_applier(
             multi_tensor_l2norm,
             dummy_overflow_buf,
             [sharded_params_data],
-            False,  # no per-parameter norm.
+            False # no per-parameter norm.
         )
         sharded_norm_2 = sharded_norm * sharded_norm
         # Sum over all DP groups.
         torch.distributed.all_reduce(
             sharded_norm_2,
             op=torch.distributed.ReduceOp.SUM,
-            group=mpu.get_data_parallel_group(),
+            group=mpu.get_data_parallel_group()
         )
         norm_2 += sharded_norm_2
 
     if custom_fsdp_all_param_is_shared:
-        torch.distributed.all_reduce(
-            norm_2,
-            op=torch.distributed.ReduceOp.SUM,
-            group=mpu.get_data_parallel_group(),
-        )
+        torch.distributed.all_reduce(norm_2,
+                                     op=torch.distributed.ReduceOp.SUM,
+                                     group=mpu.get_data_parallel_group())
 
     # Add norm contribution from expert layers in MoEs.
     if len(moe_params_data) > 0:
@@ -173,16 +164,14 @@ def calc_params_l2_norm(model, force_create_fp32_copy=False):
             multi_tensor_l2norm,
             dummy_overflow_buf,
             [moe_params_data],
-            False,  # no per-parameter norm.
+            False # no per-parameter norm.
         )
         moe_norm_2 = moe_norm * moe_norm
 
         if custom_fsdp_all_param_is_shared:
-            torch.distributed.all_reduce(
-                moe_norm_2,
-                op=torch.distributed.ReduceOp.SUM,
-                group=mpu.get_expert_data_parallel_group(),
-            )
+            torch.distributed.all_reduce(moe_norm_2,
+                                        op=torch.distributed.ReduceOp.SUM,
+                                        group=mpu.get_expert_data_parallel_group())
     # Account for MoE norm even if current rank doesn't have any expert params to prevent
     # hang in models with un-even numbers of MoE layers.
     # See details in https://gitlab-master.nvidia.com/ADLR/megatron-lm/-/issues/409
@@ -224,28 +213,30 @@ def calc_params_l2_norm(model, force_create_fp32_copy=False):
         # Reduce norm across model parallel groups (dense and expert).
         # Dense params should sum across all model-parallel GPUs (tensor + pipeline).
         dense_reduce_group = mpu.get_model_parallel_group()
-        ranks_in_dense_reduce_group = torch.distributed.get_process_group_ranks(
-            dense_reduce_group
-        )
+        ranks_in_dense_reduce_group = torch.distributed.get_process_group_ranks(dense_reduce_group)
         # Expert params should sum across all model-parallel GPUs (expert + tensor + pipeline).
         expert_reduce_group = mpu.get_expert_tensor_model_pipeline_parallel_group()
-        ranks_in_expert_reduce_group = torch.distributed.get_process_group_ranks(
-            expert_reduce_group
-        )
+        ranks_in_expert_reduce_group = torch.distributed.get_process_group_ranks(expert_reduce_group)
 
         # If dense and expert reduce groups are the same, sum then reduce.
         if ranks_in_dense_reduce_group == ranks_in_expert_reduce_group:
             norm_2 += moe_norm_2
             torch.distributed.all_reduce(
-                norm_2, op=torch.distributed.ReduceOp.SUM, group=dense_reduce_group
+                norm_2,
+                op=torch.distributed.ReduceOp.SUM,
+                group=dense_reduce_group
             )
         # If dense and expert reduce groups are different, reduce then sum.
         else:
             torch.distributed.all_reduce(
-                norm_2, op=torch.distributed.ReduceOp.SUM, group=dense_reduce_group
+                norm_2,
+                op=torch.distributed.ReduceOp.SUM,
+                group=dense_reduce_group
             )
             torch.distributed.all_reduce(
-                moe_norm_2, op=torch.distributed.ReduceOp.SUM, group=expert_reduce_group
+                moe_norm_2,
+                op=torch.distributed.ReduceOp.SUM,
+                group=expert_reduce_group
             )
             norm_2 += moe_norm_2
 
@@ -336,10 +327,10 @@ def report_memory(name):
         # Each rank prints the memory report.
         if mpu.get_data_parallel_rank() == 0:
             print("[Rank {}] {}".format(torch.distributed.get_rank(), string),
-                flush=True)
+                  flush=True)
     else:
         print("[Rank {}] {}".format(torch.distributed.get_rank(), string),
-            flush=True)
+              flush=True)
 
 
 def print_params_min_max_norm(optimizer, iteration):
@@ -437,6 +428,7 @@ def get_ltor_masks_and_position_ids(data,
     attention_mask = (attention_mask < 0.5)
 
     return attention_mask, loss_mask, position_ids
+
 
 def print_rank_0(message):
     """If distributed is initialized, print only on rank 0."""

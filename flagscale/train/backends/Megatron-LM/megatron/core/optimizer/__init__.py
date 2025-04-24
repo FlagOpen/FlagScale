@@ -573,8 +573,8 @@ def get_megatron_optimizer(
         expert_mp_group = mpu.get_expert_tensor_model_pipeline_parallel_group()
         if not isinstance(expert_mp_group, list):
             model_parallel_rank = torch.distributed.get_rank(
-            mpu.get_expert_tensor_model_pipeline_parallel_group()
-        )
+                mpu.get_expert_tensor_model_pipeline_parallel_group()
+            )
         else:
             model_parallel_rank = torch.distributed.get_rank(expert_mp_group[0])
 
@@ -583,7 +583,6 @@ def get_megatron_optimizer(
             data_parallel_group_gloo = mpu.get_expert_data_parallel_group_gloo()
         else:
             data_parallel_group_gloo = None
-        
         optimizers.append(
             _get_megatron_optimizer_based_on_param_groups(
                 config,
