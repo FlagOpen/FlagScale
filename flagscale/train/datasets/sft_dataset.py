@@ -8,7 +8,6 @@ from typing import Dict, Optional, Tuple
 
 import numpy
 import torch
-
 from megatron.core.datasets.gpt_dataset import (
     GPTDataset,
     GPTDatasetConfig,
