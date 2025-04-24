@@ -31,7 +31,7 @@ system:
     log_params_norm: true
     log_num_zeros_in_grad: true
     log_memory_to_tensorboard: true
-    timing-log-level: 2
+    # timing-log-level: 2
   checkpoint:
     save_interval: ${experiment.save_steps}
     load: ${experiment.load}
