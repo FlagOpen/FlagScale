@@ -20,17 +20,25 @@ import time
 _TRAIN_START_TIME = time.time()
 import torch
 
+try:
+    from megatron.post_training.algos.distillation import get_tensor_shapes_adjust_fn_for_distillation
+
+    has_nvidia_modelopt = True
+except ImportError:
+    has_nvidia_modelopt = False
+
 from megatron.core import mpu, tensor_parallel
 from megatron.core.utils import (
     check_param_hashes_across_dp_replicas,
     get_model_config,
     StragglerDetector,
+    is_te_min_version,
 )
-from megatron.core.fp8_utils import is_float8tensor
+from megatron.core.fp8_utils import correct_amax_history_if_needed
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint
 from megatron.training.checkpointing import checkpoint_exists
-from megatron.legacy.model import Float16Module
+from megatron.core.transformer.module import Float16Module
 from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed.custom_fsdp import FullyShardedDataParallel as custom_FSDP
@@ -61,11 +69,19 @@ from megatron.legacy.data.data_samplers import build_pretraining_data_loader
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.transformer.moe import upcycling_utils
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
+from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.parallel_state import (
     destroy_global_memory_buffer,
     destroy_model_parallel,
+    get_amax_reduction_group,
+    model_parallel_is_initialized,
 )
 from megatron.core.pipeline_parallel import get_forward_backward_func
+from megatron.core.pipeline_parallel.schedules import (
+    convert_schedule_table_to_order,
+    get_pp_rank_microbatches,
+    get_schedule_table,
+)
 from megatron.core.num_microbatches_calculator import (
     destroy_num_microbatches_calculator,
     get_current_global_batch_size,
@@ -105,6 +121,7 @@ from flagscale.train.extra_valid import build_extra_valid_data_iterators
 from flagscale.train.stablelm2_scheduler import StableLM2SchedulerConfig
 from flagscale.train.global_vars import get_parallel_context, get_spiky_loss_detector
 from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
+from flagscale.train.theoretical_memory_usage import report_theoretical_memory as fs_report_theoretical_memory
 
 stimer = StragglerDetector()
 
@@ -123,92 +140,445 @@ def print_datetime(string):
     time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print_rank_0(f'[{string}] datetime: {time_str} ')
 
-
 def num_floating_point_operations(args, batch_size):
-    # Attention projection size.
-    query_projection_size = args.kv_channels * args.num_attention_heads
-    query_projection_to_hidden_size_ratio = query_projection_size / args.hidden_size
-    # Group Query Attention.
-    if not args.group_query_attention:
-        args.num_query_groups = args.num_attention_heads
-    # MoE.
-    if args.num_experts is None:
-        # Every Transformer MLP is dense.
-        num_dense_layers = args.num_layers
-        num_moe_layers = 0
-        num_experts_routed_to = 0
-    else:
-        # Calculate number of dense and MoE Transformer MLPs.
-        if isinstance(args.moe_layer_freq, int):
-            moe_layer_pattern = [
-                1 if (i % args.moe_layer_freq == 0) else 0 for i in range(args.num_layers)
-            ]
-        elif isinstance(args.moe_layer_freq, list):
-            moe_layer_pattern = args.moe_layer_freq
+    def calculate_layer_counts():
+        """Calculate the number of attention, Mamba, and MLP layers."""
+        if args.hybrid_override_pattern:
+            counts = {'M': 0, '*': 0, '-': 0}
+            for layer_type in args.hybrid_override_pattern:
+                if layer_type in counts:
+                    counts[layer_type] += 1
+            return counts['*'], counts['M'], counts['-']
         else:
-            raise RuntimeError("Illegal --moe-layer-freq argument provided!")
-        assert len(moe_layer_pattern) == args.num_layers
-        num_moe_layers = sum(moe_layer_pattern)  # Number of 1s in `moe_layer_pattern`.
-        num_dense_layers = args.num_layers - num_moe_layers
-        num_experts_routed_to = args.moe_router_topk
+            num_attn_layers = round(args.num_layers * args.hybrid_attention_ratio)
+            num_mlp_layers = round(args.num_layers * args.hybrid_mlp_ratio)
+            num_mamba_layers = args.num_layers - num_attn_layers - num_mlp_layers
+            return num_attn_layers, num_mamba_layers, num_mlp_layers
 
-    moe_ffn_hidden_size = args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size
-    shared_expert_ffn_hidden_size = (
-        0
-        if args.moe_shared_expert_intermediate_size is None
-        else args.moe_shared_expert_intermediate_size
-    )
-    # SwiGLU.
-    gated_linear_multiplier = 3 / 2 if args.swiglu else 1
+    def mlp_layer_flops(batch_size, seq_len, hidden_size, expansion=4.0, swiglu=False):
+        """Calculate FLOPs for an MLP layer."""
+        scale_factor = 3.0 / 2.0 if swiglu else 1.0
+        return 4 * expansion * scale_factor * batch_size * seq_len * hidden_size ** 2
 
-    # The 12x term below comes from the following factors; for more details, see
-    # "APPENDIX: FLOATING-POINT OPERATIONS" in https://arxiv.org/abs/2104.04473.
-    # - 3x: Each GEMM in the model needs to be performed 3 times (forward pass,
-    #       backward wgrad [weight gradient], backward dgrad [data gradient]).
-    # - 2x: GEMMs of a particular size are stacked twice in the standard Transformer model
-    #       architectures implemented in this codebase (e.g., h->ffn_h GEMM and ffn_h->h GEMM
-    #       in MLP layer).
-    # - 2x: A GEMM of a m*n tensor with a n*k tensor requires 2mnk floating-point operations.
-    expansion_factor = 3 * 2 * 2
+    def attn_layer_flops(batch_size, seq_len, hidden_size, num_heads, gqa=True,
+                         gqa_groups=8, kv_channels=None):
+        """Calculate FLOPs for an attention layer."""
+        p = (kv_channels * num_heads / hidden_size) if kv_channels else 1
+        g = gqa_groups if gqa else num_heads
+        return 4 * batch_size * seq_len * hidden_size * p * (
+                hidden_size + (hidden_size * (g / num_heads)) + (seq_len / 2 ))
 
-    return (
-        expansion_factor
-        * batch_size
-        * args.seq_length
-        * args.num_layers
-        * args.hidden_size
-        * args.hidden_size
-        * (
-            # Attention.
-            (
-                (
-                    1
-                    + (args.num_query_groups / args.num_attention_heads)
-                    # Only half of the attention matrix is non-zero and needs to be multiplied with V.
-                    + (args.seq_length / args.hidden_size / 2)
-                ) * query_projection_to_hidden_size_ratio
+    def mamba_layer_flops(batch_size, seq_len, hidden_size, state_dim=16,
+                          head_dim=64, num_groups=1, num_heads=128):
+        """Calculate FLOPs for a Mamba layer."""
+        # Note (rwaleffe): flops estimate for scan should be updated based on new SSD kernels,
+        # but small percent of overall layer flops
+        d_in = 2 * hidden_size
+        if num_heads:
+            nheads = num_heads
+        else:
+            nheads = d_in // head_dim
+        return (
+                (2 * batch_size * seq_len * hidden_size * (
+                        2 * d_in + 2 * num_groups * state_dim + nheads)) +  # in_proj
+                (7 * batch_size * seq_len * d_in * state_dim) +  # scan
+                (2 * batch_size * seq_len * d_in * hidden_size)  # out_proj
+        )
+
+    def hybrid_flops(batch_size, seq_len, hidden_size,
+                     num_attn_layers, num_mamba_layers, num_mlp_layers,
+                     mamba_state_dim=128, mamba_head_dim=64,
+                     mamba_num_groups=8, mamba_num_heads=128,
+                     num_attn_heads=32,gqa=True,
+                     gqa_groups=8, kv_channels=None,
+                     mlp_expansion=4.0, swiglu=False,
+                     vocab_size=256000):
+        """Calculate total FLOPs for the hybrid model."""
+        flops_fwd = (
+                num_attn_layers * attn_layer_flops(batch_size, seq_len, hidden_size,
+                                                   num_attn_heads, gqa, gqa_groups, kv_channels) +
+                num_mlp_layers * mlp_layer_flops(batch_size, seq_len, hidden_size,
+                                                 mlp_expansion, swiglu) +
+                num_mamba_layers * mamba_layer_flops(batch_size, seq_len, hidden_size,
+                                                     mamba_state_dim, mamba_head_dim,
+                                                     mamba_num_groups, mamba_num_heads) +
+                (2 * batch_size * seq_len * hidden_size * vocab_size)  # logits computation
+        )
+        return flops_fwd * 3
+
+    def transformer_flops():
+        """Calculate FLOPs for a standard Transformer model."""
+        # TODO(helenn/dnarayanan): Refactor this to reuse the helper methods.
+        # Attention projection size.
+        query_projection_size = args.kv_channels * args.num_attention_heads
+        query_projection_to_hidden_size_ratio = query_projection_size / args.hidden_size
+        # Group Query Attention.
+        if not args.group_query_attention:
+            args.num_query_groups = args.num_attention_heads
+        # MoE.
+        if args.num_experts is None:
+            # Every Transformer MLP is dense.
+            num_dense_layers = args.num_layers
+            num_moe_layers = 0
+            num_experts_routed_to = 0
+            last_layer_is_moe = 0
+        else:
+            # Calculate number of dense and MoE Transformer MLPs.
+            if isinstance(args.moe_layer_freq, int):
+                moe_layer_pattern = [
+                    1 if (i % args.moe_layer_freq == 0) else 0 for i in range(args.num_layers)
+                ]
+            elif isinstance(args.moe_layer_freq, list):
+                moe_layer_pattern = args.moe_layer_freq
+            else:
+                raise RuntimeError("Illegal --moe-layer-freq argument provided!")
+            assert len(moe_layer_pattern) == args.num_layers, (
+                f"Invalid length of moe_layer_pattern: {len(moe_layer_pattern)}, "
+                f"expected {args.num_layers}, "
+                f"current moe layer pattern: {args.moe_layer_freq}"
             )
-            # MLP.
-            + (
-                (
-                    # Dense.
-                    (args.ffn_hidden_size * num_dense_layers) +
-                    # MoE.
+            num_moe_layers = sum(moe_layer_pattern)  # Number of 1s in `moe_layer_pattern`.
+            num_dense_layers = args.num_layers - num_moe_layers
+            num_experts_routed_to = args.moe_router_topk
+            last_layer_is_moe = moe_layer_pattern[-1]
+
+        if args.mtp_num_layers is not None:
+            mtp_num_layers = args.mtp_num_layers
+            num_moe_layers += last_layer_is_moe * mtp_num_layers
+            num_dense_layers += (1 - last_layer_is_moe) * mtp_num_layers
+            num_layers = args.num_layers + mtp_num_layers
+        else:
+            mtp_num_layers = 0
+            num_layers = args.num_layers
+
+        moe_ffn_hidden_size = args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size
+        shared_expert_ffn_hidden_size = (
+            0
+            if args.moe_shared_expert_intermediate_size is None
+            else args.moe_shared_expert_intermediate_size
+        )
+        # SwiGLU.
+        gated_linear_multiplier = 3 / 2 if args.swiglu else 1
+
+        # The 12x term below comes from the following factors; for more details, see
+        # "APPENDIX: FLOATING-POINT OPERATIONS" in https://arxiv.org/abs/2104.04473.
+        # - 3x: Each GEMM in the model needs to be performed 3 times (forward pass,
+        #       backward wgrad [weight gradient], backward dgrad [data gradient]).
+        # - 2x: GEMMs of a particular size are stacked twice in the standard Transformer model
+        #       architectures implemented in this codebase (e.g., h->ffn_h GEMM and ffn_h->h GEMM
+        #       in MLP layer).
+        # - 2x: A GEMM of a m*n tensor with a n*k tensor requires 2mnk floating-point operations.
+        expansion_factor = 3 * 2 * 2
+
+        if args.multi_latent_attention:
+            assert not args.group_query_attention
+            '''
+            Basic arithmetic
+            let B is batch size, s is seq_len, h is embedding dim,
+            for one self_attnetion block (prenorm is not included)
+            qkv projection:  6Bsh^2
+            attn:            2Bs^2h
+            attn over value: 2Bs^2h
+            oproj:           2Bsh^2
+
+            references
+            https://arxiv.org/abs/2305.10403
+            https://arxiv.org/abs/2205.05198
+            '''
+            ## MLA
+            if args.q_lora_rank is None:
+                q_term = args.hidden_size * args.num_attention_heads * (args.qk_head_dim + args.qk_pos_emb_head_dim)
+            else:
+                q_term = args.q_lora_rank * (args.hidden_size + args.num_attention_heads * (args.qk_head_dim + args.qk_pos_emb_head_dim) + 1)
+            self_attn_term = (
+                3*2 # fwd(1) + bwd(2) *FMA
+                * num_layers
+                * (
+                    ## q lora + rope + q norm
+                    q_term
+
+                    ## kv lora + rope + kv norm
+                    + args.kv_lora_rank
+                    * (args.hidden_size + args.num_attention_heads * (args.qk_head_dim + args.v_head_dim) + 1)
+                    + args.hidden_size * args.qk_pos_emb_head_dim
+
+                    ## o proj
+                    + (args.num_attention_heads * args.v_head_dim) * args.hidden_size
+
+                    ## core attn
+                    + args.seq_length * (args.num_attention_heads * (args.qk_head_dim + args.qk_pos_emb_head_dim)) / 2
+                    + args.seq_length * args.num_attention_heads * args.v_head_dim / 2
+                )
+            )
+
+        else:
+            ## MHA or GQA
+            self_attn_term = (
+                expansion_factor
+                * num_layers
+                * args.hidden_size
+                * args.hidden_size
+                * (
                     (
-                        (
-                            # Routed experts.
-                            moe_ffn_hidden_size * num_experts_routed_to +
-                            # Shared experts.
-                            shared_expert_ffn_hidden_size
-                        )
-                        * num_moe_layers
-                    )
-                ) * gated_linear_multiplier / (args.num_layers * args.hidden_size)
+                        1
+                        + (args.num_query_groups / args.num_attention_heads)
+                        # # Only half of the attention matrix is non-zero and needs to be multiplied with V.
+                        + (args.seq_length / args.hidden_size / 2)
+                    ) * query_projection_to_hidden_size_ratio
+                )
+            )
+
+        total_floating_point_operations = batch_size * args.seq_length * (
+            # MLP
+            expansion_factor
+            * num_layers
+            * args.hidden_size
+            * (
+                # dense layer (deepseek v2, v3 style)
+                (
+                    args.ffn_hidden_size
+                    * gated_linear_multiplier
+                ) * (num_dense_layers/num_layers)
+                # routed experts
+                + (
+                    moe_ffn_hidden_size
+                    * num_experts_routed_to
+                    * gated_linear_multiplier
+                ) * (num_moe_layers/num_layers)
+                # Shared Experts.
+                + (
+                    shared_expert_ffn_hidden_size
+                    * gated_linear_multiplier
+                ) * (num_moe_layers/num_layers)
+            )
+            # Self Attention
+            + self_attn_term
+            # MTP norms and proj
+            + 3*2
+            * mtp_num_layers
+            * (
+                # MTP eh norm + final nrom
+                3 * args.hidden_size
+                # MTH eh proj
+                + 2 * args.hidden_size * args.hidden_size
             )
             # Logit.
-            + (args.padded_vocab_size / (2 * args.num_layers * args.hidden_size))
+            + 3*2
+            * args.hidden_size
+            * args.padded_vocab_size
+            * (mtp_num_layers + 1)
         )
-    )
+        return total_floating_point_operations
+
+
+    # Main entrypoint for FLOPs calculation.
+    if args.is_hybrid_model:
+        # Calculate the number of each type of layer.
+        num_attn_layers, num_mamba_layers, num_mlp_layers = calculate_layer_counts()
+
+        # Compute hybrid model FLOPs.
+        return hybrid_flops(
+            batch_size=batch_size,
+            seq_len=args.seq_length,
+            hidden_size=args.hidden_size,
+            num_attn_layers=num_attn_layers,
+            num_mamba_layers=num_mamba_layers,
+            num_mlp_layers=num_mlp_layers,
+            mamba_state_dim=args.mamba_state_dim,
+            mamba_head_dim=args.mamba_head_dim,
+            mamba_num_groups=args.mamba_num_groups,
+            mamba_num_heads=args.mamba_num_heads,
+            num_attn_heads=args.num_attention_heads,
+            gqa=args.group_query_attention,
+            gqa_groups=args.num_query_groups,
+            kv_channels=args.kv_channels,
+            mlp_expansion=args.ffn_hidden_size / args.hidden_size,
+            swiglu=args.swiglu,
+            vocab_size=args.padded_vocab_size
+        )
+    else:
+        # Compute standard Transformer model FLOPs.
+        return transformer_flops()
+
+def num_floating_point_operations_fs(args, batch_size):
+    def transformer_flops():
+
+        # Part 1: Attention ======================================================================
+        if args.multi_latent_attention:
+            # qkv proj
+            q_head_dim = args.qk_head_dim + args.qk_pos_emb_head_dim
+            # q lora + rope + q norm
+            if args.q_lora_rank is None:
+                num_flops_attn = (
+                    2
+                    * batch_size
+                    * args.seq_length
+                    * args.hidden_size
+                    * args.num_attention_heads
+                    * q_head_dim
+                )
+            else:
+                num_flops_attn = (
+                    2
+                    * batch_size
+                    * args.seq_length
+                    * (
+                        args.hidden_size * args.q_lora_rank
+                        + args.q_lora_rank * args.num_attention_heads * q_head_dim
+                        + args.q_lora_rank
+                    )
+                )
+            # kv lora + rope + kv norm
+            num_flops_attn += (
+                2
+                * batch_size
+                * args.seq_length
+                * (
+                    args.hidden_size * (args.kv_lora_rank + args.qk_pos_emb_head_dim)
+                    + args.kv_lora_rank * args.num_attention_heads * (args.qk_head_dim + args.v_head_dim)
+                    + args.kv_lora_rank
+                )
+            )
+            # core attn (QK^T)V
+            num_flops_attn += (
+                2 * batch_size * args.seq_length**2 * args.num_attention_heads * q_head_dim
+                + 2 * batch_size * args.seq_length**2 * args.num_attention_heads * args.v_head_dim
+            ) / 2
+            # out proj
+            query_projection_size = args.v_head_dim * args.num_attention_heads
+            num_flops_attn += (
+                2
+                * batch_size
+                * args.seq_length
+                * query_projection_size
+                * args.hidden_size
+            )
+        else:
+            # Attention projection size.
+            query_projection_size = args.kv_channels * args.num_attention_heads
+            kv_projection_size = args.kv_channels * args.num_query_groups
+            # Group Query Attention.
+            if not args.group_query_attention:
+                args.num_query_groups = args.num_attention_heads
+            # qkv proj
+            num_flops_attn = (
+                2
+                * batch_size
+                * args.seq_length
+                * args.hidden_size
+                * (query_projection_size + 2 * kv_projection_size)
+            )
+            # core attn (QK^T)V
+            num_flops_attn += (
+                2 * batch_size * args.seq_length**2 * query_projection_size
+                + 2 * batch_size * args.seq_length**2 * kv_projection_size
+            ) / 2
+            # out proj
+            num_flops_attn += (
+                2
+                * batch_size
+                * args.seq_length
+                * query_projection_size
+                * args.hidden_size
+            )
+
+        # Part 2: MLP or MoE =====================================================================
+        shared_expert_ffn_hidden_size = (
+            0
+            if args.moe_shared_expert_intermediate_size is None
+            else args.moe_shared_expert_intermediate_size
+        )
+        # SwiGLU.
+        gated_linear_multiplier = 3 / 2 if args.swiglu else 1
+
+        # MoE.
+        if args.num_experts is None:
+            # Every Transformer MLP is dense.
+            num_dense_layers = args.num_layers
+            num_moe_layers = 0
+            num_experts_routed_to = 0
+            num_experts = 0
+        else:
+            # Calculate number of dense and MoE Transformer MLPs.
+            if isinstance(args.moe_layer_freq, int):
+                moe_layer_pattern = [
+                    1 if (i % args.moe_layer_freq == 0) else 0 for i in range(args.num_layers)
+                ]
+            elif isinstance(args.moe_layer_freq, list):
+                moe_layer_pattern = args.moe_layer_freq
+            else:
+                raise RuntimeError("Illegal --moe-layer-freq argument provided!")
+            assert len(moe_layer_pattern) == args.num_layers
+            num_moe_layers = sum(moe_layer_pattern)  # Number of 1s in `moe_layer_pattern`.
+            num_dense_layers = args.num_layers - num_moe_layers
+            num_experts_routed_to = args.moe_router_topk
+            num_experts = args.num_experts
+
+        num_flops_dense_mlp = (
+            4 # mlp (two linear)
+            * batch_size
+            * args.seq_length
+            * args.hidden_size
+            * args.ffn_hidden_size
+            * gated_linear_multiplier
+        )
+
+        num_flops_sparse_mlp = (
+            4 # routed experts (two linear)
+            * batch_size
+            * args.seq_length
+            * args.hidden_size
+            * args.moe_ffn_hidden_size
+            * gated_linear_multiplier
+            * num_experts_routed_to
+            + 4 # shared experts (two linear)
+            * batch_size
+            * args.seq_length
+            * args.hidden_size
+            * shared_expert_ffn_hidden_size
+            * gated_linear_multiplier
+            + 2 # gate (one linear)
+            * batch_size
+            * args.seq_length
+            * args.hidden_size
+            * num_experts
+        )
+
+        num_flops_logits = (
+            2
+            * batch_size
+            * args.seq_length
+            * args.padded_vocab_size
+            * args.hidden_size
+        )
+
+        # Part3: MTP =============================================================================
+        num_flops_mtp = 0
+        num_mtp_predictor = 0 if not getattr(args, "num_mtp_predictor", None) else args.num_mtp_predictor
+        if num_mtp_predictor > 0:
+            num_flops_mtp = (
+                # MTP eh norm + final nrom
+                2 * 3 * args.hidden_size
+                + 2
+                * batch_size
+                * args.seq_length
+                * args.hidden_size
+                * args.hidden_size * 2
+                + num_flops_attn
+                + num_flops_sparse_mlp
+                + num_flops_logits
+            )
+
+        return (
+            num_dense_layers * (num_flops_attn + num_flops_dense_mlp)
+            + num_moe_layers * (num_flops_attn + num_flops_sparse_mlp)
+            + num_flops_logits
+            + num_mtp_predictor * num_flops_mtp
+        )
+
+    # Compute standard Transformer model FLOPs.
+    flops_fwd = transformer_flops()
+    return flops_fwd * 3
 
 
 def get_start_time_from_progress_log():
@@ -265,6 +635,185 @@ def preprocess_common_state_dict(common_state_dict):
     preprocessed_common_state_dict['args'].pop('local_rank', None)
     preprocessed_common_state_dict['args'].pop('rank', None)
     return preprocessed_common_state_dict
+
+
+def get_cuda_graph_input_data(model, config, args, num_microbatches, num_model_chunks):
+    """
+    Create the CUDA Graph capturing input data. The data is organized per-chunk per-microbatch per-layer.
+    """
+
+    def get_rotary_pos_emb(transformer, transformer_input):
+        if args.position_embedding_type == 'rope' and not config.multi_latent_attention:
+            rotary_seq_len = model_chunk.module.module.rotary_pos_emb.get_rotary_seq_len(
+                None, transformer, transformer_input, config, None
+            )
+            return model_chunk.module.module.rotary_pos_emb(rotary_seq_len)
+        else:
+            return None
+
+    # Generate sample arguments and keyword arguments for capturing.
+    sample_args = []
+    sample_kwargs = []
+    for chunk_number in range(num_model_chunks):
+        model_chunk = model[chunk_number]
+        num_layers = len(model_chunk.module.module.decoder.layers)
+        for _ in range(num_microbatches):
+            for layer_number in range(num_layers):
+                static_inputs = model_chunk.module.module.decoder.layers[
+                    layer_number
+                ].get_layer_static_inputs(args.seq_length, args.micro_batch_size)
+                if is_te_min_version("1.10.0", check_equality=False):
+                    # te.make_graphed_callables() accepts keyword arguments since 1.10.0.
+                    hidden_states = static_inputs.pop("hidden_states")
+                    sample_args.append((hidden_states,))
+                    rotary_pos_emb = get_rotary_pos_emb(
+                        model_chunk.module.module.decoder, hidden_states
+                    )
+                    if rotary_pos_emb is not None:
+                        static_inputs["rotary_pos_emb"] = rotary_pos_emb
+                    sample_kwargs.append(static_inputs)
+                else:
+                    sample_args.append(
+                        (static_inputs.pop("hidden_states"), static_inputs.pop("attention_mask"))
+                    )
+
+    # Get the PP and VPP scheduling order.
+    _, _, num_warmup_microbatches, _ = get_pp_rank_microbatches(
+        num_microbatches, num_model_chunks, config.microbatch_group_size_per_vp_stage, False
+    )
+    schedule_table = get_schedule_table(
+        num_microbatches, num_model_chunks, config.microbatch_group_size_per_vp_stage
+    )
+    order = convert_schedule_table_to_order(
+        num_warmup_microbatches, num_model_chunks, schedule_table
+    )
+    print_rank_0(f'ORDER {order}')
+
+    def get_make_graphed_callables_kwargs():
+        kwargs = {'num_warmup_iters': 11, 'allow_unused_input': True, '_order': order}
+        if sample_kwargs:
+            kwargs['sample_kwargs'] = sample_kwargs
+
+        import transformer_engine
+
+        def get_fp8_recipe(config):
+            """
+            Set up the FP8 recipe for the model.
+            """
+            if config.fp8:
+                if config.fp8 == "e4m3":
+                    fp8_format = transformer_engine.common.recipe.Format.E4M3
+                elif config.fp8 == "hybrid":
+                    fp8_format = transformer_engine.common.recipe.Format.HYBRID
+                else:
+                    raise ValueError("E4M3 and HYBRID are the only supported FP8 formats.")
+
+                from megatron.core.transformer.custom_layers.transformer_engine import (
+                    TEDelayedScaling,
+                )
+
+                fp8_recipe = TEDelayedScaling(
+                    config=config,
+                    fp8_format=fp8_format,
+                    override_linear_precision=(False, False, not config.fp8_wgrad),
+                )
+                return fp8_recipe
+            else:
+                return None
+
+        if config.fp8:
+            kwargs['fp8_enabled'] = True
+            kwargs['fp8_recipe'] = get_fp8_recipe(config)
+            kwargs['fp8_weight_caching'] = True
+            if (
+                is_te_min_version("1.14.0", check_equality=False)
+                and model_parallel_is_initialized()
+            ):
+                kwargs['fp8_group'] = get_amax_reduction_group(with_context_parallel=True)
+        else:
+            kwargs['fp8_enabled'] = False
+        return kwargs
+
+    kwargs = get_make_graphed_callables_kwargs()
+    return sample_args, kwargs
+
+
+def cuda_graph_capture(model, config, args):
+    """
+    Capture CUDA Graphs per TransformerLayer per microbatch.
+    """
+    assert config.external_cuda_graph, "Option --external-cuda-graph not enabled."
+    assert config.cuda_graph_scope in [
+        'full',
+        'attn',
+    ], f"--cuda-graph-scope should be full or attn, got {config.cuda_graph_scope}."
+
+    # Set back to the default stream. Graph will still be captured on a side stream in
+    # make_graphed_callables().
+    torch.cuda.set_stream(torch.cuda.default_stream())
+    torch.distributed.barrier()
+    start = time.time()
+    print_rank_0(f'Start cuda_graph_capture on rank{torch.distributed.get_rank()}')
+
+    # Get the number of models chunks and microbatches.
+    num_model_chunks = len(model)
+    num_microbatches = get_num_microbatches()
+    print_rank_0(f'num_model_chunks {num_model_chunks}, num_microbatches {num_microbatches}')
+
+    # Get callables.
+    callables = []
+    for chunk_number in range(num_model_chunks):
+        model_chunk = model[chunk_number]
+        num_layers = len(model_chunk.module.module.decoder.layers)
+        print_rank_0(f'num_layers {num_layers} in model chunk {chunk_number}')
+        for layer_number in range(num_layers):
+            layer = model_chunk.module.module.decoder.layers[layer_number]
+            callables.append(layer)
+    print_rank_0(f'Total #layers {len(callables)}')
+
+    # Prepare CUDA Graph capturing input data and call `make_graphed_callables`.
+    sample_args, kwargs = get_cuda_graph_input_data(
+        model, config, args, num_microbatches, num_model_chunks
+    )
+
+    import transformer_engine  # To keep out TE dependency when not using CUDA Graph
+
+    graphs = transformer_engine.pytorch.make_graphed_callables(
+        tuple(callables), sample_args, **kwargs
+    )
+
+    # Push the captured graphs to the corresponding TransformerBlock.
+    for chunk_number in range(num_model_chunks):
+        model_chunk = model[chunk_number]
+        num_layers = len(model_chunk.module.module.decoder.layers)
+        for layer_number in range(num_layers):
+            model_chunk.module.module.decoder.layers[layer_number].cuda_graphs = []
+            for batch_number in range(num_microbatches):
+                model_chunk.module.module.decoder.layers[layer_number].cuda_graphs.append(
+                    graphs[
+                        chunk_number * num_microbatches * num_layers
+                        + batch_number * num_layers
+                        + layer_number
+                    ]
+                )
+
+    # Finish CUDA Graph capturing.
+    torch.distributed.barrier()
+    print_rank_0(
+        f'Time spent in cuda_graph_capture on rank{torch.distributed.get_rank()}: {time.time() - start}s'
+    )
+
+
+def cuda_graph_set_manual_hooks(model):
+    """
+    Set CUDA Graph manual hooks for the modules that contain direct parameters and are covered by cudagraphs.
+    """
+    for chunk_number, model_chunk in enumerate(model):
+        num_layers = len(model_chunk.module.module.decoder.layers)
+        print_rank_0(f'num_layers {num_layers} in model chunk {chunk_number}')
+        for layer_number in range(num_layers):
+            layer = model_chunk.module.module.decoder.layers[layer_number]
+            layer.setup_manual_hooks(model_chunk._make_forward_pre_hook)
 
 
 def pretrain(
@@ -393,6 +942,11 @@ def pretrain(
         }
     else:
         checkpointing_context = {}
+
+    ########## FlagScale Begin ##########
+    num_microbatches = get_num_microbatches()
+    # fs_report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
+    ########## FlagScale End ##########
 
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
@@ -572,8 +1126,9 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
     def build_model():
         if mpu.get_pipeline_model_parallel_world_size() > 1 and \
         args.virtual_pipeline_model_parallel_size is not None:
-            assert model_type != ModelType.encoder_and_decoder, \
-                "Interleaved schedule not supported for model with both encoder and decoder"
+            if model_type == ModelType.encoder_and_decoder:
+                assert args.encoder_pipeline_model_parallel_size == 0, \
+                    "Interleaved schedule not supported for model with encoder on separate PP rank"
             model = []
             for i in range(args.virtual_pipeline_model_parallel_size):
                 mpu.set_virtual_pipeline_model_parallel_rank(i)
@@ -650,22 +1205,15 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
 
     # Fp16 conversion.
     if args.fp16 or args.bf16:
-        model = [Float16Module(model_module, args) for model_module in model]
+        config = get_model_config(model[0])
+        model = [Float16Module(config, model_module) for model_module in model]
 
-    # The model_module.bfloat16()/model_module.half() above will call the inplace copy of TE's
-    # Float8Tensor, which will write an unwanted value (amax calculated from the current fp8
-    # param) to its amax_history. The following logic will correct the amax_history back.
-    for model_module in model:
-        for param in model_module.parameters():
-            if is_float8tensor(param) and param._fp8_meta is not None:
-                fp8_meta = param._fp8_meta['scaling_fwd']
-                fp8_meta_index = param._fp8_meta_index
-                if hasattr(param, 'get_high_precision_init_val'):
-                    fp8_meta.amax_history[0][fp8_meta_index].copy_(
-                        param.get_high_precision_init_val().abs().max()
-                    )
-                else:
-                    fp8_meta.amax_history[0][fp8_meta_index] = 0
+    # Before TE2.x: The model_module.bfloat16()/model_module.half() above will call the inplace
+    #               copy of TE's Float8Tensor, which will write an unwanted value (amax calculated
+    #               from the current fp8 param) to its amax_history. The below function will correct
+    #               the amax_history back.
+    # After TE2.x: Below function is an empty function and does nothing.
+    correct_amax_history_if_needed(model)
 
     if wrap_with_ddp:
         if args.use_torch_fsdp2:
@@ -867,7 +1415,7 @@ def setup_model_and_optimizer(model_provider_func,
 
         args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
                 model, optimizer, opt_param_scheduler, checkpointing_context=checkpointing_context,
-                skip_load_to_model_and_opt=HAVE_FSDP2 and args.use_torch_fsdp2)
+                skip_load_to_model_and_opt=HAVE_FSDP2 and getattr(args, "use_torch_fsdp2", False) and args.ckpt_format == "torch_dist")
         timers('load-checkpoint').stop(barrier=True)
         timers.log(['load-checkpoint'])
         one_logger and one_logger.log_metrics({
@@ -919,12 +1467,33 @@ def train_step(forward_step_func, data_iterator,
     args = get_args()
     timers = get_timers()
 
+    # CUDA Graph capturing only executes once, when it's the first training iteration.
+    if args.curr_iteration == args.iteration and args.external_cuda_graph:
+        cuda_graph_capture(model, config, args)
+
+        # Set grad to zero.
+        for model_chunk in model:
+            model_chunk.zero_grad_buffer()
+        optimizer.zero_grad()
+
+        # Collect garbage and empty unused memory.
+        gc.collect()
+        torch.cuda.empty_cache()
+
     rerun_state_machine = get_rerun_state_machine()
     while rerun_state_machine.should_run_forward_backward(data_iterator):
         # Set grad to zero.
         for model_chunk in model:
             model_chunk.zero_grad_buffer()
         optimizer.zero_grad()
+
+        if has_nvidia_modelopt:
+            # [ModelOpt]: Pipeline-parallel Distillation stacks student and teacher tensors
+            adjust_tensor_shapes_fn = get_tensor_shapes_adjust_fn_for_distillation(
+                model, args.seq_length, args.micro_batch_size, args.decoder_seq_length
+            )
+        else:
+            adjust_tensor_shapes_fn = None
 
         # Forward pass.
         forward_backward_func = get_forward_backward_func()
@@ -936,7 +1505,8 @@ def train_step(forward_step_func, data_iterator,
             seq_length=args.seq_length,
             micro_batch_size=args.micro_batch_size,
             decoder_seq_length=args.decoder_seq_length,
-            forward_only=False)
+            forward_only=False,
+            adjust_tensor_shapes_fn=adjust_tensor_shapes_fn)
     should_checkpoint, should_exit, exit_code = rerun_state_machine.should_checkpoint_and_exit()
     if should_exit:
         return {}, True, should_checkpoint, should_exit, exit_code, None, None
@@ -995,6 +1565,11 @@ def train_step(forward_step_func, data_iterator,
     # Empty unused memory.
     if args.empty_unused_memory_level >= 2:
         torch.cuda.empty_cache()
+
+    # Set the manual hooks when CUDA Graphs are enabled.
+    if args.curr_iteration == args.iteration and args.external_cuda_graph:
+        if args.use_distributed_optimizer and args.overlap_param_gather:
+            cuda_graph_set_manual_hooks(model)
 
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
         # Average loss across microbatches.
@@ -1104,12 +1679,6 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
         timers.write(timers_to_log, writer, iteration,
                      normalizer=total_iterations)
     if is_last_rank() and (iteration % args.tensorboard_log_interval == 0):
-        if args.record_memory_history:
-            snapshot = torch.cuda.memory._snapshot()
-            from pickle import dump
-            with open(args.memory_snapshot_path , 'wb') as f:
-                dump(snapshot, f)
-
         if wandb_writer:
             wandb_writer.log({'samples vs steps': args.consumed_train_samples},
                              iteration)
@@ -1215,8 +1784,28 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
 
     if args.num_experts is not None:
         moe_loss_scale = 1 / get_num_microbatches()
-        track_moe_metrics(moe_loss_scale, iteration, writer, wandb_writer, total_loss_dict, args.moe_per_layer_logging, args.enable_hetero)
-
+        track_names = []
+        if args.moe_router_load_balancing_type in ["aux_loss", "seq_aux_loss"]:
+            track_names.append("load_balancing_loss")
+        if args.moe_z_loss_coeff is not None:
+            track_names.append("z_loss")
+        track_moe_metrics(
+            loss_scale=moe_loss_scale,
+            iteration=iteration,
+            writer=writer,
+            wandb_writer=wandb_writer,
+            total_loss_dict=total_loss_dict,
+            per_layer_logging=args.moe_per_layer_logging,
+            force_initialize=True,
+            track_names=track_names,
+            num_layers=args.num_layers,
+            moe_layer_freq=args.moe_layer_freq
+        )
+    if args.mtp_num_layers is not None:
+        mtp_loss_scale = 1 / get_num_microbatches()
+        MTPLossLoggingHelper.track_mtp_metrics(
+            mtp_loss_scale, iteration, writer, wandb_writer, total_loss_dict
+            )
     if iteration % args.log_interval == 0:
         if args.record_memory_history and is_last_rank():
             snapshot = torch.cuda.memory._snapshot()

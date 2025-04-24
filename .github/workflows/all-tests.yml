@@ -19,7 +19,7 @@ jobs:
       - name: Set Environment Variable
         id: set-env  # Assign an ID to this step
         run: |
-          echo "ci_image=localhost:5000/flagscale:cuda-12.4.1-python-3.12-torch-2.5.1-commit-e05f659" >> $GITHUB_OUTPUT  # Set output variable
+          echo "ci_image=localhost:5000/flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.5.1-time2504091136" >> $GITHUB_OUTPUT  # Set output variable
 
   # Megatron Report Clean
   megatron-report-clean:
@@ -47,6 +47,7 @@ jobs:
           - inference
           - models
           - pipeline_parallel
+          - post_training
           - ssm
           - tensor_parallel
           - transformer/moe
@@ -95,6 +96,7 @@ jobs:
       matrix:
         task:
           - aquila
+          - deepseek
           - mixtral
           - llava_onevision
     name: "train-${{ matrix.task }}"

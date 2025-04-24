@@ -17,7 +17,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm.asyncio import tqdm
 
 from flagscale.logger import logger
-from flagscale.metric import calculate_metrics
+from flagscale.serve.metric import calculate_metrics
 
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 

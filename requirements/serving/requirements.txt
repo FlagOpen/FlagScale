@@ -1,4 +1,3 @@
-sr
 diffusers
 translate
 imageio
