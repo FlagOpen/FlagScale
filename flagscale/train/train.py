@@ -1378,6 +1378,7 @@ def get_model_for_dualpipev(model_provider_func, model_type=ModelType.encoder_or
         ddp_config = DistributedDataParallelConfig(
             grad_reduce_in_fp32=args.accumulate_allreduce_grads_in_fp32,
             overlap_grad_reduce=args.overlap_grad_reduce,
+            overlap_param_gather=args.overlap_param_gather,
             use_distributed_optimizer=args.use_distributed_optimizer,
             check_for_nan_in_grad=args.check_for_nan_in_loss_and_grad,
             bucket_size=args.ddp_bucket_size,
@@ -2382,9 +2383,9 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             config.param_sync_func = config.param_sync_func[0]
     
     if args.schedules_method == "dualpipev":
-        config.finalize_model_grads_func = finalize_model_grads
-    else:
         config.finalize_model_grads_func = finalize_model_grads_for_dualpipev
+    else:
+        config.finalize_model_grads_func = finalize_model_grads
 
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')

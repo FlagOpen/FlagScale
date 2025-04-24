@@ -710,7 +710,7 @@ def forward_backward_pipelining_with_cutinhalf(
             print(f"Pipeline last stage: Setting slave chunk input tensor")
             # input_tensor_slave_chunk = output_tensor
             # input_tensor_slave_chunk = output_tensor.clone()
-            input_tensor_slave_chunk = output_tensor.detach()
+            input_tensor_slave_chunk = output_tensor.detach().requires_grad_(True)
 
             print(f"Pipeline last stage: Receiving forward data")
             input_tensor, fwd_wait_handles = recv_forward(
@@ -997,7 +997,8 @@ def forward_backward_pipelining_with_cutinhalf(
             else:
                 if parallel_state.is_pipeline_last_stage() and fwd_model_chunk_id == master_chunk_id:
                     # input_tensor = output_tensor
-                    input_tensor = output_tensor.detach()
+                    # input_tensor = output_tensor.clone()
+                    input_tensor = output_tensor.detach().requires_grad_(True)
                 else:
                     print(f"[DEBUG][Overlap][Iter {iter_num+1}] Send forward and receive slave forward for chunk {fwd_model_chunk_id}")
                     input_tensor, fwd_wait_handles = send_forward_recv_slave_forward(
@@ -1027,10 +1028,16 @@ def forward_backward_pipelining_with_cutinhalf(
             output_tensor_bwd = output_tensors[bwd_model_chunk_id].pop(
                 0)
             print(f"[DEBUG][Overlap][Iter {iter_num+1}] Popped output tensor for backward.")
-            
+            print(f"output_tensor_grad_bwd is {output_tensor_grad_bwd}")
             print(f"input_tensor_bwd is {input_tensor_bwd}")
             print(f"output_tensor_bwd is {output_tensor_bwd}")
             
+            # if parallel_state.is_pipeline_last_stage():
+            #     if fwd_model_chunk_id == slave_chunk_id:
+            #         deallocate_output_tensor(
+            #             output_tensor_bwd, config.deallocate_pipeline_outputs)
+            #         print(f"pipeline last stage, deallocated forward output tensor.")
+
             input_tensor_grad = backward_step(
                 input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config
             )
@@ -1208,6 +1215,9 @@ def forward_backward_pipelining_with_cutinhalf(
         bwd_wait_handles = None
         print(f"[DEBUG][Post-Cooldown] Done waiting on final bwd_wait_handles.")
 
+    enable_grad_sync()
+
+    print(f"finalize model grads func is {config.finalize_model_grads_func}")
     if config.finalize_model_grads_func is not None and not forward_only:
         print(f"[DEBUG] Finalizing gradients...")
         # If defer_embedding_wgrad_compute is enabled we need to do the
