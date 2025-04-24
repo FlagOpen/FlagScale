@@ -45,7 +45,7 @@ try:
 except ImportError:
     has_nvidia_modelopt = False
 
-from flagscale.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
+from flagscale.train.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
 from flagscale.train.extra_valid import extra_valid_datasets_provider
 from flagscale.train.train import pretrain
 from flagscale.train.global_vars import get_parallel_context
