@@ -1,354 +1,283 @@
 import argparse
 import os
 import shutil
+import sys
+import tempfile
 
-from common import (
-    check_branch_name,
-    check_path,
-    decrypt_file,
-    encrypt_file,
-    get_now_branch_name,
-    git_init,
-    process_commit_id,
-    save_patch_to_tmp,
-)
-
-path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from git.repo import Repo
 
 
-def _add_auto_generate_args():
-    """Set input argument."""
-    parser = argparse.ArgumentParser(
-        description="Patch auto generate Arguments.", allow_abbrev=False
-    )
-    group = parser.add_argument_group(title="straggler")
-    group.add_argument(
-        "--device-type",
-        type=str,
-        nargs="+",
-        required=True,
-        help="Device type what you want to merge.",
-    )
-    group.add_argument(
-        "--base-commit-id",
-        type=str,
-        required=True,
-        help="The base commit-id that chip manufacturer must offer.",
-    )
-    group.add_argument(
-        "--current-commit-id",
-        type=str,
-        default=None,
-        help="The commit-id that want to patch.",
-    )
-    group.add_argument(
-        "--key-path",
-        type=str,
-        default=None,
-        help="The path for storing public and private keys. Be careful not to upload to the Git repository.",
-    )
-    args = parser.parse_args()
-    return args
-
-
-def get_output_path(device_type, base_commit_id):
-    """Get the output path to save patch file in hardware directory."""
-    global path
-    device_path = os.path.join(path, "hardware", str(device_type))
-    patch_path = os.path.join(path, "hardware", str(device_type), base_commit_id)
-    if not os.path.isdir(device_path):
-        os.makedirs(device_path)
-    return device_path, patch_path
-
-
-def check_hetero_txt(device_type, base_commit_id):
-    """Check if the combination of device_type and commit_id is in hetero.txt."""
-    global path
-    hetero_path = os.path.join(path, "tools/hetero.txt")
-    if not os.path.exists(hetero_path):
-        os.system("touch {}".format(hetero_path))
-    with open(hetero_path, "r") as f:
-        for line in f:
-            line = line.strip()
-            line = line.split(":")
-            if base_commit_id == line[0].strip():
-                hetero_list = line[1].split()
-                if set(device_type).issubset(set(hetero_list)):
-                    return True
-    return False
-
-
-def get_patch(repo, device_type, base_commit_id, current_commit_id=None, key_path=None):
-    """The main function to get the patch file in homogeneous scenarios."""
-    if repo is None:
-        raise FileNotFoundError("Repo is None")
-    global path
-
-    # Create diretory to save patch.py/unpatch.py.
-    patch_file_path = os.path.join(path, "tools/patch")
-    tmp_patch_file_path = os.path.join(path, "../tmp_patch")
-    if os.path.exists(tmp_patch_file_path):
-        shutil.rmtree(tmp_patch_file_path)
-    shutil.copytree(patch_file_path, tmp_patch_file_path)
-
-    # Create in-place code branch to compare different.
-    origin_patch_branch = "origin_patch_code"
-    now_branch = get_now_branch_name(repo)
-    repo.git.stash()
-    repo.git.checkout(current_commit_id)
-
-    if check_branch_name(repo, origin_patch_branch):
-        repo.git.branch("-D", origin_patch_branch)
-        repo.git.branch(origin_patch_branch)
-    else:
-        repo.git.branch(origin_patch_branch)
-
-    patch_str = repo.git.format_patch(
-        "{}...{}".format(base_commit_id, current_commit_id), stdout=True
-    )
-
-    # Save .patch file to tmp directory.
-    patch_name = "".join([base_commit_id, ".patch"])
-    file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str, key_path)
-    repo.git.stash()
-    repo.git.checkout(base_commit_id)
-
-    # Create patch code branch to compare different.
-    unpatch_branch = "unpatch_code"
-    if check_branch_name(repo, unpatch_branch):
-        repo.git.branch("-D", unpatch_branch)
-        repo.git.branch(unpatch_branch)
-    else:
-        repo.git.branch(unpatch_branch)
-
-    # Check the different between in-place code and patch code.
-    auto_check(
-        repo,
-        file_name,
-        base_commit_id,
-        now_branch,
-        origin_patch_branch,
-        unpatch_branch,
-        key_path,
-    )
-    shutil.rmtree(tmp_path)
-    device_path, patch_path = get_output_path(device_type, base_commit_id)
-    print(device_path, patch_path)
-
-    # Recover the patch/ directory.
-    if not os.path.exists(patch_file_path):
-        shutil.copytree(tmp_patch_file_path, os.path.join(path, "tools/patch"))
-    else:
-        shutil.rmtree(os.path.join(path, "tools/patch"))
-        shutil.copytree(tmp_patch_file_path, os.path.join(path, "tools/patch"))
-    shutil.rmtree(tmp_patch_file_path)
-    update_patch(patch_str, patch_name, device_path, patch_path, key_path=key_path)
-    auto_commit(repo, device_type, device_path, current_commit_id)
-
-
-def get_hetero_patch(
-    repo, device_type, base_commit_id, current_commit_id=None, key_path=None
-):
-    """The main function to get the patch file in heterogeneous scenarios."""
-    global path
-    if repo is None:
-        TypeError("repo is None")
-    hetero_str = "{}: ".format(base_commit_id)
-    for device in device_type[:-1]:
-        hetero_str = hetero_str + " " + str(device)
-        base_commit_id_path = os.path.join(path, "hardware", device, base_commit_id)
-        if not os.path.exists(base_commit_id_path):
-            raise FileNotFoundError("{} is not found".format(base_commit_id_path))
-    now_device_type = device_type[-1]
-    hetero_str = hetero_str + " " + str(now_device_type)
-
-    # Create diretory to save patch.py/unpatch.py.
-    patch_file_path = os.path.join(path, "tools/patch")
-    tmp_patch_file_path = os.path.join(path, "../tmp_patch")
-    if os.path.exists(tmp_patch_file_path):
-        shutil.rmtree(tmp_patch_file_path)
-    shutil.copytree(patch_file_path, tmp_patch_file_path)
-    now_branch = get_now_branch_name(repo)
-    repo.git.stash()
-    repo.git.checkout(current_commit_id)
-
-    # Create in-place code branch to compare different.
-
-    origin_patch_branch = "origin_patch_code"
-    if check_branch_name(repo, origin_patch_branch):
-        repo.git.branch("-D", origin_patch_branch)
-        repo.git.branch(origin_patch_branch)
-    else:
-        repo.git.branch(origin_patch_branch)
-
-    patch_str = repo.git.format_patch(
-        "{}...{}".format(base_commit_id, current_commit_id), stdout=True
-    )
-    patch_name = "".join([base_commit_id, ".patch"])
-
-    # Create in-place code branch to compare different.
-    file_name, tmp_path = save_patch_to_tmp(patch_name, patch_str, key_path=None)
-    patch_file_path = os.path.join(path, "tools/patch")
-    repo.git.stash()
-
-    repo.git.checkout(base_commit_id)
-
-    unpatch_branch = "unpatch_code"
-    if check_branch_name(repo, unpatch_branch):
-        repo.git.branch("-D", unpatch_branch)
-        repo.git.branch(unpatch_branch)
-    else:
-        repo.git.branch(unpatch_branch)
-
-    # Check the different between in-place code and patch code.
-    auto_check(
-        repo, file_name, base_commit_id, now_branch, origin_patch_branch, unpatch_branch
-    )
-    shutil.rmtree(tmp_path)
-    device_path, patch_path = get_output_path(now_device_type, base_commit_id)
-
-    # Recover the patch/ directory.
-    if not os.path.exists(patch_file_path):
-        shutil.copytree(tmp_patch_file_path, os.path.join(path, "tools/patch"))
-    shutil.rmtree(tmp_patch_file_path)
-    hetero_path = os.path.join(path, "tools/patch/hetero.txt")
-
-    # Update .patch file and hetero.txt.
-    update_patch(
-        patch_str,
-        patch_name,
-        device_path,
-        patch_path,
-        hetero_path,
-        hetero_str,
-        device_type,
-        base_commit_id,
-    )
-    auto_commit(repo, now_device_type, device_path, current_commit_id, hetero_path)
-
-
-def update_patch(
-    patch_str,
-    patch_name,
-    device_path,
-    patch_path,
-    hetero_path=None,
-    hetero_str=None,
-    device_type=None,
-    base_commit_id=None,
-    key_path=None,
-):
-    """Hetero_path is not None then hetero_str must be not None."""
-    assert bool(hetero_path) == bool(hetero_str)
-    # Write to hetero.txt.
-    if hetero_str:
-        if not check_hetero_txt(device_type, base_commit_id):
-            with open(hetero_path, "a+", encoding="utf-8") as f:
-                f.writelines(hetero_str + "\n")
-    os.makedirs(patch_path)
-    file_name = os.path.join(patch_path, patch_name)
-    with open(file_name, "w", encoding="utf-8") as f:
-        f.write(patch_str)
-    if key_path is not None:
-        public_key_path = os.path.join(key_path, "public_key.pem")
-        encrypt_file(file_name, public_key_path)  # Encrypt the specified file
-        # Delete the original patch file
-        os.remove(file_name)
-
-
-def auto_check(
-    repo,
-    file_name,
-    base_commit_id,
-    now_branch,
-    origin_branch,
-    unpatch_branch,
-    key_path=None,
-):
-    """Check if origin code and unpatch code have different."""
-    repo.git.checkout(unpatch_branch)
-    if key_path is not None:
-        private_key_path = os.path.join(key_path, "private_key.pem")
-        decrypt_file(file_name, private_key_path)  # Decrypt the file
-        file_name = os.path.splitext(file_name)[0]  # This will remove the extension
-    repo.git.am(file_name, "--whitespace=fix")
-    diff_str = repo.git.diff(origin_branch, unpatch_branch)
-    if len(diff_str) > 0:
-        print("WARNING: origin code and unpatch code have some different")
-    print("Auto check successfully!")
-    repo.git.stash()
-    repo.git.checkout(now_branch)
-    repo.git.checkout(base_commit_id)
-    repo.git.branch("-D", "origin_patch_code")
-    repo.git.branch("-D", "unpatch_code")
-
-
-def auto_commit(repo, device_type, device_path, current_commit_id, hetero_path=None):
-    """Auto git commit the patch , commit-msg is from current_commit_id's commit-msg."""
-    if hetero_path:
-        repo.git.add(hetero_path)
-    repo.git.add(device_path)
-    commit_msg = repo.git.log(current_commit_id)
-    commit_msg = commit_msg.split("\ncommit")[0].split("\n")[4].strip()
-    if len(commit_msg.split("]")) == 1:
-        commit_msg = commit_msg
-    else:
-        commit_msg = commit_msg.split("]")[1].strip()
-    commit_msg = "[{}] {}".format(device_type, commit_msg)
-    repo.git.commit("-m", commit_msg)
-    print(
-        "Commit successfully! If you want to push,try 'git push origin HEAD:(your branch)' or  'git push --force origin HEAD:(your branch)'"
-    )
-
-
-def check_device_type(device_type):
-    """Check the format of device_type. The device_type format must be '--device-type A_X100' or  '--device-type A_X100  B_Y100'
-    '--device-type A_X100'  format for homogeneous scenarios.
-    '--device-type A_X100  B_Y100' format for heterogeneous scenarios.
+def patch(main_path, submodule_name, src, dst, mode="symlink"):
     """
-    import re
+    Sync the submodule modifications to the corresponding backend in FlagScale.
+    """
+    print(f"Patching backend {submodule_name}...")
+    main_repo = Repo(main_path)
+    # raise ValueError(help(main_repo.submodule))
+    submodule = main_repo.submodule(submodule_name)
+    sub_repo = submodule.module()
+    base_commit_hash = submodule.hexsha
+    print(f"Base commit hash of submodule {submodule_name} is {base_commit_hash}.")
 
-    device_pattern = r"\w+_\w+"
-    for device in device_type:
-        match = re.fullmatch(device_pattern, device)
-        if not match:
-            return False
-    return True
+    # Get submodule commit tree
+    base_commit = sub_repo.commit(base_commit_hash)
+    base_tree = base_commit.tree
+
+    index = sub_repo.index
+    index_tree_hash = index.write_tree()
+    file_statuses = {}
+
+    # Get diff with base commit
+    diff_index = base_tree.diff(index_tree_hash)
+    # Process the diff between the staged and the base commit
+    for diff in diff_index:
+        if diff.new_file:
+            status = "A"
+            file_path = diff.b_path
+            file_statuses[file_path] = [status]
+        elif diff.deleted_file:
+            status = "D"
+            file_path = diff.a_path
+            file_statuses[file_path] = [status]
+        elif diff.renamed_file:
+            status = "R"
+            file_path = diff.b_path
+            file_statuses[diff.a_path] = [status, file_path]
+        elif diff.change_type == "M":
+            status = "M"
+            assert diff.a_path == diff.b_path
+            file_path = diff.b_path
+            file_statuses[file_path] = [status]
+        elif diff.change_type == "T":
+            status = "T"
+            assert diff.a_path == diff.b_path
+            file_path = diff.b_path
+            file_statuses[file_path] = [status]
+        elif diff.change_type == "U":
+            raise ValueError(f"Unmerged status is not supported.")
+        else:
+            raise ValueError(f"Unsupported  status: {diff.change_type}.")
+
+    # Get diff with working directory
+    diff_workdir = index.diff(None)
+    # Process the diff between the working directory and the staged
+    for diff in diff_workdir:
+        if diff.new_file:
+            status = "A"
+            file_path = diff.b_path
+            file_statuses[file_path] = [status]
+        elif diff.deleted_file:
+            status = "D"
+            file_path = diff.a_path
+            file_statuses[file_path] = [status]
+        elif diff.renamed_file:
+            status = "R"
+            file_path = diff.b_path
+            file_statuses[diff.a_path] = [status, file_path]
+        elif diff.change_type == "M":
+            status = "M"
+            assert diff.a_path == diff.b_path
+            file_path = diff.b_path
+            file_statuses[file_path] = [status]
+        elif diff.change_type == "T":
+            status = "T"
+            assert diff.a_path == diff.b_path
+            file_path = diff.b_path
+            file_statuses[file_path] = [status]
+        elif diff.change_type == "U":
+            raise ValueError(f"Unmerged status is not supported.")
+        else:
+            raise ValueError(f"Unsupported  status: {diff.change_type}.")
+        file_statuses[file_path] = status
+
+    # Get untracked files
+    untracked_files = sub_repo.untracked_files
+    for file in untracked_files:
+        file_statuses[file] = ["UT"]
+
+    # The file status may be overwritten, so we follow the sequence of staged, working dir, untracked.
+    print(file_statuses)
+
+    file_status_deleted = {}
+    tmp_file = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False)
+    for file_path in file_statuses:
+        if file_statuses[file_path][0] == "D":
+            file_status_deleted[file_path] = file_statuses[file_path]
+
+    for file_path in file_statuses:
+        if file_statuses[file_path][0] == "D":
+            continue
+        _sync(file_path, file_statuses[file_path], src, dst, tmp_file, mode=mode)
+
+    # Process the deleted files
+    if file_status_deleted:
+        try:
+            for file_path in file_status_deleted:
+                assert file_statuses[file_path][0] == "D"
+                _sync(
+                    file_path,
+                    file_status_deleted[file_path],
+                    src,
+                    dst,
+                    tmp_file,
+                    mode=mode,
+                )
+            deleted_log = os.path.join(src, "deleted_files.log")
+            tmp_file.close()
+
+            shutil.move(tmp_file.name, deleted_log)
+            if os.path.lexists(tmp_file.name):
+                os.remove(tmp_file.name)
+
+        except Exception as e:
+            print(f"Error occurred while processing deleted files: {e}")
+            tmp_file.close()
+            if os.path.lexists(tmp_file.name):
+                os.remove(tmp_file.name)
+            raise
+
+    return file_statuses
 
 
-def main():
-    args = _add_auto_generate_args()
-    check_path()
-    global path
-    repo = git_init(path)
-    if args.current_commit_id is None:
-        current_commit_id = str(repo.head.commit)
-    else:
-        current_commit_id = args.current_commit_id
-    current_commit_id, base_commit_id = process_commit_id(
-        current_commit_id, args.base_commit_id
-    )
-    if not check_device_type(args.device_type):
-        raise SyntaxError("device_type is not legal!")
+def _sync(file_path, status, src, dst, f=None, mode="symlink"):
+    src_file_path = os.path.join(src, file_path)
+    dst_file_path = os.path.join(dst, file_path)
+    change_type = status[0]
 
-    if len(args.device_type) > 1:
-        # Heterogeneous scenarios.
-        get_hetero_patch(repo, args.device_type, base_commit_id, current_commit_id)
-    else:
-        # Homogeneous scenarios.
-        get_patch(
-            repo, args.device_type[0], base_commit_id, current_commit_id, args.key_path
+    symbolic_error = "Defining symbolic links in the submodule is not supported except for those defined in FlagScale"
+    typechange_error = "File type changes are not supported in the submodule"
+    if change_type == "T":
+        is_symlink = os.path.islink(dst_file_path)
+        if is_symlink:
+            if not os.path.lexists(src_file_path):
+                raise ValueError(f"{symbolic_error}: {dst_file_path}")
+        else:
+            raise ValueError(f"{typechange_error}: {dst_file_path}")
+
+    elif change_type in ["A", "UT"]:
+        is_symlink = os.path.islink(dst_file_path)
+        if is_symlink:
+            if not os.path.lexists(src_file_path):
+                real_path = os.readlink(dst_file_path)
+                if os.path.lexists(real_path):
+                    os.makedirs(os.path.dirname(src_file_path), exist_ok=True)
+                    shutil.move(real_path, src_file_path)
+                    print(
+                        f"Move {real_path} to {src_file_path} and create symbolic link {dst_file_path} -> {src_file_path}"
+                    )
+                    if os.path.lexists(dst_file_path):
+                        os.remove(dst_file_path)
+                    os.symlink(src_file_path, dst_file_path)
+                else:
+                    raise ValueError(f"{symbolic_error}: {dst_file_path}")
+        else:
+            _create_file(src_file_path, dst_file_path, mode=mode)
+
+    elif change_type == "D":
+        if os.path.lexists(src_file_path):
+            os.remove(src_file_path)
+            print(f"The file {src_file_path} has been deleted.")
+        else:
+            assert f
+            f.write(f"{file_path}\n")
+            f.flush()
+
+    elif change_type == "M":
+        is_symlink = os.path.islink(dst_file_path)
+        if is_symlink:
+            raise ValueError(
+                "Modified symbolic links in the submodule is not supported except for those defined in FlagScale"
+            )
+        _create_file(src_file_path, dst_file_path, mode=mode)
+
+    elif change_type == "R":
+        assert len(status) == 2
+        rel_dst_path = status[1]
+        renamed_dst_file_path = os.path.join(dst, rel_dst_path)
+        is_symlink = os.path.islink(renamed_dst_file_path)
+        renamed_src_file_path = os.path.join(src, rel_dst_path)
+        if is_symlink:
+            real_path = os.readlink(renamed_dst_file_path)
+            os.makedirs(os.path.dirname(renamed_src_file_path), exist_ok=True)
+            if real_path != renamed_src_file_path:
+                shutil.move(real_path, renamed_src_file_path)
+                print(
+                    f"Move {real_path} to {renamed_src_file_path} and create symbolic link {renamed_dst_file_path} -> {renamed_src_file_path}"
+                )
+            if os.path.lexists(renamed_dst_file_path):
+                os.remove(renamed_dst_file_path)
+            os.symlink(renamed_src_file_path, renamed_dst_file_path)
+        else:
+            assert not os.path.lexists(renamed_src_file_path)
+            _create_file(renamed_src_file_path, renamed_dst_file_path, mode=mode)
+            assert f
+            f.write(f"{file_path}\n")
+            f.flush()
+
+
+def _create_file(source_file, target_file, mode="symlink"):
+    if os.path.lexists(source_file):
+        print(f"The file {source_file} will be covered by {target_file}.")
+    assert os.path.lexists(target_file)
+
+    source_dir = os.path.dirname(source_file)
+    if not os.path.lexists(source_dir):
+        os.makedirs(source_dir, exist_ok=True)
+
+    shutil.copyfile(target_file, source_file)
+    if mode == "symlink":
+        if os.path.lexists(target_file):
+            os.remove(target_file)
+        os.symlink(source_file, target_file)
+        print(
+            f"The file {target_file} has been copied to {source_file} and Create symbolic link {target_file} -> {source_file}."
         )
-    print("Patch successfully!")
+    elif mode == "copy":
+        print(f"The file {source_file} has been copied to {target_file}.")
+    else:
+        raise ValueError(f"Unsupported mode: {mode}.")
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(e)
-        path = os.getcwd()
-        if os.path.exists(os.path.join(path, "../tmp_patch/")):
-            shutil.rmtree(os.path.join(path, "../tmp_patch/"))
-        if os.path.exists(os.path.join(path, "../tmp_flagscale/")):
-            shutil.rmtree(os.path.join(path, "../tmp_flagscale/"))
+    parser = argparse.ArgumentParser(
+        description="Sync submodule modifications to the corresponding backend in FlagScale."
+    )
+    parser.add_argument(
+        "--backend",
+        nargs="+",
+        choices=["Megatron-LM", "vllm"],
+        default=["Megatron-LM"],
+        help="Backend to patch (default: Megatron-LM)",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["symlink", "copy"],
+        default="symlink",
+        help="Mode to patch (default: symlink)",
+    )
+
+    args = parser.parse_args()
+    backends = args.backend
+    if not isinstance(backends, list):
+        backends = [backends]
+    # FlagScale/tools/patch
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    # FlagScale/tools
+    script_dir = os.path.dirname(script_dir)
+    # FlagScale
+    main_path = os.path.dirname(script_dir)
+
+    for backend in backends:
+        submodule_name = f"third_party/{backend}"
+        src = None
+        dst = os.path.join(main_path, "third_party", backend)
+        # Megatron-LM
+        if backend == "Megatron-LM":
+            src = os.path.join(main_path, "flagscale", "train", "backends", backend)
+            assert src
+            patch(main_path, submodule_name, src, dst, args.mode)
+        # vllm
+        if backend == "vllm":
+            src = os.path.join(main_path, "flagscale", "inference", "backends", backend)
+            assert src
+            patch(main_path, submodule_name, src, dst, args.mode)
