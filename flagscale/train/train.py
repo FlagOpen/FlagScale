@@ -487,6 +487,7 @@ def num_floating_point_operations_fs(args, batch_size):
             )
 
         # Part 2: MLP or MoE =====================================================================
+        moe_ffn_hidden_size = args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size
         shared_expert_ffn_hidden_size = (
             0
             if args.moe_shared_expert_intermediate_size is None
@@ -532,7 +533,7 @@ def num_floating_point_operations_fs(args, batch_size):
             * batch_size
             * args.seq_length
             * args.hidden_size
-            * args.moe_ffn_hidden_size
+            * moe_ffn_hidden_size
             * gated_linear_multiplier
             * num_experts_routed_to
             + 4 # shared experts (two linear)
