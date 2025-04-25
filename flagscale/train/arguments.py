@@ -130,10 +130,7 @@ class FSTrainArguments:
         self.args.transformer_pipeline_model_parallel_size = self.args.pipeline_model_parallel_size
 
         # if untie_embeddings_and_output_weights is False, the first and last stage should have the same tp degree
-        if (
-            self.args.untie_embeddings_and_output_weights == False
-            or self.args.mtp_num_layers
-        ):
+        if self.args.untie_embeddings_and_output_weights == False or self.args.mtp_num_layers:
             assert (
                 hetero_process_meshes_tp[0] == hetero_process_meshes_tp[-1]
             ), f"if untie_embeddings_and_output_weights is False or mtp_num_layers is not 0, the first and last stage should have the same tp degree!"

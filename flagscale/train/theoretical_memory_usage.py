@@ -115,9 +115,7 @@ def compute_activated_weight_number(args, verbose=False):
 
     # Part3: MTP ============================================================================
     mtp_params = 0
-    mtp_num_layers = (
-        0 if not getattr(args, "mtp_num_layers", None) else args.mtp_num_layers
-    )
+    mtp_num_layers = 0 if not getattr(args, "mtp_num_layers", None) else args.mtp_num_layers
     if mtp_num_layers > 0:
         mtp_params = (
             4 * args.hidden_size  # tow layernorm ops
@@ -276,9 +274,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
 
     # Part3: MTP ============================================================================
     mtp_params = 0
-    mtp_num_layers = (
-        0 if not getattr(args, "mtp_num_layers", None) else args.mtp_num_layers
-    )
+    mtp_num_layers = 0 if not getattr(args, "mtp_num_layers", None) else args.mtp_num_layers
     if mtp_num_layers > 0:
         mtp_params = (
             4 * args.hidden_size  # tow layernorm ops
