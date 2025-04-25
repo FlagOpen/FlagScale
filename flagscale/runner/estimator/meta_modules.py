@@ -60,9 +60,7 @@ class Elementwise(MetaModule):
         # Binary operations require at least two inputs
         binary_ops = ["add", "sub", "mul", "div", "pow"]
         if self.operation in binary_ops and len(inputs) < 2:
-            raise ValueError(
-                f"Operation '{self.operation}' requires at least two inputs"
-            )
+            raise ValueError(f"Operation '{self.operation}' requires at least two inputs")
 
         # Get the cost for this operation
         op_cost = self.op_flops_cost.get(self.operation, 1)
@@ -173,9 +171,7 @@ class Elementwise(MetaModule):
         binary_ops = ["add", "sub", "mul", "div", "pow"]
         if self.operation in binary_ops:
             if len(inputs) < 2:
-                raise ValueError(
-                    f"Operation '{self.operation}' requires at least two inputs"
-                )
+                raise ValueError(f"Operation '{self.operation}' requires at least two inputs")
 
             # Ensure inputs have compatible shapes
             if inputs[0].shape != inputs[1].shape:
@@ -208,12 +204,7 @@ class Linear(MetaModule):
     """
 
     def __init__(
-        self,
-        in_features,
-        out_features,
-        bias=True,
-        shard_specs=[[1, 1]],
-        model_id="default",
+        self, in_features, out_features, bias=True, shard_specs=[[1, 1]], model_id="default"
     ):
         super().__init__(shard_specs, model_id)
 
@@ -344,13 +335,7 @@ class Embedding(MetaModule):
     Embedding layer that maps indices to dense vectors.
     """
 
-    def __init__(
-        self,
-        num_embeddings,
-        embedding_dim,
-        shard_specs=[[1, 1]],
-        model_id="default",
-    ):
+    def __init__(self, num_embeddings, embedding_dim, shard_specs=[[1, 1]], model_id="default"):
         super().__init__(shard_specs, model_id)
 
         # Store raw values for later calculations
@@ -453,14 +438,7 @@ class RotaryEmbedding(MetaModule):
     https://arxiv.org/abs/2104.09864
     """
 
-    def __init__(
-        self,
-        dim,
-        max_seq_len=512,
-        base=10000,
-        shard_specs=None,
-        model_id="default",
-    ):
+    def __init__(self, dim, max_seq_len=512, base=10000, shard_specs=None, model_id="default"):
         super().__init__(shard_specs, model_id)
         self.dim = dim
         self.max_seq_len = max_seq_len
@@ -533,9 +511,7 @@ class RotaryEmbedding(MetaModule):
         # We also need to store the sin and cos tables for the positions
         # These are needed for both forward and backward pass
         seq_len = min(input[1].dim, self.max_seq_len)
-        dim = (
-            min(self.dim, input[2].dim) // 2
-        )  # Only need half dim for sin & half for cos
+        dim = min(self.dim, input[2].dim) // 2  # Only need half dim for sin & half for cos
         pos_table_elements = 2 * seq_len * dim  # 2x for both sin and cos tables
 
         # We don't count output tensor as it can reuse the input tensor's memory
@@ -572,21 +548,11 @@ class Baddbmm(MetaModule):
     Performs: out = beta * input + alpha * (batch1 @ batch2)
     """
 
-    def __init__(
-        self,
-        shard_specs=None,
-        model_id="default",
-    ):
+    def __init__(self, shard_specs=None, model_id="default"):
         super().__init__(shard_specs, model_id)
 
     def add_flops(
-        self,
-        input: MetaTensor,
-        batch1: MetaTensor,
-        batch2: MetaTensor,
-        *,
-        beta=1,
-        alpha=1,
+        self, input: MetaTensor, batch1: MetaTensor, batch2: MetaTensor, *, beta=1, alpha=1
     ):
         """
         Compute FLOPs for batched matrix multiplication with beta and alpha scaling.
@@ -681,13 +647,7 @@ class Baddbmm(MetaModule):
         return total_flops
 
     def add_params(
-        self,
-        input: MetaTensor,
-        batch1: MetaTensor,
-        batch2: MetaTensor,
-        *,
-        beta=1,
-        alpha=1,
+        self, input: MetaTensor, batch1: MetaTensor, batch2: MetaTensor, *, beta=1, alpha=1
     ):
         """
         Compute number of parameters for Baddbmm operation.
@@ -697,13 +657,7 @@ class Baddbmm(MetaModule):
         return 0
 
     def add_acts(
-        self,
-        input: MetaTensor,
-        batch1: MetaTensor,
-        batch2: MetaTensor,
-        *,
-        beta=1,
-        alpha=1,
+        self, input: MetaTensor, batch1: MetaTensor, batch2: MetaTensor, *, beta=1, alpha=1
     ):
         """
         Compute activation memory elements for Baddbmm operation.
@@ -743,13 +697,7 @@ class Baddbmm(MetaModule):
         return input_elements + batch1_elements + batch2_elements
 
     def forward(
-        self,
-        input: MetaTensor,
-        batch1: MetaTensor,
-        batch2: MetaTensor,
-        *,
-        beta=1,
-        alpha=1,
+        self, input: MetaTensor, batch1: MetaTensor, batch2: MetaTensor, *, beta=1, alpha=1
     ):
         """
         Process inputs and return output shape.
@@ -828,11 +776,7 @@ class Bmm(MetaModule):
     Performs: out = batch1 @ batch2
     """
 
-    def __init__(
-        self,
-        shard_specs=None,
-        model_id="default",
-    ):
+    def __init__(self, shard_specs=None, model_id="default"):
         super().__init__(shard_specs, model_id)
 
     def add_flops(self, batch1: MetaTensor, batch2: MetaTensor):
@@ -941,14 +885,7 @@ class Bmm(MetaModule):
         # Total activations needed for backward
         return batch1_elements + batch2_elements
 
-    def forward(
-        self,
-        batch1: MetaTensor,
-        batch2: MetaTensor,
-        *,
-        beta=1,
-        alpha=1,
-    ):
+    def forward(self, batch1: MetaTensor, batch2: MetaTensor, *, beta=1, alpha=1):
         """
         Process inputs and return output shape.
         Updates registry with computed metrics.
@@ -1018,11 +955,7 @@ class Matmul(MetaModule):
     Similar to torch.matmul, supports broadcasting and handles various dimensions.
     """
 
-    def __init__(
-        self,
-        shard_specs=None,
-        model_id="default",
-    ):
+    def __init__(self, shard_specs=None, model_id="default"):
         super().__init__(shard_specs, model_id)
 
     def add_flops(self, input1: MetaTensor, input2: MetaTensor):
@@ -1095,9 +1028,7 @@ class Matmul(MetaModule):
             n = input1[1].sharded_dim()  # cols of first matrix
             k = input2[1].sharded_dim()  # cols of second matrix
             if n != input2[0].sharded_dim():
-                raise ValueError(
-                    f"Matrix dimensions mismatch: {n} vs {input2[0].sharded_dim()}"
-                )
+                raise ValueError(f"Matrix dimensions mismatch: {n} vs {input2[0].sharded_dim()}")
             # Each output element requires n multiply-adds
             return 2 * m * n * k  # 2 for multiply-add
 
@@ -1122,11 +1053,7 @@ class Matmul(MetaModule):
 
                 for i in range(batch_dims):
                     # For batched matrix multiplication, batch dimensions must be broadcastable
-                    if (
-                        input1[i].dim != input2[i].dim
-                        and input1[i].dim != 1
-                        and input2[i].dim != 1
-                    ):
+                    if input1[i].dim != input2[i].dim and input1[i].dim != 1 and input2[i].dim != 1:
                         raise ValueError(
                             f"Batch dimension {i} mismatch and not broadcastable: "
                             f"{input1[i].dim} vs {input2[i].dim}"
@@ -1248,13 +1175,9 @@ class Matmul(MetaModule):
         elif dim1 == 2 and dim2 == 2:
             # Validate inner dimensions match
             if input1[1].dim != input2[0].dim:
-                raise ValueError(
-                    f"Matrix dimensions mismatch: {input1[1].dim} vs {input2[0].dim}"
-                )
+                raise ValueError(f"Matrix dimensions mismatch: {input1[1].dim} vs {input2[0].dim}")
             # Result has shape [m, k]
-            return MetaTensor(
-                [input1[0].dim, input2[1].dim], [input1[0].shard, input2[1].shard]
-            )
+            return MetaTensor([input1[0].dim, input2[1].dim], [input1[0].shard, input2[1].shard])
 
         # Case 5: Batched matrix multiplication (>2D @ >2D -> >2D)
         else:
@@ -1281,12 +1204,10 @@ class Matmul(MetaModule):
 
                     # Pad the shorter batch dimensions with 1s
                     padded_batch1 = [
-                        (ShardedDim(1, 1))
-                        for _ in range(max_batch_dims - len(batch_dims1))
+                        (ShardedDim(1, 1)) for _ in range(max_batch_dims - len(batch_dims1))
                     ] + batch_dims1
                     padded_batch2 = [
-                        (ShardedDim(1, 1))
-                        for _ in range(max_batch_dims - len(batch_dims2))
+                        (ShardedDim(1, 1)) for _ in range(max_batch_dims - len(batch_dims2))
                     ] + batch_dims2
 
                     # Apply broadcasting rules
@@ -1296,9 +1217,7 @@ class Matmul(MetaModule):
                             # Use the larger dimension
                             out_dim = max(dim1.dim, dim2.dim)
                             # Use the corresponding sharding
-                            out_shard = (
-                                dim1.shard if dim1.dim > dim2.dim else dim2.shard
-                            )
+                            out_shard = dim1.shard if dim1.dim > dim2.dim else dim2.shard
                             out_batch_shape.append(out_dim)
                             out_batch_shard.append(out_shard)
                         else:
@@ -1315,8 +1234,7 @@ class Matmul(MetaModule):
                     # One or both inputs don't have batch dimensions
                     # Just use the matrix dimensions
                     return MetaTensor(
-                        [input1[-2].dim, input2[-1].dim],
-                        [input1[-2].shard, input2[-1].shard],
+                        [input1[-2].dim, input2[-1].dim], [input1[-2].shard, input2[-1].shard]
                     )
             else:
                 raise ValueError(
@@ -1331,12 +1249,7 @@ class Softmax(MetaModule):
     Applies softmax normalization across a specified dimension.
     """
 
-    def __init__(
-        self,
-        dim=-1,  # Default to last dimension
-        shard_specs=None,
-        model_id="default",
-    ):
+    def __init__(self, dim=-1, shard_specs=None, model_id="default"):  # Default to last dimension
         super().__init__(shard_specs, model_id)
         self.dim = dim
 
@@ -1415,12 +1328,7 @@ class Dropout(MetaModule):
     Randomly zeros elements of the input tensor with probability p.
     """
 
-    def __init__(
-        self,
-        p=0.5,
-        shard_specs=None,
-        model_id="default",
-    ):
+    def __init__(self, p=0.5, shard_specs=None, model_id="default"):
         super().__init__(shard_specs, model_id)
         self.p = p
 
@@ -1914,9 +1822,7 @@ class LayerNorm(MetaModule):
         # For each group:
         # - Sum squared differences: (hidden_size - 1) additions
         # - Divide by hidden_size: 1 division
-        var_flops = (
-            total_elements * 2 + batch_elements * sharded_hidden_size + batch_elements
-        )
+        var_flops = total_elements * 2 + batch_elements * sharded_hidden_size + batch_elements
 
         # ------- STEP 3: Normalization -------
         # For each group:
@@ -2119,9 +2025,7 @@ class RMSNorm(MetaModule):
         # - Sum squared values: (hidden_size-1) ops per group (batch_elements * sharded_hidden_size ops)
         # - Divide by n: 1 op per group (batch_elements ops)
         # - Square root: 1 op per group (batch_elements ops)
-        rms_flops = (
-            total_elements + batch_elements * sharded_hidden_size + batch_elements * 2
-        )
+        rms_flops = total_elements + batch_elements * sharded_hidden_size + batch_elements * 2
 
         # ------- STEP 2: Normalization -------
         # For each element:

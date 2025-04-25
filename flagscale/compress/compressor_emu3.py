@@ -6,6 +6,7 @@ import sys
 
 import torch
 import yaml
+
 from omegaconf import OmegaConf
 from torch.utils.data import Dataset
 
@@ -57,10 +58,7 @@ def prepare_dataset(cfg):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config-path",
-        type=str,
-        required=True,
-        help="Path to the configuration YAML file",
+        "--config-path", type=str, required=True, help="Path to the configuration YAML file"
     )
     args = parser.parse_args()
     cfg = prepare_config(args.config_path)

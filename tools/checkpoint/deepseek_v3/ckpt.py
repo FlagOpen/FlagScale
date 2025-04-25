@@ -18,11 +18,7 @@ def _get_parallel_size(args):
 #### load from huggingface ckpt
 def get_hf_attn_ckpt(message, model, layer_id, args):
     nh = args.num_attention_heads
-    ng = (
-        args.num_query_groups
-        if args.group_query_attention
-        else args.num_attention_heads
-    )
+    ng = args.num_query_groups if args.group_query_attention else args.num_attention_heads
     dim = args.hidden_size
     assert nh % ng == 0
 
@@ -65,13 +61,9 @@ def get_hf_moe_mlp_ckpt(message, model, layer_id, args):
     message["router weight"] = tf_layer.mlp.gate.weight.data
     if hasattr(tf_layer.mlp.gate, "e_score_correction_bias"):
         message["router expert bias"] = tf_layer.mlp.gate.e_score_correction_bias.data
-    message["shared expert gate weight"] = (
-        tf_layer.mlp.shared_experts.gate_proj.weight.data
-    )
+    message["shared expert gate weight"] = tf_layer.mlp.shared_experts.gate_proj.weight.data
     message["shared expert up weight"] = tf_layer.mlp.shared_experts.up_proj.weight.data
-    message["shared expert down weight"] = (
-        tf_layer.mlp.shared_experts.down_proj.weight.data
-    )
+    message["shared expert down weight"] = tf_layer.mlp.shared_experts.down_proj.weight.data
 
     for id in range(args.num_experts):
         expert = tf_layer.mlp.experts[id]
@@ -144,27 +136,15 @@ def set_attn_ckpt(message, models, layer_id, md, args):
         else:
             tf_layer = model.transformer_layer  # for mtp
         if args.q_lora_rank is not None:
-            tf_layer.self_attention.linear_q_down_proj.weight.data.copy_(
-                q_a_weight[tp_rank]
-            )
-            tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data.copy_(
-                q_a_norm_weight
-            )
-            tf_layer.self_attention.linear_q_up_proj.weight.data.copy_(
-                q_b_weight[tp_rank]
-            )
+            tf_layer.self_attention.linear_q_down_proj.weight.data.copy_(q_a_weight[tp_rank])
+            tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data.copy_(q_a_norm_weight)
+            tf_layer.self_attention.linear_q_up_proj.weight.data.copy_(q_b_weight[tp_rank])
         else:
             tf_layer.self_attention.linear_q_proj.weight.data.copy_(q_weight[tp_rank])
 
-        tf_layer.self_attention.linear_kv_down_proj.weight.data.copy_(
-            kv_a_weight[tp_rank]
-        )
-        tf_layer.self_attention.linear_kv_up_proj.layer_norm_weight.data.copy_(
-            kv_a_norm_weight
-        )
-        tf_layer.self_attention.linear_kv_up_proj.weight.data.copy_(
-            kv_b_weight[tp_rank]
-        )
+        tf_layer.self_attention.linear_kv_down_proj.weight.data.copy_(kv_a_weight[tp_rank])
+        tf_layer.self_attention.linear_kv_up_proj.layer_norm_weight.data.copy_(kv_a_norm_weight)
+        tf_layer.self_attention.linear_kv_up_proj.weight.data.copy_(kv_b_weight[tp_rank])
         tf_layer.self_attention.linear_proj.weight.data.copy_(o_weight[tp_rank])
         tf_layer.input_layernorm.weight.data.copy_(input_norm_weight)
 
@@ -186,9 +166,7 @@ def set_dense_mlp_ckpt(message, models, layer_id, md, args):
     post_norm_weight = message.pop("post norm weight")
     gate_weight = torch.chunk(message.pop("gate weight"), tp_size, dim=0)
     up_weight = torch.chunk(message.pop("up weight"), tp_size, dim=0)
-    linear1_weight = [
-        torch.cat(weights, dim=0) for weights in zip(gate_weight, up_weight)
-    ]
+    linear1_weight = [torch.cat(weights, dim=0) for weights in zip(gate_weight, up_weight)]
     linear2_weight = torch.chunk(message.pop("down weight"), tp_size, dim=1)
 
     for tp_ep_rank, model in enumerate(models):
@@ -220,9 +198,7 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
     shared_expert_gate_weight = torch.chunk(
         message.pop("shared expert gate weight"), tp_size, dim=0
     )
-    shared_expert_up_weight = torch.chunk(
-        message.pop("shared expert up weight"), tp_size, dim=0
-    )
+    shared_expert_up_weight = torch.chunk(message.pop("shared expert up weight"), tp_size, dim=0)
     shared_expert_linear1_weight = [
         torch.cat(weights, dim=0)
         for weights in zip(shared_expert_gate_weight, shared_expert_up_weight)
@@ -243,9 +219,7 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
             up_weight = torch.chunk(
                 message.pop(f"expert{global_expert_id} up weight"), tp_size, dim=0
             )
-            linear1_weight = [
-                torch.cat(weights, dim=0) for weights in zip(gate_weight, up_weight)
-            ]
+            linear1_weight = [torch.cat(weights, dim=0) for weights in zip(gate_weight, up_weight)]
             linear2_weight = torch.chunk(
                 message.pop(f"expert{global_expert_id} down weight"), tp_size, dim=1
             )
@@ -264,12 +238,8 @@ def set_moe_mlp_ckpt(message, models, layer_id, md, args):
                     router.expert_bias.data.copy_(router_expert_bias)
                 # shared expert
                 shared_expert = tf_layer.mlp.shared_experts
-                shared_expert.linear_fc1.weight.data.copy_(
-                    shared_expert_linear1_weight[tp_rank]
-                )
-                shared_expert.linear_fc2.weight.data.copy_(
-                    shared_expert_linear2_weight[tp_rank]
-                )
+                shared_expert.linear_fc1.weight.data.copy_(shared_expert_linear1_weight[tp_rank])
+                shared_expert.linear_fc2.weight.data.copy_(shared_expert_linear2_weight[tp_rank])
                 # routed expert
                 if not args.moe_grouped_gemm:
                     expert = tf_layer.mlp.experts.local_experts[expert_id]
@@ -375,17 +345,13 @@ def get_attn_ckpt(message, models, layer_id, args):
         # weight
         if args.q_lora_rank is not None:
             q_a_weight.append(tf_layer.self_attention.linear_q_down_proj.weight.data)
-            q_a_norm_weight = (
-                tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data
-            )
+            q_a_norm_weight = tf_layer.self_attention.linear_q_up_proj.layer_norm_weight.data
             q_b_weight.append(tf_layer.self_attention.linear_q_up_proj.weight.data)
         else:
             q_weight.append(tf_layer.self_attention.linear_q_proj.weight.data)
 
         kv_a_weight.append(tf_layer.self_attention.linear_kv_down_proj.weight.data)
-        kv_a_norm_weight = (
-            tf_layer.self_attention.linear_kv_up_proj.layer_norm_weight.data
-        )
+        kv_a_norm_weight = tf_layer.self_attention.linear_kv_up_proj.layer_norm_weight.data
         kv_b_weight.append(tf_layer.self_attention.linear_kv_up_proj.weight.data)
         o_weight.append(tf_layer.self_attention.linear_proj.weight.data)
         input_norm_weight = tf_layer.input_layernorm.weight.data
@@ -488,12 +454,8 @@ def get_moe_mlp_ckpt(message, models, layer_id, args):
                     router_expert_bias = router.expert_bias.data
                 # shared experts
                 shared_expert = tf_layer.mlp.shared_experts
-                shared_expert_linear1_weight.append(
-                    shared_expert.linear_fc1.weight.data
-                )
-                shared_expert_linear2_weight.append(
-                    shared_expert.linear_fc2.weight.data
-                )
+                shared_expert_linear1_weight.append(shared_expert.linear_fc1.weight.data)
+                shared_expert_linear2_weight.append(shared_expert.linear_fc2.weight.data)
 
                 # routed experts
                 if not args.moe_grouped_gemm:
@@ -530,9 +492,7 @@ def get_moe_mlp_ckpt(message, models, layer_id, args):
             message["shared expert up weight"] = torch.cat(
                 [w[1] for w in shared_expert_linear1_weight], dim=0
             )
-            message["shared expert down weight"] = torch.cat(
-                shared_expert_linear2_weight, dim=1
-            )
+            message["shared expert down weight"] = torch.cat(shared_expert_linear2_weight, dim=1)
             message[f"expert{global_expert_id} gate weight"] = torch.cat(
                 [w[0] for w in expert_linear1_weight], dim=0
             )
@@ -672,15 +632,9 @@ def set_hf_moe_mlp_ckpt(message, model, layer_id, md, args):
         expert_gate_weight = message.pop(f"expert{global_expert_id} gate weight")
         expert_up_weight = message.pop(f"expert{global_expert_id} up weight")
         expert_down_weight = message.pop(f"expert{global_expert_id} down weight")
-        tf_layer.mlp.experts[global_expert_id].gate_proj.weight.data.copy_(
-            expert_gate_weight
-        )
-        tf_layer.mlp.experts[global_expert_id].up_proj.weight.data.copy_(
-            expert_up_weight
-        )
-        tf_layer.mlp.experts[global_expert_id].down_proj.weight.data.copy_(
-            expert_down_weight
-        )
+        tf_layer.mlp.experts[global_expert_id].gate_proj.weight.data.copy_(expert_gate_weight)
+        tf_layer.mlp.experts[global_expert_id].up_proj.weight.data.copy_(expert_up_weight)
+        tf_layer.mlp.experts[global_expert_id].down_proj.weight.data.copy_(expert_down_weight)
 
 
 def set_hf_mtp_ckpt(message, model, mtp_layer_id, md, args):

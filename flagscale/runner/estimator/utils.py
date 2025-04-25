@@ -23,14 +23,7 @@ def compute_memory(config: ModelConfig, params: int, acts: int) -> int:
         Memory requirement in bytes
     """
     # Determine parameter bytes based on dtype
-    dtype_bytes = {
-        "fp32": 4,
-        "fp16": 2,
-        "bf16": 2,
-        "float32": 4,
-        "float16": 2,
-        "bfloat16": 2,
-    }
+    dtype_bytes = {"fp32": 4, "fp16": 2, "bf16": 2, "float32": 4, "float16": 2, "bfloat16": 2}
 
     # Use bf16 as default if dtype is not specified or not recognized
     param_dtype = getattr(config, "dtype", "bf16")

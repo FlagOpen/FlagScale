@@ -192,9 +192,7 @@ class TestCoreAttention:
         # 1. Q*K^T: 2 * batch_size * num_heads * seq_len_q * seq_len_k * head_size
         # 2. Softmax: batch_size * num_heads * seq_len_q * seq_len_k
         # 3. Attn*V: 2 * batch_size * num_heads * seq_len_q * seq_len_k * head_size
-        expected_flops_min = (
-            batch_size * num_heads * seq_len_q * seq_len_k * (2 * head_size * 2)
-        )
+        expected_flops_min = batch_size * num_heads * seq_len_q * seq_len_k * (2 * head_size * 2)
         assert flops >= expected_flops_min
 
 
@@ -216,10 +214,7 @@ class TestSelfAttention:
         assert self_attn.num_query_groups == config.num_query_groups
 
         # Calculated attributes
-        assert (
-            self_attn.attention_head_size
-            == config.hidden_size // config.num_attention_heads
-        )
+        assert self_attn.attention_head_size == config.hidden_size // config.num_attention_heads
         assert self_attn.all_head_size == config.num_attention_heads * (
             config.hidden_size // config.num_attention_heads
         )
@@ -263,33 +258,21 @@ class TestSelfAttention:
         if config.qk_layernorm:
             if config.qk_layernorm_dim <= 0:
                 assert isinstance(
-                    self_attn.q_layernorm,
-                    LayerNorm if config.norm_type == "layernorm" else RMSNorm,
+                    self_attn.q_layernorm, LayerNorm if config.norm_type == "layernorm" else RMSNorm
                 )
                 assert isinstance(
-                    self_attn.k_layernorm,
-                    LayerNorm if config.norm_type == "layernorm" else RMSNorm,
+                    self_attn.k_layernorm, LayerNorm if config.norm_type == "layernorm" else RMSNorm
                 )
-                assert (
-                    self_attn.q_layernorm.hidden_size
-                    == self_attn.hidden_size_per_attention_head
-                )
-                assert (
-                    self_attn.k_layernorm.hidden_size
-                    == self_attn.hidden_size_per_attention_head
-                )
+                assert self_attn.q_layernorm.hidden_size == self_attn.hidden_size_per_attention_head
+                assert self_attn.k_layernorm.hidden_size == self_attn.hidden_size_per_attention_head
             else:
                 assert isinstance(
-                    self_attn.q_layernorm,
-                    LayerNorm if config.norm_type == "layernorm" else RMSNorm,
+                    self_attn.q_layernorm, LayerNorm if config.norm_type == "layernorm" else RMSNorm
                 )
                 assert isinstance(
-                    self_attn.k_layernorm,
-                    LayerNorm if config.norm_type == "layernorm" else RMSNorm,
+                    self_attn.k_layernorm, LayerNorm if config.norm_type == "layernorm" else RMSNorm
                 )
-                assert (
-                    self_attn.q_layernorm.hidden_size == self_attn.query_projection_size
-                )
+                assert self_attn.q_layernorm.hidden_size == self_attn.query_projection_size
                 assert self_attn.k_layernorm.hidden_size == self_attn.kv_projection_size
         else:
             assert self_attn.q_layernorm is None

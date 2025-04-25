@@ -26,24 +26,15 @@ class CoreAttention(MetaModule):
     Does not include the initial projection to Q/K/V or the final output projection.
     """
 
-    def __init__(
-        self,
-        dropout_prob=0.1,
-        shard_specs=None,
-        model_id="default",
-    ):
+    def __init__(self, dropout_prob=0.1, shard_specs=None, model_id="default"):
         super().__init__(shard_specs, model_id)
 
         self.baddbmm = Baddbmm(shard_specs, model_id)
         self.softmax = Softmax(dim=-1, shard_specs=shard_specs, model_id=model_id)
-        self.attention_dropout = Dropout(
-            p=dropout_prob, shard_specs=shard_specs, model_id=model_id
-        )
+        self.attention_dropout = Dropout(p=dropout_prob, shard_specs=shard_specs, model_id=model_id)
         self.bmm = Bmm(shard_specs, model_id)
 
-    def forward(
-        self, query: MetaTensor, key: MetaTensor, value: MetaTensor, attention_mask=None
-    ):
+    def forward(self, query: MetaTensor, key: MetaTensor, value: MetaTensor, attention_mask=None):
         """
         Process inputs and return core attention output with batch-first format.
 
@@ -89,12 +80,7 @@ class CoreAttention(MetaModule):
 
             expanded_value = MetaTensor(
                 shape=[batch_size, seq_len_k, num_heads, head_size],
-                shard_spec=[
-                    value[0].shard,
-                    value[1].shard,
-                    value[2].shard,
-                    value[3].shard,
-                ],
+                shard_spec=[value[0].shard, value[1].shard, value[2].shard, value[3].shard],
             )
 
             key = expanded_key
@@ -139,11 +125,7 @@ class CoreAttention(MetaModule):
         # Compute raw attention scores
         # [b*np, sq, sk] = baddbmm([b*np, sq, sk], [b*np, sq, hn], [b*np, hn, sk])
         matmul_result = self.baddbmm(
-            matmul_input_buffer,
-            baddbmm_query,
-            baddbmm_key,
-            beta=0.0,
-            alpha=self.softmax_scale,
+            matmul_input_buffer, baddbmm_query, baddbmm_key, beta=0.0, alpha=self.softmax_scale
         )
 
         # ===========================
@@ -188,11 +170,7 @@ class CoreAttention(MetaModule):
         # Create value tensor for bmm [b*np, sk, hn]
         bmm_value = MetaTensor(
             shape=[batch_size * num_heads, seq_len_k, head_size],
-            shard_spec=[
-                value[0].shard * value[2].shard,
-                value[1].shard,
-                value[3].shard,
-            ],
+            shard_spec=[value[0].shard * value[2].shard, value[1].shard, value[3].shard],
         )
 
         # Compute context [b*np, sq, hn]
@@ -242,9 +220,7 @@ class SelfAttention(MetaModule):
         self.num_attention_heads = config.num_attention_heads
 
         # Extract optional parameters with defaults
-        self.num_query_groups = getattr(
-            config, "num_query_groups", self.num_attention_heads
-        )
+        self.num_query_groups = getattr(config, "num_query_groups", self.num_attention_heads)
         self.kv_channels = getattr(
             config, "kv_channels", self.hidden_size // self.num_attention_heads
         )
@@ -281,14 +257,10 @@ class SelfAttention(MetaModule):
             if rotary_embedding_dim <= 0:
                 self.rotary_embedding_dim = self.attention_head_size
             else:
-                self.rotary_embedding_dim = min(
-                    rotary_embedding_dim, self.attention_head_size
-                )
+                self.rotary_embedding_dim = min(rotary_embedding_dim, self.attention_head_size)
 
             rotary_embedding_base = getattr(config, "rotary_embedding_base", 10000)
-            rotary_embedding_max_seq_len = getattr(
-                config, "rotary_embedding_max_seq_len", 2048
-            )
+            rotary_embedding_max_seq_len = getattr(config, "rotary_embedding_max_seq_len", 2048)
 
             self.rope = RotaryEmbedding(
                 dim=self.rotary_embedding_dim,
@@ -358,9 +330,7 @@ class SelfAttention(MetaModule):
 
         # Create core attention module
         self.core_attention = CoreAttention(
-            dropout_prob=attention_dropout_prob,
-            shard_specs=None,
-            model_id=model_id,
+            dropout_prob=attention_dropout_prob, shard_specs=None, model_id=model_id
         )
         self.core_attention.softmax_scale = self.softmax_scale
 
@@ -374,11 +344,7 @@ class SelfAttention(MetaModule):
         )
 
         # Output dropout
-        self.output_dropout = Dropout(
-            p=output_dropout_prob,
-            shard_specs=None,
-            model_id=model_id,
-        )
+        self.output_dropout = Dropout(p=output_dropout_prob, shard_specs=None, model_id=model_id)
 
     def split_qkv_tensor(self, mixed_qkv, batch_size, seq_len):
         """
@@ -514,17 +480,11 @@ class SelfAttention(MetaModule):
             # Reshape back to original shape
             query = MetaTensor(
                 shape=query_shape,
-                shard_spec=[
-                    query[0].shard,
-                    query[1].shard,
-                    query[2].shard,
-                    query[3].shard,
-                ],
+                shard_spec=[query[0].shard, query[1].shard, query[2].shard, query[3].shard],
             )
 
             key = MetaTensor(
-                shape=key_shape,
-                shard_spec=[key[0].shard, key[1].shard, key[2].shard, key[3].shard],
+                shape=key_shape, shard_spec=[key[0].shard, key[1].shard, key[2].shard, key[3].shard]
             )
 
         return query, key
@@ -560,11 +520,7 @@ class SelfAttention(MetaModule):
         # 3. Reshape for multi-head attention
         # [batch_size, seq_len, proj_size] -> [batch_size, seq_len, num_heads, head_size]
         query_4d = self.reshape_for_attention(
-            query,
-            batch_size,
-            seq_len,
-            self.num_attention_heads,
-            self.attention_head_size,
+            query, batch_size, seq_len, self.num_attention_heads, self.attention_head_size
         )
         key_4d = self.reshape_for_attention(
             key, batch_size, seq_len, self.num_query_groups, self.attention_head_size

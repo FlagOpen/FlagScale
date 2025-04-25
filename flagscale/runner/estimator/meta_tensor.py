@@ -16,9 +16,7 @@ class ShardedDim:
 
         # Ensure dimension is divisible by the shard
         if self.dim % self.shard != 0:
-            raise ValueError(
-                f"Dimension {dim} is not divisible by shard factor {shard}"
-            )
+            raise ValueError(f"Dimension {dim} is not divisible by shard factor {shard}")
 
     def sharded_dim(self):
         """
@@ -73,9 +71,7 @@ class ShardedDim:
             If attempting to add with non-ShardedDim object
         """
         if not isinstance(other, ShardedDim):
-            raise TypeError(
-                f"Can only add ShardedDim with another ShardedDim, not {type(other)}"
-            )
+            raise TypeError(f"Can only add ShardedDim with another ShardedDim, not {type(other)}")
 
         if self.shard != other.shard:
             raise ValueError(
@@ -94,9 +90,7 @@ class ShardedDim:
         TypeError
             Always raises TypeError as only ShardedDim objects can be added together
         """
-        raise TypeError(
-            f"Can only add ShardedDim with another ShardedDim, not {type(other)}"
-        )
+        raise TypeError(f"Can only add ShardedDim with another ShardedDim, not {type(other)}")
 
     def __sub__(self, other):
         """
@@ -176,9 +170,7 @@ class ShardedDim:
         TypeError
             Always raises TypeError as only ShardedDim objects can be multiplied together
         """
-        raise TypeError(
-            f"Can only multiply ShardedDim with another ShardedDim, not {type(other)}"
-        )
+        raise TypeError(f"Can only multiply ShardedDim with another ShardedDim, not {type(other)}")
 
     def __truediv__(self, other):
         """
@@ -237,9 +229,7 @@ class ShardedDim:
         TypeError
             Always raises TypeError as only ShardedDim objects can be divided together
         """
-        raise TypeError(
-            f"Can only divide ShardedDim with another ShardedDim, not {type(other)}"
-        )
+        raise TypeError(f"Can only divide ShardedDim with another ShardedDim, not {type(other)}")
 
     def __floordiv__(self, other):
         """
@@ -323,9 +313,7 @@ class MetaTensor:
         # Create ShardedDim objects for each dimension
         # The ShardedDim constructor will validate divisibility
         try:
-            self._sharded_dims = [
-                ShardedDim(d, s) for d, s in zip(shape_list, shard_spec)
-            ]
+            self._sharded_dims = [ShardedDim(d, s) for d, s in zip(shape_list, shard_spec)]
         except ValueError as e:
             # Re-raise with more context about which dimension caused the issue
             for i, (d, s) in enumerate(zip(shape_list, shard_spec)):
@@ -363,8 +351,7 @@ class MetaTensor:
         else:
             # Truncate to new size
             self._sharded_dims = [
-                ShardedDim(value[i], self._sharded_dims[i].shard)
-                for i in range(new_length)
+                ShardedDim(value[i], self._sharded_dims[i].shard) for i in range(new_length)
             ]
 
     @property
@@ -482,9 +469,7 @@ class MetaTensor:
                     f"End index {end} out of range for tensor with {len(self._sharded_dims)} dimensions"
                 )
             if start > end:
-                raise ValueError(
-                    f"Start index {start} cannot be greater than end index {end}"
-                )
+                raise ValueError(f"Start index {start} cannot be greater than end index {end}")
 
             # Unshard the specified range
             for i in range(start, end + 1):
@@ -566,9 +551,7 @@ class MetaTensor:
                     self._sharded_dims[i] = sdim
             else:
                 # Only MetaTensor objects allowed for slice assignment
-                raise TypeError(
-                    f"Slice assignment requires a MetaTensor, got {type(value)}"
-                )
+                raise TypeError(f"Slice assignment requires a MetaTensor, got {type(value)}")
         else:
             # Simple index assignment - must be ShardedDim
             if isinstance(value, ShardedDim):
@@ -612,8 +595,7 @@ class MetaTensor:
             raise TypeError(f"Can only check for ShardedDim objects, not {type(value)}")
 
         return any(
-            sdim.dim == value.dim and sdim.shard == value.shard
-            for sdim in self._sharded_dims
+            sdim.dim == value.dim and sdim.shard == value.shard for sdim in self._sharded_dims
         )
 
     def __repr__(self):
@@ -649,9 +631,7 @@ class MetaTensor:
             If the dimension is not found
         """
         if not isinstance(value, ShardedDim):
-            raise TypeError(
-                f"Can only find index of ShardedDim objects, not {type(value)}"
-            )
+            raise TypeError(f"Can only find index of ShardedDim objects, not {type(value)}")
 
         for i, sdim in enumerate(self._sharded_dims):
             if sdim.dim == value.dim and sdim.shard == value.shard:
@@ -930,9 +910,7 @@ class MetaTensor:
             # This is a simplification - in practice, broadcasting logic would be here
             scalar_tensor = self.clone()
             # In a real implementation, you'd fill this with the scalar value
-            return Elementwise(operation="add", model_id=self.model_id).forward(
-                self, scalar_tensor
-            )
+            return Elementwise(operation="add", model_id=self.model_id).forward(self, scalar_tensor)
 
         # Handle tensor addition
         elif isinstance(other, MetaTensor):
@@ -940,9 +918,7 @@ class MetaTensor:
             target_model_id = _check_model_ids(self, other, "addition")
 
             # Perform the addition with the determined model_id
-            return Elementwise(operation="add", model_id=target_model_id).forward(
-                self, other
-            )
+            return Elementwise(operation="add", model_id=target_model_id).forward(self, other)
 
         # Handle adding a list of ShardedDim objects (tensor concatenation)
         elif isinstance(other, list):
@@ -951,9 +927,7 @@ class MetaTensor:
                 # Create a new tensor with the additional dimensions
                 result_shape = self.shape + [item.dim for item in other]
                 result_shard_spec = self.shard_spec + [item.shard for item in other]
-                return MetaTensor(
-                    result_shape, result_shard_spec, model_id=self.model_id
-                )
+                return MetaTensor(result_shape, result_shard_spec, model_id=self.model_id)
             else:
                 raise TypeError(
                     "When adding a list to MetaTensor, all elements must be ShardedDim objects"
@@ -997,9 +971,7 @@ class MetaTensor:
             # For scalar subtraction, create a tensor with the same shape as self
             scalar_tensor = self.clone()
             # In a real implementation, you'd fill this with the scalar value
-            return Elementwise(operation="sub", model_id=self.model_id).forward(
-                self, scalar_tensor
-            )
+            return Elementwise(operation="sub", model_id=self.model_id).forward(self, scalar_tensor)
 
         # Handle tensor subtraction
         elif isinstance(other, MetaTensor):
@@ -1007,9 +979,7 @@ class MetaTensor:
             target_model_id = _check_model_ids(self, other, "subtraction")
 
             # Perform the subtraction with the determined model_id
-            return Elementwise(operation="sub", model_id=target_model_id).forward(
-                self, other
-            )
+            return Elementwise(operation="sub", model_id=target_model_id).forward(self, other)
 
         # Handle unsupported types
         else:
@@ -1042,9 +1012,7 @@ class MetaTensor:
             # For scalar multiplication, create a tensor with the same shape as self
             scalar_tensor = self.clone()
             # In a real implementation, you'd fill this with the scalar value
-            return Elementwise(operation="mul", model_id=self.model_id).forward(
-                self, scalar_tensor
-            )
+            return Elementwise(operation="mul", model_id=self.model_id).forward(self, scalar_tensor)
 
         # Handle tensor multiplication
         elif isinstance(other, MetaTensor):
@@ -1052,9 +1020,7 @@ class MetaTensor:
             target_model_id = _check_model_ids(self, other, "multiplication")
 
             # Perform the multiplication with the determined model_id
-            return Elementwise(operation="mul", model_id=target_model_id).forward(
-                self, other
-            )
+            return Elementwise(operation="mul", model_id=target_model_id).forward(self, other)
 
         # Handle unsupported types
         else:
@@ -1095,9 +1061,7 @@ class MetaTensor:
             # For scalar division, create a tensor with the same shape as self
             scalar_tensor = self.clone()
             # In a real implementation, you'd fill this with the scalar value
-            return Elementwise(operation="div", model_id=self.model_id).forward(
-                self, scalar_tensor
-            )
+            return Elementwise(operation="div", model_id=self.model_id).forward(self, scalar_tensor)
 
         # Handle tensor division
         elif isinstance(other, MetaTensor):
@@ -1105,9 +1069,7 @@ class MetaTensor:
             target_model_id = _check_model_ids(self, other, "division")
 
             # In a real implementation, we'd check for zeros in the tensor
-            return Elementwise(operation="div", model_id=target_model_id).forward(
-                self, other
-            )
+            return Elementwise(operation="div", model_id=target_model_id).forward(self, other)
 
         # Handle unsupported types
         else:
@@ -1147,9 +1109,7 @@ class MetaTensor:
 
             scalar_tensor = self.clone()
             # Swap order for reverse division
-            return Elementwise(operation="div", model_id=self.model_id).forward(
-                scalar_tensor, self
-            )
+            return Elementwise(operation="div", model_id=self.model_id).forward(scalar_tensor, self)
 
         # Handle MetaTensor division
         elif isinstance(other, MetaTensor):
@@ -1157,9 +1117,7 @@ class MetaTensor:
             target_model_id = _check_model_ids(other, self, "division")
 
             # In a real implementation, we'd check for zeros in self (denominator)
-            return Elementwise(operation="div", model_id=target_model_id).forward(
-                other, self
-            )
+            return Elementwise(operation="div", model_id=target_model_id).forward(other, self)
 
         # Handle unsupported types
         else:
@@ -1203,9 +1161,7 @@ class MetaTensor:
         if isinstance(other, (int, float)):
             scalar_tensor = self.clone()
             # Swap order for reverse subtraction
-            return Elementwise(operation="sub", model_id=self.model_id).forward(
-                scalar_tensor, self
-            )
+            return Elementwise(operation="sub", model_id=self.model_id).forward(scalar_tensor, self)
         else:
             raise TypeError(f"Unsupported operand type for -: {type(other)}")
 
@@ -1342,9 +1298,7 @@ def clone(input, *, memory_format=None):
 
     # Create a new tensor by copying each ShardedDim
     new_tensor = MetaTensor.__new__(MetaTensor)
-    new_tensor._sharded_dims = [
-        ShardedDim(sdim.dim, sdim.shard) for sdim in input._sharded_dims
-    ]
+    new_tensor._sharded_dims = [ShardedDim(sdim.dim, sdim.shard) for sdim in input._sharded_dims]
     # Copy the model_id from the input tensor
     new_tensor._model_id = input._model_id
 
@@ -1745,9 +1699,7 @@ def reshape(input: MetaTensor, shape):
                     )
                 # If we merged exactly one sharded dimension, transfer its sharding
                 elif len(merged_sharded_dim_indices) == 1:
-                    output_shard_spec[output_pos] = input_shard_spec[
-                        merged_sharded_dim_indices[0]
-                    ]
+                    output_shard_spec[output_pos] = input_shard_spec[merged_sharded_dim_indices[0]]
 
                     # Verify the output dimension is divisible by its shard factor
                     if output_dim_size % output_shard_spec[output_pos] != 0:
@@ -1839,9 +1791,7 @@ def split(tensor: MetaTensor, split_size_or_sections, dim=0):
     """
     if isinstance(split_size_or_sections, int):
         if tensor.shape[dim] % split_size_or_sections != 0:
-            raise ValueError(
-                "The tensor cannot be evenly split along the specified dimension."
-            )
+            raise ValueError("The tensor cannot be evenly split along the specified dimension.")
         # Calculate the number of splits
         num_splits = tensor.shape[dim] // split_size_or_sections
         split_sizes = [split_size_or_sections] * num_splits
@@ -1851,18 +1801,14 @@ def split(tensor: MetaTensor, split_size_or_sections, dim=0):
 
     # Validate the split sizes
     if sum(split_sizes) != tensor.shape[dim]:
-        raise ValueError(
-            "The sum of split sizes must equal the size of the specified dimension."
-        )
+        raise ValueError("The sum of split sizes must equal the size of the specified dimension.")
 
     # Create the sub-tensors
     sub_tensors = []
     for size in split_sizes:
         new_shape = tensor.shape[:dim] + [size] + tensor.shape[dim + 1 :]
         new_shard_spec = (
-            tensor.shard_spec[:dim]
-            + [tensor.shard_spec[dim]]
-            + tensor.shard_spec[dim + 1 :]
+            tensor.shard_spec[:dim] + [tensor.shard_spec[dim]] + tensor.shard_spec[dim + 1 :]
         )
         sub_tensor = MetaTensor(new_shape, new_shard_spec, model_id=tensor.model_id)
         sub_tensors.append(sub_tensor)
@@ -1933,9 +1879,7 @@ def concat(tensors, dim=0, out=None):
             model_id_details = []
             for mid, indices in model_ids.items():
                 tensor_indices = ", ".join(str(idx) for idx in indices)
-                model_id_details.append(
-                    f"  - '{mid}' from tensors at indices [{tensor_indices}]"
-                )
+                model_id_details.append(f"  - '{mid}' from tensors at indices [{tensor_indices}]")
 
             raise ValueError(
                 f"Cannot concatenate tensors with different non-default model_ids:\n"
@@ -2059,9 +2003,7 @@ def repeat_interleave(input: MetaTensor, repeats, dim=None, *, output_size=None)
         else:
             # Must provide exactly one repeat value for each element in the flattened tensor
             if not isinstance(repeats, (list, tuple)):
-                raise TypeError(
-                    f"Expected repeats to be int, list, or tuple, got {type(repeats)}"
-                )
+                raise TypeError(f"Expected repeats to be int, list, or tuple, got {type(repeats)}")
 
             if len(repeats) != total_elements:
                 raise ValueError(
@@ -2097,9 +2039,7 @@ def repeat_interleave(input: MetaTensor, repeats, dim=None, *, output_size=None)
     else:
         # Complex case: different repetition for each element
         if not isinstance(repeats, (list, tuple)):
-            raise TypeError(
-                f"Expected repeats to be int, list, or tuple, got {type(repeats)}"
-            )
+            raise TypeError(f"Expected repeats to be int, list, or tuple, got {type(repeats)}")
 
         if len(repeats) != dim_size:
             raise ValueError(

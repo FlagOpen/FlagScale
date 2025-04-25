@@ -1,5 +1,6 @@
 import os
 import sys
+
 from types import SimpleNamespace
 
 
@@ -85,10 +86,7 @@ def compare_by_recompute(strategy1, strategy2):
     # Strategy1 use recompute, Strategy2 use recompute
     elif strategy1["use_recompute"] and strategy2["use_recompute"]:
         # Block recompute
-        if (
-            strategy1["recompute_method"] == "block"
-            and strategy2["recompute_method"] == "block"
-        ):
+        if strategy1["recompute_method"] == "block" and strategy2["recompute_method"] == "block":
             if strategy1["recompute_num_layers"] <= strategy2["recompute_num_layers"]:
                 result = True
         elif (
@@ -172,16 +170,12 @@ def convert_config_to_megatron_args(config, strategy):
     if "make_vocab_size_divisible_by" not in flagscale_args:
         args.make_vocab_size_divisible_by = 128
     else:
-        args.make_vocab_size_divisible_by = flagscale_args[
-            "make_vocab_size_divisible_by"
-        ]
+        args.make_vocab_size_divisible_by = flagscale_args["make_vocab_size_divisible_by"]
     args.tensor_model_parallel_size = strategy["tensor_model_parallel_size"]
     if "padded_vocab_size" not in flagscale_args:
         # To append megatron path to PYTHONPATH
         autotuner_dir = os.path.dirname(__file__)
-        great_grandparent_dir = os.path.dirname(
-            os.path.dirname(os.path.dirname(autotuner_dir))
-        )
+        great_grandparent_dir = os.path.dirname(os.path.dirname(os.path.dirname(autotuner_dir)))
         sys.path.insert(0, os.path.join(great_grandparent_dir, "megatron"))
         from megatron.training.tokenizer.tokenizer import _vocab_size_with_padding
 

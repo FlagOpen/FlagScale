@@ -19,12 +19,7 @@ class TransformerLayer(MetaModule):
     1. Input → Attention → Residual → LayerNorm → MLP → Residual → LayerNorm → Output
     """
 
-    def __init__(
-        self,
-        config,
-        layer_number=0,
-        model_id="default",
-    ):
+    def __init__(self, config, layer_number=0, model_id="default"):
         """
         Initialize a transformer layer.
 
@@ -84,22 +79,13 @@ class TransformerLayer(MetaModule):
         )
 
         # Self Attention
-        self.self_attention = SelfAttention(
-            config=config,
-            model_id=model_id,
-        )
+        self.self_attention = SelfAttention(config=config, model_id=model_id)
 
         # MLP
         if activation_type.lower() == "swiglu":
-            self.mlp = SwiGLUMLP(
-                config=config,
-                model_id=model_id,
-            )
+            self.mlp = SwiGLUMLP(config=config, model_id=model_id)
         else:
-            self.mlp = MLP(
-                config=config,
-                model_id=model_id,
-            )
+            self.mlp = MLP(config=config, model_id=model_id)
 
     def forward(
         self,
@@ -143,9 +129,7 @@ class TransformerLayer(MetaModule):
             hidden_states = self.attention_norm(hidden_states)
 
             attention_output = self.self_attention(
-                input_tensor=hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
+                input_tensor=hidden_states, attention_mask=attention_mask, position_ids=position_ids
             )
 
             hidden_states = residual + attention_output
@@ -164,9 +148,7 @@ class TransformerLayer(MetaModule):
             residual = hidden_states
 
             attention_output = self.self_attention(
-                input_tensor=hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
+                input_tensor=hidden_states, attention_mask=attention_mask, position_ids=position_ids
             )
 
             hidden_states = residual + attention_output

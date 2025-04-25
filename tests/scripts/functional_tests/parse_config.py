@@ -22,16 +22,12 @@ def parse_config(config_file, type, task):
 
 def main():
     parser = argparse.ArgumentParser(description="Parse functional test configuration.")
-    parser.add_argument(
-        "--config", required=True, help="Path to the YAML configuration file."
-    )
+    parser.add_argument("--config", required=True, help="Path to the YAML configuration file.")
     parser.add_argument(
         "--type", required=True, help="Test type to run (e.g., 'train' or 'inference')."
     )
     parser.add_argument(
-        "--task",
-        required=True,
-        help="Test task to run (e.g., 'aquila' or 'mixtral').",
+        "--task", required=True, help="Test task to run (e.g., 'aquila' or 'mixtral')."
     )
 
     args = parser.parse_args()

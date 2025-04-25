@@ -1,15 +1,12 @@
 import os
 import sys
+
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from flagscale.runner.estimator.meta_base import MetaModule
-from flagscale.runner.estimator.meta_registry import (
-    get_registry,
-    register_model,
-    reset_registry,
-)
+from flagscale.runner.estimator.meta_registry import get_registry, register_model, reset_registry
 
 
 class TestMetaModule:
@@ -386,9 +383,8 @@ class TestMetaModule:
 
         with pytest.raises(ValueError) as excinfo:
             module(tensor_c)
-        assert (
-            "has model_id 'model_b', but received inputs with different model_ids"
-            in str(excinfo.value)
+        assert "has model_id 'model_b', but received inputs with different model_ids" in str(
+            excinfo.value
         )
 
         # Test Case 5: Model ID propagation to output tensors
@@ -468,9 +464,7 @@ class TestMetaModule:
 
             # Check all tensors have correct model_id
             for i, tensor in enumerate(result_list):
-                assert (
-                    tensor.model_id == "nested_a"
-                ), f"Tensor at index {i} has wrong model_id"
+                assert tensor.model_id == "nested_a", f"Tensor at index {i} has wrong model_id"
 
             # Check warning was emitted for the tensor with initially incorrect model_id
             assert len(w) == 1

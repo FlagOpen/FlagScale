@@ -14,9 +14,7 @@ from megatron.data.data_samplers import RandomSeedDataset
 
 
 class ConversationDatasetCPT(torch.utils.data.Dataset):
-    def __init__(
-        self, conversations, tokenizer, maxlen, seed, num_samples, role_sep="\n\n"
-    ):
+    def __init__(self, conversations, tokenizer, maxlen, seed, num_samples, role_sep="\n\n"):
         super(ConversationDatasetCPT, self).__init__()
         self.conversations = conversations
         self.tokenizer = tokenizer
@@ -231,8 +229,7 @@ if __name__ == "__main__":
     from megatron.tokenizer.tokenizer import _AquilaTokenizer
 
     tokenizer = _AquilaTokenizer(
-        "../examples/aquila/tokenizer/vocab.json",
-        "../examples/aquila/tokenizer/merges.txt",
+        "../examples/aquila/tokenizer/vocab.json", "../examples/aquila/tokenizer/merges.txt"
     )
     print(f"{dir(tokenizer)}")
     train_data_prefix = ["path/to/train/set"]

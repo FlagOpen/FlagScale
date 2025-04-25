@@ -2,6 +2,7 @@ import multiprocessing
 import os
 import shlex
 import time
+
 from datetime import datetime
 
 from omegaconf import DictConfig, OmegaConf
@@ -106,13 +107,7 @@ def _update_config_train(config: DictConfig):
 
 
 def _get_runner_cmd_train(
-    host,
-    master_addr,
-    master_port,
-    nnodes,
-    node_rank,
-    nproc_per_node,
-    config: DictConfig,
+    host, master_addr, master_port, nnodes, node_rank, nproc_per_node, config: DictConfig
 ):
     runner_config = config.experiment.runner
     logging_config = config.train.system.logging
@@ -161,9 +156,7 @@ def _get_runner_cmd_train(
     runner_args["rdzv_backend"] = rdzv_backend
     runner_args["rdzv_endpoint"] = rdzv_endpoint
 
-    runner_args["log_dir"] = (
-        log_dir if backend == "torchrun" else os.path.join(log_dir, rdzv_id)
-    )
+    runner_args["log_dir"] = log_dir if backend == "torchrun" else os.path.join(log_dir, rdzv_id)
     runner_args["redirects"] = redirect
     runner_args["tee"] = tee
 
@@ -178,9 +171,7 @@ def _get_runner_cmd_train(
     return runner_cmd
 
 
-def _generate_run_script_train(
-    config, host, node_rank, cmd, background=True, with_test=False
-):
+def _generate_run_script_train(config, host, node_rank, cmd, background=True, with_test=False):
     system_config = config.train.system
     logging_config = config.train.system.logging
 
@@ -188,21 +179,15 @@ def _generate_run_script_train(
     if no_shared_fs:
         host_output_file = os.path.join(logging_config.log_dir, f"host.output")
     else:
-        host_output_file = os.path.join(
-            logging_config.log_dir, f"host_{node_rank}_{host}.output"
-        )
+        host_output_file = os.path.join(logging_config.log_dir, f"host_{node_rank}_{host}.output")
     host_run_script_file = os.path.join(
         logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
     )
-    host_pid_file = os.path.join(
-        logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-    )
+    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
-    root_dir = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     megatron_dir = os.path.join(root_dir, "third_party", "Megatron-LM")
     cmds_config = config.experiment.get("cmds", None)
     if cmds_config:
@@ -255,9 +240,7 @@ def _generate_stop_script_train(config, host, node_rank):
         logging_config.scripts_dir, f"host_{node_rank}_{host}_stop.sh"
     )
 
-    host_pid_file = os.path.join(
-        logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-    )
+    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
@@ -303,9 +286,7 @@ def run_node(
         num_visible_devices = len(visible_devices)
     nproc_from_hostfile = resource_info["slots"]
     nproc_from_args = runner_config.get("nproc_per_node", None)
-    nproc_per_node = get_nproc_per_node(
-        nproc_from_hostfile, nproc_from_args, num_visible_devices
-    )
+    nproc_per_node = get_nproc_per_node(nproc_from_hostfile, nproc_from_args, num_visible_devices)
     master_addr = runner_config.get("master_addr", available_ip)
     master_port = runner_config.get("master_port", available_port)
     func(
@@ -335,9 +316,7 @@ class SSHTrainRunner(RunnerBase):
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         self.user_envs = self.config.experiment.get("envs", {})
         self.user_script = self.config.experiment.task.entrypoint
-        self.resources = parse_hostfile(
-            self.config.experiment.runner.get("hostfile", None)
-        )
+        self.resources = parse_hostfile(self.config.experiment.runner.get("hostfile", None))
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
@@ -360,13 +339,7 @@ class SSHTrainRunner(RunnerBase):
             export_cmd += [f"{k}={v}"]
 
         runner_cmd = _get_runner_cmd_train(
-            host,
-            master_addr,
-            master_port,
-            nnodes,
-            node_rank,
-            nproc_per_node,
-            self.config,
+            host, master_addr, master_port, nnodes, node_rank, nproc_per_node, self.config
         )
         # update hetero-current-device-type according to the device_type in hostfile
         if device_type is not None:
@@ -386,19 +359,13 @@ class SSHTrainRunner(RunnerBase):
         if host != "localhost":
             ssh_port = self.config.experiment.runner.get("ssh_port", 22)
             # Step 1: make sure the scripts_dir exists on the remote host
-            run_ssh_command(
-                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, dryrun
-            )
+            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, dryrun)
 
             # Step 2: copy the host_run_script_file to the remote host
             no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
             if no_shared_fs:
                 run_scp_command(
-                    host,
-                    host_run_script_file,
-                    logging_config.scripts_dir,
-                    ssh_port,
-                    dryrun,
+                    host, host_run_script_file, logging_config.scripts_dir, ssh_port, dryrun
                 )
 
             # Step 3: run the host_run_script_file on the remote host
@@ -421,9 +388,7 @@ class SSHTrainRunner(RunnerBase):
             num_processes = min(nnodes, _MAX_CPU_COUNT)
             with multiprocessing.Pool(processes=num_processes) as pool:
                 tasks = []
-                for node_rank, (host, resource_info) in enumerate(
-                    self.resources.items()
-                ):
+                for node_rank, (host, resource_info) in enumerate(self.resources.items()):
                     if node_rank >= nnodes:
                         break
                     args = (
@@ -448,9 +413,7 @@ class SSHTrainRunner(RunnerBase):
                 visible_devices = visible_devices.split(",")
                 num_visible_devices = len(visible_devices)
             nproc_from_args = runner_config.get("nproc_per_node", None)
-            nproc_per_node = get_nproc_per_node(
-                None, nproc_from_args, num_visible_devices
-            )
+            nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
             available_addr = runner_config.get("master_addr", "localhost")
             available_port = runner_config.get("master_port", get_free_port())
             self._run_each(
@@ -480,9 +443,7 @@ class SSHTrainRunner(RunnerBase):
                 logger.info(e)
 
     def _stop_each(self, host, node_rank):
-        host_stop_script_file = _generate_stop_script_train(
-            self.config, host, node_rank
-        )
+        host_stop_script_file = _generate_stop_script_train(self.config, host, node_rank)
         logging_config = self.config.train.system.logging
 
         if host != "localhost":
@@ -492,9 +453,7 @@ class SSHTrainRunner(RunnerBase):
             # Step 2: copy the host_run_script_file to the remote host
             no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
             if no_shared_fs:
-                run_scp_command(
-                    host, host_stop_script_file, logging_config.scripts_dir, ssh_port
-                )
+                run_scp_command(host, host_stop_script_file, logging_config.scripts_dir, ssh_port)
             # Step 3: run the host_run_script_file on the remote host
             run_ssh_command(host, f"bash {host_stop_script_file}", ssh_port)
         else:
@@ -505,9 +464,7 @@ class SSHTrainRunner(RunnerBase):
             self._stop_each("localhost", 0)
             return
 
-        nnodes = get_nnodes(
-            len(self.resources), self.config.experiment.runner.get("nnodes", None)
-        )
+        nnodes = get_nnodes(len(self.resources), self.config.experiment.runner.get("nnodes", None))
 
         num_processes = min(nnodes, _MAX_CPU_COUNT)
         with multiprocessing.Pool(processes=num_processes) as pool:
@@ -515,10 +472,7 @@ class SSHTrainRunner(RunnerBase):
             for node_rank, (host, _) in enumerate(self.resources.items()):
                 if node_rank >= nnodes:
                     break
-                args = (
-                    host,
-                    node_rank,
-                )
+                args = (host, node_rank)
                 tasks.append(args)
             pool.starmap(self._stop_each, tasks)
 
@@ -530,9 +484,7 @@ class SSHTrainRunner(RunnerBase):
             logging_config.scripts_dir, f"host_{node_rank}_{host}_query.sh"
         )
 
-        host_pid_file = os.path.join(
-            logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-        )
+        host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
         os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
@@ -562,9 +514,7 @@ class SSHTrainRunner(RunnerBase):
             logging_config.scripts_dir, f"host_{node_rank}_{host}_query_sub_process.sh"
         )
 
-        host_pid_file = os.path.join(
-            logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-        )
+        host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
         os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
@@ -594,15 +544,11 @@ class SSHTrainRunner(RunnerBase):
         if host != "localhost":
             ssh_port = self.config.experiment.runner.get("ssh_port", 22)
             # Step 1: make sure the scripts_dir exists on the remote host
-            run_ssh_command(
-                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, query=True
-            )
+            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, query=True)
             # Step 2: copy the host_run_script_file to the remote host
             no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
             if no_shared_fs:
-                run_scp_command(
-                    host, host_query_script_file, logging_config.scripts_dir, ssh_port
-                )
+                run_scp_command(host, host_query_script_file, logging_config.scripts_dir, ssh_port)
             # Step 3: run the host_run_script_file on the remote host
             try:
                 result = run_ssh_command(
@@ -620,23 +566,17 @@ class SSHTrainRunner(RunnerBase):
 
     def _query_each_sub_process(self, host, node_rank):
         "Query each node sub process status."
-        host_query_script_file = self._generate_query_sub_process_script(
-            host, node_rank
-        )
+        host_query_script_file = self._generate_query_sub_process_script(host, node_rank)
         logging_config = self.config.train.system.logging
         result = ""
         if host != "localhost":
             ssh_port = self.config.experiment.runner.get("ssh_port", 22)
             # Step 1: make sure the scripts_dir exists on the remote host
-            run_ssh_command(
-                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, query=True
-            )
+            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, query=True)
             # Step 2: copy the host_run_script_file to the remote host
             no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
             if no_shared_fs:
-                run_scp_command(
-                    host, host_query_script_file, logging_config.scripts_dir, ssh_port
-                )
+                run_scp_command(host, host_query_script_file, logging_config.scripts_dir, ssh_port)
             # Step 3: run the host_run_script_file on the remote host
             try:
                 result = run_ssh_command(
@@ -755,13 +695,7 @@ class CloudTrainRunner(RunnerBase):
             export_cmd += [f"{k}={v}"]
 
         runner_cmd = _get_runner_cmd_train(
-            host,
-            master_addr,
-            master_port,
-            nnodes,
-            node_rank,
-            nproc_per_node,
-            self.config,
+            host, master_addr, master_port, nnodes, node_rank, nproc_per_node, self.config
         )
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)

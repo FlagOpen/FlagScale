@@ -7,6 +7,7 @@ import json
 import math
 import os
 import sys
+
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -294,9 +295,7 @@ def estimate(config: GPTConfig, model_id: str = "gpt_model") -> Dict[str, Any]:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Estimate computational resources for GPT models"
-    )
+    parser = argparse.ArgumentParser(description="Estimate computational resources for GPT models")
 
     # Main options
     parser.add_argument(
@@ -306,9 +305,7 @@ def main():
         help="Predefined model size to estimate",
     )
     parser.add_argument("--bs", type=int, default=1, help="Batch size for estimation")
-    parser.add_argument(
-        "--seq", type=int, default=1024, help="Sequence length for estimation"
-    )
+    parser.add_argument("--seq", type=int, default=1024, help="Sequence length for estimation")
 
     # Parallelism options
     parser.add_argument("--tp", type=int, default=1, help="Tensor parallel size")
@@ -324,24 +321,16 @@ def main():
         default="bf16",
         help="Data type for model parameters",
     )
-    parser.add_argument(
-        "--dist-opt", action="store_true", help="Use distributed optimizer"
-    )
+    parser.add_argument("--dist-opt", action="store_true", help="Use distributed optimizer")
 
     # Output options
     parser.add_argument(
-        "--details",
-        action="store_true",
-        help="Show detailed breakdown of resource usage",
+        "--details", action="store_true", help="Show detailed breakdown of resource usage"
     )
 
     # Custom model parameters
-    parser.add_argument(
-        "--hidden-size", type=int, default=None, help="Override hidden size"
-    )
-    parser.add_argument(
-        "--num-layers", type=int, default=None, help="Override number of layers"
-    )
+    parser.add_argument("--hidden-size", type=int, default=None, help="Override hidden size")
+    parser.add_argument("--num-layers", type=int, default=None, help="Override number of layers")
     parser.add_argument(
         "--num-heads", type=int, default=None, help="Override number of attention heads"
     )

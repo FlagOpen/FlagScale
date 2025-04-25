@@ -1,14 +1,13 @@
 import argparse
 import os
+
 from argparse import Namespace
 from pathlib import Path
 
 import torch
 
 from megatron.core.dist_checkpointing import ShardedTensor, save
-from megatron.core.dist_checkpointing.serialization import (
-    get_default_save_common_strategy,
-)
+from megatron.core.dist_checkpointing.serialization import get_default_save_common_strategy
 
 
 def convert_sfpt_ckpt_to_dist_ckpt(input_dir, output_dir):
@@ -16,9 +15,7 @@ def convert_sfpt_ckpt_to_dist_ckpt(input_dir, output_dir):
     rank = int(os.getenv("RANK", "0"))
     world_size = int(os.getenv("WORLD_SIZE", "1"))
     print(f"Rank: {rank}, World size: {world_size}")
-    torch.distributed.init_process_group(
-        backend="gloo", world_size=world_size, rank=rank
-    )
+    torch.distributed.init_process_group(backend="gloo", world_size=world_size, rank=rank)
 
     input_ckpt_dir = os.path.join(input_dir)
     if not os.path.isdir(input_ckpt_dir):
@@ -37,18 +34,12 @@ def convert_sfpt_ckpt_to_dist_ckpt(input_dir, output_dir):
             key = list(state_dict.keys())[0]
             tensor = state_dict[key]
             sharded_state_dict = {}
-            sharded_state_dict[key] = ShardedTensor.from_rank_offsets(
-                key,
-                tensor,
-            )
+            sharded_state_dict[key] = ShardedTensor.from_rank_offsets(key, tensor)
             save(sharded_state_dict, ckpt_output_dir)
 
     # Fake the minimal args for the checkpoint loading processing
     state_dict = {}
-    args = Namespace(
-        tensor_model_parallel_size=1,
-        pipeline_model_parallel_size=1,
-    )
+    args = Namespace(tensor_model_parallel_size=1, pipeline_model_parallel_size=1)
     state_dict["args"] = args
     common_strategy = get_default_save_common_strategy()
     common_strategy.save_common(state_dict, Path(ckpt_output_dir))
