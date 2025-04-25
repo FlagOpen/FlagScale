@@ -12,3 +12,5 @@ combine_as_imports = true
 lines_between_types = 1
 known_local_folder = ["flagscale"]
 known_first_party = ["megatron", "vllm"]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+default_section = "THIRDPARTY"
