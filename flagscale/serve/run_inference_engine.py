@@ -41,9 +41,7 @@ def main():
     serve.load_args()
     serve_config = serve.task_config.get("serve", [])
     if not serve_config:
-        raise ValueError(
-            f"No 'serve' configuration found in task config: {serve.task_config}"
-        )
+        raise ValueError(f"No 'serve' configuration found in task config: {serve.task_config}")
 
     model_config = None
     for item in serve_config:
@@ -52,9 +50,7 @@ def main():
             break
 
     if model_config is None:
-        raise ValueError(
-            f"No 'vllm_model' configuration found in task config: {serve.task_config}"
-        )
+        raise ValueError(f"No 'vllm_model' configuration found in task config: {serve.task_config}")
 
     engine = model_config.get("engine", None)
 

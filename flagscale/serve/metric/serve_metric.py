@@ -1,5 +1,6 @@
 import asyncio
 import warnings
+
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
@@ -36,12 +37,7 @@ class Metrics:
 
 
 def calculate_metrics(
-    input_requests,
-    outputs,
-    dur_s,
-    tokenizer,
-    selected_percentile_metrics,
-    selected_percentiles,
+    input_requests, outputs, dur_s, tokenizer, selected_percentile_metrics, selected_percentiles
 ):
     actual_output_lens = []
     total_input = 0
@@ -63,9 +59,7 @@ def calculate_metrics(
                 # bundled together
                 # Note : this may inflate the output token count slightly
                 output_len = len(
-                    tokenizer(
-                        outputs[i].generated_text, add_special_tokens=False
-                    ).input_ids
+                    tokenizer(outputs[i].generated_text, add_special_tokens=False).input_ids
                 )
             actual_output_lens.append(output_len)
             total_input += input_requests[i][1]
@@ -111,9 +105,7 @@ def calculate_metrics(
         mean_itl_ms=np.mean(itls or 0) * 1000,
         std_itl_ms=np.std(itls or 0) * 1000,
         median_itl_ms=np.median(itls or 0) * 1000,
-        percentiles_itl_ms=[
-            (p, np.percentile(itls or 0, p) * 1000) for p in selected_percentiles
-        ],
+        percentiles_itl_ms=[(p, np.percentile(itls or 0, p) * 1000) for p in selected_percentiles],
         mean_e2el_ms=np.mean(e2els or 0) * 1000,
         std_e2el_ms=np.std(e2els or 0) * 1000,
         median_e2el_ms=np.median(e2els or 0) * 1000,

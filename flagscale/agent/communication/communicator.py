@@ -2,7 +2,8 @@ import datetime
 import json
 import threading
 import time
-from typing import Any, Callable, Dict, Optional, Union, List
+
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from redis import ConnectionPool, Redis
 from redis.exceptions import ConnectionError, RedisError, TimeoutError, WatchError
@@ -99,9 +100,7 @@ class Communicator:
             print(f"Error while getting all hashes from Redis: {e}")
             return {}
 
-    def register(
-        self, name: str, value: str, expire_second: Optional[int] = None
-    ) -> bool:
+    def register(self, name: str, value: str, expire_second: Optional[int] = None) -> bool:
         """Set a key in Redis."""
         try:
             redis_client = self._get_conn()
@@ -110,9 +109,7 @@ class Communicator:
             print(f"Error while setting key in Redis: {e}")
             return False
 
-    def retrieve(
-        self, key: str, deserialize_json: bool = True
-    ) -> Optional[Union[str, dict, list]]:
+    def retrieve(self, key: str, deserialize_json: bool = True) -> Optional[Union[str, dict, list]]:
         try:
             redis_client = self._get_conn()
             value = redis_client.get(key)
@@ -129,11 +126,7 @@ class Communicator:
         except (ConnectionError, TimeoutError, RedisError) as e:
             return None
 
-    def set_ttl(
-        self,
-        key: str,
-        seconds: int,
-    ) -> bool:
+    def set_ttl(self, key: str, seconds: int) -> bool:
         redis_client = self._get_conn()
         return bool(redis_client.expire(key, seconds))
 
@@ -160,7 +153,7 @@ class Communicator:
         except (ConnectionError, TimeoutError, RedisError) as e:
             print(f"Error while getting keys and values from Redis: {e}")
             return {}
-    
+
     def wait_for_all_channels_response(
         self, channels: list[str], task_id: str, timeout: int = 6000
     ) -> Dict[str, Optional[str]]:

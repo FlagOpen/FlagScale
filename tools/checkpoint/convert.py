@@ -4,6 +4,7 @@ import importlib
 import sys
 
 import torch.multiprocessing as mp
+
 from utils import validate_args
 
 
@@ -38,14 +39,7 @@ def main():
         default=[],
         nargs="+",
         required=True,
-        choices=[
-            "aquila3_dense",
-            "aquila3_moe",
-            "mistral",
-            "mixtral",
-            "llama",
-            "deepseek_v3",
-        ],
+        choices=["aquila3_dense", "aquila3_moe", "mistral", "mixtral", "llama", "deepseek_v3"],
         help="Type of the model.",
     )
     parser.add_argument(
@@ -63,22 +57,13 @@ def main():
         help="Module name to save checkpoint, shdoul be on python path",
     )
     parser.add_argument(
-        "--load-dir",
-        type=str,
-        required=True,
-        help="Directory to load model checkpoint from",
+        "--load-dir", type=str, required=True, help="Directory to load model checkpoint from"
     )
     parser.add_argument(
-        "--save-dir",
-        type=str,
-        required=True,
-        help="Directory to save model checkpoint to",
+        "--save-dir", type=str, required=True, help="Directory to save model checkpoint to"
     )
     parser.add_argument(
-        "--max-queue-size",
-        type=int,
-        default=50,
-        help="Maximum number of tensors in the queue",
+        "--max-queue-size", type=int, default=50, help="Maximum number of tensors in the queue"
     )
     extend_cases = [["mistral", "mixtral"], ["aquila3_dense", "aquila3_moe"]]
 

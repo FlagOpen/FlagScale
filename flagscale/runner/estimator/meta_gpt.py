@@ -1,11 +1,5 @@
 from flagscale.runner.estimator.meta_base import MetaModule
-from flagscale.runner.estimator.meta_modules import (
-    Dropout,
-    Embedding,
-    LayerNorm,
-    Linear,
-    RMSNorm,
-)
+from flagscale.runner.estimator.meta_modules import Dropout, Embedding, LayerNorm, Linear, RMSNorm
 from flagscale.runner.estimator.meta_tensor import MetaTensor, ShardedDim
 from flagscale.runner.estimator.meta_transformer_layer import TransformerLayer
 
@@ -85,21 +79,13 @@ class GPTModel(MetaModule):
 
         # Embedding dropout
         self.embedding_dropout = Dropout(
-            p=self.embedding_dropout_rate,
-            shard_specs=None,
-            model_id=model_id,
+            p=self.embedding_dropout_rate, shard_specs=None, model_id=model_id
         )
 
         # Create transformer layers
         self.layers = []
         for i in range(self.num_layers):
-            self.layers.append(
-                TransformerLayer(
-                    config=config,
-                    layer_number=i,
-                    model_id=model_id,
-                )
-            )
+            self.layers.append(TransformerLayer(config=config, layer_number=i, model_id=model_id))
 
         # Final layer norm
         self.final_norm = NormClass(
@@ -168,8 +154,7 @@ class GPTModel(MetaModule):
         # Create position IDs if not provided
         if position_ids is None:
             position_ids = MetaTensor(
-                shape=[batch_size, seq_length],
-                shard_spec=[input_ids[0].shard, input_ids[1].shard],
+                shape=[batch_size, seq_length], shard_spec=[input_ids[0].shard, input_ids[1].shard]
             )
 
         # Only do embedding layer in first pipeline stage (or if not using pipeline parallel)
@@ -178,10 +163,7 @@ class GPTModel(MetaModule):
             hidden_states = self.word_embeddings(input_ids)
 
             # 2. Add position embeddings if not using rotary
-            if (
-                not self.use_rotary_position_embeddings
-                and self.position_embeddings is not None
-            ):
+            if not self.use_rotary_position_embeddings and self.position_embeddings is not None:
                 position_embeddings = self.position_embeddings(position_ids)
                 hidden_states = hidden_states + position_embeddings
 
@@ -213,9 +195,7 @@ class GPTModel(MetaModule):
             hidden_states = self.layers[i](
                 hidden_states=hidden_states,
                 attention_mask=attention_mask,
-                position_ids=(
-                    position_ids if self.use_rotary_position_embeddings else None
-                ),
+                position_ids=(position_ids if self.use_rotary_position_embeddings else None),
                 inference_params=inference_params,
             )
 

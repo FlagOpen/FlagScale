@@ -192,7 +192,7 @@ def num_floating_point_operations(args, batch_size):
                      num_attn_layers, num_mamba_layers, num_mlp_layers,
                      mamba_state_dim=128, mamba_head_dim=64,
                      mamba_num_groups=8, mamba_num_heads=128,
-                     num_attn_heads=32,gqa=True, 
+                     num_attn_heads=32,gqa=True,
                      gqa_groups=8, kv_channels=None,
                      mlp_expansion=4.0, swiglu=False,
                      vocab_size=256000):
@@ -292,10 +292,10 @@ def num_floating_point_operations(args, batch_size):
             if args.q_lora_rank is None:
                 q_term = args.hidden_size * args.num_attention_heads * (args.qk_head_dim + args.qk_pos_emb_head_dim)
             else:
-                q_term = args.q_lora_rank * (args.hidden_size + args.num_attention_heads * (args.qk_head_dim + args.qk_pos_emb_head_dim) + 1) 
+                q_term = args.q_lora_rank * (args.hidden_size + args.num_attention_heads * (args.qk_head_dim + args.qk_pos_emb_head_dim) + 1)
             self_attn_term = (
                 3*2 # fwd(1) + bwd(2) *FMA
-                * num_layers 
+                * num_layers
                 * (
                     ## q lora + rope + q norm
                     q_term
@@ -350,7 +350,7 @@ def num_floating_point_operations(args, batch_size):
                 ) * (num_moe_layers/num_layers)
                 # Shared Experts.
                 + (
-                    shared_expert_ffn_hidden_size 
+                    shared_expert_ffn_hidden_size
                     * gated_linear_multiplier
                 ) * (num_moe_layers/num_layers)
             )
@@ -368,7 +368,7 @@ def num_floating_point_operations(args, batch_size):
             # Logit.
             + 3*2
             * args.hidden_size
-            * args.padded_vocab_size 
+            * args.padded_vocab_size
             * (mtp_num_layers + 1)
         )
         return total_floating_point_operations

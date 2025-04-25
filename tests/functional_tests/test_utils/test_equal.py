@@ -15,15 +15,11 @@ def find_directory(start_path, target_dir_name):
 @pytest.mark.usefixtures("test_path", "test_type", "test_task", "test_case")
 def test_equal(test_path, test_type, test_task, test_case):
     # Construct the test_result_path using the provided fixtures
-    test_result_path = os.path.join(
-        test_path, test_type, test_task, "results_test", test_case
-    )
+    test_result_path = os.path.join(test_path, test_type, test_task, "results_test", test_case)
     start_path = os.path.join(test_result_path, "logs/details/host_0_localhost")
 
     attempt_path = find_directory(start_path, "attempt_0")
-    assert (
-        attempt_path is not None
-    ), f"Failed to find 'attempt_0' directory in {start_path}"
+    assert attempt_path is not None, f"Failed to find 'attempt_0' directory in {start_path}"
 
     results_path = os.listdir(attempt_path)
     results_path.sort()
@@ -44,16 +40,12 @@ def test_equal(test_path, test_type, test_task, test_case):
             line_split = line.strip().split("|")
             for key_value in line_split:
                 if key_value.startswith(" lm loss:"):
-                    result_json["lm loss:"]["values"].append(
-                        float(key_value.split(":")[1])
-                    )
+                    result_json["lm loss:"]["values"].append(float(key_value.split(":")[1]))
 
     gold_value_path = os.path.join(
         test_path, test_type, test_task, "results_gold", test_case + ".json"
     )
-    assert os.path.exists(
-        gold_value_path
-    ), f"Failed to find gold result JSON at {gold_value_path}"
+    assert os.path.exists(gold_value_path), f"Failed to find gold result JSON at {gold_value_path}"
 
     with open(gold_value_path, "r") as f:
         gold_result_json = json.load(f)
@@ -63,9 +55,7 @@ def test_equal(test_path, test_type, test_task, test_case):
     print("Gold Result: ", gold_result_json)
     print(
         "The results are basically equal: ",
-        np.allclose(
-            gold_result_json["lm loss:"]["values"], result_json["lm loss:"]["values"]
-        ),
+        np.allclose(gold_result_json["lm loss:"]["values"], result_json["lm loss:"]["values"]),
     )
 
     assert np.allclose(

@@ -5,6 +5,7 @@ import sys
 
 import torch
 import yaml
+
 from omegaconf import OmegaConf
 from transformers import *
 
@@ -24,9 +25,7 @@ def prepare_config(config_path):
         yaml_dict.pop(key)
     new_yaml_dict = {}
     for k, v in yaml_dict.items():
-        assert isinstance(
-            v, dict
-        ), f"Expected a dictionary for key {k}, but got {v} instead"
+        assert isinstance(v, dict), f"Expected a dictionary for key {k}, but got {v} instead"
         new_yaml_dict.update(v)
     config = OmegaConf.create(new_yaml_dict)
     return config
@@ -68,9 +67,7 @@ def compress(cfg, model=None, dataset=None):
     if model is None:
         model_cls = eval(cfg.model.pop("model_cls"))
         model = model_cls.from_pretrained(model_path, **cfg.model)
-    assert isinstance(
-        model, torch.nn.Module
-    ), f"model type {type(model)} error, please check it"
+    assert isinstance(model, torch.nn.Module), f"model type {type(model)} error, please check it"
     compress_args = cfg.compress_args
     recipes = prepare_compress_methods(compress_args)
     for method, recipe in recipes.items():
@@ -90,10 +87,7 @@ def compress(cfg, model=None, dataset=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config-path",
-        type=str,
-        required=True,
-        help="Path to the configuration YAML file",
+        "--config-path", type=str, required=True, help="Path to the configuration YAML file"
     )
     args = parser.parse_args()
     cfg = prepare_config(args.config_path)

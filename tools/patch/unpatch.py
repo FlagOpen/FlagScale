@@ -91,9 +91,7 @@ def init_submodule(dst, submodule_name):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Patch or unpatch backend with symlinks."
-    )
+    parser = argparse.ArgumentParser(description="Patch or unpatch backend with symlinks.")
     parser.add_argument(
         "--backend",
         nargs="+",

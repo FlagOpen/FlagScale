@@ -15,17 +15,13 @@ def combine(vision_input, llm_input, output, mlp_input=""):
         assert vision_dir in llm_dirs
         llm_dir = vision_dir
         mlp_dir = vision_dir
-        vision_params = torch.load(
-            os.path.join(vision_input, vision_dir, "model_optim_rng.pt")
-        )
+        vision_params = torch.load(os.path.join(vision_input, vision_dir, "model_optim_rng.pt"))
         llm_params = torch.load(os.path.join(llm_input, llm_dir, "model_optim_rng.pt"))
         combined_state_dict = {}
         combined_state_dict["model"] = {}
 
         if mlp_input != "":
-            mlp_params = torch.load(
-                os.path.join(mlp_input, mlp_dir, "model_optim_rng.pt")
-            )
+            mlp_params = torch.load(os.path.join(mlp_input, mlp_dir, "model_optim_rng.pt"))
             for name, param in mlp_params["model"].items():
                 new_name = f"vision_projection.{name}"
                 combined_state_dict["model"][new_name] = param
@@ -44,9 +40,7 @@ def combine(vision_input, llm_input, output, mlp_input=""):
         output_file = os.path.join(output_dir, "model_optim_rng.pt")
         torch.save(combined_state_dict, output_file)
         print("saved:", output_file)
-    latest_checkpointed_iteration = os.path.join(
-        output, "latest_checkpointed_iteration.txt"
-    )
+    latest_checkpointed_iteration = os.path.join(output, "latest_checkpointed_iteration.txt")
 
     with open(latest_checkpointed_iteration, "w") as f:
         f.write("1")
@@ -68,10 +62,7 @@ python combine_llm_vision.py --vision-input /some/vision_folder --llm-input /som
     parser.add_argument("--llm-input", type=str, required=True, help="llm folder")
     parser.add_argument("--mlp-input", type=str, default="", help="mlp folder")
     parser.add_argument(
-        "--output",
-        type=str,
-        required=True,
-        help="output directory for megatron state dict file(s)",
+        "--output", type=str, required=True, help="output directory for megatron state dict file(s)"
     )
 
     args = parser.parse_args()

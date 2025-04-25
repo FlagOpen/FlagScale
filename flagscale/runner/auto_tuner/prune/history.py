@@ -37,9 +37,7 @@ def prune_by_micro_batch_size(config, strategy, history=[]):
                 return True
             # memory prune
             if item["micro_batch_size"] < micro_batch_size and item["max_mem"] == "OOM":
-                logger.info(
-                    f"The strategy {strategy} has been pruned by micro_batch_size memory."
-                )
+                logger.info(f"The strategy {strategy} has been pruned by micro_batch_size memory.")
                 strategy["max_mem"] = "OOM"
                 strategy["performance"] = None
                 strategy["pruned"] = True
@@ -69,12 +67,7 @@ def prune_by_recompute(config, strategy, history=[]):
     recompute_num_layers = strategy["recompute_num_layers"]
 
     retrieval = beside(
-        [
-            "use_recompute",
-            "recompute_method",
-            "recompute_granularity",
-            "recompute_num_layers",
-        ],
+        ["use_recompute", "recompute_method", "recompute_granularity", "recompute_num_layers"],
         strategy,
         history,
     )
@@ -82,9 +75,7 @@ def prune_by_recompute(config, strategy, history=[]):
         # performance prune
         # If history task can run without recompute, the task with recompute can be pruned
         if not item["use_recompute"] and use_recompute and item["performance"]:
-            logger.info(
-                f"The strategy {strategy} has been pruned by use_recompute performance."
-            )
+            logger.info(f"The strategy {strategy} has been pruned by use_recompute performance.")
             strategy["performance"] = item["performance"]
             strategy["max_mem"] = item["max_mem"]
             strategy["pruned"] = True
@@ -123,9 +114,7 @@ def prune_by_recompute(config, strategy, history=[]):
                 return True
         # memory prune
         if not use_recompute and item["use_recompute"] and item["max_mem"] == "OOM":
-            logger.info(
-                f"The strategy {strategy} has been pruned by use_recompute memory."
-            )
+            logger.info(f"The strategy {strategy} has been pruned by use_recompute memory.")
             strategy["max_mem"] = "OOM"
             strategy["performance"] = None
             strategy["pruned"] = True
@@ -137,10 +126,7 @@ def prune_by_recompute(config, strategy, history=[]):
             and recompute_method == "uniform"
             and recompute_method == item["recompute_method"]
         ):
-            if (
-                recompute_num_layers > item["recompute_num_layers"]
-                and item["max_mem"] == "OOM"
-            ):
+            if recompute_num_layers > item["recompute_num_layers"] and item["max_mem"] == "OOM":
                 logger.info(
                     f"The strategy {strategy} has been pruned by uniform recompute_num_layers memory."
                 )
@@ -155,10 +141,7 @@ def prune_by_recompute(config, strategy, history=[]):
             and recompute_method == "block"
             and recompute_method == item["recompute_method"]
         ):
-            if (
-                recompute_num_layers < item["recompute_num_layers"]
-                and item["max_mem"] == "OOM"
-            ):
+            if recompute_num_layers < item["recompute_num_layers"] and item["max_mem"] == "OOM":
                 logger.info(
                     f"The strategy {strategy} has been pruned by block recompute_num_layers memory."
                 )
@@ -177,11 +160,7 @@ def prune_by_sequence_parallel(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # performance prune
-            if (
-                item["sequence_parallel"]
-                and item["performance"]
-                and not sequence_parallel
-            ):
+            if item["sequence_parallel"] and item["performance"] and not sequence_parallel:
                 logger.info(
                     f"The strategy {strategy} has been pruned by sequence_parallel performance."
                 )
@@ -190,14 +169,8 @@ def prune_by_sequence_parallel(config, strategy, history=[]):
                 strategy["pruned"] = True
                 return True
             # memory prune
-            if (
-                item["sequence_parallel"]
-                and item["max_mem"] == "OOM"
-                and not sequence_parallel
-            ):
-                logger.info(
-                    f"The strategy {strategy} has been pruned by sequence_parallel memory."
-                )
+            if item["sequence_parallel"] and item["max_mem"] == "OOM" and not sequence_parallel:
+                logger.info(f"The strategy {strategy} has been pruned by sequence_parallel memory.")
                 strategy["max_mem"] = "OOM"
                 strategy["performance"] = None
                 strategy["pruned"] = True
@@ -229,9 +202,7 @@ def prune_by_mbs_recompute(config, strategy, history=[]):
                 and compare_by_recompute(strategy, item)
                 and item["max_mem"] == "OOM"
             ):
-                logger.info(
-                    f"The strategy {strategy} has been pruned by mbs_recompute memory."
-                )
+                logger.info(f"The strategy {strategy} has been pruned by mbs_recompute memory.")
                 strategy["max_mem"] = "OOM"
                 strategy["performance"] = None
                 strategy["pruned"] = True
@@ -244,11 +215,7 @@ def prune_by_mbs_sp(config, strategy, history=[]):
     """Prune strategy by sequence parallel and micro batch size."""
     sp = strategy["sequence_parallel"]
     mbs = strategy["micro_batch_size"]
-    retrieval = beside(
-        ["sequence_parallel", "micro_batch_size", "acc_step"],
-        strategy,
-        history,
-    )
+    retrieval = beside(["sequence_parallel", "micro_batch_size", "acc_step"], strategy, history)
     if retrieval:
         for item in retrieval:
             # memory prune
@@ -258,9 +225,7 @@ def prune_by_mbs_sp(config, strategy, history=[]):
                 and item["micro_batch_size"] < mbs
                 and item["max_mem"] == "OOM"
             ):
-                logger.info(
-                    f"The strategy {strategy} has been pruned by mbs_sp memory."
-                )
+                logger.info(f"The strategy {strategy} has been pruned by mbs_sp memory.")
                 strategy["max_mem"] = "OOM"
                 strategy["performance"] = None
                 strategy["pruned"] = True
@@ -292,9 +257,7 @@ def prune_by_recompute_sp(config, strategy, history=[]):
                 and compare_by_recompute(strategy, item)
                 and item["max_mem"] == "OOM"
             ):
-                logger.info(
-                    f"The strategy {strategy} has been pruned by recompute_sp memory."
-                )
+                logger.info(f"The strategy {strategy} has been pruned by recompute_sp memory.")
                 strategy["max_mem"] = "OOM"
                 strategy["performance"] = None
                 strategy["pruned"] = True
@@ -330,9 +293,7 @@ def prune_by_mbs_recompute_sp(config, strategy, history=[]):
                 and item["micro_batch_size"] < mbs
                 and item["max_mem"] == "OOM"
             ):
-                logger.info(
-                    f"The strategy {strategy} has been pruned by mbs_recompute_sp memory."
-                )
+                logger.info(f"The strategy {strategy} has been pruned by mbs_recompute_sp memory.")
                 strategy["max_mem"] = "OOM"
                 strategy["performance"] = None
                 strategy["pruned"] = True
@@ -346,25 +307,14 @@ def prune_by_tp_pp(config, strategy, history=[]):
     tp = strategy["tensor_model_parallel_size"]
     pp = strategy["pipeline_model_parallel_size"]
     retrieval = beside(
-        [
-            "tensor_model_parallel_size",
-            "pipeline_model_parallel_size",
-        ],
-        strategy,
-        history,
+        ["tensor_model_parallel_size", "pipeline_model_parallel_size"], strategy, history
     )
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if tp < item["tensor_model_parallel_size"] and item["max_mem"] == "OOM":
-                    logger.info(
-                        f"The strategy {strategy} has been pruned by tp_pp memory."
-                    )
+                    logger.info(f"The strategy {strategy} has been pruned by tp_pp memory.")
                     strategy["max_mem"] = "OOM"
                     strategy["performance"] = None
                     strategy["pruned"] = True
@@ -379,31 +329,21 @@ def prune_by_tp_pp_sp(config, strategy, history=[]):
     pp = strategy["pipeline_model_parallel_size"]
     sp = strategy["sequence_parallel"]
     retrieval = beside(
-        [
-            "tensor_model_parallel_size",
-            "pipeline_model_parallel_size",
-            "sequence_parallel",
-        ],
+        ["tensor_model_parallel_size", "pipeline_model_parallel_size", "sequence_parallel"],
         strategy,
         history,
     )
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     not sp
                     and tp < item["tensor_model_parallel_size"]
                     and item["sequence_parallel"]
                     and item["max_mem"] == "OOM"
                 ):
-                    logger.info(
-                        f"The strategy {strategy} has been pruned by tp_pp_sp memory."
-                    )
+                    logger.info(f"The strategy {strategy} has been pruned by tp_pp_sp memory.")
                     strategy["max_mem"] = "OOM"
                     strategy["performance"] = None
                     strategy["pruned"] = True
@@ -430,20 +370,14 @@ def prune_by_tp_pp_mbs(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     tp < item["tensor_model_parallel_size"]
                     and item["sequence_parallel"]
                     and item["micro_batch_size"] < mbs
                     and item["max_mem"] == "OOM"
                 ):
-                    logger.info(
-                        f"The strategy {strategy} has been pruned by tp_pp_mbs memory."
-                    )
+                    logger.info(f"The strategy {strategy} has been pruned by tp_pp_mbs memory.")
                     strategy["max_mem"] = "OOM"
                     strategy["performance"] = None
                     strategy["pruned"] = True
@@ -471,11 +405,7 @@ def prune_by_tp_pp_recompute(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     tp < item["tensor_model_parallel_size"]
                     and compare_by_recompute(strategy, item)
@@ -512,11 +442,7 @@ def prune_by_tp_pp_mbs_sp(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     not sp
                     and tp < item["tensor_model_parallel_size"]
@@ -524,9 +450,7 @@ def prune_by_tp_pp_mbs_sp(config, strategy, history=[]):
                     and item["micro_batch_size"] < mbs
                     and item["max_mem"] == "OOM"
                 ):
-                    logger.info(
-                        f"The strategy {strategy} has been pruned by tp_pp_mbs_sp memory."
-                    )
+                    logger.info(f"The strategy {strategy} has been pruned by tp_pp_mbs_sp memory.")
                     strategy["max_mem"] = "OOM"
                     strategy["performance"] = None
                     strategy["pruned"] = True
@@ -557,11 +481,7 @@ def prune_by_tp_pp_mbs_recompute(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     compare_by_recompute(strategy, item)
                     and tp < item["tensor_model_parallel_size"]
@@ -600,11 +520,7 @@ def prune_by_tp_pp_recompute_sp(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     compare_by_recompute(strategy, item)
                     and tp < item["tensor_model_parallel_size"]
@@ -647,11 +563,7 @@ def prune_by_tp_pp_mbs_recompute_sp(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     not sp
                     and item["sequence_parallel"]
@@ -678,14 +590,8 @@ def prune_by_distopt(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                not dist_opt
-                and item["use_distributed_optimizer"]
-                and item["max_mem"] == "OOM"
-            ):
-                logger.info(
-                    f"The strategy {strategy} has been pruned by distopt memory."
-                )
+            if not dist_opt and item["use_distributed_optimizer"] and item["max_mem"] == "OOM":
+                logger.info(f"The strategy {strategy} has been pruned by distopt memory.")
                 strategy["max_mem"] = "OOM"
                 strategy["performance"] = None
                 strategy["pruned"] = True
@@ -710,9 +616,7 @@ def prune_by_distopt_mbs(config, strategy, history=[]):
                 and item["micro_batch_size"] < mbs
                 and item["max_mem"] == "OOM"
             ):
-                logger.info(
-                    f"The strategy {strategy} has been pruned by distopt_mbs memory."
-                )
+                logger.info(f"The strategy {strategy} has been pruned by distopt_mbs memory.")
                 strategy["max_mem"] = "OOM"
                 strategy["performance"] = None
                 strategy["pruned"] = True
@@ -744,9 +648,7 @@ def prune_by_distopt_recompute(config, strategy, history=[]):
                 and compare_by_recompute(strategy, item)
                 and item["max_mem"] == "OOM"
             ):
-                logger.info(
-                    f"The strategy {strategy} has been pruned by distopt_recompute memory."
-                )
+                logger.info(f"The strategy {strategy} has been pruned by distopt_recompute memory.")
                 strategy["max_mem"] = "OOM"
                 strategy["performance"] = None
                 strategy["pruned"] = True
@@ -759,11 +661,7 @@ def prune_by_distopt_sp(config, strategy, history=[]):
     """Prune strategy by distopt and sp"""
     dist_opt = strategy["use_distributed_optimizer"]
     sp = strategy["sequence_parallel"]
-    retrieval = beside(
-        ["use_distributed_optimizer", "sequence_parallel"],
-        strategy,
-        history,
-    )
+    retrieval = beside(["use_distributed_optimizer", "sequence_parallel"], strategy, history)
     if retrieval:
         for item in retrieval:
             # memory prune
@@ -774,9 +672,7 @@ def prune_by_distopt_sp(config, strategy, history=[]):
                 and item["sequence_parallel"]
                 and item["max_mem"] == "OOM"
             ):
-                logger.info(
-                    f"The strategy {strategy} has been pruned by distopt_sp memory."
-                )
+                logger.info(f"The strategy {strategy} has been pruned by distopt_sp memory.")
                 strategy["max_mem"] = "OOM"
                 strategy["performance"] = None
                 strategy["pruned"] = True
@@ -791,31 +687,21 @@ def prune_by_distopt_tp_pp(config, strategy, history=[]):
     pp = strategy["pipeline_model_parallel_size"]
     dist_opt = strategy["use_distributed_optimizer"]
     retrieval = beside(
-        [
-            "tensor_model_parallel_size",
-            "pipeline_model_parallel_size",
-            "use_distributed_optimizer",
-        ],
+        ["tensor_model_parallel_size", "pipeline_model_parallel_size", "use_distributed_optimizer"],
         strategy,
         history,
     )
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     tp < item["tensor_model_parallel_size"]
                     and not dist_opt
                     and item["use_distributed_optimizer"]
                     and item["max_mem"] == "OOM"
                 ):
-                    logger.info(
-                        f"The strategy {strategy} has been pruned by distopt_tp_pp memory."
-                    )
+                    logger.info(f"The strategy {strategy} has been pruned by distopt_tp_pp memory.")
                     strategy["max_mem"] = "OOM"
                     strategy["performance"] = None
                     strategy["pruned"] = True
@@ -868,12 +754,7 @@ def prune_by_distopt_mbs_sp(config, strategy, history=[]):
     sp = strategy["sequence_parallel"]
     mbs = strategy["micro_batch_size"]
     retrieval = beside(
-        [
-            "use_distributed_optimizer",
-            "sequence_parallel",
-            "micro_batch_size",
-            "acc_step",
-        ],
+        ["use_distributed_optimizer", "sequence_parallel", "micro_batch_size", "acc_step"],
         strategy,
         history,
     )
@@ -888,9 +769,7 @@ def prune_by_distopt_mbs_sp(config, strategy, history=[]):
                 and item["micro_batch_size"] < mbs
                 and item["max_mem"] == "OOM"
             ):
-                logger.info(
-                    f"The strategy {strategy} has been pruned by distopt_mbs_sp memory."
-                )
+                logger.info(f"The strategy {strategy} has been pruned by distopt_mbs_sp memory.")
                 strategy["max_mem"] = "OOM"
                 strategy["performance"] = None
                 strategy["pruned"] = True
@@ -919,11 +798,7 @@ def prune_by_distopt_mbs_tp_pp(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     tp < item["tensor_model_parallel_size"]
                     and not dist_opt
@@ -1001,11 +876,7 @@ def prune_by_distopt_recompute_tp_pp(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     not dist_opt
                     and item["use_distributed_optimizer"]
@@ -1043,11 +914,7 @@ def prune_by_distopt_sp_tp_pp(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     not dist_opt
                     and item["use_distributed_optimizer"]
@@ -1132,11 +999,7 @@ def prune_by_distopt_mbs_recompute_tp_pp(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     not dist_opt
                     and item["use_distributed_optimizer"]
@@ -1178,11 +1041,7 @@ def prune_by_distopt_mbs_sp_tp_pp(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     not dist_opt
                     and item["use_distributed_optimizer"]
@@ -1226,11 +1085,7 @@ def prune_by_distopt_recompute_sp_tp_pp(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     not dist_opt
                     and item["use_distributed_optimizer"]
@@ -1277,11 +1132,7 @@ def prune_by_distopt_mbs_recompute_sp_tp_pp(config, strategy, history=[]):
     if retrieval:
         for item in retrieval:
             # memory prune
-            if (
-                tp * pp
-                == item["tensor_model_parallel_size"]
-                * item["pipeline_model_parallel_size"]
-            ):
+            if tp * pp == item["tensor_model_parallel_size"] * item["pipeline_model_parallel_size"]:
                 if (
                     not dist_opt
                     and item["use_distributed_optimizer"]

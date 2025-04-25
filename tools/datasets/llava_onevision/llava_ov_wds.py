@@ -26,6 +26,7 @@ import pathlib
 import random
 import re
 import time
+
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence
 
@@ -37,6 +38,7 @@ import torch.distributed as dist
 import transformers
 import webdataset as wds
 import yaml
+
 from llava import conversation as conversation_lib
 from llava.constants import (
     DEFAULT_IM_END_TOKEN,
@@ -65,9 +67,7 @@ torch.multiprocessing.set_sharing_strategy("file_system")
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 local_rank = None
 
-IS_TOKENIZER_GREATER_THAN_0_14 = version.parse(tokenizers.__version__) >= version.parse(
-    "0.14"
-)
+IS_TOKENIZER_GREATER_THAN_0_14 = version.parse(tokenizers.__version__) >= version.parse("0.14")
 
 
 @dataclass
@@ -93,15 +93,11 @@ class ModelArguments:
     tune_mm_mlp_adapter: bool = field(default=False)
     tune_mm_vision_resampler: bool = field(default=False)
     vision_tower: Optional[str] = field(default=None)
-    vision_tower_pretrained: Optional[str] = field(
-        default=None
-    )  # default to the last layer
+    vision_tower_pretrained: Optional[str] = field(default=None)  # default to the last layer
 
     unfreeze_mm_vision_tower: bool = field(default=False)
     unfreeze_language_model: bool = field(default=False)
-    mm_vision_select_layer: Optional[int] = field(
-        default=-1
-    )  # default to the last layer
+    mm_vision_select_layer: Optional[int] = field(default=-1)  # default to the last layer
     pretrain_mm_mlp_adapter: Optional[str] = field(default=None)
     mm_projector_type: Optional[str] = field(default="linear")
     mm_use_im_start_end: bool = field(default=False)
@@ -180,15 +176,11 @@ class TrainingArguments(transformers.TrainingArguments):
     )
     double_quant: bool = field(
         default=True,
-        metadata={
-            "help": "Compress the quantization statistics through double quantization."
-        },
+        metadata={"help": "Compress the quantization statistics through double quantization."},
     )
     quant_type: str = field(
         default="nf4",
-        metadata={
-            "help": "Quantization data type to use. Should be one of `fp4` or `nf4`."
-        },
+        metadata={"help": "Quantization data type to use. Should be one of `fp4` or `nf4`."},
     )
     bits: int = field(default=16, metadata={"help": "How many bits to use."})
     lora_enable: bool = False
@@ -206,8 +198,7 @@ class TrainingArguments(transformers.TrainingArguments):
     gradient_checkpointing: bool = field(default=True)
     verbose_logging: bool = field(default=False)
     attn_implementation: str = field(
-        default="flash_attention_2",
-        metadata={"help": "Use transformers attention implementation."},
+        default="flash_attention_2", metadata={"help": "Use transformers attention implementation."}
     )
 
 
@@ -276,21 +267,15 @@ def get_peft_state_non_lora_maybe_zero_3(named_params, require_grad_only=True):
     to_return = {k: t for k, t in named_params if "lora_" not in k}
     if require_grad_only:
         to_return = {k: t for k, t in to_return.items() if t.requires_grad}
-    to_return = {
-        k: maybe_zero_3(v, ignore_status=True).cpu() for k, v in to_return.items()
-    }
+    to_return = {k: maybe_zero_3(v, ignore_status=True).cpu() for k, v in to_return.items()}
     return to_return
 
 
 def get_mm_adapter_state_maybe_zero_3(named_params, keys_to_match):
     to_return = {
-        k: t
-        for k, t in named_params
-        if any(key_match in k for key_match in keys_to_match)
+        k: t for k, t in named_params if any(key_match in k for key_match in keys_to_match)
     }
-    to_return = {
-        k: maybe_zero_3(v, ignore_status=True).cpu() for k, v in to_return.items()
-    }
+    to_return = {k: maybe_zero_3(v, ignore_status=True).cpu() for k, v in to_return.items()}
     return to_return
 
 
@@ -312,10 +297,7 @@ def find_all_linear_names(model):
 
 def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: str):
     """Collects the state dict and dump to disk."""
-    if (
-        hasattr(trainer.args, "tune_mm_mlp_adapter")
-        and trainer.args.tune_mm_mlp_adapter
-    ):
+    if hasattr(trainer.args, "tune_mm_mlp_adapter") and trainer.args.tune_mm_mlp_adapter:
         check_only_save_mm_adapter_tunnable = True
     # only has mm_mlp_adapter and mm_vision_resampler in the tuneable parts
     elif hasattr(trainer.args, "mm_tunable_parts") and (
@@ -350,13 +332,10 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: st
                 mm_projector_folder = os.path.join(parent_folder, "mm_projector")
                 os.makedirs(mm_projector_folder, exist_ok=True)
                 torch.save(
-                    weight_to_save,
-                    os.path.join(mm_projector_folder, f"{current_folder}.bin"),
+                    weight_to_save, os.path.join(mm_projector_folder, f"{current_folder}.bin")
                 )
             else:
-                torch.save(
-                    weight_to_save, os.path.join(output_dir, f"mm_projector.bin")
-                )
+                torch.save(weight_to_save, os.path.join(output_dir, f"mm_projector.bin"))
         return
 
     if trainer.deepspeed:
@@ -386,20 +365,14 @@ def smart_tokenizer_and_embedding_resize(
         input_embeddings = model.get_input_embeddings().weight.data
         output_embeddings = model.get_output_embeddings().weight.data
 
-        input_embeddings_avg = input_embeddings[:-num_new_tokens].mean(
-            dim=0, keepdim=True
-        )
-        output_embeddings_avg = output_embeddings[:-num_new_tokens].mean(
-            dim=0, keepdim=True
-        )
+        input_embeddings_avg = input_embeddings[:-num_new_tokens].mean(dim=0, keepdim=True)
+        output_embeddings_avg = output_embeddings[:-num_new_tokens].mean(dim=0, keepdim=True)
 
         input_embeddings[-num_new_tokens:] = input_embeddings_avg
         output_embeddings[-num_new_tokens:] = output_embeddings_avg
 
 
-def _tokenize_fn(
-    strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer
-) -> Dict:
+def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer) -> Dict:
     """Tokenize a list of strings."""
     tokenized_list = [
         tokenizer(
@@ -413,14 +386,10 @@ def _tokenize_fn(
     ]
     input_ids = labels = [tokenized.input_ids[0] for tokenized in tokenized_list]
     input_ids_lens = labels_lens = [
-        tokenized.input_ids.ne(tokenizer.pad_token_id).sum().item()
-        for tokenized in tokenized_list
+        tokenized.input_ids.ne(tokenizer.pad_token_id).sum().item() for tokenized in tokenized_list
     ]
     return dict(
-        input_ids=input_ids,
-        labels=labels,
-        input_ids_lens=input_ids_lens,
-        labels_lens=labels_lens,
+        input_ids=input_ids, labels=labels, input_ids_lens=input_ids_lens, labels_lens=labels_lens
     )
 
 
@@ -448,9 +417,7 @@ def _add_speaker_and_signal(header, source, get_conversation=True):
             from_str = conversation_lib.default_conversation.roles[1]
         else:
             from_str = "unknown"
-        sentence["value"] = (
-            BEGIN_SIGNAL + from_str + ": " + sentence["value"] + END_SIGNAL
-        )
+        sentence["value"] = BEGIN_SIGNAL + from_str + ": " + sentence["value"] + END_SIGNAL
         if get_conversation:
             conversation += sentence["value"]
     conversation += BEGIN_SIGNAL
@@ -473,29 +440,20 @@ def preprocess_multimodal(sources: Sequence[str], data_args: DataArguments) -> D
                 and DEFAULT_IMAGE_TOKEN in sentence["value"]
                 and not sentence["value"].startswith(DEFAULT_IMAGE_TOKEN)
             ):
-                sentence["value"] = (
-                    sentence["value"].replace(DEFAULT_IMAGE_TOKEN, "").strip()
-                )
+                sentence["value"] = sentence["value"].replace(DEFAULT_IMAGE_TOKEN, "").strip()
                 sentence["value"] = DEFAULT_IMAGE_TOKEN + "\n" + sentence["value"]
                 sentence["value"] = sentence["value"].strip()
                 if "mmtag" in conversation_lib.default_conversation.version:
                     sentence["value"] = sentence["value"].replace(
-                        DEFAULT_IMAGE_TOKEN,
-                        "<Image>" + DEFAULT_IMAGE_TOKEN + "</Image>",
+                        DEFAULT_IMAGE_TOKEN, "<Image>" + DEFAULT_IMAGE_TOKEN + "</Image>"
                     )
             replace_token = DEFAULT_IMAGE_TOKEN
             if data_args.mm_use_im_start_end:
-                replace_token = (
-                    DEFAULT_IM_START_TOKEN + replace_token + DEFAULT_IM_END_TOKEN
-                )
-            sentence["value"] = sentence["value"].replace(
-                DEFAULT_IMAGE_TOKEN, replace_token
-            )
+                replace_token = DEFAULT_IM_START_TOKEN + replace_token + DEFAULT_IM_END_TOKEN
+            sentence["value"] = sentence["value"].replace(DEFAULT_IMAGE_TOKEN, replace_token)
 
             # For videoInstruct-100k noisy_data. TODO: Ask Yuanhan to clean the data instead of leaving the noise code here.
-            sentence["value"] = sentence["value"].replace(
-                "QA_GT_caption_based_noisy", ""
-            )
+            sentence["value"] = sentence["value"].replace("QA_GT_caption_based_noisy", "")
 
     return sources
 
@@ -575,15 +533,9 @@ def preprocess_llama_2(
         if cur_len < tokenizer.model_max_length:
             if cur_len != total_len:
                 target[:] = IGNORE_INDEX
-                print(
-                    f"WARNING: tokenization mismatch: {cur_len} vs. {total_len}."
-                    f" (ignored)"
-                )
+                print(f"WARNING: tokenization mismatch: {cur_len} vs. {total_len}." f" (ignored)")
 
-    return dict(
-        input_ids=input_ids,
-        labels=targets,
-    )
+    return dict(input_ids=input_ids, labels=targets)
 
 
 def preprocess_gemma(
@@ -652,9 +604,7 @@ def preprocess_gemma(
             # Now "".join(parts)==rou
 
             if has_image:
-                round_len = (
-                    len(tokenizer_image_token(rou, tokenizer)) - 1
-                )  # Ignore <bos>
+                round_len = len(tokenizer_image_token(rou, tokenizer)) - 1  # Ignore <bos>
                 instruction_len = (
                     len(tokenizer_image_token(parts[0], tokenizer)) - 1
                 )  # Ignore <bos>
@@ -671,15 +621,9 @@ def preprocess_gemma(
         if cur_len < tokenizer.model_max_length:
             if cur_len != total_len:
                 target[:] = IGNORE_INDEX
-                print(
-                    f"warning: tokenization mismatch: {cur_len} vs. {total_len}."
-                    f" (ignored)"
-                )
+                print(f"warning: tokenization mismatch: {cur_len} vs. {total_len}." f" (ignored)")
 
-    return dict(
-        input_ids=input_ids,
-        labels=targets,
-    )
+    return dict(input_ids=input_ids, labels=targets)
 
 
 def preprocess_qwen(
@@ -723,9 +667,7 @@ def preprocess_qwen(
 
         # New version, use apply chat template
         # Build system message for each sentence
-        input_id += tokenizer.apply_chat_template(
-            [{"role": "system", "content": system_message}]
-        )
+        input_id += tokenizer.apply_chat_template([{"role": "system", "content": system_message}])
         target += [IGNORE_INDEX] * len(input_id)
 
         for conv in source:
@@ -758,10 +700,7 @@ def preprocess_qwen(
     input_ids = torch.tensor(input_ids, dtype=torch.long)
     targets = torch.tensor(targets, dtype=torch.long)
 
-    return dict(
-        input_ids=input_ids,  # tensor(bs x seq_len)
-        labels=targets,  # tensor(bs x seq_len)
-    )
+    return dict(input_ids=input_ids, labels=targets)  # tensor(bs x seq_len)  # tensor(bs x seq_len)
 
 
 def preprocess_llama3(
@@ -814,9 +753,7 @@ def preprocess_llama3(
 
         # New version, use apply chat template
         # Build system message for each sentence
-        input_id += tokenizer.apply_chat_template(
-            [{"role": "system", "content": system_message}]
-        )
+        input_id += tokenizer.apply_chat_template([{"role": "system", "content": system_message}])
         target += [IGNORE_INDEX] * len(input_id)
 
         for conv in source:
@@ -850,10 +787,7 @@ def preprocess_llama3(
     input_ids = torch.tensor(input_ids, dtype=torch.long)
     targets = torch.tensor(targets, dtype=torch.long)
 
-    return dict(
-        input_ids=input_ids,  # tensor(bs x seq_len)
-        labels=targets,  # tensor(bs x seq_len)
-    )
+    return dict(input_ids=input_ids, labels=targets)  # tensor(bs x seq_len)  # tensor(bs x seq_len)
 
 
 def preprocess_v1(
@@ -935,15 +869,9 @@ def preprocess_v1(
         if cur_len < tokenizer.model_max_length:
             if cur_len != total_len:
                 target[:] = IGNORE_INDEX
-                print(
-                    f"WARNING: tokenization mismatch: {cur_len} vs. {total_len}."
-                    f" (ignored)"
-                )
+                print(f"WARNING: tokenization mismatch: {cur_len} vs. {total_len}." f" (ignored)")
 
-    return dict(
-        input_ids=input_ids,
-        labels=targets,
-    )
+    return dict(input_ids=input_ids, labels=targets)
 
 
 def preprocess_mpt(
@@ -996,9 +924,7 @@ def preprocess_mpt(
         rounds = conversation.split(conv.sep)
         re_rounds = [conv.sep.join(rounds[:3])]  # system + user + gpt
         for conv_idx in range(3, len(rounds), 2):
-            re_rounds.append(
-                conv.sep.join(rounds[conv_idx : conv_idx + 2])
-            )  # user + gpt
+            re_rounds.append(conv.sep.join(rounds[conv_idx : conv_idx + 2]))  # user + gpt
         cur_len = 1
         target[:cur_len] = IGNORE_INDEX
         for i, rou in enumerate(re_rounds):
@@ -1017,11 +943,7 @@ def preprocess_mpt(
                 round_len = len(tokenizer(rou).input_ids)
                 instruction_len = len(tokenizer(parts[0]).input_ids) - 1
 
-            if (
-                i != 0
-                and getattr(tokenizer, "legacy", False)
-                and IS_TOKENIZER_GREATER_THAN_0_14
-            ):
+            if i != 0 and getattr(tokenizer, "legacy", False) and IS_TOKENIZER_GREATER_THAN_0_14:
                 round_len += 1
                 instruction_len += 1
 
@@ -1038,16 +960,10 @@ def preprocess_mpt(
                     f"(#turns={len(re_rounds)} ignored)"
                 )
 
-    return dict(
-        input_ids=input_ids,
-        labels=targets,
-    )
+    return dict(input_ids=input_ids, labels=targets)
 
 
-def preprocess_plain(
-    sources: Sequence[str],
-    tokenizer: transformers.PreTrainedTokenizer,
-) -> Dict:
+def preprocess_plain(sources: Sequence[str], tokenizer: transformers.PreTrainedTokenizer) -> Dict:
     # add end signal and concatenate together
     conversations = []
     for source in sources:
@@ -1055,15 +971,12 @@ def preprocess_plain(
         assert DEFAULT_IMAGE_TOKEN in source[0]["value"]
         source[0]["value"] = DEFAULT_IMAGE_TOKEN
         conversation = (
-            source[0]["value"]
-            + source[1]["value"]
-            + conversation_lib.default_conversation.sep
+            source[0]["value"] + source[1]["value"] + conversation_lib.default_conversation.sep
         )
         conversations.append(conversation)
     # tokenize conversations
     input_ids = [
-        tokenizer_image_token(prompt, tokenizer, return_tensors="pt")
-        for prompt in conversations
+        tokenizer_image_token(prompt, tokenizer, return_tensors="pt") for prompt in conversations
     ]
     targets = copy.deepcopy(input_ids)
     for target, source in zip(targets, sources):
@@ -1074,9 +987,7 @@ def preprocess_plain(
 
 
 def preprocess(
-    sources: Sequence[str],
-    tokenizer: transformers.PreTrainedTokenizer,
-    has_image: bool = False,
+    sources: Sequence[str], tokenizer: transformers.PreTrainedTokenizer, has_image: bool = False
 ) -> Dict:
     """
     Given a list of sources, each is a conversation list. This transform:
@@ -1085,15 +996,9 @@ def preprocess(
     3. Tokenize the concatenated conversation;
     4. Make a deepcopy as the target. Mask human words with IGNORE_INDEX.
     """
-    if (
-        conversation_lib.default_conversation.sep_style
-        == conversation_lib.SeparatorStyle.PLAIN
-    ):
+    if conversation_lib.default_conversation.sep_style == conversation_lib.SeparatorStyle.PLAIN:
         return preprocess_plain(sources, tokenizer)
-    if (
-        conversation_lib.default_conversation.sep_style
-        == conversation_lib.SeparatorStyle.LLAMA_2
-    ):
+    if conversation_lib.default_conversation.sep_style == conversation_lib.SeparatorStyle.LLAMA_2:
         return preprocess_llama_2(sources, tokenizer, has_image=has_image)
     if conversation_lib.default_conversation.version.startswith("v1"):
         return preprocess_v1(sources, tokenizer, has_image=has_image)
@@ -1130,9 +1035,9 @@ def preprocess(
         if has_image:
             tokenized_lens = get_tokenize_len([header] + [s["value"] for s in source])
         else:
-            tokenized_lens = _tokenize_fn(
-                [header] + [s["value"] for s in source], tokenizer
-            )["input_ids_lens"]
+            tokenized_lens = _tokenize_fn([header] + [s["value"] for s in source], tokenizer)[
+                "input_ids_lens"
+            ]
         speakers = [sentence["from"] for sentence in source]
         _mask_targets(target, tokenized_lens, speakers)
 
@@ -1141,10 +1046,7 @@ def preprocess(
 
 class SupervisedWebDataset(IterableDataset):
     def __init__(
-        self,
-        data_path: str,
-        tokenizer: transformers.PreTrainedTokenizer,
-        data_args: DataArguments,
+        self, data_path: str, tokenizer: transformers.PreTrainedTokenizer, data_args: DataArguments
     ):
         super(SupervisedWebDataset, self).__init__()
         self.tokenizer = tokenizer
@@ -1173,15 +1075,11 @@ class SupervisedWebDataset(IterableDataset):
             image_aspect_ratio = overwrite_image_aspect_ratio
         if image_aspect_ratio == "highres":
             image = process_highres_image(
-                image,
-                self.data_args.image_processor,
-                self.data_args.image_grid_pinpoints,
+                image, self.data_args.image_processor, self.data_args.image_grid_pinpoints
             )
         elif image_aspect_ratio == "anyres" or "anyres_max" in image_aspect_ratio:
             image = process_anyres_image(
-                image,
-                self.data_args.image_processor,
-                self.data_args.image_grid_pinpoints,
+                image, self.data_args.image_processor, self.data_args.image_grid_pinpoints
             )
         elif image_aspect_ratio == "crop_split":
             image = process_highres_image_crop_split(image, self.data_args)
@@ -1200,9 +1098,7 @@ class SupervisedWebDataset(IterableDataset):
                     result.paste(pil_img, ((height - width) // 2, 0))
                     return result
 
-            image = expand2square(
-                image, tuple(int(x * 255) for x in processor.image_mean)
-            )
+            image = expand2square(image, tuple(int(x * 255) for x in processor.image_mean))
             image = processor.preprocess(image, return_tensors="pt")["pixel_values"][0]
         else:
             image = processor.preprocess(image, return_tensors="pt")["pixel_values"][0]
@@ -1216,8 +1112,7 @@ class SupervisedWebDataset(IterableDataset):
 
         current_time = datetime.now()
         print(
-            f'_get_item {current_time.strftime("%Y-%m-%d %H:%M:%S")} id={sources["id"]}',
-            flush=True,
+            f'_get_item {current_time.strftime("%Y-%m-%d %H:%M:%S")} id={sources["id"]}', flush=True
         )
 
         sources["conversations"] = json.loads(sources["conversations"])
@@ -1291,8 +1186,8 @@ class SupervisedWebDataset(IterableDataset):
                         except IOError:
                             print(f"Failed to read frame at path: {frame_path}")
                 else:
-                    video, video_time, frame_time, num_frames_to_sample = (
-                        process_video_with_decord(video_file, self.data_args)
+                    video, video_time, frame_time, num_frames_to_sample = process_video_with_decord(
+                        video_file, self.data_args
                     )
 
                 processor = self.data_args.image_processor
@@ -1322,9 +1217,7 @@ class SupervisedWebDataset(IterableDataset):
         else:
             prompt = None
 
-        data_dict = dict(
-            input_ids=data_dict["input_ids"][0], labels=data_dict["labels"][0]
-        )
+        data_dict = dict(input_ids=data_dict["input_ids"][0], labels=data_dict["labels"][0])
 
         # image exist in the data
         if "image" in sources[0]:
@@ -1339,7 +1232,7 @@ class SupervisedWebDataset(IterableDataset):
                     torch.zeros(1, 3, crop_size["height"], crop_size["width"]),
                     (crop_size["width"], crop_size["height"]),
                     "text",
-                ),
+                )
             ]
         # prompt exist in the data
         if prompt is not None:
@@ -1352,10 +1245,7 @@ class SupervisedWebDataset(IterableDataset):
 
 class LazySupervisedDataset(Dataset):
     def __init__(
-        self,
-        data_path: str,
-        tokenizer: transformers.PreTrainedTokenizer,
-        data_args: DataArguments,
+        self, data_path: str, tokenizer: transformers.PreTrainedTokenizer, data_args: DataArguments
     ):
         super(LazySupervisedDataset, self).__init__()
         self.tokenizer = tokenizer
@@ -1363,9 +1253,7 @@ class LazySupervisedDataset(Dataset):
 
         # Handle multiple JSON files specified in the data_path
         if "{" in data_path and "}" in data_path:
-            base_path, file_pattern = re.match(
-                r"^(.*)\{(.*)\}\.json$", data_path
-            ).groups()
+            base_path, file_pattern = re.match(r"^(.*)\{(.*)\}\.json$", data_path).groups()
             file_names = file_pattern.split(",")
             rank0_print(f"Loading {file_names} from {base_path}")
             data_args.dataset_paths = []
@@ -1389,17 +1277,13 @@ class LazySupervisedDataset(Dataset):
                 #     sampling_strategy: end:3000
                 #   - json_path: xxxx3.json
                 #     sampling_strategy: random:999
-                data_args.dataset_paths = [
-                    dataset.get("json_path") for dataset in datasets
-                ]
+                data_args.dataset_paths = [dataset.get("json_path") for dataset in datasets]
                 for dataset in datasets:
                     json_path = dataset.get("json_path")
                     sampling_strategy = dataset.get("sampling_strategy", "all")
                     sampling_number = None
 
-                    rank0_print(
-                        f"Loading {json_path} with {sampling_strategy} sampling strategy"
-                    )
+                    rank0_print(f"Loading {json_path} with {sampling_strategy} sampling strategy")
 
                     if json_path.endswith(".jsonl"):
                         cur_data_dict = []
@@ -1413,14 +1297,10 @@ class LazySupervisedDataset(Dataset):
                         raise ValueError(f"Unsupported file type: {json_path}")
 
                     if ":" in sampling_strategy:
-                        sampling_strategy, sampling_number = sampling_strategy.split(
-                            ":"
-                        )
+                        sampling_strategy, sampling_number = sampling_strategy.split(":")
                         if "%" in sampling_number:
                             sampling_number = math.ceil(
-                                int(sampling_number.split("%")[0])
-                                * len(cur_data_dict)
-                                / 100
+                                int(sampling_number.split("%")[0]) * len(cur_data_dict) / 100
                             )
                         else:
                             sampling_number = int(sampling_number)
@@ -1452,12 +1332,13 @@ class LazySupervisedDataset(Dataset):
 
         per_launch = total_len // launch_times
         start_index = launch_index * per_launch
-        end_index = (launch_index + 1) * per_launch if launch_index != launch_times - 1 else total_len
+        end_index = (
+            (launch_index + 1) * per_launch if launch_index != launch_times - 1 else total_len
+        )
         self.list_data_dict = self.list_data_dict[start_index:end_index]
         print(f"Loaded {len(self.list_data_dict)} samples by {launch_index}-th launching.")
         self.tokenizer = tokenizer
         self.data_args = data_args
-
 
     def __len__(self):
         return len(self.list_data_dict)
@@ -1468,8 +1349,7 @@ class LazySupervisedDataset(Dataset):
         for sample in self.list_data_dict:
             img_tokens = 128 if "image" in sample else 0
             length_list.append(
-                sum(len(conv["value"].split()) for conv in sample["conversations"])
-                + img_tokens
+                sum(len(conv["value"].split()) for conv in sample["conversations"]) + img_tokens
             )
         return length_list
 
@@ -1477,9 +1357,7 @@ class LazySupervisedDataset(Dataset):
     def modality_lengths(self):
         length_list = []
         for sample in self.list_data_dict:
-            cur_len = sum(
-                len(conv["value"].split()) for conv in sample["conversations"]
-            )
+            cur_len = sum(len(conv["value"].split()) for conv in sample["conversations"])
             assert cur_len > 0, f"Conversation length is 0 for {sample}"
             if "image" in sample or "video" in sample or self.data_args.early_mix_text:
                 length_list.append(cur_len)
@@ -1503,15 +1381,11 @@ class LazySupervisedDataset(Dataset):
             image_aspect_ratio = overwrite_image_aspect_ratio
         if image_aspect_ratio == "highres":
             image = process_highres_image(
-                image,
-                self.data_args.image_processor,
-                self.data_args.image_grid_pinpoints,
+                image, self.data_args.image_processor, self.data_args.image_grid_pinpoints
             )
         elif image_aspect_ratio == "anyres" or "anyres_max" in image_aspect_ratio:
             image = process_anyres_image(
-                image,
-                self.data_args.image_processor,
-                self.data_args.image_grid_pinpoints,
+                image, self.data_args.image_processor, self.data_args.image_grid_pinpoints
             )
         elif image_aspect_ratio == "crop_split":
             image = process_highres_image_crop_split(image, self.data_args)
@@ -1530,9 +1404,7 @@ class LazySupervisedDataset(Dataset):
                     result.paste(pil_img, ((height - width) // 2, 0))
                     return result
 
-            image = expand2square(
-                image, tuple(int(x * 255) for x in processor.image_mean)
-            )
+            image = expand2square(image, tuple(int(x * 255) for x in processor.image_mean))
             image = processor.preprocess(image, return_tensors="pt")["pixel_values"][0]
         else:
             image = processor.preprocess(image, return_tensors="pt")["pixel_values"][0]
@@ -1563,8 +1435,7 @@ class LazySupervisedDataset(Dataset):
             except Exception as e:
                 # no need to sleep
                 print(
-                    f"[Try other #{attempt_idx}] Failed to fetch sample {next_index}. Exception:",
-                    e,
+                    f"[Try other #{attempt_idx}] Failed to fetch sample {next_index}. Exception:", e
                 )
                 pass
 
@@ -1630,8 +1501,8 @@ class LazySupervisedDataset(Dataset):
                         except IOError:
                             print(f"Failed to read frame at path: {frame_path}")
                 else:
-                    video, video_time, frame_time, num_frames_to_sample = (
-                        process_video_with_decord(video_file, self.data_args)
+                    video, video_time, frame_time, num_frames_to_sample = process_video_with_decord(
+                        video_file, self.data_args
                     )
 
                 processor = self.data_args.image_processor
@@ -1647,9 +1518,7 @@ class LazySupervisedDataset(Dataset):
         else:
             sources = copy.deepcopy([e["conversations"] for e in sources])
 
-        has_image = ("image" in self.list_data_dict[i]) or (
-            "video" in self.list_data_dict[i]
-        )
+        has_image = ("image" in self.list_data_dict[i]) or ("video" in self.list_data_dict[i])
         data_dict = preprocess(sources, self.tokenizer, has_image=has_image)
 
         if "prompt" in data_dict:
@@ -1658,9 +1527,7 @@ class LazySupervisedDataset(Dataset):
             prompt = None
 
         if isinstance(i, int):
-            data_dict = dict(
-                input_ids=data_dict["input_ids"][0], labels=data_dict["labels"][0]
-            )
+            data_dict = dict(input_ids=data_dict["input_ids"][0], labels=data_dict["labels"][0])
 
         # image exist in the data
         if "image" in self.list_data_dict[i]:
@@ -1675,7 +1542,7 @@ class LazySupervisedDataset(Dataset):
                     torch.zeros(1, 3, crop_size["height"], crop_size["width"]),
                     (crop_size["width"], crop_size["height"]),
                     "text",
-                ),
+                )
             ]
         # prompt exist in the data
         if prompt is not None:
@@ -1707,15 +1574,11 @@ class DataCollatorForSupervisedDataset(object):
             [instance[key] for instance in instances] for key in ("input_ids", "labels")
         )
         # input_ids, labels, ids = tuple([instance[key] for instance in instances] for key in ("input_ids", "labels", "id"))
-        input_ids = [
-            _input_ids[: self.tokenizer.model_max_length] for _input_ids in input_ids
-        ]
+        input_ids = [_input_ids[: self.tokenizer.model_max_length] for _input_ids in input_ids]
         labels = [_labels[: self.tokenizer.model_max_length] for _labels in labels]
         if self.tokenizer.pad_token_id is None:
             # self.tokenizer.pad_token_id = self.tokenizer.eos_token_id  # FIXME: this could only be triggered for llama3 model.
-            self.tokenizer.pad_token_id = (
-                0  # This gets the best result. Don't know why.
-            )
+            self.tokenizer.pad_token_id = 0  # This gets the best result. Don't know why.
         input_ids = self.pad_sequence(
             input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
         )
@@ -1747,18 +1610,14 @@ class DataCollatorForSupervisedDataset(object):
         return batch
 
 
-def make_supervised_data_module(
-    tokenizer: transformers.PreTrainedTokenizer, data_args
-) -> Dict:
+def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer, data_args) -> Dict:
     """Make dataset and collator for supervised fine-tuning."""
     train_dataset = LazySupervisedDataset(
         tokenizer=tokenizer, data_path=data_args.data_path, data_args=data_args
     )
     # train_dataset = SupervisedWebDataset(tokenizer=tokenizer, data_path=data_args.data_path, data_args=data_args)
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
-    return dict(
-        train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator
-    )
+    return dict(train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator)
 
 
 def get_model(model_args, training_args, bnb_model_from_pretrained_args):
@@ -1785,17 +1644,11 @@ def get_model(model_args, training_args, bnb_model_from_pretrained_args):
     ):
         cfg_pretrained = AutoConfig.from_pretrained(model_args.model_name_or_path)
 
-    if (
-        model_args.use_pos_skipping is not None
-        and model_args.pos_skipping_range is not None
-    ):
+    if model_args.use_pos_skipping is not None and model_args.pos_skipping_range is not None:
         overwrite_config["use_pos_skipping"] = model_args.use_pos_skipping
         overwrite_config["pos_skipping_range"] = model_args.pos_skipping_range
 
-    if (
-        model_args.rope_scaling_factor is not None
-        and model_args.rope_scaling_type is not None
-    ):
+    if model_args.rope_scaling_factor is not None and model_args.rope_scaling_type is not None:
         overwrite_config["rope_scaling"] = {
             "factor": model_args.rope_scaling_factor,
             "type": model_args.rope_scaling_type,
@@ -1821,9 +1674,7 @@ def get_model(model_args, training_args, bnb_model_from_pretrained_args):
     ):
         overwrite_config["mm_resampler_type"] = model_args.mm_resampler_type
         overwrite_config["mm_spatial_pool_stride"] = model_args.mm_spatial_pool_stride
-        overwrite_config["mm_spatial_pool_out_channels"] = (
-            model_args.mm_spatial_pool_out_channels
-        )
+        overwrite_config["mm_spatial_pool_out_channels"] = model_args.mm_spatial_pool_out_channels
         overwrite_config["mm_spatial_pool_mode"] = model_args.mm_spatial_pool_mode
 
     if model_args.mm_spatial_pool_mode is not None:
@@ -1841,9 +1692,7 @@ def get_model(model_args, training_args, bnb_model_from_pretrained_args):
     if model_args.model_class_name is not None:
         actual_model_class_name = f"{model_args.model_class_name}ForCausalLM"
         model_class = getattr(transformers, actual_model_class_name)
-        rank0_print(
-            f"Using model class {model_class} from {model_args.model_class_name}"
-        )
+        rank0_print(f"Using model class {model_class} from {model_args.model_class_name}")
         model = model_class.from_pretrained(
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
@@ -1862,9 +1711,7 @@ def get_model(model_args, training_args, bnb_model_from_pretrained_args):
                 low_cpu_mem_usage=False,
                 **customized_kwargs,
             )
-            from transformers.models.mixtral.modeling_mixtral import (
-                MixtralSparseMoeBlock,
-            )
+            from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
 
             deepspeed.utils.set_z3_leaf_modules(model, [MixtralSparseMoeBlock])
         elif (
@@ -1908,9 +1755,7 @@ def get_model(model_args, training_args, bnb_model_from_pretrained_args):
                     low_cpu_mem_usage=False,
                     **customized_kwargs,
                 )
-                from transformers.models.qwen2_moe.modeling_qwen2_moe import (
-                    Qwen2MoeSparseMoeBlock,
-                )
+                from transformers.models.qwen2_moe.modeling_qwen2_moe import Qwen2MoeSparseMoeBlock
 
                 deepspeed.utils.set_z3_leaf_modules(model, [Qwen2MoeSparseMoeBlock])
             else:
@@ -1948,9 +1793,7 @@ def get_model(model_args, training_args, bnb_model_from_pretrained_args):
 def train(attn_implementation=None):
     global local_rank
 
-    parser = transformers.HfArgumentParser(
-        (ModelArguments, DataArguments, TrainingArguments)
-    )
+    parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     if training_args.verbose_logging:
@@ -1990,10 +1833,7 @@ def train(attn_implementation=None):
 
     model = get_model(model_args, training_args, bnb_model_from_pretrained_args)
     model.config.use_cache = False
-    if (
-        model_args.rope_scaling_factor is not None
-        and model_args.rope_scaling_type is not None
-    ):
+    if model_args.rope_scaling_factor is not None and model_args.rope_scaling_type is not None:
         model.config.rope_scaling = {
             "factor": model_args.rope_scaling_factor,
             "type": model_args.rope_scaling_type,
@@ -2081,9 +1921,7 @@ def train(attn_implementation=None):
     if model_args.version == "v0":
         if tokenizer.pad_token is None:
             smart_tokenizer_and_embedding_resize(
-                special_tokens_dict=dict(pad_token="[PAD]"),
-                tokenizer=tokenizer,
-                model=model,
+                special_tokens_dict=dict(pad_token="[PAD]"), tokenizer=tokenizer, model=model
             )
     elif model_args.version == "v0.5":
         tokenizer.pad_token = tokenizer.unk_token
@@ -2095,14 +1933,10 @@ def train(attn_implementation=None):
                 model_args.version
             ]
         else:
-            conversation_lib.default_conversation = conversation_lib.conv_templates[
-                "vicuna_v1"
-            ]
+            conversation_lib.default_conversation = conversation_lib.conv_templates["vicuna_v1"]
 
     if model_args.vision_tower is not None:
-        model.get_model().initialize_vision_modules(
-            model_args=model_args, fsdp=training_args.fsdp
-        )
+        model.get_model().initialize_vision_modules(model_args=model_args, fsdp=training_args.fsdp)
 
         vision_tower = model.get_vision_tower()
         vision_tower.to(
@@ -2146,9 +1980,7 @@ def train(attn_implementation=None):
                     [dim * patch_size for dim in pair] for pair in grid_pinpoints
                 ]
             elif isinstance(data_args.image_grid_pinpoints, str):
-                data_args.image_grid_pinpoints = ast.literal_eval(
-                    data_args.image_grid_pinpoints
-                )
+                data_args.image_grid_pinpoints = ast.literal_eval(data_args.image_grid_pinpoints)
 
         model.config.image_grid_pinpoints = data_args.image_grid_pinpoints
         model.config.image_crop_resolution = data_args.image_crop_resolution
@@ -2158,15 +1990,13 @@ def train(attn_implementation=None):
         model.config.mm_newline_position = model_args.mm_newline_position
 
         ### Deciding train which part of the model
-        if (
-            model_args.mm_tunable_parts is None
-        ):  # traditional way of deciding which part to train
+        if model_args.mm_tunable_parts is None:  # traditional way of deciding which part to train
             model.config.tune_mm_mlp_adapter = training_args.tune_mm_mlp_adapter = (
                 model_args.tune_mm_mlp_adapter
             )
-            model.config.tune_mm_vision_resampler = (
-                training_args.tune_mm_vision_resampler
-            ) = model_args.tune_mm_vision_resampler
+            model.config.tune_mm_vision_resampler = training_args.tune_mm_vision_resampler = (
+                model_args.tune_mm_vision_resampler
+            )
             if model_args.tune_mm_mlp_adapter or model_args.tune_mm_vision_resampler:
                 model.requires_grad_(False)
             if model_args.tune_mm_mlp_adapter:
@@ -2181,9 +2011,7 @@ def train(attn_implementation=None):
                 for p in model.get_model().mm_projector.parameters():
                     p.requires_grad = False
 
-            model.config.freeze_mm_vision_resampler = (
-                training_args.freeze_mm_vision_resampler
-            )
+            model.config.freeze_mm_vision_resampler = training_args.freeze_mm_vision_resampler
             if training_args.freeze_mm_vision_resampler:
                 for p in model.get_model().vision_resampler.parameters():
                     p.requires_grad = False
@@ -2226,8 +2054,7 @@ def train(attn_implementation=None):
                         param.requires_grad_(True)
 
         total_params = sum(
-            p.ds_numel if hasattr(p, "ds_numel") else p.numel()
-            for p in model.parameters()
+            p.ds_numel if hasattr(p, "ds_numel") else p.numel() for p in model.parameters()
         )
         trainable_params = sum(
             p.ds_numel if hasattr(p, "ds_numel") else p.numel()
@@ -2237,9 +2064,7 @@ def train(attn_implementation=None):
         rank0_print(f"Total parameters: ~{total_params/1e6:.2f} MB)")
         rank0_print(f"Trainable parameters: ~{trainable_params/1e6:.2f} MB)")
         if training_args.bits in [4, 8]:
-            model.get_model().mm_projector.to(
-                dtype=compute_dtype, device=training_args.device
-            )
+            model.get_model().mm_projector.to(dtype=compute_dtype, device=training_args.device)
 
         model.config.mm_use_im_start_end = data_args.mm_use_im_start_end = (
             model_args.mm_use_im_start_end
@@ -2266,9 +2091,7 @@ def train(attn_implementation=None):
 
     ## TODO
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
-    trainer = LLaVATrainer(
-        model=model, tokenizer=tokenizer, args=training_args, **data_module
-    )
+    trainer = LLaVATrainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
 
     output = training_args.output_dir
     if not os.path.exists(output):
@@ -2347,14 +2170,11 @@ def train(attn_implementation=None):
                 sequence.append(image_sizes)
                 sequence.append(modalities)
 
-            sample = {
-                "__key__": str(global_id),
-                "sequence.pyd": sequence,
-            }
+            sample = {"__key__": str(global_id), "sequence.pyd": sequence}
 
             shard_writer.write(sample)
             global_id += 1
-            
+
     end_time = time.time()
     print(
         f"rank {dist.get_rank()} datasets saved to {training_args.output_dir} in {end_time-start_time:.2f}s."

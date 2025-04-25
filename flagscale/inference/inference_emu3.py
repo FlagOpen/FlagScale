@@ -2,10 +2,12 @@ import os
 import sys
 
 import torch
+
 from PIL import Image
 from transformers import AutoImageProcessor, AutoModel, AutoTokenizer
 
 import vllm
+
 from vllm import LLM
 from vllm.sampling_params import SamplingParams
 
@@ -23,9 +25,7 @@ def prepare_processor(llm_cfg, vq_model):
     tokenizer = AutoTokenizer.from_pretrained(
         llm_cfg.model, trust_remote_code=True, padding_side="left"
     )
-    image_processor = AutoImageProcessor.from_pretrained(
-        vq_model, trust_remote_code=True
-    )
+    image_processor = AutoImageProcessor.from_pretrained(vq_model, trust_remote_code=True)
     image_tokenizer = AutoModel.from_pretrained(
         vq_model, device_map="cuda:0", trust_remote_code=True
     ).eval()
@@ -40,9 +40,7 @@ def inference_t2i(cfg):
     # Step 1: Parse inference config
     prompts = cfg.generate.get("prompts", [])
     ratios = cfg.generate.get("ratios", [])
-    assert len(prompts) == len(
-        ratios
-    ), "Please set the same length of prompts and ratios."
+    assert len(prompts) == len(ratios), "Please set the same length of prompts and ratios."
 
     # Step 2: initialize the LLM engine
     llm_cfg = cfg.get("llm", {})
@@ -126,9 +124,7 @@ def inference_i2t(cfg):
     # Step 1: Parse inference config
     prompts = cfg.generate.get("prompts", [])
     images = cfg.generate.get("images", [])
-    assert len(prompts) == len(
-        images
-    ), "Please set the same length of prompts and images."
+    assert len(prompts) == len(images), "Please set the same length of prompts and images."
 
     # Step 2: initialize the LLM engine
     llm_cfg = cfg.get("llm", {})
@@ -163,12 +159,7 @@ def inference_i2t(cfg):
         sampling_params.append(SamplingParams(**sampling_cfg))
 
     # Step 6: build vllm inputs
-    inputs = [
-        {
-            "prompt_token_ids": p_ids,
-        }
-        for p_ids in positive_input_ids
-    ]
+    inputs = [{"prompt_token_ids": p_ids} for p_ids in positive_input_ids]
     print(f"=> {inputs=}")
     print(f"=> {sampling_params=}")
 

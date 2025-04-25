@@ -1,12 +1,8 @@
 import os
 
 import torch
-from transformers import (
-    AutoImageProcessor,
-    AutoModel,
-    AutoModelForCausalLM,
-    AutoTokenizer,
-)
+
+from transformers import AutoImageProcessor, AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 from flagscale.compress.adapter import LLMCompressorAdapter
 from flagscale.inference.processing_emu3 import (
@@ -43,9 +39,7 @@ def test_llmcompressor_adpter_with_dataset():
         trust_remote_code=True,
     )
     model.eval()
-    tokenizer = AutoTokenizer.from_pretrained(
-        EMU_HUB, trust_remote_code=True, padding_side="left"
-    )
+    tokenizer = AutoTokenizer.from_pretrained(EMU_HUB, trust_remote_code=True, padding_side="left")
     image_processor = AutoImageProcessor.from_pretrained(VQ_HUB, trust_remote_code=True)
     image_tokenizer = AutoModel.from_pretrained(
         VQ_HUB, device_map="cuda:0", trust_remote_code=True

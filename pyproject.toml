@@ -1,0 +1,14 @@
+[tool.black]
+line-length = 100
+skip_string_normalization = true
+skip_magic_trailing_comma = true
+
+[tool.isort]
+line_length = 100
+profile = "black"
+use_parentheses = true
+skip_gitignore = true
+combine_as_imports = true
+lines_between_types = 1
+known_local_folder = ["flagscale"]
+known_first_party = ["megatron", "vllm"]
