@@ -1,5 +1,6 @@
 import os
 import sys
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -231,10 +232,7 @@ class TestMetaTensor:
         # Test setter - shrinking shape
         tensor.shape = [2, 4]
         assert tensor.shape == [2, 4]
-        assert tensor.shard_spec == [
-            1,
-            2,
-        ]  # Original sharding preserved for remaining dimensions
+        assert tensor.shard_spec == [1, 2]  # Original sharding preserved for remaining dimensions
 
         # Test setter with dimension not divisible by shard
         with pytest.raises(ValueError):
@@ -268,9 +266,7 @@ class TestMetaTensor:
         assert tensor.total_elements(apply_sharding=False) == 32  # 2*4*4
 
         # With sharding
-        assert (
-            tensor.total_elements(apply_sharding=True) == 16
-        )  # 2*(4/2)*4 = 2*2*4 = 16
+        assert tensor.total_elements(apply_sharding=True) == 16  # 2*(4/2)*4 = 2*2*4 = 16
 
     def test_unshard(self):
         """Test unshard method."""
@@ -735,12 +731,7 @@ class TestMetaTensor:
         # Test expanding singleton dimensions
         expanded = tensor.expand(10, 20, 15, 30)
         assert expanded.shape == [10, 20, 15, 30]
-        assert expanded.shard_spec == [
-            1,
-            4,
-            1,
-            1,
-        ]  # Preserve sharding where dimensions match
+        assert expanded.shard_spec == [1, 4, 1, 1]  # Preserve sharding where dimensions match
 
         # Test -1 for unchanged dimensions
         expanded = tensor.expand(-1, -1, 15, -1)

@@ -27,9 +27,7 @@ def compute_activated_weight_number(args, verbose=False):
 
         attn_params += args.hidden_size * (
             args.kv_lora_rank + args.qk_pos_emb_head_dim
-        ) + args.kv_lora_rank * args.num_attention_heads * (
-            args.qk_head_dim + args.v_head_dim
-        )
+        ) + args.kv_lora_rank * args.num_attention_heads * (args.qk_head_dim + args.v_head_dim)
         # out proj
         attn_params += args.v_head_dim * args.num_attention_heads * args.hidden_size
         # pre attn layernorm
@@ -48,9 +46,7 @@ def compute_activated_weight_number(args, verbose=False):
             args.num_query_groups = args.num_attention_heads
 
         # qkv proj
-        attn_params = args.hidden_size * (
-            query_projection_size + 2 * kv_projection_size
-        )
+        attn_params = args.hidden_size * (query_projection_size + 2 * kv_projection_size)
         # out proj
         attn_params += query_projection_size * args.hidden_size
         # pre attn layernorm
@@ -64,7 +60,9 @@ def compute_activated_weight_number(args, verbose=False):
                 attn_params += kv_projection_size
 
     # Part 2: MLP or MoE =====================================================================
-    moe_ffn_hidden_size = args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size
+    moe_ffn_hidden_size = (
+        args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size
+    )
     shared_expert_ffn_hidden_size = (
         0
         if args.moe_shared_expert_intermediate_size is None
@@ -84,8 +82,7 @@ def compute_activated_weight_number(args, verbose=False):
         # Calculate number of dense and MoE Transformer MLPs.
         if isinstance(args.moe_layer_freq, int):
             moe_layer_pattern = [
-                1 if (i % args.moe_layer_freq == 0) else 0
-                for i in range(args.num_layers)
+                1 if (i % args.moe_layer_freq == 0) else 0 for i in range(args.num_layers)
             ]
         elif isinstance(args.moe_layer_freq, list):
             moe_layer_pattern = args.moe_layer_freq
@@ -107,11 +104,7 @@ def compute_activated_weight_number(args, verbose=False):
         2
         * args.hidden_size
         * (
-            +(
-                moe_ffn_hidden_size
-                * num_experts_routed_to
-                * gated_linear_multiplier
-            )
+            +(moe_ffn_hidden_size * num_experts_routed_to * gated_linear_multiplier)
             + (shared_expert_ffn_hidden_size * gated_linear_multiplier)
         )
         # gate
@@ -196,9 +189,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
 
         attn_params += args.hidden_size * (
             args.kv_lora_rank + args.qk_pos_emb_head_dim
-        ) + args.kv_lora_rank * args.num_attention_heads * (
-            args.qk_head_dim + args.v_head_dim
-        )
+        ) + args.kv_lora_rank * args.num_attention_heads * (args.qk_head_dim + args.v_head_dim)
         # out proj
         attn_params += args.v_head_dim * args.num_attention_heads * args.hidden_size
         # pre attn layernorm
@@ -217,9 +208,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
             args.num_query_groups = args.num_attention_heads
 
         # qkv proj
-        attn_params = args.hidden_size * (
-            query_projection_size + 2 * kv_projection_size
-        )
+        attn_params = args.hidden_size * (query_projection_size + 2 * kv_projection_size)
         # out proj
         attn_params += query_projection_size * args.hidden_size
         # pre attn layernorm
@@ -233,7 +222,9 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
                 attn_params += kv_projection_size
 
     # Part 2: MLP or MoE ====================================================================
-    moe_ffn_hidden_size = args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size
+    moe_ffn_hidden_size = (
+        args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size
+    )
     shared_expert_ffn_hidden_size = (
         0
         if args.moe_shared_expert_intermediate_size is None
@@ -251,8 +242,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
         # Calculate number of dense and MoE Transformer MLPs.
         if isinstance(args.moe_layer_freq, int):
             moe_layer_pattern = [
-                1 if (i % args.moe_layer_freq == 0) else 0
-                for i in range(args.num_layers)
+                1 if (i % args.moe_layer_freq == 0) else 0 for i in range(args.num_layers)
             ]
         elif isinstance(args.moe_layer_freq, list):
             moe_layer_pattern = args.moe_layer_freq
@@ -341,9 +331,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
             f"> Number of parameters in embedding layers in billions: "
             f"{num_parameters_in_embedding_layers / 10**9:.2f}"
         )
-        print(
-            f"> Total number of parameters in billions: {num_total_parameters / 10**9:.2f}"
-        )
+        print(f"> Total number of parameters in billions: {num_total_parameters / 10**9:.2f}")
 
     # PART5: Distributed =====================================================================
     sparse_mlp_params_per_ep_rank_ddp = (
@@ -378,9 +366,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
     )
 
     num_parameters_in_transformer_layers_per_tp_ep_rank_noddp = (
-        num_dense_layers
-        * (attn_params + dense_mlp_params)
-        / args.tensor_model_parallel_size
+        num_dense_layers * (attn_params + dense_mlp_params) / args.tensor_model_parallel_size
         + num_moe_layers
         * (attn_params + sparse_mlp_params_per_ep_rank_noddp)
         / args.tensor_model_parallel_size
@@ -394,14 +380,12 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
     num_parameters_in_mtp_block_per_tp_ep_rank_noddp = num_mtp_predictor * (
         4 * args.hidden_size  # tow layernorm ops
         + 2 * args.hidden_size * args.hidden_size  # one linear
-        + (attn_params + sparse_mlp_params_per_ep_rank_noddp)
-        / args.tensor_model_parallel_size
+        + (attn_params + sparse_mlp_params_per_ep_rank_noddp) / args.tensor_model_parallel_size
         + 2 * args.hidden_size  # final layernorm
     )
 
     num_parameters_on_most_loaded_model_shard_ddp = (
-        num_parameters_in_transformer_layers_per_tp_ep_rank_ddp
-        / args.pipeline_model_parallel_size
+        num_parameters_in_transformer_layers_per_tp_ep_rank_ddp / args.pipeline_model_parallel_size
         + num_parameters_in_mtp_block_per_tp_ep_rank_ddp
     )
 
@@ -412,10 +396,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
         + num_parameters_in_mtp_block_per_tp_ep_rank_noddp
     )
 
-    if (
-        args.untie_embeddings_and_output_weights
-        and args.pipeline_model_parallel_size == 1
-    ):
+    if args.untie_embeddings_and_output_weights and args.pipeline_model_parallel_size == 1:
         num_parameters_on_most_loaded_model_shard_noddp += (
             embedding_size / args.tensor_model_parallel_size
         )
@@ -448,14 +429,10 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
             * args.expert_model_parallel_size
             * args.pipeline_model_parallel_size
         )
-        expert_data_parallel_size = (
-            args.world_size // expert_tensor_model_pipeline_parallel_size
-        )
+        expert_data_parallel_size = args.world_size // expert_tensor_model_pipeline_parallel_size
         weight_and_optimizer_memory = num_parameters_on_most_loaded_model_shard_ddp * (
             6 + 12 / expert_data_parallel_size
-        ) + num_parameters_on_most_loaded_model_shard_noddp * (
-            6 + 12 / args.data_parallel_size
-        )
+        ) + num_parameters_on_most_loaded_model_shard_noddp * (6 + 12 / args.data_parallel_size)
     else:
         weight_and_optimizer_memory = (
             num_parameters_on_most_loaded_model_shard_ddp
@@ -497,34 +474,19 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
         # 2. QKT matrix multiply
         q_head_dim = args.qk_head_dim + args.qk_pos_emb_head_dim
         QKT_activation_memory = (
-            4
-            * args.micro_batch_size
-            * args.num_attention_heads
-            * args.seq_length
-            * q_head_dim
+            4 * args.micro_batch_size * args.num_attention_heads * args.seq_length * q_head_dim
         )
         # 3. Softmax
         softmax_activation_memory = (
-            2
-            * args.micro_batch_size
-            * args.num_attention_heads
-            * args.seq_length
-            * args.seq_length
+            2 * args.micro_batch_size * args.num_attention_heads * args.seq_length * args.seq_length
         )
         # 4. Softmax Dropout
         softmax_dropout_activation_memory = (
-            args.micro_batch_size
-            * args.num_attention_heads
-            * args.seq_length
-            * args.seq_length
+            args.micro_batch_size * args.num_attention_heads * args.seq_length * args.seq_length
         )
         # 5. Attention over V
         attention_over_V_activation_memory = (
-            2
-            * args.micro_batch_size
-            * args.num_attention_heads
-            * args.seq_length
-            * args.seq_length
+            2 * args.micro_batch_size * args.num_attention_heads * args.seq_length * args.seq_length
             + 2
             * args.micro_batch_size
             * args.num_attention_heads
@@ -533,11 +495,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
         )
         # 6. Linear
         linear_activation_memory = (
-            2
-            * args.micro_batch_size
-            * args.num_attention_heads
-            * args.seq_length
-            * args.v_head_dim
+            2 * args.micro_batch_size * args.num_attention_heads * args.seq_length * args.v_head_dim
         )
         # 7. linear dropout
         linear_dropout_activation_memory = (
@@ -545,9 +503,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
         )
     else:
         # 1. Q, K, V matrix multiplies
-        QKV_activation_memory = (
-            2 * args.seq_length * args.micro_batch_size * args.hidden_size
-        )
+        QKV_activation_memory = 2 * args.seq_length * args.micro_batch_size * args.hidden_size
         # 2. QKT matrix multiply
         QKT_activation_memory = (
             2
@@ -555,39 +511,20 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
             * args.num_attention_heads
             * args.seq_length
             * args.kv_channels
-            + 2
-            * args.micro_batch_size
-            * args.num_query_groups
-            * args.kv_channels
-            * args.seq_length
+            + 2 * args.micro_batch_size * args.num_query_groups * args.kv_channels * args.seq_length
         )
         # 3. Softmax
         softmax_activation_memory = (
-            2
-            * args.micro_batch_size
-            * args.num_attention_heads
-            * args.seq_length
-            * args.seq_length
+            2 * args.micro_batch_size * args.num_attention_heads * args.seq_length * args.seq_length
         )
         # 4. Softmax Dropout
         softmax_dropout_activation_memory = (
-            args.micro_batch_size
-            * args.num_attention_heads
-            * args.seq_length
-            * args.seq_length
+            args.micro_batch_size * args.num_attention_heads * args.seq_length * args.seq_length
         )
         # 5. Attention over V
         attention_over_V_activation_memory = (
-            2
-            * args.micro_batch_size
-            * args.num_attention_heads
-            * args.seq_length
-            * args.seq_length
-            + 2
-            * args.micro_batch_size
-            * args.num_query_groups
-            * args.kv_channels
-            * args.seq_length
+            2 * args.micro_batch_size * args.num_attention_heads * args.seq_length * args.seq_length
+            + 2 * args.micro_batch_size * args.num_query_groups * args.kv_channels * args.seq_length
         )
         # 6. Linear
         linear_activation_memory = (
@@ -701,19 +638,13 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
 
     # Memory of bass
     bass_activation_memory = (
-        5
-        * args.micro_batch_size
-        * args.num_attention_heads
-        * args.seq_length
-        * args.seq_length
+        5 * args.micro_batch_size * args.num_attention_heads * args.seq_length * args.seq_length
     )
 
     # Now add activation memory required for input embeddings, last LayerNorm and output layer.
     # Input to embedding
     embedding_activation_memory = 8 * args.seq_length * args.micro_batch_size
-    dropout_embedding_activation_memory = (
-        args.seq_length * args.micro_batch_size * args.hidden_size
-    )
+    dropout_embedding_activation_memory = args.seq_length * args.micro_batch_size * args.hidden_size
     # Last LayerNorm and inputs to output layer and CE loss.
     output_layer_and_loss_activation_memory = (
         args.seq_length
@@ -729,10 +660,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
     if args.virtual_pipeline_model_parallel_size is not None:
         interleaved_schedule_memory_penalty = 1 + (
             (args.pipeline_model_parallel_size - 1)
-            / (
-                args.pipeline_model_parallel_size
-                * args.virtual_pipeline_model_parallel_size
-            )
+            / (args.pipeline_model_parallel_size * args.virtual_pipeline_model_parallel_size)
         )
         in_flight_microbatches = math.ceil(
             interleaved_schedule_memory_penalty * args.pipeline_model_parallel_size
@@ -745,14 +673,9 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
 
     # If using non-interleaved schedule, number of microbatches in pipeline can be less than pp_size,
     # so discount accordingly.
-    if (
-        args.virtual_pipeline_model_parallel_size is None
-        and args.pipeline_model_parallel_size > 1
-    ):
+    if args.virtual_pipeline_model_parallel_size is None and args.pipeline_model_parallel_size > 1:
         if num_microbatches is not None:
-            in_flight_microbatches = min(
-                num_microbatches, args.pipeline_model_parallel_size
-            )
+            in_flight_microbatches = min(num_microbatches, args.pipeline_model_parallel_size)
         else:
             in_flight_microbatches = args.pipeline_model_parallel_size
         if verbose:
@@ -761,11 +684,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
     activation_memory = None
     _NVTE_FLASH_ATTN = int(os.getenv("NVTE_FLASH_ATTN", "1"))
     _NVTE_FUSED_ATTN = int(os.getenv("NVTE_FUSED_ATTN", "1"))
-    if (
-        args.recompute_granularity == "selective"
-        or _NVTE_FLASH_ATTN
-        or _NVTE_FUSED_ATTN
-    ):
+    if args.recompute_granularity == "selective" or _NVTE_FLASH_ATTN or _NVTE_FUSED_ATTN:
         attention_parallel_by_tp_activation_memory -= bass_activation_memory
 
     if args.sequence_parallel:
@@ -777,12 +696,10 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
         ) / args.tensor_model_parallel_size
         sparse_perlayer_activation = (
             attention_parallel_by_tp_activation_memory / args.tensor_model_parallel_size
-            + attention_not_parallel_by_tp_activation_memory
-            / args.tensor_model_parallel_size
+            + attention_not_parallel_by_tp_activation_memory / args.tensor_model_parallel_size
             + sparse_ffn_parallel_by_tp_activation_memory
             + sparse_ffn_not_parallel_by_tp_activation_memory
-            + shared_sparse_ffn_parallel_by_tp_activation_memory
-            / args.tensor_model_parallel_size
+            + shared_sparse_ffn_parallel_by_tp_activation_memory / args.tensor_model_parallel_size
             + shared_sparse_ffn_not_parallel_by_tp_activation_memory
             / args.tensor_model_parallel_size
         )
@@ -796,11 +713,9 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
         sparse_perlayer_activation = (
             attention_parallel_by_tp_activation_memory / args.tensor_model_parallel_size
             + attention_not_parallel_by_tp_activation_memory
-            + sparse_ffn_parallel_by_tp_activation_memory
-            / args.tensor_model_parallel_size
+            + sparse_ffn_parallel_by_tp_activation_memory / args.tensor_model_parallel_size
             + sparse_ffn_not_parallel_by_tp_activation_memory
-            + shared_sparse_ffn_parallel_by_tp_activation_memory
-            / args.tensor_model_parallel_size
+            + shared_sparse_ffn_parallel_by_tp_activation_memory / args.tensor_model_parallel_size
             + shared_sparse_ffn_not_parallel_by_tp_activation_memory
         )
 
@@ -812,8 +727,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
         # Calculate number of dense and MoE Transformer MLPs.
         if isinstance(args.moe_layer_freq, int):
             moe_layer_pattern = [
-                1 if (i % args.moe_layer_freq == 0) else 0
-                for i in range(args.num_layers)
+                1 if (i % args.moe_layer_freq == 0) else 0 for i in range(args.num_layers)
             ]
         elif isinstance(args.moe_layer_freq, list):
             moe_layer_pattern = args.moe_layer_freq
@@ -840,11 +754,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
         if args.pipeline_model_parallel_size > 1:
             activation_memory = (
                 QKV_activation_memory
-                * (
-                    args.num_layers
-                    / args.pipeline_model_parallel_size
-                    / recompute_layers
-                )
+                * (args.num_layers / args.pipeline_model_parallel_size / recompute_layers)
                 * interleaved_schedule_memory_penalty
                 * in_flight_microbatches
                 + embedding_activation_memory * in_flight_microbatches
@@ -865,10 +775,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
                 (
                     QKV_activation_memory * recompute_layers
                     + perlayer_activation
-                    * (
-                        args.num_layers / args.pipeline_model_parallel_size
-                        - recompute_layers
-                    )
+                    * (args.num_layers / args.pipeline_model_parallel_size - recompute_layers)
                 )
                 * interleaved_schedule_memory_penalty
                 * in_flight_microbatches
@@ -909,8 +816,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
                 )
                 + embedding_activation_memory / args.tensor_model_parallel_size
                 + dropout_embedding_activation_memory / args.tensor_model_parallel_size
-                + output_layer_and_loss_activation_memory
-                / args.tensor_model_parallel_size
+                + output_layer_and_loss_activation_memory / args.tensor_model_parallel_size
             )
 
     assert activation_memory is not None
@@ -919,16 +825,13 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
 
 def report_theoretical_memory(args, num_microbatches=None, verbose=False):
     weight_and_optimizer_memory = (
-        compute_weight_and_optimizer_memory(args, verbose=verbose)
-        / NUM_BYTES_IN_MEGABYTE
+        compute_weight_and_optimizer_memory(args, verbose=verbose) / NUM_BYTES_IN_MEGABYTE
     )
 
     compute_activated_weight_number(args, verbose=verbose)
 
     activation_memory = (
-        compute_activation_memory(
-            args, num_microbatches=num_microbatches, verbose=verbose
-        )
+        compute_activation_memory(args, num_microbatches=num_microbatches, verbose=verbose)
         / NUM_BYTES_IN_MEGABYTE
     )
     total_memory = weight_and_optimizer_memory + activation_memory

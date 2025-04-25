@@ -26,11 +26,7 @@ def check_and_get_port(target_port=None, host="0.0.0.0"):
             s.bind((host, 0))
             free_port = s.getsockname()[1]
             if target_port is None:
-                logger.info(
-                    f"Port {port} is occupied. Allocated free port: {free_port}"
-                )
+                logger.info(f"Port {port} is occupied. Allocated free port: {free_port}")
             else:
-                logger.warning(
-                    f"Port {port} is occupied. Allocated free port: {free_port}"
-                )
+                logger.warning(f"Port {port} is occupied. Allocated free port: {free_port}")
             return free_port

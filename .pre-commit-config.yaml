@@ -2,6 +2,7 @@ exclude: |
     (?x)^(
         flagscale/train/backends/.*|
         flagscale/inference/backends/.*|
+        third_party/.*|
         megatron-energon/.*|
         hardware/.*\.patch|
         .*\.txt|
@@ -17,6 +18,14 @@ repos:
     -   id: detect-private-key
     -   id: end-of-file-fixer
     -   id: trailing-whitespace
+-   repo: https://github.com/Lucas-C/pre-commit-hooks.git
+    rev: v1.5.1
+    hooks:
+    -   id: remove-crlf
+    -   id: remove-tabs
+        name: Tabs remover (Python)
+        files: (.*\.(py))$
+        args: [--whitespaces-count, '4']
 -   repo: https://github.com/psf/black
     rev: 24.4.2
     hooks:
@@ -25,6 +34,7 @@ repos:
             (?x)^(
                 flagscale/train/backends/.*|
                 flagscale/inference/backends/.*|
+                third_party/.*|
                 megatron-energon/.*|
                 hardware/.*\.patch|
                 flagscale/inference/processing_emu3.py|
@@ -39,11 +49,11 @@ repos:
     rev: 5.13.2
     hooks:
     -   id: isort
-        args: ['--profile', 'black', '--known-local-folder', 'flagscale']
         exclude: |
             (?x)^(
                 flagscale/train/backends/.*|
                 flagscale/inference/backends/.*|
+                third_party/.*|
                 megatron-energon/.*|
                 hardware/.*\.patch|
                 flagscale/inference/processing_emu3.py|

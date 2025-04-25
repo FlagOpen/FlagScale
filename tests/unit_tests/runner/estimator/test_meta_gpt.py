@@ -3,13 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from flagscale.runner.estimator.meta_gpt import GPTModel
-from flagscale.runner.estimator.meta_modules import (
-    Dropout,
-    Embedding,
-    LayerNorm,
-    Linear,
-    RMSNorm,
-)
+from flagscale.runner.estimator.meta_modules import Dropout, Embedding, LayerNorm, Linear, RMSNorm
 from flagscale.runner.estimator.meta_registry import get_registry, register_model
 from flagscale.runner.estimator.meta_tensor import MetaTensor, ShardedDim
 from flagscale.runner.estimator.meta_transformer_layer import TransformerLayer
@@ -88,9 +82,7 @@ def rotary_config():
     config.rotary_embedding_dim = 64
     config.rotary_embedding_base = 10000
     config.rotary_embedding_max_seq_len = 2048
-    config.position_embedding_type = (
-        "rotary"  # Explicitly set the position embedding type
-    )
+    config.position_embedding_type = "rotary"  # Explicitly set the position embedding type
     return config
 
 
@@ -140,9 +132,7 @@ class TestGPTModel:
         # Check position embeddings
         assert not model.use_rotary_position_embeddings
         assert isinstance(model.position_embeddings, Embedding)
-        assert (
-            model.position_embeddings.num_embeddings == config.max_position_embeddings
-        )
+        assert model.position_embeddings.num_embeddings == config.max_position_embeddings
         assert model.position_embeddings.embedding_dim == config.hidden_size
 
         # Check transformer layers
@@ -159,9 +149,7 @@ class TestGPTModel:
         assert isinstance(model.output_layer, Linear)
         assert model.output_layer.in_features == config.hidden_size
         assert model.output_layer.out_features == config.vocab_size
-        assert (
-            model.output_layer.bias is False
-        )  # GPT typically doesn't use bias in output
+        assert model.output_layer.bias is False  # GPT typically doesn't use bias in output
 
         # Check model_id propagation
         assert model.model_id == "test_model"
@@ -200,9 +188,7 @@ class TestGPTModel:
 
         # Forward pass
         logits = model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
+            input_ids=input_ids, attention_mask=attention_mask, position_ids=position_ids
         )
 
         # Check output shape
@@ -230,9 +216,7 @@ class TestGPTModel:
         batch_size, seq_len = input_ids.shape
         assert logits.shape == [batch_size, seq_len, config.vocab_size]
 
-    def test_forward_rotary(
-        self, rotary_config, input_ids, attention_mask, position_ids
-    ):
+    def test_forward_rotary(self, rotary_config, input_ids, attention_mask, position_ids):
         """Test forward pass with rotary position embeddings."""
         # Reset registry for clean test
         registry = get_registry("test_model")
@@ -243,9 +227,7 @@ class TestGPTModel:
 
         # Forward pass
         logits = model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
+            input_ids=input_ids, attention_mask=attention_mask, position_ids=position_ids
         )
 
         # Check output shape

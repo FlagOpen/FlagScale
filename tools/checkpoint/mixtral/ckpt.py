@@ -8,11 +8,7 @@ from utils import padding_vocab_size
 
 def get_hf_attn_ckpt(message, model, layer_id, args):
     nh = args.num_attention_heads
-    ng = (
-        args.num_query_groups
-        if args.group_query_attention
-        else args.num_attention_heads
-    )
+    ng = args.num_query_groups if args.group_query_attention else args.num_attention_heads
     dim = args.hidden_size
     assert nh % ng == 0
 
@@ -87,11 +83,7 @@ def set_hf_attn_ckpt(message, model, layer_id, md, args):
         proj_bias = message.pop("proj bias")
 
     nh = args.num_attention_heads
-    ng = (
-        args.num_query_groups
-        if args.group_query_attention
-        else args.num_attention_heads
-    )
+    ng = args.num_query_groups if args.group_query_attention else args.num_attention_heads
     dim = args.hidden_size
     assert nh % ng == 0
 
@@ -181,9 +173,7 @@ def get_embedding_ckpt(message, models, args):
         word_embeddings.append(model.embedding.word_embeddings.weight.data)
     message["word embeddings"] = torch.cat(word_embeddings, dim=0)
     if args.position_embedding_type == "learned_absolute":
-        message["position embeddings"] = models[
-            0
-        ].embedding.position_embeddings.weight.data
+        message["position embeddings"] = models[0].embedding.position_embeddings.weight.data
     else:
         assert not hasattr(models[0].embedding, "position_embeddings")
 
@@ -281,9 +271,7 @@ def get_mlp_ckpt(message, models, layer_id, args):
                     [w[1] for w in l0_weight], dim=0
                 )
             else:
-                message[f"expert{global_expert_id} l0 weight"] = torch.cat(
-                    l0_weight, dim=0
-                )
+                message[f"expert{global_expert_id} l0 weight"] = torch.cat(l0_weight, dim=0)
             # bias
             if args.add_bias_linear:
                 message[f"expert{global_expert_id} l1 bias"] = l1_bias
@@ -297,9 +285,7 @@ def get_mlp_ckpt(message, models, layer_id, args):
                         [b[1] for b in l0_bias], dim=0
                     )
                 else:
-                    message[f"expert{global_expert_id} l0 bias"] = torch.cat(
-                        l0_bias, dim=0
-                    )
+                    message[f"expert{global_expert_id} l0 bias"] = torch.cat(l0_bias, dim=0)
 
 
 def get_final_norm_ckpt(message, models, args):
@@ -364,14 +350,10 @@ def set_attn_ckpt(message, models, layer_id, md, args):
         tf_layer = model.decoder.layers[layer_id]
         tf_layer.self_attention.linear_qkv.weight.data.copy_(qkv_weight[tp_rank])
         tf_layer.self_attention.linear_proj.weight.data.copy_(proj_weight[tp_rank])
-        tf_layer.self_attention.linear_qkv.layer_norm_weight.data.copy_(
-            input_norm_weight
-        )
+        tf_layer.self_attention.linear_qkv.layer_norm_weight.data.copy_(input_norm_weight)
         tf_layer.pre_mlp_layernorm.weight.data.copy_(post_norm_weight)
         if md.norm_has_bias:
-            tf_layer.self_attention.linear_qkv.layer_norm_bias.data.copy_(
-                input_norm_bias
-            )
+            tf_layer.self_attention.linear_qkv.layer_norm_bias.data.copy_(input_norm_bias)
             tf_layer.pre_mlp_layernorm.bias.data.copy_(post_norm_bias)
         if md.add_qkv_bias or md.add_bias_linear:
             tf_layer.self_attention.linear_qkv.bias.data.copy_(qkv_bias[tp_rank])
@@ -396,47 +378,32 @@ def set_mlp_ckpt(message, models, layer_id, md, args):
                 )
                 if md.swiglu:
                     l0_weight_W = torch.chunk(
-                        message.pop(f"expert{global_expert_id} l0 weight W"),
-                        tp_size,
-                        dim=0,
+                        message.pop(f"expert{global_expert_id} l0 weight W"), tp_size, dim=0
                     )
                     l0_weight_V = torch.chunk(
-                        message.pop(f"expert{global_expert_id} l0 weight V"),
-                        tp_size,
-                        dim=0,
+                        message.pop(f"expert{global_expert_id} l0 weight V"), tp_size, dim=0
                     )
                     l0_weight = [
-                        torch.cat(weights, dim=0)
-                        for weights in zip(l0_weight_W, l0_weight_V)
+                        torch.cat(weights, dim=0) for weights in zip(l0_weight_W, l0_weight_V)
                     ]
                 else:
                     l0_weight = torch.chunk(
-                        message.pop(f"expert{global_expert_id} l0 weight"),
-                        tp_size,
-                        dim=0,
+                        message.pop(f"expert{global_expert_id} l0 weight"), tp_size, dim=0
                     )
                 # bias
                 if md.add_bias_linear:
                     l1_bias = message.pop(f"expert{global_expert_id} l1 bias")
                     if md.swiglu:
                         l0_bias_W = torch.chunk(
-                            message.pop(f"expert{global_expert_id} l0 bias W"),
-                            tp_size,
-                            dim=0,
+                            message.pop(f"expert{global_expert_id} l0 bias W"), tp_size, dim=0
                         )
                         l0_bias_V = torch.chunk(
-                            message.pop(f"expert{global_expert_id} l0 bias V"),
-                            tp_size,
-                            dim=0,
+                            message.pop(f"expert{global_expert_id} l0 bias V"), tp_size, dim=0
                         )
-                        l0_bias = [
-                            torch.cat(bias, dim=0) for bias in zip(l0_bias_W, l0_bias_V)
-                        ]
+                        l0_bias = [torch.cat(bias, dim=0) for bias in zip(l0_bias_W, l0_bias_V)]
                     else:
                         l0_bias = torch.chunk(
-                            message.pop(f"expert{global_expert_id} l0 bias"),
-                            tp_size,
-                            dim=0,
+                            message.pop(f"expert{global_expert_id} l0 bias"), tp_size, dim=0
                         )
 
                 # set data to transformer layer's self-attention
@@ -456,9 +423,7 @@ def set_mlp_ckpt(message, models, layer_id, md, args):
         if md.swiglu:
             l0_weight_W = torch.chunk(message.pop("mlp l0 weight W"), tp_size, dim=0)
             l0_weight_V = torch.chunk(message.pop("mlp l0 weight V"), tp_size, dim=0)
-            l0_weight = [
-                torch.cat(weights, dim=0) for weights in zip(l0_weight_W, l0_weight_V)
-            ]
+            l0_weight = [torch.cat(weights, dim=0) for weights in zip(l0_weight_W, l0_weight_V)]
         else:
             l0_weight = torch.chunk(message.pop("mlp l0 weight"), tp_size, dim=0)
         # bias

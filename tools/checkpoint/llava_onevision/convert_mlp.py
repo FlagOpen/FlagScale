@@ -62,14 +62,9 @@ python mlp_converter.py --input /some/input/folder/mm_projector.bin --output /so
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    parser.add_argument("--input", type=str, required=True, help="The mlp weights with hf format")
     parser.add_argument(
-        "--input", type=str, required=True, help="The mlp weights with hf format"
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        required=True,
-        help="output directory for megatron state dict file(s)",
+        "--output", type=str, required=True, help="output directory for megatron state dict file(s)"
     )
     parser.add_argument(
         "--tensor-parallel-size", type=int, default=1, help="model tensor parallel size"
