@@ -40,7 +40,7 @@ except ImportError:
 
 
 class VisionTransformerBlock(TransformerBlock):
-    """Transformer class."""
+    """Transformer class for Qwen2.5-VL vit model. Support to use window attention."""
 
     def __init__(
         self,

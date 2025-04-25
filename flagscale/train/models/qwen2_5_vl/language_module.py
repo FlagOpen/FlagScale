@@ -12,7 +12,7 @@ from megatron.core.models.common.embeddings.language_model_embedding import Lang
 
 
 class QwenVLLanguageModelEmbedding(LanguageModelEmbedding):
-    """Language model embeddings.
+    """Language model embeddings. Used for Qwen2.5-VL, inserting the image and video hidden states.
 
     Args:
         config (TransformerConfig): config object with all necessary configs for TransformerBlock
@@ -110,7 +110,7 @@ class QwenVLLanguageModelEmbedding(LanguageModelEmbedding):
 
 
 class GPTModel(GPTModel):
-    """GPT Transformer language model, replace RoPE with QWen2-VL's multimodel RoPE
+    """GPT Transformer language model, replace language embedding using QwenVLLanguageModelEmbedding.
 
     Args:
         config (TransformerConfig): Transformer config

@@ -594,7 +594,7 @@ def train_valid_test_dataloaders_provider(train_val_test_num_samples):
 def add_multimodal_extra_args(parser):
     """Extra arguments."""
     group = parser.add_argument_group(title="multimodal arguments")
-    group.add_argument("--disable-vision-class-token", action="store_true", default=False)
+    group.add_argument("--disable-vision-class-token", action="store_true", default=False, help="Disable vision class token")
     group.add_argument(
         "--dataloader-save", type=str, default=None, help="Energon dataloader state save path"
     )
@@ -615,69 +615,15 @@ def add_multimodal_extra_args(parser):
             "If False, convert a Transformers checkpoint to a Megatron checkpoint."
         ),
     )
-    group.add_argument("--freeze-LM", action="store_true", default=False)
-    group.add_argument("--freeze-ViT", action="store_true", default=False)
-    # group.add_argument("--language-model-type", type=str, required=True)
-    # group.add_argument(
-    #     "--disable-vision-class-token", action="store_true", default=False
-    # )
+    group.add_argument("--freeze-LM", action="store_true", default=False, help="Freeze the language model")
+    group.add_argument("--freeze-ViT", action="store_true", default=False, help="Freeze the vision model")
     group.add_argument(
         "--allow-missing-vision-projection-checkpoint",
         action="store_true",
         default=False,
+        help="Allow missing vision projection checkpoint",
     )
-    group.add_argument("--use-te", action="store_true", default=False)
-    # group.add_argument(
-    #     "--dataloader-save",
-    #     type=str,
-    #     default=None,
-    #     help="Energon dataloader state save path",
-    # )
-
-    # # LLaVA OneVision specific arguments
-    # group.add_argument(
-    #     "--interleaved-dataset",
-    #     action="store_true",
-    #     default=False,
-    #     help="Offline dataset with InterleavedSample",
-    # )
-    # group.add_argument(
-    #     "--training-dataset-only",
-    #     action="store_true",
-    #     default=False,
-    #     help="Only training dataset",
-    # )
-    # group.add_argument("--vision-model-type", default="clip", help="Vision model type")
-    # group.add_argument(
-    #     "--image-aspect-ratio", type=str, default="square", help="Image aspect ratio"
-    # )
-    # group.add_argument(
-    #     "--mm-patch-merge-type",
-    #     type=str,
-    #     default="flat",
-    #     help="Multimodal patch merge type",
-    # )
-    # group.add_argument(
-    #     "--image-grid-pinpoints", type=str, default=None, help="Image grid pinpoints"
-    # )
-    # group.add_argument(
-    #     "--use-pos-skipping",
-    #     action="store_true",
-    #     default=False,
-    #     help="Use position skipping",
-    # )
-    # group.add_argument(
-    #     "--pos-skipping-range", type=int, default=4096, help="Position skipping range"
-    # )
-    # group.add_argument(
-    #     "--add-faster-video", default=False, help="Whetehr add fatser video token"
-    # )
-    # group.add_argument(
-    #     "--mm-spatial-pool-mode", type=str, default="bilinear", help="Spatial pool mode"
-    # )
-    # group.add_argument(
-    #     "--mm-newline-position", type=str, default="grid", help="Newline position."
-    # )
+    group.add_argument("--use-te", action="store_true", default=False, help="Use transformer engine")
     return parser
 
 

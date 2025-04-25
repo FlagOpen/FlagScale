@@ -225,21 +225,19 @@ class Qwen2_5VisionModel(VisionModule):
                 vit_merger_window_size,
                 vit_merger_window_size,
             )
-            # 统计有效token((index_padded != -100)返回boolean tensor)
             seqlens = (index_padded != -100).sum([2, 3]).reshape(-1)
             index_padded = index_padded.reshape(-1)
             index_new = index_padded[index_padded != -100]
-            # grid_t * llm_grid_h * llm_grid_w: 窗口数量
+            # grid_t * llm_grid_h * llm_grid_w: num_windows
             window_index.append(index_new + window_index_id)
-            # seqlens: [grid_t, num_windows], 前缀和扩大了spatial_merge_unit(4) -> [tiles, num_windows]内容表示
+            # seqlens: [grid_t, num_windows]
             cu_seqlens_tmp = seqlens.cumsum(0) * self.spatial_merge_unit + cu_window_seqlens[-1]
             cu_window_seqlens.extend(cu_seqlens_tmp.tolist())
             window_index_id += (grid_t * llm_grid_h * llm_grid_w).item()
         window_index = torch.cat(window_index, dim=0)
         # window_index: [tiles, num_windows]
-        # cu_window_seqlens: [tiles * num_windows] # pad_h = vit_merger_window_size - llm_grid_h % vit_merger_window_size, 已经比实际的window数量多了1
-        # cu_window_seqlens 以window为粒度，表示window内的token进行atten，原始的cu_seqlens是以bacth为粒度，表示batch内的token进行atten，这样通过cu_window_seqlens就完成了window atten. 妙啊！！！
-        return window_index, cu_window_seqlens # 每个窗口的offset(单位是patch)，窗口数量是空间merge后的数量
+        # cu_window_seqlens: the step of cu_seqlens is window_size, not sampel seq_length
+        return window_index, cu_window_seqlens
 
     def forward(
         self,
