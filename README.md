@@ -58,7 +58,7 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     ```sh
     cd FlagScale/third_party/vllm
     pip install .
-    
+
     cd FlagScale
     pip install -e ./megatron-energon
     cp -r megatron-energon/src/megatron/energon third_party/Megatron-LM/megatron

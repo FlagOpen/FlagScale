@@ -1,8 +1,10 @@
 import argparse
 import threading
+
 from functools import wraps
 
 import ray
+
 from omegaconf import OmegaConf
 
 task_config = OmegaConf.create()
@@ -28,12 +30,8 @@ def load_args() -> None:
     """Load configuration for cluster init"""
     parser = argparse.ArgumentParser(description="Start vllm serve with Ray")
 
-    parser.add_argument(
-        "--config-path", type=str, required=True, help="Path to the model"
-    )
-    parser.add_argument(
-        "--log-dir", type=str, default="outputs", help="Path to the model"
-    )
+    parser.add_argument("--config-path", type=str, required=True, help="Path to the model")
+    parser.add_argument("--log-dir", type=str, default="outputs", help="Path to the model")
     args = parser.parse_args()
 
     config = OmegaConf.load(args.config_path)

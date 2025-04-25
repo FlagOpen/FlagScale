@@ -8,11 +8,13 @@ import subprocess
 import sys
 import time
 import traceback
+
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 import aiohttp
 import numpy as np
+
 from omegaconf import DictConfig, OmegaConf
 from tqdm.asyncio import tqdm
 
@@ -53,9 +55,7 @@ def parse_hostfile(hostfile_path):
             num_slots = int(match.group(2))
             machine_type = match.group(3) if match.group(3) else None
             if host in resources:
-                log_and_raise_error(
-                    f"Hostfile contains multiple entries for host: {host}."
-                )
+                log_and_raise_error(f"Hostfile contains multiple entries for host: {host}.")
             resources[host] = {"slots": num_slots, "type": machine_type}
         else:
             log_and_raise_error(f"Invalid entry in hostfile: {line}.")
@@ -217,9 +217,7 @@ def get_nnodes(nnodes_from_hostfile=None, nnodes_from_args=None):
         return int(nnodes_from_args)
 
 
-def get_nproc_per_node(
-    nproc_from_hostfile=None, nproc_from_args=None, num_visible_devices=None
-):
+def get_nproc_per_node(nproc_from_hostfile=None, nproc_from_args=None, num_visible_devices=None):
     if nproc_from_hostfile is not None and nproc_from_args is not None:
         nproc = min(nproc_from_hostfile, int(nproc_from_args))
         if num_visible_devices:
@@ -271,9 +269,7 @@ def is_ip_addr(master):
 
     if not isinstance(master, str):
         return False
-    pattern = (
-        r"^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$"
-    )
+    pattern = r"^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$"
     result = re.match(pattern, master)
     if result:
         return True
@@ -349,57 +345,34 @@ class RequestFuncOutput:
 
 
 def dummy_random_input(
-    tokenizer,
-    prefix_len=0,
-    input_len=1024,
-    output_len=1024,
-    num_prompts=1000,
-    range_ratio=1.0,
+    tokenizer, prefix_len=0, input_len=1024, output_len=1024, num_prompts=1000, range_ratio=1.0
 ):
-    prefix_token_ids = np.random.randint(
-        0, tokenizer.vocab_size, size=prefix_len
-    ).tolist()
+    prefix_token_ids = np.random.randint(0, tokenizer.vocab_size, size=prefix_len).tolist()
 
-    input_lens = np.random.randint(
-        int(input_len * range_ratio),
-        input_len + 1,
-        size=num_prompts,
-    )
-    output_lens = np.random.randint(
-        int(output_len * range_ratio),
-        output_len + 1,
-        size=num_prompts,
-    )
+    input_lens = np.random.randint(int(input_len * range_ratio), input_len + 1, size=num_prompts)
+    output_lens = np.random.randint(int(output_len * range_ratio), output_len + 1, size=num_prompts)
     offsets = np.random.randint(0, tokenizer.vocab_size, size=num_prompts)
     input_requests = []
     for i in range(num_prompts):
         prompt = tokenizer.decode(
             prefix_token_ids
-            + [
-                (offsets[i] + i + j) % tokenizer.vocab_size
-                for j in range(input_lens[i])
-            ]
+            + [(offsets[i] + i + j) % tokenizer.vocab_size for j in range(input_lens[i])]
         )
 
-        input_requests.append(
-            (prompt, int(prefix_len + input_lens[i]), int(output_lens[i]), None)
-        )
+        input_requests.append((prompt, int(prefix_len + input_lens[i]), int(output_lens[i]), None))
 
     return input_requests
 
 
 async def async_request_openai_chat_completions(
-    request_func_input: RequestFuncInput,
-    pbar: Optional[tqdm] = None,
+    request_func_input: RequestFuncInput, pbar: Optional[tqdm] = None
 ) -> RequestFuncOutput:
     api_url = request_func_input.api_url
     assert api_url.endswith(
         ("chat/completions", "profile")
     ), "OpenAI Chat Completions API URL must end with 'chat/completions'."
 
-    async with aiohttp.ClientSession(
-        trust_env=True, timeout=AIOHTTP_TIMEOUT
-    ) as session:
+    async with aiohttp.ClientSession(trust_env=True, timeout=AIOHTTP_TIMEOUT) as session:
         content = [{"type": "text", "text": request_func_input.prompt}]
         if request_func_input.multi_modal_content:
             content.append(request_func_input.multi_modal_content)
@@ -409,15 +382,11 @@ async def async_request_openai_chat_completions(
                 if request_func_input.model_name
                 else request_func_input.model
             ),
-            "messages": [
-                {"role": "user", "content": content},
-            ],
+            "messages": [{"role": "user", "content": content}],
             "temperature": 0.0,
             "max_completion_tokens": request_func_input.output_len,
             "stream": True,
-            "stream_options": {
-                "include_usage": True,
-            },
+            "stream_options": {"include_usage": True},
         }
         if request_func_input.ignore_eos:
             payload["ignore_eos"] = request_func_input.ignore_eos
@@ -436,9 +405,7 @@ async def async_request_openai_chat_completions(
         st = time.perf_counter()
         most_recent_timestamp = st
         try:
-            async with session.post(
-                url=api_url, json=payload, headers=headers
-            ) as response:
+            async with session.post(url=api_url, json=payload, headers=headers) as response:
                 if response.status == 200:
                     async for chunk_bytes in response.content:
                         chunk_bytes = chunk_bytes.strip()
@@ -483,9 +450,7 @@ async def async_request_openai_chat_completions(
     return output
 
 
-async def get_request(
-    input_requests,
-):
+async def get_request(input_requests):
     input_requests = iter(input_requests)
     # Calculate scale parameter theta to maintain the desired request_rate.
     for request in input_requests:
@@ -493,12 +458,7 @@ async def get_request(
 
 
 async def benchmark(
-    api_url,
-    model,
-    tokenizer,
-    input_requests,
-    selected_percentile_metrics,
-    selected_percentiles,
+    api_url, model, tokenizer, input_requests, selected_percentile_metrics, selected_percentiles
 ):
 
     async def limited_request_func(request_func_input, pbar):
@@ -546,20 +506,10 @@ async def benchmark(
     print("{:<40} {:<10.2f}".format("Benchmark duration (s):", benchmark_duration))
     print("{:<40} {:<10}".format("Total input tokens:", metrics.total_input))
     print("{:<40} {:<10}".format("Total generated tokens:", metrics.total_output))
+    print("{:<40} {:<10.2f}".format("Request throughput (req/s):", metrics.request_throughput))
+    print("{:<40} {:<10.2f}".format("Output token throughput (tok/s):", metrics.output_throughput))
     print(
-        "{:<40} {:<10.2f}".format(
-            "Request throughput (req/s):", metrics.request_throughput
-        )
-    )
-    print(
-        "{:<40} {:<10.2f}".format(
-            "Output token throughput (tok/s):", metrics.output_throughput
-        )
-    )
-    print(
-        "{:<40} {:<10.2f}".format(
-            "Total Token throughput (tok/s):", metrics.total_token_throughput
-        )
+        "{:<40} {:<10.2f}".format("Total Token throughput (tok/s):", metrics.total_token_throughput)
     )
 
     result = {
@@ -587,8 +537,7 @@ async def benchmark(
         print("{s:{c}^{n}}".format(s=metric_header, n=50, c="-"))
         print(
             "{:<40} {:<10.2f}".format(
-                f"Mean {metric_name} (ms):",
-                getattr(metrics, f"mean_{metric_attribute_name}_ms"),
+                f"Mean {metric_name} (ms):", getattr(metrics, f"mean_{metric_attribute_name}_ms")
             )
         )
         print(

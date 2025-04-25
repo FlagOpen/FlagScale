@@ -2,10 +2,12 @@ import asyncio
 import base64
 import logging
 import time
+
 from io import BytesIO
 from typing import Any, AsyncGenerator
 
 import ray
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from PIL import Image
@@ -87,9 +89,7 @@ def get_engine_args(model_name):
             model_config = item
             break
     if model_config is None:
-        raise ValueError(
-            f"No {model_name} configuration found in task config: {TASK_CONFIG}"
-        )
+        raise ValueError(f"No {model_name} configuration found in task config: {TASK_CONFIG}")
 
     engine_args = model_config.get("engine_args", None)
 
@@ -114,9 +114,7 @@ def get_deploy_config(model_name, device="gpu"):
             model_config = item
             break
     if model_config is None:
-        raise ValueError(
-            f"No {model_name} configuration found in task config: {TASK_CONFIG}"
-        )
+        raise ValueError(f"No {model_name} configuration found in task config: {TASK_CONFIG}")
 
     resources = model_config.get("resources", {})
     if not resources:
@@ -137,10 +135,7 @@ def get_deploy_config(model_name, device="gpu"):
     else:
         resource_config["num_replicas"] = 1
 
-    if (
-        "num_gpus" not in resource_config.get("ray_actor_options", {})
-        and device == "gpu"
-    ):
+    if "num_gpus" not in resource_config.get("ray_actor_options", {}) and device == "gpu":
         ray_actor_options["num_gpus"] = model_config.engine_args.get(
             "tensor_parallel_size", 1
         ) * model_config.engine_args.get("pipeline_parallel_size", 1)
@@ -241,9 +236,7 @@ class LLMService:
             if not self.ready:
                 return JSONResponse(
                     status_code=503,
-                    content={
-                        "message": "Service is not ready, please try again later."
-                    },
+                    content={"message": "Service is not ready, please try again later."},
                 )
         prompt_data = request.prompt
         prompt = TextPrompt(prompt=prompt_data)
@@ -253,9 +246,7 @@ class LLMService:
         sample_args = get_sample_args(request)
         sampling_params = SamplingParams(**sample_args)
         results_generator = self.llm_actor.generate.options(stream=True).remote(
-            prompt,
-            sampling_params,
-            request_id,
+            prompt, sampling_params, request_id
         )
 
         if stream:
@@ -378,9 +369,7 @@ class LLMService:
             if not self.ready:
                 return JSONResponse(
                     status_code=503,
-                    content={
-                        "message": "Service is not ready, please try again later."
-                    },
+                    content={"message": "Service is not ready, please try again later."},
                 )
         user_message = request.messages[-1]["content"]
         mm_data = dict()
@@ -440,9 +429,7 @@ class LLMService:
         logger.debug(f"Request {request_id} sampling_params {sample_args}")
         sampling_params = SamplingParams(**sample_args)
         results_generator = self.llm_actor.generate.options(stream=True).remote(
-            prompt,
-            sampling_params,
-            request_id,
+            prompt, sampling_params, request_id
         )
 
         if stream:
@@ -475,10 +462,7 @@ class LLMService:
                             choices=[
                                 {
                                     "index": i,
-                                    "delta": {
-                                        "role": "assistant",
-                                        "content": current_text,
-                                    },
+                                    "delta": {"role": "assistant", "content": current_text},
                                     "logprobs": None,
                                     "finish_reason": finish_reason,
                                     "stop_reason": stop_reason,
@@ -568,9 +552,4 @@ if __name__ == "__main__":
         }
     )
     llm_actor = LLMActor.bind()
-    serve.run(
-        LLMService.bind(llm_actor),
-        name=SERVICE_NAME,
-        route_prefix="/",
-        blocking=True,
-    )
+    serve.run(LLMService.bind(llm_actor), name=SERVICE_NAME, route_prefix="/", blocking=True)

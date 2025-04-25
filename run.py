@@ -1,4 +1,5 @@
 import hydra
+
 from omegaconf import DictConfig
 
 from flagscale.runner.auto_tuner import AutoTuner, ServeAutoTunner

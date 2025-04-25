@@ -1,4 +1,5 @@
 import dataclasses
+
 from enum import Enum, auto
 from typing import Any, List, Tuple
 
@@ -124,10 +125,7 @@ conv_bair_v1 = Conversation(
 
 
 default_conversation = conv_v1_2
-conv_templates = {
-    "v1": conv_v1_2,
-    "bair_v1": conv_bair_v1,
-}
+conv_templates = {"v1": conv_v1_2, "bair_v1": conv_bair_v1}
 
 
 def covert_prompt_to_input_ids_with_history(text, history, tokenizer, max_token):
@@ -136,9 +134,7 @@ def covert_prompt_to_input_ids_with_history(text, history, tokenizer, max_token)
     conv.append_message(conv.roles[1], None)
     conv.append_message(conv.roles[0], text)
 
-    example = tokenizer.encode_plus(f"{conv.get_prompt()} ", None, max_length=None)[
-        "input_ids"
-    ]
+    example = tokenizer.encode_plus(f"{conv.get_prompt()} ", None, max_length=None)["input_ids"]
 
     while len(history) > 0 and (len(example) < max_token):
         tmp = history.pop()
@@ -146,17 +142,13 @@ def covert_prompt_to_input_ids_with_history(text, history, tokenizer, max_token)
             conv.append_message(conv.roles[1], tmp[1])
         else:
             conv.append_message(conv.roles[0], tmp[1])
-        example = tokenizer.encode_plus(f"{conv.get_prompt()} ", None, max_length=None)[
-            "input_ids"
-        ]
+        example = tokenizer.encode_plus(f"{conv.get_prompt()} ", None, max_length=None)["input_ids"]
 
     if len(example) >= max_token:
         conv.messages.pop()
     conv.messages = conv.messages[::-1]
     print("model in:", conv.get_prompt())
-    example = tokenizer.encode_plus(f"{conv.get_prompt()} ", None, max_length=None)[
-        "input_ids"
-    ]
+    example = tokenizer.encode_plus(f"{conv.get_prompt()} ", None, max_length=None)["input_ids"]
     # example = example[1:-1]
 
     return example

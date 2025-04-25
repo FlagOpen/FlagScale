@@ -2,6 +2,7 @@ import ast
 import itertools
 import types
 import warnings
+
 from datetime import timedelta
 
 import torch
@@ -10,8 +11,7 @@ try:
     import flagcx
 except:
     warnings.warn(
-        "flagcx is not installed, you can't use flagcx backend for communication.",
-        ImportWarning,
+        "flagcx is not installed, you can't use flagcx backend for communication.", ImportWarning
     )
 
 from flagscale.train.hetero.parallel_context import RankMapper
@@ -38,8 +38,7 @@ class FSTrainArguments:
 
             if args.rank == 0:
                 print(
-                    "torch distributed is already initialized, "
-                    "skipping initialization ...",
+                    "torch distributed is already initialized, " "skipping initialization ...",
                     flush=True,
                 )
             args.rank = torch.distributed.get_rank()
@@ -110,8 +109,7 @@ class FSTrainArguments:
 
         # NOTE: Only support cp and ep size to be the same
         assert all(
-            hetero_cp == hetero_process_meshes_cp[0]
-            for hetero_cp in hetero_process_meshes_cp
+            hetero_cp == hetero_process_meshes_cp[0] for hetero_cp in hetero_process_meshes_cp
         ), f"all hetero_process_meshes_cp {hetero_process_meshes_cp} should be the same!"
 
         # Note: Ep size should all be 1 or all be not 1
@@ -129,9 +127,7 @@ class FSTrainArguments:
         assert (
             self.args.pipeline_model_parallel_split_rank == None
         ), "pipeline_model_parallel_split_rank not supported with process_meshes set!"
-        self.args.transformer_pipeline_model_parallel_size = (
-            self.args.pipeline_model_parallel_size
-        )
+        self.args.transformer_pipeline_model_parallel_size = self.args.pipeline_model_parallel_size
 
         # if untie_embeddings_and_output_weights is False, the first and last stage should have the same tp degree
         if (
@@ -167,8 +163,7 @@ class FSTrainArguments:
         # Model layer splits
         if self.args.hetero_pipeline_layer_split is None:
             num_layers_per_pipeline_stage = (
-                self.args.num_layers
-                // self.args.transformer_pipeline_model_parallel_size
+                self.args.num_layers // self.args.transformer_pipeline_model_parallel_size
             )
             self.args.hetero_pipeline_layer_split = [
                 num_layers_per_pipeline_stage
@@ -181,9 +176,7 @@ class FSTrainArguments:
                 self.args.hetero_pipeline_layer_split
             ), f"pipeline_model_parallel_size {self.args.pipeline_model_parallel_size} should be equal to the length of hetero_pipeline_layer_split {self.args.hetero_pipeline_layer_split}"
         setattr(
-            self.args,
-            "all_pipeline_model_parallel_size",
-            self.args.pipeline_model_parallel_size,
+            self.args, "all_pipeline_model_parallel_size", self.args.pipeline_model_parallel_size
         )
 
         hetero_process_meshes = []
@@ -268,10 +261,7 @@ class FSTrainArguments:
                         f"for [{recom_config_name}] refined recompute "
                         f"configuration, the sum [{len(cur_pp_stage_per_mc)}] of n0, n1, ... of sub-list should be equal to nums_micro_batch [{args.global_batch_size // (args.micro_batch_size * args.data_parallel_size)}]."
                     )
-                    if (
-                        "method" in recom_config_name
-                        or "granularity" in recom_config_name
-                    ):
+                    if "method" in recom_config_name or "granularity" in recom_config_name:
                         assert all(
                             val == 0 or val == 1 for val in cur_pp_stage_per_mc
                         ), f"the config-flag of {recom_config_name} must be 0 or 1"
@@ -298,21 +288,16 @@ class FSTrainArguments:
                 "need to use a recompute method "
             )
 
-        args.recompute_granularity_per_stage_micro_batch = (
-            _parse_recompute_refined_config(
-                args.recompute_granularity_per_stage_micro_batch,
-                "recompute_granularity_per_stage_micro_batch",
-            )
+        args.recompute_granularity_per_stage_micro_batch = _parse_recompute_refined_config(
+            args.recompute_granularity_per_stage_micro_batch,
+            "recompute_granularity_per_stage_micro_batch",
         )
         args.recompute_method_per_stage_micro_batch = _parse_recompute_refined_config(
-            args.recompute_method_per_stage_micro_batch,
-            "recompute_method_per_stage_micro_batch",
+            args.recompute_method_per_stage_micro_batch, "recompute_method_per_stage_micro_batch"
         )
-        args.recompute_num_layers_per_stage_micro_batch = (
-            _parse_recompute_refined_config(
-                args.recompute_num_layers_per_stage_micro_batch,
-                "recompute_num_layers_per_stage_micro_batch",
-            )
+        args.recompute_num_layers_per_stage_micro_batch = _parse_recompute_refined_config(
+            args.recompute_num_layers_per_stage_micro_batch,
+            "recompute_num_layers_per_stage_micro_batch",
         )
 
         # TODO: update other args if need

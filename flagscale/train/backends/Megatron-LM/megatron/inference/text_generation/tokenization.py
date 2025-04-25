@@ -41,6 +41,7 @@ def detokenize_generations(tokens_gpu_tensor,
                     word = bytearray([tokenizer.tokenizer.byte_decoder[c] for c in word]).decode(
                         "utf-8", errors="replace"
                     )
+                    args = get_args()
                     if args.tokenizer_type == 'AquilaTokenizer':
                         if token in tokenizer.tokenizer.special_tokens_decoder:
                             word = tokenizer.tokenizer.special_tokens_decoder[token]

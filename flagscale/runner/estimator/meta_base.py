@@ -349,9 +349,7 @@ class MetaModule:
         NotImplementedError
             If the derived class doesn't implement this method
         """
-        raise NotImplementedError(
-            f"Class {self.__class__.__name__} must implement forward method"
-        )
+        raise NotImplementedError(f"Class {self.__class__.__name__} must implement forward method")
 
 
 @dataclass

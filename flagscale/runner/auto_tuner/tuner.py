@@ -25,17 +25,12 @@ class AutoTuner:
         logger.setLevel(logging.INFO)
 
         dir_path = os.path.join(config.experiment.exp_dir, "auto_tuner")
-        log_path = os.path.join(
-            dir_path,
-            "tuner.log",
-        )
+        log_path = os.path.join(dir_path, "tuner.log")
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
         handler = logging.FileHandler(log_path, mode="w")
         handler.setLevel(logging.INFO)
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         self.logger = logger
@@ -147,9 +142,7 @@ class AutoTuner:
             else:
                 self.logger.info(f"No strategy can run so far.")
         tuner_end_time = time.time()
-        self.logger.info(
-            f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds."
-        )
+        self.logger.info(f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
 
         # Run the best task
         if self.config.experiment.auto_tuner.control.get("run_best", True):
@@ -190,9 +183,7 @@ class AutoTuner:
         # 2. Whether prune by pruner
         # 3. If not pruned, generate the task by generator
         strategy = self.searcher.search()
-        while strategy and (
-            self.pruner is not None and self.pruner.prune(strategy, self.history)
-        ):
+        while strategy and (self.pruner is not None and self.pruner.prune(strategy, self.history)):
             strategy = self.searcher.search()
         if strategy:
             self.idx += 1
@@ -245,9 +236,7 @@ class AutoTuner:
             # If the task is completed or idle, stop monitoring
             try:
                 status = self.runner._query_status()
-                self.logger.info(
-                    f"task_{self.cur_strategy['idx']} status: {status.name}"
-                )
+                self.logger.info(f"task_{self.cur_strategy['idx']} status: {status.name}")
                 if status == JobStatus.COMPLETED_OR_IDLE:
                     break
                 if status == JobStatus.RUNNING:
@@ -279,9 +268,9 @@ class AutoTuner:
         # Add elapsed time
         self.cur_strategy["elapsed_time"] = round(end_time - self.task_start_time, 2)
         # Add start time
-        readable_task_start_time = datetime.datetime.fromtimestamp(
-            self.task_start_time
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        readable_task_start_time = datetime.datetime.fromtimestamp(self.task_start_time).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
         self.cur_strategy["start_time"] = readable_task_start_time
 
         self.logger.info(
@@ -310,31 +299,22 @@ class ServeAutoTunner(AutoTuner):
         logger.setLevel(logging.INFO)
 
         dir_path = os.path.join(config.experiment.exp_dir, "auto_tuner")
-        log_path = os.path.join(
-            dir_path,
-            "tuner.log",
-        )
+        log_path = os.path.join(dir_path, "tuner.log")
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
         handler = logging.FileHandler(log_path, mode="a+")
         handler.setLevel(logging.INFO)
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         self.logger = logger
         self.handler = handler
         deploy_config = config.experiment.get("deploy", {})
 
-        if not deploy_config.get("use_fs_serve", True) and deploy_config.get(
-            "port", None
-        ):
+        if not deploy_config.get("use_fs_serve", True) and deploy_config.get("port", None):
             for item in config.serve:
                 if item.get("serve_id") == "vllm_model":
-                    item.engine_args["port"] = config.experiment.get("deploy", {}).get(
-                        "port", None
-                    )
+                    item.engine_args["port"] = config.experiment.get("deploy", {}).get("port", None)
 
         # Deepcopy the original config to isolate from each task config
         # Modify the orig config when run best task
@@ -426,9 +406,7 @@ class ServeAutoTunner(AutoTuner):
             else:
                 self.logger.info(f"No strategy can run so far.")
         tuner_end_time = time.time()
-        self.logger.info(
-            f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds."
-        )
+        self.logger.info(f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
 
         # Run the best task
         if self.config.experiment.auto_tuner.control.get("run_best", True):
@@ -476,9 +454,7 @@ class ServeAutoTunner(AutoTuner):
                     serve_alive = self.runner._serve_alive()
                     if serve_alive:
                         break
-                self.logger.info(
-                    f"task_{self.cur_strategy['idx']} status: {status.name}"
-                )
+                self.logger.info(f"task_{self.cur_strategy['idx']} status: {status.name}")
                 if status == JobStatus.COMPLETED_OR_IDLE:
                     break
                 if status == JobStatus.RUNNING:
@@ -508,9 +484,9 @@ class ServeAutoTunner(AutoTuner):
         # Add elapsed time
         self.cur_strategy["elapsed_time"] = round(end_time - self.task_start_time, 2)
         # Add start time
-        readable_task_start_time = datetime.datetime.fromtimestamp(
-            self.task_start_time
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        readable_task_start_time = datetime.datetime.fromtimestamp(self.task_start_time).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
         self.cur_strategy["start_time"] = readable_task_start_time
 
         self.logger.info(
@@ -526,10 +502,6 @@ class ServeAutoTunner(AutoTuner):
 
     def get_best(self):
         sorted_history = self.recorder.sort(self.history)
-        if (
-            sorted_history
-            and sorted_history[0]
-            and sorted_history[0][self.recorder.metric]
-        ):
+        if sorted_history and sorted_history[0] and sorted_history[0][self.recorder.metric]:
             return sorted_history[0]
         return None

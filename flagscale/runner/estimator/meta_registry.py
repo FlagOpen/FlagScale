@@ -194,9 +194,7 @@ class ModelStatsRegistry:
         elif isinstance(metric_type, (list, tuple)):
             for m in metric_type:
                 if m not in all_metric_types:
-                    raise ValueError(
-                        f"Invalid metric_type: {m}. Must be one of {all_metric_types}"
-                    )
+                    raise ValueError(f"Invalid metric_type: {m}. Must be one of {all_metric_types}")
             metric_types = metric_type
         else:
             raise ValueError(
@@ -226,9 +224,7 @@ class ModelStatsRegistry:
                         "level": level,
                         "name": name,
                         "path": path,
-                        "parent_path": (
-                            "/".join(path.split("/")[:-1]) if "/" in path else ""
-                        ),
+                        "parent_path": ("/".join(path.split("/")[:-1]) if "/" in path else ""),
                         "module_id": self.module_ids.get(path, 999999),
                     }
 
@@ -250,8 +246,7 @@ class ModelStatsRegistry:
 
         # Calculate column widths
         max_name_len = max(
-            [len(info["name"]) + info["level"] * 2 for info in module_info.values()],
-            default=30,
+            [len(info["name"]) + info["level"] * 2 for info in module_info.values()], default=30
         )
         max_name_len = max(max_name_len, 30)  # Minimum width
 
@@ -268,12 +263,7 @@ class ModelStatsRegistry:
         # Print hierarchy
         for root in root_modules:
             self._print_module_hierarchy(
-                root,
-                hierarchy[root],
-                module_info,
-                metric_types,
-                max_name_len + 5,
-                accumulated,
+                root, hierarchy[root], module_info, metric_types, max_name_len + 5, accumulated
             )
 
         # Print summary if requested
@@ -316,9 +306,7 @@ class ModelStatsRegistry:
                 ("params", self.params_by_module),
                 ("acts", self.acts_by_module),
             ]:
-                accumulated[metric][path] = sum(
-                    module_dict.get(child, 0) for child in children
-                )
+                accumulated[metric][path] = sum(module_dict.get(child, 0) for child in children)
 
         return accumulated
 
@@ -355,14 +343,7 @@ class ModelStatsRegistry:
         return result
 
     def _print_module_hierarchy(
-        self,
-        path,
-        children,
-        module_info,
-        metric_types,
-        name_width,
-        accumulated,
-        indent=0,
+        self, path, children, module_info, metric_types, name_width, accumulated, indent=0
     ):
         """
         Recursively print a module hierarchy with metrics.
@@ -421,9 +402,7 @@ class ModelStatsRegistry:
             print(line)
 
         # Recursively print children sorted by module_id
-        for child_path in sorted(
-            children.keys(), key=lambda p: module_info[p]["module_id"]
-        ):
+        for child_path in sorted(children.keys(), key=lambda p: module_info[p]["module_id"]):
             self._print_module_hierarchy(
                 child_path,
                 children[child_path],

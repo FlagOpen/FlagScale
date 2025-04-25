@@ -10,6 +10,8 @@ import logging
 import math
 import os
 import sys
+from typing import List
+
 import torch.distributed
 from megatron.training.log_handler import CustomHandler
 # Make default logging level INFO, but filter out all log messages not from MCore.
@@ -139,6 +141,7 @@ def print_datetime(string):
     torch.distributed.barrier()
     time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print_rank_0(f'[{string}] datetime: {time_str} ')
+
 
 def num_floating_point_operations(args, batch_size):
     def calculate_layer_counts():
@@ -400,6 +403,7 @@ def num_floating_point_operations(args, batch_size):
         # Compute standard Transformer model FLOPs.
         return transformer_flops()
 
+
 def num_floating_point_operations_fs(args, batch_size):
     def transformer_flops():
 
@@ -483,6 +487,7 @@ def num_floating_point_operations_fs(args, batch_size):
             )
 
         # Part 2: MLP or MoE =====================================================================
+        moe_ffn_hidden_size = args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size
         shared_expert_ffn_hidden_size = (
             0
             if args.moe_shared_expert_intermediate_size is None
@@ -528,7 +533,7 @@ def num_floating_point_operations_fs(args, batch_size):
             * batch_size
             * args.seq_length
             * args.hidden_size
-            * args.moe_ffn_hidden_size
+            * moe_ffn_hidden_size
             * gated_linear_multiplier
             * num_experts_routed_to
             + 4 # shared experts (two linear)
@@ -945,7 +950,7 @@ def pretrain(
 
     ########## FlagScale Begin ##########
     num_microbatches = get_num_microbatches()
-    # fs_report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
+    fs_report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
     ########## FlagScale End ##########
 
     # Model, optimizer, and learning rate.
@@ -2528,6 +2533,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         if wandb_writer:
             wandb_writer.finish()
         ft_integration.shutdown()
+        one_logger_utils.finish()
         sys.exit(exit_code)
 
     return iteration, num_floating_point_operations_so_far

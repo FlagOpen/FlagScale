@@ -3,7 +3,6 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
-import torch.distributed
 
 from megatron import core
 from megatron.core import ModelParallelConfig
@@ -14,11 +13,10 @@ from megatron.core.parallel_state import (
     get_pipeline_model_parallel_rank,
     get_pipeline_model_parallel_world_size,
 )
-from flagscale.train import get_parallel_context  
-from flagscale.train.hetero.parallel_context import ParallelContext
 
 # Types
 Shape = Union[List[int], torch.Size]
+
 
 def _communicate_shapes(tensor_send_next, tensor_send_prev, recv_prev, recv_next, config):
     """Communicate tensor shapes between stages. Used to communicate
@@ -129,7 +127,6 @@ def _batched_p2p_ops(
     next_pipeline_rank: int,
 ):
     ops = []
-
     if tensor_send_prev is not None:
         send_prev_op = torch.distributed.P2POp(
             torch.distributed.isend, tensor_send_prev, prev_pipeline_rank, group
@@ -234,6 +231,7 @@ def _p2p_ops(
             )
             reqs["send_prev"] = send_prev_req
     return reqs
+
 
 def _communicate(
     *,

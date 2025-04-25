@@ -323,6 +323,7 @@ class GPT2Tokenizer(object):
 
         return vocab_file, merge_file, special_tokens_file
 
+
 class AquilaTokenizer(GPT2Tokenizer):
     def __init__(self, vocab_file, merges_file, errors='replace',
                  special_tokens=None, max_len=None):

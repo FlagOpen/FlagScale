@@ -47,10 +47,7 @@ def padding_vocab_size(orig_word_embed, md, args, attr_name="padded_vocab_size")
             padding_size = vocab_size_attr - orig_vocab_size
 
             full_word_embed = torch.cat(
-                (
-                    orig_word_embed,
-                    orig_word_embed[-1].unsqueeze(0).expand(padding_size, -1),
-                )
+                (orig_word_embed, orig_word_embed[-1].unsqueeze(0).expand(padding_size, -1))
             )
 
         # Same size!

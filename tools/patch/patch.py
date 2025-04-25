@@ -114,14 +114,7 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
         try:
             for file_path in file_status_deleted:
                 assert file_statuses[file_path][0] == "D"
-                _sync(
-                    file_path,
-                    file_status_deleted[file_path],
-                    src,
-                    dst,
-                    tmp_file,
-                    mode=mode,
-                )
+                _sync(file_path, file_status_deleted[file_path], src, dst, tmp_file, mode=mode)
             deleted_log = os.path.join(src, "deleted_files.log")
             tmp_file.close()
 

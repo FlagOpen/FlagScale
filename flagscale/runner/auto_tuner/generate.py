@@ -126,9 +126,7 @@ class ServeGenerator(Generator):
         if not model_config.get("resources", None):
             model_config["resources"] = {}
         if model_config is None:
-            raise ValueError(
-                f"No 'vllm_model' configuration found in task config: {serve_config}"
-            )
+            raise ValueError(f"No 'vllm_model' configuration found in task config: {serve_config}")
 
         for key, value in self.args_mapping.items():
             if key not in strategy:

@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -10,6 +11,7 @@ import numpy as np
 import omegaconf
 import ray
 import uvicorn
+
 from dag_utils import check_and_get_port
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import create_model
@@ -128,9 +130,7 @@ class ServeEngine:
             all_positions = np.array([positions[node] for node in nodes])
             x_min, y_min = all_positions.min(axis=0)
             x_max, y_max = all_positions.max(axis=0)
-            all_positions = (all_positions - [x_min, y_min]) / (
-                [x_max - x_min, y_max - y_min]
-            )
+            all_positions = (all_positions - [x_min, y_min]) / ([x_max - x_min, y_max - y_min])
             for i, node in enumerate(nodes):
                 positions[node] = all_positions[i]
 
@@ -158,9 +158,7 @@ class ServeEngine:
 
             # Draw nodes
             for node, (x, y) in positions.items():
-                plt.scatter(
-                    x, y, s=800, color="lightblue", edgecolors="black", zorder=3
-                )
+                plt.scatter(x, y, s=800, color="lightblue", edgecolors="black", zorder=3)
                 plt.text(x, y, node, fontsize=12, ha="center", va="center", zorder=4)
 
             # Add title
@@ -207,12 +205,7 @@ class ServeEngine:
             cmd = ["ray", "start", "--head", f"--port={port}", f"--storage={ray_path}"]
             logger.info(f"head node command: {cmd}")
             head_result = subprocess.run(
-                cmd,
-                check=True,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+                cmd, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
             )
             if head_result.returncode != 0:
                 logger.warning(
@@ -227,28 +220,19 @@ class ServeEngine:
                 if "node" in item:
                     node = item.node
                     if node.type == "gpu":
-                        node_cmd = (
-                            f"ray start --address={address} --num-gpus={node.slots}"
-                        )
+                        node_cmd = f"ray start --address={address} --num-gpus={node.slots}"
 
                     elif node.type == "cpu":
-                        node_cmd = (
-                            f"ray start --address={address} --num-cpus={node.slots}"
-                        )
+                        node_cmd = f"ray start --address={address} --num-cpus={node.slots}"
                     else:
-                        resource = json.dumps({node.type: node.slots}).replace(
-                            '"', '\\"'
-                        )
-                        node_cmd = (
-                            f"ray start --address={address} --resources='{resource}'"
-                        )
+                        resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                        node_cmd = f"ray start --address={address} --resources='{resource}'"
                     if self.exp_config.get("cmds", "") and self.exp_config.cmds.get(
                         "before_start", ""
                     ):
                         before_start_cmd = self.exp_config.cmds.before_start
                         node_cmd = (
-                            f"export RAY_STORAGE={ray_path} && {before_start_cmd} && "
-                            + node_cmd
+                            f"export RAY_STORAGE={ray_path} && {before_start_cmd} && " + node_cmd
                         )
 
                     if node.get("port", None):
@@ -280,12 +264,7 @@ class ServeEngine:
             cmd = ["ray", "start", "--head", f"--port={port}", f"--storage={ray_path}"]
             logger.info(f"head node command: {cmd}")
             head_result = subprocess.run(
-                cmd,
-                check=True,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+                cmd, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
             )
             if head_result.returncode != 0:
                 logger.warning(
@@ -298,10 +277,7 @@ class ServeEngine:
 
         logger.info(f" =========== pythonpath {pythonpath} -----------------------")
         if pythonpath:
-            ray.init(
-                address=address,
-                runtime_env={"env_vars": {"PYTHONPATH": pythonpath}},
-            )
+            ray.init(address=address, runtime_env={"env_vars": {"PYTHONPATH": pythonpath}})
         else:
             ray.init(address=address)
 
@@ -328,9 +304,7 @@ class ServeEngine:
             resources = model_config.resources
             num_gpus = resources.get("gpu", 0)
             num_cpus = resources.get("cpu", 1)
-            customs = {
-                res: resources[res] for res in resources if res not in ["gpu", "cpu"]
-            }
+            customs = {res: resources[res] for res in resources if res not in ["gpu", "cpu"]}
             self.tasks[model_alias] = ray.remote(model).options(
                 num_cpus=num_cpus, num_gpus=num_gpus, resources=customs
             )
@@ -358,9 +332,7 @@ class ServeEngine:
                     if dependencies:
                         if len(dependencies) > 1:
                             inputs = [model_nodes[dep] for dep in dependencies]
-                            model_nodes[model_alias] = self.tasks[model_alias].bind(
-                                *inputs
-                            )
+                            model_nodes[model_alias] = self.tasks[model_alias].bind(*inputs)
                         else:
                             model_nodes[model_alias] = self.tasks[model_alias].bind(
                                 model_nodes[dependencies[0]]
@@ -369,9 +341,7 @@ class ServeEngine:
                         if len(input_data) == 0:
                             model_nodes[model_alias] = self.tasks[model_alias].bind()
                         else:
-                            model_nodes[model_alias] = self.tasks[model_alias].bind(
-                                *input_data
-                            )
+                            model_nodes[model_alias] = self.tasks[model_alias].bind(*input_data)
                     models_to_process.remove(model_alias)
                     progress = True
             if not progress:
@@ -396,11 +366,7 @@ class ServeEngine:
         request_types = router_config["request"]["types"]
 
         RequestData = create_model(
-            "Request",
-            **{
-                field: (type_, ...)
-                for field, type_ in zip(request_names, request_types)
-            },
+            "Request", **{field: (type_, ...) for field, type_ in zip(request_names, request_types)}
         )
         app = FastAPI()
 
@@ -408,9 +374,7 @@ class ServeEngine:
 
             @app.post(name)
             async def route_handler(request_data: RequestData):
-                input_data = tuple(
-                    getattr(request_data, field) for field in request_names
-                )
+                input_data = tuple(getattr(request_data, field) for field in request_names)
                 try:
                     response = self.run_task(*input_data)
                     return response

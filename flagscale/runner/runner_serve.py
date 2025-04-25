@@ -7,6 +7,7 @@ import shutil
 import signal
 
 import psutil
+
 from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.runner_base import JobStatus, RunnerBase
@@ -71,13 +72,9 @@ def _reset_serve_port(config):
 def _get_inference_engine(config):
     serve_config = config.get("serve", [])
     if not serve_config:
-        raise ValueError(
-            f"No 'serve' configuration found in task config: {serve_config}"
-        )
+        raise ValueError(f"No 'serve' configuration found in task config: {serve_config}")
     if serve_config and len(serve_config) > 1:
-        logger.warning(
-            f"Multiple 'serve' configurations found in task config: {serve_config}"
-        )
+        logger.warning(f"Multiple 'serve' configurations found in task config: {serve_config}")
 
     engine = serve_config[0].get("engine", None)
     return engine
@@ -86,9 +83,7 @@ def _get_inference_engine(config):
 def _get_engine_args(config, model="vllm_model"):
     serve_config = config.get("serve", [])
     if not serve_config:
-        raise ValueError(
-            f"No 'serve' configuration found in task config: {serve_config}"
-        )
+        raise ValueError(f"No 'serve' configuration found in task config: {serve_config}")
     engine_args = {}
 
     for item in serve_config:
@@ -96,9 +91,7 @@ def _get_engine_args(config, model="vllm_model"):
             engine_args = item.get("engine_args", {})
             break
     if not engine_args:
-        raise ValueError(
-            f"No 'engine_args' configuration found in task config: {serve_config}"
-        )
+        raise ValueError(f"No 'engine_args' configuration found in task config: {serve_config}")
 
     return engine_args
 
@@ -126,9 +119,7 @@ def _update_config_serve(config: DictConfig):
     OmegaConf.set_struct(config, True)
 
 
-def _generate_run_script_serve(
-    config, host, node_rank, cmd, background=True, with_test=False
-):
+def _generate_run_script_serve(config, host, node_rank, cmd, background=True, with_test=False):
     nodes = config.get("nodes", None)
     logging_config = config.logging
 
@@ -136,21 +127,15 @@ def _generate_run_script_serve(
     if no_shared_fs:
         host_output_file = os.path.join(logging_config.log_dir, f"host.output")
     else:
-        host_output_file = os.path.join(
-            logging_config.log_dir, f"host_{node_rank}_{host}.output"
-        )
+        host_output_file = os.path.join(logging_config.log_dir, f"host_{node_rank}_{host}.output")
     host_run_script_file = os.path.join(
         logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
     )
-    host_pid_file = os.path.join(
-        logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-    )
+    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
-    root_dir = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     cmds_config = config.experiment.get("cmds", None)
     ssh_port = config.experiment.runner.get("ssh_port", 22)
     docker_name = config.experiment.runner.get("docker", None)
@@ -235,9 +220,7 @@ def _generate_run_script_serve(
                     elif node.type == "cpu":
                         node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
                     else:
-                        resource = json.dumps({node.type: node.slots}).replace(
-                            '"', '\\"'
-                        )
+                        resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
                         node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
@@ -249,15 +232,19 @@ def _generate_run_script_serve(
                         f.write(f"\n")
                         f.write(f"# worker nodes\n")
                     if node.type == "gpu":
-                        node_cmd = f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
+                        node_cmd = (
+                            f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
+                        )
 
                     elif node.type == "cpu":
-                        node_cmd = f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
-                    else:
-                        resource = json.dumps({node.type: node.slots}).replace(
-                            '"', '\\"'
+                        node_cmd = (
+                            f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
                         )
-                        node_cmd = f"${{ray_path}} start --address={address} --resources='{resource}'"
+                    else:
+                        resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                        node_cmd = (
+                            f"${{ray_path}} start --address={address} --resources='{resource}'"
+                        )
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
 
@@ -281,9 +268,7 @@ def _generate_run_script_serve(
                     )
             node_cmd = None
             deploy_config = config.experiment.get("deploy", {})
-            if deploy_config.get("use_fs_serve", True) and config.serve[0].get(
-                "engine", None
-            ):
+            if deploy_config.get("use_fs_serve", True) and config.serve[0].get("engine", None):
                 f.write(f"ray_path=$(realpath $(which ray))\n")
                 if not device_type:
                     node_cmd = f"${{ray_path}} start --head"
@@ -292,16 +277,10 @@ def _generate_run_script_serve(
                 elif device_type == "cpu":
                     node_cmd = f"${{ray_path}} start --head --num-cpus={nproc_per_node}"
                 else:
-                    resource = json.dumps({device_type: nproc_per_node}).replace(
-                        '"', '\\"'
-                    )
+                    resource = json.dumps({device_type: nproc_per_node}).replace('"', '\\"')
                     node_cmd = f"${{ray_path}} start --head --resources='{resource}'"
             if before_start_cmd:
-                node_cmd = (
-                    f"{before_start_cmd} && {node_cmd}"
-                    if node_cmd
-                    else before_start_cmd
-                )
+                node_cmd = f"{before_start_cmd} && {node_cmd}" if node_cmd else before_start_cmd
             if node_cmd:
                 f.write(f"{node_cmd}\n")
 
@@ -335,9 +314,7 @@ def _generate_stop_script(config, host, node_rank):
         logging_config.scripts_dir, f"host_{node_rank}_{host}_stop.sh"
     )
 
-    host_pid_file = os.path.join(
-        logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-    )
+    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
@@ -487,9 +464,7 @@ class SSHServeRunner(RunnerBase):
 
     def _stop_each(self, host, node_rank):
         logging_config = self.config.logging
-        host_pid_file = os.path.join(
-            logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-        )
+        host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
         with open(host_pid_file, "r") as f:
             pid = f.readlines()[0]
             pid = int(pid.strip())
@@ -519,9 +494,7 @@ class SSHServeRunner(RunnerBase):
             logging_config.scripts_dir, f"host_{node_rank}_{host}_query.sh"
         )
 
-        host_pid_file = os.path.join(
-            logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-        )
+        host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
         os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
         with open(host_query_script_file, "w") as f:
@@ -569,9 +542,7 @@ class SSHServeRunner(RunnerBase):
 
     def _serve_alive(self):
         engine_args = _get_engine_args(self.config)
-        model_name = engine_args.get("served_model_name", None) or engine_args.get(
-            "model", None
-        )
+        model_name = engine_args.get("served_model_name", None) or engine_args.get("model", None)
 
         if not model_name:
             raise ValueError("No model specified in config file.")
@@ -584,14 +555,9 @@ class SSHServeRunner(RunnerBase):
         logger.info(f"Testing API {api_url}")
 
         try:
-            client = OpenAI(
-                api_key=api_key,
-                base_url=api_url,
-            )
+            client = OpenAI(api_key=api_key, base_url=api_url)
             messages = [{"role": "user", "content": "who are you?"}]
-            response = client.chat.completions.create(
-                model=model_name, messages=messages
-            )
+            response = client.chat.completions.create(model=model_name, messages=messages)
         except Exception as e:
             # logger.info(f"API {api_url} is not ready, please wait a moment")
             return False
@@ -606,17 +572,13 @@ class SSHServeRunner(RunnerBase):
 
         trust_remote_code = engine_args.get("trust_remote_code", False)
 
-        model_name = engine_args.get("served_model_name", None) or engine_args.get(
-            "model", None
-        )
+        model_name = engine_args.get("served_model_name", None) or engine_args.get("model", None)
 
         if not model_name:
             raise ValueError("No model specified in config file.")
 
         tokenizer = get_tokenizer(
-            model_name,
-            tokenizer_mode=tokenizer_mode,
-            trust_remote_code=trust_remote_code,
+            model_name, tokenizer_mode=tokenizer_mode, trust_remote_code=trust_remote_code
         )
 
         dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=200)

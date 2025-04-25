@@ -32,38 +32,6 @@ logger = logging.getLogger(__name__)
 
 __all__ = ['RotaryEmbedding', 'MultimodalRotaryEmbedding']
 
-def get_pos_emb_on_this_usp_rank(pos_emb, seq_dim):
-    '''
-    Ulysses sequence
-    '''
-    usp_size = parallel_state.get_ulysses_sp_parallel_world_size()
-    usp_rank = parallel_state.get_ulysses_sp_parallel_rank()
-    usp_idx = torch.tensor(
-        [usp_rank], device="cpu", pin_memory=True
-    ).cuda(non_blocking=True)
-    pos_emb = pos_emb.view(
-        *pos_emb.shape[:seq_dim], usp_size, -1, *pos_emb.shape[(seq_dim + 1) :]
-    )
-    pos_emb = pos_emb.index_select(seq_dim, usp_idx)
-    pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], -1, *pos_emb.shape[(seq_dim + 2) :])
-    return pos_emb
-
-def get_pos_emb_on_this_usp_rank(pos_emb, seq_dim):
-    '''
-    Ulysses sequence
-    '''
-    usp_size = parallel_state.get_ulysses_sp_parallel_world_size()
-    usp_rank = parallel_state.get_ulysses_sp_parallel_rank()
-    usp_idx = torch.tensor(
-        [usp_rank], device="cpu", pin_memory=True
-    ).cuda(non_blocking=True)
-    pos_emb = pos_emb.view(
-        *pos_emb.shape[:seq_dim], usp_size, -1, *pos_emb.shape[(seq_dim + 1) :]
-    )
-    pos_emb = pos_emb.index_select(seq_dim, usp_idx)
-    pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], -1, *pos_emb.shape[(seq_dim + 2) :])
-    return pos_emb
-
 
 class RotaryEmbedding(nn.Module):
     """Rotary Embedding for language model.
@@ -210,8 +178,6 @@ class RotaryEmbedding(nn.Module):
             # slice rotary_pos_emb along sequence dimension and select the parition of the current
             # CP rank
             emb = get_pos_emb_on_this_cp_rank(emb, 0, self.cp_group)
-        if parallel_state.get_ulysses_sp_parallel_world_size() > 1:
-            emb = get_pos_emb_on_this_usp_rank(emb, 0)
         return emb
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
@@ -259,7 +225,7 @@ class RotaryEmbedding(nn.Module):
             if transformer_config.sequence_parallel:
                 rotary_seq_len *= parallel_state.get_tensor_model_parallel_world_size()
 
-        rotary_seq_len *= transformer_config.context_parallel_size * transformer_config.ulysses_sp_parallel_size
+        rotary_seq_len *= transformer_config.context_parallel_size
 
         return rotary_seq_len
 

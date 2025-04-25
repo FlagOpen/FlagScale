@@ -101,36 +101,15 @@ _CONTEXT_PARALLEL_GLOBAL_RANKS = None
 # Hierarchical context parallel groups
 _HIERARCHICAL_CONTEXT_PARALLEL_GROUPS = []
 
-# Ulysses sequence parallel group that the current rank belongs to
-_ULYSSES_SP_PARALLEL_GROUP = None
-# A list of global ranks for each ulysses sequence parallel group to ease calculation of the
-# destination rank when exchanging KV/dKV between ulysses suquence parallel_ranks
-_ULYSSES_SP_PARALLEL_GLOBAL_RANKS = None
-
 # Data parallel group information with context parallel combined.
 _DATA_PARALLEL_GROUP_WITH_CP = None
 _DATA_PARALLEL_GROUP_WITH_CP_GLOO = None
 _DATA_PARALLEL_GLOBAL_RANKS_WITH_CP = None
 
-# Data parallel group information with ulysses sequence parallel combined.
-_DATA_PARALLEL_GROUP_WITH_USP = None
-_DATA_PARALLEL_GROUP_WITH_USP_GLOO = None
-_DATA_PARALLEL_GLOBAL_RANKS_WITH_USP = None
-
-# Data parallel group information with ulysses sequence and context parallel combined.
-_DATA_PARALLEL_GROUP_WITH_USP_CP = None
-_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO = None
-_DATA_PARALLEL_GLOBAL_RANKS_WITH_USP_CP = None
-
 # Partial Data parallel group information with context parallel combined.
 _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_CP = None
 _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_CP_GLOO = None
 _INTER_PARTIAL_DATA_PARALLEL_GROUP_WITH_CP = None
-
-# Partial Data parallel group information with context parallel and ulysses parallel combined.
-_INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP = None
-_INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO = None
-_INTER_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP = None
 
 # combined parallel group of TP and CP
 _TENSOR_AND_CONTEXT_PARALLEL_GROUP = None
@@ -352,7 +331,7 @@ class RankGenerator(object):
     """A class for generating rank groups for different modes of parallelism."""
 
     def __init__(
-        self, tp: int, ep: int, dp: int, pp: int, cp: int, usp: int, order: str, rank_offset: int = 0
+        self, tp: int, ep: int, dp: int, pp: int, cp: int, order: str, rank_offset: int = 0
     ) -> None:
         assert (
             ep == 1 or cp == 1
@@ -364,9 +343,8 @@ class RankGenerator(object):
         self.dp = dp
         self.pp = pp
         self.cp = cp
-        self.usp = usp
         self.rank_offset = rank_offset
-        self.world_size = tp * dp * pp * cp * ep * usp
+        self.world_size = tp * dp * pp * cp * ep
 
         self.name_to_size = {
             "tp": self.tp,
@@ -374,7 +352,6 @@ class RankGenerator(object):
             "dp": self.dp,
             "ep": self.ep,
             "cp": self.cp,
-            "usp": self.usp,
         }
         self.order = order
         order = order.lower()
@@ -459,7 +436,6 @@ def initialize_model_parallel(
     pipeline_model_parallel_split_rank: Optional[int] = None,
     pipeline_model_parallel_comm_backend: Optional[str] = None,
     use_sharp: bool = False,
-    ulysses_parallel_size: int  = 1,
     context_parallel_size: int = 1,
     hierarchical_context_parallel_sizes: Optional[List[int]] = None,
     expert_model_parallel_size: int = 1,
@@ -467,7 +443,7 @@ def initialize_model_parallel(
     expert_tensor_parallel_size: Optional[int] = None,
     nccl_communicator_config_path: Optional[str] = None,
     distributed_timeout_minutes: int = 30,
-    order: str = "tp-usp-cp-ep-dp-pp",
+    order: str = "tp-cp-ep-dp-pp",
     encoder_tensor_model_parallel_size: int = 0,
     encoder_pipeline_model_parallel_size: Optional[int] = 0,
     get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
@@ -546,10 +522,6 @@ def initialize_model_parallel(
             all-reduce is required in backward. For simplicity, we piggyback
             GPUs of context parallelism on data parallel group for
             weight gradient all-reduce.
-        
-        ulysses_parallel_size (int, default = 1):
-            The number of tensor parallel GPU groups to split the
-            network input sequence length across using deepseed-ulysses method.
 
         expert_model_parallel_size (int, default = 1):
             The number of Mixture of Experts parallel GPUs in each expert
@@ -645,14 +617,13 @@ def initialize_model_parallel(
             encoder_tensor_model_parallel_size <= tensor_model_parallel_size
         ), "We do not support encoders with more TP than the decoder."
 
-    # TODO: support usp for encoder
     encoder_model_size = (
         encoder_tensor_model_parallel_size
         * encoder_pipeline_model_parallel_size
         * context_parallel_size
     )
     decoder_model_size = (
-        tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size * ulysses_parallel_size
+        tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
     )
     total_model_size = encoder_model_size + decoder_model_size
 
@@ -698,14 +669,12 @@ def initialize_model_parallel(
             nccl_comm_cfgs = yaml.safe_load(stream)
 
     if encoder_world_size > 0:
-        # TODO: suuport usp for encoder
         encoder_rank_generator = RankGenerator(
             tp=encoder_tensor_model_parallel_size,
             ep=1,
             dp=data_parallel_size,
             pp=encoder_pipeline_model_parallel_size,
             cp=context_parallel_size,
-            usp=1,
             order=order,
             rank_offset=0,
         )
@@ -718,7 +687,6 @@ def initialize_model_parallel(
         dp=data_parallel_size,
         pp=pipeline_model_parallel_size,
         cp=context_parallel_size,
-        usp=ulysses_parallel_size,
         order=order,
         rank_offset=encoder_world_size,
     )
@@ -742,7 +710,6 @@ def initialize_model_parallel(
         dp=expert_data_parallel_size,
         pp=pipeline_model_parallel_size,
         cp=1,
-        usp=1,
         order=order,
         rank_offset=encoder_world_size,
     )
@@ -821,18 +788,9 @@ def initialize_model_parallel(
     global _DATA_PARALLEL_GROUP_WITH_CP
     global _DATA_PARALLEL_GROUP_WITH_CP_GLOO
     global _DATA_PARALLEL_GLOBAL_RANKS_WITH_CP
-    global _DATA_PARALLEL_GROUP_WITH_USP
-    global _DATA_PARALLEL_GROUP_WITH_USP_GLOO
-    global _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP
-    global _DATA_PARALLEL_GROUP_WITH_USP_CP
-    global _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO
-    global _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP_CP
     global _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_CP
     global _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_CP_GLOO
     global _INTER_PARTIAL_DATA_PARALLEL_GROUP_WITH_CP
-    global _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP
-    global _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO
-    global _INTER_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP
     assert _DATA_PARALLEL_GROUP is None, 'data parallel group is already initialized'
 
     for ranks in generator_wrapper('dp'):
@@ -882,7 +840,7 @@ def initialize_model_parallel(
             _DATA_PARALLEL_GROUP_WITH_CP = group_with_cp
             _DATA_PARALLEL_GROUP_WITH_CP_GLOO = group_with_cp_gloo
             _DATA_PARALLEL_GLOBAL_RANKS_WITH_CP = ranks_with_cp
-    
+
         if num_distributed_optimizer_instances > 1:
             # Create groups for Partial DistOpt, one for intra-partial DP domain
             # Another for inter-partial DP domain
@@ -937,65 +895,6 @@ def initialize_model_parallel(
             _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_CP = _DATA_PARALLEL_GROUP_WITH_CP
             _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_CP_GLOO = _DATA_PARALLEL_GROUP_WITH_CP_GLOO
 
-    for ranks_with_usp_cp in generator_wrapper('dp-usp-cp'):
-        group_with_usp_cp = torch.distributed.new_group(
-            ranks_with_usp_cp, timeout=timeout, pg_options=get_nccl_options('dp_usp_cp', nccl_comm_cfgs)
-        )
-        group_with_usp_cp_gloo = torch.distributed.new_group(
-            ranks_with_usp_cp, timeout=timeout, backend="gloo"
-        )
-
-        if rank in ranks_with_usp_cp:
-            _DATA_PARALLEL_GROUP_WITH_USP_CP = group_with_usp_cp
-            _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO = group_with_usp_cp_gloo
-            _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP_CP = ranks_with_usp_cp
-
-        if num_distributed_optimizer_instances > 1:
-            # Create groups for Partial DistOpt, one for intra-partial DP domain
-            # Another for inter-partial DP domain
-            for i in range(num_distributed_optimizer_instances):
-                intra_partial_data_parallel_ranks_with_usp_cp = ranks_with_cp[
-                    (i * intra_partial_data_parallel_size) : (
-                        (i + 1) * intra_partial_data_parallel_size
-                    )
-                ]
-
-                intra_partial_data_parallel_group_with_usp_cp = torch.distributed.new_group(
-                    intra_partial_data_parallel_ranks_with_usp_cp,
-                    timeout=timeout,
-                    pg_options=get_nccl_options('dp_usp_cp', nccl_comm_cfgs),
-                )
-                intra_partial_data_parallel_group_with_usp_cp_gloo = torch.distributed.new_group(
-                    intra_partial_data_parallel_ranks_with_usp_cp, timeout=timeout, backend="gloo"
-                )
-
-                if rank in intra_partial_data_parallel_ranks_with_usp_cp:
-                    _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP = (
-                        intra_partial_data_parallel_group_with_usp_cp
-                    )
-                    _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO = (
-                        intra_partial_data_parallel_group_with_usp_cp_gloo
-                    )
-
-            for i in range(intra_partial_data_parallel_size):
-                inter_partial_data_parallel_ranks_with_usp_cp = ranks_with_usp_cp[
-                    i::intra_partial_data_parallel_size
-                ]
-
-                inter_partial_data_parallel_group_with_usp_cp = torch.distributed.new_group(
-                    inter_partial_data_parallel_ranks_with_usp_cp,
-                    timeout=timeout,
-                    pg_options=get_nccl_options('dp_usp_cp', nccl_comm_cfgs),
-                )
-
-                if rank in inter_partial_data_parallel_ranks_with_usp_cp:
-                    _INTER_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP = (
-                        inter_partial_data_parallel_group_with_usp_cp
-                    )
-        else:
-            _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP = _DATA_PARALLEL_GROUP_WITH_USP_CP
-            _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO = _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO
-
     # Apply SHARP to DP process groups
     if use_sharp:
         if rank == 0:
@@ -1010,25 +909,11 @@ def initialize_model_parallel(
                 "`#SBATCH_NETWORK=sharp` should be set in the sbatch script."
             )
         torch.distributed.barrier(
-            group=get_data_parallel_group(with_context_parallel=True, with_ulysses_sp_parallel=True),
+            group=get_data_parallel_group(with_context_parallel=True),
             device_ids=[torch.cuda.current_device()],
         )
         # Set `NCCL_COLLNET_ENABLE=0` to restrict SHARP application to DP process groups
         os.environ["NCCL_COLLNET_ENABLE"] = "0"
-
-    # Build the ulysses-sequence-parallel groups.
-    for ranks_with_usp in generator_wrapper('dp-usp'):
-        group_with_usp = torch.distributed.new_group(
-            ranks_with_usp, timeout=timeout, pg_options=get_nccl_options('dp_usp', nccl_comm_cfgs)
-        )
-        group_with_usp_gloo = torch.distributed.new_group(
-            ranks_with_usp, timeout=timeout, backend="gloo"
-        )
-        if rank in ranks_with_usp:
-            _DATA_PARALLEL_GROUP_WITH_USP = group_with_usp
-            _DATA_PARALLEL_GROUP_WITH_USP_GLOO = group_with_usp_gloo
-            _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP = ranks_with_usp
-
 
     # Build the context-parallel groups.
     global _CONTEXT_PARALLEL_GROUP
@@ -1054,17 +939,6 @@ def initialize_model_parallel(
                 get_nccl_options('hcp', nccl_comm_cfgs),
             )
 
-    # Build the ulysses-sp-parallel groups.
-    global _ULYSSES_SP_PARALLEL_GROUP
-    global _ULYSSES_SP_PARALLEL_GLOBAL_RANKS
-    assert _ULYSSES_SP_PARALLEL_GROUP is None, 'ulysses parallel group is already initialized'
-    for ranks in generator_wrapper('usp'):
-        group = torch.distributed.new_group(
-            ranks, timeout=timeout, pg_options=get_nccl_options('usp', nccl_comm_cfgs)
-        )
-        if rank in ranks:
-            _ULYSSES_SP_PARALLEL_GROUP = group
-            _ULYSSES_SP_PARALLEL_GLOBAL_RANKS = ranks
     # Build the model-parallel groups.
     global _MODEL_PARALLEL_GROUP
     global _MODEL_PARALLEL_GLOBAL_RANKS
@@ -1409,30 +1283,20 @@ def get_pipeline_model_parallel_group(check_initialized=True):
 
     if check_initialized:
         assert (
-                _PIPELINE_MODEL_PARALLEL_GROUP is not None
-            ), 'pipeline_model parallel group is not initialized'
+            _PIPELINE_MODEL_PARALLEL_GROUP is not None
+        ), 'pipeline_model parallel group is not initialized'
     return _PIPELINE_MODEL_PARALLEL_GROUP
 
 
-def get_data_parallel_group(with_context_parallel=False, partial_data_parallel=False, with_ulysses_sp_parallel=False):
+def get_data_parallel_group(with_context_parallel=False, partial_data_parallel=False):
     """Get the data-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_data_parallel_group(
-            with_context_parallel, partial_data_parallel, with_ulysses_sp_parallel
+            with_context_parallel, partial_data_parallel
         )
 
-    if with_context_parallel and with_ulysses_sp_parallel:
-        if partial_data_parallel:
-            assert (
-                _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP is not None
-            ), 'Intra partial data parallel group is not initialized'
-            return _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP
-        assert (
-            _DATA_PARALLEL_GROUP_WITH_USP_CP is not None
-        ), 'data parallel group with context parallel and ulysses sequence parallel combined is not initialized'
-        return _DATA_PARALLEL_GROUP_WITH_USP_CP
-    elif with_context_parallel:
+    if with_context_parallel:
         if partial_data_parallel:
             assert (
                 _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_CP is not None
@@ -1442,36 +1306,21 @@ def get_data_parallel_group(with_context_parallel=False, partial_data_parallel=F
             _DATA_PARALLEL_GROUP_WITH_CP is not None
         ), 'data parallel group with context parallel combined is not initialized'
         return _DATA_PARALLEL_GROUP_WITH_CP
-    elif with_ulysses_sp_parallel:
-        assert (
-            _DATA_PARALLEL_GROUP_WITH_USP is not None
-        ), 'data parallel group with ulysses sequence parallel combined is not initialized'
-        return _DATA_PARALLEL_GROUP_WITH_USP
     else:
         assert _DATA_PARALLEL_GROUP is not None, 'data parallel group is not initialized'
         assert partial_data_parallel == False, 'Partial DP for Optimizer needs to include CP'
         return _DATA_PARALLEL_GROUP
 
 
-def get_data_parallel_group_gloo(with_context_parallel=False, partial_data_parallel=False, with_ulysses_sp_parallel=False):
+def get_data_parallel_group_gloo(with_context_parallel=False, partial_data_parallel=False):
     """Get the Gloo data-parallel group the caller rank belongs to."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_data_parallel_group_gloo(
-            with_context_parallel, partial_data_parallel, with_ulysses_sp_parallel
+            with_context_parallel, partial_data_parallel
         )
 
-    if with_context_parallel and with_ulysses_sp_parallel:
-        if partial_data_parallel:
-            assert (
-                _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO is not None
-            ), 'Intra partial data parallel group is not initialized'
-            return _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO
-        assert (
-            _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO is not None
-        ), 'data parallel group-gloo with context parallel and ulysses sequence parallel combined is not initialized'
-        return _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO
-    elif with_context_parallel:
+    if with_context_parallel:
         if partial_data_parallel:
             assert (
                 _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_CP_GLOO is not None
@@ -1481,11 +1330,6 @@ def get_data_parallel_group_gloo(with_context_parallel=False, partial_data_paral
             _DATA_PARALLEL_GROUP_WITH_CP_GLOO is not None
         ), 'data parallel group-gloo with context parallel combined is not initialized'
         return _DATA_PARALLEL_GROUP_WITH_CP_GLOO
-    elif with_ulysses_sp_parallel:
-        assert (
-            _DATA_PARALLEL_GROUP_WITH_USP_GLOO is not None
-        ), 'data parallel group-gloo with ulysses sequence parallel combined is not initialized'
-        return _DATA_PARALLEL_GROUP_WITH_USP_GLOO
     else:
         assert _DATA_PARALLEL_GROUP_GLOO is not None, 'data parallel group-gloo is not initialized'
         assert partial_data_parallel == False, 'Partial DP for Optimizer needs to include CP'
@@ -1526,30 +1370,6 @@ def get_context_parallel_global_ranks(check_initialized=True):
             _CONTEXT_PARALLEL_GLOBAL_RANKS is not None
         ), 'context parallel group is not initialized'
     return _CONTEXT_PARALLEL_GLOBAL_RANKS
-
-
-def get_ulysses_sp_parallel_group(check_initialized=True):
-    """Get the ulysses sequence parallel group the caller rank belongs to."""
-    para_ctx = get_parallel_context() 
-    if para_ctx is not None:
-        return para_ctx.get_ulysses_sp_parallel_group(check_initialized)
-
-    if check_initialized:
-        assert _ULYSSES_SP_PARALLEL_GROUP is not None, 'context parallel group is not initialized'
-    return _ULYSSES_SP_PARALLEL_GROUP
-
-
-def get_ulysses_sp_parallel_global_ranks(check_initialized=True):
-    """Get all global ranks of the context parallel group that the caller rank belongs to."""
-    para_ctx = get_parallel_context() 
-    if para_ctx is not None:
-        return para_ctx.get_ulysses_sp_parallel_global_ranks(check_initialized)
-
-    if check_initialized:
-        assert (
-            _ULYSSES_SP_PARALLEL_GLOBAL_RANKS is not None
-        ), 'ulysses sequence parallel group is not initialized'
-    return _ULYSSES_SP_PARALLEL_GLOBAL_RANKS
 
 
 def get_hierarchical_context_parallel_groups(check_initialized=True):
@@ -1639,8 +1459,8 @@ def get_tensor_and_context_parallel_group(check_initialized=True):
         return para_ctx.get_tensor_and_context_parallel_group(check_initialized=check_initialized)
     if check_initialized:
         assert (
-                _TENSOR_AND_CONTEXT_PARALLEL_GROUP is not None
-            ), 'tensor and context parallel group is not initialized'
+            _TENSOR_AND_CONTEXT_PARALLEL_GROUP is not None
+        ), 'tensor and context parallel group is not initialized'
     return _TENSOR_AND_CONTEXT_PARALLEL_GROUP
 
 
@@ -2011,29 +1831,18 @@ def get_model_parallel_src_rank():
     return _MODEL_PARALLEL_GLOBAL_RANKS[0]
 
 
-def get_data_parallel_src_rank(with_context_parallel=False,
-                               with_ulysses_sp_parallel=False):
+def get_data_parallel_src_rank(with_context_parallel=False):
     """Calculate the global rank corresponding to the first local rank
     in the data parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
-        return para_ctx.get_data_parallel_src_rank(with_context_parallel, with_ulysses_sp_parallel)
+        return para_ctx.get_data_parallel_src_rank(with_context_parallel)
 
-    if with_context_parallel and with_ulysses_sp_parallel:
-        assert (
-            _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP_CP is not None
-        ), "Data parallel group with context parallel and ulysses sequence combined is not initialized"
-        return _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP_CP[0]
-    elif with_context_parallel:
+    if with_context_parallel:
         assert (
             _DATA_PARALLEL_GLOBAL_RANKS_WITH_CP is not None
         ), "Data parallel group with context parallel combined is not initialized"
         return _DATA_PARALLEL_GLOBAL_RANKS_WITH_CP[0]
-    elif with_ulysses_sp_parallel:
-        assert (
-            _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP is not None
-        ), "Data parallel group with ulysses sequence combined is not initialized"
-        return _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP[0]
     else:
         assert _DATA_PARALLEL_GLOBAL_RANKS is not None, "Data parallel group is not initialized"
         return _DATA_PARALLEL_GLOBAL_RANKS[0]
@@ -2123,12 +1932,12 @@ def get_last_rank_when_using_pipeline():
     return _LAST_RANK_WHEN_USING_PIPELINE
 
 
-def get_data_parallel_world_size(with_context_parallel=False, partial_data_parallel=False, with_ulysses_sp_parallel=False):
+def get_data_parallel_world_size(with_context_parallel=False, partial_data_parallel=False):
     """Return world size for the data parallel group."""
     para_ctx = get_parallel_context()
     if para_ctx is not None:
         return para_ctx.get_data_parallel_world_size(
-            with_context_parallel, partial_data_parallel, with_ulysses_sp_parallel
+            with_context_parallel, partial_data_parallel
         )
 
     global _MPU_DATA_PARALLEL_WORLD_SIZE
@@ -2139,7 +1948,6 @@ def get_data_parallel_world_size(with_context_parallel=False, partial_data_paral
             group=get_data_parallel_group(
                 with_context_parallel=with_context_parallel,
                 partial_data_parallel=partial_data_parallel,
-                with_ulysses_sp_parallel=with_ulysses_sp_parallel,
             )
         )
     else:
@@ -2156,12 +1964,12 @@ def set_data_parallel_rank(rank):
     _MPU_DATA_PARALLEL_RANK = rank
 
 
-def get_data_parallel_rank(with_context_parallel=False, partial_data_parallel=False, with_ulysses_sp_parallel=False):
+def get_data_parallel_rank(with_context_parallel=False, partial_data_parallel=False):
     """Return caller's rank in the data-parallel group."""
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_data_parallel_rank(
-            with_context_parallel, partial_data_parallel, with_ulysses_sp_parallel
+            with_context_parallel, partial_data_parallel
         )
 
     global _MPU_DATA_PARALLEL_RANK
@@ -2172,33 +1980,8 @@ def get_data_parallel_rank(with_context_parallel=False, partial_data_parallel=Fa
             group=get_data_parallel_group(
                 with_context_parallel=with_context_parallel,
                 partial_data_parallel=partial_data_parallel,
-                with_ulysses_sp_parallel=with_ulysses_sp_parallel,
             )
         )
-    else:
-        return 0
-
-
-def get_ulysses_sp_parallel_world_size():
-    """Return world size for the ulysses_sp parallel group."""
-    para_ctx = get_parallel_context() 
-    if para_ctx is not None:
-        return para_ctx.get_ulysses_sp_parallel_world_size()
-
-    if torch.distributed.is_available() and torch.distributed.is_initialized():
-        return torch.distributed.get_world_size(group=get_ulysses_sp_parallel_group())
-    else:
-        return 0
-
-
-def get_ulysses_sp_parallel_rank():
-    """Return my rank for the ulysses_sp parallel group."""
-    para_ctx = get_parallel_context() 
-    if para_ctx is not None:
-        return para_ctx.get_ulysses_sp_parallel_rank()
-    
-    if torch.distributed.is_available() and torch.distributed.is_initialized():
-        return torch.distributed.get_rank(group=get_ulysses_sp_parallel_group())
     else:
         return 0
 
@@ -2423,11 +2206,12 @@ def get_expert_tensor_model_pipeline_parallel_group(check_initialized=True):
     para_ctx = get_parallel_context() 
     if para_ctx is not None:
         return para_ctx.get_expert_tensor_model_pipeline_parallel_group(check_initialized=check_initialized)
+
     if check_initialized:
         assert (
-                _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP is not None
-            ), 'Expert tensor-model-pipeline parallel group is not initialized'
-        return _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP
+            _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP is not None
+        ), 'Expert tensor-model-pipeline parallel group is not initialized'
+    return _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP
 
 
 def get_expert_data_parallel_group():
@@ -2657,60 +2441,5 @@ def destroy_model_parallel():
     _EXPERT_DATA_PARALLEL_GROUP_GLOO = None
     # End of expert parallelism destroy.
 
-    global _ULYSSES_SP_PARALLEL_GROUP
-    _ULYSSES_SP_PARALLEL_GROUP = None
-    global _ULYSSES_SP_PARALLEL_GLOBAL_RANKS
-    _ULYSSES_SP_PARALLEL_GLOBAL_RANKS = None
-    global _DATA_PARALLEL_GROUP_WITH_USP
-    _DATA_PARALLEL_GROUP_WITH_USP = None
-    
-    global _DATA_PARALLEL_GROUP_WITH_USP_GLOO
-    if (
-        _DATA_PARALLEL_GROUP_WITH_USP_GLOO is not None
-        and torch.distributed.distributed_c10d._world.pg_map.get(
-            _DATA_PARALLEL_GROUP_WITH_USP_GLOO, None
-        )
-        is not None
-    ):
-        torch.distributed.destroy_process_group(_DATA_PARALLEL_GROUP_WITH_USP_GLOO)
-    _DATA_PARALLEL_GROUP_WITH_USP_GLOO = None
-    
-
-    global _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP
-    _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP = None
-    global _DATA_PARALLEL_GROUP_WITH_USP_CP
-    _DATA_PARALLEL_GROUP_WITH_USP_CP = None
-    
-    global _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO
-    if (
-        _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO is not None
-        and torch.distributed.distributed_c10d._world.pg_map.get(
-            _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO, None
-        )
-        is not None
-    ):
-        torch.distributed.destroy_process_group(_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO)
-    _DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO = None
-    
-    global _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP_CP
-    _DATA_PARALLEL_GLOBAL_RANKS_WITH_USP_CP = None
-
-    global _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP 
-    _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP = None
-    
-    global _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO
-    if (
-        _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO is not None
-        and torch.distributed.distributed_c10d._world.pg_map.get(
-            _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO, None
-        )
-        is not None
-    ):
-        torch.distributed.destroy_process_group(_INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO)
-    _INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP_GLOO = None
-    
-    global _INTER_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP
-    _INTER_PARTIAL_DATA_PARALLEL_GROUP_WITH_USP_CP = None
-    
     global _LAST_RANK_WHEN_USING_PIPELINE
     _LAST_RANK_WHEN_USING_PIPELINE = None

@@ -2,6 +2,7 @@ import copy
 import itertools
 import logging
 import time
+
 from functools import reduce
 from pprint import pprint
 
@@ -74,9 +75,7 @@ class Searcher:
 
         if "memory_model" in self.config.experiment.auto_tuner:
             # In the future, the memory model will be loaded by yaml
-            model_name = self.config.experiment.auto_tuner.memory_model.get(
-                "model_name", "default"
-            )
+            model_name = self.config.experiment.auto_tuner.memory_model.get("model_name", "default")
             if model_name != "default":
                 raise NotImplementedError(
                     "The memory model {} is not implemented yet.".format(model_name)
@@ -99,11 +98,7 @@ class Searcher:
         if priority is not None:
             if key in ["sequence_parallel"]:
                 dim.sort(reverse=True)
-            if key in [
-                "data_parallel_size",
-                "recompute_granularity",
-                "micro_batch_size",
-            ]:
+            if key in ["data_parallel_size", "recompute_granularity", "micro_batch_size"]:
                 if priority == "memory":
                     dim.sort()
                 elif priority == "performance":
@@ -153,9 +148,7 @@ class Searcher:
             or config.experiment.auto_tuner.space.use_distributed_optimizer == "auto"
             else config.experiment.auto_tuner.space.use_distributed_optimizer
         )
-        self._sort(
-            "use_distributed_optimizer", space["use_distributed_optimizer"], priority
-        )
+        self._sort("use_distributed_optimizer", space["use_distributed_optimizer"], priority)
 
         # Set tensor parallel degree
         space["tensor_model_parallel_size"] = (
@@ -164,9 +157,7 @@ class Searcher:
             or config.experiment.auto_tuner.space.tensor_model_parallel_size == "auto"
             else config.experiment.auto_tuner.space.tensor_model_parallel_size
         )
-        self._sort(
-            "tensor_model_parallel_size", space["tensor_model_parallel_size"], priority
-        )
+        self._sort("tensor_model_parallel_size", space["tensor_model_parallel_size"], priority)
 
         # Set sequence parallel
         space["sequence_parallel"] = (
@@ -184,19 +175,13 @@ class Searcher:
             or config.experiment.auto_tuner.space.pipeline_model_parallel_size == "auto"
             else config.experiment.auto_tuner.space.pipeline_model_parallel_size
         )
-        self._sort(
-            "pipeline_model_parallel_size",
-            space["pipeline_model_parallel_size"],
-            priority,
-        )
+        self._sort("pipeline_model_parallel_size", space["pipeline_model_parallel_size"], priority)
 
         # Set virtual pipeline parallel degree
         space["num_layers_per_virtual_pipeline_stage"] = (
             [i for i in range(0, num_layers + 1)]
-            if "num_layers_per_virtual_pipeline_stage"
-            not in config.experiment.auto_tuner.space
-            or config.experiment.auto_tuner.space.num_layers_per_virtual_pipeline_stage
-            == "auto"
+            if "num_layers_per_virtual_pipeline_stage" not in config.experiment.auto_tuner.space
+            or config.experiment.auto_tuner.space.num_layers_per_virtual_pipeline_stage == "auto"
             else config.experiment.auto_tuner.space.num_layers_per_virtual_pipeline_stage
         )
         self._sort(
@@ -266,9 +251,7 @@ class Searcher:
             or config.experiment.auto_tuner.space.expert_model_parallel_size == "auto"
             else config.experiment.auto_tuner.space.expert_model_parallel_size
         )
-        self._sort(
-            "expert_model_parallel_size", space["expert_model_parallel_size"], priority
-        )
+        self._sort("expert_model_parallel_size", space["expert_model_parallel_size"], priority)
         return space
 
     def build_strategies(self, space, config):
@@ -277,9 +260,7 @@ class Searcher:
         micro_batch_size_vpp_part = self._product_micro_batch_size_vpp_dims(
             parallelism_part, space, config
         )
-        recompute_part = self._product_recompute_dims(
-            micro_batch_size_vpp_part, space, config
-        )
+        recompute_part = self._product_recompute_dims(micro_batch_size_vpp_part, space, config)
 
         return recompute_part
 
@@ -305,9 +286,7 @@ class Searcher:
             for tensor_model_parallel_size in space["tensor_model_parallel_size"]:
                 if not divisible(cards, tensor_model_parallel_size):
                     continue
-                if not divisible(
-                    cards, data_parallel_size * tensor_model_parallel_size
-                ):
+                if not divisible(cards, data_parallel_size * tensor_model_parallel_size):
                     continue
                 hidden_size = config.train.model.hidden_size
                 num_attention_size = config.train.model.num_attention_heads
@@ -315,9 +294,7 @@ class Searcher:
                     continue
                 if not divisible(num_attention_size, tensor_model_parallel_size):
                     continue
-                for pipeline_model_parallel_size in space[
-                    "pipeline_model_parallel_size"
-                ]:
+                for pipeline_model_parallel_size in space["pipeline_model_parallel_size"]:
                     if not divisible(cards, pipeline_model_parallel_size):
                         continue
                     if not divisible(
@@ -344,9 +321,7 @@ class Searcher:
                         seq_length = config.train.model.seq_length
                         if not divisible(seq_length, context_parallel_size):
                             continue
-                        for expert_model_parallel_size in space[
-                            "expert_model_parallel_size"
-                        ]:
+                        for expert_model_parallel_size in space["expert_model_parallel_size"]:
                             if not divisible(cards, expert_model_parallel_size):
                                 continue
                             if not divisible(
@@ -369,15 +344,9 @@ class Searcher:
                                 continue
 
                             dims["data_parallel_size"] = data_parallel_size
-                            dims["tensor_model_parallel_size"] = (
-                                tensor_model_parallel_size
-                            )
-                            dims["pipeline_model_parallel_size"] = (
-                                pipeline_model_parallel_size
-                            )
-                            dims["expert_model_parallel_size"] = (
-                                expert_model_parallel_size
-                            )
+                            dims["tensor_model_parallel_size"] = tensor_model_parallel_size
+                            dims["pipeline_model_parallel_size"] = pipeline_model_parallel_size
+                            dims["expert_model_parallel_size"] = expert_model_parallel_size
                             dims["context_parallel_size"] = context_parallel_size
                             copied_dims = copy.deepcopy(dims)
                             product_parallelism_dims.append(copied_dims)
@@ -414,13 +383,10 @@ class Searcher:
                         if product_sp_dim["sequence_parallel"]:
                             seq_length = config.train.model.seq_length
                             if not divisible(
-                                seq_length,
-                                product_parallelism_dim["tensor_model_parallel_size"],
+                                seq_length, product_parallelism_dim["tensor_model_parallel_size"]
                             ):
                                 continue
-                        product_dim["sequence_parallel"] = product_sp_dim[
-                            "sequence_parallel"
-                        ]
+                        product_dim["sequence_parallel"] = product_sp_dim["sequence_parallel"]
                         self._append(result, unique_result, product_dim)
             else:
                 for product_dist_opt_dim in product_dist_opt_dims:
@@ -433,9 +399,7 @@ class Searcher:
                         self._append(result, unique_result, product_dim)
                     else:
                         for product_sp_dim in product_sp_dims:
-                            product_dim["sequence_parallel"] = product_sp_dim[
-                                "sequence_parallel"
-                            ]
+                            product_dim["sequence_parallel"] = product_sp_dim["sequence_parallel"]
                             self._append(result, unique_result, product_dim)
         return result
 
@@ -474,15 +438,12 @@ class Searcher:
                                     continue
                                 if recompute_method == "uniform":
                                     if not divisible(
-                                        config.train.model.num_layers,
-                                        recompute_num_layers,
+                                        config.train.model.num_layers, recompute_num_layers
                                     ):
                                         continue
                                     if recompute_num_layers != layers_per_stage:
                                         continue
-                                product_dim["recompute_num_layers"] = (
-                                    recompute_num_layers
-                                )
+                                product_dim["recompute_num_layers"] = recompute_num_layers
                             self._append(result, unique_result, product_dim)
         return result
 
@@ -513,9 +474,7 @@ class Searcher:
                         product_dim["num_layers_per_virtual_pipeline_stage"] = None
                         self._append(result, unique_result, product_dim)
                     else:
-                        pipeline_model_parallel_size = parallelism[
-                            "pipeline_model_parallel_size"
-                        ]
+                        pipeline_model_parallel_size = parallelism["pipeline_model_parallel_size"]
                         layers = config.train.model.num_layers
                         if (
                             pipeline_model_parallel_size <= 2
@@ -531,8 +490,7 @@ class Searcher:
 
                         # Micro batches should divide pp size
                         if not divisible(
-                            product_dim["micro_batch_size"],
-                            num_layers_per_virtual_pipeline_stage,
+                            product_dim["micro_batch_size"], num_layers_per_virtual_pipeline_stage
                         ):
                             continue
 
@@ -605,9 +563,7 @@ class ServeSearcher(Searcher):
         for i in candidates:
             if target % i == 0:
                 results.extend(
-                    self._find_combinations(
-                        target // i, num_dims - 1, fixed_dims, current + [i]
-                    )
+                    self._find_combinations(target // i, num_dims - 1, fixed_dims, current + [i])
                 )
 
         return results
@@ -642,9 +598,7 @@ class ServeSearcher(Searcher):
         cards = config.experiment.auto_tuner.cards
         space = getattr(config.experiment.auto_tuner, "space", {})
         if len(space) != 0:
-            self._nodes_aware_dims = [
-                item for item in space if item in self._nodes_aware_dims
-            ]
+            self._nodes_aware_dims = [item for item in space if item in self._nodes_aware_dims]
         space, nodes_aware_strategies = self._create_space(space, cards)
         self._nodes_aware_strategies = nodes_aware_strategies
 
@@ -656,23 +610,16 @@ class ServeSearcher(Searcher):
     def build_strategies(self, space, config):
         """Build strategies by Cartesian product search space."""
         node_unaware_tune_space = {
-            key: value
-            for key, value in space.items()
-            if key in _DEFAULT_SERVE_TUNE_SPACE
+            key: value for key, value in space.items() if key in _DEFAULT_SERVE_TUNE_SPACE
         }
         values = list(node_unaware_tune_space.values())
         cartesian_product_unaware_values = list(itertools.product(*values))
         cartesian_product_values = list(
-            itertools.product(
-                self._nodes_aware_strategies, cartesian_product_unaware_values
-            )
+            itertools.product(self._nodes_aware_strategies, cartesian_product_unaware_values)
         )
-        cartesian_product_values = [
-            tuple(tuple(a) + b) for a, b in cartesian_product_values
-        ]
+        cartesian_product_values = [tuple(tuple(a) + b) for a, b in cartesian_product_values]
         strategies = [
-            dict(zip(self.space.keys(), combination))
-            for combination in cartesian_product_values
+            dict(zip(self.space.keys(), combination)) for combination in cartesian_product_values
         ]
         print("================== grid search space: ================== \n")
         pprint(strategies, indent=2)

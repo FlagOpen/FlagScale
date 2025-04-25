@@ -1,8 +1,10 @@
 import os
 import shlex
+
 from datetime import datetime
 
 import hydra
+
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
@@ -74,9 +76,7 @@ def _update_config_compress(config: DictConfig):
     OmegaConf.set_struct(config, True)
 
 
-def _generate_run_script_compress(
-    config, host, node_rank, cmd, background=True, with_test=False
-):
+def _generate_run_script_compress(config, host, node_rank, cmd, background=True, with_test=False):
     system_config = config.compress.system
     logging_config = config.compress.system.logging
 
@@ -84,21 +84,15 @@ def _generate_run_script_compress(
     if no_shared_fs:
         host_output_file = os.path.join(logging_config.log_dir, f"host.output")
     else:
-        host_output_file = os.path.join(
-            logging_config.log_dir, f"host_{node_rank}_{host}.output"
-        )
+        host_output_file = os.path.join(logging_config.log_dir, f"host_{node_rank}_{host}.output")
     host_run_script_file = os.path.join(
         logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
     )
-    host_pid_file = os.path.join(
-        logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-    )
+    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
-    root_dir = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     compress_dir = os.path.join(root_dir, "compress")
     ### set megatron dir for dataset
     megtron_dir = os.path.join(root_dir, "megatron")
@@ -155,9 +149,7 @@ class SSHCompressRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         self.cur_envs = None  # current node envs
         self.user_script = self.config.experiment.task.entrypoint
-        self.resources = parse_hostfile(
-            self.config.experiment.runner.get("hostfile", None)
-        )
+        self.resources = parse_hostfile(self.config.experiment.runner.get("hostfile", None))
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
@@ -186,19 +178,13 @@ class SSHCompressRunner(RunnerBase):
         if host != "localhost":
             ssh_port = self.config.experiment.runner.get("ssh_port", 22)
             # Step 1: make sure the scripts_dir exists on the remote host
-            run_ssh_command(
-                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, dryrun
-            )
+            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, dryrun)
 
             # Step 2: copy the host_run_script_file to the remote host
             no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
             if no_shared_fs:
                 run_scp_command(
-                    host,
-                    host_run_script_file,
-                    logging_config.scripts_dir,
-                    ssh_port,
-                    dryrun,
+                    host, host_run_script_file, logging_config.scripts_dir, ssh_port, dryrun
                 )
 
             # Step 3: run the host_run_script_file on the remote host
@@ -245,9 +231,7 @@ class SSHCompressRunner(RunnerBase):
         else:
             # If hostfile is not provided, run the job on localhost
             nproc_from_args = runner_config.get("nproc_per_node", None)
-            nproc_per_node = get_nproc_per_node(
-                None, nproc_from_args, num_visible_devices
-            )
+            nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
             available_addr = runner_config.get("master_addr", "localhost")
             available_port = runner_config.get("master_port", get_free_port())
             self._run_each(
@@ -266,9 +250,7 @@ class SSHCompressRunner(RunnerBase):
             self._stop_each("localhost", 0)
             return
 
-        nnodes = get_nnodes(
-            len(self.resources), self.config.experiment.runner.get("nnodes", None)
-        )
+        nnodes = get_nnodes(len(self.resources), self.config.experiment.runner.get("nnodes", None))
 
         for node_rank, (host, _) in enumerate(self.resources.items()):
             if node_rank >= nnodes:

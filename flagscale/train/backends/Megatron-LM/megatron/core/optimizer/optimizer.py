@@ -404,7 +404,9 @@ class MixedPrecisionOptimizer(MegatronOptimizer):
             groups = [groups]
         for group in groups:
             torch.distributed.all_reduce(
-                self.found_inf, op=torch.distributed.ReduceOp.MAX, group=group
+                self.found_inf,
+                op=torch.distributed.ReduceOp.MAX,
+                group=group
             )
         if self.found_inf.device != torch.device('cuda'):
             self.found_inf = self.found_inf.cuda()

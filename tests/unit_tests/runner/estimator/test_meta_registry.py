@@ -1,5 +1,6 @@
 import os
 import sys
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -323,13 +324,9 @@ class TestModelStatsRegistry:
             print(log)
             path = log[1]
             if "RootModule_1/ChildModule_2" == path:
-                assert (
-                    log[0] == 200
-                ), f"Child module should have 200 params, got {log[0]}"
+                assert log[0] == 200, f"Child module should have 200 params, got {log[0]}"
 
         for log in registry.acts_logs:
             path = log[1]
             if "GrandchildModule_" in path:
-                assert (
-                    log[0] == 300
-                ), f"Grandchild module should have 300 acts, got {log[0]}"
+                assert log[0] == 300, f"Grandchild module should have 300 acts, got {log[0]}"

@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
@@ -14,11 +15,7 @@ from megatron.core.datasets.gpt_dataset import (
     GPTDatasetConfig,
     _get_ltor_masks_and_position_ids,
 )
-from megatron.core.datasets.indexed_dataset import (
-    IndexedDataset,
-    get_bin_path,
-    get_idx_path,
-)
+from megatron.core.datasets.indexed_dataset import IndexedDataset, get_bin_path, get_idx_path
 from megatron.core.datasets.utils import Split
 
 logger = logging.getLogger(__name__)
@@ -65,12 +62,7 @@ class SFTDataset(GPTDataset):
         self.loss_mask_dataset = None
 
         super().__init__(
-            indexed_dataset,
-            dataset_path,
-            indexed_indices,
-            num_samples,
-            index_split,
-            config,
+            indexed_dataset, dataset_path, indexed_indices, num_samples, index_split, config
         )
 
         self._build_loss_mask_dataset()
@@ -229,9 +221,7 @@ class SFTDataset(GPTDataset):
                 offset = 0 if i > doc_index_beg else doc_index_beg_offset
                 length = None if i < doc_index_end else doc_index_end_offset + 1
                 sample_parts.append(
-                    aux_dataset.get(
-                        self.document_index[i], offset=offset, length=length
-                    )
+                    aux_dataset.get(self.document_index[i], offset=offset, length=length)
                 )
 
         return (

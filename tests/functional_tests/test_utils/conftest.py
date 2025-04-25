@@ -5,10 +5,7 @@ import pytest
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--test_path",
-        action="store",
-        default="none",
-        help="Base path for the test cases",
+        "--test_path", action="store", default="none", help="Base path for the test cases"
     )
     parser.addoption(
         "--test_type",
@@ -17,10 +14,7 @@ def pytest_addoption(parser):
         help="Different Types of Testing (train/inference/....)",
     )
     parser.addoption(
-        "--test_task",
-        action="store",
-        default="none",
-        help="Model name for the test cases",
+        "--test_task", action="store", default="none", help="Model name for the test cases"
     )
     parser.addoption(
         "--test_case", action="store", default="none", help="Specific test case to run"

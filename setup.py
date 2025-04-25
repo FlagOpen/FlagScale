@@ -1,6 +1,6 @@
 import os
-import sys
 import subprocess
+import sys
 
 from setuptools import find_packages, setup
 from setuptools.command.install import install
@@ -17,9 +17,7 @@ from tools.patch.unpatch import unpatch
 
 def is_nvidia_chip():
     try:
-        result = subprocess.run(
-            ["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
+        result = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode == 0:
             return True
     except Exception as e:
@@ -50,6 +48,7 @@ class InstallRequirement(install):
             pass
         # Continue to install
         install.run(self)
+
 
 # unpatch the Megatron-LM
 main_path = os.path.dirname(__file__)
@@ -88,11 +87,6 @@ setup(
         "packaging>=24.1",
         "importlib_metadata>=8.5.0",
     ],
-
-    entry_points={
-        "console_scripts": [
-            "flagscale=flag_scale.flagscale.cli:flagscale",
-        ],
-    },
+    entry_points={"console_scripts": ["flagscale=flag_scale.flagscale.cli:flagscale"]},
     cmdclass={"install": InstallRequirement},
 )

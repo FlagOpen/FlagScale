@@ -5,6 +5,7 @@ import json
 import os
 
 import torch
+
 from safetensors.torch import load_file, save_file
 
 convert_count = 0
@@ -105,24 +106,12 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
     start = kv_channels * num_heads // num_query_groups
     for i in range(num_query_groups):
         offset = i * interval
-        indices.append(
-            torch.arange(
-                start + offset,
-                start + offset + kv_channels,
-                dtype=torch.int,
-            )
-        )
+        indices.append(torch.arange(start + offset, start + offset + kv_channels, dtype=torch.int))
     # V
     start = kv_channels * num_heads // num_query_groups + kv_channels
     for i in range(num_query_groups):
         offset = i * interval
-        indices.append(
-            torch.arange(
-                start + offset,
-                start + offset + kv_channels,
-                dtype=torch.int,
-            )
-        )
+        indices.append(torch.arange(start + offset, start + offset + kv_channels, dtype=torch.int))
     indices = torch.cat(indices)
     deorder_indices = indices
 
@@ -154,14 +143,10 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
     deorder_gate_up_indices = gate_up_indices
 
     input_layer_norm_weight = (
-        "input_layernorm.weight"
-        if not use_te
-        else "self_attention.linear_qkv.layer_norm_weight"
+        "input_layernorm.weight" if not use_te else "self_attention.linear_qkv.layer_norm_weight"
     )
     input_layer_norm_bias = (
-        "input_layernorm.bias"
-        if not use_te
-        else "self_attention.linear_qkv.layer_norm_bias"
+        "input_layernorm.bias" if not use_te else "self_attention.linear_qkv.layer_norm_bias"
     )
 
     post_attention_layer_norm_weight = (
@@ -171,9 +156,7 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
     layer_norm_2_weight = (
         "pre_mlp_layernorm.weight" if not use_te else "mlp.linear_fc1.layer_norm_weight"
     )
-    layer_norm_2_bias = (
-        "pre_mlp_layernorm.bias" if not use_te else "mlp.linear_fc1.layer_norm_bias"
-    )
+    layer_norm_2_bias = "pre_mlp_layernorm.bias" if not use_te else "mlp.linear_fc1.layer_norm_bias"
 
     for mc_name in mc_model:
         print("mc_layer:", mc_name)
@@ -231,9 +214,7 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
                 hf_model[f"{base}.input_layernorm.weight"] = mc_tensor
             elif "mlp.linear_fc1.weight" in mc_name:
                 mc_tensor = mc_tensor[deorder_gate_up_indices]
-                gate_up_weight = torch.split(
-                    mc_tensor, [ffn_hidden_size, ffn_hidden_size]
-                )
+                gate_up_weight = torch.split(mc_tensor, [ffn_hidden_size, ffn_hidden_size])
                 check_model(f"{base}.mlp.gate_proj.weight", hf_model)
                 check_model(f"{base}.mlp.up_proj.weight", hf_model)
                 hf_model[f"{base}.mlp.gate_proj.weight"] = gate_up_weight[0]
@@ -261,35 +242,17 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
     interval = kv_channels * 3
     for i in range(num_query_groups):
         offset = interval * i
-        indices.append(
-            torch.arange(
-                start + offset,
-                start + offset + kv_channels,
-                dtype=torch.int,
-            )
-        )
+        indices.append(torch.arange(start + offset, start + offset + kv_channels, dtype=torch.int))
     # K
     start = kv_channels
     for i in range(num_query_groups):
         offset = interval * i
-        indices.append(
-            torch.arange(
-                start + offset,
-                start + offset + kv_channels,
-                dtype=torch.int,
-            )
-        )
+        indices.append(torch.arange(start + offset, start + offset + kv_channels, dtype=torch.int))
     # V
     start = kv_channels * 2
     for i in range(num_query_groups):
         offset = interval * i
-        indices.append(
-            torch.arange(
-                start + offset,
-                start + offset + kv_channels,
-                dtype=torch.int,
-            )
-        )
+        indices.append(torch.arange(start + offset, start + offset + kv_channels, dtype=torch.int))
     indices = torch.cat(indices)
     deorder_indices = indices
 
@@ -301,9 +264,7 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
         hf_base_name = "model.vision_tower.vision_tower.vision_model"
 
         if "vision_model.position_embeddings.weight" in mc_name:
-            check_model(
-                f"{hf_base_name}.embeddings.position_embedding.weight", hf_model
-            )
+            check_model(f"{hf_base_name}.embeddings.position_embedding.weight", hf_model)
             hf_model[f"{hf_base_name}.embeddings.position_embedding.weight"] = mc_tensor
 
         elif "vision_model.ln_post.weight" in mc_name:
@@ -401,15 +362,11 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
     hf_model["model.mm_projector.0.weight"] = mc_model[
         "vision_projection.encoder.linear_fc1.weight"
     ]
-    hf_model["model.mm_projector.0.bias"] = mc_model[
-        "vision_projection.encoder.linear_fc1.bias"
-    ]
+    hf_model["model.mm_projector.0.bias"] = mc_model["vision_projection.encoder.linear_fc1.bias"]
     hf_model["model.mm_projector.2.weight"] = mc_model[
         "vision_projection.encoder.linear_fc2.weight"
     ]
-    hf_model["model.mm_projector.2.bias"] = mc_model[
-        "vision_projection.encoder.linear_fc2.bias"
-    ]
+    hf_model["model.mm_projector.2.bias"] = mc_model["vision_projection.encoder.linear_fc2.bias"]
 
     metadata = {"format": "pt"}
     save_file(hf_model, output_path + "/model_new.safetensors", metadata=metadata)
