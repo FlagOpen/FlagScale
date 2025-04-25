@@ -12,7 +12,7 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core import InferenceParams
 from megatron.core.models.vision.multimodal_projector import MultimodalProjector
 
-from flagscale.train.models.qwen_2_5_vl.transformer_block import TransformerBlock
+from flagscale.train.models.qwen2_5_vl.vision_transformer_block import VisionTransformerBlock
 
 
 # copied from https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2_vl/modeling_qwen2_vl.py
@@ -128,7 +128,7 @@ class Qwen2_5VisionModel(VisionModule):
         # Transformer layers.
         # TODO: Follow-up changes will make pre and post_process configurable. They are needed for supporting pipeline parallelism.
         # NOTE: a final layer norm and/or linear layer present in some implementations are omitted here.
-        self.decoder = TransformerBlock(
+        self.decoder = VisionTransformerBlock(
             config=transformer_config,
             spec=transformer_layer_spec,
             pre_process=self.pre_process,
@@ -189,7 +189,6 @@ class Qwen2_5VisionModel(VisionModule):
         max_grid_size = grid_thw[:, 1:].max()
         rotary_pos_emb_full = self.rotary_pos_emb(max_grid_size).to(grid_thw.device)
         rotary_pos_emb = rotary_pos_emb_full[pos_ids].flatten(1)
-        # print(f"LZY: pos_ids: {pos_ids.shape}, rotary_pos_emb_full: {rotary_pos_emb_full.shape}, rotary_pos_emb: {rotary_pos_emb.shape}, max_grid_size: {max_grid_size}")
         return rotary_pos_emb
 
     def get_window_index(self, grid_thw):
@@ -311,9 +310,7 @@ class Qwen2_5VisionModel(VisionModule):
             seqlens = torch.repeat_interleave(grid_thw[:, 1] * grid_thw[:, 2], grid_thw[:, 0])
             cu_seqlens = seqlens.cumsum(dim=0)
             cu_seqlens = F.pad(cu_seqlens, (1, 0), value=0).int()
-        else:
-            # [num_windows]相比原始的seqlens元素数量被压缩，但是绝对长度不变，也就是step变长了
-            # atten在计算时，使用cu_seqlens_q中元素为单位，
+        else: # the step of cu_seqlens is window_size, not sampel seq_length
             seqlens = cu_seqlens[1:] - cu_seqlens[:-1]
 
         max_seqlen_q = seqlens.max()

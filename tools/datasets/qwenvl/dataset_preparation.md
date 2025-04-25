@@ -1,8 +1,41 @@
-# 准备基于ShareGPT格式的Energon多模态数据集
+# 📎 Reference
+Mainly based on official [Pai-Megatron-Patch](https://github.com/alibaba/Pai-Megatron-Patch/tree/main/toolkits/multimodal_data_preprocessing/),with necessary modifications for integration into the current training framework.
+
+# 数据集下载
+
+```bash
+cd /mnt
+
+mkdir llava-datasets
+cd llava-datasets
+git clone https://huggingface.co/datasets/liuhaotian/LLaVA-Pretrain
+cd LLaVA-Pretrain
+unzip images.zip
+
+#convert to webdataset format:
+cd /workspace/Pai-Megatron-Patch/toolkits/pretrain_data_preprocessing
+python convert_llava_pretrain_to_wds.py /mnt/llava-datasets/LLaVA-Pretrain/
+
+#convert to megatron-energon format:
+cd /mnt/llava-datasets/LLaVA-Pretrain/wds
+energon prepare ./
+
+#select the following values for the presented options:
+> Please enter a desired train/val/test split like "0.5, 0.2, 0.3" or "8,1,1": 9,1,0
+> Do you want to create a dataset.yaml interactively? [Y/n]: Y
+> Please enter a number to choose a class: 10 (VQAWebdataset)
+> Do you want to set a simple field_map[Y] (or write your own sample_loader [n])? [Y/n]: Y
+> Please enter a webdataset field name for 'image' (<class 'torch.Tensor'>): jpg
+> Please enter a webdataset field name for 'context' (<class 'str'>): json[0][value]
+> Please enter a webdataset field name for 'answers' (typing.Optional[typing.List[str]], default: None): json[1][value]
+> Please enter a webdataset field name for 'answer_weights' (typing.Optional[torch.Tensor], default: None):
+```
+
+## 准备基于ShareGPT格式的Energon多模态复杂数据集
 
 当前Qwen2-VL/Qwen2.5-VL支持特定格式的复杂多模态样本的训练，您可按照下述流程将您的数据集转换为我们支持的格式。
 
-## 原始数据
+### 原始数据
 
 在转换前，你可能需要自行将数据集转换为**sharegpt格式**，sharegpt格式的示例如下:
 ```json
@@ -42,7 +75,7 @@
 ```
 其中，`images`与`videos`列表保存所有图像/视频的原始路径，且依次与对话中的`<image>`与`<video>`标记对应。
 
-## 抽帧
+### 视频抽帧
 在训练前，您需要使用DataJuicer等工具将数据集中的视频转换为一系列帧图像。
 
 以`path/to/video1.mp4`为例，假设其保存在`dataset_root/path/to/video1.mp4`, 最终您导出的帧应当保存在 `dataset_root/path/to/video1/` 这一文件夹。此外，您需要保证帧图像的时间顺序与文件名字典序顺序一致。
@@ -88,8 +121,8 @@ python replace_llava_image_key.py \
 
 ```
 
-## 转换
-假设数据集目录文件结构如下:
+### 转换为chatml
+假设**sharegpt格式**格式的数据集目录文件结构如下:
 ```
 dataset_root/
 -   dataset.json

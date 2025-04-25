@@ -41,7 +41,8 @@ from megatron.core.num_microbatches_calculator import get_num_microbatches
 
 
 torch._dynamo.config.suppress_errors = True
-from megatron.core import mpu, tensor_parallel
+from megatron.core import mpu
+# from megatron.core.tensor_parallel.data import broadcast_data
 from megatron.core.parallel_state import get_tensor_model_parallel_rank
 from megatron.energon import (
     LimitDataset,
@@ -53,18 +54,18 @@ from megatron.energon import (
     get_val_datasets,
 )
 
-from flagscale.train.models.qwen_2_5_vl.layer_specs import (
+from megatron.training.tokenizer.tokenizer import build_tokenizer
+from megatron.training.global_vars import get_tokenizer
+
+from flagscale.train.models.qwen2_5_vl.layer_specs import (
     get_gpt_layer_with_transformer_engine_spec,
     get_qwen2vl_vision_model_spec,
     get_mlp_module_spec
 
 )
-from flagscale.train.models.qwen_2_5_vl.qwen_2_5_vl_model import Qwen2_5VLModel
-from megatron.training.tokenizer.tokenizer import build_tokenizer
-from megatron.training.global_vars import get_tokenizer
-from flagscale.train.models.qwen_2_5_vl.tensor_parallel import broadcast_data
-from flagscale.train.models.qwen_2_5_vl.transformer_config import (
-    Qwen2VLTransformerConfig,
+from flagscale.train.models.qwen2_5_vl.qwen2_5_vl_model import Qwen2_5VLModel
+from flagscale.train.models.qwen2_5_vl.tensor_parallel import broadcast_data
+from flagscale.train.models.qwen2_5_vl.transformer_config import (
     get_vision_model_config,
     get_vision_projection_config
 )
@@ -78,7 +79,7 @@ def model_provider(
     print_rank_0("start building qwen2-vl model ...")
 
     # Config of vit, llm and projector
-    config = core_transformer_config_from_args(args, Qwen2VLTransformerConfig)
+    config = core_transformer_config_from_args(args)
     use_te = args.transformer_impl == "transformer_engine"
     if not use_te:
         raise NotImplementedError("The Qwen2-VL model is only implemented with TransformerEngine!")
@@ -365,13 +366,14 @@ def get_batch(data_iterator):
         data = None
 
     data_text =  broadcast_data(["text"], data, torch.int64)["text"]
-    # print(f"LZY: data_text.shape: {data_text.shape}")
+
     target =  broadcast_data(["target"], data, torch.int64)["target"]
     # shape: num_tiles x c x h x w
     imgs = broadcast_data(["imgs"], data, torch.float32)["imgs"]
 
     # shape: num_tiles x c x h x w
     videos = broadcast_data(["videos"], data, torch.float32)["videos"]
+
     # shape: n_image_samples
     image_thw_grids = broadcast_data(["image_thw_grids"], data, torch.long)["image_thw_grids"]
     # shape: n_video_samples

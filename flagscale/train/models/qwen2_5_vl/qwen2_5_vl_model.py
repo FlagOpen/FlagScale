@@ -5,16 +5,16 @@ from typing import List
 
 import torch
 
-from megatron.core import InferenceParams, parallel_state
+from megatron.core import InferenceParams
 from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.packed_seq_params import PackedSeqParams
 
 
-from flagscale.train.models.qwen_2_5_vl.transformer_config import Qwen2VLTransformerConfig
-from flagscale.train.models.qwen_2_5_vl.vit_model import Qwen2_5VisionModel
-from flagscale.train.models.qwen_2_5_vl.language_module import GPTModel
+# from flagscale.train.models.qwen2_5_vl.transformer_config import Qwen2VLTransformerConfig
+from flagscale.train.models.qwen2_5_vl.vit_model import Qwen2_5VisionModel
+from flagscale.train.models.qwen2_5_vl.language_module import GPTModel
 
 # Note: This is under development and may be missing features.
 class Qwen2_5VLModel(MegatronModule):
@@ -49,7 +49,7 @@ class Qwen2_5VLModel(MegatronModule):
 
     def __init__(
         self,
-        language_transformer_config: Qwen2VLTransformerConfig,
+        language_transformer_config: TransformerConfig,
         language_transformer_layer_spec: ModuleSpec,
         language_vocab_size: int,
         language_max_sequence_length: int,
@@ -115,7 +115,6 @@ class Qwen2_5VLModel(MegatronModule):
             pre_process=self.pre_process,
             post_process=self.post_process,
             rotary_base=language_rotary_base,
-            mrope_section=language_transformer_config.mrope_section,
             fp16_lm_cross_entropy=fp16_lm_cross_entropy,
             share_embeddings_and_output_weights=language_share_embeddings_and_output_weights
         )
@@ -275,27 +274,3 @@ class Qwen2_5VLModel(MegatronModule):
             **(extra_block_kwargs or {}),
         )
         return output
-
-
-def _load_state_dict_hook_ignore_param_names(
-    param_names: List[str], module: torch.nn.Module, incompatible_keys: namedtuple
-):
-    """Hook to ignore missing keys during checkpoint loading.
-
-    By default, this should not be used to avoid accidentally missing weights in checkpoint loading.
-
-    Example use case: Use this for the vision projection if you want to load a checkpoint that contains vision and language model weights
-    but not the vision projection weights.
-
-    Args:
-        param_names (list of str): Parameter names allowed to be missing when calling load_state_dict.
-        module (torch.nn.Module): The torch module this hook applies to. Unused here but required by the torch API.
-        incompatible_keys (namedtuple): Namedtuple with fields missing_keys and unexpected_keys, which collect the missing and unexpected
-            keys when calling load_state_dict on this torch module, respectively.
-    """
-    for param_name in param_names:
-        if param_name in incompatible_keys.missing_keys:
-            logging.getLogger(__name__).warning(
-                f"{param_name} being removed from incompatible_keys.missing_keys in QWen2VLModel"
-            )
-            incompatible_keys.missing_keys.remove(param_name)

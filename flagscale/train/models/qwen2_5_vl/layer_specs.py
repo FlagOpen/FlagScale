@@ -29,10 +29,9 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
 
 from megatron.core.transformer.mlp import MLP, MLPSubmodules
-from megatron.core.transformer.attention import SelfAttentionSubmodules
+from megatron.core.transformer.attention import (SelfAttentionSubmodules, SelfAttention)
 
-from .attention_vision import SelfAttention
-from .attention import SelfAttention as Qwen2VLSelfAttention
+from .vision_attention import SelfAttentionVision
 
 # Use this spec to use lower level Transformer Engine modules (required for fp8 training)
 def get_gpt_layer_with_transformer_engine_spec(
@@ -45,7 +44,7 @@ def get_gpt_layer_with_transformer_engine_spec(
         module=TransformerLayer,
         submodules=TransformerLayerSubmodules(
             self_attention=ModuleSpec(
-                module=Qwen2VLSelfAttention,
+                module=SelfAttention,
                 params={"attn_mask_type": AttnMaskType.causal},
                 submodules=SelfAttentionSubmodules(
                     linear_qkv=TELayerNormColumnParallelLinear,
@@ -78,7 +77,7 @@ def get_qwen2vl_vision_model_spec(
         module=TransformerLayer,
         submodules=TransformerLayerSubmodules(
             self_attention=ModuleSpec(
-                module=SelfAttention,
+                module=SelfAttentionVision,
                 params={"attn_mask_type": attn_mask_type},
                 submodules=SelfAttentionSubmodules(
                     linear_qkv=TELayerNormColumnParallelLinear,

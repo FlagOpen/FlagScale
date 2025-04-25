@@ -12,22 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import torch
-from typing import List
-from dataclasses import dataclass, field
-from megatron.core.transformer import TransformerConfig
-from megatron.training.activations import quick_gelu
 from megatron.core import parallel_state
-
-
-@dataclass
-class Qwen2VLTransformerConfig(TransformerConfig):
-
-    transformer_impl: str = 'transformer_engine'
-    rotary_base: int = None
-    rotary_scaling_factor: int = None
-    max_position_embeddings: int = None
-    moe_aux_loss_coeff: float = 0.0
-    mrope_section: List[int] = field(default_factory=lambda:[16, 24, 24])
 
 
 def get_vision_model_config(args, config):
@@ -37,9 +22,9 @@ def get_vision_model_config(args, config):
     # mlp: hidden_size -> intermediate_size -> embed_dim, silu
     # NOTE: here we provide a workaround to solve the wrong layer amount when VPP of decoder is on
     if config.num_layers in[28, 36]:
-        config.ffn_hidden_size = 3420
+        config.ffn_hidden_size = 3420 # 7B num_layers: 28
     else:
-        config.ffn_hidden_size = 3456 # 7B num_layers: 32
+        config.ffn_hidden_size = 3456
 
     if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
         config.num_layers = 32 * parallel_state.get_virtual_pipeline_model_parallel_world_size() # depth

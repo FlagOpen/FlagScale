@@ -29,9 +29,7 @@ path_dir = os.path.abspath(
     )
 )
 sys.path.append(path_dir)
-sys.path.append(os.path.join(path_dir, "megatron"))
-
-from functools import partial
+sys.path.append(os.path.join(path_dir, "third_party/Megatron-LM"))
 
 from megatron.training import get_args
 from megatron.training.checkpointing import (
@@ -40,7 +38,7 @@ from megatron.training.checkpointing import (
     read_metadata,
 )
 from megatron.training.initialize import initialize_megatron
-from megatron.training.utils import get_ltor_masks_and_position_ids
+
 from tools.checkpoint.qwen2_5_vl.utils import (
     build_layer_id_mapping,
     safe_copy,
@@ -48,9 +46,6 @@ from tools.checkpoint.qwen2_5_vl.utils import (
     save_state_dict,
 )
 
-# sys.path.append(os.path.join(path_dir, "flagscale/train/models/qwen_2_5_vl"))
-# from qwen2_5_vl.pretrain_qwen import model_provider
-# from megatron_patch.arguments import add_multimodal_extra_args
 from flagscale.train.train_qwen_2_5_vl import add_multimodal_extra_args, model_provider
 
 torch.backends.cudnn.deterministic = True
@@ -445,27 +440,6 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
     hidden_size = args.hidden_size
     head_dim = hidden_size // num_attention_heads
 
-    hf_numels = sum(
-        [
-            t.numel()
-            for t in hfmodel.state_dict().values()
-            if isinstance(t, torch.Tensor)
-        ]
-    )
-    mg_numels = sum(
-        [
-            t.numel()
-            for t in mgmodel.state_dict().values()
-            if isinstance(t, torch.Tensor)
-        ]
-    )
-    # print(f"++++ LZY: HF model numels: {hf_numels}; MG model numels: {mg_numels}")
-
-    # hf_keys = set(hfmodel.state_dict().keys())
-    # mg_keys = set(mgmodel.state_dict().keys())
-    # print(f"++++ LZY: HF model keys len {len(hf_keys)}: {hf_keys}")
-    # print(f"++++ LZY: MG model keys len {len(mg_keys)}: {mg_keys}")
-
     # 1. vision model
     hfvision = hfmodel.visual
     mgvision = mgmodel.vision_model
@@ -552,7 +526,7 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
     )
     n_params = sum([t.numel() for t in hfvision.state_dict().values()])
     assert n_params == copied_numel
-    print(f"++++ LZY: vision model numels: {n_params}; copied numels: {copied_numel}")
+
     # 3. llm [just Qwen2]
     hfllm = hfmodel.model
     mgllm = mgmodel.language_model
@@ -614,7 +588,6 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
 
     n_params = sum([t.numel() for t in hfllm.state_dict().values()])
     assert n_params == copied_numel
-    print(f"++++ LZY: llm model numels: {n_params}; copied numels: {copied_numel}")
 
 
 def check_layer(layers_to_copy, k):

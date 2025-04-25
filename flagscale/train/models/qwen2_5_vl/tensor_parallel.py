@@ -1,5 +1,4 @@
-# NOTE: # Copyright (c) 2025 BAAI and Nvidia Megatron-LM Team.
-# NOTE: we slightly modify this file to support zero-size tensor
+# NOTE: we slightly modify this file to support zero-size tensor, such as [0, 128] when we don't have video data
 import torch
 
 from megatron.core.parallel_state import (
@@ -24,6 +23,7 @@ def _check_data_types(keys, data, target_dtype):
 def _build_key_size_numel_dictionaries(keys, data):
     """Build the size on rank 0 and broadcast."""
     max_dim = _MAX_DATA_DIM
+    # support to zero-size tensor, such as [0, 128]
     sizes = [-1 for _ in range(max_dim) for _ in keys]
 
     # Pack the sizes on rank zero.
@@ -52,6 +52,7 @@ def _build_key_size_numel_dictionaries(keys, data):
         i = 0
         size = []
         numel = 1
+        # support to zero-size tensor, such as [0, 128]
         while sizes_cpu[offset + i] >= 0:
             this_size = sizes_cpu[offset + i]
             size.append(this_size)
