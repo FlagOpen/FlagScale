@@ -47,7 +47,7 @@ def save_checkpoint(queue, args):
         os.path.join(os.path.dirname(__file__),
                      os.path.pardir,
                      os.path.pardir))
-    sys.path.append(os.path.join(root_path, "megatron"))
+    sys.path.append(os.path.join(root_path, "third_party/Megatron-LM"))
     sys.path.append(root_path)
 
     if args.megatron_path is not None:

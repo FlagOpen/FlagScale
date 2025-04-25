@@ -44,7 +44,7 @@ def save_checkpoint(queue, args):
         os.path.join(os.path.dirname(__file__),
                      os.path.pardir,
                      os.path.pardir))
-    sys.path.append(os.path.join(root_path, "megatron"))
+    sys.path.append(os.path.join(root_path, "third_party/Megatron-LM"))
     sys.path.append(root_path)
 
     if args.megatron_path is not None:
@@ -61,6 +61,7 @@ def save_checkpoint(queue, args):
                 get_cuda_rng_tracker, _DATA_PARALLEL_RNG_TRACKER_NAME,
                 _EXPERT_PARALLEL_RNG_TRACKER_NAME, _MODEL_PARALLEL_RNG_TRACKER_NAME
             )
+        from tools.checkpoint.utils import _ConverterFakeProcessGroup
     except ModuleNotFoundError:
         print("Unable to import Megatron, please specify the path to Megatron using --megatron-path. Exiting.")
         queue.put("exit")
@@ -280,6 +281,26 @@ def save_checkpoint(queue, args):
     mpu.set_tensor_model_parallel_rank(0)
     mpu.set_pipeline_model_parallel_rank(0)
     mpu.set_expert_model_parallel_rank(0)
+
+    fake_tp_group = _ConverterFakeProcessGroup(size=margs.tensor_model_parallel_size)
+    fake_ep_group = _ConverterFakeProcessGroup(size=margs.expert_model_parallel_size)
+    fake_pp_group = _ConverterFakeProcessGroup(size=margs.pipeline_model_parallel_size)
+    fake_cp_group = _ConverterFakeProcessGroup(size=margs.context_parallel_size)
+    fake_dp_group = _ConverterFakeProcessGroup(size=margs.data_parallel_size)
+    fake_etp_group = _ConverterFakeProcessGroup(size=margs.expert_tensor_parallel_size)
+    edp_parallel_size = margs.tensor_model_parallel_size * margs.context_parallel_size // (margs.expert_tensor_parallel_size * margs.expert_model_parallel_size)
+    fake_edp_group = _ConverterFakeProcessGroup(size=edp_parallel_size)
+    fake_etp_ep_group = _ConverterFakeProcessGroup(size=margs.expert_tensor_parallel_size*margs.expert_model_parallel_size)
+    fake_tcp_group = _ConverterFakeProcessGroup(size=margs.tensor_model_parallel_size*margs.context_parallel_size)
+    mpu._TENSOR_MODEL_PARALLEL_GROUP = fake_tp_group
+    mpu._EXPERT_MODEL_PARALLEL_GROUP = fake_ep_group
+    mpu._PIPELINE_MODEL_PARALLEL_GROUP = fake_pp_group
+    mpu._CONTEXT_PARALLEL_GROUP = fake_cp_group
+    mpu._DATA_PARALLEL_GROUP = fake_dp_group
+    mpu._EXPERT_TENSOR_PARALLEL_GROUP = fake_etp_group
+    mpu._EXPERT_DATA_PARALLEL_GROUP = fake_edp_group
+    mpu._EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP = fake_etp_ep_group
+    mpu._TENSOR_AND_CONTEXT_PARALLEL_GROUP = fake_tcp_group
 
     # fused kernel
     fused_kernels.load(margs)
