@@ -321,12 +321,6 @@ class TransformerConfig(ModelParallelConfig):
     first_last_layers_bf16 is True."""
 
 
-    ####################
-    # MTP related
-    ####################
-    num_mtp_predictor: int = 0
-    """The num of multi token predictors"""
-
 
     ####################
     # MoE related

@@ -559,8 +559,8 @@ def num_floating_point_operations_fs(args, batch_size):
 
         # Part3: MTP =============================================================================
         num_flops_mtp = 0
-        num_mtp_predictor = 0 if not getattr(args, "num_mtp_predictor", None) else args.num_mtp_predictor
-        if num_mtp_predictor > 0:
+        mtp_num_layers = 0 if not getattr(args, "mtp_num_layers", None) else args.mtp_num_layers
+        if mtp_num_layers > 0:
             num_flops_mtp = (
                 # MTP eh norm + final nrom
                 2 * 3 * args.hidden_size
@@ -578,7 +578,7 @@ def num_floating_point_operations_fs(args, batch_size):
             num_dense_layers * (num_flops_attn + num_flops_dense_mlp)
             + num_moe_layers * (num_flops_attn + num_flops_sparse_mlp)
             + num_flops_logits
-            + num_mtp_predictor * num_flops_mtp
+            + mtp_num_layers * num_flops_mtp
         )
 
     # Compute standard Transformer model FLOPs.

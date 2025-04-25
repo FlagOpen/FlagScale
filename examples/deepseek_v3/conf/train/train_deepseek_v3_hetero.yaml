@@ -94,7 +94,7 @@ model:
   moe_router_topk: 6
 
   # mtp args ===================
-  num_mtp_predictor: 1
+  mtp_num_layers: 1
 
   # training
   seed: ${experiment.seed}

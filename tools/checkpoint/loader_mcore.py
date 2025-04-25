@@ -111,7 +111,7 @@ def _load_checkpoint(queue, args):
     _set_arg("moe_router_enable_expert_bias")
     _set_arg("moe_router_score_function")
     # for mtp
-    _set_arg("num_mtp_predictor")
+    _set_arg("mtp_num_layers")
 
     # for hetero
     _set_arg("enable_hetero")
@@ -332,8 +332,8 @@ def _load_checkpoint(queue, args):
         queue_put("output layer", message)
 
     message = dict()
-    if margs.num_mtp_predictor:
-        for mtp_layer_id in range(margs.num_mtp_predictor):
+    if margs.mtp_num_layers:
+        for mtp_layer_id in range(margs.mtp_num_layers):
             message = dict()
             ckpt_plugin.get_mtp_ckpt(message, models, mtp_layer_id, margs)
             queue_put(f"mtp module {mtp_layer_id}", message)

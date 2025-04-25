@@ -89,7 +89,7 @@ def load_args_hf2mg(args):
     # MTP Related
     # MTP is used in DeepSeek V3
     if "num_nextn_predict_layers" in deepseek_v3_args:
-        args.num_mtp_predictor = deepseek_v3_args["num_nextn_predict_layers"]
+        args.mtp_num_layers = deepseek_v3_args["num_nextn_predict_layers"]
 
     return args, args
 
@@ -105,7 +105,7 @@ def save_args_mg2hf(args):
         intermediate_size=args.ffn_hidden_size,
         moe_intermediate_size=args.moe_ffn_hidden_size,
         num_hidden_layers=args.num_layers,
-        num_nextn_predict_layers=args.num_mtp_predictor,
+        num_nextn_predict_layers=args.mtp_num_layers,
         num_attention_heads=args.num_attention_heads,
         num_key_value_heads=args.num_query_groups,
         n_shared_experts=args.moe_shared_expert_intermediate_size

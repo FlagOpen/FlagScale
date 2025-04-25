@@ -276,8 +276,8 @@ def save_checkpoint(queue, args):
         hf_model.lm_head.weight.data.copy_(full_output_layer_weight)
         check_message(msg)
 
-    if margs.num_mtp_predictor:
-        for mtp_layer_id in range(margs.num_mtp_predictor):
+    if margs.mtp_num_layers:
+        for mtp_layer_id in range(margs.mtp_num_layers):
             msg = queue_get(f"mtp module {mtp_layer_id}")
             ckpt_plugin.set_hf_mtp_ckpt(msg, hf_model, mtp_layer_id, md, margs)
 
