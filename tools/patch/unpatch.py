@@ -3,15 +3,28 @@ import os
 import shutil
 import sys
 import tempfile
+import logging
 
 from git.repo import Repo
 
 DELETED_FILE_NAME = "deleted_files.txt"
 
 
+logger = logging.getLogger("FlagScaleUnpatchLogger")
+logger.setLevel(logging.INFO)
+
+
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("[FlagScale-Unpatch] %(levelname)s | %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.propagate = False
+
+
 def unpatch(src, dst, submodule_name, mode="symlink"):
     """Unpatch the backend with symlinks."""
-    print(f"Unpatching backend {submodule_name}...")
+    logger.info(f"Unpatching backend {submodule_name}...")
     init_submodule(dst, submodule_name)
     assert mode in ["symlink", "copy"]
     if mode == "copy":
@@ -41,7 +54,7 @@ def _copy(src, dst):
                 os.remove(dst_file)
             assert not os.path.lexists(dst_file)
             shutil.copyfile(src_file, dst_file)
-            print(f"Copied file: {dst_file} -> {src_file}")
+            logger.info(f"Copying file: {dst_file} -> {src_file}")
 
 
 def _delete_file(file_path, dst):
@@ -52,9 +65,9 @@ def _delete_file(file_path, dst):
             deleted_file_path = os.path.join(dst, deleted_file)
             if os.path.lexists(deleted_file_path):
                 os.remove(deleted_file_path)
-                print(f"Deleted file: {deleted_file_path}")
+                logger.info(f"Deleting file: {deleted_file_path}")
             else:
-                print(f"File not found for deletion: {deleted_file_path}")
+                loggoer.warning(f"File not found for deletion: {deleted_file_path}")
 
 
 def _create_symlinks(src, dst):
@@ -76,18 +89,18 @@ def _create_symlinks(src, dst):
             assert not os.path.lexists(dst_file)
             os.symlink(src_file, dst_file)
 
-            print(f"Created symbolic link: {dst_file} -> {src_file}")
+            logger.info(f"Creating symbolic link: {dst_file} -> {src_file}")
 
 
 def init_submodule(dst, submodule_name):
     if os.path.lexists(dst) and len(os.listdir(dst)) > 0:
-        print(f"Skipping {submodule_name} initialization, as it already lexists.")
+        logger.info(f"Skipping {submodule_name} initialization, as it already lexists.")
         return
-    print(f"Initializing submodule {submodule_name}...")
+    logger.info(f"Initializing submodule {submodule_name}...")
     repo = Repo(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
     submodule = repo.submodule(submodule_name)
     submodule.update(init=True)
-    print(f"Initialized {submodule_name} submodule.")
+    logger.info(f"Initialized {submodule_name} submodule.")
 
 
 def validate_device_type(device_type, main_path):
@@ -100,7 +113,7 @@ def validate_device_type(device_type, main_path):
         backend_key = "+".join(sorted_backends)
         device_path = os.path.join(main_path, "hardware", device_type)
         if not os.path.exists(device_path):
-            raise ValueError(f"Please check the hardware directory {device_path}.")
+            raise ValueError(f"Please check hardware directory {device_path}.")
         path_exist = False
         patch_dir = None
         for task_name in os.listdir(device_path):
@@ -144,26 +157,26 @@ def apply_hardware_patch_file(patch_dir, main_path):
     try:
         # Step 1: Remove existing build directory if present
         if os.path.exists(build_path):
-            print(f"Removing existing build path: {build_path}")
+            logger.info(f"Removing existing build path: {build_path}")
             shutil.rmtree(build_path)
 
         # Step 2: Copy main_path to a temporary directory
         temp_path = tempfile.mkdtemp()
-        print(f"Copying {main_path} to temp path {temp_path}")
+        logger.info(f"Copying {main_path} to temp path {temp_path}")
         shutil.copytree(main_path, temp_path, dirs_exist_ok=True)
 
         # Step 3: Checkout the base commit
         repo = Repo(temp_path)
-        print(f"Checking out {base_commit_id} in temp path {temp_path}")
+        logger.info(f"Checking out {base_commit_id} in temp path {temp_path}")
 
         repo.git.checkout(base_commit_id)
 
         # Step 4: Apply the patch
-        print(f"Applying patch: {patch_file}")
+        logger.info(f"Applying patch: {patch_file}")
         repo.git.apply("--index", "--whitespace", "fix", patch_file)
 
         # Step 5: Move the patched temp directory to build/<device_type>/
-        print(f"Moving patched temp path to {final_path}")
+        logger.info(f"Moving patched temp path to {final_path}")
         os.makedirs(build_path, exist_ok=True)
         shutil.move(temp_path, final_path)
 
@@ -171,16 +184,16 @@ def apply_hardware_patch_file(patch_dir, main_path):
         main_path = final_path
 
     except Exception as e:
-        print(f"Exception occurred: {e}")
+        logger.error(f"Exception occurred: {e}", exec_info=True)
 
         # Clean up temp directory
         if "temp_path" in locals() and os.path.exists(temp_path):
-            print(f"Cleaning up temp path: {temp_path}")
+            logger.info(f"Cleaning up temp path: {temp_path}")
             shutil.rmtree(temp_path, ignore_errors=True)
 
         # Clean up build directory
         if os.path.exists(build_path):
-            print(f"Cleaning up build path: {build_path}")
+            logger.info(f"Cleaning up build path: {build_path}")
             shutil.rmtree(build_path, ignore_errors=True)
 
         raise e

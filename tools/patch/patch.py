@@ -188,7 +188,7 @@ def prompt_info(main_path, backends):
     assert isinstance(backends, list)
     invalid = [b for b in backends if b not in available_submodules]
     if invalid:
-        logger.error(f"Backends are not valid submodules: {', '.join(invalid)}")
+        logger.error(f"Backends are not valid submodules: {', '.join(invalid)}", exc_info=True)
         raise ValueError(
             f"Available submodules: {', '.join(sorted(available_submodules))}"
         )
@@ -211,7 +211,7 @@ def prompt_info(main_path, backends):
         ).strip()
 
     # 4. FlagScale-compatible models
-    input(
+    model_input = input(
         "4. Please enter flagScale-compatible models (separated with commas): "
     ).strip()
     models = [m.strip() for m in model_input.split(",") if m.strip()]
@@ -233,7 +233,7 @@ def prompt_info(main_path, backends):
     contact = input(contact_prompt).strip()
 
     return {
-        "task": task,
+        "tasks": task_list,
         "backends_version": backends_version,
         "device_type": device_type,
         "models": models,
@@ -257,9 +257,12 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
         if repo.bare:
             raise Exception("Repository is bare. Cannot proceed.")
 
+        logger.info(
+            "Generating the patch file:"
+        )
         # Step 1: Stash all, including untracked, and create temp_branch_for_hardware_patch
         logger.info(
-            "Step 1: Stashing current changes (including untracked) and create temp_branch_for_hardware_patch..."
+            "Step 1: Stashing current changes (including untracked) and create the temp_branch_for_hardware_patch..."
         )
         temp_branch = "temp_branch_for_hardware_patch"
         repo.git.stash("push", "--include-untracked")
@@ -279,13 +282,12 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
         repo.git.add(all=True)
 
         # Step3: Commit with message "Patch for {base_commit_id}".
-        logger.info("Step 3: Committing changes on temp_branch_for_hardware_patch...")
-        commit_msg = patch_info["commit_msg"]
-        repo.git.commit("-m", commit_msg)
+        logger.info("Step 3: Committing changes on the temp_branch_for_hardware_patch...")
+        repo.git.commit("-m", f"Patch for {base_commit_id}")
 
         # Step4: Generate patch diff between base_commit_id and HEAD, writing into temp_file.
         logger.info(f"Step 4: Generating diff patch from {base_commit_id} to HEAD...")
-        backends = copy.deepcopy(patch_info["backends_version"].keys())
+        backends = copy.deepcopy(list(patch_info["backends_version"].keys()))
         patches = {}
 
         # Diff excludes the submodules
@@ -311,7 +313,8 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
                 "HEAD",
                 "--binary",
                 "--ignore-submodules=all",
-                f"-- {backend_dir}",
+                "--",
+                f"{backend_dir}",
             )
             if not diff_data:
                 raise ValueError(f"No changes in backend {backend}.")
@@ -319,7 +322,7 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
             temp_file.write(diff_data)
             # add \n to the end of the file
             temp_file.write("\n")
-            flagscale_diff_args.append(f":(exclude){backend_dir}")
+            flagscale_diff_args.append(f':(exclude){backend_dir}')
 
             temp_yaml_file = tempfile.NamedTemporaryFile(
                 delete=False, mode="w", encoding="utf-8", suffix=".yaml"
@@ -341,9 +344,9 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
         )
         temp_patch_path = temp_file.name
         tmep_patch_files.append(temp_patch_path)
-        diff_data = repo.git.diff(flagscale_diff_args)
+        diff_data = repo.git.diff(*flagscale_diff_args)
         if not diff_data:
-            logger.info("No changes excluded backend.")
+            logger.warning("No changes excluded backend.")
         else:
             temp_file.write(diff_data)
             # add \n to the end of the file
@@ -370,7 +373,7 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
         logger.info(f"Step 5: Checking out {base_commit_id}...")
         repo.git.checkout(base_commit_id)
 
-        # Step6: Stage the  patch file.
+        # Step6: Stage the patch file.
         logger.info("Step 6: Staging the generated patch file...")
         file_name = f"{base_commit_id[:7]}.patch"
         yaml_file_name = f"{base_commit_id[:7]}.yaml"
@@ -380,7 +383,7 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
             patch_dir_exist = os.path.exists(patch_dir)
 
             if not patch_dir_exist:
-                patch_dir_need_to_clean.add(patch_dir)
+                patch_dir_need_to_clean.append(patch_dir)
 
             if os.path.exists(patch_dir):
                 shutil.rmtree(patch_dir)
@@ -398,6 +401,7 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
 
         # Step7: Commit the patch file with the same message.
         logger.info("Step 7: Committing the patch file...")
+        commit_msg = patch_info["commit_msg"]
         repo.git.commit("-m", commit_msg)
 
         # Step 8: Delete the temporary branch locally.
@@ -411,7 +415,7 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
         )
 
     except Exception as e:
-        logger.error(f"{e}")
+        logger.error(f"{e}", exc_info=True)
         logger.info(f"Rolling back to current branch...")
         repo.git.checkout(current_branch)
         if "stash_pop" in locals() and not stash_pop:
@@ -421,22 +425,25 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
     finally:
         try:
             # Clean up the patch dir
-            for patch_dir in patch_dir_need_to_clean:
-                if os.path.exists(patch_dir):
-                    shutil.rmtree(patch_dir)
-                    logger.debug(f"Temporary patch dir {patch_dir} deleted.")
+            if "patch_dir_need_to_clean" in locals():
+                for patch_dir in patch_dir_need_to_clean:
+                    if os.path.exists(patch_dir):
+                        shutil.rmtree(patch_dir)
+                        logger.debug(f"Temporary patch dir {patch_dir} deleted.")
 
             # Clean up the temp files
-            for temp_patch_path in tmep_patch_files:
-                if os.path.exists(temp_patch_path):
-                    os.remove(temp_patch_path)
-                    logger.debug(f"Temporary patch file {temp_patch_path} deleted.")
+            if "tmep_patch_files" in locals():
+                for temp_patch_path in tmep_patch_files:
+                    if os.path.exists(temp_patch_path):
+                        os.remove(temp_patch_path)
+                        logger.debug(f"Temporary patch file {temp_patch_path} deleted.")
+
             # Clean up the temporary branch
             if temp_branch in repo.heads:
                 repo.git.branch("-D", temp_branch)
 
         except Exception as cleanup_error:
-            logger.error(f"Failed to delete temporary: {cleanup_error}")
+            logger.error(f"Failed to delete temporary: {cleanup_error}", exc_info=True)
 
 
 def _sync(file_path, status, src, dst, f=None, mode="symlink"):
@@ -476,7 +483,7 @@ def _sync(file_path, status, src, dst, f=None, mode="symlink"):
     elif change_type == "D":
         if os.path.lexists(src_file_path):
             os.remove(src_file_path)
-            logger.debg(f"File {src_file_path} has been deleted.")
+            logger.debug(f"File {src_file_path} has been deleted.")
         else:
             assert f
             f.write(f"{file_path}\n")
