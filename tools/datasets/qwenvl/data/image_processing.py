@@ -4,15 +4,10 @@ import random
 
 import numpy as np
 import torch
+
 from PIL import Image, ImageDraw
 from torchvision import transforms as T
-from torchvision.transforms import (
-    Compose,
-    RandAugment,
-    RandomResizedCrop,
-    Resize,
-    ToPILImage,
-)
+from torchvision.transforms import Compose, RandAugment, RandomResizedCrop, Resize, ToPILImage
 
 # Imagenet's mean and std.
 pixel_mean = [123.675, 116.28, 103.53]
@@ -55,12 +50,7 @@ def _transform_train_aug():
 
 
 def _transform_test():
-    return Compose(
-        [
-            ToPILImage(),
-            convert_to_rgb,
-        ]
-    )
+    return Compose([ToPILImage(), convert_to_rgb])
 
 
 def standardize_image(img):
@@ -111,9 +101,7 @@ def smart_resize(
 
     """
     if height < factor or width < factor:
-        raise ValueError(
-            f"height:{height} or width:{width} must be larger than factor:{factor}"
-        )
+        raise ValueError(f"height:{height} or width:{width} must be larger than factor:{factor}")
     elif max(height, width) / min(height, width) > 200:
         raise ValueError(
             f"absolute aspect ratio must be smaller than 200, got {max(height, width) / min(height, width)}"

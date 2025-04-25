@@ -16,12 +16,14 @@ import json
 import re
 import sys
 import traceback
+
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+
 from torchvision import transforms as T
 
 from megatron.energon import Batch, DefaultTaskEncoder, VQASample
@@ -91,9 +93,7 @@ def convert_to_qwen2vl_content(
         contents.append(
             {
                 "type": matched.string[start:end][1:-1],
-                matched.string[start:end][1:-1]: str(
-                    mm_idx[matched.string[start:end][1:-1]]
-                ),
+                matched.string[start:end][1:-1]: str(mm_idx[matched.string[start:end][1:-1]]),
             }
         )
 
@@ -101,23 +101,17 @@ def convert_to_qwen2vl_content(
         mm_idx[matched.string[start:end][1:-1]] += 1
 
     if cur < len(user_input):
-        contents.append(
-            {"type": "text", "text": user_input[cur : len(user_input)].strip()}
-        )
+        contents.append({"type": "text", "text": user_input[cur : len(user_input)].strip()})
 
     return contents
 
 
 class TaskEncoder(
-    DefaultTaskEncoder[
-        Union[VQASample, ChatMLSample], ImageTaskSample, VQATaskBatch, dict
-    ]
+    DefaultTaskEncoder[Union[VQASample, ChatMLSample], ImageTaskSample, VQATaskBatch, dict]
 ):
     """A simple task encoder for captioning."""
 
-    def __init__(
-        self,
-    ):
+    def __init__(self):
         # Specify the batch_type for default batching (batching is performed here "manually" by
         # overwriting the `batch` method)
         super().__init__()
@@ -167,10 +161,7 @@ class TaskEncoder(
 
             channel = patches.shape[1]
             grid_t = patches.shape[0] // self.temporal_patch_size
-            grid_h, grid_w = (
-                resized_height // self.patch_size,
-                resized_width // self.patch_size,
-            )
+            grid_h, grid_w = (resized_height // self.patch_size, resized_width // self.patch_size)
             patches = patches.reshape(
                 grid_t,
                 self.temporal_patch_size,
@@ -195,21 +186,14 @@ class TaskEncoder(
     def encode_chatml(self, sample: ChatMLSample):
         # TODO: modify get_visual_transform to add more augmentations
         imgs = [get_visual_transform(img)[0] for img in sample.imgs]
-        videos = [
-            [get_visual_transform(frame)[0] for frame in video]
-            for video in sample.videos
-        ]
+        videos = [[get_visual_transform(frame)[0] for frame in video] for video in sample.videos]
         # NOTE: make n_frames even foreach video
         for i, video in enumerate(videos):
             videos[i] = video[: len(video) // 2 * 2]
 
         # NOTE: flatten all images
-        flattened_imgs, image_thw_grids = self._flatten_visual_inputs(
-            imgs, is_image=True
-        )
-        flattened_videos, video_thw_grids = self._flatten_visual_inputs(
-            videos, is_image=False
-        )
+        flattened_imgs, image_thw_grids = self._flatten_visual_inputs(imgs, is_image=True)
+        flattened_videos, video_thw_grids = self._flatten_visual_inputs(videos, is_image=False)
 
         # NOTE: generate qwen2vl conversations
         conversation = (
@@ -219,9 +203,7 @@ class TaskEncoder(
         )
         second_per_grid_ts = [1 / 2.0] * len(video_thw_grids)
         if "conversations" in conversation:
-            second_per_grid_ts = conversation.get(
-                "second_per_grid_ts", second_per_grid_ts
-            )
+            second_per_grid_ts = conversation.get("second_per_grid_ts", second_per_grid_ts)
             second_per_grid_ts = [float(i) for i in second_per_grid_ts]
             conversation = conversation["conversations"]
 
@@ -290,9 +272,7 @@ class TaskEncoder(
 
         # NOTE: expand image_pad & video_pad
         merge_length = self.merge_size**2
-        image_token_id, video_token_id = self.tokenizer.encode(
-            ["<|image_pad|>", "<|video_pad|>"]
-        )
+        image_token_id, video_token_id = self.tokenizer.encode(["<|image_pad|>", "<|video_pad|>"])
 
         image_token_indices = np.where(input_ids == image_token_id)[0]
         assert len(image_token_indices) == len(
@@ -302,9 +282,9 @@ class TaskEncoder(
         assert len(video_token_indices) == len(
             video_thw_grids
         ), f"With {len(video_thw_grids)} images in the sample, but {len(video_token_indices)} video placeholders!"
-        image_thw_grids, video_thw_grids = np.array(
-            image_thw_grids, dtype=np.int64
-        ), np.array(video_thw_grids, dtype=np.int64)
+        image_thw_grids, video_thw_grids = np.array(image_thw_grids, dtype=np.int64), np.array(
+            video_thw_grids, dtype=np.int64
+        )
 
         target_length = (
             input_ids.shape[0]
@@ -314,9 +294,7 @@ class TaskEncoder(
             + video_thw_grids.prod(axis=-1).sum() // merge_length
         )
         if target_length > self.seq_len:
-            raise InternalWarning(
-                f"Long sequence with length {target_length} found, dropped..."
-            )
+            raise InternalWarning(f"Long sequence with length {target_length} found, dropped...")
         final_input_ids = np.zeros(target_length, dtype=input_ids.dtype)
         final_input_masks = final_input_ids.copy()
 
@@ -377,21 +355,15 @@ class TaskEncoder(
             else False
         )
         has_video = (
-            sample.__subflavors__["has_video"]
-            if "has_video" in sample.__subflavors__
-            else False
+            sample.__subflavors__["has_video"] if "has_video" in sample.__subflavors__ else False
         )
 
         if has_video:
-            raise NotImplementedError(
-                "You should use sharegpt dataset to train with videos."
-            )
+            raise NotImplementedError("You should use sharegpt dataset to train with videos.")
         else:
             # TODO: add args
             imgs = get_visual_transform(sample.image)
-            flatten_patches, thw_grids = self._flatten_visual_inputs(
-                imgs, is_image=True
-            )
+            flatten_patches, thw_grids = self._flatten_visual_inputs(imgs, is_image=True)
 
         assert "<image>" in sample.context  # ?
         # NOTE: we expect a context is a string with <image> conetnt
@@ -409,9 +381,7 @@ class TaskEncoder(
             {"role": "assistant", "content": answer},
         ]
 
-        user_inputs = self.tokenizer.apply_chat_template(
-            conversation[:-1], tokenize=False
-        )
+        user_inputs = self.tokenizer.apply_chat_template(conversation[:-1], tokenize=False)
         text = self.tokenizer.apply_chat_template(conversation, tokenize=False)
 
         # text, target = self.tokenizer.tokenize_conversation(conversation, False, False)
@@ -434,17 +404,13 @@ class TaskEncoder(
         input_ids = self.tokenizer.tokenize(text)
         user_input_ids = self.tokenizer.tokenize(user_inputs)
         if len(input_ids) > self.seq_len:
-            raise InternalWarning(
-                f"Long sequence with length {len(input_ids)} found, dropped..."
-            )
+            raise InternalWarning(f"Long sequence with length {len(input_ids)} found, dropped...")
 
         target = np.array(input_ids[1:] + [self.tokenizer.pad_token_id])
         if len(user_input_ids) >= len(input_ids):
             raise InternalWarning(f"Sample not supported, dropped...")
         # ensure user inputs is a prefix of full text
-        if not (
-            np.array(user_input_ids) == np.array(input_ids[: len(user_input_ids)])
-        ).all():
+        if not (np.array(user_input_ids) == np.array(input_ids[: len(user_input_ids)])).all():
             raise InternalWarning(f"Sample not supported, dropped...")
         # mask input
         target[: len(user_input_ids) - 1] = self.tokenizer.pad_token_id
@@ -478,9 +444,7 @@ class TaskEncoder(
                 dtype=torch.float32,
             )
 
-        image_thw_grids = [
-            thw_grids for s in samples for thw_grids in s.image_thw_grids
-        ]
+        image_thw_grids = [thw_grids for s in samples for thw_grids in s.image_thw_grids]
         if len(image_thw_grids) > 0:
             image_thw_grids = torch.from_numpy(np.array(image_thw_grids)).long()
             assert image_thw_grids.prod(dim=-1).sum() == imgs.shape[0]
@@ -503,16 +467,9 @@ class TaskEncoder(
         if len(second_per_grid_ts) > 0:
             second_per_grid_ts = torch.from_numpy(np.array(second_per_grid_ts)).float()
         else:
-            second_per_grid_ts = torch.empty(
-                [
-                    0,
-                ],
-                dtype=torch.float32,
-            )
+            second_per_grid_ts = torch.empty([0], dtype=torch.float32)
 
-        video_thw_grids = [
-            thw_grids for s in samples for thw_grids in s.video_thw_grids
-        ]
+        video_thw_grids = [thw_grids for s in samples for thw_grids in s.video_thw_grids]
         if len(video_thw_grids) > 0:
             video_thw_grids = torch.from_numpy(np.array(video_thw_grids)).long()
             assert video_thw_grids.prod(dim=-1).sum() == videos.shape[0]
@@ -524,9 +481,7 @@ class TaskEncoder(
         if not max_seq_len:
             max_seq_len = max(len(s.text) for s in samples)
 
-        text_mat = np.full(
-            (len(samples), max_seq_len), self.tokenizer.pad_token_id, dtype=np.int64
-        )
+        text_mat = np.full((len(samples), max_seq_len), self.tokenizer.pad_token_id, dtype=np.int64)
         # +1 to accommodate shift to left by one later.
         target_mat = np.full(
             (len(samples), max_seq_len), self.tokenizer.pad_token_id, dtype=np.int64
@@ -542,13 +497,9 @@ class TaskEncoder(
             text_mat[i, :text_len] = np.array(s.text)[:text_len]
             # NOTE: we should assert user input sequence will not be truncated
             if s.image_input_mask is not None:
-                image_input_masks[i, :text_len] = np.array(s.image_input_mask)[
-                    :text_len
-                ]
+                image_input_masks[i, :text_len] = np.array(s.image_input_mask)[:text_len]
             if s.video_input_mask is not None:
-                video_input_masks[i, :text_len] = np.array(s.video_input_mask)[
-                    :text_len
-                ]
+                video_input_masks[i, :text_len] = np.array(s.video_input_mask)[:text_len]
             target_mat[i, :target_len] = np.array(s.target)[:target_len]
 
         batch = VQATaskBatch(

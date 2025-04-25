@@ -3,11 +3,13 @@ import json
 import multiprocessing.pool as mpp
 import os
 import tarfile
+
 from argparse import ArgumentParser
 from multiprocessing import Pool
 from pathlib import Path
 
 import cv2
+
 from tqdm import tqdm
 
 
@@ -41,11 +43,7 @@ def find_json_files(dataset_root):
     return [str(p) for p in relative_paths]
 
 
-def extract_video_frames(
-    dataset_root: str,
-    video_paths: list,
-    time_interval: float = 1.0,
-):
+def extract_video_frames(dataset_root: str, video_paths: list, time_interval: float = 1.0):
     for rel_path in video_paths:
         input_path = os.path.join(dataset_root, rel_path)
         output_subdir, _ = os.path.splitext(input_path)
@@ -77,13 +75,7 @@ def extract_video_frames(
             json.dump({"fps": str(fps / interval_frames)}, f)
 
 
-def process(
-    dataset_root,
-    output_file,
-    interval=1.0,
-    num_workers: int = 32,
-    video_token="<image>",
-):
+def process(dataset_root, output_file, interval=1.0, num_workers: int = 32, video_token="<image>"):
     json_or_jsonl = glob.glob(os.path.join(dataset_root, "*.json")) + glob.glob(
         os.path.join(dataset_root, "*.jsonl")
     )
@@ -143,10 +135,7 @@ if __name__ == "__main__":
     argparser = ArgumentParser()
 
     argparser.add_argument(
-        "--dataset-root",
-        type=str,
-        required=True,
-        help="The root of LLaVA-Video-178K dataset",
+        "--dataset-root", type=str, required=True, help="The root of LLaVA-Video-178K dataset"
     )
     argparser.add_argument(
         "--time-interval",

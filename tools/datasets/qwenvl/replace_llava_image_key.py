@@ -1,12 +1,10 @@
 import json
 import os
+
 from argparse import ArgumentParser
 
 
-def process(
-    in_file,
-    out_file,
-):
+def process(in_file, out_file):
     d = os.path.dirname(out_file)
     os.makedirs(d, exist_ok=True)
 

@@ -17,16 +17,16 @@ import logging
 import os
 import re
 import sys
+
 from collections import defaultdict
 from typing import Dict, List, Tuple
 
 import torch
+
 from transformers import AutoConfig, AutoTokenizer, Qwen2_5_VLForConditionalGeneration
 
 path_dir = os.path.abspath(
-    os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-    )
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 )
 sys.path.append(path_dir)
 sys.path.append(os.path.join(path_dir, "third_party/Megatron-LM"))
@@ -38,7 +38,6 @@ from megatron.training.checkpointing import (
     read_metadata,
 )
 from megatron.training.initialize import initialize_megatron
-
 from tools.checkpoint.qwen2_5_vl.utils import (
     build_layer_id_mapping,
     safe_copy,
@@ -62,20 +61,13 @@ def add_model_args(parser):
 
     parser.add_argument("--target-pipeline-model-parallel-size", type=int, default=1)
 
-    parser.add_argument(
-        "--target-num-layers-per-virtual-pipeline-stage", type=int, default=None
-    )
+    parser.add_argument("--target-num-layers-per-virtual-pipeline-stage", type=int, default=None)
 
-    parser.add_argument(
-        "--target-decoder-first-pipeline-num-layers", type=int, default=None
-    )
+    parser.add_argument("--target-decoder-first-pipeline-num-layers", type=int, default=None)
 
     parser.add_argument("--hf-ckpt-path", type=str)
 
-    parser.add_argument(
-        "--save-safetensors",
-        action="store_true",
-    )
+    parser.add_argument("--save-safetensors", action="store_true")
 
     return parser
 
@@ -91,9 +83,7 @@ def load_megatron_model(args):
         args.num_layers_per_virtual_pipeline_stage = (
             args.target_num_layers_per_virtual_pipeline_stage
         )
-        num_layers_per_pipeline_stage = (
-            args.num_layers // args.pipeline_model_parallel_size
-        )
+        num_layers_per_pipeline_stage = args.num_layers // args.pipeline_model_parallel_size
         args.virtual_pipeline_model_parallel_size = (
             num_layers_per_pipeline_stage // args.num_layers_per_virtual_pipeline_stage
         )
@@ -120,9 +110,9 @@ def load_megatron_model(args):
                 model_path, iteration, release, None, tp_rank, None, None, None
             )
             print(f"load {checkpoint_name}")
-            split_state = torch.load(
-                checkpoint_name, map_location="cpu", weights_only=False
-            )["model"]
+            split_state = torch.load(checkpoint_name, map_location="cpu", weights_only=False)[
+                "model"
+            ]
             for k, v in split_state.items():
                 if k.startswith("vision_model"):
                     vision_state_dicts[(tp_rank, 0)][k] = v
@@ -138,9 +128,7 @@ def load_megatron_model(args):
             elif "linear_proj" in k or "linear_fc2" in k:
                 target_v = torch.cat(v, dim=1)
             elif "linear_qkv.weight" in k:
-                viewed = [
-                    x.view(group_per_split, -1, head_dim, args.hidden_size) for x in v
-                ]
+                viewed = [x.view(group_per_split, -1, head_dim, args.hidden_size) for x in v]
                 target_v = torch.cat(viewed, dim=0).view(-1, args.hidden_size)
             elif "linear_qkv.bias" in k:
                 viewed = [x.view(group_per_split, -1) for x in v]
@@ -161,13 +149,8 @@ def load_megatron_model(args):
                 print(f"load {checkpoint_name}")
                 keys = ["model"]
                 if args.virtual_pipeline_model_parallel_size is not None:
-                    keys = [
-                        f"model{i}"
-                        for i in range(args.virtual_pipeline_model_parallel_size)
-                    ]
-                split_state = torch.load(
-                    checkpoint_name, map_location="cpu", weights_only=False
-                )
+                    keys = [f"model{i}" for i in range(args.virtual_pipeline_model_parallel_size)]
+                split_state = torch.load(checkpoint_name, map_location="cpu", weights_only=False)
                 for vpp_id, key in enumerate(keys):
                     for k, v in split_state[key].items():
                         if k.startswith("vision_model"):
@@ -178,9 +161,7 @@ def load_megatron_model(args):
                             pattern = re.compile(r"\d+")
                             local_id = int(pattern.findall(k)[0])
                             global_id = ltog[(pp_rank, vpp_id, local_id)]
-                            tgt = re.sub(
-                                r"decoder.layers.\d+", f"decoder.layers.{global_id}", k
-                            )
+                            tgt = re.sub(r"decoder.layers.\d+", f"decoder.layers.{global_id}", k)
                             mid_state[tgt].append(v)
                         except Exception as e:
                             print(f"Skipping {k} with exception {e}")
@@ -196,9 +177,7 @@ def load_megatron_model(args):
             elif "linear_proj" in k or "linear_fc2" in k:
                 target_v = torch.cat(v, dim=1)
             elif "linear_qkv.weight" in k:
-                viewed = [
-                    x.view(group_per_split, -1, head_dim, args.hidden_size) for x in v
-                ]
+                viewed = [x.view(group_per_split, -1, head_dim, args.hidden_size) for x in v]
                 target_v = torch.cat(viewed, dim=0).view(-1, args.hidden_size)
             elif "linear_qkv.bias" in k:
                 viewed = [x.view(group_per_split, -1) for x in v]
@@ -212,20 +191,14 @@ def load_megatron_model(args):
     else:
         raise ValueError("not support yet")
     if len(vision_state_dicts) > 0:
-        load_split_state_dict_to_vision_model(
-            vision_state_dicts, model.vision_model, args
-        )
+        load_split_state_dict_to_vision_model(vision_state_dicts, model.vision_model, args)
         _missing, _unexpected = model.load_state_dict(state_dict, strict=False)
         missing = list(
-            filter(
-                lambda k: "extra_state" not in k and not k.startswith("vision_model"),
-                _missing,
-            )
+            filter(lambda k: "extra_state" not in k and not k.startswith("vision_model"), _missing)
         )
         unexpected = list(
             filter(
-                lambda k: "extra_state" not in k and not k.startswith("vision_model"),
-                _unexpected,
+                lambda k: "extra_state" not in k and not k.startswith("vision_model"), _unexpected
             )
         )
         print(f"missing keys: {missing}; unexpected keys: {unexpected}")
@@ -264,18 +237,14 @@ def convert_checkpoint_from_megatron_to_transformers(mgmodel, hfmodel, args):
     vision_head_dim = vision_hidden_size // mgvision.config.num_attention_heads
     copied_numel = 0
     safe_copy(mgvision.rotary_pos_emb.inv_freq, hfvision.rotary_pos_emb.inv_freq)
-    copied_numel += safe_copy(
-        mgvision.patch_embed.proj.weight, hfvision.patch_embed.proj.weight
-    )
+    copied_numel += safe_copy(mgvision.patch_embed.proj.weight, hfvision.patch_embed.proj.weight)
     for hfblock, mgblock in zip(hfvision.blocks, mgvision.decoder.layers):
         # linear_qkv.norm --> norm1
         copied_numel += safe_copy(
             mgblock.self_attention.linear_qkv.layer_norm_weight, hfblock.norm1.weight
         )
         # mlp.linear_fc1.norm --> norm2
-        copied_numel += safe_copy(
-            mgblock.mlp.linear_fc1.layer_norm_weight, hfblock.norm2.weight
-        )
+        copied_numel += safe_copy(mgblock.mlp.linear_fc1.layer_norm_weight, hfblock.norm2.weight)
         # self_attention.linear_qkv --> qkv
         converted_weight = (
             mgblock.self_attention.linear_qkv.weight.view(
@@ -297,9 +266,7 @@ def convert_checkpoint_from_megatron_to_transformers(mgmodel, hfmodel, args):
         copied_numel += safe_copy(
             mgblock.self_attention.linear_proj.weight, hfblock.attn.proj.weight
         )
-        copied_numel += safe_copy(
-            mgblock.self_attention.linear_proj.bias, hfblock.attn.proj.bias
-        )
+        copied_numel += safe_copy(mgblock.self_attention.linear_proj.bias, hfblock.attn.proj.bias)
         # mlp --> mlp: gate
         gate_weight, up_weight = torch.chunk(mgblock.mlp.linear_fc1.weight, 2)
         gate_bias, up_bias = torch.chunk(mgblock.mlp.linear_fc1.bias, 2)
@@ -309,31 +276,17 @@ def convert_checkpoint_from_megatron_to_transformers(mgmodel, hfmodel, args):
         copied_numel += safe_copy(gate_bias, hfblock.mlp.gate_proj.bias)
         copied_numel += safe_copy(up_bias, hfblock.mlp.up_proj.bias)
 
-        copied_numel += safe_copy(
-            mgblock.mlp.linear_fc2.weight, hfblock.mlp.down_proj.weight
-        )
-        copied_numel += safe_copy(
-            mgblock.mlp.linear_fc2.bias, hfblock.mlp.down_proj.bias
-        )
+        copied_numel += safe_copy(mgblock.mlp.linear_fc2.weight, hfblock.mlp.down_proj.weight)
+        copied_numel += safe_copy(mgblock.mlp.linear_fc2.bias, hfblock.mlp.down_proj.bias)
 
     hfprojector = hfvision.merger
     mgprojector = mgvision.projection
-    copied_numel += safe_copy(
-        mgvision.decoder.final_layernorm.weight, hfprojector.ln_q.weight
-    )
+    copied_numel += safe_copy(mgvision.decoder.final_layernorm.weight, hfprojector.ln_q.weight)
 
-    copied_numel += safe_copy(
-        mgprojector.encoder.linear_fc1.weight, hfprojector.mlp[0].weight
-    )
-    copied_numel += safe_copy(
-        mgprojector.encoder.linear_fc1.bias, hfprojector.mlp[0].bias
-    )
-    copied_numel += safe_copy(
-        mgprojector.encoder.linear_fc2.weight, hfprojector.mlp[2].weight
-    )
-    copied_numel += safe_copy(
-        mgprojector.encoder.linear_fc2.bias, hfprojector.mlp[2].bias
-    )
+    copied_numel += safe_copy(mgprojector.encoder.linear_fc1.weight, hfprojector.mlp[0].weight)
+    copied_numel += safe_copy(mgprojector.encoder.linear_fc1.bias, hfprojector.mlp[0].bias)
+    copied_numel += safe_copy(mgprojector.encoder.linear_fc2.weight, hfprojector.mlp[2].weight)
+    copied_numel += safe_copy(mgprojector.encoder.linear_fc2.bias, hfprojector.mlp[2].bias)
     n_params = sum(
         [
             t.numel()
@@ -347,13 +300,10 @@ def convert_checkpoint_from_megatron_to_transformers(mgmodel, hfmodel, args):
     hfllm = hfmodel.model
     mgllm = mgmodel.language_model
     copied_numel = 0
-    copied_numel += safe_copy(
-        mgllm.embedding.word_embeddings.weight, hfllm.embed_tokens.weight
-    )
+    copied_numel += safe_copy(mgllm.embedding.word_embeddings.weight, hfllm.embed_tokens.weight)
     for mglayer, hflayer in zip(mgllm.decoder.layers, hfllm.layers):
         copied_numel += safe_copy(
-            mglayer.self_attention.linear_qkv.layer_norm_weight,
-            hflayer.input_layernorm.weight,
+            mglayer.self_attention.linear_qkv.layer_norm_weight, hflayer.input_layernorm.weight
         )
 
         qkv_weight = mglayer.self_attention.linear_qkv.weight.view(
@@ -375,22 +325,12 @@ def convert_checkpoint_from_megatron_to_transformers(mgmodel, hfmodel, args):
         qkv_bias = mglayer.self_attention.linear_qkv.bias.view(num_query_groups, -1)
         q_bias, k_bias, v_bias = torch.split(
             qkv_bias,
-            split_size_or_sections=[
-                q_dim_per_group,
-                kv_dim_per_group,
-                kv_dim_per_group,
-            ],
+            split_size_or_sections=[q_dim_per_group, kv_dim_per_group, kv_dim_per_group],
             dim=1,
         )
-        copied_numel += safe_copy(
-            q_bias.contiguous().view(-1), hflayer.self_attn.q_proj.bias
-        )
-        copied_numel += safe_copy(
-            k_bias.contiguous().view(-1), hflayer.self_attn.k_proj.bias
-        )
-        copied_numel += safe_copy(
-            v_bias.contiguous().view(-1), hflayer.self_attn.v_proj.bias
-        )
+        copied_numel += safe_copy(q_bias.contiguous().view(-1), hflayer.self_attn.q_proj.bias)
+        copied_numel += safe_copy(k_bias.contiguous().view(-1), hflayer.self_attn.k_proj.bias)
+        copied_numel += safe_copy(v_bias.contiguous().view(-1), hflayer.self_attn.v_proj.bias)
 
         copied_numel += safe_copy(
             mglayer.self_attention.linear_proj.weight, hflayer.self_attn.o_proj.weight
@@ -401,13 +341,10 @@ def convert_checkpoint_from_megatron_to_transformers(mgmodel, hfmodel, args):
         )
         copied_numel += safe_copy(gate_weight, hflayer.mlp.gate_proj.weight)
         copied_numel += safe_copy(fc1_weight, hflayer.mlp.up_proj.weight)
-        copied_numel += safe_copy(
-            mglayer.mlp.linear_fc2.weight, hflayer.mlp.down_proj.weight
-        )
+        copied_numel += safe_copy(mglayer.mlp.linear_fc2.weight, hflayer.mlp.down_proj.weight)
 
         copied_numel += safe_copy(
-            mglayer.mlp.linear_fc1.layer_norm_weight,
-            hflayer.post_attention_layernorm.weight,
+            mglayer.mlp.linear_fc1.layer_norm_weight, hflayer.post_attention_layernorm.weight
         )
 
     copied_numel += safe_copy(mgllm.decoder.final_layernorm.weight, hfllm.norm.weight)
@@ -449,18 +386,14 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
     copied_numel = 0
     # rotary_pos_emb.inv_freq is buffer not parameter
     safe_copy(hfvision.rotary_pos_emb.inv_freq, mgvision.rotary_pos_emb.inv_freq)
-    copied_numel += safe_copy(
-        hfvision.patch_embed.proj.weight, mgvision.patch_embed.proj.weight
-    )
+    copied_numel += safe_copy(hfvision.patch_embed.proj.weight, mgvision.patch_embed.proj.weight)
     for hfblock, mgblock in zip(hfvision.blocks, mgvision.decoder.layers):
         # norm1 --> linear_qkv.norm
         copied_numel += safe_copy(
             hfblock.norm1.weight, mgblock.self_attention.linear_qkv.layer_norm_weight
         )
         # norm2 --> mlp.linear_fc1.norm
-        copied_numel += safe_copy(
-            hfblock.norm2.weight, mgblock.mlp.linear_fc1.layer_norm_weight
-        )
+        copied_numel += safe_copy(hfblock.norm2.weight, mgblock.mlp.linear_fc1.layer_norm_weight)
         # qkv --> self_attention.linear_qkv
         converted_weight = (
             hfblock.attn.qkv.weight.view(
@@ -471,9 +404,7 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
             .reshape(-1, vision_hidden_size)
             .contiguous()
         )
-        copied_numel += safe_copy(
-            converted_weight, mgblock.self_attention.linear_qkv.weight
-        )
+        copied_numel += safe_copy(converted_weight, mgblock.self_attention.linear_qkv.weight)
         converted_bias = (
             hfblock.attn.qkv.bias.view(3, vision_num_query_groups, -1)
             .transpose(0, 1)
@@ -481,49 +412,29 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
             .view(-1)
             .contiguous()
         )
-        copied_numel += safe_copy(
-            converted_bias, mgblock.self_attention.linear_qkv.bias
-        )
+        copied_numel += safe_copy(converted_bias, mgblock.self_attention.linear_qkv.bias)
         # proj --> self_attention.linear_proj
         copied_numel += safe_copy(
             hfblock.attn.proj.weight, mgblock.self_attention.linear_proj.weight
         )
-        copied_numel += safe_copy(
-            hfblock.attn.proj.bias, mgblock.self_attention.linear_proj.bias
-        )
+        copied_numel += safe_copy(hfblock.attn.proj.bias, mgblock.self_attention.linear_proj.bias)
         # mlp --> mlp: fef
-        fc1_weight = torch.cat(
-            [hfblock.mlp.gate_proj.weight, hfblock.mlp.up_proj.weight]
-        )
+        fc1_weight = torch.cat([hfblock.mlp.gate_proj.weight, hfblock.mlp.up_proj.weight])
         fc1_bias = torch.cat([hfblock.mlp.gate_proj.bias, hfblock.mlp.up_proj.bias])
         copied_numel += safe_copy(fc1_weight, mgblock.mlp.linear_fc1.weight)
         copied_numel += safe_copy(fc1_bias, mgblock.mlp.linear_fc1.bias)
-        copied_numel += safe_copy(
-            hfblock.mlp.down_proj.weight, mgblock.mlp.linear_fc2.weight
-        )
-        copied_numel += safe_copy(
-            hfblock.mlp.down_proj.bias, mgblock.mlp.linear_fc2.bias
-        )
+        copied_numel += safe_copy(hfblock.mlp.down_proj.weight, mgblock.mlp.linear_fc2.weight)
+        copied_numel += safe_copy(hfblock.mlp.down_proj.bias, mgblock.mlp.linear_fc2.bias)
 
     # 2. vision projector
     hfprojector = hfvision.merger
     mgprojector = mgvision.projection
-    copied_numel += safe_copy(
-        hfprojector.ln_q.weight, mgvision.decoder.final_layernorm.weight
-    )
+    copied_numel += safe_copy(hfprojector.ln_q.weight, mgvision.decoder.final_layernorm.weight)
 
-    copied_numel += safe_copy(
-        hfprojector.mlp[0].weight, mgprojector.encoder.linear_fc1.weight
-    )
-    copied_numel += safe_copy(
-        hfprojector.mlp[0].bias, mgprojector.encoder.linear_fc1.bias
-    )
-    copied_numel += safe_copy(
-        hfprojector.mlp[2].weight, mgprojector.encoder.linear_fc2.weight
-    )
-    copied_numel += safe_copy(
-        hfprojector.mlp[2].bias, mgprojector.encoder.linear_fc2.bias
-    )
+    copied_numel += safe_copy(hfprojector.mlp[0].weight, mgprojector.encoder.linear_fc1.weight)
+    copied_numel += safe_copy(hfprojector.mlp[0].bias, mgprojector.encoder.linear_fc1.bias)
+    copied_numel += safe_copy(hfprojector.mlp[2].weight, mgprojector.encoder.linear_fc2.weight)
+    copied_numel += safe_copy(hfprojector.mlp[2].bias, mgprojector.encoder.linear_fc2.bias)
     n_params = sum([t.numel() for t in hfvision.state_dict().values()])
     assert n_params == copied_numel
 
@@ -531,13 +442,10 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
     hfllm = hfmodel.model
     mgllm = mgmodel.language_model
     copied_numel = 0
-    copied_numel += safe_copy(
-        hfllm.embed_tokens.weight, mgllm.embedding.word_embeddings.weight
-    )
+    copied_numel += safe_copy(hfllm.embed_tokens.weight, mgllm.embedding.word_embeddings.weight)
     for mglayer, hflayer in zip(mgllm.decoder.layers, hfllm.layers):
         copied_numel += safe_copy(
-            hflayer.input_layernorm.weight,
-            mglayer.self_attention.linear_qkv.layer_norm_weight,
+            hflayer.input_layernorm.weight, mglayer.self_attention.linear_qkv.layer_norm_weight
         )
 
         q_proj_weight = hflayer.self_attn.q_proj.weight.view(
@@ -559,27 +467,18 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
         q_proj_bias = hflayer.self_attn.q_proj.bias.view(num_query_groups, -1)
         k_proj_bias = hflayer.self_attn.k_proj.bias.view(num_query_groups, -1)
         v_proj_bias = hflayer.self_attn.v_proj.bias.view(num_query_groups, -1)
-        qkv_bias = (
-            torch.cat([q_proj_bias, k_proj_bias, v_proj_bias], dim=1)
-            .view(-1)
-            .contiguous()
-        )
+        qkv_bias = torch.cat([q_proj_bias, k_proj_bias, v_proj_bias], dim=1).view(-1).contiguous()
         copied_numel += safe_copy(qkv_bias, mglayer.self_attention.linear_qkv.bias)
         copied_numel += safe_copy(
             hflayer.self_attn.o_proj.weight, mglayer.self_attention.linear_proj.weight
         )
 
-        fc1_weight = torch.cat(
-            [hflayer.mlp.gate_proj.weight, hflayer.mlp.up_proj.weight]
-        )
+        fc1_weight = torch.cat([hflayer.mlp.gate_proj.weight, hflayer.mlp.up_proj.weight])
         copied_numel += safe_copy(fc1_weight, mglayer.mlp.linear_fc1.weight)
 
+        copied_numel += safe_copy(hflayer.mlp.down_proj.weight, mglayer.mlp.linear_fc2.weight)
         copied_numel += safe_copy(
-            hflayer.mlp.down_proj.weight, mglayer.mlp.linear_fc2.weight
-        )
-        copied_numel += safe_copy(
-            hflayer.post_attention_layernorm.weight,
-            mglayer.mlp.linear_fc1.layer_norm_weight,
+            hflayer.post_attention_layernorm.weight, mglayer.mlp.linear_fc1.layer_norm_weight
         )
 
     copied_numel += safe_copy(hfllm.norm.weight, mgllm.decoder.final_layernorm.weight)
@@ -628,15 +527,11 @@ def split_vision_model(mgvision, args, prefix="vision_model") -> Dict[Tuple, Dic
                 target_v = v
             elif "linear_qkv.weight" in k:
                 viewed = v.view(num_query_groups, -1, head_dim, vision_hidden_size)
-                viewed = viewed[
-                    group_per_split * etp_rank : group_per_split * (etp_rank + 1)
-                ]
+                viewed = viewed[group_per_split * etp_rank : group_per_split * (etp_rank + 1)]
                 target_v = viewed.view(-1, vision_hidden_size)
             elif "linear_qkv.bias" in k:
                 viewed = v.view(num_query_groups, -1, head_dim)
-                viewed = viewed[
-                    group_per_split * etp_rank : group_per_split * (etp_rank + 1)
-                ]
+                viewed = viewed[group_per_split * etp_rank : group_per_split * (etp_rank + 1)]
                 target_v = viewed.view(-1)
             elif ("linear_proj" in k or "linear_fc2" in k) and "bias" not in k:
                 seg = v.shape[-1] // tp
@@ -682,9 +577,7 @@ def load_split_state_dict_to_vision_model(state_dicts, mgvision, args):
                 if etp_rank == 0:
                     merged_dict[k].append(v)
             elif "linear_qkv.weight" in k:
-                merged_dict[k].append(
-                    v.view(group_per_split, -1, head_dim, vision_hidden_size)
-                )
+                merged_dict[k].append(v.view(group_per_split, -1, head_dim, vision_hidden_size))
             elif "linear_qkv.bias" in k:
                 merged_dict[k].append(v.view(group_per_split, -1, head_dim))
             elif ("linear_proj" in k or "linear_fc2" in k) and "bias" not in k:
@@ -727,9 +620,7 @@ def save_mgmodel(mgmodel, args):
         args.num_layers_per_virtual_pipeline_stage = (
             args.target_num_layers_per_virtual_pipeline_stage
         )
-        num_layers_per_pipeline_stage = (
-            args.num_layers // args.pipeline_model_parallel_size
-        )
+        num_layers_per_pipeline_stage = args.num_layers // args.pipeline_model_parallel_size
         args.virtual_pipeline_model_parallel_size = (
             num_layers_per_pipeline_stage // args.num_layers_per_virtual_pipeline_stage
         )
@@ -768,23 +659,15 @@ def save_mgmodel(mgmodel, args):
                     target_v = v
                 elif "vision_model" in k:
                     vision_part = vision_state_dicts[(tp_rank, 0)]
-                    assert (
-                        k in vision_part
-                    ), f"Cannot find key {k} in vision model split!"
+                    assert k in vision_part, f"Cannot find key {k} in vision model split!"
                     target_v = vision_part[k]
                 elif "linear_qkv.weight" in k:
-                    viewed = v.view(
-                        args.num_query_groups, -1, head_dim, args.hidden_size
-                    )
-                    viewed = viewed[
-                        group_per_split * tp_rank : group_per_split * (tp_rank + 1)
-                    ]
+                    viewed = v.view(args.num_query_groups, -1, head_dim, args.hidden_size)
+                    viewed = viewed[group_per_split * tp_rank : group_per_split * (tp_rank + 1)]
                     target_v = viewed.view(-1, args.hidden_size)
                 elif "linear_qkv.bias" in k:
                     viewed = v.view(args.num_query_groups, -1, head_dim)
-                    viewed = viewed[
-                        group_per_split * tp_rank : group_per_split * (tp_rank + 1)
-                    ]
+                    viewed = viewed[group_per_split * tp_rank : group_per_split * (tp_rank + 1)]
                     target_v = viewed.view(-1)
                 elif "linear_proj" in k or "linear_fc2" in k:
                     seg = v.shape[1] // args.tensor_model_parallel_size
@@ -795,9 +678,9 @@ def save_mgmodel(mgmodel, args):
                 elif "linear_fc1" in k and "norm" not in k:
                     viewed = v.view(-1, args.ffn_hidden_size, args.hidden_size)
                     seg = args.ffn_hidden_size // args.tensor_model_parallel_size
-                    target_v = viewed[
-                        :, seg * tp_rank : seg * (tp_rank + 1), :
-                    ].reshape(-1, args.hidden_size)
+                    target_v = viewed[:, seg * tp_rank : seg * (tp_rank + 1), :].reshape(
+                        -1, args.hidden_size
+                    )
                 else:
                     target_v = v
                 model_part[k] = target_v
@@ -809,12 +692,8 @@ def save_mgmodel(mgmodel, args):
         for tp_rank in range(args.tensor_model_parallel_size):
             for pp_rank in range(args.pipeline_model_parallel_size):
                 model_chunk = []
-                checkpoint_name = get_checkpoint_name(
-                    args.save, 0, True, True, tp_rank, pp_rank
-                )
-                print(
-                    f"tensor_parallel & pipeline_parallel, save model to {checkpoint_name}"
-                )
+                checkpoint_name = get_checkpoint_name(args.save, 0, True, True, tp_rank, pp_rank)
+                print(f"tensor_parallel & pipeline_parallel, save model to {checkpoint_name}")
                 for vpp_id in range(vpp_size):
                     layers_to_copy = {}
                     local_id = 0
@@ -844,28 +723,20 @@ def save_mgmodel(mgmodel, args):
                                 # NOTE: The vision model will only be attached to the first model_part of pp stage 0
                                 continue
                             vision_part = vision_state_dicts[(tp_rank, 0)]
-                            assert (
-                                k in vision_part
-                            ), f"Cannot find key {k} in vision model split!"
+                            assert k in vision_part, f"Cannot find key {k} in vision model split!"
                             target_v = vision_part[k]
                         elif not isinstance(v, torch.Tensor):
                             target_v = v
                         elif "linear_qkv.weight" in k:
-                            viewed = v.view(
-                                args.num_query_groups, -1, head_dim, args.hidden_size
-                            )
+                            viewed = v.view(args.num_query_groups, -1, head_dim, args.hidden_size)
                             viewed = viewed[
-                                group_per_split
-                                * tp_rank : group_per_split
-                                * (tp_rank + 1)
+                                group_per_split * tp_rank : group_per_split * (tp_rank + 1)
                             ]
                             target_v = viewed.view(-1, args.hidden_size)
                         elif "linear_qkv.bias" in k:
                             viewed = v.view(args.num_query_groups, -1, head_dim)
                             viewed = viewed[
-                                group_per_split
-                                * tp_rank : group_per_split
-                                * (tp_rank + 1)
+                                group_per_split * tp_rank : group_per_split * (tp_rank + 1)
                             ]
                             target_v = viewed.view(-1)
                         elif "linear_proj" in k or "linear_fc2" in k:
@@ -876,12 +747,10 @@ def save_mgmodel(mgmodel, args):
                             target_v = v[seg * tp_rank : seg * (tp_rank + 1)]
                         elif "linear_fc1" in k and "norm" not in k:
                             viewed = v.view(-1, args.ffn_hidden_size, args.hidden_size)
-                            seg = (
-                                args.ffn_hidden_size // args.tensor_model_parallel_size
+                            seg = args.ffn_hidden_size // args.tensor_model_parallel_size
+                            target_v = viewed[:, seg * tp_rank : seg * (tp_rank + 1), :].reshape(
+                                -1, args.hidden_size
                             )
-                            target_v = viewed[
-                                :, seg * tp_rank : seg * (tp_rank + 1), :
-                            ].reshape(-1, args.hidden_size)
                         else:
                             target_v = v
                         if "word_embeddings" in k:

@@ -5,6 +5,7 @@ import os
 
 import numpy as np
 import torch
+
 from transformers.modeling_utils import (
     SAFE_WEIGHTS_INDEX_NAME,
     SAFE_WEIGHTS_NAME,
@@ -18,10 +19,7 @@ try:
     USE_TRANSFORMERS_SAVE = True
 except:
     from huggingface_hub import split_torch_state_dict_into_shards
-    from huggingface_hub.constants import (
-        SAFETENSORS_INDEX_FILE,
-        SAFETENSORS_WEIGHTS_FILE_PATTERN,
-    )
+    from huggingface_hub.constants import SAFETENSORS_INDEX_FILE, SAFETENSORS_WEIGHTS_FILE_PATTERN
 
     USE_TRANSFORMERS_SAVE = False
 
@@ -58,9 +56,7 @@ def save_hfmodel(args, model, max_shard_size="10GB"):
         weight_file = SAFETENSORS_WEIGHTS_FILE_PATTERN
         index_file = SAFETENSORS_INDEX_FILE
         state_dict_split = split_torch_state_dict_into_shards(
-            output_state_dict,
-            max_shard_size=max_shard_size,
-            filename_pattern=weight_file,
+            output_state_dict, max_shard_size=max_shard_size, filename_pattern=weight_file
         )
         shards = {}
         for filename, tensors in state_dict_split.filename_to_tensors.items():
@@ -125,9 +121,7 @@ def build_layer_id_mapping(args):
     ), "Currently uneven VPP not supported"
 
     if args.target_decoder_first_pipeline_num_layers is not None:
-        remained_layers = (
-            args.num_layers - args.target_decoder_first_pipeline_num_layers
-        )
+        remained_layers = args.num_layers - args.target_decoder_first_pipeline_num_layers
         remained_stages = args.pipeline_model_parallel_size - 1
         assert remained_layers % remained_stages == 0
         pp_layers_per_stage = [args.target_decoder_first_pipeline_num_layers] + (
@@ -154,9 +148,7 @@ def build_layer_id_mapping(args):
                 )
                 == 0
             )
-            n_chunks = (
-                args.num_layers // args.target_num_layers_per_virtual_pipeline_stage
-            )
+            n_chunks = args.num_layers // args.target_num_layers_per_virtual_pipeline_stage
         num_layer_per_chunk = args.num_layers // n_chunks
         pp_layers_per_stage = [num_layer_per_chunk] * n_chunks
 
@@ -174,11 +166,7 @@ def build_layer_id_mapping(args):
     return ltog, gtol
 
 
-def safe_copy(
-    src_tensor: torch.Tensor,
-    dst_tensor: torch.Tensor,
-    skip_dtype_assert: bool = False,
-):
+def safe_copy(src_tensor: torch.Tensor, dst_tensor: torch.Tensor, skip_dtype_assert: bool = False):
     if not skip_dtype_assert:
         if src_tensor.dtype != dst_tensor.dtype:
             raise ValueError(

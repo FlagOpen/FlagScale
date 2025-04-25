@@ -1,11 +1,13 @@
 import json
 import os
 import pickle
+
 from argparse import ArgumentParser
 
 import cv2
 import webdataset as wds
 import yaml
+
 from tqdm import tqdm
 from webdataset.writer import add_handlers, default_handlers, imageencoder
 
@@ -30,16 +32,12 @@ def convert(dataset_dir, json_name, sort_function=sorted, max_count=10000):
 
     # custom webdataset ShardWriter Encoder
     add_handlers(
-        default_handlers,
-        "jpgs",
-        lambda data: pickle.dumps([imageencoder(d, "jpg") for d in data]),
+        default_handlers, "jpgs", lambda data: pickle.dumps([imageencoder(d, "jpg") for d in data])
     )
     add_handlers(
         default_handlers,
         "videos",
-        lambda data: pickle.dumps(
-            [[imageencoder(d, "jpg") for d in video] for video in data]
-        ),
+        lambda data: pickle.dumps([[imageencoder(d, "jpg") for d in video] for video in data]),
     )
 
     has_idx = None
@@ -70,9 +68,7 @@ def convert(dataset_dir, json_name, sort_function=sorted, max_count=10000):
                 frames = []
                 for frame in sort_function(os.listdir(frame_folder)):
                     frames.append(
-                        cv2.imread(
-                            os.path.join(frame_folder, frame), cv2.IMREAD_UNCHANGED
-                        )
+                        cv2.imread(os.path.join(frame_folder, frame), cv2.IMREAD_UNCHANGED)
                     )
 
                 if len(frames) % 2 == 1:
@@ -82,9 +78,7 @@ def convert(dataset_dir, json_name, sort_function=sorted, max_count=10000):
 
             if has_idx is None:
                 has_idx = "id" in entry
-            assert has_idx == (
-                "id" in entry
-            ), "All entries should either all contain idx or not."
+            assert has_idx == ("id" in entry), "All entries should either all contain idx or not."
 
             sample = {
                 "__key__": entry.pop("id", str(idx)),
@@ -141,9 +135,7 @@ if __name__ == "__main__":
     argparser.add_argument("--test-split", default=0, type=float)
     args = argparser.parse_args()
 
-    output_dir = convert(
-        args.dataset_root, args.json, max_count=args.max_samples_per_tar
-    )
+    output_dir = convert(args.dataset_root, args.json, max_count=args.max_samples_per_tar)
     print(f"Generating Configurations")
     # NOTE: split_ratio: train/val/test
     split = [args.train_split, args.val_split, args.test_split]

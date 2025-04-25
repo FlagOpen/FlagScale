@@ -156,20 +156,14 @@ def get_batch_on_this_tp_rank_original(data_iterator, per_seq_average=False):
         )
 
         attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
-            labels,
-            -100,
-            args.reset_position_ids,
-            args.reset_attention_mask,
-            args.eod_mask_loss,
+            labels, -100, args.reset_position_ids, args.reset_attention_mask, args.eod_mask_loss
         )
 
         num_seqs = None
         if per_seq_average:
             # NOTE: raw dataset does not support sequence packing
             num_seqs = torch.ones(
-                position_ids.shape[0],
-                device=torch.cuda.current_device(),
-                dtype=torch.int64,
+                position_ids.shape[0], device=torch.cuda.current_device(), dtype=torch.int64
             )
             loss_mask = loss_mask / loss_mask.sum(dim=-1, keepdims=True)  # [mbs]
 
@@ -179,9 +173,7 @@ def get_batch_on_this_tp_rank_original(data_iterator, per_seq_average=False):
             "loss_mask": loss_mask.cuda(non_blocking=True),
             "attention_mask": attention_mask.cuda(non_blocking=True),
             "position_ids": position_ids.cuda(non_blocking=True),
-            "num_seqs": (
-                num_seqs.cuda(non_blocking=True) if num_seqs is not None else None
-            ),
+            "num_seqs": (num_seqs.cuda(non_blocking=True) if num_seqs is not None else None),
         }
 
         if args.pipeline_model_parallel_size == 1:
@@ -241,9 +233,7 @@ def get_batch_on_this_tp_rank_original(data_iterator, per_seq_average=False):
         num_seqs = None
         if per_seq_average:
             num_seqs = torch.empty(
-                (args.micro_batch_size,),
-                dtype=torch.int64,
-                device=torch.cuda.current_device(),
+                (args.micro_batch_size,), dtype=torch.int64, device=torch.cuda.current_device()
             )
 
         if args.pipeline_model_parallel_size == 1:
@@ -372,9 +362,7 @@ def get_batch_on_this_tp_rank_idxmap_sft(data_iterator, per_seq_average=False):
         num_seqs = None
         if per_seq_average:
             num_seqs = torch.ones(
-                position_ids.shape[0],
-                device=torch.cuda.current_device(),
-                dtype=torch.int64,
+                position_ids.shape[0], device=torch.cuda.current_device(), dtype=torch.int64
             )
             if args.reset_position_ids:
                 for b in range(position_ids.shape[0]):
@@ -403,14 +391,10 @@ def get_batch_on_this_tp_rank_idxmap_sft(data_iterator, per_seq_average=False):
             "labels": labels.cuda(non_blocking=True),
             "loss_mask": loss_mask.cuda(non_blocking=True),
             "attention_mask": (
-                attention_mask.cuda(non_blocking=True)
-                if attention_mask is not None
-                else None
+                attention_mask.cuda(non_blocking=True) if attention_mask is not None else None
             ),
             "position_ids": position_ids.cuda(non_blocking=True),
-            "num_seqs": (
-                num_seqs.cuda(non_blocking=True) if num_seqs is not None else None
-            ),
+            "num_seqs": (num_seqs.cuda(non_blocking=True) if num_seqs is not None else None),
         }
 
         if args.pipeline_model_parallel_size == 1:
@@ -472,9 +456,7 @@ def get_batch_on_this_tp_rank_idxmap_sft(data_iterator, per_seq_average=False):
         num_seqs = None
         if per_seq_average:
             num_seqs = torch.empty(
-                (args.micro_batch_size,),
-                dtype=torch.int64,
-                device=torch.cuda.current_device(),
+                (args.micro_batch_size,), dtype=torch.int64, device=torch.cuda.current_device()
             )
 
         if args.pipeline_model_parallel_size == 1:

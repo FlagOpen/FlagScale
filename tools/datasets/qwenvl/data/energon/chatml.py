@@ -2,10 +2,12 @@
 import pickle
 import re
 import warnings
+
 from dataclasses import dataclass
 from typing import List, Union
 
 import torch
+
 from webdataset.autodecode import Decoder, imagehandler
 
 from megatron.energon.epathlib.epath import EPath
