@@ -1,4 +1,7 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved. Except portions as noted which are Copyright (c) 2023 OpenGVLab and licensed under the MIT license found in LICENSE.
+# Copyright (c) 2024, NVIDIA CORPORATION.
+# Copyright (c) 2025 BAAI and Alibaba PAI. All rights reserved.
+# All rights reserved. Except portions as noted which are Copyright (c) 2023 OpenGVLab and licensed under the MIT license found in LICENSE.
+
 import math
 import random
 

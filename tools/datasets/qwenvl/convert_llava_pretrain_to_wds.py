@@ -1,3 +1,5 @@
+# Copyright (c) 2025 BAAI, Alibaba PAI and NVIDIA CORPORATION. All rights reserved.
+
 import json
 import os
 import sys

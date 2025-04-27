@@ -1,3 +1,5 @@
+# Copyright (c) 2025 BAAI and Alibaba PAI. All rights reserved.
+#
 import glob
 import json
 import multiprocessing.pool as mpp

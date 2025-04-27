@@ -1,3 +1,5 @@
+# Copyright (c) 2025, BAAI, Alibaba PAI and NVIDIA CORPORATION. All rights reserved.
+
 # NOTE: we slightly modify this file to support zero-size tensor, such as [0, 128] when we don't have video data
 import torch
 

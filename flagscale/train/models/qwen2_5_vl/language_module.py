@@ -1,5 +1,4 @@
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
-
+# Copyright (c) 2025 BAAI, Alibaba PAI and NVIDIA CORPORATION. All rights reserved.
 
 from typing import Literal, Optional
 from torch import Tensor

@@ -1,4 +1,5 @@
-# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025, BAAI, Alibaba PAI and NVIDIA CORPORATION. All rights reserved.
+
 import logging
 from collections import namedtuple
 from typing import List
@@ -12,7 +13,6 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.packed_seq_params import PackedSeqParams
 
 
-# from flagscale.train.models.qwen2_5_vl.transformer_config import Qwen2VLTransformerConfig
 from flagscale.train.models.qwen2_5_vl.vit_model import Qwen2_5VisionModel
 from flagscale.train.models.qwen2_5_vl.language_module import GPTModel
 

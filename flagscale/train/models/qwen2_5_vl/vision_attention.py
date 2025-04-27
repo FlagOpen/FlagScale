@@ -1,3 +1,5 @@
+# Copyright (c) 2025 BAAI, Alibaba PAI and NVIDIA CORPORATION. All rights reserved.
+
 from __future__ import annotations
 from abc import  abstractmethod
 from typing import Optional, Tuple, Union

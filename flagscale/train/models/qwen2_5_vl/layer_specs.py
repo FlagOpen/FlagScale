@@ -1,4 +1,4 @@
-# # Copyright (c) 2025 BAAI and Nvidia Megatron-LM Team.
+# Copyright (c) 2025 BAAI, Alibaba PAI and NVIDIA CORPORATION. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
