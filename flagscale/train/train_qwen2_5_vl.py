@@ -43,7 +43,7 @@ from megatron.core.num_microbatches_calculator import get_num_microbatches
 
 torch._dynamo.config.suppress_errors = True
 from megatron.core import mpu
-from megatron.core.parallel_state import get_tensor_model_parallel_rank
+from megatron.core.parallel_state import get_tensor_model_parallel_rank, get_pipeline_model_parallel_world_size, get_pipeline_model_parallel_rank
 from megatron.energon import (
     LimitDataset,
     RepeatDataset,
@@ -541,13 +541,40 @@ def datasets_provider(worker_config=None):
 
     return train_dataset, val_datasets_without_source_datasets, None
 
+def is_first_or_last_stage(pp_size, encoder_pipeline_model_parallel_size):
+    """Check if the current pipeline parallel stage is the first or last stage."""
+    if pp_size == 1:    # No pipeline parallelism.
+        return True
+
+    is_valid_rank = False
+    pp_rank = get_pipeline_model_parallel_rank()
+    if encoder_pipeline_model_parallel_size == 0:
+        # No separate pipeline stage for the vision model. Run the dataloader on the first and last pipeline stage.
+        is_valid_rank = pp_rank in (0, pp_size-1)
+    elif encoder_pipeline_model_parallel_size == 1:
+        # Separate pipeline stage for the vision model. Run the dataloader on the first vision and LM stage and last LM stage.
+        is_valid_rank = pp_rank in (0, 1, pp_size-1)
+    else:
+        raise NotImplementedError("encoder-pipeline-model-parallel-size > 1 is not supported yet")
+
+    return is_valid_rank
+
+def is_dataloader_rank(encoder_pipeline_model_parallel_size):
+    """Check if we should have the dataloader on this tensor and pipeline parallel rank."""
+    # Run dataloader only on the first tensor parallel rank (will be broadcasted to others).
+    is_first_rank = get_tensor_model_parallel_rank() == 0
+
+    pp_size = get_pipeline_model_parallel_world_size()
+    is_first_rank = is_first_rank and is_first_or_last_stage(pp_size, encoder_pipeline_model_parallel_size)
+
+    return is_first_rank
 
 def train_valid_test_dataloaders_provider(train_val_test_num_samples):
     """Build multimodal train, validation and test dataloaders."""
-    if get_tensor_model_parallel_rank() != 0:
-        return None, None, None
-
     args = get_args()
+    # Dataloader is only on specific ranks.
+    if not is_dataloader_rank(args.encoder_pipeline_model_parallel_size):
+        return None, None, None
 
     worker_debug_path = None
     worker_log_level = 0
@@ -573,6 +600,7 @@ def train_valid_test_dataloaders_provider(train_val_test_num_samples):
             data_save_name = get_checkpoint_name(
                 args.dataloader_save,
                 args.iteration,
+                pipeline_rank=0,    # Only the first pipeline parallel rank stores the dataloader checkpoint.
                 basename=f"train_dataloader_dprank{dp_rank:03d}.pt",
             )
             if os.path.exists(data_save_name):
@@ -589,7 +617,29 @@ def train_valid_test_dataloaders_provider(train_val_test_num_samples):
     ]
     test_dataloader = None # NOTE: no test
 
-    return EnergonDataloader(train_dataloader), valid_dataloader, None
+    return EnergonDataloader(train_dataloader), valid_dataloader, EnergonDataloader(test_dataloader)
+
+class EnergonDataloader:
+    """A wrapper to use Megatron Energon dataloader with the Megatron-LM training loop."""
+    def __init__(self, dataloader):
+        self._dataloader = dataloader
+        self._iter = iter(cyclic_iter(dataloader))
+
+    def __next__(self):
+        return self._iter.__next__()
+
+    def __iter__(self):
+        return self._iter.__iter__()
+
+    def save_state(self):
+        return self._dataloader.save_state_rank()
+
+
+def cyclic_iter(iter):
+    while True:
+        for x in iter:
+            yield x
+
 
 def add_multimodal_extra_args(parser):
     """Extra arguments."""
@@ -626,27 +676,6 @@ def add_multimodal_extra_args(parser):
     group.add_argument("--use-te", action="store_true", default=False, help="Use transformer engine")
     return parser
 
-
-class EnergonDataloader:
-    """A wrapper to use Megatron Energon dataloader with the Megatron-LM training loop."""
-    def __init__(self, dataloader):
-        self._dataloader = dataloader
-        self._iter = iter(cyclic_iter(dataloader))
-
-    def __next__(self):
-        return self._iter.__next__()
-
-    def __iter__(self):
-        return self._iter.__iter__()
-
-    def save_state(self):
-        return self._dataloader.save_state_rank()
-
-
-def cyclic_iter(iter):
-    while True:
-        for x in iter:
-            yield x
 
 if __name__ == "__main__":
     train_valid_test_dataloaders_provider.is_distributed = True

@@ -62,6 +62,11 @@ def get_vision_model_config(args, config):
     config._qwen2_5_vl_window_size = 112
     # NOTE(lizhyu): Add following configs from huggingface config
     config.tokens_per_second = 2
+    # for pipeline parallelism
+    config.pipeline_model_parallel_size = 1
+    config.first_pipeline_num_layers = None
+    config.num_layers_in_first_pipeline_stage = None
+    config.num_layers_in_last_pipeline_stage = None
     return config
 
 

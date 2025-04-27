@@ -102,11 +102,13 @@ tie_option=" \
 
 fi
 
+TOKENIZER_PATH=${SOURCE_CKPT_PATH}
 if [ $MG2HF = true ]; then
     convert_options=" \
                 --convert-checkpoint-from-megatron-to-transformers \
                 --hf-ckpt-path ${HF_CKPT_PATH}"
     PRETRAIN_CHECKPOINT_PATH=${HF_CKPT_PATH}
+    TOKENIZER_PATH=${HF_CKPT_PATH}
 elif [ $MG2HF = false ]; then
     convert_options=""
     PRETRAIN_CHECKPOINT_PATH=${SOURCE_CKPT_PATH}
@@ -160,7 +162,7 @@ find -L ${PRETRAIN_CHECKPOINT_PATH} -maxdepth 1 -type f -name "*.json" -print0 |
 find -L ${PRETRAIN_CHECKPOINT_PATH} -maxdepth 1 -type f -name "merges.txt" -print0 | xargs -0 cp -t ${TARGET_CKPT_PATH}
 
 cmd="torchrun ${DISTRIBUTED_ARGS} hf2mcore_qwen2.5_vl.py \
-    --tokenizer-path ${SOURCE_CKPT_PATH} \
+    --tokenizer-path ${TOKENIZER_PATH} \
     --load ${SOURCE_CKPT_PATH} \
     --save ${TARGET_CKPT_PATH} \
     --target-tensor-model-parallel-size ${TP} \
