@@ -42,7 +42,7 @@ if conda env list | grep -q "flagscale-${env}"; then
     echo "Conda environment 'flagscale-${env}' already exists."
 else
     echo "Creating conda environment 'flagscale-${env}'..."
-    conda create --name "flagscale-${env}" python=$(python --version | awk '{print $2}') -y
+    conda create --name "flagscale-${env}" python=$(python --version | awk '{print $2}' | cut -d '.' -f 1,2) -y
 fi
 conda activate flagscale-${env}
 
@@ -118,10 +118,10 @@ fi
 # If env equals 'inference'
 if [ "${env}" == "inference" ]; then
     # Navigate to requirements directory and install inference dependencies
-    pip install -r ../vllm/requirements-build.txt
-    pip install -r ../vllm/requirements-cuda.txt
-    pip install -r ../vllm/requirements-common.txt
-    pip install -r ../vllm/requirements-dev.txt
+    pip install -r ../vllm/requirements/build.txt
+    pip install -r ../vllm/requirements/cuda.txt
+    pip install -r ../vllm/requirements/common.txt
+    pip install -r ../vllm/requirements/dev.txt
 
     MAX_JOBS=$(nproc) pip install --no-build-isolation -v ../vllm/.
 
