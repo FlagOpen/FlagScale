@@ -31,7 +31,7 @@ def _load_checkpoint(queue, args):
         major, minor, _ = map(int, transformers.__version__.split('.'))
         assert major >= 4 and minor >= 36
     except:
-        raise ImportError("transformers version >= 4.31.0 ")
+        raise ImportError("transformers version >= 4.36.0 ")
 
     # Search in directory above this.
     root_path = os.path.abspath(
