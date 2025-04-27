@@ -1,5 +1,4 @@
-# Copyright (c) 2025 BAAI and Alibaba PAI. All rights reserved.
-#
+# Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/toolkits/multimodal_data_preprocessing/build_llava_frame_dataset.py
 import glob
 import json
 import multiprocessing.pool as mpp

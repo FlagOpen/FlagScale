@@ -1,5 +1,8 @@
+## Copyright (c) 2025, BAAI. All rights reserved.
+#
+# Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/megatron_patch/data/dataset_helpers.py. Below is the original copyright:
 # Copyright (c) 2024 Alibaba PAI and Nvidia Megatron-LM Team.
-# Copyright (c) 2025 BAAI. All rights reserved.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -151,10 +154,10 @@ class TaskEncoder(
         for visual in visuals:
             if is_image:
                 resized_height, resized_width = visual.shape[-2:]
-                # temporal_patch_size = 2, 如果是单张图片，表示在时间维度复制一份
+                # temporal_patch_size = 2 If the image is a single frame, copy it to the temporal patch size
                 patches = np.tile(np.array(visual), (self.temporal_patch_size, 1, 1, 1))
             else:
-                # 连续帧
+                # videos
                 assert len(visual) % self.temporal_patch_size == 0
                 patches = np.array(visual)
                 resized_height, resized_width = patches.shape[-2:]

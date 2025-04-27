@@ -1,4 +1,7 @@
-# NOTE: add a license
+# Copyright (c) 2025, BAAI. All rights reserved.
+#
+# Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/megatron_patch/data/energon/chatml.py.
+
 import pickle
 import re
 import warnings

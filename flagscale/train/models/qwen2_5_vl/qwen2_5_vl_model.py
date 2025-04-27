@@ -1,4 +1,7 @@
-# Copyright (c) 2025, BAAI, Alibaba PAI and NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025, BAAI. All rights reserved.
+#
+# Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/megatron_patch/model/qwen2_5_vl/model.py. Below is the original copyright:
+#  Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
 import logging
 from collections import namedtuple

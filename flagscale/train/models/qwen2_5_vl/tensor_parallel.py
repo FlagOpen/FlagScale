@@ -1,4 +1,6 @@
-# Copyright (c) 2025, BAAI, Alibaba PAI and NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025, BAAI. All rights reserved.
+#
+# Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/megatron_patch/tensor_parallel.py
 
 # NOTE: we slightly modify this file to support zero-size tensor, such as [0, 128] when we don't have video data
 import torch

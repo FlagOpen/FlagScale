@@ -1,3 +1,5 @@
+# Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/toolkits/model_checkpoints_convertor/qwen/hf2mcore_qwen2.5_vl.py
+
 #!/bin/bash
 set -e
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-7}

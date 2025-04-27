@@ -70,7 +70,7 @@ model:
   rotary_seq_len_interpolation_factor: 1
   no_rope_fusion: False
   mrope_section: [16, 24, 24]
-  eod_mask_loss: True
+  eod_mask_loss: False
 
   # vision model
   freeze_LM: False

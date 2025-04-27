@@ -1,4 +1,7 @@
-# Copyright (c) 2025 BAAI, Alibaba PAI and NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025, BAAI. All rights reserved.
+#
+# Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/toolkits/model_checkpoints_convertor/qwen/hf2mcore_qwen2.5_vl.py. Below is the original copyright:
+# Copyright (c) 2024 Alibaba PAI Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +14,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import copy
 import json
 import logging
 import os
