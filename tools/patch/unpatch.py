@@ -4,10 +4,13 @@ import shutil
 import sys
 import tempfile
 import logging
+import yaml
+
 
 from git.repo import Repo
 
 DELETED_FILE_NAME = "deleted_files.txt"
+FLAGSCALE_BACKEND = "FlagScale"
 
 
 logger = logging.getLogger("FlagScaleUnpatchLogger")
@@ -22,18 +25,19 @@ if not logger.handlers:
     logger.propagate = False
 
 
-def unpatch(src, dst, submodule_name, mode="symlink"):
+def unpatch(main_path, src, dst, submodule_name, mode="symlink"):
     """Unpatch the backend with symlinks."""
-    logger.info(f"Unpatching backend {submodule_name}...")
-    init_submodule(dst, submodule_name)
-    assert mode in ["symlink", "copy"]
-    if mode == "copy":
-        _copy(src, dst)
-    elif mode == "symlink":
-        _create_symlinks(src, dst)
-    deleted_files_path = os.path.join(src, DELETED_FILE_NAME)
-    if os.path.lexists(deleted_files_path):
-        _delete_file(deleted_files_path, dst)
+    if submodule_name.split("/")[-1] != FLAGSCALE_BACKEND:
+        logger.info(f"Unpatching backend {submodule_name}...")
+        init_submodule(main_path, dst, submodule_name)
+        assert mode in ["symlink", "copy"]
+        if mode == "copy":
+            _copy(src, dst)
+        elif mode == "symlink":
+            _create_symlinks(src, dst)
+        deleted_files_path = os.path.join(src, DELETED_FILE_NAME)
+        if os.path.lexists(deleted_files_path):
+            _delete_file(deleted_files_path, dst)
 
 
 def _copy(src, dst):
@@ -67,7 +71,7 @@ def _delete_file(file_path, dst):
                 os.remove(deleted_file_path)
                 logger.info(f"Deleting file: {deleted_file_path}")
             else:
-                loggoer.warning(f"File not found for deletion: {deleted_file_path}")
+                logger.warning(f"File not found for deletion: {deleted_file_path}")
 
 
 def _create_symlinks(src, dst):
@@ -92,111 +96,186 @@ def _create_symlinks(src, dst):
             logger.info(f"Creating symbolic link: {dst_file} -> {src_file}")
 
 
-def init_submodule(dst, submodule_name):
+def init_submodule(main_path, dst, submodule_name):
     if os.path.lexists(dst) and len(os.listdir(dst)) > 0:
         logger.info(f"Skipping {submodule_name} initialization, as it already lexists.")
         return
     logger.info(f"Initializing submodule {submodule_name}...")
-    repo = Repo(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    repo = Repo(main_path)
     submodule = repo.submodule(submodule_name)
-    submodule.update(init=True)
+    try:
+        submodule.update(init=True)
+    except:
+        logger.info("Retrying to initialize submodule...")
+        submodule.update(init=True)
     logger.info(f"Initialized {submodule_name} submodule.")
 
 
-def validate_device_type(device_type, main_path):
-    if device_type:
+def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, flagscale_commit=None):
+    if flagscale_commit:
+        return flagscale_commit
+
+    newest_flagscale_commit = None
+    main_repo = Repo(main_path)
+    if device_type and tasks:
+        # Check if device_type is in the format xxx_yyy
         if device_type.count("_") != 1 or len(device_type.split("_")) != 2:
             raise ValueError(
                 "Invalid format. Device type must be in the format xxx_yyy."
             )
-        sorted_backends = sorted(backends)
-        backend_key = "+".join(sorted_backends)
-        device_path = os.path.join(main_path, "hardware", device_type)
-        if not os.path.exists(device_path):
-            raise ValueError(f"Please check hardware directory {device_path}.")
-        path_exist = False
-        patch_dir = None
-        for task_name in os.listdir(device_path):
-            task_path = os.path.join(device_path, task_name)
-            if os.path.isdir(task_path):
-                path = os.path.join(task_path, backend_key)
-                if os.path.isdir(path):
-                    path_exist = True
-                    patch_dir = path
+
+        assert backends
+        history_yaml = os.path.join(main_path, "hardware", "patch_history.yaml")
+        if not os.path.exists(history_yaml):
+            raise ValueError(f"Yaml {history_yaml} does not exist.")
+
+        # Backend key
+        backends_key = "+".join(sorted(backends))
+        # Newest flagscale commit to checkout and unpatch
+        newest_flagscale_commit = None
+        # Find newest flagscale commit
+        with open(history_yaml, 'r') as f:
+            history = yaml.safe_load(f)
+            if device_type not in history:
+                raise ValueError(f"Device type {device_type} not found in {history_yaml}.")
+
+            # Find the newest flagscale commit in the history
+            for task in tasks:
+                if task not in history[device_type]:
+                    continue
+                if backends_key not in history[device_type][task]:
+                    continue
+                if not isinstance(history[device_type][task][backends_key], list) or not history[device_type][task][backends_key]:
+                    continue
+                newest_flagscale_commit = history[device_type][task][backends_key][-1]
+                try:
+                    main_repo.commit(newest_flagscale_commit)
                     break
-        if not path_exist:
-            raise ValueError(
-                f"The patch file for this backend {backend_key} of this hardware {device_type} was not found.."
-            )
-        else:
-            error = f"The files in this directory {patch_dir} must be a file with a .patch suffix and a file with a .yaml suffix."
-            if len(os.listdir(patch_dir)) != 2:
-                raise ValueError(error)
-            base_commit_id = None
-            for file in os.listdir(patch_dir):
-                if not file.endswith(".patch") and not file.endswith(".yaml"):
-                    raise ValueError(error)
-                base_commit_id = file.split(".")[0]
-            main_repo = Repo(main_path)
-            try:
-                main_repo.commit(base_commit_id)
-            except ValueError:
-                raise ValueError(
-                    f"The commit ID {base_commit_id} does not exist in the FlagScale."
-                )
-        return patch_dir, base_commit_id
-    return None
+                except ValueError:
+                    raise ValueError(
+                        f"The commit ID {newest_flagscale_commit} does not exist in the FlagScale. Please check the {history_yaml}"
+                    )
+                    newest_flagscale_commit = None
+        assert newest_flagscale_commit is not None, f"FlagScale Commit for device type {device_type}, task {task} is not found. Please check the {history_yaml}."
+    return newest_flagscale_commit
 
 
-def apply_hardware_patch_file(patch_dir, main_path):
-    patch_dir, base_commit_id = validate_result
-    patch_file = os.path.join(patch_dir, f"{base_commit_id}.patch")
+
+def apply_hardware_patch(device_type, backends, flagscale_commit, main_path):
     build_path = os.path.join(main_path, "build", device_type)
     final_path = os.path.join(build_path, os.path.basename(main_path))
 
     try:
-        # Step 1: Remove existing build directory if present
+        # Remove existing build directory if present.
         if os.path.exists(build_path):
             logger.info(f"Removing existing build path: {build_path}")
             shutil.rmtree(build_path)
 
-        # Step 2: Copy main_path to a temporary directory
         temp_path = tempfile.mkdtemp()
-        logger.info(f"Copying {main_path} to temp path {temp_path}")
+        logger.info(f"Step 1: Copying {main_path} to temp path {temp_path}")
         shutil.copytree(main_path, temp_path, dirs_exist_ok=True)
 
-        # Step 3: Checkout the base commit
         repo = Repo(temp_path)
-        logger.info(f"Checking out {base_commit_id} in temp path {temp_path}")
+        # Stash firstly to prevent checkout failed
+        repo.git.stash("push", "--include-untracked")
+        logger.info(f"Step 2: Checking out {flagscale_commit} in temp path {temp_path}")
+        repo.git.checkout(flagscale_commit)
 
+        # Check device path
+        device_path = os.path.join(temp_path, "hardware", device_type)
+        if not os.path.exists(device_path):
+            raise ValueError(f"{device_path} is not found.")
+
+        # Check backend path and patch file path
+        all_base_commit_id = set()
+        patch_files = []
+        for backend in backends:
+            backend_path = os.path.join(device_path, backend)
+            if not os.path.exists(backend_path):
+                raise ValueError(f"{backend_path} is not found.")
+    
+            error = f"Patch files in {backend_path} must be a file with a .patch suffix and a file with a .yaml suffix."
+            if len(os.listdir(backend_path)) != 2:
+                raise ValueError(error)
+            patch_file = None
+            base_commit_id = None
+            for file in os.listdir(backend_path):
+                if file.endswith(".patch"):
+                    patch_file = os.path.join(backend_path, file)
+                    base_commit_id = file.split(".")[0]
+                    try:
+                        repo.commit(base_commit_id)
+                    except ValueError:
+                        raise ValueError(
+                            f"The commit ID {base_commit_id} does not exist in the FlagScale."
+                        )
+            assert patch_file
+            assert base_commit_id
+            all_base_commit_id.add(base_commit_id)
+            patch_files.append(patch_file)
+        all_base_commit_id = list(all_base_commit_id)
+
+        # Sort the commit by appearance order
+        position = {}
+        rev_list = repo.git.rev_list('--topo-order', 'HEAD').splitlines()
+        rev_list = [commit[:7] for commit in rev_list]
+        for idx, commit in enumerate(rev_list):
+            if commit in all_base_commit_id:
+                position[commit] = idx
+
+        # Check if all commits were found
+        missing = set(all_base_commit_id) - set(position.keys())
+        if missing:
+            raise ValueError(f"The following commits were not found in rev-list: {missing}")
+
+        sorted_commits = sorted(all_base_commit_id, key=lambda x: position[x])
+        # Get the neweset base_commit_id
+        base_commit_id = sorted_commits[-1]
+        logger.info(f"Step 3: Finding the newset base commit {base_commit_id} to checkout.")
+
+        temp_unpatch_path = tempfile.mkdtemp()
+        logger.info(f"Step 4: Copying {temp_path} to temp unpatch path {temp_unpatch_path}")
+        shutil.copytree(temp_path, temp_unpatch_path, dirs_exist_ok=True)
+        repo = Repo(temp_unpatch_path)
         repo.git.checkout(base_commit_id)
 
-        # Step 4: Apply the patch
-        logger.info(f"Applying patch: {patch_file}")
-        repo.git.apply("--index", "--whitespace", "fix", patch_file)
+        logger.info(f"Step 5: Applying patch:")
+        for patch_file in patch_files:
+            repo.git.apply("--index", "--whitespace", "fix", patch_file)
+            logger.info(f"Patch {patch_file} has been applied.")
 
-        # Step 5: Move the patched temp directory to build/<device_type>/
-        logger.info(f"Moving patched temp path to {final_path}")
+        logger.info(f"Step 6: Initializing submodule in temp unpatch path {temp_unpatch_path}...")
+        for backend in backends:
+            submodule_name = f"third_party/{backend}"
+            dst = os.path.join(temp_unpatch_path, "third_party", backend)
+            src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
+            # NOTE: mode must be 'copy' because the temp unpatch path will be moved
+            unpatch(temp_unpatch_path, src, dst, submodule_name, mode="copy")
+
+        logger.info(f"Step 7: Moving patched temp path {temp_unpatch_path} to {final_path}")
         os.makedirs(build_path, exist_ok=True)
-        shutil.move(temp_path, final_path)
-
-        # Step 6: Update main_path
-        main_path = final_path
+        shutil.move(temp_unpatch_path, final_path)
+        logger.info(f"Unpatch Ended.")
 
     except Exception as e:
-        logger.error(f"Exception occurred: {e}", exec_info=True)
+        logger.error(f"Exception occurred: {e}", exc_info=True)
 
         # Clean up temp directory
         if "temp_path" in locals() and os.path.exists(temp_path):
             logger.info(f"Cleaning up temp path: {temp_path}")
             shutil.rmtree(temp_path, ignore_errors=True)
 
+        # Clean up temp directory
+        if "temp_unpatch_path" in locals() and os.path.exists(temp_unpatch_path):
+            logger.info(f"Cleaning up temp path: {temp_unpatch_path}")
+            shutil.rmtree(temp_unpatch_path, ignore_errors=True)
+
         # Clean up build directory
         if os.path.exists(build_path):
             logger.info(f"Cleaning up build path: {build_path}")
             shutil.rmtree(build_path, ignore_errors=True)
 
-        raise e
+        raise ValueError("Error occurred during unpatching.")
     return final_path
 
 
@@ -205,7 +284,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--backend",
         nargs="+",
-        choices=["Megatron-LM", "vllm"],
+        choices=["Megatron-LM", "vllm", "FlagScale"],
         default=["Megatron-LM"],
         help="Backend to unpatch (default: Megatron-LM)",
     )
@@ -221,13 +300,31 @@ if __name__ == "__main__":
         default=None,
         help="Device type. Default is None.",
     )
+    parser.add_argument(
+        "--task",
+        nargs="+",
+        default=None,
+        help="Task. Default is None",
+    )
+    parser.add_argument(
+        "--flagscale-commit",
+        type=str,
+        default=None,
+        help="FlagScale commit to checkout. Default is None.",
+    )
 
     args = parser.parse_args()
     backends = args.backend
     device_type = args.device_type
+    tasks = args.task
+    flagscale_commit = args.flagscale_commit
 
     if not isinstance(backends, list):
         backends = [backends]
+
+    if tasks is not None and not isinstance(tasks, list):
+        tasks = [tasks]
+
     # FlagScale/tools/patch
     script_dir = os.path.dirname(os.path.realpath(__file__))
     # FlagScale/tools
@@ -235,13 +332,19 @@ if __name__ == "__main__":
     # FlagScale
     main_path = os.path.dirname(script_dir)
 
-    # Check patch exist
-    validate_result = validate_device_type(device_type, main_path)
-    if validate_result is not None:
-        main_path = apply_hardware_patch_file(validate_result, main_path)
+    temp_main_path = None
+    if FLAGSCALE_BACKEND in backends:
+        assert device_type is not None, "FlagScale unpatch only can be applied with hardware unpatch."
 
-    for backend in backends:
-        submodule_name = f"third_party/{backend}"
-        dst = os.path.join(main_path, "third_party", backend)
-        src = os.path.join(main_path, "flagscale", "backends", backend)
-        unpatch(src, dst, submodule_name, mode=args.mode)
+    # Check patch exist
+    commit = commit_to_checkout(main_path, device_type, tasks, backends, flagscale_commit)
+    if commit is not None:
+        # Checkout to the commit and apply the patch to build FlagScale
+        apply_hardware_patch(device_type, backends, commit, main_path)
+
+    else:
+        for backend in backends:
+            submodule_name = f"third_party/{backend}"
+            dst = os.path.join(main_path, "third_party", backend)
+            src = os.path.join(main_path, "flagscale", "backends", backend)
+            unpatch(main_path, src, dst, submodule_name, mode=args.mode)

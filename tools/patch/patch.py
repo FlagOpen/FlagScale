@@ -10,6 +10,7 @@ import yaml
 from git.repo import Repo
 
 DELETED_FILE_NAME = "deleted_files.txt"
+FLAGSCALE_BACKEND = "FlagScale"
 
 
 logger = logging.getLogger("FlagScalePatchLogger")
@@ -36,130 +37,131 @@ def patch(
     """
     Sync the submodule modifications to the corresponding backend in FlagScale.
     """
-    logger.info(f"Patching backend {submodule_name}...")
-    main_repo = Repo(main_path)
-    submodule = main_repo.submodule(submodule_name)
-    sub_repo = submodule.module()
-    base_commit_hash = submodule.hexsha
-    logger.info(
-        f"Base commit hash of submodule {submodule_name} is {base_commit_hash}."
-    )
+    if submodule_name.split("/")[1] != FLAGSCALE_BACKEND:
+        logger.info(f"Patching backend {submodule_name}...")
+        main_repo = Repo(main_path)
+        submodule = main_repo.submodule(submodule_name)
+        sub_repo = submodule.module()
+        base_commit_hash = submodule.hexsha
+        logger.info(
+            f"Base commit hash of submodule {submodule_name} is {base_commit_hash}."
+        )
 
-    # Get submodule commit tree
-    base_commit = sub_repo.commit(base_commit_hash)
-    base_tree = base_commit.tree
+        # Get submodule commit tree
+        base_commit = sub_repo.commit(base_commit_hash)
+        base_tree = base_commit.tree
 
-    index = sub_repo.index
-    index_tree_hash = index.write_tree()
-    file_statuses = {}
+        index = sub_repo.index
+        index_tree_hash = index.write_tree()
+        file_statuses = {}
 
-    # Get diff with base commit
-    diff_index = base_tree.diff(index_tree_hash)
-    # Process the diff between the staged and the base commit
-    for diff in diff_index:
-        if diff.new_file:
-            status = "A"
-            file_path = diff.b_path
-            file_statuses[file_path] = [status]
-        elif diff.deleted_file:
-            status = "D"
-            file_path = diff.a_path
-            file_statuses[file_path] = [status]
-        elif diff.renamed_file:
-            status = "R"
-            file_path = diff.b_path
-            file_statuses[diff.a_path] = [status, file_path]
-        elif diff.change_type == "M":
-            status = "M"
-            assert diff.a_path == diff.b_path
-            file_path = diff.b_path
-            file_statuses[file_path] = [status]
-        elif diff.change_type == "T":
-            status = "T"
-            assert diff.a_path == diff.b_path
-            file_path = diff.b_path
-            file_statuses[file_path] = [status]
-        elif diff.change_type == "U":
-            raise ValueError(f"Unmerged status is not supported.")
-        else:
-            raise ValueError(f"Unsupported  status: {diff.change_type}.")
+        # Get diff with base commit
+        diff_index = base_tree.diff(index_tree_hash)
+        # Process the diff between the staged and the base commit
+        for diff in diff_index:
+            if diff.new_file:
+                status = "A"
+                file_path = diff.b_path
+                file_statuses[file_path] = [status]
+            elif diff.deleted_file:
+                status = "D"
+                file_path = diff.a_path
+                file_statuses[file_path] = [status]
+            elif diff.renamed_file:
+                status = "R"
+                file_path = diff.b_path
+                file_statuses[diff.a_path] = [status, file_path]
+            elif diff.change_type == "M":
+                status = "M"
+                assert diff.a_path == diff.b_path
+                file_path = diff.b_path
+                file_statuses[file_path] = [status]
+            elif diff.change_type == "T":
+                status = "T"
+                assert diff.a_path == diff.b_path
+                file_path = diff.b_path
+                file_statuses[file_path] = [status]
+            elif diff.change_type == "U":
+                raise ValueError(f"Unmerged status is not supported.")
+            else:
+                raise ValueError(f"Unsupported  status: {diff.change_type}.")
 
-    # Get diff with working directory
-    diff_workdir = index.diff(None)
-    # Process the diff between the working directory and the staged
-    for diff in diff_workdir:
-        if diff.new_file:
-            status = "A"
-            file_path = diff.b_path
-            file_statuses[file_path] = [status]
-        elif diff.deleted_file:
-            status = "D"
-            file_path = diff.a_path
-            file_statuses[file_path] = [status]
-        elif diff.renamed_file:
-            status = "R"
-            file_path = diff.b_path
-            file_statuses[diff.a_path] = [status, file_path]
-        elif diff.change_type == "M":
-            status = "M"
-            assert diff.a_path == diff.b_path
-            file_path = diff.b_path
-            file_statuses[file_path] = [status]
-        elif diff.change_type == "T":
-            status = "T"
-            assert diff.a_path == diff.b_path
-            file_path = diff.b_path
-            file_statuses[file_path] = [status]
-        elif diff.change_type == "U":
-            raise ValueError(f"Unmerged status is not supported.")
-        else:
-            raise ValueError(f"Unsupported  status: {diff.change_type}.")
-        file_statuses[file_path] = status
+        # Get diff with working directory
+        diff_workdir = index.diff(None)
+        # Process the diff between the working directory and the staged
+        for diff in diff_workdir:
+            if diff.new_file:
+                status = "A"
+                file_path = diff.b_path
+                file_statuses[file_path] = [status]
+            elif diff.deleted_file:
+                status = "D"
+                file_path = diff.a_path
+                file_statuses[file_path] = [status]
+            elif diff.renamed_file:
+                status = "R"
+                file_path = diff.b_path
+                file_statuses[diff.a_path] = [status, file_path]
+            elif diff.change_type == "M":
+                status = "M"
+                assert diff.a_path == diff.b_path
+                file_path = diff.b_path
+                file_statuses[file_path] = [status]
+            elif diff.change_type == "T":
+                status = "T"
+                assert diff.a_path == diff.b_path
+                file_path = diff.b_path
+                file_statuses[file_path] = [status]
+            elif diff.change_type == "U":
+                raise ValueError(f"Unmerged status is not supported.")
+            else:
+                raise ValueError(f"Unsupported  status: {diff.change_type}.")
+            file_statuses[file_path] = status
 
-    # Get untracked files
-    untracked_files = sub_repo.untracked_files
-    for file in untracked_files:
-        file_statuses[file] = ["UT"]
+        # Get untracked files
+        untracked_files = sub_repo.untracked_files
+        for file in untracked_files:
+            file_statuses[file] = ["UT"]
 
-    # The file status may be overwritten, so we follow the sequence of staged, working dir, untracked.
+        # The file status may be overwritten, so we follow the sequence of staged, working dir, untracked.
 
-    file_status_deleted = {}
-    temp_file = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False)
-    for file_path in file_statuses:
-        if file_statuses[file_path][0] == "D":
-            file_status_deleted[file_path] = file_statuses[file_path]
+        file_status_deleted = {}
+        temp_file = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False)
+        for file_path in file_statuses:
+            if file_statuses[file_path][0] == "D":
+                file_status_deleted[file_path] = file_statuses[file_path]
 
-    for file_path in file_statuses:
-        if file_statuses[file_path][0] == "D":
-            continue
-        _sync(file_path, file_statuses[file_path], src, dst, temp_file, mode=mode)
+        for file_path in file_statuses:
+            if file_statuses[file_path][0] == "D":
+                continue
+            _sync(file_path, file_statuses[file_path], src, dst, temp_file, mode=mode)
 
-    # Process the deleted files
-    if file_status_deleted:
-        try:
-            for file_path in file_status_deleted:
-                assert file_statuses[file_path][0] == "D"
-                _sync(
-                    file_path,
-                    file_status_deleted[file_path],
-                    src,
-                    dst,
-                    temp_file,
-                    mode=mode,
-                )
-            deleted_log = os.path.join(src, DELETED_FILE_NAME)
-            temp_file.close()
+        # Process the deleted files
+        if file_status_deleted:
+            try:
+                for file_path in file_status_deleted:
+                    assert file_statuses[file_path][0] == "D"
+                    _sync(
+                        file_path,
+                        file_status_deleted[file_path],
+                        src,
+                        dst,
+                        temp_file,
+                        mode=mode,
+                    )
+                deleted_log = os.path.join(src, DELETED_FILE_NAME)
+                temp_file.close()
 
-            shutil.move(temp_file.name, deleted_log)
-            if os.path.lexists(temp_file.name):
-                os.remove(temp_file.name)
+                shutil.move(temp_file.name, deleted_log)
+                if os.path.lexists(temp_file.name):
+                    os.remove(temp_file.name)
 
-        except Exception as e:
-            print(f"Error occurred while processing deleted files: {e}")
-            temp_file.close()
-            if os.path.lexists(temp_file.name):
-                os.remove(temp_file.name)
-            raise e
+            except Exception as e:
+                print(f"Error occurred while processing deleted files: {e}")
+                temp_file.close()
+                if os.path.lexists(temp_file.name):
+                    os.remove(temp_file.name)
+                raise e
 
     if base_commit_id:
         patch_info = prompt_info(main_path, backends)
@@ -172,7 +174,7 @@ def prompt_info(main_path, backends):
     valid_tasks = {"train", "inference", "post_train"}
     while True:
         task_input = input(
-            "1. Please enter tasks (valid task train/inference/post_train) (separated with commas, e.g., train, post_train): "
+            "1. Please enter task (valid task train/inference/post_train) (separated with commas, e.g., train, post_train): "
         ).strip()
         task_list = [t.strip() for t in task_input.split(",") if t.strip()]
         if all(t in valid_tasks for t in task_list):
@@ -185,6 +187,7 @@ def prompt_info(main_path, backends):
         for d in os.listdir(third_party_dir)
         if os.path.isdir(os.path.join(third_party_dir, d))
     ]
+    available_submodules.append("FlagScale")
     assert isinstance(backends, list)
     invalid = [b for b in backends if b not in available_submodules]
     if invalid:
@@ -233,7 +236,7 @@ def prompt_info(main_path, backends):
     contact = input(contact_prompt).strip()
 
     return {
-        "tasks": task_list,
+        "task": task_list,
         "backends_version": backends_version,
         "device_type": device_type,
         "models": models,
@@ -302,6 +305,8 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
         tmep_patch_files = []
         # Generate patch for each backend
         for backend in backends:
+            if backend == FLAGSCALE_BACKEND:
+                continue
             backend_dir = os.path.join(main_path, "flagscale", "backends", backend)
             temp_file = tempfile.NamedTemporaryFile(
                 delete=False, mode="w", encoding="utf-8"
@@ -322,6 +327,7 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
             temp_file.write(diff_data)
             # add \n to the end of the file
             temp_file.write("\n")
+            temp_file.flush()
             flagscale_diff_args.append(f':(exclude){backend_dir}')
 
             temp_yaml_file = tempfile.NamedTemporaryFile(
@@ -332,38 +338,41 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
             data = copy.deepcopy(patch_info)
             del data["commit_msg"]
             yaml.dump(data, temp_yaml_file, sort_keys=True, allow_unicode=True)
-
+            temp_yaml_file.flush()
             patch_dir = os.path.join(
                 main_path, "hardware", patch_info["device_type"], backend
             )
             patches[backend] = [patch_dir, temp_patch_path, temp_yaml_path]
 
         # Generate patch for FlagScale
-        temp_file = tempfile.NamedTemporaryFile(
-            delete=False, mode="w", encoding="utf-8"
-        )
-        temp_patch_path = temp_file.name
-        tmep_patch_files.append(temp_patch_path)
-        diff_data = repo.git.diff(*flagscale_diff_args)
-        if not diff_data:
-            logger.warning("No changes excluded backend.")
-        else:
-            temp_file.write(diff_data)
-            # add \n to the end of the file
-            temp_file.write("\n")
+        if FLAGSCALE_BACKEND in backends:
+            temp_file = tempfile.NamedTemporaryFile(
+                delete=False, mode="w", encoding="utf-8"
+            )
+            temp_patch_path = temp_file.name
+            tmep_patch_files.append(temp_patch_path)
+            diff_data = repo.git.diff(*flagscale_diff_args)
+            if not diff_data:
+                raise ValueError(f"No changes in backend {FLAGSCALE_BACKEND}.")
+            else:
+                temp_file.write(diff_data)
+                # add \n to the end of the file
+                temp_file.write("\n")
+                temp_file.flush()
 
-            temp_yaml_file = tempfile.NamedTemporaryFile(
-                delete=False, mode="w", encoding="utf-8", suffix=".yaml"
-            )
-            temp_yaml_path = temp_yaml_file.name
-            tmep_patch_files.append(temp_yaml_path)
-            data = copy.deepcopy(patch_info)
-            del data["commit_msg"]
-            yaml.dump(data, temp_yaml_file, sort_keys=True, allow_unicode=True)
-            patch_dir = os.path.join(
-                main_path, "hardware", patch_info["device_type"], "FlagScale"
-            )
-            patches["FlagScale"] = [patch_dir, temp_patch_path, temp_yaml_path]
+                temp_yaml_file = tempfile.NamedTemporaryFile(
+                    delete=False, mode="w", encoding="utf-8", suffix=".yaml"
+                )
+                temp_yaml_path = temp_yaml_file.name
+                tmep_patch_files.append(temp_yaml_path)
+                data = copy.deepcopy(patch_info)
+                del data["commit_msg"]
+                yaml.dump(data, temp_yaml_file, sort_keys=True, allow_unicode=True)
+                temp_yaml_file.flush()
+                patch_dir = os.path.join(
+                    main_path, "hardware", patch_info["device_type"], "FlagScale"
+                )
+                patches["FlagScale"] = [patch_dir, temp_patch_path, temp_yaml_path]
 
         repo.git.checkout(current_branch)
         repo.git.stash("pop")
@@ -385,9 +394,11 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
             if not patch_dir_exist:
                 patch_dir_need_to_clean.append(patch_dir)
 
+            # Remove the backend
             if os.path.exists(patch_dir):
                 shutil.rmtree(patch_dir)
             os.makedirs(patch_dir, exist_ok=True)
+            print("backend temp_patch_path", backend, temp_patch_path)
             shutil.copy(temp_patch_path, os.path.join(patch_dir, file_name))
             shutil.copy(temp_yaml_path, os.path.join(patch_dir, yaml_file_name))
             repo.git.add(os.path.join(patch_dir, file_name))
@@ -564,7 +575,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--backend",
         nargs="+",
-        choices=["Megatron-LM", "vllm"],
+        choices=["Megatron-LM", "vllm", "FlagScale"],
         default=["Megatron-LM"],
         help="Backend to patch (default: Megatron-LM)",
     )
@@ -594,6 +605,9 @@ if __name__ == "__main__":
     # FlagScale
     main_path = os.path.dirname(script_dir)
     validate_base_commit(args.base_commit_id, main_path)
+
+    if FLAGSCALE_BACKEND in backends:
+        assert base_commit_id is not None, "FlagScale patch only can be generated with hardware."
 
     multi_backends = len(backends) > 1
     if multi_backends and base_commit_id:
