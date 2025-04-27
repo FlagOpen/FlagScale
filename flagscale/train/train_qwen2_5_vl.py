@@ -1,6 +1,4 @@
-# Copyright (c) 2025, BAAI. All rights reserved.
-#
-# Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/examples/qwen2_5_vl/pretrain_qwen.py.Below is the original copyright:
+# Mainly Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/examples/qwen2_5_vl/pretrain_qwen.py.Below is the original copyright:
 # Copyright (c) 2024 Alibaba PAI and Nvidia Megatron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,7 +43,6 @@ from megatron.core.num_microbatches_calculator import get_num_microbatches
 
 torch._dynamo.config.suppress_errors = True
 from megatron.core import mpu
-# from megatron.core.tensor_parallel.data import broadcast_data
 from megatron.core.parallel_state import get_tensor_model_parallel_rank
 from megatron.energon import (
     LimitDataset,

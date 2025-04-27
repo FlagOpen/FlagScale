@@ -111,7 +111,7 @@ class QwenVLLanguageModelEmbedding(LanguageModelEmbedding):
         return embeddings
 
 
-class GPTModel(GPTModel):
+class QwenVLLanguageModel(GPTModel):
     """GPT Transformer language model, replace language embedding using QwenVLLanguageModelEmbedding.
 
     Args:

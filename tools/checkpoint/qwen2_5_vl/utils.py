@@ -1,6 +1,4 @@
-# Copyright (c) 2025 BAAI, Alibaba PAI and NVIDIA CORPORATION. All rights reserved.
-#
-# Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/toolkits/model_checkpoints_convertor/utils/__init__.py.
+# Copied from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/toolkits/model_checkpoints_convertor/utils/__init__.py.
 
 import gc
 import json

@@ -13,7 +13,7 @@ cd LLaVA-Pretrain
 unzip images.zip
 
 #convert to webdataset format:
-cd /workspace/Pai-Megatron-Patch/toolkits/pretrain_data_preprocessing
+cd /workspace/tools/datasets/qwenvl/
 python convert_llava_pretrain_to_wds.py /mnt/llava-datasets/LLaVA-Pretrain/
 
 #convert to megatron-energon format:
@@ -29,6 +29,13 @@ energon prepare ./
 > Please enter a webdataset field name for 'context' (<class 'str'>): json[0][value]
 > Please enter a webdataset field name for 'answers' (typing.Optional[typing.List[str]], default: None): json[1][value]
 > Please enter a webdataset field name for 'answer_weights' (typing.Optional[torch.Tensor], default: None):
+```
+
+You can also directly get the preprocessed data:
+```bash
+cd /mnt/llava-datasets/LLaVA-Pretrain/
+wget https://atp-modelzoo-wlcb-pai.oss-cn-wulanchabu.aliyuncs.com/release/models/pai-megatron-patch/vlm-datasets/wds.tgz
+tar -zxf wds.tgz
 ```
 
 ## Prepare Multimodal Datasets Based on ShareGPT Format
@@ -131,7 +138,7 @@ dataset_root/
 
 Run the following to convert the dataset into WebDataset format for training. Output will be stored in `dataset_root/wds`.
 ```
-python toolkits/pretrain_data_preprocessing/convert_custom_dataset_to_wds_chatml.py \
+python tools/datasets/qwenvl/convert_custom_dataset_to_wds_chatml.py \
 --dataset-root dataset_root \
 --json dataset.json \
 --train-split 9 \

@@ -1,5 +1,3 @@
-# Copyright (c) 2025, BAAI. All rights reserved.
-#
 # Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/megatron_patch/model/qwen2_5_vl/model.py. Below is the original copyright:
 #  Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
@@ -17,7 +15,7 @@ from megatron.core.packed_seq_params import PackedSeqParams
 
 
 from flagscale.train.models.qwen2_5_vl.vit_model import Qwen2_5VisionModel
-from flagscale.train.models.qwen2_5_vl.language_module import GPTModel
+from flagscale.train.models.qwen2_5_vl.language_module import QwenVLLanguageModel
 
 # Note: This is under development and may be missing features.
 class Qwen2_5VLModel(MegatronModule):
@@ -107,7 +105,7 @@ class Qwen2_5VLModel(MegatronModule):
                 post_process=True
             )
 
-        self.language_model = GPTModel(
+        self.language_model = QwenVLLanguageModel(
             config=language_transformer_config,
             transformer_layer_spec=language_transformer_layer_spec,
             vocab_size=language_vocab_size,
