@@ -14,14 +14,10 @@ def add_arguments(parser):
     group.add_argument('--megatron-path', type=str, default=None,
                        help='Base directory of megatron repository')
     group.add_argument('--position-embedding-type',
-                    type=str,
-                    default='learned_absolute',
-                    choices=['learned_absolute', 'rope'],
-                    help='Position embedding type.')
-
-    # for emu model
-    group.add_argument('--true-language-vocab-size', type=int, default=None,
-                       help='original size of language vocab, if specified will trim padding from embedding table.')
+                       type=str,
+                       default='learned_absolute',
+                       choices=['learned_absolute', 'rope'],
+                       help='Position embedding type.')
 
 
 def _load_checkpoint(queue, args):

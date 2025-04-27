@@ -22,10 +22,6 @@ def add_arguments(parser):
                        choices=['learned_absolute', 'rope'],
                        help='Position embedding type.')
 
-    # for emu model
-    group.add_argument('--true-language-vocab-size', type=int, default=None,
-                       help='original size of language vocab, if specified will trim padding from embedding table.')
-
 
 def _load_checkpoint(queue, args):
 
