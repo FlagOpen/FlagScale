@@ -6,6 +6,8 @@ import importlib
 
 import torch
 
+from utils import print_memory_usage
+
 
 def add_arguments(parser):
     group = parser.add_argument_group(title='Megatron loader')
@@ -14,6 +16,15 @@ def add_arguments(parser):
                        help='original size of vocab, if specified will trim padding from embedding table.')
     group.add_argument('--megatron-path', type=str, default=None,
                        help='Base directory of megatron repository')
+    group.add_argument('--position-embedding-type',
+                       type=str,
+                       default='learned_absolute',
+                       choices=['learned_absolute', 'rope'],
+                       help='Position embedding type.')
+
+    # for emu model
+    group.add_argument('--true-language-vocab-size', type=int, default=None,
+                       help='original size of language vocab, if specified will trim padding from embedding table.')
 
 
 def _load_checkpoint(queue, args):
@@ -27,8 +38,8 @@ def _load_checkpoint(queue, args):
         os.path.join(os.path.dirname(__file__),
                      os.path.pardir,
                      os.path.pardir))
-    sys.path.append(os.path.join(root_path, "megatron"))
-    sys.path.append(root_path)
+    sys.path.insert(0, root_path)
+    sys.path.insert(0, os.path.join(root_path, "megatron"))
 
     if args.megatron_path is not None:
         sys.path.insert(0, args.megatron_path)
@@ -44,6 +55,7 @@ def _load_checkpoint(queue, args):
                 get_cuda_rng_tracker, _DATA_PARALLEL_RNG_TRACKER_NAME,
                 _EXPERT_PARALLEL_RNG_TRACKER_NAME, _MODEL_PARALLEL_RNG_TRACKER_NAME
             )
+        from tools.checkpoint.utils import _ConverterFakeProcessGroup
     except ModuleNotFoundError:
         print("Unable to import Megatron, please specify the path to Megatron using --megatron-path. Exiting.")
         queue.put("exit")
@@ -64,7 +76,7 @@ def _load_checkpoint(queue, args):
     prepare megatron arguments (margs)
     """
 
-    # We want all arguments to come from us
+    # We want all arguments to come from us.
     sys.argv = [
         'script.py',
         '--no-masked-softmax-fusion',
@@ -78,9 +90,13 @@ def _load_checkpoint(queue, args):
         '--no-save-optim',
         '--no-save-rng',
         '--no-initialization',
+        '--mock-data', # To pass the "blend data checks" in arguments.py
         '--use-mcore-models',
         '--transformer-impl', 'transformer_engine',
-        '--load', args.load_dir
+        '--load', args.load_dir,
+        '--exit-on-missing-checkpoint',
+        '--use-mp-args-from-checkpoint-args',
+        '--no-one-logger',
     ]
 
     margs = parse_args()
@@ -164,6 +180,7 @@ def _load_checkpoint(queue, args):
     check_for_arg('num_attention_heads')
     check_for_arg('max_position_embeddings')
     check_for_arg('position_embedding_type')
+    check_for_arg('tokenizer_type')
     check_for_arg('iteration')
     check_for_arg('bert_binary_head')
     check_for_arg('params_dtype')
@@ -197,6 +214,10 @@ def _load_checkpoint(queue, args):
     mpu.set_pipeline_model_parallel_rank(0)
     mpu.set_expert_model_parallel_rank(0)
     mpu.set_virtual_pipeline_model_parallel_rank(0)
+    fake_tp_group = _ConverterFakeProcessGroup(tp_size)
+    fake_ep_group = _ConverterFakeProcessGroup(ep_size)
+    mpu._TENSOR_MODEL_PARALLEL_GROUP = fake_tp_group
+    mpu._EXPERT_MODEL_PARALLEL_GROUP = fake_ep_group
 
     # fused kernel
     fused_kernels.load(margs)
@@ -216,7 +237,7 @@ def _load_checkpoint(queue, args):
     md.seq_length = margs.seq_length
     md.num_attention_heads = margs.num_attention_heads
     md.max_position_embeddings = margs.max_position_embeddings
-    # md.tokenizer_type = margs.tokenizer_type
+    md.tokenizer_type = margs.tokenizer_type
     md.iteration = margs.iteration
     md.params_dtype = margs.params_dtype
     md.output_layer = margs.untie_embeddings_and_output_weights
@@ -266,6 +287,7 @@ def _load_checkpoint(queue, args):
 
             margs.consumed_train_samples = 0
             margs.consumed_valid_samples = 0
+            margs.exit_on_missing_checkpoint = True
             load_checkpoint(model_, None, None)
 
             if consumed_train_samples is not None:
@@ -280,6 +302,9 @@ def _load_checkpoint(queue, args):
 
             for vp_rank in range(vp_size):
                 models[vp_rank].append(model_[vp_rank])
+
+            # Print memory usage.
+            print_memory_usage("loader", rank_id, count)
 
         return models
 

@@ -68,6 +68,15 @@ def get_hf_mlp_ckpt(message, model, layer_id, args):
             message[f"expert{id} l1 bias"] = expert.w2.bias.data
 
 
+def set_hf_embedding_ckpt(message, model, md, args):
+    print(
+        f"Warning: set_hf_embedding will change embedding shape-0 to true_vocab_size[{md.true_vocab_size}] ."
+    )
+    orig_word_embed = message.pop("word embeddings")
+    full_word_embed = padding_vocab_size(orig_word_embed, md, args)[: md.true_vocab_size, :]
+    model.model.embed_tokens.weight.data.copy_(full_word_embed)
+
+
 def set_hf_attn_ckpt(message, model, layer_id, md, args):
     qkv_weight = message.pop("qkv weight")
     proj_weight = message.pop("proj weight")
@@ -149,6 +158,23 @@ def set_hf_mlp_ckpt(message, model, layer_id, md, args):
                 expert.w1.bias.data.copy_(mlp_l0_bias_W)
                 expert.w3.bias.data.copy_(mlp_l0_bia_V)
                 expert.w2.bias.data.copy_(mlp_l1_bias)
+
+
+def set_hf_final_norm_ckpt(message, model, md, args):
+    model.model.norm.weight.data.copy_(message.pop("weight"))
+    if md.norm_has_bias:
+        model.model.norm.bias.data.copy_(message.pop("bias"))
+
+
+def set_hf_output_layer_ckpt(message, model, md, args):
+    print(
+        f"Warning: set_hf_output_layer will change output_layer shape-0 to true_vocab_size[{md.true_vocab_size}] ."
+    )
+    orig_output_layer_weight = message.pop("weight")
+    full_output_layer_weight = padding_vocab_size(orig_output_layer_weight, md, args)[
+        : md.true_vocab_size, :
+    ]
+    model.lm_head.weight.data.copy_(full_output_layer_weight)
 
 
 def _get_parallel_size(args):
