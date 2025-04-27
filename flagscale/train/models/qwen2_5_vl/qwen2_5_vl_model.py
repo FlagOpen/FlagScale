@@ -42,10 +42,9 @@ class Qwen2_5VLModel(MegatronModule):
             will live on only a subset of the pipeline stages (specifically, only the first stage).
         add_decoder (bool): Construct the decoder module (used with pipeline parallelism). Defaults to True. When we use pipelining, the decoder
             will live on only a subset of the pipeline stages (specifically, every stage after the first one).
-        img_h (int): The height of each image that the ViT will see.
-        img_w (int): The width of each image that the ViT will see.
-        patch_dim (int): The size of each patch side.
-        img_embedding_idx (int): Index in the language_embeddings tensor where image_embeddings should be inserted. Defaults to 0.
+        language_rotary_base (int): RoPE base.
+        fp16_lm_cross_entropy (bool, optional): Defaults to False.
+        language_share_embeddings_and_output_weights (bool, optional): When True, input embeddings and output logit weights are shared for language model. Defaults to False.
     """
 
     def __init__(
