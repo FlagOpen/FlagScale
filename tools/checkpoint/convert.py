@@ -39,7 +39,7 @@ def main():
         default=[],
         nargs="+",
         required=True,
-        choices=["aquila3_dense", "aquila3_moe", "mistral", "mixtral", "llama", "deepseek_v3"],
+        choices=["aquila", "mistral", "mixtral", "llama", "deepseek_v3"],
         help="Type of the model.",
     )
     parser.add_argument(
@@ -65,7 +65,8 @@ def main():
     parser.add_argument(
         "--max-queue-size", type=int, default=50, help="Maximum number of tensors in the queue"
     )
-    extend_cases = [["mistral", "mixtral"], ["aquila3_dense", "aquila3_moe"]]
+
+    extend_cases = [["mistral", "mixtral"]]
 
     known_args, _ = parser.parse_known_args()
     loader = load_plugin("loader", known_args.loader)
@@ -84,11 +85,7 @@ def main():
     if len(args.model_type) == 1:
         saver_args.model_type = args.model_type[0]
     elif len(args.model_type) == 2:
-        assert args.model_type == [
-            "mistral",
-            "mixtral",
-            "llama",
-        ], "Only support convert dense model mistral to sparse model mixtral"
+        assert args.model_type in extend_cases, f"Only support extend cases are {extend_cases}"
         saver_args.model_type = args.model_type[1]
     else:
         raise ValueError("")
@@ -100,11 +97,7 @@ def main():
     if len(args.model_type) == 1:
         loader_args.model_type = args.model_type[0]
     elif len(args.model_type) == 2:
-        assert args.model_type == [
-            "mistral",
-            "mixtral",
-            "llama",
-        ], "Only support convert dense model mistral to sparse model mixtral"
+        assert args.model_type in extend_cases, f"Only support extend cases are {extend_cases}"
         loader_args.model_type = args.model_type[0]
     else:
         raise ValueError("")
