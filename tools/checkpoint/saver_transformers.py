@@ -160,7 +160,6 @@ def save_checkpoint(queue, args):
         '--no-bias-dropout-fusion',
         '--no-async-tensor-model-parallel-allreduce',
         '--use-cpu-initialization',
-        '--use-mcore-models',
         '--transformer-impl', 'transformer_engine',
         '--micro-batch-size', '1',
         '--no-load-optim',
@@ -233,6 +232,10 @@ def save_checkpoint(queue, args):
     # Explicitly copy sequence_parallel, apply_query_key_layer_scaling.
     margs.sequence_parallel = md.checkpoint_args.sequence_parallel
     margs.apply_query_key_layer_scaling = md.checkpoint_args.apply_query_key_layer_scaling
+
+    # To pass the "encoder_tensor_model_parallel_size == tensor_model_parallel_size check" in arguments.py
+    if margs.num_experts is not None and margs.num_experts == 0:
+        margs.num_experts = None
 
     # Sequence parallel is required if use both tensor-parallel and Moe.
     if margs.num_experts is not None and args.target_tensor_parallel_size is not None:

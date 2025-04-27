@@ -171,7 +171,6 @@ def save_checkpoint(queue, args):
         '--no-bias-dropout-fusion',
         '--no-async-tensor-model-parallel-allreduce',
         '--use-cpu-initialization',
-        '--use-mcore-models',
         '--transformer-impl', 'transformer_engine',
         '--micro-batch-size', '1',
         '--no-load-optim',
@@ -251,6 +250,10 @@ def save_checkpoint(queue, args):
     margs.sequence_parallel = md.checkpoint_args.sequence_parallel
     margs.apply_query_key_layer_scaling = md.checkpoint_args.apply_query_key_layer_scaling
 
+    # To pass the "encoder_tensor_model_parallel_size == tensor_model_parallel_size check" in arguments.py
+    if margs.num_experts is not None and margs.num_experts == 0:
+        margs.num_experts = None
+
     # Sequence parallel is required if use both tensor-parallel and Moe.
     if margs.num_experts is not None and args.target_tensor_parallel_size is not None:
         if margs.num_experts > 1 and args.target_tensor_parallel_size > 1:
@@ -309,8 +312,9 @@ def save_checkpoint(queue, args):
     mpu.set_tensor_model_parallel_rank(0)
     mpu.set_pipeline_model_parallel_rank(0)
     mpu.set_expert_model_parallel_rank(0)
-    fake_tp_group = _ConverterFakeProcessGroup(tp_size)
-    fake_ep_group = _ConverterFakeProcessGroup(ep_size)
+    # For backward compatibility during local parallel states refactoring
+    fake_tp_group = _ConverterFakeProcessGroup(size=tp_size)
+    fake_ep_group = _ConverterFakeProcessGroup(size=ep_size)
     mpu._TENSOR_MODEL_PARALLEL_GROUP = fake_tp_group
     mpu._EXPERT_MODEL_PARALLEL_GROUP = fake_ep_group
 

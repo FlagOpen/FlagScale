@@ -87,7 +87,6 @@ def _load_checkpoint(queue, args):
         '--no-save-rng',
         '--no-initialization',
         '--mock-data', # To pass the "blend data checks" in arguments.py
-        '--use-mcore-models',
         '--transformer-impl', 'transformer_engine',
         '--load', args.load_dir,
         '--exit-on-missing-checkpoint',
@@ -103,11 +102,6 @@ def _load_checkpoint(queue, args):
         setattr(margs, arg_name, ckpt_value)
 
     _set_arg("decoder_first_pipeline_num_layers")
-    _set_arg("tensor_model_parallel_size")
-    _set_arg("pipeline_model_parallel_size")
-    _set_arg("expert_model_parallel_size")
-    _set_arg("num_experts")
-    _set_arg("sequence_parallel")
 
     # for mla
     _set_arg("q_lora_rank")
@@ -143,6 +137,10 @@ def _load_checkpoint(queue, args):
     # Explicitly copy data types from checkpoint.
     margs.fp16 = checkpoint_args.fp16
     margs.bf16 = checkpoint_args.bf16
+
+    # Expert parallelism requires sequence parallelism
+    if margs.expert_model_parallel_size > 1:
+        margs.sequence_parallel = True
 
     # set env for moe
     os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
@@ -210,8 +208,9 @@ def _load_checkpoint(queue, args):
     mpu.set_pipeline_model_parallel_rank(0)
     mpu.set_expert_model_parallel_rank(0)
     mpu.set_virtual_pipeline_model_parallel_rank(0)
-    fake_tp_group = _ConverterFakeProcessGroup(tp_size)
-    fake_ep_group = _ConverterFakeProcessGroup(ep_size)
+    # For backward compatibility during local parallel states refactoring
+    fake_tp_group = _ConverterFakeProcessGroup(size=tp_size)
+    fake_ep_group = _ConverterFakeProcessGroup(size=ep_size)
     mpu._TENSOR_MODEL_PARALLEL_GROUP = fake_tp_group
     mpu._EXPERT_MODEL_PARALLEL_GROUP = fake_ep_group
 
