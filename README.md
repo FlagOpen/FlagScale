@@ -47,7 +47,7 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     ```
     The above instructions create two conda environments: `flagscale-train` and `flagscale-inference`, which contain the dependency environments for training and inference, respectively.
 
-3. Unpatch the backend code adaptation of FlagScale
+3. Unpatch the backend code adaptation of FlagScale as needed
     ```
     cd FlagScale
     python tools/patch/unpatch.py --backend Megatron-LM
@@ -60,8 +60,11 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     pip install .
 
     cd FlagScale
-    pip install -e ./megatron-energon
-    cp -r megatron-energon/src/megatron/energon third_party/Megatron-LM/megatron
+    python tools/patch/unpatch.py --backend Megatron-Energon
+    cd third_party/Megatron-Energon
+    pip install -e .
+    cd FlagScale
+    cp -r third_party/Megatron-Energon/src/megatron/energon third_party/Megatron-LM/megatron
     ```
 
 5. Patch the modifications to the specified third_party backend for PR.

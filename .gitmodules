@@ -5,3 +5,6 @@
 	path = third_party/vllm
 	url = https://github.com/vllm-project/vllm.git
 	branch = main
+[submodule "third_party/Megatron-Energon"]
+	path = third_party/Megatron-Energon
+	url = https://github.com/NVIDIA/Megatron-Energon.git

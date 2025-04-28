@@ -25,11 +25,11 @@ if not logger.handlers:
     logger.propagate = False
 
 
-def unpatch(main_path, src, dst, submodule_name, mode="symlink"):
+def unpatch(main_path, src, dst, submodule_name, mode="symlink", force=False):
     """Unpatch the backend with symlinks."""
     if submodule_name.split("/")[-1] != FLAGSCALE_BACKEND:
         logger.info(f"Unpatching backend {submodule_name}...")
-        init_submodule(main_path, dst, submodule_name)
+        init_submodule(main_path, dst, submodule_name, force=force)
         assert mode in ["symlink", "copy"]
         if mode == "copy":
             _copy(src, dst)
@@ -96,18 +96,18 @@ def _create_symlinks(src, dst):
             logger.info(f"Creating symbolic link: {dst_file} -> {src_file}")
 
 
-def init_submodule(main_path, dst, submodule_name):
-    if os.path.lexists(dst) and len(os.listdir(dst)) > 0:
+def init_submodule(main_path, dst, submodule_name, force=False):
+    if os.path.lexists(dst) and len(os.listdir(dst)) > 0 and not force:
         logger.info(f"Skipping {submodule_name} initialization, as it already lexists.")
         return
     logger.info(f"Initializing submodule {submodule_name}...")
     repo = Repo(main_path)
     submodule = repo.submodule(submodule_name)
     try:
-        submodule.update(init=True)
+        submodule.update(init=True, force=force)
     except:
         logger.info("Retrying to initialize submodule...")
-        submodule.update(init=True)
+        submodule.update(init=True, force=force)
     logger.info(f"Initialized {submodule_name} submodule.")
 
 
@@ -250,7 +250,7 @@ def apply_hardware_patch(device_type, backends, flagscale_commit, main_path):
             dst = os.path.join(temp_unpatch_path, "third_party", backend)
             src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
             # NOTE: mode must be 'copy' because the temp unpatch path will be moved
-            unpatch(temp_unpatch_path, src, dst, submodule_name, mode="copy")
+            unpatch(temp_unpatch_path, src, dst, submodule_name, mode="copy", force=True)
 
         logger.info(f"Step 7: Moving patched temp path {temp_unpatch_path} to {final_path}")
         os.makedirs(build_path, exist_ok=True)
@@ -284,7 +284,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--backend",
         nargs="+",
-        choices=["Megatron-LM", "vllm", "FlagScale"],
+        choices=["Megatron-LM", "vllm", "Megatron-Energon", "FlagScale"],
         default=["Megatron-LM"],
         help="Backend to unpatch (default: Megatron-LM)",
     )
@@ -311,6 +311,11 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="FlagScale commit to checkout. Default is None.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force update the backend even if it already exists.",
     )
 
     args = parser.parse_args()
@@ -347,4 +352,4 @@ if __name__ == "__main__":
             submodule_name = f"third_party/{backend}"
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
-            unpatch(main_path, src, dst, submodule_name, mode=args.mode)
+            unpatch(main_path, src, dst, submodule_name, mode=args.mode, force=args.force)
