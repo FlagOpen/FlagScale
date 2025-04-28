@@ -77,12 +77,10 @@ def get_hf_mtp_ckpt(message, model, mtp_layer_id, args):
     # Send transformer layers
     mtp_layer = model.model.layers[args.num_layers + mtp_layer_id]
 
-    message["mtp word embeddings weight"] = mtp_layer.embed_tokens.weight.data
     message["mtp enorm weight"] = mtp_layer.enorm.weight.data
     message["mtp hnorm weight"] = mtp_layer.hnorm.weight.data
     message["mtp eh weight"] = mtp_layer.eh_proj.weight.data
     message["mtp shared head norm weight"] = mtp_layer.shared_head.norm.weight.data
-    message["mtp shared head head weight"] = mtp_layer.shared_head.head.weight.data
 
     get_hf_attn_ckpt(message, model, args.num_layers + mtp_layer_id, args)
     get_hf_moe_mlp_ckpt(message, model, args.num_layers + mtp_layer_id, args)
@@ -281,7 +279,7 @@ def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
 
     mtp_layers = []
     for tp_ep_rank, model in enumerate(models):
-        mtp_layer = model.mtp_predictor.mtp_modules[mtp_layer_id]
+        mtp_layer = model.mtp.layers[mtp_layer_id]
         mtp_layers.append(mtp_layer)
 
     # get and set transformer weights
@@ -289,23 +287,17 @@ def set_mtp_ckpt(message, models, md, mtp_layer_id, args):
     set_moe_mlp_ckpt(message, mtp_layers, 0, md, args)
 
     # get and set other weights
-    # mtp embeddings weight is shared with main model embeddings
-    mtp_embeddings_weight = message.pop("mtp word embeddings weight")
-    full_word_embed = padding_vocab_size(mtp_embeddings_weight, md, args)
-    out_word_embed = torch.chunk(full_word_embed, tp_size, dim=0)
     mtp_enorm_weight = message.pop("mtp enorm weight")
     mtp_hnorm_weight = message.pop("mtp hnorm weight")
-    mtp_eh_weight = message.pop("mtp eh weight")
+    mtp_eh_weight = torch.chunk(message.pop("mtp eh weight"), tp_size, dim=0)
     mtp_shared_head_norm_weight = message.pop("mtp shared head norm weight")
     for tp_ep_rank, model in enumerate(models):
         tp_rank = tp_ep_rank % tp_size
-        model.mtp_embedding.weight.data.copy_(out_word_embed[tp_rank])
-        mtp_layer = model.mtp_predictor.mtp_modules[mtp_layer_id]
-        mtp_layer.norm1.weight.data.copy_(mtp_enorm_weight)
-        mtp_layer.norm2.weight.data.copy_(mtp_hnorm_weight)
-        mtp_layer.linear_proj.weight.data.copy_(mtp_eh_weight)
-        mtp_layer.final_norm.weight.data.copy_(mtp_shared_head_norm_weight)
-    # mtp output lm head is the same with main model output lm head
+        mtp_layer = model.mtp.layers[mtp_layer_id]
+        mtp_layer.enorm.weight.data.copy_(mtp_enorm_weight)
+        mtp_layer.hnorm.weight.data.copy_(mtp_hnorm_weight)
+        mtp_layer.eh_proj.weight.data.copy_(mtp_eh_weight[tp_rank])
+        mtp_layer.final_layernorm.weight.data.copy_(mtp_shared_head_norm_weight)
 
 
 #### load from megatron ckpt
@@ -536,15 +528,14 @@ def get_mtp_ckpt(message, models, mtp_layer_id, args):
 
     mtp_layers = []
     for tp_ep_rank, model in enumerate(models):
-        mtp_layer = model.mtp_predictor.mtp_modules[mtp_layer_id]
+        mtp_layer = model.mtp.layers[mtp_layer_id]
         mtp_layers.append(mtp_layer)
 
     # get and set transformer weights
     get_attn_ckpt(message, mtp_layers, 0, args)
     get_moe_mlp_ckpt(message, mtp_layers, 0, args)
 
-    mtp_word_embedding_weight = []
-    mtp_output_layer_weight = []
+    mtp_eh_weight = []
     complete_tp_ranks = []
     for tp_ep_rank, model in enumerate(models):
         tp_rank = tp_ep_rank % tp_size
@@ -552,20 +543,16 @@ def get_mtp_ckpt(message, models, mtp_layer_id, args):
             continue
         complete_tp_ranks.append(tp_rank)
 
-        mtp_word_embedding_weight.append(model.mtp_embedding.word_embeddings.weight.data)
-        mtp_layer = model.mtp_predictor.mtp_modules[mtp_layer_id]
-        mtp_enorm_weight = mtp_layer.norm1.weight.data
-        mtp_hnorm_weight = mtp_layer.norm2.weight.data
-        mtp_eh_weight = mtp_layer.linear_proj.weight.data
-        mtp_norm_weight = mtp_layer.final_norm.weight.data
-        mtp_output_layer_weight.append(model.output_layer.weight.data)
+        mtp_layer = model.mtp.layers[mtp_layer_id]
+        mtp_enorm_weight = mtp_layer.enorm.weight.data
+        mtp_hnorm_weight = mtp_layer.hnorm.weight.data
+        mtp_eh_weight.append(mtp_layer.eh_proj.weight.data)
+        mtp_norm_weight = mtp_layer.final_layernorm.weight.data
 
-    message["mtp word embeddings weight"] = torch.cat(mtp_word_embedding_weight, dim=0)
     message["mtp enorm weight"] = mtp_enorm_weight
     message["mtp hnorm weight"] = mtp_hnorm_weight
-    message["mtp eh weight"] = mtp_eh_weight
+    message["mtp eh weight"] = torch.cat(mtp_eh_weight, dim=0)
     message["mtp shared head norm weight"] = mtp_norm_weight
-    message["mtp shared head head weight"] = torch.cat(mtp_output_layer_weight, dim=0)
 
 
 #### set to huggingface ckpt
@@ -656,23 +643,13 @@ def set_hf_mtp_ckpt(message, model, mtp_layer_id, md, args):
     set_hf_attn_ckpt(message, model, layer_id, md, args)
     set_hf_mlp_ckpt(message, model, layer_id, md, args)
 
-    mtp_word_embedding_weight = message.pop("mtp word embeddings weight")
-    print("Warning: saver_transformers will change embedding to be no-padded .")
-    full_word_embed = padding_vocab_size(mtp_word_embedding_weight, md, args)[: args.vocab_size, :]
     mtp_enorm_weight = message.pop("mtp enorm weight")
     mtp_hnorm_weight = message.pop("mtp hnorm weight")
     mtp_eh_weight = message.pop("mtp eh weight")
     mtp_norm_weight = message.pop("mtp shared head norm weight")
-    output_layer_weight = message.pop("mtp shared head head weight")
-    print("Warning: saver_transformers will change output_layer to be no-padded .")
-    full_output_layer_weight = padding_vocab_size(output_layer_weight, md, args)[
-        : args.vocab_size, :
-    ]
 
     tf_layer = model.model.layers[layer_id]
-    tf_layer.embed_tokens.weight.data.copy_(full_word_embed)
     tf_layer.enorm.weight.data.copy_(mtp_enorm_weight)
     tf_layer.hnorm.weight.data.copy_(mtp_hnorm_weight)
     tf_layer.eh_proj.weight.data.copy_(mtp_eh_weight)
     tf_layer.shared_head.norm.weight.data.copy_(mtp_norm_weight)
-    tf_layer.shared_head.head.weight.data.copy_(full_output_layer_weight)

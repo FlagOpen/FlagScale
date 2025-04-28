@@ -1,7 +1,6 @@
 exclude: |
     (?x)^(
-        flagscale/train/backends/.*|
-        flagscale/inference/backends/.*|
+        flagscale/backends/.*|
         third_party/.*|
         megatron-energon/.*|
         hardware/.*\.patch|
@@ -32,8 +31,7 @@ repos:
     -   id: black
         exclude: |
             (?x)^(
-                flagscale/train/backends/.*|
-                flagscale/inference/backends/.*|
+                flagscale/backends/.*|
                 third_party/.*|
                 megatron-energon/.*|
                 hardware/.*\.patch|
@@ -51,8 +49,7 @@ repos:
     -   id: isort
         exclude: |
             (?x)^(
-                flagscale/train/backends/.*|
-                flagscale/inference/backends/.*|
+                flagscale/backends/.*|
                 third_party/.*|
                 megatron-energon/.*|
                 hardware/.*\.patch|
@@ -75,8 +72,7 @@ repos:
 #         types: [python]
 #         exclude: |
 #             (?x)^(
-#                 flagscale/train/backends/.*|
-#                 flagscale/inference/backends/.*|
+#                 flagscale/backends/.*|
 #                 megatron-energon/.*|
 #                 hardware/.*\.patch|
 #                 flagscale/train/train.*\.py|

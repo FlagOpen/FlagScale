@@ -115,10 +115,8 @@ def compute_activated_weight_number(args, verbose=False):
 
     # Part3: MTP ============================================================================
     mtp_params = 0
-    num_mtp_predictor = (
-        0 if not getattr(args, "num_mtp_predictor", None) else args.num_mtp_predictor
-    )
-    if num_mtp_predictor > 0:
+    mtp_num_layers = 0 if not getattr(args, "mtp_num_layers", None) else args.mtp_num_layers
+    if mtp_num_layers > 0:
         mtp_params = (
             4 * args.hidden_size  # tow layernorm ops
             + 2 * args.hidden_size * args.hidden_size  # one linear
@@ -126,7 +124,7 @@ def compute_activated_weight_number(args, verbose=False):
             + sparse_mlp_params
             + 2 * args.hidden_size  # final norm
         )
-    num_parameters_in_mtp_block = num_mtp_predictor * mtp_params
+    num_parameters_in_mtp_block = mtp_num_layers * mtp_params
 
     # PART4: TOTAL ===========================================================================
     embedding_size = args.hidden_size * args.padded_vocab_size
@@ -276,10 +274,8 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
 
     # Part3: MTP ============================================================================
     mtp_params = 0
-    num_mtp_predictor = (
-        0 if not getattr(args, "num_mtp_predictor", None) else args.num_mtp_predictor
-    )
-    if num_mtp_predictor > 0:
+    mtp_num_layers = 0 if not getattr(args, "mtp_num_layers", None) else args.mtp_num_layers
+    if mtp_num_layers > 0:
         mtp_params = (
             4 * args.hidden_size  # tow layernorm ops
             + 2 * args.hidden_size * args.hidden_size  # one linear
@@ -287,7 +283,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
             + sparse_mlp_params
             + 2 * args.hidden_size  # final norm
         )
-    num_parameters_in_mtp_block = num_mtp_predictor * mtp_params
+    num_parameters_in_mtp_block = mtp_num_layers * mtp_params
 
     # PART4: TOTAL ===========================================================================
     embedding_size = args.hidden_size * args.padded_vocab_size
@@ -373,11 +369,11 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
         + 2 * args.hidden_size  # final layernorm
     )
 
-    num_parameters_in_mtp_block_per_tp_ep_rank_ddp = num_mtp_predictor * (
+    num_parameters_in_mtp_block_per_tp_ep_rank_ddp = mtp_num_layers * (
         sparse_mlp_params_per_ep_rank_ddp / expert_tensor_parallel_size
     )
 
-    num_parameters_in_mtp_block_per_tp_ep_rank_noddp = num_mtp_predictor * (
+    num_parameters_in_mtp_block_per_tp_ep_rank_noddp = mtp_num_layers * (
         4 * args.hidden_size  # tow layernorm ops
         + 2 * args.hidden_size * args.hidden_size  # one linear
         + (attn_params + sparse_mlp_params_per_ep_rank_noddp) / args.tensor_model_parallel_size

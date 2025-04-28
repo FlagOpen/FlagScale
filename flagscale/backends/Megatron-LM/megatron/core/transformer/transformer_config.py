@@ -320,14 +320,6 @@ class TransformerConfig(ModelParallelConfig):
     """Number of layers at the end of the model to keep in BF16 precision when
     first_last_layers_bf16 is True."""
 
-
-    ####################
-    # MTP related
-    ####################
-    num_mtp_predictor: int = 0
-    """The num of multi token predictors"""
-
-
     ####################
     # MoE related
     ####################
