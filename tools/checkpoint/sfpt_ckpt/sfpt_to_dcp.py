@@ -29,7 +29,7 @@ def convert_sfpt_ckpt_to_dist_ckpt(input_dir, output_dir):
         for file in files:
             file_path = os.path.join(root, file)
             print(f"Processing file: {file_path}")
-            state_dict = torch.load(file_path)
+            state_dict = torch.load(file_path, weights_only=False)
             assert len(state_dict) == 1
             key = list(state_dict.keys())[0]
             tensor = state_dict[key]
