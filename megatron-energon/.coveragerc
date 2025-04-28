@@ -1,5 +1,0 @@
-[report]
-include = ./src/megatron/energon/**
-
-[xml]
-output = ./coverage.xml
