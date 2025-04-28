@@ -1,6 +1,7 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
 import warnings
+
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple, Union
 
@@ -178,7 +179,7 @@ class TransformerConfig(ModelParallelConfig):
     apply_query_key_layer_scaling is True."""
 
     disable_bf16_reduced_precision_matmul: bool = False
-    """If True, sets torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction=False to 
+    """If True, sets torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction=False to
     prevent matmul from using reduced precision accumulation when using BF16."""
 
     ####################
@@ -252,7 +253,7 @@ class TransformerConfig(ModelParallelConfig):
     "moe_act": recompute the MoE MLP activation function.
     "layernorm": recompute the input_layernorm and pre_mlp_layernorm.
     "mla_up_proj": recompute the MLA up projection and RoPE applying parts.
-    "mlp": recompute the dense MLP submodule. 
+    "mlp": recompute the dense MLP submodule.
     "moe": recompute the MoE layer.
     "moe_act", "layernorm", and "mla_up_proj" use output-discarding checkpointing,
     "core_attn", "mlp", and "moe" uses normal checkpointing.
@@ -319,8 +320,6 @@ class TransformerConfig(ModelParallelConfig):
     num_layers_at_end_in_bf16: int = 1
     """Number of layers at the end of the model to keep in BF16 precision when
     first_last_layers_bf16 is True."""
-
-
 
     ####################
     # MoE related
@@ -536,7 +535,7 @@ class TransformerConfig(ModelParallelConfig):
     """ Whether we should instantiate a separate RNG tracker for inference. """
 
     mrope_section: Optional[List[int]] = None
-    """ Multimodal rope section is for channel dimension of temporal, height and width 
+    """ Multimodal rope section is for channel dimension of temporal, height and width
     in rope calculation. """
 
     is_hybrid_model: bool = False
@@ -552,7 +551,7 @@ class TransformerConfig(ModelParallelConfig):
     """The number of groups used in Mamba layers."""
 
     mamba_num_heads: Optional[int] = None
-    """The number of heads used in Mamba layers. 
+    """The number of heads used in Mamba layers.
     If None, the number of heads will be hidden_size * expand // mamba_head_dim."""
 
     use_mamba_mem_eff_path: bool = True

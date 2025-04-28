@@ -3,6 +3,7 @@
 from typing import List, Optional, Union
 
 import torch
+
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
 try:
@@ -25,8 +26,9 @@ def _get_main_grad_attr(param: torch.nn.Parameter, use_custom_fsdp: bool = False
         return "main_grad"
     return "grad"
 
+
 def get_device_type_for_comm(model_parallel_group=None):
-    ''''Copy from flagscale/train/hetero/p2p_communication.py'''
+    ''' 'Copy from flagscale/train/hetero/p2p_communication.py'''
     device = 'cuda'
     # "cpu:gloo": gloo only supports cpu tensor.
     # "gloo" & "cpu:gloo,cuda:gloo": gloo supports both cpu and cuda tensor.
@@ -37,6 +39,7 @@ def get_device_type_for_comm(model_parallel_group=None):
         if 'cpu:gloo' == torch.distributed.get_backend(model_parallel_group):
             device = 'cpu'
     return device
+
 
 def _unshard_if_dtensor(tensor: Union[torch.Tensor, "DTensor"]) -> torch.Tensor:
     """
@@ -136,16 +139,14 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
     sync.
     """
 
-    if (
-        parallel_state.is_rank_in_embedding_group(ignore_virtual=True)
-    ):
+    if parallel_state.is_rank_in_embedding_group(ignore_virtual=True):
         embed_group = parallel_state.get_embedding_group()
         if not isinstance(embed_group, list):
             embed_group = [embed_group]
     else:
         return
 
-    if (torch.distributed.get_world_size(embed_group[0]) > 1):
+    if torch.distributed.get_world_size(embed_group[0]) > 1:
         if parallel_state.is_pipeline_first_stage(ignore_virtual=True):
             model_module = model[0]
         elif parallel_state.is_pipeline_last_stage(ignore_virtual=True):
@@ -173,22 +174,28 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
                 if config.use_partial_reduce_for_shared_embedding:
                     dp_world_size = parallel_state.get_data_parallel_world_size()
                     dp_rank = parallel_state.get_data_parallel_rank()
-                    assert grad.shape[0] % dp_world_size == 0, f"grad shape: {grad.shape[0]}, dp_world_size: {dp_world_size}"
+                    assert (
+                        grad.shape[0] % dp_world_size == 0
+                    ), f"grad shape: {grad.shape[0]}, dp_world_size: {dp_world_size}"
                     per_partion_size = grad.shape[0] // dp_world_size
                     if len(embed_group) == 1:
                         offset = per_partion_size * dp_rank
-                        torch.distributed.all_reduce(grad[offset:offset+per_partion_size, :], group=embed_group[0])
+                        torch.distributed.all_reduce(
+                            grad[offset : offset + per_partion_size, :], group=embed_group[0]
+                        )
                     else:
                         group_idx = 0
                         per_partion_size = per_partion_size // len(embed_group)
                         for group in embed_group:
                             offset = per_partion_size * (dp_rank * len(embed_group) + group_idx)
-                            torch.distributed.all_reduce(grad[offset : offset + per_partion_size, :], group=group)
+                            torch.distributed.all_reduce(
+                                grad[offset : offset + per_partion_size, :], group=group
+                            )
                             group_idx += 1
-                else: # megartron default method
+                else:  # megartron default method
                     torch.distributed.all_reduce(grad, group=embed_group[0])
             else:
-                if len(embed_group) == 1: # megartron default method
+                if len(embed_group) == 1:  # megartron default method
                     torch.distributed.all_reduce(grad, group=embed_group[0])
                 else:
                     original_grad_data = grad.clone().detach().data
