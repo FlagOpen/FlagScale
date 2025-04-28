@@ -8,16 +8,20 @@ experiment:
   task:
     type: serve
   deploy:
+    port: 10001
     use_fs_serve: false
     prefill_decode_disaggregation: true
     prefill_num: 1
-    prefill_address: 127.0.0.1
+    prefill_address: 10.1.1.122
     decode_num: 2
-    decode_address: 127.0.0.1
+    decode_address: 10.1.1.108
   runner:
     hostfile: examples/deepseek/conf/hostfile.txt
+    docker: fr-v2
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
+  cmds:
+    before_start: source /root/miniconda3/bin/activate flagscale-inference
 
 action: run
 
