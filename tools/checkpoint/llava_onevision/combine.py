@@ -15,13 +15,19 @@ def combine(vision_input, llm_input, output, mlp_input=""):
         assert vision_dir in llm_dirs
         llm_dir = vision_dir
         mlp_dir = vision_dir
-        vision_params = torch.load(os.path.join(vision_input, vision_dir, "model_optim_rng.pt"))
-        llm_params = torch.load(os.path.join(llm_input, llm_dir, "model_optim_rng.pt"))
+        vision_params = torch.load(
+            os.path.join(vision_input, vision_dir, "model_optim_rng.pt"), weights_only=False
+        )
+        llm_params = torch.load(
+            os.path.join(llm_input, llm_dir, "model_optim_rng.pt"), weights_only=False
+        )
         combined_state_dict = {}
         combined_state_dict["model"] = {}
 
         if mlp_input != "":
-            mlp_params = torch.load(os.path.join(mlp_input, mlp_dir, "model_optim_rng.pt"))
+            mlp_params = torch.load(
+                os.path.join(mlp_input, mlp_dir, "model_optim_rng.pt"), weights_only=False
+            )
             for name, param in mlp_params["model"].items():
                 new_name = f"vision_projection.{name}"
                 combined_state_dict["model"][new_name] = param
