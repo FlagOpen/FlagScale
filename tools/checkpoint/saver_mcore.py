@@ -317,6 +317,22 @@ def save_checkpoint(queue, args):
     fake_ep_group = _ConverterFakeProcessGroup(size=ep_size)
     mpu._TENSOR_MODEL_PARALLEL_GROUP = fake_tp_group
     mpu._EXPERT_MODEL_PARALLEL_GROUP = fake_ep_group
+    # For backward compatibility during local parallel states refactoring
+    fake_pp_group = _ConverterFakeProcessGroup(size=margs.pipeline_model_parallel_size)
+    fake_cp_group = _ConverterFakeProcessGroup(size=margs.context_parallel_size)
+    fake_dp_group = _ConverterFakeProcessGroup(size=margs.data_parallel_size)
+    fake_etp_group = _ConverterFakeProcessGroup(size=margs.expert_tensor_parallel_size)
+    edp_parallel_size = margs.tensor_model_parallel_size * margs.context_parallel_size // (margs.expert_tensor_parallel_size * margs.expert_model_parallel_size)
+    fake_edp_group = _ConverterFakeProcessGroup(size=edp_parallel_size)
+    fake_etp_ep_group = _ConverterFakeProcessGroup(size=margs.expert_tensor_parallel_size*margs.expert_model_parallel_size)
+    fake_tcp_group = _ConverterFakeProcessGroup(size=margs.tensor_model_parallel_size*margs.context_parallel_size)
+    mpu._PIPELINE_MODEL_PARALLEL_GROUP = fake_pp_group
+    mpu._CONTEXT_PARALLEL_GROUP = fake_cp_group
+    mpu._DATA_PARALLEL_GROUP = fake_dp_group
+    mpu._EXPERT_TENSOR_PARALLEL_GROUP = fake_etp_group
+    mpu._EXPERT_DATA_PARALLEL_GROUP = fake_edp_group
+    mpu._EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP = fake_etp_ep_group
+    mpu._TENSOR_AND_CONTEXT_PARALLEL_GROUP = fake_tcp_group
 
     # fused kernel
     fused_kernels.load(margs)
@@ -374,8 +390,8 @@ def save_checkpoint(queue, args):
                 assert hasattr(models[0], 'output_layer'), "ERROR: got an output layer, but model does not have one"
                 ckpt_plugin.set_output_layer_ckpt(msg, models, md, margs)
 
-            if margs.num_mtp_predictor:
-                for mtp_layer_id in range(margs.num_mtp_predictor):
+            if margs.mtp_num_layers:
+                for mtp_layer_id in range(margs.mtp_num_layers):
                     msg = queue_get(f"mtp module {mtp_layer_id}")
                     ckpt_plugin.set_mtp_ckpt(msg, models, md, mtp_layer_id, margs)
 

@@ -199,57 +199,6 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
                 grad.to(torch.cuda.current_device())
             setattr(weight, grad_attr, _reshard_if_dtensor(grad, orig_grad))
 
-        if getattr(model_module, "use_mtp_predictor", None):
-            weight = model_module.shared_embedding_or_mtp_embedding()
-            grad_attr = _get_main_grad_attr(weight, ddp_config.use_custom_fsdp)
-            orig_grad = getattr(weight, grad_attr)
-            grad = _unshard_if_dtensor(orig_grad)
-            com_device = get_device_type_for_comm(embed_group)
-            if com_device == "cpu":
-                grad = grad.cpu()
-            if use_dist_opt:
-                if config.use_partial_reduce_for_shared_embedding:
-                    dp_world_size = parallel_state.get_data_parallel_world_size()
-                    dp_rank = parallel_state.get_data_parallel_rank()
-                    assert grad.shape[0] % dp_world_size == 0, f"grad shape: {grad.shape[0]}, dp_world_size: {dp_world_size}"
-                    per_partion_size = grad.shape[0] // dp_world_size
-                    if len(embed_group) == 1:
-                        offset = per_partion_size * dp_rank
-                        torch.distributed.all_reduce(grad[offset:offset+per_partion_size, :], group=embed_group[0])
-                    else:
-                        group_idx = 0
-                        per_partion_size = per_partion_size // len(embed_group)
-                        for group in embed_group:
-                            offset = per_partion_size * (dp_rank * len(embed_group) + group_idx)
-                            torch.distributed.all_reduce(grad[offset : offset + per_partion_size, :], group=group)
-                            group_idx += 1
-                else: # megartron default method
-                    torch.distributed.all_reduce(grad, group=embed_group[0])
-            else:
-                if len(embed_group) == 1: # megartron default method
-                    torch.distributed.all_reduce(grad, group=embed_group[0])
-                else:
-                    original_grad_data = grad.clone().detach().data
-                    for group in embed_group:
-                        grad.data.copy_(original_grad_data)
-                        torch.distributed.all_reduce(grad, group=group)
-            if grad.device == torch.device('cpu'):
-                grad.to(torch.cuda.current_device())
-            setattr(weight, grad_attr, _reshard_if_dtensor(grad, orig_grad))
-
-            # Note: If the system supports both the sharing of the embedding and the output layer within the main model,
-            # as well as the sharing of the embedding in the main model with the embedding in the MTP predictor,
-            # it is necessary to copy the data to the main model's output layer after two all-reduce synchronizations.
-            # Since the main model output layer and the MTP embedding are both located in the last PP stage,
-            # the data from the MTP embedding can be directly copied to the main model output layer.
-            if model_module.share_embeddings_and_output_weights:
-                output_layer_weight = model_module.shared_embedding_or_output_weight()
-                mtp_embedding_weight = model_module.shared_embedding_or_mtp_embedding()
-                orig_mtp_embedding_grad = getattr(mtp_embedding_weight, grad_attr)
-                mtp_embedding_grad = _unshard_if_dtensor(orig_mtp_embedding_grad)
-                orig_output_layer_grad = getattr(output_layer_weight, grad_attr)
-                setattr(output_layer_weight, grad_attr, _reshard_if_dtensor(mtp_embedding_grad, orig_output_layer_grad))
-
 
 def _allreduce_position_embedding_grads(model: List[torch.nn.Module], config: TransformerConfig):
     """
