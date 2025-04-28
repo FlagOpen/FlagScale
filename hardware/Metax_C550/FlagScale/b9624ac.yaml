@@ -1,0 +1,9 @@
+backends_version:
+  FlagScale: 0.6.6
+  vllm: 0.7.2
+contact: caozhou@baai.ac.cn
+device_type: Metax_C550
+models:
+- DeepSeek-R1
+task:
+- inference

@@ -1,0 +1,123 @@
+diff --git a/examples/deepseek_r1/conf/config_auto_deepseek_r1.yaml b/examples/deepseek_r1/conf/config_auto_deepseek_r1.yaml
+new file mode 100644
+index 00000000..332c0824
+--- /dev/null
++++ b/examples/deepseek_r1/conf/config_auto_deepseek_r1.yaml
+@@ -0,0 +1,31 @@
++defaults:
++  - _self_
++  - serve: deepseek_v3
++
++experiment:
++  exp_name: deepseek_v3
++  exp_dir: ./outputs/${experiment.exp_name}
++  task:
++    type: serve
++    backend: vllm
++    entrypoint: null
++  runner:
++    nnodes: 2
++    nproc_per_node: 8
++    hostfile: examples/deepseek/conf/hostfile.txt
++    docker: ds
++  auto_tuner:
++    space:
++      tensor_model_parallel_size: [4, 8]
++      pipeline_model_parallel_size: "auto"
++    control:
++      interval: 10
++      run_best: False
++  cmds:
++    before_start: source /root/miniconda3/bin/activate flagscale-inference && export GLOO_SOCKET_IFNAME=bond0 # replace "bond0" with your own network card
++
++action: auto_tune
++
++hydra:
++  run:
++    dir: ${experiment.exp_dir}/hydra
+diff --git a/examples/deepseek_r1/conf/config_deepseek_r1.yaml b/examples/deepseek_r1/conf/config_deepseek_r1.yaml
+index 728e7999..e4f92b9d 100644
+--- a/examples/deepseek_r1/conf/config_deepseek_r1.yaml
++++ b/examples/deepseek_r1/conf/config_deepseek_r1.yaml
+@@ -1,22 +1,31 @@
+ defaults:
+   - _self_
+   - serve: deepseek_r1
++
+ experiment:
+   exp_name: deepseek_r1
+   exp_dir: outputs/${experiment.exp_name}
+   task:
+     type: serve
+-  deploy:
+-    use_fs_serve: false
++    inference_engine: vllm
++
+   runner:
+     hostfile: examples/deepseek_r1/conf/hostfile.txt
+-    docker: flagrelease_nv
+-    ssh_port: 22
++    docker: flagrelease_metax
+   envs:
+-    CUDA_DEVICE_MAX_CONNECTIONS: 1
+-  cmds:
+-    before_start: source /root/miniconda3/bin/activate flagscale-inference && export GLOO_SOCKET_IFNAME=bond0 # replace "bond0" with your own network card
++    TRITON_ALLOW_NON_CONSTEXPR_GLOBALS: 1
++    MACA_SMALL_PAGESIZE_ENABLE: 1
++    VLLM_FORCE_NCCL_COMM: 1
++    GLOO_SOCKET_IFNAME: ibs20
++    MCCL_IB_HCA: mlx5_0,mlx5_4
++    TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP: 1
++    TRITON_ENABLE_MACA_CHAIN_DOT_OP: 1
++    USE_FLAGGEMS: 1
++    GEMS_VENDOR: metax
++
++
+ action: run
++
+ hydra:
+   run:
+     dir: ${experiment.exp_dir}/hydra
+diff --git a/examples/deepseek_r1/conf/hostfile.txt b/examples/deepseek_r1/conf/hostfile.txt
+index 0d8b1e05..544e3d37 100644
+--- a/examples/deepseek_r1/conf/hostfile.txt
++++ b/examples/deepseek_r1/conf/hostfile.txt
+@@ -2,4 +2,4 @@
+ # master node
+ x.x.x.x slots=8 type=gpu
+ # worker nodes
+-x.x.x.x slots=8 type=gpu
++x.x.x.x slots=8 type=gpu
+\ No newline at end of file
+diff --git a/examples/deepseek_r1/conf/serve/deepseek_r1.yaml b/examples/deepseek_r1/conf/serve/deepseek_r1.yaml
+index 719a6726..7030c544 100644
+--- a/examples/deepseek_r1/conf/serve/deepseek_r1.yaml
++++ b/examples/deepseek_r1/conf/serve/deepseek_r1.yaml
+@@ -1,12 +1,15 @@
+-- serve_id: vllm_model
+-  engine: vllm
+-  engine_args:
+-    model: /models/deepseek_r1 # path of weight of deepseek r1
+-    tensor_parallel_size: 8
+-    pipeline_parallel_size: 4
+-    gpu_memory_utilization: 0.9
+-    max_model_len: 32768
+-    max_num_seqs: 256
+-    enforce_eager: true
+-    trust_remote_code: true
+-    enable_chunked_prefill: true
++model_args:
++  vllm_model:
++    model-tag: /models/deepseek_r1/ # path of weight of deepseek r1
++    tensor-parallel-size: 8
++    pipeline-parallel-size: 2
++    gpu-memory-utilization: 0.9
++    max-num-seqs: 256
++    port: 9010 # port to serve
++    action-args:
++      - trust-remote-code
++      - enable-chunked-prefill
++
++deploy:
++  command_line_mode: true
++  use_native_serve: False
