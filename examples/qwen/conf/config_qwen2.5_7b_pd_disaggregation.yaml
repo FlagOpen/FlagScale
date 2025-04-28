@@ -12,16 +12,16 @@ experiment:
     use_fs_serve: false
     prefill_decode_disaggregation: true
     prefill_num: 1
-    prefill_address: x.x.x.x # optional, default "auto"
+    prefill_address: 10.1.1.122 # optional, default "auto"
     decode_num: 2
-    decode_address: x.x.x.x # optional, default "auto"
+    decode_address: 10.1.1.108 # optional, default "auto"
   runner:
     hostfile: examples/qwen/conf/hostfile.txt
     docker: fr-v2
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
   cmds:
-    before_start: source /root/miniconda3/bin/activate flagscale-inference
+    before_start: export VLLM_USE_V1=0 && export FLAGCX_SOCKET_IFNAME=bond0 && export VLLM_USE_V1=0 && source /root/miniconda3/bin/activate flagscale-inference && export FLAGCX_PATH=/mine/ip122/tune_qwen/FlagCX/ && export FLAGCX_DEBUG=TRACE && export FLAGCX_DEBUG_SUBSYS=ALL && export NCCL_DEBUG=TRACE && export NCCL_DEBUG_SUBSYS=ALL
 
 action: run
 
