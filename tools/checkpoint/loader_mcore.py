@@ -222,8 +222,6 @@ def _load_checkpoint(queue, args):
     fake_edp_group = _ConverterFakeProcessGroup(size=edp_parallel_size)
     fake_etp_ep_group = _ConverterFakeProcessGroup(size=margs.expert_tensor_parallel_size*margs.expert_model_parallel_size)
     fake_tcp_group = _ConverterFakeProcessGroup(size=margs.tensor_model_parallel_size*margs.context_parallel_size)
-    mpu._TENSOR_MODEL_PARALLEL_GROUP = fake_tp_group
-    mpu._EXPERT_MODEL_PARALLEL_GROUP = fake_ep_group
     mpu._PIPELINE_MODEL_PARALLEL_GROUP = fake_pp_group
     mpu._CONTEXT_PARALLEL_GROUP = fake_cp_group
     mpu._DATA_PARALLEL_GROUP = fake_dp_group
