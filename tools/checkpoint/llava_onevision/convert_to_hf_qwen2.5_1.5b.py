@@ -30,6 +30,7 @@ def convert(input_path, output_path, use_te, tensor_parallel_size=2):
         mc_model = torch.load(
             os.path.join(input_path, f"mp_rank_{i:02d}", "model_optim_rng.pt"),
             map_location="cuda:0",
+            weights_only=False,
         )
         mc_models.append(mc_model)
     mc_model = {}
