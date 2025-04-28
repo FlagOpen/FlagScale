@@ -213,7 +213,7 @@ def _load_checkpoint(queue, args):
     fake_ep_group = _ConverterFakeProcessGroup(size=ep_size)
     mpu._TENSOR_MODEL_PARALLEL_GROUP = fake_tp_group
     mpu._EXPERT_MODEL_PARALLEL_GROUP = fake_ep_group
-
+    # For backward compatibility during local parallel states refactoring
     fake_pp_group = _ConverterFakeProcessGroup(size=margs.pipeline_model_parallel_size)
     fake_cp_group = _ConverterFakeProcessGroup(size=margs.context_parallel_size)
     fake_dp_group = _ConverterFakeProcessGroup(size=margs.data_parallel_size)
