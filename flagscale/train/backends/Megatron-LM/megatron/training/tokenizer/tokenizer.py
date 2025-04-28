@@ -118,6 +118,10 @@ def build_tokenizer(args, **kwargs):
     elif args.tokenizer_type == "Qwen2TokenizerFS":
         assert args.tokenizer_path is not None
         tokenizer = _Qwen2TokenizerFS(args.tokenizer_path, args)
+    elif args.tokenizer_type == 'Qwen2VLTokenizer':
+        assert args.tokenizer_path is not None
+        tokenizer = _Qwen2VLTokenizer(args.tokenizer_path, args.extra_vocab_size)
+        args.padded_vocab_size = tokenizer.vocab_size # no padding
     else:
         raise NotImplementedError('{} tokenizer is not ' 'implemented.'.format(args.tokenizer_type))
 
@@ -1111,3 +1115,93 @@ class _Qwen2TokenizerFS(_HFTokenizerFS):
     @property
     def vocab_size(self):
         return self._vocab_size
+
+
+class _Qwen2VLTokenizer(MegatronTokenizer):
+    def __init__(self, tokenizer_path, extra_vocab_size):
+        super().__init__(tokenizer_path)
+        from transformers import AutoTokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            tokenizer_path,
+            padding_side="right",
+            use_fast=False,
+            trust_remote_code=True
+        )
+        self.extra_vocab_size = extra_vocab_size
+        self.special_tokens_map = {k:v for k, v in zip(self.tokenizer.all_special_tokens, self.tokenizer.all_special_ids)}
+        self.image_token = '<|image_pad|>'
+        self.video_token = '<|video_pad|>'
+        self.vision_start_token = '<|vision_start|>'
+        self.vision_end_token = '<|vision_end|>'
+
+        from transformers import AutoProcessor
+        proc = AutoProcessor.from_pretrained(
+            tokenizer_path,
+            use_fast=False,
+            trust_remote_code=True
+        )
+        # NOTE: In Qwen2-VL, template in chat_template.json is same within tokenizer_config.json and both can be used.
+        # However, in Qwen 2.5-VL, the two templates are different and only the one in chat_template.json is OK.
+        self.chat_template = proc.chat_template
+
+    def __call__(self, text, return_tensors=None,
+                    padding=None, max_length=None, truncation=None, add_special_tokens=None):
+
+        return self.tokenizer(text, return_tensors=return_tensors, padding=padding,
+                max_length=max_length, truncation=truncation, add_special_tokens=add_special_tokens)
+
+    def apply_chat_template(self, conversations, tokenize:bool=True, **kwargs):
+        return self.tokenizer.apply_chat_template(conversations, tokenize=tokenize, chat_template=self.chat_template, **kwargs)
+    
+    @property
+    def vocab_size(self):
+        return len(self.tokenizer.encoder) + self.extra_vocab_size
+
+    @property
+    def vocab(self):
+        return self.tokenizer.encoder
+
+    @property
+    def inv_vocab(self):
+        return self.tokenizer.decoder
+
+    def tokenize(self, text):
+        return self.tokenizer.encode(text)
+
+    def detokenize(self, token_ids):
+        return self.tokenizer.decode(token_ids)
+
+    @property
+    def eod(self):
+        return self.tokenizer.eos_token_id
+
+    @property
+    def eos_token(self):
+        return self.tokenizer.eos_token
+
+    @property
+    def pad_token_id(self):
+        return self.tokenizer.pad_token_id
+
+    @property
+    def eos_token_id(self):
+        return self.tokenizer.eos_token_id
+    
+    @property
+    def image_token_id(self):
+        return self.special_tokens_map[self.image_token]
+    
+    @property
+    def video_token_id(self):
+        return self.special_tokens_map[self.video_token]
+    
+    @property
+    def vision_start_token_id(self):
+        return self.special_tokens_map[self.vision_start_token]
+    
+    @property
+    def vision_end_token_id(self):
+        return self.special_tokens_map[self.vision_end_token]
+    
+    def encode(self, x):
+        return self.tokenizer.encode(x)

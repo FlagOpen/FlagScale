@@ -3,6 +3,7 @@ import sys
 import torch
 
 sys.path.append("..")
+from mixtral.ckpt import set_hf_embedding_ckpt, set_hf_final_norm_ckpt, set_hf_output_layer_ckpt
 from utils import padding_vocab_size
 
 

@@ -11,6 +11,9 @@ from mixtral.ckpt import (
     set_embedding_ckpt,
     set_final_norm_ckpt,
     set_hf_attn_ckpt,
+    set_hf_embedding_ckpt,
+    set_hf_final_norm_ckpt,
+    set_hf_output_layer_ckpt,
     set_output_layer_ckpt,
 )
 
