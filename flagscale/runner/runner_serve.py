@@ -412,7 +412,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         f.write(f"{ssh_cmd}\n\n")
                     else:
                         p_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_json}'\\''"
-                        f.write(f"p_{j}_cmd='{p_cmd}'\n")
+                        f.write(f"p_{i}_cmd='{p_cmd}'\n")
                         f.write(f"\n")
                         f.write(
                             f'nohup bash -c "$p_{i}_cmd; sync" >> {p_instance_log_path} 2>&1 &\n\n'
