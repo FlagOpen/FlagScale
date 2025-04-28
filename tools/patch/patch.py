@@ -575,7 +575,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--backend",
         nargs="+",
-        choices=["Megatron-LM", "vllm", "FlagScale"],
+        choices=["Megatron-LM", "vllm", "Megatron-Energon", "FlagScale"],
         default=["Megatron-LM"],
         help="Backend to patch (default: Megatron-LM)",
     )
