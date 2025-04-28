@@ -20,9 +20,7 @@ from flagscale.runner.utils import (
 
 def _get_args_vllm(config: DictConfig):
     # step1: yaml -> dict
-    assert (
-        config.experiment.task.backend == "vllm"
-    ), "This function only supports vllm backend."
+    assert config.experiment.task.backend == "vllm", "This function only supports vllm backend."
     config_dict = OmegaConf.to_container(config, resolve=True)
 
     # step2: restructuring the config
@@ -71,30 +69,22 @@ def _update_config_inference(config: DictConfig):
     OmegaConf.set_struct(config, True)
 
 
-def _generate_run_script_inference(
-    config, host, node_rank, cmd, background=True, with_test=False
-):
+def _generate_run_script_inference(config, host, node_rank, cmd, background=True, with_test=False):
     logging_config = config.inference.logging
 
     no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
     if no_shared_fs:
         host_output_file = os.path.join(logging_config.log_dir, f"host.output")
     else:
-        host_output_file = os.path.join(
-            logging_config.log_dir, f"host_{node_rank}_{host}.output"
-        )
+        host_output_file = os.path.join(logging_config.log_dir, f"host_{node_rank}_{host}.output")
     host_run_script_file = os.path.join(
         logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
     )
-    host_pid_file = os.path.join(
-        logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-    )
+    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
-    root_dir = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     fs_path = sys.path.pop(0)
     try:
@@ -148,9 +138,7 @@ def _generate_stop_script(config, host, node_rank):
         logging_config.scripts_dir, f"host_{node_rank}_{host}_stop.sh"
     )
 
-    host_pid_file = os.path.join(
-        logging_config.pids_dir, f"host_{node_rank}_{host}.pid"
-    )
+    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
@@ -188,9 +176,7 @@ class SSHInferenceRunner(RunnerBase):
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
         self.user_script = self.config.experiment.task.entrypoint
-        self.resources = parse_hostfile(
-            self.config.experiment.runner.get("hostfile", None)
-        )
+        self.resources = parse_hostfile(self.config.experiment.runner.get("hostfile", None))
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
@@ -219,19 +205,13 @@ class SSHInferenceRunner(RunnerBase):
         if host != "localhost":
             ssh_port = self.config.experiment.runner.get("ssh_port", 22)
             # Step 1: make sure the scripts_dir exists on the remote host
-            run_ssh_command(
-                host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, dryrun
-            )
+            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, dryrun)
 
             # Step 2: copy the host_run_script_file to the remote host
             no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
             if no_shared_fs:
                 run_scp_command(
-                    host,
-                    host_run_script_file,
-                    logging_config.scripts_dir,
-                    ssh_port,
-                    dryrun,
+                    host, host_run_script_file, logging_config.scripts_dir, ssh_port, dryrun
                 )
 
             # Step 3: run the host_run_script_file on the remote host
@@ -278,9 +258,7 @@ class SSHInferenceRunner(RunnerBase):
         else:
             # If hostfile is not provided, run the job on localhost
             nproc_from_args = runner_config.get("nproc_per_node", None)
-            nproc_per_node = get_nproc_per_node(
-                None, nproc_from_args, num_visible_devices
-            )
+            nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
             available_addr = runner_config.get("master_addr", "localhost")
             available_port = runner_config.get("master_port", get_free_port())
             self._run_each(
@@ -305,9 +283,7 @@ class SSHInferenceRunner(RunnerBase):
             # Step 2: copy the host_run_script_file to the remote host
             no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
             if no_shared_fs:
-                run_scp_command(
-                    host, host_stop_script_file, logging_config.scripts_dir, ssh_port
-                )
+                run_scp_command(host, host_stop_script_file, logging_config.scripts_dir, ssh_port)
             # Step 3: run the host_run_script_file on the remote host
             run_ssh_command(host, f"bash {host_stop_script_file}", ssh_port)
         else:
@@ -318,9 +294,7 @@ class SSHInferenceRunner(RunnerBase):
             self._stop_each("localhost", 0)
             return
 
-        nnodes = get_nnodes(
-            len(self.resources), self.config.experiment.runner.get("nnodes", None)
-        )
+        nnodes = get_nnodes(len(self.resources), self.config.experiment.runner.get("nnodes", None))
 
         for node_rank, (host, _) in enumerate(self.resources.items()):
             if node_rank >= nnodes:

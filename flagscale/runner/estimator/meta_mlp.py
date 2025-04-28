@@ -16,11 +16,7 @@ class MLP(MetaModule):
     5. Final dropout layer
     """
 
-    def __init__(
-        self,
-        config,
-        model_id="default",
-    ):
+    def __init__(self, config, model_id="default"):
         super().__init__(None, model_id)
         self.config = config
 
@@ -33,9 +29,7 @@ class MLP(MetaModule):
             model_id=model_id,
         )
         self.gelu = GELU(
-            approximate=self.config.activation_func,
-            shard_specs=None,
-            model_id=model_id,
+            approximate=self.config.activation_func, shard_specs=None, model_id=model_id
         )
         self.fc2 = Linear(
             in_features=self.config.ffn_hidden_size,
@@ -79,11 +73,7 @@ class SwiGLUMLP(MetaModule):
     4. Optional dropout
     """
 
-    def __init__(
-        self,
-        config,
-        model_id="default",
-    ):
+    def __init__(self, config, model_id="default"):
         super().__init__(None, model_id)
         self.config = config
 
@@ -111,10 +101,7 @@ class SwiGLUMLP(MetaModule):
             model_id=model_id,
         )
 
-        self.swiglu = SwiGLU(
-            shard_specs=None,
-            model_id=model_id,
-        )
+        self.swiglu = SwiGLU(shard_specs=None, model_id=model_id)
 
         self.out_proj = Linear(
             in_features=self.intermediate_size,

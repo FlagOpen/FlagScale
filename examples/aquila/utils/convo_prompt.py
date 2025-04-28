@@ -1,4 +1,5 @@
 import dataclasses
+
 from enum import Enum, auto
 from typing import Any, List, Tuple
 
@@ -124,10 +125,7 @@ conv_bair_v1 = Conversation(
 
 
 default_conversation = conv_v1_2
-conv_templates = {
-    "v1": conv_v1_2,
-    "bair_v1": conv_bair_v1,
-}
+conv_templates = {"v1": conv_v1_2, "bair_v1": conv_bair_v1}
 
 # utils
 """Add speaker and start/end signal on each round."""

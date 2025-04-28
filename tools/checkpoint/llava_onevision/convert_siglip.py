@@ -3,6 +3,7 @@ import argparse
 import os
 
 import torch
+
 from safetensors.torch import load_file
 
 
@@ -24,9 +25,7 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
         ub = (i + 1) * kv_channels
         indices.append(torch.arange(lb, ub, dtype=torch.int))
         indices.append(torch.arange(hidden_dim + lb, hidden_dim + ub, dtype=torch.int))
-        indices.append(
-            torch.arange(2 * hidden_dim + lb, 2 * hidden_dim + ub, dtype=torch.int)
-        )
+        indices.append(torch.arange(2 * hidden_dim + lb, 2 * hidden_dim + ub, dtype=torch.int))
 
     indices = torch.cat(indices)
 
@@ -177,12 +176,7 @@ def convert(input_path, output_path, tensor_parallel_size, use_te):
             new_state_dicts[i]["model"][new_name] = new_tensors[i].clone()
 
             # TE sets _extra_state (for FP8 purposes), so set an empty one here for compatibility.
-            extra_state_layers = (
-                "linear_qkv",
-                "linear_proj",
-                "linear_fc1",
-                "linear_fc2",
-            )
+            extra_state_layers = ("linear_qkv", "linear_proj", "linear_fc1", "linear_fc2")
             is_extra_state_layer = any([l in new_name for l in extra_state_layers])
             if use_te and is_extra_state_layer:
                 layer = new_name.split(".")[-2]
@@ -212,14 +206,9 @@ python siglip_converter.py --input /some/input/folder --output /some/output/fold
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    parser.add_argument("--input", type=str, required=True, help="SigLIP weights folder")
     parser.add_argument(
-        "--input", type=str, required=True, help="SigLIP weights folder"
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        required=True,
-        help="output directory for megatron state dict file(s)",
+        "--output", type=str, required=True, help="output directory for megatron state dict file(s)"
     )
     parser.add_argument(
         "--tensor-parallel-size", type=int, default=1, help="model tensor parallel size"

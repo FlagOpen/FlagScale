@@ -10,11 +10,7 @@ class Recorder:
 
     def __init__(self, config):
         self.config = config
-        self.path = os.path.join(
-            config.experiment.exp_dir,
-            "auto_tuner",
-            "history.csv",
-        )
+        self.path = os.path.join(config.experiment.exp_dir, "auto_tuner", "history.csv")
         # Metric to grep in the last rank of last node log file
         if (
             "auto_tuner" in self.config.experiment
@@ -31,9 +27,7 @@ class Recorder:
             "auto_tuner" in self.config.experiment
             and "performance" in self.config.experiment.auto_tuner
         ):
-            self.sorted_order = self.config.experiment.auto_tuner.performance.get(
-                "order", "ascend"
-            )
+            self.sorted_order = self.config.experiment.auto_tuner.performance.get("order", "ascend")
         else:
             self.sorted_order = "ascend"
 
@@ -86,10 +80,7 @@ class Recorder:
         seq_len = int(self.config.train.model.seq_length)
         throughput = gbs * seq_len / (strategy["performance"] / 1000)
         day = round(
-            self.config.train.model.train_samples
-            * seq_len
-            / (throughput * 60 * 60 * 24),
-            2,
+            self.config.train.model.train_samples * seq_len / (throughput * 60 * 60 * 24), 2
         )
         command = [
             "airsctl job performance",
@@ -116,17 +107,9 @@ class Recorder:
                 else "None"
             ),
             "-R",
-            (
-                f"{strategy['recompute_method']}"
-                if strategy["recompute_granularity"]
-                else "None"
-            ),
+            (f"{strategy['recompute_method']}" if strategy["recompute_granularity"] else "None"),
             "-N",
-            (
-                f"{strategy['recompute_num_layers']}"
-                if strategy["recompute_num_layers"]
-                else "0"
-            ),
+            (f"{strategy['recompute_num_layers']}" if strategy["recompute_num_layers"] else "0"),
             "-S",
             (
                 f"{strategy['sequence_parallel']}"
@@ -212,9 +195,7 @@ class Recorder:
         assert len(outputs) == 1, f"the sub dir of {outputs} must be just one."
         new_outputs = os.listdir(os.path.join(details, max_host, outputs[0]))
         assert len(new_outputs) == 1, f"the sub dir of {new_outputs} must be just one."
-        last_path = os.path.join(
-            details, max_host, outputs[0], new_outputs[0], "attempt_0"
-        )
+        last_path = os.path.join(details, max_host, outputs[0], new_outputs[0], "attempt_0")
         last_dir = None
         last_dir_rank = 0
         if not os.path.exists(last_path):
@@ -261,9 +242,7 @@ class Recorder:
             self.logger.info(f"task_{self.cur_strategy['idx']} performance: {None}")
             return None
         if len(performance) == 1:
-            self.logger.info(
-                f"task_{self.cur_strategy['idx']} performance: {performance[0]}"
-            )
+            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {performance[0]}")
             return round(performance[0], 3)
         else:
             average = sum(performance[1:]) / (len(performance) - 1)
@@ -308,16 +287,12 @@ class Recorder:
         if self.sorted_order == "ascend":
             sorted_history = sorted(
                 no_pruned_history,
-                key=lambda x: (
-                    x["performance"] if x["performance"] is not None else float("inf")
-                ),
+                key=lambda x: (x["performance"] if x["performance"] is not None else float("inf")),
             )
         elif self.sorted_order == "descend":
             sorted_history = sorted(
                 no_pruned_history,
-                key=lambda x: (
-                    x["performance"] if x["performance"] is not None else float("-inf")
-                ),
+                key=lambda x: (x["performance"] if x["performance"] is not None else float("-inf")),
                 reverse=True,
             )
         else:
@@ -345,9 +320,7 @@ class ServeRecorder(Recorder):
             "auto_tuner" in self.config.experiment
             and "performance" in self.config.experiment.auto_tuner
         ):
-            self.metric = self.config.experiment.auto_tuner.performance.get(
-                "metric", "itl"
-            )
+            self.metric = self.config.experiment.auto_tuner.performance.get("metric", "itl")
         else:
             self.metric = "itl"
 
@@ -356,18 +329,12 @@ class ServeRecorder(Recorder):
             "auto_tuner" in self.config.experiment
             and "performance" in self.config.experiment.auto_tuner
         ):
-            self.sorted_order = self.config.experiment.auto_tuner.performance.get(
-                "order", "ascend"
-            )
+            self.sorted_order = self.config.experiment.auto_tuner.performance.get("order", "ascend")
         else:
             self.sorted_order = "ascend"
         self.logger = logging.getLogger("FlagScale-AutoTuner")
         self.cur_strategy = None
-        self.path = os.path.join(
-            config.experiment.exp_dir,
-            "auto_tuner",
-            "history.csv",
-        )
+        self.path = os.path.join(config.experiment.exp_dir, "auto_tuner", "history.csv")
 
     def record(self, strategy, performance):
         strategy["e2e_latency"] = round(performance["mean_e2el_ms"], 2)
@@ -383,16 +350,12 @@ class ServeRecorder(Recorder):
         if self.sorted_order == "ascend":
             sorted_history = sorted(
                 history,
-                key=lambda x: (
-                    x[self.metric] if x[self.metric] is not None else float("inf")
-                ),
+                key=lambda x: (x[self.metric] if x[self.metric] is not None else float("inf")),
             )
         elif self.sorted_order == "descend":
             sorted_history = sorted(
                 history,
-                key=lambda x: (
-                    x[self.metric] if x[self.metric] is not None else float("-inf")
-                ),
+                key=lambda x: (x[self.metric] if x[self.metric] is not None else float("-inf")),
                 reverse=True,
             )
         else:

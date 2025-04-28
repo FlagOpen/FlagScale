@@ -15,6 +15,7 @@ def get_hf_model(dtype, model_path=None, config=None):
         )
     elif not model_path and config:
         import torch
+
         from accelerate import init_empty_weights
         from accelerate.utils import set_module_tensor_to_device
 
@@ -23,9 +24,7 @@ def get_hf_model(dtype, model_path=None, config=None):
                 config=config, trust_remote_code=True, torch_dtype=dtype
             )
         for name, param in model.named_parameters():
-            set_module_tensor_to_device(
-                model, name, "cpu", torch.empty(*param.size(), dtype=dtype)
-            )
+            set_module_tensor_to_device(model, name, "cpu", torch.empty(*param.size(), dtype=dtype))
     else:
         raise ValueError("Need one args, model_path or config, to build HF model.")
     print("> build huggingface model elapsed time:", time.time() - s_time)
@@ -33,7 +32,7 @@ def get_hf_model(dtype, model_path=None, config=None):
 
 
 def get_mg_model(dtype, pre_process, post_process):
-    from pretrain_gpt import model_provider
+    from flagscale.train.train_gpt import model_provider
 
     s_time = time.time()
     model = model_provider(pre_process, post_process).to(dtype)

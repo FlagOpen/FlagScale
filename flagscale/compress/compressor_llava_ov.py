@@ -12,6 +12,7 @@ import warnings
 import torch
 import transformers
 import yaml
+
 from adapter import LLMCompressorAdapter
 from llava.model.builder import load_pretrained_model
 from llava.train.train import DataArguments, LLaVATrainer, make_supervised_data_module
@@ -59,9 +60,7 @@ class CusDataset(Dataset):
 
 
 def prepare_model(cfg):
-    origin_config = json.load(
-        open(os.path.join(cfg.model["model_path"], "config.json"), "r")
-    )
+    origin_config = json.load(open(os.path.join(cfg.model["model_path"], "config.json"), "r"))
     origin_vocab_size = origin_config["vocab_size"]
     tokenizer, model, _, _ = load_pretrained_model(
         cfg.model["model_path"],
@@ -125,9 +124,7 @@ def prepare_dataset(cfg, model, tokenizer):
                 [dim * patch_size for dim in pair] for pair in grid_pinpoints
             ]
         elif isinstance(data_args.image_grid_pinpoints, str):
-            data_args.image_grid_pinpoints = ast.literal_eval(
-                data_args.image_grid_pinpoints
-            )
+            data_args.image_grid_pinpoints = ast.literal_eval(data_args.image_grid_pinpoints)
     dataset = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
 
     ds = CusDataset(dataset["train_dataset"])
@@ -137,10 +134,7 @@ def prepare_dataset(cfg, model, tokenizer):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config-path",
-        type=str,
-        required=True,
-        help="Path to the configuration YAML file",
+        "--config-path", type=str, required=True, help="Path to the configuration YAML file"
     )
     args = parser.parse_args()
     cfg = prepare_config(args.config_path)

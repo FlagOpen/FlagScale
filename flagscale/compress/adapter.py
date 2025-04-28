@@ -1,4 +1,5 @@
 import torch
+
 from compressed_tensors.quantization import (
     QuantizationConfig,
     QuantizationScheme,
@@ -63,9 +64,7 @@ class LLMCompressorAdapter:
         if (self.algo is None and is_preset_scheme(self.scheme)) or self.algo in list(
             QUANT_MAPPING_NAMES.keys()
         ):
-            self.wrapper_cls = (
-                QUANT_MAPPING_NAMES[self.algo] if self.algo is not None else None
-            )
+            self.wrapper_cls = QUANT_MAPPING_NAMES[self.algo] if self.algo is not None else None
             quant_config = self.init_quant_config()
 
             ### find ignore and target to quant, initialize module for quant
@@ -101,9 +100,7 @@ class LLMCompressorAdapter:
         if self.config_groups is None or len(self.config_groups) == 0:
             default_quant_scheme = QuantizationScheme(targets=self.targets)
             self.config_groups = {"group_0": default_quant_scheme}
-            logger.info(
-                f"No config groups were provided, using default {self.config_groups}"
-            )
+            logger.info(f"No config groups were provided, using default {self.config_groups}")
 
         return QuantizationConfig(
             config_groups=self.config_groups,

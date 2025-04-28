@@ -198,9 +198,7 @@ class TestTransformerLayer:
 
         # Forward pass
         output = layer(
-            hidden_states=input_tensor,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
+            hidden_states=input_tensor, attention_mask=attention_mask, position_ids=position_ids
         )
 
         # Check output shape matches input shape
@@ -211,9 +209,7 @@ class TestTransformerLayer:
         assert len(registry.params_logs) > 0
         assert len(registry.acts_logs) > 0
 
-    def test_forward_postnorm(
-        self, alt_config, large_input_tensor, attention_mask, position_ids
-    ):
+    def test_forward_postnorm(self, alt_config, large_input_tensor, attention_mask, position_ids):
         """Test forward pass with post-normalization architecture."""
         # Reset registry for clean test
         registry = get_registry("test_model")

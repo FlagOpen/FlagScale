@@ -334,9 +334,7 @@ class TestBaddbmm:
         flops = module.add_flops(input_tensor, batch1, batch2, beta=2, alpha=3)
         # 2 * batch_size * m * n * k + batch_size * m * k (beta scaling) +
         # batch_size * m * k (alpha scaling) + batch_size * m * k (addition)
-        expected_flops = (
-            (2 * 16 * 32 * 128 * 64) + (16 * 32 * 64) + (16 * 32 * 64) + (16 * 32 * 64)
-        )
+        expected_flops = (2 * 16 * 32 * 128 * 64) + (16 * 32 * 64) + (16 * 32 * 64) + (16 * 32 * 64)
         assert flops == expected_flops
 
     def test_add_params(self):
@@ -473,9 +471,9 @@ class TestBmm:
 
         acts = module.add_acts(batch1, batch2)
         # Need both input tensors for backward
-        expected_acts = batch1.total_elements(
+        expected_acts = batch1.total_elements(apply_sharding=True) + batch2.total_elements(
             apply_sharding=True
-        ) + batch2.total_elements(apply_sharding=True)
+        )
         assert acts == expected_acts
 
     def test_forward_shape_validation(self):
@@ -878,9 +876,7 @@ class TestLayerNorm:
 
         # With the real implementation calculation: 24,608 + 98,368 + 24,640 + 49,152 = 196,768
         # This closely approximates the 196,672 value returned by the implementation
-        assert (
-            flops == expected_flops
-        )  # Use the exact value returned by the implementation
+        assert flops == expected_flops  # Use the exact value returned by the implementation
 
     def test_add_acts(self):
         """Test activation memory computation for LayerNorm."""
@@ -893,9 +889,7 @@ class TestLayerNorm:
         # The implementation uses a different memory model than our simple input*2 approach:
         # Looking at meta_modules.py, it stores:
         # 1. Input tensor elements
-        input_elements = input_tensor.total_elements(
-            apply_sharding=True
-        )  # 24,576 elements
+        input_elements = input_tensor.total_elements(apply_sharding=True)  # 24,576 elements
 
         # 2. Mean and variance statistics (2 values per batch item)
         # Here the implementation differs from our theoretic model
@@ -904,9 +898,7 @@ class TestLayerNorm:
         stats_elements = groups * 2  # 64 elements
 
         expected_acts = input_elements + stats_elements  # 24,576 + 64 = 24,640
-        assert (
-            acts == expected_acts
-        )  # Use the exact value returned by the implementation
+        assert acts == expected_acts  # Use the exact value returned by the implementation
 
     def test_forward(self):
         """Test forward method for LayerNorm."""

@@ -21,9 +21,7 @@ def load_args_hf2mg(args):
     args.max_position_embeddings = deepseek_v3_args["max_position_embeddings"]
     args.init_method_std = deepseek_v3_args["initializer_range"]
     args.norm_epsilon = deepseek_v3_args["rms_norm_eps"]
-    args.untie_embeddings_and_output_weights = not deepseek_v3_args[
-        "tie_word_embeddings"
-    ]
+    args.untie_embeddings_and_output_weights = not deepseek_v3_args["tie_word_embeddings"]
     args.rotary_base = deepseek_v3_args["rope_theta"]
     args.disable_bias_linear = not deepseek_v3_args["attention_bias"]
     args.attention_dropout = deepseek_v3_args["attention_dropout"]
@@ -51,9 +49,7 @@ def load_args_hf2mg(args):
     args.moe_ffn_hidden_size = deepseek_v3_args["moe_intermediate_size"]
     n_shared_experts = deepseek_v3_args["n_shared_experts"]
     if n_shared_experts > 0:
-        args.moe_shared_expert_intermediate_size = (
-            n_shared_experts * args.moe_ffn_hidden_size
-        )
+        args.moe_shared_expert_intermediate_size = n_shared_experts * args.moe_ffn_hidden_size
     args.moe_grouped_gemm = True
     args.num_experts = deepseek_v3_args["n_routed_experts"]
     args.moe_router_topk_scaling_factor = deepseek_v3_args["routed_scaling_factor"]
@@ -64,10 +60,7 @@ def load_args_hf2mg(args):
     # if set first k dense replace, then updating moe_layer_freq
     first_k_dense_replace = deepseek_v3_args["first_k_dense_replace"]
     args.moe_layer_freq = eval(
-        "[0]*"
-        + str(first_k_dense_replace)
-        + "+[1]*"
-        + str(args.num_layers - first_k_dense_replace)
+        "[0]*" + str(first_k_dense_replace) + "+[1]*" + str(args.num_layers - first_k_dense_replace)
     )
     args.moe_router_score_function = deepseek_v3_args["scoring_func"]
     if args.moe_router_score_function == "sigmoid":
@@ -108,8 +101,7 @@ def save_args_mg2hf(args):
         num_nextn_predict_layers=args.num_mtp_predictor,
         num_attention_heads=args.num_attention_heads,
         num_key_value_heads=args.num_query_groups,
-        n_shared_experts=args.moe_shared_expert_intermediate_size
-        // args.moe_ffn_hidden_size,
+        n_shared_experts=args.moe_shared_expert_intermediate_size // args.moe_ffn_hidden_size,
         n_routed_experts=args.num_experts,
         routed_scaling_factor=args.moe_router_topk_scaling_factor,
         kv_lora_rank=args.kv_lora_rank,

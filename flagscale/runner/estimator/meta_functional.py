@@ -59,10 +59,7 @@ def baddbmm(
     return module(input, batch1, batch2, beta=beta, alpha=alpha)
 
 
-def bmm(
-    batch1: MetaTensor,
-    batch2: MetaTensor,
-) -> MetaTensor:
+def bmm(batch1: MetaTensor, batch2: MetaTensor) -> MetaTensor:
     """
     Batched matrix multiplication operation.
 
@@ -88,10 +85,7 @@ def bmm(
     return module(batch1, batch2)
 
 
-def matmul(
-    input1: MetaTensor,
-    input2: MetaTensor,
-) -> MetaTensor:
+def matmul(input1: MetaTensor, input2: MetaTensor) -> MetaTensor:
     """
     Matrix multiplication between input1 and input2.
 
@@ -121,10 +115,7 @@ def matmul(
     return module(input1, input2)
 
 
-def softmax(
-    input: MetaTensor,
-    dim: int = -1,
-) -> MetaTensor:
+def softmax(input: MetaTensor, dim: int = -1) -> MetaTensor:
     """
     Softmax activation function.
 
@@ -150,11 +141,7 @@ def softmax(
     return module(input)
 
 
-def dropout(
-    input: MetaTensor,
-    p: float = 0.5,
-    training: bool = True,
-) -> MetaTensor:
+def dropout(input: MetaTensor, p: float = 0.5, training: bool = True) -> MetaTensor:
     """
     Dropout regularization function.
 
@@ -186,10 +173,7 @@ def dropout(
     return module(input)
 
 
-def gelu(
-    input: MetaTensor,
-    approximate: str = "none",
-) -> MetaTensor:
+def gelu(input: MetaTensor, approximate: str = "none") -> MetaTensor:
     """
     Gaussian Error Linear Unit (GELU) activation function.
 
@@ -216,9 +200,7 @@ def gelu(
     return module(input)
 
 
-def silu(
-    input: MetaTensor,
-) -> MetaTensor:
+def silu(input: MetaTensor) -> MetaTensor:
     """
     SiLU (Sigmoid Linear Unit) activation function.
 
@@ -243,9 +225,7 @@ def silu(
     return module(input)
 
 
-def swiglu(
-    input: MetaTensor,
-) -> MetaTensor:
+def swiglu(input: MetaTensor) -> MetaTensor:
     """
     SwiGLU activation function.
 
@@ -270,10 +250,7 @@ def swiglu(
     return module(input)
 
 
-def cross_entropy(
-    input: MetaTensor,
-    target: MetaTensor,
-) -> MetaTensor:
+def cross_entropy(input: MetaTensor, target: MetaTensor) -> MetaTensor:
     """
     Cross-entropy loss function.
 

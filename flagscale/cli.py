@@ -4,14 +4,11 @@ import sys
 
 import click
 
-
 VERSION = "0.6.0"
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
-@click.version_option(
-    VERSION, "-v", "--version", message=f"flagscale version {VERSION}"
-)
+@click.version_option(VERSION, "-v", "--version", message=f"flagscale version {VERSION}")
 def flagscale():
     """
     FlagScale is a comprehensive toolkit designed to support the entire lifecycle of large models,
@@ -27,6 +24,7 @@ def train(yaml_path):
     Train model from yaml.
     """
     from run import main as run_main
+
     click.echo(f"Start training from the yaml {yaml_path}...")
     yaml_path = os.path.abspath(yaml_path)
     config_path = os.path.dirname(yaml_path)
@@ -34,11 +32,7 @@ def train(yaml_path):
     click.echo(f"config_path: {config_path}")
     click.echo(f"config_name: {config_name}")
 
-    sys.argv = [
-        "run.py",
-        f"--config-path={config_path}",
-        f"--config-name={config_name}",
-    ]
+    sys.argv = ["run.py", f"--config-path={config_path}", f"--config-name={config_name}"]
     run_main()
 
 
@@ -50,6 +44,7 @@ def serve(model_name, yaml_path=None):
     Serve model from yaml.
     """
     from run import main as run_main
+
     if yaml_path:
         if os.path.isabs(yaml_path):
             yaml_path = yaml_path
@@ -79,38 +74,20 @@ def serve(model_name, yaml_path=None):
     click.echo(f"config_path: {config_path}")
     click.echo(f"config_name: {config_name}")
 
-    sys.argv = [
-        "run.py",
-        f"--config-path={config_path}",
-        f"--config-name={config_name}",
-    ]
+    sys.argv = ["run.py", f"--config-path={config_path}", f"--config-name={config_name}"]
     run_main()
 
 
 @flagscale.command()
 # Input the name of the Docker image (required)
-@click.option(
-    "--image",
-    "image_name",
-    required=True,
-    type=str,
-    help="The name of the Docker image",
-)
+@click.option("--image", "image_name", required=True, type=str, help="The name of the Docker image")
 # Input the address of the Git repository (required)
 @click.option(
-    "--ckpt",
-    "ckpt_name",
-    required=True,
-    type=str,
-    help="The address of the ckpt's git repository",
+    "--ckpt", "ckpt_name", required=True, type=str, help="The address of the ckpt's git repository"
 )
 # Input the address of the local directory (optional)
 @click.option(
-    "--ckpt-path",
-    "ckpt_path",
-    type=click.Path(),
-    required=False,
-    help="The path to save ckpt",
+    "--ckpt-path", "ckpt_path", type=click.Path(), required=False, help="The path to save ckpt"
 )
 def pull(image_name, ckpt_name, ckpt_path):
     "Docker pull image and git clone ckpt."
