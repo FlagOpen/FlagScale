@@ -293,6 +293,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
     except Exception as e:
         vllm_path = f"{root_dir}/vllm"
     deploy_config = config.experiment.get("deploy", {})
+    envs = config.experiment.get("envs", {})
     print(f"shell file ======================== {host_run_script_file}", flush=True)
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
@@ -307,6 +308,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         f.write(f'    export PYTHONPATH="$PYTHONPATH:{vllm_path}:{root_dir}"\n')
         f.write(f"fi\n")
         f.write(f"\n")
+        envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
 
         if nodes:
             if deploy_config.get("prefill_decode_disaggregation", False):
@@ -322,10 +324,6 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     raise ValueError(
                         f"PD disaggregation requires a proxy port to be set."
                     )
-                # pd_proxy_port = 30001  # debug, tobe removed
-                print(
-                    f"------------ update with port {pd_proxy_port} of new config {config} "
-                )
 
                 engine_args = _get_engine_args(config)
                 command_items = ["vllm", "serve"]
@@ -333,9 +331,11 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 other_args = flatten_dict_to_args(engine_args, ["model", "port"])
                 command_items.extend(other_args)
                 vllm_command = " ".join(command_items)
-                vllm_command = "nohup " + vllm_command
+                # vllm_command = "nohup " + vllm_command
                 if before_start_cmd:
                     vllm_command = f"{before_start_cmd} && " + vllm_command
+                if envs_str:
+                    vllm_command = f"{envs_str} && " + vllm_command
                 p_address = deploy_config.get("prefill_address", "auto")
                 d_address = deploy_config.get("decode_address", "auto")
                 tensor_parallel_size = engine_args.get("tensor_parallel_size", 1)
@@ -411,8 +411,12 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {p_instance_log_path} 2>&1 &"'
                         f.write(f"{ssh_cmd}\n\n")
                     else:
-                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{p_kv_config_json}' > {p_instance_log_path} 2>&1 &"
-                        f.write(f"{node_cmd}\n\n")
+                        p_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_json}'\\''"
+                        f.write(f"p_{j}_cmd='{p_cmd}'\n")
+                        f.write(f"\n")
+                        f.write(
+                            f'nohup bash -c "$p_{i}_cmd; sync" >> {p_instance_log_path} 2>&1 &\n\n'
+                        )
 
                 f.write("echo '=========== launch decode instance ==========='\n")
 
@@ -454,8 +458,12 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
                         f.write(f"{ssh_cmd}\n\n")
                     else:
-                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '{d_kv_config_json}' > {d_instance_log_path} 2>&1 &"
-                        f.write(f"{node_cmd}\n\n")
+                        d_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_json}'\\''"
+                        f.write(f"d_{j}_cmd='{d_cmd}'\n")
+                        f.write(f"\n")
+                        f.write(
+                            f'nohup bash -c "$d_{i}_cmd; sync" >> {d_instance_log_path} 2>&1 &\n\n'
+                        )
 
             else:
                 f.write(f"ray_path=$(realpath $(which ray))\n")
