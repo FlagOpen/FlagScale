@@ -545,11 +545,10 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         )
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
-                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
-
-                        if docker_name:
-                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
-                        f.write(f"{ssh_cmd}\n")
+                    ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
+                    if docker_name:
+                        ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                    f.write(f"{ssh_cmd}\n")
         else:
             # Note: config key device_type is specified for single node serving in neither gpu or cpu.
             device_type = None
