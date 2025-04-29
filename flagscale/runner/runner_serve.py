@@ -363,7 +363,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 f.write("pkill -f 'run_inference_engine'\n")
                 f.write("pkill -f 'run_fs_serve_vllm'\n")
                 f.write("pkill -f 'vllm serve'\n")
-                f.write("pkill -f 'run_pd_disagg_router'\n")
+                f.write("pkill -f 'run_pd_disaggregation_router'\n")
                 f.write(f"mkdir -p {default_log_dir}\n")
                 f.write(f"\n")
 
@@ -669,9 +669,9 @@ class SSHServeRunner(RunnerBase):
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
-        if self.inference_engine:  # pd_disagg_router
+        if self.inference_engine:
             if self.config.experiment.get("deploy", {}).get("prefill_decode_disaggregation", False):
-                self.user_script = "flagscale/serve/run_pd_disagg_router.py"
+                self.user_script = "flagscale/serve/run_pd_disaggregation_router.py"
             elif not self.use_fs_serve:
                 self.user_script = "flagscale/serve/run_inference_engine.py"
             else:
