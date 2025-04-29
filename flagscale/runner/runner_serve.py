@@ -13,6 +13,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.utils import (
+    ResourceManager,
     benchmark,
     dummy_random_input,
     flatten_dict_to_args,
@@ -32,131 +33,6 @@ def _get_multiple_free_ports(num=1, exclude_ports=[]):
             port = get_free_port()
         allocated_ports.append(port)
     return allocated_ports
-
-
-class ResourceManager:
-    def __init__(self, nodes):
-        """
-        Initialize the ResourceManager with a list of nodes.
-        Each element in the list should be a two-item list:
-          - The first item is the node address (a string).
-          - The second item is a dictionary containing at least the key "slots".
-            If "type" is not provided, it defaults to "gpu" with a warning.
-        The first node is treated as the master node, and the rest are worker nodes.
-        """
-        self.nodes = self._initialize_nodes(nodes)
-
-    def _initialize_nodes(self, nodes):
-        """
-        Convert the input nodes list into the internal nodes representation.
-        Each node is converted into a dictionary with keys:
-          "address", "slots", "type", and "used" (initialized to 0).
-        If the "type" is not provided in a node, default it to "gpu" and issue a warning.
-        """
-        initialized_nodes = []
-        for node in nodes:
-            if len(node) != 2:
-                raise ValueError("Each node must include an address and node data")
-            address, info = node
-            if "slots" not in info:
-                raise ValueError("Node data must contain 'slots'")
-            if "type" not in info:
-                logger.warning(
-                    f"Node {address} does not provide a resource type. Defaulting to 'gpu'."
-                )
-            resource_type = info.get("type", "gpu")
-            initialized_nodes.append(
-                {
-                    "address": address,
-                    "slots": info["slots"],
-                    "type": resource_type,
-                    "used": 0,  # Initialize used slot count to 0
-                }
-            )
-        return initialized_nodes
-
-    def get_whole_card_num(self, resource_type="gpu"):
-        """
-        Return the total number of slots across all nodes with the specified resource type.
-        The return type is int.
-        """
-        total = 0
-        for node in self.nodes:
-            if node["type"] == resource_type:
-                total += node["slots"]
-        return total
-
-    def get_available_card_num(self, resource_type="gpu"):
-        """
-        Return the total number of available slots (slots minus used) across all nodes with the specified resource type.
-        The return type is int.
-        """
-        total = 0
-        for node in self.nodes:
-            if node["type"] == resource_type:
-                total += node["slots"] - node["used"]
-        return total
-
-    def get_available_card_ids(self, resource_type="gpu", address="auto", num=1):
-        """
-        Allocate 'num' resource cards from a node and return a list of card indices.
-
-        For the default case (address="auto"), traverse nodes in order: master node first, then worker nodes.
-        - If a node's available slots (slots - used) are >= num, allocate num consecutive indices (based on the current used value)
-          and update the node's used count, returning the allocated indices (0-indexed) as a list.
-        - If the available slots are insufficient at a particular node and address is "auto", continue searching through other nodes.
-        - If an explicit address is provided, check only that node; if it doesn't exist or lacks sufficient available slots, raise an error.
-        - If none of the nodes can satisfy the request, raise an error indicating insufficient resources.
-        """
-        # Check the specified node if address is not "auto"
-        if address != "auto":
-            node_found = None
-            for node in self.nodes:
-                if node["address"] == address and node["type"] == resource_type:
-                    node_found = node
-                    break
-            if node_found is None:
-                raise ValueError(f"Node {address} does not exist or resource type mismatch")
-            free = node_found["slots"] - node_found["used"]
-            if free < num:
-                raise ValueError("Insufficient resources")
-            allocated_ids = list(range(node_found["used"], node_found["used"] + num))
-            node_found["used"] += num
-            return allocated_ids
-
-        # For address == "auto", traverse all nodes (master node first, then worker nodes)
-        for node in self.nodes:
-            if node["type"] == resource_type:
-                free = node["slots"] - node["used"]
-                if free >= num:
-                    allocated_ids = list(range(node["used"], node["used"] + num))
-                    node["used"] += num
-                    return allocated_ids
-
-        # If no node satisfies the allocation request, raise an error.
-        resource_status = self.get_status()
-        raise ValueError(
-            f"Require number {num} of resource_type {resource_type} But there is insufficient resources: \n{resource_status}"
-        )
-
-    def get_status(self):
-        """
-        Return the status of all nodes as a dictionary.
-        Each key in the returned dictionary is the node's address, and its value is a dictionary with:
-          - type: the resource type.
-          - slots: the total number of slots.
-          - used: the number of allocated slots.
-          - available: the number of available slots (slots - used).
-        """
-        status = {}
-        for node in self.nodes:
-            status[node["address"]] = {
-                "type": node["type"],
-                "slots": node["slots"],
-                "used": node["used"],
-                "available": node["slots"] - node["used"],
-            }
-        return status
 
 
 def _get_args_vllm(config: DictConfig):
