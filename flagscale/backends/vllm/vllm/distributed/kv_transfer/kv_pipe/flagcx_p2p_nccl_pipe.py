@@ -15,7 +15,7 @@ import zmq
 import ctypes
 import sys
 sys.path.append(os.getenv('FLAGCX_PATH'))
-from plugin.inter_service.flagcx_wrapper import (
+from plugin.interservice.flagcx_wrapper import (
     FLAGCXLibrary,
     buffer_type,
     cudaStream_t,
