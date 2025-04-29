@@ -294,7 +294,6 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         vllm_path = f"{root_dir}/vllm"
     deploy_config = config.experiment.get("deploy", {})
     envs = config.experiment.get("envs", {})
-    print(f"shell file ======================== {host_run_script_file}", flush=True)
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("set -x\n")
@@ -321,9 +320,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 kv_related_ports = _get_multiple_free_ports(ports_num)
                 pd_proxy_port = deploy_config.get("pd_proxy_port", None)
                 if not pd_proxy_port:
-                    raise ValueError(
-                        f"PD disaggregation requires a proxy port to be set."
-                    )
+                    raise ValueError(f"PD disaggregation requires a proxy port to be set.")
 
                 engine_args = _get_engine_args(config)
                 command_items = ["vllm", "serve"]
@@ -331,7 +328,6 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 other_args = flatten_dict_to_args(engine_args, ["model", "port"])
                 command_items.extend(other_args)
                 vllm_command = " ".join(command_items)
-                # vllm_command = "nohup " + vllm_command
                 if before_start_cmd:
                     vllm_command = f"{before_start_cmd} && " + vllm_command
                 if envs_str:
@@ -386,21 +382,18 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             "http_port": str(http_port),
                         },
                     }
-                    print(
+                    logger.info(
                         f"============= prefill instance {i}, p_kv_config: {p_kv_config} =============",
                         flush=True,
                     )
                     card_ids = resource_manager.get_available_card_ids(
-                        address=p_address,
-                        num=each_instance_card_num,
+                        address=p_address, num=each_instance_card_num
                     )
                     card_ids_str = ",".join(map(str, card_ids))
                     ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
 
                     p_kv_config_json = json.dumps(p_kv_config)
-                    p_instance_log_path = os.path.join(
-                        default_log_dir, f"prefill_{i}.log"
-                    )
+                    p_instance_log_path = os.path.join(default_log_dir, f"prefill_{i}.log")
 
                     if p_address != master_ip:
                         p_kv_config_formate_json = p_kv_config_json.replace('"', '\\"')
@@ -433,21 +426,18 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             "http_port": str(http_port),
                         },
                     }
-                    print(
+                    logger.info(
                         f"============= decode instance {i}, d_kv_config: {d_kv_config} =============",
                         flush=True,
                     )
                     card_ids = resource_manager.get_available_card_ids(
-                        address=d_address,
-                        num=each_instance_card_num,
+                        address=d_address, num=each_instance_card_num
                     )
                     card_ids_str = ",".join(map(str, card_ids))
                     ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
 
                     d_kv_config_json = json.dumps(d_kv_config)
-                    d_instance_log_path = os.path.join(
-                        default_log_dir, f"decode_{j}.log"
-                    )
+                    d_instance_log_path = os.path.join(default_log_dir, f"decode_{j}.log")
 
                     if d_address != master_ip:
                         d_kv_config_formate_json = d_kv_config_json.replace('"', '\\"')
@@ -683,9 +673,7 @@ class SSHServeRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
         if self.inference_engine:  # pd_disagg_router
-            if self.config.experiment.get("deploy", {}).get(
-                "prefill_decode_disaggregation", False
-            ):
+            if self.config.experiment.get("deploy", {}).get("prefill_decode_disaggregation", False):
                 self.user_script = "flagscale/serve/run_pd_disagg_router.py"
             elif not self.use_fs_serve:
                 self.user_script = "flagscale/serve/run_inference_engine.py"
@@ -783,7 +771,6 @@ class SSHServeRunner(RunnerBase):
         kill_process_tree(pid)
 
         ray_executable = shutil.which("ray")
-        print(ray_executable)
         if ray_executable:
             ray_path = os.path.realpath(ray_executable)
             os.system(f"{ray_path} stop")

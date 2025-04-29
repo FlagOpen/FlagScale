@@ -1,4 +1,11 @@
-import logging
+# Copyright (c) 2025, BAAI. All rights reserved.
+#
+# Adopted from https://github.com/vllm-project/vllm/blob/1ad957950ffc1552af5abda78c03d88ddb67945b/examples/online_serving/disagg_xpyd/disagg_prefill_proxy_xpyd.py. Below is the original copyright:
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+
 import os
 import random
 import socket
@@ -8,6 +15,7 @@ import uuid
 import aiohttp
 import msgpack
 import zmq
+
 from quart import Quart, make_response, request
 
 try:
@@ -29,18 +37,13 @@ class LoadManager:
     def __init__(self):
         self._lock = threading.Lock()
         # Each resource type 'P' or 'D' maps to {http_addr: {'zmq': zmq_addr, 'load': int}}
-        self._instances: dict[str, dict[str, dict[str, object]]] = {
-            "P": {},
-            "D": {},
-        }
+        self._instances: dict[str, dict[str, dict[str, object]]] = {"P": {}, "D": {}}
 
     def register(self, rtype: str, http_addr: str, zmq_addr: str):
         with self._lock:
             if http_addr not in self._instances[rtype]:
                 self._instances[rtype][http_addr] = {"zmq": zmq_addr, "load": 0}
-                logger.info(
-                    f"Registered new {rtype}-instance {http_addr} (zmq={zmq_addr})"
-                )
+                logger.info(f"Registered new {rtype}-instance {http_addr} (zmq={zmq_addr})")
             else:
                 # If zmq address changed, synchronize it
                 self._instances[rtype][http_addr]["zmq"] = zmq_addr
@@ -67,13 +70,8 @@ class LoadManager:
 
     def get_robin_loaded(self, rtype: str) -> tuple[str, str]:
         with self._lock:
-            http_addr, info = min(
-                self._instances[rtype].items(), key=lambda kv: kv[1]["load"]
-            )
-            print(
-                f"========== whole instance status {self._instances}==========",
-                flush=True,
-            )
+            http_addr, info = min(self._instances[rtype].items(), key=lambda kv: kv[1]["load"])
+            print(f"========== whole instance status {self._instances}==========", flush=True)
         return http_addr, info["zmq"]
 
 
@@ -168,9 +166,7 @@ async def forward_request(url, data, request_id):
 async def handle_request():
     try:
         original_data = await request.get_json()
-        endpoint = (
-            request.path
-        )  # this will be '/v1/completions' or '/v1/chat/completions'
+        endpoint = request.path  # this will be '/v1/completions' or '/v1/chat/completions'
 
         # Prefill request: max_tokens=1
         prefill_request = original_data.copy()
@@ -191,9 +187,7 @@ async def handle_request():
         logger.info(f"Selected D-instance {decode_addr} via '{SCHEDULING_STRATEGY}'")
 
         # Keep original request_id composition format
-        request_id = (
-            f"___prefill_addr_{prefill_zmq}___decode_addr_{decode_zmq}_{random_uuid()}"
-        )
+        request_id = f"___prefill_addr_{prefill_zmq}___decode_addr_{decode_zmq}_{random_uuid()}"
 
         # Execute Prefill and update load
         lm.increment_load("P", prefill_addr)
@@ -235,9 +229,7 @@ def main():
         raise ValueError("No port specified in deploy config")
     if not pd_proxy_port:
         raise ValueError("No pd_proxy_port specified in deploy config")
-    print(
-        f"Starting Proxy Server...with pd_proxy_port {pd_proxy_port} and serve_port {serve_port}"
-    )
+    print(f"Starting Proxy Server...with pd_proxy_port {pd_proxy_port} and serve_port {serve_port}")
     listener = start_service_discovery("0.0.0.0", pd_proxy_port)
     app.run(host="0.0.0.0", port=serve_port)
     listener.join()

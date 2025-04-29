@@ -11,10 +11,10 @@ experiment:
     port: 10001
     use_fs_serve: false
     prefill_decode_disaggregation: true
-    prefill_num: 1
-    prefill_address: 10.1.1.122 # optional, default "auto"
+    prefill_num: 2
+    prefill_address: x.x.x.x # optional, default "auto"
     decode_num: 2
-    decode_address: 10.1.1.108 # optional, default "auto"
+    decode_address: x.x.x.x # optional, default "auto"
   runner:
     hostfile: examples/qwen/conf/hostfile.txt
     docker: fr-v2
