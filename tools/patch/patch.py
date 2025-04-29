@@ -504,12 +504,14 @@ def validate_args(device_type, task, commit, main_path):
             main_repo.commit(commit)
         except ValueError:
             raise ValueError(f"Commit {commit} does not exist in the FlagScale.")
-    if (
-        device_type.count("_") != 1
-        or len(device_type.split("_")) != 2
-        or not device_type.split("_")[0][0].isupper()
-    ):
-        raise ValueError("Device type is not invalid!")
+
+    if device_type:
+        if (
+            device_type.count("_") != 1
+            or len(device_type.split("_")) != 2
+            or not device_type.split("_")[0][0].isupper()
+        ):
+            raise ValueError("Device type is not invalid!")
 
     if commit or device_type or task:
         assert (
