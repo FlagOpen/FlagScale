@@ -11,7 +11,7 @@ import vllm.envs as envs
 from vllm import _custom_ops as ops
 from vllm.config import VllmConfig
 from vllm.distributed.kv_transfer.kv_connector.base import KVConnectorBase
-if os.getenv('USE)FLAGCX', 'False').lower() == 'true':
+if os.getenv("USE_FLAGCX", "false").lower() in ("1", "true"):
     from vllm.distributed.kv_transfer.kv_pipe.flagcx_p2p_nccl_pipe import P2pNcclPipe
 else:
     from vllm.distributed.kv_transfer.kv_pipe.p2p_nccl_pipe import P2pNcclPipe
