@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
+import contextlib # --- FLAGSCALE MODIFICATION ---
 import enum
 import os
 import random
 import time
-import contextlib # --- FLAGSCALE MODIFICATION ---
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Callable, Deque, Dict, Iterable, List, Optional
