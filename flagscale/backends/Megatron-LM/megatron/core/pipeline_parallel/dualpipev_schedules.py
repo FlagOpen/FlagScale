@@ -524,21 +524,25 @@ def forward_backward_pipelining_with_cutinhalf(
 
     # Disable async grad reductions
     no_sync_func = config.no_sync_func
-    print(f"in dualpipev, no_sync_func is {no_sync_func}")
+    if isinstance(no_sync_func, list):
+
+        def multi_no_sync():
+            stack = contextlib.ExitStack()
+            for model_chunk_no_sync_func in config.no_sync_func:
+                stack.enter_context(model_chunk_no_sync_func())
+            return stack
+
+        no_sync_func = multi_no_sync
     if no_sync_func is None:
         no_sync_func = contextlib.nullcontext
     no_sync_context = None
-
-    if not isinstance(no_sync_func, list):
-        no_sync_func = [no_sync_func]
 
     def disable_grad_sync():
         """Disable asynchronous grad reductions"""
         nonlocal no_sync_context
         if no_sync_context is None:
-            for no_sync_f in no_sync_func:
-                no_sync_context = no_sync_f()
-                no_sync_context.__enter__()
+            no_sync_context = no_sync_func()
+            no_sync_context.__enter__()
 
     def enable_grad_sync():
         """Enable asynchronous grad reductions"""
@@ -1216,6 +1220,9 @@ def forward_backward_pipelining_with_cutinhalf(
         print(f"[DEBUG][Post-Cooldown] Done waiting on final bwd_wait_handles.")
 
     enable_grad_sync()
+    if config.grad_sync_func is not None:
+        config.grad_sync_func[0](model[0].parameters())
+        config.grad_sync_func[1](model[1].parameters())
 
     print(f"finalize model grads func is {config.finalize_model_grads_func}")
     if config.finalize_model_grads_func is not None and not forward_only:
