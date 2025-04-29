@@ -22,7 +22,7 @@ experiment:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     VLLM_USE_V1: 0
     FLAGCX_SOCKET_IFNAME: bond0
-    FLAGCX_PATH: /mine/ip122/tune_qwen/FlagCX/
+    FLAGCX_PATH: /path/to/FlagCX/
     FLAGCX_DEBUG: TRACE
     FLAGCX_DEBUG_SUBSYS: ALL
     USE_FLAGCX: true

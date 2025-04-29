@@ -1,7 +1,7 @@
 - serve_id: vllm_model
   engine: vllm
   engine_args:
-    model: /models/Qwen2.5-0.5B-Instruct
+    model: /models/Qwen2.5-7B-Instruct
     host: 0.0.0.0
     tensor_parallel_size: 1
     pipeline_parallel_size: 1
