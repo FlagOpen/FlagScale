@@ -8,7 +8,7 @@ import torch
 def convert(input_path, output_path, tensor_parallel_size):
     device = "cuda"
 
-    state_dict = torch.load(input_path)
+    state_dict = torch.load(input_path, weights_only=False)
 
     new_state_dicts = [{"model": dict()} for _ in range(tensor_parallel_size)]
 
@@ -73,4 +73,3 @@ python mlp_converter.py --input /some/input/folder/mm_projector.bin --output /so
     convert(args.input, args.output, args.tensor_parallel_size)
 
     print("done.")
-

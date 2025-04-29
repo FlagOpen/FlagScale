@@ -31,7 +31,7 @@ def get_hf_model(dtype, model_path=None, config=None):
 
 
 def get_mg_model(dtype, pre_process, post_process):
-    from flagscale.train.train_deepseek_v3 import model_provider
+    from pretrain_gpt import model_provider
 
     s_time = time.time()
     model = model_provider(pre_process, post_process).to(dtype)

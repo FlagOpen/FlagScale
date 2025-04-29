@@ -1,11 +1,11 @@
 import argparse
+import logging
 import os
 import shutil
 import sys
 import tempfile
-import logging
-import yaml
 
+import yaml
 
 from git.repo import Repo
 
@@ -25,11 +25,11 @@ if not logger.handlers:
     logger.propagate = False
 
 
-def unpatch(main_path, src, dst, submodule_name, mode="symlink"):
+def unpatch(main_path, src, dst, submodule_name, mode="symlink", force=False):
     """Unpatch the backend with symlinks."""
     if submodule_name.split("/")[-1] != FLAGSCALE_BACKEND:
         logger.info(f"Unpatching backend {submodule_name}...")
-        init_submodule(main_path, dst, submodule_name)
+        init_submodule(main_path, dst, submodule_name, force=force)
         assert mode in ["symlink", "copy"]
         if mode == "copy":
             _copy(src, dst)
@@ -96,33 +96,31 @@ def _create_symlinks(src, dst):
             logger.info(f"Creating symbolic link: {dst_file} -> {src_file}")
 
 
-def init_submodule(main_path, dst, submodule_name):
-    if os.path.lexists(dst) and len(os.listdir(dst)) > 0:
+def init_submodule(main_path, dst, submodule_name, force=False):
+    if os.path.lexists(dst) and len(os.listdir(dst)) > 0 and not force:
         logger.info(f"Skipping {submodule_name} initialization, as it already lexists.")
         return
     logger.info(f"Initializing submodule {submodule_name}...")
     repo = Repo(main_path)
     submodule = repo.submodule(submodule_name)
     try:
-        submodule.update(init=True)
+        submodule.update(init=True, force=force)
     except:
         logger.info("Retrying to initialize submodule...")
-        submodule.update(init=True)
+        submodule.update(init=True, force=force)
     logger.info(f"Initialized {submodule_name} submodule.")
 
 
-def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, flagscale_commit=None):
-    if flagscale_commit:
-        return flagscale_commit
+def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, commit=None):
+    if commit:
+        return commit
 
     newest_flagscale_commit = None
     main_repo = Repo(main_path)
     if device_type and tasks:
         # Check if device_type is in the format xxx_yyy
         if device_type.count("_") != 1 or len(device_type.split("_")) != 2:
-            raise ValueError(
-                "Invalid format. Device type must be in the format xxx_yyy."
-            )
+            raise ValueError("Invalid format. Device type must be in the format xxx_yyy.")
 
         assert backends
         history_yaml = os.path.join(main_path, "hardware", "patch_history.yaml")
@@ -145,7 +143,10 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, f
                     continue
                 if backends_key not in history[device_type][task]:
                     continue
-                if not isinstance(history[device_type][task][backends_key], list) or not history[device_type][task][backends_key]:
+                if (
+                    not isinstance(history[device_type][task][backends_key], list)
+                    or not history[device_type][task][backends_key]
+                ):
                     continue
                 newest_flagscale_commit = history[device_type][task][backends_key][-1]
                 try:
@@ -156,12 +157,13 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, f
                         f"The commit ID {newest_flagscale_commit} does not exist in the FlagScale. Please check the {history_yaml}"
                     )
                     newest_flagscale_commit = None
-        assert newest_flagscale_commit is not None, f"FlagScale Commit for device type {device_type}, task {task} is not found. Please check the {history_yaml}."
+        assert (
+            newest_flagscale_commit is not None
+        ), f"FlagScale Commit for device type {device_type}, task {task} is not found. Please check the {history_yaml}."
     return newest_flagscale_commit
 
 
-
-def apply_hardware_patch(device_type, backends, flagscale_commit, main_path):
+def apply_hardware_patch(device_type, backends, commit, main_path, init_submodule):
     build_path = os.path.join(main_path, "build", device_type)
     final_path = os.path.join(build_path, os.path.basename(main_path))
 
@@ -178,8 +180,8 @@ def apply_hardware_patch(device_type, backends, flagscale_commit, main_path):
         repo = Repo(temp_path)
         # Stash firstly to prevent checkout failed
         repo.git.stash("push", "--include-untracked")
-        logger.info(f"Step 2: Checking out {flagscale_commit} in temp path {temp_path}")
-        repo.git.checkout(flagscale_commit)
+        logger.info(f"Step 2: Checking out {commit} in temp path {temp_path}")
+        repo.git.checkout(commit)
 
         # Check device path
         device_path = os.path.join(temp_path, "hardware", device_type)
@@ -193,7 +195,7 @@ def apply_hardware_patch(device_type, backends, flagscale_commit, main_path):
             backend_path = os.path.join(device_path, backend)
             if not os.path.exists(backend_path):
                 raise ValueError(f"{backend_path} is not found.")
-    
+
             error = f"Patch files in {backend_path} must be a file with a .patch suffix and a file with a .yaml suffix."
             if len(os.listdir(backend_path)) != 2:
                 raise ValueError(error)
@@ -245,12 +247,13 @@ def apply_hardware_patch(device_type, backends, flagscale_commit, main_path):
             logger.info(f"Patch {patch_file} has been applied.")
 
         logger.info(f"Step 6: Initializing submodule in temp unpatch path {temp_unpatch_path}...")
-        for backend in backends:
-            submodule_name = f"third_party/{backend}"
-            dst = os.path.join(temp_unpatch_path, "third_party", backend)
-            src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
-            # NOTE: mode must be 'copy' because the temp unpatch path will be moved
-            unpatch(temp_unpatch_path, src, dst, submodule_name, mode="copy")
+        if init_submodule:
+            for backend in backends:
+                submodule_name = f"third_party/{backend}"
+                dst = os.path.join(temp_unpatch_path, "third_party", backend)
+                src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
+                # NOTE: mode must be 'copy' because the temp unpatch path will be moved
+                unpatch(temp_unpatch_path, src, dst, submodule_name, mode="copy", force=True)
 
         logger.info(f"Step 7: Moving patched temp path {temp_unpatch_path} to {final_path}")
         os.makedirs(build_path, exist_ok=True)
@@ -279,12 +282,32 @@ def apply_hardware_patch(device_type, backends, flagscale_commit, main_path):
     return final_path
 
 
+def validate_args(device_type, task, commit, main_path):
+    main_repo = Repo(main_path)
+    if commit:
+        # Check if the commit exists in the FlagScale
+        try:
+            main_repo.commit(commit)
+        except ValueError:
+            raise ValueError(f"Commit {commit} does not exist in the FlagScale.")
+    if device_type:
+        if (
+            device_type.count("_") != 1
+            or len(device_type.split("_")) != 2
+            or not device_type.split("_")[0][0].isupper()
+        ):
+            raise ValueError("Device type is not invalid!")
+
+    if device_type or task:
+        assert device_type and task, "The args device_type, task must not be None."
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Patch or unpatch backend with symlinks.")
     parser.add_argument(
         "--backend",
         nargs="+",
-        choices=["Megatron-LM", "vllm", "FlagScale"],
+        choices=["Megatron-LM", "vllm", "Megatron-Energon", "FlagScale"],
         default=["Megatron-LM"],
         help="Backend to unpatch (default: Megatron-LM)",
     )
@@ -295,29 +318,33 @@ if __name__ == "__main__":
         help="Mode to unpatch (default: symlink)",
     )
     parser.add_argument(
-        "--device-type",
-        type=str,
-        default=None,
-        help="Device type. Default is None.",
+        "--device-type", type=str, default=None, help="Device type. Default is None."
     )
     parser.add_argument(
         "--task",
         nargs="+",
         default=None,
+        choices=["train", "inference", "post_train"],
         help="Task. Default is None",
     )
     parser.add_argument(
-        "--flagscale-commit",
-        type=str,
-        default=None,
-        help="FlagScale commit to checkout. Default is None.",
+        "--commit", type=str, default=None, help="Unpatch based on this commit. Default is None."
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Force update the backend even if it already exists."
+    )
+    parser.add_argument(
+        "--no-init-submodule",
+        action="store_false",
+        dest="init_submodule",
+        help="Do not initialize and update submodules. Default is True.",
     )
 
     args = parser.parse_args()
     backends = args.backend
     device_type = args.device_type
     tasks = args.task
-    flagscale_commit = args.flagscale_commit
+    commit = args.commit
 
     if not isinstance(backends, list):
         backends = [backends]
@@ -332,19 +359,22 @@ if __name__ == "__main__":
     # FlagScale
     main_path = os.path.dirname(script_dir)
 
-    temp_main_path = None
+    validate_args(device_type, tasks, commit, main_path)
+
     if FLAGSCALE_BACKEND in backends:
-        assert device_type is not None, "FlagScale unpatch only can be applied with hardware unpatch."
+        assert (
+            device_type is not None
+        ), "FlagScale unpatch only can be applied with hardware unpatch."
 
     # Check patch exist
-    commit = commit_to_checkout(main_path, device_type, tasks, backends, flagscale_commit)
+    commit = commit_to_checkout(main_path, device_type, tasks, backends, commit)
     if commit is not None:
         # Checkout to the commit and apply the patch to build FlagScale
-        apply_hardware_patch(device_type, backends, commit, main_path)
+        apply_hardware_patch(device_type, backends, commit, main_path, args.init_submodule)
 
     else:
         for backend in backends:
             submodule_name = f"third_party/{backend}"
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
-            unpatch(main_path, src, dst, submodule_name, mode=args.mode)
+            unpatch(main_path, src, dst, submodule_name, mode=args.mode, force=args.force)

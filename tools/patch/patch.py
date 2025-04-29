@@ -7,6 +7,7 @@ import sys
 import tempfile
 
 import yaml
+
 from git.repo import Repo
 
 DELETED_FILE_NAME = "deleted_files.txt"
@@ -31,8 +32,10 @@ def patch(
     src,
     dst,
     mode="symlink",
-    base_commit_id=None,
+    commit=None,
     backends=None,
+    device_type=None,
+    tasks=None,
 ):
     """
     Sync the submodule modifications to the corresponding backend in FlagScale.
@@ -43,13 +46,11 @@ def patch(
         submodule = main_repo.submodule(submodule_name)
         sub_repo = submodule.module()
         base_commit_hash = submodule.hexsha
-        logger.info(
-            f"Base commit hash of submodule {submodule_name} is {base_commit_hash}."
-        )
+        logger.info(f"Base commit hash of submodule {submodule_name} is {base_commit_hash}.")
 
         # Get submodule commit tree
-        base_commit = sub_repo.commit(base_commit_hash)
-        base_tree = base_commit.tree
+        sub_commit = sub_repo.commit(base_commit_hash)
+        base_tree = sub_commit.tree
 
         index = sub_repo.index
         index_tree_hash = index.write_tree()
@@ -141,14 +142,7 @@ def patch(
             try:
                 for file_path in file_status_deleted:
                     assert file_statuses[file_path][0] == "D"
-                    _sync(
-                        file_path,
-                        file_status_deleted[file_path],
-                        src,
-                        dst,
-                        temp_file,
-                        mode=mode,
-                    )
+                    _sync(file_path, file_status_deleted[file_path], src, dst, temp_file, mode=mode)
                 deleted_log = os.path.join(src, DELETED_FILE_NAME)
                 temp_file.close()
 
@@ -163,41 +157,16 @@ def patch(
                     os.remove(temp_file.name)
                 raise e
 
-    if base_commit_id:
-        patch_info = prompt_info(main_path, backends)
-        generate_patch_file(main_path, base_commit_id, patch_info)
+    if commit:
+        patch_info = prompt_info(main_path, backends, device_type, tasks)
+        generate_patch_file(main_path, commit, patch_info)
 
 
-def prompt_info(main_path, backends):
+def prompt_info(main_path, backends, device_type, tasks):
     logger.info("Prompting for patch information: ")
-    # 1. tasks (support multiple comma-separated)
-    valid_tasks = {"train", "inference", "post_train"}
-    while True:
-        task_input = input(
-            "1. Please enter task (valid task train/inference/post_train) (separated with commas, e.g., train, post_train): "
-        ).strip()
-        task_list = [t.strip() for t in task_input.split(",") if t.strip()]
-        if all(t in valid_tasks for t in task_list):
-            break
-        logger.info(f"Invalid task(s). Each must be one of: {', '.join(valid_tasks)}")
-    # 2. backends
-    third_party_dir = os.path.join(main_path, "third_party")
-    available_submodules = [
-        d
-        for d in os.listdir(third_party_dir)
-        if os.path.isdir(os.path.join(third_party_dir, d))
-    ]
-    available_submodules.append("FlagScale")
-    assert isinstance(backends, list)
-    invalid = [b for b in backends if b not in available_submodules]
-    if invalid:
-        logger.error(f"Backends are not valid submodules: {', '.join(invalid)}", exc_info=True)
-        raise ValueError(
-            f"Available submodules: {', '.join(sorted(available_submodules))}"
-        )
 
     backends_version = {}
-    print("2. Please enter backends version: ")
+    print("1. Please enter backends version: ")
     for backend in backends:
         version = input(f"    {backend} version: ").strip()
         while not version:
@@ -205,17 +174,9 @@ def prompt_info(main_path, backends):
             version = input(f"    {backend} version: ").strip()
         backends_version[backend] = version
 
-    # 3. device type
-    device_type = input("3. Please enter device type (e.g., HARDWARE_CHIP): ").strip()
-    while device_type.count("_") != 1 or len(device_type.split("_")) != 2:
-        logger.info("Invalid format. Device type must be in the format xxx_yyy.")
-        device_type = input(
-            "3. Please enter device type (e.g., HARDWARE_CHIP): "
-        ).strip()
-
-    # 4. FlagScale-compatible models
+    # FlagScale-compatible models
     model_input = input(
-        "4. Please enter flagScale-compatible models (separated with commas): "
+        "2. Please enter flagScale-compatible models (separated with commas): "
     ).strip()
     models = [m.strip() for m in model_input.split(",") if m.strip()]
     while not models:
@@ -225,18 +186,18 @@ def prompt_info(main_path, backends):
         ).strip()
         models = [m.strip() for m in model_input.split(",") if m.strip()]
 
-    # 5. Commit message
-    commit_msg = input("5. Please enter commit message: ").strip()
+    # 3. Commit message
+    commit_msg = input("3. Please enter commit message: ").strip()
     while not commit_msg:
         logger.info("Commit message cannot be empty.")
-        commit_msg = input("5. Please enter commit message: ").strip()
+        commit_msg = input("4. Please enter commit message: ").strip()
 
-    # 6. Contact (optional)
+    # 4. Contact (optional)
     contact_prompt = "6. Please enter email (optional): "
     contact = input(contact_prompt).strip()
 
     return {
-        "task": task_list,
+        "task": tasks,
         "backends_version": backends_version,
         "device_type": device_type,
         "models": models,
@@ -245,7 +206,7 @@ def prompt_info(main_path, backends):
     }
 
 
-def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
+def generate_patch_file(main_path: str, commit: str, patch_info: dict):
     repo = Repo(main_path)
     assert not repo.bare
 
@@ -260,9 +221,7 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
         if repo.bare:
             raise Exception("Repository is bare. Cannot proceed.")
 
-        logger.info(
-            "Generating the patch file:"
-        )
+        logger.info("Generating the patch file:")
         # Step 1: Stash all, including untracked, and create temp_branch_for_hardware_patch
         logger.info(
             "Step 1: Stashing current changes (including untracked) and create the temp_branch_for_hardware_patch..."
@@ -284,23 +243,17 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
         repo.git.stash("apply")
         repo.git.add(all=True)
 
-        # Step3: Commit with message "Patch for {base_commit_id}".
+        # Step3: Commit with message "Patch for {commit}".
         logger.info("Step 3: Committing changes on the temp_branch_for_hardware_patch...")
-        repo.git.commit("-m", f"Patch for {base_commit_id}")
+        repo.git.commit("--no-verify", "-m", f"Patch for {commit}")
 
-        # Step4: Generate patch diff between base_commit_id and HEAD, writing into temp_file.
-        logger.info(f"Step 4: Generating diff patch from {base_commit_id} to HEAD...")
+        # Step4: Generate patch diff between commit and HEAD, writing into temp_file.
+        logger.info(f"Step 4: Generating diff patch from {commit} to HEAD...")
         backends = copy.deepcopy(list(patch_info["backends_version"].keys()))
         patches = {}
 
         # Diff excludes the submodules
-        flagscale_diff_args = [
-            base_commit_id,
-            "HEAD",
-            "--binary",
-            "--ignore-submodules=all",
-            "--",
-        ]
+        flagscale_diff_args = [commit, "HEAD", "--binary", "--ignore-submodules=all", "--"]
 
         tmep_patch_files = []
         # Generate patch for each backend
@@ -308,18 +261,11 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
             if backend == FLAGSCALE_BACKEND:
                 continue
             backend_dir = os.path.join(main_path, "flagscale", "backends", backend)
-            temp_file = tempfile.NamedTemporaryFile(
-                delete=False, mode="w", encoding="utf-8"
-            )
+            temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w", encoding="utf-8")
             temp_patch_path = temp_file.name
             tmep_patch_files.append(temp_patch_path)
             diff_data = repo.git.diff(
-                base_commit_id,
-                "HEAD",
-                "--binary",
-                "--ignore-submodules=all",
-                "--",
-                f"{backend_dir}",
+                commit, "HEAD", "--binary", "--ignore-submodules=all", "--", f"{backend_dir}"
             )
             if not diff_data:
                 raise ValueError(f"No changes in backend {backend}.")
@@ -339,16 +285,12 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
             del data["commit_msg"]
             yaml.dump(data, temp_yaml_file, sort_keys=True, allow_unicode=True)
             temp_yaml_file.flush()
-            patch_dir = os.path.join(
-                main_path, "hardware", patch_info["device_type"], backend
-            )
+            patch_dir = os.path.join(main_path, "hardware", patch_info["device_type"], backend)
             patches[backend] = [patch_dir, temp_patch_path, temp_yaml_path]
 
         # Generate patch for FlagScale
         if FLAGSCALE_BACKEND in backends:
-            temp_file = tempfile.NamedTemporaryFile(
-                delete=False, mode="w", encoding="utf-8"
-            )
+            temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w", encoding="utf-8")
             temp_patch_path = temp_file.name
             tmep_patch_files.append(temp_patch_path)
             diff_data = repo.git.diff(*flagscale_diff_args)
@@ -378,14 +320,14 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
         repo.git.stash("pop")
         stash_pop = True
 
-        # Step5: Checkout the base_commit_id commit.
-        logger.info(f"Step 5: Checking out {base_commit_id}...")
-        repo.git.checkout(base_commit_id)
+        # Step5: Checkout the commit commit.
+        logger.info(f"Step 5: Checking out {commit}...")
+        repo.git.checkout(commit)
 
         # Step6: Stage the patch file.
         logger.info("Step 6: Staging the generated patch file...")
-        file_name = f"{base_commit_id[:7]}.patch"
-        yaml_file_name = f"{base_commit_id[:7]}.yaml"
+        file_name = f"{commit[:7]}.patch"
+        yaml_file_name = f"{commit[:7]}.yaml"
         patch_dir_need_to_clean = []
         for backend in patches:
             patch_dir, temp_patch_path, temp_yaml_path = patches[backend]
@@ -416,9 +358,7 @@ def generate_patch_file(main_path: str, base_commit_id: str, patch_info: dict):
         repo.git.commit("-m", commit_msg)
 
         # Step 8: Delete the temporary branch locally.
-        logger.info(
-            "Step 8: Deleting temporary branch 'temp_branch_for_hardware_patch' locally..."
-        )
+        logger.info("Step 8: Deleting temporary branch 'temp_branch_for_hardware_patch' locally...")
         repo.git.branch("-D", temp_branch)
 
         logger.info(
@@ -556,16 +496,25 @@ def _create_file(source_file, target_file, mode="symlink"):
         raise ValueError(f"Unsupported mode: {mode}.")
 
 
-def validate_base_commit(base_commit_id, main_path):
+def validate_args(device_type, task, commit, main_path):
     main_repo = Repo(main_path)
-    if base_commit_id:
-        # Check if the base_commit_id exists in the FlagScale
+    if commit:
+        # Check if the commit exists in the FlagScale
         try:
-            main_repo.commit(base_commit_id)
+            main_repo.commit(commit)
         except ValueError:
-            raise ValueError(
-                f"The commit ID {base_commit_id} does not exist in the FlagScale."
-            )
+            raise ValueError(f"Commit {commit} does not exist in the FlagScale.")
+    if (
+        device_type.count("_") != 1
+        or len(device_type.split("_")) != 2
+        or not device_type.split("_")[0][0].isupper()
+    ):
+        raise ValueError("Device type is not invalid!")
+
+    if commit or device_type or task:
+        assert (
+            commit and device_type and task
+        ), "The args commit, device_type, task must not be None."
 
 
 if __name__ == "__main__":
@@ -575,7 +524,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--backend",
         nargs="+",
-        choices=["Megatron-LM", "vllm", "FlagScale"],
+        choices=["Megatron-LM", "vllm", "Megatron-Energon", "FlagScale"],
         default=["Megatron-LM"],
         help="Backend to patch (default: Megatron-LM)",
     )
@@ -586,42 +535,51 @@ if __name__ == "__main__":
         help="Mode to patch (default: symlink, it means that the file will be copied to the source and a symbolic link will be created)",
     )
     parser.add_argument(
-        "--base-commit-id",
-        type=str,
-        default=None,
-        help="Base commit ID to reference in the repo. Default is None.",
+        "--commit", type=str, default=None, help="Patch based on this commit. Default is None."
     )
+    parser.add_argument(
+        "--device-type", type=str, default=None, help="Device type. Default is None."
+    )
+    parser.add_argument("--task", nargs="+", default=None, help="Task. Default is None")
 
     args = parser.parse_args()
     backends = args.backend
     mode = args.mode
-    base_commit_id = args.base_commit_id
+    commit = args.commit
+    tasks = args.task
+    device_type = args.device_type
+
     if not isinstance(backends, list):
         backends = [backends]
+
+    if tasks is not None and not isinstance(tasks, list):
+        tasks = [tasks]
+
     # FlagScale/tools/patch
     script_dir = os.path.dirname(os.path.realpath(__file__))
     # FlagScale/tools
     script_dir = os.path.dirname(script_dir)
     # FlagScale
     main_path = os.path.dirname(script_dir)
-    validate_base_commit(args.base_commit_id, main_path)
+
+    validate_args(device_type, tasks, commit, main_path)
 
     if FLAGSCALE_BACKEND in backends:
-        assert base_commit_id is not None, "FlagScale patch only can be generated with hardware."
+        assert commit is not None, "FlagScale patch only can be generated with hardware."
 
     multi_backends = len(backends) > 1
-    if multi_backends and base_commit_id:
+    if multi_backends and commit:
         for backend in backends:
             submodule_name = f"third_party/{backend}"
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
             patch(main_path, submodule_name, src, dst, mode)
-        patch_info = prompt_info(main_path, backends)
-        generate_patch_file(main_path, base_commit_id, patch_info)
+        patch_info = prompt_info(main_path, backends, device_type, tasks)
+        generate_patch_file(main_path, commit, patch_info)
 
     else:
         for backend in backends:
             submodule_name = f"third_party/{backend}"
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
-            patch(main_path, submodule_name, src, dst, mode, base_commit_id, backends)
+            patch(main_path, submodule_name, src, dst, mode, commit, backends, device_type, tasks)

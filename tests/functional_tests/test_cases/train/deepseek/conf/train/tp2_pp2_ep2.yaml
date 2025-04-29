@@ -81,7 +81,7 @@ model:
   # moe_permute_fusion: true
 
   # mtp_args
-  num_mtp_predictor: 1
+  mtp_num_layers: 1
 
   # training
   seed: 42
