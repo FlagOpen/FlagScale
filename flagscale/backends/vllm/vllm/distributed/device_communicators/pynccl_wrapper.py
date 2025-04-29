@@ -1,3 +1,6 @@
+# Copied from https://github.com/vllm-project/vllm/blob/1ad957950ffc1552af5abda78c03d88ddb67945b/vllm/distributed/device_communicators/pynccl_wrapper.py. 
+# Below is the original copyright:
+
 # SPDX-License-Identifier: Apache-2.0
 
 # This file is a pure Python wrapper for the NCCL library.

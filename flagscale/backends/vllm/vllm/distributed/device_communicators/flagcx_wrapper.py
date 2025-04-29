@@ -1,6 +1,6 @@
+# Copyright (c) 2025, BAAI. All rights reserved.
+# Adopted from https://github.com/vllm-project/vllm/blob/main/vllm/distributed/device_communicators/pynccl_wrapper.py. Below is the original copyright:
 # SPDX-License-Identifier: Apache-2.0
-# reference https://github.com/vllm-project/vllm/blob/main/vllm/distributed/device_communicators/pynccl_wrapper.py
-
 import ctypes
 import platform
 from dataclasses import dataclass

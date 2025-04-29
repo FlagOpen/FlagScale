@@ -1,5 +1,7 @@
+# Mainly adopted from https://github.com/FlagOpen/FlagScale/blob/44ceca57dd6f86b10163968e617497c613e47d6e/flagscale/backends/vllm/vllm/distributed/kv_transfer/kv_connector/p2p_connector.py.
+# Below is the original copyright:
 # SPDX-License-Identifier: Apache-2.0
-
+import os
 import re
 from typing import TYPE_CHECKING, List, Tuple, Union
 
@@ -9,7 +11,10 @@ import vllm.envs as envs
 from vllm import _custom_ops as ops
 from vllm.config import VllmConfig
 from vllm.distributed.kv_transfer.kv_connector.base import KVConnectorBase
-from vllm.distributed.kv_transfer.kv_pipe.p2p_nccl_pipe import P2pNcclPipe
+if os.getenv('USE)FLAGCX', 'False').lower() == 'true':
+    from vllm.distributed.kv_transfer.kv_pipe.flagcx_p2p_nccl_pipe import P2pNcclPipe
+else:
+    from vllm.distributed.kv_transfer.kv_pipe.p2p_nccl_pipe import P2pNcclPipe
 from vllm.logger import init_logger
 from vllm.sequence import IntermediateTensors
 
