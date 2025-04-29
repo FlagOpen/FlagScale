@@ -13,15 +13,16 @@ import msgpack
 import torch
 import zmq
 import ctypes
-
-from vllm.config import KVTransferConfig
-from vllm.distributed.device_communicators.flagcx_wrapper import (
+import sys
+sys.path.append(os.getenv('FLAGCX_PATH'))
+from plugin.inter_service.flagcx_wrapper import (
     FLAGCXLibrary,
     buffer_type,
     cudaStream_t,
     flagcxComm_t,
     flagcxDataTypeEnum,
 )
+from vllm.config import KVTransferConfig
 from vllm.utils import current_stream, get_ip
 
 logger = logging.getLogger(__name__)
