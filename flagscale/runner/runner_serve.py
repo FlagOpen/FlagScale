@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import copy
 import json
 import os
 import shlex
@@ -12,14 +13,26 @@ from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.utils import (
+    ResourceManager,
     benchmark,
     dummy_random_input,
+    flatten_dict_to_args,
     get_free_port,
     get_nproc_per_node,
     logger,
     parse_hostfile,
     run_local_command,
 )
+
+
+def _get_multiple_free_ports(num=1, exclude_ports=[]):
+    allocated_ports = []
+    for i in range(num):
+        port = get_free_port()
+        while port in allocated_ports or port in exclude_ports:
+            port = get_free_port()
+        allocated_ports.append(port)
+    return allocated_ports
 
 
 def _get_args_vllm(config: DictConfig):
@@ -97,12 +110,17 @@ def _get_engine_args(config, model="vllm_model"):
 
 
 def _update_config_serve(config: DictConfig):
+    deploy_config = config.experiment.get("deploy", {})
+
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     if not os.path.isdir(exp_dir):
         os.makedirs(exp_dir)
     assert os.path.isdir(exp_dir), f"Directory {exp_dir} does not exist."
 
     OmegaConf.set_struct(config, False)
+
+    if deploy_config.get("prefill_decode_disaggregation", False):
+        deploy_config["pd_proxy_port"] = get_free_port()
 
     if config.get("logging", None) is None:
         config.logging = DictConfig({})
@@ -150,6 +168,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         vllm_path = os.path.dirname(vllm.__path__[0])
     except Exception as e:
         vllm_path = f"{root_dir}/vllm"
+    deploy_config = config.experiment.get("deploy", {})
+    envs = config.experiment.get("envs", {})
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write("set -x\n")
@@ -163,15 +183,191 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         f.write(f'    export PYTHONPATH="$PYTHONPATH:{vllm_path}:{root_dir}"\n')
         f.write(f"fi\n")
         f.write(f"\n")
+        envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
 
         if nodes:
-            f.write(f"ray_path=$(realpath $(which ray))\n")
-            master_ip = nodes[0][0]
-            target_port = nodes[0][1].get("port")
+            if deploy_config.get("prefill_decode_disaggregation", False):
+                resource_manager = ResourceManager(nodes)
+                master_ip = nodes[0][0]
+                target_port = nodes[0][1].get("port")
+                p_num = deploy_config.get("prefill_num", 1)
+                d_num = deploy_config.get("decode_num", 1)
+                ports_num = (p_num + d_num) * 2
+                kv_related_ports = _get_multiple_free_ports(ports_num)
+                pd_proxy_port = deploy_config.get("pd_proxy_port", None)
+                if not pd_proxy_port:
+                    raise ValueError(f"PD disaggregation requires a proxy port to be set.")
 
-            f.write(f"# clean nodes \n")
-            if len(nodes) > 1:
-                for ip, node in nodes[1:]:
+                engine_args = _get_engine_args(config)
+                command_items = ["vllm", "serve"]
+                command_items.append(engine_args["model"])
+                other_args = flatten_dict_to_args(engine_args, ["model", "port"])
+                command_items.extend(other_args)
+                vllm_command = " ".join(command_items)
+                if before_start_cmd:
+                    vllm_command = f"{before_start_cmd} && " + vllm_command
+                if envs_str:
+                    vllm_command = f"{envs_str} && " + vllm_command
+                p_address = deploy_config.get("prefill_address", "auto")
+                d_address = deploy_config.get("decode_address", "auto")
+                tensor_parallel_size = engine_args.get("tensor_parallel_size", 1)
+                pipeline_parallel_size = engine_args.get("pipeline_parallel_size", 1)
+                each_instance_card_num = tensor_parallel_size * pipeline_parallel_size
+                default_log_dir = deploy_config.get(
+                    "prefill_decode_log_dir", logging_config.log_dir
+                )
+
+                f.write(f"# clean nodes \n")
+                if len(nodes) > 1:
+                    for ip, node in nodes[1:]:
+                        if not node.get("type", None):
+                            raise ValueError(
+                                f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
+                            )
+                        if not node.get("slots", None):
+                            raise ValueError(
+                                f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+                            )
+                        node_cmd = f"mkdir -p {default_log_dir} && pkill -f vllm"
+
+                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
+
+                        if docker_name:
+                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        f.write(f"{ssh_cmd}\n")
+
+                f.write("pkill -f 'run_inference_engine'\n")
+                f.write("pkill -f 'run_fs_serve_vllm'\n")
+                f.write("pkill -f 'vllm serve'\n")
+                f.write("pkill -f 'run_disagg_xpyd_router'\n")
+                f.write(f"mkdir -p {default_log_dir}\n")
+                f.write(f"\n")
+
+                f.write("echo '=========== launch prefill instance ==========='\n")
+
+                for i in range(p_num):
+                    kv_port = kv_related_ports.pop()
+                    http_port = kv_related_ports.pop()
+                    p_kv_config = {
+                        "kv_connector": "P2pConnector",
+                        "kv_role": "kv_producer",
+                        "kv_port": str(kv_port),
+                        "kv_connector_extra_config": {
+                            "proxy_ip": master_ip,
+                            "proxy_port": str(pd_proxy_port),
+                            "http_port": str(http_port),
+                        },
+                    }
+                    logger.info(
+                        f"============= prefill instance {i}, p_kv_config: {p_kv_config} ============="
+                    )
+                    card_ids = resource_manager.get_available_card_ids(
+                        address=p_address, num=each_instance_card_num
+                    )
+                    card_ids_str = ",".join(map(str, card_ids))
+                    ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
+
+                    p_kv_config_json = json.dumps(p_kv_config)
+                    p_instance_log_path = os.path.join(default_log_dir, f"prefill_{i}.log")
+
+                    if p_address != master_ip:
+                        p_kv_config_formate_json = p_kv_config_json.replace('"', '\\"')
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_formate_json}'\\''"
+                        if docker_name:
+                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {p_instance_log_path} 2>&1 &'\""
+                        else:
+                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {p_instance_log_path} 2>&1 &"'
+                        f.write(f"{ssh_cmd}\n\n")
+                    else:
+                        p_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_json}'\\''"
+                        f.write(f"p_{i}_cmd='{p_cmd}'\n")
+                        f.write(f"\n")
+                        f.write(
+                            f'nohup bash -c "$p_{i}_cmd; sync" >> {p_instance_log_path} 2>&1 &\n\n'
+                        )
+
+                f.write("echo '=========== launch decode instance ==========='\n")
+
+                for j in range(d_num):
+                    kv_port = kv_related_ports.pop()
+                    http_port = kv_related_ports.pop()
+                    d_kv_config = {
+                        "kv_connector": "P2pConnector",
+                        "kv_role": "kv_consumer",
+                        "kv_port": str(kv_port),
+                        "kv_connector_extra_config": {
+                            "proxy_ip": master_ip,
+                            "proxy_port": str(pd_proxy_port),
+                            "http_port": str(http_port),
+                        },
+                    }
+                    logger.info(
+                        f"============= decode instance {i}, d_kv_config: {d_kv_config} ============="
+                    )
+                    card_ids = resource_manager.get_available_card_ids(
+                        address=d_address, num=each_instance_card_num
+                    )
+                    card_ids_str = ",".join(map(str, card_ids))
+                    ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
+
+                    d_kv_config_json = json.dumps(d_kv_config)
+                    d_instance_log_path = os.path.join(default_log_dir, f"decode_{j}.log")
+
+                    if d_address != master_ip:
+                        d_kv_config_formate_json = d_kv_config_json.replace('"', '\\"')
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_formate_json}'\\''"
+                        if docker_name:
+                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {d_instance_log_path} 2>&1 &'\""
+                        else:
+                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
+                        f.write(f"{ssh_cmd}\n\n")
+                    else:
+                        d_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_json}'\\''"
+                        f.write(f"d_{j}_cmd='{d_cmd}'\n")
+                        f.write(f"\n")
+                        f.write(
+                            f'nohup bash -c "$d_{i}_cmd; sync" >> {d_instance_log_path} 2>&1 &\n\n'
+                        )
+
+            else:
+                f.write(f"ray_path=$(realpath $(which ray))\n")
+                master_ip = nodes[0][0]
+                target_port = nodes[0][1].get("port")
+
+                f.write(f"# clean nodes \n")
+                if len(nodes) > 1:
+                    for ip, node in nodes[1:]:
+                        if not node.get("type", None):
+                            raise ValueError(
+                                f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
+                            )
+                        if not node.get("slots", None):
+                            raise ValueError(
+                                f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+                            )
+                        node_cmd = f"${{ray_path}} stop"
+
+                        if before_start_cmd:
+                            node_cmd = f"{before_start_cmd} && " + node_cmd
+
+                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
+
+                        if docker_name:
+                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        f.write(f"{ssh_cmd}\n")
+                if before_start_cmd:
+                    f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
+                else:
+                    f.write(f"${{ray_path}} stop\n")
+                f.write("pkill -f 'run_inference_engine'\n")
+                f.write("pkill -f 'run_fs_serve_vllm'\n")
+                f.write("pkill -f 'vllm serve'\n")
+                f.write(f"\n")
+
+                master_port = target_port if target_port else get_free_port()
+
+                address = f"{master_ip}:{master_port}"
+                for index, (ip, node) in enumerate(nodes):
                     if not node.get("type", None):
                         raise ValueError(
                             f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
@@ -180,45 +376,21 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         raise ValueError(
                             f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
                         )
-                    node_cmd = f"${{ray_path}} stop"
+                    if index == 0:
+                        # master node
+                        f.write(f"# start cluster\n")
+                        f.write(f"# master node\n")
+                        if node.type == "gpu":
+                            node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
+                        elif node.type == "cpu":
+                            node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
+                        else:
+                            resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                            node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
+                        if before_start_cmd:
+                            node_cmd = f"{before_start_cmd} && " + node_cmd
+                        f.write(f"{node_cmd}\n")
 
-                    if before_start_cmd:
-                        node_cmd = f"{before_start_cmd} && " + node_cmd
-
-                    ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
-
-                    if docker_name:
-                        ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
-                    f.write(f"{ssh_cmd}\n")
-            if before_start_cmd:
-                f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
-            else:
-                f.write(f"${{ray_path}} stop\n")
-            f.write("pkill -f 'run_inference_engine'\n")
-            f.write("pkill -f 'run_fs_serve_vllm'\n")
-            f.write("pkill -f 'vllm serve'\n")
-            f.write(f"\n")
-
-            master_port = target_port if target_port else get_free_port()
-
-            address = f"{master_ip}:{master_port}"
-            for index, (ip, node) in enumerate(nodes):
-                if not node.get("type", None):
-                    raise ValueError(
-                        f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
-                    )
-                if not node.get("slots", None):
-                    raise ValueError(
-                        f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
-                    )
-                if index == 0:
-                    # master node
-                    f.write(f"# start cluster\n")
-                    f.write(f"# master node\n")
-                    if node.type == "gpu":
-                        node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
-                    elif node.type == "cpu":
-                        node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
                     else:
                         resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
                         node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
@@ -247,9 +419,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         )
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
-
                     ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
-
                     if docker_name:
                         ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
                     f.write(f"{ssh_cmd}\n")
@@ -267,7 +437,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         f"nproc_per_node must be specified when device_type {device_type} is specified."
                     )
             node_cmd = None
-            deploy_config = config.experiment.get("deploy", {})
+
             if deploy_config.get("use_fs_serve", True) and config.serve[0].get("engine", None):
                 f.write(f"ray_path=$(realpath $(which ray))\n")
                 if not device_type:
@@ -293,6 +463,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         f.write(f"\n")
         # TODO: need a option to control whether to append or overwrite the output file
         # Now, it always appends to the output file
+        f.write("echo '=========== launch task ==========='\n")
         if background:
             f.write(
                 f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
@@ -375,7 +546,9 @@ class SSHServeRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
         if self.inference_engine:
-            if not self.use_fs_serve:
+            if self.config.experiment.get("deploy", {}).get("prefill_decode_disaggregation", False):
+                self.user_script = "flagscale/serve/run_disagg_xpyd_router.py"
+            elif not self.use_fs_serve:
                 self.user_script = "flagscale/serve/run_inference_engine.py"
             else:
                 self.user_script = "flagscale/serve/run_fs_serve_vllm.py"
@@ -471,7 +644,6 @@ class SSHServeRunner(RunnerBase):
         kill_process_tree(pid)
 
         ray_executable = shutil.which("ray")
-        print(ray_executable)
         if ray_executable:
             ray_path = os.path.realpath(ray_executable)
             os.system(f"{ray_path} stop")
