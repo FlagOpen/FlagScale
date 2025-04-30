@@ -1,6 +1,3 @@
-# Copied from https://github.com/vllm-project/vllm/blob/1ad957950ffc1552af5abda78c03d88ddb67945b/vllm/distributed/device_communicators/pynccl_wrapper.py. 
-# Below is the original copyright:
-
 # SPDX-License-Identifier: Apache-2.0
 
 # This file is a pure Python wrapper for the NCCL library.
@@ -274,6 +271,7 @@ class NCCLLibrary:
             ctypes.byref(unique_id)))
         return unique_id
 
+    # --- FLAGSCALE MODIFICATION BEG ---
     def unique_id_from_bytes(self, data: bytes) -> ncclUniqueId:
         """
         Reconstructs an `ncclUniqueId` object from bytes data.
@@ -294,6 +292,7 @@ class NCCLLibrary:
         unique_id = ncclUniqueId()
         ctypes.memmove(ctypes.addressof(unique_id.internal), data, 128)
         return unique_id
+    # --- FLAGSCALE MODIFICATION END ---
 
     def ncclCommInitRank(self, world_size: int, unique_id: ncclUniqueId,
                          rank: int) -> ncclComm_t:

@@ -4,7 +4,7 @@ defaults:
 
 experiment:
   exp_name: aquila2
-  exp_dir: ./outputs
+  exp_dir: ./outputs/${experiment.exp_name}
   task:
     type: inference
     backend: vllm
@@ -12,8 +12,9 @@ experiment:
   runner:
     hostfile: null
   cmds:
-    before_start: source activate flagscale
+    before_start: source /root/miniconda3/bin/activate flagscale
   envs:
+    VLLM_LOGGING_LEVEL: "INFO"
     CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
 
