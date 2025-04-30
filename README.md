@@ -1,6 +1,10 @@
 [<img src="flagopen.png">](https://flagopen.baai.ac.cn/)
 
 ## Latest News
+- **[2025/04]** Released [v0.8.0](https://github.com/FlagOpen/FlagScale/tree/release/v0.8.0):
+  - Introduced a new flexible and robust multi-backend mechanism and updated vendor adaptation methods.
+  - Enabled heterogeneous prefill-decoding disaggregation across vendor chips within a single instance via FlagCX (beta).
+  - Upgraded DeepSeek-v3 pre-training with the new Megatron-LM and added heterogeneous pre-training across different chips for MoE models like DeepSeek-v3.
 - **[2025/02]** Released [v0.6.5](https://github.com/FlagOpen/FlagScale/tree/release/v0.6.5):
   - Added support for DeepSeek-V3 distributed pre-training (beta) and [DeepSeek-V3/R1 serving](#deepseek-r1-serving) across multiple chips.
   - Introduced an auto-tuning feature for serving and a new CLI feature for one-click deployment.
