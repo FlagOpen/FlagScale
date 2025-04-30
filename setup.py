@@ -7,10 +7,16 @@ from setuptools.command.install import install
 
 try:
     import git  # from GitPython
-except ImportError:
-    print("[INFO] GitPython not found. Installing...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "gitpython"])
-    import git
+except:
+    try:
+        print("[INFO] GitPython not found. Installing...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "gitpython"])
+        import git
+    except:
+        print(
+            "[ERROR] Failed to install flagscale. Please use 'pip install . --no-build-isolation' to reinstall when the pip version > 23.1."
+        )
+        sys.exit(1)
 
 from tools.patch.unpatch import unpatch
 
@@ -55,7 +61,7 @@ main_path = os.path.dirname(__file__)
 backend = "Megatron-LM"
 src = os.path.join(main_path, "flagscale", "train", "backends", backend)
 dst = os.path.join(main_path, "third_party", backend)
-unpatch(src, dst, "third_party/Megatron-LM", mode="copy")
+unpatch(main_path, src, dst, "third_party/Megatron-LM", mode="copy")
 
 setup(
     name="flag_scale",
