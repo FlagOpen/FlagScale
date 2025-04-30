@@ -1,3 +1,4 @@
+# copy from https://github.com/vllm-project/vllm/blob/dc1b4a6f1300003ae27f033afbdff5e2683721ce/vllm/model_executor/models/siglip.py
 # SPDX-License-Identifier: Apache-2.0
 """Implementation of SiglipVisionModel intended to be only used
 within a vision language model."""
