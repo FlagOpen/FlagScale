@@ -82,6 +82,7 @@ model:
       lr_warmup_samples: 2048
       lr_decay_style: WSD
       lr_wsd_decay_style: cosine
+      lr_wsd_decay_samples: 2048
 
 data:
   data_path: ${data_path:??}
