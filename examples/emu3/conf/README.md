@@ -12,7 +12,7 @@ vLLM implementation of https://github.com/baaivision/Emu3
 ### Run text-to-image task
 ```
 cd FlagScale
-python run.py -cp examples/emu/conf/ -cn config_gen.yaml
+python run.py -cp examples/emu3/conf/ -cn gen.yaml
 ```
 - [demo image download](https://github.com/baaivision/Emu3/blob/main/assets/demo.png)
 
@@ -20,7 +20,7 @@ python run.py -cp examples/emu/conf/ -cn config_gen.yaml
 ### Run understanding task
 ```
 cd FlagScale
-python run.py -cp examples/emu/conf/ -cn config_chat.yaml
+python run.py -cp examples/emu3/conf/ -cn chat.yaml
 ```
 
 ## Performance

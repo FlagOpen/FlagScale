@@ -82,24 +82,24 @@ FlagScale provides a unified runner for various tasks, including training，infe
 
 1. Start the distributed training job:
     ```sh
-    python run.py --config-path ./examples/aquila/conf --config-name config action=run
+    python run.py --config-path ./examples/aquila/conf --config-name train action=run
     ```
     The `data_path` in the demo is the path of the training datasets following the [Megatron-LM format](./megatron/README.md#data-preprocessing). For quickly running the pretraining process, we also provide a small processed data ([bin](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.bin) and [idx](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.idx)) from the [Pile](https://pile.eleuther.ai/) dataset.
 
 2. Stop the distributed training job:
     ```sh
-    python run.py --config-path ./examples/aquila/conf --config-name config action=stop
+    python run.py --config-path ./examples/aquila/conf --config-name train action=stop
     ```
 
 #### Serve
 
 1. Start the server:
     ```sh
-    python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=run
+    python run.py --config-path ./examples/qwen/conf --config-name serve action=run
     ```
 2. Stop the server:
     ```sh
-    python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=stop
+    python run.py --config-path ./examples/qwen/conf --config-name serve action=stop
     ```
 For more details, please refer to [Quick Start](./flagscale/serve/README.md).
 
