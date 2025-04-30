@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - compress: compress_robobrain_w8a16
+  - compress: w8a16
 
 experiment:
   exp_name: robobrain
