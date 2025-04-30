@@ -408,7 +408,11 @@ def _sync(file_path, status, src, dst, f=None, mode="symlink"):
         is_symlink = os.path.islink(dst_file_path)
         if is_symlink:
             if not os.path.lexists(src_file_path):
-                raise ValueError(f"{symbolic_error}: {dst_file_path}")
+                # The File is a symbolic link, but the source file no longer exists, so the symlink is dangling and has been automatically removed.
+                logger.warning(
+                    f"File {dst_file_path} is a symbolic link, but the source file no longer exists, so the symlink is dangling and has been automatically removed."
+                )
+                os.remove(dst_file_path)
         else:
             raise ValueError(f"{typechange_error}: {dst_file_path}")
 
@@ -443,8 +447,8 @@ def _sync(file_path, status, src, dst, f=None, mode="symlink"):
     elif change_type == "M":
         is_symlink = os.path.islink(dst_file_path)
         if is_symlink:
-            raise ValueError(
-                "Modified symbolic links in the submodule is not supported except for those defined in FlagScale"
+            logger.warning(
+                f"The symlink {dst_file_path} can only have a typechange status and it cannot have a modified status."
             )
         _create_file(src_file_path, dst_file_path, mode=mode)
 
