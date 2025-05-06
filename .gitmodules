@@ -10,3 +10,6 @@
 	path = third_party/Megatron-Energon
 	url = https://github.com/NVIDIA/Megatron-Energon.git
 	branch = develop
+[submodule "third_party/llama.cpp"]
+	path = third_party/llama.cpp
+	url = git@github.com:ggml-org/llama.cpp.git
