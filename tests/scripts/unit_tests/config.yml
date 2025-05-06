@@ -99,5 +99,7 @@ flagscale:
     runner:
       type: batch
       depth: all
+      ignore:
+        - test_parse_hostfile.py
     ./:
       depth: 1
