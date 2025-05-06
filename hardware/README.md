@@ -2,184 +2,94 @@
 
 [中文](./README_CN.md)
 
+## Legacy Version
+
+If you want to use the old version (i.e., patches before 2025.05.06), please checkout to commit `8151afd3cc8ea7076b73844989b6b42c816ea945` and refer to the usage instructions under that commit.
+
 ## Background
+- **Vendor**: Quickly and easily adapt to FlagScale under the new backend management mechanism (from subtree management to submodule management).
+- **User**: More conveniently use vendor-adapted FlagScale under different task scenarios.
+- **Framework**: Provide adaptation specifications and tools to help vendors better adapt and users better use FlagScale.
 
-- Vendors: Simplify and expedite the adaptation process for FlagScale.
+## Overview
+Starting from 0.8.0, FlagScale has adopted a new backend management approach. Each backend exists as a submodule under `FlagScale/third_party/<submodule>`. Performance optimizations and new feature developments for different backends are stored in `FlagScale/backends/<submodule>`. Therefore, for users, the workflow for using and developing FlagScale is as follows:
 
-- Users: Easily utilize FlagScale versions that have already been adapted by vendors.
-
-- FlagScale: Provide guidelines and tools to assist vendors in better adapting FlagScale and help users in seamlessly using these adaptations.
-
-## Introduction
-
-[FlagScale](https://github.com/FlagOpen/FlagScale.git) will adopt a patch mechanism similar to Linux for managing and applying vendor-specific adaptation code, ensuring a simple, safe, and reliable process.
-
-Additionally, FlagScale will provide tools to:
-
-- Generate patches from vendor-adapted code automatically.
-
-- Assist users in automatically applying vendor-adapted code.
-
-Vendors must ensure the correctness of the adapted code, and in the future, FlagScale will also implement automated CI checks during integration.
-
-## Operation Process
-
-### Vendor Adaptation
-
-#### Homogeneous Scenario
-
-1. Adapt Code: Vendor A selects a specific commit from the FlagScale main branch for adaptation. The selected commit serves as the `base-commit-id` (e.g., aaaa). After completing the adaptation and validation, all modified code is merged into the local main branch, forming a new `current-commit-id` (e.g., bbbb).
-
-2. Generate Patch: Vendor A uses the tools provided by FlagScale to automatically generate a patch containing the adaptation code between the `base-commit-id` and the `current-commit-id`. This patch is created using the git format-patch command, and the `device-type` option should specify the vendor name and chip model, such as `A_X100`. Example code for generating the patch:
-
+1. **Use FlagScale adaptation, i.e., `unpatch`**  
+```bash
+python tools/patch/unpatch.py --backend submodules
 ```
+`unpatch` will automatically force-update the submodule to the specified commit and overwrite files in `third_party/<submodule>` with symlinks or copies from the corresponding `FlagScale/backends/<submodule>` path.
+
+2. **Develop FlagScale**  
+Develop FlagScale based on step 1. If modifying submodule-related code, it's recommended to modify directly inside `third_party/<submodule>` (i.e., inplace development). FlagScale provides patch tools to sync inplace changes in `third_party/<submodule>` back to `FlagScale/backends/<submodule>`.
+
+3. **Submit PR to FlagScale**  
+If you made inplace modifications inside `third_party/<submodule>`, execute `patch` first, then proceed with normal git operations. (FlagScale already added `.gitignore` rules to filter `third_party` content, so no need to worry about local submodule commit changes affecting FlagScale's submodule commit.)
+```bash
+python tools/patch/patch.py --backend submodules
+```
+
+For vendor adaptation, FlagScale still adopts a patch file mechanism similar to Linux to manage and apply vendor-specific adaptation code. Development was done on `unpatch` and `patch` interfaces, providing:
+- Automatic generation of patch files from vendor-adapted code.
+- Helping users automatically apply vendor-adapted patch files.
+- In the future, FlagScale will also perform automated CI checks before merging.
+
+## Vendor Adaptation Workflow
+The vendor adaptation process is similar to the user process, with a few additional parameters for `patch`, and submitting PRs with patch files. Below is a concrete example:
+
+**Example: Adapting Megatron-LM backend for a training scenario with modifications to both FlagScale and Megatron-LM.**
+
+1. **Use FlagScale adaptation (unpatch) as the base for vendor adaptation:**
+```bash
 cd FlagScale
-python tools/patch/patch.py --device-type A_X100 --base-commit-id aaaa --current-commit-id bbbb [--key-path <KEY_PATH>]
+python tools/patch/unpatch.py --backend Megatron-LM
 ```
 
-* `device-type`: Chip type.
-* `base-commit-id`: The FlagScale commit ID based during vendor adaptation.
-* `current-commit-id`: The commit ID after local modifications.
-* `key-path`: Optional, used to store the key path when encrypting a patch. If not entered, the patch will not be encrypted.
-NOTE:
-1. Do not set `key-path`  as a path within the warehouse.
-2. Please keep your key properly and do not disclose it to ensure the security of your code and data.
+2. **Make inplace modifications inside `third_party/Megatron-LM` and modify other FlagScale files.**  
 
-After generating the patch, the file structure will appear as follows. You can see that Vendor A’s adaptation code is placed in the `FlagScale/hardware/A_X100` directory, under a folder named after the `base-commit-id` (i.e., aaaa). The patch file contains the actual adaptation content, with the `base-commit-id` being the name of the patch file. If the `current-commit-id` option is not provided, the tool defaults to using the latest commit ID of the current branch as the `current-commit-id`.
-
-Example of the generated file structure:
-
-```
-FlagScale/
-├── hardware/
-│   └── A_X100/
-│       └── aaaa/
-│           └── aaaa.patch or aaaa.patch.encrypted(If encrypted)
-```
-
-3. Submit Patch: After the tool successfully generates the patch, you can directly submit a pull request to the FlagScale main branch. The commit message should follow the commit message of the current-commit-id.
-NOTE: Before submitting the patch, please manually check to avoid uploading key or unencrypted patche.
-
-#### Heterogeneous Scenario
-
-1. Adapt Code: Manufacturer B selects a specific commit-id (e.g., aaaa) of a required heterogeneous chip A from the `FlagScale/hardware` directory as the `base-commit-id` for adaptation. After completing the adaptation and verification, all modified code is merged into the local main branch, forming a new `current-commit-id` (e.g., bbbb).
-
-2. Generate Patch: The manufacturer uses the tools provided by FlagScale to automatically generate a standardized patch based on the code changes between the base-commit-id and the current-commit-id. Here is an example command:
-
-```
+3. **Use `patch` to package vendor adaptation as a patch file.** Patch files are organized per backend; to vendors, FlagScale is also a backend.
+```bash
 cd FlagScale
-python tools/patch/patch.py --device-type A_X100 B_Y100 --base-commit-id aaaa --current-commit-id bbbb
+python tools/patch/patch.py --backend Megatron-LM FlagScale --task train --device-type Chip_Vendor --commit <commit>
+```
+Parameter explanation:
+- `backend`: Backend(s). Support multiple backends separated by space.
+- `task`: Task scenario(s). Supports multiple tasks separated by space.
+- `device-type`: Chip model, named as `Vendor_Model`, with Vendor capitalized.
+- `commit`: The FlagScale commit this adaptation is based on.
+
+You’ll be prompted to enter 4 interactive inputs: backend version, adapted model, commit message (used for git commit), and contact info (optional).
+
+Then push to a remote branch:
+```bash
+git push --force origin HEAD:refs/heads/<your_remote_branch>
 ```
 
-The tool will also automatically update the heterogeneous information in FlagScale/flagscale/tools/patch/hetero.txt with the following format:
+## User Workflow
+Once vendor PRs are merged, FlagScale will maintain `FlagScale/hardware/patch_history.yaml` recording all vendor patches.
 
-```
-aaaa: A_X100 B_Y100
-```
-
-The generated file structure will look like this:
-
-```
-FlagScale/
-|-- tools/
-|   |-- patch/
-|       |-- patch.py
-|       |-- unpatch.py
-|       |-- hetero.txt
-|-- hardware/
-|   |-- A_X100/
-|       |-- aaaa/
-|           |-- aaaa.patch
-|   |-- B_Y100/
-|       |-- aaaa/
-|           |-- aaaa.patch
+Example `patch_history.yaml`:
+```yaml
+Chip_Vendor:
+  train:
+    FlagScale+Megatron-LM:
+      - xxxxxxx
 ```
 
-3. Submit Patch: After the patch is successfully generated, the manufacturer can directly submit a pull request to the FlagScale main branch.
-
-### User Workflow
-
-#### Homogeneous Scenario
-
-Users select the desired `commit-id` (e.g., aaaa) from the FlagScale/hardware/A directory and use the provided tool to automatically generate code that can execute on the vendor's hardware in a specified directory `dir` (e.g., build). Example command:
-
+Users apply vendor adaptation using `unpatch`:
+```bash
+python tools/patch/unpatch.py --backend Megatron-LM FlagScale --task train --device-type Chip_Vendor
 ```
-cd FlagScale
-python tools/patch/unpatch.py --device-type A_X100 --commit-id aaaa --dir build
-```
+The unpatched FlagScale will be under `build/<Chip_Vendor>`.
 
-* `device-type`: Chip type.
-* `commit-id`: The commit id to unpatch.
-* `dir`: The directory path to place the FlagScale files after unpatching.
-* `key-path`: Optional, used to decrypt the patch, with the same path as encryption. When not entered, the patch will not be decrypted.
+(Insert screenshots here)
 
-The generated code structure is as follows. If `dir` is not provided, the tool defaults to placing the generated code in the FlagScale source directory.
-
-Example of the generated file structure:
-
-```
-FlagScale/
-|-- tools/
-|   |-- patch/
-|       |-- patch.py
-|       |-- unpatch.py
-|-- hardware
-|   |-- A_X100/
-|       |-- aaaa/
-|           |-- aaaa.patch or aaaa.patch.encrypted(If encrypted)
-|   |-- B_Y100/
-|       |-- aaaa/
-|           |-- aaaa.patch
-|-- build/
-|   |-- A_X100/
-|       |-- FlagScale/
+## Q&A
+**Q1: How to manage patches for multiple commits?**  
+FlagScale’s main branch only keeps one patch per backend. Vendors are expected to keep backward-compatible upgrades. By default, `unpatch` uses the latest commit in `patch_history.yaml`. If needing an older patch for non-backward-compatible changes, specify commit manually:
+```bash
+python tools/patch/unpatch.py --backend Megatron-LM FlagScale --task train --device-type Chip_Vendor --commit <flagscale_commit>
 ```
 
-#### Heterogeneous Scenario
-
-Users select the appropriate commit-id from `FlagScale/flagscale/patch/hetero.txt` based on the heterogeneous training chip configuration. For example, if using chips A and B for heterogeneous training, select `aaaa: device_type_A device_type_B` from hetero.txt. Then use the provided tool to automatically generate code that can execute on the vendor's hardware in a specified directory `dir` (e.g., build). Example command:
-
-```
-cd FlagScale
-python tools/patch/unpatch.py --device-type A_X100 B_Y100 --commit-id aaaa --dir build
-```
-
-The generated code structure is as follows.
-
-```
-FlagScale/
-|-- tools/
-|   |-- patch/
-|       |-- patch.py
-|       |-- unpatch.py
-|-- hardware
-|   |-- A_X100/
-|       |-- aaaa/
-|           |-- aaaa.patch
-|   |-- B_Y100/
-|       |-- aaaa/
-|           |-- aaaa.patch
-|-- build/
-|   |-- A_X100/
-|       |-- FlagScale/
-|   |-- B_Y100/
-|       |-- FlagScale/
-```
-
-## Q & A
-
-* Question: How to iterate adaptation?
-
-Vendors only need to select the desired `base-commit-id` from the FlagScale main branch for adaptation. The tool will create a new folder named after the commit-id under the vendor directory in hardware to store the new adaptation content. If the `base-commit-id` has been adapted before, the new content will overwrite the previous adaptation.
-
-* Question: What to do if the tool failed?
-
-Please first check if the operational procedures are followed correctly. If there are no issues with the process, please open an issue in the GitHub FlagScale repository or contact us directly.
-
-* Question: What if the required heterogeneous configuration is not found?
-
-Please open an issue in the GitHub FlagScale repository or contact us directly. We will actively update and encourage vendors to adapt.
-
-* Question: How to ensure the correctness of the generated patch?
-
-During the patch generation process, the tool automatically reverses the patch and compares it with the original adaptation. Adaptation is only confirmed as successful if there are no differences found.
+**Q2: What if the tools fail?**  
+First check if your steps follow the workflow. If still problematic, please open an issue in FlagScale GitHub repo or contact us directly.

@@ -2,179 +2,113 @@
 
 [英文](./README.md)
 
-## 背景
+## 旧版本
 
-- 厂商：简单快速适配FlagScale。
+如果想使用旧版本，即2025.05.06之前的patch，请checkout到 `8151afd3cc8ea7076b73844989b6b42c816ea945` 上，查看该commit下的使用方式。
 
-- 用户：方便使用厂商已经适配好的FlagScale。
+## 一、背景
 
-- 框架：提供规范和工具，帮助厂商更好适配和用户更好使用FlagScale。
+- **厂商**：在新后端管理机制（由 `subtree` 管理变更为 `submodule` 管理）下简单快速适配 FlagScale。  
+- **用户**：更方便地使用不同任务场景下厂商已经适配好的 FlagScale。  
+- **框架**：提供适配规范和工具，帮助厂商更好适配和用户更好使用 FlagScale。
 
-## 概述
+## 二、概述
 
-[FlagScale](https://github.com/FlagOpen/FlagScale.git) 将借鉴Linux的patch机制进行不同厂商适配代码的管理和应用，流程简单，安全可靠。
+FlagScale 在 **0.8.0** 开始启用新的后端管理方式，不同后端皆以 `submodule` 形式存在于 `FlagScale/third_party/<submodule>` 中。FlagScale 对不同后端做的性能优化、新特性开发等所有适配皆存放在 `FlagScale/backends/<submodule>` 中。  
 
-同时，FlagScale将提供工具用于
+因此对用户而言，使用和开发 FlagScale 的流程为：
 
-- 自动将厂商适配好的代码生成patch。
+1. **使用 FlagScale 的适配，即 `unpatch`**  
+   ```bash
+   python tools/patch/unpatch.py --backend submodules
+   ```  
+   `unpatch` 会自动强制 update `submodule` 至指定 `commit`，并且将 FlagScale 对应后端下的文件以软链或者拷贝形式覆盖 `third_party/<submodule>` 下的相同路径。
 
-- 帮助用户自动使用厂商适配的代码。
+2. **开发 FlagScale**  
+   在第 1 步基础上对 FlagScale 进行开发。如果是对 `submodule` 的相关修改，建议在 `third_party/<submodule>` 内直接修改，即以 `inplace` 方式进行开发。FlagScale 提供了相应的 `patch` 工具能够将 `third_party/<submodule>` 里 `inplace` 的修改同步回 `FlagScale/backends/<submodule>` 中。
 
-厂商需确保所适配代码的正确性，未来FlagScale也会在合入时通过自动化CI进行检测。
+3. **提交 PR 至 FlagScale**  
+   如果在 `third_party/<submodule>` 内 `inplace` 修改了后端内容，则需要先执行 `patch`，此后正常进行 git 相关操作即可。（FlagScale 已在 `.gitignore` 中添加了过滤 `third_party` 内容，无需担心本地 `submodule` 的 commit 变化影响到 FlagScale 的 `submodule commit`）  
+   ```bash
+   python tools/patch/patch.py --backend submodules
+   ```  
 
-## 操作流程
+对于厂商适配，FlagScale 依旧借鉴了 Linux 的 `patch` 文件机制进行不同厂商适配代码的管理和应用。FlagScale 在 `unpatch` 和 `patch` 接口上进行开发，提供：
 
-### 厂商适配流程
+- 自动将厂商适配好的代码生成 `patch` 文件。
+- 帮助用户自动使用厂商适配的 `patch` 文件。
+- 未来 FlagScale 也会在合入之前通过自动化 CI 进行检测。
 
-#### 同构场景
+## 三、厂商适配流程
 
-1. 适配代码：厂商A选择FlagScale main分支的某一个commit进行适配，所选择的commit作为`base-commit-id`（假设aaaa）。适配和验证完成后，将所有修改代码合入到本地main分支，形成新的`current-commit-id` (假设bbbb)。
+厂商适配流程与上述用户流程相似，仅第三步使用的 `patch` 工具增加了几个额外参数，最后提交 PR 的内容以 `patch` 文件形式进行提交。下面以一个具体示例进行说明：
 
-2. 进行patch: 厂商A使用FlagScale所提供的工具自动将`base-commit-id`到`urrent-commit-id`之间的适配代码，生成符合规范patch，该工具主要利用git format-patch命令。`device-type`需写明厂商名称和芯片型号，例如`A_X100`，示例代码如下：
+**示例：适配训练场景下 Megatron-LM 这一训练后端，对 FlagScale 和 Megatron-LM 皆有修改。**
 
-```
-cd FlagScale
-python tools/patch/patch.py --device-type A_X100 --base-commit-id aaaa --current-commit-id bbbb [--key-path <KEY_PATH>]
-```
+1. **使用 FlagScale 的适配，即 `unpatch`，以此为基础进行厂商的适配。**
+   ```bash
+   cd FlagScale
+   python tools/patch/unpatch.py --backend Megatron-LM
+   ```
 
-* `device-type`：芯片型号。
-* `base-commit-id`：厂商适配时的FlagScale commit id。
-* `current-commit-id`: 厂商适配时本地修改后的commit id。
-* `key-path`: 可选项，用于加密patch时，密钥的存储路径，不输入时，不对patch进行加密。
-注意：
-1. `key-path` 不要设为仓库内的路径。
-2. 请妥善保存您的密钥，切勿泄露以确保您的代码与数据安全。
+2. **在 `third_party/Megatron-LM` 里 `inplace` 修改，以及修改 FlagScale 里其他内容。**
 
-生成的文件结构如下所示，可以看出厂商A的适配代码会放到`FlagScale/hardware/A_X100`中以`base-commit-id`为名的文件夹中（即aaaa），其中patch文件存放实际的适配内容，`base-commit-id`即是patch文件名。如果没有提供`current-commit-id`，工具默认以当前分支的最新commit id作为`current-commit-id`。
-```
-FlagScale/
-├── hardware/
-│   └── A_X100/
-│       └── aaaa/
-│           └── aaaa.patch 或者 aaaa.patch.encrypted（如果加密）
-```
+3. **使用 `patch`，将厂商适配打包成 `patch` 文件。**  
+   `patch` 文件会按后端进行组织，对于厂商而言，FlagScale 也是后端。
 
-3. 提交patch：工具提示成功生成patch后，可以直接提交pull request到FlagScale main分支。commit-msg以`current-commit-id`的commit-msg为准。
-注意：提交patch之前，请您人工进行检查，避免将密钥或者未加密patch上传。
+   ```bash
+   cd FlagScale
+   python tools/patch/patch.py --backend Megatron-LM FlagScale --task train --device-type Chip_Vendor --commit <commit>>
+   ```
 
-#### 异构场景
+   **参数解释：**
 
-1. 适配代码：厂商B从`FlagScale/hardware`目录中选择所需异构芯片A的某个commit-id (假设aaaa)进行适配，所选择的commit作为`base-commit-id`。适配和验证完成后，将所有修改代码合入到本地main分支，形成新的`current-commit-id` (假设bbbb)。
+   - `backend`：后端。支持多后端输入，如果需要 `patch` 多个后端修改，可输入如 `Megatron-LM FlagScale`。目前仅支持 `{Megatron-LM, vllm, Megatron-Energon, FlagScale}`
+   - `task`：任务场景。支持多场景输入，如果该修改支持多个场景，可输入如 `train post_train`。目前仅支持 `{train, inference, post_train}`
+   - `device-type`：芯片型号。以 `厂商名_具体型号` 为命名，厂商名开头需要大写。
+   - `commit`：基于 FlagScale 某个 `commit` 进行的适配。
 
-2. 进行patch：厂商使用FlagScale所提供的工具自动将`base-commit-id`到`current-commit-id`之间的适配代码生成符合规范patch，示例代码如下：
+   执行该命令后，需要交互式输入以下四个信息，分别是：后端版本、适配的模型、`commit message`（将自动 `add patch` 文件，并以此 `message` 进行 `commit`）、联系方式（可选，适用于需要加密场景）  
 
-```
-cd FlagScale
-python tools/patch/patch.py --device-type A_X100 B_Y100 --base-commit-id aaaa --current-commit-id bbbb
-```
+   执行完后即可 `push` 到远程分支。  
 
-同时，工具会自动将异构信息填入`FlagScale/flagscale/tools/patch/hetero.txt`中，格式如下
+4. **提交到远程分支，提交 PR，通知 FlagScale 团队进行 review。**
 
-```
-aaaa: A_X100 B_Y100
-```
+   ```bash
+   git push --force origin HEAD:refs/heads/<your_remote_branch>
+   ```  
 
-生成的文件组织结构如下：
+## 四、用户使用流程
 
-```
-FlagScale/
-|-- tools/
-|   |-- patch/
-|       |-- patch.py
-|       |-- unpatch.py
-|       |-- hetero.txt
-|-- hardware/
-|   |-- A_X100/
-|       |-- aaaa/
-|           |-- aaaa.patch
-|   |-- B_Y100/
-|       |-- aaaa/
-|           |-- aaaa.patch
-```
+厂商 PR 合入后，FlagScale 会维护 `FlagScale/hardware/patch_history.yaml`，该 `yaml` 文件记录了所有厂商的 `patch` 信息。
 
-3. 提交patch：工具提示成功生成patch后，可以直接提交pull request到FlagScale main分支。
+**示例：patch_history.yaml**
 
-### 用户使用流程
-
-#### 同构场景
-
-用户从`FlagScale/hardware/A`目录选择所需`commit-id`（假设aaaa），然后使用FlagScale所提供的工具在指定目录（假设build）自动生成能在厂商硬件上执行的代码。示例代码如下：
-
-```
-cd FlagScale
-python tools/patch/unpatch.py --device-type A_X100 --commit-id aaaa --dir build [--key-path <KEY_PATH>]
+```yaml
+Chip_Vendor:
+  train:
+      FlagScale+Megatron-LM:
+        - xxxxxxx
 ```
 
-* `device-type`：芯片型号。
-* `commit-id`：要unpatch回去的commit id。
-* `dir`：放置unpatch后的FlagScale的目录地址。
-* `key-path`: 可选项，用于解密patch，路径与加密时相同，不输入时，不对patch进行解密。
+用户通过 `unpatch` 工具使用厂商的适配：
 
-生成代码结构如下所示，如果没有提供`dir`，工具默认将生成代码放在FlagScale源码目录中。
-
-```
-FlagScale/
-|-- tools/
-|   |-- patch/
-|       |-- patch.py
-|       |-- unpatch.py
-|-- hardware
-|   |-- A_X100/
-|       |-- aaaa/
-|           |-- aaaa.patch 或者 aaaa.patch.encrypted（如果加密）
-|   |-- B_Y100/
-|       |-- aaaa/
-|           |-- aaaa.patch
-|-- build/
-|   |-- A_X100/
-|       |-- FlagScale/
+```bash
+python tools/patch/unpatch.py --backend Megatron-LM FlagScale --task train --device-type Chip_Vendor
 ```
 
-#### 异构场景
+`unpatch` 出的 FlagScale 就在 `build/<Chip_Vendor>` 目录中。
 
-用户根据异构混训芯片配置，从`FlagScale/flagscale/patch/hetero.txt`中选择合适的`commit-id`，比如使用芯片A和芯片B进行异构混训，可以从hetero.txt中选择`aaaa: device_type_A device_type_B`。然后使用FlagScale所提供的工具在指定目录（假设build）自动将生成能在厂商硬件上执行的代码。示例代码如下：
+## 五、Q&A
 
-```
-cd FlagScale
-python tools/patch/unpatch.py --device-type A_X100 B_Y100 --commit-id aaaa --dir build
-```
+**问题 1 ：多个不同 commit 的 patch 如何组织？**
 
-生成代码结构如下所示
+FlagScale 的 `main` 分支上仅保留每个后端的一个 `patch`。对厂商而言，每个后端的升级也应该是兼容性升级。`unpatch` 默认寻找 `patch_history.yaml` 中最新合入的 `commit`，使用此 `commit` 下的 `patch` 文件进行 `unpatch`。如果非兼容性升级，又想使用旧的 `patch`，需要让用户 `unpatch` 时指定 `commit`。
 
-```
-FlagScale/
-|-- tools/
-|   |-- patch/
-|       |-- patch.py
-|       |-- unpatch.py
-|-- hardware
-|   |-- A_X100/
-|       |-- aaaa/
-|           |-- aaaa.patch
-|   |-- B_Y100/
-|       |-- aaaa/
-|           |-- aaaa.patch
-|-- build/
-|   |-- A_X100/
-|       |-- FlagScale/
-|   |-- B_Y100/
-|       |-- FlagScale/
+```bash
+python tools/patch/unpatch.py --backend Megatron-LM FlagScale --task train --device-type Chip_Vendor --commit <flagscale_commit>
 ```
 
-## Q & A
+**问题 2 ：使用工具失败怎么办？**
 
-* 问题1 ：如何迭代适配？
-
-厂商只需从FlagScale main分支选择所需`base-commit-id`进行适配，工具在`hardware`下的厂商目录生成以commit-id为名的新文件夹存放新的适配内容。如果`base-commit-id`已经适配过，将会覆盖上次适配内容。
-
-* 问题2：使用工具失败怎么办？
-
-请先检查操作流程是否规范。如果没有问题，请在Github FlagScale仓库下提issue或者直接联系我们。
-
-* 问题3：没有找到异构所需配置？
-
-请在Github FlagScale仓库下提issue或者直接联系我们，我们会积极更新并推动厂商适配。
-
-* 问题4：如何确保生产patch的正确性？
-
-工具在生成patch过程中，内部会基于patch自动reverse并与原适配进行对比，没有diff后才提示适配成功。
+请先检查操作流程是否规范。如果没有问题，请在 GitHub FlagScale 仓库下提 `issue` 或者直接联系我们。
