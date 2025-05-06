@@ -59,7 +59,7 @@ pip install -r ../requirements/requirements-common.txt
 # Megatron-LM requires TE >= 2.1.0.
 git clone --recursive https://github.com/NVIDIA/TransformerEngine.git
 cd TransformerEngine
-git checkout 5bb771e
+git checkout 5bee81e
 pip install .
 cd ..
 rm -r ./TransformerEngine
