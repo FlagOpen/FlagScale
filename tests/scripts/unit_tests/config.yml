@@ -88,6 +88,7 @@ megatron:
 
 flagscale:
   set_environment:
+    - python tools/patch/unpatch.py --backend Megatron-LM
     - source /root/miniconda3/etc/profile.d/conda.sh
     - conda activate flagscale-train
     - export PYTHONPATH=./megatron:$PYTHONPATH
