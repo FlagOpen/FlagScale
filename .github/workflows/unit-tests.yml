@@ -51,5 +51,5 @@ jobs:
 
       - name: Run Unit Test
         run: | 
-          git config --global --add safe.directory /__w/FlagScale/FlagScale
+          git config --global --add safe.directory /__w/FlagScale/FlagScale; 
           tests/scripts/unit_tests/test_subset.sh --backend ${{ inputs.backend }} --subset ${{ inputs.subset }} --id ${{ github.sha }}
