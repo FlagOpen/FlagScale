@@ -1,6 +1,7 @@
 # Use default configuration if not shown
 megatron:
   set_environment:
+    - python tools/patch/unpatch.py --backend Megatron-LM
     - source /root/miniconda3/etc/profile.d/conda.sh
     - conda activate flagscale-train
     - cd third_party/Megatron-LM

@@ -1,6 +1,6 @@
 # Install outside of the conda environment
 aiohttp
-GitPython
+gitpython
 hydra-core
 numpy
 pandas
