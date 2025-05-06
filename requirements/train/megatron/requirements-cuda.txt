@@ -1,9 +1,16 @@
 git+https://github.com/Dao-AILab/causal-conv1d.git@v1.2.2.post1
 git+https://github.com/fanshiqing/grouped_gemm@v1.1.2
+av
+boto3
 braceexpand
 mock
+multi-storage-client
 nltk==3.8.1
+nvidia-modelopt==0.27.0
+pandas
+ray
 s3fs
+transformers >=4.51.0
 webdataset
 
 -r ../../../megatron/requirements/pytorch_24.10/requirements.txt

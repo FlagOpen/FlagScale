@@ -1,11 +1,13 @@
 # Install outside of the conda environment
 aiohttp
+GitPython
 hydra-core
 numpy
 pandas
 psutil
 pytest
 PyYaml
+ray
 requests
 tqdm
 
