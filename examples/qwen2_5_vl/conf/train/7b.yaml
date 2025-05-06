@@ -58,7 +58,7 @@ model:
   micro_batch_size: 1
   global_batch_size: 320
   allow_missing_vision_projection_checkpoint: False
-  apply_layernorm_1p: True
+  apply_layernorm_1p: False
   group_query_attention: True
   no_masked_softmax_fusion: True
   untie_embeddings_and_output_weights: True

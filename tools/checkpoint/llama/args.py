@@ -45,6 +45,7 @@ def load_args_hf2mg(args):
     args.consumed_train_samples = 0
     args.consumed_valid_samples = 0
     args.norm_has_bias = False
+    args.tokenizer_type = "Llama3TokenizerFS"
 
 
 def save_args_mg2hf(args):
