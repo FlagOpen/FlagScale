@@ -182,7 +182,7 @@ def prompt_info(main_path, backends, device_type, tasks):
     while not models:
         logger.info("At least one FlagScale-compatible model must be provided.")
         model_input = input(
-            "4. Please enter FlagScale-compatible models (separated with commas): "
+            "2. Please enter FlagScale-compatible models (separated with commas): "
         ).strip()
         models = [m.strip() for m in model_input.split(",") if m.strip()]
 
@@ -190,10 +190,10 @@ def prompt_info(main_path, backends, device_type, tasks):
     commit_msg = input("3. Please enter commit message: ").strip()
     while not commit_msg:
         logger.info("Commit message cannot be empty.")
-        commit_msg = input("4. Please enter commit message: ").strip()
+        commit_msg = input("3. Please enter commit message: ").strip()
 
     # 4. Contact (optional)
-    contact_prompt = "6. Please enter email (optional): "
+    contact_prompt = "4. Please enter email (optional): "
     contact = input(contact_prompt).strip()
 
     return {
