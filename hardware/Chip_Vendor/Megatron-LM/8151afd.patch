@@ -1,0 +1,25 @@
+diff --git a/flagscale/backends/Megatron-LM/deleted_files.txt b/flagscale/backends/Megatron-LM/deleted_files.txt
+new file mode 100644
+index 00000000..c8181007
+--- /dev/null
++++ b/flagscale/backends/Megatron-LM/deleted_files.txt
+@@ -0,0 +1 @@
++requirements_ci.txt
+diff --git a/flagscale/backends/Megatron-LM/megatron/core/config.py b/flagscale/backends/Megatron-LM/megatron/core/config.py
+new file mode 100644
+index 00000000..b750f700
+--- /dev/null
++++ b/flagscale/backends/Megatron-LM/megatron/core/config.py
+@@ -0,0 +1,5 @@
++# Test
++
++# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
++
++ENABLE_EXPERIMENTAL = False
+diff --git a/flagscale/backends/Megatron-LM/megatron/test.py b/flagscale/backends/Megatron-LM/megatron/test.py
+new file mode 100644
+index 00000000..8ae05696
+--- /dev/null
++++ b/flagscale/backends/Megatron-LM/megatron/test.py
+@@ -0,0 +1 @@
++# Test
