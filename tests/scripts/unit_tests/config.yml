@@ -91,7 +91,7 @@ flagscale:
     - python tools/patch/unpatch.py --backend Megatron-LM
     - source /root/miniconda3/etc/profile.d/conda.sh
     - conda activate flagscale-train
-    - export PYTHONPATH=./megatron:$PYTHONPATH
+    - export PYTHONPATH=./third_party/Megatron-LM:$PYTHONPATH
     - export NVTE_FLASH_ATTN=0
     - export NVTE_FUSED_ATTN=0
     - ulimit -n 65535
