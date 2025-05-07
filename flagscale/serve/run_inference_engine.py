@@ -39,7 +39,7 @@ def vllm_serve(args):
 
 def llama_cpp_serve(args):
     llama_cpp_args = args.get("engine_args", {})
-    command = ["llama-server"]
+    command = ["./third_party/llama.cpp/build/bin/llama-server"]
     if llama_cpp_args.get("model", None):
         command.extend(["--model", llama_cpp_args["model"]])
         # other_args = flatten_dict_to_args(llama_cpp_args, ["model"])
