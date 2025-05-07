@@ -6,6 +6,8 @@ from functools import partial
 from typing import List, Optional, Tuple, Union
 
 import torch
+import numpy as np
+import random
 
 from megatron.core import mpu
 from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
@@ -33,6 +35,15 @@ from megatron.training.utils import (
 )
 from megatron.training.yaml_arguments import core_transformer_config_from_yaml
 
+
+from megatron.core.transformer.transformer_block import (
+    get_num_layers_to_build,
+)
+from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.core.transformer.transformer_layer import (
+    get_transformer_layer_offset,
+)
+
 import megatron.legacy.model  # isort: skip
 # NOTE: Loading `megatron.legacy.model` earlier fails due to circular import
 
@@ -52,6 +63,22 @@ from flagscale.train.global_vars import get_parallel_context
 
 
 stimer = StragglerDetector()
+
+def custom_weight_init(module):
+    if hasattr(module, "weight") and module.weight is not None:
+        torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    if hasattr(module, "bias") and module.bias is not None:
+        torch.nn.init.constant_(module.bias, 0.0)
+
+def set_seed_manually(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 
 def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megatron.legacy.model.GPTModel]:
     """Builds the model.
@@ -135,6 +162,15 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
         if args.mtp_num_layers is not None:
             mtp_block_spec = get_gpt_mtp_block_spec(config, transformer_layer_spec, use_transformer_engine=use_te)
 
+        # hack for loss alignment
+        offset = get_transformer_layer_offset(config)
+        num_layers_to_build = get_num_layers_to_build(config)
+        transformer_layer_ids = []
+        for i in range(num_layers_to_build):
+            transformer_layer_ids.append(offset+i)
+        print(f"in this rank, transformer layer ids is {transformer_layer_ids}")
+        # hack for loss alignment
+
         model = GPTModel(
             config=config,
             transformer_layer_spec=transformer_layer_spec,
@@ -151,7 +187,38 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
             rope_scaling=args.use_rope_scaling,
             mtp_block_spec=mtp_block_spec,
         )
+        print(f"model is {model}")
 
+
+        # hack for loss alignment
+
+        if hasattr(model, "embedding") and model.embedding is not None:
+            cur_seed = 42 - 1
+            set_seed_manually(cur_seed)
+            cur_model = model.embedding
+            cur_model.apply(custom_weight_init)
+
+        for i in range(len(transformer_layer_ids)):
+            print(f"set transformer layer {transformer_layer_ids[i]} random seed")
+            cur_seed = 42 + transformer_layer_ids[i]
+            set_seed_manually(cur_seed)
+            cur_model = model.decoder.layers[i]
+            cur_model.apply(custom_weight_init)
+
+            if hasattr(model.decoder, "final_layernorm") and model.decoder.final_layernorm is not None:
+                cur_seed = 42 + 10
+                set_seed_manually(cur_seed)
+                cur_model = model.decoder.final_layernorm
+                cur_model.apply(custom_weight_init)
+        
+        if hasattr(model, "output_layer") and model.output_layer is not None:
+            cur_seed = 42 + 11
+            set_seed_manually(cur_seed)
+            cur_model = model.output_layer
+            cur_model.apply(custom_weight_init)
+
+        # hack for loss alignment
+        
     return model
 
 
@@ -246,6 +313,18 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor, model: Optio
         {'lm loss': (reporting_loss[0], reporting_loss[1])},
     )
 
+import hashlib
+def tensor_md5(tensor):
+    if tensor is not None:
+        # 将 tensor 转换为 CPU 上的 byte tensor
+        byte_tensor = tensor.cpu().byte()
+        # 将 byte tensor 转换为 bytes 对象
+        bytes_data = byte_tensor.numpy().tobytes()
+        # 计算 MD5 值
+        md5_hash = hashlib.md5(bytes_data).hexdigest()
+        return md5_hash
+    else:
+        return -1
 
 def forward_step(data_iterator, model: GPTModel):
     """Forward training step.
@@ -270,6 +349,7 @@ def forward_step(data_iterator, model: GPTModel):
             output_tensor = model(tokens, position_ids, attention_mask,
                                 labels=labels)
         else:
+            # print(f"in train_gpt.py, tokens md5 {tensor_md5(tokens)}, attention_mask md5 is {tensor_md5(attention_mask)}, labels md5 {tensor_md5(labels)}, loss_mask md5 {tensor_md5(loss_mask)}")
             output_tensor = model(tokens, position_ids, attention_mask,
                                 labels=labels, loss_mask=loss_mask)
 

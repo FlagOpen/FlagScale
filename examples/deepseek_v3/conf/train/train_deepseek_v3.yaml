@@ -2,7 +2,8 @@ system:
   no_shared_fs: ${experiment.runner.no_shared_fs}
   num_workers: 16
   tensor_model_parallel_size: 1
-  pipeline_model_parallel_size: 2
+  pipeline_model_parallel_size: 4
+  # num_layers_per_virtual_pipeline_stage: 1
   expert_model_parallel_size: 1
   context_parallel_size: 1
   disable_bias_linear: true
@@ -83,7 +84,7 @@ model:
   moe_router_enable_expert_bias: true
   moe_router_bias_update_rate: 0.001
   moe_aux_loss_coeff: 0.02
-  moe_layer_freq: "[0]+[1]*7"
+  moe_layer_freq: "[0]*2+[1]*6"
   # node limited routing
   moe_router_num_groups: 1
   moe_router_group_topk: 1
@@ -102,7 +103,7 @@ model:
   micro_batch_size: 1
   # global_batch_size: 2048
   # global_batch_size: 20
-  global_batch_size: 100
+  global_batch_size: 40
   eval_iters: 0
   # train_samples: 244141056 #1T #29297664 #120B tokens
   train_samples: 3200 
