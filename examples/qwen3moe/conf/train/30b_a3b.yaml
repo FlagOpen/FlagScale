@@ -62,10 +62,7 @@ model:
   moe_ffn_hidden_size: 768
   moe_grouped_gemm: true
   num_experts: 128
-  moe_router_load_balancing_type: "seq_aux_loss"
-  moe_router_score_function: sigmoid
-  moe_router_enable_expert_bias: true
-  moe_router_bias_update_rate: 0.001
+  moe_router_load_balancing_type: "aux_loss"
   moe_aux_loss_coeff: 0.001
   moe_layer_freq: "[1]*48"
   moe_router_topk: 8
