@@ -45,6 +45,7 @@ echo "------------------------"
 rm -rf ./build
 rm -rf ${model_path}/ggml_model_f16.gguf
 # BUILD
-./build.sh ${llamma_cpp_backend} 
+./flagscale_build.sh ${llamma_cpp_backend} 
+export PATH=PATH:$(pwd)/build/bin
 # CONVERT
-./convert.sh ${model_path}
+./flagscale_convert.sh ${model_path}
