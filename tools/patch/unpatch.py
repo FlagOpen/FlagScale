@@ -322,7 +322,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--backend",
         nargs="+",
-        choices=["Megatron-LM", "vllm", "Megatron-Energon", "FlagScale"],
+        choices=["Megatron-LM", "vllm", "Megatron-Energon", "FlagScale", "llama_cpp"],
         default=["Megatron-LM"],
         help="Backend to unpatch (default: Megatron-LM)",
     )
