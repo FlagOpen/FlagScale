@@ -37,6 +37,30 @@ def vllm_serve(args):
     return process.returncode
 
 
+def llama_cpp_serve(args):
+    llama_cpp_args = args.get("engine_args", {})
+    command = ["llama-server"]
+    if llama_cpp_args.get("model", None):
+        command.extend(["--model", llama_cpp_args["model"]])
+        # other_args = flatten_dict_to_args(llama_cpp_args, ["model"])
+        # command.extend(other_args)
+    else:
+        raise ValueError("Either model must be specified in llama_cpp_model.")
+
+    # Start the subprocess
+    logger.info(f"[Serve]: Starting llama-cpp serve with command: {' '.join(command)}")
+
+    process = subprocess.Popen(command, stdout=sys.stdout, stderr=sys.stderr)
+    pid = os.getpid()
+    logger.info(f"[Serve]: Current Llama PID: {pid} ")
+
+    stdout, stderr = process.communicate()
+    logger.info(f"[Serve]: Standard Output: {stdout}")
+    logger.info(f"[Serve]: Standard Error: {stderr}")
+
+    return process.returncode
+
+
 def main():
     serve.load_args()
     serve_config = serve.task_config.get("serve", [])
@@ -45,7 +69,7 @@ def main():
 
     model_config = None
     for item in serve_config:
-        if item.get("serve_id", None) == "vllm_model":
+        if item.get("serve_id", None) in ["vllm_model", "llama_cpp_model"]:
             model_config = item
             break
 
@@ -56,6 +80,8 @@ def main():
 
     if engine == "vllm":
         return_code = vllm_serve(model_config)
+    elif engine == "llama_cpp":
+        return_code = llama_cpp_serve(model_config)
     else:
         raise ValueError(
             f"Unsupported inference engine: {engine}, current config {serve.task_config}"
