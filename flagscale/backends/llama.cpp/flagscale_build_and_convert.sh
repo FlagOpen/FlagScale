@@ -1,16 +1,16 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 print_help() {
-    echo "Example: $0 --llamma_cpp_backend cpu --model_path ./llama-7b-hf"
+    echo "Example: $0 --llamma_cpp_backend cpu --model_path /tmp/models/Qwen3-0.6B"
     echo "Args:"
     echo "  --llamma_cpp_backend   Assign backend (cpu, gpu, metal), cpu is the same with metal when build, default is cpu"
-    echo "  --model_path           Path to the model, HuggingFace or gguf format, default is ./model"
+    echo "  --model_path           Path to the model, HuggingFace or gguf format, default is /tmp/models/Qwen3-0.6B"
 }
 
 llamma_cpp_backend="cpu"
-model_path="./model"
+model_path="/tmp/models/Qwen3-0.6B"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -46,6 +46,5 @@ rm -rf ./build
 rm -rf ${model_path}/ggml_model_f16.gguf
 # BUILD
 ./flagscale_build.sh ${llamma_cpp_backend} 
-export PATH=PATH:$(pwd)/build/bin
 # CONVERT
 ./flagscale_convert.sh ${model_path}

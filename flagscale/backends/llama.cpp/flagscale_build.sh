@@ -15,7 +15,7 @@ fi
 case "$1" in
         cpu|metal|cpu_and_metal)
             cmake -B build
-            cmake --build build --config Release
+            cmake --build build --config Release -j8
             ;;
         blas|openblas)
             cmake -B build -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS
