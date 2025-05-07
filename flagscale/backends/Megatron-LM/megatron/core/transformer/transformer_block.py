@@ -50,11 +50,12 @@ except ImportError:
         LayerNormImpl = WrappedTorchNorm
 
 
-def get_num_layers_to_build(config: TransformerConfig) -> int:
+def get_num_layers_to_build(config: TransformerConfig, vp_stage: Optional[int] = None) -> int:
     """
     Determine the number of transformer layers to build for the current pipeline stage.
     Args:
         config (TransformerConfig): Configuration object containing transformer model parameters.
+        vp_stage (Optional[int]): Virtual pipeline stage number.
 
     Returns:
         int: The number of layers to be built for the current pipeline stage.
@@ -140,9 +141,9 @@ def get_num_layers_to_build(config: TransformerConfig) -> int:
             num_layers_per_pipeline_rank % vp_size == 0
         ), f"num_layers_per_pipeline_rank {num_layers_per_pipeline_rank} \
             should be divisible by vp_size {vp_size}"
-        num_layers_per_virtual_rank = num_layers_per_pipeline_rank // vp_size
+        num_layers_per_virtual_stage = num_layers_per_pipeline_rank // vp_size
 
-        num_layers_to_build = num_layers_per_virtual_rank
+        num_layers_to_build = num_layers_per_virtual_stage
     elif args.schedules_method == 'dualpipev':
         num_layers_per_pipeline_rank = num_layers_per_pipeline_rank // 2
         num_layers_to_build = num_layers_per_pipeline_rank
@@ -159,11 +160,17 @@ def get_num_layers_to_build(config: TransformerConfig) -> int:
     # The embedding (or loss) layer cannot function as a standalone transformer layer
     # Reduce the number of layers to construct by 1 on the first (or last) stage if the
     # embedding (or loss) layer is included in the pipeline parallelism partition and placement.
-    if parallel_state.is_pipeline_first_stage() and config.account_for_embedding_in_pipeline_split:
+    if (
+        parallel_state.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage)
+        and config.account_for_embedding_in_pipeline_split
+    ):
         num_layers_to_build -= 1
         assert num_layers_to_build >= 0, "Not enough layers in the first virtual pipeline stage"
 
-    if parallel_state.is_pipeline_last_stage() and config.account_for_loss_in_pipeline_split:
+    if (
+        parallel_state.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage)
+        and config.account_for_loss_in_pipeline_split
+    ):
         num_layers_to_build -= 1
         assert num_layers_to_build >= 0, "Not enough layers in the last virtual pipeline stage"
 
@@ -191,7 +198,9 @@ class TransformerBlockSubmodules:
 
 
 def _get_block_submodules(
-    config: TransformerConfig, spec: Union[TransformerBlockSubmodules, ModuleSpec]
+    config: TransformerConfig,
+    spec: Union[TransformerBlockSubmodules, ModuleSpec],
+    vp_stage: Optional[int] = None,
 ) -> TransformerBlockSubmodules:
     """
     Retrieve or construct TransformerBlockSubmodules based on the provided specification.
@@ -201,6 +210,7 @@ def _get_block_submodules(
         spec (Union[TransformerBlockSubmodules, ModuleSpec]): Specification for the
             transformer block submodules. Can be either a TransformerBlockSubmodules
             instance or a ModuleSpec.
+        vp_stage (Optional[int]): Virtual pipeline stage number.
 
     Returns:
         TransformerBlockSubmodules: The submodules for the transformer block.
@@ -217,7 +227,7 @@ def _get_block_submodules(
         if issubclass(spec.module, TransformerBlock):
             return spec.submodules
         elif issubclass(spec.module, BaseTransformerLayer):
-            num_layers = get_num_layers_to_build(config)
+            num_layers = get_num_layers_to_build(config, vp_stage)
             return TransformerBlockSubmodules(
                 layer_specs=[spec] * num_layers, layer_norm=LayerNormImpl
             )
@@ -238,13 +248,15 @@ class TransformerBlock(MegatronModule):
         pre_process: bool = True,
         post_process: bool = True,
         model_comm_pgs: ModelCommProcessGroups = None,
+        vp_stage: Optional[int] = None,
     ):
         super().__init__(config=config)
 
-        self.submodules = _get_block_submodules(config, spec)
+        self.submodules = _get_block_submodules(config, spec, vp_stage)
         self.post_layer_norm = post_layer_norm
         self.pre_process = pre_process
         self.post_process = post_process
+        self.vp_stage = vp_stage
 
         # required for pipeline parallel schedules
         self.input_tensor = None
@@ -291,7 +303,7 @@ class TransformerBlock(MegatronModule):
         #     self.norm_factor *= coeff
         def build_layer(layer_spec, layer_number):
             global_layer_number = layer_number + get_transformer_layer_offset(
-                self.config
+                self.config, self.vp_stage
             )  # 1-based index
             if self.config.heterogeneous_block_specs:
                 layer_config = self.config.get_config_for_layer(global_layer_number)
@@ -305,6 +317,7 @@ class TransformerBlock(MegatronModule):
                     config=layer_config,
                     layer_number=layer_number,
                     model_comm_pgs=self.model_comm_pgs,
+                    vp_stage=self.vp_stage,
                 )
             return module
 
@@ -341,6 +354,7 @@ class TransformerBlock(MegatronModule):
         rotary_pos_emb: Tensor,
         attention_bias: Tensor,
         packed_seq_params: PackedSeqParams,
+        use_inner_fp8_context: bool,
     ):
         """Forward method with activation checkpointing."""
 
@@ -350,16 +364,22 @@ class TransformerBlock(MegatronModule):
             ):
                 for index in range(start, end):
                     layer = self._get_layer(index)
-                    hidden_states, context = layer(
-                        hidden_states=hidden_states,
-                        attention_mask=attention_mask,
-                        context=context,
-                        context_mask=context_mask,
-                        rotary_pos_emb=rotary_pos_emb,
-                        attention_bias=attention_bias,
-                        inference_context=None,
-                        packed_seq_params=packed_seq_params,
+                    inner_fp8_context = (
+                        get_fp8_context(self.config, layer.layer_number - 1)
+                        if use_inner_fp8_context
+                        else nullcontext()
                     )
+                    with inner_fp8_context:
+                        hidden_states, context = layer(
+                            hidden_states=hidden_states,
+                            attention_mask=attention_mask,
+                            context=context,
+                            context_mask=context_mask,
+                            rotary_pos_emb=rotary_pos_emb,
+                            attention_bias=attention_bias,
+                            inference_context=None,
+                            packed_seq_params=packed_seq_params,
+                        )
                 return hidden_states, context
 
             return custom_forward
@@ -610,6 +630,7 @@ class TransformerBlock(MegatronModule):
                     rotary_pos_emb=rotary_pos_emb,
                     attention_bias=attention_bias,
                     packed_seq_params=packed_seq_params,
+                    use_inner_fp8_context=use_inner_fp8_context,
                 )
             else:
                 for l_no, layer in enumerate(self.layers):
@@ -696,7 +717,7 @@ class TransformerBlock(MegatronModule):
         layer_prefix = f'{prefix}layers.'
         num_layers = self.config.num_layers
         for layer in self.layers:
-            offset = get_transformer_layer_offset(self.config)
+            offset = get_transformer_layer_offset(self.config, self.vp_stage)
 
             global_layer_offset = layer.layer_number - 1  # self.layer_number starts at 1
             state_dict_prefix = f'{layer_prefix}{global_layer_offset - offset}.'  # module list index in TransformerBlock # pylint: disable=line-too-long

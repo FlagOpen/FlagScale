@@ -1,5 +1,6 @@
 # Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
 
+import logging
 import warnings
 from abc import ABC
 from dataclasses import dataclass, field
@@ -16,13 +17,21 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.process_groups_config import ModelCommProcessGroups
 from megatron.core.transformer.cuda_graphs import CudaGraphManager
 from megatron.core.transformer.identity_op import IdentityFuncOp, IdentityOp
+from megatron.core.transformer.mlp import MLP
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec, build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.utils import deprecate_inference_params, is_te_min_version, make_viewless_tensor
+from megatron.core.utils import (
+    deprecate_inference_params,
+    is_te_min_version,
+    log_single_rank,
+    make_viewless_tensor,
+)
+
+logger = logging.getLogger(__name__)
 
 
-def get_transformer_layer_offset(config: TransformerConfig):
+def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[int] = None):
     """Get the index offset of current pipeline stage, given the level of pipelining."""
     pipeline_rank = parallel_state.get_pipeline_model_parallel_rank()
     if not parallel_state.is_inside_encoder():
@@ -71,9 +80,10 @@ def get_transformer_layer_offset(config: TransformerConfig):
                 - num_layers_in_last_pipeline_stage
             )
 
-            if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
-                vp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
-                vp_size = parallel_state.get_virtual_pipeline_model_parallel_world_size()
+            if (vp_size := config.virtual_pipeline_model_parallel_size) is not None:
+                assert (
+                    vp_stage is not None
+                ), "vp_stage must be provided if virtual pipeline model parallel size is set"
 
                 # Calculate number of layers in each virtual model chunk
                 # If the num_layers_in_first_pipeline_stage and
@@ -104,10 +114,10 @@ def get_transformer_layer_offset(config: TransformerConfig):
 
                 # Calculate the layer offset with interleaved uneven pipeline parallelism
                 if pipeline_rank == 0:
-                    offset = vp_rank * total_virtual_chunks
+                    offset = vp_stage * total_virtual_chunks
                 else:
                     offset = (
-                        vp_rank * total_virtual_chunks
+                        vp_stage * total_virtual_chunks
                         + num_layers_per_virtual_model_chunk_in_first_pipeline_stage
                         + (pipeline_rank - 1)
                         * (
@@ -146,20 +156,23 @@ def get_transformer_layer_offset(config: TransformerConfig):
 
             num_layers_per_pipeline_rank = num_layers // config.pipeline_model_parallel_size
 
-            if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
-                vp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
-                vp_size = parallel_state.get_virtual_pipeline_model_parallel_world_size()
+            if (vp_size := config.virtual_pipeline_model_parallel_size) is not None:
+                assert (
+                    vp_stage is not None
+                ), "vp_stage must be provided if virtual pipeline model parallel size is set"
 
                 num_layers_per_virtual_rank = num_layers_per_pipeline_rank // vp_size
                 total_virtual_chunks = num_layers // vp_size
-                offset = vp_rank * total_virtual_chunks + (
+                offset = vp_stage * total_virtual_chunks + (
                     pipeline_rank * num_layers_per_virtual_rank
                 )
 
                 # Reduce the offset of embedding layer from the total layer number
                 if (
                     config.account_for_embedding_in_pipeline_split
-                    and not parallel_state.is_pipeline_first_stage()
+                    and not parallel_state.is_pipeline_first_stage(
+                        ignore_virtual=False, vp_stage=vp_stage
+                    )
                 ):
                     offset -= 1
             else:
@@ -171,7 +184,9 @@ def get_transformer_layer_offset(config: TransformerConfig):
                     # Reduce the offset of embedding layer from the total layer number
                     if (
                         config.account_for_embedding_in_pipeline_split
-                        and not parallel_state.is_pipeline_first_stage()
+                        and not parallel_state.is_pipeline_first_stage(
+                            ignore_virtual=False, vp_stage=vp_stage
+                        )
                     ):
                         offset -= 1
                 else:
@@ -258,7 +273,8 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
         submodules: TransformerLayerSubmodules,
         layer_number: int = 1,
         hidden_dropout: Optional[float] = None,
-        model_comm_pgs: ModelCommProcessGroups = None,
+        model_comm_pgs: Optional[ModelCommProcessGroups] = None,
+        vp_stage: Optional[int] = None,
     ):
         super().__init__(config=config)
 
@@ -293,7 +309,7 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
             model_comm_pgs = ModelCommProcessGroups.use_mpu_process_groups()
 
         self.submodules_config = submodules
-        self.layer_number = layer_number + get_transformer_layer_offset(self.config)
+        self.layer_number = layer_number + get_transformer_layer_offset(self.config, vp_stage)
         self.hidden_dropout = config.hidden_dropout if hidden_dropout is None else hidden_dropout
 
         # [Module 1: Input Layernorm] Optional Layernorm on the input data
@@ -318,7 +334,7 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
         self.self_attention = build_module(
             submodules.self_attention,
             config=self.config,
-            layer_number=layer_number,
+            layer_number=self.layer_number,
             **attention_optional_kwargs,
         )
 
@@ -337,7 +353,7 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
         self.cross_attention = build_module(
             submodules.cross_attention,
             config=self.config,
-            layer_number=layer_number,
+            layer_number=self.layer_number,
             **attention_optional_kwargs,
         )
 
@@ -352,7 +368,30 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
             eps=self.config.layernorm_epsilon,
         )
         # [Module 8: MLP block]
-        self.mlp = build_module(submodules.mlp, config=self.config)
+        additional_mlp_kwargs = {}
+        # import here to avoid circular import
+        from megatron.core.transformer.moe.experts import GroupedMLP, SequentialMLP, TEGroupedMLP
+        from megatron.core.transformer.moe.moe_layer import MoELayer
+
+        # MLP expects tp_group but MoELayer expects model_comm_pgs to be passed in.
+        # We can change MLP to accept model_comm_pgs but it makes the logic implicit
+        # The conditional below is to make the logic explicit
+        # if submodules.mlp is not a ModuleSpec,we dont have to handle passing additional kwargs
+        if isinstance(submodules.mlp, ModuleSpec):
+            if submodules.mlp.module in (MoELayer, GroupedMLP, TEGroupedMLP, SequentialMLP):
+                additional_mlp_kwargs["model_comm_pgs"] = model_comm_pgs
+            elif submodules.mlp.module == MLP:
+                assert hasattr(
+                    model_comm_pgs, 'tp'
+                ), 'TP process group is required for MLP in TransformerLayer'
+                additional_mlp_kwargs["tp_group"] = model_comm_pgs.tp
+            else:
+                log_single_rank(
+                    logger,
+                    logging.WARNING,
+                    f"Unknown MLP type: {type(submodules.mlp)}. Using default kwargs.",
+                )
+        self.mlp = build_module(submodules.mlp, config=self.config, **additional_mlp_kwargs)
         if hasattr(self.mlp, 'set_layer_number'):
             self.mlp.set_layer_number(self.layer_number)
 
@@ -369,7 +408,6 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
                 if not isinstance(self.pre_mlp_layernorm, IdentityOp):
                     self.recompute_pre_mlp_layernorm = True
             if "mlp" in self.config.recompute_modules:
-                from megatron.core.transformer.moe.moe_layer import MoELayer
 
                 if not isinstance(self.mlp, MoELayer):
                     self.recompute_mlp = True
@@ -549,9 +587,21 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
         )
 
         if self.recompute_mlp:
-            mlp_output_with_bias = tensor_parallel.checkpoint(
-                self.mlp, False, pre_mlp_layernorm_output
-            )
+            if self.config.fp8:
+                # import here to avoid circular import
+                from megatron.core.extensions.transformer_engine import te_checkpoint
+
+                mlp_output_with_bias = te_checkpoint(
+                    self.mlp,
+                    False,
+                    tensor_parallel.random.get_cuda_rng_tracker,
+                    parallel_state.get_tensor_model_parallel_group(),
+                    pre_mlp_layernorm_output,
+                )
+            else:
+                mlp_output_with_bias = tensor_parallel.checkpoint(
+                    self.mlp, False, pre_mlp_layernorm_output
+                )
         elif should_chunk_mlp_for_prefill:
             # Chunk input along sequence dimension
             num_chunks = min(self.config.mlp_chunks_for_prefill, pre_mlp_layernorm_output.shape[0])
