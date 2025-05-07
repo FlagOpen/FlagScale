@@ -185,7 +185,7 @@ def _p2p_ops(
 
     if get_pipeline_model_parallel_rank() % 2 == 0:
         if tensor_send_next is not None:
-            print(f"DEBUG: Sending to next rank {next_pipeline_rank}")
+            # print(f"DEBUG: Sending to next rank {next_pipeline_rank}")
             send_next_req = torch.distributed.isend(
                 tensor=tensor_send_next, dst=next_pipeline_rank, group=even_send_odd_recv_group
             )
@@ -193,7 +193,7 @@ def _p2p_ops(
             # print("DEBUG: Issued send_next request")
 
         if tensor_recv_prev is not None:
-            print(f"DEBUG: Receiving from previous rank {prev_pipeline_rank}")
+            # print(f"DEBUG: Receiving from previous rank {prev_pipeline_rank}")
             recv_prev_req = torch.distributed.irecv(
                 tensor=tensor_recv_prev, src=prev_pipeline_rank, group=even_recv_odd_send_group
             )
@@ -201,7 +201,7 @@ def _p2p_ops(
             # print("DEBUG: Issued recv_prev request")
 
         if tensor_send_prev is not None:
-            print(f"DEBUG: Sending to previous rank {prev_pipeline_rank}")
+            # print(f"DEBUG: Sending to previous rank {prev_pipeline_rank}")
             send_prev_req = torch.distributed.isend(
                 tensor=tensor_send_prev, dst=prev_pipeline_rank, group=even_send_odd_recv_group
             )
@@ -209,7 +209,7 @@ def _p2p_ops(
             # print("DEBUG: Issued send_prev request")
 
         if tensor_recv_next is not None:
-            print(f"DEBUG: Receiving from next rank {next_pipeline_rank}")
+            # print(f"DEBUG: Receiving from next rank {next_pipeline_rank}")
             recv_next_req = torch.distributed.irecv(
                 tensor=tensor_recv_next, src=next_pipeline_rank, group=even_recv_odd_send_group
             )
@@ -219,7 +219,7 @@ def _p2p_ops(
     else:
         # print("DEBUG: Odd rank communication pattern")
         if tensor_recv_prev is not None:
-            print(f"DEBUG: Receiving from previous rank {prev_pipeline_rank}")
+            # print(f"DEBUG: Receiving from previous rank {prev_pipeline_rank}")
             recv_prev_req = torch.distributed.irecv(
                 tensor=tensor_recv_prev, src=prev_pipeline_rank, group=even_send_odd_recv_group
             )
@@ -227,7 +227,7 @@ def _p2p_ops(
             # print("DEBUG: Issued recv_prev request")
 
         if tensor_send_next is not None:
-            print(f"DEBUG: Sending to next rank {next_pipeline_rank}")
+            # print(f"DEBUG: Sending to next rank {next_pipeline_rank}")
             send_next_req = torch.distributed.isend(
                 tensor=tensor_send_next, dst=next_pipeline_rank, group=even_recv_odd_send_group
             )
@@ -235,7 +235,7 @@ def _p2p_ops(
             # print("DEBUG: Issued send_next request")
 
         if tensor_recv_next is not None:
-            print(f"DEBUG: Receiving from next rank {next_pipeline_rank}")
+            # print(f"DEBUG: Receiving from next rank {next_pipeline_rank}")
             recv_next_req = torch.distributed.irecv(
                 tensor=tensor_recv_next, src=next_pipeline_rank, group=even_send_odd_recv_group
             )
@@ -243,14 +243,14 @@ def _p2p_ops(
             # print("DEBUG: Issued recv_next request")
 
         if tensor_send_prev is not None:
-            print(f"DEBUG: Sending to previous rank {prev_pipeline_rank}")
+            # print(f"DEBUG: Sending to previous rank {prev_pipeline_rank}")
             send_prev_req = torch.distributed.isend(
                 tensor=tensor_send_prev, dst=prev_pipeline_rank, group=even_recv_odd_send_group
             )
             reqs["send_prev"] = send_prev_req
             # print("DEBUG: Issued send_prev request")
             
-    print(f"DEBUG: Exiting _p2p_ops function with {len(reqs)} pending requests")
+    # print(f"DEBUG: Exiting _p2p_ops function with {len(reqs)} pending requests")
     return reqs
 
 
@@ -304,16 +304,16 @@ def _communicate(
     if not config.variable_seq_lengths:
         recv_prev_shape = tensor_shape
         recv_next_shape = tensor_shape
-        print(f"DEBUG: Using fixed tensor shapes: {tensor_shape}")
+        # print(f"DEBUG: Using fixed tensor shapes: {tensor_shape}")
     else:
         # print("DEBUG: Communicating shapes for variable sequence lengths")
         recv_prev_shape, recv_next_shape = _communicate_shapes(
             tensor_send_next, tensor_send_prev, recv_prev, recv_next, config
         )
-        print(f"DEBUG: Received shapes - prev: {recv_prev_shape}, next: {recv_next_shape}")
+        # print(f"DEBUG: Received shapes - prev: {recv_prev_shape}, next: {recv_next_shape}")
 
     def create_tensor_recv_prev():
-        print(f"DEBUG: Creating tensor_recv_prev with shape {recv_prev_shape}")
+        # print(f"DEBUG: Creating tensor_recv_prev with shape {recv_prev_shape}")
         return torch.empty(
             recv_prev_shape,
             requires_grad=True,
@@ -322,7 +322,7 @@ def _communicate(
         )
 
     def create_tensor_recv_next():
-        print(f"DEBUG: Creating tensor_recv_next with shape {recv_next_shape}")
+        # print(f"DEBUG: Creating tensor_recv_next with shape {recv_next_shape}")
         return torch.empty(
             recv_next_shape,
             requires_grad=True,
@@ -407,14 +407,14 @@ def _communicate(
         if tensor_recv_prev_func is not None:
             tensor_recv_prev = tensor_recv_prev_func()
             tensor_recv_prev_list.append(tensor_recv_prev)
-            print(f"DEBUG: Created tensor_recv_prev for group {nr} {pr}")
+            # print(f"DEBUG: Created tensor_recv_prev for group {nr} {pr}")
         else:
             tensor_recv_prev = None
 
         if tensor_recv_next_func is not None:
             tensor_recv_next = tensor_recv_next_func()
             tensor_recv_next_list.append(tensor_recv_next)
-            print(f"DEBUG: Created tensor_recv_next for group {nr} {pr}")
+            # print(f"DEBUG: Created tensor_recv_next for group {nr} {pr}")
         else:
             tensor_recv_next = None
 
@@ -430,13 +430,13 @@ def _communicate(
         )
         if isinstance(p2p_reqs, list):
             reqs.extend(p2p_reqs)
-            print(f"DEBUG: Added {len(p2p_reqs)} requests to list")
+            # print(f"DEBUG: Added {len(p2p_reqs)} requests to list")
         else:
             reqs.update(p2p_reqs)
-            print(f"DEBUG: Added {len(p2p_reqs)} requests to dict")
+            # print(f"DEBUG: Added {len(p2p_reqs)} requests to dict")
 
     if wait_on_reqs and len(reqs) > 0:
-        print(f"DEBUG: Waiting on {len(reqs)} requests")
+        # print(f"DEBUG: Waiting on {len(reqs)} requests")
         for req in reqs if isinstance(reqs, list) else reqs.values():
             req.wait()
         reqs = None
@@ -473,7 +473,7 @@ def _communicate(
         # may receive multiple gradients from corresponding decoder TP ranks.
         # For example, if `ETP=1` and `DTP=2`, then encoder rank 0 will receive gradients
         # from decoder ranks 1 and 2. These received gradients must be averaged.
-        print(f"DEBUG: Stacking and summing {len(x)} tensors")
+        # print(f"DEBUG: Stacking and summing {len(x)} tensors")
         return torch.stack(x, dim=0).mean(dim=0, dtype=torch.float32).to(x[0].dtype)
 
     # print("DEBUG: Processing tensor_recv_prev_list")
