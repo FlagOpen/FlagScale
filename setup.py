@@ -73,17 +73,20 @@ setup(
         "flag_scale.third_party.Megatron-LM.megatron",
         "flag_scale.flagscale",
         "flag_scale.examples",
+        "flag_scale.tools",
     ],
     package_dir={
         "flag_scale": "",
         "flag_scale.third_party.Megatron-LM.megatron": "third_party/Megatron-LM/megatron",
         "flag_scale.flagscale": "flagscale",
         "flag_scale.examples": "examples",
+        "flag_scale.tools": "tools",
     },
     package_data={
         "flag_scale.third_party.Megatron-LM.megatron": ["**/*"],
         "flag_scale.flagscale": ["**/*"],
         "flag_scale.examples": ["**/*"],
+        "flag_scale.tools": ["**/*"],
     },
     install_requires=[
         "click",
