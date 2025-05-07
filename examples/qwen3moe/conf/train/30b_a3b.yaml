@@ -61,7 +61,6 @@ model:
   ffn_hidden_size: 6144
   moe_ffn_hidden_size: 768
   moe_grouped_gemm: true
-  moe_shared_expert_intermediate_size: 2816
   num_experts: 128
   moe_router_load_balancing_type: "seq_aux_loss"
   moe_router_score_function: sigmoid
