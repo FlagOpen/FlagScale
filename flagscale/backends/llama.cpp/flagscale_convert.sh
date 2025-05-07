@@ -12,5 +12,5 @@ if [ $# -ne 1 ]; then
     print_help; exit 1;
 fi
 
-python ../convert_hf_to_gguf.py $1 --outfile $1/ggml_model_f16.gguf
+python convert_hf_to_gguf.py $1 --outfile $1/ggml_model_f16.gguf
 echo "Convert $1 to gguf format ($1/ggml_model_f16.gguf.) successfully."
