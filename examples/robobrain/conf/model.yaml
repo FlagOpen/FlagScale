@@ -8,7 +8,7 @@ system:
     tensorboard_log_interval: 1
     wandb_project: "compress-robobrain"
     wandb_exp_name: "compress-robobrain"
-  save_dir:
+  save_dir: RoboBrain_Compressed
 
 
 model:

@@ -117,12 +117,12 @@ We support the model serving of DeepSeek R1 and have implemented the `flagscale 
     ├── examples/
     │   └── deepseek_r1/
     │       └── conf/
-    │           └── config_deepseek_r1.yaml
+    │           └── serve.yaml
     |           └── hostfile.txt # Set hostfile (optional)
     │           └── serve/
-    │               └── deepseek_r1.yaml # Set model parameters and server port
+    │               └── 671b.yaml # Set model parameters and server port
     ```
-    Note: When task covers multiple nodes, [hostfile.txt](./examples/deepseek/conf/hostfile.txt) is required. The file path should be set in config_deepseek_r1.yaml.
+    Note: When task covers multiple nodes, [hostfile.txt](./examples/deepseek/conf/hostfile.txt) is required. The file path should be set in serve.yaml.
 
 2. **Install FlagScale CLI:**
     ```sh
