@@ -1,0 +1,9 @@
+backends_version:
+  FlagScale: main
+  vllm: v0.8.3
+contact: ''
+device_type: Cambricon_MLU
+models:
+- qwen3
+task:
+- inference
