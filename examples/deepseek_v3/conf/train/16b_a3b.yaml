@@ -10,7 +10,7 @@ system:
   reset_position_ids: True
   reset_attention_mask: True
   qk_layernorm: true
-  sequence_parallel: true
+  # sequence_parallel: true
   use_distributed_optimizer: true
   overlap_grad_reduce: true
   overlap_param_gather: true
