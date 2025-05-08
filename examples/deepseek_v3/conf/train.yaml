@@ -8,7 +8,7 @@ experiment:
   seed: 42
   save_steps: 10000
   load: None
-  exp_dir: /xxx
+  exp_dir: ./deepseek_v3_test
   ckpt_format: torch
   task:
     type: train
