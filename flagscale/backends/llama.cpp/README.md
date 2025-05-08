@@ -1,3 +1,10 @@
+# Usage
+With llama.cpp as inference backend, the model format should be gguf. Llama.cpp provides converting tools, for example:
+```sh
+cd FlagScale/third_party/llama.cpp
+python convert_hf_to_gguf.py /tmp/Qwen3-0.6B/ --outfile /tmp/Qwen3-0.6B/ggml_model_f16.gguf
+``` 
+
 # Efficiency Test
 
 Model: https://huggingface.co/Qwen/Qwen3-0.6B

@@ -51,6 +51,11 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     ```
     The above instructions create two conda environments: `flagscale-train` and `flagscale-inference`, which contain the dependency environments for training and inference, respectively.
 
+    The backend (CPU by default) of llama.cpp is alternative, for example:
+    ```sh
+    ./install-requirements.sh --env inference --llama-cpp-backend cuda
+    ```
+
 3. Unpatch the backend code adaptation of FlagScale as needed
     ```
     cd FlagScale
