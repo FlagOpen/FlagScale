@@ -20,7 +20,7 @@ experiment:
     rdzv_backend: static
     hostfile: null
   cmds:
-    before_start: "ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale_newest_torch"
+    before_start: "ulimit -n 1048576 && source /root/miniconda3/bin/activate zyl-flagscale"
   envs:
     LOGLEVEL: "INFO"
     # CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
