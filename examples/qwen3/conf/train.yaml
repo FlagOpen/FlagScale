@@ -3,7 +3,7 @@ defaults:
   - train: 30b_a3b
 
 experiment:
-  exp_name: Qwen3-MoE-Test
+  exp_name: Qwen3-Test
   seed: 42
   save_steps: 10000
   load: None
