@@ -1,5 +1,7 @@
 # Efficiency Test
 
+Model: https://huggingface.co/Qwen/Qwen3-0.6B
+
 ## Apple M4 (10 core)
 
 ### CPU
