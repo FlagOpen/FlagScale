@@ -2,6 +2,12 @@
 
 Model: https://huggingface.co/Qwen/Qwen3-0.6B
 
+Abbreviations:
+- pp512: test prefilling(prompt processing) stage with 512 tokens input
+- tg128: test decoding(token generating) stage with 128 tokens output
+- t/s: tokens per second
+- ngl: number of gpu layers
+
 ## Apple M4 (10 core)
 
 ### CPU
