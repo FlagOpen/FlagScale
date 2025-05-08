@@ -1,4 +1,4 @@
-- serve_id: llama_cpp_model
+- serve_id: vllm_model
   engine: llama_cpp
   engine_args:
     model: /tmp/models/Qwen3-0.6B/ggml_model_f16.gguf

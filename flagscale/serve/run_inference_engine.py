@@ -45,7 +45,7 @@ def llama_cpp_serve(args):
         # other_args = flatten_dict_to_args(llama_cpp_args, ["model"])
         # command.extend(other_args)
     else:
-        raise ValueError("Either model must be specified in llama_cpp_model.")
+        raise ValueError("Either model must be specified in vllm_model.")
 
     # Start the subprocess
     logger.info(f"[Serve]: Starting llama-cpp serve with command: {' '.join(command)}")
@@ -69,7 +69,7 @@ def main():
 
     model_config = None
     for item in serve_config:
-        if item.get("serve_id", None) in ["vllm_model", "llama_cpp_model"]:
+        if item.get("serve_id", None) == "vllm_model":
             model_config = item
             break
 
