@@ -36,8 +36,6 @@ if [ "$env" != "train" ] && [ "$env" != "inference" ]; then
     exit 1
 fi
 
-comment_function() {
-
 python -m pip install --upgrade pip
 
 # Packages that need to be installed outside of the conda environment
@@ -99,8 +97,6 @@ python_path=`python -c "import site; print(site.getsitepackages()[0])"`
 mkdir -p $python_path/flashattn_hopper
 wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILab/flash-attention/v2.7.2/hopper/flash_attn_interface.py
 
-} # End of comment_function
-
 # If env equals 'train'
 if [ "${env}" == "train" ]; then
     # Navigate to requirements directory and install training dependencies
@@ -140,9 +136,6 @@ if [ "${env}" == "inference" ]; then
 
     # Build vllm
     # Navigate to requirements directory and install inference dependencies
-    comment_function2() {
-
-    
     pip install -r ./third_party/vllm/requirements/build.txt
     pip install -r ./third_party/vllm/requirements/cuda.txt
     pip install -r ./third_party/vllm/requirements/common.txt
@@ -152,8 +145,6 @@ if [ "${env}" == "inference" ]; then
 
     # Navigate to requirements directory and install serving dependencies
     pip install -r ./requirements/serving/requirements.txt
-
-    }
 
     # Build llama.cpp
     cd ./third_party/llama.cpp

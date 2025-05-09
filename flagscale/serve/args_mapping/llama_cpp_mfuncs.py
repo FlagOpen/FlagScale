@@ -111,3 +111,11 @@ def kv_mapping_max_model_len(v) -> int:
     if not isinstance(v, int):
         raise ValueError(f"Expected an integer, got {type(v)}: {v}")
     return {"ctx_size": v}
+
+
+def kv_mapping_uvicorn_log_level(v) -> dict:
+    if v in ["warning", "error", "critical", "trace", "WARNING", "ERROR", "CRITICAL", "TRACE"]:
+        return {"log_verbosity": 0}
+    elif v in ["debug", "info", "DEBUG", "INFO"]:
+        return {"log_verbosity": 1}
+    raise ValueError(f"Invalid uvicorn_log_level(log_verbosity) for llama.cpp: {v}")
