@@ -13,6 +13,6 @@ s3fs
 transformers >=4.51.0
 webdataset
 
--r ../../../megatron/requirements/pytorch_24.10/requirements.txt
--r ../../../megatron/requirements_ci.txt
--r ../../../megatron/requirements_mlm.txt
+-r ../../../third_party/Megatron-LM/requirements/pytorch_24.10/requirements.txt
+-r ../../../third_party/Megatron-LM/requirements_ci.txt
+-r ../../../third_party/Megatron-LM/requirements_mlm.txt
