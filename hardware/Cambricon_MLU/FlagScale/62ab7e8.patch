@@ -1,0 +1,141 @@
+diff --git a/examples/qwen2_5_vl/conf/serve.yaml b/examples/qwen2_5_vl/conf/serve.yaml
+index 4f460cb3..82e9d4c5 100644
+--- a/examples/qwen2_5_vl/conf/serve.yaml
++++ b/examples/qwen2_5_vl/conf/serve.yaml
+@@ -11,7 +11,7 @@ experiment:
+   runner:
+     ssh_port: 22
+   envs:
+-    CUDA_DEVICE_MAX_CONNECTIONS: 1
++    VLLM_LATENCY_DEBUG: true
+ action: run
+ hydra:
+   run:
+diff --git a/examples/qwen2_5_vl/conf/serve/32b_instruct.yaml b/examples/qwen2_5_vl/conf/serve/32b_instruct.yaml
+index a8957bc3..a90ea8b6 100644
+--- a/examples/qwen2_5_vl/conf/serve/32b_instruct.yaml
++++ b/examples/qwen2_5_vl/conf/serve/32b_instruct.yaml
+@@ -1,15 +1,14 @@
+ - serve_id: vllm_model
+   engine: vllm
+   engine_args:
+-    model: /share/Qwen2.5-VL-32B-Instruct # should be customized
+-    served_model_name: qwenvl32-nv-flagos
+-    tensor_parallel_size: 8
+-    max_model_len: 32768
+-    pipeline_parallel_size: 1
+-    max_num_seqs: 8 # Even at full 32,768 context usage, 8 concurrent operations won't trigger OOM
+-    gpu_memory_utilization: 0.9
+-    limit_mm_per_prompt: image=18 # should be customized, 18 images/request is enough for most scenarios
+-    port: 9010
++    model: /share/project/zhaodeming/Qwen2.5-VL-32B-Instruct # should be customized
++    served_model_name: qwenvl32
++    swap_space: 16
++    port: 7925
+     trust_remote_code: true
+-    enforce_eager: true # better compare to FlagGems
+-    enable_chunked_prefill: true
++    block_size: 16
++    tensor_parallel_size: 2
++    max_model_len: 4096
++    max_seq_len_to_capture: 4096
++    max_num_batched_tokens: 65536
++    dtype: bfloat16
+diff --git a/examples/qwen3_moe/conf/serve.yaml b/examples/qwen3_moe/conf/serve.yaml
+new file mode 100644
+index 00000000..71ce27b3
+--- /dev/null
++++ b/examples/qwen3_moe/conf/serve.yaml
+@@ -0,0 +1,23 @@
++defaults:
++  - _self_
++  - serve: 235b
++experiment:
++  exp_name: qwen3_235b_a22b
++  exp_dir: outputs/${experiment.exp_name}
++  task:
++    type: serve
++  deploy:
++    use_fs_serve: false
++  runner:
++    ssh_port: 22
++  envs:
++    VLLM_LATENCY_DEBUG: true
++    CNCL_CNPX_DOMAIN_ENABLE: 0
++    PYTORCH_MLU_ALLOC_CONF: "expandable_segments:True"
++    EXPERT_PARALLEL_EN: true
++    VLLM_GRAPH_DEBUG: false
++    VLLM_AVG_MOE_EN: 1
++action: run
++hydra:
++  run:
++    dir: ${experiment.exp_dir}/hydra
+diff --git a/examples/qwen3_moe/conf/serve/235b.yaml b/examples/qwen3_moe/conf/serve/235b.yaml
+new file mode 100644
+index 00000000..2639b9f9
+--- /dev/null
++++ b/examples/qwen3_moe/conf/serve/235b.yaml
+@@ -0,0 +1,16 @@
++- serve_id: vllm_model
++  engine: vllm
++  engine_args:
++    model: /share/project/zhaodeming/Qwen3-235B-A22B # should be customized
++    served_model_name: qwen3_moe
++    swap_space: 16 
++    tensor_parallel_size: 8 
++    moe_ep_size: 8 
++    port: 7925 
++    trust_remote_code: true
++    max_model_len: 4096 
++    num_scheduler_steps: 10 
++    max_seq_len_to_capture: 4096
++    max_num_batched_tokens: 65536
++    tokenizer: /share/project/zhaodeming/Qwen3-235B-A22B
++    dtype: bfloat16
+diff --git a/setup.py b/setup.py
+index 5cd7b462..82f4e653 100644
+--- a/setup.py
++++ b/setup.py
+@@ -56,12 +56,12 @@ class InstallRequirement(install):
+         install.run(self)
+ 
+ 
+-# unpatch the Megatron-LM
+-main_path = os.path.dirname(__file__)
+-backend = "Megatron-LM"
+-src = os.path.join(main_path, "flagscale", "train", "backends", backend)
+-dst = os.path.join(main_path, "third_party", backend)
+-unpatch(main_path, src, dst, "third_party/Megatron-LM", mode="copy")
++## unpatch the Megatron-LM
++#main_path = os.path.dirname(__file__)
++#backend = "Megatron-LM"
++#src = os.path.join(main_path, "flagscale", "train", "backends", backend)
++#dst = os.path.join(main_path, "third_party", backend)
++#unpatch(main_path, src, dst, "third_party/Megatron-LM", mode="copy")
+ 
+ setup(
+     name="flag_scale",
+@@ -70,20 +70,20 @@ setup(
+     url="https://github.com/FlagOpen/FlagScale",
+     packages=[
+         "flag_scale",
+-        "flag_scale.third_party.Megatron-LM.megatron",
++        #"flag_scale.third_party.Megatron-LM.megatron",
+         "flag_scale.flagscale",
+         "flag_scale.examples",
+         "flag_scale.tools",
+     ],
+     package_dir={
+         "flag_scale": "",
+-        "flag_scale.third_party.Megatron-LM.megatron": "third_party/Megatron-LM/megatron",
++        #"flag_scale.third_party.Megatron-LM.megatron": "third_party/Megatron-LM/megatron",
+         "flag_scale.flagscale": "flagscale",
+         "flag_scale.examples": "examples",
+         "flag_scale.tools": "tools",
+     },
+     package_data={
+-        "flag_scale.third_party.Megatron-LM.megatron": ["**/*"],
++        #"flag_scale.third_party.Megatron-LM.megatron": ["**/*"],
+         "flag_scale.flagscale": ["**/*"],
+         "flag_scale.examples": ["**/*"],
+         "flag_scale.tools": ["**/*"],
