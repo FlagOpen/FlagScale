@@ -7,3 +7,4 @@
     max_model_len: 1K
     max_num_seqs: 4
     kv_cache_dtype: f16
+    uvicorn_log_level: warning
