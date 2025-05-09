@@ -14,6 +14,7 @@ from typing import List
 
 import torch.distributed
 from megatron.training.log_handler import CustomHandler
+
 # Make default logging level INFO, but filter out all log messages not from MCore.
 logging.basicConfig(handlers=[CustomHandler()], level=logging.INFO)
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
@@ -399,7 +400,6 @@ def num_floating_point_operations(args, batch_size):
         )
         return total_floating_point_operations
 
-
     # Main entrypoint for FLOPs calculation.
     if args.is_hybrid_model:
         # Calculate the number of each type of layer.
@@ -423,7 +423,7 @@ def num_floating_point_operations(args, batch_size):
             kv_channels=args.kv_channels,
             mlp_expansion=args.ffn_hidden_size / args.hidden_size,
             swiglu=args.swiglu,
-            vocab_size=args.padded_vocab_size
+            vocab_size=args.padded_vocab_size,
         )
     else:
         # Compute standard Transformer model FLOPs.
@@ -920,24 +920,19 @@ def pretrain(
     # image ... launches.
     global _TRAIN_START_TIME
     if "cpu:gloo" == torch.distributed.get_backend():
-        start_time_tensor = torch.tensor([_TRAIN_START_TIME],
-                                         dtype=torch.double,
-                                         device='cpu')
+        start_time_tensor = torch.tensor([_TRAIN_START_TIME], dtype=torch.double, device='cpu')
     else:
-        start_time_tensor = torch.tensor([_TRAIN_START_TIME],
-                                         dtype=torch.double,
-                                         device='cuda')
-
-    torch.distributed.all_reduce(start_time_tensor,
-                                 op=torch.distributed.ReduceOp.MIN)
+        start_time_tensor = torch.tensor([_TRAIN_START_TIME], dtype=torch.double, device='cuda')
+    torch.distributed.all_reduce(start_time_tensor, op=torch.distributed.ReduceOp.MIN)
     _TRAIN_START_TIME = start_time_tensor.item()
 
     app_metrics = {}
     app_metrics['app_start_time'] = round(_TRAIN_START_TIME * 1000.0)
     app_metrics['app_model_init_start_time'] = round(_TRAIN_START_TIME * 1000.0)
 
-    print_rank_0('time to initialize megatron (seconds): {:.3f}'.format(
-        time.time() - _TRAIN_START_TIME))
+    print_rank_0(
+        'time to initialize megatron (seconds): {:.3f}'.format(time.time() - _TRAIN_START_TIME)
+    )
     print_datetime('after megatron is initialized')
     app_metrics['app_model_init_finish_time'] = one_logger_utils.get_timestamp_in_ms()
 
@@ -1064,15 +1059,15 @@ def pretrain(
         if not args.auto_tune:
             if args.save and iteration != 0 and iteration % args.save_interval != 0:
                 save_checkpoint(
-                iteration,
-                model,
-                optimizer,
-                opt_param_scheduler,
-                num_floating_point_operations_so_far,
-                checkpointing_context,
-                train_data_iterator=train_data_iterator,
-                preprocess_common_state_dict_fn=preprocess_common_state_dict,
-            )
+                    iteration,
+                    model,
+                    optimizer,
+                    opt_param_scheduler,
+                    num_floating_point_operations_so_far,
+                    checkpointing_context,
+                    train_data_iterator=train_data_iterator,
+                    preprocess_common_state_dict_fn=preprocess_common_state_dict,
+                )
 
         one_logger and one_logger.log_metrics(
             {'app_train_loop_finish_time': one_logger_utils.get_timestamp_in_ms()}
@@ -1121,20 +1116,28 @@ def pretrain(
             extra_valid_data_iterator = []
             for i in range(len(model)):
                 mpu.set_virtual_pipeline_model_parallel_rank(i)
-                extra_iterators = build_extra_valid_data_iterators(
-                    extra_valid_dataset_provider)
+                extra_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
                 extra_valid_data_iterator.append(extra_iterators)
         else:
-            extra_valid_data_iterator = build_extra_valid_data_iterators(
-                extra_valid_dataset_provider)
+            extra_valid_data_iterator = (
+                build_extra_valid_data_iterators(extra_valid_dataset_provider)
+            )
         if getattr(args, "do_extra_valid", False):
             prefix = f'iteration {iteration} on extra validation set'
             for extra_valid_index, extra_valid_data_itr in enumerate(extra_valid_data_iterator):
-                extra_evaluate_and_print_results(extra_valid_index, prefix, forward_step_func,
-                                                 extra_valid_data_itr, model,
-                                                 iteration, process_non_loss_data_func, config,
-                                                 verbose=True, write_to_tensorboard=not args.skip_train,
-                                                 non_loss_data_func=non_loss_data_func)
+                extra_evaluate_and_print_results(
+                    extra_valid_index,
+                    prefix,
+                    forward_step_func,
+                    extra_valid_data_itr,
+                    model,
+                    iteration,
+                    process_non_loss_data_func,
+                    config,
+                    verbose=True,
+                    write_to_tensorboard=not args.skip_train,
+                    non_loss_data_func=non_loss_data_func
+                )
 
     wandb_writer = get_wandb_writer()
     if wandb_writer:
@@ -1423,7 +1426,8 @@ def get_optimizer_param_scheduler(optimizer):
         override_opt_param_scheduler=args.override_opt_param_scheduler,
         wsd_decay_steps=wsd_decay_steps,
         lr_wsd_decay_style=args.lr_wsd_decay_style,
-        stablelm2_scheduler_config=stablelm2_scheduler_config)
+        stablelm2_scheduler_config=stablelm2_scheduler_config,
+    )
 
     return opt_param_scheduler
 
@@ -1617,7 +1621,8 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
             micro_batch_size=args.micro_batch_size,
             decoder_seq_length=args.decoder_seq_length,
             forward_only=False,
-            adjust_tensor_shapes_fn=adjust_tensor_shapes_fn)
+            adjust_tensor_shapes_fn=adjust_tensor_shapes_fn,
+        )
     should_checkpoint, should_exit, exit_code = rerun_state_machine.should_checkpoint_and_exit()
     if should_exit:
         return {}, True, should_checkpoint, should_exit, exit_code, None, None
@@ -1802,13 +1807,11 @@ def training_log(
         timers.write(timers_to_log, writer, iteration, normalizer=total_iterations)
     if is_last_rank() and (iteration % args.tensorboard_log_interval == 0):
         if wandb_writer:
-            wandb_writer.log({'samples vs steps': args.consumed_train_samples},
-                             iteration)
+            wandb_writer.log({'samples vs steps': args.consumed_train_samples}, iteration)
             wandb_writer.log({'consumed-tokens': args.consumed_train_samples * args.seq_length / 1000. / 1000 / 1000}, iteration)
         if writer:
             writer.add_scalar('learning-rate', learning_rate, iteration)
-            writer.add_scalar('learning-rate vs samples', learning_rate,
-                                args.consumed_train_samples)
+            writer.add_scalar('learning-rate vs samples', learning_rate, args.consumed_train_samples)
         if wandb_writer:
             wandb_writer.log({'learning-rate': learning_rate}, iteration)
         if args.decoupled_lr is not None:
@@ -1821,87 +1824,69 @@ def training_log(
                 wandb_writer.log({'skipped-train-samples': args.skipped_train_samples}, iteration)
         if writer:
             writer.add_scalar('batch-size', batch_size, iteration)
-            writer.add_scalar('batch-size vs samples', batch_size,
-                          args.consumed_train_samples)
+            writer.add_scalar('batch-size vs samples', batch_size, args.consumed_train_samples)
         if wandb_writer:
             wandb_writer.log({'batch-size': batch_size}, iteration)
         for key in loss_dict:
             if writer:
-                writer.add_scalar(key , loss_dict[key], iteration)
-                writer.add_scalar(key + ' vs samples', loss_dict[key],
-                                  args.consumed_train_samples)
+                writer.add_scalar(key, loss_dict[key], iteration)
+                writer.add_scalar(key + ' vs samples', loss_dict[key], args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({key: loss_dict[key]}, iteration)
         if args.log_loss_scale_to_tensorboard:
             if writer:
                 writer.add_scalar('loss-scale', loss_scale, iteration)
-                writer.add_scalar('loss-scale vs samples', loss_scale,
-                                  args.consumed_train_samples)
+                writer.add_scalar('loss-scale vs samples', loss_scale, args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'loss-scale': loss_scale}, iteration)
         if args.log_world_size_to_tensorboard:
             if writer:
                 writer.add_scalar('world-size', args.world_size, iteration)
-                writer.add_scalar('world-size vs samples', args.world_size,
-                                  args.consumed_train_samples)
+                writer.add_scalar('world-size vs samples', args.world_size, args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'world-size': args.world_size}, iteration)
         if grad_norm is not None:
             if writer:
                 writer.add_scalar('grad-norm', grad_norm, iteration)
-                writer.add_scalar('grad-norm vs samples', grad_norm,
-                                  args.consumed_train_samples)
+                writer.add_scalar('grad-norm vs samples', grad_norm, args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'grad-norm': grad_norm}, iteration)
         if num_zeros_in_grad is not None:
             if writer:
                 writer.add_scalar('num-zeros', num_zeros_in_grad, iteration)
-                writer.add_scalar('num-zeros vs samples', num_zeros_in_grad,
-                                  args.consumed_train_samples)
+                writer.add_scalar(
+                    'num-zeros vs samples', num_zeros_in_grad, args.consumed_train_samples
+                )
             if wandb_writer:
                 wandb_writer.log({'num-zeros': num_zeros_in_grad}, iteration)
         if params_norm is not None:
             if writer:
                 writer.add_scalar('params-norm', params_norm, iteration)
-                writer.add_scalar('params-norm vs samples', params_norm,
-                                  args.consumed_train_samples)
+                writer.add_scalar('params-norm vs samples', params_norm, args.consumed_train_samples)
             if wandb_writer:
                 wandb_writer.log({'params-norm': params_norm}, iteration)
         if args.log_memory_to_tensorboard:
             mem_stats = torch.cuda.memory_stats()
             if writer:
                 writer.add_scalar(
-                    "mem-reserved-bytes",
-                    mem_stats["reserved_bytes.all.current"],
-                    iteration,
+                    "mem-reserved-bytes", mem_stats["reserved_bytes.all.current"], iteration
                 )
                 writer.add_scalar(
-                    "mem-allocated-bytes",
-                    mem_stats["allocated_bytes.all.current"],
-                    iteration,
+                    "mem-allocated-bytes", mem_stats["allocated_bytes.all.current"], iteration
                 )
                 writer.add_scalar(
-                    "mem-max-allocated-bytes",
-                    mem_stats["allocated_bytes.all.peak"],
-                    iteration,
+                    "mem-max-allocated-bytes", mem_stats["allocated_bytes.all.peak"], iteration
                 )
-                writer.add_scalar(
-                    "mem-allocated-count",
-                    mem_stats["allocation.all.current"],
-                    iteration,
-                )
+                writer.add_scalar("mem-allocated-count", mem_stats["allocation.all.current"], iteration)
             if wandb_writer:
                 wandb_writer.log(
-                    {"mem-reserved-bytes": mem_stats["reserved_bytes.all.current"]},
-                    iteration,
+                    {"mem-reserved-bytes": mem_stats["reserved_bytes.all.current"]}, iteration
                 )
                 wandb_writer.log(
-                    {"mem-allocated-bytes": mem_stats["allocated_bytes.all.current"]},
-                    iteration,
+                    {"mem-allocated-bytes": mem_stats["allocated_bytes.all.current"]}, iteration
                 )
                 wandb_writer.log(
-                    {"mem-allocated-count": mem_stats["allocation.all.current"]},
-                    iteration,
+                    {"mem-allocated-count": mem_stats["allocation.all.current"]}, iteration
                 )
 
     if args.num_experts is not None:
@@ -2288,7 +2273,8 @@ def train(
     config,
     checkpointing_context,
     non_loss_data_func,
-    extra_valid_dataset_provider=None):
+    extra_valid_dataset_provider=None,
+):
     """Training function: run train_step desired number of times, run validation, checkpoint."""
     args = get_args()
     timers = get_timers()
@@ -2421,6 +2407,7 @@ def train(
             'extra_eval_duration': extra_eval_duration,
             'extra_eval_iterations': extra_eval_iterations,
         }
+
     # Cache into one-logger for callback.
     if one_logger:
         with one_logger.get_context_manager():
@@ -2484,9 +2471,10 @@ def train(
         update_num_microbatches(args.consumed_train_samples, consistency_check=False, verbose=True)
         if get_num_microbatches() != num_microbatches and iteration != 0 \
             and args.save_when_num_microbatches_change:
-            assert get_num_microbatches() > num_microbatches, \
-                (f"Number of microbatches should be increasing due to batch size rampup; "
-                 f"instead going from {num_microbatches} to {get_num_microbatches()}")
+            assert get_num_microbatches() > num_microbatches, (
+                f"Number of microbatches should be increasing due to batch size rampup; "
+                f"instead going from {num_microbatches} to {get_num_microbatches()}"
+            )
             if args.save is not None:
                 save_checkpoint_and_time(
                     iteration,
@@ -2683,18 +2671,19 @@ def train(
                 extra_valid_data_iterator = []
                 for i in range(len(model)):
                     mpu.set_virtual_pipeline_model_parallel_rank(i)
-                    extra_iterators = build_extra_valid_data_iterators(
-                        extra_valid_dataset_provider)
+                    extra_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
                     extra_valid_data_iterator.append(extra_iterators)
             else:
-                extra_valid_data_iterator = build_extra_valid_data_iterators(
-                    extra_valid_dataset_provider)
+                extra_valid_data_iterator = (
+                    build_extra_valid_data_iterators(extra_valid_dataset_provider)
+                )
             timers('interval-time').stop()
             # do_extra_valid flag is used to indicate that we are doing extra validation
             # and is set in the build_extra_valid_data_iterators function
             if getattr(args, "do_extra_valid", False):
-                if args.use_distributed_optimizer and args.overlap_param_gather:
+                if should_disable_forward_pre_hook(args):
                     disable_forward_pre_hook(model)
+                    pre_hook_enabled = False
                 if args.manual_gc and args.manual_gc_eval:
                     # Collect all objects.
                     gc.collect()
@@ -2702,11 +2691,19 @@ def train(
                 for extra_valid_index, extra_valid_data_itr in enumerate(extra_valid_data_iterator):
                     timers('extra-eval-time', log_level=0).start(barrier=True)
                     extra_eval_iters = args.extra_eval_iters_list[extra_valid_index]
-                    extra_evaluate_and_print_results(extra_valid_index, prefix, forward_step_func,
-                                                     extra_valid_data_itr, model,
-                                                     iteration, process_non_loss_data_func,
-                                                     config, verbose=False, write_to_tensorboard=True,
-                                                     non_loss_data_func=non_loss_data_func)
+                    extra_evaluate_and_print_results(
+                        extra_valid_index,
+                        prefix,
+                        forward_step_func,
+                        extra_valid_data_itr,
+                        model,
+                        iteration,
+                        process_non_loss_data_func,
+                        config,
+                        verbose=False,
+                        write_to_tensorboard=True,
+                        non_loss_data_func=non_loss_data_func
+                    )
                     extra_eval_duration += timers('extra-eval-time').elapsed()
                     extra_eval_iterations += extra_eval_iters
                     timers('extra-eval-time').stop()
@@ -2715,14 +2712,10 @@ def train(
                 if args.manual_gc and args.manual_gc_eval:
                     # Collect only the objects created and used in evaluation.
                     gc.collect(generation=0)
-                if args.use_distributed_optimizer and args.overlap_param_gather:
+                if should_disable_forward_pre_hook(args):
                     enable_forward_pre_hook(model)
                     pre_hook_enabled = True
                 timers('interval-time', log_level=0).start(barrier=True)
-
-                if args.enable_ft_package and ft_integration.get_rank_monitor_client() is not None:
-                    ft_integration.get_rank_monitor_client(
-                        ft_integration.StateMachineActions.EVAL_HEARTBEAT).send_heartbeat()
         # =======================================================================================
 
         # Miscellaneous post-training-step functions (e.g., FT heartbeats, GC).
@@ -2788,7 +2781,8 @@ def evaluate(
     config,
     verbose=False,
     non_loss_data_func=None,
-    extra_valid_index=None):
+    extra_valid_index=None,
+):
     """Evaluation."""
     args = get_args()
     timers = get_timers()
@@ -2813,8 +2807,7 @@ def evaluate(
 
     # make validation batch size independent from training batch size
     eval_batch_size = args.global_batch_size
-    eval_num_microbatches = eval_batch_size // \
-        (args.micro_batch_size * args.data_parallel_size)
+    eval_num_microbatches = eval_batch_size // (args.micro_batch_size * args.data_parallel_size)
 
     if extra_valid_index is not None:
         assert getattr(args, "extra_eval_iters_list") is not None, \
@@ -2826,11 +2819,11 @@ def evaluate(
     with torch.no_grad():
         iteration = 0
         if verbose:
-            print_rank_0(f'Evaluating on {args.eval_iters * eval_batch_size} samples')
-        while iteration < args.eval_iters:
+            print_rank_0(f'Evaluating on {eval_iters * eval_batch_size} samples')
+        while iteration < eval_iters:
             iteration += 1
             if verbose:
-                print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
+                print_rank_0(f'Evaluating iter {iteration}/{eval_iters}')
 
             forward_backward_func = get_forward_backward_func()
             # Don't care about timing during evaluation
@@ -2962,21 +2955,21 @@ def evaluate_and_print_results(
         ppl = math.exp(min(20, total_loss_dict[key].item()))
         string += '{} PPL: {:.6E} | '.format(key, ppl)
         if writer:
-            writer.add_scalar('{} validation'.format(key),
-                              total_loss_dict[key].item(),
-                              iteration)
-            writer.add_scalar('{} validation vs samples'.format(key),
-                              total_loss_dict[key].item(),
-                              args.consumed_train_samples)
+            writer.add_scalar('{} validation'.format(key), total_loss_dict[key].item(), iteration)
+            writer.add_scalar(
+                '{} validation vs samples'.format(key),
+                total_loss_dict[key].item(),
+                args.consumed_train_samples,
+            )
             if args.log_validation_ppl_to_tensorboard:
-                writer.add_scalar('{} validation ppl'.format(key), ppl,
-                                  iteration)
-                writer.add_scalar('{} validation ppl vs samples'.format(key),
-                                  ppl, args.consumed_train_samples)
+                writer.add_scalar('{} validation ppl'.format(key), ppl, iteration)
+                writer.add_scalar(
+                    '{} validation ppl vs samples'.format(key), ppl, args.consumed_train_samples
+                )
             if wandb_writer and is_last_rank():
-                wandb_writer.log({
-                    '{} validation'.format(key): total_loss_dict[key].item()},
-                    iteration)
+                wandb_writer.log(
+                    {'{} validation'.format(key): total_loss_dict[key].item()}, iteration
+                )
                 wandb_writer.log({
                     '{} validation vs samples'.format(key): args.consumed_train_samples},
                     iteration)
@@ -3066,8 +3059,8 @@ def build_train_valid_test_data_loaders(build_train_valid_test_datasets_provider
         do_valid = valid_dataloader is not None and args.eval_iters > 0
         do_test = test_dataloader is not None and args.eval_iters > 0
         flags = torch.tensor(
-            [int(do_train), int(do_valid), int(do_test)],
-            dtype=torch.long, device=get_device_type_for_comm())
+            [int(do_train), int(do_valid), int(do_test)], dtype=torch.long, device=get_device_type_for_comm()
+        )
     else:
         flags = torch.tensor([0, 0, 0], dtype=torch.long, device=get_device_type_for_comm())
 
