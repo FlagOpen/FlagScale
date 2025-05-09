@@ -14,7 +14,11 @@ experiment:
     CUDA_VISIBLE_DEVICES: 0,1,2,3
     CUDA_DEVICE_MAX_CONNECTIONS: 1
   cmds:
-    before_start: ulimit -n 65535 && export no_proxy="127.0.0.1,localhost" && source /root/miniconda3/bin/activate flagscale-inference
+    before_start:
+      ulimit -n 65535;
+      export no_proxy="127.0.0.1,localhost";
+      python tools/patch/unpatch.py --backend vllm;
+      source /root/miniconda3/bin/activate flagscale-inference;
 
 action: run
 
