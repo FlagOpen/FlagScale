@@ -8,6 +8,10 @@ import tempfile
 
 import yaml
 
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from git.repo import Repo
 
 DELETED_FILE_NAME = "deleted_files.txt"
@@ -36,6 +40,7 @@ def patch(
     backends=None,
     device_type=None,
     tasks=None,
+    key_path=None,
 ):
     """
     Sync the submodule modifications to the corresponding backend in FlagScale.
@@ -159,7 +164,7 @@ def patch(
 
     if commit:
         patch_info = prompt_info(main_path, backends, device_type, tasks)
-        generate_patch_file(main_path, commit, patch_info)
+        generate_patch_file(main_path, commit, patch_info, key_path=key_path)
 
 
 def prompt_info(main_path, backends, device_type, tasks):
@@ -206,7 +211,7 @@ def prompt_info(main_path, backends, device_type, tasks):
     }
 
 
-def generate_patch_file(main_path: str, commit: str, patch_info: dict):
+def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=None):
     repo = Repo(main_path)
     assert not repo.bare
 
@@ -274,6 +279,10 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict):
             # add \n to the end of the file
             temp_file.write("\n")
             temp_file.flush()
+            if key_path is not None:
+                temp_patch_path = encrypt_file(temp_patch_path, key_path)
+                logger.info(f"Encrypted patch file {temp_patch_path} with public key.")
+
             flagscale_diff_args.append(f':(exclude){backend_dir}')
 
             temp_yaml_file = tempfile.NamedTemporaryFile(
@@ -301,6 +310,9 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict):
                 # add \n to the end of the file
                 temp_file.write("\n")
                 temp_file.flush()
+                if key_path is not None:
+                    temp_patch_path = encrypt_file(temp_patch_path, key_path)
+                    logger.info(f"Encrypted patch file {temp_patch_path} with public key.")
 
                 temp_yaml_file = tempfile.NamedTemporaryFile(
                     delete=False, mode="w", encoding="utf-8", suffix=".yaml"
@@ -326,7 +338,7 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict):
 
         # Step6: Stage the patch file.
         logger.info("Step 6: Staging the generated patch file...")
-        file_name = f"{commit[:7]}.patch"
+        file_name = f"{commit[:7]}.patch" if key_path is None else f"{commit[:7]}.patch.encrypted"
         yaml_file_name = f"{commit[:7]}.yaml"
         patch_dir_need_to_clean = []
         for backend in patches:
@@ -395,6 +407,75 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict):
 
         except Exception as cleanup_error:
             logger.error(f"Failed to delete temporary: {cleanup_error}", exc_info=True)
+
+
+def generate_rsa_keypair(key_path):
+    private_key_path = os.path.join(key_path, "private_key.pem")
+    public_key_path = os.path.join(key_path, "public_key.pem")
+    private_key = rsa.generate_private_key(
+        public_exponent=65537, key_size=4096, backend=default_backend()
+    )
+    public_key = private_key.public_key()
+    with open(private_key_path, "wb") as private_file:
+        private_file.write(
+            private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        )
+    with open(public_key_path, "wb") as public_file:
+        public_file.write(
+            public_key.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+        )
+    return private_key_path, public_key_path
+
+
+def encrypt_file(file_name, key_path):
+    # Create the directory if it does not exist
+    os.makedirs(key_path, exist_ok=True)
+    # Check if the key files already exist
+    private_key_exists = os.path.exists(os.path.join(key_path, "private_key.pem"))
+    public_key_exists = os.path.exists(os.path.join(key_path, "public_key.pem"))
+    if not private_key_exists or not public_key_exists:
+        # Generate RSA key pair if they do not exist
+        private_key_path, public_key_path = generate_rsa_keypair(key_path)
+        print(
+            f"Generated RSA keys:\nPrivate key: {private_key_path}\nPublic key: {public_key_path}"
+        )
+    else:
+        private_key_path = os.path.join(key_path, "private_key.pem")
+        public_key_path = os.path.join(key_path, "public_key.pem")
+        print("RSA keys already exist.")
+
+    aes_key = os.urandom(32)
+    iv = os.urandom(16)
+    cipher = Cipher(algorithms.AES(aes_key), modes.CBC(iv), backend=default_backend())
+    encryptor = cipher.encryptor()
+    with open(file_name, "rb") as file:
+        original_data = file.read()
+    padding_length = 16 - len(original_data) % 16
+    padded_data = original_data + bytes([padding_length] * padding_length)
+    encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
+    with open(public_key_path, "rb") as public_file:
+        public_key = serialization.load_pem_public_key(
+            public_file.read(), backend=default_backend()
+        )
+    encrypted_aes_key = public_key.encrypt(
+        aes_key,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None
+        ),
+    )
+    encrypted_file_path = file_name + ".encrypted"
+    with open(encrypted_file_path, "wb") as encrypted_file:
+        encrypted_file.write(iv + encrypted_aes_key + encrypted_data)
+        os.remove(file_name)
+        logger.info(f"Remove file {file_name} after file encrypted.")
+    return encrypted_file_path
 
 
 def _sync(file_path, status, src, dst, f=None, mode="symlink"):
@@ -477,16 +558,7 @@ def _sync(file_path, status, src, dst, f=None, mode="symlink"):
             f.flush()
 
 
-def _create_file(source_file, target_file, mode="symlink"):
-    if os.path.lexists(source_file):
-        logger.warning(f"File {source_file} will be covered by {target_file}.")
-    assert os.path.lexists(target_file)
-
-    source_dir = os.path.dirname(source_file)
-    if not os.path.lexists(source_dir):
-        os.makedirs(source_dir, exist_ok=True)
-
-    shutil.copyfile(target_file, source_file)
+def symlink_by_mode(source_file, target_file, mode="symlink"):
     if mode == "symlink":
         if os.path.lexists(target_file):
             os.remove(target_file)
@@ -498,6 +570,36 @@ def _create_file(source_file, target_file, mode="symlink"):
         logger.info(f"File {source_file} has been copied to {target_file}.")
     else:
         raise ValueError(f"Unsupported mode: {mode}.")
+
+
+def _create_file(source_file, target_file, mode="symlink"):
+    if os.path.lexists(source_file):
+        logger.warning(f"File {source_file} will be covered by {target_file}.")
+    assert os.path.lexists(target_file)
+
+    source_dir = os.path.dirname(source_file)
+    if not os.path.lexists(source_dir):
+        os.makedirs(source_dir, exist_ok=True)
+
+    if os.path.isdir(target_file):
+        logger.warning(f"File {target_file} is a directory.")
+        for root, dirs, files in os.walk(target_file):
+            for file in files:
+                target_file_path = os.path.join(root, file)
+                relative_path = os.path.relpath(target_file_path, target_file)
+                source_file_path = os.path.join(source_dir, relative_path)
+                if not os.path.exists(source_file_path):
+                    os.makedirs(os.path.dirname(source_file_path), exist_ok=True)
+                    shutil.copyfile(target_file_path, source_file_path)
+                else:
+                    logger.warning(
+                        f"File {source_file_path} will be covered by {target_file_path}."
+                    )
+                    shutil.copyfile(target_file_path, source_file_path)
+                symlink_by_mode(source_file_path, target_file_path, mode=mode)
+    else:
+        shutil.copyfile(target_file, source_file)
+        symlink_by_mode(source_file, target_file, mode=mode)
 
 
 def validate_args(device_type, task, commit, main_path):
@@ -547,6 +649,12 @@ if __name__ == "__main__":
         "--device-type", type=str, default=None, help="Device type. Default is None."
     )
     parser.add_argument("--task", nargs="+", default=None, help="Task. Default is None")
+    parser.add_argument(
+        "--key-path",
+        type=str,
+        default=None,
+        help="The path for storing public and private keys. Be careful not to upload to the Git repository.",
+    )
 
     args = parser.parse_args()
     backends = args.backend
@@ -554,6 +662,7 @@ if __name__ == "__main__":
     commit = args.commit
     tasks = args.task
     device_type = args.device_type
+    key_path = args.key_path
 
     if not isinstance(backends, list):
         backends = [backends]
@@ -581,11 +690,22 @@ if __name__ == "__main__":
             src = os.path.join(main_path, "flagscale", "backends", backend)
             patch(main_path, submodule_name, src, dst, mode)
         patch_info = prompt_info(main_path, backends, device_type, tasks)
-        generate_patch_file(main_path, commit, patch_info)
+        generate_patch_file(main_path, commit, patch_info, key_path=key_path)
 
     else:
         for backend in backends:
             submodule_name = f"third_party/{backend}"
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
-            patch(main_path, submodule_name, src, dst, mode, commit, backends, device_type, tasks)
+            patch(
+                main_path,
+                submodule_name,
+                src,
+                dst,
+                mode,
+                commit,
+                backends,
+                device_type,
+                tasks,
+                key_path,
+            )

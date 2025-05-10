@@ -7,6 +7,10 @@ import tempfile
 
 import yaml
 
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from git.repo import Repo
 
 DELETED_FILE_NAME = "deleted_files.txt"
@@ -178,7 +182,7 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, c
     return newest_flagscale_commit
 
 
-def apply_hardware_patch(device_type, backends, commit, main_path, init_submodule):
+def apply_hardware_patch(device_type, backends, commit, main_path, init_submodule, key_path=None):
     build_path = os.path.join(main_path, "build", device_type)
     final_path = os.path.join(build_path, os.path.basename(main_path))
 
@@ -217,7 +221,7 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
             patch_file = None
             base_commit_id = None
             for file in os.listdir(backend_path):
-                if file.endswith(".patch"):
+                if file.endswith(".patch") or file.endswith(".encrypted"):
                     patch_file = os.path.join(backend_path, file)
                     base_commit_id = file.split(".")[0]
                     try:
@@ -258,8 +262,18 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
 
         logger.info(f"Step 5: Applying patch:")
         for patch_file in patch_files:
-            repo.git.apply("--index", "--whitespace", "fix", patch_file)
-            logger.info(f"Patch {patch_file} has been applied.")
+            # Check if the patch file is encrypted
+            new_patch_file = patch_file
+            if patch_file.endswith(".encrypted"):
+                if key_path is not None:
+                    private_key_path = os.path.join(key_path, "private_key.pem")
+                    new_patch_file = decrypt_file(patch_file, private_key_path)
+                else:
+                    raise ValueError(
+                        f"Patch file {patch_file} is encrypted, but no key path provided."
+                    )
+            repo.git.apply("--index", "--whitespace", "fix", new_patch_file)
+            logger.info(f"Patch {new_patch_file} has been applied.")
 
         logger.info(f"Step 6: Initializing submodule in temp unpatch path {temp_unpatch_path}...")
         if init_submodule:
@@ -295,6 +309,48 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
 
         raise ValueError("Error occurred during unpatching.")
     return final_path
+
+
+def decrypt_file(encrypted_file_name, private_key_path):
+    with open(private_key_path, "rb") as private_file:
+        private_key = serialization.load_pem_private_key(
+            private_file.read(), password=None, backend=default_backend()
+        )
+    with open(encrypted_file_name, "rb") as encrypted_file:
+        print(encrypted_file_name, encrypted_file)
+        iv = encrypted_file.read(16)
+        encrypted_aes_key = encrypted_file.read(512)
+        encrypted_data = encrypted_file.read()
+
+    aes_key = None
+    try:
+        aes_key = private_key.decrypt(
+            encrypted_aes_key,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None
+            ),
+        )
+        print("AES key decrypted successfully.")
+    except Exception as e:
+        print(f"Decryption of AES key failed: {e}")
+        return  # Exit the function if decryption fails
+    if aes_key is None:
+        print("AES key could not be decrypted.")
+        return
+    cipher = Cipher(algorithms.AES(aes_key), modes.CBC(iv), backend=default_backend())
+    decryptor = cipher.decryptor()
+    try:
+        decrypted_padded_data = decryptor.update(encrypted_data) + decryptor.finalize()
+    except Exception as e:
+        print(f"Decryption of data failed: {e}")
+        return
+    padding_length = decrypted_padded_data[-1]
+    decrypted_data = decrypted_padded_data[:-padding_length]
+    decrypted_file_path = os.path.splitext(encrypted_file_name)[0]
+    with open(decrypted_file_path, "wb") as decrypted_file:
+        decrypted_file_path.write(decrypted_data)
+
+    return decrypted_file_path
 
 
 def validate_args(device_type, task, commit, main_path):
@@ -354,12 +410,19 @@ if __name__ == "__main__":
         dest="init_submodule",
         help="Do not initialize and update submodules. Default is True.",
     )
+    parser.add_argument(
+        "--key-path",
+        type=str,
+        default=None,
+        help="The path for storing public and private keys. Be careful not to upload to the Git repository.",
+    )
 
     args = parser.parse_args()
     backends = args.backend
     device_type = args.device_type
     tasks = args.task
     commit = args.commit
+    key_path = args.key_path
 
     # When unpatching, the submodule will be initialized forcefully
     args.force = True
@@ -388,7 +451,9 @@ if __name__ == "__main__":
     commit = commit_to_checkout(main_path, device_type, tasks, backends, commit)
     if commit is not None:
         # Checkout to the commit and apply the patch to build FlagScale
-        apply_hardware_patch(device_type, backends, commit, main_path, args.init_submodule)
+        apply_hardware_patch(
+            device_type, backends, commit, main_path, args.init_submodule, key_path=key_path
+        )
 
     else:
         for backend in backends:
