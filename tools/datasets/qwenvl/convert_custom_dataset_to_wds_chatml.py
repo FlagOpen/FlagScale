@@ -99,7 +99,7 @@ def convert(dataset_dir, json_name, sort_function=sorted, max_count=10000):
 
 
 def generate_configs(path: EPath, split, shuffle_tars=True, num_workers=32):
-    path = path.absolute()
+    # path = path.absolute()
     all_tars = list(path.glob("**/*.tar")) + list(path.glob("**/*.tgz"))
     all_tars = [str(p.relative_to(path)) for p in sorted(all_tars)]
     split_parts_ratio = [("train", split[0]), ("val", split[1]), ("test", split[2])]
