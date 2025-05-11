@@ -87,7 +87,7 @@ wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILa
 
 # If env equals 'train'
 if [ "${env}" == "train" ]; then
-    python tools/patch/unpatch.py --backend Megatron-LM
+    python ../tools/patch/unpatch.py --backend Megatron-LM
 
     # Navigate to requirements directory and install training dependencies
     pip install -r ../requirements/train/megatron/requirements-cuda.txt
@@ -119,7 +119,7 @@ fi
 
 # If env equals 'inference'
 if [ "${env}" == "inference" ]; then
-    python tools/patch/unpatch.py --backend vllm
+    python ../tools/patch/unpatch.py --backend vllm
 
     # Navigate to requirements directory and install inference dependencies
     pip install -r ../third_party/vllm/requirements/build.txt
