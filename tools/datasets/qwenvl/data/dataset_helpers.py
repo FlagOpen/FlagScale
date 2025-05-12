@@ -224,8 +224,12 @@ class TaskEncoder(
                 {"role": "system", "content": "You are a helpful assistant."}
             )
         else:
+            # converted_conversation.append(
+            #     {"role": "system", "content": conversation[0][content_key]}
+            # )
+            # NOTE(lizhiyu): Force set system Prompt: "You are a helpful assistant."
             converted_conversation.append(
-                {"role": "system", "content": conversation[0][content_key]}
+                {"role": "system", "content": "You are a helpful assistant."}
             )
             conversation = conversation[1:]
 
@@ -300,7 +304,10 @@ class TaskEncoder(
             + video_thw_grids.prod(axis=-1).sum() // merge_length
         )
         if target_length > self.seq_len:
-            raise InternalWarning(f"Long sequence with length {target_length} found, dropped...")
+            # raise InternalWarning(f"Long sequence with length {target_length} found, dropped...")
+            print(
+                f"Long sequence with length {target_length} found, cutoff to {self.seq_len} in batch function..."
+            )
         final_input_ids = np.zeros(target_length, dtype=input_ids.dtype)
         final_input_masks = final_input_ids.copy()
 
@@ -497,10 +504,11 @@ class TaskEncoder(
                 FIRST_MAX_PADDING_FLAG = False
             else:
                 max_seq_len = max(len(s.text) for s in samples)
+                max_seq_len = min(max_seq_len, self.seq_len)
         # NOTE: we need to make sure the max_seq_len is divisible by tp_size * cp_size
-        max_seq_len = math.ceil(
-            (max(len(s.text) for s in samples)) / (self.tp_size * self.cp_size)
-        ) * (self.tp_size * self.cp_size)
+        max_seq_len = math.ceil(max_seq_len / (self.tp_size * self.cp_size)) * (
+            self.tp_size * self.cp_size
+        )
         text_mat = np.full((len(samples), max_seq_len), self.tokenizer.pad_token_id, dtype=np.int64)
         # +1 to accommodate shift to left by one later.
         target_mat = np.full(

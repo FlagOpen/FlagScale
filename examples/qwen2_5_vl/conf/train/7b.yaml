@@ -8,8 +8,8 @@ system:
   use_distributed_optimizer: True
   sequence_parallel: True
   tp_comm_overlap: False
-  overlap_grad_reduce: True
-  overlap_param_gather: True
+  overlap_grad_reduce: False
+  overlap_param_gather: False
   use_mcore_models: True
   transformer_impl: transformer_engine
   # recompute_method: "uniform"

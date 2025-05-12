@@ -364,6 +364,10 @@ def get_batch(data_iterator):
     torch.cuda.nvtx.range_push("get_data")
     if data_iterator is not None and get_tensor_model_parallel_rank() == 0:
         data = next(data_iterator)
+        pad_token_id = get_tokenizer().pad_token_id
+        while (data["target"] == pad_token_id).all():
+            print("The current data is invalid because the target is all pad_token_id! Get next data!")
+            data = next(data_iterator)
     else:
         data = None
 
