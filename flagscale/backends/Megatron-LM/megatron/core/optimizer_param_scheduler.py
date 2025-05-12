@@ -67,6 +67,7 @@ class OptimizerParamScheduler:
         assert self.init_lr <= self.max_lr
 
         self.lr_warmup_steps = lr_warmup_steps
+
         self.num_steps = 0
         self.lr_decay_steps = lr_decay_steps
         self.wsd_decay_steps = wsd_decay_steps

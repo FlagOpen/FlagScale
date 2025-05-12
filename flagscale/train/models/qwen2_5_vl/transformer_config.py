@@ -67,6 +67,10 @@ def get_vision_model_config(args, config):
     config.first_pipeline_num_layers = None
     config.num_layers_in_first_pipeline_stage = None
     config.num_layers_in_last_pipeline_stage = None
+    if args.vision_recompute_layer_steps != 0:
+        config.recompute_method="uniform"
+        config.recompute_granularity="full"
+        config.recompute_num_layers=args.vision_recompute_layer_steps # 16 for 32B
     return config
 
 

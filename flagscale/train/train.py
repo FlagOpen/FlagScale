@@ -1467,6 +1467,7 @@ def setup_model_and_optimizer(
         scale_lr_cond,
         lr_mult,
         use_gloo_process_groups=args.enable_gloo_process_groups,
+        vision_ration=args.vision_ration,
     )
     opt_param_scheduler = get_optimizer_param_scheduler(optimizer)
 
@@ -2138,6 +2139,7 @@ def post_training_step_callbacks(
         check_adlr_autoresume_termination(iteration, model, optimizer, opt_param_scheduler)
 
     # Profiling.
+    torch.cuda.nvtx.range_pop() # for iteratrion
     if (
         args.profile
         and iteration == args.profile_step_end
@@ -2459,7 +2461,7 @@ def train(
             elif iteration == args.profile_step_start:
                 torch.cuda.cudart().cudaProfilerStart()
                 torch.autograd.profiler.emit_nvtx(record_shapes=True).__enter__()
-
+        torch.cuda.nvtx.range_push(f"iteration num {iteration}") # NOTE(lizhiyu): add iteration num tag for profile
         ft_integration.on_checkpointing_start()
         maybe_finalize_async_save(blocking=False)
         ft_integration.on_checkpointing_end(is_async_finalization=True)
@@ -2606,7 +2608,7 @@ def train(
             params_norm = calc_params_l2_norm(model)
         learning_rate = None
         decoupled_learning_rate = None
-        for param_group in optimizer.param_groups:
+        for param_group in enumerate(optimizer.param_groups):
             if param_group['is_decoupled_lr']:
                 decoupled_learning_rate = param_group['lr']
             else:

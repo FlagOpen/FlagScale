@@ -16,9 +16,10 @@
 
 import os
 import sys
+import logging
 from functools import partial
 from copy import deepcopy
-from typing import Union, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch._dynamo
@@ -28,21 +29,54 @@ from argparse import Namespace
 # # For pytorch 2.6
 # torch.serialization.add_safe_globals([Namespace])
 
-from megatron.core import mpu
-
 from megatron.core import parallel_state
-from megatron.training.checkpointing import get_checkpoint_name
+from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
+from megatron.core.datasets.gpt_dataset import GPTDataset, GPTDatasetConfig, MockGPTDataset
+from megatron.training.checkpointing import get_checkpoint_name # for dataloder
 from megatron.core.enums import ModelType
-from megatron.training import get_args, get_timers, pretrain, print_rank_0
+from megatron.core.models.gpt import GPTModel
+from megatron.core.models.gpt.gpt_layer_specs import (
+    get_gpt_decoder_block_spec,
+    get_gpt_layer_local_spec,
+    get_gpt_layer_with_transformer_engine_spec,
+    get_gpt_mtp_block_spec,
+)
+from megatron.core.models.gpt.heterogeneous.heterogeneous_layer_specs import (
+    get_gpt_heterogeneous_layer_spec,
+)
+from megatron.core.rerun_state_machine import get_rerun_state_machine
+from megatron.core.transformer.spec_utils import import_module
+from megatron.core.utils import StragglerDetector
+from megatron.training import get_args, get_timers, get_tokenizer, print_rank_0
 from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.utils import (
-    average_losses_across_data_parallel_group,
+    get_batch_on_this_cp_rank,
+    get_batch_on_this_tp_rank,
+    get_blend_and_blend_per_split,
 )
+from megatron.training.yaml_arguments import core_transformer_config_from_yaml
+
+import megatron.legacy.model  # isort: skip
+
+# NOTE: Loading `megatron.legacy.model` earlier fails due to circular import
+
+try:
+    from megatron.post_training.arguments import add_modelopt_args, modelopt_args_enabled
+    from megatron.post_training.loss_func import loss_func as loss_func_modelopt
+    from megatron.post_training.model_provider import model_provider as model_provider_modelopt
+
+    has_nvidia_modelopt = True
+except ImportError:
+    has_nvidia_modelopt = False
+
+from flagscale.train.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
+from flagscale.train.extra_valid import extra_valid_datasets_provider
+from flagscale.train.train import pretrain
+stimer = StragglerDetector()
+
+#### especially for qwen2.5-vl ####
 from megatron.core.num_microbatches_calculator import get_num_microbatches
-
-
 torch._dynamo.config.suppress_errors = True
-from megatron.core import mpu
 from megatron.core.parallel_state import get_tensor_model_parallel_rank, get_pipeline_model_parallel_world_size, get_pipeline_model_parallel_rank
 from megatron.energon import (
     LimitDataset,
@@ -70,7 +104,10 @@ from flagscale.train.models.qwen2_5_vl.transformer_config import (
     get_vision_projection_config
 )
 from tools.datasets.qwenvl.data.dataset_helpers import TaskEncoder, print_error_handler
-
+#### especially for qwen2.5-vl ####
+IGNORE_IDX=-100
+FIRST_MAX_PADDING_FLAG = True
+LAST_LARGE_IMG=False
 def model_provider(
     pre_process=True, post_process=True, add_encoder=True, add_decoder=True
 ) -> Union[Qwen2_5VLModel]:
@@ -138,7 +175,7 @@ def model_provider(
 
     return model
 
-# Slightly modified from Qwen2_5VLForConditionalGeneration.get_rope_index
+# copy from https://github.com/huggingface/transformers/blob/40a493c7ed4f19f08eadb0639cf26d49bfa5e180/src/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py#L1404
 def get_rope_index(
     input_ids: Optional[torch.LongTensor] = None,
     image_grid_thw: Optional[torch.LongTensor] = None,
@@ -364,8 +401,15 @@ def get_batch(data_iterator):
     torch.cuda.nvtx.range_push("get_data")
     if data_iterator is not None and get_tensor_model_parallel_rank() == 0:
         data = next(data_iterator)
+        # pad_token_id = get_tokenizer().pad_token_id
+        pad_token_id = IGNORE_IDX
+        # while (data["target"] == pad_token_id).all() or (data["target"].shape[-1] < 986 or data["target"].shape[-1] > 1000): # for debug
+        while (data["target"] == pad_token_id).all():
+            logging.getLogger(__name__).warning("The current data is invalid because the target is all pad_token_id! Get next data to avoid fail, but it's better to check the data!")
+            data = next(data_iterator)
     else:
         data = None
+
 
     data_text =  broadcast_data(["text"], data, torch.int64)["text"]
 
@@ -378,6 +422,17 @@ def get_batch(data_iterator):
 
     # shape: n_image_samples
     image_thw_grids = broadcast_data(["image_thw_grids"], data, torch.long)["image_thw_grids"]
+
+    # global LAST_LARGE_IMG
+    # if LAST_LARGE_IMG:
+    #     torch.cuda.empty_cache()
+    #     LAST_LARGE_IMG=False
+    # if image_thw_grids.prod(axis=-1).sum() // 4 > 3000:
+    #     torch.cuda.empty_cache()
+    #     LAST_LARGE_IMG = True
+    args = get_args()
+    if data_text.shape[-1] == args.max_padding_length and get_pipeline_model_parallel_rank() == 0:
+        torch.cuda.empty_cache()
     # shape: n_video_samples
     video_thw_grids = broadcast_data(["video_thw_grids"], data, torch.long)["video_thw_grids"]
     # shape: n_video_samples
@@ -400,7 +455,7 @@ def get_batch(data_iterator):
     # NOTE: no sequence packing in LLM inputs
     torch.cuda.nvtx.range_push("get_ltor_masks_and_position_ids")
     attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
-        tokens, image_thw_grids, video_thw_grids, labels, tokenizer.pad_token_id, second_per_grid_ts
+        tokens, image_thw_grids, video_thw_grids, labels, IGNORE_IDX, second_per_grid_ts
     )
     torch.cuda.nvtx.range_pop()
 
@@ -418,34 +473,71 @@ def get_batch(data_iterator):
         video_input_mask
     )
 
-def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
+# define spiky loss as a loss that's 10x the max loss observed
+SPIKY_LOSS_FACTOR = 10
+
+
+def loss_func(
+    loss_mask: torch.Tensor, output_tensor: torch.Tensor, model: Optional[Qwen2_5VLModel] = None
+):
     """Loss function.
 
     Args:
         loss_mask (torch.Tensor): Used to mask out some portions of the loss
         output_tensor (torch.Tensor): The tensor with the losses
+        model (Qwen2_5VLModel, optional): The model (can be wrapped)
+
+    Returns:
+        the loss scalar for this micro-batch
+        the number of non-padded tokens in this microbatch
+        a dict containing reporting metrics on the loss and number of tokens across
+            the data parallel ranks
     """
     args = get_args()
 
-    losses = output_tensor.float()
-    loss_mask = loss_mask.view(-1).float()
+    if has_nvidia_modelopt and modelopt_args_enabled(args):  # [ModelOpt]
+        return loss_func_modelopt(loss_mask, output_tensor, model=model)
 
-    loss = torch.stack([torch.sum(losses.view(-1) * loss_mask), loss_mask.sum()])
-    if args.context_parallel_size > 1:
-        torch.distributed.all_reduce(loss, group=mpu.get_context_parallel_group())
+    losses = output_tensor.view(-1).float()
+    loss_mask = loss_mask.view(-1).float()
+    loss = torch.sum(losses * loss_mask)
 
     # Check individual rank losses are not NaN prior to DP all-reduce.
+    rerun_state_machine = get_rerun_state_machine()
     if args.check_for_nan_in_loss_and_grad:
-        global_rank = torch.distributed.get_rank()
-        assert not loss.isnan().any(), (
-            f"Rank {global_rank}: found NaN in local forward loss calculation. "
-            f"Device: {torch.cuda.current_device()}, node: {os.uname()[1]}"
+        rerun_state_machine.validate_result(
+            result=loss,
+            rejection_func=torch.isnan,
+            message="found NaN in local forward loss calculation",
+            tolerance=0.0,  # forward pass calculations are determinisic
+            fatal=True,
+        )
+        rerun_state_machine.validate_result(
+            result=loss,
+            rejection_func=torch.isinf,
+            message="found Inf in local forward loss calculation",
+            tolerance=0.0,  # forward pass calculations are determinisic
+            fatal=True,
+        )
+    # Check for spiky loss
+    if args.check_for_spiky_loss:
+        rerun_state_machine.validate_result(
+            result=loss,
+            rejection_func=partial(
+                rerun_state_machine.is_unexpectedly_large,
+                threshold=SPIKY_LOSS_FACTOR,
+                context="loss",
+            ),
+            message="Spiky loss",
+            tolerance=0.0,  # forward pass calculations are determinisic
+            fatal=False,
         )
 
-    averaged_loss = average_losses_across_data_parallel_group(loss)
-    averaged_loss = averaged_loss[0] / averaged_loss[1]
+    num_tokens = loss_mask.sum().clone().detach().to(torch.int)
+    reporting_loss = torch.cat([loss.clone().detach().view(1), num_tokens.view(1)])
 
-    return loss[0] * args.context_parallel_size, {"lm loss": averaged_loss}
+    return (loss, num_tokens, {'lm loss': reporting_loss})
+
 
 def forward_step(data_iterator, model: Qwen2_5VLModel):
     """Forward training step.
@@ -454,40 +546,43 @@ def forward_step(data_iterator, model: Qwen2_5VLModel):
         data_iterator : Input data iterator
         model (GPTModel): The GPT Model
     """
+    args = get_args()
     timers = get_timers()
-    # Get the batch.
-    timers("batch-generator", log_level=2).start()
-    (
-        tokens,
-        labels,
-        loss_mask,
-        attention_mask,
-        position_ids,
-        imgs,
-        videos,
-        image_thw_grids,
-        video_thw_grids,
-        image_input_mask,
-        video_input_mask
-    ) = get_batch(data_iterator)
-    timers("batch-generator").stop()
 
+    # Get the batch.
+    timers('batch-generator', log_level=2).start()
+    global stimer
+    with stimer(bdata=True):
+        (
+            tokens,
+            labels,
+            loss_mask,
+            attention_mask,
+            position_ids,
+            imgs,
+            videos,
+            image_thw_grids,
+            video_thw_grids,
+            image_input_mask,
+            video_input_mask
+        ) = get_batch(data_iterator)
+    timers('batch-generator').stop()
     vision_data = torch.cat([imgs, videos], dim=0)
     vision_grid = torch.cat([image_thw_grids, video_thw_grids], dim=0)
+    with stimer:
+        output_tensor = model(
+            input_ids = tokens,
+            position_ids = position_ids,
+            vision_data = vision_data,
+            vision_grid_thw =  vision_grid,
+            video_start_index = image_input_mask.sum().cpu().item(),
+            image_input_mask = image_input_mask,
+            video_input_mask = video_input_mask,
+            attention_mask = attention_mask,
+            labels = labels
+        )
 
-    output_tensor = model(
-        input_ids = tokens,
-        position_ids = position_ids,
-        vision_data = vision_data,
-        vision_grid_thw =  vision_grid,
-        video_start_index = image_input_mask.sum().cpu().item(),
-        image_input_mask = image_input_mask,
-        video_input_mask = video_input_mask,
-        attention_mask = attention_mask,
-        labels = labels
-    )
-
-    return output_tensor, partial(loss_func, loss_mask)
+    return output_tensor, partial(loss_func, loss_mask, model=model)
 
 def run_online_eval(model):
     """Run an evaluation benchmark during training."""
@@ -512,34 +607,36 @@ def datasets_provider(worker_config=None):
         batch_size=args.micro_batch_size,
         task_encoder=TaskEncoder(),
         worker_config=worker_config,
-        virtual_epoch_length=1000,
-        max_samples_per_sequence=100,
-        shuffle_buffer_size=100,
+        virtual_epoch_length=0,
+        max_samples_per_sequence=args.max_samples_per_sequence, # sequential shuffle in a tar
+        shuffle_buffer_size=args.shuffle_buffer_size, # shuffle in a sequential
         handler=print_error_handler,
+        repeat=True,
         image_decode="pil",
     )
-
-    val_datasets = get_val_datasets(
-        dname,
-        batch_size=args.micro_batch_size,
-        # This is the total number over all workers
-        # limit=args.eval_iters * get_num_microbatches(),
-        task_encoder=TaskEncoder(),
-        worker_config=worker_config,
-        handler=print_error_handler,
-        image_decode="pil",
-    )
-    val_datasets_without_source_datasets = [
-        # Limit the dataset to eval_iters * num_microbatches
-        LimitDataset(
-            # Repeat the inner dataset in case it's too short
-            RepeatDataset(val_ds, worker_config=worker_config),
-            length=args.eval_iters * get_num_microbatches(),
+    val_datasets_without_source_datasets = None
+    if args.eval_iters > 0:
+        val_datasets = get_val_datasets(
+            dname,
+            batch_size=args.micro_batch_size,
+            # This is the total number over all workers
+            # limit=args.eval_iters * get_num_microbatches(),
+            task_encoder=TaskEncoder(),
             worker_config=worker_config,
-            reset_after_epoch=True,
+            handler=print_error_handler,
+            image_decode="pil",
         )
-        for val_ds, _src_ds in val_datasets
-    ]
+        val_datasets_without_source_datasets = [
+            # Limit the dataset to eval_iters * num_microbatches
+            LimitDataset(
+                # Repeat the inner dataset in case it's too short
+                RepeatDataset(val_ds, worker_config=worker_config),
+                length=args.eval_iters * get_num_microbatches(),
+                worker_config=worker_config,
+                reset_after_epoch=True,
+            )
+            for val_ds, _src_ds in val_datasets
+        ]
 
     return train_dataset, val_datasets_without_source_datasets, None
 
@@ -566,8 +663,9 @@ def is_dataloader_rank(encoder_pipeline_model_parallel_size):
     # Run dataloader only on the first tensor parallel rank (will be broadcasted to others).
     is_first_rank = get_tensor_model_parallel_rank() == 0
 
-    pp_size = get_pipeline_model_parallel_world_size()
-    is_first_rank = is_first_rank and is_first_or_last_stage(pp_size, encoder_pipeline_model_parallel_size)
+    # NOTE(lizhiyu): when pp_size > 2
+    # pp_size = get_pipeline_model_parallel_world_size()
+    # is_first_rank = is_first_rank and is_first_or_last_stage(pp_size, encoder_pipeline_model_parallel_size)
 
     return is_first_rank
 
@@ -613,10 +711,13 @@ def train_valid_test_dataloaders_provider(train_val_test_num_samples):
                 except Exception as e:
                     print_rank_0("loading dataloader checkpoint failed. Skipping. " + str(e))
 
-    valid_dataloader = [
-        EnergonDataloader(get_loader(valid_ds, worker_config=worker_config))
-        for valid_ds in valid_ds1
-    ]
+    if valid_ds1 is not None:
+        valid_dataloader = [
+            EnergonDataloader(get_loader(valid_ds, worker_config=worker_config))
+            for valid_ds in valid_ds1
+        ]
+    else:
+        valid_dataloader = EnergonDataloader(None)
     test_dataloader = None # NOTE: no test
 
     return EnergonDataloader(train_dataloader), valid_dataloader, EnergonDataloader(test_dataloader)
@@ -658,6 +759,16 @@ def add_multimodal_extra_args(parser):
     group.add_argument("--patch-size", type=int, default=14)
     group.add_argument("--max-padding-length", type=int, default=2048)
     group.add_argument("--enable-variable-seq-lengths", action="store_true", default=False, help="Enable variable sequence lengths")
+    group.add_argument("--vision-root", type=str, default = None, help="The vision dirctory root path.")
+    group.add_argument("--max-samples-per-sequence", type=int, default=2**31-1, help="max sequencial seqence samples in a slice")
+    group.add_argument("--shuffle-buffer-size", type=int, default=0, help="the buffer size to shuffle the samples in a seqence")
+    # learning rate
+    group.add_argument("--vision-ration", type=float, default=0.1, help="the learning rate ration of vision(inlude merger) compared with llm")
+    group.add_argument("--image-max-pixels", type=int, default=768*768, help="the maximum pixels of a single image")
+    group.add_argument("--image-min-pixels", type=int, default=32*32, help="the minimum pixels of a single image")
+    group.add_argument("--vision-recompute-layer-steps", type=int, default=0, help="the recmoute layers for vision using uniform method. 0 is disable.")
+
+
 
     # just for checkpoint conversion
     group.add_argument(
