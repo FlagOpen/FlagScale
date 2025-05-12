@@ -336,6 +336,11 @@ class TransformerConfig(ModelParallelConfig):
     first_last_layers_bf16 is True."""
 
     ####################
+    # DualPipeV related
+    ####################
+    moe_fb_overlap: bool = False
+
+    ####################
     # MoE related
     ####################
     moe_shared_expert_intermediate_size: Optional[int] = None
@@ -584,6 +589,10 @@ class TransformerConfig(ModelParallelConfig):
 
     heterogeneous_block_specs: bool = False
     """Whether to use heterogeneous block specs (nemotron-nas architecture)."""
+
+
+    ### dualpipev args ###
+
 
     def __post_init__(self):
         """Python dataclass method that is used to modify attributes after initialization.

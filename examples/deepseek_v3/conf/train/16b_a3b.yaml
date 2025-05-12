@@ -4,7 +4,7 @@ system:
   tensor_model_parallel_size: 1
   pipeline_model_parallel_size: 4
   # num_layers_per_virtual_pipeline_stage: 1
-  expert_model_parallel_size: 1
+  expert_model_parallel_size: 2
   context_parallel_size: 1
   disable_bias_linear: true
   reset_position_ids: True
@@ -12,10 +12,11 @@ system:
   qk_layernorm: true
   # sequence_parallel: true
   use_distributed_optimizer: true
-  overlap_grad_reduce: true
-  overlap_param_gather: true
+  # overlap_grad_reduce: true
+  # overlap_param_gather: true
   finetune: false
   schedules_method: dualpipev
+  moe_fb_overlap: true
   precision:
     bf16: true
     attention_softmax_in_fp32: true

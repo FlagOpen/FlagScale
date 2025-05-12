@@ -1902,6 +1902,8 @@ def _add_training_args(parser):
                        'If None, the default backend will be used.')
     group.add_argument('--schedules-method', type=str, default=None, 
                        choices=['dualpipev'])
+    group.add_argument('--moe-fb-overlap', action='store_true',
+                       help='Overlapping of moe a2a communication and forward/backward computation')
 
     return parser
 
