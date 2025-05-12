@@ -45,6 +45,7 @@ def kv_mapping_override_pooler_config(v) -> dict:
         raise ValueError(f"Invalid pooling_type: {pooling_type}")
     return {"pooling": pooling_type}
 
+
 def kv_mapping_rope_scaling(v) -> dict:
     if isinstance(v, str):
         try:
@@ -69,6 +70,7 @@ def kv_mapping_kv_cache_dtype(v) -> dict:
             "cache_type_v": v
         }
     raise ValueError(f"Invalid kv_cache_dtype for llama.cpp: {v}")
+
 
 def kv_mapping_reasoning_parser(v) -> dict:
     if v in ["deepseek", "deepseek_r1", "deep-seek", "DeepSeek", "Deep-Seek"]:

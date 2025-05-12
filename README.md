@@ -51,7 +51,7 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     ```
     The above instructions create two conda environments: `flagscale-train` and `flagscale-inference`, which contain the dependency environments for training and inference, respectively.
 
-    The backend (CPU by default) of llama.cpp is alternative, for example:
+    The llama.cpp backend (CPU by default) is alternative, for example:
     ```sh
     ./install-requirements.sh --env inference --llama-cpp-backend cuda
     ```
@@ -74,9 +74,6 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     pip install -e .
     cd FlagScale
     cp -r third_party/Megatron-Energon/src/megatron/energon third_party/Megatron-LM/megatron
-
-    cd FlagScale/third_party/llama.cpp
-    ./flagscale_build_and_convert.sh --llamma_cpp_backend cpu --model_path /tmp/models/Qwen3-0.6B
     ```
 
 5. Patch the modifications to the specified third_party backend for PR.
