@@ -9,9 +9,9 @@ def kv_mapping_speculative_config(v) -> dict:
             raise ValueError(f"Invalid JSON string: {v}")
     if not isinstance(v, dict):
         raise ValueError(f"Expected a dictionary, got {type(v)}: {v}")
-    
+
     draft_max = 16
-    draft_min =5
+    draft_min = 5
     if "num_speculative_tokens" in v.keys():
         if isinstance(v["num_speculative_tokens"], str):
             try:
@@ -23,11 +23,7 @@ def kv_mapping_speculative_config(v) -> dict:
     if "model" not in v.keys():
         raise ValueError(f"Missing 'model' key in the dictionary: {v}")
     model = v["model"]
-    return {
-        "draft_max": draft_max,
-        "draft_min": draft_min,
-        "model_draft": model,
-    }
+    return {"draft_max": draft_max, "draft_min": draft_min, "model_draft": model}
 
 
 def kv_mapping_override_pooler_config(v) -> dict:
@@ -65,10 +61,7 @@ def kv_mapping_rope_scaling(v) -> dict:
 
 def kv_mapping_kv_cache_dtype(v) -> dict:
     if v in ["f32", "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1"]:
-        return {
-            "cache_type_k": v,
-            "cache_type_v": v
-        }
+        return {"cache_type_k": v, "cache_type_v": v}
     raise ValueError(f"Invalid kv_cache_dtype for llama.cpp: {v}")
 
 

@@ -16,7 +16,6 @@ VLLM_LLAMA_K_MAPPING = {
     "served_model_name": "alias",
     "show_hidden_metrics_for_version": "metrics",
     "max_num_seqs": "parallel",
-
 }
 
 
