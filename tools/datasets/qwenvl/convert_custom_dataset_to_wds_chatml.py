@@ -27,11 +27,18 @@ def convert(dataset_dir, json_name, sort_function=sorted, max_count=10000):
     if not os.path.exists(output):
         os.mkdir(output)
 
-    # Load data
-    with open(json_file, "r") as f:
-        data = json.load(f)
+    # support both json and jsonl
+    try:
+        with open(json_file, "r") as f:
+            data = json.load(f)
+    except:
+        with open(json_file, "r") as f:
+            data = [json.loads(l) for l in f.readlines()]
 
     # custom webdataset ShardWriter Encoder
+    # "jpgs": the key when saving the image, see line 93
+    # "videos": the key when saving the video, see line 92
+    # when "shard_writer.write(sample)", use the default_handlers to encode the data
     add_handlers(
         default_handlers, "jpgs", lambda data: pickle.dumps([imageencoder(d, "jpg") for d in data])
     )
@@ -119,7 +126,7 @@ def generate_configs(path: EPath, split, shuffle_tars=True, num_workers=32):
     # NOTE: dump dataset.yaml
     metadata = {
         "__class__": "ChatMLWebdataset",
-        "__module__": "tools.datasets.qwenvl.data..energon.chatml",
+        "__module__": "tools.datasets.qwenvl.data.energon.chatml",
         "field_map": {"imgs": "jpgs", "videos": "videos", "conversation": "json"},
     }
     with open(os.path.join(path.url, ".nv-meta", "dataset.yaml"), "w") as f:
