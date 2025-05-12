@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ex
+set -e
 
 print_help() {
     echo "Usage: $0 [--env <train|inference>] [--llama-cpp-backend <cpu|metal|blas|openblas|blis|cuda|gpu|musa|vulkan_mingw64|vulkan_msys2|cann|arm_kleidi|hip|opencl_android|opencl_windows_arm64>]"
