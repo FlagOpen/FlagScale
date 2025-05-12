@@ -42,8 +42,8 @@ def llama_cpp_serve(args):
     command = ["./third_party/llama.cpp/build/bin/llama-server"]
     if llama_cpp_args.get("model", None):
         command.extend(["--model", llama_cpp_args["model"]])
-        # other_args = flatten_dict_to_args(llama_cpp_args, ["model"])
-        # command.extend(other_args)
+        other_args = flatten_dict_to_args(llama_cpp_args, ["model"])
+        command.extend(other_args)
     else:
         raise ValueError("Either model must be specified in vllm_model.")
 
