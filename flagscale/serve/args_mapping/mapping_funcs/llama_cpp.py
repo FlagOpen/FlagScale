@@ -1,7 +1,7 @@
 import json
 
 
-def kv_mapping_speculative_config(v) -> dict:
+def llama_cpp_speculative_config_converter(v) -> dict:
     if isinstance(v, str):
         try:
             v = json.loads(v)
@@ -26,7 +26,7 @@ def kv_mapping_speculative_config(v) -> dict:
     return {"draft_max": draft_max, "draft_min": draft_min, "model_draft": model}
 
 
-def kv_mapping_override_pooler_config(v) -> dict:
+def llama_cpp_override_pooler_config_converter(v) -> dict:
     if isinstance(v, str):
         try:
             v = json.loads(v)
@@ -42,7 +42,7 @@ def kv_mapping_override_pooler_config(v) -> dict:
     return {"pooling": pooling_type}
 
 
-def kv_mapping_rope_scaling(v) -> dict:
+def llama_cpp_rope_scaling_converter(v) -> dict:
     if isinstance(v, str):
         try:
             v = json.loads(v)
@@ -59,19 +59,19 @@ def kv_mapping_rope_scaling(v) -> dict:
     return {"rope_scaling": rope_type, "rope_scale": factor}
 
 
-def kv_mapping_kv_cache_dtype(v) -> dict:
+def llama_cpp_kv_cache_dtype_converter(v) -> dict:
     if v in ["f32", "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1"]:
         return {"cache_type_k": v, "cache_type_v": v}
     raise ValueError(f"Invalid kv_cache_dtype for llama.cpp: {v}")
 
 
-def kv_mapping_reasoning_parser(v) -> dict:
+def llama_cpp_reasoning_parser_converter(v) -> dict:
     if v in ["deepseek", "deepseek_r1", "deep-seek", "DeepSeek", "Deep-Seek"]:
         return {"reasoning_format": "deepseek"}
     raise ValueError(f"Invalid reasoning_parser for llama.cpp: {v}")
 
 
-def kv_mapping_lora_modules(v) -> dict:
+def llama_cpp_lora_modules_converter(v) -> dict:
     if isinstance(v, str):
         try:
             v = json.loads(v)
@@ -85,7 +85,7 @@ def kv_mapping_lora_modules(v) -> dict:
     return {"lora": v["path"]}
 
 
-def kv_mapping_max_model_len(v) -> int:
+def llama_cpp_max_model_len_converter(v) -> int:
     if isinstance(v, int):
         return {"ctx_size": v}
     if not isinstance(v, str):
@@ -108,7 +108,7 @@ def kv_mapping_max_model_len(v) -> int:
     return {"ctx_size": v}
 
 
-def kv_mapping_uvicorn_log_level(v) -> dict:
+def llama_cpp_uvicorn_log_level_converter(v) -> dict:
     if v in ["warning", "error", "critical", "trace", "WARNING", "ERROR", "CRITICAL", "TRACE"]:
         return {"log_verbosity": 0}
     elif v in ["debug", "info", "DEBUG", "INFO"]:

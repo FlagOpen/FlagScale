@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 
-from flagscale.serve.args_mapping.llama_cpp import llama_cpp_args_converter
+from flagscale.serve.args_mapping.mapping import ARGS_CONVERTER
 
 # Compatible with both command-line execution and source code execution.
 try:
@@ -43,7 +43,7 @@ def llama_cpp_serve(args):
     llama_cpp_args = args.get("engine_args", {})
     command = ["./third_party/llama.cpp/build/bin/llama-server"]
     if llama_cpp_args.get("model", None):
-        converted_args = llama_cpp_args_converter(llama_cpp_args)
+        converted_args = ARGS_CONVERTER.convert("llama_cpp", llama_cpp_args)
         command.extend(["--model", llama_cpp_args["model"]])
         other_args = flatten_dict_to_args(converted_args, ["model"])
         command.extend(other_args)
