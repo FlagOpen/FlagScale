@@ -1,0 +1,20 @@
+- serve_id: vllm_model
+  # engine: vllm
+  engine: llama_cpp
+  engine_args:
+    model: /tmp/models/Qwen3-0.6B/ggml_model_f16.gguf
+    host: 0.0.0.0
+    max_model_len: 1K
+    max_num_seqs: 4
+    kv_cache_dtype: f16
+    uvicorn_log_level: warning
+  engine_args_specific:
+    llama_cpp:
+      threads: 4
+    vllm:
+      tensor_parallel_size: 1
+      pipeline_parallel_size: 1
+      gpu_memory_utilization: 0.9
+      enforce_eager: true
+      trust_remote_code: true
+      enable_chunked_prefill: true

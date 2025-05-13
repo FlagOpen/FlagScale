@@ -1,6 +1,6 @@
 defaults:
 - _self_
-- serve: 0_6b_llama_cpp
+- serve: 0_6b
 
 experiment:
   exp_name: qwen3_0.6b
