@@ -1,0 +1,37 @@
+# Common serve args for all backends
+common_args:
+  # Server binding configuration
+  - host
+  - port
+
+  # Model configuration
+  - model
+  - lora_modules
+  - seed
+  - rope_scaling
+  - rope_theta
+  - served_model_name
+
+  # Generation configuration
+  - max_model_len
+  - chat_template
+  - reasoning_parser
+  - speculative_config
+  - num_lookahead_slots
+  - override_pooler_config
+
+  # System optimization configuration
+  - device
+  - kv_cache_dtype
+  - max_num_seqs
+
+  # Log and metrics configuration
+  - disable_uvicorn_access_log
+  - uvicorn_log_level
+  - show_hidden_metrics_for_version
+
+  # Authentication configuration
+  - api_key
+  - ssl_keyfile
+  - ssl_certfile
+  - hf_token
