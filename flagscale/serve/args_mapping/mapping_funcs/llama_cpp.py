@@ -1,47 +1,6 @@
 import json
 
 
-def llama_cpp_speculative_config_converter(v) -> dict:
-    if isinstance(v, str):
-        try:
-            v = json.loads(v)
-        except json.JSONDecodeError:
-            raise ValueError(f"Invalid JSON string: {v}")
-    if not isinstance(v, dict):
-        raise ValueError(f"Expected a dictionary, got {type(v)}: {v}")
-
-    draft_max = 16
-    draft_min = 5
-    if "num_speculative_tokens" in v.keys():
-        if isinstance(v["num_speculative_tokens"], str):
-            try:
-                v["num_speculative_tokens"] = int(v["num_speculative_tokens"])
-            except ValueError:
-                raise ValueError(f"Invalid num_speculative_tokens: {v['num_speculative_tokens']}")
-            draft_min = v["num_speculative_tokens"]
-            draft_max = v["num_speculative_tokens"] * 2
-    if "model" not in v.keys():
-        raise ValueError(f"Missing 'model' key in the dictionary: {v}")
-    model = v["model"]
-    return {"draft_max": draft_max, "draft_min": draft_min, "model_draft": model}
-
-
-def llama_cpp_override_pooler_config_converter(v) -> dict:
-    if isinstance(v, str):
-        try:
-            v = json.loads(v)
-        except json.JSONDecodeError:
-            raise ValueError(f"Invalid JSON string: {v}")
-    if not isinstance(v, dict):
-        raise ValueError(f"Expected a dictionary, got {type(v)}: {v}")
-    if "pooling_type" not in v:
-        raise ValueError(f"Missing 'pooler_type' key in the dictionary: {v}")
-    pooling_type = v["pooling_type"]
-    if pooling_type not in ["none", "mean", "cls", "last", "rank"]:
-        raise ValueError(f"Invalid pooling_type: {pooling_type}")
-    return {"pooling": pooling_type}
-
-
 def llama_cpp_rope_scaling_converter(v) -> dict:
     if isinstance(v, str):
         try:
@@ -73,20 +32,6 @@ def llama_cpp_reasoning_parser_converter(v) -> dict:
     if v in ["deepseek", "deepseek_r1", "deep-seek", "DeepSeek", "Deep-Seek"]:
         return {"reasoning_format": "deepseek"}
     raise ValueError(f"Invalid reasoning_parser for llama.cpp: {v}")
-
-
-def llama_cpp_lora_modules_converter(v) -> dict:
-    if isinstance(v, str):
-        try:
-            v = json.loads(v)
-        except json.JSONDecodeError:
-            raise ValueError(f"Invalid JSON string: {v}")
-    if not isinstance(v, dict):
-        raise ValueError(f"Expected a dictionary, got {type(v)}: {v}")
-    if "path" not in v:
-        raise ValueError(f"Missing 'lora' key in the dictionary: {v}")
-
-    return {"lora": v["path"]}
 
 
 def llama_cpp_max_model_len_converter(v) -> int:

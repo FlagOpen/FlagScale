@@ -11,10 +11,7 @@ llama_cpp:
   # Serve args(keys and values) mapping from vllm to llama_cpp
   kv_mapping_func:
     - uvicorn_log_level
-    - lora_modules
     - max_model_len
     - reasoning_parser
     - kv_cache_dtype
-    - speculative_config
-    - override_pooler_config
     - rope_scaling
