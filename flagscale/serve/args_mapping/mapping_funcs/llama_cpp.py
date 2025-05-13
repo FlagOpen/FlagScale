@@ -1,4 +1,5 @@
 import json
+import os
 
 
 def llama_cpp_rope_scaling_converter(v) -> dict:
@@ -63,3 +64,16 @@ def llama_cpp_uvicorn_log_level_converter(v) -> dict:
     elif v in ["debug", "info", "DEBUG", "INFO"]:
         return {"log_verbosity": 1}
     raise ValueError(f"Invalid uvicorn_log_level(log_verbosity) for llama.cpp: {v}")
+
+
+def llama_cpp_model_converter(v) -> dict:
+    if not os.path.exists(v):
+        raise FileNotFoundError(f"Error: model_path '{v}' does not exist")
+    if not os.path.isdir(v):
+        raise NotADirectoryError(f"Error: model_path '{v}' is not a directory")
+    for root, _, files in os.walk(v):
+        for file in files:
+            if file.lower().endswith('.gguf'):
+                full_path = os.path.join(root, file)
+                return {"model": full_path}
+    return {"model": v}

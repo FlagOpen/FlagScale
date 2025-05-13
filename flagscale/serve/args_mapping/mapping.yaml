@@ -15,3 +15,4 @@ llama_cpp:
     - reasoning_parser
     - kv_cache_dtype
     - rope_scaling
+    - model
