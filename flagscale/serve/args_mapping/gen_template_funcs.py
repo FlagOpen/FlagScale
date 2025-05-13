@@ -21,8 +21,7 @@ def gen_singel_func(func_name):
 
 def gen_template_funcs(backend_name):
     """
-    This function generates a template functions file for the VLLM serve command-line arguments.
-    It extracts the argument names from the VLLM parser and creates a mapping configuration.
+    This function generates a template functions file.
     The configuration is saved to a file named "template_funcs.py".
     """
     lines = ["# This file is auto-generated, edit it properly.\n"]
