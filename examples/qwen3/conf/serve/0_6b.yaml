@@ -6,7 +6,7 @@
     host: 0.0.0.0
     max_model_len: 1K
     max_num_seqs: 4
-    kv_cache_dtype: f16
+    kv_cache_dtype: fp8
     uvicorn_log_level: warning
   engine_args_specific:
     llama_cpp:
