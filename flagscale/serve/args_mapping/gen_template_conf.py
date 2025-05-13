@@ -1,6 +1,7 @@
 # It creates a mapping conf of argument names to placeholder values and saves
 # the configuration to a file named "template_conf.yaml".
 import yaml
+
 from vllm.entrypoints.openai.cli_args import create_parser_for_docs
 
 
