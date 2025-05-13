@@ -16,7 +16,9 @@ from flagscale.utils import flatten_dict_to_args
 
 
 def vllm_serve(args):
-    vllm_args = args.get("engine_args", {})
+    common_args = args.get("engine_args", {})
+    vllm_args = args.get("engine_args_specific", {}).get("vllm", {})
+    vllm_args.update(common_args)
     command = ["vllm", "serve"]
     if vllm_args.get("model", None):
         command.append(vllm_args["model"])
@@ -40,13 +42,17 @@ def vllm_serve(args):
 
 
 def llama_cpp_serve(args):
-    llama_cpp_args = args.get("engine_args", {})
+    common_args = args.get("engine_args", {})
+    llama_cpp_args = args.get("engine_args_specific", {}).get("llama_cpp", {})
+
     command = ["./third_party/llama.cpp/build/bin/llama-server"]
-    if llama_cpp_args.get("model", None):
-        converted_args = ARGS_CONVERTER.convert("llama_cpp", llama_cpp_args)
-        command.extend(["--model", llama_cpp_args["model"]])
-        other_args = flatten_dict_to_args(converted_args, ["model"])
-        command.extend(other_args)
+    if common_args.get("model", None):
+        converted_args = ARGS_CONVERTER.convert("llama_cpp", common_args)
+        command.extend(["--model", common_args["model"]])
+        common_args_flatten = flatten_dict_to_args(converted_args, ["model"])
+        command.extend(common_args_flatten)
+        llama_cpp_args_flatten = flatten_dict_to_args(llama_cpp_args, ["model"])
+        command.extend(llama_cpp_args_flatten)
     else:
         raise ValueError("Either model must be specified in vllm_model.")
 
