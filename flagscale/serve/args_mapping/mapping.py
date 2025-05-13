@@ -28,8 +28,9 @@ class ArgsConverter:
     """
     ArgsConverter is a class that handles the conversion of arguments
     between different backends. It loads the mapping configuration from a mapping.yaml
-    and provides methods to convert arguments based on the mapping."""
-    
+    and provides methods to convert arguments based on the mapping.
+    """
+
     def __init__(self):
         with open("flagscale/serve/args_mapping/mapping.yaml", "r") as f:
             self.mapping = yaml.safe_load(f)
