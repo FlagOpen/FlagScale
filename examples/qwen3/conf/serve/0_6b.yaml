@@ -2,7 +2,7 @@
   # engine: vllm
   engine: llama_cpp
   engine_args:
-    model: /tmp/models/Qwen3-0.6B/ggml_model_f16.gguf
+    model: /tmp/models/Qwen3-0.6B/
     host: 0.0.0.0
     max_model_len: 1K
     max_num_seqs: 4
