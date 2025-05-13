@@ -40,4 +40,3 @@ output file: ./template_funcs.py
 ## 5. Implement the func in template_funcs.py.
 
 template_funcs.py is generated after step 4.
-
