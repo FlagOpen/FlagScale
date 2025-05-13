@@ -6,7 +6,6 @@ common_args:
 
   # Model configuration
   - model
-  - lora_modules
   - seed
   - rope_scaling
   - rope_theta
@@ -16,9 +15,6 @@ common_args:
   - max_model_len
   - chat_template
   - reasoning_parser
-  - speculative_config
-  - num_lookahead_slots
-  - override_pooler_config
 
   # System optimization configuration
   - device
