@@ -16,7 +16,7 @@ When converting:
 ## 1. Generate a conf template with all vLLM args.
 ```
 cd FlagScale
-python flagscale/serve/args_mapping/gen_template_funcs.py 
+python flagscale/serve/args_mapping/gen_template_funcs.py
 ```
 output file: ./template_conf.yaml
 
