@@ -1,5 +1,6 @@
-import yaml
 import importlib
+
+import yaml
 
 
 def args2func(backend_name: str, args: str) -> str:

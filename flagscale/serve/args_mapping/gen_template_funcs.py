@@ -1,6 +1,7 @@
 # It creates a py file named "template_funcs.py" with functions that are
 # responsible for converting the key-value to the desired format
 import argparse
+
 import yaml
 
 from mapping import args2func
