@@ -48,7 +48,7 @@ def llama_cpp_serve(args):
     command = ["./third_party/llama.cpp/build/bin/llama-server"]
     if common_args.get("model", None):
         converted_args = ARGS_CONVERTER.convert("llama_cpp", common_args)
-        command.extend(["--model", common_args["model"]])
+        command.extend(["--model", converted_args["model"]])
         common_args_flatten = flatten_dict_to_args(converted_args, ["model"])
         command.extend(common_args_flatten)
         llama_cpp_args_flatten = flatten_dict_to_args(llama_cpp_args, ["model"])
