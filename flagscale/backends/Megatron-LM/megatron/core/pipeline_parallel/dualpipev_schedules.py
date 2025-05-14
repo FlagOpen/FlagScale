@@ -59,10 +59,10 @@ def turn_dw_detach(model, chunk_id=0, enable=False):
     for module in chunk_model.modules():
         if hasattr(module, "wgrad_store"):
             if enable:
-                print(f"turn on module with dw detach is {module}")
+                # print(f"turn on module with dw detach is {module}")
                 module.wgrad_store.enable_delay_wgrad_compute()
             else:
-                print(f"turn off module with dw detach is {module}")
+                # print(f"turn off module with dw detach is {module}")
                 module.wgrad_store.disable_delay_wgrad_compute()
 
 def call_backward_dw(model, chunk_id=0):
@@ -144,26 +144,25 @@ def recv_forward(tensor_shape: Shape, config: ModelParallelConfig, model_chunk_i
 
     See _communicate for argument details.
     """
-    print(f"[DeBUG] Entering recv_forward: model_chunk_id={model_chunk_id}, async_op={async_op}, tensor_shape={tensor_shape}")
+    # print(f"[DeBUG] Entering recv_forward: model_chunk_id={model_chunk_id}, async_op={async_op}, tensor_shape={tensor_shape}")
     
     recv_prev, recv_next = False, False
     if model_chunk_id == 0:
         recv_prev = True
-        print(f"[DeBUG] model_chunk_id is 0, setting recv_prev=True")
+        # print(f"[DeBUG] model_chunk_id is 0, setting recv_prev=True")
     else:
         recv_next = True
-        print(f"[DeBUG] model_chunk_id is not 0, setting recv_next=True")
+        # print(f"[DeBUG] model_chunk_id is not 0, setting recv_next=True")
 
     if (parallel_state.is_pipeline_first_stage() and recv_prev) or (parallel_state.is_pipeline_last_stage() and recv_next):
-        print('if (parallel_state.is_pipeline_first_stage() and recv_prev) or (parallel_state.is_pipeline_last_stage() and recv_next)')
         fwd_wait_handles = None
         return None, fwd_wait_handles
     else:
         if config.timers is not None:
             config.timers('forward-recv', log_level=2).start()
-            print(f"[DeBUG] Started forward-recv timer")
+            # print(f"[DeBUG] Started forward-recv timer")
         
-        print(f"[DeBUG] Calling _communicate for reception: recv_prev={recv_prev}, recv_next={recv_next}, async_op={not async_op}")
+        # print(f"[DeBUG] Calling _communicate for reception: recv_prev={recv_prev}, recv_next={recv_next}, async_op={not async_op}")
         tensor_recv_prev, tensor_recv_next, fwd_wait_handles = _communicate(
             tensor_send_next=None,
             tensor_send_prev=None,
@@ -175,13 +174,13 @@ def recv_forward(tensor_shape: Shape, config: ModelParallelConfig, model_chunk_i
         )
         if config.timers is not None:
             config.timers('forward-recv').stop()
-            print(f"[DeBUG] Stopped forward-recv timer")
+            # print(f"[DeBUG] Stopped forward-recv timer")
 
     if recv_prev:
-        print(f"[DeBUG] Returning tensor_recv_prev: {tensor_recv_prev.shape if tensor_recv_prev is not None and hasattr(tensor_recv_prev, 'shape') else 'None'}")
+        # print(f"[DeBUG] Returning tensor_recv_prev: {tensor_recv_prev.shape if tensor_recv_prev is not None and hasattr(tensor_recv_prev, 'shape') else 'None'}")
         return tensor_recv_prev, fwd_wait_handles
     else:
-        print(f"[DeBUG] Returning tensor_recv_next: {tensor_recv_next.shape if tensor_recv_next is not None and hasattr(tensor_recv_next, 'shape') else 'None'}")
+        # print(f"[DeBUG] Returning tensor_recv_next: {tensor_recv_next.shape if tensor_recv_next is not None and hasattr(tensor_recv_next, 'shape') else 'None'}")
         return tensor_recv_next, fwd_wait_handles
 
 
@@ -233,25 +232,25 @@ def send_forward_recv_forward(
 
     See _communicate for argument details.
     """
-    print(f"[DeBUG] Entering send_forward_recv_forward with model_chunk_id={model_chunk_id}")
+    # print(f"[DeBUG] Entering send_forward_recv_forward with model_chunk_id={model_chunk_id}")
     recv_prev, recv_next = False, False
     tensor_send_next, tensor_send_prev = None, None
     if model_chunk_id == 0:
         if not parallel_state.is_pipeline_last_stage():
             tensor_send_next = output_tensor
-            print(f"[DeBUG] model_chunk_id=0: Setting tensor_send_next, pipeline_rank={parallel_state.get_pipeline_model_parallel_rank()}")
+            # print(f"[DeBUG] model_chunk_id=0: Setting tensor_send_next, pipeline_rank={parallel_state.get_pipeline_model_parallel_rank()}")
         if not parallel_state.is_pipeline_first_stage():
             recv_prev = True
-            print(f"[DeBUG] model_chunk_id=0: Setting recv_prev=True, pipeline_rank={parallel_state.get_pipeline_model_parallel_rank()}")
+            # print(f"[DeBUG] model_chunk_id=0: Setting recv_prev=True, pipeline_rank={parallel_state.get_pipeline_model_parallel_rank()}")
     if model_chunk_id == 1:
         if not parallel_state.is_pipeline_first_stage():
             tensor_send_prev = output_tensor
-            print(f"[DeBUG] model_chunk_id=1: Setting tensor_send_prev, pipeline_rank={parallel_state.get_pipeline_model_parallel_rank()}")
+            # print(f"[DeBUG] model_chunk_id=1: Setting tensor_send_prev, pipeline_rank={parallel_state.get_pipeline_model_parallel_rank()}")
         if not parallel_state.is_pipeline_last_stage():
             recv_next = True
-            print(f"[DeBUG] model_chunk_id=1: Setting recv_next=True, pipeline_rank={parallel_state.get_pipeline_model_parallel_rank()}")
+            # print(f"[DeBUG] model_chunk_id=1: Setting recv_next=True, pipeline_rank={parallel_state.get_pipeline_model_parallel_rank()}")
 
-    print(f"[DeBUG] Before communication: recv_prev={recv_prev}, recv_next={recv_next}")
+    # print(f"[DeBUG] Before communication: recv_prev={recv_prev}, recv_next={recv_next}")
     if config.timers is not None:
         config.timers('forward-send-forward-recv', log_level=2).start()
     tensor_recv_prev, tensor_recv_next, fwd_wait_handles = _communicate(
@@ -265,21 +264,21 @@ def send_forward_recv_forward(
     )
     if config.timers is not None:
         config.timers('forward-send-forward-recv').stop()
-    print(f"[DeBUG] After communication: tensor_recv_prev={tensor_recv_prev is not None}, tensor_recv_next={tensor_recv_next is not None}")
+    # print(f"[DeBUG] After communication: tensor_recv_prev={tensor_recv_prev is not None}, tensor_recv_next={tensor_recv_next is not None}")
 
     if model_chunk_id == 0:
         if not parallel_state.is_pipeline_first_stage():
-            print(f"[DeBUG] Returning tensor_recv_prev for model_chunk_id=0, not first stage")
+            # print(f"[DeBUG] Returning tensor_recv_prev for model_chunk_id=0, not first stage")
             return tensor_recv_prev, fwd_wait_handles
         else:
-            print(f"[DeBUG] Returning None for model_chunk_id=0, first stage")
+            # print(f"[DeBUG] Returning None for model_chunk_id=0, first stage")
             return None, fwd_wait_handles
     else:
         if not parallel_state.is_pipeline_last_stage():
-            print(f"[DeBUG] Returning tensor_recv_next for model_chunk_id=1, not last stage")
+            # print(f"[DeBUG] Returning tensor_recv_next for model_chunk_id=1, not last stage")
             return tensor_recv_next, fwd_wait_handles
         else:
-            print(f"[DeBUG] Returning None for model_chunk_id=1, last stage")
+            # print(f"[DeBUG] Returning None for model_chunk_id=1, last stage")
             return None, fwd_wait_handles
 
 
@@ -328,8 +327,8 @@ def send_forward_recv_slave_forward(
 def generate_dualpipev_schedule(pp_size, num_microbatches):
     from megatron.training import get_args
     
-    print("pp_size: ",pp_size)  
-    print("num_microbatches: ",num_microbatches)
+    # print("pp_size: ",pp_size)  
+    # print("num_microbatches: ",num_microbatches)
 
     num_microbatches = num_microbatches * 2
     num_warmup_stages = [0] * pp_size
@@ -366,7 +365,7 @@ def generate_dualpipev_schedule(pp_size, num_microbatches):
         'cooldown': num_cooldown_stages
     }
 
-    print("schedule_all_stages: ",schedule_all_stages)
+    # print("schedule_all_stages: ",schedule_all_stages)
 
     return schedule_all_stages
 
@@ -374,8 +373,6 @@ def pretrain_gpt_forward_step_dualpipe(data_iterator, model: GPTModel, extra_blo
     from megatron.training import get_timers
     from functools import partial
     from pretrain_gpt import get_batch, loss_func
-
-    print(f"[DEBUG] need to check get_batch and loss_func, which is different with train_gpt.py")
 
     """Forward training step.
 
@@ -396,14 +393,14 @@ def pretrain_gpt_forward_step_dualpipe(data_iterator, model: GPTModel, extra_blo
 
     if extra_block_kwargs is not None:
         # excute forward backward overlaping
-        print(f"in moe_fb_overlap, using graph mode, execute forward backward overlaping")
+        # print(f"in moe_fb_overlap, using graph mode, execute forward backward overlaping")
         output_tensor, model_graph, pp_comm_output = \
             model(tokens, position_ids, attention_mask, labels=labels,
                   extra_block_kwargs=extra_block_kwargs)
         return (output_tensor, model_graph, pp_comm_output), partial(loss_func, loss_mask)
     else:
         # execute forward
-        print(f"in moe_fw_overlap, using graph mode. execute normal gpt forward")
+        # print(f"in moe_fw_overlap, using graph mode. execute normal gpt forward")
         output_tensor, model_graph = model(tokens, position_ids, attention_mask, labels=labels)
         return (output_tensor, model_graph), partial(loss_func, loss_mask)
 
@@ -421,79 +418,79 @@ def forward_step_no_model_graph(
     is_first_microbatch=False,
     current_microbatch=None,
 ):
-    print(f"[DeBUG] Entering forward_step_no_model_graph: model_chunk_id={model_chunk_id}, is_first_microbatch={is_first_microbatch}, current_microbatch={current_microbatch}")
+    # print(f"[DeBUG] Entering forward_step_no_model_graph: model_chunk_id={model_chunk_id}, is_first_microbatch={is_first_microbatch}, current_microbatch={current_microbatch}")
     
     if config.timers is not None:
         config.timers('forward-compute', log_level=2).start()
 
     if is_first_microbatch and hasattr(model, 'set_is_first_microbatch'):
         model.set_is_first_microbatch()
-        print(f"[DeBUG] Setting is_first_microbatch for model")
+        # print(f"[DeBUG] Setting is_first_microbatch for model")
     if current_microbatch is not None:
         set_current_microbatch(model, current_microbatch)
-        print(f"[DeBUG] Set current_microbatch to {current_microbatch}")
+        # print(f"[DeBUG] Set current_microbatch to {current_microbatch}")
 
     unwrap_output_tensor = False
     if not isinstance(input_tensor, list):
         input_tensor = [input_tensor]
         unwrap_output_tensor = True
-        print(f"[DeBUG] Input tensor wrapped as list, unwrap_output_tensor={unwrap_output_tensor}")
+        # print(f"[DeBUG] Input tensor wrapped as list, unwrap_output_tensor={unwrap_output_tensor}")
 
     set_input_tensor = get_attr_wrapped_model(model, "set_input_tensor")
     set_input_tensor(input_tensor)
-    print(f"[DeBUG] Input tensor set for model")
+    # print(f"[DeBUG] Input tensor set for model")
 
     if config.enable_autocast:
         context_manager = torch.autocast("cuda", dtype=config.autocast_dtype)
-        print(f"[DeBUG] Using autocast with dtype={config.autocast_dtype}")
+        # print(f"[DeBUG] Using autocast with dtype={config.autocast_dtype}")
     else:
         context_manager = contextlib.nullcontext()
-        print(f"[DeBUG] Using nullcontext (autocast disabled)")
+        # print(f"[DeBUG] Using nullcontext (autocast disabled)")
     
     with context_manager:
-        print(f"[DeBUG] Calling forward_step_func with {'checkpoint_activations_microbatch' if checkpoint_activations_microbatch is not None else 'standard'} mode")
+        # print(f"[DeBUG] Calling forward_step_func with {'checkpoint_activations_microbatch' if checkpoint_activations_microbatch is not None else 'standard'} mode")
         if checkpoint_activations_microbatch is None:
             output_tensor, loss_func = forward_step_func(data_iterator, model)
         else:
             output_tensor, loss_func = forward_step_func(
                 data_iterator, model, checkpoint_activations_microbatch
             )
-        print(f"[DeBUG] Forward step completed, output_tensor shape: {output_tensor.shape if hasattr(output_tensor, 'shape') else 'N/A'}")
+        # print(f"[DeBUG] Forward step completed, output_tensor shape: {output_tensor.shape if hasattr(output_tensor, 'shape') else 'N/A'}")
 
     num_tokens = torch.tensor(0, dtype=torch.int)
-    print(f"[DeBUG] is_dualpipev_last_stgae check: {is_dualpipev_last_stgae(model_chunk_id)}")
+    # print(f"[DeBUG] is_dualpipev_last_stgae check: {is_dualpipev_last_stgae(model_chunk_id)}")
     
     if is_dualpipev_last_stgae(model_chunk_id):
         if not collect_non_loss_data:
-            print(f"[DeBUG] Processing loss data")
+            # print(f"[DeBUG] Processing loss data")
             outputs = loss_func(output_tensor)
-            print(f"[DeBUG] Loss function outputs length: {len(outputs)}")
+            # print(f"[DeBUG] Loss function outputs length: {len(outputs)}")
             
             if len(outputs) == 3:
                 output_tensor, num_tokens, loss_reduced = outputs
-                print(f"[DeBUG] 3-tuple output: num_tokens={num_tokens}, loss_reduced={loss_reduced}")
+                # print(f"[DeBUG] 3-tuple output: num_tokens={num_tokens}, loss_reduced={loss_reduced}")
                 if not config.calculate_per_token_loss:
                     output_tensor /= num_tokens
                     output_tensor /= num_microbatches
-                    print(f"[DeBUG] Averaged output_tensor by tokens and microbatches")
+                    # print(f"[DeBUG] Averaged output_tensor by tokens and microbatches")
             else:
                 # preserve legacy loss averaging behavior (ie, over the number of microbatches)
                 assert len(outputs) == 2
                 output_tensor, loss_reduced = outputs
                 output_tensor /= num_microbatches
-                print(f"[DeBUG] 2-tuple output: loss_reduced={loss_reduced}, divided by num_microbatches={num_microbatches}")
+                # print(f"[DeBUG] 2-tuple output: loss_reduced={loss_reduced}, divided by num_microbatches={num_microbatches}")
             
             forward_data_store.append(loss_reduced)
-            print(f"[DeBUG] Appended loss_reduced to forward_data_store")
+            # print(f"[DeBUG] Appended loss_reduced to forward_data_store")
         else:
-            print(f"[DeBUG] Collecting non-loss data")
+            # print(f"[DeBUG] Collecting non-loss data")
             data = loss_func(output_tensor, non_loss_data=True)
             forward_data_store.append(data)
-            print(f"[DeBUG] Appended non-loss data to forward_data_store")
+            # print(f"[DeBUG] Appended non-loss data to forward_data_store")
 
     if config.timers is not None:
         config.timers('forward-compute').stop()
-        print(f"[DeBUG] Forward-compute timer stopped")
+        # print(f"[DeBUG] Forward-compute timer stopped")
 
     # Set the loss scale for the auxiliary loss of the MoE layer.
     # Since we use a trick to do backward on the auxiliary loss, we need to set the scale explicitly.
@@ -506,26 +503,26 @@ def forward_step_no_model_graph(
         )
         # Set the loss scale
         MoEAuxLossAutoScaler.set_loss_scale(loss_scale / num_microbatches)
-        print(f"[DeBUG] Set MoE auxiliary loss scale: {loss_scale / num_microbatches}")
+        # print(f"[DeBUG] Set MoE auxiliary loss scale: {loss_scale / num_microbatches}")
 
     # If T5 model (or other model with encoder and decoder)
     # and in decoder stack, then send encoder_hidden_state
     # downstream as well.
     model_type = get_model_type(model)
-    print(f"[DeBUG] Model type: {model_type}")
+    # print(f"[DeBUG] Model type: {model_type}")
     
     if (
         parallel_state.is_pipeline_stage_after_split()
         and model_type == ModelType.encoder_and_decoder
     ):
-        print(f"[DeBUG] Returning encoder-decoder output: [output_tensor, input_tensor[-1]], num_tokens={num_tokens}")
+        # print(f"[DeBUG] Returning encoder-decoder output: [output_tensor, input_tensor[-1]], num_tokens={num_tokens}")
         return [output_tensor, input_tensor[-1]], num_tokens
 
     if unwrap_output_tensor:
-        print(f"[DeBUG] Returning unwrapped output_tensor, num_tokens={num_tokens}")
+        # print(f"[DeBUG] Returning unwrapped output_tensor, num_tokens={num_tokens}")
         return output_tensor, num_tokens
     
-    print(f"[DeBUG] Returning wrapped [output_tensor], num_tokens={num_tokens}")
+    # print(f"[DeBUG] Returning wrapped [output_tensor], num_tokens={num_tokens}")
     return [output_tensor], num_tokens
 
 
@@ -762,23 +759,23 @@ def forward_backward_pipelining_with_cutinhalf(
 
     if config.moe_fb_overlap:
         for cur_model in model:
-            print(f"in moe_fb_overlap, replace GPTModel.forward with gpt_model_forward_backward_overlapping")
+            # print(f"in moe_fb_overlap, replace GPTModel.forward with gpt_model_forward_backward_overlapping")
             cur_model.module.module.forward = gpt_model_forward_backward_overlaping.__get__(cur_model.module.module, GPTModel)
-            print(f"in moe_fb_overlap, replace TransformerLayer.forward with transformer_layer_forward_backward_overlaping")
+            # print(f"in moe_fb_overlap, replace TransformerLayer.forward with transformer_layer_forward_backward_overlaping")
             for id, layer in enumerate(cur_model.module.module.decoder.layers):
                 layer.forward = transformer_layer_forward_backward_overlaping.__get__(layer, TransformerLayer)
     
-    # # for dw detach based on transformer engine, 
-    # # it's the user's responsibility to call `module.backward_dw` to compute weight gradients in proper time
-    # # thus at the begin of pipeline computation, we need to turn off (disable) WeightGradStore
-    # # and reopen (enable) it in proper pipeline stages
-    # if config.moe_fb_overlap:
-    #     print(f"turn off all dw detach for two model chunks")
-    #     turn_dw_detach(model, chunk_id=0, enable=False)
-    #     turn_dw_detach(model, chunk_id=1, enable=False)
+    # for dw detach based on transformer engine, 
+    # it's the user's responsibility to call `module.backward_dw` to compute weight gradients in proper time
+    # thus at the begin of pipeline computation, we need to turn off (disable) WeightGradStore
+    # and reopen (enable) it in proper pipeline stages
+    if config.moe_fb_overlap:
+        # print(f"turn off all dw detach for two model chunks")
+        turn_dw_detach(model, chunk_id=0, enable=False)
+        turn_dw_detach(model, chunk_id=1, enable=False)
 
 
-    print(f"Configuration complete, checking embedding module")
+    # print(f"Configuration complete, checking embedding module")
     
     # Needed only when gradients are finalized in M-Core
     if config.finalize_model_grads_func is not None and not forward_only:
@@ -817,13 +814,13 @@ def forward_backward_pipelining_with_cutinhalf(
             no_sync_context.__exit__(None, None, None)
             no_sync_context = None
 
-    print(f"Disabling gradient synchronization")
+    # print(f"Disabling gradient synchronization")
     disable_grad_sync()
 
     # Compute number of steps for each stage
     pp_size = parallel_state.get_pipeline_model_parallel_world_size()
     rank = parallel_state.get_pipeline_model_parallel_rank()
-    print(f"Pipeline parallel size: pp_size={pp_size}, rank={rank}")
+    # print(f"Pipeline parallel size: pp_size={pp_size}, rank={rank}")
     
     schedule = generate_dualpipev_schedule(pp_size, num_microbatches)
 
@@ -847,7 +844,7 @@ def forward_backward_pipelining_with_cutinhalf(
     master_microbatch_max = num_microbatches
     slave_microbatch_max = num_microbatches * 2
 
-    print(f"Setting dualpipe_chunk: {master_chunk_id}")
+    # print(f"Setting dualpipe_chunk: {master_chunk_id}")
     set_dualpipe_chunk(master_chunk_id)
 
     checkpoint_activations_microbatch = None
@@ -912,15 +909,16 @@ def forward_backward_pipelining_with_cutinhalf(
         else:
             return P2PCommParams(send_prev=send_prev, recv_prev=not fwd_send_only and recv_prev), P2PCommParams(send_prev=send_prev, recv_prev=recv_prev)
 
-    print(f"Starting to receive forward data")
+    # print(f"Starting to receive forward data")
     input_tensor = recv_forward(tensor_shape, config, master_chunk_id)[0]
-    print(f"Received forward data")
+    # print(f"Received forward data")
 
     fwd_wait_handles_warmup = None
+    
     # Run warmup forward passes
-    print(f"Starting warmup phase: stage {rank} needs {schedule['warmup'][rank]} warmup iterations")
+    # print(f"Starting warmup phase: stage {rank} needs {schedule['warmup'][rank]} warmup iterations")
     for i in range(schedule['warmup'][rank]):
-        print(f"Warmup iteration {i+1}/{schedule['warmup'][rank]}")
+        # print(f"Warmup iteration {i+1}/{schedule['warmup'][rank]}")
 
         if args.moe_fb_overlap:
             input_tensors[master_chunk_id].append(
@@ -928,7 +926,7 @@ def forward_backward_pipelining_with_cutinhalf(
             output_tensor_warmup, _ = forward_step_helper(master_chunk_id, master_cur_microbatch, checkpoint_activations_microbatch,
                                                           is_first_microbatch=(i == 0))
         else:
-            print(f"Using normal mode for warmup, starting forward computation")
+            # print(f"Using normal mode for warmup, starting forward computation")
             output_tensor_warmup, num_tokens = forward_step_no_model_graph(
                 forward_step_func,
                 master_chunk_id,
@@ -943,7 +941,7 @@ def forward_backward_pipelining_with_cutinhalf(
                 is_first_microbatch=(i == 0),
                 current_microbatch=master_cur_microbatch
             )
-            print(f"Completed warmup forward computation")
+            # print(f"Completed warmup forward computation")
 
             total_num_tokens += num_tokens.item()
             input_tensors[master_chunk_id].append(
@@ -953,48 +951,48 @@ def forward_backward_pipelining_with_cutinhalf(
         master_cur_microbatch += 1
 
         if i != schedule['warmup'][rank] - 1:
-            print(f"Warmup iteration {i+1}: Sending forward data and receiving new data")
+            # print(f"Warmup iteration {i+1}: Sending forward data and receiving new data")
             input_tensor, _ = send_forward_recv_forward(
                 output_tensor_warmup, tensor_shape, config, master_chunk_id)
-            print(f"Warmup iteration {i+1}: Data send and receive completed")
+            # print(f"Warmup iteration {i+1}: Data send and receive completed")
 
             deallocate_output_tensor(
                 output_tensor_warmup, config.deallocate_pipeline_outputs)
-            print(f"Warmup iteration {i+1}: Tensor deallocation completed")
+            # print(f"Warmup iteration {i+1}: Tensor deallocation completed")
         else:
-            print(f"Last warmup iteration: Receiving forward data only")
+            # print(f"Last warmup iteration: Receiving forward data only")
             input_tensor, _ = recv_forward(
                 tensor_shape, config, master_chunk_id)
-            print(f"Last warmup iteration: Forward data reception completed")
+            # print(f"Last warmup iteration: Forward data reception completed")
             
-            print(f"Last warmup iteration: Sending forward data")
+            # print(f"Last warmup iteration: Sending forward data")
             fwd_wait_handles_warmup = send_forward(
                 output_tensor_warmup, tensor_shape, config, master_chunk_id, async_op=True)
-            print(f"Last warmup iteration: Forward data send completed")
+            # print(f"Last warmup iteration: Forward data send completed")
+    # print(f"Warmup phase completed")
     
-    print(f"Warmup phase completed")
-    
+
     # Run interleaved forward passes for two model chunk
     fwd_wait_handles = None
     fwd_wait_handles_slave_chunk = None
     fwd_wait_handles_send = None
-    print(f"Starting interleaved forward phase: stage {rank} needs {schedule['interleaved_forward'][rank]} interleaved forwards")
+    # print(f"Starting interleaved forward phase: stage {rank} needs {schedule['interleaved_forward'][rank]} interleaved forwards")
     for i in range(schedule['interleaved_forward'][rank]):
-        print(f"Interleaved forward iteration {i+1}/{schedule['interleaved_forward'][rank]}")
+        # print(f"Interleaved forward iteration {i+1}/{schedule['interleaved_forward'][rank]}")
 
         if fwd_wait_handles is not None:
-            print(f"Waiting for forward handles")
-            print(f"fwd_wait_handles: {fwd_wait_handles}")
+            # print(f"Waiting for forward handles")
+            # print(f"fwd_wait_handles: {fwd_wait_handles}")
             for req in fwd_wait_handles:
                 if type(req) is str:
                     fwd_wait_handles[req].wait()
                 else:
                     req.wait()
             fwd_wait_handles = None
-            print(f"Forward handles wait completed")
+            # print(f"Forward handles wait completed")
 
         is_first_microbatch = parallel_state.is_pipeline_last_stage() and (i == 0)
-        print(f"Setting master chunk_id: {master_chunk_id}")
+        # print(f"Setting master chunk_id: {master_chunk_id}")
         set_dualpipe_chunk(master_chunk_id)
 
 
@@ -1004,7 +1002,7 @@ def forward_backward_pipelining_with_cutinhalf(
             output_tensor, _ = forward_step_helper(master_chunk_id, master_cur_microbatch, checkpoint_activations_microbatch,
                                                    is_first_microbatch=is_first_microbatch)
         else:
-            print(f"Using normal mode for interleaved forward, starting forward computation")
+            # print(f"Using normal mode for interleaved forward, starting forward computation")
             output_tensor, num_tokens = forward_step_no_model_graph(
                 forward_step_func,
                 master_chunk_id,
@@ -1019,7 +1017,7 @@ def forward_backward_pipelining_with_cutinhalf(
                 is_first_microbatch=is_first_microbatch,
                 current_microbatch=master_cur_microbatch
             )
-            print(f"Interleaved forward computation completed")
+            # print(f"Interleaved forward computation completed")
 
             total_num_tokens += num_tokens.item()
             input_tensors[master_chunk_id].append(
@@ -1027,10 +1025,10 @@ def forward_backward_pipelining_with_cutinhalf(
             output_tensors[master_chunk_id].append(output_tensor)
 
         master_cur_microbatch += 1
-        print(f"Master microbatch increased to {master_cur_microbatch}")
+        # print(f"Master microbatch increased to {master_cur_microbatch}")
 
         if not parallel_state.is_pipeline_last_stage() and fwd_wait_handles_send is not None:
-            print(f"Waiting for forward send handles")
+            # print(f"Waiting for forward send handles")
             for req in fwd_wait_handles_send:
                 if type(req) is str:
                     fwd_wait_handles_send[req].wait()
@@ -1039,31 +1037,31 @@ def forward_backward_pipelining_with_cutinhalf(
             deallocate_output_tensor(
                 output_tensor_send, config.deallocate_pipeline_outputs)
             fwd_wait_handles_send = None
-            print(f"Forward send handles wait completed")
+            # print(f"Forward send handles wait completed")
 
         if parallel_state.is_pipeline_last_stage():
-            print(f"Pipeline last stage: Setting slave chunk input tensor")
+            # print(f"Pipeline last stage: Setting slave chunk input tensor")
             # input_tensor_slave_chunk = output_tensor
             # input_tensor_slave_chunk = output_tensor.clone()
             input_tensor_slave_chunk = output_tensor.detach().requires_grad_(True)
 
-            print(f"Pipeline last stage: Receiving forward data")
+            # print(f"Pipeline last stage: Receiving forward data")
             input_tensor, fwd_wait_handles = recv_forward(
                 tensor_shape, config, master_chunk_id, async_op=True)
-            print(f"Pipeline last stage: Forward data reception completed")
+            # print(f"Pipeline last stage: Forward data reception completed")
         else:
-            print(f"Non-pipeline last stage: Receiving slave chunk forward data")
+            # print(f"Non-pipeline last stage: Receiving slave chunk forward data")
             input_tensor_slave_chunk, _ = recv_forward(
                 tensor_shape, config, slave_chunk_id)
-            print(f"Non-pipeline last stage: Slave chunk forward data reception completed")
+            # print(f"Non-pipeline last stage: Slave chunk forward data reception completed")
 
-            print(f"Non-pipeline last stage: Receiving master chunk forward data")
+            # print(f"Non-pipeline last stage: Receiving master chunk forward data")
             input_tensor, fwd_wait_handles = recv_forward(
                 tensor_shape, config, master_chunk_id, async_op=True)
-            print(f"Non-pipeline last stage: Master chunk forward data reception completed")
+            # print(f"Non-pipeline last stage: Master chunk forward data reception completed")
 
         if fwd_wait_handles_warmup is not None:
-            print(f"Waiting for warmup forward handles")
+            # print(f"Waiting for warmup forward handles")
             for req in fwd_wait_handles_warmup:
                 if type(req) is str:
                     fwd_wait_handles_warmup[req].wait()
@@ -1072,10 +1070,10 @@ def forward_backward_pipelining_with_cutinhalf(
             deallocate_output_tensor(
                 output_tensor_warmup, config.deallocate_pipeline_outputs)
             fwd_wait_handles_warmup = None
-            print(f"Warmup forward handles wait completed")
+            # print(f"Warmup forward handles wait completed")
 
         if fwd_wait_handles_slave_chunk is not None:
-            print(f"Waiting for slave chunk forward handles")
+            # print(f"Waiting for slave chunk forward handles")
             for req in fwd_wait_handles_slave_chunk:
                 if type(req) is str:
                     fwd_wait_handles_slave_chunk[req].wait()
@@ -1084,9 +1082,9 @@ def forward_backward_pipelining_with_cutinhalf(
             deallocate_output_tensor(
                 output_tensor_slave_chunk, config.deallocate_pipeline_outputs)
             fwd_wait_handles_slave_chunk = None
-            print(f"Slave chunk forward handles wait completed")
+            # print(f"Slave chunk forward handles wait completed")
 
-        print(f"Setting slave chunk_id: {slave_chunk_id}")
+        # print(f"Setting slave chunk_id: {slave_chunk_id}")
         set_dualpipe_chunk(slave_chunk_id)
 
         if args.moe_fb_overlap:
@@ -1095,7 +1093,7 @@ def forward_backward_pipelining_with_cutinhalf(
             output_tensor_slave_chunk, _ = forward_step_helper(
                 slave_chunk_id, slave_cur_microbatch, checkpoint_activations_microbatch)
         else:
-            print(f"Using normal mode for slave chunk forward, starting forward computation")
+            # print(f"Using normal mode for slave chunk forward, starting forward computation")
             output_tensor_slave_chunk, num_tokens = forward_step_no_model_graph(
                 forward_step_func,
                 slave_chunk_id,
@@ -1109,7 +1107,7 @@ def forward_backward_pipelining_with_cutinhalf(
                 checkpoint_activations_microbatch,
                 current_microbatch=slave_cur_microbatch,
             )
-            print(f"Slave chunk forward computation completed")
+            # print(f"Slave chunk forward computation completed")
 
             input_tensors[slave_chunk_id].append(
                 (slave_cur_microbatch, input_tensor_slave_chunk))
@@ -1117,67 +1115,60 @@ def forward_backward_pipelining_with_cutinhalf(
             output_tensors[slave_chunk_id].append(output_tensor_slave_chunk)
 
         slave_cur_microbatch += 1
-        print(f"Slave microbatch increased to {slave_cur_microbatch}")
+        # print(f"Slave microbatch increased to {slave_cur_microbatch}")
 
         if i == schedule['interleaved_forward'][rank] - 1:
-            print(f"Last interleaved forward iteration, setting firstFB_no_overlp")
+            # print(f"Last interleaved forward iteration, setting firstFB_no_overlp")
             firstFB_no_overlp = False
             firstFB_no_overlp_handle = None
             # last rank not overlap first F&B
             if parallel_state.is_pipeline_last_stage():
-                print(f"Pipeline last stage: Setting firstFB_no_overlp=True")
+                # print(f"Pipeline last stage: Setting firstFB_no_overlp=True")
                 firstFB_no_overlp = True
-                print(f"Pipeline last stage: Receiving backward data")
+                # print(f"Pipeline last stage: Receiving backward data")
                 output_tensor_grad_bwd, firstFB_no_overlp_handle = recv_backward(
                     tensor_shape, config, slave_chunk_id, async_op=True)
-                print(f"Pipeline last stage: Backward data reception completed")
+                # print(f"Pipeline last stage: Backward data reception completed")
             else:
-                print(f"Non-pipeline last stage: Receiving backward data")
+                # print(f"Non-pipeline last stage: Receiving backward data")
                 output_tensor_grad_bwd, _ = recv_backward(
                     tensor_shape, config, slave_chunk_id)
-                print(f"Non-pipeline last stage: Backward data reception completed")
+                # print(f"Non-pipeline last stage: Backward data reception completed")
 
-        print(f"Sending slave chunk forward data")
+        # print(f"Sending slave chunk forward data")
         fwd_wait_handles_slave_chunk = send_forward(output_tensor_slave_chunk,
                                                     tensor_shape, config, slave_chunk_id, async_op=True)
-        print(f"Slave chunk forward data send completed")
+        # print(f"Slave chunk forward data send completed")
 
         if not parallel_state.is_pipeline_last_stage():
-            print(f"Non-pipeline last stage: Sending master chunk forward data")
+            # print(f"Non-pipeline last stage: Sending master chunk forward data")
             output_tensor_send = output_tensor
             fwd_wait_handles_send = send_forward(
                 output_tensor_send, tensor_shape, config, master_chunk_id, async_op=True)
-            print(f"Non-pipeline last stage: Master chunk forward data send completed")  
+            # print(f"Non-pipeline last stage: Master chunk forward data send completed")  
         else:
-            print(f"pipeline last stage: deallocate_pipeline_outputs")
-            print(f"before deallocate, output_tensor is {output_tensor}")
+            # print(f"pipeline last stage: deallocate_pipeline_outputs")
+            # print(f"before deallocate, output_tensor is {output_tensor}")
             deallocate_output_tensor(
                 output_tensor, config.deallocate_pipeline_outputs)      
-            print(f"after deallocate, output_tensor is {output_tensor}") 
-
-    print(f"Interleaved forward phase completed")
+            # print(f"after deallocate, output_tensor is {output_tensor}") 
+    # print(f"Interleaved forward phase completed")
     
     if fwd_wait_handles is not None:
-        print(f"Waiting for remaining forward handles")
+        # print(f"Waiting for remaining forward handles")
         for req in fwd_wait_handles:
             if type(req) is str:
                 fwd_wait_handles[req].wait()
             else:
                 req.wait()
         fwd_wait_handles = None
-        print(f"Remaining forward handles wait completed")
+        # print(f"Remaining forward handles wait completed")
 
     # Run 1b1w1f stages for slave chunk
     bwd_wait_handles = None
-    print(f"Starting 1b1w1f phase: stage {rank} needs {schedule['1b1w1f'][rank]} 1b1w1f iterations")
+    # print(f"Starting 1b1w1f phase: stage {rank} needs {schedule['1b1w1f'][rank]} 1b1w1f iterations")
     for i in range(schedule['1b1w1f'][rank]):
-        print(f"1b1w1f iteration {i+1}/{schedule['1b1w1f'][rank]}")
-
-        print(f"Starting weight gradient decoupling")
-
-        # if config.moe_fb_overlap:
-        #     print(f"in 1b1w1f stage, turn on dw detach for slave_chunk")
-        #     turn_dw_detach(model, chunk_id=slave_chunk_id, enable=True)
+        # print(f"1b1w1f iteration {i+1}/{schedule['1b1w1f'][rank]}")
 
         WeightGradStore.start_decouple()
 
@@ -1202,28 +1193,28 @@ def forward_backward_pipelining_with_cutinhalf(
 
         else:
 
-            print(f"Using normal mode for 1b1w1f")
-            print(f"Getting input and output tensors")
+            # print(f"Using normal mode for 1b1w1f")
+            # print(f"Getting input and output tensors")
             input_tensor_bwd = input_tensors[slave_chunk_id].pop(0)[1]
             output_tensor_bwd = output_tensors[slave_chunk_id].pop(0)
 
-            print(f"Executing backward step")
+            # print(f"Executing backward step")
             input_tensor_grad = backward_step(
                 input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config
             )
-        print(f"Backward step completed")
+        # print(f"Backward step completed")
 
-        print(f"Ending weight gradient decoupling")
+        # print(f"Ending weight gradient decoupling")
         WeightGradStore.end_decouple()
 
         
-        print(f"Sending backward gradient")
+        # print(f"Sending backward gradient")
         bwd_wait_handles = send_backward(input_tensor_grad,
                                          tensor_shape, config, slave_chunk_id)
-        print(f"Backward gradient send completed")
+        # print(f"Backward gradient send completed")
 
         if fwd_wait_handles_slave_chunk is not None:
-            print(f"Waiting for slave chunk forward handles")
+            # print(f"Waiting for slave chunk forward handles")
             for req in fwd_wait_handles_slave_chunk:
                 if type(req) is str:
                     fwd_wait_handles_slave_chunk[req].wait()
@@ -1232,9 +1223,9 @@ def forward_backward_pipelining_with_cutinhalf(
             deallocate_output_tensor(
                 output_tensor_slave_chunk, config.deallocate_pipeline_outputs)
             fwd_wait_handles_slave_chunk = None
-            print(f"Slave chunk forward handles wait completed")
+            # print(f"Slave chunk forward handles wait completed")
         if fwd_wait_handles_send is not None:
-            print(f"Waiting for send forward handles")
+            # print(f"Waiting for send forward handles")
             for req in fwd_wait_handles_send:
                 if type(req) is str:
                     fwd_wait_handles_send[req].wait()
@@ -1243,37 +1234,29 @@ def forward_backward_pipelining_with_cutinhalf(
             deallocate_output_tensor(
                 output_tensor, config.deallocate_pipeline_outputs)
             fwd_wait_handles_send = None
-            print(f"Send forward handles wait completed")
+            # print(f"Send forward handles wait completed")
 
-        print(f"Receiving forward data")
+        # print(f"Receiving forward data")
         input_tensor_slave_chunk, recv_forward_handle = recv_forward(
             tensor_shape, config, slave_chunk_id)
-        print(f"Forward data reception completed")
+        # print(f"Forward data reception completed")
 
-        print(f"Popping weight gradient")
+        # print(f"Popping weight gradient")
         WeightGradStore.pop()
-        print(f"Weight gradient pop completed")
-
-        # if config.moe_fb_overlap:
-        #     print(f"in 1b1w1f stage, call backward dw for slave_chunk")
-        #     call_backward_dw(model, chunk_id=slave_chunk_id)
-        
-        # if config.moe_fb_overlap:
-        #     print(f"in 1b1w1f stage, turn off dw detach for slave_chunk")
-        #     turn_dw_detach(model, chunk_id=slave_chunk_id, enable=False)
+        # print(f"Weight gradient pop completed")
 
         if recv_forward_handle is not None:
-            print(f"Waiting for receive forward handles")
+            # print(f"Waiting for receive forward handles")
             for req in recv_forward_handle:
                 if type(req) is str:
                     recv_forward_handle[req].wait()
                 else:
                     req.wait()
             recv_forward_handle = None
-            print(f"Receive forward handles wait completed")
+            # print(f"Receive forward handles wait completed")
 
         # 1F: Forward pass
-        print(f"Setting slave chunk_id: {slave_chunk_id}")
+        # print(f"Setting slave chunk_id: {slave_chunk_id}")
         set_dualpipe_chunk(slave_chunk_id)
 
         if args.moe_fb_overlap:
@@ -1282,7 +1265,7 @@ def forward_backward_pipelining_with_cutinhalf(
             output_tensor_slave_chunk, _ = forward_step_helper(
                 slave_chunk_id, slave_cur_microbatch, checkpoint_activations_microbatch)
         else:
-            print(f"Using normal mode for slave chunk forward, starting forward computation")
+            # print(f"Using normal mode for slave chunk forward, starting forward computation")
             output_tensor_slave_chunk, num_tokens = forward_step_no_model_graph(
                 forward_step_func,
                 slave_chunk_id,
@@ -1296,7 +1279,7 @@ def forward_backward_pipelining_with_cutinhalf(
                 checkpoint_activations_microbatch,
                 current_microbatch=slave_cur_microbatch
             )
-            print(f"Slave chunk forward computation completed")
+            # print(f"Slave chunk forward computation completed")
 
             input_tensors[slave_chunk_id].append(
                 (slave_cur_microbatch, input_tensor_slave_chunk))
@@ -1304,34 +1287,35 @@ def forward_backward_pipelining_with_cutinhalf(
             output_tensors[slave_chunk_id].append(output_tensor_slave_chunk)
 
         slave_cur_microbatch += 1
-        print(f"Slave microbatch increased to {slave_cur_microbatch}")
+        # print(f"Slave microbatch increased to {slave_cur_microbatch}")
 
-        print(f"Receiving backward gradient")
+        # print(f"Receiving backward gradient")
         output_tensor_grad_bwd, _ = recv_backward(
             tensor_shape, config, slave_chunk_id)
-        print(f"Backward gradient reception completed")
+        # print(f"Backward gradient reception completed")
 
-        print(f"Sending slave chunk forward data")
+        # print(f"Sending slave chunk forward data")
         fwd_wait_handles_slave_chunk = send_forward(output_tensor_slave_chunk,
                                                     tensor_shape, config, slave_chunk_id, async_op=True)
-        print(f"Slave chunk forward data send completed")
+        # print(f"Slave chunk forward data send completed")
 
     fwd_wait_handles_recv = None
     # Run overlaping f&bw stages
     fwd_model_chunk_id = master_chunk_id
     bwd_model_chunk_id = slave_chunk_id
-    print(f"[DeBUG][Overlap] Starting overlapping f&bw stages. Initial fwd_chunk={fwd_model_chunk_id}, bwd_chunk={bwd_model_chunk_id}")
+    # print(f"[DeBUG][Overlap] Starting overlapping f&bw stages. Initial fwd_chunk={fwd_model_chunk_id}, bwd_chunk={bwd_model_chunk_id}")
     overlap_loop_range = schedule['overlap'][rank] + schedule['1b1overlap'][rank] + schedule['interleaved_backward'][rank]
-    print(f"[DeBUG][Overlap] Loop range: {overlap_loop_range}")
+    # print(f"[DeBUG][Overlap] Loop range: {overlap_loop_range}")
+    # print(f"Starting overlap+1b1overlap+interleaved_backward phase: stage {rank} needs {overlap_loop_range} iterations")
     for iter_num in range(overlap_loop_range):
-        print(f"[DeBUG][Overlap][Iter {iter_num+1}/{overlap_loop_range}] Starting iteration. fwd_chunk={fwd_model_chunk_id}, bwd_chunk={bwd_model_chunk_id}")
+        # print(f"[DeBUG][Overlap][Iter {iter_num+1}/{overlap_loop_range}] Starting iteration. fwd_chunk={fwd_model_chunk_id}, bwd_chunk={bwd_model_chunk_id}")
         only_bwd = False
         if fwd_model_chunk_id == master_chunk_id and master_cur_microbatch == master_microbatch_max:
             only_bwd = True
-            print(f"[DeBUG][Overlap][Iter {iter_num+1}] Master forward finished (mb {master_cur_microbatch}/{master_microbatch_max}), switching to only_bwd=True")
+            # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Master forward finished (mb {master_cur_microbatch}/{master_microbatch_max}), switching to only_bwd=True")
         if fwd_model_chunk_id == slave_chunk_id and slave_cur_microbatch == slave_microbatch_max:
             only_bwd = True
-            print(f"[DeBUG][Overlap][Iter {iter_num+1}] Slave forward finished (mb {slave_cur_microbatch}/{slave_microbatch_max}), switching to only_bwd=True")
+            # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Slave forward finished (mb {slave_cur_microbatch}/{slave_microbatch_max}), switching to only_bwd=True")
 
         # # hack here, testing fwd / bwd without overlapping
         # firstFB_no_overlp = True
@@ -1477,11 +1461,11 @@ def forward_backward_pipelining_with_cutinhalf(
             # # hack here, testing fwd / bwd without overlapping
             # firstFB_no_overlp = True
             if not only_bwd:
-                print(f"[DeBUG][Overlap][Iter {iter_num+1}] Running Forward step for chunk {fwd_model_chunk_id}")
+                # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Running Forward step for chunk {fwd_model_chunk_id}")
                 fwd_microbatch = master_cur_microbatch if fwd_model_chunk_id == master_chunk_id else slave_cur_microbatch
-                print(f"[DeBUG][Overlap][Iter {iter_num+1}] Forward microbatch index: {fwd_microbatch}")
+                # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Forward microbatch index: {fwd_microbatch}")
                 set_dualpipe_chunk(fwd_model_chunk_id)
-                print(f"[DeBUG][Overlap][Iter {iter_num+1}] Set dualpipe chunk to {fwd_model_chunk_id}")
+                # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Set dualpipe chunk to {fwd_model_chunk_id}")
 
                 if args.moe_fb_overlap:
                     input_tensors[fwd_model_chunk_id].append(
@@ -1510,25 +1494,25 @@ def forward_backward_pipelining_with_cutinhalf(
                 if fwd_model_chunk_id == master_chunk_id:
                     master_cur_microbatch += 1
                     fwd_send_only = False
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Increased master_cur_microbatch to {master_cur_microbatch}. fwd_send_only=False")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Increased master_cur_microbatch to {master_cur_microbatch}. fwd_send_only=False")
                 else:
                     slave_cur_microbatch += 1
                     fwd_send_only = (master_cur_microbatch ==
                                         master_microbatch_max)
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Increased slave_cur_microbatch to {slave_cur_microbatch}. fwd_send_only={fwd_send_only}")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Increased slave_cur_microbatch to {slave_cur_microbatch}. fwd_send_only={fwd_send_only}")
 
                 if fwd_send_only:
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Forward send only for chunk {fwd_model_chunk_id}")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Forward send only for chunk {fwd_model_chunk_id}")
                     fwd_wait_handles = send_forward(
                         output_tensor, tensor_shape, config, fwd_model_chunk_id, async_op=True)
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Forward send initiated (async)")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Forward send initiated (async)")
                 else:
                     if parallel_state.is_pipeline_last_stage() and fwd_model_chunk_id == master_chunk_id:
                         # input_tensor = output_tensor
                         # input_tensor = output_tensor.clone()
                         input_tensor = output_tensor.detach().requires_grad_(True)
                     else:
-                        print(f"[DeBUG][Overlap][Iter {iter_num+1}] Send forward and receive slave forward for chunk {fwd_model_chunk_id}")
+                        # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Send forward and receive slave forward for chunk {fwd_model_chunk_id}")
                         input_tensor, fwd_wait_handles = send_forward_recv_slave_forward(
                             output_tensor, tensor_shape, config, fwd_model_chunk_id, async_op=True)
 
@@ -1539,7 +1523,7 @@ def forward_backward_pipelining_with_cutinhalf(
                         else:
                             req.wait()
                     firstFB_no_overlp_handle = None
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Done waiting on firstFB_no_overlp_handle.")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Done waiting on firstFB_no_overlp_handle.")
 
                 if bwd_wait_handles is not None:
                     for req in bwd_wait_handles:
@@ -1548,7 +1532,7 @@ def forward_backward_pipelining_with_cutinhalf(
                         else:
                             req.wait()
                     bwd_wait_handles = None
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Done waiting on bwd_wait_handles.")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Done waiting on bwd_wait_handles.")
 
                 if args.moe_fb_overlap:
                     if is_dualpipev_last_stgae(bwd_model_chunk_id):
@@ -1574,10 +1558,10 @@ def forward_backward_pipelining_with_cutinhalf(
                         1]
                     output_tensor_bwd = output_tensors[bwd_model_chunk_id].pop(
                         0)
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Popped output tensor for backward.")
-                    print(f"output_tensor_grad_bwd is {output_tensor_grad_bwd}")
-                    print(f"input_tensor_bwd is {input_tensor_bwd}")
-                    print(f"output_tensor_bwd is {output_tensor_bwd}")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Popped output tensor for backward.")
+                    # print(f"output_tensor_grad_bwd is {output_tensor_grad_bwd}")
+                    # print(f"input_tensor_bwd is {input_tensor_bwd}")
+                    # print(f"output_tensor_bwd is {output_tensor_bwd}")
                 
                 # if parallel_state.is_pipeline_last_stage():
                 #     if fwd_model_chunk_id == slave_chunk_id:
@@ -1588,12 +1572,12 @@ def forward_backward_pipelining_with_cutinhalf(
                     input_tensor_grad = backward_step(
                         input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config
                     )
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Backward step completed for chunk {bwd_model_chunk_id}. Input grad shape: {input_tensor_grad.shape if hasattr(input_tensor_grad, 'shape') else 'N/A'}")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Backward step completed for chunk {bwd_model_chunk_id}. Input grad shape: {input_tensor_grad.shape if hasattr(input_tensor_grad, 'shape') else 'N/A'}")
 
                 if parallel_state.is_pipeline_last_stage():
                     deallocate_output_tensor(
                         output_tensor, config.deallocate_pipeline_outputs)
-                    print(f"pipeline last stage, deallocated forward output tensor.")
+                    # print(f"pipeline last stage, deallocated forward output tensor.")
                 
                 if fwd_wait_handles is not None:
                     for req in fwd_wait_handles:
@@ -1604,11 +1588,11 @@ def forward_backward_pipelining_with_cutinhalf(
                     fwd_wait_handles = None
                     deallocate_output_tensor(
                         output_tensor, config.deallocate_pipeline_outputs)
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Deallocated forward output tensor.")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Deallocated forward output tensor.")
 
                 if parallel_state.is_pipeline_last_stage() and fwd_model_chunk_id == master_chunk_id:
                     output_tensor_grad_bwd = input_tensor_grad
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Last stage, master chunk fwd. Setting next output_tensor_grad_bwd directly.")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Last stage, master chunk fwd. Setting next output_tensor_grad_bwd directly.")
                 else:
                     #  send_backward_recv_slave_backward
                     output_tensor_grad_bwd, bwd_wait_handles = send_forward_recv_slave_forward(input_tensor_grad,
@@ -1622,20 +1606,20 @@ def forward_backward_pipelining_with_cutinhalf(
                             req.wait()
                     deallocate_output_tensor(
                         output_tensor_slave_chunk, config.deallocate_pipeline_outputs)
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Deallocated slave chunk output tensor.")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Deallocated slave chunk output tensor.")
                     fwd_wait_handles_slave_chunk = None
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Done waiting on fwd_wait_handles_slave_chunk.")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Done waiting on fwd_wait_handles_slave_chunk.")
 
             # only run backward
             else:
-                print(f"[DeBUG][Overlap][Iter {iter_num+1}] Running Backward step ONLY for chunk {bwd_model_chunk_id}")
+                # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Running Backward step ONLY for chunk {bwd_model_chunk_id}")
                 if bwd_model_chunk_id == slave_chunk_id and slave_cur_microbatch < slave_microbatch_max:
                     # This recv seems out of place if only backward is running.
                     # Potentially needed if the *next* iteration will be forward, but logging for clarity.
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Receiving forward tensor for slave chunk {slave_chunk_id} (potentially for next iter)")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Receiving forward tensor for slave chunk {slave_chunk_id} (potentially for next iter)")
                     input_tensor, _ = recv_forward(
                         tensor_shape, config, slave_chunk_id)
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Received forward tensor shape: {input_tensor.shape if hasattr(input_tensor, 'shape') else 'N/A'}")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Received forward tensor shape: {input_tensor.shape if hasattr(input_tensor, 'shape') else 'N/A'}")
 
                 if bwd_wait_handles is not None:
                     for req in bwd_wait_handles:
@@ -1644,7 +1628,7 @@ def forward_backward_pipelining_with_cutinhalf(
                         else:
                             req.wait()
                     bwd_wait_handles = None
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Done waiting on bwd_wait_handles (backward only).")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Done waiting on bwd_wait_handles (backward only).")
 
                 if args.moe_fb_overlap:
                     if is_dualpipev_last_stgae(bwd_model_chunk_id):
@@ -1670,16 +1654,16 @@ def forward_backward_pipelining_with_cutinhalf(
                         1]
                     output_tensor_bwd = output_tensors[bwd_model_chunk_id].pop(
                         0)
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Popped output tensor for backward (backward only).")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Popped output tensor for backward (backward only).")
                     input_tensor_grad = backward_step(
                         input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config
                     )
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Backward step completed for chunk {bwd_model_chunk_id} (backward only). Input grad shape: {input_tensor_grad.shape if hasattr(input_tensor_grad, 'shape') else 'N/A'}")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Backward step completed for chunk {bwd_model_chunk_id} (backward only). Input grad shape: {input_tensor_grad.shape if hasattr(input_tensor_grad, 'shape') else 'N/A'}")
 
                 if parallel_state.is_pipeline_last_stage() and fwd_model_chunk_id == master_chunk_id:
                     # This condition seems related to the *forward* chunk ID, which might be stale here.
                     # Logging the condition check.
-                    print(f"[DeBUG][Overlap][Iter {iter_num+1}] Last stage and fwd_model_chunk_id == master_chunk_id ({fwd_model_chunk_id} == {master_chunk_id}) is True. Setting output_tensor_grad_bwd directly.")
+                    # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Last stage and fwd_model_chunk_id == master_chunk_id ({fwd_model_chunk_id} == {master_chunk_id}) is True. Setting output_tensor_grad_bwd directly.")
                     output_tensor_grad_bwd = input_tensor_grad
                 else:
                     #  send_backward_recv_slave_backward
@@ -1687,16 +1671,16 @@ def forward_backward_pipelining_with_cutinhalf(
                                                                                                 tensor_shape, config, fwd_model_chunk_id)
 
         # swap fwd & bwd chunks
-        print(f"[DeBUG][Overlap][Iter {iter_num+1}] Swapping chunks. Before: fwd={fwd_model_chunk_id}, bwd={bwd_model_chunk_id}")
+        # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Swapping chunks. Before: fwd={fwd_model_chunk_id}, bwd={bwd_model_chunk_id}")
         fwd_model_chunk_id, bwd_model_chunk_id = bwd_model_chunk_id, fwd_model_chunk_id
-        print(f"[DeBUG][Overlap][Iter {iter_num+1}] Swapped chunks. After: fwd={fwd_model_chunk_id}, bwd={bwd_model_chunk_id}")
-        print(f"[DeBUG][Overlap][Iter {iter_num+1}] End of iteration.")
+        # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Swapped chunks. After: fwd={fwd_model_chunk_id}, bwd={bwd_model_chunk_id}")
+        # print(f"[DeBUG][Overlap][Iter {iter_num+1}] End of iteration.")
 
-    print(f"[DeBUG] Overlapping f&bw stages finished.")
+    # print(f"[DeBUG] Overlapping f&bw stages finished.")
     # Run cooldown phases
     merged_input_tensors = []
     merged_output_tensors = []
-    print(f"[DeBUG][Cooldown] Merging remaining tensors. Input queues: {[len(q) for q in input_tensors]}, Output queues: {[len(q) for q in output_tensors]}. Current bwd_chunk={bwd_model_chunk_id}")
+    # print(f"[DeBUG][Cooldown] Merging remaining tensors. Input queues: {[len(q) for q in input_tensors]}, Output queues: {[len(q) for q in output_tensors]}. Current bwd_chunk={bwd_model_chunk_id}")
     while len(input_tensors[0]) > 0 or len(input_tensors[1]) > 0:
         if len(input_tensors[bwd_model_chunk_id]) > 0:
             merged_input_tensors.append(
@@ -1711,9 +1695,10 @@ def forward_backward_pipelining_with_cutinhalf(
                 (output_tensors[1 - bwd_model_chunk_id].pop(0), 1 - bwd_model_chunk_id))
 
     bwd_wait_handles_recv = None
-    print(f"[DeBUG][Cooldown] Starting cooldown loop for {pp_size} iterations.")
+    # print(f"[DeBUG][Cooldown] Starting cooldown loop for {pp_size} iterations.")
+    # print(f"Starting cooldown phase")
     for i in range(pp_size):
-        print(f"[DeBUG][Cooldown][Iter {i+1}/{pp_size}] Starting iteration.")
+        # print(f"[DeBUG][Cooldown][Iter {i+1}/{pp_size}] Starting iteration.")
         if bwd_wait_handles is not None:
             for req in bwd_wait_handles:
                 if type(req) is str:
@@ -1721,7 +1706,7 @@ def forward_backward_pipelining_with_cutinhalf(
                 else:
                     req.wait()
             bwd_wait_handles = None
-            print(f"[DeBUG][Cooldown][Iter {i+1}] Done waiting on bwd_wait_handles.")
+            # print(f"[DeBUG][Cooldown][Iter {i+1}] Done waiting on bwd_wait_handles.")
         if bwd_wait_handles_recv is not None:
             for req in bwd_wait_handles_recv:
                 if type(req) is str:
@@ -1729,7 +1714,7 @@ def forward_backward_pipelining_with_cutinhalf(
                 else:
                     req.wait()
             bwd_wait_handles_recv = None
-            print(f"[DeBUG][Cooldown][Iter {i+1}] Done waiting on bwd_wait_handles_recv.")
+            # print(f"[DeBUG][Cooldown][Iter {i+1}] Done waiting on bwd_wait_handles_recv.")
 
         input_tensor_bwd = merged_input_tensors.pop(0)[1]
         output_tensor_bwd, bwd_model_chunk_id = merged_output_tensors.pop(0)
@@ -1746,7 +1731,7 @@ def forward_backward_pipelining_with_cutinhalf(
             input_tensor_grad = backward_step(
                 input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config
             )
-            print(f"[DeBUG][Cooldown][Iter {i+1}] Backward step completed. Input grad shape: {input_tensor_grad.shape if hasattr(input_tensor_grad, 'shape') else 'N/A'}")
+            # print(f"[DeBUG][Cooldown][Iter {i+1}] Backward step completed. Input grad shape: {input_tensor_grad.shape if hasattr(input_tensor_grad, 'shape') else 'N/A'}")
 
         WeightGradStore.end_decouple()
 
@@ -1769,13 +1754,13 @@ def forward_backward_pipelining_with_cutinhalf(
         WeightGradStore.flush_chunk_grad()
         if i >= schedule['cooldown'][rank][0] - 1:
             WeightGradStore.pop_single()
-        print(f"[DeBUG][Cooldown][Iter {i+1}] End of iteration.")
+        # print(f"[DeBUG][Cooldown][Iter {i+1}] End of iteration.")
 
     for _ in range(schedule['cooldown'][rank][2] - 1):
         WeightGradStore.pop_single()
 
     assert WeightGradStore.weight_grad_queue.empty()
-    print(f"[DeBUG][Cooldown] Cooldown loop finished.")
+    # print(f"[DeBUG][Cooldown] Cooldown loop finished.")
 
     if bwd_wait_handles is not None:
         for req in bwd_wait_handles:
@@ -1784,20 +1769,20 @@ def forward_backward_pipelining_with_cutinhalf(
             else:
                 req.wait()
         bwd_wait_handles = None
-        print(f"[DeBUG][Post-Cooldown] Done waiting on final bwd_wait_handles.")
+        # print(f"[DeBUG][Post-Cooldown] Done waiting on final bwd_wait_handles.")
 
     enable_grad_sync()
     if config.grad_sync_func is not None:
         config.grad_sync_func[0](model[0].parameters())
         config.grad_sync_func[1](model[1].parameters())
 
-    print(f"finalize model grads func is {config.finalize_model_grads_func}")
+    # print(f"finalize model grads func is {config.finalize_model_grads_func}")
     if config.finalize_model_grads_func is not None and not forward_only:
-        print(f"[DeBUG] Finalizing gradients...")
+        # print(f"[DeBUG] Finalizing gradients...")
         # If defer_embedding_wgrad_compute is enabled we need to do the
         # weight gradient GEMM's here.
         finish_embedding_wgrad_compute(config, embedding_module)
-        print(f"[DeBUG] Finished embedding wgrad compute (if applicable).")
+        # print(f"[DeBUG] Finished embedding wgrad compute (if applicable).")
 
         # Finalize model grads (perform full grad all-reduce / reduce-scatter for
         # data parallelism, layernorm all-reduce for sequence parallelism, and
@@ -1805,11 +1790,11 @@ def forward_backward_pipelining_with_cutinhalf(
         config.finalize_model_grads_func(
             model, total_num_tokens if config.calculate_per_token_loss else None
         )
-        print(f"[DeBUG] Model grads finalized.")
-    else:
-        print(f"[DeBUG] Skipping gradient finalization (forward_only={forward_only} or finalize_func is None).")
+        # print(f"[DeBUG] Model grads finalized.")
+    # else:
+        # print(f"[DeBUG] Skipping gradient finalization (forward_only={forward_only} or finalize_func is None).")
 
-    print(f"[DeBUG] Returning forward_data_store (length: {len(forward_data_store)})")
+    # print(f"[DeBUG] Returning forward_data_store (length: {len(forward_data_store)})")
 
     if config.timers is not None:
         config.timers('forward-backward',

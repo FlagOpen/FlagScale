@@ -384,9 +384,9 @@ def _communicate(
         pp_group = get_pipeline_model_parallel_group()
         next_rank = get_pipeline_model_parallel_next_rank()
         prev_rank = get_pipeline_model_parallel_prev_rank()
-    print("pp_group: ",pp_group)
-    print("next_rank: ",next_rank)
-    print("prev_rank: ",prev_rank)
+    # print("pp_group: ",pp_group)
+    # print("next_rank: ",next_rank)
+    # print("prev_rank: ",prev_rank)
     if not isinstance(pp_group, list):
         pp_group = [pp_group]
         assert not isinstance(next_rank, list)

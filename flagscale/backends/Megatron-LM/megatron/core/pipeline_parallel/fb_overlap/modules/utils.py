@@ -76,7 +76,6 @@ def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event
         group=group,
         async_op=True
     )
-    print(f"return handle here")
     return input_, a2a_out, handle
 
 def detach_tensor(tensor, checkpoint_forward=False):
@@ -107,20 +106,6 @@ def run_graph_backward(graph, output_tensor_grad=None, keep_graph=False, keep_gr
         graph[0].untyped_storage().resize_(0)
     if not keep_grad:
         grad_tensor.untyped_storage().resize_(0)
-
-
-class NoopLayerGraph:
-    def __init__(self, layer_input, layer_output, layer, checkpointed=False):
-        self.layer_input = layer_input
-        if not checkpointed:
-            self.unperm2_graph = (layer_output, None)
-        else:
-            self.unperm2_graph = (None, None)
-        self.checkpointed = checkpointed
-        self.layer = layer
-
-    def record_layer_inputs(self, *args):
-        self.layer_inputs = args
 
 
 class LayerGraph:

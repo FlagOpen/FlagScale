@@ -21,7 +21,7 @@ def transformer_block_forward(
     inference_params=None,
     packed_seq_params=None,
 ):
-    print(f"in transformer_block_forward, start")
+    # print(f"in transformer_block_forward, start")
     if not self.pre_process:
         # See set_input_tensor()
         hidden_states = self.input_tensor
@@ -96,7 +96,7 @@ def transformer_block_forward(
         layer_graphs[-1].unperm2_graph = (layer_graphs[-1].unperm2_graph[0], detached_hidden_states)
         hidden_states = self.final_layernorm(detached_hidden_states)
 
-    print(f"in transformer_block_forward, return")
+    # print(f"in transformer_block_forward, return")
     return (hidden_states, layer_graphs)
 
 
@@ -104,13 +104,13 @@ def transformer_block_backward(
     block_output_grad,
     layer_graphs: List[LayerGraph],
 ):
-    print(f"in transformer_block_backward, start")
+    # print(f"in transformer_block_backward, start")
     # should call backward fisrt for final_layernorm and postprocess grad
     layer_output_grad = block_output_grad
     while len(layer_graphs) > 0:
         layer_graph = layer_graphs.pop(-1)
         layer_output_grad = transformer_layer_backward(layer_output_grad, layer_graph)
-    print(f"in transformer_block_backward, return")
+    # print(f"in transformer_block_backward, return")
     return layer_output_grad
 
 
@@ -128,7 +128,7 @@ def transformer_block_forward_backward_overlaping(
     pp_comm_params: P2PCommParams = None,
     bwd_pp_comm_params: P2PCommParams = None,
 ):
-    print(f"in transformer_block_forward_backward_overlapping, start")
+    # print(f"in transformer_block_forward_backward_overlapping, start")
     if not fwd_block.pre_process:
         # See set_input_tensor()
         hidden_states = fwd_block.input_tensor
@@ -218,5 +218,5 @@ def transformer_block_forward_backward_overlaping(
         fwd_layer_graphs[-1].unperm2_graph = (fwd_layer_graphs[-1].unperm2_graph[0], detached_hidden_states)
         fwd_hidden_states = fwd_block.final_layernorm(detached_hidden_states)
 
-    print(f"in transformer_block_forward_backward_overlaping, return")
+    # print(f"in transformer_block_forward_backward_overlaping, return")
     return (fwd_hidden_states, fwd_layer_graphs), bwd_layer_output_grad, pp_comm_output

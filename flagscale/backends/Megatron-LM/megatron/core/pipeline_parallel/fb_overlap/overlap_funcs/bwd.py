@@ -13,7 +13,7 @@ def transformer_layer_backward_moe(
     layer_output_grad,
     layer_graph
 ):
-    print(f"in transformer_layer_backward_moe, start")
+    # print(f"in transformer_layer_backward_moe, start")
     self = layer_graph
     args = get_args()
     dispached_input, fc1_out, act_out, probs, indices, global_input_tokens_local_experts_indices = self.recompute_needed_tensors
@@ -42,7 +42,16 @@ def transformer_layer_backward_moe(
     )
     # overlap alltoall by shared experts backward
     if self.shared_experts_graph[0] is not None:
+        WeightGradStore.start_decouple()
+        # self.layer.mlp.shared_experts.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
+        self.layer.mlp.shared_experts.linear_fc1.wgrad_store.enable_delay_wgrad_compute()
         run_graph_backward(self.shared_experts_graph, backward_ag_shared)
+        WeightGradStore.end_decouple()
+        WeightGradStore.pop()
+        # self.layer.mlp.shared_experts.linear_fc2.backward_dw()
+        self.layer.mlp.shared_experts.linear_fc1.backward_dw()
+        # self.layer.mlp.shared_experts.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
+        self.layer.mlp.shared_experts.linear_fc1.wgrad_store.disable_delay_wgrad_compute()
     
     # # skip recompute
     # if get_args().moe_zero_memory == 'level0' or should_recompute_activation(self.layer.layer_number):
@@ -56,9 +65,13 @@ def transformer_layer_backward_moe(
     #    ...
 
     run_graph_backward(self.unperm1_graph, unperm1_out_grad)
+
     WeightGradStore.start_decouple()
+    self.layer.mlp.experts.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
+    self.layer.mlp.experts.linear_fc1.wgrad_store.enable_delay_wgrad_compute()
     run_graph_backward(self.grouped_mlp_graph, keep_grad=True)  # keep for dw commputation
     WeightGradStore.end_decouple()
+
     run_graph_backward(self.perm2_graph, keep_graph=True)  # keep for dw commutation
     run_graph_backward(self.perm2_append_graph, keep_graph=True)
     
@@ -87,6 +100,11 @@ def transformer_layer_backward_moe(
 
     # dw computation
     WeightGradStore.pop()
+    self.layer.mlp.experts.linear_fc2.backward_dw()
+    self.layer.mlp.experts.linear_fc1.backward_dw()
+    self.layer.mlp.experts.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
+    self.layer.mlp.experts.linear_fc1.wgrad_store.disable_delay_wgrad_compute()
+    
     bwd_perm_a2a_handle1.wait()
     bwd_perm_a2a_handle1 = None
     bwd_perm_a2a_handle2.wait()
@@ -98,30 +116,71 @@ def transformer_layer_backward_moe(
     perm1_out2_grad.untyped_storage().resize_(0)
     run_graph_backward(self.router_graph)
     run_graph_backward(self.pre_mlp_layernorm_graph)
+
     WeightGradStore.start_decouple()
+    # self.layer.self_attention.linear_proj.wgrad_store.enable_delay_wgrad_compute()
+    self.layer.self_attention.linear_kv_up_proj.wgrad_store.enable_delay_wgrad_compute()
+    self.layer.self_attention.linear_kv_down_proj.wgrad_store.enable_delay_wgrad_compute()
+    self.layer.self_attention.linear_q_proj.wgrad_store.enable_delay_wgrad_compute()
     run_graph_backward(self.attn_graph)
     WeightGradStore.end_decouple()
     WeightGradStore.pop()
-
+    # self.layer.self_attention.linear_proj.backward_dw()
+    self.layer.self_attention.linear_kv_up_proj.backward_dw()
+    self.layer.self_attention.linear_kv_down_proj.backward_dw()
+    self.layer.self_attention.linear_q_proj.backward_dw()
+    # self.layer.self_attention.linear_proj.wgrad_store.disable_delay_wgrad_compute()
+    self.layer.self_attention.linear_kv_up_proj.wgrad_store.disable_delay_wgrad_compute()
+    self.layer.self_attention.linear_kv_down_proj.wgrad_store.disable_delay_wgrad_compute()
+    self.layer.self_attention.linear_q_proj.wgrad_store.disable_delay_wgrad_compute()
 
     self.recompute_needed_tensors = [None for _ in range(len(self.recompute_needed_tensors))]
 
-    print(f"in transformer_layer_backward_moe, return")
+    # print(f"in transformer_layer_backward_moe, return")
     return self.layer_input.grad
 
 
 def transformer_layer_backward_dense(layer_output_grad, layer_graph):
-    print(f"in transformer_layer_backward_dense, start")
+    # print(f"in transformer_layer_backward_dense, start")
+    
+    WeightGradStore.start_decouple()
+    # layer_graph.layer.mlp.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
+    layer_graph.layer.mlp.linear_fc1.wgrad_store.enable_delay_wgrad_compute()
     run_graph_backward(layer_graph.unperm2_graph, layer_output_grad)
     run_graph_backward(layer_graph.pre_mlp_layernorm_graph)
+    WeightGradStore.end_decouple()
+    WeightGradStore.pop()
+    # layer_graph.layer.mlp.linear_fc2.backward_dw()
+    layer_graph.layer.mlp.linear_fc1.backward_dw()
+    # layer_graph.layer.mlp.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
+    layer_graph.layer.mlp.linear_fc1.wgrad_store.disable_delay_wgrad_compute()
+    
+    
+    
+    WeightGradStore.start_decouple()
+    # layer_graph.layer.self_attention.linear_proj.wgrad_store.enable_delay_wgrad_compute()
+    layer_graph.layer.self_attention.linear_kv_up_proj.wgrad_store.enable_delay_wgrad_compute()
+    layer_graph.layer.self_attention.linear_kv_down_proj.wgrad_store.enable_delay_wgrad_compute()
+    layer_graph.layer.self_attention.linear_q_proj.wgrad_store.enable_delay_wgrad_compute()
     run_graph_backward(layer_graph.attn_graph)
-    print(f"in transformer_layer_backward_dense, return")
+    WeightGradStore.end_decouple()
+    WeightGradStore.pop()
+    # layer_graph.layer.self_attention.linear_proj.backward_dw()
+    layer_graph.layer.self_attention.linear_kv_up_proj.backward_dw()
+    layer_graph.layer.self_attention.linear_kv_down_proj.backward_dw()
+    layer_graph.layer.self_attention.linear_q_proj.backward_dw()
+    # layer_graph.layer.self_attention.linear_proj.wgrad_store.disable_delay_wgrad_compute()
+    layer_graph.layer.self_attention.linear_kv_up_proj.wgrad_store.disable_delay_wgrad_compute()
+    layer_graph.layer.self_attention.linear_kv_down_proj.wgrad_store.disable_delay_wgrad_compute()
+    layer_graph.layer.self_attention.linear_q_proj.wgrad_store.disable_delay_wgrad_compute()
+
+    # print(f"in transformer_layer_backward_dense, return")
     return layer_graph.layer_input.grad
 
 
 def transformer_layer_backward_noop(layer_output_grad, layer_graph):
-    print(f"in transformer_layer_backward_noop, start")
+    # print(f"in transformer_layer_backward_noop, start")
     run_graph_backward(layer_graph.unperm2_graph, layer_output_grad, keep_grad=True)
-    print(f"in transformer_layer_backward_noop, return")
+    # print(f"in transformer_layer_backward_noop, return")
     return layer_graph.layer_input.grad
 

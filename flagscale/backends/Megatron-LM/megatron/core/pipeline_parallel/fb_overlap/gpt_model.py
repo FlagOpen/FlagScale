@@ -32,7 +32,7 @@ def gpt_model_forward(
     packed_seq_params: PackedSeqParams = None,
     extra_block_kwargs: dict = None,
 ) -> Tensor:
-    print(f"in gpt_model_forward, start")
+    # print(f"in gpt_model_forward, start")
 
     """Forward function of the GPT Model This function passes the input tensors
     through the embedding layer, and then the decoeder and finally into the post
@@ -119,14 +119,14 @@ def gpt_model_forward(
         graph = ModelGraph(
             layer_graphs, hidden_states, preprocess_graph, detached_block_input
         )
-        print(f"in gpt_model_forward, return")
+        # print(f"in gpt_model_forward, return")
         return logits, graph
 
     loss = self.compute_language_model_loss(labels, logits)
     graph = ModelGraph(
         layer_graphs, hidden_states, preprocess_graph, detached_block_input
     )
-    print(f"in gpt_model_forward, return")
+    # print(f"in gpt_model_forward, return")
     return loss, graph
 
 
@@ -134,15 +134,15 @@ def gpt_model_backward(
     model_grad,
     model_graph: ModelGraph,
 ):  
-    print(f"in gpt_model_backward, start")
+    # print(f"in gpt_model_backward, start")
     block_input_grad = transformer_block_backward(model_grad, model_graph.layer_graphs)
 
     if model_graph.preprocess_graph[0] is not None:
         run_graph_backward(model_graph.preprocess_graph, block_input_grad, keep_graph=True, keep_grad=True)
-        print(f"in gpt_model_backward, return")
+        # print(f"in gpt_model_backward, return")
         return None
     else:
-        print(f"in gpt_model_backward, return")
+        # print(f"in gpt_model_backward, return")
         return block_input_grad
 
 
@@ -158,13 +158,14 @@ def gpt_model_forward_backward_overlaping(
     packed_seq_params: PackedSeqParams = None,
     extra_block_kwargs: dict = None,
 ):
-    print(f"in gpt_model_forward_backward_overlapping, start")
+    
     if extra_block_kwargs is None or extra_block_kwargs['bwd_model_graph'] is None:
         return gpt_model_forward(
             fwd_model, input_ids, position_ids, attention_mask, decoder_input, labels, inference_params,
             packed_seq_params, extra_block_kwargs
         )
 
+    # print(f"in gpt_model_forward_backward_overlapping, start")
     bwd_model_grad, bwd_model_graph = extra_block_kwargs['bwd_model_grad'], extra_block_kwargs['bwd_model_graph']  # Fwd Model Decoder embedding.
     if decoder_input is not None:
         preprocess_graph = None
@@ -248,14 +249,14 @@ def gpt_model_forward_backward_overlaping(
         graph = ModelGraph(
             layer_graphs, hidden_states, preprocess_graph, detached_block_input
         )
-        print(f"in gpt_model_forward_backward_overlaping, return")
+        # print(f"in gpt_model_forward_backward_overlaping, return")
         return logits, graph, pp_comm_output
 
     loss = fwd_model.compute_language_model_loss(labels, logits)
     graph = ModelGraph(
         layer_graphs, hidden_states, preprocess_graph, detached_block_input
     )
-    print(f"in gpt_model_forward_backward_overlaping, return")
+    # print(f"in gpt_model_forward_backward_overlaping, return")
     return loss, graph, pp_comm_output
 
 

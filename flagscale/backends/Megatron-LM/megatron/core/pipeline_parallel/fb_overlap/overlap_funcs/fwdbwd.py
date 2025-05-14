@@ -47,7 +47,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     bwd_pp_comm_params: P2PCommParams = None,
     checkpoint=False
 ):
-    print(f"in transformer_layer_forward_dense_backward_moe_overlaping, start")
+    # print(f"in transformer_layer_forward_dense_backward_moe_overlaping, start")
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
     if checkpoint:
         checkpoint_context = torch.no_grad()
@@ -119,9 +119,13 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     bwd_unperm_a2a_handle = None
     run_graph_backward(bwd_layer_graph.unperm1_graph, unperm1_out_grad)
     unperm1_out_grad.untyped_storage().resize_(0)
+
     WeightGradStore.start_decouple()
+    bwd_layer_graph.layer.mlp.experts.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.mlp.experts.linear_fc1.wgrad_store.enable_delay_wgrad_compute()
     run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
     WeightGradStore.end_decouple()
+
     run_graph_backward(bwd_layer_graph.perm2_graph, keep_graph=True)  # keep for dw
     run_graph_backward(bwd_layer_graph.perm2_append_graph, keep_graph=True)
     # # skip recompute
@@ -169,16 +173,25 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     run_graph_backward(bwd_layer_graph.perm1_append_graph, perm1_out2_grad)
     perm1_out1_grad.untyped_storage().resize_(0)
     perm1_out2_grad.untyped_storage().resize_(0)
+    
     WeightGradStore.start_decouple()
+    # bwd_layer_graph.layer.mlp.shared_experts.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.mlp.shared_experts.linear_fc1.wgrad_store.enable_delay_wgrad_compute()
     if backward_ag_shared_handle is not None:
         backward_ag_shared_handle.wait()
         backward_ag_shared_handle = None
         shared_expert_grad.untyped_storage().resize_(0)
     run_graph_backward(bwd_layer_graph.shared_experts_graph, backward_ag_shared, keep_grad=True)  # dw computation
     WeightGradStore.end_decouple()
+    
     run_graph_backward(bwd_layer_graph.router_graph)
     run_graph_backward(bwd_layer_graph.pre_mlp_layernorm_graph, keep_graph=True)
+    
     WeightGradStore.start_decouple()
+    # bwd_layer_graph.layer.self_attention.linear_proj.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_up_proj.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_down_proj.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_q_proj.wgrad_store.enable_delay_wgrad_compute()
     run_graph_backward(bwd_layer_graph.attn_graph, keep_grad=True)
     WeightGradStore.end_decouple()
 
@@ -219,7 +232,29 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     # if args.moe_zero_memory == 'level0':
     #     ...
 
+
     WeightGradStore.pop()
+    # process experts, backward for weight
+    bwd_layer_graph.layer.mlp.experts.linear_fc2.backward_dw()
+    bwd_layer_graph.layer.mlp.experts.linear_fc1.backward_dw()
+    bwd_layer_graph.layer.mlp.experts.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.mlp.experts.linear_fc1.wgrad_store.disable_delay_wgrad_compute()
+
+    # process shared_experts, backward for weight
+    # bwd_layer_graph.layer.mlp.shared_experts.linear_fc2.backward_dw()
+    bwd_layer_graph.layer.mlp.shared_experts.linear_fc1.backward_dw()
+    # bwd_layer_graph.layer.mlp.shared_experts.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.mlp.shared_experts.linear_fc1.wgrad_store.disable_delay_wgrad_compute()
+    
+    # process attention, backward for weight
+    # bwd_layer_graph.layer.self_attention.linear_proj.backward_dw()
+    bwd_layer_graph.layer.self_attention.linear_kv_up_proj.backward_dw()
+    bwd_layer_graph.layer.self_attention.linear_kv_down_proj.backward_dw()
+    bwd_layer_graph.layer.self_attention.linear_q_proj.backward_dw()
+    # bwd_layer_graph.layer.self_attention.linear_proj.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_up_proj.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_down_proj.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_q_proj.wgrad_store.disable_delay_wgrad_compute()
 
     saved_tensors = (
         (attention_out, detached_attention_out),
@@ -247,7 +282,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     for tensor in bwd_layer_graph.recompute_needed_tensors:
         if tensor is not None:
             tensor.untyped_storage().resize_(0)
-    print(f"in transformer_layer_forward_dense_backward_moe_overlaping, return")
+    # print(f"in transformer_layer_forward_dense_backward_moe_overlaping, return")
     return (output, context, graph,
             (next_layer_output_grad, next_bwd_unperm_a2a_handle),
             P2PCommOutput(next_iter_input_tensor, next_iter_output_tensor_grad, fwd_p2p_handles, bwd_p2p_handles, bwd_layer_graph.layer_input.grad))
@@ -271,7 +306,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
     bwd_pp_comm_params: P2PCommParams = None,
     checkpoint=False
 ):
-    print(f"in transformer_layer_forward_moe_backward_dense_overlaping, start")
+    # print(f"in transformer_layer_forward_moe_backward_dense_overlaping, start")
     args = get_args()
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
     tp_group = parallel_state.get_tensor_model_parallel_group()
@@ -335,6 +370,8 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         )
 
     WeightGradStore.start_decouple()
+    # bwd_layer_graph.layer.mlp.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.mlp.linear_fc1.wgrad_store.enable_delay_wgrad_compute()
     run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad, keep_grad=True)  # keep for dw
     run_graph_backward(bwd_layer_graph.pre_mlp_layernorm_graph, keep_graph=True)
     WeightGradStore.end_decouple()
@@ -408,6 +445,10 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
             fwd_layer.norm_ckpt2.discard_output()
 
     WeightGradStore.start_decouple()
+    # bwd_layer_graph.layer.self_attention.linear_proj.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_up_proj.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_down_proj.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_q_proj.wgrad_store.enable_delay_wgrad_compute()
     run_graph_backward(bwd_layer_graph.attn_graph, keep_grad=True)
     WeightGradStore.end_decouple()
 
@@ -465,7 +506,22 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         next_iter_output_tensor_grad, bwd_p2p_handles = p2p_comm_helper(bwd_pp_comm_params, bwd_layer_graph.layer_input.grad)
 
     WeightGradStore.pop()
-
+    # process mlp, backward for weights
+    # bwd_layer_graph.layer.mlp.linear_fc2.backward_dw()
+    bwd_layer_graph.layer.mlp.linear_fc1.backward_dw()
+    # bwd_layer_graph.layer.mlp.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.mlp.linear_fc1.wgrad_store.disable_delay_wgrad_compute()
+    
+    # process attention, backward for weights
+    # bwd_layer_graph.layer.self_attention.linear_proj.backward_dw()
+    bwd_layer_graph.layer.self_attention.linear_kv_up_proj.backward_dw()
+    bwd_layer_graph.layer.self_attention.linear_kv_down_proj.backward_dw()
+    bwd_layer_graph.layer.self_attention.linear_q_proj.backward_dw()
+    # bwd_layer_graph.layer.self_attention.linear_proj.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_up_proj.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_down_proj.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_q_proj.wgrad_store.disable_delay_wgrad_compute()
+    
     saved_tensors = (
         (attention_out, detached_attention_out),
         (pre_mlp_layernorm_output, detached_mlp_input),
@@ -494,7 +550,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         if tensor is not None:
             tensor.untyped_storage().resize_(0)
     
-    print(f"in transformer_layer_forward_moe_backward_dense_overlaping, return")
+    # print(f"in transformer_layer_forward_moe_backward_dense_overlaping, return")
     return (output, context, graph,
             (next_layer_output_grad, next_bwd_unperm_a2a_handle),
             P2PCommOutput(next_iter_input_tensor, next_iter_output_tensor_grad, fwd_p2p_handles, bwd_p2p_handles, bwd_layer_graph.layer_input.grad))
@@ -518,7 +574,7 @@ def transformer_layer_forward_dense_backward_dense_overlaping(
     bwd_pp_comm_params: P2PCommParams = None,
     checkpoint=False
 ):
-    print(f"in transformer_layer_forward_dense_backward_dense_overlaping, start")
+    # print(f"in transformer_layer_forward_dense_backward_dense_overlaping, start")
     if checkpoint:
         checkpoint_context = torch.no_grad()
     else:
@@ -582,6 +638,12 @@ def transformer_layer_forward_dense_backward_dense_overlaping(
 
     # Detach backward into dx/dw
     WeightGradStore.start_decouple()
+    # bwd_layer_graph.layer.mlp.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.mlp.linear_fc1.wgrad_store.enable_delay_wgrad_compute()
+    # bwd_layer_graph.layer.self_attention.linear_proj.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_up_proj.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_down_proj.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_q_proj.wgrad_store.enable_delay_wgrad_compute()
     run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad, keep_grad=True)  # keep for dw
     run_graph_backward(bwd_layer_graph.pre_mlp_layernorm_graph, keep_graph=True)
     run_graph_backward(bwd_layer_graph.attn_graph, keep_grad=True)
@@ -605,6 +667,21 @@ def transformer_layer_forward_dense_backward_dense_overlaping(
         next_iter_output_tensor_grad, bwd_p2p_handles = p2p_comm_helper(bwd_pp_comm_params, bwd_layer_graph.layer_input.grad)
 
     WeightGradStore.pop()
+    # process mlp, backward for weights
+    # bwd_layer_graph.layer.mlp.linear_fc2.backward_dw()
+    bwd_layer_graph.layer.mlp.linear_fc1.backward_dw()
+    # bwd_layer_graph.layer.mlp.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.mlp.linear_fc1.wgrad_store.disable_delay_wgrad_compute()
+    
+    # process attention, backward for weights
+    # bwd_layer_graph.layer.self_attention.linear_proj.backward_dw()
+    bwd_layer_graph.layer.self_attention.linear_kv_up_proj.backward_dw()
+    bwd_layer_graph.layer.self_attention.linear_kv_down_proj.backward_dw()
+    bwd_layer_graph.layer.self_attention.linear_q_proj.backward_dw()
+    # bwd_layer_graph.layer.self_attention.linear_proj.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_up_proj.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_down_proj.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_q_proj.wgrad_store.disable_delay_wgrad_compute()
 
     saved_tensors = (
         (attention_out, detached_attention_out),
@@ -633,7 +710,7 @@ def transformer_layer_forward_dense_backward_dense_overlaping(
         if tensor is not None:
             tensor.untyped_storage().resize_(0)
 
-    print(f"in transformer_layer_forward_dense_backward_dense_overlaping, return")
+    # print(f"in transformer_layer_forward_dense_backward_dense_overlaping, return")
     return (output, context, graph,
             (next_layer_output_grad, next_bwd_unperm_a2a_handle),
             P2PCommOutput(next_iter_input_tensor, next_iter_output_tensor_grad, fwd_p2p_handles, bwd_p2p_handles, bwd_layer_graph.layer_input.grad))
@@ -656,7 +733,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     bwd_pp_comm_params: P2PCommParams = None,
     checkpoint=False
 ):
-    print(f"in transformer_layer_forward_moe_backward_moe_overlaping, start")
+    # print(f"in transformer_layer_forward_moe_backward_moe_overlaping, start")
     if checkpoint:
         checkpoint_context = torch.no_grad()
     else:
@@ -775,9 +852,15 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     bwd_unperm_a2a_handle = None
     run_graph_backward(bwd_layer_graph.unperm1_graph, unperm1_out_grad)
     unperm1_out_grad.untyped_storage().resize_(0)
+
+
     WeightGradStore.start_decouple()
+    bwd_layer_graph.layer.mlp.experts.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.mlp.experts.linear_fc1.wgrad_store.enable_delay_wgrad_compute()
     run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
     WeightGradStore.end_decouple()
+
+
     run_graph_backward(bwd_layer_graph.perm2_graph, keep_graph=True)  # keep for dw
     run_graph_backward(bwd_layer_graph.perm2_append_graph, keep_graph=True)
     
@@ -818,6 +901,11 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     #     ...
 
     WeightGradStore.pop()
+    bwd_layer_graph.layer.mlp.experts.linear_fc2.backward_dw()
+    bwd_layer_graph.layer.mlp.experts.linear_fc1.backward_dw()
+    bwd_layer_graph.layer.mlp.experts.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.mlp.experts.linear_fc1.wgrad_store.disable_delay_wgrad_compute()
+    
 
     with checkpoint_context:
         detached_perm1_local_input_tokens_a2a = detach_tensor(perm1_local_input_tokens_a2a, checkpoint_forward=checkpoint)
@@ -856,7 +944,10 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         backward_ag_shared_handle.wait()
         backward_ag_shared_handle = None
     # move shared experts backward before unpermF all2all to avoid tp comm colision.
+    
     WeightGradStore.start_decouple()
+    # bwd_layer_graph.layer.mlp.shared_experts.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.mlp.shared_experts.linear_fc1.wgrad_store.enable_delay_wgrad_compute()
     run_graph_backward(bwd_layer_graph.shared_experts_graph, backward_ag_shared, keep_grad=True)  # dw computation
     WeightGradStore.end_decouple()
 
@@ -875,7 +966,12 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     perm1_out2_grad.untyped_storage().resize_(0)
     run_graph_backward(bwd_layer_graph.router_graph)
     run_graph_backward(bwd_layer_graph.pre_mlp_layernorm_graph, keep_graph=True)
+    
     WeightGradStore.start_decouple()
+    # bwd_layer_graph.layer.self_attention.linear_proj.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_up_proj.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_down_proj.wgrad_store.enable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_q_proj.wgrad_store.enable_delay_wgrad_compute()
     run_graph_backward(bwd_layer_graph.attn_graph, keep_grad=True)
     WeightGradStore.end_decouple()
 
@@ -939,6 +1035,24 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         next_iter_output_tensor_grad, bwd_p2p_handles = p2p_comm_helper(bwd_pp_comm_params, bwd_layer_graph.layer_input.grad)
 
     WeightGradStore.pop()
+    # process shared experts, backward for weights
+    # bwd_layer_graph.layer.mlp.shared_experts.linear_fc2.backward_dw()
+    bwd_layer_graph.layer.mlp.shared_experts.linear_fc1.backward_dw()
+    # bwd_layer_graph.layer.mlp.shared_experts.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.mlp.shared_experts.linear_fc1.wgrad_store.disable_delay_wgrad_compute()
+
+    # process attention, backward for weights
+    # bwd_layer_graph.layer.self_attention.linear_proj.backward_dw()
+    bwd_layer_graph.layer.self_attention.linear_kv_up_proj.backward_dw()
+    bwd_layer_graph.layer.self_attention.linear_kv_down_proj.backward_dw()
+    bwd_layer_graph.layer.self_attention.linear_q_proj.backward_dw()
+    # bwd_layer_graph.layer.self_attention.linear_proj.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_up_proj.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_kv_down_proj.wgrad_store.disable_delay_wgrad_compute()
+    bwd_layer_graph.layer.self_attention.linear_q_proj.wgrad_store.disable_delay_wgrad_compute()
+    
+    
+    
 
     saved_tensors = (
         (attention_out, detached_attention_out),
@@ -968,7 +1082,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         if tensor is not None:
             tensor.untyped_storage().resize_(0)
 
-    print(f"in transformer_layer_forward_moe_backward_moe_overlaping, return")
+    # print(f"in transformer_layer_forward_moe_backward_moe_overlaping, return")
     return (output, context, graph,
             (next_layer_output_grad, next_bwd_unperm_a2a_handle),
             P2PCommOutput(next_iter_input_tensor, next_iter_output_tensor_grad, fwd_p2p_handles, bwd_p2p_handles, bwd_layer_graph.layer_input.grad))

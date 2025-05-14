@@ -2787,8 +2787,8 @@ def train(
                         optimizer,
                         opt_param_scheduler,
                         config)
-            print(f"train step for dualpipev output is loss_dict: {loss_dict}, skipped_iter: {skipped_iter}, should_checkpoint: {should_checkpoint}")
-            print(f"train step for dualpipev output is should_exit: {should_exit}, exit_code: {exit_code}, grad_norm: {grad_norm}, num_zeros_in_grad: {num_zeros_in_grad}")
+            # print(f"train step for dualpipev output is loss_dict: {loss_dict}, skipped_iter: {skipped_iter}, should_checkpoint: {should_checkpoint}")
+            # print(f"train step for dualpipev output is should_exit: {should_exit}, exit_code: {exit_code}, grad_norm: {grad_norm}, num_zeros_in_grad: {num_zeros_in_grad}")
         else:
             (
                 loss_dict,

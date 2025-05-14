@@ -12,7 +12,7 @@ from ..modules.token_dispatcher import (
 from ..modules.attention import attention_forward
 from ..modules.utils import (
     detach_tensor,
-    NoopLayerGraph, LayerGraph,
+    LayerGraph,
 )
 
 
@@ -36,8 +36,8 @@ def transformer_layer_forward_moe(
     packed_seq_params=None,
     checkpoint=False
 ):
-    print(f"in transformer_layer_forward_moe, start")
-    print(f"in transformer_layer, self is {self}")
+    # print(f"in transformer_layer_forward_moe, start")
+    # print(f"in transformer_layer, self is {self}")
     # hidden_states: [s, b, h]
     args = get_args()
     ep_group = parallel_state.get_expert_model_parallel_group()
@@ -227,7 +227,7 @@ def transformer_layer_forward_moe(
         self.mlp.token_dispatcher.input_splits, self.mlp.token_dispatcher.output_splits, self,
         checkpointed=checkpoint
     )
-    print(f"in transformer_layer_forward_moe, return")
+    # print(f"in transformer_layer_forward_moe, return")
     return output, context, graph
 
 
@@ -242,7 +242,7 @@ def transformer_layer_forward_dense(
     packed_seq_params=None,
     checkpoint=False
 ):
-    print(f"in transformer_layer_forward_dense, start")
+    # print(f"in transformer_layer_forward_dense, start")
     # hidden_states: [s, b, h]
     args = get_args()
     recomp_norm = getattr(args, 'recompute_norm', False)
@@ -321,5 +321,5 @@ def transformer_layer_forward_dense(
         saved_tensors, [], None, None, self,
         checkpointed=checkpoint
     )
-    print(f"in transformer_layer_forward_dense, return")
+    # print(f"in transformer_layer_forward_dense, return")
     return output, context, graph
