@@ -105,16 +105,36 @@ if [ "${env}" == "train" ]; then
     # Set the path to the target Python file
     SITE_PACKAGES_DIR=$(python3 -c "import site; print(site.getsitepackages()[0])")
     FILE="$SITE_PACKAGES_DIR/torch/distributed/elastic/agent/server/api.py"
-    # Replace the code in line 894 and its surrounding lines (893 and 895)
-    if ! sed -i '893,895s/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' "$FILE"; then
-        echo "Error: Replacement failed on line 894."
-        exit 1
+    torch_version=`python -c "import torch; print(torch.__version__)"`
+
+    # Replace the following code with torch version 2.5.1
+    if [[ $torch_version == *"2.5.1"* ]];then
+	# Replace line 893 of the code
+	if ! sed -i '893s/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' "$FILE"; then 
+	    echo "Error: Replacement failed on line 893."
+	    exit 1
+	fi
+        # Replace the code in line 902
+        if ! sed -i '902s/^                    self\._restart_workers(self\._worker_group)/                    self._remaining_restarts -= 1\n                    self._restart_workers(self._worker_group)/' "$FILE"; then
+            echo "Error: Replacement failed on line 902."
+            exit 1
+        fi
     fi
-    # Replace the code in line 903 and its surrounding lines (902 and 904)
-    if ! sed -i '902,904s/^                    self\._restart_workers(self\._worker_group)/                    self._remaining_restarts -= 1\n                    self._restart_workers(self._worker_group)/' "$FILE"; then
-        echo "Error: Replacement failed on line 903."
-        exit 1
+
+    # Replace the following code with torch version 2.6.0
+    if [[ $torch_version == *"2.6.0"* ]];then
+	# Replace line 908 of the code
+        if ! sed -i '908s/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' "$FILE"; then
+            echo "Error: Replacement failed on line 908."
+	    exit 1
+	fi
+	# Replace line 917 of the code
+        if ! sed -i '917s/^                    self\._restart_workers(self\._worker_group)/                    self._remaining_restarts -= 1\n                    self._restart_workers(self._worker_group)/' "$FILE"; then
+            echo "Error: Replacement failed on line 917."
+	    exit 1
+	fi
     fi
+
 fi
 
 # If env equals 'inference'
