@@ -101,12 +101,27 @@ def init_submodule(main_path, dst, submodule_name, force=False):
         logger.info(f"Skipping {submodule_name} initialization, as it already lexists.")
         return
     logger.info(f"Initializing submodule {submodule_name}...")
+    logger.warning(
+        "When you perform unpatch, the specified submodule will be fully restored to its initial state, regardless of any modifications you may have made within the submodule."
+    )
     repo = Repo(main_path)
     submodule = repo.submodule(submodule_name)
     try:
+        git_modules_path = os.path.join(main_path, ".git", "modules", submodule_name)
+        if os.path.exists(git_modules_path):
+            shutil.rmtree(git_modules_path)
+        submodule_worktree_path = os.path.join(main_path, submodule_name)
+        if os.path.exists(submodule_worktree_path):
+            shutil.rmtree(submodule_worktree_path)
         submodule.update(init=True, force=force)
     except:
         logger.info("Retrying to initialize submodule...")
+        git_modules_path = os.path.join(main_path, ".git", "modules", submodule_name)
+        if os.path.exists(git_modules_path):
+            shutil.rmtree(git_modules_path)
+        submodule_worktree_path = os.path.join(main_path, submodule_name)
+        if os.path.exists(submodule_worktree_path):
+            shutil.rmtree(submodule_worktree_path)
         submodule.update(init=True, force=force)
     logger.info(f"Initialized {submodule_name} submodule.")
 
@@ -307,7 +322,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--backend",
         nargs="+",
-        choices=["Megatron-LM", "vllm", "Megatron-Energon", "FlagScale"],
+        choices=["Megatron-LM", "vllm", "Megatron-Energon", "FlagScale", "llama.cpp"],
         default=["Megatron-LM"],
         help="Backend to unpatch (default: Megatron-LM)",
     )
@@ -345,6 +360,9 @@ if __name__ == "__main__":
     device_type = args.device_type
     tasks = args.task
     commit = args.commit
+
+    # When unpatching, the submodule will be initialized forcefully
+    args.force = True
 
     if not isinstance(backends, list):
         backends = [backends]

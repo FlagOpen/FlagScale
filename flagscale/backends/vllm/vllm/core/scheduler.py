@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
+import contextlib # --- FLAGSCALE MODIFICATION ---
 import enum
 import os
 import random
 import time
-import contextlib # --- FLAGSCALE MODIFICATION ---
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Callable, Deque, Dict, Iterable, List, Optional
@@ -1720,7 +1720,6 @@ class Scheduler:
                     multi_modal_placeholders=(
                         seq_group.multi_modal_placeholders
                         if scheduler_outputs.num_prefill_groups > 0 else None),
-                    mm_processor_kwargs=seq_group.mm_processor_kwargs,
                     prompt_adapter_request=seq_group.prompt_adapter_request,
                 )
             else:

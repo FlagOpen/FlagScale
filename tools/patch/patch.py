@@ -182,7 +182,7 @@ def prompt_info(main_path, backends, device_type, tasks):
     while not models:
         logger.info("At least one FlagScale-compatible model must be provided.")
         model_input = input(
-            "4. Please enter FlagScale-compatible models (separated with commas): "
+            "2. Please enter FlagScale-compatible models (separated with commas): "
         ).strip()
         models = [m.strip() for m in model_input.split(",") if m.strip()]
 
@@ -190,10 +190,10 @@ def prompt_info(main_path, backends, device_type, tasks):
     commit_msg = input("3. Please enter commit message: ").strip()
     while not commit_msg:
         logger.info("Commit message cannot be empty.")
-        commit_msg = input("4. Please enter commit message: ").strip()
+        commit_msg = input("3. Please enter commit message: ").strip()
 
     # 4. Contact (optional)
-    contact_prompt = "6. Please enter email (optional): "
+    contact_prompt = "4. Please enter email (optional): "
     contact = input(contact_prompt).strip()
 
     return {
@@ -408,7 +408,11 @@ def _sync(file_path, status, src, dst, f=None, mode="symlink"):
         is_symlink = os.path.islink(dst_file_path)
         if is_symlink:
             if not os.path.lexists(src_file_path):
-                raise ValueError(f"{symbolic_error}: {dst_file_path}")
+                # The File is a symbolic link, but the source file no longer exists, so the symlink is dangling and has been automatically removed.
+                logger.warning(
+                    f"File {dst_file_path} is a symbolic link, but the source file no longer exists, so the symlink is dangling and has been automatically removed."
+                )
+                os.remove(dst_file_path)
         else:
             raise ValueError(f"{typechange_error}: {dst_file_path}")
 
@@ -443,8 +447,8 @@ def _sync(file_path, status, src, dst, f=None, mode="symlink"):
     elif change_type == "M":
         is_symlink = os.path.islink(dst_file_path)
         if is_symlink:
-            raise ValueError(
-                "Modified symbolic links in the submodule is not supported except for those defined in FlagScale"
+            logger.warning(
+                f"The symlink {dst_file_path} can only have a typechange status and it cannot have a modified status."
             )
         _create_file(src_file_path, dst_file_path, mode=mode)
 
@@ -526,7 +530,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--backend",
         nargs="+",
-        choices=["Megatron-LM", "vllm", "Megatron-Energon", "FlagScale"],
+        choices=["Megatron-LM", "vllm", "Megatron-Energon", "FlagScale", "llama.cpp"],
         default=["Megatron-LM"],
         help="Backend to patch (default: Megatron-LM)",
     )

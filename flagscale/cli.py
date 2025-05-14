@@ -18,13 +18,31 @@ def flagscale():
 
 
 @flagscale.command()
-@click.argument("yaml_path", type=click.Path(exists=True))
-def train(yaml_path):
+@click.argument("model_name", type=str)
+@click.argument("yaml_path", type=click.Path(exists=True), required=False)
+def train(model_name, yaml_path=None):
     """
     Train model from yaml.
     """
     from run import main as run_main
 
+    if yaml_path:
+        if os.path.isabs(yaml_path):
+            yaml_path = yaml_path
+        else:
+            yaml_path = os.path.join(os.getcwd(), yaml_path)
+        if not os.path.exists(yaml_path):
+            click.echo(f"Error: The yaml {yaml_path} does not exist.", err=True)
+            return
+        click.echo(f"Using configuration yaml: {yaml_path}")
+    else:
+        default_dir = os.path.dirname(os.path.abspath(os.path.dirname(__file__)))
+        # Default is train.yaml
+        yaml_path = os.path.join(default_dir, "examples", model_name, "conf", f"train.yaml")
+        if not os.path.exists(yaml_path):
+            click.echo(f"Error: The yaml {yaml_path} does not exist.", err=True)
+            return
+        click.echo(f"Using default configuration yaml: {yaml_path}")
     click.echo(f"Start training from the yaml {yaml_path}...")
     yaml_path = os.path.abspath(yaml_path)
     config_path = os.path.dirname(yaml_path)
@@ -56,9 +74,8 @@ def serve(model_name, yaml_path=None):
         click.echo(f"Using configuration yaml: {yaml_path}")
     else:
         default_dir = os.path.dirname(os.path.abspath(os.path.dirname(__file__)))
-        yaml_path = os.path.join(
-            default_dir, "examples", model_name, "conf", f"config_{model_name}.yaml"
-        )
+        # Default is serve.yaml
+        yaml_path = os.path.join(default_dir, "examples", model_name, "conf", f"serve.yaml")
         if not os.path.exists(yaml_path):
             click.echo(f"Error: The yaml {yaml_path} does not exist.", err=True)
             return

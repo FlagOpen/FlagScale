@@ -3,6 +3,8 @@ import os
 import subprocess
 import sys
 
+from flagscale.serve.args_mapping.mapping import ARGS_CONVERTER
+
 # Compatible with both command-line execution and source code execution.
 try:
     import flag_scale
@@ -14,7 +16,9 @@ from flagscale.utils import flatten_dict_to_args
 
 
 def vllm_serve(args):
-    vllm_args = args.get("engine_args", {})
+    common_args = args.get("engine_args", {})
+    vllm_args = args.get("engine_args_specific", {}).get("vllm", {})
+    vllm_args.update(common_args)
     command = ["vllm", "serve"]
     if vllm_args.get("model", None):
         command.append(vllm_args["model"])
@@ -29,6 +33,35 @@ def vllm_serve(args):
     process = subprocess.Popen(command, stdout=sys.stdout, stderr=sys.stderr)
     pid = os.getpid()
     logger.info(f"[Serve]: Current vLLM PID: {pid} ")
+
+    stdout, stderr = process.communicate()
+    logger.info(f"[Serve]: Standard Output: {stdout}")
+    logger.info(f"[Serve]: Standard Error: {stderr}")
+
+    return process.returncode
+
+
+def llama_cpp_serve(args):
+    common_args = args.get("engine_args", {})
+    llama_cpp_args = args.get("engine_args_specific", {}).get("llama_cpp", {})
+
+    command = ["./third_party/llama.cpp/build/bin/llama-server"]
+    if common_args.get("model", None):
+        converted_args = ARGS_CONVERTER.convert("llama_cpp", common_args)
+        command.extend(["--model", converted_args["model"]])
+        common_args_flatten = flatten_dict_to_args(converted_args, ["model"])
+        command.extend(common_args_flatten)
+        llama_cpp_args_flatten = flatten_dict_to_args(llama_cpp_args, ["model"])
+        command.extend(llama_cpp_args_flatten)
+    else:
+        raise ValueError("Either model must be specified in vllm_model.")
+
+    # Start the subprocess
+    logger.info(f"[Serve]: Starting llama-cpp serve with command: {' '.join(command)}")
+
+    process = subprocess.Popen(command, stdout=sys.stdout, stderr=sys.stderr)
+    pid = os.getpid()
+    logger.info(f"[Serve]: Current Llama PID: {pid} ")
 
     stdout, stderr = process.communicate()
     logger.info(f"[Serve]: Standard Output: {stdout}")
@@ -56,6 +89,8 @@ def main():
 
     if engine == "vllm":
         return_code = vllm_serve(model_config)
+    elif engine == "llama_cpp":
+        return_code = llama_cpp_serve(model_config)
     else:
         raise ValueError(
             f"Unsupported inference engine: {engine}, current config {serve.task_config}"

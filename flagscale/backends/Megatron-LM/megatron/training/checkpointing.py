@@ -23,8 +23,7 @@ from megatron.core.dist_checkpointing.serialization import get_default_load_shar
 from megatron.core.dist_checkpointing.strategies.fully_parallel import \
     FullyParallelSaveStrategyWrapper, FullyParallelLoadStrategyWrapper
 from megatron.core.num_microbatches_calculator import update_num_microbatches
-from megatron.core.utils import is_te_min_version
-from megatron.core.fp8_utils import is_float8tensor
+from megatron.core.fp8_utils import is_float8tensor, dequantize_fp8_tensor
 from megatron.core.rerun_state_machine import get_rerun_state_machine
 from .async_utils import schedule_async_save, is_empty_async_queue
 from .global_vars import get_args, get_one_logger
@@ -1113,7 +1112,10 @@ def load_args_from_checkpoint(
 
     _set_arg('num_experts', force=True)
     _set_arg('moe_layer_freq', force=True)
-    _set_arg('moe_ffn_hidden_size', force=True)
+    if getattr(checkpoint_args, 'num_experts', None) is not None:
+        _set_arg('moe_ffn_hidden_size', force=True)
+    else:
+        setattr(args, 'moe_ffn_hidden_size', None)
     _set_arg('moe_router_topk', force=True)
     _set_arg('moe_token_dispatcher_type', force=True)
     _set_arg('moe_router_pre_softmax', force=True)
@@ -1163,14 +1165,11 @@ def fix_fp8_params_lose_precision_when_loading_dist_ckpt(state_dict):
     bf16/fp16 -> fp8 -> bf16/fp16). This function is implemented to solve this problem.
     When "--fp8-param-gather" is disabled, this function doesn't modify anything.
     """
-    if is_te_min_version("2.0"):
-        # TE 2.x doesn't need this fix.
-        return
     for key in state_dict.keys():
         if key.startswith('model'):
             for _, sharded_tensor in state_dict[key].items():
                 if is_float8tensor(sharded_tensor.data):
-                    sharded_tensor.data = sharded_tensor.data.from_float8().cpu()
+                    sharded_tensor.data = dequantize_fp8_tensor(sharded_tensor.data).cpu()
 
 
 def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', strict=True,

@@ -1,6 +1,10 @@
 [<img src="flagopen.png">](https://flagopen.baai.ac.cn/)
 
 ## Latest News
+- **[2025/04]** Released [v0.8.0](https://github.com/FlagOpen/FlagScale/tree/release/v0.8.0):
+  - Introduced a new flexible and robust multi-backend mechanism and updated vendor adaptation methods.
+  - Enabled heterogeneous prefill-decoding disaggregation across vendor chips within a single instance via FlagCX (beta).
+  - Upgraded DeepSeek-v3 pre-training with the new Megatron-LM and added heterogeneous pre-training across different chips for MoE models like DeepSeek-v3.
 - **[2025/02]** Released [v0.6.5](https://github.com/FlagOpen/FlagScale/tree/release/v0.6.5):
   - Added support for DeepSeek-V3 distributed pre-training (beta) and [DeepSeek-V3/R1 serving](#deepseek-r1-serving) across multiple chips.
   - Introduced an auto-tuning feature for serving and a new CLI feature for one-click deployment.
@@ -47,6 +51,11 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     ```
     The above instructions create two conda environments: `flagscale-train` and `flagscale-inference`, which contain the dependency environments for training and inference, respectively.
 
+    The llama.cpp backend (CPU by default) is alternative, for example:
+    ```sh
+    ./install-requirements.sh --env inference --llama-cpp-backend cuda
+    ```
+
 3. Unpatch the backend code adaptation of FlagScale as needed
     ```
     cd FlagScale
@@ -82,24 +91,24 @@ FlagScale provides a unified runner for various tasks, including training，infe
 
 1. Start the distributed training job:
     ```sh
-    python run.py --config-path ./examples/aquila/conf --config-name config action=run
+    python run.py --config-path ./examples/aquila/conf --config-name train action=run
     ```
     The `data_path` in the demo is the path of the training datasets following the [Megatron-LM format](./megatron/README.md#data-preprocessing). For quickly running the pretraining process, we also provide a small processed data ([bin](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.bin) and [idx](https://model.ks3-cn-beijing.ksyuncs.com/nlpdata/pile_wikipedia_demo.idx)) from the [Pile](https://pile.eleuther.ai/) dataset.
 
 2. Stop the distributed training job:
     ```sh
-    python run.py --config-path ./examples/aquila/conf --config-name config action=stop
+    python run.py --config-path ./examples/aquila/conf --config-name train action=stop
     ```
 
 #### Serve
 
 1. Start the server:
     ```sh
-    python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=run
+    python run.py --config-path ./examples/qwen/conf --config-name serve action=run
     ```
 2. Stop the server:
     ```sh
-    python run.py --config-path ./examples/qwen/conf --config-name config_qwen2.5_7b action=stop
+    python run.py --config-path ./examples/qwen/conf --config-name serve action=stop
     ```
 For more details, please refer to [Quick Start](./flagscale/serve/README.md).
 
@@ -113,12 +122,12 @@ We support the model serving of DeepSeek R1 and have implemented the `flagscale 
     ├── examples/
     │   └── deepseek_r1/
     │       └── conf/
-    │           └── config_deepseek_r1.yaml
+    │           └── serve.yaml
     |           └── hostfile.txt # Set hostfile (optional)
     │           └── serve/
-    │               └── deepseek_r1.yaml # Set model parameters and server port
+    │               └── 671b.yaml # Set model parameters and server port
     ```
-    Note: When task covers multiple nodes, [hostfile.txt](./examples/deepseek/conf/hostfile.txt) is required. The file path should be set in config_deepseek_r1.yaml.
+    Note: When task covers multiple nodes, [hostfile.txt](./examples/deepseek/conf/hostfile.txt) is required. The file path should be set in serve.yaml.
 
 2. **Install FlagScale CLI:**
     ```sh

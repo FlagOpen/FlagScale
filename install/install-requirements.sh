@@ -1,18 +1,25 @@
 #!/bin/bash
 
-python -m pip install --upgrade pip
+set -e
 
-# Packages that need to be installed outside of the conda environment
-pip install -r ../requirements/requirements-base.txt
+print_help() {
+    echo "Usage: $0 [--env <train|inference>] [--llama-cpp-backend <cpu|metal|blas|openblas|blis|cuda|gpu|musa|vulkan_mingw64|vulkan_msys2|cann|arm_kleidi|hip|opencl_android|opencl_windows_arm64>]"
+    echo "Options:"
+    echo "  --env <train|inference>         Specify the environment type (required)"
+    echo "  --llama-cpp-backend <backend>   Specify the llama.cpp backend (default: cpu)"
+}
 
 # Initialize the variable
 env=""
+llama_cpp_backend="cpu"
 
 # Parse command-line options
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --env) env="$2"; shift ;;  # Assign the value after '--env'
-        *) echo "Error: Unknown parameter passed: $1"; exit 1 ;;
+        --llama-cpp-backend) llama_cpp_backend="$2"; shift ;;  # Assign the value after '--llama-cpp-backend'
+        --help|-h) print_help; exit 0 ;;
+        *) echo "Error: Unknown parameter passed."; print_help; exit 1 ;;
     esac
     shift
 done
@@ -28,6 +35,11 @@ if [ "$env" != "train" ] && [ "$env" != "inference" ]; then
     echo "Error: env must be 'train' or 'inference'."
     exit 1
 fi
+
+python -m pip install --upgrade pip
+
+# Packages that need to be installed outside of the conda environment
+pip install -r ../requirements/requirements-base.txt
 
 # Proceed with setup based on the value of 'env'
 echo "Setting up environment for: $env"
@@ -117,16 +129,73 @@ fi
 
 # If env equals 'inference'
 if [ "${env}" == "inference" ]; then
-    # Navigate to requirements directory and install inference dependencies
-    pip install -r ../vllm/requirements/build.txt
-    pip install -r ../vllm/requirements/cuda.txt
-    pip install -r ../vllm/requirements/common.txt
-    pip install -r ../vllm/requirements/dev.txt
+    # Unpatch
+    cd ..
+    python tools/patch/unpatch.py --backend vllm
+    python tools/patch/unpatch.py --backend llama.cpp
 
-    MAX_JOBS=$(nproc) pip install --no-build-isolation -v ../vllm/.
+    # Build vllm
+    # Navigate to requirements directory and install inference dependencies
+    pip install -r ./third_party/vllm/requirements/build.txt
+    pip install -r ./third_party/vllm/requirements/cuda.txt
+    pip install -r ./third_party/vllm/requirements/common.txt
+    pip install -r ./third_party/vllm/requirements/dev.txt
+
+    MAX_JOBS=$(nproc) pip install --no-build-isolation -v ./third_party/vllm/.
 
     # Navigate to requirements directory and install serving dependencies
-    pip install -r ../requirements/serving/requirements.txt
+    pip install -r ./requirements/serving/requirements.txt
+
+    # Build llama.cpp
+    cd ./third_party/llama.cpp
+    rm -rf ./build
+    case "$llama_cpp_backend" in
+        cpu|metal|cpu_and_metal)
+            cmake -B build
+            cmake --build build --config Release -j8
+            ;;
+        blas|openblas)
+            cmake -B build -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS
+            cmake --build build --config Release
+            ;;
+        blis)
+            # You can skip this step if  in oneapi-basekit docker image, only required for manual installation
+            source /opt/intel/oneapi/setvars.sh
+            cmake -B build -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=Intel10_64lp -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx -DGGML_NATIVE=ON
+            cmake --build build --config Release
+            ;;
+        cuda|gpu)
+            cmake -B build -DGGML_CUDA=ON
+            cmake --build build --config Release
+            ;;
+        musa)
+            cmake -B build -DGGML_MUSA=ON
+            cmake --build build --config Release
+            ;;
+        vulkan_mingw64)
+            cmake -B build -DGGML_VULKAN=ON
+            cmake --build build --config Release
+            ;;
+        cann)
+            cmake -B build -DGGML_CANN=on -DCMAKE_BUILD_TYPE=release
+            cmake --build build --config release
+            ;;
+        arm_kleidi)
+            cmake -B build -DGGML_CPU_KLEIDIAI=ON
+            cmake --build build --config Release
+            ;;
+        hip|vulkan_w64devkit|vulkan_msys2|opencl_android|opencl_windows_arm64)
+            echo "auto build unsupport: $1, follow the README.md to build manually:"
+            echo "https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md"
+            exit 1
+            ;;  
+        *)
+            echo "unknown backend: $1"
+            print_help
+            exit 1
+            ;;
+    esac
+    cd ../../install
 fi
 
 # Clean all conda caches

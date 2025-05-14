@@ -36,6 +36,16 @@ except ImportError:
     rearrange = None
 
 try:
+    from flashattn_hopper.flash_attn_interface import _flash_attn_forward
+    from flashattn_hopper.flash_attn_interface import (
+        flash_attn_with_kvcache as flash_attn3_with_kvcache,
+    )
+
+    HAVE_FA3 = True
+except:
+    HAVE_FA3 = False
+
+try:
     from flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache
 except:
     flash_attn_varlen_func = None
@@ -158,6 +168,7 @@ class Attention(MegatronModule, ABC):
             skip_bias_add=True,
             is_expert=False,
             tp_comm_buffer_name='proj',
+            tp_group=self.model_comm_pgs.tp,
         )
 
     def _checkpointed_attention_forward(
@@ -298,7 +309,7 @@ class Attention(MegatronModule, ABC):
 
             assert inference_context.is_static_batching()
             if (
-                inference_context.is_decode_only() and rotary_pos_cos is not None
+                inference_context.sequence_len_offset > 0 and rotary_pos_cos is not None
             ):  # Decode phase, not prefill
                 rotary_pos_cos_q = rotary_pos_cos[sequence_end - 1 : sequence_end]
                 rotary_pos_sin_q = rotary_pos_sin[sequence_end - 1 : sequence_end]
@@ -415,6 +426,7 @@ class Attention(MegatronModule, ABC):
         cu_seqlens_q,
         cu_seqlens_k,
         seqlens_k,
+        seqlens_k_decode_only,
         block_table,
     ) -> Tensor:
         """Flash attention kernel for mixed decode and prefill samples.
@@ -428,6 +440,7 @@ class Attention(MegatronModule, ABC):
             cu_seqlens_q (Tensor): Cumulative query sequence lengths.
             cu_seqlens_k (Tensor): Cumulative key sequence lengths.
             seqlens_k (Tensor): key sequence lengths.
+            seqlens_k_decode_only (Tensor): key sequence lengths (decode_only).
             block_table (Tensor): KV cache chunk ids for all samples.
         Return:
             (Tensor) Attention output.
@@ -438,27 +451,71 @@ class Attention(MegatronModule, ABC):
         # Flash attn kernel.
         if max_seqlen_q > 1:
             q = q.squeeze(1)
-            output_total = flash_attn_varlen_func(
-                q,
-                k,
-                v,
-                cu_seqlens_q,
-                cu_seqlens_k,
-                max_seqlen_q,
-                max_seqlen_k,
-                causal=True,
-                block_table=block_table,
-            )
+            if HAVE_FA3:
+                # TODO(ksanthanam): Replace with call to flash_attn_varlen_func once
+                # it accepts block_table
+                softmax_scale = q.shape[-1] ** -0.5
+                output_total, *unused = _flash_attn_forward(
+                    q=q,
+                    k=k,
+                    v=v,
+                    k_new=None,
+                    v_new=None,
+                    qv=None,
+                    out=None,
+                    cu_seqlens_q=cu_seqlens_q,
+                    cu_seqlens_k=None,
+                    cu_seqlens_k_new=None,
+                    seqused_q=None,
+                    seqused_k=seqlens_k,
+                    max_seqlen_q=max_seqlen_q,
+                    max_seqlen_k=max_seqlen_k,
+                    page_table=block_table,
+                    kv_batch_idx=None,
+                    leftpad_k=None,
+                    rotary_cos=None,
+                    rotary_sin=None,
+                    seqlens_rotary=None,
+                    q_descale=None,
+                    k_descale=None,
+                    v_descale=None,
+                    softmax_scale=softmax_scale,
+                    causal=True,
+                    window_size=(-1, -1),
+                    attention_chunk=0,
+                    softcap=0.0,
+                    rotary_interleaved=True,
+                    scheduler_metadata=None,
+                    num_splits=0,
+                    pack_gqa=None,
+                    sm_margin=0,
+                )
+            else:
+                output_total = flash_attn_varlen_func(
+                    q,
+                    k,
+                    v,
+                    cu_seqlens_q,
+                    cu_seqlens_k,
+                    max_seqlen_q,
+                    max_seqlen_k,
+                    causal=True,
+                    block_table=block_table,
+                )
             output_total = output_total.unsqueeze(1)
         else:  # decode only
-            output_total = flash_attn_with_kvcache(
-                q=q,
-                k_cache=k,
-                v_cache=v,
-                cache_seqlens=seqlens_k,
-                causal=True,
-                block_table=block_table,
-            )
+            flash_attn_args = {
+                "q": q,
+                "k_cache": k,
+                "v_cache": v,
+                "cache_seqlens": seqlens_k_decode_only,
+                "causal": True,
+                "page_table" if HAVE_FA3 else "block_table": block_table,
+            }
+            if HAVE_FA3:
+                output_total = flash_attn3_with_kvcache(**flash_attn_args)
+            else:
+                output_total = flash_attn_with_kvcache(**flash_attn_args)
         return output_total
 
     def forward(
@@ -498,11 +555,18 @@ class Attention(MegatronModule, ABC):
             (Tuple[Tensor, Tensor]) Attention output and bias.
 
         """
+        # Check if we need to skip RoPE
+        # no_rope is 0-indexed array and self.layer_number is 1-indexed
+        no_rope = (
+            self.config.no_rope_freq[self.layer_number - 1] if self.config.no_rope_freq else False
+        )
+        if no_rope:
+            rotary_pos_emb = None
 
         inference_context = deprecate_inference_params(inference_context, inference_params)
 
         if inference_context and inference_context.is_dynamic_batching():
-            assert is_fa_min_version(
+            assert HAVE_FA3 or is_fa_min_version(
                 "2.7.3"
             ), "flash attn verion v2.7.3 and above is required for dynamic batching."
 
@@ -651,7 +715,9 @@ class Attention(MegatronModule, ABC):
                 # Dynamic batching attention kernel.
                 q, k, v = (query, key, value)
                 cu_query_lengths, max_seqlen_q = inference_context.cu_query_lengths()
-                cu_kv_lengths, kv_lengths, max_seqlen_k = inference_context.cu_kv_lengths()
+                cu_kv_lengths, kv_lengths, kv_lengths_decode_only, max_seqlen_k = (
+                    inference_context.cu_kv_lengths()
+                )
 
                 core_attn_out = self.flash_decode_and_prefill(
                     q,
@@ -662,6 +728,7 @@ class Attention(MegatronModule, ABC):
                     cu_query_lengths,
                     cu_kv_lengths,
                     kv_lengths,
+                    kv_lengths_decode_only,
                     block_table,
                 )
                 core_attn_out = rearrange(core_attn_out, 's b h d -> s b (h d)')
@@ -719,6 +786,7 @@ class SelfAttention(Attention):
             skip_bias_add=False,
             is_expert=False,
             tp_comm_buffer_name='qkv',
+            tp_group=self.model_comm_pgs.tp,
         )
 
         if submodules.q_layernorm is not None:
