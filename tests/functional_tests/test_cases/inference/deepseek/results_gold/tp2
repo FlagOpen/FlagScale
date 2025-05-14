@@ -1,0 +1,8 @@
+**************************************************
+output.prompt='The president of the United States'
+output.outputs[0].text=', George W. Bush, has been given a 95% confidence interval'
+output.outputs[0].token_ids=[11, 9857, 467, 13, 14079, 11, 702, 1012, 2661, 264, 220, 24, 20, 4, 12136, 9873]
+**************************************************
+output.prompt='The capital of France'
+output.outputs[0].text=', Paris, is known for its iconic landmarks such as the Eiffel Tower'
+output.outputs[0].token_ids=[11, 12095, 11, 374, 3881, 369, 1181, 26277, 59924, 1741, 438, 279, 468, 3092, 301, 21938]

@@ -1,18 +1,19 @@
 defaults:
   - _self_
-  - train: tp4_pp1_ep2
+  - inference: tp2
 
 experiment:
-  exp_name: tp4_pp1_ep2
-  exp_dir: tests/functional_tests/test_cases/train/mixtral/results_test/tp4_pp1_ep2
+  exp_name: deepseek
+  exp_dir: tests/functional_tests/test_cases/inference/deepseek/results_test/tp2
   task:
-    type: train
-    backend: megatron
-    entrypoint: flagscale/train/train_gpt.py
+    type: inference
+    backend: vllm
+    entrypoint: flagscale/inference/inference_aquila.py
   runner:
-    backend: torchrun
-    ssh_port: null
-  shell_cmds: null
+    hostfile: null
+  cmds:
+    before_start:
+      source /root/miniconda3/bin/activate flagscale-inference
   envs:
     HYDRA_FULL_ERROR: 1
     CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
@@ -25,10 +26,7 @@ experiment:
     NVTE_FUSED_ATTN: 0
     CUDNN_BENCHMARK: "false"
     CUDNN_DETERMINISTIC: "true"
-  cmds:
-    before_start:
-      python tools/patch/unpatch.py --backend Megatron-LM;
-      source /root/miniconda3/bin/activate flagscale-train
+
 action: run
 
 hydra:
