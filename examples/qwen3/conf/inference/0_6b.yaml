@@ -9,7 +9,7 @@ llm:
 generate:
   no_conversation: ""
   prompt: "The president of the United States is"
-  samplers: penalties;dry;top_n_sigma;top_k;typ_p;top_p;min_p;xtc;temperature
+  n_predict: 128
   temp: 0.8
   top_k: 40
   top_p: 0.95
