@@ -106,33 +106,68 @@ if [ "${env}" == "train" ]; then
     SITE_PACKAGES_DIR=$(python3 -c "import site; print(site.getsitepackages()[0])")
     FILE="$SITE_PACKAGES_DIR/torch/distributed/elastic/agent/server/api.py"
     torch_version=`python -c "import torch; print(torch.__version__)"`
+    echo "torch_version: $torch_version"
 
     # Replace the following code with torch version 2.5.1
     if [[ $torch_version == *"2.5.1"* ]];then
-	# Replace line 893 of the code
-	if ! sed -i '893s/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' "$FILE"; then 
-	    echo "Error: Replacement failed on line 893."
-	    exit 1
-	fi
-        # Replace the code in line 902
-        if ! sed -i '902s/^                    self\._restart_workers(self\._worker_group)/                    self._remaining_restarts -= 1\n                    self._restart_workers(self._worker_group)/' "$FILE"; then
-            echo "Error: Replacement failed on line 902."
+        # Check and replace line 893
+        LINE_893=$(sed -n '893p' "$FILE")
+        EXPECTED_893='                if num_nodes_waiting > 0:'
+
+        if [[ "$LINE_893" != "$EXPECTED_893" ]]; then
+            echo "Error: Line 893 in $FILE does not exactly match '                if num_nodes_waiting > 0:' ."
             exit 1
+        else
+            echo "Line 893 is correct. Proceeding with replacement."
+            # Directly replace the line without using regex
+            sed -i '893s|.*|                if num_nodes_waiting > 0 and self._remaining_restarts > 0:|' "$FILE"
+            echo "Success: Line 893 replaced."
+        fi
+
+        # Check and replace line 902
+        LINE_902=$(sed -n '902p' "$FILE")
+        EXPECTED_902='                    self._restart_workers(self._worker_group)'
+
+        if [[ "$LINE_902" != "$EXPECTED_902" ]]; then
+            echo "Error: Line 902 does not match '                    self._restart_workers(self._worker_group)'."
+            exit 1
+        else
+            echo "Line 902 is correct. Proceeding with replacement."
+            # Directly replace the line without using regex
+            sed -i '902s|.*|                    self._remaining_restarts -= 1; self._restart_workers(self._worker_group)|' "$FILE"
+            echo "Success: Line 902 replaced."
         fi
     fi
 
     # Replace the following code with torch version 2.6.0
     if [[ $torch_version == *"2.6.0"* ]];then
-	# Replace line 908 of the code
-        if ! sed -i '908s/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' "$FILE"; then
-            echo "Error: Replacement failed on line 908."
-	    exit 1
-	fi
-	# Replace line 917 of the code
-        if ! sed -i '917s/^                    self\._restart_workers(self\._worker_group)/                    self._remaining_restarts -= 1\n                    self._restart_workers(self._worker_group)/' "$FILE"; then
-            echo "Error: Replacement failed on line 917."
-	    exit 1
-	fi
+        # Check and replace line 908
+        LINE_908=$(sed -n '908p' "$FILE")
+        EXPECTED_908='                if num_nodes_waiting > 0:'
+
+        if [[ "$LINE_908" != "$EXPECTED_908" ]]; then
+            echo "Error: Line 908 in $FILE does not exactly match '                if num_nodes_waiting > 0:'."
+            exit 1
+        else
+            echo "Line 908 is correct. Proceeding with replacement."
+            # Directly replace the line without using regex
+            sed -i '908s|.*|                if num_nodes_waiting > 0 and self._remaining_restarts > 0:|' "$FILE"
+            echo "Success: Line 908 replaced."
+        fi
+
+        # Check and replace line 917
+        LINE_917=$(sed -n '917p' "$FILE")
+        EXPECTED_917='                    self._restart_workers(self._worker_group)'
+
+        if [[ "$LINE_917" != "$EXPECTED_917" ]]; then
+            echo "Error: Line 917 does not match '                    self._restart_workers(self._worker_group)'."
+            exit 1
+        else
+            echo "Line 917 is correct. Proceeding with replacement."
+            # Directly replace the line without using regex
+            sed -i '917s|.*|                    self._remaining_restarts -= 1; self._restart_workers(self._worker_group)|' "$FILE"
+            echo "Success: Line 917 replaced."
+        fi
     fi
 
 fi
