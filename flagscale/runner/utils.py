@@ -19,7 +19,6 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm.asyncio import tqdm
 
 from flagscale.logger import logger
-from flagscale.serve.metric import calculate_metrics
 
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 
@@ -492,6 +491,8 @@ async def benchmark(
 
     benchmark_duration = time.perf_counter() - benchmark_start_time
 
+    ### import here to avoid dependency issue
+    from flagscale.serve.metric import calculate_metrics
     metrics, actual_output_lens = calculate_metrics(
         input_requests=input_requests,
         outputs=outputs,
