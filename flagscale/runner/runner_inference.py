@@ -20,10 +20,7 @@ from flagscale.runner.utils import (
 
 def _get_args_vllm(config: DictConfig):
     # step1: yaml -> dict
-    assert config.experiment.task.backend in [
-        "vllm",
-        "llama_cpp",
-    ], "This function only supports [vllm, llamma_cpp] backend."
+    assert config.experiment.task.backend == "vllm", "This function only supports vllm backend."
     config_dict = OmegaConf.to_container(config, resolve=True)
 
     # step2: restructuring the config
