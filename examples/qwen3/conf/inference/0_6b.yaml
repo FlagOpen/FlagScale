@@ -1,0 +1,15 @@
+# This is a configuration file for running inference with llame.cpp backend
+llm:
+  model: /share/project/hcr/models/Qwen3-0.6B/ggml_model_f16.gguf
+  threads: 4
+  seed: 1234
+  parallel: 2
+  gpu_layers: 0
+  ctx_size: 2048
+generate:
+  no_conversation: ""
+  prompt: "The president of the United States is"
+  samplers: penalties;dry;top_n_sigma;top_k;typ_p;top_p;min_p;xtc;temperature
+  temp: 0.8
+  top_k: 40
+  top_p: 0.95

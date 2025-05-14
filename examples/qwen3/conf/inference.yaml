@@ -1,0 +1,22 @@
+defaults:
+  - _self_
+  - inference: 0_6b
+
+experiment:
+  exp_name: qwen3_0.6b
+  exp_dir: ./outputs/${experiment.exp_name}
+  task:
+    type: inference
+    backend: llama_cpp
+    entrypoint: flagscale/inference/inference_llama_cpp.py
+  runner:
+    hostfile: null
+  cmds:
+    before_start: conda activate flagscale-inference
+  envs: {}
+
+action: run
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra
