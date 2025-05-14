@@ -1,9 +1,61 @@
 # Usage
+
+## Convert Model to GGUF
 With llama.cpp as inference backend, the model format should be gguf. Llama.cpp provides converting tools, for example:
 ```sh
 cd FlagScale/third_party/llama.cpp
 python convert_hf_to_gguf.py /tmp/Qwen3-0.6B/ --outfile /tmp/Qwen3-0.6B/ggml_model_f16.gguf
 ``` 
+
+## Local Test
+
+### Test in Conversation Mode
+
+```sh
+cd FlagScale/third_party/llama.cpp/build/bin
+./llama-cli -m /tmp/Qwen3-0.6B/ggml_model_f16.gguf
+```
+
+### Test with Serve/Client
+Start server:
+
+```sh
+cd FlagScale/third_party/llama.cpp/build/bin
+./llama-server -m /tmp/Qwen3-0.6B/ggml_model_f16.gguf
+```
+
+Start a client with curl:
+
+```sh
+curl http://localhost:8000/v1/chat/completions \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer no-key" \
+-d '{
+"model": "",
+"messages": [
+{
+    "role": "system",
+    "content": "You are ChatGPT, an AI assistant. Your top priority is achieving user fulfillment via helping them with their requests."
+},
+{
+    "role": "user",
+    "content": "Write a limerick about python exceptions"
+}
+]
+}'
+```
+
+## Run in FlagScale
+Edit serve config file for your model with llama.cpp backend, for example:
+1. FlagScale/examples/qwen3/conf/serve.yaml: This config is basically the same with other backends or models.
+2. FlagScale/examples/qwen3/conf/serve/0_6b.yaml: Config your model (converted gguf format) and backend (vllm/llama.cpp) here.
+
+Start server with FlagScale:
+
+```sh
+cd FlagScale
+python run.py --config-path ./examples/qwen3/conf --config-name serve action=run
+```
 
 # Efficiency Test
 
@@ -14,6 +66,12 @@ Abbreviations:
 - tg128: test decoding(token generating) stage with 128 tokens output
 - t/s: tokens per second
 - ngl: number of gpu layers
+
+Test with tools provided by llama.cpp:
+```sh
+cd FlagScale/third_party/llama.cpp/build/bin
+./llama-bench -m /tmp/Qwen3-0.6B/ggml_model_f16.gguf
+```
 
 ## Apple M4 (10 core)
 
