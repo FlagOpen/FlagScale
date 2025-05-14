@@ -145,7 +145,7 @@ if [ "${env}" == "inference" ]; then
     pip install -r ../third_party/vllm/requirements/build.txt
     pip install -r ../third_party/vllm/requirements/cuda.txt
     pip install -r ../third_party/vllm/requirements/common.txt
-    pip install "git+https://github.com/state-spaces/mamba.git@v2.2.4"`
+    pip install "git+https://github.com/state-spaces/mamba.git@v2.2.4"
     pip install -r ../third_party/vllm/requirements/dev.txt
 
     MAX_JOBS=$(nproc) pip install --no-build-isolation -v ../third_party/vllm/.
