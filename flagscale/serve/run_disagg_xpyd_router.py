@@ -12,11 +12,14 @@ import socket
 import threading
 import uuid
 
+from typing import Any, Dict, List
+
 import aiohttp
 import msgpack
 import zmq
 
 from quart import Quart, make_response, request
+from transformers import AutoTokenizer
 
 try:
     import flag_scale
@@ -28,6 +31,17 @@ from flagscale.logger import logger
 from flagscale.utils import flatten_dict_to_args
 
 # Refer to https://github.com/vllm-project/vllm/pull/15806
+
+
+def count_chat_tokens(messages: List[Dict[str, Any]], model: str) -> int:
+    tok = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
+    text = tok.apply_chat_template(messages, add_generation_prompt=False, tokenize=False)
+    return len(tok.encode(text, add_special_tokens=False))
+
+
+def count_text_tokens(prompt: str, model: str) -> int:
+    tok = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
+    return len(tok.encode(prompt, add_special_tokens=False))
 
 
 # -----------------------------------------------------------------------------
@@ -167,6 +181,15 @@ async def handle_request():
     try:
         original_data = await request.get_json()
         endpoint = request.path  # this will be '/v1/completions' or '/v1/chat/completions'
+
+        model_name = original_data.get("model", "")
+
+        # calculate tokens num
+        if request.path.endswith("/chat/completions"):
+            prompt_tokens_num = count_chat_tokens(original_data["messages"], model_name)
+        else:
+            prompt_tokens_num = count_text_tokens(original_data["prompt"], model_name)
+        print(f"---------------- prompt_tokens_num {prompt_tokens_num} -------------- ", flush=True)
 
         # Prefill request: max_tokens=1
         prefill_request = original_data.copy()
