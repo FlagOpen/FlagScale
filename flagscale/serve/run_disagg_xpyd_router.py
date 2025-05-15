@@ -12,6 +12,7 @@ import socket
 import threading
 import uuid
 
+from functools import lru_cache
 from typing import Any, Dict, List
 
 import aiohttp
@@ -30,18 +31,25 @@ from flagscale import serve
 from flagscale.logger import logger
 from flagscale.utils import flatten_dict_to_args
 
-# Refer to https://github.com/vllm-project/vllm/pull/15806
+serve.load_args()
+TASK_CONFIG = serve.task_config
+MODEL_PATH = TASK_CONFIG.serve[0].get("engine_args", {}).get("model", None)
 
 
-def count_chat_tokens(messages: List[Dict[str, Any]], model: str) -> int:
-    tok = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
-    text = tok.apply_chat_template(messages, add_generation_prompt=False, tokenize=False)
-    return len(tok.encode(text, add_special_tokens=False))
+@lru_cache(maxsize=32)
+def load_hf_tokenizer(model_path: str):
+    return AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
 
-def count_text_tokens(prompt: str, model: str) -> int:
-    tok = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
-    return len(tok.encode(prompt, add_special_tokens=False))
+def count_chat_tokens(messages: List[Dict[str, Any]]) -> int:
+    tokenizer = load_hf_tokenizer(MODEL_PATH)
+    text = tokenizer.apply_chat_template(messages, add_generation_prompt=False, tokenize=False)
+    return len(tokenizer.encode(text, add_special_tokens=False))
+
+
+def count_text_tokens(prompt: str) -> int:
+    tokenizer = load_hf_tokenizer(MODEL_PATH)
+    return len(tokenizer.encode(prompt, add_special_tokens=False))
 
 
 # -----------------------------------------------------------------------------
@@ -182,13 +190,11 @@ async def handle_request():
         original_data = await request.get_json()
         endpoint = request.path  # this will be '/v1/completions' or '/v1/chat/completions'
 
-        model_name = original_data.get("model", "")
-
         # calculate tokens num
         if request.path.endswith("/chat/completions"):
-            prompt_tokens_num = count_chat_tokens(original_data["messages"], model_name)
+            prompt_tokens_num = count_chat_tokens(original_data["messages"])
         else:
-            prompt_tokens_num = count_text_tokens(original_data["prompt"], model_name)
+            prompt_tokens_num = count_text_tokens(original_data["prompt"])
         print(f"---------------- prompt_tokens_num {prompt_tokens_num} -------------- ", flush=True)
 
         # Prefill request: max_tokens=1
@@ -243,8 +249,7 @@ async def handle_request():
 
 
 def main():
-    serve.load_args()
-    deploy_config = serve.task_config.experiment.get("deploy", {})
+    deploy_config = TASK_CONFIG.experiment.get("deploy", {})
     serve_port = deploy_config.get("port", None)
     # Used to register with the pd service discovery
     pd_proxy_port = deploy_config.get("pd_proxy_port", None)
