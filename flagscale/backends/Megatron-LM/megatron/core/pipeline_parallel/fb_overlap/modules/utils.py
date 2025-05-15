@@ -90,19 +90,19 @@ def detach_tensor(tensor, checkpoint_forward=False):
 def turn_attention_delay_wgrad_compute(bwd_layer_graph, enable=False):
     attention_layer = bwd_layer_graph.layer.self_attention
     if enable:
-        # attention_layer.linear_proj.wgrad_store.enable_delay_wgrad_compute()
+        attention_layer.linear_proj.wgrad_store.enable_delay_wgrad_compute()
         attention_layer.linear_kv_up_proj.wgrad_store.enable_delay_wgrad_compute()
         attention_layer.linear_kv_down_proj.wgrad_store.enable_delay_wgrad_compute()
         attention_layer.linear_q_proj.wgrad_store.enable_delay_wgrad_compute()
     else:
-        # attention_layer.linear_proj.wgrad_store.disable_delay_wgrad_compute()
+        attention_layer.linear_proj.wgrad_store.disable_delay_wgrad_compute()
         attention_layer.linear_kv_up_proj.wgrad_store.disable_delay_wgrad_compute()
         attention_layer.linear_kv_down_proj.wgrad_store.disable_delay_wgrad_compute()
         attention_layer.linear_q_proj.wgrad_store.disable_delay_wgrad_compute()
 
 def call_attention_backward_dw(bwd_layer_graph):
     attention_layer = bwd_layer_graph.layer.self_attention
-    # attention_layer.linear_proj.backward_dw()
+    attention_layer.linear_proj.backward_dw()
     attention_layer.linear_kv_up_proj.backward_dw()
     attention_layer.linear_kv_down_proj.backward_dw()
     attention_layer.linear_q_proj.backward_dw()
@@ -110,15 +110,15 @@ def call_attention_backward_dw(bwd_layer_graph):
 def turn_shared_experts_delay_wgrad_compute(bwd_layer_graph, enable=False):
     shared_experts_layer = bwd_layer_graph.layer.mlp.shared_experts
     if enable:
-        # shared_experts_layer.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
+        shared_experts_layer.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
         shared_experts_layer.linear_fc1.wgrad_store.enable_delay_wgrad_compute()
     else:
-        # shared_experts_layer.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
+        shared_experts_layer.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
         shared_experts_layer.linear_fc1.wgrad_store.disable_delay_wgrad_compute()
 
 def call_shared_experts_backward_dw(bwd_layer_graph):
     shared_experts_layer = bwd_layer_graph.layer.mlp.shared_experts
-    # shared_experts_layer.linear_fc2.backward_dw()
+    shared_experts_layer.linear_fc2.backward_dw()
     shared_experts_layer.linear_fc1.backward_dw()
 
 def turn_experts_delay_wgrad_compute(bwd_layer_graph, enable=False):
@@ -138,15 +138,15 @@ def call_experts_backward_dw(bwd_layer_graph):
 def turn_dense_mlp_delay_wgrad_compute(bwd_layer_graph, enable=False):
     dense_mlp_layer = bwd_layer_graph.layer.mlp
     if enable:
-        # dense_mlp_layer.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
+        dense_mlp_layer.linear_fc2.wgrad_store.enable_delay_wgrad_compute()
         dense_mlp_layer.linear_fc1.wgrad_store.enable_delay_wgrad_compute()
     else:
-        # dense_mlp_layer.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
+        dense_mlp_layer.linear_fc2.wgrad_store.disable_delay_wgrad_compute()
         dense_mlp_layer.linear_fc1.wgrad_store.disable_delay_wgrad_compute()
 
 def call_dense_mlp_backward_dw(bwd_layer_graph):
     dense_mlp_layer = bwd_layer_graph.layer.mlp
-    # dense_mlp_layer.linear_fc2.backward_dw()
+    dense_mlp_layer.linear_fc2.backward_dw()
     dense_mlp_layer.linear_fc1.backward_dw()
 
 def run_graph_backward(graph, output_tensor_grad=None, keep_graph=False, keep_grad=False):

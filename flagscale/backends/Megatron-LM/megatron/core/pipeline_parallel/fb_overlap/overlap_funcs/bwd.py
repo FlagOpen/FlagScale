@@ -54,7 +54,7 @@ def transformer_layer_backward_moe(
     if self.shared_experts_graph[0] is not None:
         WeightGradStore.start_decouple()
         turn_shared_experts_delay_wgrad_compute(self, enable=True)
-        run_graph_backward(self.shared_experts_graph, backward_ag_shared)
+        run_graph_backward(self.shared_experts_graph, backward_ag_shared, keep_grad=True)
         WeightGradStore.end_decouple()
         WeightGradStore.pop()
         call_shared_experts_backward_dw(self)
@@ -123,7 +123,7 @@ def transformer_layer_backward_moe(
 
     WeightGradStore.start_decouple()
     turn_attention_delay_wgrad_compute(self, enable=True)
-    run_graph_backward(self.attn_graph)
+    run_graph_backward(self.attn_graph, keep_grad=True)
     WeightGradStore.end_decouple()
     WeightGradStore.pop()
     call_attention_backward_dw(self)
@@ -140,7 +140,7 @@ def transformer_layer_backward_dense(layer_output_grad, layer_graph):
     
     WeightGradStore.start_decouple()
     turn_dense_mlp_delay_wgrad_compute(layer_graph, enable=True)
-    run_graph_backward(layer_graph.unperm2_graph, layer_output_grad)
+    run_graph_backward(layer_graph.unperm2_graph, layer_output_grad, keep_grad=True)
     run_graph_backward(layer_graph.pre_mlp_layernorm_graph)
     WeightGradStore.end_decouple()
     WeightGradStore.pop()
@@ -150,7 +150,7 @@ def transformer_layer_backward_dense(layer_output_grad, layer_graph):
 
     WeightGradStore.start_decouple()
     turn_attention_delay_wgrad_compute(layer_graph, enable=True)
-    run_graph_backward(layer_graph.attn_graph)
+    run_graph_backward(layer_graph.attn_graph, keep_grad=True)
     WeightGradStore.end_decouple()
     WeightGradStore.pop()
     call_attention_backward_dw(layer_graph)
@@ -158,11 +158,3 @@ def transformer_layer_backward_dense(layer_output_grad, layer_graph):
 
     # print(f"in transformer_layer_backward_dense, return")
     return layer_graph.layer_input.grad
-
-
-def transformer_layer_backward_noop(layer_output_grad, layer_graph):
-    # print(f"in transformer_layer_backward_noop, start")
-    run_graph_backward(layer_graph.unperm2_graph, layer_output_grad, keep_grad=True)
-    # print(f"in transformer_layer_backward_noop, return")
-    return layer_graph.layer_input.grad
-
