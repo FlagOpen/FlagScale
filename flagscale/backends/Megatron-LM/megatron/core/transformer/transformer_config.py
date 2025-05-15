@@ -590,10 +590,6 @@ class TransformerConfig(ModelParallelConfig):
     heterogeneous_block_specs: bool = False
     """Whether to use heterogeneous block specs (nemotron-nas architecture)."""
 
-
-    ### dualpipev args ###
-
-
     def __post_init__(self):
         """Python dataclass method that is used to modify attributes after initialization.
         See https://docs.python.org/3/library/dataclasses.html#post-init-processing for more

@@ -12,7 +12,6 @@ from .overlap_funcs import (
     transformer_layer_forward_dense,
     transformer_layer_backward_moe,
     transformer_layer_backward_dense,
-    transformer_layer_backward_noop,
     transformer_layer_forward_moe_backward_moe_overlaping,
     transformer_layer_forward_dense_backward_moe_overlaping,
     transformer_layer_forward_moe_backward_dense_overlaping,
