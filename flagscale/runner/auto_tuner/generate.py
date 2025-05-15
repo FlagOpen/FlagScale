@@ -113,6 +113,7 @@ class ServeGenerator(Generator):
                 "max_num_batched_tokens": "max_num_batched_tokens",
                 "max_num_seqs": "max_num_seqs",
                 "swap_space": "swap_space",
+                "n_gpu_layers": "n_gpu_layers",
             }
 
     def _set_value(self, strategy, config):
