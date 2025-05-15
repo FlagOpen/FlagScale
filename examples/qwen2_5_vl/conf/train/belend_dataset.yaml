@@ -6,27 +6,27 @@ splits:
     # Mix the following datasets
     blend:
      # image
-      - weight: 2.6
-        path: /share/project/lizhiyu/data/llava-datasets/LLaVA-Pretrain/wds
+      - weight: 1
+        path: /share/project/lizhiyu/data/single_img/wds
       # video
       - weight: 1
-        path: /share/project/lizhiyu/data/llava-datasets/LLaVA-Video-178K/wds
+        path: /share/project/lizhiyu/data/slice_frame/wds
         split_part: train # default value for train
       - weight: 1
-        path: /share/project/lizhiyu/data/General-Use_Instruct-v5-ShareGPT/wds
+        path: /share/project/lizhiyu/data/mult_imgs/wds
         # split_part: val # using the valuation part of this dataset to train
   val:
     # Mix the following datasets
     blend:
      # image
       - weight: 5
-        path: /share/project/lizhiyu/data/llava-datasets/LLaVA-Pretrain/wds
+        path: /share/project/lizhiyu/data/single_img/wds
       # video
-      - weight: 4
-        path: /share/project/lizhiyu/data/llava-datasets/LLaVA-Video-178K/wds
-        split_part: val # default value for val
       - weight: 1
-        path: /share/project/lizhiyu/data/General-Use_Instruct-v5-ShareGPT/wds
+        path: /share/project/lizhiyu/data/slice_frame/wds
+      #   split_part: val # default value for val
+      - weight: 1
+        path: /share/project/lizhiyu/data/mult_imgs/wds
   # test:
   #   # Only use coyo-test for test
   #   path: ./coyo

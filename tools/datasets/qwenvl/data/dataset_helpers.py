@@ -91,8 +91,9 @@ def convert_to_qwen2vl_content(
     mm_idx = defaultdict(int)
     for matched in re.finditer(pattern, user_input):
         start, end = matched.span()
-        if start > cur:
-            contents.append({"type": "text", "text": user_input[cur:start].strip()})
+        text = user_input[cur:start].strip()
+        if text:
+            contents.append({"type": "text", "text": text})
 
         contents.append(
             {
@@ -212,11 +213,15 @@ class TaskEncoder(
             second_per_grid_ts = conversation.get("second_per_grid_ts", second_per_grid_ts)
             second_per_grid_ts = [float(i) for i in second_per_grid_ts]
             conversation = conversation["conversations"]
+        
+        # print(f"LZY: origin conversion: {conversation}")
 
         role_key = "from" if "from" in conversation[0] else "role"
         content_key = "value" if "from" in conversation[0] else "content"
 
         # NOTE: assume the conversation format is: [System]? (User Assistant)+
+        # convert text message to standand format
+        #  add system as first item, refercence: https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct/blob/main/chat_template.json
         converted_conversation = []
         if len(conversation) % 2 == 0:
             # Default Prompt
@@ -233,6 +238,7 @@ class TaskEncoder(
             )
             conversation = conversation[1:]
 
+        # add QA conversion as the left items
         EXPECTED_ROLE = ["human", "gpt"]
         for turn_idx, turn in enumerate(conversation):
             role = turn[role_key]
@@ -279,11 +285,13 @@ class TaskEncoder(
             elif turn["role"] == "assistant":
                 target[offset : offset + assistant_generation_prefix] = pad_token_id
             offset += n_tokens
-
+        # current "target" don't pad vision token.
+        
         # NOTE: expand image_pad & video_pad
-        merge_length = self.merge_size**2
+        merge_length = self.merge_size**2 # 2**2 = 4
         image_token_id, video_token_id = self.tokenizer.encode(["<|image_pad|>", "<|video_pad|>"])
 
+        # get the indices of the origin <|image_pad|> and <|video_pad|>
         image_token_indices = np.where(input_ids == image_token_id)[0]
         assert len(image_token_indices) == len(
             image_thw_grids
@@ -296,6 +304,8 @@ class TaskEncoder(
             video_thw_grids, dtype=np.int64
         )
 
+        # video_thw_grids shape: [n, 3]
+        # origin_seq_len + (all_image_token - 1) + (all_vision_token - 1)  ----> -1 because the pad token in origin text
         target_length = (
             input_ids.shape[0]
             - image_thw_grids.shape[0]
@@ -314,6 +324,7 @@ class TaskEncoder(
         image_idx, video_idx = 0, 0
         indices = np.sort(np.concatenate([image_token_indices, video_token_indices]))
 
+        # cur_x: origin text token idx,  cur_y: final text token idx
         cur_x, cur_y = 0, 0
         for idx in indices:
             token_id = input_ids[idx]
@@ -337,12 +348,16 @@ class TaskEncoder(
         if cur_x < len(input_ids):
             final_input_ids[cur_y:] = input_ids[cur_x:]
             final_input_masks[cur_y:] = target[cur_x:]
+        
+        # print(f"LZY: origin input_ids len: {input_ids.shape}; after vision pad final_input_ids len: {final_input_ids.shape}")
+        # print(f"LZY: origin target len: {target.shape}, after vision pad target: len: {final_input_masks.shape}")
 
         target = np.roll(final_input_masks, shift=-1)
         target[-1] = pad_token_id
 
-        if (target == pad_token_id).all():
-            raise InternalWarning("Sample with all masked label, dropped.")
+        # NOTE(lizhiyu): we check it in the train scripts.
+        # if (target == pad_token_id).all():
+        #     raise InternalWarning("Sample with all masked label, dropped.")
 
         image_input_mask = final_input_ids == self.tokenizer.image_token_id
         video_input_mask = final_input_ids == self.tokenizer.video_token_id
@@ -506,7 +521,7 @@ class TaskEncoder(
                 max_seq_len = max(len(s.text) for s in samples)
                 max_seq_len = min(max_seq_len, self.seq_len)
         # NOTE: we need to make sure the max_seq_len is divisible by tp_size * cp_size
-        max_seq_len = math.ceil(max_seq_len / (self.tp_size * self.cp_size)) * (
+        max_seq_len = math.floor(max_seq_len / (self.tp_size * self.cp_size)) * (
             self.tp_size * self.cp_size
         )
         text_mat = np.full((len(samples), max_seq_len), self.tokenizer.pad_token_id, dtype=np.int64)

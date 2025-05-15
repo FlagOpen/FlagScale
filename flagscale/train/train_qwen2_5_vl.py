@@ -516,34 +516,35 @@ def datasets_provider(worker_config=None):
         batch_size=args.micro_batch_size,
         task_encoder=TaskEncoder(),
         worker_config=worker_config,
-        virtual_epoch_length=1000,
+        virtual_epoch_length=0,
         max_samples_per_sequence=100,
-        shuffle_buffer_size=100,
+        shuffle_buffer_size=0,
         handler=print_error_handler,
         image_decode="pil",
     )
-
-    val_datasets = get_val_datasets(
-        dname,
-        batch_size=args.micro_batch_size,
-        # This is the total number over all workers
-        # limit=args.eval_iters * get_num_microbatches(),
-        task_encoder=TaskEncoder(),
-        worker_config=worker_config,
-        handler=print_error_handler,
-        image_decode="pil",
-    )
-    val_datasets_without_source_datasets = [
-        # Limit the dataset to eval_iters * num_microbatches
-        LimitDataset(
-            # Repeat the inner dataset in case it's too short
-            RepeatDataset(val_ds, worker_config=worker_config),
-            length=args.eval_iters * get_num_microbatches(),
+    val_datasets_without_source_datasets = None
+    if args.eval_iters > 0:
+        val_datasets = get_val_datasets(
+            dname,
+            batch_size=args.micro_batch_size,
+            # This is the total number over all workers
+            # limit=args.eval_iters * get_num_microbatches(),
+            task_encoder=TaskEncoder(),
             worker_config=worker_config,
-            reset_after_epoch=True,
+            handler=print_error_handler,
+            image_decode="pil",
         )
-        for val_ds, _src_ds in val_datasets
-    ]
+        val_datasets_without_source_datasets = [
+            # Limit the dataset to eval_iters * num_microbatches
+            LimitDataset(
+                # Repeat the inner dataset in case it's too short
+                RepeatDataset(val_ds, worker_config=worker_config),
+                length=args.eval_iters * get_num_microbatches(),
+                worker_config=worker_config,
+                reset_after_epoch=True,
+            )
+            for val_ds, _src_ds in val_datasets
+        ]
 
     return train_dataset, val_datasets_without_source_datasets, None
 
@@ -617,10 +618,13 @@ def train_valid_test_dataloaders_provider(train_val_test_num_samples):
                 except Exception as e:
                     print_rank_0("loading dataloader checkpoint failed. Skipping. " + str(e))
 
-    valid_dataloader = [
-        EnergonDataloader(get_loader(valid_ds, worker_config=worker_config))
-        for valid_ds in valid_ds1
-    ]
+    if valid_ds1 is not None:
+        valid_dataloader = [
+            EnergonDataloader(get_loader(valid_ds, worker_config=worker_config))
+            for valid_ds in valid_ds1
+        ]
+    else:
+        valid_dataloader = EnergonDataloader(None)
     test_dataloader = None # NOTE: no test
 
     return EnergonDataloader(train_dataloader), valid_dataloader, EnergonDataloader(test_dataloader)

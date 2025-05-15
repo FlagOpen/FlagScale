@@ -63,14 +63,18 @@ def process_entry_mp(args):
 
 def convert(
     dataset_dir,
+    output_dir,
     json_name,
     sort_function=sorted,
     max_count=10000,
     image_key="images",
     video_key="videos",
+    vision_dir=None,
 ):
+    if vision_dir is None:
+        vision_dir = dataset_dir
     json_file = os.path.join(dataset_dir, json_name)
-    output = os.path.join(dataset_dir, "wds-mp")
+    output = os.path.join(output_dir, "wds")
     os.makedirs(output, exist_ok=True)
 
     # Load dataset
@@ -96,7 +100,7 @@ def convert(
     # Prepare multiprocessing arguments
     num_workers = min(cpu_count(), 32)
     task_args = [
-        (entry, idx, dataset_dir, image_key, video_key, sort_function)
+        (entry, idx, vision_dir, image_key, video_key, sort_function)
         for idx, entry in enumerate(data)
     ]
 
@@ -138,6 +142,8 @@ def generate_configs(path: EPath, split, shuffle_tars=True, num_workers=32):
 if __name__ == "__main__":
     argparser = ArgumentParser()
     argparser.add_argument("--dataset-root", required=True, type=str)
+    argparser.add_argument("--output-root", required=True, type=str)
+    argparser.add_argument("--vision-root", default=None, type=str)
     argparser.add_argument("--json", default="dataset.json", type=str)
     argparser.add_argument("--images-key", default="images", type=str)
     argparser.add_argument("--videos-key", default="videos", type=str)
@@ -145,16 +151,20 @@ if __name__ == "__main__":
     argparser.add_argument("--train-split", default=9, type=float)
     argparser.add_argument("--val-split", default=1, type=float)
     argparser.add_argument("--test-split", default=0, type=float)
+    argparser.add_argument("--shuffle-tars", action="store_true")
+
     args = argparser.parse_args()
 
     output_dir = convert(
         args.dataset_root,
+        args.output_root,
         args.json,
         max_count=args.max_samples_per_tar,
         image_key=args.images_key,
         video_key=args.videos_key,
+        vision_dir=args.vision_root
     )
 
     print(f"Generating Configurations")
-    generate_configs(EPath(output_dir), [args.train_split, args.val_split, args.test_split])
+    generate_configs(EPath(output_dir), [args.train_split, args.val_split, args.test_split], shuffle_tars=args.shuffle_tars)
     print(f"Configurations Generated")

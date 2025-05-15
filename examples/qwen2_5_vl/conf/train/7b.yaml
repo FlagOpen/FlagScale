@@ -1,20 +1,20 @@
 system:
-  tensor_model_parallel_size: 2
+  tensor_model_parallel_size: 4
   pipeline_model_parallel_size: 1
   context_parallel_size: 1
-  # decoder_first_pipeline_num_layers: 10
+  # decoder_first_pipeline_num_layers: 12
   disable_bias_linear: True
   use_flash_attn: True
   use_distributed_optimizer: True
   sequence_parallel: True
   tp_comm_overlap: False
-  overlap_grad_reduce: False
-  overlap_param_gather: False
+  overlap_grad_reduce: False # if has text-only must be false
+  overlap_param_gather: False # if has text-only must be false
   use_mcore_models: True
   transformer_impl: transformer_engine
-  # recompute_method: "uniform"
-  # recompute_granularity: "full"
-  # recompute_num_layers: 1
+  recompute_method: "uniform"
+  recompute_granularity: "full"
+  recompute_num_layers: 4
   use_te: True
   precision:
     bf16: True
@@ -28,8 +28,8 @@ system:
     log_params_norm: True
     log_num_zeros_in_grad: True
   checkpoint:
-    save_interval: 1000
-    pretrained_checkpoint: xxx/Qwen2.5-VL-7B-Instruct_mc
+    save_interval: 10
+    pretrained_checkpoint: /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct_mc
     dataloader_save: ${experiment.exp_dir}/checkpoints/dataloader
     use_dist_ckpt: False
     ckpt_format: torch
@@ -43,20 +43,22 @@ model:
   ffn_hidden_size: 18944
   num_attention_heads: 28
   num_query_groups: 4
-  seq_length: 4096 # origin LLM 32768
-  max_padding_length: 4096 # real seq_length
+  seq_length: 23600 # origin max-length 32768
+  max_padding_length: 23600 # real seq_length
+  # especial for qwen2.5-vl
+  enable_variable_seq_lengths: True
   max_position_embeddings: 128000 # only useful for additional position embedding
   swiglu: True
   normalization: RMSNorm
   norm_epsilon: 1e-6
-  init_method_std: 0.014
+  init_method_std: 0.02
   attention_dropout: 0.0
   hidden_dropout: 0.0
   clip_grad: 1.0
-  train_iters: 20000
-  eval_iters: 0
+  train_iters: 62
+  eval_iters: 0 # no valid
   micro_batch_size: 1
-  global_batch_size: 320
+  global_batch_size: 16
   allow_missing_vision_projection_checkpoint: False
   apply_layernorm_1p: False
   group_query_attention: True
@@ -79,22 +81,26 @@ model:
   seed: 42
 
   optimizer:
-    weight_decay: 0.0
+    weight_decay: 0.1
     adam_beta1: 0.9
     adam_beta2: 0.95
     lr_scheduler:
       lr: 1.0e-5
       min_lr: 1.0e-6
-      lr_warmup_fraction: .03
+      # lr_warmup_fraction: .03
+      lr_warmup_iters: 10
       lr_decay_style: cosine
 
 data:
-  data_path: xxx/data/llava-datasets/wds
+  data_path: /share/project/lizhiyu/data/vg_single/wds
+  # data_path: /share/project/lizhiyu/data/robovqa_mul/wds
+  # data_path: /share/project/lizhiyu/data/single_img/wds
+  # data_path: /share/project/lizhiyu/FlagScale/examples/qwen2_5_vl/conf/train/belend_dataset.yaml
   dataloader_type: external
   split: 100,0,0
   tokenizer:
     tokenizer_type: Qwen2VLTokenizer
-    tokenizer_path: xxx/Qwen2.5-VL-7B-Instruct_mc
+    tokenizer_path: /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct_mc
     vocab_size: 152064 # 7b
     extra_vocab_size: 421
     make_vocab_size_divisible_by: 64

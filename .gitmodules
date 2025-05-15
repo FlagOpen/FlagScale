@@ -1,6 +1,6 @@
 [submodule "third_party/Megatron-LM"]
 	path = third_party/Megatron-LM
-	url = https://github.com/NVIDIA/Megatron-LM.git
+	url = https://gitee.com/jayli6/Megatron-LM.git
 	branch = main
 [submodule "third_party/vllm"]
 	path = third_party/vllm
@@ -8,5 +8,5 @@
 	branch = main
 [submodule "third_party/Megatron-Energon"]
 	path = third_party/Megatron-Energon
-	url = https://github.com/NVIDIA/Megatron-Energon.git
+	url = https://gitee.com/jayli6/Megatron-Energon.git
 	branch = develop

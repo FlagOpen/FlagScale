@@ -18,21 +18,24 @@ from megatron.energon.flavors import BaseWebdatasetFactory
 
 def convert(
     dataset_dir,
+    output_dir,
     json_name,
     sort_function=sorted,
-    max_count=10000,
+    max_count=1000,
     image_key="images",
     video_key="videos",
+    vision_dir=None,
 ):
     """
     Here we provide an example to convert llava-pretrain dataset to ChatMLSample
     """
+    if vision_dir is None:
+        vision_dir = dataset_dir
     # Paths to the dataset files
     json_file = os.path.join(dataset_dir, json_name)
-    output = os.path.join(dataset_dir, "wds")
+    output = os.path.join(output_dir, "wds")
 
-    if not os.path.exists(output):
-        os.mkdir(output)
+    os.makedirs(output, exist_ok=True)
 
     # support both json and jsonl
     try:
@@ -70,11 +73,11 @@ def convert(
             image_datas = []
             # NOTE: we support both list and str for image path.
             image_paths = entry.get(image_key, [])
-            if isinstance(image_key, str):
+            if isinstance(image_paths, str):
                 image_paths = [image_paths]
             for image in image_paths:
                 image_datas.append(
-                    cv2.imread(os.path.join(dataset_dir, image), cv2.IMREAD_UNCHANGED)
+                    cv2.imread(os.path.join(vision_dir, image), cv2.IMREAD_UNCHANGED)
                 )
 
             video_datas = []
@@ -82,7 +85,7 @@ def convert(
 
             for video in entry.pop(video_key, []):
                 video_noext, _ = os.path.splitext(video)
-                frame_folder = os.path.join(dataset_dir, video_noext)
+                frame_folder = os.path.join(vision_dir, video_noext)
                 # NOTE: we implicitly require a `${frame_folder}.json`` file containing fps rates of each video
                 # otherwise fps will be regarded as `1` by default.
                 if os.path.exists(frame_folder + ".json"):
@@ -154,6 +157,8 @@ def generate_configs(path: EPath, split, shuffle_tars=True, num_workers=32):
 if __name__ == "__main__":
     argparser = ArgumentParser()
     argparser.add_argument("--dataset-root", required=True, type=str)
+    argparser.add_argument("--output-root", required=True, type=str)
+    argparser.add_argument("--vision-root", default=None, type=str)
     argparser.add_argument("--json", default="dataset.json", type=str)
     argparser.add_argument(
         "--images-key", default="images", type=str, help="The key for images in json"
@@ -161,21 +166,24 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--videos-key", default="videos", type=str, help="The key for videos in json"
     )
-    argparser.add_argument("--max-samples-per-tar", default=10000, type=float)
-    argparser.add_argument("--train-split", default=9, type=float)
-    argparser.add_argument("--val-split", default=1, type=float)
+    argparser.add_argument("--max-samples-per-tar", default=1000, type=float)
+    argparser.add_argument("--train-split", default=1, type=float)
+    argparser.add_argument("--val-split", default=0, type=float)
     argparser.add_argument("--test-split", default=0, type=float)
+    argparser.add_argument("--shuffle-tars", action="store_true")
     args = argparser.parse_args()
 
     output_dir = convert(
         args.dataset_root,
+        args.output_root,
         args.json,
         max_count=args.max_samples_per_tar,
         image_key=args.images_key,
         video_key=args.videos_key,
+        vision_dir=args.vision_root
     )
     print(f"Generating Configurations")
     # NOTE: split_ratio: train/val/test
     split = [args.train_split, args.val_split, args.test_split]
-    generate_configs(EPath(output_dir), split)
+    generate_configs(EPath(output_dir), split, shuffle_tars=args.shuffle_tars)
     print(f"Configurations Generated")
