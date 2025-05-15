@@ -7,5 +7,5 @@
 # Install the environment for inference.
 
 ```bash
-./install-requirements.sh --env inference
+./install-requirements.sh --env inference --llama-cpp-backend cuda
 ```
