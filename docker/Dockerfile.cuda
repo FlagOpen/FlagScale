@@ -133,7 +133,7 @@ RUN cd ${STAGE_DIR} && \
 # Clone FlagScale
 ##############################################################################
 RUN cd ${WORK_DIR} && \
-        git clone -b IMAGE_2503251040 https://github.com/phoenixdong/FlagScale.git && \
+        git clone -b IMAGE_250515 https://github.com/phoenixdong/FlagScale.git && \
         chmod +x FlagScale/install/install-requirements.sh
 
 ##############################################################################
@@ -146,7 +146,7 @@ RUN cd ${WORK_DIR}/FlagScale/install && \
 # Install flagscale-inference requirements
 ##############################################################################
 RUN cd ${WORK_DIR}/FlagScale/install && \
-    ./install-requirements.sh --env inference
+    ./install-requirements.sh --env inference --llama-cpp-backend cuda
 
 # ##############################################################################
 # # Clear

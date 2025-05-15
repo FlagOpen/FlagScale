@@ -71,7 +71,7 @@ pip install -r ../requirements/requirements-common.txt
 # Megatron-LM requires TE >= 2.1.0.
 git clone --recursive https://github.com/NVIDIA/TransformerEngine.git
 cd TransformerEngine
-git checkout 5bb771e
+git checkout 5bee81e
 pip install .
 cd ..
 rm -r ./TransformerEngine
@@ -99,6 +99,10 @@ wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILa
 
 # If env equals 'train'
 if [ "${env}" == "train" ]; then
+    # Unpatch
+    cd ..
+    python tools/patch/unpatch.py --backend Megatron-LM
+
     # Navigate to requirements directory and install training dependencies
     pip install -r ../requirements/train/megatron/requirements-cuda.txt
 
@@ -115,16 +119,71 @@ if [ "${env}" == "train" ]; then
     # Set the path to the target Python file
     SITE_PACKAGES_DIR=$(python3 -c "import site; print(site.getsitepackages()[0])")
     FILE="$SITE_PACKAGES_DIR/torch/distributed/elastic/agent/server/api.py"
-    # Replace the code in line 894 and its surrounding lines (893 and 895)
-    if ! sed -i '893,895s/if num_nodes_waiting > 0:/if num_nodes_waiting > 0 and self._remaining_restarts > 0:/' "$FILE"; then
-        echo "Error: Replacement failed on line 894."
-        exit 1
+    torch_version=`python -c "import torch; print(torch.__version__)"`
+    echo "torch_version: $torch_version"
+
+    # Replace the following code with torch version 2.5.1
+    if [[ $torch_version == *"2.5.1"* ]];then
+        # Check and replace line 893
+        LINE_893=$(sed -n '893p' "$FILE")
+        EXPECTED_893='                if num_nodes_waiting > 0:'
+
+        if [[ "$LINE_893" != "$EXPECTED_893" ]]; then
+            echo "Error: Line 893 in $FILE does not exactly match '                if num_nodes_waiting > 0:' ."
+            exit 1
+        else
+            echo "Line 893 is correct. Proceeding with replacement."
+            # Directly replace the line without using regex
+            sed -i '893s|.*|                if num_nodes_waiting > 0 and self._remaining_restarts > 0:|' "$FILE"
+            echo "Success: Line 893 replaced."
+        fi
+
+        # Check and replace line 902
+        LINE_902=$(sed -n '902p' "$FILE")
+        EXPECTED_902='                    self._restart_workers(self._worker_group)'
+
+        if [[ "$LINE_902" != "$EXPECTED_902" ]]; then
+            echo "Error: Line 902 does not match '                    self._restart_workers(self._worker_group)'."
+            exit 1
+        else
+            echo "Line 902 is correct. Proceeding with replacement."
+            # Directly replace the line without using regex
+            sed -i '902s|.*|                    self._remaining_restarts -= 1; self._restart_workers(self._worker_group)|' "$FILE"
+            echo "Success: Line 902 replaced."
+        fi
     fi
-    # Replace the code in line 903 and its surrounding lines (902 and 904)
-    if ! sed -i '902,904s/^                    self\._restart_workers(self\._worker_group)/                    self._remaining_restarts -= 1\n                    self._restart_workers(self._worker_group)/' "$FILE"; then
-        echo "Error: Replacement failed on line 903."
-        exit 1
+
+    # Replace the following code with torch version 2.6.0
+    if [[ $torch_version == *"2.6.0"* ]];then
+        # Check and replace line 908
+        LINE_908=$(sed -n '908p' "$FILE")
+        EXPECTED_908='                if num_nodes_waiting > 0:'
+
+        if [[ "$LINE_908" != "$EXPECTED_908" ]]; then
+            echo "Error: Line 908 in $FILE does not exactly match '                if num_nodes_waiting > 0:'."
+            exit 1
+        else
+            echo "Line 908 is correct. Proceeding with replacement."
+            # Directly replace the line without using regex
+            sed -i '908s|.*|                if num_nodes_waiting > 0 and self._remaining_restarts > 0:|' "$FILE"
+            echo "Success: Line 908 replaced."
+        fi
+
+        # Check and replace line 917
+        LINE_917=$(sed -n '917p' "$FILE")
+        EXPECTED_917='                    self._restart_workers(self._worker_group)'
+
+        if [[ "$LINE_917" != "$EXPECTED_917" ]]; then
+            echo "Error: Line 917 does not match '                    self._restart_workers(self._worker_group)'."
+            exit 1
+        else
+            echo "Line 917 is correct. Proceeding with replacement."
+            # Directly replace the line without using regex
+            sed -i '917s|.*|                    self._remaining_restarts -= 1; self._restart_workers(self._worker_group)|' "$FILE"
+            echo "Success: Line 917 replaced."
+        fi
     fi
+    cd install
 fi
 
 # If env equals 'inference'
@@ -134,11 +193,14 @@ if [ "${env}" == "inference" ]; then
     python tools/patch/unpatch.py --backend vllm
     python tools/patch/unpatch.py --backend llama.cpp
 
+    pip install -r ./requirements/inference/requirements-cuda.txt
+
     # Build vllm
     # Navigate to requirements directory and install inference dependencies
     pip install -r ./third_party/vllm/requirements/build.txt
     pip install -r ./third_party/vllm/requirements/cuda.txt
     pip install -r ./third_party/vllm/requirements/common.txt
+    pip install "git+https://github.com/state-spaces/mamba.git@v2.2.4"
     pip install -r ./third_party/vllm/requirements/dev.txt
 
     MAX_JOBS=$(nproc) pip install --no-build-isolation -v ./third_party/vllm/.
