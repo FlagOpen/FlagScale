@@ -82,7 +82,7 @@ import os
 if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
     try:
         import flag_gems
-        flag_gems.enable()
+        flag_gems.enable(record=True)
         logger.info("Successfully enabled flag_gems as default ops implementation.")
     except ImportError:
         logger.warning("Failed to import 'flag_gems'. Falling back to default implementation.")
