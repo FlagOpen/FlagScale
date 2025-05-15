@@ -46,6 +46,7 @@ from megatron.core.utils import (
     is_torch_min_version,
 )
 
+
 def _get_extra_te_kwargs(config: TransformerConfig):
     extra_transformer_engine_kwargs = {"params_dtype": config.params_dtype}
 
@@ -56,7 +57,6 @@ def _get_extra_te_kwargs(config: TransformerConfig):
             extra_transformer_engine_kwargs["device"] = "meta"
         else:
             extra_transformer_engine_kwargs["device"] = torch.cuda.current_device()
-
     return extra_transformer_engine_kwargs
 
 
