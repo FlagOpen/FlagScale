@@ -27,6 +27,7 @@ experiment:
         max_num_seqs: [128]
       llama_cpp:
         threads: [4, 8, 16]
+    cards: 4
     control:
       interval: 10
       run_best: False
