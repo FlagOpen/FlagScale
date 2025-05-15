@@ -753,7 +753,7 @@ class SSHServeRunner(RunnerBase):
             model_name, tokenizer_mode=tokenizer_mode, trust_remote_code=trust_remote_code
         )
 
-        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=200)
+        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=3)
         api_url = f"http://{self.host}:{self.port}/v1/chat/completions"
         logger.info(f"Profiling API {api_url}")
 
