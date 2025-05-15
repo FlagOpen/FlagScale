@@ -16,7 +16,14 @@ from megatron.energon.epathlib import EPath
 from megatron.energon.flavors import BaseWebdatasetFactory
 
 
-def convert(dataset_dir, json_name, sort_function=sorted, max_count=10000):
+def convert(
+    dataset_dir,
+    json_name,
+    sort_function=sorted,
+    max_count=10000,
+    image_key="images",
+    video_key="videos",
+):
     """
     Here we provide an example to convert llava-pretrain dataset to ChatMLSample
     """
@@ -27,11 +34,18 @@ def convert(dataset_dir, json_name, sort_function=sorted, max_count=10000):
     if not os.path.exists(output):
         os.mkdir(output)
 
-    # Load data
-    with open(json_file, "r") as f:
-        data = json.load(f)
+    # support both json and jsonl
+    try:
+        with open(json_file, "r") as f:
+            data = json.load(f)
+    except:
+        with open(json_file, "r") as f:
+            data = [json.loads(l) for l in f.readlines()]
 
     # custom webdataset ShardWriter Encoder
+    # "jpgs": the key when saving the image, see line 93
+    # "videos": the key when saving the video, see line 92
+    # when "shard_writer.write(sample)", use the default_handlers to encode the data
     add_handlers(
         default_handlers, "jpgs", lambda data: pickle.dumps([imageencoder(d, "jpg") for d in data])
     )
@@ -46,16 +60,27 @@ def convert(dataset_dir, json_name, sort_function=sorted, max_count=10000):
         os.path.join(output, "pretrain-%d.tar"), maxcount=max_count
     ) as shard_writer:
         for idx, entry in enumerate(tqdm(data)):
+            if idx == 0:
+                print(f"The fisrt entry in the dataset is {entry}")
+                if image_key not in entry:
+                    print(f"Warning: {image_key} not found in the first entry")
+                if video_key not in entry:
+                    print(f"Warning: {video_key} not found in the first entry")
             # NOTE: read a dataset in sharegpt format
             image_datas = []
-            for image in entry.pop("images", []):
+            # NOTE: we support both list and str for image path.
+            image_paths = entry.get(image_key, [])
+            if isinstance(image_key, str):
+                image_paths = [image_paths]
+            for image in image_paths:
                 image_datas.append(
                     cv2.imread(os.path.join(dataset_dir, image), cv2.IMREAD_UNCHANGED)
                 )
 
             video_datas = []
             second_per_grid_ts = []
-            for video in entry.pop("videos", []):
+
+            for video in entry.pop(video_key, []):
                 video_noext, _ = os.path.splitext(video)
                 frame_folder = os.path.join(dataset_dir, video_noext)
                 # NOTE: we implicitly require a `${frame_folder}.json`` file containing fps rates of each video
@@ -99,7 +124,7 @@ def convert(dataset_dir, json_name, sort_function=sorted, max_count=10000):
 
 
 def generate_configs(path: EPath, split, shuffle_tars=True, num_workers=32):
-    path = path.absolute()
+    # path = path.absolute()
     all_tars = list(path.glob("**/*.tar")) + list(path.glob("**/*.tgz"))
     all_tars = [str(p.relative_to(path)) for p in sorted(all_tars)]
     split_parts_ratio = [("train", split[0]), ("val", split[1]), ("test", split[2])]
@@ -119,7 +144,7 @@ def generate_configs(path: EPath, split, shuffle_tars=True, num_workers=32):
     # NOTE: dump dataset.yaml
     metadata = {
         "__class__": "ChatMLWebdataset",
-        "__module__": "tools.datasets.qwenvl.data..energon.chatml",
+        "__module__": "tools.datasets.qwenvl.data.energon.chatml",
         "field_map": {"imgs": "jpgs", "videos": "videos", "conversation": "json"},
     }
     with open(os.path.join(path.url, ".nv-meta", "dataset.yaml"), "w") as f:
@@ -130,13 +155,25 @@ if __name__ == "__main__":
     argparser = ArgumentParser()
     argparser.add_argument("--dataset-root", required=True, type=str)
     argparser.add_argument("--json", default="dataset.json", type=str)
+    argparser.add_argument(
+        "--images-key", default="images", type=str, help="The key for images in json"
+    )
+    argparser.add_argument(
+        "--videos-key", default="videos", type=str, help="The key for videos in json"
+    )
     argparser.add_argument("--max-samples-per-tar", default=10000, type=float)
     argparser.add_argument("--train-split", default=9, type=float)
     argparser.add_argument("--val-split", default=1, type=float)
     argparser.add_argument("--test-split", default=0, type=float)
     args = argparser.parse_args()
 
-    output_dir = convert(args.dataset_root, args.json, max_count=args.max_samples_per_tar)
+    output_dir = convert(
+        args.dataset_root,
+        args.json,
+        max_count=args.max_samples_per_tar,
+        image_key=args.images_key,
+        video_key=args.videos_key,
+    )
     print(f"Generating Configurations")
     # NOTE: split_ratio: train/val/test
     split = [args.train_split, args.val_split, args.test_split]

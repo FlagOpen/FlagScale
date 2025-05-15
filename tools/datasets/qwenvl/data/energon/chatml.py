@@ -11,6 +11,7 @@ import torch
 
 from webdataset.autodecode import Decoder, imagehandler
 
+from megatron.energon.av import AVWebdatasetDecoder
 from megatron.energon.epathlib.epath import EPath
 from megatron.energon.flavors.base_dataset import Sample
 from megatron.energon.flavors.webdataset import DefaultDecoderWebdatasetFactory
@@ -53,16 +54,37 @@ class NestedImagesHandler:
         return data
 
 
+# During training, data is automatically decoded to from default webdataset to 'ChatMLSample' when loaded using energon-dataloader,
+# and this is not done during preparation!!!
+# After decoding, the data is passed into the TaskEncoder for further processing.
 class ChatMLWebdataset(DefaultDecoderWebdatasetFactory[ChatMLSample]):
     __sample_type__ = ChatMLSample
 
-    def __init__(self, path: EPath, *, auto_decode: bool = True, **kwargs):
-        super().__init__(path, auto_decode=auto_decode, **kwargs)
+    def __init__(
+        self,
+        path: EPath,
+        *,
+        auto_decode: bool = True,
+        image_decode="torchrgb",
+        ignore_decoder_errors: bool = False,
+        av_decode="AVDecoder",
+        video_decode_audio: bool = False,
+        **kwargs,
+    ):
+        super().__init__(
+            path,
+            auto_decode=auto_decode,
+            image_decode=image_decode,
+            ignore_decoder_errors=ignore_decoder_errors,
+            av_decode=av_decode,
+            video_decode_audio=video_decode_audio,
+            **kwargs,
+        )
         if auto_decode:
             self._decoder = Decoder(
                 [
                     imagehandler(self.image_decode),
                     NestedImagesHandler(self.image_decode),
-                    self._video_decoder,
+                    AVWebdatasetDecoder(video_decode_audio=video_decode_audio, av_decode=av_decode),
                 ]
             )

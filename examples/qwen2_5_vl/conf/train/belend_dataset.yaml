@@ -1,0 +1,33 @@
+__module__: megatron.energon
+__class__: MetadatasetV2
+splits:
+  # Split defines the train/val/test subsets composition 
+  train:
+    # Mix the following datasets
+    blend:
+     # image
+      - weight: 2.6
+        path: /share/project/lizhiyu/data/llava-datasets/LLaVA-Pretrain/wds
+      # video
+      - weight: 1
+        path: /share/project/lizhiyu/data/llava-datasets/LLaVA-Video-178K/wds
+        split_part: train # default value for train
+      - weight: 1
+        path: /share/project/lizhiyu/data/General-Use_Instruct-v5-ShareGPT/wds
+        # split_part: val # using the valuation part of this dataset to train
+  val:
+    # Mix the following datasets
+    blend:
+     # image
+      - weight: 5
+        path: /share/project/lizhiyu/data/llava-datasets/LLaVA-Pretrain/wds
+      # video
+      - weight: 4
+        path: /share/project/lizhiyu/data/llava-datasets/LLaVA-Video-178K/wds
+        split_part: val # default value for val
+      - weight: 1
+        path: /share/project/lizhiyu/data/General-Use_Instruct-v5-ShareGPT/wds
+  # test:
+  #   # Only use coyo-test for test
+  #   path: ./coyo
+  #   split_part: test #default value for test

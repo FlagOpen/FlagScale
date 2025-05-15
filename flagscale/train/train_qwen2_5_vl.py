@@ -98,6 +98,8 @@ def model_provider(
     transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.qk_layernorm)
     vision_model_spec = get_qwen2vl_vision_model_spec()
     vision_projector_spec = get_mlp_module_spec(add_norm=False).submodules
+    if args.enable_variable_seq_lengths:
+        config.variable_seq_lengths = True
 
     model = Qwen2_5VLModel(
         language_transformer_config=config,
@@ -362,6 +364,10 @@ def get_batch(data_iterator):
     torch.cuda.nvtx.range_push("get_data")
     if data_iterator is not None and get_tensor_model_parallel_rank() == 0:
         data = next(data_iterator)
+        pad_token_id = get_tokenizer().pad_token_id
+        while (data["target"] == pad_token_id).all():
+            print("The current data is invalid because the target is all pad_token_id! Get next data!")
+            data = next(data_iterator)
     else:
         data = None
 
@@ -655,6 +661,7 @@ def add_multimodal_extra_args(parser):
     group.add_argument("--temporal-patch-size", type=int, default=2)
     group.add_argument("--patch-size", type=int, default=14)
     group.add_argument("--max-padding-length", type=int, default=2048)
+    group.add_argument("--enable-variable-seq-lengths", action="store_true", default=False, help="Enable variable sequence lengths")
 
     # just for checkpoint conversion
     group.add_argument(

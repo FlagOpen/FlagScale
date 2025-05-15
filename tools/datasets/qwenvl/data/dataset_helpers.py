@@ -14,6 +14,7 @@
 # limitations under the License.
 import dataclasses
 import json
+import math
 import re
 import sys
 import traceback
@@ -32,6 +33,8 @@ from megatron.training import get_args
 from megatron.training.global_vars import get_tokenizer
 from tools.datasets.qwenvl.data.energon.chatml import ChatMLSample
 from tools.datasets.qwenvl.data.image_processing import get_visual_transform
+
+FIRST_MAX_PADDING_FLAG = True
 
 
 # Type for intermediate batch, after batch()
@@ -118,6 +121,8 @@ class TaskEncoder(
         super().__init__()
 
         self.args = get_args()
+        self.tp_size = self.args.tensor_model_parallel_size
+        self.cp_size = self.args.context_parallel_size
 
         self.tokenizer = get_tokenizer()
 
@@ -219,8 +224,12 @@ class TaskEncoder(
                 {"role": "system", "content": "You are a helpful assistant."}
             )
         else:
+            # converted_conversation.append(
+            #     {"role": "system", "content": conversation[0][content_key]}
+            # )
+            # NOTE(lizhiyu): Force set system Prompt: "You are a helpful assistant."
             converted_conversation.append(
-                {"role": "system", "content": conversation[0][content_key]}
+                {"role": "system", "content": "You are a helpful assistant."}
             )
             conversation = conversation[1:]
 
@@ -295,7 +304,10 @@ class TaskEncoder(
             + video_thw_grids.prod(axis=-1).sum() // merge_length
         )
         if target_length > self.seq_len:
-            raise InternalWarning(f"Long sequence with length {target_length} found, dropped...")
+            # raise InternalWarning(f"Long sequence with length {target_length} found, dropped...")
+            print(
+                f"Long sequence with length {target_length} found, cutoff to {self.seq_len} in batch function..."
+            )
         final_input_ids = np.zeros(target_length, dtype=input_ids.dtype)
         final_input_masks = final_input_ids.copy()
 
@@ -478,10 +490,25 @@ class TaskEncoder(
             video_thw_grids = torch.empty([0, 3], dtype=torch.long)
 
         # If the user hasn't defined a target sequence length, then use the max along the sample lengths.
-        max_seq_len = self.seq_len
-        if not max_seq_len:
-            max_seq_len = max(len(s.text) for s in samples)
-
+        if not self.args.enable_variable_seq_lengths:
+            max_seq_len = self.seq_len
+            if not max_seq_len:
+                max_seq_len = max(len(s.text) for s in samples)
+        else:
+            global FIRST_MAX_PADDING_FLAG
+            # NOTE: this is a hack to get the max padding length for the first batch to avoid OOM because of cached memory in torch
+            if FIRST_MAX_PADDING_FLAG:
+                max_seq_len = self.seq_len
+                if not max_seq_len:
+                    max_seq_len = max(len(s.text) for s in samples)
+                FIRST_MAX_PADDING_FLAG = False
+            else:
+                max_seq_len = max(len(s.text) for s in samples)
+                max_seq_len = min(max_seq_len, self.seq_len)
+        # NOTE: we need to make sure the max_seq_len is divisible by tp_size * cp_size
+        max_seq_len = math.ceil(max_seq_len / (self.tp_size * self.cp_size)) * (
+            self.tp_size * self.cp_size
+        )
         text_mat = np.full((len(samples), max_seq_len), self.tokenizer.pad_token_id, dtype=np.int64)
         # +1 to accommodate shift to left by one later.
         target_mat = np.full(
