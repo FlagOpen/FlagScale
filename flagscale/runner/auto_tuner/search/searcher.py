@@ -44,7 +44,15 @@ _DEFAULT_SERVE_TUNE_SPACE = {
     "max_num_seqs": [64, 128, 256],
     "swap_space": [0, 4, 8, 16],
 }
+_BUILT_IN_SERVE_STRATEGY_DIMS = [
+    "threads",
+    "n_gpu_layers"
+]
 
+_DEFAULT_SERVE_TUNE_SPACE = {
+    "threads": [1, 2, 4, 8],
+    "n_gpu_layers": [0, 16, 32, 64]
+}
 
 class Searcher:
 
@@ -547,6 +555,8 @@ class ServeSearcher(Searcher):
         return space, nodes_aware_strategies
 
     def _find_combinations(self, target, num_dims, fixed_dims={}, current=[]):
+        if num_dims == 0:
+            return []
         results = []
         dim_index = len(current)
 
@@ -614,10 +624,15 @@ class ServeSearcher(Searcher):
         }
         values = list(node_unaware_tune_space.values())
         cartesian_product_unaware_values = list(itertools.product(*values))
-        cartesian_product_values = list(
-            itertools.product(self._nodes_aware_strategies, cartesian_product_unaware_values)
-        )
-        cartesian_product_values = [tuple(tuple(a) + b) for a, b in cartesian_product_values]
+        if self._nodes_aware_strategies:
+            cartesian_product_values = list(
+                itertools.product(self._nodes_aware_strategies, cartesian_product_unaware_values)
+            )
+            cartesian_product_values = [tuple(tuple(a) + b) for a, b in cartesian_product_values]
+        else:
+            # llama.cpp does not support multi-node
+            cartesian_product_values = list(cartesian_product_unaware_values)
+
         strategies = [
             dict(zip(self.space.keys(), combination)) for combination in cartesian_product_values
         ]
