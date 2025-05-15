@@ -1,6 +1,4 @@
-# at: Auto Tuning
 # atmb: Auto Tuning for Multi-Backend
-
 defaults:
   - _self_
   - serve: 0_6b
