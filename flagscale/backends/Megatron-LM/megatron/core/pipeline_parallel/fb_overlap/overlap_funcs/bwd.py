@@ -5,7 +5,6 @@ from megatron.core import parallel_state
 from megatron.training import get_args
 from megatron.core.transformer.moe.moe_utils import permute
 from megatron.core.pipeline_parallel.fb_overlap.modules.utils import async_all_gather, async_all_to_all
-from ..modules.weight_grad_store import WeightGradStore
 from ..modules.utils import (
     run_graph_backward,
     turn_attention_delay_wgrad_compute,
@@ -23,7 +22,6 @@ def transformer_layer_backward_moe(
     layer_output_grad,
     layer_graph
 ):
-    # print(f"in transformer_layer_backward_moe, start")
     self = layer_graph
     args = get_args()
     dispached_input, fc1_out, act_out, probs, indices, global_input_tokens_local_experts_indices = self.recompute_needed_tensors
@@ -52,39 +50,21 @@ def transformer_layer_backward_moe(
     )
     # overlap alltoall by shared experts backward
     if self.shared_experts_graph[0] is not None:
-        WeightGradStore.start_decouple()
         turn_shared_experts_delay_wgrad_compute(self, enable=True)
         run_graph_backward(self.shared_experts_graph, backward_ag_shared, keep_grad=True)
-        WeightGradStore.end_decouple()
-        WeightGradStore.pop()
         call_shared_experts_backward_dw(self)
         turn_shared_experts_delay_wgrad_compute(self, enable=False)
-    
-    # # skip recompute
-    # if get_args().moe_zero_memory == 'level0' or should_recompute_activation(self.layer.layer_number):
-    #   ...
 
     bwd_unperm_a2a_handle.wait()
     bwd_unperm_a2a_handle = None
 
-    # # skip recompute
-    # if get_args().moe_zero_memory == 'level0':
-    #    ...
-
     run_graph_backward(self.unperm1_graph, unperm1_out_grad)
 
-    WeightGradStore.start_decouple()
     turn_experts_delay_wgrad_compute(self, enable=True)
     run_graph_backward(self.grouped_mlp_graph, keep_grad=True)  # keep for dw commputation
-    WeightGradStore.end_decouple()
 
     run_graph_backward(self.perm2_graph, keep_graph=True)  # keep for dw commutation
     run_graph_backward(self.perm2_append_graph, keep_graph=True)
-    
-    # # remove recompute
-    # if get_args().moe_zero_memory == 'level0':
-        # perm_a2a_handle.wait()
-        # perm_a2a_handle = None
 
     _, perm1_out1_grad, bwd_perm_a2a_handle1 = async_all_to_all(
         self.perm_a2a_graph[1].grad,
@@ -100,12 +80,7 @@ def transformer_layer_backward_moe(
         ep_group
     )
 
-    # # skip recompute
-    # if get_args().moe_zero_memory == 'level0':
-    #     ...
-
     # dw computation
-    WeightGradStore.pop()
     call_experts_backward_dw(self)
     turn_experts_delay_wgrad_compute(self, enable=False)
     
@@ -121,40 +96,28 @@ def transformer_layer_backward_moe(
     run_graph_backward(self.router_graph)
     run_graph_backward(self.pre_mlp_layernorm_graph)
 
-    WeightGradStore.start_decouple()
     turn_attention_delay_wgrad_compute(self, enable=True)
     run_graph_backward(self.attn_graph, keep_grad=True)
-    WeightGradStore.end_decouple()
-    WeightGradStore.pop()
     call_attention_backward_dw(self)
     turn_attention_delay_wgrad_compute(self, enable=False)
 
     self.recompute_needed_tensors = [None for _ in range(len(self.recompute_needed_tensors))]
 
-    # print(f"in transformer_layer_backward_moe, return")
     return self.layer_input.grad
 
 
 def transformer_layer_backward_dense(layer_output_grad, layer_graph):
-    # print(f"in transformer_layer_backward_dense, start")
     
-    WeightGradStore.start_decouple()
     turn_dense_mlp_delay_wgrad_compute(layer_graph, enable=True)
     run_graph_backward(layer_graph.unperm2_graph, layer_output_grad, keep_grad=True)
     run_graph_backward(layer_graph.pre_mlp_layernorm_graph)
-    WeightGradStore.end_decouple()
-    WeightGradStore.pop()
     call_dense_mlp_backward_dw(layer_graph)
     turn_dense_mlp_delay_wgrad_compute(layer_graph, enable=False)
 
 
-    WeightGradStore.start_decouple()
     turn_attention_delay_wgrad_compute(layer_graph, enable=True)
     run_graph_backward(layer_graph.attn_graph, keep_grad=True)
-    WeightGradStore.end_decouple()
-    WeightGradStore.pop()
     call_attention_backward_dw(layer_graph)
     turn_attention_delay_wgrad_compute(layer_graph, enable=False)
 
-    # print(f"in transformer_layer_backward_dense, return")
     return layer_graph.layer_input.grad

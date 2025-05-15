@@ -6,6 +6,7 @@ from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core.parallel_state import get_global_memory_buffer, get_tensor_model_parallel_rank
 from typing import Dict, Literal, Optional, Tuple, Union, List
 
+COMM_STREAM = None
 
 AG_SHARED_EXPERTS_INPUTS = []
 
@@ -27,12 +28,29 @@ def async_all_gather(input_, group, event=None, is_use_get_global_memory_buffer=
         else:
             ag_out = torch.empty(dim_size, dtype=input_.dtype, device=torch.cuda.current_device())
     
-    if last_dim:
-        handle = torch.distributed.all_gather(ag_out, input_.contiguous(), group=group, async_op=True)
+    if event or stream:
+        # multi stream wait event
+        global COMM_STREAM
+        if COMM_STREAM is None:
+            COMM_STREAM = torch.cuda.Stream(device=torch.cuda.current_device())
+        with torch.cuda.stream(COMM_STREAM):
+            if event:
+                event.wait()
+            if stream:
+                COMM_STREAM.wait_stream(stream)
+            if last_dim:
+                handle = torch.distributed.all_gather(ag_out, input_.contiguous(), group=group, async_op=True)
+            else:
+                handle = torch.distributed._all_gather_base(
+                    ag_out, input_.contiguous(), group=group, async_op=True
+                )
     else:
-        handle = torch.distributed._all_gather_base(
-            ag_out, input_.contiguous(), group=group, async_op=True
-        )
+        if last_dim:
+            handle = torch.distributed.all_gather(ag_out, input_.contiguous(), group=group, async_op=True)
+        else:
+            handle = torch.distributed._all_gather_base(
+                ag_out, input_.contiguous(), group=group, async_op=True
+            )
     return input_, ag_out, handle
 
 
@@ -47,9 +65,23 @@ def async_reduce_scatter(input_, group, event=None, stream=None, is_use_get_glob
     else:
         rs_out = torch.empty(dim_size, dtype=input_.dtype, device=torch.cuda.current_device())
     
-    handle = torch.distributed._reduce_scatter_base(
-        rs_out, input_.contiguous(), group=group, async_op=True
-    )
+    if event or stream:
+        # multi stream wait event
+        global COMM_STREAM
+        if COMM_STREAM is None:
+            COMM_STREAM = torch.cuda.Stream(device=torch.cuda.current_device())
+        with torch.cuda.stream(COMM_STREAM):
+            if event:
+                event.wait()
+            if stream:
+                torch.cuda.current_stream().wait_stream(stream)
+            handle = torch.distributed._reduce_scatter_base(
+                rs_out, input_.contiguous(), group=group, async_op=True
+            )
+    else:
+        handle = torch.distributed._reduce_scatter_base(
+            rs_out, input_.contiguous(), group=group, async_op=True
+        )
     return input_, rs_out, handle
 
 
@@ -68,15 +100,41 @@ def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event
             device=torch.cuda.current_device(),
         )
 
-    handle = dist.all_to_all_single(
-        a2a_out,
-        input_.contiguous(),
-        output_split_sizes=output_split_sizes,
-        input_split_sizes=input_split_sizes,
-        group=group,
-        async_op=True
-    )
+    if event or stream:
+        # multi stream wait event
+        global COMM_STREAM
+        if COMM_STREAM is None:
+            COMM_STREAM = torch.cuda.Stream(device=torch.cuda.current_device())
+        with torch.cuda.stream(COMM_STREAM):
+            if event:
+                event.wait()
+            if stream:
+                COMM_STREAM.wait_stream(stream)
+            handle = dist.all_to_all_single(
+                a2a_out,
+                input_.contiguous(),
+                output_split_sizes=output_split_sizes,
+                input_split_sizes=input_split_sizes,
+                group=group,
+                async_op=True
+            )
+    else:
+        handle = dist.all_to_all_single(
+            a2a_out,
+            input_.contiguous(),
+            output_split_sizes=output_split_sizes,
+            input_split_sizes=input_split_sizes,
+            group=group,
+            async_op=True
+        )
     return input_, a2a_out, handle
+
+def get_comm_stream():
+    global COMM_STREAM
+    if COMM_STREAM is None:
+        COMM_STREAM = torch.cuda.Stream(device=torch.cuda.current_device())
+    return COMM_STREAM
+
 
 def detach_tensor(tensor, checkpoint_forward=False):
     if checkpoint_forward:

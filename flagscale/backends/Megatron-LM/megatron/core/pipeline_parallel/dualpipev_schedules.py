@@ -25,7 +25,6 @@ from megatron.core.models.gpt import GPTModel
 from megatron.core.pipeline_parallel.fb_overlap.gpt_model import gpt_model_forward_backward_overlaping, gpt_model_backward
 from megatron.core.pipeline_parallel.fb_overlap.transformer_layer import transformer_layer_forward_backward_overlaping
 from megatron.core.pipeline_parallel.fb_overlap.transformer_layer import P2PCommParams
-from megatron.core.pipeline_parallel.fb_overlap.modules.weight_grad_store import WeightGradStore
 
 
 
@@ -1036,8 +1035,6 @@ def forward_backward_pipelining_with_cutinhalf(
     bwd_wait_handles = None
     for i in range(schedule['1b1w1f'][rank]):
 
-        WeightGradStore.start_decouple()
-
         if args.moe_fb_overlap:
 
             if is_dualpipev_last_stgae(slave_chunk_id):
@@ -1065,8 +1062,6 @@ def forward_backward_pipelining_with_cutinhalf(
             input_tensor_grad = backward_step(
                 input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config
             )
-
-        WeightGradStore.end_decouple()
 
         
         # If asynchronous, the memory will rise.
@@ -1096,9 +1091,6 @@ def forward_backward_pipelining_with_cutinhalf(
         # If asynchronous, the memory will rise.
         input_tensor_slave_chunk, recv_forward_handle = recv_forward(
             tensor_shape, config, slave_chunk_id)
-
-        # 1w: Weight Grad Compute
-        WeightGradStore.pop()
 
         if recv_forward_handle is not None:
             # print(f"Waiting for receive forward handles")
@@ -1511,8 +1503,6 @@ def forward_backward_pipelining_with_cutinhalf(
         input_tensor_bwd = merged_input_tensors.pop(0)[1]
         output_tensor_bwd, bwd_model_chunk_id = merged_output_tensors.pop(0)
 
-        WeightGradStore.start_decouple()
-
         if args.moe_fb_overlap:
             model_graph = model_graphs[bwd_model_chunk_id].pop(0)
 
@@ -1523,8 +1513,6 @@ def forward_backward_pipelining_with_cutinhalf(
             input_tensor_grad = backward_step(
                 input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config
             )
-
-        WeightGradStore.end_decouple()
 
         if i == pp_size - 1:
             bwd_wait_handles = send_backward(input_tensor_grad,
@@ -1541,15 +1529,6 @@ def forward_backward_pipelining_with_cutinhalf(
                 #  send_backward_recv_slave_backward
                 output_tensor_grad_bwd, bwd_wait_handles = send_forward_recv_slave_forward(input_tensor_grad,
                                                                                            tensor_shape, config, 1 - bwd_model_chunk_id)
-
-        WeightGradStore.flush_chunk_grad()
-        if i >= schedule['cooldown'][rank][0] - 1:
-            WeightGradStore.pop_single()
-
-    for _ in range(schedule['cooldown'][rank][2] - 1):
-        WeightGradStore.pop_single()
-
-    assert WeightGradStore.weight_grad_queue.empty()
 
     if bwd_wait_handles is not None:
         for req in bwd_wait_handles:

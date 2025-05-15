@@ -1,8 +1,8 @@
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 
 import torch
-from megatron.core.utils import make_sharded_tensor_for_checkpoint, make_viewless_tensor
-from megatron.core import parallel_state, tensor_parallel
+from megatron.core.utils import make_viewless_tensor
+from megatron.core import parallel_state
 from megatron.training import get_args
 from megatron.core.pipeline_parallel.fb_overlap.modules.utils import async_all_gather, async_all_to_all, async_reduce_scatter, AG_SHARED_EXPERTS_INPUTS
 from ..modules.token_dispatcher import (
@@ -36,8 +36,6 @@ def transformer_layer_forward_moe(
     packed_seq_params=None,
     checkpoint=False
 ):
-    # print(f"in transformer_layer_forward_moe, start")
-    # print(f"in transformer_layer, self is {self}")
     # hidden_states: [s, b, h]
     args = get_args()
     ep_group = parallel_state.get_expert_model_parallel_group()
@@ -75,7 +73,9 @@ def transformer_layer_forward_moe(
 
     # MLP.
     detached_mlp_input = detach_tensor(pre_mlp_layernorm_output, checkpoint_forward=checkpoint)
-    if tp_size > 1 and use_shared_experts:
+
+    moe_shared_expert_overlap = False
+    if tp_size > 1 and use_shared_experts and moe_shared_expert_overlap:
         # shared experts tp communication
         _, shared_experts_input, shared_experts_allgather_handle = async_all_gather(
             detached_mlp_input, tp_group, is_use_get_global_memory_buffer=True
@@ -122,7 +122,7 @@ def transformer_layer_forward_moe(
     # but backward func of perm1_local_input_tokens, is needed, so resize the storage but keep tensor.
     perm1_local_input_tokens.untyped_storage().resize_(0)
     perm1_probs.untyped_storage().resize_(0)
-    if tp_size > 1 and use_shared_experts:
+    if tp_size > 1 and use_shared_experts and moe_shared_expert_overlap :
         # tp comm for shared experts
         share_experts_graph, shared_expert_output, rs_shared_experts_handle = async_reduce_scatter(
             shared_expert_output, tp_group
@@ -142,10 +142,6 @@ def transformer_layer_forward_moe(
     detached_dispatched_input = detach_tensor(dispatched_input, checkpoint_forward=checkpoint)
     detached_permuted_probs = detach_tensor(permuted_probs, checkpoint_forward=checkpoint)
     expert_output, mlp_bias = self.mlp.experts(detached_dispatched_input, tokens_per_expert, detached_permuted_probs)
-    
-    # # skip recompute
-    # if args.moe_zero_memory == 'level0':
-    #     ...
 
     recompute_needed_tensors = [None, None, None, None, None, None]
     detached_expert_output = detach_tensor(expert_output, checkpoint_forward=checkpoint)
@@ -227,7 +223,6 @@ def transformer_layer_forward_moe(
         self.mlp.token_dispatcher.input_splits, self.mlp.token_dispatcher.output_splits, self,
         checkpointed=checkpoint
     )
-    # print(f"in transformer_layer_forward_moe, return")
     return output, context, graph
 
 
@@ -242,7 +237,6 @@ def transformer_layer_forward_dense(
     packed_seq_params=None,
     checkpoint=False
 ):
-    # print(f"in transformer_layer_forward_dense, start")
     # hidden_states: [s, b, h]
     args = get_args()
     recomp_norm = getattr(args, 'recompute_norm', False)
@@ -321,5 +315,5 @@ def transformer_layer_forward_dense(
         saved_tensors, [], None, None, self,
         checkpointed=checkpoint
     )
-    # print(f"in transformer_layer_forward_dense, return")
+
     return output, context, graph

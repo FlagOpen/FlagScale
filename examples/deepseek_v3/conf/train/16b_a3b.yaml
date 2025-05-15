@@ -77,7 +77,8 @@ model:
   moe_router_enable_expert_bias: true
   moe_router_bias_update_rate: 0.001
   moe_aux_loss_coeff: 0.02
-  moe_layer_freq: "[0]+[1]*7"
+  # moe_layer_freq: "[0]+[1]*7"
+  moe_layer_freq: "[1]*8"
   # node limited routing
   moe_router_num_groups: 1
   moe_router_group_topk: 1
@@ -99,7 +100,7 @@ model:
   global_batch_size: 128
   eval_iters: 0
   # train_samples: 244141056 #1T #29297664 #120B tokens
-  train_samples: 3200 
+  train_samples: 32000
 
   optimizer:
     weight_decay: 0.1
@@ -108,7 +109,7 @@ model:
     lr_scheduler:
       lr: 3.0e-3
       min_lr: 3.0e-4
-      lr_warmup_samples: 204
+      lr_warmup_samples: 1000
       lr_decay_style: WSD
       lr_wsd_decay_style: cosine
       lr_wsd_decay_samples: 2048
