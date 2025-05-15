@@ -3,8 +3,7 @@
 from contextlib import nullcontext
 import torch
 from .modules.utils import (
-    LayerGraph, is_p2p_comm_needed,
-    p2p_comm_helper, P2PCommOutput, P2PCommParams
+    LayerGraph, P2PCommParams
 )
 
 from .overlap_funcs import (
@@ -32,7 +31,6 @@ def transformer_layer_forward(
     use_orig_layer_forward=False,
     checkpoint=False
 ):
-    # print(f"in transformer_layer_forward, start")
     if checkpoint:
         checkpoint_context = torch.no_grad()
     else:
@@ -56,7 +54,6 @@ def transformer_layer_backward(
     layer_output_grad,
     layer_graph
 ):
-    # print(f"in transformer_layer_backward, start")
     if layer_graph.checkpointed:
         with torch.enable_grad():
             _, _, restored_layer_graph = transformer_layer_forward(
@@ -133,5 +130,4 @@ def transformer_layer_forward_backward_overlaping(
                 attention_mask, context, context_mask, rotary_pos_emb,
                 inference_params, packed_seq_params, use_orig_layer_forward
             )
-        # print(f"in transformer_layer_forward_backward_overlaping, return 3")
         return out

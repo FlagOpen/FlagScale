@@ -237,6 +237,20 @@ def _allreduce_embedding_grads(model: List[torch.nn.Module], config: Transformer
     _allreduce_word_embedding_grads(model, config)
     _allreduce_position_embedding_grads(model, config)
 
+def _allreduce_embedding_grads_dualpipev(model: List[torch.nn.Module], config: TransformerConfig):
+    from megatron.training import get_args
+    
+    if get_args().schedules_method == 'dualpipev':
+        # dualpipev no need to do embedding allreduce
+        # embedding and lm head are on save rank.
+        if not get_args().untie_embeddings_and_output_weights:
+            raise NotImplementedError
+        else:
+            return
+    else:
+        return _allreduce_embedding_grads(model, config)
+
+
 
 def _allreduce_layernorm_grads(model: List[torch.nn.Module], config: TransformerConfig):
     """
@@ -422,20 +436,56 @@ def finalize_model_grads_for_dualpipev(model: List[torch.nn.Module], num_tokens:
     if config.timers is not None:
         config.timers('layernorm-grads-all-reduce').stop()
 
+    # All-reduce embedding grads (for pipeline parallelism).
+    if config.timers is not None:
+        config.timers('embedding-grads-all-reduce', log_level=1).start(
+            barrier=config.barrier_with_L1_time
+        )
+    _allreduce_embedding_grads_dualpipev(model, config)
+    if config.timers is not None:
+        config.timers('embedding-grads-all-reduce').stop()
+
+    if config.moe_router_enable_expert_bias:
+        _update_router_expert_bias(model, config)
+
     # normalize gradients for per-token loss normalization.
     # if we are using by the number of tokens, then we use that as a divisor. this number
     # will be the total number of non-padded tokens in the global batch.
     if num_tokens is not None:
+
         # the number of tokens is only present on the last stage, so broadcast it
         # to the other ranks in the pipeline parallel group.
-        torch.distributed.broadcast(
-            num_tokens,
-            src=parallel_state.get_pipeline_model_parallel_last_rank(),
-            group=parallel_state.get_pipeline_model_parallel_group(),
-        )
+        last_rank = parallel_state.get_pipeline_model_parallel_first_rank()
+        pp_group = parallel_state.get_pipeline_model_parallel_group()
+
+        # NOTE: This is a hack to support multiple pipeline parallel groups. The origin
+        #       parallel_state.get_pipeline_model_parallel_last_rank() only supports a single
+        if isinstance(pp_group, list):
+            last_rank = [parallel_state.get_pipeline_model_parallel_first_rank(g) for g in pp_group]
+
+        if not isinstance(last_rank, list):
+            assert not isinstance(last_rank, list)
+            last_rank = [last_rank]
+            assert not isinstance(pp_group, list)
+            pp_group = [pp_group]
+
+        # need to do a broadcast for every pp group, even though num_tokens should be the same.
+        if "cpu:gloo" == pp_group[0].name():
+            num_tokens = num_tokens.cpu()
+
+        num_tokens_list = []
+        for lr, group in zip(last_rank, pp_group):
+            torch.distributed.broadcast(num_tokens, src=lr, group=group)
+            num_tokens_list.append(torch.clone(num_tokens))
+        assert all(x.item() == num_tokens_list[0] for x in num_tokens_list)
+
+        if num_tokens.device == torch.device('cpu'):
+            num_tokens = num_tokens.cuda()
+
         # all-reduce across DP ranks.
         torch.distributed.all_reduce(
-            num_tokens, group=parallel_state.get_data_parallel_group())
+            num_tokens, group=parallel_state.get_data_parallel_group(with_context_parallel=True)
+        )
         for model_chunk in model:
             if num_tokens > 0:
                 scaling = 1.0 / num_tokens

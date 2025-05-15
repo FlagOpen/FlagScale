@@ -4,11 +4,11 @@
 from typing import List
 from contextlib import nullcontext
 from megatron.training import get_args
-from megatron.core.utils import make_sharded_tensor_for_checkpoint, make_viewless_tensor
+from megatron.core.utils import make_viewless_tensor
 from .modules.utils import (
     detach_tensor, LayerGraph, P2PCommParams
 )
-from .transformer_layer import transformer_layer_forward, transformer_layer_backward, transformer_layer_forward_backward_overlaping
+from .transformer_layer import transformer_layer_backward, transformer_layer_forward_backward_overlaping
 
 
 def transformer_block_forward(
@@ -21,7 +21,6 @@ def transformer_block_forward(
     inference_params=None,
     packed_seq_params=None,
 ):
-    # print(f"in transformer_block_forward, start")
     if not self.pre_process:
         # See set_input_tensor()
         hidden_states = self.input_tensor
@@ -77,17 +76,6 @@ def transformer_block_forward(
                 packed_seq_params=packed_seq_params,
                 checkpoint=checkpoint
             )
-            # hidden_states, context, saved_graphs = transformer_layer_forward(
-            #     layer,
-            #     hidden_states=hidden_states,
-            #     attention_mask=attention_mask,
-            #     context=context,
-            #     context_mask=context_mask,
-            #     rotary_pos_emb=rotary_pos_emb,
-            #     inference_params=inference_params,
-            #     packed_seq_params=packed_seq_params,
-            #     checkpoint=checkpoint
-            # )
             layer_graphs.append(saved_graphs)
 
     # Final layer norm.
@@ -96,7 +84,6 @@ def transformer_block_forward(
         layer_graphs[-1].unperm2_graph = (layer_graphs[-1].unperm2_graph[0], detached_hidden_states)
         hidden_states = self.final_layernorm(detached_hidden_states)
 
-    # print(f"in transformer_block_forward, return")
     return (hidden_states, layer_graphs)
 
 
@@ -104,13 +91,11 @@ def transformer_block_backward(
     block_output_grad,
     layer_graphs: List[LayerGraph],
 ):
-    # print(f"in transformer_block_backward, start")
     # should call backward fisrt for final_layernorm and postprocess grad
     layer_output_grad = block_output_grad
     while len(layer_graphs) > 0:
         layer_graph = layer_graphs.pop(-1)
         layer_output_grad = transformer_layer_backward(layer_output_grad, layer_graph)
-    # print(f"in transformer_block_backward, return")
     return layer_output_grad
 
 
@@ -128,7 +113,6 @@ def transformer_block_forward_backward_overlaping(
     pp_comm_params: P2PCommParams = None,
     bwd_pp_comm_params: P2PCommParams = None,
 ):
-    # print(f"in transformer_block_forward_backward_overlapping, start")
     if not fwd_block.pre_process:
         # See set_input_tensor()
         hidden_states = fwd_block.input_tensor
@@ -218,5 +202,4 @@ def transformer_block_forward_backward_overlaping(
         fwd_layer_graphs[-1].unperm2_graph = (fwd_layer_graphs[-1].unperm2_graph[0], detached_hidden_states)
         fwd_hidden_states = fwd_block.final_layernorm(detached_hidden_states)
 
-    # print(f"in transformer_block_forward_backward_overlaping, return")
     return (fwd_hidden_states, fwd_layer_graphs), bwd_layer_output_grad, pp_comm_output
