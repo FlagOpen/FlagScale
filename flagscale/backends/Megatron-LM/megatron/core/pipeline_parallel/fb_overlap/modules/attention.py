@@ -3,37 +3,6 @@
 import torch
 
 from megatron.training import get_args
-from megatron.core.pipeline_parallel.fb_overlap.modules.utils import async_all_to_all
-
-AsyncAll2All_INPUT = []
-AsyncAll2All_OUTPUT = []
-
-
-def set_async_alltoall_inputs(*args):
-    AsyncAll2All_INPUT.append(args)
-
-
-def get_async_alltoall_outputs():
-    return AsyncAll2All_OUTPUT.pop(0)
-
-
-def launch_async_all2all():
-    global AsyncAll2All_INPUT
-    global AsyncAll2All_OUTPUT
-    if len(AsyncAll2All_INPUT) > 0:
-        input_, input_splits, output_splits, group = AsyncAll2All_INPUT.pop(0)
-        _, output, a2a_handle = async_all_to_all(
-            input_,
-            input_splits,
-            output_splits,
-            group
-        )
-        AsyncAll2All_OUTPUT.append((output, a2a_handle))
-
-
-def launch_async_all2all_hook(_):
-    launch_async_all2all()
-
 
 def attention_forward(
         self,
