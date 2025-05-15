@@ -57,6 +57,7 @@ Parameter explanation:
 - `task`: Task scenario(s). Supports multiple tasks separated by space.
 - `device-type`: Chip model, named as `Vendor_Model`, with Vendor capitalized.
 - `commit`: The FlagScale commit this adaptation is based on.
+- `key-path`: If encryption of the patch file is required, specify the path to the key file. If no key file exists at the specified path, one will be generated automatically.
 
 You’ll be prompted to enter 4 interactive inputs: backend version, adapted model, commit message (used for git commit), and contact info (optional).
 
@@ -82,7 +83,8 @@ python tools/patch/unpatch.py --backend Megatron-LM FlagScale --task train --dev
 ```
 The unpatched FlagScale will be under `build/<Chip_Vendor>`.
 
-(Insert screenshots here)
+To decrypt an encrypted patch, refer to the contact information in the corresponding YAML file of the patch and contact the vendor to obtain the key file. When running `unpatch`, you must specify the key file path using `key-path`.
+
 
 ## Q&A
 **Q1: How to manage patches for multiple commits?**  
