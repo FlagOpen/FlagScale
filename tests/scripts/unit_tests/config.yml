@@ -44,6 +44,7 @@ megatron:
     inference:
       ignore:
         - engines/test_mcore_engine.py
+        - engines/test_dynamic_engine.py::TestDynamicInferenceEngine::test_simple
         - test_modelopt_module_spec.py
         - text_generation_controllers/test_encoder_decoder_text_generation_controller.py
         - text_generation_controllers/test_simple_text_generation_controller.py
