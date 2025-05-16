@@ -46,7 +46,7 @@ jobs:
 
       - name: Run Functional Test
         run: |
-          pip install git python # TODO: Remove after updating the image
+          pip install gitpython # TODO: Remove after updating the image
 
           if [ "${{ inputs.type }}" = "train" ] || [ "${{ inputs.type }}" = "hetero_train" ]; then
             python tools/patch/unpatch.py --backend Megatron-LM

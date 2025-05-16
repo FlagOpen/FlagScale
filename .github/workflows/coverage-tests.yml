@@ -48,7 +48,7 @@ jobs:
 
       - name: Run Unit Tests and Check Coverage
         run: |
-          pip install git python # TODO: Remove after updating the image
+          pip install gitpython # TODO: Remove after updating the image
 
           if [ "${{ inputs.backend }}" = "megatron" ] || [ "${{ inputs.backend }}" = "flagscale" ]; then
             python tools/patch/unpatch.py --backend Megatron-LM
