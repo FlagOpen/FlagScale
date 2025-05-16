@@ -51,6 +51,10 @@ jobs:
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           if [ "${{ inputs.type }}" = "train" ] || [ "${{ inputs.type }}" = "hetero_train" ]; then
             python tools/patch/unpatch.py --backend Megatron-LM
+            if [ "${{ inputs.task }}" = "llava_onevision" ]; then
+              python tools/patch/unpatch.py --backend Megatron-Energon
+              cp -r third_party/Megatron-Energon/src/megatron/energon third_party/Megatron-LM/megatron
+            fi
           elif [ "${{ inputs.type }}" = "inference" ] || [ "${{ inputs.type }}" = "serve" ]; then
             python tools/patch/unpatch.py --backend vllm
           else
