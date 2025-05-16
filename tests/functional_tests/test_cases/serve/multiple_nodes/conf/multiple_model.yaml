@@ -14,7 +14,9 @@ experiment:
     CUDA_VISIBLE_DEVICES: 0,1
     CUDA_DEVICE_MAX_CONNECTIONS: 1
   cmds:
-    before_start: source /root/miniconda3/bin/activate flagscale-inference
+    before_start:
+      python tools/patch/unpatch.py --backend vllm;
+      source /root/miniconda3/bin/activate flagscale-inference
 
 action: run
 
