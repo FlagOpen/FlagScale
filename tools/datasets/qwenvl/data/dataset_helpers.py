@@ -91,7 +91,7 @@ def convert_to_qwen2vl_content(
     mm_idx = defaultdict(int)
     for matched in re.finditer(pattern, user_input):
         start, end = matched.span()
-        text = user_input[cur:start].strip()
+        text = user_input[cur:start]
         if text:
             contents.append({"type": "text", "text": text})
 
@@ -106,7 +106,7 @@ def convert_to_qwen2vl_content(
         mm_idx[matched.string[start:end][1:-1]] += 1
 
     if cur < len(user_input):
-        contents.append({"type": "text", "text": user_input[cur : len(user_input)].strip()})
+        contents.append({"type": "text", "text": user_input[cur : len(user_input)]})
 
     return contents
 
@@ -124,6 +124,7 @@ class TaskEncoder(
         self.args = get_args()
         self.tp_size = self.args.tensor_model_parallel_size
         self.cp_size = self.args.context_parallel_size
+        self.sequence_parallel = self.args.sequence_parallel
 
         self.tokenizer = get_tokenizer()
 
@@ -208,13 +209,12 @@ class TaskEncoder(
             if isinstance(sample.conversation, (str, bytes))
             else sample.conversation
         )
+        # print(f"LZY: origin conversion: {conversation}")
         second_per_grid_ts = [1 / 2.0] * len(video_thw_grids)
         if "conversations" in conversation:
             second_per_grid_ts = conversation.get("second_per_grid_ts", second_per_grid_ts)
             second_per_grid_ts = [float(i) for i in second_per_grid_ts]
             conversation = conversation["conversations"]
-        
-        # print(f"LZY: origin conversion: {conversation}")
 
         role_key = "from" if "from" in conversation[0] else "role"
         content_key = "value" if "from" in conversation[0] else "content"
@@ -256,7 +256,7 @@ class TaskEncoder(
 
             converted_conversation.append({"role": role, "content": content})
         conversation = converted_conversation
-
+        # print(f"LZY: converted conversion: {conversation}")
         # NOTE: we need to mask all system/user input tokens and assistant generation prefix tokens
         input_ids = self.tokenizer.apply_chat_template(
             conversation, tokenize=True, return_tensors="np"
@@ -286,9 +286,9 @@ class TaskEncoder(
                 target[offset : offset + assistant_generation_prefix] = pad_token_id
             offset += n_tokens
         # current "target" don't pad vision token.
-        
+
         # NOTE: expand image_pad & video_pad
-        merge_length = self.merge_size**2 # 2**2 = 4
+        merge_length = self.merge_size**2  # 2**2 = 4
         image_token_id, video_token_id = self.tokenizer.encode(["<|image_pad|>", "<|video_pad|>"])
 
         # get the indices of the origin <|image_pad|> and <|video_pad|>
@@ -348,9 +348,9 @@ class TaskEncoder(
         if cur_x < len(input_ids):
             final_input_ids[cur_y:] = input_ids[cur_x:]
             final_input_masks[cur_y:] = target[cur_x:]
-        
-        # print(f"LZY: origin input_ids len: {input_ids.shape}; after vision pad final_input_ids len: {final_input_ids.shape}")
-        # print(f"LZY: origin target len: {target.shape}, after vision pad target: len: {final_input_masks.shape}")
+
+        # print(f"LZY: origin input_ids len: {input_ids.shape}; after vision pad final_input_ids len: {final_input_ids.shape}, input_ids: {final_input_ids}")
+        # print(f"LZY: origin target len: {target.shape}, after vision pad target: len: {final_input_masks.shape}, target: {final_input_masks}")
 
         target = np.roll(final_input_masks, shift=-1)
         target[-1] = pad_token_id
@@ -361,6 +361,7 @@ class TaskEncoder(
 
         image_input_mask = final_input_ids == self.tokenizer.image_token_id
         video_input_mask = final_input_ids == self.tokenizer.video_token_id
+        # print(f"LZY: image_thw_grids: {image_thw_grids}; video_thw_grids: {video_thw_grids}")
         # collect data
         return ImageTaskSample(
             __key__=sample.__key__,
@@ -507,23 +508,20 @@ class TaskEncoder(
         # If the user hasn't defined a target sequence length, then use the max along the sample lengths.
         if not self.args.enable_variable_seq_lengths:
             max_seq_len = self.seq_len
-            if not max_seq_len:
-                max_seq_len = max(len(s.text) for s in samples)
         else:
             global FIRST_MAX_PADDING_FLAG
             # NOTE: this is a hack to get the max padding length for the first batch to avoid OOM because of cached memory in torch
             if FIRST_MAX_PADDING_FLAG:
                 max_seq_len = self.seq_len
-                if not max_seq_len:
-                    max_seq_len = max(len(s.text) for s in samples)
                 FIRST_MAX_PADDING_FLAG = False
             else:
                 max_seq_len = max(len(s.text) for s in samples)
                 max_seq_len = min(max_seq_len, self.seq_len)
         # NOTE: we need to make sure the max_seq_len is divisible by tp_size * cp_size
-        max_seq_len = math.floor(max_seq_len / (self.tp_size * self.cp_size)) * (
-            self.tp_size * self.cp_size
-        )
+        if self.cp_size > 1 or self.sequence_parallel:
+            max_seq_len = math.ceil(max_seq_len / (self.tp_size * self.cp_size)) * (
+                self.tp_size * self.cp_size
+            )
         text_mat = np.full((len(samples), max_seq_len), self.tokenizer.pad_token_id, dtype=np.int64)
         # +1 to accommodate shift to left by one later.
         target_mat = np.full(

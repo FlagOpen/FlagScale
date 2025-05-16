@@ -18,7 +18,7 @@ import os
 import sys
 from functools import partial
 from copy import deepcopy
-from typing import Union, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch._dynamo
@@ -28,21 +28,54 @@ from argparse import Namespace
 # # For pytorch 2.6
 # torch.serialization.add_safe_globals([Namespace])
 
-from megatron.core import mpu
-
 from megatron.core import parallel_state
-from megatron.training.checkpointing import get_checkpoint_name
+from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
+from megatron.core.datasets.gpt_dataset import GPTDataset, GPTDatasetConfig, MockGPTDataset
+from megatron.training.checkpointing import get_checkpoint_name # for dataloder
 from megatron.core.enums import ModelType
-from megatron.training import get_args, get_timers, pretrain, print_rank_0
+from megatron.core.models.gpt import GPTModel
+from megatron.core.models.gpt.gpt_layer_specs import (
+    get_gpt_decoder_block_spec,
+    get_gpt_layer_local_spec,
+    get_gpt_layer_with_transformer_engine_spec,
+    get_gpt_mtp_block_spec,
+)
+from megatron.core.models.gpt.heterogeneous.heterogeneous_layer_specs import (
+    get_gpt_heterogeneous_layer_spec,
+)
+from megatron.core.rerun_state_machine import get_rerun_state_machine
+from megatron.core.transformer.spec_utils import import_module
+from megatron.core.utils import StragglerDetector
+from megatron.training import get_args, get_timers, get_tokenizer, pretrain, print_rank_0
 from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.utils import (
-    average_losses_across_data_parallel_group,
+    get_batch_on_this_cp_rank,
+    get_batch_on_this_tp_rank,
+    get_blend_and_blend_per_split,
 )
+from megatron.training.yaml_arguments import core_transformer_config_from_yaml
+
+import megatron.legacy.model  # isort: skip
+
+# NOTE: Loading `megatron.legacy.model` earlier fails due to circular import
+
+try:
+    from megatron.post_training.arguments import add_modelopt_args, modelopt_args_enabled
+    from megatron.post_training.loss_func import loss_func as loss_func_modelopt
+    from megatron.post_training.model_provider import model_provider as model_provider_modelopt
+
+    has_nvidia_modelopt = True
+except ImportError:
+    has_nvidia_modelopt = False
+
+from flagscale.train.datasets.sft_dataset import SFTDatasetConfig, SFTDataset
+from flagscale.train.extra_valid import extra_valid_datasets_provider
+from flagscale.train.train import pretrain
+stimer = StragglerDetector()
+
+#### especially for qwen2.5-vl ####
 from megatron.core.num_microbatches_calculator import get_num_microbatches
-
-
 torch._dynamo.config.suppress_errors = True
-from megatron.core import mpu
 from megatron.core.parallel_state import get_tensor_model_parallel_rank, get_pipeline_model_parallel_world_size, get_pipeline_model_parallel_rank
 from megatron.energon import (
     LimitDataset,
@@ -70,6 +103,8 @@ from flagscale.train.models.qwen2_5_vl.transformer_config import (
     get_vision_projection_config
 )
 from tools.datasets.qwenvl.data.dataset_helpers import TaskEncoder, print_error_handler
+#### especially for qwen2.5-vl ####
+
 
 def model_provider(
     pre_process=True, post_process=True, add_encoder=True, add_decoder=True
@@ -365,6 +400,7 @@ def get_batch(data_iterator):
     if data_iterator is not None and get_tensor_model_parallel_rank() == 0:
         data = next(data_iterator)
         pad_token_id = get_tokenizer().pad_token_id
+        # while (data["target"] == pad_token_id).all() or data["target"].shape[-1] < 986: # for debug
         while (data["target"] == pad_token_id).all():
             print("The current data is invalid because the target is all pad_token_id! Get next data!")
             data = next(data_iterator)
@@ -422,34 +458,71 @@ def get_batch(data_iterator):
         video_input_mask
     )
 
-def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
+# define spiky loss as a loss that's 10x the max loss observed
+SPIKY_LOSS_FACTOR = 10
+
+
+def loss_func(
+    loss_mask: torch.Tensor, output_tensor: torch.Tensor, model: Optional[Qwen2_5VLModel] = None
+):
     """Loss function.
 
     Args:
         loss_mask (torch.Tensor): Used to mask out some portions of the loss
         output_tensor (torch.Tensor): The tensor with the losses
+        model (Qwen2_5VLModel, optional): The model (can be wrapped)
+
+    Returns:
+        the loss scalar for this micro-batch
+        the number of non-padded tokens in this microbatch
+        a dict containing reporting metrics on the loss and number of tokens across
+            the data parallel ranks
     """
     args = get_args()
 
-    losses = output_tensor.float()
-    loss_mask = loss_mask.view(-1).float()
+    if has_nvidia_modelopt and modelopt_args_enabled(args):  # [ModelOpt]
+        return loss_func_modelopt(loss_mask, output_tensor, model=model)
 
-    loss = torch.stack([torch.sum(losses.view(-1) * loss_mask), loss_mask.sum()])
-    if args.context_parallel_size > 1:
-        torch.distributed.all_reduce(loss, group=mpu.get_context_parallel_group())
+    losses = output_tensor.view(-1).float()
+    loss_mask = loss_mask.view(-1).float()
+    loss = torch.sum(losses * loss_mask)
 
     # Check individual rank losses are not NaN prior to DP all-reduce.
+    rerun_state_machine = get_rerun_state_machine()
     if args.check_for_nan_in_loss_and_grad:
-        global_rank = torch.distributed.get_rank()
-        assert not loss.isnan().any(), (
-            f"Rank {global_rank}: found NaN in local forward loss calculation. "
-            f"Device: {torch.cuda.current_device()}, node: {os.uname()[1]}"
+        rerun_state_machine.validate_result(
+            result=loss,
+            rejection_func=torch.isnan,
+            message="found NaN in local forward loss calculation",
+            tolerance=0.0,  # forward pass calculations are determinisic
+            fatal=True,
+        )
+        rerun_state_machine.validate_result(
+            result=loss,
+            rejection_func=torch.isinf,
+            message="found Inf in local forward loss calculation",
+            tolerance=0.0,  # forward pass calculations are determinisic
+            fatal=True,
+        )
+    # Check for spiky loss
+    if args.check_for_spiky_loss:
+        rerun_state_machine.validate_result(
+            result=loss,
+            rejection_func=partial(
+                rerun_state_machine.is_unexpectedly_large,
+                threshold=SPIKY_LOSS_FACTOR,
+                context="loss",
+            ),
+            message="Spiky loss",
+            tolerance=0.0,  # forward pass calculations are determinisic
+            fatal=False,
         )
 
-    averaged_loss = average_losses_across_data_parallel_group(loss)
-    averaged_loss = averaged_loss[0] / averaged_loss[1]
+    num_tokens = loss_mask.sum().clone().detach().to(torch.int)
+    reporting_loss = torch.cat([loss.clone().detach().view(1), num_tokens.view(1)])
 
-    return loss[0] * args.context_parallel_size, {"lm loss": averaged_loss}
+    return (loss, num_tokens, {'lm loss': reporting_loss})
+
 
 def forward_step(data_iterator, model: Qwen2_5VLModel):
     """Forward training step.
@@ -458,40 +531,44 @@ def forward_step(data_iterator, model: Qwen2_5VLModel):
         data_iterator : Input data iterator
         model (GPTModel): The GPT Model
     """
+    args = get_args()
     timers = get_timers()
+
     # Get the batch.
-    timers("batch-generator", log_level=2).start()
-    (
-        tokens,
-        labels,
-        loss_mask,
-        attention_mask,
-        position_ids,
-        imgs,
-        videos,
-        image_thw_grids,
-        video_thw_grids,
-        image_input_mask,
-        video_input_mask
-    ) = get_batch(data_iterator)
-    timers("batch-generator").stop()
+    timers('batch-generator', log_level=2).start()
+    global stimer
+    with stimer(bdata=True):
+        (
+            tokens,
+            labels,
+            loss_mask,
+            attention_mask,
+            position_ids,
+            imgs,
+            videos,
+            image_thw_grids,
+            video_thw_grids,
+            image_input_mask,
+            video_input_mask
+        ) = get_batch(data_iterator)
+    timers('batch-generator').stop()
 
     vision_data = torch.cat([imgs, videos], dim=0)
     vision_grid = torch.cat([image_thw_grids, video_thw_grids], dim=0)
+    with stimer:
+        output_tensor = model(
+            input_ids = tokens,
+            position_ids = position_ids,
+            vision_data = vision_data,
+            vision_grid_thw =  vision_grid,
+            video_start_index = image_input_mask.sum().cpu().item(),
+            image_input_mask = image_input_mask,
+            video_input_mask = video_input_mask,
+            attention_mask = attention_mask,
+            labels = labels
+        )
 
-    output_tensor = model(
-        input_ids = tokens,
-        position_ids = position_ids,
-        vision_data = vision_data,
-        vision_grid_thw =  vision_grid,
-        video_start_index = image_input_mask.sum().cpu().item(),
-        image_input_mask = image_input_mask,
-        video_input_mask = video_input_mask,
-        attention_mask = attention_mask,
-        labels = labels
-    )
-
-    return output_tensor, partial(loss_func, loss_mask)
+    return output_tensor, partial(loss_func, loss_mask, model=model)
 
 def run_online_eval(model):
     """Run an evaluation benchmark during training."""
@@ -518,7 +595,7 @@ def datasets_provider(worker_config=None):
         worker_config=worker_config,
         virtual_epoch_length=0,
         max_samples_per_sequence=100,
-        shuffle_buffer_size=0,
+        shuffle_buffer_size=100,
         handler=print_error_handler,
         image_decode="pil",
     )

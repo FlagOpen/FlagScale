@@ -45,6 +45,8 @@ def convert(
         with open(json_file, "r") as f:
             data = [json.loads(l) for l in f.readlines()]
 
+    print(f"Loaded {len(data)} entries")
+
     # custom webdataset ShardWriter Encoder
     # "jpgs": the key when saving the image, see line 93
     # "videos": the key when saving the video, see line 92
@@ -180,7 +182,7 @@ if __name__ == "__main__":
         max_count=args.max_samples_per_tar,
         image_key=args.images_key,
         video_key=args.videos_key,
-        vision_dir=args.vision_root
+        vision_dir=args.vision_root,
     )
     print(f"Generating Configurations")
     # NOTE: split_ratio: train/val/test

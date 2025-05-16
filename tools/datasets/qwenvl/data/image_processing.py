@@ -11,9 +11,10 @@ from PIL import Image, ImageDraw
 from torchvision import transforms as T
 from torchvision.transforms import Compose, RandAugment, RandomResizedCrop, Resize, ToPILImage
 
+# config :https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct/blob/main/preprocessor_config.json
 # Imagenet's mean and std.
-pixel_mean = [123.675, 116.28, 103.53]
-pixel_std = [58.395, 57.12, 57.375]
+pixel_mean = [0.48145466, 0.4578275, 0.40821073]
+pixel_std = [0.26862954, 0.26130258, 0.27577711]
 
 # Reshape for broadcasting.
 pixel_mean = torch.Tensor(pixel_mean).view(-1, 1, 1)
@@ -57,14 +58,14 @@ def _transform_test():
 
 def standardize_image(img):
     """Standardize image pixel values."""
-    return (torch.Tensor(np.array(img)).permute(2, 0, 1) - pixel_mean) / pixel_std
+    return (T.ToTensor()(img) - pixel_mean) / pixel_std
 
 
 def get_visual_transform(
     img,
     factor: int = 28,
-    min_pixels: int = 56 * 56,
-    max_pixels: int = 14 * 14 * 4 * 1280,
+    min_pixels: int = 4 * 28 * 28,
+    max_pixels: int = 16384 * 28 * 28,
     augment=False,
 ):
     img = np.array(img)
@@ -90,8 +91,8 @@ def smart_resize(
     height: int,
     width: int,
     factor: int = 28,
-    min_pixels: int = 56 * 56,
-    max_pixels: int = 14 * 14 * 4 * 1280,
+    min_pixels: int = 4 * 28 * 28,
+    max_pixels: int = 16384 * 28 * 28,
 ):
     """Rescales the image so that the following conditions are met:
 
