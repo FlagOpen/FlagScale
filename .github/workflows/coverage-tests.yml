@@ -50,6 +50,7 @@ jobs:
         run: |
           pip install gitpython # TODO: Remove after updating the image
 
+          git config --global --add safe.directory /__w/FlagScale/FlagScale
           if [ "${{ inputs.backend }}" = "megatron" ] || [ "${{ inputs.backend }}" = "flagscale" ]; then
             python tools/patch/unpatch.py --backend Megatron-LM
           elif [ "${{ inputs.backend }}" = "vllm" ]; then

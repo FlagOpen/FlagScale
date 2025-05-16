@@ -48,6 +48,7 @@ jobs:
         run: |
           pip install gitpython # TODO: Remove after updating the image
 
+          git config --global --add safe.directory /__w/FlagScale/FlagScale
           if [ "${{ inputs.type }}" = "train" ] || [ "${{ inputs.type }}" = "hetero_train" ]; then
             python tools/patch/unpatch.py --backend Megatron-LM
           elif [ "${{ inputs.type }}" = "inference" ] || [ "${{ inputs.type }}" = "serve" ]; then
