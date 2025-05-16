@@ -556,7 +556,7 @@ class ServeSearcher(Searcher):
     def _create_space_aware_nodes(self, space, cards, engine):
         if cards == 1:
             for k in self._nodes_aware_dims[engine]:
-                space[k] = 1
+                space[k] = [1]
 
         fixed_dims = {}
         for idx, key in enumerate(self._nodes_aware_dims[engine]):
