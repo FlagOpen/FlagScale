@@ -123,6 +123,8 @@ class LoadManager:
             return self.get_robin_loaded(rtype)
         elif load_type == "slo":
             return self.get_slo_loaded(rtype, token_num)
+        else:
+            raise ValueError(f"Unknown load type: {load_type}")
 
 
 # -----------------------------------------------------------------------------
@@ -136,7 +138,7 @@ decode_instances: dict[str, str] = {}
 prefill_cv = threading.Condition()
 decode_cv = threading.Condition()
 
-# Scheduling strategy: 'random', 'robin', 'slo' (robin load)
+# Scheduling strategy: 'random', 'robin', 'slo'
 SCHEDULING_STRATEGY = os.environ.get("SCHEDULING_STRATEGY", "slo").lower()
 
 
