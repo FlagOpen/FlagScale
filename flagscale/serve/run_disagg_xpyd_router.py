@@ -95,14 +95,14 @@ class LoadManager:
     def get_random(self, rtype: str) -> tuple[str, str]:
         with self._lock:
             items = list(self._instances[rtype].items())
-            print(f"========== whole instance status {self._instances}==========", flush=True)
+            logger.info(f"========== whole instance status {self._instances}==========", flush=True)
         http_addr, info = random.choice(items)
         return http_addr, info["zmq"]
 
     def get_robin_loaded(self, rtype: str) -> tuple[str, str]:
         with self._lock:
             http_addr, info = min(self._instances[rtype].items(), key=lambda kv: kv[1]["load_num"])
-            print(f"========== whole instance status {self._instances}==========", flush=True)
+            logger.info(f"========== whole instance status {self._instances}==========", flush=True)
         return http_addr, info["zmq"]
 
     def get_slo_loaded(self, rtype: str, token_num: int = -1) -> tuple[str, str]:
@@ -111,7 +111,7 @@ class LoadManager:
                 self._instances[rtype].items(),
                 key=lambda kv: (kv[1]["load_len"] + token_num) / kv[1]["compute_ratio"],
             )
-            print(f"========== whole instance status {self._instances}==========", flush=True)
+            logger.info(f"========== whole instance status {self._instances}==========", flush=True)
         return http_addr, info["zmq"]
 
     def get_loaded(
@@ -227,7 +227,9 @@ async def handle_request():
                 prompt_tokens_num = count_chat_tokens(original_data["messages"])
             else:
                 prompt_tokens_num = count_text_tokens(original_data["prompt"])
-        print(f"---------------- prompt_tokens_num {prompt_tokens_num} -------------- ", flush=True)
+        logger.info(
+            f"---------------- prompt_tokens_num {prompt_tokens_num} -------------- ", flush=True
+        )
 
         # Prefill request: max_tokens=1
         prefill_request = original_data.copy()
@@ -283,7 +285,9 @@ def main():
         raise ValueError("No port specified in deploy config")
     if not pd_proxy_port:
         raise ValueError("No pd_proxy_port specified in deploy config")
-    print(f"Starting Proxy Server...with pd_proxy_port {pd_proxy_port} and serve_port {serve_port}")
+    logger.info(
+        f"Starting Proxy Server...with pd_proxy_port {pd_proxy_port} and serve_port {serve_port}"
+    )
     listener = start_service_discovery("0.0.0.0", pd_proxy_port)
     app.run(host="0.0.0.0", port=serve_port)
     listener.join()
