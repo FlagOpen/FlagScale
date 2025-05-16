@@ -109,8 +109,9 @@ jobs:
     needs:
       - set-env
       - functional-tests-train
+    runs-on: ubuntu-latest
     steps: 
-      - name: mock_run
+      - name: Mock Run
         run: echo "pass"
     # TODO: test need fix
     # uses: ./.github/workflows/functional-tests.yml
@@ -128,8 +129,9 @@ jobs:
     needs:
       - set-env
       - functional-tests-hetero
+    runs-on: ubuntu-latest
     steps: 
-      - name: mock_run
+      - name: Mock Run
         run: echo "pass"
     # TODO: test need fix
     # uses: ./.github/workflows/functional-tests.yml
