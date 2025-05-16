@@ -81,7 +81,6 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     with checkpoint_context:
         # Atten Fwd
         detached_layer_input = detach_tensor(hidden_states, checkpoint_forward=checkpoint)
-
         # Residual connection.
         residual1 = detached_layer_input
 
@@ -724,20 +723,26 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         probs_detached = detach_tensor(probs, checkpoint_forward=checkpoint)
         perm1_local_input_tokens, perm1_probs, tokens_per_expert = alltoall_token_perm1(fwd_layer.mlp.token_dispatcher, detached_mlp_input, probs_detached, routing_map)
 
+    last_comm_handle = shared_experts_allgather_handle if shared_experts_allgather_handle else bwd_unperm_a2a_handle
     with checkpoint_context:
         # Async Perm A2A.
         _, perm1_local_input_tokens_a2a, perm1_local_input_tokens_a2a_handle = async_all_to_all(
             perm1_local_input_tokens,
             fwd_layer.mlp.token_dispatcher.output_splits,
             fwd_layer.mlp.token_dispatcher.input_splits,
-            ep_group
+            ep_group,
+            event=last_comm_handle,
+            stream=torch.cuda.current_stream(),
         )
+        last_comm_handle_1 = perm1_local_input_tokens_a2a_handle
         _, perm1_probs_a2a, perm1_probs_a2a_handle = async_all_to_all(
             perm1_probs,
             fwd_layer.mlp.token_dispatcher.output_splits,
             fwd_layer.mlp.token_dispatcher.input_splits,
-            ep_group
+            ep_group,
+            stream=torch.cuda.current_stream(),
         )
+        last_comm_handle_2 = perm1_probs_a2a_handle
 
     with checkpoint_context:
         shared_expert_output = None
@@ -762,12 +767,8 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     bwd_unperm_a2a_handle = None
     run_graph_backward(bwd_layer_graph.unperm1_graph, unperm1_out_grad)
     unperm1_out_grad.untyped_storage().resize_(0)
-
-
     turn_experts_delay_wgrad_compute(bwd_layer_graph, enable=True)
     run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
-
-
     run_graph_backward(bwd_layer_graph.perm2_graph, keep_graph=True)  # keep for dw
     run_graph_backward(bwd_layer_graph.perm2_append_graph, keep_graph=True)
     
@@ -782,15 +783,18 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         bwd_layer_graph.perm_a2a_graph[1].grad,
         bwd_layer_graph.input_splits,
         bwd_layer_graph.output_splits,
-        ep_group
+        ep_group,
+        stream=torch.cuda.current_stream(),
     )
-
+    last_comm_handle_1 = bwd_perm_a2a_handle1
     _, perm1_out2_grad, bwd_perm_a2a_handle2 = async_all_to_all(
         bwd_layer_graph.perm_a2a_append_graph[1].grad,
         bwd_layer_graph.input_splits,
         bwd_layer_graph.output_splits,
-        ep_group
+        ep_group,
+        stream=torch.cuda.current_stream(),
     )
+    last_comm_handle_2 = bwd_perm_a2a_handle2
 
     # launch shared expert grad allgather here
     if tp_size > 1 and moe_shared_expert_overlap:
@@ -849,7 +853,8 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             unperm1_hidden_states,
             fwd_layer.mlp.token_dispatcher.input_splits,
             fwd_layer.mlp.token_dispatcher.output_splits,
-            ep_group
+            ep_group,
+            stream=torch.cuda.current_stream(),
         )
 
     run_graph_backward(bwd_layer_graph.perm1_graph, perm1_out1_grad)
