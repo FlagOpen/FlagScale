@@ -50,4 +50,16 @@ jobs:
           echo "After 'Run Unit Test' is completed/stopped, you can access the test coverage report at http://${REPORT_ADDR}/${{github.sha}}/cov-report-${{ inputs.backend }}/index.html"
 
       - name: Run Unit Test
-        run: tests/scripts/unit_tests/test_subset.sh --backend ${{ inputs.backend }} --subset ${{ inputs.subset }} --id ${{ github.sha }}
+        run: |
+          pip install git python # TODO: Remove after updating the image
+
+          if [ "${{ inputs.backend }}" = "megatron" ] || [ "${{ inputs.backend }}" = "flagscale" ]; then
+            python tools/patch/unpatch.py --backend Megatron-LM
+          elif [ "${{ inputs.backend }}" = "vllm" ]; then
+            python tools/patch/unpatch.py --backend vllm
+          else
+            echo "Unknown backend type: ${{ inputs.backend }}"
+            exit 1
+          fi
+
+          tests/scripts/unit_tests/test_subset.sh --backend ${{ inputs.backend }} --subset ${{ inputs.subset }} --id ${{ github.sha }}

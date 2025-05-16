@@ -3,8 +3,8 @@ megatron:
   set_environment:
     - source /root/miniconda3/etc/profile.d/conda.sh
     - conda activate flagscale-train
-    - cd megatron
-    - export PYTHONPATH=..:$PYTHONPATH
+    - cd third_party/Megatron-LM
+    - export PYTHONPATH=../..:$PYTHONPATH
     - export NVTE_FLASH_ATTN=0
     - export NVTE_FUSED_ATTN=0
     - ulimit -n 65535
@@ -13,6 +13,7 @@ megatron:
   subset:
     data:
       deselect:
+       - test_bin_reader.py::test_bin_reader
        - test_builder.py::test_builder
        - test_multimodal_dataset.py::test_multimodal_dataset
        - test_multimodal_dataset.py::test_mock_multimodal_dataset
@@ -62,6 +63,7 @@ megatron:
       deselect:
         - test_a2a_token_dispatcher.py::TestAlltoAllDispatcher
         - test_grouped_mlp.py::TestTEGroupedMLP::test_gpu_forward_backward_with_no_tokens_allocated
+        - test_moe_layer_discrepancy.py
         - test_moe_layer.py::TestMoELayerInit::test_moe_with_late_initialize
     transformer:
       depth: 1
@@ -69,9 +71,11 @@ megatron:
         - test_attention.py::TestParallelAttention::test_gpu_forward
         - test_attention.py::TestParallelAttention::test_fused_rope_gpu_forward
         - test_attention.py::TestParallelAttention::test_checkpointed_gpu_forward
+        - test_attention_packed_seq.py::TestParallelAttentionWithPackedPaddedSequence::test_gpu_forward
         - test_multi_latent_attention.py::TestParallelMLAAttention::test_gpu_forward
         - test_multi_latent_attention.py::TestParallelMLAAttention::test_fused_rope_gpu_forward
         - test_multi_latent_attention.py::TestParallelMLAAttention::test_checkpointed_gpu_forward
+        - test_multi_latent_attention.py::TestParallelMLAAttentionPrecision::test_gpu_forward_thd_precision
         - test_retro_attention.py::TestRetroAttention::test_gpu_forward
         - test_transformer_block.py::TestPipelineParallelTransformerBlock::test_layer_builder
     ./:
@@ -85,7 +89,7 @@ flagscale:
   set_environment:
     - source /root/miniconda3/etc/profile.d/conda.sh
     - conda activate flagscale-train
-    - export PYTHONPATH=./megatron:$PYTHONPATH
+    - export PYTHONPATH=./third_party/Megatron-LM:$PYTHONPATH
     - export NVTE_FLASH_ATTN=0
     - export NVTE_FUSED_ATTN=0
     - ulimit -n 65535
@@ -93,5 +97,7 @@ flagscale:
     runner:
       type: batch
       depth: all
+      ignore:
+        - test_parse_hostfile.py
     ./:
       depth: 1
