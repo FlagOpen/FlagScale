@@ -109,7 +109,9 @@ jobs:
     needs:
       - set-env
       - functional-tests-train
-    run: echo "pass"
+    steps: 
+      - name: mock_run
+        run: echo "pass"
     # TODO: test need fix
     # uses: ./.github/workflows/functional-tests.yml
     # strategy:
@@ -126,7 +128,9 @@ jobs:
     needs:
       - set-env
       - functional-tests-hetero
-    run: echo "pass"
+    steps: 
+      - name: mock_run
+        run: echo "pass"
     # TODO: test need fix
     # uses: ./.github/workflows/functional-tests.yml
     # strategy:
