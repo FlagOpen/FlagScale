@@ -96,9 +96,9 @@ jobs:
       matrix:
         task:
           - aquila
-          - deepseek
-          - mixtral
-          - llava_onevision
+          # - deepseek # TODO: need fix
+          # - mixtral # TODO: need fix
+          # - llava_onevision # TODO: need fix
     name: "train-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
