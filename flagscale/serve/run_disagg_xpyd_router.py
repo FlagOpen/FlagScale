@@ -58,7 +58,7 @@ def count_text_tokens(prompt: str) -> int:
 class LoadManager:
     def __init__(self):
         self._lock = threading.Lock()
-        # Each resource type 'P' or 'D' maps to {http_addr: {'zmq': zmq_addr, 'load_num': int, 'load_len': int, compute_ratio: float}}
+        # Each resource type 'P' or 'D' maps to {http_addr: {'zmq': zmq_addr, 'load_num': int, 'load_len': int, 'compute_ratio': float}}
         # load_num: num of req, load_len: num of tokens
         self._instances: dict[str, dict[str, dict[str, object]]] = {"P": {}, "D": {}}
 
