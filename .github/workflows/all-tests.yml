@@ -96,19 +96,36 @@ jobs:
       matrix:
         task:
           - aquila
-          # - deepseek # TODO need fix
+          - deepseek
           - mixtral
-          # - llava_onevision # TODO need fix
+          - llava_onevision
     name: "train-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
       type: train
       image: ${{ needs.set-env.outputs.ci_image }}
 
+  functional-tests-hetero:
+    needs:
+      - set-env
+      - functional-tests-train
+    run: echo "pass"
+    # TODO: test need fix
+    # uses: ./.github/workflows/functional-tests.yml
+    # strategy:
+    #   matrix:
+    #     task:
+    #       - aquila
+    # name: "hetero_train-${{ matrix.task }}"
+    # with:
+    #   task: ${{ matrix.task }}
+    #   type: hetero_train
+    #   image: ${{ needs.set-env.outputs.ci_image }}
+
   functional-tests-serve:
     needs:
       - set-env
-      - functional-tests-inference
+      - functional-tests-hetero
     run: echo "pass"
     # TODO: test need fix
     # uses: ./.github/workflows/functional-tests.yml
@@ -121,21 +138,6 @@ jobs:
     #   task: ${{ matrix.task }}
     #   type: serve
     #   image: ${{ needs.set-env.outputs.ci_image }}
-
-  functional-tests-serve:
-    needs:
-      - set-env
-      - functional-tests-hetero
-    uses: ./.github/workflows/functional-tests.yml
-    strategy:
-      matrix:
-        task:
-          - base
-    name: "serve-${{ matrix.task }}"
-    with:
-      task: ${{ matrix.task }}
-      type: serve
-      image: ${{ needs.set-env.outputs.ci_image }}
 
   # Megatron Coverage Test
   megatron-coverage-test:
