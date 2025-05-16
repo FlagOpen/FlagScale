@@ -95,6 +95,7 @@ class LoadManager:
     def get_random(self, rtype: str) -> tuple[str, str]:
         with self._lock:
             items = list(self._instances[rtype].items())
+            print(f"========== whole instance status {self._instances}==========", flush=True)
         http_addr, info = random.choice(items)
         return http_addr, info["zmq"]
 
@@ -114,7 +115,7 @@ class LoadManager:
         return http_addr, info["zmq"]
 
     def get_loaded(
-        self, rtype: str, load_type: str = "robin", token_num: int = -1
+        self, rtype: str, load_type: str = "robin", token_num: int = 0
     ) -> tuple[str, str]:
         if load_type == "random":
             return self.get_random(rtype)
@@ -135,8 +136,8 @@ decode_instances: dict[str, str] = {}
 prefill_cv = threading.Condition()
 decode_cv = threading.Condition()
 
-# Scheduling strategy: 'random' or 'robin' (robin load)
-SCHEDULING_STRATEGY = os.environ.get("SCHEDULING_STRATEGY", "robin").lower()
+# Scheduling strategy: 'random', 'robin', 'slo' (robin load)
+SCHEDULING_STRATEGY = os.environ.get("SCHEDULING_STRATEGY", "slo").lower()
 
 
 # -----------------------------------------------------------------------------
