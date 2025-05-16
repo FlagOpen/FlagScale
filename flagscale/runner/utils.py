@@ -419,9 +419,7 @@ async def async_request_openai_chat_completions(
                             timestamp = time.perf_counter()
                             data = json.loads(chunk)
 
-                            # llamap.cpp's last response has "choices", bot delta is null
-                            choices = data.get("choices")
-                            if choices and choices[0].get("delta"):
+                            if choices := data.get("choices"):
                                 content = choices[0]["delta"].get("content")
                                 # First token
                                 if ttft == 0.0:
@@ -433,7 +431,9 @@ async def async_request_openai_chat_completions(
                                     output.itl.append(timestamp - most_recent_timestamp)
 
                                 generated_text += content or ""
-                            elif usage := data.get("usage"):
+
+                            # llamap.cpp's last response has "choices", bot delta is null
+                            if usage := data.get("usage", {}).get("completion_tokens"):
                                 output.output_tokens = usage.get("completion_tokens")
 
                             most_recent_timestamp = timestamp
