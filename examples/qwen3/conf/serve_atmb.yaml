@@ -13,19 +13,19 @@ experiment:
     use_fs_serve: false
   runner:
     nnodes: 1
-    nproc_per_node: 4
+    nproc_per_node: 1
   auto_tuner:
-    engines: [llama_cpp, vllm]
+    engines: [vllm, llama_cpp]
     space:
       vllm:
-        tensor_model_parallel_size: "auto"
-        pipeline_model_parallel_size: [1, 2]
-        block_size: [16]
+        tensor_model_parallel_size: [1]
+        pipeline_model_parallel_size: [1]
+        block_size: [16, 32]
         max_num_batched_tokens: [512]
         max_num_seqs: [128]
       llama_cpp:
         threads: [64, 32, 16]
-    cards: 4
+    cards: 1
     control:
       interval: 10
       run_best: False

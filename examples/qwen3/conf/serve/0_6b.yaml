@@ -22,4 +22,4 @@
     prefix_len: 0
     input_len: 1024
     output_len: 1024
-    num_prompts: 64
+    num_prompts: 2
