@@ -433,8 +433,8 @@ async def async_request_openai_chat_completions(
                                 generated_text += content or ""
 
                             # llamap.cpp's last response has "choices", bot delta is null
-                            if usage := data.get("usage", {}).get("completion_tokens"):
-                                output.output_tokens = usage.get("completion_tokens")
+                            if completion_tokens := data.get("usage", {}).get("completion_tokens"):
+                                output.output_tokens = completion_tokens
 
                             most_recent_timestamp = timestamp
 
