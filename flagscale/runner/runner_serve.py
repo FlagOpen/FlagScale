@@ -113,15 +113,12 @@ def _get_profile_args(config, model="vllm_model"):
     serve_config = config.get("serve", [])
     if not serve_config:
         raise ValueError(f"No 'serve' configuration found in task config: {serve_config}")
-    profile_args = {}
 
+    profile_args = {}
     for item in serve_config:
         if item.get("serve_id", None) == model:
             profile_args = item.get("profile", {})
             break
-    if not profile_args:
-        raise ValueError(f"No 'profile_args' configuration found in task config: {serve_config}")
-
     return profile_args
 
 
