@@ -387,6 +387,8 @@ async def async_request_openai_chat_completions(
             "max_completion_tokens": request_func_input.output_len,
             "stream": True,
             "stream_options": {"include_usage": True},
+            # max_completion_tokens is invalid for llama.cpp
+            "n_predict": request_func_input.output_len,
         }
         if request_func_input.ignore_eos:
             payload["ignore_eos"] = request_func_input.ignore_eos
