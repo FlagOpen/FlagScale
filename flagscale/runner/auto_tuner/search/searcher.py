@@ -535,9 +535,6 @@ class ServeSearcher(Searcher):
 
         print("ServeSearcher.space", self.space)
         print("ServeSearcher.strategies", self.strategies)
-        import pdb
-
-        pdb.set_trace()
 
     def _init_engines(self, config):
         self.engines = config.experiment.auto_tuner.get("engines", None)
