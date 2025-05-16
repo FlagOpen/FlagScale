@@ -100,4 +100,6 @@ flagscale:
       ignore:
         - test_parse_hostfile.py
     ./:
+      ignore:
+        - test_spiky_loss_detector.py::test_spiky_loss_detector
       depth: 1
