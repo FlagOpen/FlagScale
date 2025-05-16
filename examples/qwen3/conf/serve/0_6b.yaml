@@ -10,7 +10,8 @@
   engine_args_specific:
     llama_cpp:
       threads: 4
-      # n_gpu_layers: 16
+      n_gpu_layers: 64
+      device: CUDA0
     vllm:
       tensor_parallel_size: 1
       pipeline_parallel_size: 1

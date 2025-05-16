@@ -15,7 +15,7 @@ experiment:
     nnodes: 1
     nproc_per_node: 1
   auto_tuner:
-    engines: [vllm, llama_cpp]
+    engines: [llama_cpp, vllm]
     space:
       vllm:
         tensor_model_parallel_size: [1]
