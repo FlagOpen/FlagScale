@@ -1,4 +1,5 @@
 system:
+  calculate_per_token_loss: true
   tensor_model_parallel_size: 2
   pipeline_model_parallel_size: 2
   context_parallel_size: 1
@@ -36,6 +37,7 @@ system:
     async_save: False
 
 model:
+  attention_backend: flash # auto: nvte_flash_attn
   disable_bias_linear: True
   add_qkv_bias: True
   num_layers: 64

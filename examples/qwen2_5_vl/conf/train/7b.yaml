@@ -1,6 +1,6 @@
 system:
-  # calculate_per_token_loss: true # very slow, why?
-  tensor_model_parallel_size: 2
+  calculate_per_token_loss: true
+  tensor_model_parallel_size: 1
   pipeline_model_parallel_size: 1
   context_parallel_size: 1
   # decoder_first_pipeline_num_layers: 12
@@ -13,9 +13,9 @@ system:
   overlap_param_gather: False # if has text-only must be false
   use_mcore_models: True
   transformer_impl: transformer_engine
-  # recompute_method: "uniform"
-  # recompute_granularity: "full"
-  # recompute_num_layers: 4
+  recompute_method: "uniform"
+  recompute_granularity: "full"
+  recompute_num_layers: 4
   use_te: True
   precision:
     bf16: True
@@ -30,13 +30,14 @@ system:
     log_num_zeros_in_grad: True
   checkpoint:
     save_interval: 1000
-    pretrained_checkpoint: /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct_mc_tp2
+    pretrained_checkpoint: /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct_mc_tp1
     dataloader_save: ${experiment.exp_dir}/checkpoints/dataloader
     use_dist_ckpt: False
     ckpt_format: torch
     async_save: False
 
 model:
+  attention_backend: flash # don't use "auto(nvte_flash_attn)"
   disable_bias_linear: True
   add_qkv_bias: True
   num_layers: 28
@@ -58,7 +59,7 @@ model:
   clip_grad: 1.0
   train_iters: 62
   eval_iters: 0 # no valid
-  micro_batch_size: 2
+  micro_batch_size: 1
   global_batch_size: 16
   allow_missing_vision_projection_checkpoint: False
   apply_layernorm_1p: False
@@ -94,8 +95,8 @@ model:
 
 data:
   # data_path: /share/project/lizhiyu/data/vg_single/wds
-  data_path: /share/project/lizhiyu/data/robovqa_mul/wds
-  # data_path: /share/project/lizhiyu/data/robovqa_1000_cp/wds
+  # data_path: /share/project/lizhiyu/data/robovqa_mul/wds
+  data_path: /share/project/lizhiyu/data/robovqa_1000_cp/wds
   # data_path: /share/project/lizhiyu/data/single_img/wds
   # data_path: /share/project/lizhiyu/FlagScale/examples/qwen2_5_vl/conf/train/belend_dataset.yaml
   dataloader_type: external

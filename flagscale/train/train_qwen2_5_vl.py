@@ -16,6 +16,7 @@
 
 import os
 import sys
+import logging
 from functools import partial
 from copy import deepcopy
 from typing import List, Optional, Tuple, Union
@@ -46,7 +47,7 @@ from megatron.core.models.gpt.heterogeneous.heterogeneous_layer_specs import (
 from megatron.core.rerun_state_machine import get_rerun_state_machine
 from megatron.core.transformer.spec_utils import import_module
 from megatron.core.utils import StragglerDetector
-from megatron.training import get_args, get_timers, get_tokenizer, pretrain, print_rank_0
+from megatron.training import get_args, get_timers, get_tokenizer, print_rank_0
 from megatron.training.arguments import core_transformer_config_from_args
 from megatron.training.utils import (
     get_batch_on_this_cp_rank,
@@ -400,12 +401,18 @@ def get_batch(data_iterator):
     if data_iterator is not None and get_tensor_model_parallel_rank() == 0:
         data = next(data_iterator)
         pad_token_id = get_tokenizer().pad_token_id
-        # while (data["target"] == pad_token_id).all() or data["target"].shape[-1] < 986: # for debug
+        # while (data["target"] == pad_token_id).all() or (data["target"].shape[-1] < 986 or data["target"].shape[-1] > 1000): # for debug
         while (data["target"] == pad_token_id).all():
-            print("The current data is invalid because the target is all pad_token_id! Get next data!")
+            logging.getLogger(__name__).warning("The current data is invalid because the target is all pad_token_id! Get next data to avoid fail, but it's better to check the data!")
             data = next(data_iterator)
     else:
         data = None
+
+    # if data is not None:
+    #     for k, v in data.items():
+    #         if isinstance(v, torch.Tensor):
+    #             print(f"LZY: data: k: {k}, v shape: {v.shape}")
+
 
     data_text =  broadcast_data(["text"], data, torch.int64)["text"]
 
