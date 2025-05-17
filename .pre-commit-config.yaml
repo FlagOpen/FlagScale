@@ -6,6 +6,7 @@ exclude: |
         hardware/.*\.patch|
         .*\.txt|
         .*\.yaml|
+        .*\.yml|
         .*\.sh$  # Exclude all .sh files
     )$
 repos:
