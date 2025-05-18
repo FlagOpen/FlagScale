@@ -134,10 +134,10 @@ jobs:
       matrix:
         task:
           - deepseek
-    name: "train-${{ matrix.task }}"
+    name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
-      type: train
+      type: inference
       image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-serve:
