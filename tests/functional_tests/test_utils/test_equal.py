@@ -13,7 +13,7 @@ def find_directory(start_path, target_dir_name):
 
 
 @pytest.mark.usefixtures("test_path", "test_type", "test_task", "test_case")
-def test_equal(test_path, test_type, test_task, test_case):
+def test_train_equal(test_path, test_type, test_task, test_case):
     # Construct the test_result_path using the provided fixtures
     test_result_path = os.path.join(test_path, test_type, test_task, "results_test", test_case)
     start_path = os.path.join(test_result_path, "logs/details/host_0_localhost")
@@ -61,3 +61,45 @@ def test_equal(test_path, test_type, test_task, test_case):
     assert np.allclose(
         gold_result_json["lm loss:"]["values"], result_json["lm loss:"]["values"]
     ), "Result not close to gold result"
+
+
+@pytest.mark.usefixtures("test_path", "test_type", "test_task", "test_case")
+def test_inference_equal(test_path, test_type, test_task, test_case):
+    # Construct the test_result_path using the provided fixtures
+    test_result_path = os.path.join(test_path, test_type, test_task, "results_test", test_case)
+    result_path = os.path.join(test_result_path, "inference_logs/host_0_localhost.output")
+
+    print("result_path:", result_path)
+
+    assert os.path.exists(result_path), f"Failed to find 'stdout.log' at {result_path}"
+
+    with open(result_path, "r") as file:
+        lines = file.readlines()
+
+    result_lines = []
+    output = False
+    for line in lines:
+        print(line, line == "**************************************************\n")
+        if line == "**************************************************\n":
+            output = True
+        if output == True:
+            result_lines.append(line)
+
+    gold_value_path = os.path.join(
+        test_path, test_type, test_task, "results_gold", test_case
+    )
+    assert os.path.exists(gold_value_path), f"Failed to find gold result at {gold_value_path}"
+
+    with open(gold_value_path, "r") as file:
+        gold_value_lines = file.readlines()
+
+    print("\nResult checking")
+    print("Result: ", result_lines)
+    print("Gold Result: ", gold_value_lines)
+
+    print("len(result_lines), (gold_value_lines): ", len(result_lines), len(gold_value_lines))
+    assert len(result_lines) == len(gold_value_lines)
+
+    for result_line, gold_value_line in zip(result_lines, gold_value_lines):
+        print(result_line, gold_value_line)
+        assert result_line == gold_value_line
