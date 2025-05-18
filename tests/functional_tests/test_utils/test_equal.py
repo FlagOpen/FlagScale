@@ -85,9 +85,7 @@ def test_inference_equal(test_path, test_type, test_task, test_case):
         if output == True:
             result_lines.append(line)
 
-    gold_value_path = os.path.join(
-        test_path, test_type, test_task, "results_gold", test_case
-    )
+    gold_value_path = os.path.join(test_path, test_type, test_task, "results_gold", test_case)
     assert os.path.exists(gold_value_path), f"Failed to find gold result at {gold_value_path}"
 
     with open(gold_value_path, "r") as file:
