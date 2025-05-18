@@ -140,10 +140,10 @@ jobs:
       type: train
       image: ${{ needs.set-env.outputs.ci_image }}
 
-  functional-tests-inference:
+  functional-tests-serve:
     needs:
       - set-env
-      - functional-tests-hetero
+      - functional-tests-inference
     runs-on: ubuntu-latest
     steps: 
       - name: Mock Run
