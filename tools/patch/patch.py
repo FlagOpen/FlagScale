@@ -492,5 +492,5 @@ if __name__ == "__main__":
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
             patch(
-                main_path, src, dst, mode, commit=commit, backends=backends, device_type=device_type, tasks=tasks, key_path=key_path
+                main_path, backend, src, dst, mode, commit=commit, backends=backends, device_type=device_type, tasks=tasks, key_path=key_path
             )
