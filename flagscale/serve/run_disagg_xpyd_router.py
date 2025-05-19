@@ -35,6 +35,9 @@ serve.load_args()
 TASK_CONFIG = serve.task_config
 MODEL_PATH = TASK_CONFIG.serve[0].get("engine_args", {}).get("model", None)
 
+# Scheduling strategy: 'random', 'robin', 'slo'
+SCHEDULING_STRATEGY = TASK_CONFIG.experiment.get("deploy", {}).get("prefill_decode_strategy", "slo")
+
 
 @lru_cache(maxsize=32)
 def load_hf_tokenizer(model_path: str):
@@ -137,9 +140,6 @@ prefill_instances: dict[str, str] = {}
 decode_instances: dict[str, str] = {}
 prefill_cv = threading.Condition()
 decode_cv = threading.Condition()
-
-# Scheduling strategy: 'random', 'robin', 'slo'
-SCHEDULING_STRATEGY = os.environ.get("SCHEDULING_STRATEGY", "slo").lower()
 
 
 # -----------------------------------------------------------------------------
