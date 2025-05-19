@@ -1,9 +1,9 @@
 defaults:
-  - train: 7b
+  - train: 7b_data_check
   - _self_
 
 experiment:
-  exp_name: train_qwen2_5_vl_7b
+  exp_name: train_qwen2_5_vl_7b_data_check_tp1
   exp_dir: ./${experiment.exp_name}
   task:
     type: train

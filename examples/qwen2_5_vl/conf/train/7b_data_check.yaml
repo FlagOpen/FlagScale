@@ -1,7 +1,7 @@
 system:
   num_workers: 1
   calculate_per_token_loss: true
-  tensor_model_parallel_size: 2
+  tensor_model_parallel_size: 1
   pipeline_model_parallel_size: 1
   context_parallel_size: 1
   # decoder_first_pipeline_num_layers: 12
@@ -14,9 +14,9 @@ system:
   overlap_param_gather: True # if has text-only must be false
   use_mcore_models: True
   transformer_impl: transformer_engine
-  # recompute_method: "uniform"
-  # recompute_granularity: "full"
-  # recompute_num_layers: 4
+  recompute_method: "uniform"
+  recompute_granularity: "full"
+  recompute_num_layers: 1
   use_te: True
   precision:
     bf16: True
@@ -31,7 +31,7 @@ system:
     log_num_zeros_in_grad: True
   checkpoint:
     save_interval: 1000
-    pretrained_checkpoint: /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct_mc_tp2
+    pretrained_checkpoint: /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct_mc_tp1
     dataloader_save: ${experiment.exp_dir}/checkpoints/dataloader
     use_dist_ckpt: False
     ckpt_format: torch
@@ -96,7 +96,7 @@ model:
 
 data:
   # data_path: /share/project/lizhiyu/data/data_check_200/wds
-  data_path: /share/project/lizhiyu/data/data_check_200k_str_one_tar/wds
+  data_path: /share/project/lizhiyu/data/data_check_200k_str_one_tar_tp1/wds
   vision_root: /share/project/caomingyu/robobrain_train_images
   # data_path: /share/project/lizhiyu/data/robovqa_1000_cp/wds
   # data_path: /share/project/lizhiyu/FlagScale/examples/qwen2_5_vl/conf/train/belend_dataset.yaml

@@ -605,6 +605,7 @@ def datasets_provider(worker_config=None):
         max_samples_per_sequence=args.max_samples_per_sequence, # sequential shuffle in a tar
         shuffle_buffer_size=args.shuffle_buffer_size, # shuffle in a sequential
         handler=print_error_handler,
+        repeat=False, # don't repeat the dataset
         image_decode="pil",
     )
     val_datasets_without_source_datasets = None
