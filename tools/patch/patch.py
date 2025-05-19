@@ -279,6 +279,7 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
                 tmep_patch_files.append(temp_yaml_path)
                 data = copy.deepcopy(patch_info)
                 del data["commit_msg"]
+                data["commit"] = commit
                 yaml.dump(data, temp_yaml_file, sort_keys=True, allow_unicode=True)
                 temp_yaml_file.flush()
                 patch_dir = os.path.join(
