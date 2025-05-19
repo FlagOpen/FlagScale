@@ -1,9 +1,12 @@
-# Copied from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/toolkits/multimodal_data_preprocessing/convert_custom_dataset_to_wds_chatml.py
+# Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/toolkits/multimodal_data_preprocessing/convert_custom_dataset_to_wds_chatml.py
+# We must store the path of vision data, not the real data.
+
 import json
 import os
 import pickle
 
 from argparse import ArgumentParser
+from typing import List, Union
 
 import cv2
 import webdataset as wds
@@ -25,6 +28,7 @@ def convert(
     image_key="images",
     video_key="videos",
     vision_dir=None,
+    dp_size=1,
 ):
     """
     Here we provide an example to convert llava-pretrain dataset to ChatMLSample
@@ -44,86 +48,85 @@ def convert(
     except:
         with open(json_file, "r") as f:
             data = [json.loads(l) for l in f.readlines()]
+    data_len = len(data)
+    print(f"Loaded {data_len} entries")
 
-    print(f"Loaded {len(data)} entries")
-
+    print(f"The fisrt entry in the dataset is {data[0]}")
+    if image_key not in data[0]:
+        print(f"Warning: {image_key} not found in the first entry")
+    if video_key not in data[0]:
+        print(f"Warning: {video_key} not found in the first entry")
     # custom webdataset ShardWriter Encoder
     # "jpgs": the key when saving the image, see line 93
     # "videos": the key when saving the video, see line 92
-    # when "shard_writer.write(sample)", use the default_handlers to encode the data
-    add_handlers(
-        default_handlers, "jpgs", lambda data: pickle.dumps([imageencoder(d, "jpg") for d in data])
-    )
-    add_handlers(
-        default_handlers,
-        "videos",
-        lambda data: pickle.dumps([[imageencoder(d, "jpg") for d in video] for video in data]),
-    )
+
+    add_handlers(default_handlers, 'jpgs', lambda data: pickle.dumps(data))
+    add_handlers(default_handlers, 'videos', lambda data: pickle.dumps(data))
+
+    def write_sample(entry, vision_dir, has_idx=None, idx=0):
+        # NOTE: read a dataset in sharegpt format
+        image_datas: List[str] = []
+        # NOTE: we support both list and str for image path.
+        image_paths = entry.get(image_key, [])
+        if isinstance(image_paths, str):
+            image_paths = [image_paths]
+        image_datas = image_paths
+
+        video_datas: List[List[str]] = []
+        second_per_grid_ts = []
+
+        for video in entry.pop(video_key, []):
+            video_noext, _ = os.path.splitext(video)
+            frame_folder = os.path.join(vision_dir, video_noext)
+            # NOTE: we implicitly require a `${frame_folder}.json`` file containing fps rates of each video
+            # otherwise fps will be regarded as `1` by default.
+            if os.path.exists(frame_folder + ".json"):
+                with open(frame_folder + ".json", "r") as f:
+                    fps = float(json.load(f)["fps"])
+            else:
+                fps = 2.0
+
+            frames: List[str] = []
+            for frame in sort_function(os.listdir(frame_folder)):
+                # get relative path（remove "vision_dir"）
+                relative_path = os.path.relpath(os.path.join(frame_folder, frame), start=vision_dir)
+                frames.appen(relative_path)
+
+            if len(frames) % 2 == 1:
+                frames = frames[:-1]
+            video_datas.append(frames)
+            second_per_grid_ts.append(1 / fps)
+
+        if has_idx is None:
+            has_idx = "id" in entry
+        assert has_idx == ("id" in entry), "All entries should either all contain idx or not."
+
+        sample = {
+            "__key__": entry.pop("id", str(idx)),
+            "jpgs": image_datas,
+            "videos": video_datas,
+            "json": json.dumps(
+                {"conversations": entry["conversations"], "second_per_grid_ts": second_per_grid_ts}
+            ).encode("utf-8"),
+        }
+        shard_writer.write(sample)
 
     has_idx = None
+    num_per_rank = data_len // dp_size
+    left_data_count = data_len % dp_size
     with wds.ShardWriter(
         os.path.join(output, "pretrain-%d.tar"), maxcount=max_count
     ) as shard_writer:
-        for idx, entry in enumerate(tqdm(data)):
-            if idx == 0:
-                print(f"The fisrt entry in the dataset is {entry}")
-                if image_key not in entry:
-                    print(f"Warning: {image_key} not found in the first entry")
-                if video_key not in entry:
-                    print(f"Warning: {video_key} not found in the first entry")
-            # NOTE: read a dataset in sharegpt format
-            image_datas = []
-            # NOTE: we support both list and str for image path.
-            image_paths = entry.get(image_key, [])
-            if isinstance(image_paths, str):
-                image_paths = [image_paths]
-            for image in image_paths:
-                cur_img = cv2.imread(os.path.join(vision_dir, image), cv2.IMREAD_UNCHANGED)
-                if len(cur_img.shape) == 3 and cur_img.shape[2] == 4:
-                    cur_img = cv2.cvtColor(cur_img, cv2.COLOR_RGBA2RGB)
-                image_datas.append(cur_img)
-
-            video_datas = []
-            second_per_grid_ts = []
-
-            for video in entry.pop(video_key, []):
-                video_noext, _ = os.path.splitext(video)
-                frame_folder = os.path.join(vision_dir, video_noext)
-                # NOTE: we implicitly require a `${frame_folder}.json`` file containing fps rates of each video
-                # otherwise fps will be regarded as `1` by default.
-                if os.path.exists(frame_folder + ".json"):
-                    with open(frame_folder + ".json", "r") as f:
-                        fps = float(json.load(f)["fps"])
-                else:
-                    fps = 2.0
-
-                frames = []
-                for frame in sort_function(os.listdir(frame_folder)):
-                    frames.append(
-                        cv2.imread(os.path.join(frame_folder, frame), cv2.IMREAD_UNCHANGED)
-                    )
-
-                if len(frames) % 2 == 1:
-                    frames = frames[:-1]
-                video_datas.append(frames)
-                second_per_grid_ts.append(1 / fps)
-
-            if has_idx is None:
-                has_idx = "id" in entry
-            assert has_idx == ("id" in entry), "All entries should either all contain idx or not."
-
-            sample = {
-                "__key__": entry.pop("id", str(idx)),
-                "jpgs": image_datas,
-                "videos": video_datas,
-                "json": json.dumps(
-                    {
-                        "conversations": entry["conversations"],
-                        "second_per_grid_ts": second_per_grid_ts,
-                    }
-                ).encode("utf-8"),
-            }
-            shard_writer.write(sample)
+        for rank in tqdm(range(dp_size)):
+            for id in tqdm(range(num_per_rank)):
+                data_id = id * dp_size + rank
+                entry = data[data_id]
+                write_sample(entry, vision_dir, has_idx=has_idx, idx=data_id)
+        if left_data_count > 0:
+            for idx, entry in enumerate(data[data_len - left_data_count :]):
+                write_sample(
+                    entry, vision_dir, has_idx=has_idx, idx=data_len - left_data_count + idx
+                )
 
     print(f"Dataset successfully converted to wds")
     return output
@@ -174,6 +177,8 @@ if __name__ == "__main__":
     argparser.add_argument("--val-split", default=0, type=float)
     argparser.add_argument("--test-split", default=0, type=float)
     argparser.add_argument("--shuffle-tars", action="store_true")
+    argparser.add_argument("--num-workers", default=1, type=int)
+    argparser.add_argument("--dp-size", default=1, type=int)
     args = argparser.parse_args()
     print(f"=======input args=======:\n{args}")
     output_dir = convert(
@@ -184,9 +189,12 @@ if __name__ == "__main__":
         image_key=args.images_key,
         video_key=args.videos_key,
         vision_dir=args.vision_root,
+        dp_size=args.dp_size,
     )
     print(f"Generating Configurations")
     # NOTE: split_ratio: train/val/test
     split = [args.train_split, args.val_split, args.test_split]
-    generate_configs(EPath(output_dir), split, shuffle_tars=args.shuffle_tars)
+    generate_configs(
+        EPath(output_dir), split, shuffle_tars=args.shuffle_tars, num_workers=args.num_workers
+    )
     print(f"Configurations Generated")

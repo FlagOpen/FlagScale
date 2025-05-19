@@ -21,12 +21,40 @@ from megatron.energon.flavors.webdataset import DefaultDecoderWebdatasetFactory
 class ChatMLSample(Sample):
     """multi-turn complex samples with images and videos"""
 
-    imgs: List[torch.Tensor]
-    videos: List[List[torch.Tensor]]
+    imgs: List[str]
+    videos: List[List[str]]
     conversation: str  # JSON string of GPT-format conversations
 
 
-class NestedImagesHandler:
+# class NestedImagesHandler:
+#     def __init__(self, imagespec):
+#         """Create an image handler.
+
+#         :param imagespec: short string indicating the type of decoding
+#         """
+#         self.extensions = ["jpgs", "videos"]
+#         self.extensions_mapping = {"jpgs": "jpg", "videos": "jpg"}
+#         self.image_handler = imagehandler(imagespec)
+
+#     def __call__(self, key, data):
+#         """Perform nested image decoding.
+
+#         :param key: file name extension
+#         :param data: binary data
+#         """
+#         extension = re.sub(r".*[.]", "", key)
+#         if extension.lower() not in self.extensions:
+#             return None
+#         data = pickle.loads(data)
+#         key = self.extensions_mapping[extension]
+#         if extension.lower() == "jpgs":
+#             data = [self.image_handler(key, d) for d in data]
+#         else:
+#             data = [[self.image_handler(key, d) for d in video] for video in data]
+#         return data
+
+
+class NestedImagesPathHandler:
     def __init__(self, imagespec):
         """Create an image handler.
 
@@ -34,7 +62,6 @@ class NestedImagesHandler:
         """
         self.extensions = ["jpgs", "videos"]
         self.extensions_mapping = {"jpgs": "jpg", "videos": "jpg"}
-        self.image_handler = imagehandler(imagespec)
 
     def __call__(self, key, data):
         """Perform nested image decoding.
@@ -46,11 +73,6 @@ class NestedImagesHandler:
         if extension.lower() not in self.extensions:
             return None
         data = pickle.loads(data)
-        key = self.extensions_mapping[extension]
-        if extension.lower() == "jpgs":
-            data = [self.image_handler(key, d) for d in data]
-        else:
-            data = [[self.image_handler(key, d) for d in video] for video in data]
         return data
 
 
@@ -81,10 +103,4 @@ class ChatMLWebdataset(DefaultDecoderWebdatasetFactory[ChatMLSample]):
             **kwargs,
         )
         if auto_decode:
-            self._decoder = Decoder(
-                [
-                    imagehandler(self.image_decode),
-                    NestedImagesHandler(self.image_decode),
-                    AVWebdatasetDecoder(video_decode_audio=video_decode_audio, av_decode=av_decode),
-                ]
-            )
+            self._decoder = Decoder([NestedImagesPathHandler(self.image_decode)])

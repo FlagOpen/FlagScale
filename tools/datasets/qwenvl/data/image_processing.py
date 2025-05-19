@@ -21,8 +21,14 @@ pixel_mean = torch.Tensor(pixel_mean).view(-1, 1, 1)
 pixel_std = torch.Tensor(pixel_std).view(-1, 1, 1)
 
 
-def convert_to_rgb(image):
-    return image.convert("RGB")
+# https://github.com/QwenLM/Qwen2.5-VL/blob/477fd9d4317266508705366ce36cac5b68d70936/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L89C1-L95C40
+def convert_to_rgb(pil_image: Image.Image) -> Image.Image:
+    if pil_image.mode == 'RGBA':
+        white_background = Image.new("RGB", pil_image.size, (255, 255, 255))
+        white_background.paste(pil_image, mask=pil_image.split()[3])  # Use alpha channel as mask
+        return white_background
+    else:
+        return pil_image.convert("RGB")
 
 
 def _transform_train_aug():
@@ -62,20 +68,16 @@ def standardize_image(img):
 
 
 def get_visual_transform(
-    img,
+    img,  # Path
     factor: int = 28,
     min_pixels: int = 4 * 28 * 28,
     max_pixels: int = 16384 * 28 * 28,
     augment=False,
 ):
-    img = np.array(img)
-
-    if augment:
-        visual_transform = _transform_train_aug()
-    else:
-        visual_transform = _transform_test()
-
-    img = visual_transform(img)
+    # TODO(lizhiyu): Need to limit the aspect ratio of the image.
+    # (reference https://github.com/QwenLM/Qwen2.5-VL/blob/477fd9d4317266508705366ce36cac5b68d70936/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L72)
+    img = Image.open(img)
+    img = convert_to_rgb(img)
     w, h = img.size
     h_bar, w_bar = smart_resize(h, w, factor, min_pixels, max_pixels)
     img = img.resize((w_bar, h_bar))

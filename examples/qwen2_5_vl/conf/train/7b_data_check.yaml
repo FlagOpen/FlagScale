@@ -1,7 +1,7 @@
 system:
   num_workers: 1
   calculate_per_token_loss: true
-  tensor_model_parallel_size: 1
+  tensor_model_parallel_size: 2
   pipeline_model_parallel_size: 1
   context_parallel_size: 1
   # decoder_first_pipeline_num_layers: 12
@@ -10,13 +10,13 @@ system:
   use_distributed_optimizer: True
   sequence_parallel: True
   tp_comm_overlap: False
-  overlap_grad_reduce: False # if has text-only must be false
-  overlap_param_gather: False # if has text-only must be false
+  overlap_grad_reduce: True # if has text-only must be false
+  overlap_param_gather: True # if has text-only must be false
   use_mcore_models: True
   transformer_impl: transformer_engine
-  recompute_method: "uniform"
-  recompute_granularity: "full"
-  recompute_num_layers: 4
+  # recompute_method: "uniform"
+  # recompute_granularity: "full"
+  # recompute_num_layers: 4
   use_te: True
   precision:
     bf16: True
@@ -31,7 +31,7 @@ system:
     log_num_zeros_in_grad: True
   checkpoint:
     save_interval: 1000
-    pretrained_checkpoint: /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct_mc_tp1
+    pretrained_checkpoint: /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct_mc_tp2
     dataloader_save: ${experiment.exp_dir}/checkpoints/dataloader
     use_dist_ckpt: False
     ckpt_format: torch
@@ -46,8 +46,8 @@ model:
   ffn_hidden_size: 18944
   num_attention_heads: 28
   num_query_groups: 4
-  seq_length: 1200
-  max_padding_length: 1200 # (cutoff_len)max 32768, chane according the dataset
+  seq_length: 2048
+  max_padding_length: 2048 # (cutoff_len)max 32768, chane according the dataset
   # especial for qwen2.5-vl
   enable_variable_seq_lengths: True
   max_position_embeddings: 128000 # only useful for additional position embedding
@@ -58,10 +58,10 @@ model:
   attention_dropout: 0.0
   hidden_dropout: 0.0
   clip_grad: 1.0
-  train_iters: 62
+  train_iters: 3125
   eval_iters: 0 # no valid
-  micro_batch_size: 1
-  global_batch_size: 16
+  micro_batch_size: 2
+  global_batch_size: 64
   allow_missing_vision_projection_checkpoint: False
   apply_layernorm_1p: False
   group_query_attention: True
@@ -91,21 +91,20 @@ model:
       lr: 1.0e-5
       min_lr: 1.0e-6
       # lr_warmup_fraction: .03
-      lr_warmup_iters: 10
+      lr_warmup_iters: 100
       lr_decay_style: cosine
 
 data:
-  # data_path: /share/project/lizhiyu/data/vg_single/wds
-  # data_path: /share/project/lizhiyu/data/robovqa_mul/wds
-  data_path: /share/project/lizhiyu/data/robovqa_1000_cp/wds
-  # data_path: /share/project/lizhiyu/data/single_img/wds
-  # data_path: /share/project/lizhiyu/FlagScale/examples/qwen2_5_vl/conf/train/belend_dataset.yaml
+  # data_path: /share/project/lizhiyu/data/data_check_200/wds
+  data_path: /share/project/lizhiyu/data/data_check_200k_str_one_tar/wds
   vision_root: /share/project/caomingyu/robobrain_train_images
+  # data_path: /share/project/lizhiyu/data/robovqa_1000_cp/wds
+  # data_path: /share/project/lizhiyu/FlagScale/examples/qwen2_5_vl/conf/train/belend_dataset.yaml
   dataloader_type: external
   split: 100,0,0
   tokenizer:
     tokenizer_type: Qwen2VLTokenizer
-    tokenizer_path: /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct_mc_tp1
+    tokenizer_path: /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct_mc_tp2
     vocab_size: 152064 # 7b
     extra_vocab_size: 421
     make_vocab_size_divisible_by: 64

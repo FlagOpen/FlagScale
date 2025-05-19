@@ -14,7 +14,9 @@
 # limitations under the License.
 import dataclasses
 import json
+import logging
 import math
+import os
 import re
 import sys
 import traceback
@@ -34,6 +36,7 @@ from megatron.training.global_vars import get_tokenizer
 from tools.datasets.qwenvl.data.energon.chatml import ChatMLSample
 from tools.datasets.qwenvl.data.image_processing import get_visual_transform
 
+dataset_logger = logging.getLogger(__name__)
 FIRST_MAX_PADDING_FLAG = True
 
 
@@ -134,6 +137,9 @@ class TaskEncoder(
 
         self.seq_len = self.args.max_padding_length
 
+        self.vision_root = self.args.vision_root
+        assert self.vision_root is not None, "Please give the vision root."
+
     def encode_sample(self, sample: Union[VQASample, ChatMLSample]):
         if isinstance(sample, VQASample):
             is_llava_training = (
@@ -193,8 +199,11 @@ class TaskEncoder(
 
     def encode_chatml(self, sample: ChatMLSample):
         # TODO: modify get_visual_transform to add more augmentations
-        imgs = [get_visual_transform(img)[0] for img in sample.imgs]
-        videos = [[get_visual_transform(frame)[0] for frame in video] for video in sample.videos]
+        imgs = [get_visual_transform(os.path.join(self.vision_root, img))[0] for img in sample.imgs]
+        videos = [
+            [get_visual_transform(os.path.join(self.vision_root, frame))[0] for frame in video]
+            for video in sample.videos
+        ]
         # NOTE: make n_frames even foreach video
         for i, video in enumerate(videos):
             videos[i] = video[: len(video) // 2 * 2]
@@ -315,7 +324,7 @@ class TaskEncoder(
         )
         if target_length > self.seq_len:
             # raise InternalWarning(f"Long sequence with length {target_length} found, dropped...")
-            print(
+            dataset_logger.warning(
                 f"Long sequence with length {target_length} found, cutoff to {self.seq_len} in batch function..."
             )
         final_input_ids = np.zeros(target_length, dtype=input_ids.dtype)
@@ -355,13 +364,16 @@ class TaskEncoder(
         target = np.roll(final_input_masks, shift=-1)
         target[-1] = pad_token_id
 
-        # NOTE(lizhiyu): we check it in the train scripts.
-        # if (target == pad_token_id).all():
-        #     raise InternalWarning("Sample with all masked label, dropped.")
+        # NOTE(lizhiyu): we also check it in the train scripts.
+        if (target == pad_token_id).all():
+            raise InternalWarning(
+                f"Sample id [{sample.__key__}] with all masked label, the data is invalid! Dropped!"
+            )
 
         image_input_mask = final_input_ids == self.tokenizer.image_token_id
         video_input_mask = final_input_ids == self.tokenizer.video_token_id
-        # print(f"LZY: image_thw_grids: {image_thw_grids}; video_thw_grids: {video_thw_grids}")
+        # print(f"LZY: image key: {sample.__key__}")
+        # print(f"LZY: image_thw_grids: {image_thw_grids.shape}; video_thw_grids: {video_thw_grids.shape}")
         # collect data
         return ImageTaskSample(
             __key__=sample.__key__,

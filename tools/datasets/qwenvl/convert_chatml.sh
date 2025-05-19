@@ -1,29 +1,24 @@
 
 export PYTHONPATH=$PYTHONPATH:/share/project/lizhiyu/FlagScale/third_party/Megatron-LM/
-# python build_chatml_mp.py \
-#     --dataset-root=/share/project/caomingyu/robobrain_train_data/planning_data \
-#     --output-root=/share/project/lizhiyu/data/slice_frame \
-#     --json=3rscan_plan_11k.json \
-#     --images-key=image \
-#     --vision-root=/share/project/caomingyu/robobrain_train_images \
-#     --shuffle_tars 
 
-# 11701
-
-# python convert_custom_dataset_to_wds_chatml.py \
-#     --dataset-root=/share/project/lizhiyu/data/sample_1000/ \
-#     --output-root=/share/project/lizhiyu/data/robovqa_1000_cp/ \
-#     --json=robovqa_1000_cp.json \
-#     --images-key=image \
-#     --vision-root=/share/project/caomingyu/robobrain_train_images
-#     # --shuffle-tars 
-rm -rf /share/project/lizhiyu/data/vg_1000_cp/
-python build_chatml_mp.py \
+rm -rf /share/project/lizhiyu/data/robovqa_1000_cp/
+python convert_custom_dataset_to_wds_chatml_str.py \
     --dataset-root=/share/project/lizhiyu/data/sample_1000/ \
-    --output-root=/share/project/lizhiyu/data/vg_1000_cp/ \
-    --json=VG_1000_cp.json \
+    --output-root=/share/project/lizhiyu/data/robovqa_1000_cp/ \
+    --json=robovqa_1000_cp.json \
     --train-split 1 \
     --val-split 0 \
     --images-key=image \
+    --max-samples-per-tar 10000000 \
     --vision-root=/share/project/caomingyu/robobrain_train_images
-    # --shuffle-tars 
+
+# python convert_custom_dataset_to_wds_chatml_str.py \
+#     --dataset-root=/share/project/caomingyu/data_check/ \
+#     --output-root=/share/project/lizhiyu/data/data_check_200k_str_one_tar/ \
+#     --json=data_check_200k.json \
+#     --train-split 1 \
+#     --val-split 0 \
+#     --images-key=image \
+#     --vision-root=/share/project/caomingyu/robobrain_train_images \
+#     --max-samples-per-tar 10000000 \
+#     --dp-size 4

@@ -174,7 +174,7 @@ def model_provider(
 
     return model
 
-# Slightly modified from Qwen2_5VLForConditionalGeneration.get_rope_index
+# copy from https://github.com/huggingface/transformers/blob/40a493c7ed4f19f08eadb0639cf26d49bfa5e180/src/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py#L1404
 def get_rope_index(
     input_ids: Optional[torch.LongTensor] = None,
     image_grid_thw: Optional[torch.LongTensor] = None,
@@ -409,9 +409,10 @@ def get_batch(data_iterator):
         data = None
 
     # if data is not None:
-    #     for k, v in data.items():
-    #         if isinstance(v, torch.Tensor):
-    #             print(f"LZY: data: k: {k}, v shape: {v.shape}")
+    #     print(f"LZY: image_thw_grids shape: {data["image_thw_grids"].shape}")
+    #     # for k, v in data.items():
+    #     #     if isinstance(v, torch.Tensor):
+    #     #         print(f"LZY: data: k: {k}, v shape: {v.shape}")
 
 
     data_text =  broadcast_data(["text"], data, torch.int64)["text"]
@@ -601,8 +602,8 @@ def datasets_provider(worker_config=None):
         task_encoder=TaskEncoder(),
         worker_config=worker_config,
         virtual_epoch_length=0,
-        max_samples_per_sequence=100,
-        shuffle_buffer_size=100,
+        max_samples_per_sequence=args.max_samples_per_sequence, # sequential shuffle in a tar
+        shuffle_buffer_size=args.shuffle_buffer_size, # shuffle in a sequential
         handler=print_error_handler,
         image_decode="pil",
     )
@@ -750,6 +751,9 @@ def add_multimodal_extra_args(parser):
     group.add_argument("--patch-size", type=int, default=14)
     group.add_argument("--max-padding-length", type=int, default=2048)
     group.add_argument("--enable-variable-seq-lengths", action="store_true", default=False, help="Enable variable sequence lengths")
+    group.add_argument("--vision-root", type=str, default = None, help="The vision dirctory root path.")
+    group.add_argument("--max-samples-per-sequence", type=int, default=2**31-1, help="max sequencial seqence samples in a slice")
+    group.add_argument("--shuffle-buffer-size", type=int, default=0, help="the buffer size to shuffle the samples in a seqence")
 
     # just for checkpoint conversion
     group.add_argument(
