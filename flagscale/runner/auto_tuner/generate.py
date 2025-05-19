@@ -114,10 +114,8 @@ class ServeGenerator(Generator):
                 "max_num_seqs": "max_num_seqs",
                 "swap_space": "swap_space",
                 "n_gpu_layers": "n_gpu_layers",
-                "cache_type": "cache_type",
                 "parallel": "parallel",
-                "split_mode": "split_mode",
-                "cache_reuse": "cache_reuse",
+                "threads": "threads",
             }
 
     def _set_value(self, strategy, config):
