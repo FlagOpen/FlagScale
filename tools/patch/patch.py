@@ -11,10 +11,10 @@ from encryption_utils import encrypt_file, generate_rsa_keypair
 from file_utils import sync_to_flagscale
 from git.repo import Repo
 from git_utils import (
+    check_git_user_info,
     get_diff_between_commit_and_now,
     get_file_statuses_for_staged_or_unstaged,
     get_file_statuses_for_untracked,
-    check_git_user_info,
 )
 from logger_utils import get_patch_logger
 
@@ -23,7 +23,7 @@ FLAGSCALE_BACKEND = "FlagScale"
 logger = get_patch_logger()
 
 
-def patch(main_path, submodule_name, src, dst, mode="symlink", **kwargs):
+def patch(main_path, submodule_name, src, dst, mode="symlink"):
     """
     Sync the submodule modifications to the corresponding backend in FlagScale.
     Args:
@@ -36,92 +36,79 @@ def patch(main_path, submodule_name, src, dst, mode="symlink", **kwargs):
                     If the mode is copy, the file will be copied to the source and the symbolic link will not be created.
     """
 
-    """
-    These arguments are used for hardware patch.
-    Args:
-        commit (str): The commit hash based to patch (default: None).
-        backends (list): List of backends to patch (default: None).
-        device_type (str): The device type (default: None).
-        tasks (list): List of tasks to patch (default: None).
-        key_path (str): The path for public and private keys (default: None).
-    """
-    commit = kwargs.get('commit', None)
-    backends = kwargs.get('backends', None)
-    device_type = kwargs.get('device_type', None)
-    tasks = kwargs.get('tasks', None)
-    key_path = kwargs.get('key_path', None)
+    submodule_path = "third_party" + "/" + submodule_name
+    logger.info(f"Patching backend {submodule_path}...")
 
-    # For hardware patch, FlagScale is a submodule of the main repo.
-    # But for users, they don't need to know this.
-    if submodule_name != FLAGSCALE_BACKEND:
-        submodule_path = "third_party" + "/" + submodule_name
-        logger.info(f"Patching backend {submodule_path}...")
+    # Get the submodule repo and the commit in FlagScale.
+    main_repo = Repo(main_path)
+    submodule = main_repo.submodule(submodule_path)
+    sub_repo = submodule.module()
+    submodule_commit_in_fs = submodule.hexsha
+    logger.info(f"Base commit hash of submodule {submodule_path} is {submodule_commit_in_fs}.")
 
-        # Get the submodule repo and the commit in FlagScale.
-        main_repo = Repo(main_path)
-        submodule = main_repo.submodule(submodule_path)
-        sub_repo = submodule.module()
-        submodule_commit_in_fs = submodule.hexsha
-        logger.info(f"Base commit hash of submodule {submodule_path} is {submodule_commit_in_fs}.")
+    # Get all differences between the submodule specified commit and now.
+    # The differences include staged, working directory, and untracked files.
+    staged_diff, unstaged_diff, untracked_files = get_diff_between_commit_and_now(
+        sub_repo, submodule_commit_in_fs
+    )
 
-        # Get all differences between the submodule specified commit and now.
-        # The differences include staged, working directory, and untracked files.
-        staged_diff, unstaged_diff, untracked_files = get_diff_between_commit_and_now(
-            sub_repo, submodule_commit_in_fs
-        )
+    file_statuses = {}
+    # Process the diff between the staged and the base commit
+    staged_file_statuses = get_file_statuses_for_staged_or_unstaged(staged_diff)
+    file_statuses.update(staged_file_statuses)
+    # Process the diff between the working directory and the staged
+    unstaged_file_statuses = get_file_statuses_for_staged_or_unstaged(unstaged_diff)
+    file_statuses.update(unstaged_file_statuses)
+    # Process the untracked files
+    untracked_file_statuses = get_file_statuses_for_untracked(untracked_files)
+    file_statuses.update(untracked_file_statuses)
 
-        file_statuses = {}
-        # Process the diff between the staged and the base commit
-        staged_file_statuses = get_file_statuses_for_staged_or_unstaged(staged_diff)
-        file_statuses.update(staged_file_statuses)
-        # Process the diff between the working directory and the staged
-        unstaged_file_statuses = get_file_statuses_for_staged_or_unstaged(unstaged_diff)
-        file_statuses.update(unstaged_file_statuses)
-        # Process the untracked files
-        untracked_file_statuses = get_file_statuses_for_untracked(untracked_files)
-        file_statuses.update(untracked_file_statuses)
+    # Process the deleted files
+    file_status_deleted = {}
+    for file_path in file_statuses:
+        if file_statuses[file_path][0] == "D":
+            file_status_deleted[file_path] = file_statuses[file_path]
 
-        # Process the deleted files
-        file_status_deleted = {}
-        for file_path in file_statuses:
-            if file_statuses[file_path][0] == "D":
-                file_status_deleted[file_path] = file_statuses[file_path]
+    # Sync the files to FlagScale and skip the deleted files firstly
+    # Temp file is used to store the deleted files
+    temp_file = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False)
+    for file_path in file_statuses:
+        if file_statuses[file_path][0] == "D":
+            continue
+        sync_to_flagscale(file_path, file_statuses[file_path], src, dst, temp_file, mode=mode)
 
-        # Sync the files to FlagScale and skip the deleted files firstly
-        # Temp file is used to store the deleted files
-        temp_file = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False)
-        for file_path in file_statuses:
-            if file_statuses[file_path][0] == "D":
-                continue
-            sync_to_flagscale(file_path, file_statuses[file_path], src, dst, temp_file, mode=mode)
+    # Process the deleted files
+    if file_status_deleted:
+        try:
+            for file_path in file_status_deleted:
+                assert file_statuses[file_path][0] == "D"
+                sync_to_flagscale(
+                    file_path, file_status_deleted[file_path], src, dst, temp_file, mode=mode
+                )
+            deleted_log = os.path.join(src, DELETED_FILE_NAME)
+            temp_file.close()
 
-        # Process the deleted files
-        if file_status_deleted:
-            try:
-                for file_path in file_status_deleted:
-                    assert file_statuses[file_path][0] == "D"
-                    sync_to_flagscale(
-                        file_path, file_status_deleted[file_path], src, dst, temp_file, mode=mode
-                    )
-                deleted_log = os.path.join(src, DELETED_FILE_NAME)
-                temp_file.close()
+            shutil.move(temp_file.name, deleted_log)
+            if os.path.lexists(temp_file.name):
+                os.remove(temp_file.name)
 
-                shutil.move(temp_file.name, deleted_log)
-                if os.path.lexists(temp_file.name):
-                    os.remove(temp_file.name)
+        except Exception as e:
+            print(f"Error occurred while processing deleted files: {e}")
+            # Rollback
+            temp_file.close()
+            if os.path.lexists(temp_file.name):
+                os.remove(temp_file.name)
+            raise e
 
-            except Exception as e:
-                print(f"Error occurred while processing deleted files: {e}")
-                # Rollback
-                temp_file.close()
-                if os.path.lexists(temp_file.name):
-                    os.remove(temp_file.name)
-                raise e
 
-    # For hardware patch, the commit hash is specified.
-    if commit:
-        patch_info = prompt_info(main_path, backends, device_type, tasks)
-        generate_patch_file(main_path, commit, patch_info, key_path=key_path)
+def patch_hardware(main_path, commit, backends, device_type, tasks, key_path=None):
+    assert commit is not None, "The commit hash must be specified for hardware patch."
+    assert backends is not None, "The backends must be specified for hardware patch."
+    assert device_type is not None, "The device type must be specified for hardware patch."
+    assert tasks is not None, "The tasks must be specified for hardware patch."
+
+    patch_info = prompt_info(main_path, backends, device_type, tasks)
+    generate_patch_file(main_path, commit, patch_info, key_path=key_path)
 
 
 def prompt_info(main_path, backends, device_type, tasks):
@@ -168,22 +155,32 @@ def prompt_info(main_path, backends, device_type, tasks):
     }
 
 
-def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=None):
+def _generate_patch_file_for_backend(
+    main_path: str, commit: str, backend: str, patch_info: dict, key_path=None
+):
+    """
+    Generate patch file for a specific backend.
+    Args:
+        main_path (str): The path to FlagScale.
+        commit (str): The commit hash based to patch (default: None).
+        backend (str): The backend to patch.
+        patch_info (dict): The patch information.
+        key_path (str): The path for public and private keys (default: None).
+    """
     repo = Repo(main_path)
     assert not repo.bare
-
-    """
-    This function performs the following steps.
-    """
-
     try:
-        # Initialize the repository
-        repo = Repo(main_path)
+        repo_path = (
+            os.path.join(main_path, "third_party" + "/" + backend)
+            if backend != FLAGSCALE_BACKEND
+            else main_path
+        )
+        repo = Repo(repo_path)
         current_branch = repo.active_branch.name
         if repo.bare:
             raise Exception("Repository is bare. Cannot proceed.")
 
-        logger.info("Generating the patch file:")
+        logger.info(f"Generating the patch file for {repo_path}:")
         # Step 1: Stash all, including untracked, and create temp_branch_for_hardware_patch
         logger.info(
             "Step 1: Stashing current changes (including untracked) and create the temp_branch_for_hardware_patch..."
@@ -211,92 +208,123 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
 
         # Step4: Generate patch diff between commit and HEAD, writing into temp_file.
         logger.info(f"Step 4: Generating diff patch from {commit} to HEAD...")
-        backends = copy.deepcopy(list(patch_info["backends_version"].keys()))
-        patches = {}
 
         # Diff excludes the submodules
-        flagscale_diff_args = [commit, "HEAD", "--binary", "--ignore-submodules=all", "--"]
+        flagscale_diff_args = None
+        if backend == FLAGSCALE_BACKEND:
+            backends = copy.deepcopy(list(patch_info["backends_version"].keys()))
+            flagscale_diff_args = [commit, "HEAD", "--binary", "--ignore-submodules=all", "--"]
+            for backend in backends:
+                if backend != FLAGSCALE_BACKEND:
+                    backend_dir = os.path.join(main_path, "flagscale", "backends", backend)
+                    flagscale_diff_args.append(f':(exclude){backend_dir}')
 
-        tmep_patch_files = []
+        temp_patch_files = []
         # Generate patch for each backend
-        for backend in backends:
-            if backend == FLAGSCALE_BACKEND:
-                continue
-            backend_dir = os.path.join(main_path, "flagscale", "backends", backend)
-            temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w", encoding="utf-8")
-            temp_patch_path = temp_file.name
-            tmep_patch_files.append(temp_patch_path)
-            diff_data = repo.git.diff(
-                commit, "HEAD", "--binary", "--ignore-submodules=all", "--", f"{backend_dir}"
-            )
-            if not diff_data:
-                raise ValueError(f"No changes in backend {backend}.")
+        temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w", encoding="utf-8")
+        temp_patch_path = temp_file.name
+        temp_patch_files.append(temp_patch_path)
+        diff_data = (
+            repo.git.diff(commit, "HEAD", "--binary")
+            if backend != FLAGSCALE_BACKEND
+            else repo.git.diff(*flagscale_diff_args)
+        )
+        if not diff_data:
+            raise ValueError(f"No changes in backend {backend}.")
 
-            temp_file.write(diff_data)
-            # add \n to the end of the file
-            temp_file.write("\n")
-            temp_file.flush()
-            if key_path is not None:
-                temp_patch_path = encrypt_file(temp_patch_path, key_path)
-                logger.info(f"Encrypted patch file {temp_patch_path} with public key.")
+        temp_file.write(diff_data)
+        # add \n to the end of the file
+        temp_file.write("\n")
+        temp_file.flush()
+        if key_path is not None:
+            temp_patch_path = encrypt_file(temp_patch_path, key_path)
+            logger.info(f"Encrypted patch file {temp_patch_path} with public key.")
 
-            flagscale_diff_args.append(f':(exclude){backend_dir}')
+        temp_yaml_file = tempfile.NamedTemporaryFile(
+            delete=False, mode="w", encoding="utf-8", suffix=".yaml"
+        )
+        temp_yaml_path = temp_yaml_file.name
+        temp_patch_files.append(temp_yaml_path)
+        data = copy.deepcopy(patch_info)
+        data["commit"] = commit
+        del data["commit_msg"]
+        yaml.dump(data, temp_yaml_file, sort_keys=True, allow_unicode=True)
+        temp_yaml_file.flush()
+        patch_dir = os.path.join(main_path, "hardware", patch_info["device_type"], backend)
 
-            temp_yaml_file = tempfile.NamedTemporaryFile(
-                delete=False, mode="w", encoding="utf-8", suffix=".yaml"
-            )
-            temp_yaml_path = temp_yaml_file.name
-            tmep_patch_files.append(temp_yaml_path)
-            data = copy.deepcopy(patch_info)
-            data["commit"] = commit
-            del data["commit_msg"]
-            yaml.dump(data, temp_yaml_file, sort_keys=True, allow_unicode=True)
-            temp_yaml_file.flush()
-            patch_dir = os.path.join(main_path, "hardware", patch_info["device_type"], backend)
-            patches[backend] = [patch_dir, temp_patch_path, temp_yaml_path]
-
-        # Generate patch for FlagScale
-        if FLAGSCALE_BACKEND in backends:
-            temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w", encoding="utf-8")
-            temp_patch_path = temp_file.name
-            tmep_patch_files.append(temp_patch_path)
-            diff_data = repo.git.diff(*flagscale_diff_args)
-            if not diff_data:
-                raise ValueError(f"No changes in backend {FLAGSCALE_BACKEND}.")
-            else:
-                temp_file.write(diff_data)
-                # add \n to the end of the file
-                temp_file.write("\n")
-                temp_file.flush()
-                if key_path is not None:
-                    temp_patch_path = encrypt_file(temp_patch_path, key_path)
-                    logger.info(f"Encrypted patch file {temp_patch_path} with public key.")
-
-                temp_yaml_file = tempfile.NamedTemporaryFile(
-                    delete=False, mode="w", encoding="utf-8", suffix=".yaml"
-                )
-                temp_yaml_path = temp_yaml_file.name
-                tmep_patch_files.append(temp_yaml_path)
-                data = copy.deepcopy(patch_info)
-                del data["commit_msg"]
-                data["commit"] = commit
-                yaml.dump(data, temp_yaml_file, sort_keys=True, allow_unicode=True)
-                temp_yaml_file.flush()
-                patch_dir = os.path.join(
-                    main_path, "hardware", patch_info["device_type"], "FlagScale"
-                )
-                patches["FlagScale"] = [patch_dir, temp_patch_path, temp_yaml_path]
-
+        # Step5: Checkout to current branch and pop the stash.
+        logger.info(f"Step 5: Checkouting to current branch and pop the stash...")
         repo.git.checkout(current_branch)
         repo.git.stash("pop")
         stash_pop = True
 
-        # Step5: Checkout the commit commit.
-        logger.info(f"Step 5: Checking out {commit}...")
+        # clean up the temp files
+        for temp_patch_path in temp_patch_files:
+            if os.path.exists(temp_patch_path):
+                os.remove(temp_patch_path)
+                logger.debug(f"Temporary patch file {temp_patch_path} deleted.")
+
+    except Exception as e:
+        logger.error(f"{e}", exc_info=True)
+        logger.info(f"Rolling back to current branch...")
+        repo.git.checkout(current_branch)
+        if "stash_pop" in locals() and not stash_pop:
+            repo.git.stash("pop")
+            stash_pop = True
+
+    finally:
+        try:
+            # Clean up the temp files
+            if "temp_patch_files" in locals():
+                for temp_patch_path in temp_patch_files:
+                    if os.path.exists(temp_patch_path):
+                        os.remove(temp_patch_path)
+                        logger.debug(f"Temporary patch file {temp_patch_path} deleted.")
+
+            # Clean up the temporary branch
+            if "temp_branch" in locals() and temp_branch in repo.heads:
+                repo.git.branch("-D", temp_branch)
+
+        except Exception as cleanup_error:
+            logger.error(f"Failed to roll back: {cleanup_error}", exc_info=True)
+            raise cleanup_error
+
+    return patch_dir, temp_patch_path, temp_yaml_path
+
+
+def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=None):
+    repo = Repo(main_path)
+    assert not repo.bare
+
+    """
+    This function performs the following steps.
+    """
+    try:
+        backends = copy.deepcopy(list(patch_info["backends_version"].keys()))
+        patches = {}
+        for backend in backends:
+            # Generate patch file for each backend
+            if backend != FLAGSCALE_BACKEND:
+                # Get the submodule repo and the commit in FlagScale.
+                main_repo = Repo(main_path)
+                submodule_path = "third_party" + "/" + backend
+                submodule = main_repo.submodule(submodule_path)
+                sub_repo = submodule.module()
+                submodule_commit_in_fs = submodule.hexsha
+                patch_dir, temp_patch_path, temp_yaml_path = _generate_patch_file_for_backend(
+                    main_path, submodule_commit_in_fs, backend, patch_info, key_path=key_path
+                )
+            else:
+                patch_dir, temp_patch_path, temp_yaml_path = _generate_patch_file_for_backend(
+                    main_path, commit, backend, patch_info, key_path=key_path
+                )
+            patches[backend] = [patch_dir, temp_patch_path, temp_yaml_path]
+
+        logger.info(f"Checking out {commit}...")
         repo.git.checkout(commit)
 
-        # Step6: Stage the patch file.
-        logger.info("Step 6: Staging the generated patch file...")
+        # Stage the patch file.
+        logger.info("Staging the generated patch file...")
         file_name = f"diff.patch" if key_path is None else f"diff.patch.encrypted"
         yaml_file_name = f"diff.yaml"
         patch_dir_need_to_clean = []
@@ -311,25 +339,18 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
             if os.path.exists(patch_dir):
                 shutil.rmtree(patch_dir)
             os.makedirs(patch_dir, exist_ok=True)
-            print("backend temp_patch_path", backend, temp_patch_path)
             shutil.copy(temp_patch_path, os.path.join(patch_dir, file_name))
             shutil.copy(temp_yaml_path, os.path.join(patch_dir, yaml_file_name))
             repo.git.add(os.path.join(patch_dir, file_name))
             repo.git.add(os.path.join(patch_dir, yaml_file_name))
 
-        # clean up the temp files
-        for temp_patch_path in tmep_patch_files:
-            if os.path.exists(temp_patch_path):
-                os.remove(temp_patch_path)
-                logger.debug(f"Temporary patch file {temp_patch_path} deleted.")
-
-        # Step7: Commit the patch file with the same message.
-        logger.info("Step 7: Committing the patch file...")
+        # Commit the patch file with the same message.
+        logger.info("Committing the patch file...")
         commit_msg = patch_info["commit_msg"]
         repo.git.commit("-m", commit_msg)
 
-        # Step 8: Delete the temporary branch locally.
-        logger.info("Step 8: Deleting temporary branch 'temp_branch_for_hardware_patch' locally...")
+        # Delete the temporary branch locally.
+        logger.info("Deleting temporary branch 'temp_branch_for_hardware_patch' locally...")
         repo.git.branch("-D", temp_branch)
 
         logger.info(
@@ -338,11 +359,6 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
 
     except Exception as e:
         logger.error(f"{e}", exc_info=True)
-        logger.info(f"Rolling back to current branch...")
-        repo.git.checkout(current_branch)
-        if "stash_pop" in locals() and not stash_pop:
-            repo.git.stash("pop")
-            stash_pop = True
 
     finally:
         try:
@@ -353,19 +369,9 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
                         shutil.rmtree(patch_dir)
                         logger.debug(f"Temporary patch dir {patch_dir} deleted.")
 
-            # Clean up the temp files
-            if "tmep_patch_files" in locals():
-                for temp_patch_path in tmep_patch_files:
-                    if os.path.exists(temp_patch_path):
-                        os.remove(temp_patch_path)
-                        logger.debug(f"Temporary patch file {temp_patch_path} deleted.")
-
-            # Clean up the temporary branch
-            if temp_branch in repo.heads:
-                repo.git.branch("-D", temp_branch)
-
         except Exception as cleanup_error:
             logger.error(f"Failed to delete temporary: {cleanup_error}", exc_info=True)
+            raise cleanup_error
 
 
 def validate_patch_args(device_type, task, commit, main_path):
@@ -476,19 +482,11 @@ if __name__ == "__main__":
     if FLAGSCALE_BACKEND in backends:
         assert commit is not None, "FlagScale patch only can be generated with hardware."
 
-    multi_backends = len(backends) > 1
-    if multi_backends and commit:
-        for backend in backends:
-            dst = os.path.join(main_path, "third_party", backend)
-            src = os.path.join(main_path, "flagscale", "backends", backend)
-            patch(main_path, backend, src, dst, mode)
-        patch_info = prompt_info(main_path, backends, device_type, tasks)
-        generate_patch_file(main_path, commit, patch_info, key_path=key_path)
-
+    # hardware patch
+    if commit:
+        patch_hardware(main_path, commit, backends, device_type, tasks, key_path=key_path)
     else:
         for backend in backends:
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
-            patch(
-                main_path, backend, src, dst, mode, commit=commit, backends=backends, device_type=device_type, tasks=tasks, key_path=key_path
-            )
+            patch(main_path, backend, src, dst, mode)
