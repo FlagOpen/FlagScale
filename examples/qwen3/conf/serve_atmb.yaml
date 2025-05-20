@@ -1,0 +1,40 @@
+# atmb: Auto Tuning for Multi-Backend
+defaults:
+  - _self_
+  - serve: 0_6b
+
+experiment:
+  exp_name: qwen3_0.6b
+  exp_dir: outputs/${experiment.exp_name}
+  task:
+    type: serve
+  deploy:
+    port: 6701
+    use_fs_serve: false
+  runner:
+    nnodes: 1
+    nproc_per_node: 1
+  envs:
+    CUDA_VISIBLE_DEVICES: 0
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+  auto_tuner:
+    engines: [llama_cpp, vllm]
+    space:
+      vllm:
+        tensor_model_parallel_size: [1]
+        pipeline_model_parallel_size: [1]
+        block_size: [16, 32]
+        max_num_batched_tokens: [512]
+        max_num_seqs: [128]
+      llama_cpp:
+        threads: [64, 32, 16]
+    cards: 1
+    control:
+      interval: 10
+      run_best: False
+
+action: auto_tune
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra
