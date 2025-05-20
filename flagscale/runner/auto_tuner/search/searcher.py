@@ -660,7 +660,7 @@ class ServeSearcher(Searcher):
                     tuple(tuple(a) + b) for a, b in cartesian_product_values
                 ]
             else:
-                # llama.cpp does not support multi-node
+                # TDOO: llama.cpp support multi-instance
                 cartesian_product_values = list(cartesian_product_unaware_values)
 
             strategies = [
