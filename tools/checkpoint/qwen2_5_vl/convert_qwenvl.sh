@@ -1,7 +1,7 @@
 bash hf2mcore_qwen2.5_vl_convertor.sh 7B \
-/share/project/lizhiyu/FlagScale/train_qwen2_5_vl_7b_data_check_tp1_not_per_token/checkpoints \
-/share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct-data-check-same-order-tp1-not-per-token \
-1 1 true bf16  \
+/share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct \
+/share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct-tp1 \
+1 1 false bf16  \
 /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct
 
 

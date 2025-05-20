@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import PIL
+import PIL.Image
 import torch
 
 from torchvision import transforms as T
@@ -198,19 +200,57 @@ class TaskEncoder(
         return flattened, np.array(thw_grids)
 
     def encode_chatml(self, sample: ChatMLSample):
-        # TODO: modify get_visual_transform to add more augmentations
-        imgs = [get_visual_transform(os.path.join(self.vision_root, img))[0] for img in sample.imgs]
-        videos = [
-            [get_visual_transform(os.path.join(self.vision_root, frame))[0] for frame in video]
-            for video in sample.videos
-        ]
-        # NOTE: make n_frames even foreach video
-        for i, video in enumerate(videos):
-            videos[i] = video[: len(video) // 2 * 2]
+        # # TODO: modify get_visual_transform to add more augmentations
+        # imgs = [get_visual_transform(os.path.join(self.vision_root, img))[0] for img in sample.imgs]
+        # videos = [
+        #     [get_visual_transform(os.path.join(self.vision_root, frame))[0] for frame in video]
+        #     for video in sample.videos
+        # ]
+        # # NOTE: make n_frames even foreach video
+        # for i, video in enumerate(videos):
+        #     videos[i] = video[: len(video) // 2 * 2]
 
-        # NOTE: flatten all images
-        flattened_imgs, image_thw_grids = self._flatten_visual_inputs(imgs, is_image=True)
-        flattened_videos, video_thw_grids = self._flatten_visual_inputs(videos, is_image=False)
+        # # NOTE: flatten all images
+        # flattened_imgs, image_thw_grids = self._flatten_visual_inputs(imgs, is_image=True)
+        # flattened_videos, video_thw_grids = self._flatten_visual_inputs(videos, is_image=False)
+
+        #######################################################################################
+        # NOTE(lizhiyu): use the transformers processor
+        if sample.imgs is not None and len(sample.imgs) > 0:
+            imgs = []
+            for img in sample.imgs:
+                img_path = os.path.join(self.vision_root, img)
+                try:
+                    image = PIL.Image.open(img_path)
+                    imgs.append(image)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to open image: {img_path}. Error: {e} of smaple[{sample.__key__}]"
+                    )
+            imgs_info = self.tokenizer.processor.image_processor(imgs, return_tensors="np")
+            flattened_imgs = imgs_info["pixel_values"]
+            image_thw_grids = imgs_info["image_grid_thw"]
+        else:
+            flattened_imgs = []
+            image_thw_grids = []
+
+        if sample.videos is not None and len(sample.videos) > 0:
+            videos = [
+                [PIL.Image.open(os.path.join(self.vision_root, frame)) for frame in video]
+                for video in sample.videos
+            ]
+            # NOTE: make n_frames even foreach video
+            for i, video in enumerate(videos):
+                videos[i] = video[: len(video) // 2 * 2]
+            videos_info = self.tokenizer.processor.image_processor(
+                images=None, videos=videos, return_tensors="pt"
+            )
+            flattened_videos = videos_info["pixel_values_videos"]
+            video_thw_grids = videos_info["video_grid_thw"]
+        else:
+            flattened_videos = []
+            video_thw_grids = []
+        #######################################################################################
 
         # NOTE: generate qwen2vl conversations
         conversation = (
@@ -238,13 +278,16 @@ class TaskEncoder(
                 {"role": "system", "content": "You are a helpful assistant."}
             )
         else:
-            # converted_conversation.append(
-            #     {"role": "system", "content": conversation[0][content_key]}
-            # )
-            # NOTE(lizhiyu): Force set system Prompt: "You are a helpful assistant."
-            converted_conversation.append(
-                {"role": "system", "content": "You are a helpful assistant."}
+            dataset_logger.warning(
+                f"The sample [{sample.__key__}] has odd number of conversation turns, and we will use the first turn as system prompt. BUT this may be wrong. Pelase check the sample."
             )
+            converted_conversation.append(
+                {"role": "system", "content": conversation[0][content_key]}
+            )
+            ## NOTE(lizhiyu): Force set system Prompt: "You are a helpful assistant."
+            # converted_conversation.append(
+            #     {"role": "system", "content": "You are a helpful assistant."}
+            # )
             conversation = conversation[1:]
 
         # add QA conversion as the left items
@@ -476,7 +519,12 @@ class TaskEncoder(
 
     def batch(self, samples: List[ImageTaskSample]) -> VQATaskBatch:
         # Stack images to [num_tiles, c, h, w]. If there are no images (text-only), then use a dummy image.
-        imgs = [img for s in samples for img in s.imgs]
+        # imgs = [img for s in samples for img in s.imgs]
+
+        ####################################################
+        # NOTE(lizhiyu): use the transformers processor
+        imgs = [s.imgs for s in samples if isinstance(s.imgs, np.ndarray) and s.imgs.size > 0]
+        ####################################################
         if len(imgs) > 0:
             imgs = torch.cat([torch.from_numpy(img) for img in imgs])
         else:
@@ -493,7 +541,14 @@ class TaskEncoder(
             image_thw_grids = torch.empty([0, 3], dtype=torch.long)
 
         # Stack videos to [num_tiles, c, h, w]. If there are no videos (text-only), then use a dummy video.
-        videos = [video for s in samples for video in s.videos]
+        # videos = [video for s in samples for video in s.videos]
+
+        ####################################################
+        # NOTE(lizhiyu): use the transformers processor
+        videos = [
+            s.videos for s in samples if isinstance(s.videos, np.ndarray) and s.videos.size > 0
+        ]
+        ####################################################
         if len(videos) > 0:
             videos = torch.cat([torch.from_numpy(video) for video in videos])
         else:

@@ -1137,7 +1137,7 @@ class _Qwen2VLTokenizer(MegatronTokenizer):
         from transformers import AutoProcessor
         self.processor = AutoProcessor.from_pretrained(
             tokenizer_path,
-            use_fast=False,
+            # use_fast=False,
             trust_remote_code=True
         )
         # NOTE: In Qwen2-VL, template in chat_template.json is same within tokenizer_config.json and both can be used.
