@@ -1,0 +1,10 @@
+backends_version:
+  FlagScale: 0.8.0
+  vllm: 0.7.2
+commit: 1ede546bb3ff3290f08217e4458dd4d97879f453
+contact: ''
+device_type: Chip_Vendor
+models:
+- qwen3
+task:
+- inference
