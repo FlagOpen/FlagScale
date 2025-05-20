@@ -412,6 +412,8 @@ def normalize_backend(backend):
         return "FlagScale"
     elif input_lower == "vllm":
         return "vllm"
+    elif input_lower == "sglang":
+        return "sglang"
 
     raise ValueError(f'Unsupported backend {backend}')
 
@@ -490,5 +492,14 @@ if __name__ == "__main__":
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
             patch(
-                main_path, backend, src, dst, mode, commit=commit, backends=backends, device_type=device_type, tasks=tasks, key_path=key_path
+                main_path,
+                backend,
+                src,
+                dst,
+                mode,
+                commit=commit,
+                backends=backends,
+                device_type=device_type,
+                tasks=tasks,
+                key_path=key_path,
             )
