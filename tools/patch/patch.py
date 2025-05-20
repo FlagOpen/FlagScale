@@ -156,7 +156,12 @@ def prompt_info(main_path, backends, device_type, tasks):
 
 
 def _generate_patch_file_for_backend(
-    main_path: str, commit: str, backend: str, patch_info: dict, key_path=None
+    main_path: str,
+    commit: str,
+    backend: str,
+    patch_info: dict,
+    key_path=None,
+    flagscale_commit=None,
 ):
     """
     Generate patch file for a specific backend.
@@ -166,6 +171,7 @@ def _generate_patch_file_for_backend(
         backend (str): The backend to patch.
         patch_info (dict): The patch information.
         key_path (str): The path for public and private keys (default: None).
+        flagscale_commit (str): The commit hash in FlagScale (default: None).
     """
     repo = Repo(main_path)
     assert not repo.bare
@@ -246,7 +252,8 @@ def _generate_patch_file_for_backend(
         temp_yaml_path = temp_yaml_file.name
         temp_patch_files.append(temp_yaml_path)
         data = copy.deepcopy(patch_info)
-        data["commit"] = commit
+        assert flagscale_commit is not None, "FlagScale commit must be specified."
+        data["commit"] = flagscale_commit
         del data["commit_msg"]
         yaml.dump(data, temp_yaml_file, sort_keys=True, allow_unicode=True)
         temp_yaml_file.flush()
@@ -258,12 +265,6 @@ def _generate_patch_file_for_backend(
         repo.git.stash("pop")
         stash_pop = True
 
-        # clean up the temp files
-        for temp_patch_path in temp_patch_files:
-            if os.path.exists(temp_patch_path):
-                os.remove(temp_patch_path)
-                logger.debug(f"Temporary patch file {temp_patch_path} deleted.")
-
     except Exception as e:
         logger.error(f"{e}", exc_info=True)
         logger.info(f"Rolling back to current branch...")
@@ -274,13 +275,6 @@ def _generate_patch_file_for_backend(
 
     finally:
         try:
-            # Clean up the temp files
-            if "temp_patch_files" in locals():
-                for temp_patch_path in temp_patch_files:
-                    if os.path.exists(temp_patch_path):
-                        os.remove(temp_patch_path)
-                        logger.debug(f"Temporary patch file {temp_patch_path} deleted.")
-
             # Clean up the temporary branch
             if "temp_branch" in locals() and temp_branch in repo.heads:
                 repo.git.branch("-D", temp_branch)
@@ -295,6 +289,7 @@ def _generate_patch_file_for_backend(
 def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=None):
     repo = Repo(main_path)
     assert not repo.bare
+    temp_patch_files = []
 
     """
     This function performs the following steps.
@@ -312,11 +307,21 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
                 sub_repo = submodule.module()
                 submodule_commit_in_fs = submodule.hexsha
                 patch_dir, temp_patch_path, temp_yaml_path = _generate_patch_file_for_backend(
-                    main_path, submodule_commit_in_fs, backend, patch_info, key_path=key_path
+                    main_path,
+                    submodule_commit_in_fs,
+                    backend,
+                    patch_info,
+                    key_path=key_path,
+                    flagscale_commit=commit,
                 )
             else:
                 patch_dir, temp_patch_path, temp_yaml_path = _generate_patch_file_for_backend(
-                    main_path, commit, backend, patch_info, key_path=key_path
+                    main_path,
+                    commit,
+                    backend,
+                    patch_info,
+                    key_path=key_path,
+                    flagscale_commit=commit,
                 )
             patches[backend] = [patch_dir, temp_patch_path, temp_yaml_path]
 
@@ -328,6 +333,7 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
         file_name = f"diff.patch" if key_path is None else f"diff.patch.encrypted"
         yaml_file_name = f"diff.yaml"
         patch_dir_need_to_clean = []
+        temp_patch_files = []
         for backend in patches:
             patch_dir, temp_patch_path, temp_yaml_path = patches[backend]
             patch_dir_exist = os.path.exists(patch_dir)
@@ -343,15 +349,13 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
             shutil.copy(temp_yaml_path, os.path.join(patch_dir, yaml_file_name))
             repo.git.add(os.path.join(patch_dir, file_name))
             repo.git.add(os.path.join(patch_dir, yaml_file_name))
+            temp_patch_files.append(temp_patch_path)
+            temp_patch_files.append(temp_yaml_path)
 
         # Commit the patch file with the same message.
         logger.info("Committing the patch file...")
         commit_msg = patch_info["commit_msg"]
         repo.git.commit("-m", commit_msg)
-
-        # Delete the temporary branch locally.
-        logger.info("Deleting temporary branch 'temp_branch_for_hardware_patch' locally...")
-        repo.git.branch("-D", temp_branch)
 
         logger.info(
             "Commit successfully! If you want to push, try 'git push origin HEAD:refs/heads/(your branch)' or  'git push --force origin HEAD:refs/heads/(your branch)'"
@@ -362,6 +366,13 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
 
     finally:
         try:
+            # Clean up the temp files
+            if "temp_patch_files" in locals():
+                for temp_patch_path in temp_patch_files:
+                    if os.path.exists(temp_patch_path):
+                        os.remove(temp_patch_path)
+                        logger.debug(f"Temporary patch file {temp_patch_path} deleted.")
+
             # Clean up the patch dir
             if "patch_dir_need_to_clean" in locals():
                 for patch_dir in patch_dir_need_to_clean:

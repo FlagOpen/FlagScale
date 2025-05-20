@@ -120,7 +120,7 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, c
     return newest_flagscale_commit
 
 
-def apply_hardware_patch(device_type, backends, commit, main_path, init_submodule, key_path=None):
+def apply_hardware_patch(device_type, backends, commit, main_path, need_init_submodule, key_path=None):
     build_path = os.path.join(main_path, "build", device_type)
     final_path = os.path.join(build_path, os.path.basename(main_path))
 
@@ -215,23 +215,23 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
                     raise ValueError(
                         f"Patch file {patch_file} is encrypted, but no key path provided."
                     )
-            submodule_name = patch_backends[idx]
-            if submodule_name != FLAGSCALE_BACKEND:
+            backend = patch_backends[idx]
+            if backend != FLAGSCALE_BACKEND:
                 # init submodule
-                if init_submodule:
+                if need_init_submodule:
                     logger.info(
-                        f"Step 6: Initializing submodule {backend} in temp unpatch path {temp_unpatch_path}..."
+                        f"    Initializing submodule {backend} in temp unpatch path {temp_unpatch_path}..."
                     )
                     dst = os.path.join(temp_unpatch_path, "third_party", backend)
                     src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
-                    # NOTE: mode must be 'copy' because the temp unpatch path will be moved
-                    unpatch(temp_unpatch_path, src, dst, backend, mode="copy", force=True)
-                submodule_path = os.path.join(temp_unpatch_path, "third_party", submodule_name)
-                repo = Repo(submodule_path)
+                    # Initialize the submodule
+                    init_submodule(temp_unpatch_path, dst, backend, force=True)
+            submodule_path = os.path.join(temp_unpatch_path, "third_party", backend) if backend != FLAGSCALE_BACKEND else temp_unpatch_path
+            repo = Repo(submodule_path)
             repo.git.apply("--whitespace", "fix", new_patch_file)
-            logger.info(f"Patch {new_patch_file} has been applied.")
+            logger.info(f"    Patch {new_patch_file} has been applied.")
 
-        logger.info(f"Step 7: Moving patched temp path {temp_unpatch_path} to {final_path}")
+        logger.info(f"Step 6: Moving patched temp path {temp_unpatch_path} to {final_path}")
         os.makedirs(build_path, exist_ok=True)
         shutil.move(temp_unpatch_path, final_path)
         logger.info(f"Unpatch Ended.")
