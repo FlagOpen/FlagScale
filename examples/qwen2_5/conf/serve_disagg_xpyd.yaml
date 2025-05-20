@@ -15,6 +15,7 @@ experiment:
     prefill_address: x.x.x.x # optional, default "auto"
     decode_num: 2
     decode_address: x.x.x.x # optional, default "auto"
+    prefill_decode_strategy: slo # optional, one of [slo|random|robin], default slo
   runner:
     hostfile: examples/qwen/conf/hostfile.txt
     docker: fr-v2

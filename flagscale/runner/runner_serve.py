@@ -315,7 +315,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         },
                     }
                     logger.info(
-                        f"============= decode instance {i}, d_kv_config: {d_kv_config} ============="
+                        f"============= decode instance {j}, d_kv_config: {d_kv_config} ============="
                     )
                     card_ids = resource_manager.get_available_card_ids(
                         address=d_address, num=each_instance_card_num
@@ -339,7 +339,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         f.write(f"d_{j}_cmd='{d_cmd}'\n")
                         f.write(f"\n")
                         f.write(
-                            f'nohup bash -c "$d_{i}_cmd; sync" >> {d_instance_log_path} 2>&1 &\n\n'
+                            f'nohup bash -c "$d_{j}_cmd; sync" >> {d_instance_log_path} 2>&1 &\n\n'
                         )
 
             else:

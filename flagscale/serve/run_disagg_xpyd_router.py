@@ -12,11 +12,15 @@ import socket
 import threading
 import uuid
 
+from functools import lru_cache
+from typing import Any, Dict, List
+
 import aiohttp
 import msgpack
 import zmq
 
 from quart import Quart, make_response, request
+from transformers import AutoTokenizer
 
 try:
     import flag_scale
@@ -27,7 +31,28 @@ from flagscale import serve
 from flagscale.logger import logger
 from flagscale.utils import flatten_dict_to_args
 
-# Refer to https://github.com/vllm-project/vllm/pull/15806
+serve.load_args()
+TASK_CONFIG = serve.task_config
+MODEL_PATH = TASK_CONFIG.serve[0].get("engine_args", {}).get("model", None)
+
+# Scheduling strategy: 'random', 'robin', 'slo'
+SCHEDULING_STRATEGY = TASK_CONFIG.experiment.get("deploy", {}).get("prefill_decode_strategy", "slo")
+
+
+@lru_cache(maxsize=32)
+def load_hf_tokenizer(model_path: str):
+    return AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+
+
+def count_chat_tokens(messages: List[Dict[str, Any]]) -> int:
+    tokenizer = load_hf_tokenizer(MODEL_PATH)
+    text = tokenizer.apply_chat_template(messages, add_generation_prompt=False, tokenize=False)
+    return len(tokenizer.encode(text, add_special_tokens=False))
+
+
+def count_text_tokens(prompt: str) -> int:
+    tokenizer = load_hf_tokenizer(MODEL_PATH)
+    return len(tokenizer.encode(prompt, add_special_tokens=False))
 
 
 # -----------------------------------------------------------------------------
@@ -36,43 +61,73 @@ from flagscale.utils import flatten_dict_to_args
 class LoadManager:
     def __init__(self):
         self._lock = threading.Lock()
-        # Each resource type 'P' or 'D' maps to {http_addr: {'zmq': zmq_addr, 'load': int}}
+        # Each resource type 'P' or 'D' maps to {http_addr: {'zmq': zmq_addr, 'load_num': int, 'load_len': int, 'compute_ratio': float}}
+        # load_num: num of req, load_len: num of tokens
         self._instances: dict[str, dict[str, dict[str, object]]] = {"P": {}, "D": {}}
 
     def register(self, rtype: str, http_addr: str, zmq_addr: str):
         with self._lock:
             if http_addr not in self._instances[rtype]:
-                self._instances[rtype][http_addr] = {"zmq": zmq_addr, "load": 0}
+                self._instances[rtype][http_addr] = {
+                    "zmq": zmq_addr,
+                    "load_num": 0,
+                    "load_len": 0,
+                    "compute_ratio": 1.0,
+                }
                 logger.info(f"Registered new {rtype}-instance {http_addr} (zmq={zmq_addr})")
             else:
                 # If zmq address changed, synchronize it
                 self._instances[rtype][http_addr]["zmq"] = zmq_addr
 
-    def increment_load(self, rtype: str, http_addr: str):
+    def increment_load(self, rtype: str, http_addr: str, tokens=0):
         with self._lock:
-            self._instances[rtype][http_addr]["load"] += 1
+            self._instances[rtype][http_addr]["load_num"] += 1
+            self._instances[rtype][http_addr]["load_len"] += tokens
             logger.debug(
-                f"[{rtype}] +1 load on {http_addr}, now={self._instances[rtype][http_addr]['load']}"
+                f"[{rtype}] +1 load on {http_addr}, now={self._instances[rtype][http_addr]['load_num']}"
             )
 
-    def decrement_load(self, rtype: str, http_addr: str):
+    def decrement_load(self, rtype: str, http_addr: str, tokens=0):
         with self._lock:
-            self._instances[rtype][http_addr]["load"] -= 1
+            self._instances[rtype][http_addr]["load_num"] -= 1
+            self._instances[rtype][http_addr]["load_len"] -= tokens
             logger.debug(
-                f"[{rtype}] -1 load on {http_addr}, now={self._instances[rtype][http_addr]['load']}"
+                f"[{rtype}] -1 load on {http_addr}, now={self._instances[rtype][http_addr]['load_num']}"
             )
 
     def get_random(self, rtype: str) -> tuple[str, str]:
         with self._lock:
             items = list(self._instances[rtype].items())
+            logger.info(f"========== whole instance status {self._instances}==========")
         http_addr, info = random.choice(items)
         return http_addr, info["zmq"]
 
     def get_robin_loaded(self, rtype: str) -> tuple[str, str]:
         with self._lock:
-            http_addr, info = min(self._instances[rtype].items(), key=lambda kv: kv[1]["load"])
-            print(f"========== whole instance status {self._instances}==========", flush=True)
+            http_addr, info = min(self._instances[rtype].items(), key=lambda kv: kv[1]["load_num"])
+            logger.info(f"========== whole instance status {self._instances}==========")
         return http_addr, info["zmq"]
+
+    def get_slo_loaded(self, rtype: str, token_num: int = -1) -> tuple[str, str]:
+        with self._lock:
+            http_addr, info = min(
+                self._instances[rtype].items(),
+                key=lambda kv: (kv[1]["load_len"] + token_num) / kv[1]["compute_ratio"],
+            )
+            logger.info(f"========== whole instance status {self._instances}==========")
+        return http_addr, info["zmq"]
+
+    def get_loaded(
+        self, rtype: str, load_type: str = "robin", token_num: int = 0
+    ) -> tuple[str, str]:
+        if load_type == "random":
+            return self.get_random(rtype)
+        elif load_type == "robin":
+            return self.get_robin_loaded(rtype)
+        elif load_type == "slo":
+            return self.get_slo_loaded(rtype, token_num)
+        else:
+            raise ValueError(f"Unknown load type: {load_type}")
 
 
 # -----------------------------------------------------------------------------
@@ -85,9 +140,6 @@ prefill_instances: dict[str, str] = {}
 decode_instances: dict[str, str] = {}
 prefill_cv = threading.Condition()
 decode_cv = threading.Condition()
-
-# Scheduling strategy: 'random' or 'robin' (robin load)
-SCHEDULING_STRATEGY = os.environ.get("SCHEDULING_STRATEGY", "robin").lower()
 
 
 # -----------------------------------------------------------------------------
@@ -168,47 +220,50 @@ async def handle_request():
         original_data = await request.get_json()
         endpoint = request.path  # this will be '/v1/completions' or '/v1/chat/completions'
 
+        # calculate tokens num
+        prompt_tokens_num = 0
+        if SCHEDULING_STRATEGY == "slo":
+            if request.path.endswith("/chat/completions"):
+                prompt_tokens_num = count_chat_tokens(original_data["messages"])
+            else:
+                prompt_tokens_num = count_text_tokens(original_data["prompt"])
+        logger.info(f"---------------- prompt_tokens_num {prompt_tokens_num} -------------- ")
+
         # Prefill request: max_tokens=1
         prefill_request = original_data.copy()
         prefill_request["max_tokens"] = 1
 
         # Select Prefill instance
-        if SCHEDULING_STRATEGY == "robin":
-            prefill_addr, prefill_zmq = lm.get_robin_loaded("P")
-        else:
-            prefill_addr, prefill_zmq = lm.get_random("P")
+        prefill_addr, prefill_zmq = lm.get_loaded("P", SCHEDULING_STRATEGY, prompt_tokens_num)
         logger.info(f"Selected P-instance {prefill_addr} via '{SCHEDULING_STRATEGY}'")
 
         # Select Decode instance
-        if SCHEDULING_STRATEGY == "robin":
-            decode_addr, decode_zmq = lm.get_robin_loaded("D")
-        else:
-            decode_addr, decode_zmq = lm.get_random("D")
+        decode_addr, decode_zmq = lm.get_loaded("D", SCHEDULING_STRATEGY, prompt_tokens_num)
         logger.info(f"Selected D-instance {decode_addr} via '{SCHEDULING_STRATEGY}'")
 
         # Keep original request_id composition format
         request_id = f"___prefill_addr_{prefill_zmq}___decode_addr_{decode_zmq}_{random_uuid()}"
 
         # Execute Prefill and update load
-        lm.increment_load("P", prefill_addr)
+        lm.increment_load("P", prefill_addr, prompt_tokens_num)
         try:
             async for _ in forward_request(
                 f"http://{prefill_addr}{endpoint}", prefill_request, request_id
             ):
                 pass
         finally:
-            lm.decrement_load("P", prefill_addr)
+            lm.decrement_load("P", prefill_addr, prompt_tokens_num)
 
         # Execute Decode and update load
         async def tracked_decode():
-            lm.increment_load("D", decode_addr)
+            lm.increment_load("D", decode_addr, prompt_tokens_num)
             try:
                 async for chunk in forward_request(
                     f"http://{decode_addr}{endpoint}", original_data, request_id
                 ):
                     yield chunk
             finally:
-                lm.decrement_load("D", decode_addr)
+                lm.decrement_load("D", decode_addr, prompt_tokens_num)
 
         resp = await make_response(tracked_decode())
         resp.timeout = None
@@ -220,8 +275,7 @@ async def handle_request():
 
 
 def main():
-    serve.load_args()
-    deploy_config = serve.task_config.experiment.get("deploy", {})
+    deploy_config = TASK_CONFIG.experiment.get("deploy", {})
     serve_port = deploy_config.get("port", None)
     # Used to register with the pd service discovery
     pd_proxy_port = deploy_config.get("pd_proxy_port", None)
@@ -229,7 +283,9 @@ def main():
         raise ValueError("No port specified in deploy config")
     if not pd_proxy_port:
         raise ValueError("No pd_proxy_port specified in deploy config")
-    print(f"Starting Proxy Server...with pd_proxy_port {pd_proxy_port} and serve_port {serve_port}")
+    logger.info(
+        f"Starting Proxy Server...with pd_proxy_port {pd_proxy_port} and serve_port {serve_port}"
+    )
     listener = start_service_discovery("0.0.0.0", pd_proxy_port)
     app.run(host="0.0.0.0", port=serve_port)
     listener.join()
