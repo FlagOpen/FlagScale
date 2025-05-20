@@ -771,12 +771,14 @@ class SSHServeRunner(RunnerBase):
         input_len = profile_args.get("input_len", 1024)
         output_len = profile_args.get("output_len", 1024)
         num_prompts = profile_args.get("num_prompts", 200)
+        range_ratio = profile_args.get("range_ratio", 0.5)
         dummy_input_requests = dummy_random_input(
             tokenizer=tokenizer,
             prefix_len=prefix_len,
             input_len=input_len,
             output_len=output_len,
             num_prompts=num_prompts,
+            range_ratio=range_ratio,
         )
         api_url = f"http://{self.host}:{self.port}/v1/chat/completions"
         logger.info(f"Profiling API {api_url}")
