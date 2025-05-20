@@ -497,6 +497,7 @@ async def benchmark(
 
     ### import here to avoid dependency issue
     from flagscale.serve.metric import calculate_metrics
+
     metrics, actual_output_lens = calculate_metrics(
         input_requests=input_requests,
         outputs=outputs,
