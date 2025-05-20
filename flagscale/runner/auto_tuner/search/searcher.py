@@ -1,10 +1,10 @@
 import copy
 import itertools
+import json
 import logging
 import time
 
 from functools import reduce
-from pprint import pprint
 
 from omegaconf import OmegaConf
 
@@ -533,8 +533,8 @@ class ServeSearcher(Searcher):
         self._init_nodes_aware_dims()
         super(ServeSearcher, self).__init__(config)
 
-        print("ServeSearcher.space", self.space)
-        print("ServeSearcher.strategies", self.strategies)
+        self.logger.info(f"ServeSearcher.space: {self.space}")
+        self.logger.info(f"ServeSearcher.strategies: {json.dumps(self.strategies)}")
 
     def _init_engines(self, config):
         self.engines = config.experiment.auto_tuner.get("engines", None)
@@ -671,7 +671,7 @@ class ServeSearcher(Searcher):
                 i["engine"] = engine
             strategies_all.extend(strategies)
 
-        print("================== grid search space: ================== \n")
-        pprint(strategies, indent=2)
+        self.logger.info("================== grid search space: ================== \n")
+        self.logger.info(strategies)
 
         return strategies_all
