@@ -98,14 +98,14 @@ class LoadManager:
     def get_random(self, rtype: str) -> tuple[str, str]:
         with self._lock:
             items = list(self._instances[rtype].items())
-            logger.info(f"========== whole instance status {self._instances}==========", flush=True)
+            logger.info(f"========== whole instance status {self._instances}==========")
         http_addr, info = random.choice(items)
         return http_addr, info["zmq"]
 
     def get_robin_loaded(self, rtype: str) -> tuple[str, str]:
         with self._lock:
             http_addr, info = min(self._instances[rtype].items(), key=lambda kv: kv[1]["load_num"])
-            logger.info(f"========== whole instance status {self._instances}==========", flush=True)
+            logger.info(f"========== whole instance status {self._instances}==========")
         return http_addr, info["zmq"]
 
     def get_slo_loaded(self, rtype: str, token_num: int = -1) -> tuple[str, str]:
@@ -114,7 +114,7 @@ class LoadManager:
                 self._instances[rtype].items(),
                 key=lambda kv: (kv[1]["load_len"] + token_num) / kv[1]["compute_ratio"],
             )
-            logger.info(f"========== whole instance status {self._instances}==========", flush=True)
+            logger.info(f"========== whole instance status {self._instances}==========")
         return http_addr, info["zmq"]
 
     def get_loaded(
@@ -227,9 +227,7 @@ async def handle_request():
                 prompt_tokens_num = count_chat_tokens(original_data["messages"])
             else:
                 prompt_tokens_num = count_text_tokens(original_data["prompt"])
-        logger.info(
-            f"---------------- prompt_tokens_num {prompt_tokens_num} -------------- ", flush=True
-        )
+        logger.info(f"---------------- prompt_tokens_num {prompt_tokens_num} -------------- ")
 
         # Prefill request: max_tokens=1
         prefill_request = original_data.copy()
