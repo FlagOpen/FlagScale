@@ -148,6 +148,7 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
         # Check backend path and patch file path
         all_base_commit_id = set()
         patch_files = []
+        patch_backends = []
         for backend in backends:
             backend_path = os.path.join(device_path, backend)
             if not os.path.exists(backend_path):
@@ -176,6 +177,7 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
             assert base_commit_id
             all_base_commit_id.add(base_commit_id)
             patch_files.append(patch_file)
+            patch_backends.append(backend)
         all_base_commit_id = list(all_base_commit_id)
 
         # Sort the commit by appearance order
@@ -202,7 +204,7 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
         repo.git.checkout(base_commit_id)
 
         logger.info(f"Step 5: Applying patch:")
-        for patch_file in patch_files:
+        for idx, patch_file in enumerate(patch_files):
             # Check if the patch file is encrypted
             new_patch_file = patch_file
             if patch_file.endswith(".encrypted"):
@@ -213,16 +215,21 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
                     raise ValueError(
                         f"Patch file {patch_file} is encrypted, but no key path provided."
                     )
+            submodule_name = patch_backends[idx]
+            if submodule_name != FLAGSCALE_BACKEND:
+                # init submodule
+                if init_submodule:
+                    logger.info(
+                        f"Step 6: Initializing submodule {backend} in temp unpatch path {temp_unpatch_path}..."
+                    )
+                    dst = os.path.join(temp_unpatch_path, "third_party", backend)
+                    src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
+                    # NOTE: mode must be 'copy' because the temp unpatch path will be moved
+                    unpatch(temp_unpatch_path, src, dst, backend, mode="copy", force=True)
+                submodule_path = os.path.join(temp_unpatch_path, "third_party", submodule_name)
+                repo = Repo(submodule_path)
             repo.git.apply("--whitespace", "fix", new_patch_file)
             logger.info(f"Patch {new_patch_file} has been applied.")
-
-        logger.info(f"Step 6: Initializing submodule in temp unpatch path {temp_unpatch_path}...")
-        if init_submodule:
-            for backend in backends:
-                dst = os.path.join(temp_unpatch_path, "third_party", backend)
-                src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
-                # NOTE: mode must be 'copy' because the temp unpatch path will be moved
-                unpatch(temp_unpatch_path, src, dst, backend, mode="copy", force=True)
 
         logger.info(f"Step 7: Moving patched temp path {temp_unpatch_path} to {final_path}")
         os.makedirs(build_path, exist_ok=True)
