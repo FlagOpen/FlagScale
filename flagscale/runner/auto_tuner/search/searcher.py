@@ -1,10 +1,10 @@
 import copy
 import itertools
+import json
 import logging
 import time
 
 from functools import reduce
-from pprint import pprint
 
 from omegaconf import OmegaConf
 
@@ -28,21 +28,27 @@ BUILT_IN_STRATEGY_DIMS = [
     "expert_model_parallel_size",
 ]
 
-_BUILT_IN_SERVE_STRATEGY_DIMS = [
-    "tensor_model_parallel_size",
-    "pipeline_model_parallel_size",
-    "instance",
-    "block_size",
-    "max_num_batched_tokens",
-    "max_num_seqs",
-    "swap_space",
-]
+_BUILT_IN_SERVE_STRATEGY_DIMS = {
+    "vllm": [
+        "tensor_model_parallel_size",
+        "pipeline_model_parallel_size",
+        "instance",
+        "block_size",
+        "max_num_batched_tokens",
+        "max_num_seqs",
+        "swap_space",
+    ],
+    "llama_cpp": ["threads", "n_gpu_layers"],
+}
 
 _DEFAULT_SERVE_TUNE_SPACE = {
-    "block_size": [8, 16, 32],
-    "max_num_batched_tokens": [512, 1024, 2048],
-    "max_num_seqs": [64, 128, 256],
-    "swap_space": [0, 4, 8, 16],
+    "vllm": {
+        "block_size": [8, 16, 32],
+        "max_num_batched_tokens": [512, 1024, 2048],
+        "max_num_seqs": [64, 128, 256],
+        "swap_space": [0, 4, 8, 16],
+    },
+    "llama_cpp": {"threads": [1, 2, 4, 8], "n_gpu_layers": [0, 16, 32, 64]},
 }
 
 
@@ -522,31 +528,51 @@ class Searcher:
 
 class ServeSearcher(Searcher):
     def __init__(self, config):
-        self._nodes_aware_dims = [
-            item
-            for item in _BUILT_IN_SERVE_STRATEGY_DIMS
-            if item not in _DEFAULT_SERVE_TUNE_SPACE.keys()
-        ]
+
+        self._init_engines(config)
+        self._init_nodes_aware_dims()
         super(ServeSearcher, self).__init__(config)
 
-    def _create_space_aware_nodes(self, space, cards):
+        self.logger.info(f"ServeSearcher.space: {self.space}")
+        self.logger.info(f"ServeSearcher.strategies: {json.dumps(self.strategies)}")
+
+    def _init_engines(self, config):
+        self.engines = config.experiment.auto_tuner.get("engines", None)
+        if isinstance(self.engines, str):
+            self.engines = [self.engines]
+        if not self.engines:
+            self.engines = ["vllm", "llama_cpp"]
+
+    def _init_nodes_aware_dims(self):
+        self._nodes_aware_dims = {}
+        self._nodes_aware_strategies = {}
+        for engine in self.engines:
+            self._nodes_aware_dims[engine] = [
+                item
+                for item in _BUILT_IN_SERVE_STRATEGY_DIMS[engine]
+                if item not in _DEFAULT_SERVE_TUNE_SPACE[engine].keys()
+            ]
+
+    def _create_space_aware_nodes(self, space, cards, engine):
         if cards == 1:
-            for k in self._nodes_aware_dims:
-                space[k] = 1
+            for k in self._nodes_aware_dims[engine]:
+                space[k] = [1]
 
         fixed_dims = {}
-        for idx, key in enumerate(self._nodes_aware_dims):
+        for idx, key in enumerate(self._nodes_aware_dims[engine]):
             if key in space and space[key] != "auto":
                 fixed_dims[idx] = space[key]
 
         nodes_aware_strategies = self._find_combinations(
-            cards, len(self._nodes_aware_dims), fixed_dims
+            cards, len(self._nodes_aware_dims[engine]), fixed_dims
         )
-        for key_idx, key in enumerate(self._nodes_aware_dims):
+        for key_idx, key in enumerate(self._nodes_aware_dims[engine]):
             space[key] = list(set([v[key_idx] for v in nodes_aware_strategies]))
         return space, nodes_aware_strategies
 
     def _find_combinations(self, target, num_dims, fixed_dims={}, current=[]):
+        if num_dims == 0:
+            return []
         results = []
         dim_index = len(current)
 
@@ -568,22 +594,22 @@ class ServeSearcher(Searcher):
 
         return results
 
-    def _create_default_space(self, cards):
-        space = dict.fromkeys(self._nodes_aware_dims, "auto")
-        space.update(_DEFAULT_SERVE_TUNE_SPACE)
-        return self._create_space_aware_nodes(space, cards)
+    def _create_default_space(self, cards, engine):
+        space = dict.fromkeys(self._nodes_aware_dims[engine], "auto")
+        space.update(_DEFAULT_SERVE_TUNE_SPACE[engine])
+        return self._create_space_aware_nodes(space, cards, engine)
 
-    def _create_space(self, space, cards):
+    def _create_space(self, space, cards, engine):
         if len(space) == 0:
-            space, nodes_aware_strategies = self._create_default_space(cards)
+            space, nodes_aware_strategies = self._create_default_space(cards, engine)
             return space, nodes_aware_strategies
 
-        space, nodes_aware_strategies = self._create_space_aware_nodes(space, cards)
+        space, nodes_aware_strategies = self._create_space_aware_nodes(space, cards, engine)
 
         for key, value in space.items():
             if value == "auto":
-                if key in _DEFAULT_SERVE_TUNE_SPACE.keys():
-                    space[key] = _DEFAULT_SERVE_TUNE_SPACE[key]
+                if key in _DEFAULT_SERVE_TUNE_SPACE[engine].keys():
+                    space[key] = _DEFAULT_SERVE_TUNE_SPACE[engine][key]
             else:
                 assert type(OmegaConf.to_object(value)) in [
                     tuple,
@@ -595,33 +621,57 @@ class ServeSearcher(Searcher):
         """
         the number of cards is fixed.
         """
+        space_all = {}
         cards = config.experiment.auto_tuner.cards
-        space = getattr(config.experiment.auto_tuner, "space", {})
-        if len(space) != 0:
-            self._nodes_aware_dims = [item for item in space if item in self._nodes_aware_dims]
-        space, nodes_aware_strategies = self._create_space(space, cards)
-        self._nodes_aware_strategies = nodes_aware_strategies
+        for engine in self.engines:
+            space = getattr(config.experiment.auto_tuner, "space", {}).get(engine, {})
+            if len(space) != 0:
+                self._nodes_aware_dims[engine] = [
+                    item for item in space if item in self._nodes_aware_dims[engine]
+                ]
+            space, nodes_aware_strategies = self._create_space(space, cards, engine)
+            self._nodes_aware_strategies[engine] = nodes_aware_strategies
 
-        config.experiment.auto_tuner.space = space
+            setattr(config.experiment.auto_tuner.space, engine, space)
+            space_all[engine] = space
         if "algo" not in self.config.experiment.auto_tuner:
             self.config.experiment.auto_tuner.algo = {"name": "grid", "priority": None}
-        return space
+        return space_all
 
-    def build_strategies(self, space, config):
+    def build_strategies(self, space_all, config):
         """Build strategies by Cartesian product search space."""
-        node_unaware_tune_space = {
-            key: value for key, value in space.items() if key in _DEFAULT_SERVE_TUNE_SPACE
-        }
-        values = list(node_unaware_tune_space.values())
-        cartesian_product_unaware_values = list(itertools.product(*values))
-        cartesian_product_values = list(
-            itertools.product(self._nodes_aware_strategies, cartesian_product_unaware_values)
-        )
-        cartesian_product_values = [tuple(tuple(a) + b) for a, b in cartesian_product_values]
-        strategies = [
-            dict(zip(self.space.keys(), combination)) for combination in cartesian_product_values
-        ]
-        print("================== grid search space: ================== \n")
-        pprint(strategies, indent=2)
+        strategies_all = []
+        for engine in self.engines:
+            space = space_all[engine]
+            node_unaware_tune_space = {
+                key: value
+                for key, value in space.items()
+                if key in _DEFAULT_SERVE_TUNE_SPACE[engine]
+            }
+            values = list(node_unaware_tune_space.values())
+            cartesian_product_unaware_values = list(itertools.product(*values))
+            if self._nodes_aware_strategies[engine]:
+                cartesian_product_values = list(
+                    itertools.product(
+                        self._nodes_aware_strategies[engine], cartesian_product_unaware_values
+                    )
+                )
+                cartesian_product_values = [
+                    tuple(tuple(a) + b) for a, b in cartesian_product_values
+                ]
+            else:
+                # TDOO: llama.cpp support multi-instance
+                cartesian_product_values = list(cartesian_product_unaware_values)
 
-        return strategies
+            strategies = [
+                dict(zip(self.space[engine].keys(), combination))
+                for combination in cartesian_product_values
+            ]
+            for i in strategies:
+                i["engine"] = engine
+            strategies_all.extend(strategies)
+
+        self.logger.info("================== grid search space: ================== \n")
+        self.logger.info(strategies)
+
+        return strategies_all
