@@ -1135,14 +1135,14 @@ class _Qwen2VLTokenizer(MegatronTokenizer):
         self.vision_end_token = '<|vision_end|>'
 
         from transformers import AutoProcessor
-        proc = AutoProcessor.from_pretrained(
+        self.processor = AutoProcessor.from_pretrained(
             tokenizer_path,
             use_fast=False,
             trust_remote_code=True
         )
         # NOTE: In Qwen2-VL, template in chat_template.json is same within tokenizer_config.json and both can be used.
         # However, in Qwen 2.5-VL, the two templates are different and only the one in chat_template.json is OK.
-        self.chat_template = proc.chat_template
+        self.chat_template = self.processor.chat_template
 
     def __call__(self, text, return_tensors=None,
                     padding=None, max_length=None, truncation=None, add_special_tokens=None):

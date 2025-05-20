@@ -325,7 +325,7 @@ class TaskEncoder(
         if target_length > self.seq_len:
             # raise InternalWarning(f"Long sequence with length {target_length} found, dropped...")
             dataset_logger.warning(
-                f"Long sequence with length {target_length} found, cutoff to {self.seq_len} in batch function..."
+                f"Samle id [{sample.__key__}] has long sequence with length {target_length}, cutoff to {self.seq_len} in batch function..."
             )
         final_input_ids = np.zeros(target_length, dtype=input_ids.dtype)
         final_input_masks = final_input_ids.copy()
