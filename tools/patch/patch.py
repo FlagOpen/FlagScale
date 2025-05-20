@@ -429,6 +429,8 @@ def normalize_backend(backend):
         return "FlagScale"
     elif input_lower == "vllm":
         return "vllm"
+    elif input_lower in ["llama.cpp", "llama_cpp"]:
+        return "llama.cpp"
 
     raise ValueError(f'Unsupported backend {backend}')
 
