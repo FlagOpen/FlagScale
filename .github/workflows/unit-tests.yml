@@ -66,3 +66,4 @@ jobs:
           fi
 
           tests/scripts/unit_tests/test_subset.sh --backend ${{ inputs.backend }} --subset ${{ inputs.subset }} --id ${{ github.sha }}
+        shell: bash
