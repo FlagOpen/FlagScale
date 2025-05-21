@@ -134,6 +134,7 @@ jobs:
       matrix:
         task:
           - deepseek
+          - qwen3
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
