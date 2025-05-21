@@ -57,6 +57,8 @@ jobs:
             fi
           elif [ "${{ inputs.type }}" = "inference" ] || [ "${{ inputs.type }}" = "serve" ]; then
             python tools/patch/unpatch.py --backend vllm
+            conda activate flagscale-inference
+            MAX_JOBS=$(nproc) pip install --no-build-isolation -v ./third_party/vllm/.
           else
             echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
