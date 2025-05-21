@@ -10,6 +10,7 @@ commands=(
     "tests/scripts/functional_tests/test_task.sh --type hetero_train --task aquila"
     # Add in the feature
     "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3"
     # For serve
     "tests/scripts/functional_tests/test_task.sh --type serve --task base"
 )
