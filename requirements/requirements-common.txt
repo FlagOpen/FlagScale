@@ -12,6 +12,8 @@ hydra-core
 matplotlib
 PyYAML
 pybind11==2.13.6
+scikit-build
+scikit-build-core
 sentencepiece
 tensorboard
 transformers

@@ -222,7 +222,7 @@ if [ "${env}" == "inference" ]; then
             cmake --build build --config Release
             ;;
         cuda|gpu)
-            cmake -B build -DGGML_CUDA=ON
+            cmake -B build -DGGML_CUDA=ON -DLLAMA_CURL=OFF
             cmake --build build --config Release
             ;;
         musa)
