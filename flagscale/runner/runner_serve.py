@@ -523,7 +523,7 @@ def _generate_stop_script(config, host, node_rank):
                 f.write(f"# clean nodes \n")
                 if len(nodes) > 1:
                     for ip, node in nodes[1:]:
-                        node_cmd = f"pkill -f vllm || true && pkill -f ray || true"
+                        node_cmd = f"pkill -f vllm && pkill -f python"
                         ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
                         if docker_name:
                             ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
@@ -540,7 +540,7 @@ def _generate_stop_script(config, host, node_rank):
                 f.write(f"# clean nodes \n")
                 if len(nodes) > 1:
                     for ip, node in nodes[1:]:
-                        node_cmd = f"${{ray_path}} stop"
+                        node_cmd = f"${{ray_path}} stop && pkill -f python"
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
 
@@ -603,9 +603,14 @@ class SSHServeRunner(RunnerBase):
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
         self.deploy_config = self.config.experiment.get("deploy", {})
-        self.inference_engine = _get_inference_engine(self.config)
+        if self.config.experiment.task.get("entrypoint", None):
+            self.inference_engine = _get_inference_engine(self.config)
+            self.port = _reset_serve_port(config)
+        else:
+            self.inference_engine = None
+            self.port = None
         self.use_fs_serve = self.deploy_config.get("use_fs_serve", True)
-        self.port = _reset_serve_port(config)
+
         self._prepare()
         self.host = None
 
@@ -726,6 +731,7 @@ class SSHServeRunner(RunnerBase):
         host_stop_script_file = _generate_stop_script(self.config, host, node_rank)
         logging_config = self.config.logging
         cmd = f"bash {host_stop_script_file}"
+        logger.info(f"Run the local command: {cmd}")
         subprocess.run(
             cmd, shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
         )
