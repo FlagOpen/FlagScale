@@ -1,7 +1,7 @@
 import os
 import shutil
 
-from .logger_utils import get_patch_logger, get_unpatch_logger
+from logger_utils import get_patch_logger, get_unpatch_logger
 
 
 DELETED_FILE_NAME = "deleted_files.txt"

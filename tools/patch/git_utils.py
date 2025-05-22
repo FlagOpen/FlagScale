@@ -1,4 +1,4 @@
-from .logger_utils import get_patch_logger
+from logger_utils import get_patch_logger
 
 logger = get_patch_logger()
 

@@ -7,17 +7,17 @@ import tempfile
 
 import yaml
 
-from .encryption_utils import encrypt_file, generate_rsa_keypair
-from .file_utils import sync_to_flagscale
+from encryption_utils import encrypt_file, generate_rsa_keypair
+from file_utils import sync_to_flagscale
 from git.repo import Repo
-from .git_utils import (
+from git_utils import (
     check_git_user_info,
     get_diff_between_commit_and_now,
     get_file_statuses_for_staged_or_unstaged,
     get_file_statuses_for_untracked,
     get_submodule_commit,
 )
-from .logger_utils import get_patch_logger
+from logger_utils import get_patch_logger
 
 DELETED_FILE_NAME = "deleted_files.txt"
 FLAGSCALE_BACKEND = "FlagScale"
