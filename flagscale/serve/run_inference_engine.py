@@ -74,10 +74,10 @@ def sglang_serve(args):
     common_args = args.get("engine_args", {})
     sglang_args = args.get("engine_args_specific", {}).get("sglang", {})
 
-    command = ["python3 -m sglang.launch_server"]
+    command = ["python", "-m", "sglang.launch_server"]
     if common_args.get("model", None):
         converted_args = ARGS_CONVERTER.convert("sglang", common_args)
-        command.extend(["--model-path", converted_args["model"]])
+        command.extend(["--model-path", converted_args["model_path"]])
         common_args_flatten = flatten_dict_to_args(converted_args, ["model"])
         command.extend(common_args_flatten)
         sglang_args_flatten = flatten_dict_to_args(sglang_args, ["model"])
