@@ -1,0 +1,12 @@
+backends_commit:
+  vllm: ed6e9075d31e32c8548b480a47d1ffb77da1f54c
+backends_version:
+  FlagScale: 0.8.0
+  vllm: 0.7.3
+commit: 3a401567df05f6c6a7ba2cc150b81a6ec4b3318a
+contact: yongpeng.zhang@iluvatar.com
+device_type: BI_V150
+models:
+- qwen3-30b-a3b
+task:
+- inference
