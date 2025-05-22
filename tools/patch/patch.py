@@ -15,6 +15,7 @@ from git_utils import (
     get_diff_between_commit_and_now,
     get_file_statuses_for_staged_or_unstaged,
     get_file_statuses_for_untracked,
+    get_submodule_commit,
 )
 from logger_utils import get_patch_logger
 
@@ -43,7 +44,8 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
     main_repo = Repo(main_path)
     submodule = main_repo.submodule(submodule_path)
     sub_repo = submodule.module()
-    submodule_commit_in_fs = submodule.hexsha
+    # Get the submodule commit in FlagScale by FlagScale HEAD instead of the submodule HEAD.
+    submodule_commit_in_fs = main_repo.head.commit.tree[submodule_path].hexsha
     logger.info(f"Base commit hash of submodule {submodule_path} is {submodule_commit_in_fs}.")
 
     # Get all differences between the submodule specified commit and now.
@@ -123,26 +125,38 @@ def prompt_info(main_path, backends, device_type, tasks):
             version = input(f"    {backend} version: ").strip()
         backends_version[backend] = version
 
+    backends_commit = {}
+    print("2. Please enter backends commit: ")
+    logger.info(
+        "If a specific submodule commit is provided, it will be used to generate the diff and apply the patch. By default, the commit defined by FlagScale will be used."
+    )
+    for backend in backends:
+        if backend == FLAGSCALE_BACKEND:
+            continue
+        commit = input(f"    {backend} commit (optional): ").strip()
+        commit = get_submodule_commit(commit, backend, main_path)
+        backends_commit[backend] = commit
+
     # FlagScale-compatible models
     model_input = input(
-        "2. Please enter flagScale-compatible models (separated with commas): "
+        "3. Please enter flagScale-compatible models (separated with commas): "
     ).strip()
     models = [m.strip() for m in model_input.split(",") if m.strip()]
     while not models:
         logger.info("At least one FlagScale-compatible model must be provided.")
         model_input = input(
-            "2. Please enter FlagScale-compatible models (separated with commas): "
+            "3. Please enter FlagScale-compatible models (separated with commas): "
         ).strip()
         models = [m.strip() for m in model_input.split(",") if m.strip()]
 
     # 3. Commit message
-    commit_msg = input("3. Please enter commit message: ").strip()
+    commit_msg = input("4. Please enter commit message: ").strip()
     while not commit_msg:
         logger.info("Commit message cannot be empty.")
-        commit_msg = input("3. Please enter commit message: ").strip()
+        commit_msg = input("4. Please enter commit message: ").strip()
 
     # 4. Contact (optional)
-    contact_prompt = "4. Please enter email (optional): "
+    contact_prompt = "5. Please enter email (optional): "
     contact = input(contact_prompt).strip()
 
     return {
@@ -152,6 +166,7 @@ def prompt_info(main_path, backends, device_type, tasks):
         "models": models,
         "contact": contact,
         "commit_msg": commit_msg,
+        "backends_commit": backends_commit,
     }
 
 
@@ -206,7 +221,7 @@ def _generate_patch_file_for_backend(
             "Step 2: Applying stashed changes and add changes on the temp_branch_for_hardware_patch..."
         )
         repo.git.stash("apply")
-        repo.git.add(all=True)
+        repo.git.add(all=True) if backend != FLAGSCALE_BACKEND else repo.git.add('--all', f':!third_party')
 
         # Step3: Commit with message "Patch for {commit}".
         logger.info("Step 3: Committing changes on the temp_branch_for_hardware_patch...")
@@ -305,7 +320,9 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
                 submodule_path = "third_party" + "/" + backend
                 submodule = main_repo.submodule(submodule_path)
                 sub_repo = submodule.module()
-                submodule_commit_in_fs = submodule.hexsha
+                submodule_commit_in_fs = repo.head.commit.tree[submodule_path].hexsha
+                if backend in patch_info["backends_commit"]:
+                    submodule_commit_in_fs = patch_info["backends_commit"][backend]
                 patch_dir, temp_patch_path, temp_yaml_path = _generate_patch_file_for_backend(
                     main_path,
                     submodule_commit_in_fs,
@@ -495,8 +512,8 @@ if __name__ == "__main__":
     if FLAGSCALE_BACKEND in backends:
         assert commit is not None, "FlagScale patch only can be generated with hardware."
 
-    # hardware patch
     if commit:
+        # hardware patch
         patch_hardware(main_path, commit, backends, device_type, tasks, key_path=key_path)
     else:
         for backend in backends:
