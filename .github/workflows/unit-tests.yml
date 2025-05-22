@@ -58,7 +58,7 @@ jobs:
             python tools/patch/unpatch.py --backend Megatron-LM
           elif [ "${{ inputs.backend }}" = "vllm" ]; then
             python tools/patch/unpatch.py --backend vllm
-            source /root/miniconda3/bin/activate  flagscale-inference
+            source /root/miniconda3/bin/activate flagscale-inference
             MAX_JOBS=$(nproc) pip install --no-build-isolation -v ./third_party/vllm/.
           else
             echo "Unknown backend type: ${{ inputs.backend }}"
