@@ -556,6 +556,7 @@ def _generate_stop_script(config, host, node_rank):
                 f.write("pkill -f 'run_inference_engine'\n")
                 f.write("pkill -f 'run_fs_serve_vllm'\n")
                 f.write("pkill -f 'vllm serve'\n")
+                f.write("pkill -f multiprocessing\n")
                 f.write(f"\n")
         else:
             node_cmd = None
@@ -569,6 +570,7 @@ def _generate_stop_script(config, host, node_rank):
             f.write("pkill -f 'run_inference_engine'\n")
             f.write("pkill -f 'run_fs_serve_vllm'\n")
             f.write("pkill -f 'vllm serve'\n")
+            f.write("pkill -f multiprocessing\n")
             f.write("\n")
         f.write(f"{after_stop}\n")
         f.flush()
@@ -603,7 +605,7 @@ class SSHServeRunner(RunnerBase):
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
         self.deploy_config = self.config.experiment.get("deploy", {})
-        if self.config.experiment.task.get("entrypoint", None):
+        if not self.config.experiment.task.get("entrypoint", None):
             self.inference_engine = _get_inference_engine(self.config)
             self.port = _reset_serve_port(config)
         else:
@@ -716,17 +718,6 @@ class SSHServeRunner(RunnerBase):
             pid = f.readlines()[0]
             pid = int(pid.strip())
         kill_process_tree(pid)
-
-        # ray_executable = shutil.which("ray")
-        # if ray_executable:
-        #     ray_path = os.path.realpath(ray_executable)
-        #     os.system(f"{ray_path} stop")
-        # else:
-        #     logger.info("Failed to find ray path")
-
-        # os.system("pkill -f run_inference_engine")
-        # os.system("pkill -f run_fs_serve_vllm")
-        # os.system("pkill -f 'vllm serve'")
 
         host_stop_script_file = _generate_stop_script(self.config, host, node_rank)
         logging_config = self.config.logging
