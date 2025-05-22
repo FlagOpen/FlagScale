@@ -1,0 +1,12 @@
+backends_commit:
+  vllm: 0408efc6d0c17fba17b2be38d0d0f02e96d2bf9d
+backends_version:
+  vllm: 0.7.2
+commit: c4f4bd9f917eb86fa2edee9d9d06a38ab3343874
+contact: ''
+device_type: Metax_C500
+models:
+- Deepseek-v3
+- Qwen3
+task:
+- inference
