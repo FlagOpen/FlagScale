@@ -3,8 +3,8 @@ defaults:
   - inference: tp2
 
 experiment:
-  exp_name: qwen3
-  exp_dir: tests/functional_tests/test_cases/inference/qwen3/results_test/tp2
+  exp_name: qwen3_gems
+  exp_dir: tests/functional_tests/test_cases/inference/qwen3_gems/results_test/tp2
   task:
     type: inference
     backend: vllm
