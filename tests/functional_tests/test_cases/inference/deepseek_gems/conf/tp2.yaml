@@ -13,7 +13,7 @@ experiment:
     hostfile: null
   cmds:
     before_start:
-      source /root/miniconda3/bin/activate flagscale-inference && export USE_FLAGGEMS=true
+      source /root/miniconda3/bin/activate flagscale-inference
   envs:
     HYDRA_FULL_ERROR: 1
     CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
@@ -26,6 +26,7 @@ experiment:
     NVTE_FUSED_ATTN: 0
     CUDNN_BENCHMARK: "false"
     CUDNN_DETERMINISTIC: "true"
+    USE_FLAGGEMS: "true"
 
 action: run
 

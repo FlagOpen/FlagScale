@@ -26,6 +26,7 @@ experiment:
     NVTE_FUSED_ATTN: 0
     CUDNN_BENCHMARK: "false"
     CUDNN_DETERMINISTIC: "true"
+    USE_FLAGGEMS: "true"
 
 action: run
 
