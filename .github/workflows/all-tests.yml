@@ -110,7 +110,7 @@ jobs:
       - set-env
       - functional-tests-train
     runs-on: ubuntu-latest
-    steps: 
+    steps:
       - name: Mock Run
         run: echo "pass"
     # TODO: test need fix
@@ -145,7 +145,7 @@ jobs:
       - set-env
       - functional-tests-inference
     runs-on: ubuntu-latest
-    steps: 
+    steps:
       - name: Mock Run
         run: echo "pass"
     # TODO: test need fix
