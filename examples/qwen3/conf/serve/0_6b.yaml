@@ -8,6 +8,7 @@
     max_model_len: 4096
     max_num_seqs: 4
     uvicorn_log_level: warning
+    port: 30000
   engine_args_specific:
     llama_cpp:
       threads: 4
@@ -19,6 +20,8 @@
       enforce_eager: true
       trust_remote_code: true
       enable_chunked_prefill: true
+    sglang:
+      page_size: 64
   profile:
     prefix_len: 0
     input_len: 1024
