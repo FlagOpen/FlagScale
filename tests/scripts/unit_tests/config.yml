@@ -8,7 +8,7 @@ megatron:
     - export NVTE_FLASH_ATTN=0
     - export NVTE_FUSED_ATTN=0
     - ulimit -n 65535
-  coverage:
+  coverage_fold:
     core
   subset:
     data:
@@ -58,6 +58,8 @@ megatron:
         - test_mamba_hybrid_layer_allocation.py
         - test_mamba_layer.py
         - test_mamba_mixer.py
+    tensor_parallel:
+      - default
     transformer/moe:
       type: single
       ignore:
