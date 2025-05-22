@@ -128,7 +128,7 @@ jobs:
   functional-tests-inference:
     needs:
       - set-env
-      # - functional-tests-hetero
+      - functional-tests-hetero
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
