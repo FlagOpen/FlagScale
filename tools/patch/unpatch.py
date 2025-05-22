@@ -7,11 +7,11 @@ import tempfile
 
 import yaml
 
-from encryption_utils import decrypt_file
-from file_utils import copy, create_symlinks, delete_file
+from .encryption_utils import decrypt_file
+from .file_utils import copy, create_symlinks, delete_file
 from git.repo import Repo
-from logger_utils import get_unpatch_logger
-from patch import normalize_backend
+from .logger_utils import get_unpatch_logger
+from .patch import normalize_backend
 
 DELETED_FILE_NAME = "deleted_files.txt"
 FLAGSCALE_BACKEND = "FlagScale"
