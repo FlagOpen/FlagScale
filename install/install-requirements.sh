@@ -39,7 +39,7 @@ fi
 python -m pip install --upgrade pip
 
 # Packages that need to be installed outside of the conda environment
-pip install -r ../requirements/requirements-base.txt
+pip install -r ./requirements/requirements-base.txt
 
 # Proceed with setup based on the value of 'env'
 echo "Setting up environment for: $env"
@@ -65,7 +65,7 @@ set -e
 pip install --upgrade setuptools
 
 # Navigate to requirements directory and install basic dependencies
-pip install -r ../requirements/requirements-common.txt
+pip install -r ./requirements/requirements-common.txt
 
 # TransformerEngine
 # Megatron-LM requires TE >= 2.1.0.
@@ -100,11 +100,10 @@ wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILa
 # If env equals 'train'
 if [ "${env}" == "train" ]; then
     # Unpatch
-    cd ..
     python tools/patch/unpatch.py --backend Megatron-LM
 
     # Navigate to requirements directory and install training dependencies
-    pip install -r ../requirements/train/megatron/requirements-cuda.txt
+    pip install -r ./requirements/train/megatron/requirements-cuda.txt
 
     # apex train
     git clone https://github.com/NVIDIA/apex
@@ -183,17 +182,13 @@ if [ "${env}" == "train" ]; then
             echo "Success: Line 917 replaced."
         fi
     fi
-    cd install
 fi
 
 # If env equals 'inference'
 if [ "${env}" == "inference" ]; then
     # Unpatch
-    cd ..
     python tools/patch/unpatch.py --backend vllm
     python tools/patch/unpatch.py --backend llama.cpp
-
-    pip install -r ./requirements/inference/requirements-cuda.txt
 
     # Build vllm
     # Navigate to requirements directory and install inference dependencies
@@ -257,7 +252,6 @@ if [ "${env}" == "inference" ]; then
             exit 1
             ;;
     esac
-    cd ../../install
 fi
 
 # Clean all conda caches

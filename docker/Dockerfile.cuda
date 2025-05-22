@@ -3,7 +3,6 @@ FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 ARG CUDA_VERSION
 ARG CUDNN_VERSION=9.5.0
 ARG PYTHON_VERSION=3.12
-ARG TORCH_VERSION=2.5.1
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
@@ -139,14 +138,15 @@ RUN cd ${WORK_DIR} && \
 ##############################################################################
 # Install flagscale-train requirements
 ##############################################################################
-RUN cd ${WORK_DIR}/FlagScale/install && \
-    ./install-requirements.sh --env train
+RUN cd ${WORK_DIR}/FlagScale && \
+    ./install/install-requirements.sh --env train
 
 ##############################################################################
 # Install flagscale-inference requirements
 ##############################################################################
-RUN cd ${WORK_DIR}/FlagScale/install && \
-    ./install-requirements.sh --env inference --llama-cpp-backend cuda
+RUN cd ${WORK_DIR}/FlagScale && \
+    apt-get install -y --no-install-recommends curl && \
+    ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
 
 # ##############################################################################
 # # Clear

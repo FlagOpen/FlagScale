@@ -1,10 +1,10 @@
 # Use Dockerfile.cuda to build image.
 
 ```bash
-docker build --build-arg CUDA_VERSION=12.4.1 --build-arg CUDNN_VERSION=9.5.0 --build-arg PYTHON_VERSION=3.12 --build-arg TORCH_VERSION=2.5.1 -f Dockerfile.cuda -t flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.5.1-time2503251131 .
+docker build -f Dockerfile.cuda -t flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.5.1-time2503251131 .
 ```
 
-* `CUDA_VERSION` `CUDNN_VERSION` `PYTHON_VERSION` `TORCH_VERSION`: Can be manually specified, default value is set in `docker/Dockerfile.cuda` and `install/install-requirements.sh`.
+* Corresponding versions of `cuda` `cudnn` `python` `torch`: Can be manually specified in `docker/Dockerfile.cuda` and `install/install-requirements.sh` and `requirements`.
 * `time`: Manually input the time of building the image, starting from year and accurate to minute, for example `25(year)03(month)25(day)11(hour)31(minute)`.
 
 # Build an SSH login free image using existing images and Dockerfile.ssh.
