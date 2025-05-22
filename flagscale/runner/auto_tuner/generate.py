@@ -113,6 +113,9 @@ class ServeGenerator(Generator):
                 "max_num_batched_tokens": "max_num_batched_tokens",
                 "max_num_seqs": "max_num_seqs",
                 "swap_space": "swap_space",
+                "n_gpu_layers": "n_gpu_layers",
+                "parallel": "parallel",
+                "threads": "threads",
             }
 
     def _set_value(self, strategy, config):
@@ -128,6 +131,10 @@ class ServeGenerator(Generator):
         if model_config is None:
             raise ValueError(f"No 'vllm_model' configuration found in task config: {serve_config}")
 
+        engine = model_config.engine
+        if "engine" in strategy:
+            engine = model_config.engine = strategy["engine"]
+
         for key, value in self.args_mapping.items():
             if key not in strategy:
                 continue
@@ -136,7 +143,7 @@ class ServeGenerator(Generator):
                     if value in model_config.resources:
                         del model_config.resources[value]
                     continue
-                if value not in model_config.engine_args:
+                if value not in model_config.engine_args_specific:
                     model_config.resources = OmegaConf.merge(
                         model_config.resources, {value: strategy[key]}
                     )
@@ -144,17 +151,17 @@ class ServeGenerator(Generator):
                     model_config.resources[value] = strategy[key]
             else:
                 if strategy[key] is None:
-                    if value in model_config.engine_args:
-                        del model_config.engine_args[value]
+                    if value in model_config.engine_args_specific[engine]:
+                        del model_config.engine_args_specific[engine][value]
                     continue
-                if value not in model_config.engine_args:
-                    model_config.engine_args = OmegaConf.merge(
-                        model_config.engine_args, {value: strategy[key]}
+                if value not in model_config.engine_args_specific[engine]:
+                    model_config.engine_args_specific[engine] = OmegaConf.merge(
+                        model_config.engine_args_specific[engine], {value: strategy[key]}
                     )
                 else:
-                    model_config.engine_args[value] = strategy[key]
-        current_tp = model_config.engine_args.get("tensor_parallel_size", 1)
-        current_pp = model_config.engine_args.get("pipeline_parallel_size", 1)
+                    model_config.engine_args_specific[engine][value] = strategy[key]
+        current_tp = model_config.engine_args_specific[engine].get("tensor_parallel_size", 1)
+        current_pp = model_config.engine_args_specific[engine].get("pipeline_parallel_size", 1)
         model_config.resources["num_gpus"] = current_tp * current_pp
 
         if not config.experiment.get("deploy", {}).get("use_fs_serve", True):

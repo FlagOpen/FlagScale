@@ -109,6 +109,19 @@ def _get_engine_args(config, model="vllm_model"):
     return engine_args
 
 
+def _get_profile_args(config, model="vllm_model"):
+    serve_config = config.get("serve", [])
+    if not serve_config:
+        raise ValueError(f"No 'serve' configuration found in task config: {serve_config}")
+
+    profile_args = {}
+    for item in serve_config:
+        if item.get("serve_id", None) == model:
+            profile_args = item.get("profile", {})
+            break
+    return profile_args
+
+
 def _update_config_serve(config: DictConfig):
     deploy_config = config.experiment.get("deploy", {})
 
@@ -302,7 +315,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         },
                     }
                     logger.info(
-                        f"============= decode instance {i}, d_kv_config: {d_kv_config} ============="
+                        f"============= decode instance {j}, d_kv_config: {d_kv_config} ============="
                     )
                     card_ids = resource_manager.get_available_card_ids(
                         address=d_address, num=each_instance_card_num
@@ -326,7 +339,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         f.write(f"d_{j}_cmd='{d_cmd}'\n")
                         f.write(f"\n")
                         f.write(
-                            f'nohup bash -c "$d_{i}_cmd; sync" >> {d_instance_log_path} 2>&1 &\n\n'
+                            f'nohup bash -c "$d_{j}_cmd; sync" >> {d_instance_log_path} 2>&1 &\n\n'
                         )
 
             else:
@@ -753,7 +766,20 @@ class SSHServeRunner(RunnerBase):
             model_name, tokenizer_mode=tokenizer_mode, trust_remote_code=trust_remote_code
         )
 
-        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=200)
+        profile_args = _get_profile_args(self.config)
+        prefix_len = profile_args.get("prefix_len", 0)
+        input_len = profile_args.get("input_len", 1024)
+        output_len = profile_args.get("output_len", 1024)
+        num_prompts = profile_args.get("num_prompts", 200)
+        range_ratio = profile_args.get("range_ratio", 0.5)
+        dummy_input_requests = dummy_random_input(
+            tokenizer=tokenizer,
+            prefix_len=prefix_len,
+            input_len=input_len,
+            output_len=output_len,
+            num_prompts=num_prompts,
+            range_ratio=range_ratio,
+        )
         api_url = f"http://{self.host}:{self.port}/v1/chat/completions"
         logger.info(f"Profiling API {api_url}")
 
