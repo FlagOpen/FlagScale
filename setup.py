@@ -71,6 +71,8 @@ setup(
     packages=[
         "flag_scale",
         "flag_scale.third_party.Megatron-LM.megatron",
+        "flag_scale.third_party.Megatron-LM.tests",
+        "flag_scale.third_party.Megatron-LM.tools",
         "flag_scale.third_party.Megatron-LM.megatron.energon",
         "flag_scale.flagscale",
         "flag_scale.examples",
@@ -80,6 +82,8 @@ setup(
     package_dir={
         "flag_scale": "",
         "flag_scale.third_party.Megatron-LM.megatron": "third_party/Megatron-LM/megatron",
+        "flag_scale.third_party.Megatron-LM.tests": "third_party/Megatron-LM/tests",
+        "flag_scale.third_party.Megatron-LM.tools": "third_party/Megatron-LM/tools",
         "flag_scale.third_party.Megatron-LM.megatron.energon": "third_party/Megatron-Energon/src/megatron/energon",
         "flag_scale.flagscale": "flagscale",
         "flag_scale.examples": "examples",
@@ -88,6 +92,8 @@ setup(
     },
     package_data={
         "flag_scale.third_party.Megatron-LM.megatron": ["**/*"],
+        "flag_scale.third_party.Megatron-LM.tests": ["**/*"],
+        "flag_scale.third_party.Megatron-LM.tools": ["**/*"],
         "flag_scale.third_party.Megatron-LM.megatron.energon": ["**/*"],
         "flag_scale.flagscale": ["**/*"],
         "flag_scale.examples": ["**/*"],
