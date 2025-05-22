@@ -3,7 +3,6 @@ import subprocess
 import sys
 
 import click
-
 import yaml
 
 VERSION = "0.6.0"
@@ -182,9 +181,7 @@ def get_valid_types_tasks_cases(config_path):
             VALID_TYPES_TASKS_CASES[test_type][task_name] = []
             cases = config[test_type][task_name].strip().split()
             for case in cases:
-                VALID_TYPES_TASKS_CASES[test_type][task_name].append(
-                    case.lstrip("-").strip()
-                )
+                VALID_TYPES_TASKS_CASES[test_type][task_name].append(case.lstrip("-").strip())
 
     print(VALID_TYPES_TASKS_CASES)
     return VALID_TYPES_TASKS_CASES
@@ -193,9 +190,7 @@ def get_valid_types_tasks_cases(config_path):
 def unit_test(backend_name, subset_name):
     change_to_flagscale()
 
-    VALID_BACKENDS_SUBSETS = get_valid_backends_subsets(
-        "tests/scripts/unit_tests/config.yml"
-    )
+    VALID_BACKENDS_SUBSETS = get_valid_backends_subsets("tests/scripts/unit_tests/config.yml")
 
     if backend_name not in VALID_BACKENDS_SUBSETS:
         click.echo(
@@ -232,9 +227,7 @@ def unit_test_all():
 
     change_to_flagscale()
 
-    VALID_BACKENDS_SUBSETS = get_valid_backends_subsets(
-        "tests/scripts/unit_tests/config.yml"
-    )
+    VALID_BACKENDS_SUBSETS = get_valid_backends_subsets("tests/scripts/unit_tests/config.yml")
 
     for backend in VALID_BACKENDS_SUBSETS:
         for subset in VALID_BACKENDS_SUBSETS[backend]:
@@ -332,52 +325,29 @@ def functional_test_all():
 
 @flagscale.command()
 @click.option(
-    "--unit",
-    is_flag=True,
-    help="Run specific unit test (requires --backend and --subset)",
+    "--unit", is_flag=True, help="Run specific unit test (requires --backend and --subset)"
 )
 @click.option(
-    "--unit-all",
-    is_flag=True,
-    help="Run all unit tests (no additional parameters needed)",
+    "--unit-all", is_flag=True, help="Run all unit tests (no additional parameters needed)"
 )
 @click.option(
-    "--functional",
-    is_flag=True,
-    help="Run specific functional test (requires --type and --task)",
+    "--functional", is_flag=True, help="Run specific functional test (requires --type and --task)"
 )
 @click.option(
     "--functional-all",
     is_flag=True,
     help="Run all functional tests (no additional parameters needed)",
 )
-@click.option(
-    "--backend", "backend_name", type=str, help="Backend name for unit testing"
-)
+@click.option("--backend", "backend_name", type=str, help="Backend name for unit testing")
 @click.option("--subset", "subset_name", type=str, help="Subset name for unit testing")
-@click.option(
-    "--type", "type_name", type=str, help="Task classification for functional testing"
-)
+@click.option("--type", "type_name", type=str, help="Task classification for functional testing")
 @click.option("--task", "task_name", type=str, help="Testing tasks that match the type")
 def test(
-    unit,
-    unit_all,
-    functional,
-    functional_all,
-    backend_name,
-    subset_name,
-    type_name,
-    task_name,
+    unit, unit_all, functional, functional_all, backend_name, subset_name, type_name, task_name
 ):
     """Execute test command with flexible parameter requirements"""
 
-    print(
-        "unit, unit_all, functional, functional_all",
-        unit,
-        unit_all,
-        functional,
-        functional_all,
-    )
+    print("unit, unit_all, functional, functional_all", unit, unit_all, functional, functional_all)
 
     # Validate mutual exclusivity
     if unit and unit_all:
