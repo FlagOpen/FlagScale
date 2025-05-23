@@ -1,6 +1,5 @@
 from logger_utils import get_patch_logger
 
-
 logger = get_patch_logger()
 
 
@@ -89,8 +88,10 @@ def get_file_statuses_for_untracked(untracked_files):
     return file_statuses
 
 
-from git import Repo, GitConfigParser
 from pathlib import Path
+
+from git import GitConfigParser, Repo
+
 
 def check_git_user_info(repo_path='.'):
     """
@@ -132,7 +133,10 @@ def check_git_user_info(repo_path='.'):
     # Show warning if either field is still not set
     error_messages = ""
     if user_info['name'] is None:
-        error_messages += "Git user.name is not set. You can set it with:\n  git config --global user.name YourName" + "\n"
+        error_messages += (
+            "Git user.name is not set. You can set it with:\n  git config --global user.name YourName"
+            + "\n"
+        )
     if user_info['email'] is None:
         error_messages += "Git user.email is not set. You can set it with:\n  git config --global user.email you@example.com"
     if error_messages:

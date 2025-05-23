@@ -120,7 +120,9 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, c
     return newest_flagscale_commit
 
 
-def apply_hardware_patch(device_type, backends, commit, main_path, need_init_submodule, key_path=None):
+def apply_hardware_patch(
+    device_type, backends, commit, main_path, need_init_submodule, key_path=None
+):
     build_path = os.path.join(main_path, "build", device_type)
     final_path = os.path.join(build_path, os.path.basename(main_path))
 
@@ -226,7 +228,11 @@ def apply_hardware_patch(device_type, backends, commit, main_path, need_init_sub
                     src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
                     # Initialize the submodule
                     init_submodule(temp_unpatch_path, dst, backend, force=True)
-            submodule_path = os.path.join(temp_unpatch_path, "third_party", backend) if backend != FLAGSCALE_BACKEND else temp_unpatch_path
+            submodule_path = (
+                os.path.join(temp_unpatch_path, "third_party", backend)
+                if backend != FLAGSCALE_BACKEND
+                else temp_unpatch_path
+            )
             repo = Repo(submodule_path)
             repo.git.apply("--whitespace", "fix", new_patch_file)
             logger.info(f"    Patch {new_patch_file} has been applied.")
