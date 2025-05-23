@@ -221,7 +221,11 @@ def _generate_patch_file_for_backend(
             "Step 2: Applying stashed changes and add changes on the temp_branch_for_hardware_patch..."
         )
         repo.git.stash("apply")
-        repo.git.add(all=True) if backend != FLAGSCALE_BACKEND else repo.git.add('--all', f':!third_party')
+        (
+            repo.git.add(all=True)
+            if backend != FLAGSCALE_BACKEND
+            else repo.git.add('--all', f':!third_party')
+        )
 
         # Step3: Commit with message "Patch for {commit}".
         logger.info("Step 3: Committing changes on the temp_branch_for_hardware_patch...")
