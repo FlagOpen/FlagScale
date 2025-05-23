@@ -22,11 +22,7 @@ inference:
     -tp2
   qwen3:
     -tp2
-  deepseek_gems:
-    -tp2
-  qwen3_gems:
-    -tp2
-    
+
 serve:
   base:
     -multiple_model

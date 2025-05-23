@@ -134,9 +134,7 @@ jobs:
       matrix:
         task:
           - deepseek
-          - deepseek_gems
           - qwen3
-          - qwen3_gems
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}

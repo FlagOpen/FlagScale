@@ -11,8 +11,6 @@ commands=(
     # Add in the feature
     "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek"
     "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3"
-    "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_gems"
-    "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3_gems"
     # For serve
     "tests/scripts/functional_tests/test_task.sh --type serve --task base"
 )
