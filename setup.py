@@ -61,7 +61,7 @@ main_path = os.path.dirname(__file__)
 backend = "Megatron-LM"
 src = os.path.join(main_path, "flagscale", "train", "backends", backend)
 dst = os.path.join(main_path, "third_party", backend)
-unpatch(main_path, src, dst, "third_party/Megatron-LM", mode="copy")
+unpatch(main_path, src, dst, "Megatron-LM", mode="copy")
 
 setup(
     name="flag_scale",
