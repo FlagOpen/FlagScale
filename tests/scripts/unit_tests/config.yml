@@ -8,7 +8,7 @@ megatron:
     - export NVTE_FLASH_ATTN=0
     - export NVTE_FUSED_ATTN=0
     - ulimit -n 65535
-  coverage:
+  coverage_fold:
     core
   subset:
     data:
@@ -33,14 +33,10 @@ megatron:
         - test_serialization.py::TestSerialization::test_tensor_shape_mismatch
     distributed:
       type: single
-    models:
-      ignore:
-        - test_mamba_model.py
-      deselect:
-        - test_t5_model.py::TestT5Model::test_post_process_forward
-        - test_t5_model.py::TestT5Model::test_forward_output_encoder_hidden_only
-        - test_t5_model.py::TestT5Model::test_forward_with_encoder_hidden_states
-        - test_llava_model.py::test_llava_model_parallelism
+    export:
+      - default
+    fusions:
+      - default
     inference:
       ignore:
         - engines/test_mcore_engine.py
@@ -50,6 +46,16 @@ megatron:
         - text_generation_controllers/test_vlm_text_generation_controller.py
       deselect:
         - engines/test_dynamic_engine.py::TestDynamicInferenceEngine
+    models:
+      ignore:
+        - test_mamba_model.py
+      deselect:
+        - test_t5_model.py::TestT5Model::test_post_process_forward
+        - test_t5_model.py::TestT5Model::test_forward_output_encoder_hidden_only
+        - test_t5_model.py::TestT5Model::test_forward_with_encoder_hidden_states
+        - test_llava_model.py::test_llava_model_parallelism
+    pipeline_parallel:
+      - default
     post_training:
       ignore: test_modelopt_module_spec.py
     ssm:
@@ -58,6 +64,8 @@ megatron:
         - test_mamba_hybrid_layer_allocation.py
         - test_mamba_layer.py
         - test_mamba_mixer.py
+    tensor_parallel:
+      - default
     transformer/moe:
       type: single
       ignore:
