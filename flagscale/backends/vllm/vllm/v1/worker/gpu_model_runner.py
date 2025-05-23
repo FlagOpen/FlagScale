@@ -61,6 +61,7 @@ logger = init_logger(__name__)
 
 # --- FLAGSCALE MODIFICATION BEG ---
 # Know more about FlagGems: https://github.com/FlagOpen/FlagGems
+import os
 if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
     try:
         print("Try to using FLAGGEMS...")
