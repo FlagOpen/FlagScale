@@ -38,7 +38,16 @@ _BUILT_IN_SERVE_STRATEGY_DIMS = {
         "max_num_seqs",
         "swap_space",
     ],
-    "llama_cpp": ["threads", "n_gpu_layers"],
+    "llama_cpp": ["threads", "n_gpu_layers", "split_mode"],
+    "sglang": [
+        "tensor_model_parallel_size",
+        "pipeline_model_parallel_size",
+        "instace",
+        "chunked_prefill_size",
+        "max_prefill_tokens",
+        "page_size",
+        "max_running_requests",
+    ],
 }
 
 _DEFAULT_SERVE_TUNE_SPACE = {
@@ -48,7 +57,17 @@ _DEFAULT_SERVE_TUNE_SPACE = {
         "max_num_seqs": [64, 128, 256],
         "swap_space": [0, 4, 8, 16],
     },
-    "llama_cpp": {"threads": [1, 2, 4, 8], "n_gpu_layers": [0, 16, 32, 64]},
+    "llama_cpp": {
+        "threads": [1, 2, 4, 8],
+        "n_gpu_layers": [0, 16, 32, 64],
+        "split_mode": ["none", "layer", "row"],
+    },
+    "sglang": {
+        "chunked_prefill_size": [128, 256],
+        "max_prefill_tokens": [1024, 2048],
+        "page_size": [32, 64, 128],
+        "max_running_requests": [16, 32],
+    },
 }
 
 

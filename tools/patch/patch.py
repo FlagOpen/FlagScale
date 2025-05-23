@@ -450,6 +450,8 @@ def normalize_backend(backend):
         return "FlagScale"
     elif input_lower == "vllm":
         return "vllm"
+    elif input_lower == "sglang":
+        return "sglang"
     elif input_lower in ["llama.cpp", "llama_cpp"]:
         return "llama.cpp"
 

@@ -16,3 +16,12 @@ llama_cpp:
     - kv_cache_dtype
     - rope_scaling
     - model
+sglang:
+  key_mapping:
+    model: model_path
+    seed: random_seed
+    max_model_len: context_length
+    max_num_seqs: max_running_requests
+    uvicorn_log_level: log_level
+    show_hidden_metrics_for_version: enable_metrics
+  kv_mapping_func: {}

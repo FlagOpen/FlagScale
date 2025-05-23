@@ -255,6 +255,7 @@ def apply_hardware_patch(
                     dst = os.path.join(temp_unpatch_path, "third_party", backend)
                     src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
                     # Initialize the submodule
+
                     submodule_commit = None
                     if backends_commit and backend in backends_commit:
                         submodule_commit = backends_commit[backend]
@@ -266,6 +267,7 @@ def apply_hardware_patch(
                 if backend != FLAGSCALE_BACKEND
                 else temp_unpatch_path
             )
+
             repo = Repo(submodule_path)
             repo.git.apply("--whitespace", "fix", new_patch_file)
             logger.info(f"    Patch {new_patch_file} has been applied.")
