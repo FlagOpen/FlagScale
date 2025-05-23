@@ -182,6 +182,9 @@ if [ "${env}" == "train" ]; then
             echo "Success: Line 917 replaced."
         fi
     fi
+
+    # For FlagRelease
+    pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
 fi
 
 # If env equals 'inference'
@@ -252,6 +255,9 @@ if [ "${env}" == "inference" ]; then
             exit 1
             ;;
     esac
+
+    # For FlagRelease
+    pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
 fi
 
 # Clean all conda caches
