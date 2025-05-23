@@ -22,9 +22,9 @@ inference:
     -tp2
   qwen3:
     -tp2
-  deepseek_gems:
+  deepseek_flaggems:
     -tp2
-  qwen3_gems:
+  qwen3_flaggems:
     -tp2
     
 serve:
