@@ -58,10 +58,22 @@ class InstallRequirement(install):
 
 # unpatch the Megatron-LM
 main_path = os.path.dirname(__file__)
+
 backend = "Megatron-LM"
-src = os.path.join(main_path, "flagscale", "train", "backends", backend)
+src = os.path.join(main_path, "flagscale", "backends", backend)
 dst = os.path.join(main_path, "third_party", backend)
-unpatch(main_path, src, dst, "third_party/Megatron-LM", mode="copy")
+unpatch(main_path, src, dst, backend, mode="copy")
+
+backend = "Megatron-Energon"
+src = os.path.join(main_path, "flagscale",  "backends", backend)
+dst = os.path.join(main_path, "third_party", backend)
+unpatch(main_path, src, dst, backend, mode="copy")
+
+backend = "vllm"
+src = os.path.join(main_path, "flagscale", "backends", backend)
+dst = os.path.join(main_path, "third_party", backend)
+unpatch(main_path, src, dst, backend, mode="copy")
+
 
 setup(
     name="flag_scale",
