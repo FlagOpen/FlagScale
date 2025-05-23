@@ -20,7 +20,13 @@ hetero_train:
 inference:
   deepseek:
     -tp2
-
+  qwen3:
+    -tp2
+  deepseek_flaggems:
+    -tp2
+  qwen3_flaggems:
+    -tp2
+    
 serve:
   base:
     -multiple_model

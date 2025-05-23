@@ -141,3 +141,27 @@ def check_git_user_info(repo_path='.'):
         error_messages += "Git user.email is not set. You can set it with:\n  git config --global user.email you@example.com"
     if error_messages:
         raise ValueError(error_messages)
+
+
+def get_submodule_commit(commit, backend, main_path):
+    """
+    Get the commit hash of a submodule at a specific commit.
+
+    Args:
+        commit (str): The commit hash to check.
+        backend (str): The backend name.
+        main_path (str): The path to the main repository.
+
+    Returns:
+        str: The commit hash of the submodule.
+    """
+
+    repo = Repo(main_path)
+    submodule_path = "third_party" + "/" + backend
+    submodule = repo.submodule(submodule_path)
+    if not commit:
+        return repo.head.commit.tree[submodule_path].hexsha
+
+    submodule_repo = submodule.module()
+    submodule_commit = submodule_repo.commit(commit)
+    return submodule_commit.hexsha

@@ -110,7 +110,7 @@ jobs:
       - set-env
       - functional-tests-train
     runs-on: ubuntu-latest
-    steps: 
+    steps:
       - name: Mock Run
         run: echo "pass"
     # TODO: test need fix
@@ -134,6 +134,9 @@ jobs:
       matrix:
         task:
           - deepseek
+          - deepseek_flaggems
+          - qwen3
+          - qwen3_flaggems
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
@@ -145,7 +148,7 @@ jobs:
       - set-env
       - functional-tests-inference
     runs-on: ubuntu-latest
-    steps: 
+    steps:
       - name: Mock Run
         run: echo "pass"
     # TODO: test need fix

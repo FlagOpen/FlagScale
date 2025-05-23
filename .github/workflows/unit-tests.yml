@@ -58,9 +58,14 @@ jobs:
             python tools/patch/unpatch.py --backend Megatron-LM
           elif [ "${{ inputs.backend }}" = "vllm" ]; then
             python tools/patch/unpatch.py --backend vllm
+            source /root/miniconda3/bin/activate flagscale-inference
+            pip install scikit-build scikit-build-core
+            pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
+            MAX_JOBS=$(nproc) pip install --no-build-isolation -v ./third_party/vllm/.
           else
             echo "Unknown backend type: ${{ inputs.backend }}"
             exit 1
           fi
 
           tests/scripts/unit_tests/test_subset.sh --backend ${{ inputs.backend }} --subset ${{ inputs.subset }} --id ${{ github.sha }}
+        shell: bash
