@@ -116,6 +116,10 @@ class ServeGenerator(Generator):
                 "n_gpu_layers": "n_gpu_layers",
                 "parallel": "parallel",
                 "threads": "threads",
+                "chunked_prefill_size": "chunked_prefill_size",
+                "max_prefill_tokens": "max_prefill_tokens",
+                "page_size": "page_size",
+                "max_running_requests": "max_running_requests",
             }
 
     def _set_value(self, strategy, config):
