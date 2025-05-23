@@ -61,12 +61,11 @@ logger = init_logger(__name__)
 
 # --- FLAGSCALE MODIFICATION BEG ---
 # Know more about FlagGems: https://github.com/FlagOpen/FlagGems
-import os
 if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
-    print("Try to using FLAGGEMS")
     try:
+        print("Try to using FLAGGEMS...")
         import flag_gems
-        flag_gems.enable()
+        flag_gems.enable(record=True, unused=["exponential_", "softmax"], path="/tmp/gems_oplist.log.txt", forward_only=True)
         logger.info("Successfully enabled flag_gems as default ops implementation.")
     except ImportError:
         logger.warning("Failed to import 'flag_gems'. Falling back to default implementation.")
