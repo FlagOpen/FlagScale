@@ -6,6 +6,7 @@ import os
 import shlex
 import shutil
 import signal
+import subprocess
 
 import psutil
 
@@ -403,39 +404,31 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
                         f.write(f"{node_cmd}\n")
-
                     else:
-                        resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
-                        node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
-                    if before_start_cmd:
-                        node_cmd = f"{before_start_cmd} && " + node_cmd
-                    f.write(f"{node_cmd}\n")
+                        # worker nodes
+                        if index == 1:
+                            f.write(f"\n")
+                            f.write(f"# worker nodes\n")
+                        if node.type == "gpu":
+                            node_cmd = (
+                                f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
+                            )
 
-                else:
-                    # worker nodes
-                    if index == 1:
-                        f.write(f"\n")
-                        f.write(f"# worker nodes\n")
-                    if node.type == "gpu":
-                        node_cmd = (
-                            f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
-                        )
-
-                    elif node.type == "cpu":
-                        node_cmd = (
-                            f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
-                        )
-                    else:
-                        resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
-                        node_cmd = (
-                            f"${{ray_path}} start --address={address} --resources='{resource}'"
-                        )
-                    if before_start_cmd:
-                        node_cmd = f"{before_start_cmd} && " + node_cmd
-                    ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
-                    if docker_name:
-                        ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
-                    f.write(f"{ssh_cmd}\n")
+                        elif node.type == "cpu":
+                            node_cmd = (
+                                f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
+                            )
+                        else:
+                            resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                            node_cmd = (
+                                f"${{ray_path}} start --address={address} --resources='{resource}'"
+                            )
+                        if before_start_cmd:
+                            node_cmd = f"{before_start_cmd} && " + node_cmd
+                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
+                        if docker_name:
+                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        f.write(f"{ssh_cmd}\n")
         else:
             # Note: config key device_type is specified for single node serving in neither gpu or cpu.
             device_type = None
@@ -498,8 +491,6 @@ def _generate_stop_script(config, host, node_rank):
         logging_config.scripts_dir, f"host_{node_rank}_{host}_stop.sh"
     )
 
-    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
-
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
     cmds_config = config.experiment.get("cmds", None)
@@ -507,13 +498,80 @@ def _generate_stop_script(config, host, node_rank):
         after_stop = cmds_config.get("after_stop", "")
     else:
         after_stop = ""
+
+    nodes = config.get("nodes", None)
+
+    cmds_config = config.experiment.get("cmds", None)
+    ssh_port = config.experiment.runner.get("ssh_port", 22)
+    docker_name = config.experiment.runner.get("docker", None)
+    if cmds_config:
+        before_start_cmd = cmds_config.get("before_start", "")
+    else:
+        before_start_cmd = ""
+
+    deploy_config = config.experiment.get("deploy", {})
+    envs = config.experiment.get("envs", {})
     with open(host_stop_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
-        f.write(f"ray_path=$(realpath $(which ray))\n")
-        f.write(f"${{ray_path}} stop\n")
-        f.write("pkill -f 'run_inference_engine'\n")
-        f.write("pkill -f 'run_fs_serve_vllm'\n")
-        f.write("pkill -f 'vllm serve'\n")
+        f.write("set -x\n")
+        f.write(f"\n")
+        f.write(f"{before_start_cmd}\n")
+        f.write(f"\n")
+
+        if nodes:
+            if deploy_config.get("prefill_decode_disaggregation", False):
+                f.write(f"# clean nodes \n")
+                if len(nodes) > 1:
+                    for ip, node in nodes[1:]:
+                        node_cmd = f"pkill -f vllm && pkill -f python"
+                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
+                        if docker_name:
+                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        f.write(f"{ssh_cmd}\n")
+
+                f.write("pkill -f 'run_inference_engine'\n")
+                f.write("pkill -f 'run_fs_serve_vllm'\n")
+                f.write("pkill -f 'vllm serve'\n")
+                f.write("pkill -f 'run_disagg_xpyd_router'\n")
+                f.write(f"\n")
+
+            else:
+                f.write(f"ray_path=$(realpath $(which ray))\n")
+                f.write(f"# clean nodes \n")
+                if len(nodes) > 1:
+                    for ip, node in nodes[1:]:
+                        node_cmd = f"${{ray_path}} stop && pkill -f python"
+                        if before_start_cmd:
+                            node_cmd = f"{before_start_cmd} && " + node_cmd
+
+                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
+
+                        if docker_name:
+                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                        f.write(f"{ssh_cmd}\n")
+                if before_start_cmd:
+                    f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
+                else:
+                    f.write(f"${{ray_path}} stop\n")
+                f.write("pkill -f 'run_inference_engine'\n")
+                f.write("pkill -f 'run_fs_serve_vllm'\n")
+                f.write("pkill -f 'vllm serve'\n")
+                f.write("pkill -f multiprocessing\n")
+                f.write(f"\n")
+        else:
+            node_cmd = None
+            if deploy_config.get("use_fs_serve", True) and config.serve[0].get("engine", None):
+                f.write(f"ray_path=$(realpath $(which ray))\n")
+                node_cmd = f"${{ray_path}} stop"
+            if before_start_cmd:
+                node_cmd = f"{before_start_cmd} && {node_cmd}" if node_cmd else before_start_cmd
+            if node_cmd:
+                f.write(f"{node_cmd}\n")
+            f.write("pkill -f 'run_inference_engine'\n")
+            f.write("pkill -f 'run_fs_serve_vllm'\n")
+            f.write("pkill -f 'vllm serve'\n")
+            f.write("pkill -f multiprocessing\n")
+            f.write("\n")
         f.write(f"{after_stop}\n")
         f.flush()
         os.fsync(f.fileno())
@@ -547,9 +605,14 @@ class SSHServeRunner(RunnerBase):
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
         self.deploy_config = self.config.experiment.get("deploy", {})
-        self.inference_engine = _get_inference_engine(self.config)
+        if not self.config.experiment.task.get("entrypoint", None):
+            self.inference_engine = _get_inference_engine(self.config)
+            self.port = _reset_serve_port(config)
+        else:
+            self.inference_engine = None
+            self.port = None
         self.use_fs_serve = self.deploy_config.get("use_fs_serve", True)
-        self.port = _reset_serve_port(config)
+
         self._prepare()
         self.host = None
 
@@ -656,16 +719,13 @@ class SSHServeRunner(RunnerBase):
             pid = int(pid.strip())
         kill_process_tree(pid)
 
-        ray_executable = shutil.which("ray")
-        if ray_executable:
-            ray_path = os.path.realpath(ray_executable)
-            os.system(f"{ray_path} stop")
-        else:
-            logger.info("Failed to find ray path")
-
-        os.system("pkill -f run_inference_engine")
-        os.system("pkill -f run_fs_serve_vllm")
-        os.system("pkill -f 'vllm serve'")
+        host_stop_script_file = _generate_stop_script(self.config, host, node_rank)
+        logging_config = self.config.logging
+        cmd = f"bash {host_stop_script_file}"
+        logger.info(f"Run the local command: {cmd}")
+        subprocess.run(
+            cmd, shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
+        )
 
     def stop(self):
         self._stop_each("localhost", 0)
