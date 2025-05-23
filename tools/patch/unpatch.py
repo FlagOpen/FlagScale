@@ -18,7 +18,16 @@ FLAGSCALE_BACKEND = "FlagScale"
 logger = get_unpatch_logger()
 
 
-def unpatch(main_path, src, dst, submodule_name, mode="symlink", force=False, backend_commit={}, fs_extension=True):
+def unpatch(
+    main_path,
+    src,
+    dst,
+    submodule_name,
+    mode="symlink",
+    force=False,
+    backend_commit={},
+    fs_extension=True,
+):
     """Unpatch the backend with symlinks."""
     if submodule_name != FLAGSCALE_BACKEND:
         logger.info(f"Unpatching backend {submodule_name}...")
@@ -36,7 +45,9 @@ def unpatch(main_path, src, dst, submodule_name, mode="symlink", force=False, ba
             if os.path.lexists(deleted_files_path):
                 delete_file(deleted_files_path, dst)
         else:
-            logger.info(f"FlagScale extension for {submodule_name} is disabled, skipping unpatching...")
+            logger.info(
+                f"FlagScale extension for {submodule_name} is disabled, skipping unpatching..."
+            )
 
 
 def init_submodule(main_path, dst, submodule_name, force=False, commit=None):
@@ -134,7 +145,9 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, c
     return newest_flagscale_commit
 
 
-def apply_hardware_patch(device_type, backends, commit, main_path, need_init_submodule, key_path=None):
+def apply_hardware_patch(
+    device_type, backends, commit, main_path, need_init_submodule, key_path=None
+):
     build_path = os.path.join(main_path, "build", device_type)
     final_path = os.path.join(build_path, os.path.basename(main_path))
 
@@ -182,7 +195,7 @@ def apply_hardware_patch(device_type, backends, commit, main_path, need_init_sub
                         info = yaml.safe_load(f)
                         base_commit_id = info["commit"]
                         if "backends_commit" in info and backend in info["backends_commit"]:
-                                backends_commit[backend] = info["backends_commit"][backend]
+                            backends_commit[backend] = info["backends_commit"][backend]
                         assert base_commit_id
                     try:
                         repo.commit(base_commit_id)
@@ -242,11 +255,19 @@ def apply_hardware_patch(device_type, backends, commit, main_path, need_init_sub
                     dst = os.path.join(temp_unpatch_path, "third_party", backend)
                     src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
                     # Initialize the submodule
+
                     submodule_commit = None
                     if backends_commit and backend in backends_commit:
                         submodule_commit = backends_commit[backend]
-                    init_submodule(temp_unpatch_path, dst, backend, force=True, commit=submodule_commit)
-            submodule_path = os.path.join(temp_unpatch_path, "third_party", backend) if backend != FLAGSCALE_BACKEND else temp_unpatch_path
+                    init_submodule(
+                        temp_unpatch_path, dst, backend, force=True, commit=submodule_commit
+                    )
+            submodule_path = (
+                os.path.join(temp_unpatch_path, "third_party", backend)
+                if backend != FLAGSCALE_BACKEND
+                else temp_unpatch_path
+            )
+
             repo = Repo(submodule_path)
             repo.git.apply("--whitespace", "fix", new_patch_file)
             logger.info(f"    Patch {new_patch_file} has been applied.")
@@ -308,7 +329,7 @@ def backend_commit_mapping(backends, backends_commit):
                 backend_commit[backend] = None
             else:
                 backend_commit[backend] = backends_commit[idx]
-    
+
     return backend_commit
 
 
@@ -363,10 +384,7 @@ if __name__ == "__main__":
         help="Disable fs extension. Default is True.",
     )
     parser.add_argument(
-        "--backend-commit",
-        nargs="+",
-        default=[None],
-        help="The backend commit to checkout."
+        "--backend-commit", nargs="+", default=[None], help="The backend commit to checkout."
     )
 
     args = parser.parse_args()
@@ -380,7 +398,7 @@ if __name__ == "__main__":
 
     if not isinstance(backends, list):
         backends = [backends]
-    
+
     if not isinstance(backends_commit, list):
         backends_commit = [backends_commit]
 
@@ -396,7 +414,6 @@ if __name__ == "__main__":
 
     validate_unpatch_args(device_type, tasks, commit, main_path)
     backend_commit = backend_commit_mapping(backends, backends_commit)
-
 
     if FLAGSCALE_BACKEND in backends:
         assert (
@@ -415,4 +432,13 @@ if __name__ == "__main__":
         for backend in backends:
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
-            unpatch(main_path, src, dst, backend, mode=args.mode, force=args.force, backend_commit=backend_commit, fs_extension=fs_extension)
+            unpatch(
+                main_path,
+                src,
+                dst,
+                backend,
+                mode=args.mode,
+                force=args.force,
+                backend_commit=backend_commit,
+                fs_extension=fs_extension,
+            )
