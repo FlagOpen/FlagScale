@@ -92,7 +92,7 @@ def process(dataset_root, output_file, interval=1.0, num_workers: int = 32, vide
                 data = json.load(f)
         except:
             with open(file, "r") as f:
-                data = [json.loads(f) for l in f.readlines()]
+                data = [json.loads(l) for l in f.readlines()]
 
         print(f"processing {file}")
         for d in tqdm(data):
