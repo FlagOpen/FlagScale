@@ -1,6 +1,7 @@
 # Use Dockerfile.cuda to build image.
 
 ```bash
+# You need to set FLAGSCALE_REPO, FLAGSCALE_BRANCH, and FLAGSCALE_COMMIT in Dockerfile.cuda to specify the FlagScale used in the installation environment
 docker build -f Dockerfile.cuda -t flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.5.1-time2503251131 .
 ```
 
