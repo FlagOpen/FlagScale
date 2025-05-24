@@ -1,9 +1,5 @@
 ARG CUDA_VERSION=12.4.1
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
-ARG CUDA_VERSION
-ARG CUDNN_VERSION=9.5.0
-ARG PYTHON_VERSION=3.12
-ARG TORCH_VERSION=2.5.1
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
@@ -44,6 +40,7 @@ RUN apt-get update && \
 ##############################################################################
 # Install Python
 ##############################################################################
+ARG PYTHON_VERSION=3.12
 RUN add-apt-repository ppa:deadsnakes/ppa && \
         apt-get update -y && \
         apt-get install -y python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-venv && \
@@ -113,6 +110,7 @@ RUN cd ${STAGE_DIR} && \
 ##############################################################################
 # Install cuDNN (NVIDIA CUDA Deep Neural Network library)
 ##############################################################################
+ARG CUDNN_VERSION=9.5.0
 RUN cd ${STAGE_DIR} && \
         CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
         CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
@@ -132,21 +130,29 @@ RUN cd ${STAGE_DIR} && \
 ##############################################################################
 # Clone FlagScale
 ##############################################################################
-RUN cd ${WORK_DIR} && \
-        git clone -b IMAGE_2503251040 https://github.com/phoenixdong/FlagScale.git && \
-        chmod +x FlagScale/install/install-requirements.sh
+ARG FLAGSCALE_REPO
+ARG FLAGSCALE_BRANCH
+ARG FLAGSCALE_COMMIT
+RUN cd ${STAGE_DIR} && \
+    git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
+    { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
+    cd FlagScale && \
+    git checkout ${FLAGSCALE_COMMIT} || \
+    { echo "Error: Failed to checkout commit ${FLAGSCALE_COMMIT}. Please ensure the commit ID is correct and exists in the repository."; exit 1; } && \
+    chmod +x install/install-requirements.sh
 
 ##############################################################################
 # Install flagscale-train requirements
 ##############################################################################
-RUN cd ${WORK_DIR}/FlagScale/install && \
-    ./install-requirements.sh --env train
+RUN cd ${STAGE_DIR}/FlagScale && \
+    ./install/install-requirements.sh --env train
 
 ##############################################################################
 # Install flagscale-inference requirements
 ##############################################################################
-RUN cd ${WORK_DIR}/FlagScale/install && \
-    ./install-requirements.sh --env inference
+RUN cd ${STAGE_DIR}/FlagScale && \
+    apt-get install -y --no-install-recommends curl && \
+    ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
 
 # ##############################################################################
 # # Clear
