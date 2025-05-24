@@ -1,0 +1,13 @@
+backends_commit:
+  vllm: 296c6572dd1f76b31b93be19e550790afcfb8843
+backends_version:
+  FlagScale: main
+  vllm: v0.8.3
+commit: 39c0adcf0db48417ded4842c92067626bd55562f
+contact: ''
+device_type: Cambricon_MLU
+models:
+- qwen3
+- qwen2_5_vl
+task:
+- inference
