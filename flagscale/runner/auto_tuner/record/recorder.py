@@ -334,7 +334,10 @@ class ServeRecorder(Recorder):
         strategy["e2e_latency"] = round(performance["mean_e2el_ms"], 2)
         strategy["request_throughput"] = round(performance["request_throughput"], 2)
         strategy["output_throughput"] = round(performance["output_throughput"], 2)
-        strategy["token_throughput"] = round(performance["total_token_throughput"], 2)
+        strategy["total_token_throughput"] = round(performance["total_token_throughput"], 2)
+        strategy["prompt_throughput"] = (
+            strategy["total_token_throughput"] - strategy["output_throughput"]
+        )
         strategy["ttft"] = round(performance["mean_ttft_ms"], 2)
         strategy["itl"] = round(performance["mean_itl_ms"], 2)
         strategy["topt"] = round(performance["mean_tpot_ms"], 2)

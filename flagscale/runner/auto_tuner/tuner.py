@@ -410,21 +410,23 @@ class ServeAutoTunner(AutoTuner):
 
             if self.enable_prefill_decode_disaggregation:
                 # get best strategy of prefill and decode type
+                prefill_metric = "prompt_throughput"
                 self.prefill_best_strategy = self.get_best(
-                    metric="token_throughput", sorted_order="descend"
+                    metric=prefill_metric, sorted_order="descend"
                 )
                 if self.prefill_best_strategy:
                     self.logger.info(
-                        f"Best prefill strategy tuned so far: {self.prefill_best_strategy}, and {self.recorder.metric} is {self.prefill_best_strategy[self.recorder.metric]}."
+                        f"Best prefill strategy tuned so far: {self.prefill_best_strategy}, and {prefill_metric} is {self.prefill_best_strategy[prefill_metric]}."
                     )
                 else:
                     self.logger.info(f"No prefill strategy can run so far.")
+                decode_metric = "output_throughput"
                 self.decode_best_strategy = self.get_best(
-                    metric="request_throughput", sorted_order="descend"
+                    metric=decode_metric, sorted_order="descend"
                 )
                 if self.decode_best_strategy:
                     self.logger.info(
-                        f"Best decode strategy tuned so far: {self.decode_best_strategy}, and {self.recorder.metric} is {self.decode_best_strategy[self.recorder.metric]}."
+                        f"Best decode strategy tuned so far: {self.decode_best_strategy}, and {decode_metric} is {self.decode_best_strategy[decode_metric]}."
                     )
                 else:
                     self.logger.info(f"No decode strategy can run so far.")
