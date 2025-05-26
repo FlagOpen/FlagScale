@@ -557,6 +557,7 @@ class ServeSearcher(Searcher):
 
         # Build search space
         start_time = time.time()
+        self.config.experiment.auto_tuner.cards = 1
         self.space = self.build_space(self.config)
         end_time = time.time()
         self.logger.info(
@@ -568,6 +569,8 @@ class ServeSearcher(Searcher):
         # Build strategies by Cartesian product search space
         start_time = time.time()
         self.strategies = self.build_strategies(self.space, self.config)
+        print(self.strategies)
+        breakpoint()
         end_time = time.time()
         self.logger.info(
             "Searcher: build {} candidate strategies in {:.2f} seconds.".format(
