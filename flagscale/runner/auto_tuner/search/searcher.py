@@ -659,6 +659,9 @@ class ServeSearcher(Searcher):
 
     def build_strategies(self, space_all, config):
         """Build strategies by Cartesian product search space."""
+        enable_prefill_decode_disaggregation = config.experiment.get("deploy", {}).get(
+            "prefill_decode_disaggregation", False
+        )
         strategies_all = []
         for engine in self.engines:
             space = space_all[engine]
@@ -688,6 +691,8 @@ class ServeSearcher(Searcher):
             ]
             for i in strategies:
                 i["engine"] = engine
+                if enable_prefill_decode_disaggregation:
+                    i['prefill_decode_disaggregation'] = True
             strategies_all.extend(strategies)
 
         self.logger.info("================== grid search space: ================== \n")

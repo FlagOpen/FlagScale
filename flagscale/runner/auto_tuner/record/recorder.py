@@ -333,27 +333,31 @@ class ServeRecorder(Recorder):
     def record(self, strategy, performance):
         strategy["e2e_latency"] = round(performance["mean_e2el_ms"], 2)
         strategy["request_throughput"] = round(performance["request_throughput"], 2)
+        strategy["output_throughput"] = round(performance["output_throughput"], 2)
         strategy["token_throughput"] = round(performance["total_token_throughput"], 2)
         strategy["ttft"] = round(performance["mean_ttft_ms"], 2)
         strategy["itl"] = round(performance["mean_itl_ms"], 2)
         strategy["topt"] = round(performance["mean_tpot_ms"], 2)
         self.cur_strategy = strategy
 
-    def sort(self, history):
+    def sort(self, history, metric=None, sorted_order=None):
+        if sorted_order is None:
+            sorted_order = self.sorted_order
+        if metric is None:
+            metric = self.metric
         sorted_history = None
-        if self.sorted_order == "ascend":
+        if sorted_order == "ascend":
             sorted_history = sorted(
-                history,
-                key=lambda x: (x[self.metric] if x[self.metric] is not None else float("inf")),
+                history, key=lambda x: (x[metric] if x[metric] is not None else float("inf"))
             )
-        elif self.sorted_order == "descend":
+        elif sorted_order == "descend":
             sorted_history = sorted(
                 history,
-                key=lambda x: (x[self.metric] if x[self.metric] is not None else float("-inf")),
+                key=lambda x: (x[metric] if x[metric] is not None else float("-inf")),
                 reverse=True,
             )
         else:
-            raise ValueError(f"The sorted order {self.sorted_order} is not supported.")
+            raise ValueError(f"The sorted order {sorted_order} is not supported.")
         self.logger.info(f"history========: {history}")
         assert sorted_history is not None
         return sorted_history

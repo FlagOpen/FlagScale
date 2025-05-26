@@ -25,6 +25,7 @@ experiment:
         block_size: [16, 32]
     performance:
       metric: token_throughput
+      order: descend
     control:
       interval: 20
       run_best: False

@@ -374,6 +374,12 @@ class ServeAutoTunner(AutoTuner):
 
         # Checkout search mode on the platform
         self.has_checkout = False
+        self.tune_pd = False
+        self.prefill_best_strategy = None
+        self.decode_best_strategy = None
+        self.enable_prefill_decode_disaggregation = self.config.experiment.get("deploy", {}).get(
+            "prefill_decode_disaggregation", False
+        )
 
     def tune(self):
         """
@@ -397,14 +403,35 @@ class ServeAutoTunner(AutoTuner):
             self.logger.info(f"Record task_{self.idx}:")
             self.record()
 
-            # get best strategy
-            best_strategy = self.get_best()
-            if best_strategy:
-                self.logger.info(
-                    f"Best strategy tuned so far: {best_strategy}, and {self.recorder.metric} is {best_strategy[self.recorder.metric]}."
+            if self.enable_prefill_decode_disaggregation:
+                # get best strategy of prefill and decode type
+                self.prefill_best_strategy = self.get_best(
+                    metric="token_throughput", sorted_order="descend"
                 )
+                if self.prefill_best_strategy:
+                    self.logger.info(
+                        f"Best strategy tuned so far: {self.prefill_best_strategy}, and {self.recorder.metric} is {self.prefill_best_strategy[self.recorder.metric]}."
+                    )
+                else:
+                    self.logger.info(f"No prefill strategy can run so far.")
+                decode_best_strategy = self.get_best(
+                    metric="request_throughput", sorted_order="descend"
+                )
+                if decode_best_strategy:
+                    self.logger.info(
+                        f"Best strategy tuned so far: {decode_best_strategy}, and {self.recorder.metric} is {decode_best_strategy[self.recorder.metric]}."
+                    )
+                else:
+                    self.logger.info(f"No decode strategy can run so far.")
             else:
-                self.logger.info(f"No strategy can run so far.")
+                # get best strategy
+                best_strategy = self.get_best()
+                if best_strategy:
+                    self.logger.info(
+                        f"Best strategy tuned so far: {best_strategy}, and {self.recorder.metric} is {best_strategy[self.recorder.metric]}."
+                    )
+                else:
+                    self.logger.info(f"No strategy can run so far.")
         tuner_end_time = time.time()
         self.logger.info(f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
 
@@ -500,8 +527,8 @@ class ServeAutoTunner(AutoTuner):
         self.history.append(self.recorder.cur_strategy)
         self.recorder.save(self.history)
 
-    def get_best(self):
-        sorted_history = self.recorder.sort(self.history)
+    def get_best(self, metric=None, sorted_order=None):
+        sorted_history = self.recorder.sort(self.history, metric=metric, sorted_order=sorted_order)
         if sorted_history and sorted_history[0] and sorted_history[0][self.recorder.metric]:
             return sorted_history[0]
         return None
