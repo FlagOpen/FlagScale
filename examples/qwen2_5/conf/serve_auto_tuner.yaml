@@ -31,7 +31,7 @@ experiment:
       interval: 20
       run_best: False
 
-action: auto_tune
+action: run
 
 hydra:
   run:
