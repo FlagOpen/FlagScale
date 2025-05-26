@@ -380,6 +380,9 @@ class ServeAutoTunner(AutoTuner):
         self.enable_prefill_decode_disaggregation = self.config.experiment.get("deploy", {}).get(
             "prefill_decode_disaggregation", False
         )
+        self.tune_single_pd_instance = None
+        if self.enable_prefill_decode_disaggregation:
+            self.tune_single_pd_instance = True
 
     def tune(self):
         """
@@ -391,6 +394,8 @@ class ServeAutoTunner(AutoTuner):
             Step5. Run the best task
         """
         tuner_start_time = time.time()
+        if self.tune_single_pd_instance:
+            self.config.experiment.deploy.prefill_decode_disaggregation = False
         while not self.need_stop():
             self.logger.addHandler(self.handler)
             self.gen()
@@ -432,6 +437,10 @@ class ServeAutoTunner(AutoTuner):
                     )
                 else:
                     self.logger.info(f"No strategy can run so far.")
+
+        if self.enable_prefill_decode_disaggregation:
+            self.config.experiment.deploy.prefill_decode_disaggregation = True
+
         tuner_end_time = time.time()
         self.logger.info(f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
 
