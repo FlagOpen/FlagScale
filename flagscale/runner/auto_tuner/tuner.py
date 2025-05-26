@@ -443,6 +443,27 @@ class ServeAutoTunner(AutoTuner):
         if self.enable_prefill_decode_disaggregation:
             self.config.experiment.deploy.prefill_decode_disaggregation = True
 
+            while not self.need_stop():
+                self.logger.addHandler(self.handler)
+                self.gen()
+                if not self.cur_strategy:
+                    break
+                self.logger.info(f"Run task_{self.idx}: {self.cur_strategy}")
+                self.run()
+                self.logger.info(f"Monitor task_{self.idx}:")
+                self.monitor()
+                self.logger.info(f"Record task_{self.idx}:")
+                self.record()
+
+                # get best strategy
+                best_strategy = self.get_best()
+                if best_strategy:
+                    self.logger.info(
+                        f"Best strategy tuned so far: {best_strategy}, and {self.recorder.metric} is {best_strategy[self.recorder.metric]}."
+                    )
+                else:
+                    self.logger.info(f"No strategy can run so far.")
+
         tuner_end_time = time.time()
         self.logger.info(f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
 
