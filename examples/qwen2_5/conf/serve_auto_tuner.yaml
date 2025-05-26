@@ -23,6 +23,8 @@ experiment:
         tensor_model_parallel_size: [1, 2, 4, 8]
         pipeline_model_parallel_size: [1, 2]
         block_size: [16, 32]
+    performance:
+      metric: token_throughput
     control:
       interval: 20
       run_best: False

@@ -316,23 +316,17 @@ class Recorder:
 class ServeRecorder(Recorder):
     def __init__(self, config):
         self.config = config
-        if (
-            "auto_tuner" in self.config.experiment
-            and "performance" in self.config.experiment.auto_tuner
-        ):
-            self.metric = self.config.experiment.auto_tuner.performance.get("metric", "itl")
-        else:
-            self.metric = "itl"
+        self.logger = logging.getLogger("FlagScale-AutoTuner")
+        self.metric = (
+            self.config.experiment.get("auto_tuner", {}).get("performance", {}).get("metric", "itl")
+        )
 
         # Sort order of performance, order just in [ascend, and descend], default ascend
-        if (
-            "auto_tuner" in self.config.experiment
-            and "performance" in self.config.experiment.auto_tuner
-        ):
-            self.sorted_order = self.config.experiment.auto_tuner.performance.get("order", "ascend")
-        else:
-            self.sorted_order = "ascend"
-        self.logger = logging.getLogger("FlagScale-AutoTuner")
+        self.sorted_order = (
+            self.config.experiment.get("auto_tuner", {})
+            .get("performance", {})
+            .get("order", "ascend")
+        )
         self.cur_strategy = None
         self.path = os.path.join(config.experiment.exp_dir, "auto_tuner", "history.csv")
 
@@ -360,5 +354,6 @@ class ServeRecorder(Recorder):
             )
         else:
             raise ValueError(f"The sorted order {self.sorted_order} is not supported.")
+        self.logger.info(f"history========: {history}")
         assert sorted_history is not None
         return sorted_history
