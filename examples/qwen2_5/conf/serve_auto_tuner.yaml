@@ -20,7 +20,7 @@ experiment:
     engines: [vllm]
     space:
       vllm:
-        tensor_model_parallel_size: [1, 2]
+        tensor_model_parallel_size: [1, 2, 4, 8]
         pipeline_model_parallel_size: [1, 2]
         block_size: [16, 32]
     control:
