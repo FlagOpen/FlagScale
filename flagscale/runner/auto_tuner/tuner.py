@@ -415,16 +415,16 @@ class ServeAutoTunner(AutoTuner):
                 )
                 if self.prefill_best_strategy:
                     self.logger.info(
-                        f"Best strategy tuned so far: {self.prefill_best_strategy}, and {self.recorder.metric} is {self.prefill_best_strategy[self.recorder.metric]}."
+                        f"Best prefill strategy tuned so far: {self.prefill_best_strategy}, and {self.recorder.metric} is {self.prefill_best_strategy[self.recorder.metric]}."
                     )
                 else:
                     self.logger.info(f"No prefill strategy can run so far.")
-                decode_best_strategy = self.get_best(
+                self.decode_best_strategy = self.get_best(
                     metric="request_throughput", sorted_order="descend"
                 )
-                if decode_best_strategy:
+                if self.decode_best_strategy:
                     self.logger.info(
-                        f"Best strategy tuned so far: {decode_best_strategy}, and {self.recorder.metric} is {decode_best_strategy[self.recorder.metric]}."
+                        f"Best decode strategy tuned so far: {self.decode_best_strategy}, and {self.recorder.metric} is {self.decode_best_strategy[self.recorder.metric]}."
                     )
                 else:
                     self.logger.info(f"No decode strategy can run so far.")
