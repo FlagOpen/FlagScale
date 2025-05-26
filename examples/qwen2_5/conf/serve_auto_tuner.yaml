@@ -10,6 +10,7 @@ experiment:
   deploy:
     port: 6701
     use_fs_serve: false
+    prefill_decode_disaggregation: true
   runner:
     hostfile: null #examples/qwen2_5/conf/hostfile.txt
     docker: cz-dev
