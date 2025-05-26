@@ -550,7 +550,49 @@ class ServeSearcher(Searcher):
 
         self._init_engines(config)
         self._init_nodes_aware_dims()
-        super(ServeSearcher, self).__init__(config)
+
+        # Build search space and set value of each dim
+        self.logger = logging.getLogger("FlagScale-AutoTuner")
+        self.config = config
+
+        # Build search space
+        start_time = time.time()
+        self.space = self.build_space(self.config)
+        end_time = time.time()
+        self.logger.info(
+            "Searcher: build search space in {:.2f} seconds and space is {}".format(
+                end_time - start_time, self.space
+            )
+        )
+
+        # Build strategies by Cartesian product search space
+        start_time = time.time()
+        self.strategies = self.build_strategies(self.space, self.config)
+        end_time = time.time()
+        self.logger.info(
+            "Searcher: build {} candidate strategies in {:.2f} seconds.".format(
+                len(self.strategies), end_time - start_time
+            )
+        )
+
+        if "memory_model" in self.config.experiment.auto_tuner:
+            # In the future, the memory model will be loaded by yaml
+            model_name = self.config.experiment.auto_tuner.memory_model.get("model_name", "default")
+            if model_name != "default":
+                raise NotImplementedError(
+                    "The memory model {} is not implemented yet.".format(model_name)
+                )
+
+            for strategy in self.strategies:
+                strategy["memory_model"] = default_model(strategy, self.config)
+                self.logger.info(
+                    "Searcher: strategy is {}, memory model is {} MB".format(
+                        strategy, strategy["memory_model"]
+                    )
+                )
+
+        # Build search algorithm to explore strategies
+        self.algo = self.build_algo(self.strategies, self.config)
 
         self.logger.info(f"ServeSearcher.space: {self.space}")
         self.logger.info(f"ServeSearcher.strategies: {json.dumps(self.strategies)}")
