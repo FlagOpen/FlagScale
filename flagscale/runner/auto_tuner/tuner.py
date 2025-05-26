@@ -557,6 +557,7 @@ class ServeAutoTunner(AutoTuner):
     def record(self):
         self.recorder.record(self.cur_strategy, self.cur_result)
         self.history.append(self.recorder.cur_strategy)
+        self.logger.warning(f"add history ====================== {self.history} ========= ")
         self.recorder.save(self.history)
 
     def get_best(self, metric=None, sorted_order=None):
