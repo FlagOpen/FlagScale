@@ -25,7 +25,7 @@ experiment:
         pipeline_model_parallel_size: auto
         block_size: [16, 32]
     performance:
-      metric: token_throughput
+      metric: total_token_throughput
       order: descend
     control:
       interval: 20
