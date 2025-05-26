@@ -439,8 +439,7 @@ class ServeAutoTunner(AutoTuner):
                     )
                 else:
                     self.logger.info(f"No strategy can run so far.")
-
-        if self.enable_prefill_decode_disaggregation:
+        if self.tune_single_pd_instance:
             self.config.experiment.deploy.prefill_decode_disaggregation = True
 
             while not self.need_stop():
