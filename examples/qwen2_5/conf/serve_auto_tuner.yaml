@@ -23,7 +23,7 @@ experiment:
       vllm:
         tensor_model_parallel_size: [1, 2]
         pipeline_model_parallel_size: auto
-        block_size: [16, 32]
+        block_size: [16]
     performance:
       metric: total_token_throughput
       order: descend

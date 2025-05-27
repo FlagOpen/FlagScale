@@ -394,9 +394,11 @@ class ServeAutoTunner(AutoTuner):
             Step5. Run the best task
         """
         tuner_start_time = time.time()
-        if self.tune_single_pd_instance:
-            self.config.experiment.deploy.prefill_decode_disaggregation = False
         while not self.need_stop():
+            if self.cur_strategy.get("tune_pd_instance", False):
+                self.config.experiment.deploy.prefill_decode_disaggregation = False
+            elif self.cur_strategy.get("prefill_decode_disaggregation", False):
+                self.config.experiment.deploy.prefill_decode_disaggregation = True
             self.logger.addHandler(self.handler)
             self.gen()
             if not self.cur_strategy:
@@ -439,29 +441,6 @@ class ServeAutoTunner(AutoTuner):
                     )
                 else:
                     self.logger.info(f"No strategy can run so far.")
-        if self.tune_single_pd_instance:
-            self.config.experiment.deploy.prefill_decode_disaggregation = True
-
-            while not self.need_stop():
-                self.logger.addHandler(self.handler)
-                self.gen()
-                if not self.cur_strategy:
-                    break
-                self.logger.info(f"Run task_{self.idx}: {self.cur_strategy}")
-                self.run()
-                self.logger.info(f"Monitor task_{self.idx}:")
-                self.monitor()
-                self.logger.info(f"Record task_{self.idx}:")
-                self.record()
-
-                # get best strategy
-                best_strategy = self.get_best()
-                if best_strategy:
-                    self.logger.info(
-                        f"Best strategy tuned so far: {best_strategy}, and {self.recorder.metric} is {best_strategy[self.recorder.metric]}."
-                    )
-                else:
-                    self.logger.info(f"No strategy can run so far.")
 
         tuner_end_time = time.time()
         self.logger.info(f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
@@ -477,6 +456,41 @@ class ServeAutoTunner(AutoTuner):
             best_task.action = "run"
             runner = SSHServeRunner(best_task)
             runner.run()
+
+    def gen(self):
+        """Generate a task to run."""
+        # 1. Get a strategy from searcher
+        # 2. Whether prune by pruner
+        # 3. If not pruned, generate the task by generator
+        strategy = self.searcher.search()
+        self.logger.warning(f"Strategy: ---------------- {strategy}")
+        self.logger.warning(
+            f"self.prefill_best_strategy: ---------------- {self.prefill_best_strategy}"
+        )
+        if self.prefill_best_strategy:
+            strategy.update(self.prefill_best_strategy)
+        while strategy and (self.pruner is not None and self.pruner.prune(strategy, self.history)):
+            strategy = self.searcher.search()
+        if strategy:
+            self.idx += 1
+            strategy["idx"] = self.idx
+            pruned_count = self.pruner.pruned_count if self.pruner is not None else 0
+            pruned_by_memory_model = (
+                self.pruner.pruned_by_memory_model if self.pruner is not None else 0
+            )
+            if "memory_model" in self.config.experiment.auto_tuner:
+                self.logger.info(
+                    f"Searching {self.idx+pruned_count} / {len(self.searcher.strategies)} strategy, Pruned {pruned_count} strategy, {pruned_by_memory_model} by memory model."
+                )
+            else:
+                self.logger.info(
+                    f"Searching {self.idx+pruned_count} / {len(self.searcher.strategies)} strategy, Pruned {pruned_count} strategy."
+                )
+            self.logger.info(f"Generate task_{self.idx}")
+            self.cur_strategy = strategy
+            self.cur_task = self.generator.gen(strategy)
+        else:
+            self.cur_strategy = None
 
     def run(self, task=None):
         # Instantiate a runner and run the task
