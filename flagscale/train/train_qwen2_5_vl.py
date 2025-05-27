@@ -105,7 +105,7 @@ from flagscale.train.models.qwen2_5_vl.transformer_config import (
 )
 from tools.datasets.qwenvl.data.dataset_helpers import TaskEncoder, print_error_handler
 #### especially for qwen2.5-vl ####
-
+IGNORE_IDX=-100
 
 def model_provider(
     pre_process=True, post_process=True, add_encoder=True, add_decoder=True
@@ -426,7 +426,8 @@ def get_batch(data_iterator):
     torch.cuda.nvtx.range_push("get_data")
     if data_iterator is not None and get_tensor_model_parallel_rank() == 0:
         data = next(data_iterator)
-        pad_token_id = get_tokenizer().pad_token_id
+        # pad_token_id = get_tokenizer().pad_token_id
+        pad_token_id = IGNORE_IDX
         # while (data["target"] == pad_token_id).all() or (data["target"].shape[-1] < 986 or data["target"].shape[-1] > 1000): # for debug
         while (data["target"] == pad_token_id).all():
             logging.getLogger(__name__).warning("The current data is invalid because the target is all pad_token_id! Get next data to avoid fail, but it's better to check the data!")
@@ -468,7 +469,7 @@ def get_batch(data_iterator):
     # NOTE: no sequence packing in LLM inputs
     torch.cuda.nvtx.range_push("get_ltor_masks_and_position_ids")
     attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
-        tokens, image_thw_grids, video_thw_grids, labels, tokenizer.pad_token_id, second_per_grid_ts
+        tokens, image_thw_grids, video_thw_grids, labels, IGNORE_IDX, second_per_grid_ts
     )
     torch.cuda.nvtx.range_pop()
 

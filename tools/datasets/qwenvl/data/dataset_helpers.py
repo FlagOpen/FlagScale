@@ -41,6 +41,7 @@ from tools.datasets.qwenvl.data.image_processing import get_visual_transform
 dataset_logger = logging.getLogger(__name__)
 FIRST_MAX_PADDING_FLAG = True
 CLEAR_CACHE_ITERATION=200000
+IGNORE_IDX=-100
 # Type for intermediate batch, after batch()
 @dataclass
 class ImageTaskSample:
@@ -354,8 +355,9 @@ class TaskEncoder(
             self.tokenizer.apply_chat_template([conversation[0]], tokenize=True)
         )
         assistant_generation_prefix = 3 # <im_start>assistant\n
-        pad_token_id = self.tokenizer.pad_token_id
-        # pad_token_id = IGNORE_ID
+        # pad_token_id = self.tokenizer.pad_token_id
+        # NOTE(lizhiyu): Align to llama-f
+        pad_token_id = IGNORE_IDX
         target[:system_prompt_prefix] = pad_token_id
         offset = system_prompt_prefix
         for turn_idx, turn in enumerate(conversation[1:]):
@@ -403,7 +405,7 @@ class TaskEncoder(
         if target_length > self.seq_len:
             # raise InternalWarning(f"Long sequence with length {target_length} found, dropped...")
             dataset_logger.warning(
-                f"Samle id [{sample.__key__}] has long sequence with length {target_length}, cutoff to max [self.seq_len+64={self.seq_len+64}] in batch function..."
+                f"Samle id [{sample.__key__}] has long sequence with length {target_length}, cutoff to max [self.seq_len+64={self.seq_len}] in batch function..."
             )
         final_input_ids = np.zeros(target_length, dtype=input_ids.dtype)
         final_input_masks = final_input_ids.copy()
@@ -526,14 +528,14 @@ class TaskEncoder(
         if len(input_ids) > self.seq_len:
             raise InternalWarning(f"Long sequence with length {len(input_ids)} found, dropped...")
 
-        target = np.array(input_ids[1:] + [self.tokenizer.pad_token_id])
+        target = np.array(input_ids[1:] + [IGNORE_IDX])
         if len(user_input_ids) >= len(input_ids):
             raise InternalWarning(f"Sample not supported, dropped...")
         # ensure user inputs is a prefix of full text
         if not (np.array(user_input_ids) == np.array(input_ids[: len(user_input_ids)])).all():
             raise InternalWarning(f"Sample not supported, dropped...")
         # mask input
-        target[: len(user_input_ids) - 1] = self.tokenizer.pad_token_id
+        target[: len(user_input_ids) - 1] = IGNORE_IDX
 
         img_token_id = self.tokenizer.image_token_id
         image_input_mask = np.array(input_ids) == img_token_id
@@ -631,7 +633,7 @@ class TaskEncoder(
         text_mat = np.full((len(samples), max_seq_len), self.tokenizer.pad_token_id, dtype=np.int64)
         # +1 to accommodate shift to left by one later.
         target_mat = np.full(
-            (len(samples), max_seq_len), self.tokenizer.pad_token_id, dtype=np.int64
+            (len(samples), max_seq_len), IGNORE_IDX, dtype=np.int64
         )
 
         image_input_masks = np.zeros_like(text_mat, dtype=bool)

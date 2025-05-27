@@ -213,7 +213,7 @@ class Qwen2_5VLModel(MegatronModule):
         if self.pre_process:
             vision_embeds = None
             if vision_grid_thw.shape[0] > 0:
-                # NOTE(lizhiyu): 
+                # NOTE(lizhiyu): Reference https://github.com/huggingface/transformers/blob/40a493c7ed4f19f08eadb0639cf26d49bfa5e180/src/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py#L1612
                 vision_data = vision_data.type(torch.bfloat16)
                 vision_embeds = self.vision_model(
                     vision_data=vision_data, # If None, vision model should use intermediate outputs (EPP > 1)
