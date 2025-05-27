@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - inference: BI_V150
+  - inference: nvidia_flaggems
 
 experiment:
-  exp_name: BI_V150
-  exp_dir: tests/functional_tests/test_cases/inference-pipline/BI_V150/results_test/BI_V150
+  exp_name: nvidia_flaggems
+  exp_dir: tests/functional_tests/test_cases/inference-pipeline/nvidia_flaggems/results_test/nvidia_flaggems
   task:
     type: inference
     backend: vllm
@@ -21,6 +21,7 @@ experiment:
     EXPERT_PARALLEL_EN: true
     VLLM_GRAPH_DEBUG: false
     VLLM_AVG_MOE_EN: 1
+    USE_FLAGGEMS: "true"
 
 action: run
 

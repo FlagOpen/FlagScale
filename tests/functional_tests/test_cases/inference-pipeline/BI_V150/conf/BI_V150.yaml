@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - inference: nvidia
+  - inference: BI_V150
 
 experiment:
-  exp_name: nvidia
-  exp_dir: tests/functional_tests/test_cases/inference-pipline/nvidia/results_test/nvidia
+  exp_name: BI_V150
+  exp_dir: tests/functional_tests/test_cases/inference-pipeline/BI_V150/results_test/BI_V150
   task:
     type: inference
     backend: vllm

@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - inference: Cambricon_MLU_flaggems
+  - inference: nvidia
 
 experiment:
-  exp_name: Cambricon_MLU_flaggems
-  exp_dir: tests/functional_tests/test_cases/inference-pipline/Cambricon_MLU_flaggems/results_test/Cambricon_MLU_flaggems
+  exp_name: nvidia
+  exp_dir: tests/functional_tests/test_cases/inference-pipeline/nvidia/results_test/nvidia
   task:
     type: inference
     backend: vllm
@@ -21,7 +21,6 @@ experiment:
     EXPERT_PARALLEL_EN: true
     VLLM_GRAPH_DEBUG: false
     VLLM_AVG_MOE_EN: 1
-    USE_FLAGGEMS: "true"
 
 action: run
 

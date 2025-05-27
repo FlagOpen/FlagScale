@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - inference: Cambricon_MLU
+  - inference: BI_V150_flaggems
 
 experiment:
-  exp_name: Cambricon_MLU
-  exp_dir: tests/functional_tests/test_cases/inference-pipline/Cambricon_MLU/results_test/Cambricon_MLU
+  exp_name: BI_V150_flaggems
+  exp_dir: tests/functional_tests/test_cases/inference-pipeline/BI_V150_flaggems/results_test/BI_V150_flaggems
   task:
     type: inference
     backend: vllm
@@ -21,6 +21,7 @@ experiment:
     EXPERT_PARALLEL_EN: true
     VLLM_GRAPH_DEBUG: false
     VLLM_AVG_MOE_EN: 1
+    USE_FLAGGEMS: "true"
 
 action: run
 

@@ -33,15 +33,15 @@ test_task() {
   # Use parse_config.py to parse the YAML file with test type and test task
   local _cases=$(python tests/scripts/functional_tests/parse_config.py --config $CONFIG_FILE --type $_type --task $_task)
 
-  # Check if the test type is "inference-pipline"
-  if [ "$_type" == "inference-pipline" ]; then
+  # Check if the test type is "inference-pipeline"
+  if [ "$_type" == "inference-pipeline" ]; then
       _case_name="${_hardware}"
       # If flaggems is enabled, append "_flaggems" to the case name
       if [ "$_flaggems" == "enable" ]; then
           _case_name="${_case_name}_flaggems"
       fi
       _cases=($_case_name)  # Create an array with the case name
-      case_path="tests/functional_tests/test_cases/inference-pipline/${_case_name}"
+      case_path="tests/functional_tests/test_cases/inference-pipeline/${_case_name}"
       case_model_path="${case_path}/conf/inference/${_case_name}.yaml"
 
       # Replace the model and tokenizer paths in the configuration file
@@ -81,7 +81,7 @@ test_task() {
         fi
       fi
 
-      if [ "${_type}" = "inference-pipline" ]; then
+      if [ "${_type}" = "inference-pipeline" ]; then
         result_path="tests/functional_tests/test_cases/${_type}/${_case}/results_test/${_case}"
         if [ -d "$result_path" ]; then
           rm -r "$result_path"
@@ -100,11 +100,11 @@ test_task() {
         run_command "pytest -s tests/functional_tests/test_utils/test_result.py::test_inference_equal --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_task=${_task} --test_case=${_case}" $attempt_i $_task $_type $_case
       fi
 
-      if [ "${_type}" = "inference-pipline" ]; then
+      if [ "${_type}" = "inference-pipeline" ]; then
         # TODO: rm when fix bug about "before start"
         source /root/miniconda3/bin/activate flagscale-inference
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_case}/conf --config-name ${_case} action=test" $attempt_i $_task $_type $_case
-        run_command "pytest -s tests/functional_tests/test_utils/test_result.py::test_inference_pipline --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_task=${_case} --test_case=${_case}" $attempt_i $_task $_type $_case
+        run_command "pytest -s tests/functional_tests/test_utils/test_result.py::test_inference_pipeline --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_task=${_case} --test_case=${_case}" $attempt_i $_task $_type $_case
       fi
 
       # todo: open this case

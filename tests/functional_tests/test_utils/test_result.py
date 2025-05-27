@@ -103,7 +103,7 @@ def test_inference_equal(test_path, test_type, test_task, test_case):
 
 
 @pytest.mark.usefixtures("test_path", "test_type", "test_task", "test_case")
-def test_inference_pipline(test_path, test_type, test_task, test_case):
+def test_inference_pipeline(test_path, test_type, test_task, test_case):
     # Construct the test_result_path using the provided fixtures
     test_result_path = os.path.join(test_path, test_type, test_task, "results_test", test_case)
     result_path = os.path.join(test_result_path, "inference_logs/host_0_localhost.output")
