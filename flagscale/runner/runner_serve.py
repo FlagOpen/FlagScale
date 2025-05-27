@@ -133,7 +133,7 @@ def _update_config_serve(config: DictConfig):
 
     OmegaConf.set_struct(config, False)
 
-    if deploy_config.get("prefill_decode_disaggregation", False):
+    if deploy_config.get("prefill_decode_disaggregation", False) and config.action != "stop":
         deploy_config["pd_proxy_port"] = get_free_port()
 
     if config.get("logging", None) is None:
