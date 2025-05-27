@@ -2,4 +2,4 @@
 # master node
 10.6.208.15 slots=8 type=gpu
 # worker nodes
-# 10.6.208.16 slots=8 type=gpu
+10.6.208.16 slots=8 type=gpu

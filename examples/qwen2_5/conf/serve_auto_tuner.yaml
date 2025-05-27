@@ -13,6 +13,8 @@ experiment:
     prefill_decode_disaggregation: true
     prefill_num: 2
     decode_num: 2
+    prefill_address: 10.6.208.15
+    decode_address: 10.6.208.16
   runner:
     hostfile: examples/qwen2_5/conf/hostfile.txt
     docker: cz-dev
