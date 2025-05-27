@@ -464,12 +464,17 @@ class ServeAutoTunner(AutoTuner):
         self.logger.warning(
             f"self.prefill_best_strategy: ---------------- {self.prefill_best_strategy}"
         )
+        self.logger.warning(
+            f"tune_pd_instance: {strategy.get("tune_pd_instance", False)} ---------------- prefill_decode_disaggregation: {strategy.get("prefill_decode_disaggregation", False)}"
+        )
         if strategy.get("tune_pd_instance", False):
             self.config.experiment.deploy.prefill_decode_disaggregation = False
         elif strategy.get("prefill_decode_disaggregation", False):
+            self.logger.warning(f"before update config {self.config}--------------")
             self.config.experiment.deploy.prefill_decode_disaggregation = True
             self.config.experiment.deploy.prefill_num = strategy.get("prefill_num", 1)
             self.config.experiment.deploy.decode_num = strategy.get("decode_num", 1)
+            self.logger.warning(f"after update config {self.config}--------------")
             if self.prefill_best_strategy:
                 strategy.update(self.prefill_best_strategy)
         while strategy and (self.pruner is not None and self.pruner.prune(strategy, self.history)):
