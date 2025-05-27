@@ -1427,6 +1427,7 @@ def get_optimizer_param_scheduler(optimizer):
         wsd_decay_steps=wsd_decay_steps,
         lr_wsd_decay_style=args.lr_wsd_decay_style,
         stablelm2_scheduler_config=stablelm2_scheduler_config,
+        global_batch_size=args.global_batch_size # NOTE(lizhiyu): Align to Deepspeed
     )
 
     return opt_param_scheduler
@@ -1564,7 +1565,22 @@ def setup_model_and_optimizer(
         print_rank_0("> converted checkpoint: %s -> %s." % (load_ckpt_format, args.ckpt_format))
         torch.distributed.barrier()
         exit()
+        
+    # #print(f"LZY: optimizer: {optimizer}")
+    # def print_optimizer_params(optimizer):
+    #     """打印优化器的所有参数组及其超参数"""
+    #     for i, param_group in enumerate(optimizer.param_groups):
+    #         print(f"\n参数组 {i}:")
+    #         for key, value in param_group.items():
+    #             if key != 'params':  # 不打印参数列表（太长）
+    #                 print(f"  {key}: {value}")
+            
+    #         # 打印该组可训练参数数量
+    #         param_count = sum(p.numel() for p in param_group['params'] if p.requires_grad)
+    #         print(f"  可训练参数数量: {param_count:,}")
 
+    # # 使用示例
+    # print_optimizer_params(optimizer)
     return model, optimizer, opt_param_scheduler
 
 

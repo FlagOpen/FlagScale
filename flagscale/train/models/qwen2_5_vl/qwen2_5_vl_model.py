@@ -199,6 +199,10 @@ class Qwen2_5VLModel(MegatronModule):
         Returns:
             output (torch.Tensor): Loss of shape [b, s] if labels are provided, otherwise logits of shape [b, s, vocab_size].
         """
+        #print(f"LZY: Qwen2_5VLModel input_ids: {input_ids.shape}, content: ({input_ids.sum()}), {input_ids}")
+        #print(f"LZY: Qwen2_5VLModel position_ids: {position_ids.shape}, content: ({position_ids.sum()}), {position_ids}")
+        #print(f"LZY: Qwen2_5VLModel attention_mask: {attention_mask.shape}, content: ({attention_mask.sum()}), {attention_mask}")
+        #print(f"LZY: Qwen2_5VLModel labels: {labels.shape}, content: ({labels.sum()}), {labels}")
         use_inference_kv_cache = (
             inference_params is not None
             and "image_tokens_count" in inference_params.key_value_memory_dict
@@ -209,6 +213,8 @@ class Qwen2_5VLModel(MegatronModule):
         if self.pre_process:
             vision_embeds = None
             if vision_grid_thw.shape[0] > 0:
+                # NOTE(lizhiyu): 
+                vision_data = vision_data.type(torch.bfloat16)
                 vision_embeds = self.vision_model(
                     vision_data=vision_data, # If None, vision model should use intermediate outputs (EPP > 1)
                     grid_thw=vision_grid_thw # should provided in each EPP stage
@@ -262,7 +268,7 @@ class Qwen2_5VLModel(MegatronModule):
                 )  # [text_seq_len, b, h_language]
         else:
             combined_embeddings = None
-
+        #print(f"LZY: Qwen2_5VLModel combined_embeddings: {combined_embeddings.shape}, content: ({combined_embeddings.sum()}), {combined_embeddings}")
         output = self.language_model(
             input_ids=None,
             position_ids=position_ids,              # None in encoder

@@ -1,7 +1,7 @@
 system:
   num_workers: 1
   calculate_per_token_loss: true
-  tensor_model_parallel_size: 2
+  tensor_model_parallel_size: 1
   pipeline_model_parallel_size: 1
   context_parallel_size: 1
   # decoder_first_pipeline_num_layers: 12
@@ -14,9 +14,9 @@ system:
   overlap_param_gather: False # if has text-only must be false
   use_mcore_models: True
   transformer_impl: transformer_engine
-  # recompute_method: "uniform"
-  # recompute_granularity: "full"
-  # recompute_num_layers: 4
+  recompute_method: "uniform"
+  recompute_granularity: "full"
+  recompute_num_layers: 1
   use_te: True
   precision:
     bf16: True
@@ -31,7 +31,7 @@ system:
     log_num_zeros_in_grad: True
   checkpoint:
     save_interval: 1000
-    pretrained_checkpoint: /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct_mc_tp2
+    pretrained_checkpoint: /share/project/lizhiyu/data/ckpt/Qwen2.5-VL-7B-Instruct-tp1
     dataloader_save: ${experiment.exp_dir}/checkpoints/dataloader
     use_dist_ckpt: False
     ckpt_format: torch
@@ -46,8 +46,8 @@ model:
   ffn_hidden_size: 18944
   num_attention_heads: 28
   num_query_groups: 4
-  seq_length: 1200
-  max_padding_length: 1200 # (cutoff_len)max 32768, chane according the dataset
+  seq_length: 2048
+  max_padding_length: 2048 # (cutoff_len)max 32768, chane according the dataset
   # especial for qwen2.5-vl
   enable_variable_seq_lengths: True
   max_position_embeddings: 128000 # only useful for additional position embedding
@@ -86,7 +86,7 @@ model:
   optimizer:
     weight_decay: 0.1
     adam_beta1: 0.9
-    adam_beta2: 0.95
+    adam_beta2: 0.999
     lr_scheduler:
       lr: 1.0e-5
       min_lr: 1.0e-6
@@ -95,17 +95,17 @@ model:
       lr_decay_style: cosine
 
 data:
-  # data_path: /share/project/lizhiyu/data/vg_single/wds
-  # data_path: /share/project/lizhiyu/data/robovqa_mul/wds
-  data_path: /share/project/lizhiyu/data/robovqa_1000_cp/wds
+  data_path: /share/project/lizhiyu/data/sample_data/vg_5/wds
+  # data_path: /share/project/lizhiyu/data/sample_data/robovqa_1000_cp/wds
   # data_path: /share/project/lizhiyu/data/single_img/wds
   # data_path: /share/project/lizhiyu/FlagScale/examples/qwen2_5_vl/conf/train/belend_dataset.yaml
-  vision_root: /share/project/caomingyu/robobrain_train_images
+  # vision_root: /share/project/lizhiyu/data/sample_data/
+  vision_root: /share/project/lizhiyu/data/sample_data/jushen_data/
   dataloader_type: external
   split: 100,0,0
   tokenizer:
     tokenizer_type: Qwen2VLTokenizer
-    tokenizer_path: /share/project/lizhiyu/data/Qwen2.5-VL-7B-Instruct_mc_tp1
+    tokenizer_path: /share/project/lizhiyu/data/ckpt/Qwen2.5-VL-7B-Instruct
     vocab_size: 152064 # 7b
     extra_vocab_size: 421
     make_vocab_size_divisible_by: 64

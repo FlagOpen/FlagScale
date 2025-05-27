@@ -54,6 +54,7 @@ class OptimizerParamScheduler:
         wsd_decay_steps: Optional[int] = None,
         lr_wsd_decay_style: Optional[str] = None,
         stablelm2_scheduler_config=None,
+        global_batch_size=0
     ) -> None:
 
         # Class values.
@@ -65,8 +66,9 @@ class OptimizerParamScheduler:
         assert self.min_lr >= 0.0
         assert self.max_lr >= self.min_lr
         assert self.init_lr <= self.max_lr
-
-        self.lr_warmup_steps = lr_warmup_steps
+        # NOTE(lizhiyu): Align to llama-f and Deepspeed, lr of the first step is 0.
+        self.global_batch_size = global_batch_size if lr_warmup_steps > 0 else 0
+        self.lr_warmup_steps = lr_warmup_steps + global_batch_size if lr_warmup_steps > 0 else 0
         self.num_steps = 0
         self.lr_decay_steps = lr_decay_steps
         self.wsd_decay_steps = wsd_decay_steps
@@ -142,7 +144,7 @@ class OptimizerParamScheduler:
         # Use linear warmup for the initial part.
         if self.lr_warmup_steps > 0 and self.num_steps <= self.lr_warmup_steps:
             return self.init_lr + (
-                (max_lr - self.init_lr) * float(self.num_steps) / float(self.lr_warmup_steps)
+                (max_lr - self.init_lr) * float(self.num_steps - self.global_batch_size) / float(self.lr_warmup_steps - self.global_batch_size)
             )
 
         # If the learning rate is constant, just return the initial value.

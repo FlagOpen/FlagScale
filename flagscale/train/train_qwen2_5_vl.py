@@ -171,6 +171,32 @@ def model_provider(
         freeze_vision_model=args.freeze_ViT,
         freeze_vision_projection=False
     )
+    
+    # def print_trainable_status(model):
+    #     """递归打印模型所有参数的可训练状态"""
+    #     for name, param in model.named_parameters():
+    #         print(f"参数: {name}")
+    #         print(f"  可训练: {param.requires_grad}")
+    #         print(f"  形状: {param.shape}")
+    #         print("-" * 50)
+    # def count_trainable_params(model):
+    #     """统计可训练和不可训练的参数数量"""
+    #     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    #     non_trainable = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+    #     total = trainable + non_trainable
+        
+    #     print(f"总参数: {total:,}")
+    #     print(f"可训练参数: {trainable:,} ({trainable/total:.2%})")
+    #     print(f"不可训练参数: {non_trainable:,} ({non_trainable/total:.2%})")
+
+    # # 使用示例
+    # count_trainable_params(model)
+
+    # 使用示例
+    #print(f"LZY: model struct: \n{model}")
+    # #print(f"LZY: model parameter ------------")
+    # print_trainable_status(model)
+    
 
     return model
 
@@ -408,12 +434,6 @@ def get_batch(data_iterator):
     else:
         data = None
 
-    # if data is not None:
-    #     print(f"LZY: image_thw_grids shape: {data["image_thw_grids"].shape}")
-    #     # for k, v in data.items():
-    #     #     if isinstance(v, torch.Tensor):
-    #     #         print(f"LZY: data: k: {k}, v shape: {v.shape}")
-
 
     data_text =  broadcast_data(["text"], data, torch.int64)["text"]
 
@@ -560,7 +580,7 @@ def forward_step(data_iterator, model: Qwen2_5VLModel):
             video_input_mask
         ) = get_batch(data_iterator)
     timers('batch-generator').stop()
-
+    #print(f"LZY imags: {imgs.shape}, content: {imgs.sum()}, {imgs}")
     vision_data = torch.cat([imgs, videos], dim=0)
     vision_grid = torch.cat([image_thw_grids, video_thw_grids], dim=0)
     with stimer:
@@ -657,8 +677,9 @@ def is_dataloader_rank(encoder_pipeline_model_parallel_size):
     # Run dataloader only on the first tensor parallel rank (will be broadcasted to others).
     is_first_rank = get_tensor_model_parallel_rank() == 0
 
-    pp_size = get_pipeline_model_parallel_world_size()
-    is_first_rank = is_first_rank and is_first_or_last_stage(pp_size, encoder_pipeline_model_parallel_size)
+    # NOTE(lizhiyu): when pp_size > 2
+    # pp_size = get_pipeline_model_parallel_world_size()
+    # is_first_rank = is_first_rank and is_first_or_last_stage(pp_size, encoder_pipeline_model_parallel_size)
 
     return is_first_rank
 

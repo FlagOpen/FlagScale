@@ -106,7 +106,9 @@ def _get_param_groups(
                 no_wd = no_weight_decay_cond(name, param)
             else:
                 # Do not regularize biases and norm parameters.
-                no_wd = name.endswith(".bias") or len(param.shape) == 1
+                # no_wd = name.endswith(".bias") or len(param.shape) == 1
+                # NOTE(lizhiyu): hack for qwen2.5vl
+                no_wd = name.endswith(".bias")
 
             if scale_lr_cond is not None:
                 scale_lr = scale_lr_cond(name, param)

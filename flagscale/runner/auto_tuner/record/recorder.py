@@ -17,10 +17,10 @@ class Recorder:
             and "performance" in self.config.experiment.auto_tuner
         ):
             self.metric = self.config.experiment.auto_tuner.performance.get(
-                "name", "elapsed time per iteration \(ms\):"
+                "name", "elapsed time per iteration \\(ms\\):"
             )
         else:
-            self.metric = "elapsed time per iteration \(ms\):"
+            self.metric = "elapsed time per iteration \\(ms\\):"
 
         # Sort order of performance, order just in [ascend, and descend], default ascend
         if (
@@ -215,7 +215,7 @@ class Recorder:
             raise ValueError("The log file does not exist.")
         return log_path, logs
 
-    def grep_performance(self, path, pattern="elapsed time per iteration \(ms\):"):
+    def grep_performance(self, path, pattern="elapsed time per iteration \\(ms\\):"):
         """Read the log file and return the performance."""
         metric_pattern = pattern + r":* *(\d+(\.\d*)?)|(\d+(\.\d*)?) *" + pattern
         if not path or not os.path.exists(path):

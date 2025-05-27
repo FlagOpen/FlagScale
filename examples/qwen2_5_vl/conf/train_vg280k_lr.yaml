@@ -1,9 +1,9 @@
 defaults:
-  - train: 32b
+  - train: 7b_data_check_tp1_dp16_lr
   - _self_
 
 experiment:
-  exp_name: train_qwen2_5_vl_32b_fix_mult_turn
+  exp_name: train_qwen2_5_vl_vg_280_tp1_dp16_9_999_test_lr
   exp_dir: ./${experiment.exp_name}
   task:
     type: train
@@ -11,10 +11,11 @@ experiment:
     entrypoint: ./flagscale/train/train_qwen2_5_vl.py
   runner:
     backend: torchrun
-    nnodes: 64
+    nnodes: 1
     nproc_per_node: 8
     rdzv_backend: static
-    hostfile: /share/project/lizhiyu/data/scripts/hostfiles/hostfile.64.last
+    # hostfile: /share/project/lizhiyu/data/scripts/hostfiles/hostfile.2
+    # hostfile: /share/project/lizhiyu/data/scripts/hostfiles/hostfile.0_1
     # ssh_port: 22
   cmds:  
     before_start: ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale-train && export https_proxy=http://10.8.48.6:2080 && export http_proxy=http://10.8.48.6:2080

@@ -8,6 +8,7 @@ import pickle
 from argparse import ArgumentParser
 from typing import List, Union
 
+import math
 import cv2
 import webdataset as wds
 import yaml
@@ -29,6 +30,7 @@ def convert(
     video_key="videos",
     vision_dir=None,
     dp_size=1,
+    drop_last=False,
 ):
     """
     Here we provide an example to convert llava-pretrain dataset to ChatMLSample
@@ -112,27 +114,40 @@ def convert(
         shard_writer.write(sample)
 
     has_idx = None
-    num_per_rank = data_len // dp_size
-    left_data_count = data_len % dp_size
-    with wds.ShardWriter(
-        os.path.join(output, "pretrain-%d.tar"), maxcount=max_count
-    ) as shard_writer:
-        for rank in tqdm(range(dp_size)):
-            for id in tqdm(range(num_per_rank)):
-                data_id = id * dp_size + rank
-                entry = data[data_id]
-                write_sample(entry, vision_dir, has_idx=has_idx, idx=data_id)
-        if left_data_count > 0:
-            for idx, entry in enumerate(data[data_len - left_data_count :]):
-                write_sample(
-                    entry, vision_dir, has_idx=has_idx, idx=data_len - left_data_count + idx
-                )
+    if drop_last:
+        num_per_rank = data_len // dp_size
+        left_data_count = data_len % dp_size
+        with wds.ShardWriter(
+            os.path.join(output, "pretrain-%d.tar"), maxcount=max_count, maxsize=9e9
+        ) as shard_writer:
+            for rank in tqdm(range(dp_size)):
+                for id in tqdm(range(num_per_rank)):
+                    data_id = id * dp_size + rank
+                    entry = data[data_id]
+                    write_sample(entry, vision_dir, has_idx=has_idx, idx=data_id)
+            if left_data_count > 0:
+                for idx, entry in enumerate(data[data_len - left_data_count :]):
+                    write_sample(
+                        entry, vision_dir, has_idx=has_idx, idx=data_len - left_data_count + idx
+                    )
+    else:
+        num_per_rank = math.ceil(data_len / dp_size)
+        with wds.ShardWriter(
+            os.path.join(output, "pretrain-%d.tar"), maxcount=max_count, maxsize=9e9
+        ) as shard_writer:
+            for rank in tqdm(range(dp_size)):
+                for id in tqdm(range(num_per_rank)):
+                    data_id = id * dp_size + rank
+                    if data_id >= data_len:
+                        break
+                    entry = data[data_id]
+                    write_sample(entry, vision_dir, has_idx=has_idx, idx=data_id)
 
     print(f"Dataset successfully converted to wds")
     return output
 
 
-def generate_configs(path: EPath, split, shuffle_tars=True, num_workers=32):
+def generate_configs(path: EPath, split, shuffle_tars=True, num_workers=1):
     # path = path.absolute()
     all_tars = list(path.glob("**/*.tar")) + list(path.glob("**/*.tgz"))
     all_tars = [str(p.relative_to(path)) for p in sorted(all_tars)]
@@ -179,8 +194,9 @@ if __name__ == "__main__":
     argparser.add_argument("--shuffle-tars", action="store_true")
     argparser.add_argument("--num-workers", default=1, type=int)
     argparser.add_argument("--dp-size", default=1, type=int)
+    argparser.add_argument("--drop-last", action="store_true")
     args = argparser.parse_args()
-    print(f"=======input args=======:\n{args}")
+    print(f"=======input args=======\n{args}\n=======input args=======\n")
     output_dir = convert(
         args.dataset_root,
         args.output_root,
@@ -190,6 +206,7 @@ if __name__ == "__main__":
         video_key=args.videos_key,
         vision_dir=args.vision_root,
         dp_size=args.dp_size,
+        drop_last=args.drop_last
     )
     print(f"Generating Configurations")
     # NOTE: split_ratio: train/val/test

@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL
-import PIL.Image
+from PIL import Image
 import torch
 
 from torchvision import transforms as T
@@ -40,8 +40,7 @@ from tools.datasets.qwenvl.data.image_processing import get_visual_transform
 
 dataset_logger = logging.getLogger(__name__)
 FIRST_MAX_PADDING_FLAG = True
-
-
+CLEAR_CACHE_ITERATION=200000
 # Type for intermediate batch, after batch()
 @dataclass
 class ImageTaskSample:
@@ -199,6 +198,40 @@ class TaskEncoder(
             thw_grids.append((grid_t, grid_h, grid_w))
         return flattened, np.array(thw_grids)
 
+    # copy from 
+    def _preprocess_image(
+        self, image: PIL.Image, image_max_pixels: int=768*768, image_min_pixels: int = 32*32
+    ) -> PIL.Image:
+        r"""
+        Pre-processes a single image.
+        """
+        if (image.width * image.height) > image_max_pixels:
+            resize_factor = math.sqrt(image_max_pixels / (image.width * image.height))
+            width, height = int(image.width * resize_factor), int(image.height * resize_factor)
+            image = image.resize((width, height))
+
+        if (image.width * image.height) < image_min_pixels:
+            resize_factor = math.sqrt(image_min_pixels / (image.width * image.height))
+            width, height = int(image.width * resize_factor), int(image.height * resize_factor)
+            image = image.resize((width, height))
+
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+            
+        if min(image.width, image.height) < 28:
+            width, height = max(image.width, 28), max(image.height, 28)
+            image = image.resize((width, height), resample=Image.Resampling.NEAREST)
+
+        if image.width / image.height > 200:
+            width, height = image.height * 180, image.height
+            image = image.resize((width, height), resample=Image.Resampling.NEAREST)
+
+        if image.height / image.width > 200:
+            width, height = image.width, image.width * 180
+            image = image.resize((width, height), resample=Image.Resampling.NEAREST)
+
+        return image
+    
     def encode_chatml(self, sample: ChatMLSample):
         # # TODO: modify get_visual_transform to add more augmentations
         # imgs = [get_visual_transform(os.path.join(self.vision_root, img))[0] for img in sample.imgs]
@@ -222,11 +255,13 @@ class TaskEncoder(
                 img_path = os.path.join(self.vision_root, img)
                 try:
                     image = PIL.Image.open(img_path)
+                    image = self._preprocess_image(image=image)
                     imgs.append(image)
                 except Exception as e:
-                    raise RuntimeError(
-                        f"Failed to open image: {img_path}. Error: {e} of smaple[{sample.__key__}]"
-                    )
+                    raise ValueError(f"Failed to open image: {img_path}. Error: {e} of smaple[{sample.__key__}]")
+                    # raise InternalWarning(
+                    #     f"Failed to open image: {img_path}. Error: {e} of smaple[{sample.__key__}]"
+                    # )
             imgs_info = self.tokenizer.processor.image_processor(imgs, return_tensors="np")
             flattened_imgs = imgs_info["pixel_values"]
             image_thw_grids = imgs_info["image_grid_thw"]
@@ -258,7 +293,7 @@ class TaskEncoder(
             if isinstance(sample.conversation, (str, bytes))
             else sample.conversation
         )
-        # print(f"LZY: origin conversion: {conversation}")
+        # #print(f"LZY: origin conversion: {conversation}")
         second_per_grid_ts = [1 / 2.0] * len(video_thw_grids)
         if "conversations" in conversation:
             second_per_grid_ts = conversation.get("second_per_grid_ts", second_per_grid_ts)
@@ -308,7 +343,7 @@ class TaskEncoder(
 
             converted_conversation.append({"role": role, "content": content})
         conversation = converted_conversation
-        # print(f"LZY: converted conversion: {conversation}")
+        # #print(f"LZY: converted conversion: {conversation}")
         # NOTE: we need to mask all system/user input tokens and assistant generation prefix tokens
         input_ids = self.tokenizer.apply_chat_template(
             conversation, tokenize=True, return_tensors="np"
@@ -318,9 +353,9 @@ class TaskEncoder(
         system_prompt_prefix = len(
             self.tokenizer.apply_chat_template([conversation[0]], tokenize=True)
         )
-        assistant_generation_prefix = 3
+        assistant_generation_prefix = 3 # <im_start>assistant\n
         pad_token_id = self.tokenizer.pad_token_id
-
+        # pad_token_id = IGNORE_ID
         target[:system_prompt_prefix] = pad_token_id
         offset = system_prompt_prefix
         for turn_idx, turn in enumerate(conversation[1:]):
@@ -368,7 +403,7 @@ class TaskEncoder(
         if target_length > self.seq_len:
             # raise InternalWarning(f"Long sequence with length {target_length} found, dropped...")
             dataset_logger.warning(
-                f"Samle id [{sample.__key__}] has long sequence with length {target_length}, cutoff to {self.seq_len} in batch function..."
+                f"Samle id [{sample.__key__}] has long sequence with length {target_length}, cutoff to max [self.seq_len+64={self.seq_len+64}] in batch function..."
             )
         final_input_ids = np.zeros(target_length, dtype=input_ids.dtype)
         final_input_masks = final_input_ids.copy()
@@ -416,7 +451,8 @@ class TaskEncoder(
         image_input_mask = final_input_ids == self.tokenizer.image_token_id
         video_input_mask = final_input_ids == self.tokenizer.video_token_id
         # print(f"LZY: image key: {sample.__key__}")
-        # print(f"LZY: image_thw_grids: {image_thw_grids.shape}; video_thw_grids: {video_thw_grids.shape}")
+        #print(f"LZY: image_thw_grids: {image_thw_grids.shape}; video_thw_grids: {video_thw_grids.shape}")
+        #print(f"LZY: flattened_imgs: {flattened_imgs.shape}; content: {flattened_imgs.sum()}")
         # collect data
         return ImageTaskSample(
             __key__=sample.__key__,
@@ -572,11 +608,14 @@ class TaskEncoder(
         else:
             video_thw_grids = torch.empty([0, 3], dtype=torch.long)
 
+        global CLEAR_CACHE_ITERATION, FIRST_MAX_PADDING_FLAG
+        if self.args.curr_iteration > 0 and self.args.curr_iteration % CLEAR_CACHE_ITERATION == 0:
+            torch.cuda.empty_cache()
+            FIRST_MAX_PADDING_FLAG = True
         # If the user hasn't defined a target sequence length, then use the max along the sample lengths.
         if not self.args.enable_variable_seq_lengths:
             max_seq_len = self.seq_len
         else:
-            global FIRST_MAX_PADDING_FLAG
             # NOTE: this is a hack to get the max padding length for the first batch to avoid OOM because of cached memory in torch
             if FIRST_MAX_PADDING_FLAG:
                 max_seq_len = self.seq_len

@@ -272,6 +272,9 @@ class MultimodalRotaryEmbedding(nn.Module):
                 / dim
             )
         )
+        #print(f"LZY: GPTModel kv_channels: {kv_channels}, rotary_percent: {rotary_percent}, seq_len_interpolation_factor: {seq_len_interpolation_factor}, rotary_base: {rotary_base}")
+        #print(f"LZY: GPTModel inv_freq: {self.inv_freq.shape}, content: {self.inv_freq.sum()}, {self.inv_freq}")
+
 
     def forward(self, position_ids: torch.Tensor, mrope_section: List[int]) -> Tensor:
         """Forward pass of multimodal RoPE embedding.
