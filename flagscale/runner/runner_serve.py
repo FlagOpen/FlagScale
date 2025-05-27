@@ -830,7 +830,7 @@ class SSHServeRunner(RunnerBase):
         prefix_len = profile_args.get("prefix_len", 0)
         input_len = profile_args.get("input_len", 1024)
         output_len = profile_args.get("output_len", 1024)
-        num_prompts = profile_args.get("num_prompts", 200)
+        num_prompts = profile_args.get("num_prompts", 2)
         range_ratio = profile_args.get("range_ratio", 0.5)
         dummy_input_requests = dummy_random_input(
             tokenizer=tokenizer,

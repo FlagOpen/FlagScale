@@ -556,7 +556,8 @@ class ServeSearcher(Searcher):
         self.config = config
 
         start_time = time.time()
-        cards = config.experiment.auto_tuner.cards
+        # cards = config.experiment.auto_tuner.cards
+        cards = 16
         max_cards_per_instance = config.experiment.runner.get("nproc_per_node", 1)
         space_bak = copy.deepcopy(getattr(config.experiment.auto_tuner, "space", {}))
         if self.config.experiment.get("deploy", {}).get("prefill_decode_disaggregation", False):

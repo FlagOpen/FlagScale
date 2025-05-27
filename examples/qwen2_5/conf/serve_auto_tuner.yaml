@@ -20,7 +20,7 @@ experiment:
     docker: cz-dev
     ssh_port: 22
     nnodes: 1
-    nproc_per_node: 4
+    nproc_per_node: 1
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     VLLM_USE_V1: 0
@@ -33,7 +33,7 @@ experiment:
     engines: [vllm]
     space:
       vllm:
-        tensor_model_parallel_size: [1, 2]
+        tensor_model_parallel_size: [1]
         pipeline_model_parallel_size: auto
         block_size: [16]
     performance:
