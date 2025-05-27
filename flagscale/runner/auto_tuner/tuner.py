@@ -392,14 +392,14 @@ class ServeAutoTunner(AutoTuner):
         """
         tuner_start_time = time.time()
         while not self.need_stop():
-            if self.cur_strategy.get("tune_pd_instance", False):
-                self.config.experiment.deploy.prefill_decode_disaggregation = False
-            elif self.cur_strategy.get("prefill_decode_disaggregation", False):
-                self.config.experiment.deploy.prefill_decode_disaggregation = True
             self.logger.addHandler(self.handler)
             self.gen()
             if not self.cur_strategy:
                 break
+            if self.cur_strategy.get("tune_pd_instance", False):
+                self.config.experiment.deploy.prefill_decode_disaggregation = False
+            elif self.cur_strategy.get("prefill_decode_disaggregation", False):
+                self.config.experiment.deploy.prefill_decode_disaggregation = True
             self.logger.info(f"Run task_{self.idx}: {self.cur_strategy}")
             self.run()
             self.logger.info(f"Monitor task_{self.idx}:")
@@ -464,6 +464,10 @@ class ServeAutoTunner(AutoTuner):
         self.logger.warning(
             f"self.prefill_best_strategy: ---------------- {self.prefill_best_strategy}"
         )
+        if strategy.get("tune_pd_instance", False):
+            self.config.experiment.deploy.prefill_decode_disaggregation = False
+        elif strategy.get("prefill_decode_disaggregation", False):
+            self.config.experiment.deploy.prefill_decode_disaggregation = True
         if self.prefill_best_strategy:
             strategy.update(self.prefill_best_strategy)
         while strategy and (self.pruner is not None and self.pruner.prune(strategy, self.history)):
@@ -486,6 +490,8 @@ class ServeAutoTunner(AutoTuner):
             self.logger.info(f"Generate task_{self.idx}")
             self.cur_strategy = strategy
             self.cur_task = self.generator.gen(strategy)
+            print(self.cur_task)
+            breakpoint()
         else:
             self.cur_strategy = None
 
