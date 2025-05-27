@@ -11,9 +11,9 @@ experiment:
     entrypoint: flagscale/inference/inference_aquila.py
   runner:
     hostfile: null
-  cmds:
-    before_start:
-      source /root/miniconda3/bin/activate flagscale-inference
+  # cmds:
+  #   before_start:
+  #     source /root/miniconda3/bin/activate flagscale-inference
   envs:
     VLLM_LATENCY_DEBUG: true
     CNCL_CNPX_DOMAIN_ENABLE: 0
