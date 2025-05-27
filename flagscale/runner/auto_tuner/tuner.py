@@ -380,9 +380,6 @@ class ServeAutoTunner(AutoTuner):
         self.enable_prefill_decode_disaggregation = self.config.experiment.get("deploy", {}).get(
             "prefill_decode_disaggregation", False
         )
-        self.tune_single_pd_instance = None
-        if self.enable_prefill_decode_disaggregation:
-            self.tune_single_pd_instance = True
 
     def tune(self):
         """

@@ -558,6 +558,7 @@ class ServeSearcher(Searcher):
         start_time = time.time()
         cards = config.experiment.auto_tuner.cards
         max_cards_per_instance = config.experiment.runner.get("nproc_per_node", 1)
+        space_bak = copy.deepcopy(getattr(config.experiment.auto_tuner, "space", {}))
         if self.config.experiment.get("deploy", {}).get("prefill_decode_disaggregation", False):
             self.strategies = []
             cards_per_instance = 1
@@ -571,6 +572,7 @@ class ServeSearcher(Searcher):
                     strategy["cards_per_instance"] = cards_per_instance
                 self.strategies = self.strategies + strategies
                 cards_per_instance *= 2
+                config.experiment.auto_tuner.space = space_bak
             config.experiment.auto_tuner.cards = cards
             self.config.experiment.deploy.prefill_decode_disaggregation = True
             self.space = self.build_space(self.config)
