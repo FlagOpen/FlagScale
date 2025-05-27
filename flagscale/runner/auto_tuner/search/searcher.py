@@ -586,8 +586,8 @@ class ServeSearcher(Searcher):
             # Build strategies by Cartesian product search space
             self.strategies = self.build_strategies(self.space, self.config)
             self.strategies = self.strategies + strategies
-        print(self.strategies)
-        breakpoint()
+        self.logger.warning(f"ServeSearcher init self.strategies==== {self.strategies}")
+
         end_time = time.time()
         self.logger.info(
             "Searcher: build search space in {:.2f} seconds and space is {}".format(
