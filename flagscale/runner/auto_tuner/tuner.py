@@ -408,7 +408,7 @@ class ServeAutoTunner(AutoTuner):
             self.logger.info(f"Record task_{self.idx}:")
             self.record()
 
-            if self.enable_prefill_decode_disaggregation:
+            if self.cur_strategy.get("tune_pd_instance", False):
                 # get best strategy of prefill and decode type
                 prefill_metric = "prompt_throughput"
                 self.prefill_best_strategy = self.get_best(
