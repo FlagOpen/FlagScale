@@ -2,18 +2,27 @@
 
 # Run each command and capture its return value
 commands=(
+    # For train
     "tests/scripts/functional_tests/test_task.sh --type train --task aquila"
     # TODO: need fix
     # "tests/scripts/functional_tests/test_task.sh --type train --task deepseek"
     # "tests/scripts/functional_tests/test_task.sh --type train --task mixtral"
     # "tests/scripts/functional_tests/test_task.sh --type train --task llava_onevision"
-    # for hetero-train
+    # For hetero-train
     # "tests/scripts/functional_tests/test_task.sh --type hetero_train --task aquila"
-    # Add in the feature
+    # For inference
     "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek"
     "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3"
     "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_flaggems"
     "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3_flaggems"
+    # For inference-pipeline
+    "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B"
+    "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --flaggems enable"
+    # For other hardware
+    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware BI_V150"
+    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --flaggems enable --hardware BI_V150"
+    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware Cambricon_MLU"
+    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --flaggems enable --hardware Cambricon_MLU"
     # For serve
     # "tests/scripts/functional_tests/test_task.sh --type serve --task base"
 )
