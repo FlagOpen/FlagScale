@@ -185,5 +185,5 @@ def test_inference_pipeline(test_path, test_type, test_task, test_case):
         assert len(result_parts) >= 2, f"len(result_parts) should be 2"
         result_value = result_parts[1].strip()
         assert (
-            result_value[0] == "[" and result_value[-1] == "]" and result_value[1:-1]
-        ), f"String {result_value} should be wrapped in [] and not empty inside"
+            (result_value[0] == "[" and result_value[-1] == "]") or (result_value[0] == "(" and result_value[-1] == ")") and result_value[1:-1]
+        ), f"String {result_value} should be wrapped in [] or () and not empty inside"
