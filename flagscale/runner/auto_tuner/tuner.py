@@ -468,6 +468,8 @@ class ServeAutoTunner(AutoTuner):
             self.config.experiment.deploy.prefill_decode_disaggregation = False
         elif strategy.get("prefill_decode_disaggregation", False):
             self.config.experiment.deploy.prefill_decode_disaggregation = True
+            self.config.experiment.deploy.prefill_num = strategy.get("prefill_num", 1)
+            self.config.experiment.deploy.decode_num = strategy.get("decode_num", 1)
             if self.prefill_best_strategy:
                 strategy.update(self.prefill_best_strategy)
         while strategy and (self.pruner is not None and self.pruner.prune(strategy, self.history)):
