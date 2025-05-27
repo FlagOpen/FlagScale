@@ -42,6 +42,8 @@ experiment:
     control:
       interval: 20
       run_best: False
+  cmds:
+    before_start: source /root/miniconda3/bin/activate flagscale-inference
 
 action: run
 
