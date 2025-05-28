@@ -16,7 +16,7 @@ from flagscale.runner.utils import is_master
 
 
 def check_config(config: DictConfig) -> None:
-    if config.experiment.get("runner", {}).get("deploy", {}):
+    if config.experiment.get("deploy", {}):
         OmegaConf.set_struct(config.experiment.runner, False)
         config.experiment.runner.deploy = config.experiment.deploy
         del config.experiment.deploy
