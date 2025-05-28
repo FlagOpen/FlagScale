@@ -460,23 +460,31 @@ class ServeAutoTunner(AutoTuner):
         # 2. Whether prune by pruner
         # 3. If not pruned, generate the task by generator
         strategy = self.searcher.search()
-        self.logger.warning(f"Strategy: ---------------- {strategy}")
-        self.logger.warning(
-            f"self.prefill_best_strategy: ---------------- {self.prefill_best_strategy}"
-        )
-        self.logger.warning(
-            f"tune_pd_instance: {strategy.get("tune_pd_instance", False)} ---------------- prefill_decode_disaggregation: {strategy.get("prefill_decode_disaggregation", False)}"
+        self.logger.info(f"Strategy: ---------------- {strategy}")
+        self.logger.info(f"self.decode_best_strategy: ---------------- {self.decode_best_strategy}")
+        self.logger.info(
+            f"tune_pd_instance: {strategy.get('tune_pd_instance', False)} ---------------- prefill_decode_disaggregation: {strategy.get('prefill_decode_disaggregation', False)}"
         )
         if strategy.get("tune_pd_instance", False):
             self.config.experiment.deploy.prefill_decode_disaggregation = False
         elif strategy.get("prefill_decode_disaggregation", False):
-            self.logger.warning(f"before update config {self.config}--------------")
+            self.logger.info(f"before update config {self.config}--------------")
             self.config.experiment.deploy.prefill_decode_disaggregation = True
             self.config.experiment.deploy.prefill_num = strategy.get("prefill_num", 1)
             self.config.experiment.deploy.decode_num = strategy.get("decode_num", 1)
-            self.logger.warning(f"after update config {self.config}--------------")
-            if self.prefill_best_strategy:
+            self.logger.info(f"after update config {self.config}--------------")
+            if (
+                self.config.experiment.get("auto_tuner", {})
+                .get("performance", {})
+                .get("metric", None)
+                == "prompt_throughput"
+                and self.prefill_best_strategy
+            ):
                 strategy.update(self.prefill_best_strategy)
+            elif self.decode_best_strategy:
+                strategy.update(self.decode_best_strategy)
+            else:
+                self.logger.warning("No availble strategy for prefill or decode strategy.")
         while strategy and (self.pruner is not None and self.pruner.prune(strategy, self.history)):
             strategy = self.searcher.search()
         if strategy:
