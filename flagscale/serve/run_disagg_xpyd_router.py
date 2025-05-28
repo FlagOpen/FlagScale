@@ -227,7 +227,7 @@ async def handle_request():
     try:
         original_data = await request.get_json()
         endpoint = request.path  # this will be '/v1/completions' or '/v1/chat/completions'
-        logger.info(f"========== input origin data {original_data}==========")
+        # logger.info(f"========== input origin data {original_data}==========")
         # calculate tokens num
         prompt_tokens_num = 0
         if SCHEDULING_STRATEGY == "slo":
