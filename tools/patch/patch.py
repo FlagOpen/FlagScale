@@ -139,7 +139,7 @@ def prompt_info(main_path, backends, device_type, tasks):
 
     # FlagScale-compatible models
     model_input = input(
-        "3. Please enter flagScale-compatible models (separated with commas): "
+        "3. Please enter FlagScale-compatible models (separated with commas): "
     ).strip()
     models = [m.strip() for m in model_input.split(",") if m.strip()]
     while not models:
@@ -239,9 +239,9 @@ def _generate_patch_file_for_backend(
         if backend == FLAGSCALE_BACKEND:
             backends = copy.deepcopy(list(patch_info["backends_version"].keys()))
             flagscale_diff_args = [commit, "HEAD", "--binary", "--ignore-submodules=all", "--"]
-            for backend in backends:
-                if backend != FLAGSCALE_BACKEND:
-                    backend_dir = os.path.join(main_path, "flagscale", "backends", backend)
+            for item in backends:
+                if item != FLAGSCALE_BACKEND:
+                    backend_dir = os.path.join(main_path, "flagscale", "backends", item)
                     flagscale_diff_args.append(f':(exclude){backend_dir}')
 
         temp_patch_files = []
