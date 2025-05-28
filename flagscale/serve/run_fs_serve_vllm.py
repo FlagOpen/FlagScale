@@ -548,7 +548,7 @@ if __name__ == "__main__":
     serve.start(
         http_options={
             "host": "0.0.0.0",
-            "port": TASK_CONFIG.experiment.get("deploy", {}).get("port", 8000),
+            "port": TASK_CONFIG.experiment.get("runner", {}).get("deploy", {}).get("port", 8000),
         }
     )
     llm_actor = LLMActor.bind()

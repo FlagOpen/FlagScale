@@ -309,12 +309,14 @@ class ServeAutoTunner(AutoTuner):
         logger.addHandler(handler)
         self.logger = logger
         self.handler = handler
-        deploy_config = config.experiment.get("deploy", {})
+        deploy_config = config.experiment.get("runner", {}).get("deploy", {})
 
         if not deploy_config.get("use_fs_serve", True) and deploy_config.get("port", None):
             for item in config.serve:
                 if item.get("serve_id") == "vllm_model":
-                    item.engine_args["port"] = config.experiment.get("deploy", {}).get("port", None)
+                    item.engine_args["port"] = (
+                        config.experiment.get("runner", {}).get("deploy", {}).get("port", None)
+                    )
 
         # Deepcopy the original config to isolate from each task config
         # Modify the orig config when run best task
@@ -377,8 +379,10 @@ class ServeAutoTunner(AutoTuner):
         self.tune_pd = False
         self.prefill_best_strategy = None
         self.decode_best_strategy = None
-        self.enable_prefill_decode_disaggregation = self.config.experiment.get("deploy", {}).get(
-            "prefill_decode_disaggregation", False
+        self.enable_prefill_decode_disaggregation = (
+            self.config.experiment.get("runner", {})
+            .get("deploy", {})
+            .get("prefill_decode_disaggregation", False)
         )
 
     def tune(self):
@@ -397,9 +401,9 @@ class ServeAutoTunner(AutoTuner):
             if not self.cur_strategy:
                 break
             if self.cur_strategy.get("tune_pd_instance", False):
-                self.config.experiment.deploy.prefill_decode_disaggregation = False
+                self.config.experiment.runner.deploy.prefill_decode_disaggregation = False
             elif self.cur_strategy.get("prefill_decode_disaggregation", False):
-                self.config.experiment.deploy.prefill_decode_disaggregation = True
+                self.config.experiment.runner.deploy.prefill_decode_disaggregation = True
             self.logger.info(f"Run task_{self.idx}: {self.cur_strategy}")
             self.run()
             self.logger.info(f"Monitor task_{self.idx}:")
@@ -466,12 +470,12 @@ class ServeAutoTunner(AutoTuner):
             f"tune_pd_instance: {strategy.get('tune_pd_instance', False)} ---------------- prefill_decode_disaggregation: {strategy.get('prefill_decode_disaggregation', False)}"
         )
         if strategy.get("tune_pd_instance", False):
-            self.config.experiment.deploy.prefill_decode_disaggregation = False
+            self.config.experiment.runner.deploy.prefill_decode_disaggregation = False
         elif strategy.get("prefill_decode_disaggregation", False):
             self.logger.info(f"before update config {self.config}--------------")
-            self.config.experiment.deploy.prefill_decode_disaggregation = True
-            self.config.experiment.deploy.prefill_num = strategy.get("prefill_num", 1)
-            self.config.experiment.deploy.decode_num = strategy.get("decode_num", 1)
+            self.config.experiment.runner.deploy.prefill_decode_disaggregation = True
+            self.config.experiment.runner.deploy.prefill_num = strategy.get("prefill_num", 1)
+            self.config.experiment.runner.deploy.decode_num = strategy.get("decode_num", 1)
             self.logger.info(f"after update config {self.config}--------------")
             if (
                 self.config.experiment.get("auto_tuner", {})

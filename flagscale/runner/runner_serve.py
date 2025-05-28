@@ -66,7 +66,7 @@ def _get_args_vllm(config: DictConfig):
 
 def _reset_serve_port(config):
     model_port = None
-    deploy_port = config.experiment.get("deploy", {}).get("port", None)
+    deploy_port = config.experiment.get("runner", {}).get("deploy", {}).get("port", None)
     OmegaConf.set_struct(config, False)
 
     for item in config.serve:
@@ -124,7 +124,7 @@ def _get_profile_args(config, model="vllm_model"):
 
 
 def _update_config_serve(config: DictConfig):
-    deploy_config = config.experiment.get("deploy", {})
+    deploy_config = config.experiment.get("runner", {}).get("deploy", {})
 
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     if not os.path.isdir(exp_dir):
@@ -182,7 +182,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         vllm_path = os.path.dirname(vllm.__path__[0])
     except Exception as e:
         vllm_path = f"{root_dir}/vllm"
-    deploy_config = config.experiment.get("deploy", {})
+    deploy_config = config.experiment.get("runner", {}).get("deploy", {})
     envs = config.experiment.get("envs", {})
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
@@ -509,7 +509,7 @@ def _generate_stop_script(config, host, node_rank):
     else:
         before_start_cmd = ""
 
-    deploy_config = config.experiment.get("deploy", {})
+    deploy_config = config.experiment.get("runner", {}).get("deploy", {})
     envs = config.experiment.get("envs", {})
     with open(host_stop_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
@@ -604,7 +604,7 @@ class SSHServeRunner(RunnerBase):
         super().__init__(config)
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
-        self.deploy_config = self.config.experiment.get("deploy", {})
+        self.deploy_config = self.config.experiment.get("runner", {}).get("deploy", {})
         if not self.config.experiment.task.get("entrypoint", None):
             self.inference_engine = _get_inference_engine(self.config)
             self.port = _reset_serve_port(config)
@@ -622,7 +622,12 @@ class SSHServeRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
         if self.inference_engine:
-            if self.config.experiment.get("deploy", {}).get("prefill_decode_disaggregation", False):
+            prefill_decode_disaggregation = (
+                self.config.experiment.get("runner", {})
+                .get("deploy", {})
+                .get("prefill_decode_disaggregation", False)
+            )
+            if prefill_decode_disaggregation:
                 self.user_script = "flagscale/serve/run_disagg_xpyd_router.py"
             elif not self.use_fs_serve:
                 self.user_script = "flagscale/serve/run_inference_engine.py"

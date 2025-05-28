@@ -36,7 +36,9 @@ TASK_CONFIG = serve.task_config
 MODEL_PATH = TASK_CONFIG.serve[0].get("engine_args", {}).get("model", None)
 
 # Scheduling strategy: 'random', 'robin', 'slo'
-SCHEDULING_STRATEGY = TASK_CONFIG.experiment.get("deploy", {}).get("prefill_decode_strategy", "slo")
+SCHEDULING_STRATEGY = (
+    TASK_CONFIG.experiment.get("runner", {}).get("deploy", {}).get("prefill_decode_strategy", "slo")
+)
 
 
 @lru_cache(maxsize=32)
@@ -283,7 +285,7 @@ async def handle_request():
 
 
 def main():
-    deploy_config = TASK_CONFIG.experiment.get("deploy", {})
+    deploy_config = TASK_CONFIG.experiment.get("runner", {}).get("deploy", {})
     serve_port = deploy_config.get("port", None)
     # Used to register with the pd service discovery
     pd_proxy_port = deploy_config.get("pd_proxy_port", None)
