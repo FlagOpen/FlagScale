@@ -224,7 +224,7 @@ def apply_hardware_patch(
 
         sorted_commits = sorted(all_base_commit_id, key=lambda x: position[x])
         # Get the neweset base_commit_id
-        base_commit_id = sorted_commits[-1]
+        base_commit_id = sorted_commits[0]
         logger.info(f"Step 3: Finding the newset base commit {base_commit_id} to checkout.")
 
         temp_unpatch_path = tempfile.mkdtemp()
