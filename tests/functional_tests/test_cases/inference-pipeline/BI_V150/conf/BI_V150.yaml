@@ -15,6 +15,7 @@ experiment:
     before_start:
       source /root/miniconda3/bin/activate flagscale-inference
   envs:
+    CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
     VLLM_LATENCY_DEBUG: true
     CNCL_CNPX_DOMAIN_ENABLE: 0
     PYTORCH_MLU_ALLOC_CONF: "expandable_segments:True"
