@@ -1,0 +1,12 @@
+backends_commit:
+  vllm: ba41cc90e8ef7f236347b2f1599eec2cbb9e1f0d
+backends_version:
+  FlagScale: v0.8.0
+  vllm: 0.8.5
+commit: 1d6faaad9c56e3e5ccae0526a6a977fae46650d2
+contact: ''
+device_type: Kunlunxin_R310p
+models:
+- deepseek_r1
+task:
+- inference
