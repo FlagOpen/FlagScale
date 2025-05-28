@@ -81,6 +81,8 @@ def test_inference_equal(test_path, test_type, test_task, test_case):
     for line in lines:
         if line == "**************************************************\n":
             output = True
+        if line == "##################################################\n":
+            output = False
         if output == True:
             result_lines.append(line)
 
