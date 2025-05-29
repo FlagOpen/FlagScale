@@ -79,6 +79,7 @@ def test_inference_equal(test_path, test_type, test_task, test_case):
     result_lines = []
     output = False
     for line in lines:
+        assert "Failed to import 'flag_gems'" not in line, "Failed to import 'flag_gems''"
         if line == "**************************************************\n":
             output = True
         if line == "##################################################\n":
@@ -120,6 +121,7 @@ def test_inference_pipeline(test_path, test_type, test_task, test_case):
     result_lines = []
     output = False
     for line in lines:
+        assert "Failed to import 'flag_gems'" not in line, "Failed to import 'flag_gems''"
         if line == "**************************************************\n":
             output = True
         if line == "##################################################\n":
