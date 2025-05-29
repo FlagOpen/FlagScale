@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - inference: Cambricon_MLU_flaggems
+  - inference: cambricon_mlu_flaggems
 
 experiment:
-  exp_name: Cambricon_MLU_flaggems
-  exp_dir: tests/functional_tests/test_cases/inference-pipeline/Cambricon_MLU_flaggems/results_test/Cambricon_MLU_flaggems
+  exp_name: cambricon_mlu_flaggems
+  exp_dir: tests/functional_tests/test_cases/inference-pipeline/cambricon_mlu_flaggems/results_test/cambricon_mlu_flaggems
   task:
     type: inference
     backend: vllm
