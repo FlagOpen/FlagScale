@@ -19,8 +19,8 @@ commands=(
     "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B"
     "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --flaggems enable"
     # For inference-pipeline: other hardware
-    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware BI_V150"
-    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware BI_V150 --flaggems enable"
+    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware bi_v150"
+    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware bi_v150 --flaggems enable"
     # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware Cambricon_MLU"
     # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware Cambricon_MLU --flaggems enable"
     # For serve

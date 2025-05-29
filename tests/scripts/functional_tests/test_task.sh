@@ -126,7 +126,7 @@ flaggems="disable"
 hardware="nvidia"
 
 # Define supported hardware options in a list (array)
-supported_hardware=("nvidia" "BI_V150" "Cambricon_MLU")
+supported_hardware=("nvidia" "bi_v150" "Cambricon_MLU")
 
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do

@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - inference: BI_V150
+  - inference: bi_v150
 
 experiment:
-  exp_name: BI_V150
-  exp_dir: tests/functional_tests/test_cases/inference-pipeline/BI_V150/results_test/BI_V150
+  exp_name: bi_v150
+  exp_dir: tests/functional_tests/test_cases/inference-pipeline/bi_v150/results_test/bi_v150
   task:
     type: inference
     backend: vllm
