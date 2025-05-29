@@ -1468,6 +1468,7 @@ def setup_model_and_optimizer(
         scale_lr_cond,
         lr_mult,
         use_gloo_process_groups=args.enable_gloo_process_groups,
+        vision_ration=args.vision_ration,
     )
     opt_param_scheduler = get_optimizer_param_scheduler(optimizer)
 
@@ -2623,11 +2624,12 @@ def train(
             params_norm = calc_params_l2_norm(model)
         learning_rate = None
         decoupled_learning_rate = None
-        for param_group in optimizer.param_groups:
+        for id, param_group in enumerate(optimizer.param_groups):
             if param_group['is_decoupled_lr']:
                 decoupled_learning_rate = param_group['lr']
             else:
                 learning_rate = param_group['lr']
+            print(f"LZY: param_group id[{id}] learning_reate: {learning_rate}")
         report_memory_flag = training_log(
             loss_dict,
             total_loss_dict,

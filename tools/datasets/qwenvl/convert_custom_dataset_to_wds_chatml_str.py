@@ -39,8 +39,7 @@ def convert(
         vision_dir = dataset_dir
     # Paths to the dataset files
     json_file = os.path.join(dataset_dir, json_name)
-    output = os.path.join(output_dir, "wds")
-
+    output = os.path.join(output_dir, f"wds-{dp_size}")
     os.makedirs(output, exist_ok=True)
 
     # support both json and jsonl

@@ -777,6 +777,8 @@ def add_multimodal_extra_args(parser):
     group.add_argument("--vision-root", type=str, default = None, help="The vision dirctory root path.")
     group.add_argument("--max-samples-per-sequence", type=int, default=2**31-1, help="max sequencial seqence samples in a slice")
     group.add_argument("--shuffle-buffer-size", type=int, default=0, help="the buffer size to shuffle the samples in a seqence")
+    # learning rate
+    group.add_argument("--vision-ration", type=float, default=0.1, help="the learning rate ration of vision(inlude merger) compared with llm")
 
     # just for checkpoint conversion
     group.add_argument(

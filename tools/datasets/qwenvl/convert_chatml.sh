@@ -58,13 +58,13 @@ export PYTHONPATH=$PYTHONPATH:/share/project/lizhiyu/FlagScale/third_party/Megat
 #     --dp-size 32
 
 python convert_custom_dataset_to_wds_chatml_str.py \
-    --dataset-root=/share/project/lizhiyu/data \
-    --output-root=/share/project/lizhiyu/data/sample_data/VG_280K/ \
-    --json=VG_280K.json \
+    --dataset-root=/share/project/caomingyu/stage1_train_datav4/ \
+    --output-root=/share/project/lizhiyu/data/sample_data/final_train_data/ \
+    --json=final_train_data.json \
     --train-split 1 \
     --val-split 0 \
     --images-key=image \
     --videos-key=video \
     --vision-root=/share/project/caomingyu/robobrain_train_images \
-    --max-samples-per-tar 4056776 \
-    --dp-size 16
+    --max-samples-per-tar 100000000 \
+    --dp-size 32

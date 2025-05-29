@@ -52,6 +52,7 @@ def _get_param_groups(
     min_lr: float,
     decoupled_lr: Optional[float],
     decoupled_min_lr: Optional[float],
+    vision_ration
 ) -> List[Dict]:
     """Create parameter groups for optimizer.
 
@@ -131,8 +132,14 @@ def _get_param_groups(
                 param, 'is_embedding_or_output_parameter', False
             ):
                 is_decoupled_lr = True
+            
+            is_vision_model_param = False
+            if "vision_model" in name:
+                is_vision_model_param = True
+            else:
+                is_vision_model_param = False
 
-            key = (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr)
+            key = (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr, is_vision_model_param)
             if key not in params_map:
                 params_map[key] = []
             if (
@@ -144,7 +151,7 @@ def _get_param_groups(
                 params_map[key].append(param)
 
     param_groups = []
-    for (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr), params in params_map.items():
+    for (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr, is_vision_model_param), params in params_map.items():
         assert len(params) > 0
         param_group = {
             'params': params,
@@ -152,6 +159,7 @@ def _get_param_groups(
             'lr_mult': _lr_mult,
             'is_expert_parallel': is_expert_parallel,
             'is_decoupled_lr': is_decoupled_lr,
+            'is_vision_model_param': is_vision_model_param,
         }
         param_groups.append(param_group)
 
@@ -161,6 +169,7 @@ def _get_param_groups(
         min_lr=min_lr,
         decoupled_lr=decoupled_lr,
         decoupled_min_lr=decoupled_min_lr,
+        vision_ration=vision_ration,
     )
 
     return param_groups
@@ -172,6 +181,7 @@ def _update_min_and_max_lr_in_param_groups(
     min_lr: float,
     decoupled_lr: Optional[float],
     decoupled_min_lr: Optional[float],
+    vision_ration = 0.1,
 ) -> List[Dict]:
     """
     Updates `max_lr` and `min_lr` values in each parameter group, and returns new list.
@@ -200,7 +210,7 @@ def _update_min_and_max_lr_in_param_groups(
             param_group['max_lr'] = decoupled_lr
             param_group['min_lr'] = decoupled_min_lr
         else:
-            param_group['max_lr'] = lr
+            param_group['max_lr'] = lr if not param_group['is_vision_model_param'] else lr * vision_ration # NOTE(lizhiyu): change the ration here
             param_group['min_lr'] = min_lr
     return param_groups
 
@@ -214,6 +224,7 @@ def _get_param_groups_and_buffers(
     lr_mult: float,
     filter_fn: Callable,
     buffer_name: str,
+    vision_ration=0.1,
 ) -> Tuple[List[Dict], Dict[int, List[_ParamAndGradBuffer]]]:
     """Returns parameter groups and buffer for optimizer.
 
@@ -245,6 +256,7 @@ def _get_param_groups_and_buffers(
         min_lr=config.min_lr,
         decoupled_lr=config.decoupled_lr,
         decoupled_min_lr=config.decoupled_min_lr,
+        vision_ration=vision_ration,
     )
     param_groups = list(filter(filter_fn, param_groups))
     buffers = {}
@@ -444,6 +456,7 @@ def get_megatron_optimizer(
     scale_lr_cond: Optional[Callable] = None,
     lr_mult: float = 1.0,
     use_gloo_process_groups: bool = True,
+    vision_ration=0.1,
 ) -> MegatronOptimizer:
     """Retrieve the Megatron optimizer for model chunks.
 
@@ -539,6 +552,7 @@ def get_megatron_optimizer(
             lr_mult=lr_mult,
             filter_fn=lambda g: not g['is_expert_parallel'],
             buffer_name='buffers',
+            vision_ration=vision_ration,
         )
         for model_chunk in dense_model_chunks:
             model_chunk.overlap_param_gather_with_optimizer_step = (
@@ -578,6 +592,7 @@ def get_megatron_optimizer(
         lr_mult=lr_mult,
         filter_fn=lambda g: g['is_expert_parallel'],
         buffer_name='expert_parallel_buffers',
+        vision_ration=vision_ration,
     )
     if len(moe_param_groups) > 0:
         expert_mp_group = mpu.get_expert_tensor_model_pipeline_parallel_group()

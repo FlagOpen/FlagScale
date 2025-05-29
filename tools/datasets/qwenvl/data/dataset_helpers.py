@@ -40,6 +40,7 @@ from tools.datasets.qwenvl.data.image_processing import get_visual_transform
 
 dataset_logger = logging.getLogger(__name__)
 FIRST_MAX_PADDING_FLAG = True
+LAST_LARGE_IMG=False
 CLEAR_CACHE_ITERATION=200000
 IGNORE_IDX=-100
 # Type for intermediate batch, after batch()
@@ -610,10 +611,18 @@ class TaskEncoder(
         else:
             video_thw_grids = torch.empty([0, 3], dtype=torch.long)
 
-        global CLEAR_CACHE_ITERATION, FIRST_MAX_PADDING_FLAG
-        if self.args.curr_iteration > 0 and self.args.curr_iteration % CLEAR_CACHE_ITERATION == 0:
+        global CLEAR_CACHE_ITERATION, FIRST_MAX_PADDING_FLAG, LAST_LARGE_IMG
+        if (self.args.curr_iteration > 0 and self.args.curr_iteration % CLEAR_CACHE_ITERATION == 0):
             torch.cuda.empty_cache()
             FIRST_MAX_PADDING_FLAG = True
+        if LAST_LARGE_IMG:
+            torch.cuda.empty_cache()
+            LAST_LARGE_IMG=False
+            FIRST_MAX_PADDING_FLAG=True
+        if image_thw_grids.prod(axis=-1).sum() // 4 > 4000:
+            torch.cuda.empty_cache()
+            LAST_LARGE_IMG = True
+            FIRST_MAX_PADDING_FLAG=True
         # If the user hasn't defined a target sequence length, then use the max along the sample lengths.
         if not self.args.enable_variable_seq_lengths:
             max_seq_len = self.seq_len
