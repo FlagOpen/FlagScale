@@ -157,6 +157,9 @@ if [[ "$flaggems" != "enable" && "$flaggems" != "disable" ]]; then
   exit 1
 fi
 
+# Convert hardware parameter to lowercase to ensure case-insensitive matching
+hardware=$(echo "$hardware" | tr '[:upper:]' '[:lower:]')
+
 # Validate hardware parameter using the supported hardware list
 if [[ ! " ${supported_hardware[@]} " =~ " $hardware " ]]; then
   echo "Error: --hardware must be one of: ${supported_hardware[*]}"
