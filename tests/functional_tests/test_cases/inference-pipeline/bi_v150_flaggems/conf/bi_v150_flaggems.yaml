@@ -1,0 +1,31 @@
+defaults:
+  - _self_
+  - inference: bi_v150_flaggems
+
+experiment:
+  exp_name: bi_v150_flaggems
+  exp_dir: tests/functional_tests/test_cases/inference-pipeline/bi_v150_flaggems/results_test/bi_v150_flaggems
+  task:
+    type: inference
+    backend: vllm
+    entrypoint: flagscale/inference/inference_aquila.py
+  runner:
+    hostfile: null
+  cmds:
+    before_start:
+      source /root/miniconda3/bin/activate flagscale-inference
+  envs:
+    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
+    VLLM_LATENCY_DEBUG: true
+    CNCL_CNPX_DOMAIN_ENABLE: 0
+    PYTORCH_MLU_ALLOC_CONF: "expandable_segments:True"
+    EXPERT_PARALLEL_EN: true
+    VLLM_GRAPH_DEBUG: false
+    VLLM_AVG_MOE_EN: 1
+    USE_FLAGGEMS: "true"
+
+action: run
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra
