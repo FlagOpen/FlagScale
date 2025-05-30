@@ -44,6 +44,7 @@ def inference(cfg):
         print(f"{output.prompt=}")
         print(f"{output.outputs[0].text=}")
         print(f"{output.outputs[0].token_ids=}")
+    print("#" * 50)
 
 
 if __name__ == "__main__":

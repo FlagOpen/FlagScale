@@ -46,9 +46,10 @@ FlagScale 在 **0.8.0** 开始启用新的后端管理方式，不同后端皆�
 **示例：适配训练场景下 Megatron-LM 这一训练后端，对 FlagScale 和 Megatron-LM 皆有修改。**
 
 1. **使用 FlagScale 的适配，即 `unpatch`，以此为基础进行厂商的适配。**
+   `mode` 参数需要被指定为`copy`，对于厂商而言，FlagScale 也是后端。
    ```bash
    cd FlagScale
-   python tools/patch/unpatch.py --backend Megatron-LM
+   python tools/patch/unpatch.py --backend Megatron-LM --mode copy
    ```
 
 2. **在 `third_party/Megatron-LM` 里 `inplace` 修改，以及修改 FlagScale 里其他内容。**

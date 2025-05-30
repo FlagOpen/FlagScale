@@ -1,5 +1,6 @@
 # Install outside of the conda environment
 aiohttp
+gitpython
 hydra-core
 numpy
 pandas
@@ -17,4 +18,3 @@ pylint==3.2.6
 
 pre-commit>=2.20.0
 diff-cover
-
