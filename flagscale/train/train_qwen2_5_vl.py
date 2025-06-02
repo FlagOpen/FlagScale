@@ -106,7 +106,8 @@ from flagscale.train.models.qwen2_5_vl.transformer_config import (
 from tools.datasets.qwenvl.data.dataset_helpers import TaskEncoder, print_error_handler
 #### especially for qwen2.5-vl ####
 IGNORE_IDX=-100
-
+FIRST_MAX_PADDING_FLAG = True
+LAST_LARGE_IMG=False
 def model_provider(
     pre_process=True, post_process=True, add_encoder=True, add_decoder=True
 ) -> Union[Qwen2_5VLModel]:
@@ -447,6 +448,17 @@ def get_batch(data_iterator):
 
     # shape: n_image_samples
     image_thw_grids = broadcast_data(["image_thw_grids"], data, torch.long)["image_thw_grids"]
+
+    # global LAST_LARGE_IMG
+    # if LAST_LARGE_IMG:
+    #     torch.cuda.empty_cache()
+    #     LAST_LARGE_IMG=False
+    # if image_thw_grids.prod(axis=-1).sum() // 4 > 3000:
+    #     torch.cuda.empty_cache()
+    #     LAST_LARGE_IMG = True
+    args = get_args()
+    if data_text.shape[-1] == args.max_padding_length and get_pipeline_model_parallel_rank() == 0:
+        torch.cuda.empty_cache()
     # shape: n_video_samples
     video_thw_grids = broadcast_data(["video_thw_grids"], data, torch.long)["video_thw_grids"]
     # shape: n_video_samples
@@ -779,6 +791,11 @@ def add_multimodal_extra_args(parser):
     group.add_argument("--shuffle-buffer-size", type=int, default=0, help="the buffer size to shuffle the samples in a seqence")
     # learning rate
     group.add_argument("--vision-ration", type=float, default=0.1, help="the learning rate ration of vision(inlude merger) compared with llm")
+    group.add_argument("--image-max-pixels", type=int, default=768*768, help="the maximum pixels of a single image")
+    group.add_argument("--image-min-pixels", type=int, default=32*32, help="the minimum pixels of a single image")
+    group.add_argument("--vision-recompute-layer-steps", type=int, default=0, help="the recmoute layers for vision using uniform method. 0 is disable.")
+    
+    
 
     # just for checkpoint conversion
     group.add_argument(

@@ -43,6 +43,7 @@ FIRST_MAX_PADDING_FLAG = True
 LAST_LARGE_IMG=False
 CLEAR_CACHE_ITERATION=200000
 IGNORE_IDX=-100
+MAX_IMG_THRESHHOLD=5000
 # Type for intermediate batch, after batch()
 @dataclass
 class ImageTaskSample:
@@ -207,6 +208,7 @@ class TaskEncoder(
         r"""
         Pre-processes a single image.
         """
+        # print(f"LZY: image_max_pixels: {image_max_pixels}, image_min_pixels: {image_min_pixels}")
         if (image.width * image.height) > image_max_pixels:
             resize_factor = math.sqrt(image_max_pixels / (image.width * image.height))
             width, height = int(image.width * resize_factor), int(image.height * resize_factor)
@@ -257,7 +259,8 @@ class TaskEncoder(
                 img_path = os.path.join(self.vision_root, img)
                 try:
                     image = PIL.Image.open(img_path)
-                    image = self._preprocess_image(image=image)
+                    print(f"LZY: image size: {image.size}")
+                    image = self._preprocess_image(image=image, image_max_pixels=self.args.image_max_pixels, image_min_pixels=self.args.image_min_pixels)
                     imgs.append(image)
                 except Exception as e:
                     raise ValueError(f"Failed to open image: {img_path}. Error: {e} of smaple[{sample.__key__}]")
@@ -611,18 +614,22 @@ class TaskEncoder(
         else:
             video_thw_grids = torch.empty([0, 3], dtype=torch.long)
 
-        global CLEAR_CACHE_ITERATION, FIRST_MAX_PADDING_FLAG, LAST_LARGE_IMG
+        global CLEAR_CACHE_ITERATION, FIRST_MAX_PADDING_FLAG, LAST_LARGE_IMG, MAX_IMG_THRESHHOLD
         if (self.args.curr_iteration > 0 and self.args.curr_iteration % CLEAR_CACHE_ITERATION == 0):
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
             FIRST_MAX_PADDING_FLAG = True
-        if LAST_LARGE_IMG:
-            torch.cuda.empty_cache()
-            LAST_LARGE_IMG=False
-            FIRST_MAX_PADDING_FLAG=True
-        if image_thw_grids.prod(axis=-1).sum() // 4 > 4000:
-            torch.cuda.empty_cache()
-            LAST_LARGE_IMG = True
-            FIRST_MAX_PADDING_FLAG=True
+        
+        if image_thw_grids.prod(axis=-1).sum() // 4 > MAX_IMG_THRESHHOLD:
+            MAX_IMG_THRESHHOLD = image_thw_grids.prod(axis=-1).sum() // 4
+            FIRST_MAX_PADDING_FLAG = True
+        # NOTE(lizhiyu): Clear the cache only when the current image length is longer than the past maxisum length.
+        # if self.args.image_max_pixels == 12845056 and image_thw_grids.prod(axis=-1).sum() // 4 > 16384:
+        #     FIRST_MAX_PADDING_FLAG=True
+        # if (self.args.image_max_pixels == 589824 and image_thw_grids.prod(axis=-1).sum() // 4 > 5000):  # the threshhold is important, too little --> slow, too big --> oom; adjust it according to exeriment.
+        #     # torch.cuda.empty_cache()
+        #     FIRST_MAX_PADDING_FLAG=True
+        # if (self.args.image_max_pixels > 589824 and self.args.image_max_pixels < 12845056 and image_thw_grids.prod(axis=-1).sum() // 4 > 10000):
+        #     FIRST_MAX_PADDING_FLAG=True
         # If the user hasn't defined a target sequence length, then use the max along the sample lengths.
         if not self.args.enable_variable_seq_lengths:
             max_seq_len = self.seq_len
