@@ -108,6 +108,9 @@ class Searcher:
 
             for strategy in self.strategies:
                 strategy["memory_model"] = default_model(strategy, self.config)
+                strategy["gpu_utilization"] = self.config.experiment.auto_tuner.memory_model.get(
+                    "gpu_utilization", [0.2, 0.8]
+                )
                 self.logger.info(
                     "Searcher: strategy is {}, memory model is {} MB".format(
                         strategy, strategy["memory_model"]
@@ -132,6 +135,7 @@ class Searcher:
                 "use_distributed_optimizer",
                 "tensor_model_parallel_size",
                 "pipeline_model_parallel_size",
+                "expert_model_parallel_size",
                 "recompute_method",
                 "recompute_num_layers",
                 "context_parallel_size",
@@ -157,6 +161,7 @@ class Searcher:
         priority = config.experiment.auto_tuner.algo.get("priority", None)
         if config.experiment.auto_tuner.platform.get("airs_switch", False):
             priority = "memory"
+
         # Set data parallel degree
         space["data_parallel_size"] = (
             [i for i in range(1, cards + 1)]
@@ -223,6 +228,7 @@ class Searcher:
             else config.experiment.auto_tuner.space.use_recompute
         )
         self._sort("use_recompute", space["use_recompute"], priority)
+
         # Set recompute method
         space["recompute_method"] = (
             ["uniform", "block"]
@@ -269,23 +275,26 @@ class Searcher:
         self._sort("context_parallel_size", space["context_parallel_size"], priority)
 
         # Set expert parallel degree
-        # NOTE: Expert parallel degree is not supported now
         space["expert_model_parallel_size"] = (
-            [1]
+            [i for i in range(1, cards + 1)]
             if "expert_model_parallel_size" not in config.experiment.auto_tuner.space
             or config.experiment.auto_tuner.space.expert_model_parallel_size == "auto"
             else config.experiment.auto_tuner.space.expert_model_parallel_size
         )
         self._sort("expert_model_parallel_size", space["expert_model_parallel_size"], priority)
+
         return space
 
     def build_strategies(self, space, config):
         """Build strategies by Cartesian product search space."""
         parallelism_part = self._product_parallel_dims(space, config)
+        print(f"{parallelism_part=}")
         micro_batch_size_vpp_part = self._product_micro_batch_size_vpp_dims(
             parallelism_part, space, config
         )
+        print(f"{micro_batch_size_vpp_part=}")
         recompute_part = self._product_recompute_dims(micro_batch_size_vpp_part, space, config)
+        print(f"{recompute_part=}")
 
         return recompute_part
 
@@ -298,8 +307,9 @@ class Searcher:
 
     def _product_parallel_dims(self, space, config):
         # Avoid space explosion after product
-        product_parallelism_dims = []
         cards = config.experiment.auto_tuner.cards
+
+        product_parallelism_dims = []
         for data_parallel_size in space["data_parallel_size"]:
             dims = {}
             if not divisible(cards, data_parallel_size):
@@ -308,17 +318,20 @@ class Searcher:
             gbs = config.train.model.global_batch_size
             if not divisible(gbs, data_parallel_size):
                 continue
+
             for tensor_model_parallel_size in space["tensor_model_parallel_size"]:
                 if not divisible(cards, tensor_model_parallel_size):
                     continue
                 if not divisible(cards, data_parallel_size * tensor_model_parallel_size):
                     continue
+
                 hidden_size = config.train.model.hidden_size
                 num_attention_size = config.train.model.num_attention_heads
                 if not divisible(hidden_size, tensor_model_parallel_size):
                     continue
                 if not divisible(num_attention_size, tensor_model_parallel_size):
                     continue
+
                 for pipeline_model_parallel_size in space["pipeline_model_parallel_size"]:
                     if not divisible(cards, pipeline_model_parallel_size):
                         continue
@@ -329,9 +342,25 @@ class Searcher:
                         * pipeline_model_parallel_size,
                     ):
                         continue
+
                     num_layers = config.train.model.num_layers
+                    decoder_first_pipeline_num_layers = config.train.system.get(
+                        "decoder_first_pipeline_num_layers", 0
+                    )
+                    decoder_last_pipeline_num_layers = config.train.system.get(
+                        "decoder_last_pipeline_num_layers", 0
+                    )
+                    num_layers -= (
+                        decoder_first_pipeline_num_layers + decoder_last_pipeline_num_layers
+                    )
+                    print(
+                        f"{num_layers=}, {decoder_first_pipeline_num_layers=}, {decoder_last_pipeline_num_layers=}"
+                    )
+                    print(f"{pipeline_model_parallel_size=}")
+                    print(f"{divisible(num_layers, pipeline_model_parallel_size)=}")
                     if not divisible(num_layers, pipeline_model_parallel_size):
                         continue
+
                     for context_parallel_size in space["context_parallel_size"]:
                         if not divisible(cards, context_parallel_size):
                             continue
@@ -346,6 +375,7 @@ class Searcher:
                         seq_length = config.train.model.seq_length
                         if not divisible(seq_length, context_parallel_size):
                             continue
+
                         for expert_model_parallel_size in space["expert_model_parallel_size"]:
                             if not divisible(cards, expert_model_parallel_size):
                                 continue
@@ -367,6 +397,9 @@ class Searcher:
                                 != cards
                             ):
                                 continue
+                            num_experts = config.train.model.num_experts
+                            if not divisible(num_experts, expert_model_parallel_size):
+                                continue
 
                             dims["data_parallel_size"] = data_parallel_size
                             dims["tensor_model_parallel_size"] = tensor_model_parallel_size
@@ -375,8 +408,8 @@ class Searcher:
                             dims["context_parallel_size"] = context_parallel_size
                             copied_dims = copy.deepcopy(dims)
                             product_parallelism_dims.append(copied_dims)
-        product_dist_opt_dims = []
 
+        product_dist_opt_dims = []
         for use_distributed_optimizer in space["use_distributed_optimizer"]:
             dims = {}
             dims["use_distributed_optimizer"] = use_distributed_optimizer
@@ -384,7 +417,6 @@ class Searcher:
             product_dist_opt_dims.append(copied_dims)
 
         product_sp_dims = []
-
         for sequence_parallel in space["sequence_parallel"]:
             dims = {}
             dims["sequence_parallel"] = sequence_parallel
@@ -398,11 +430,10 @@ class Searcher:
             product_dim = {}
             product_dim.update(product_parallelism_dim)
             if product_parallelism_dim["data_parallel_size"] == 1:
-                product_dim["use_distributed_optimizer"] = None
+                product_dim["use_distributed_optimizer"] = False
                 if product_parallelism_dim["tensor_model_parallel_size"] == 1:
                     product_dim["sequence_parallel"] = None
                     self._append(result, unique_result, product_dim)
-
                 else:
                     for product_sp_dim in product_sp_dims:
                         if product_sp_dim["sequence_parallel"]:

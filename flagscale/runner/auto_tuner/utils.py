@@ -110,12 +110,53 @@ def compare_by_recompute(strategy1, strategy2):
 
 
 def convert_config_to_megatron_args(config, strategy):
+    # from flagscale.runner.runner_train import _get_args_megatron
+
+    # # To append megatron path to PYTHONPATH
+    # autotuner_dir = os.path.dirname(__file__)
+    # great_grandparent_dir = os.path.dirname(os.path.dirname(os.path.dirname(autotuner_dir)))
+    # sys.path.insert(0, os.path.join(great_grandparent_dir, "third_party/Megatron-LM"))
+    # from megatron.training.arguments import parse_args, validate_args
+    # from megatron.training.global_vars import set_global_variables
+
+    # print(f"{strategy=}")
+
+    # args = _get_args_megatron(config)
+    # sys.argv = ['script.py'] + args
+    # margs = parse_args()
+    # os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
+    # margs.world_size = margs.tensor_model_parallel_size * margs.pipeline_model_parallel_size * margs.expert_model_parallel_size * margs.context_parallel_size
+    # margs = validate_args(margs)
+    # set_global_variables(margs)
+
+    # print(f"00000{margs=}")
+    # for key, value in strategy.items():
+    #     # key = key.replace("_", "-")
+    #     if getattr(margs, key, None) is None:
+    #         setattr(margs, key, value)
+
+    autotuner_dir = os.path.dirname(__file__)
+    great_grandparent_dir = os.path.dirname(os.path.dirname(os.path.dirname(autotuner_dir)))
+    sys.path.insert(0, os.path.join(great_grandparent_dir, "third_party/Megatron-LM"))
+    from megatron.training.arguments import moe_freq_type
+    from megatron.training.tokenizer.tokenizer import _vocab_size_with_padding
+
+    print(f"{strategy=}")
+
     args = SimpleNamespace()
     flagscale_args = config.train.model
     args.hidden_size = flagscale_args.hidden_size
     args.num_attention_heads = flagscale_args.num_attention_heads
     args.num_layers = flagscale_args.num_layers
     args.use_flash_attn = config.train.system.get("use_flash_attn", False)
+    args.multi_latent_attention = flagscale_args.get("multi_latent_attention", False)
+    args.qk_head_dim = flagscale_args.get("qk_head_dim", None)
+    args.v_head_dim = flagscale_args.get("v_head_dim", None)
+    args.kv_lora_rank = flagscale_args.get("kv_lora_rank", None)
+    args.q_lora_rank = flagscale_args.get("q_lora_rank", None)
+    args.qk_pos_emb_head_dim = flagscale_args.get("qk_pos_emb_head_dim", None)
+    args.qk_layernorm = flagscale_args.get("qk_layernorm", False)
+    args.expert_tensor_parallel_size = config.train.system.get("expert_tensor_parallel_size", None)
 
     if "kv_channels" not in flagscale_args:
         assert args.hidden_size % args.num_attention_heads == 0
@@ -132,6 +173,14 @@ def convert_config_to_megatron_args(config, strategy):
         args.num_experts = None
     else:
         args.num_experts = flagscale_args["num_experts"]
+
+    args.moe_ffn_hidden_size = flagscale_args.get("moe_ffn_hidden_size", None)
+    args.moe_shared_expert_intermediate_size = flagscale_args.get(
+        "moe_shared_expert_intermediate_size", None
+    )
+    args.moe_layer_freq = moe_freq_type(flagscale_args.get("moe_layer_freq", 1))
+    args.moe_router_topk = flagscale_args.get("moe_router_topk", None)
+    args.mtp_num_layers = flagscale_args.get("mtp_num_layers", None)
 
     if "swiglu" not in flagscale_args:
         args.swiglu = False
@@ -171,14 +220,10 @@ def convert_config_to_megatron_args(config, strategy):
         args.make_vocab_size_divisible_by = 128
     else:
         args.make_vocab_size_divisible_by = flagscale_args["make_vocab_size_divisible_by"]
+
     args.tensor_model_parallel_size = strategy["tensor_model_parallel_size"]
     if "padded_vocab_size" not in flagscale_args:
         # To append megatron path to PYTHONPATH
-        autotuner_dir = os.path.dirname(__file__)
-        great_grandparent_dir = os.path.dirname(os.path.dirname(os.path.dirname(autotuner_dir)))
-        sys.path.insert(0, os.path.join(great_grandparent_dir, "megatron"))
-        from megatron.training.tokenizer.tokenizer import _vocab_size_with_padding
-
         args.rank = -1
         args.padded_vocab_size = _vocab_size_with_padding(
             config.train.data.tokenizer.vocab_size, args
@@ -195,6 +240,7 @@ def convert_config_to_megatron_args(config, strategy):
 
     args.pipeline_model_parallel_size = strategy["pipeline_model_parallel_size"]
     args.data_parallel_size = strategy["data_parallel_size"]
+    args.expert_model_parallel_size = strategy["expert_model_parallel_size"]
     args.use_distributed_optimizer = strategy["use_distributed_optimizer"]
     args.seq_length = flagscale_args.seq_length
     args.micro_batch_size = strategy["micro_batch_size"]
@@ -211,5 +257,18 @@ def convert_config_to_megatron_args(config, strategy):
     args.recompute_granularity = strategy["recompute_granularity"]
     args.recompute_method = strategy["recompute_method"]
     args.recompute_num_layers = strategy["recompute_num_layers"]
+    args.context_parallel_size = strategy["context_parallel_size"]
+    if args.expert_tensor_parallel_size is None:
+        args.expert_tensor_parallel_size = args.tensor_model_parallel_size
+
+    args.world_size = (
+        args.tensor_model_parallel_size
+        * args.context_parallel_size
+        * args.data_parallel_size
+        * args.expert_model_parallel_size
+        * args.pipeline_model_parallel_size
+    )
+
+    print(f"gen {args=}")
 
     return args

@@ -65,10 +65,7 @@ class Generator:
         # Del rampup_batch_size and train_samples to run megatron.
         if "rampup_batch_size" in config.train.model.optimizer.lr_scheduler:
             del config.train.model.optimizer.lr_scheduler.rampup_batch_size
-        # Del lr_decay_samples and train_samples to run megatron.
-        if "lr_warmup_fraction" in config.train.model.optimizer.lr_scheduler:
-            del config.train.model.optimizer.lr_scheduler.lr_warmup_fraction
-
+        # Del train_samples to run megatron.
         if "train_samples" in config.train.model:
             del config.train.model.train_samples
 
@@ -86,6 +83,18 @@ class Generator:
             )
         else:
             config.train.model.train_iters = 5
+
+        if config.train.system.pipeline_model_parallel_size == 1:
+            if (
+                "decoder_first_pipeline_num_layers" in config.train.system
+                and config.train.system.decoder_first_pipeline_num_layers > 0
+            ):
+                del config.train.system.decoder_first_pipeline_num_layers
+            if (
+                "decoder_last_pipeline_num_layers" in config.train.system
+                and config.train.system.decoder_last_pipeline_num_layers > 0
+            ):
+                del config.train.system.decoder_last_pipeline_num_layers
 
         # log dir
         config.experiment.exp_dir = os.path.join(

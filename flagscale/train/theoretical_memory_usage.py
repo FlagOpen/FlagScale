@@ -114,17 +114,23 @@ def compute_activated_weight_number(args, verbose=False):
     )
 
     # Part3: MTP ============================================================================
-    mtp_params = 0
-    mtp_num_layers = 0 if not getattr(args, "mtp_num_layers", None) else args.mtp_num_layers
-    if mtp_num_layers > 0:
-        mtp_params = (
+    if args.mtp_num_layers is not None:
+        mtp_layer_is_moe = moe_layer_pattern[-1]
+        mtp_num_moe_layers = mtp_layer_is_moe * args.mtp_num_layers
+        mtp_num_dense_layers = (1 - mtp_layer_is_moe) * args.mtp_num_layers
+    else:
+        mtp_num_moe_layers = 0
+        mtp_num_dense_layers = 0
+
+    num_parameters_in_mtp_block = 0
+    if args.mtp_num_layers is not None:
+        num_parameters_in_mtp_block = (
             4 * args.hidden_size  # tow layernorm ops
             + 2 * args.hidden_size * args.hidden_size  # one linear
-            + attn_params
-            + sparse_mlp_params
+            + mtp_num_dense_layers * (attn_params + dense_mlp_params)
+            + mtp_num_moe_layers * (attn_params + sparse_mlp_params)
             + 2 * args.hidden_size  # final norm
         )
-    num_parameters_in_mtp_block = mtp_num_layers * mtp_params
 
     # PART4: TOTAL ===========================================================================
     embedding_size = args.hidden_size * args.padded_vocab_size
@@ -273,17 +279,23 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
     )
 
     # Part3: MTP ============================================================================
-    mtp_params = 0
-    mtp_num_layers = 0 if not getattr(args, "mtp_num_layers", None) else args.mtp_num_layers
-    if mtp_num_layers > 0:
-        mtp_params = (
+    if args.mtp_num_layers is not None:
+        mtp_layer_is_moe = moe_layer_pattern[-1]
+        mtp_num_moe_layers = mtp_layer_is_moe * args.mtp_num_layers
+        mtp_num_dense_layers = (1 - mtp_layer_is_moe) * args.mtp_num_layers
+    else:
+        mtp_num_moe_layers = 0
+        mtp_num_dense_layers = 0
+
+    num_parameters_in_mtp_block = 0
+    if args.mtp_num_layers is not None:
+        num_parameters_in_mtp_block = (
             4 * args.hidden_size  # tow layernorm ops
             + 2 * args.hidden_size * args.hidden_size  # one linear
-            + attn_params
-            + sparse_mlp_params
+            + mtp_num_dense_layers * (attn_params + dense_mlp_params)
+            + mtp_num_moe_layers * (attn_params + sparse_mlp_params)
             + 2 * args.hidden_size  # final norm
         )
-    num_parameters_in_mtp_block = mtp_num_layers * mtp_params
 
     # PART4: TOTAL ===========================================================================
     embedding_size = args.hidden_size * args.padded_vocab_size
@@ -369,11 +381,11 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
         + 2 * args.hidden_size  # final layernorm
     )
 
-    num_parameters_in_mtp_block_per_tp_ep_rank_ddp = mtp_num_layers * (
+    num_parameters_in_mtp_block_per_tp_ep_rank_ddp = mtp_num_moe_layers * (
         sparse_mlp_params_per_ep_rank_ddp / expert_tensor_parallel_size
     )
 
-    num_parameters_in_mtp_block_per_tp_ep_rank_noddp = mtp_num_layers * (
+    num_parameters_in_mtp_block_per_tp_ep_rank_noddp = mtp_num_moe_layers * (
         4 * args.hidden_size  # tow layernorm ops
         + 2 * args.hidden_size * args.hidden_size  # one linear
         + (attn_params + sparse_mlp_params_per_ep_rank_noddp) / args.tensor_model_parallel_size
@@ -749,12 +761,13 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
         recompute_layers = args.recompute_num_layers
         if args.pipeline_model_parallel_size > 1:
             activation_memory = (
-                QKV_activation_memory
-                * (args.num_layers / args.pipeline_model_parallel_size / recompute_layers)
-                * interleaved_schedule_memory_penalty
-                * in_flight_microbatches
-                + embedding_activation_memory * in_flight_microbatches
-                + dropout_embedding_activation_memory * in_flight_microbatches
+                (
+                    QKV_activation_memory
+                    * (args.num_layers / args.pipeline_model_parallel_size / recompute_layers)
+                )
+                * (interleaved_schedule_memory_penalty * in_flight_microbatches)
+                + (embedding_activation_memory * in_flight_microbatches)
+                + (dropout_embedding_activation_memory * in_flight_microbatches)
             )
         else:
             activation_memory = (
@@ -773,8 +786,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
                     + perlayer_activation
                     * (args.num_layers / args.pipeline_model_parallel_size - recompute_layers)
                 )
-                * interleaved_schedule_memory_penalty
-                * in_flight_microbatches
+                * (interleaved_schedule_memory_penalty * in_flight_microbatches)
                 + embedding_activation_memory * in_flight_microbatches
                 + dropout_embedding_activation_memory * in_flight_microbatches
             )
@@ -791,18 +803,21 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
         if args.pipeline_model_parallel_size > 1:
             activation_memory = (
                 (
-                    perlayer_activation * num_dense_layers
-                    + sparse_perlayer_activation * num_moe_layers
+                    (
+                        perlayer_activation * num_dense_layers
+                        + sparse_perlayer_activation * num_moe_layers
+                    )
+                    / args.pipeline_model_parallel_size
                 )
-                / args.pipeline_model_parallel_size
-                * interleaved_schedule_memory_penalty
-                * in_flight_microbatches
-                + embedding_activation_memory
-                / args.tensor_model_parallel_size
-                * args.pipeline_model_parallel_size
-                + dropout_embedding_activation_memory
-                / args.tensor_model_parallel_size
-                * args.pipeline_model_parallel_size
+                * (interleaved_schedule_memory_penalty * in_flight_microbatches)
+                + (
+                    (embedding_activation_memory / args.tensor_model_parallel_size)
+                    * args.pipeline_model_parallel_size
+                )
+                + (
+                    (dropout_embedding_activation_memory / args.tensor_model_parallel_size)
+                    * args.pipeline_model_parallel_size
+                )
             )
         else:
             activation_memory = (
@@ -816,7 +831,7 @@ def compute_activation_memory(args, num_microbatches, verbose=False):
             )
 
     assert activation_memory is not None
-    return activation_memory
+    return activation_memory / args.context_parallel_size
 
 
 def report_theoretical_memory(args, num_microbatches=None, verbose=False):
