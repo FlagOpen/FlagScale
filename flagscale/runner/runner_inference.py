@@ -108,7 +108,7 @@ def _generate_run_script_inference(config, host, node_rank, cmd, background=True
         f.write(f"\n")
         f.write(f"cd {root_dir}\n")
         f.write(f"\n")
-        f.write(f"export PYTHONPATH={vllm_dir}:{root_dir}\n")
+        f.write(f"export PYTHONPATH={vllm_dir}:{root_dir}:${{PYTHONPATH}}\n")
         f.write(f"\n")
         f.write(f'cmd="{cmd}"\n')
         f.write(f"\n")
