@@ -363,7 +363,12 @@ class Searcher:
                         first_num_layers, last_num_layers = get_first_last_num_layers_for_pp(
                             num_layers, pipeline_model_parallel_size
                         )
-                        if first_num_layers + last_num_layers >= num_layers:
+                        if first_num_layers == 0 or last_num_layers == 0:
+                            continue
+                        if (
+                            first_num_layers + last_num_layers >= num_layers
+                            and pipeline_model_parallel_size > 2
+                        ):
                             continue
                     else:
                         first_num_layers = None
