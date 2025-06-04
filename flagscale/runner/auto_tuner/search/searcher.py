@@ -419,7 +419,9 @@ class Searcher:
                             dims["expert_model_parallel_size"] = expert_model_parallel_size
                             dims["context_parallel_size"] = context_parallel_size
                             dims["decoder_first_pipeline_num_layers"] = first_num_layers
-                            dims["decoder_last_pipeline_num_layers"] = last_num_layers
+                            dims["decoder_last_pipeline_num_layers"] = (
+                                last_num_layers if pipeline_model_parallel_size > 2 else None
+                            )
                             copied_dims = copy.deepcopy(dims)
                             product_parallelism_dims.append(copied_dims)
 
