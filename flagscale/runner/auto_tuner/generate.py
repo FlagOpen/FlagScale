@@ -25,6 +25,8 @@ class Generator:
                 "micro_batch_size": "micro_batch_size",
                 "context_parallel_size": "context_parallel_size",
                 "expert_model_parallel_size": "expert_model_parallel_size",
+                "decoder_first_pipeline_num_layers": "decoder_first_pipeline_num_layers",
+                "decoder_last_pipeline_num_layers": "decoder_last_pipeline_num_layers",
             }
 
     def _set_value(self, strategy, config):
@@ -83,18 +85,6 @@ class Generator:
             )
         else:
             config.train.model.train_iters = 5
-
-        if config.train.system.pipeline_model_parallel_size == 1:
-            if (
-                "decoder_first_pipeline_num_layers" in config.train.system
-                and config.train.system.decoder_first_pipeline_num_layers > 0
-            ):
-                del config.train.system.decoder_first_pipeline_num_layers
-            if (
-                "decoder_last_pipeline_num_layers" in config.train.system
-                and config.train.system.decoder_last_pipeline_num_layers > 0
-            ):
-                del config.train.system.decoder_last_pipeline_num_layers
 
         # log dir
         config.experiment.exp_dir = os.path.join(

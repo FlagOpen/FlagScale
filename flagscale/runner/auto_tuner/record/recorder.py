@@ -244,11 +244,11 @@ class Recorder:
             self.logger.info(f"task_{self.cur_strategy['idx']} performance: {None}")
             return None
         if len(performance) == 1:
-            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {performance[0]}")
+            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {performance[0]} ms")
             return round(performance[0], 3)
         else:
             average = sum(performance[1:]) / (len(performance) - 1)
-            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {average}")
+            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {average} ms")
             return round(average, 3)
 
     def grep_error(self, path, pattern="Error:"):

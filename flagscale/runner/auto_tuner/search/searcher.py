@@ -71,6 +71,24 @@ _DEFAULT_SERVE_TUNE_SPACE = {
 }
 
 
+def get_first_last_num_layers_for_pp(num_layers, pp_size):
+    if pp_size == 2:
+        half = num_layers // 2
+        return half, num_layers - half
+
+    avg_layers = num_layers / pp_size
+    middle_layers = round(avg_layers)
+    remaining_layers = num_layers - middle_layers * (pp_size - 2)
+    if remaining_layers < 2:
+        middle_layers -= 1
+        remaining_layers = num_layers - middle_layers * (pp_size - 2)
+
+    first_num_layers = remaining_layers // 2
+    last_num_layers = remaining_layers - first_num_layers
+
+    return first_num_layers, last_num_layers
+
+
 class Searcher:
 
     def __init__(self, config):
@@ -288,13 +306,10 @@ class Searcher:
     def build_strategies(self, space, config):
         """Build strategies by Cartesian product search space."""
         parallelism_part = self._product_parallel_dims(space, config)
-        print(f"{parallelism_part=}")
         micro_batch_size_vpp_part = self._product_micro_batch_size_vpp_dims(
             parallelism_part, space, config
         )
-        print(f"{micro_batch_size_vpp_part=}")
         recompute_part = self._product_recompute_dims(micro_batch_size_vpp_part, space, config)
-        print(f"{recompute_part=}")
 
         return recompute_part
 
@@ -344,22 +359,15 @@ class Searcher:
                         continue
 
                     num_layers = config.train.model.num_layers
-                    decoder_first_pipeline_num_layers = config.train.system.get(
-                        "decoder_first_pipeline_num_layers", 0
-                    )
-                    decoder_last_pipeline_num_layers = config.train.system.get(
-                        "decoder_last_pipeline_num_layers", 0
-                    )
-                    num_layers -= (
-                        decoder_first_pipeline_num_layers + decoder_last_pipeline_num_layers
-                    )
-                    print(
-                        f"{num_layers=}, {decoder_first_pipeline_num_layers=}, {decoder_last_pipeline_num_layers=}"
-                    )
-                    print(f"{pipeline_model_parallel_size=}")
-                    print(f"{divisible(num_layers, pipeline_model_parallel_size)=}")
                     if not divisible(num_layers, pipeline_model_parallel_size):
-                        continue
+                        first_num_layers, last_num_layers = get_first_last_num_layers_for_pp(
+                            num_layers, pipeline_model_parallel_size
+                        )
+                        if first_num_layers + last_num_layers >= num_layers:
+                            continue
+                    else:
+                        first_num_layers = None
+                        last_num_layers = None
 
                     for context_parallel_size in space["context_parallel_size"]:
                         if not divisible(cards, context_parallel_size):
@@ -405,6 +413,8 @@ class Searcher:
                             dims["pipeline_model_parallel_size"] = pipeline_model_parallel_size
                             dims["expert_model_parallel_size"] = expert_model_parallel_size
                             dims["context_parallel_size"] = context_parallel_size
+                            dims["decoder_first_pipeline_num_layers"] = first_num_layers
+                            dims["decoder_last_pipeline_num_layers"] = last_num_layers
                             copied_dims = copy.deepcopy(dims)
                             product_parallelism_dims.append(copied_dims)
 
