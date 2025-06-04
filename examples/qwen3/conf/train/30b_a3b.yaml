@@ -1,8 +1,8 @@
 system:
   no_shared_fs: ${experiment.runner.no_shared_fs}
   num_workers: 2
-  tensor_model_parallel_size: 2
-  pipeline_model_parallel_size: 1
+  tensor_model_parallel_size: 1
+  pipeline_model_parallel_size: 2
   expert_model_parallel_size: 4
   context_parallel_size: 1
   sequence_parallel: true
