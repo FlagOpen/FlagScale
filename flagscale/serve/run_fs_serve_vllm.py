@@ -91,7 +91,9 @@ def get_engine_args(model_name):
     if model_config is None:
         raise ValueError(f"No {model_name} configuration found in task config: {TASK_CONFIG}")
 
-    engine_args = model_config.get("engine_args", None)
+    common_args = model_config.get("engine_args", {})
+    engine_args = model_config.get("engine_args_specific", {}).get("vllm", {})
+    engine_args.update(common_args)
 
     if engine_args:
         limit_mm_per_prompt = engine_args.get("limit_mm_per_prompt", None)
@@ -136,9 +138,21 @@ def get_deploy_config(model_name, device="gpu"):
         resource_config["num_replicas"] = 1
 
     if "num_gpus" not in resource_config.get("ray_actor_options", {}) and device == "gpu":
-        ray_actor_options["num_gpus"] = model_config.engine_args.get(
-            "tensor_parallel_size", 1
-        ) * model_config.engine_args.get("pipeline_parallel_size", 1)
+        tensor_parallel_size = (
+            model_config.engine_args.get("tensor_parallel_size", None)
+            or model_config.get("engine_args_specific", {})
+            .get("vllm", {})
+            .get("tensor_parallel_size", None)
+            or 1
+        )
+        pipeline_parallel_size = (
+            model_config.engine_args.get("pipeline_parallel_size", None)
+            or model_config.get("engine_args_specific", {})
+            .get("vllm", {})
+            .get("pipeline_parallel_size", None)
+            or 1
+        )
+        ray_actor_options["num_gpus"] = tensor_parallel_size * pipeline_parallel_size
         resource_config["ray_actor_options"] = ray_actor_options
 
     resource_config["max_ongoing_requests"] = 1000
