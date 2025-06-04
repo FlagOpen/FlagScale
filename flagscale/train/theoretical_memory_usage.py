@@ -38,12 +38,12 @@ def compute_activated_weight_number(args, verbose=False):
         elif args.qk_layernorm:
             attn_params += args.kv_lora_rank + args.q_lora_rank
     else:
-        # Attention projection size.
-        query_projection_size = args.kv_channels * args.num_attention_heads
-        kv_projection_size = args.kv_channels * args.num_query_groups
         # Group Query Attention.
         if not args.group_query_attention:
             args.num_query_groups = args.num_attention_heads
+        # Attention projection size.
+        query_projection_size = args.kv_channels * args.num_attention_heads
+        kv_projection_size = args.kv_channels * args.num_query_groups
 
         # qkv proj
         attn_params = args.hidden_size * (query_projection_size + 2 * kv_projection_size)
@@ -204,12 +204,12 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
         elif args.qk_layernorm:
             attn_params += args.kv_lora_rank + args.q_lora_rank
     else:
-        # Attention projection size.
-        query_projection_size = args.kv_channels * args.num_attention_heads
-        kv_projection_size = args.kv_channels * args.num_query_groups
         # Group Query Attention.
         if not args.group_query_attention:
             args.num_query_groups = args.num_attention_heads
+        # Attention projection size.
+        query_projection_size = args.kv_channels * args.num_attention_heads
+        kv_projection_size = args.kv_channels * args.num_query_groups
 
         # qkv proj
         attn_params = args.hidden_size * (query_projection_size + 2 * kv_projection_size)
@@ -369,7 +369,8 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
         if args.expert_tensor_parallel_size is not None
         else args.tensor_model_parallel_size
     )
-    num_parameters_in_transformer_layers_per_tp_ep_rank_ddp = +num_moe_layers * (
+
+    num_parameters_in_transformer_layers_per_tp_ep_rank_ddp = num_moe_layers * (
         sparse_mlp_params_per_ep_rank_ddp / expert_tensor_parallel_size
     )
 

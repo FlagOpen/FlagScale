@@ -7,8 +7,8 @@ system:
   context_parallel_size: 1
   sequence_parallel: true
   use_distributed_optimizer: true
-  overlap_grad_reduce: true
-  overlap_param_gather: true
+  # overlap_grad_reduce: true
+  # overlap_param_gather: true
   precision:
     bf16: true
     attention_softmax_in_fp32: true
@@ -58,9 +58,9 @@ model:
   seed: ${experiment.seed}
   # finetune: false
   micro_batch_size: 1
-  global_batch_size: 2048
+  global_batch_size: 128 #2048
   eval_iters: 0
-  train_iters: 204800 #1T #29297664 #120B tokens
+  train_iters: 102400
 
   optimizer:
     clip_grad: 1.0
@@ -73,12 +73,12 @@ model:
       lr_warmup_fraction: 0.1
       lr_decay_style: WSD
       lr_wsd_decay_style: cosine
-      lr_wsd_decay_iters: 2048000
+      lr_wsd_decay_iters: 10
 
 data:
   reset_position_ids: True
   reset_attention_mask: True
-  data_path: /path
+  data_path: /share/project/zhaoyingli/data/pile/pile_wikipedia_demo
   split: 1
   no_mmap_bin_files: true
   tokenizer:

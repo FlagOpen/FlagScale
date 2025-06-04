@@ -156,6 +156,7 @@ def convert_config_to_megatron_args(config, strategy):
     args.q_lora_rank = flagscale_args.get("q_lora_rank", None)
     args.qk_pos_emb_head_dim = flagscale_args.get("qk_pos_emb_head_dim", None)
     args.qk_layernorm = flagscale_args.get("qk_layernorm", False)
+    args.qk_layernorm_hidden_dim = flagscale_args.get("qk_layernorm_hidden_dim", False)
     args.expert_tensor_parallel_size = config.train.system.get("expert_tensor_parallel_size", None)
 
     if "kv_channels" not in flagscale_args:
@@ -168,6 +169,11 @@ def convert_config_to_megatron_args(config, strategy):
         args.group_query_attention = None
     else:
         args.group_query_attention = flagscale_args["group_query_attention"]
+
+    if args.group_query_attention:
+        args.num_query_groups = flagscale_args["num_query_groups"]
+    else:
+        args.num_query_groups = args.num_attention_heads
 
     if "num_experts" not in flagscale_args:
         args.num_experts = None
@@ -265,10 +271,7 @@ def convert_config_to_megatron_args(config, strategy):
         args.tensor_model_parallel_size
         * args.context_parallel_size
         * args.data_parallel_size
-        * args.expert_model_parallel_size
         * args.pipeline_model_parallel_size
     )
-
-    print(f"gen {args=}")
 
     return args

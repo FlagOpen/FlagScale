@@ -372,34 +372,33 @@ class Searcher:
                             * context_parallel_size,
                         ):
                             continue
+                        if (
+                            data_parallel_size
+                            * tensor_model_parallel_size
+                            * pipeline_model_parallel_size
+                            * context_parallel_size
+                            != cards
+                        ):
+                            continue
                         seq_length = config.train.model.seq_length
                         if not divisible(seq_length, context_parallel_size):
                             continue
 
                         for expert_model_parallel_size in space["expert_model_parallel_size"]:
+                            expert_tensor_parallel_size = tensor_model_parallel_size
                             if not divisible(cards, expert_model_parallel_size):
                                 continue
                             if not divisible(
                                 cards,
-                                data_parallel_size
-                                * tensor_model_parallel_size
-                                * pipeline_model_parallel_size
-                                * context_parallel_size
-                                * expert_model_parallel_size,
-                            ):
-                                continue
-                            if (
-                                data_parallel_size
-                                * tensor_model_parallel_size
-                                * pipeline_model_parallel_size
-                                * context_parallel_size
+                                expert_tensor_parallel_size
                                 * expert_model_parallel_size
-                                != cards
+                                * pipeline_model_parallel_size,
                             ):
                                 continue
-                            num_experts = config.train.model.num_experts
-                            if not divisible(num_experts, expert_model_parallel_size):
-                                continue
+                            if expert_model_parallel_size > 1:
+                                num_experts = config.train.model.num_experts
+                                if not divisible(num_experts, expert_model_parallel_size):
+                                    continue
 
                             dims["data_parallel_size"] = data_parallel_size
                             dims["tensor_model_parallel_size"] = tensor_model_parallel_size
@@ -432,7 +431,7 @@ class Searcher:
             if product_parallelism_dim["data_parallel_size"] == 1:
                 product_dim["use_distributed_optimizer"] = False
                 if product_parallelism_dim["tensor_model_parallel_size"] == 1:
-                    product_dim["sequence_parallel"] = None
+                    product_dim["sequence_parallel"] = False
                     self._append(result, unique_result, product_dim)
                 else:
                     for product_sp_dim in product_sp_dims:
@@ -451,7 +450,7 @@ class Searcher:
                     ]
 
                     if product_parallelism_dim["tensor_model_parallel_size"] == 1:
-                        product_dim["sequence_parallel"] = None
+                        product_dim["sequence_parallel"] = False
                         self._append(result, unique_result, product_dim)
                     else:
                         for product_sp_dim in product_sp_dims:
@@ -531,22 +530,26 @@ class Searcher:
                         self._append(result, unique_result, product_dim)
                     else:
                         pipeline_model_parallel_size = parallelism["pipeline_model_parallel_size"]
-                        layers = config.train.model.num_layers
                         if (
                             pipeline_model_parallel_size <= 2
                             and num_layers_per_virtual_pipeline_stage >= 1
                         ):
                             continue
 
-                        layers_per_pp_stage = layers // pipeline_model_parallel_size
+                        layers_per_pp_stage = num_layers // pipeline_model_parallel_size
                         if not divisible(
                             layers_per_pp_stage, num_layers_per_virtual_pipeline_stage
                         ):
                             continue
 
-                        # Micro batches should divide pp size
+                        virtual_pipeline_model_parallel_size = (
+                            layers_per_pp_stage // num_layers_per_virtual_pipeline_stage
+                        )
+                        if virtual_pipeline_model_parallel_size == 1:
+                            continue
+                        # Micro batches should divide vpp size
                         if not divisible(
-                            product_dim["micro_batch_size"], num_layers_per_virtual_pipeline_stage
+                            product_dim["acc_step"], virtual_pipeline_model_parallel_size
                         ):
                             continue
 
