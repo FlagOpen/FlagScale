@@ -545,6 +545,8 @@ class Searcher:
                             and num_layers_per_virtual_pipeline_stage >= 1
                         ):
                             continue
+                        if not divisible(num_layers, pipeline_model_parallel_size):
+                            continue
 
                         layers_per_pp_stage = num_layers // pipeline_model_parallel_size
                         if not divisible(
