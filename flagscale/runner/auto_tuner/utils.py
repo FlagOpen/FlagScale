@@ -110,31 +110,6 @@ def compare_by_recompute(strategy1, strategy2):
 
 
 def convert_config_to_megatron_args(config, strategy):
-    # from flagscale.runner.runner_train import _get_args_megatron
-
-    # # To append megatron path to PYTHONPATH
-    # autotuner_dir = os.path.dirname(__file__)
-    # great_grandparent_dir = os.path.dirname(os.path.dirname(os.path.dirname(autotuner_dir)))
-    # sys.path.insert(0, os.path.join(great_grandparent_dir, "third_party/Megatron-LM"))
-    # from megatron.training.arguments import parse_args, validate_args
-    # from megatron.training.global_vars import set_global_variables
-
-    # print(f"{strategy=}")
-
-    # args = _get_args_megatron(config)
-    # sys.argv = ['script.py'] + args
-    # margs = parse_args()
-    # os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
-    # margs.world_size = margs.tensor_model_parallel_size * margs.pipeline_model_parallel_size * margs.expert_model_parallel_size * margs.context_parallel_size
-    # margs = validate_args(margs)
-    # set_global_variables(margs)
-
-    # print(f"00000{margs=}")
-    # for key, value in strategy.items():
-    #     # key = key.replace("_", "-")
-    #     if getattr(margs, key, None) is None:
-    #         setattr(margs, key, value)
-
     autotuner_dir = os.path.dirname(__file__)
     great_grandparent_dir = os.path.dirname(os.path.dirname(os.path.dirname(autotuner_dir)))
     sys.path.insert(0, os.path.join(great_grandparent_dir, "third_party/Megatron-LM"))
