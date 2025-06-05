@@ -268,6 +268,13 @@ class FlagScaleBuildPy(_build_py):
                 shutil.rmtree(abs_dst)
             shutil.copytree(abs_src, abs_dst)
 
+            # Source code for Megatron-Energon is copied to the megatron directory
+            abs_dst = os.path.join(main_path, "third_party", "Megatron-LM", "megatron", "energon")
+            print(f"[build_py] Copying {abs_src} -> {abs_dst}")
+            if os.path.exists(abs_dst):
+                shutil.rmtree(abs_dst)
+            shutil.copytree(abs_src, abs_dst)
+
     def run(self):
         super().run()
         if self.backend:
@@ -358,6 +365,21 @@ class FlagScaleBuildPy(_build_py):
                         abs_dst = os.path.join(
                             self.build_lib,
                             "flag_scale",
+                            "third_party",
+                            "Megatron-LM",
+                            "megatron",
+                            "energon",
+                        )
+                        print(f"[build_py] Copying {abs_src} -> {abs_dst}")
+                        if os.path.exists(abs_dst):
+                            shutil.rmtree(abs_dst)
+                        shutil.copytree(abs_src, abs_dst)
+
+                        abs_dst = os.path.join(
+                            main_path,
+                            "build",
+                            self.device,
+                            "FlagScale",
                             "third_party",
                             "Megatron-LM",
                             "megatron",
