@@ -132,7 +132,7 @@ We support the model serving of DeepSeek R1 and have implemented the `flagscale 
 2. **Install FlagScale CLI:**
     ```sh
     cd FlagScale
-    pip install .
+    PYTHONPATH=./:$PYTHONPATH pip install . --verbose --no-build-isolation
     ```
 
 3. **One-click serve:**
