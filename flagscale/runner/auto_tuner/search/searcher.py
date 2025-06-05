@@ -550,7 +550,78 @@ class ServeSearcher(Searcher):
 
         self._init_engines(config)
         self._init_nodes_aware_dims()
-        super(ServeSearcher, self).__init__(config)
+
+        # Build search space and set value of each dim
+        self.logger = logging.getLogger("FlagScale-AutoTuner")
+        self.config = config
+
+        start_time = time.time()
+        # cards = config.experiment.auto_tuner.cards
+        cards = 16
+        max_cards_per_instance = config.experiment.runner.get("nproc_per_node", 1)
+        space_bak = copy.deepcopy(getattr(config.experiment.auto_tuner, "space", {}))
+        if (
+            self.config.experiment.get("runner", {})
+            .get("deploy", {})
+            .get("prefill_decode_disaggregation", False)
+        ):
+            self.strategies = []
+            cards_per_instance = 1
+            while cards_per_instance <= max_cards_per_instance:
+                self.config.experiment.auto_tuner.cards = cards_per_instance
+                self.config.experiment.runner.deploy.prefill_decode_disaggregation = False
+                self.space = self.build_space(self.config)
+                strategies = self.build_strategies(self.space, self.config)
+                for strategy in strategies:
+                    strategy["tune_pd_instance"] = True
+                    strategy["cards_per_instance"] = cards_per_instance
+                self.strategies = self.strategies + strategies
+                cards_per_instance *= 2
+                config.experiment.auto_tuner.space = space_bak
+            config.experiment.auto_tuner.cards = cards
+            self.config.experiment.runner.deploy.prefill_decode_disaggregation = True
+            self.space = self.build_space(self.config)
+            strategies = self.build_pd_strategies(max_cards_per_instance, cards)
+            for strategy in strategies:
+                strategy["prefill_decode_disaggregation"] = True
+            self.strategies = self.strategies + strategies
+        else:
+            # Build search space
+            self.space = self.build_space(self.config)
+            # Build strategies by Cartesian product search space
+            self.strategies = self.build_strategies(self.space, self.config)
+        self.logger.warning(f"ServeSearcher init self.strategies==== {self.strategies}")
+
+        end_time = time.time()
+        self.logger.info(
+            "Searcher: build search space in {:.2f} seconds and space is {}".format(
+                end_time - start_time, self.space
+            )
+        )
+        self.logger.info(
+            "Searcher: build {} candidate strategies in {:.2f} seconds.".format(
+                len(self.strategies), end_time - start_time
+            )
+        )
+
+        if "memory_model" in self.config.experiment.auto_tuner:
+            # In the future, the memory model will be loaded by yaml
+            model_name = self.config.experiment.auto_tuner.memory_model.get("model_name", "default")
+            if model_name != "default":
+                raise NotImplementedError(
+                    "The memory model {} is not implemented yet.".format(model_name)
+                )
+
+            for strategy in self.strategies:
+                strategy["memory_model"] = default_model(strategy, self.config)
+                self.logger.info(
+                    "Searcher: strategy is {}, memory model is {} MB".format(
+                        strategy, strategy["memory_model"]
+                    )
+                )
+
+        # Build search algorithm to explore strategies
+        self.algo = self.build_algo(self.strategies, self.config)
 
         self.logger.info(f"ServeSearcher.space: {self.space}")
         self.logger.info(f"ServeSearcher.strategies: {json.dumps(self.strategies)}")
@@ -692,5 +763,84 @@ class ServeSearcher(Searcher):
 
         self.logger.info("================== grid search space: ================== \n")
         self.logger.info(strategies)
+
+        return strategies_all
+
+    def build_pd_strategies(self, max_cards_per_instance, cards):
+        """Find all combinations of (cards_per_p, cards_per_d, prefill_num, decode_num) that maximize:
+        cards_per_p * prefill_num + cards_per_d * decode_num ≤ cards
+
+        Args:
+            max_cards_per_instance: Maximum value for cards_per_p and cards_per_d (power of 2 series)
+            cards: The total cards constraint
+
+        Returns:
+            List of dictionaries with optimal combinations
+        """
+
+        # Generate possible values for cards_per_p and cards_per_d (1, 2, 4... up to max_cards_per_instance)
+        def generate_power_options(max_val):
+            options = []
+            current = 1
+            while current <= max_val:
+                options.append(current)
+                current *= 2
+            return options
+
+        cp_options = generate_power_options(max_cards_per_instance)
+        cd_options = generate_power_options(max_cards_per_instance)
+
+        max_total = -1
+        strategies_all = []
+
+        # Iterate through all possible (cards_per_p, cards_per_d) pairs
+        for cp in cp_options:
+            for cd in cd_options:
+                # Skip if even minimum allocation (pn=1, dn=1) exceeds cards limit
+                if cp + cd > cards:
+                    continue
+
+                # Calculate maximum possible prefill_num given current cards_per_p
+                max_pn = (cards - cd) // cp
+                if max_pn < 1:  # At least pn=1 must be possible
+                    continue
+
+                # Find all (pn, dn) pairs that maximize the total for this (cp, cd)
+                current_max = -1
+                best_pn_dn = []
+
+                for pn in range(1, max_pn + 1):
+                    remaining = cards - cp * pn
+                    if remaining < cd:  # Not enough cards left for even dn=1
+                        continue
+
+                    dn = remaining // cd
+                    total = cp * pn + cd * dn
+
+                    if total > current_max:
+                        current_max = total
+                        best_pn_dn = [(pn, dn)]
+                    elif total == current_max:
+                        best_pn_dn.append((pn, dn))
+
+                # Update global maximum tracking
+                if current_max > max_total:
+                    max_total = current_max
+                    strategies_all = [
+                        {"cards_per_p": cp, "cards_per_d": cd, "prefill_num": pn, "decode_num": dn}
+                        for (pn, dn) in best_pn_dn
+                    ]
+                elif current_max == max_total:
+                    strategies_all.extend(
+                        [
+                            {
+                                "cards_per_p": cp,
+                                "cards_per_d": cd,
+                                "prefill_num": pn,
+                                "decode_num": dn,
+                            }
+                            for (pn, dn) in best_pn_dn
+                        ]
+                    )
 
         return strategies_all

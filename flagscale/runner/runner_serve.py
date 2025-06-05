@@ -66,7 +66,7 @@ def _get_args_vllm(config: DictConfig):
 
 def _reset_serve_port(config):
     model_port = None
-    deploy_port = config.experiment.get("deploy", {}).get("port", None)
+    deploy_port = config.experiment.get("runner", {}).get("deploy", {}).get("port", None)
     OmegaConf.set_struct(config, False)
 
     for item in config.serve:
@@ -124,7 +124,7 @@ def _get_profile_args(config, model="vllm_model"):
 
 
 def _update_config_serve(config: DictConfig):
-    deploy_config = config.experiment.get("deploy", {})
+    deploy_config = config.experiment.get("runner", {}).get("deploy", {})
 
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     if not os.path.isdir(exp_dir):
@@ -133,7 +133,7 @@ def _update_config_serve(config: DictConfig):
 
     OmegaConf.set_struct(config, False)
 
-    if deploy_config.get("prefill_decode_disaggregation", False):
+    if deploy_config.get("prefill_decode_disaggregation", False) and config.action != "stop":
         deploy_config["pd_proxy_port"] = get_free_port()
 
     if config.get("logging", None) is None:
@@ -182,7 +182,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         vllm_path = os.path.dirname(vllm.__path__[0])
     except Exception as e:
         vllm_path = f"{root_dir}/vllm"
-    deploy_config = config.experiment.get("deploy", {})
+    deploy_config = config.experiment.get("runner", {}).get("deploy", {})
     envs = config.experiment.get("envs", {})
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
@@ -275,7 +275,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     logger.info(
                         f"============= prefill instance {i}, p_kv_config: {p_kv_config} ============="
                     )
-                    card_ids = resource_manager.get_available_card_ids(
+                    card_ids, update_p_address = resource_manager.get_available_card_ids(
                         address=p_address, num=each_instance_card_num
                     )
                     card_ids_str = ",".join(map(str, card_ids))
@@ -284,13 +284,13 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     p_kv_config_json = json.dumps(p_kv_config)
                     p_instance_log_path = os.path.join(default_log_dir, f"prefill_{i}.log")
 
-                    if p_address != master_ip:
+                    if update_p_address != master_ip:
                         p_kv_config_formate_json = p_kv_config_json.replace('"', '\\"')
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_formate_json}'\\''"
                         if docker_name:
-                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {p_instance_log_path} 2>&1 &'\""
+                            ssh_cmd = f"ssh -f -n -p {ssh_port} {update_p_address} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {p_instance_log_path} 2>&1 &'\""
                         else:
-                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {p_instance_log_path} 2>&1 &"'
+                            ssh_cmd = f'ssh -f -n -p {ssh_port} {update_p_address} "{node_cmd} > {p_instance_log_path} 2>&1 &"'
                         f.write(f"{ssh_cmd}\n\n")
                     else:
                         p_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_json}'\\''"
@@ -318,7 +318,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     logger.info(
                         f"============= decode instance {j}, d_kv_config: {d_kv_config} ============="
                     )
-                    card_ids = resource_manager.get_available_card_ids(
+                    card_ids, update_d_address = resource_manager.get_available_card_ids(
                         address=d_address, num=each_instance_card_num
                     )
                     card_ids_str = ",".join(map(str, card_ids))
@@ -327,13 +327,13 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     d_kv_config_json = json.dumps(d_kv_config)
                     d_instance_log_path = os.path.join(default_log_dir, f"decode_{j}.log")
 
-                    if d_address != master_ip:
+                    if update_d_address != master_ip:
                         d_kv_config_formate_json = d_kv_config_json.replace('"', '\\"')
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_formate_json}'\\''"
                         if docker_name:
-                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {d_instance_log_path} 2>&1 &'\""
+                            ssh_cmd = f"ssh -f -n -p {ssh_port} {update_d_address} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {d_instance_log_path} 2>&1 &'\""
                         else:
-                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
+                            ssh_cmd = f'ssh -f -n -p {ssh_port} {update_d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
                         f.write(f"{ssh_cmd}\n\n")
                     else:
                         d_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_json}'\\''"
@@ -509,7 +509,7 @@ def _generate_stop_script(config, host, node_rank):
     else:
         before_start_cmd = ""
 
-    deploy_config = config.experiment.get("deploy", {})
+    deploy_config = config.experiment.get("runner", {}).get("deploy", {})
     envs = config.experiment.get("envs", {})
     with open(host_stop_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
@@ -604,7 +604,7 @@ class SSHServeRunner(RunnerBase):
         super().__init__(config)
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
-        self.deploy_config = self.config.experiment.get("deploy", {})
+        self.deploy_config = self.config.experiment.get("runner", {}).get("deploy", {})
         if not self.config.experiment.task.get("entrypoint", None):
             self.inference_engine = _get_inference_engine(self.config)
             self.port = _reset_serve_port(config)
@@ -622,7 +622,12 @@ class SSHServeRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
         if self.inference_engine:
-            if self.config.experiment.get("deploy", {}).get("prefill_decode_disaggregation", False):
+            prefill_decode_disaggregation = (
+                self.config.experiment.get("runner", {})
+                .get("deploy", {})
+                .get("prefill_decode_disaggregation", False)
+            )
+            if prefill_decode_disaggregation:
                 self.user_script = "flagscale/serve/run_disagg_xpyd_router.py"
             elif not self.use_fs_serve:
                 self.user_script = "flagscale/serve/run_inference_engine.py"

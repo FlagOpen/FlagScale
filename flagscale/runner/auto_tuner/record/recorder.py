@@ -316,49 +316,51 @@ class Recorder:
 class ServeRecorder(Recorder):
     def __init__(self, config):
         self.config = config
-        if (
-            "auto_tuner" in self.config.experiment
-            and "performance" in self.config.experiment.auto_tuner
-        ):
-            self.metric = self.config.experiment.auto_tuner.performance.get("metric", "itl")
-        else:
-            self.metric = "itl"
+        self.logger = logging.getLogger("FlagScale-AutoTuner")
+        self.metric = (
+            self.config.experiment.get("auto_tuner", {}).get("performance", {}).get("metric", "itl")
+        )
 
         # Sort order of performance, order just in [ascend, and descend], default ascend
-        if (
-            "auto_tuner" in self.config.experiment
-            and "performance" in self.config.experiment.auto_tuner
-        ):
-            self.sorted_order = self.config.experiment.auto_tuner.performance.get("order", "ascend")
-        else:
-            self.sorted_order = "ascend"
-        self.logger = logging.getLogger("FlagScale-AutoTuner")
+        self.sorted_order = (
+            self.config.experiment.get("auto_tuner", {})
+            .get("performance", {})
+            .get("order", "ascend")
+        )
         self.cur_strategy = None
         self.path = os.path.join(config.experiment.exp_dir, "auto_tuner", "history.csv")
 
     def record(self, strategy, performance):
         strategy["e2e_latency"] = round(performance["mean_e2el_ms"], 2)
         strategy["request_throughput"] = round(performance["request_throughput"], 2)
-        strategy["token_throughput"] = round(performance["total_token_throughput"], 2)
+        strategy["output_throughput"] = round(performance["output_throughput"], 2)
+        strategy["total_token_throughput"] = round(performance["total_token_throughput"], 2)
+        strategy["prompt_throughput"] = (
+            strategy["total_token_throughput"] - strategy["output_throughput"]
+        )
         strategy["ttft"] = round(performance["mean_ttft_ms"], 2)
         strategy["itl"] = round(performance["mean_itl_ms"], 2)
         strategy["topt"] = round(performance["mean_tpot_ms"], 2)
         self.cur_strategy = strategy
 
-    def sort(self, history):
+    def sort(self, history, metric=None, sorted_order=None):
+        if sorted_order is None:
+            sorted_order = self.sorted_order
+        if metric is None:
+            metric = self.metric
         sorted_history = None
-        if self.sorted_order == "ascend":
+        if sorted_order == "ascend":
             sorted_history = sorted(
-                history,
-                key=lambda x: (x[self.metric] if x[self.metric] is not None else float("inf")),
+                history, key=lambda x: (x[metric] if x[metric] is not None else float("inf"))
             )
-        elif self.sorted_order == "descend":
+        elif sorted_order == "descend":
             sorted_history = sorted(
                 history,
-                key=lambda x: (x[self.metric] if x[self.metric] is not None else float("-inf")),
+                key=lambda x: (x[metric] if x[metric] is not None else float("-inf")),
                 reverse=True,
             )
         else:
-            raise ValueError(f"The sorted order {self.sorted_order} is not supported.")
+            raise ValueError(f"The sorted order {sorted_order} is not supported.")
+        self.logger.info(f"history========: {history}")
         assert sorted_history is not None
         return sorted_history
