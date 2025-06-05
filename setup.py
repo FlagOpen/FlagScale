@@ -115,7 +115,33 @@ def _build_llama_cpp(device):
 
 
 def _build_megatron_energon(device):
-    pass
+    try:
+        import editables
+        import hatch_vcs
+        import hatchling
+    except:
+        try:
+            print("[INFO] hatchling not found. Installing...")
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "hatchling", "--no-build-isolation"]
+            )
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "hatch-vcs", "--no-build-isolation"]
+            )
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "editables", "--no-build-isolation"]
+            )
+            import editables
+            import hatch_vcs
+            import hatchling
+        except:
+            print("[ERROR] Failed to install hatchling, hatch-vcs and editables.")
+            sys.exit(1)
+    energon_path = os.path.join(os.path.dirname(__file__), "third_party", "Megatron-Energon")
+    subprocess.check_call(
+        [sys.executable, '-m', 'pip', 'install', '-e', '.', '--no-build-isolation', '--verbose'],
+        cwd=energon_path,
+    )
 
 
 class FlagScaleBuild(_build):
@@ -384,7 +410,10 @@ class FlagScaleBuildExt(_build_ext):
                         f"[build_ext] Megatron-LM does not need to be built, just copy the source code."
                     )
                 elif backend == "Megatron-Energon":
-                    pass
+                    _build_megatron_energon(self.device)
+                    print(
+                        f"[build_ext] Megatron-Energon will be copied to megatron after installed."
+                    )
                 else:
                     raise ValueError(f"Unknown backend: {backend}")
         super().run()
