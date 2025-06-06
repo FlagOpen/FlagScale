@@ -37,7 +37,7 @@ class GridAlgo(Algo):
                     self.strategies[self.idx :], key=sort_by_memory
                 )
         elif mode == "memory_model":
-            self.strategies = sorted(self.strategies, key=sort_by_memory_model)
+            self.strategies = sorted(self.strategies, key=sort_by_memory_model, reverse=True)
         elif mode == "performance":
             if self.idx > 0 and self.idx < len(self.strategies):
                 self.strategies = self.strategies[: self.idx] + sorted(

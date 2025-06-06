@@ -25,6 +25,8 @@ class Generator:
                 "micro_batch_size": "micro_batch_size",
                 "context_parallel_size": "context_parallel_size",
                 "expert_model_parallel_size": "expert_model_parallel_size",
+                "decoder_first_pipeline_num_layers": "decoder_first_pipeline_num_layers",
+                "decoder_last_pipeline_num_layers": "decoder_last_pipeline_num_layers",
             }
 
     def _set_value(self, strategy, config):
@@ -65,10 +67,7 @@ class Generator:
         # Del rampup_batch_size and train_samples to run megatron.
         if "rampup_batch_size" in config.train.model.optimizer.lr_scheduler:
             del config.train.model.optimizer.lr_scheduler.rampup_batch_size
-        # Del lr_decay_samples and train_samples to run megatron.
-        if "lr_warmup_fraction" in config.train.model.optimizer.lr_scheduler:
-            del config.train.model.optimizer.lr_scheduler.lr_warmup_fraction
-
+        # Del train_samples to run megatron.
         if "train_samples" in config.train.model:
             del config.train.model.train_samples
 
