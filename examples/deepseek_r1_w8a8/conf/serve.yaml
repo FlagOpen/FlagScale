@@ -1,0 +1,20 @@
+defaults:
+  - _self_
+  - serve: 671b_w8a8
+experiment:
+  exp_name: deepseek_r1_w8a8
+  exp_dir: outputs/${experiment.exp_name}
+  task:
+    type: serve
+  deploy:
+    use_fs_serve: false
+  runner:
+    hostfile: examples/deepseek_r1_w8a8/conf/hostfile.txt
+    docker: ds_flagscale3
+    ssh_port: 22
+  cmds:
+    before_start:
+action: run
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra

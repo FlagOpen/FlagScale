@@ -1,0 +1,5 @@
+# ip slots type=10.1.15.91
+# master node
+10.1.15.91 slots=8 type=gpu
+# worker nodes
+10.1.15.244 slots=8 type=gpu

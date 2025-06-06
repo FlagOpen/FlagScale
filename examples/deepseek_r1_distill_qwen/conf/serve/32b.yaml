@@ -1,14 +1,18 @@
 - serve_id: vllm_model
   engine: vllm
   engine_args:
-    model: /share/DeepSeek-R1-Distill-Qwen-32B # should be customized
-    served_model_name: deepseek-r1-distill-qwen-32b-flagos
+    model: /share/project/deepseek_distill/deepseek-ai/Deepseek-R1-Distill-Qwen-32B # should be customized
+      #served_model_name: deepseek-r1-distill-qwen-32b-flagos
     tensor_parallel_size: 8
     max_model_len: 32768
+    max_num_batched_tokens: 32768
+    max_seq_len_to_capture: 32768
+    swap_space: 16
     pipeline_parallel_size: 1
-    max_num_seqs: 8 # Even at full 32,768 context usage, 8 concurrent operations won't trigger OOM
-    gpu_memory_utilization: 0.9
-    port: 9010
+    max_num_seqs: 256 # Even at full 32,768 context usage, 8 concurrent operations won't trigger OOM
+    gpu_memory_utilization: 0.95
+    port: 8000
     trust_remote_code: true
-    enforce_eager: true
-    enable_chunked_prefill: true
+    enforce_eager: false
+    enable_chunked_prefill: false
+    distributed_executor_backend: ray
