@@ -1124,8 +1124,11 @@ class _Qwen2VLTokenizer(MegatronTokenizer):
         self.tokenizer = AutoTokenizer.from_pretrained(
             tokenizer_path,
             padding_side="right",
-            use_fast=False,
-            trust_remote_code=True
+            use_fast=True,
+            split_special_tokens=False,
+            trust_remote_code=True,
+            revision = "main",
+            token = None,
         )
         self.extra_vocab_size = extra_vocab_size
         self.special_tokens_map = {k:v for k, v in zip(self.tokenizer.all_special_tokens, self.tokenizer.all_special_ids)}
@@ -1135,14 +1138,14 @@ class _Qwen2VLTokenizer(MegatronTokenizer):
         self.vision_end_token = '<|vision_end|>'
 
         from transformers import AutoProcessor
-        proc = AutoProcessor.from_pretrained(
+        self.processor = AutoProcessor.from_pretrained(
             tokenizer_path,
-            use_fast=False,
-            trust_remote_code=True
+            revision = "main",
+            token = None,
         )
         # NOTE: In Qwen2-VL, template in chat_template.json is same within tokenizer_config.json and both can be used.
         # However, in Qwen 2.5-VL, the two templates are different and only the one in chat_template.json is OK.
-        self.chat_template = proc.chat_template
+        self.chat_template = self.processor.chat_template
 
     def __call__(self, text, return_tensors=None,
                     padding=None, max_length=None, truncation=None, add_special_tokens=None):
@@ -1155,18 +1158,18 @@ class _Qwen2VLTokenizer(MegatronTokenizer):
     
     @property
     def vocab_size(self):
-        return len(self.tokenizer.encoder) + self.extra_vocab_size
+        return self.tokenizer.vocab_size + self.extra_vocab_size
 
     @property
     def vocab(self):
-        return self.tokenizer.encoder
+        return self.tokenizer.vocab
 
     @property
     def inv_vocab(self):
         return self.tokenizer.decoder
 
     def tokenize(self, text):
-        return self.tokenizer.encode(text)
+        return self.tokenizer.tokenize(text)
 
     def detokenize(self, token_ids):
         return self.tokenizer.decode(token_ids)
