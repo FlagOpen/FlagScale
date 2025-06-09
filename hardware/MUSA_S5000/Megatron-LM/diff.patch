@@ -1,0 +1,2945 @@
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 3b2e4e15..09c73151 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -1,60 +1,137 @@
++.merge_train_rule: &merge_train_rule
++  UNIT_TEST: "yes"
++  UNIT_TEST_REPEAT: 1
++  UNIT_TEST_TIMEOUT: 15
++  INTEGRATION_TEST: "yes"
++  INTEGRATION_TEST_SCOPE: mr
++  FUNCTIONAL_TEST: "yes"
++  FUNCTIONAL_TEST_SCOPE: mr-slim
++  FUNCTIONAL_TEST_REPEAT: 5
++  FUNCTIONAL_TEST_TIME_LIMIT: 2700
++  CLUSTER_A100: ""
++  CLUSTER_H100: ""
++  PUBLISH: "no"
++
+ workflow:
+   rules:
+-    - if: $CI_PROJECT_NAMESPACE != "ADLR"
++    # Do not trigger for forks
++    - if: $CI_PROJECT_NAMESPACE != "ADLR" || ($CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_PROJECT_PATH != "ADLR/megatron-lm")
+       when: never
++
++    # ci-branches only for schedule
+     - if: $CI_COMMIT_BRANCH =~ /ci-/ && $CI_PIPELINE_SOURCE != "schedule"
+       when: never
++
++    # For schedules pipelines
+     - if: $CI_PIPELINE_SOURCE == "schedule"
+       auto_cancel:
+         on_new_commit: none
++
++    # For manual pipelines
+     - if: $CI_PIPELINE_SOURCE == "web"
+-    - if: $CI_COMMIT_REF_PROTECTED == "true"
+-      variables:
+-        FUNCTIONAL_TEST: 'no'
+-    - if: $CI_MERGE_REQUEST_LABELS =~ /Run tests/ && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA != ""
++
++    # For push to main
++    - if: $CI_PIPELINE_SOURCE == 'push' && $CI_COMMIT_REF_PROTECTED == "true"
+       variables:
+-        UNIT_TEST_REPEAT: 1
+-        UNIT_TEST_TIMEOUT: 15
+-        FUNCTIONAL_TEST: 'yes'
++        UNIT_TEST: "no"
++        INTEGRATION_TEST: "no"
++        FUNCTIONAL_TEST: "yes"
+         FUNCTIONAL_TEST_SCOPE: mr
+         FUNCTIONAL_TEST_REPEAT: 5
++        FUNCTIONAL_TEST_RECORD_CHECKPOINTS: "no"
+         FUNCTIONAL_TEST_TIME_LIMIT: 2700
+-        FUNCTIONAL_TEST_CLUSTER_A100: ''
+-        FUNCTIONAL_TEST_CLUSTER_H100: ''
+-        PUBLISH: 'no'
+-    - if: $CI_MERGE_REQUEST_LABELS =~ /Run nightly/ && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA != ""
++        CLUSTER_A100: ""
++        CLUSTER_H100: ""
++        PUBLISH: "no"
++      auto_cancel:
++        on_new_commit: none
++
++    # For merge-trains that need to be fast-tracked
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merge_train' && $CI_MERGE_REQUEST_LABELS =~ /fast-track/
+       variables:
++        UNIT_TEST: "yes"
+         UNIT_TEST_REPEAT: 1
+         UNIT_TEST_TIMEOUT: 15
+-        FUNCTIONAL_TEST: 'yes'
++        INTEGRATION_TEST: "no"
++        FUNCTIONAL_TEST: "no"
++        CLUSTER_A100: ""
++        CLUSTER_H100: ""
++        PUBLISH: "no"
++
++    # For normal merge-trains
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merge_train'
++      variables: *merge_train_rule
++
++    # For MRs with integration suite
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_LABELS =~ /Run tests/
++      variables: *merge_train_rule
++
++    # For MRs with nightly
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_LABELS =~ /Run nightly/
++      variables:
++        UNIT_TEST: "yes"
++        UNIT_TEST_REPEAT: 1
++        UNIT_TEST_TIMEOUT: 15
++        INTEGRATION_TEST: "no"
++        FUNCTIONAL_TEST: "yes"
+         FUNCTIONAL_TEST_SCOPE: nightly
+         FUNCTIONAL_TEST_REPEAT: 5
++        FUNCTIONAL_TEST_RECORD_CHECKPOINTS: "no"
+         FUNCTIONAL_TEST_TIME_LIMIT: 2700
+-        FUNCTIONAL_TEST_CLUSTER_A100: ''
+-        FUNCTIONAL_TEST_CLUSTER_H100: ''
+-        PUBLISH: 'no'
+-    - if: $CI_MERGE_REQUEST_LABELS =~ /Run weekly/ && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA != ""
++        CLUSTER_A100: ""
++        CLUSTER_H100: ""
++        PUBLISH: "no"
++
++    # For MRs with weekly
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_LABELS =~ /Run weekly/
+       variables:
++        UNIT_TEST: "yes"
+         UNIT_TEST_REPEAT: 1
+         UNIT_TEST_TIMEOUT: 15
+-        FUNCTIONAL_TEST: 'yes'
++        INTEGRATION_TEST: "no"
++        FUNCTIONAL_TEST: "yes"
+         FUNCTIONAL_TEST_SCOPE: weekly
+         FUNCTIONAL_TEST_REPEAT: 1
++        FUNCTIONAL_TEST_RECORD_CHECKPOINTS: "no"
+         FUNCTIONAL_TEST_TIME_LIMIT: 9000
+-        FUNCTIONAL_TEST_CLUSTER_A100: ''
+-        FUNCTIONAL_TEST_CLUSTER_H100: ''
+-        PUBLISH: 'no'
+-    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA != ""
++        CLUSTER_A100: ""
++        CLUSTER_H100: ""
++        PUBLISH: "no"
++
++    # For MRs with heavy suite
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_LABELS =~ /Run functional tests/
+       variables:
+-        FUNCTIONAL_TEST: 'no'
+-        PUBLISH: 'no'
++        UNIT_TEST: "yes"
++        UNIT_TEST_REPEAT: 1
++        UNIT_TEST_TIMEOUT: 15
++        INTEGRATION_TEST: "no"
++        FUNCTIONAL_TEST: "yes"
++        FUNCTIONAL_TEST_SCOPE: mr
++        FUNCTIONAL_TEST_REPEAT: 5
++        FUNCTIONAL_TEST_TIME_LIMIT: 2700
++        CLUSTER_A100: ""
++        CLUSTER_H100: ""
++        PUBLISH: "no"
++
++    # Default MRs
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result'
++      variables:
++        UNIT_TEST: "yes"
++        UNIT_TEST_REPEAT: 1
++        UNIT_TEST_TIMEOUT: 15
++        INTEGRATION_TEST: "no"
++        FUNCTIONAL_TEST: "no"
++        PUBLISH: "no"
++
+     - when: never
++
+   auto_cancel:
+     on_new_commit: interruptible
+-    # on_job_failure: all
+ 
+ stages:
++  - build
+   - test
++  - integration_tests
+   - functional_tests
+   - publish
+ 
+@@ -66,66 +143,101 @@ default:
+ 
+ variables:
+   UNIT_TEST:
+-    value: 'yes'
++    value: "yes"
+     options:
+-      - 'yes'
+-      - 'no'
++      - "yes"
++      - "no"
+     description: To run the funtional test suite
+   UNIT_TEST_REPEAT:
+-    value: '1'
+-    description: 'Number of repetitions'
++    value: "1"
++    description: "Number of repetitions"
+   UNIT_TEST_TIMEOUT:
+-    value: '30'
++    value: "30"
+     description: Timeout (minutes) for Unit tests (all repeats)
++  INTEGRATION_TEST:
++    value: "yes"
++    options:
++      - "yes"
++      - "no"
++    description: To run the integration test suite
++  INTEGRATION_TEST_SCOPE:
++    value: "mr"
++    options:
++      - "mr"
++      - "nightly"
++      - "weekly"
++      - "pre-release"
++      - "release"
++    description: "Testsuite to run (only for INTEGRATION_TEST=yes)"
++  INTEGRATION_TEST_TIME_LIMIT:
++    value: "900"
++    description: "Timeout in seconds per test"
++  INTEGRATION_TEST_CASES:
++    value: "all"
++    description: "Comma-separated list of test_cases to run. Use 'all' to run the full suite."
+   FUNCTIONAL_TEST:
+-    value: 'yes'
++    value: "yes"
+     options:
+-      - 'yes'
+-      - 'no'
++      - "yes"
++      - "no"
+     description: To run the funtional test suite
+   FUNCTIONAL_TEST_SCOPE:
+-    value: 'mr'
++    value: "mr"
+     options:
+-      - 'mr'
+-      - 'nightly'
+-      - 'weekly'
+-      - 'pre-release'
+-      - 'release'
+-    description: 'Testsuite to run (only for FUNCTIONAL_TEST=yes)'
++      - "mr"
++      - "nightly"
++      - "weekly"
++      - "pre-release"
++      - "release"
++    description: "Testsuite to run (only for FUNCTIONAL_TEST=yes)"
+   FUNCTIONAL_TEST_REPEAT:
+-    value: '5'
+-    description: 'Number of repetitions per test'
++    value: "5"
++    description: "Number of repetitions per test"
+   FUNCTIONAL_TEST_TIME_LIMIT:
+-    value: '2700'
+-    description: 'Timeout in seconds per test'
++    value: "2700"
++    description: "Timeout in seconds per test"
+   FUNCTIONAL_TEST_CASES:
+-    value: 'all'
++    value: "all"
+     description: "Comma-separated list of test_cases to run. Use 'all' to run the full suite."
+-  FUNCTIONAL_TEST_CLUSTER_A100:
+-    value: 'dgxa100_dracooci'
++  FUNCTIONAL_TEST_NAME:
++    description: "Name of functional test run (only for pre-release and release)"
++    value: "$$CI_COMMIT_SHA"
++  FUNCTIONAL_TEST_RECORD_CHECKPOINTS:
++    value: "no"
++    description: "Record golden checkpoints"
+     options:
+-      - 'dgxa100_dracooci'
+-      - 'dgxa100_dracooci-ord'
+-    description: 'Cluster for A100 workloads'
+-  FUNCTIONAL_TEST_CLUSTER_H100:
+-    value: 'dgxh100_eos'
++      - "yes"
++      - "no"
++  CLUSTER_A100:
++    value: "dgxa100_dracooci"
+     options:
+-      - 'dgxh100_coreweave'
+-      - 'dgxh100_eos'
+-    description: 'Cluster for H100 workloads'
+-  FUNCTIONAL_TEST_NAME:
+-    description: 'Name of functional test run (only for pre-release and release)'
++      - "dgxa100_dracooci"
++      - "dgxa100_dracooci-ord"
++    description: "Cluster for A100 workloads"
++  CLUSTER_H100:
++    value: "dgxh100_eos"
++    options:
++      - "dgxh100_coreweave"
++      - "dgxh100_eos"
++    description: "Cluster for H100 workloads"
+   PUBLISH:
+-    value: 'no'
++    value: "no"
+     options:
+-      - 'yes'
+-      - 'no'
++      - "yes"
++      - "no"
+     description: Build and publish a wheel to PyPi
++  PUBLISH_COMMIT:
++    value: "$$CI_COMMIT_SHA"
++    description: Which commit to publish
++  PUBLISH_VERSION_BUMP_BRANCH:
++    value: "$$CI_COMMIT_BRANCH"
++    description: Which branch to target for version bump
+   PUBLISH_SCOPE:
+-    value: 'code-freeze'
++    value: "code-freeze"
+     options:
+-      - 'code-freeze'
+-      - 'release'
++      - "code-freeze"
++      - "release"
++      - "review-reminder"
+     description: Type of publish (freeze or final release)
+ 
+   # CI wide variables
+@@ -136,6 +248,8 @@ variables:
+ 
+ include:
+   - .gitlab/stages/00.pre.yml
+-  - .gitlab/stages/01.test.yml
+-  - .gitlab/stages/02.functional-tests.yml
+-  - .gitlab/stages/03.publish.yml
++  - .gitlab/stages/01.build.yml
++  - .gitlab/stages/02.test.yml
++  - .gitlab/stages/03.integration-tests.yml
++  - .gitlab/stages/04.functional-tests.yml
++  - .gitlab/stages/05.publish.yml
+diff --git a/.gitlab/labeler-config.yml b/.gitlab/labeler-config.yml
+index 3dc4001c..0e218e4b 100644
+--- a/.gitlab/labeler-config.yml
++++ b/.gitlab/labeler-config.yml
+@@ -1,33 +1,36 @@
+ CI:
+-- .gitlab-ci.yml
+-- Dockerfile.ci.lts
+-- Dockerfile.ci.dev
+-- .github/**
+-- .gitlab/**
++  - .gitlab-ci.yml
++  - Dockerfile.ci.lts
++  - Dockerfile.ci.dev
++  - .github/**
++  - .gitlab/**
+ 
+ Datasets:
+-- megatron/core/datasets/**
++  - megatron/core/datasets/**
+ 
+ BERT:
+-- megatron/core/models/bert/**
++  - megatron/core/models/bert/**
+ 
+ GPT:
+-- megatron/core/models/gpt/**
++  - megatron/core/models/gpt/**
+ 
+ RETRO:
+-- megatron/core/models/retro/**
++  - megatron/core/models/retro/**
+ 
+ Dist-Ckpt:
+-- megatron/core/dist_checkpointing
++  - megatron/core/dist_checkpointing
+ 
+ Dist-Opt:
+-- megatron/core/optimizer/distrib_optimizer 
++  - megatron/core/optimizer/distrib_optimizer
+ 
+ Inference:
+-- megatron/core/inference
++  - megatron/core/inference
+ 
+ MoE:
+-- megatron/core/transformer/moe
++  - megatron/core/transformer/moe
+ 
+ Tests:
+-- tests/**
+\ No newline at end of file
++  - tests/**
++
++ParallelState:
++  - megatron/core/parallel_state.py
+diff --git a/.gitlab/scripts/build.sh b/.gitlab/scripts/build.sh
+new file mode 100644
+index 00000000..c019b2de
+--- /dev/null
++++ b/.gitlab/scripts/build.sh
+@@ -0,0 +1,41 @@
++#! /bin/bash
++
++set -x
++env
++eval "IMAGE=\$$IMAGE"
++
++docker context create tls-environment
++docker buildx create --name container --driver=docker-container --use tls-environment
++
++ADDITIONAL_PARAMS=()
++
++if [[ "$CI_COMMIT_BRANCH" == "ci-rebuild-mcore-nemo-image" || "$CI_COMMIT_BRANCH" == "main" ]]; then
++    ADDITIONAL_PARAMS+=("--pull")
++    ADDITIONAL_PARAMS+=("--cache-to type=registry,ref=${IMAGE}-buildcache:main,mode=max")
++else
++    ADDITIONAL_PARAMS+=("--cache-to type=registry,ref=${IMAGE}-buildcache:${CI_MERGE_REQUEST_IID:-$CI_COMMIT_REF_SLUG},mode=max")
++fi
++
++if [[ "$CI_COMMIT_BRANCH" == "ci-nightly" ]]; then
++    ADDITIONAL_PARAMS+=("-t ${IMAGE}:nightly")
++fi
++
++echo $(git rev-parse HEAD)
++
++JET_API_VERSION=$(curl -s -u "$ARTIFACTORY_USER:$ARTIFACTORY_TOKEN" "https://sc-hw-artf.nvidia.com/artifactory/api/pypi/hw-joc-pypi/simple/jet-api/" | grep -o 'href="../../jet-api/[0-9.]*/' | sed 's|href="../../jet-api/||;s|/||' | sort -V -r | head -n1)
++
++DOCKER_BUILDKIT=1 docker build \
++    --secret id=JET_INDEX_URLS \
++    --secret id=LOGGER_INDEX_URL \
++    --secret id=EXPERIMENTAL_FLASH_ATTN \
++    --target $STAGE \
++    -f $FILE \
++    -t ${IMAGE}:${CI_PIPELINE_ID} \
++    --builder=container \
++    --build-arg JET_API_VERSION=$JET_API_VERSION \
++    --cache-from type=registry,ref=${IMAGE}-buildcache:${CI_MERGE_REQUEST_IID} \
++    --cache-from type=registry,ref=${IMAGE}-buildcache:main \
++    --build-arg FROM_IMAGE_NAME=$BASE_IMAGE \
++    --push \
++    --progress plain \
++    ${ADDITIONAL_PARAMS[@]} .
+diff --git a/.gitlab/stages/00.pre.yml b/.gitlab/stages/00.pre.yml
+index b5af2eeb..c4e92a35 100644
+--- a/.gitlab/stages/00.pre.yml
++++ b/.gitlab/stages/00.pre.yml
+@@ -3,10 +3,14 @@ include:
+ 
+ .pre_rules:
+   rules:
+-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
++    - if: $CI_PIPELINE_SOURCE == 'main'
+       allow_failure: true
+       when: always
+-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
++      allow_failure: true
++      when: always
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result'
++      when: always
+     - when: never
+   stage: .pre
+ 
+@@ -22,8 +26,9 @@ include:
+ pre:mirror_to_github:
+   rules:
+     - if: '$CI_COMMIT_REF_PROTECTED == "true" && $CI_PIPELINE_SOURCE == "push"'
++      allow_failure: true
+     - when: never
+-  tags: 
++  tags:
+     - arch/amd64
+     - env/prod
+     - origin/jet-fleet
+@@ -33,15 +38,18 @@ pre:mirror_to_github:
+   stage: .pre
+   image: python:3.10
+   variables:
+-    GIT_STRATEGY: 'clone'
++    GIT_STRATEGY: "clone"
+   script:
+     - git checkout $CI_COMMIT_BRANCH
+     - git remote add github https://ko3n1g:$GH_TOKEN@github.com/NVIDIA/Megatron-LM.git || true
+     - git push -u github $CI_COMMIT_BRANCH
++  retry:
++    max: 2
+ 
+ pre:create_ci_branches:
+   rules:
+     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
++      allow_failure: true
+     - when: never
+   parallel:
+     matrix:
+@@ -51,7 +59,8 @@ pre:create_ci_branches:
+       - branch: ci-nightly
+       - branch: ci-weekly
+       - branch: ci-pre-release
+-  tags: 
++      - branch: ci-review-reminder
++  tags:
+     - arch/amd64
+     - env/prod
+     - origin/jet-fleet
+@@ -61,11 +70,13 @@ pre:create_ci_branches:
+   stage: .pre
+   image: python:3.10
+   variables:
+-    GIT_STRATEGY: 'clone'
++    GIT_STRATEGY: "clone"
+   script:
+     - git remote set-url origin "https://gitlab-ci-token:${PROJECT_ACCESS_TOKEN_MCORE}@${GITLAB_ENDPOINT}/adlr/megatron-lm.git"
+     - git switch --force-create $branch
+     - git push --force -u origin $branch
++  retry:
++    max: 2
+ 
+ pre:label_merge_request:
+   extends: [.pre_rules]
+@@ -78,10 +89,20 @@ pre:label_merge_request:
+     - go install .
+     - cd ..
+     - go install github.com/itchyny/gojq/cmd/gojq@latest
+-    - |
+-      echo LABELS=$(curl --header "PRIVATE-TOKEN: ${PROJECT_ACCESS_TOKEN_MCORE}" --url "https://${GITLAB_ENDPOINT}/api/v4/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}" | gojq '.labels | join(",")') > labels
+   script:
++    - set -x
++    - |
++      LABELS=$(curl --header "PRIVATE-TOKEN: ${PROJECT_ACCESS_TOKEN_MCORE}" --url "https://${GITLAB_ENDPOINT}/api/v4/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}")
++    - LABELS=$(echo "$LABELS" | gojq '.labels -= ["ParallelState"]')
++    - |
++      if git --no-pager diff --merge-base origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME} -- 'megatron/core/' | grep -q 'parallel_state'; then
++        LABELS=$(echo "$LABELS" | gojq '.labels += ["ParallelState"]')
++        echo "$LABELS"
++      fi
++
++    - echo LABELS=$(echo "$LABELS" | gojq '.labels | join(",")') > labels
+     - gitlab-mr-labeler -f .gitlab/labeler-config.yml -t ${PROJECT_ACCESS_TOKEN_MCORE} --debug true
++    - cat labels
+   after_script:
+     - |
+       source labels
+@@ -91,7 +112,7 @@ pre:maybe_cherry_pick_commit:
+   rules:
+     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
+     - when: never
+-  tags: 
++  tags:
+     - arch/amd64
+     - env/prod
+     - origin/jet-fleet
+@@ -101,7 +122,7 @@ pre:maybe_cherry_pick_commit:
+   stage: .pre
+   image: nentangso/alpine-git-curl-jq
+   variables:
+-    GIT_STRATEGY: 'clone'
++    GIT_STRATEGY: "clone"
+   script:
+     - set -x
+     - set +e
+@@ -181,7 +202,7 @@ pre:maybe_cherry_pick_commit:
+ pre:check_milestone:
+   extends: [.pre_rules]
+   image: badouralix/curl-jq
+-  tags: 
++  tags:
+     - arch/amd64
+     - env/prod
+     - origin/jet-fleet
+@@ -194,6 +215,31 @@ pre:check_milestone:
+       MILESTONE=$(curl --header "PRIVATE-TOKEN: ${PROJECT_ACCESS_TOKEN_MCORE}" --url "https://${GITLAB_ENDPOINT}/api/v4/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}" | jq '.milestone')
+     - |
+       if [[ "$MILESTONE" == "null" ]]; then
+-        echo Please assign a Milestone to this MR!
+-        exit 1
++        LATEST_MILESTONE=$(curl --header "PRIVATE-TOKEN: ${PROJECT_ACCESS_TOKEN_MCORE}" --url "https://${GITLAB_ENDPOINT}/api/v4/projects/${CI_PROJECT_ID}/milestones?state=active&order_by=due_date&sort=desc" | jq '.[0].id')
++        curl --request PUT --header "PRIVATE-TOKEN: ${PROJECT_ACCESS_TOKEN_MCORE}" --url "https://${GITLAB_ENDPOINT}/api/v4/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}" --data "milestone_id=${LATEST_MILESTONE}"
++        echo "Applied latest milestone (ID: ${LATEST_MILESTONE}) to this MR"
+       fi
++
++pre:check_status_of_main:
++  extends: [.pre_rules]
++  image: python:3.10
++  timeout: 7 days
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  script:
++    - env
++    - pip install --no-cache-dir python-gitlab click
++    - export RO_API_TOKEN=${PROJECT_ACCESS_TOKEN_MCORE}
++    - export GITLAB_ENDPOINT
++    - python tests/test_utils/python_scripts/check_status_of_main.py --target-branch "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
++  rules:
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merge_train' && $CI_MERGE_REQUEST_LABELS =~ /fast-track/
++      when: never
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merge_train'
++      when: always
++    - when: never
+diff --git a/.gitlab/stages/01.build.yml b/.gitlab/stages/01.build.yml
+new file mode 100644
+index 00000000..db76847c
+--- /dev/null
++++ b/.gitlab/stages/01.build.yml
+@@ -0,0 +1,70 @@
++.build_rules:
++  rules:
++    - when: on_success
++  stage: test
++
++.build_image:
++  extends: [.build_rules, .dind_rules]
++  stage: build
++  tags:
++    - arch/amd64
++    - origin/jet-fleet
++    - env/prod
++    - ${TAG}
++  services:
++    - name: docker:24.0.5-dind
++      variables:
++        HEALTHCHECK_TCP_PORT: "2376"
++  timeout: 180m
++  variables:
++    DOCKER_HOST: tcp://docker:2376
++    DOCKER_TLS_CERTDIR: "/certs"
++    DOCKER_TLS_VERIFY: 1
++    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
++    TAG: purpose/builder-large
++    STAGE: jet
++    MCORE_BACKWARDS_REF: core_r0.12.0
++    KUBERNETES_SERVICE_MEMORY_REQUEST: 90Gi
++    KUBERNETES_SERVICE_MEMORY_LIMIT: 90Gi
++    # KUBERNETES_SERVICE_CPU_REQUEST: 60
++    # KUBERNETES_SERVICE_CPU_LIMIT: 60
++  script:
++    - eval PUBLISH_COMMIT=$PUBLISH_COMMIT
++    - apk add bash curl git
++    - bash .gitlab/scripts/build.sh
++
++    - git fetch origin $MCORE_BACKWARDS_REF
++    - MCORE_BACKWARDS_COMMIT=$(git rev-parse FETCH_HEAD)
++
++    - echo "MCORE_MR_COMMIT=$CI_COMMIT_SHA" | tee -a build.env
++    - echo "MCORE_BACKWARDS_COMMIT=$MCORE_BACKWARDS_COMMIT" | tee -a build.env
++    - cat build.env
++  retry:
++    max: 2
++  artifacts:
++    reports:
++      dotenv: build.env
++
++test:build_image:
++  extends: [.build_image]
++  parallel:
++    matrix:
++      - IMAGE: CI_MCORE_LTS_IMAGE
++        FILE: Dockerfile.ci.lts
++        BASE_IMAGE: nvcr.io/nvidia/pytorch:24.01-py3
++      - IMAGE: CI_MCORE_DEV_IMAGE
++        FILE: Dockerfile.ci.dev
++        BASE_IMAGE: nvcr.io/nvidia/pytorch:25.03-py3
++      - IMAGE: UTILITY_IMAGE
++        FILE: Dockerfile.linting
++        BASE_IMAGE: python:3.10
++
++test:build_nemo_image:
++  extends: [.build_image]
++  variables:
++    IMAGE: CI_NEMO_IMAGE
++    FILE: Dockerfile.ci.dev
++    BASE_IMAGE: nvcr.io/nvidian/nemo:nightly
++  rules:
++    - if: $FUNCTIONAL_TEST == "yes" || $INTEGRATION_TEST == "yes"
++      when: on_success
+diff --git a/.gitlab/stages/01.test.yml b/.gitlab/stages/01.test.yml
+deleted file mode 100644
+index 50d38fd7..00000000
+--- a/.gitlab/stages/01.test.yml
++++ /dev/null
+@@ -1,611 +0,0 @@
+-.test_rules:
+-  rules:
+-    - if: $UNIT_TEST == 'yes' && $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
+-      allow_failure: true
+-      when: on_success
+-    - when: on_success
+-  stage: test
+-
+-include:
+-  - template: Security/Secret-Detection.gitlab-ci.yml
+-
+-test:build_image:
+-  extends: [.test_rules, .dind_rules]
+-  tags:
+-    - arch/amd64
+-    - origin/jet-fleet
+-    - env/prod
+-    - ${TAG}
+-  services:
+-    - name: docker:24.0.5-dind
+-      variables:
+-        HEALTHCHECK_TCP_PORT: '2376'
+-  timeout: 45m
+-  parallel:
+-    matrix:
+-      - IMAGE: CI_MCORE_LTS_IMAGE
+-        FILE: Dockerfile.ci.lts
+-        BASE_IMAGE: nvcr.io/nvidia/pytorch:24.01-py3
+-      - IMAGE: CI_MCORE_DEV_IMAGE
+-        FILE: Dockerfile.ci.dev
+-        BASE_IMAGE: nvcr.io/nvidia/pytorch:24.10-py3
+-      - IMAGE: CI_NEMO_IMAGE
+-        FILE: Dockerfile.ci.dev
+-        BASE_IMAGE: nvcr.io/nvidian/nemo:nightly
+-      - IMAGE: UTILITY_IMAGE
+-        FILE: Dockerfile.linting
+-        BASE_IMAGE: python:3.10
+-  variables:
+-    DOCKER_HOST: tcp://docker:2376
+-    DOCKER_TLS_CERTDIR: '/certs'
+-    DOCKER_TLS_VERIFY: 1
+-    DOCKER_CERT_PATH: '$DOCKER_TLS_CERTDIR/client'
+-    TAG: purpose/builder-large
+-    STAGE: jet
+-    MCORE_BACKWARDS_REF: core_r0.11.0
+-  script:
+-    - apk add bash
+-    - |
+-      bash -c '
+-        set -x
+-        env
+-        eval "IMAGE=\$$IMAGE"
+-        
+-        docker context create tls-environment
+-        docker buildx create --name container --driver=docker-container --use tls-environment
+-
+-        ADDITIONAL_PARAMS=()
+-
+-        if [[ "$CI_COMMIT_BRANCH" == "ci-rebuild-mcore-nemo-image" || "$CI_COMMIT_BRANCH" == "main" ]]; then
+-          ADDITIONAL_PARAMS+=("--pull")
+-          ADDITIONAL_PARAMS+=("--cache-to type=registry,ref=${IMAGE}-buildcache:main")
+-        fi
+-
+-        if [[ "$CI_COMMIT_BRANCH" == "ci-nightly" ]]; then
+-          ADDITIONAL_PARAMS+=("-t ${IMAGE}:nightly")
+-        fi
+-
+-        echo $(git rev-parse HEAD)
+-
+-        DOCKER_BUILDKIT=1 docker build \
+-          --secret id=JET_INDEX_URLS \
+-          --secret id=LOGGER_INDEX_URL \
+-          --target $STAGE \
+-          -f $FILE \
+-          -t ${IMAGE}:${CI_PIPELINE_ID} \
+-          --builder=container \
+-          --build-arg CACHEBUST=$(cat /proc/sys/kernel/random/uuid) \
+-          --build-arg MCORE_REPO=${CI_REPOSITORY_URL} \
+-          --build-arg MCORE_REF=$CI_COMMIT_SHA \
+-          --build-arg MCORE_BACKWARDS_REF=$MCORE_BACKWARDS_REF \
+-          --cache-to type=registry,ref=${IMAGE}-buildcache:${CI_PIPELINE_ID} \
+-          --cache-to type=registry,ref=${IMAGE}-buildcache:${CI_MERGE_REQUEST_IID:-noop} \
+-          --cache-from type=registry,ref=${IMAGE}-buildcache:main \
+-          --cache-from type=registry,ref=${IMAGE}-buildcache:${CI_PIPELINE_ID} \
+-          --cache-from type=registry,ref=${IMAGE}-buildcache:${CI_MERGE_REQUEST_IID:-noop} \
+-          --build-arg FROM_IMAGE_NAME=$BASE_IMAGE \
+-          --push \
+-          ${ADDITIONAL_PARAMS[@]} .
+-        '
+-  retry:
+-    max: 2
+-
+-test:unit_tests_configure:
+-  extends: [.test_rules]
+-  needs:
+-    - test:build_image
+-  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/utility
+-    - team/megatron
+-  before_script:
+-    - git rm -r tests/test_utils/local_recipes || true
+-    - git submodule add --force https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_ENDPOINT}/ADLR/megatron-lm-convergence-tests.git tests/test_utils/local_recipes
+-    - ls tests/test_utils/local_recipes
+-  script:
+-    - set -x
+-    - |
+-      A100_CLUSTER=$([[ "$FUNCTIONAL_TEST_CLUSTER_A100" != "" ]] && echo $FUNCTIONAL_TEST_CLUSTER_A100 || echo $DEFAULT_A100_CLUSTER)
+-      H100_CLUSTER=$([[ "$FUNCTIONAL_TEST_CLUSTER_H100" != "" ]] && echo $FUNCTIONAL_TEST_CLUSTER_H100 || echo $DEFAULT_H100_CLUSTER)
+-    - |
+-      ARGS=(
+-        "--scope unit-tests"
+-        "--n-repeat ${UNIT_TEST_REPEAT}"
+-        "--time-limit $(( UNIT_TEST_TIMEOUT * 60 ))"
+-        "--test-cases all"
+-        "--a100-cluster dgxa100_dracooci-ord"
+-        "--h100-cluster dgxh100_coreweave"
+-        "--h100-partition batch_short,batch"
+-        "--container-image ${UTILITY_IMAGE}"
+-        "--container-tag ${CI_PIPELINE_ID}"
+-        "--dependent-job test:unit_tests_configure"
+-        "--slurm-account ${CI_SLURM_ACCOUNT}"
+-      )
+-    - |
+-      export PYTHONPATH=$(pwd)
+-      python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
+-        ${ARGS[@]} \
+-        --environment "lts" \
+-        --tag "legacy" \
+-        --output-path "unit-test-job-lts-legacy.yaml"
+-    - |
+-      export PYTHONPATH=$(pwd)
+-      python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
+-        ${ARGS[@]} \
+-        --environment "lts" \
+-        --tag "latest" \
+-        --output-path "unit-test-job-lts-latest.yaml"
+-    - |
+-      export PYTHONPATH=$(pwd)
+-      python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
+-        ${ARGS[@]} \
+-        --environment "dev" \
+-        --tag "legacy" \
+-        --output-path "unit-test-job-dev-legacy.yaml"
+-    - |
+-      export PYTHONPATH=$(pwd)
+-      python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
+-        ${ARGS[@]} \
+-        --environment "dev" \
+-        --tag "latest" \
+-        --output-path "unit-test-job-dev-latest.yaml"
+-  rules:
+-    - if: $UNIT_TEST == 'yes' && $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
+-      allow_failure: true
+-      when: on_success
+-    - if: $UNIT_TEST == 'yes' && $UNIT_TEST_REPEAT != '0'
+-      when: on_success
+-  artifacts:
+-    paths:
+-      - unit-test-job-dev-legacy.yaml
+-      - unit-test-job-dev-latest.yaml
+-      - unit-test-job-lts-legacy.yaml
+-      - unit-test-job-lts-latest.yaml
+-      - tests/test_utils/local_recipes
+-
+-.unit_tests_run:
+-  needs:
+-    - test:formatting
+-    - test:copyright
+-    - job: test:secret_detection
+-      optional: true
+-    - test:unit_tests_configure
+-  extends: [.test_rules]
+-  trigger:
+-    include:
+-      - artifact: unit-test-job-$ENVIRONMENT-$TAG.yaml
+-        job: test:unit_tests_configure
+-    strategy: depend
+-  variables:
+-    RO_API_TOKEN: $PAT
+-    CONTAINER_TAG: $CI_PIPELINE_ID
+-    CI_MCORE_LTS_IMAGE: $CI_MCORE_LTS_IMAGE
+-    GITLAB_ENDPOINT: $GITLAB_ENDPOINT
+-    PARENT_PIPELINE_ID: $CI_PIPELINE_ID
+-  inherit:
+-    variables: true
+-  rules:
+-    - if: $UNIT_TEST == 'yes' && $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
+-      allow_failure: true
+-      when: on_success
+-    - if: $UNIT_TEST == 'yes' && $UNIT_TEST_REPEAT != '0'
+-      when: on_success
+-
+-test:unit_tests_pyt(DEV)_mcore(legacy):
+-  extends: [.unit_tests_run]
+-  variables:
+-    ENVIRONMENT: dev
+-    TAG: legacy
+-
+-test:unit_tests_pyt(LTS)_mcore(legacy):
+-  extends: [.unit_tests_run]
+-  variables:
+-    ENVIRONMENT: lts
+-    TAG: legacy
+-
+-test:unit_tests_pyt(DEV)_mcore(latest):
+-  extends: [.unit_tests_run]
+-  variables:
+-    ENVIRONMENT: dev
+-    TAG: latest
+-
+-test:unit_tests_pyt(LTS)_mcore(latest):
+-  extends: [.unit_tests_run]
+-  variables:
+-    ENVIRONMENT: lts
+-    TAG: latest
+-
+-test:notify_unit_tests:
+-  extends: [.test_rules]
+-  image: badouralix/curl-jq
+-  needs:
+-    - test:unit_tests_pyt(DEV)_mcore(latest)
+-    - test:unit_tests_pyt(LTS)_mcore(latest)
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/utility
+-    - team/megatron
+-  script:
+-    - apk add bash
+-    - apk add --update coreutils
+-    - env
+-    - export WEBHOOK_URL=${MCORE_NOTIFICATION_HOOK}
+-    - export RO_API_TOKEN=${PROJECT_ACCESS_TOKEN_MCORE}
+-    - export GITLAB_ENDPOINT
+-    - export CONTEXT="unit-tests-extended"
+-    - export DATE=$(date +"%Y-%m-%d")
+-    - bash tests/test_utils/shell_scripts/notify.sh ${CI_PIPELINE_ID} "test:unit_tests_pyt"
+-  artifacts:
+-    when: always
+-    paths:
+-      - scripts
+-  rules:
+-    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == "ci-unit-test-extended"
+-      when: always
+-    - when: never
+-
+-test:docs_build:
+-  extends: [.test_rules]
+-  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/utility
+-    - team/megatron
+-  needs: [test:build_image]
+-  script:
+-    - cd ..
+-    - rm -rf documentation && git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_ENDPOINT}/nemo-megatron-core-tme/documentation.git
+-    - mv megatron-lm/ documentation/
+-    - cd documentation/
+-    - ./repo docs
+-
+-test:formatting:
+-  extends: [.test_rules]
+-  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/utility
+-    - team/megatron
+-  needs: [test:build_image]
+-  variables:
+-    GIT_STRATEGY: 'clone'
+-  script:
+-    - |
+-      if [[ "$CI_PIPELINE_SOURCE" != "merge_request_event" ]]; then
+-        exit 0
+-      fi
+-    - set +e
+-    - git fetch origin main:main
+-    - |
+-      if [[ "$CI_MERGE_REQUEST_PROJECT_PATH" == "$CI_MERGE_REQUEST_SOURCE_PROJECT_PATH" ]]; then 
+-        bash tools/autoformat.sh
+-        set -e
+-        git fetch origin $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+-        git checkout $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+-        git config --global user.email "mcore-bot@nvidia.com"
+-        git config --global user.name "Mcore Bot"
+-        git remote set-url origin "https://gitlab-ci-token:${PAT}@${GITLAB_ENDPOINT}/$CI_PROJECT_NAMESPACE/megatron-lm.git"
+-        git add -A .
+-        git commit -m "chore: Format files" || true
+-        git push -u origin $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+-      fi
+-    - env
+-    - BASE_REF="$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" CHECK_ONLY=true SKIP_DOCS=$([[ "$CI_MERGE_REQUEST_LABELS" == *"Skip docs"* ]] && echo "true" || echo "false") bash tools/autoformat.sh
+-
+-test:copyright:
+-  extends: [.test_rules]
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/utility
+-    - team/megatron
+-  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
+-  needs: [test:build_image]
+-  script:
+-    - git fetch origin main
+-    - bash tools/copyright.sh
+-
+-# Override from template
+-secret_detection:
+-  rules:
+-    - when: never
+-
+-# Inherit and modify template
+-test:secret_detection:
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/utility
+-    - team/megatron
+-  extends: ['.secret-analyzer']
+-  variables:
+-    GIT_DEPTH: 0
+-    SECRET_DETECTION_LOG_OPTIONS: ${CI_MERGE_REQUEST_DIFF_BASE_SHA}..${CI_COMMIT_SHA}
+-  allow_failure: true
+-  rules:
+-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+-    - when: never
+-  script:
+-    - apk add jq
+-    - /analyzer run
+-    - |
+-      if [[ $(cat gl-secret-detection-report.json | jq '.vulnerabilities | length > 0') == true ]]; then
+-        echo "Atleast one vulnerability has been found"
+-        cat gl-secret-detection-report.json | jq '.'
+-        exit 1
+-      fi
+-
+-test:pypi_build_wheel:
+-  extends: [.test_rules]
+-  image:
+-    name: quay.io/pypa/manylinux_2_28_x86_64
+-    entrypoint: ['']
+-  services:
+-    - name: docker:24.0.5-dind
+-      variables:
+-        HEALTHCHECK_TCP_PORT: '2376'
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/builder-small
+-    - team/megatron
+-  variables:
+-    PUBLISH_DRYRUN: 'yes'
+-    PY_ENV: pytorch_24.10
+-  script:
+-    - echo $PUBLISH_DRYRUN
+-    - >
+-      if [ "$PUBLISH_DRYRUN" = "yes" ]; then
+-        PRE_RELEASE=$(sed -n "s/.*PRE_RELEASE = '\(.*\)'/\1/p" megatron/core/package_info.py)
+-        sed -i "/^PRE_RELEASE/c\PRE_RELEASE = '${PRE_RELEASE}.dev$((RANDOM % 900000 + 100000))'" megatron/core/package_info.py 
+-      fi
+-
+-
+-    - /opt/python/cp310-cp310/bin/python -m build
+-    - /opt/python/cp311-cp311/bin/python -m build
+-    - auditwheel repair dist/*.whl
+-    - rm -rf dist/*.whl
+-
+-    - pushd megatron/core
+-    - EXPECTED_RELEASE_NUMBER=$(/opt/python/cp311-cp311/bin/python -c "import package_info; print(package_info.__version__)")
+-    - popd
+-    - echo "EXPECTED_RELEASE_NUMBER=$EXPECTED_RELEASE_NUMBER" | tee -a build.env
+-  artifacts:
+-    paths:
+-      - megatron/core/package_info.py
+-      - wheelhouse/
+-      - dist/
+-    reports:
+-      dotenv: build.env
+-
+-test:pypi_test_wheel:
+-  extends: [.test_rules]
+-  image: 
+-    name: python:3.11
+-    entrypoint: ['']
+-  needs: [test:pypi_build_wheel]
+-  services:
+-    - name: docker:24.0.5-dind
+-      variables:
+-        HEALTHCHECK_TCP_PORT: '2376'
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/builder-small
+-    - team/megatron
+-  variables:
+-    PUBLISH_DRYRUN: 'yes'
+-  script:
+-    - rm -rf megatron
+-    - pip install --no-cache-dir wheelhouse/*cp311*.whl
+-
+-    - RELEASE_NUMBER=$(python -c "from megatron import core; print(core.__version__)")
+-    - >
+-      echo "$EXPECTED_RELEASE_NUMBER" == "$RELEASE_NUMBER"
+-
+-
+-    - test "$EXPECTED_RELEASE_NUMBER" == "$RELEASE_NUMBER"
+-    - echo "RELEASE_NUMBER=$EXPECTED_RELEASE_NUMBER" | tee -a build.env
+-  artifacts:
+-    reports:
+-      dotenv: build.env
+-    paths:
+-      - wheelhouse/
+-      - dist/
+-
+-test:pypi_push_wheel:
+-  extends: [.test_rules]
+-  image: python:3.11
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/utility
+-    - team/megatron
+-  needs: [test:pypi_test_wheel]
+-  variables:
+-    PUBLISH_DRYRUN: 'yes'
+-  timeout: 3m
+-  script:
+-    - >
+-      if [ "$PUBLISH_DRYRUN" = "yes" ]; then
+-        REPOSITORY=testpypi
+-        export TWINE_USERNAME=$TWINE_TEST_USERNAME
+-        export TWINE_PASSWORT=$TWINE_TEST_PASSWORD
+-      else
+-        REPOSITORY=pypi
+-        export TWINE_USERNAME=$TWINE_PROD_USERNAME
+-        export TWINE_PASSWORT=$TWINE_PROD_PASSWORD
+-      fi
+-
+-    - ls -al dist/
+-    - ls -al wheelhouse/
+-    - pip install twine
+-    - twine upload --verbose -u $TWINE_USERNAME -p $TWINE_PASSWORT --repository $REPOSITORY wheelhouse/* dist/*
+-  
+-  rules:
+-    - if: $UNIT_TEST == 'yes' && $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
+-      allow_failure: true
+-      when: on_success
+-    - when: on_success
+-      allow_failure: true
+-
+-test:gh_release:
+-  extends: [.test_rules]
+-  needs: [test:pypi_test_wheel]
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/utility
+-    - team/megatron
+-  image: badouralix/curl-jq
+-  variables:
+-    PUBLISH_DRYRUN: 'yes'
+-  script:
+-    - NAME="NVIDIA Megatron Core $RELEASE_NUMBER"
+-    - IS_PRERELEASE=$([[ "$RELEASE_NUMBER" == *rc* ]] && echo "true" || echo "false")
+-    - >
+-      if [[ "$IS_PRERELEASE" == "true" ]]; then
+-        DATE=$(date +"%Y-%m-%d")
+-        CHANGELOG="Prerelease: $NAME ($DATE)"
+-      else
+-        CHANGELOG=$(awk '/^## '"$NAME"'/{flag=1; next} /^## /{flag=0} flag' CHANGELOG.md)
+-        CHANGELOG=$(echo "$CHANGELOG" | sed '/./!d')
+-      fi
+-    - >
+-      PAYLOAD=$(jq -nc \
+-                  --arg TAG_NAME "v${RELEASE_NUMBER}" \
+-                  --arg CI_COMMIT_SHA "$CI_COMMIT_SHA" \
+-                  --arg NAME "$NAME" \
+-                  --arg BODY "$CHANGELOG" \
+-                  --argjson PRERELEASE "$IS_PRERELEASE" \
+-                  '{
+-                      "tag_name": $TAG_NAME,
+-                      "target_commitish": $CI_COMMIT_SHA,
+-                      "name": $NAME,
+-                      "body": $BODY,
+-                      "draft": false,
+-                      "prerelease": $PRERELEASE,
+-                      "generate_release_notes": false
+-                  }'
+-              )
+-      echo -E "$PAYLOAD" > payload.txt
+-    - cat payload.txt
+-    - >
+-      CMD=$(echo -E 'curl -L \
+-        -X POST \
+-        -H "Accept: application/vnd.github+json" \
+-        -H "Authorization: Bearer '"$GH_TOKEN"'" \
+-        -H "X-GitHub-Api-Version: 2022-11-28" \
+-        https://api.github.com/repos/NVIDIA/Megatron-LM/releases \
+-        -d @payload.txt
+-      ')
+-
+-    - >
+-      if [[ "$PUBLISH_DRYRUN" == "yes" ]]; then
+-        echo -E "$CMD"
+-      else
+-        eval "$CMD"
+-      fi
+-
+-
+-test:notify_release:
+-  needs: [test:pypi_test_wheel, test:pypi_push_wheel, test:gh_release]
+-  extends: [.test_rules]
+-  image: badouralix/curl-jq
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/utility
+-    - team/megatron
+-  variables:
+-    PUBLISH_DRYRUN: 'yes'
+-  script:
+-    - URL="https://github.com/NVIDIA/Megatron-LM/releases/tag/core_r$RELEASE_NUMBER"
+-    - >
+-      MESSAGE='{
+-          "blocks": [
+-            {
+-              "type": "section",
+-              "text": {
+-                "type": "mrkdwn",
+-                    "text": "Releasebot 🤖: Megatron-Core released <'$URL'|core_r'"$RELEASE_NUMBER"'> 🚀"
+-              }
+-            }
+-          ]
+-        }'
+-
+-
+-    - echo "$MESSAGE"
+-    - >
+-      CMD=$(echo curl \
+-        -X POST \
+-        -H "Content-type: application/json" \
+-        --data "$MESSAGE" ${MCORE_NOTIFICATION_HOOK_MAIN}
+-      )
+-      
+-      if [[ "$PUBLISH_DRYRUN" == "yes" ]]; then
+-        echo "$CMD"
+-      else
+-        eval "$CMD"
+-      fi
+-
+-test:generate_coverage_report:
+-  extends: [.test_rules]
+-  needs:
+-    - test:unit_tests_pyt(DEV)_mcore(latest)
+-    - test:unit_tests_pyt(LTS)_mcore(latest)
+-  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/utility
+-    - team/megatron
+-  script:
+-    - env
+-    - export RO_API_TOKEN=${PROJECT_ACCESS_TOKEN_MCORE}
+-    - export GITLAB_ENDPOINT
+-    - python tests/test_utils/python_scripts/download_coverage_results.py --pipeline-id ${CI_PIPELINE_ID}
+-    - coverage combine --keep $(ls coverage_results/*/coverage_report)
+-    - coverage report
+-    - coverage xml
+-  coverage: '/TOTAL.+ ([0-9]{1,3}%)/'
+-  artifacts:
+-    reports:
+-      coverage_report:
+-        coverage_format: cobertura
+-        path: coverage.xml
+-  rules:
+-    - if: $UNIT_TEST == 'yes' && $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
+-      allow_failure: true
+-      when: on_success
+-    - if: $UNIT_TEST == 'yes' && $UNIT_TEST_REPEAT != '0'
+-      when: on_success
+\ No newline at end of file
+diff --git a/.gitlab/stages/02.test.yml b/.gitlab/stages/02.test.yml
+new file mode 100644
+index 00000000..bde211d9
+--- /dev/null
++++ b/.gitlab/stages/02.test.yml
+@@ -0,0 +1,330 @@
++.test_rules:
++  rules:
++    - if: $PUBLISH == "yes"
++      when: never
++    - when: on_success
++  stage: test
++
++include:
++  - template: Security/Secret-Detection.gitlab-ci.yml
++
++test:unit_tests_configure:
++  extends: [.test_rules]
++  needs: [test:build_image]
++  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  before_script:
++    - git rm -r tests/test_utils/local_recipes || true
++    - git submodule add --force https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_ENDPOINT}/ADLR/megatron-lm-convergence-tests.git tests/test_utils/local_recipes
++    - ls tests/test_utils/local_recipes
++  script:
++    - env
++    - set -x
++    - |
++      A100_CLUSTER=$([[ "$CLUSTER_A100" != "" ]] && echo $CLUSTER_A100 || echo $DEFAULT_A100_CLUSTER)
++      H100_CLUSTER=$([[ "$CLUSTER_H100" != "" ]] && echo $CLUSTER_H100 || echo $DEFAULT_H100_CLUSTER)
++    - |
++      ARGS=(
++        "--scope unit-tests"
++        "--n-repeat ${UNIT_TEST_REPEAT}"
++        "--time-limit $(( UNIT_TEST_TIMEOUT * 60 ))"
++        "--test-cases all"
++        "--a100-cluster dgxa100_dracooci-ord"
++        "--h100-cluster dgxh100_coreweave"
++        "--h100-partition batch_short,batch"
++        "--container-image ${UTILITY_IMAGE}"
++        "--container-tag ${CI_PIPELINE_ID}"
++        "--dependent-job test:unit_tests_configure"
++        "--slurm-account ${CI_SLURM_ACCOUNT}"
++        "--no-enable-warmup"
++      )
++    - |
++      export PYTHONPATH=$(pwd)
++      python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
++        ${ARGS[@]} \
++        --environment "lts" \
++        --tag "legacy" \
++        --output-path "unit-test-job-lts-legacy.yaml"
++    - |
++      export PYTHONPATH=$(pwd)
++      python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
++        ${ARGS[@]} \
++        --environment "lts" \
++        --tag "latest" \
++        --output-path "unit-test-job-lts-latest.yaml"
++    - |
++      export PYTHONPATH=$(pwd)
++      python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
++        ${ARGS[@]} \
++        --environment "dev" \
++        --tag "legacy" \
++        --output-path "unit-test-job-dev-legacy.yaml"
++    - |
++      export PYTHONPATH=$(pwd)
++      python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
++        ${ARGS[@]} \
++        --environment "dev" \
++        --tag "latest" \
++        --output-path "unit-test-job-dev-latest.yaml"
++  rules:
++    - if: $UNIT_TEST == 'yes' && $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
++      allow_failure: true
++      when: on_success
++    - if: $UNIT_TEST == 'yes' && $UNIT_TEST_REPEAT != '0'
++      when: on_success
++  artifacts:
++    paths:
++      - unit-test-job-dev-legacy.yaml
++      - unit-test-job-dev-latest.yaml
++      - unit-test-job-lts-legacy.yaml
++      - unit-test-job-lts-latest.yaml
++      - tests/test_utils/local_recipes
++
++.unit_tests_run:
++  needs:
++    - test:linting_formatting
++    - test:linting_copyright
++    - job: test:linting_secret_detection
++      optional: true
++    - test:unit_tests_configure
++    - test:build_image
++  extends: [.test_rules]
++  trigger:
++    include:
++      - artifact: unit-test-job-$ENVIRONMENT-$TAG.yaml
++        job: test:unit_tests_configure
++    strategy: depend
++  variables:
++    RO_API_TOKEN: $PAT
++    CONTAINER_TAG: $CI_PIPELINE_ID
++    CI_MCORE_LTS_IMAGE: $CI_MCORE_LTS_IMAGE
++    GITLAB_ENDPOINT: $GITLAB_ENDPOINT
++    PARENT_PIPELINE_ID: $CI_PIPELINE_ID
++    MCORE_MR_COMMIT: $MCORE_MR_COMMIT
++    MCORE_BACKWARDS_COMMIT: $MCORE_BACKWARDS_COMMIT
++
++  inherit:
++    variables: true
++  rules:
++    - if: $UNIT_TEST == 'yes' && $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
++      allow_failure: true
++      when: on_success
++    - if: $UNIT_TEST == 'yes' && $UNIT_TEST_REPEAT != '0'
++      when: on_success
++
++test:unit_tests_pyt(DEV)_mcore(legacy):
++  extends: [.unit_tests_run]
++  variables:
++    ENVIRONMENT: dev
++    TAG: legacy
++  rules:
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME != 'main'
++      when: never
++    - if: $UNIT_TEST == 'yes' && $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
++      allow_failure: true
++      when: on_success
++    - if: $UNIT_TEST == 'yes' && $UNIT_TEST_REPEAT != '0'
++      when: on_success
++
++test:unit_tests_pyt(LTS)_mcore(legacy):
++  extends: [.unit_tests_run]
++  variables:
++    ENVIRONMENT: lts
++    TAG: legacy
++  rules:
++    - if: $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME != 'main'
++      when: never
++    - if: $UNIT_TEST == 'yes' && $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
++      allow_failure: true
++      when: on_success
++    - if: $UNIT_TEST == 'yes' && $UNIT_TEST_REPEAT != '0'
++      when: on_success
++
++test:unit_tests_pyt(DEV)_mcore(latest):
++  extends: [.unit_tests_run]
++  variables:
++    ENVIRONMENT: dev
++    TAG: latest
++
++test:unit_tests_pyt(LTS)_mcore(latest):
++  extends: [.unit_tests_run]
++  variables:
++    ENVIRONMENT: lts
++    TAG: latest
++
++test:unit_tests_notify:
++  extends: [.test_rules]
++  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
++  needs:
++    - test:unit_tests_pyt(DEV)_mcore(latest)
++    - test:unit_tests_pyt(LTS)_mcore(latest)
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  script:
++    - env
++    - export WEBHOOK_URL=${MCORE_NOTIFICATION_HOOK}
++    - export RO_API_TOKEN=${PROJECT_ACCESS_TOKEN_MCORE}
++    - export GITLAB_ENDPOINT
++    - export TAG_TEAM=$([[ "$CI_COMMIT_BRANCH" == "main" ]] && echo "1" || "0")
++    - export TEAM_SLUG=$SLACK_ADMIN
++    - |
++      python tests/test_utils/python_scripts/notify.py \
++        --pipeline-id "${CI_PIPELINE_ID}" \
++        --check-for unit-tests \
++        --pipeline-context "unit-tests-extended" \
++        --pipeline-created-at "${CI_PIPELINE_CREATED_AT}"
++  artifacts:
++    when: always
++    paths:
++      - scripts
++  rules:
++    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == "ci-unit-test-extended"
++      when: always
++    - when: never
++
++test:linting_docs_build:
++  extends: [.test_rules]
++  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  needs: [test:build_image]
++  script:
++    - cd ..
++    - rm -rf documentation && git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_ENDPOINT}/nemo-megatron-core-tme/documentation.git
++    - mv megatron-lm/ documentation/
++    - cd documentation/
++    - ./repo docs
++
++test:linting_formatting:
++  extends: [.test_rules]
++  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  needs: [test:build_image]
++  variables:
++    GIT_STRATEGY: "clone"
++  script:
++    - |
++      if [[ "$CI_PIPELINE_SOURCE" != "merge_request_event" ]]; then
++        exit 0
++      fi
++    - set +e
++    - git fetch origin main:main
++    - |
++      if [[ "$CI_MERGE_REQUEST_PROJECT_PATH" == "$CI_MERGE_REQUEST_SOURCE_PROJECT_PATH" ]]; then 
++        bash tools/autoformat.sh
++        set -e
++        git fetch origin $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
++        git checkout $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
++        git config --global user.email "mcore-bot@nvidia.com"
++        git config --global user.name "Mcore Bot"
++        git remote set-url origin "https://gitlab-ci-token:${PAT}@${GITLAB_ENDPOINT}/$CI_PROJECT_NAMESPACE/megatron-lm.git"
++        git add -A .
++        git commit -m "chore: Format files" || true
++        git push -u origin $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
++      fi
++    - env
++    - BASE_REF="$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" CHECK_ONLY=true SKIP_DOCS=$([[ "$CI_MERGE_REQUEST_LABELS" == *"Skip docs"* ]] && echo "true" || echo "false") bash tools/autoformat.sh
++
++test:linting_copyright:
++  extends: [.test_rules]
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
++  needs: [test:build_image]
++  script:
++    - git fetch origin main
++    - bash tools/copyright.sh
++
++# Override from template
++secret_detection:
++  rules:
++    - when: never
++
++# Inherit and modify template
++test:linting_secret_detection:
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  extends: [".secret-analyzer"]
++  needs: [test:build_image]
++  variables:
++    GIT_DEPTH: 0
++    SECRET_DETECTION_LOG_OPTIONS: ${CI_MERGE_REQUEST_DIFF_BASE_SHA}..${CI_COMMIT_SHA}
++  allow_failure: false
++  rules:
++    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
++    - when: never
++  script:
++    - apk add jq
++    - /analyzer run
++    - |
++      if [[ $(cat gl-secret-detection-report.json | jq '.vulnerabilities | length > 0') == true ]]; then
++        echo "Atleast one vulnerability has been found"
++        cat gl-secret-detection-report.json | jq '.'
++        exit 1
++      fi
++
++test:unit_tests_x_coverage_report:
++  extends: [.test_rules]
++  needs:
++    - job: test:unit_tests_pyt(DEV)_mcore(latest)
++    - job: test:unit_tests_pyt(LTS)_mcore(latest)
++  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  script:
++    - env
++    - export RO_API_TOKEN=${PROJECT_ACCESS_TOKEN_MCORE}
++    - export GITLAB_ENDPOINT
++    - python tests/test_utils/python_scripts/download_coverage_results.py --pipeline-id ${CI_PIPELINE_ID}
++    - coverage combine --keep $(ls coverage_results/*/coverage_report)
++    - coverage report
++    - coverage xml
++  coverage: "/TOTAL.+ ([0-9]{1,3}%)/"
++  artifacts:
++    reports:
++      coverage_report:
++        coverage_format: cobertura
++        path: coverage.xml
++  rules:
++    - if: $UNIT_TEST == 'yes' && $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
++      allow_failure: true
++      when: on_success
++    - if: $UNIT_TEST == 'yes' && $UNIT_TEST_REPEAT != '0'
++      when: on_success
+diff --git a/.gitlab/stages/03.integration-tests.yml b/.gitlab/stages/03.integration-tests.yml
+new file mode 100644
+index 00000000..fcdd57f2
+--- /dev/null
++++ b/.gitlab/stages/03.integration-tests.yml
+@@ -0,0 +1,132 @@
++.integration_tests_rules:
++  stage: integration_tests
++  rules:
++    - if: $INTEGRATION_TEST == "yes"
++      when: on_success
++    - when: never
++
++default:
++  id_tokens:
++    VAULT_JWT_TOKEN:
++      aud: https://stg.vault.nvidia.com
++
++include:
++  - project: dl/jet/gitlab-templates
++    ref: main
++    file: downstreams.yml
++
++wait_for_resources:
++  extends: [.integration_tests_rules]
++  image: python:3.10
++  timeout: 7 days
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  script:
++    - env
++    - pip install --no-cache-dir python-gitlab click
++    - export RO_API_TOKEN=${PROJECT_ACCESS_TOKEN_MCORE}
++    - export GITLAB_ENDPOINT
++    - python tests/test_utils/python_scripts/wait_for_resources.py --pipeline-id $CI_PIPELINE_ID
++  rules:
++    - if: $INTEGRATION_TEST == "yes" && $CI_PIPELINE_SOURCE == "merge_request_event"
++      when: on_success
++    - when: never
++
++integration:configure:
++  needs:
++    - job: wait_for_resources
++      optional: true
++    - test:build_image
++    - job: test:unit_tests_pyt(DEV)_mcore(latest)
++      optional: true
++    - job: test:unit_tests_pyt(LTS)_mcore(latest)
++      optional: true
++    - job: test:build_nemo_image
++  extends: [.integration_tests_rules]
++  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  before_script:
++    - git rm -r tests/test_utils/local_recipes || true
++    - git submodule add --force https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_ENDPOINT}/ADLR/megatron-lm-convergence-tests.git tests/test_utils/local_recipes
++    - ls tests/test_utils/local_recipes
++  script:
++    - set -x
++    - |
++      A100_CLUSTER=$([[ "$CLUSTER_A100" != "" ]] && echo $CLUSTER_A100 || echo $DEFAULT_A100_CLUSTER)
++      H100_CLUSTER=$([[ "$CLUSTER_H100" != "" ]] && echo $CLUSTER_H100 || echo $DEFAULT_H100_CLUSTER)
++    - |
++      ARGS=(
++        "--scope $INTEGRATION_TEST_SCOPE"
++        "--n-repeat 1"
++        "--time-limit $INTEGRATION_TEST_TIME_LIMIT"
++        "--test-cases $INTEGRATION_TEST_CASES"
++        "--a100-cluster $A100_CLUSTER"
++        "--h100-cluster $H100_CLUSTER"
++        "--container-image ${UTILITY_IMAGE}"
++        "--container-tag ${CI_PIPELINE_ID}"
++        "--slurm-account ${CI_SLURM_ACCOUNT}"
++        "--no-enable-warmup"
++        "--dependent-job integration:configure"
++        "--enable-lightweight-mode"
++      )
++    - |
++      export PYTHONPATH=$(pwd)
++      python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
++        ${ARGS[@]} \
++        --environment dev \
++        --output-path "functional-test-job-dev.yaml"
++    - |
++      export PYTHONPATH=$(pwd)
++      python tests/test_utils/python_scripts/generate_jet_trigger_job.py \
++        ${ARGS[@]} \
++        --environment lts \
++        --output-path "functional-test-job-lts.yaml"
++  artifacts:
++    paths:
++      - functional-test-job-lts.yaml
++      - functional-test-job-dev.yaml
++      - tests/test_utils/local_recipes
++
++.integration_run:
++  needs:
++    - integration:configure
++    - test:build_image
++    - wait_for_resources
++  extends: [.integration_tests_rules]
++  trigger:
++    include:
++      - artifact: functional-test-job-$ENVIRONMENT.yaml
++        job: integration:configure
++    strategy: depend
++  variables:
++    RO_API_TOKEN: $PAT
++    CONTAINER_TAG: $CI_PIPELINE_ID
++    CI_MCORE_LTS_IMAGE: $CI_MCORE_LTS_IMAGE
++    GITLAB_ENDPOINT: $GITLAB_ENDPOINT
++    PARENT_PIPELINE_ID: $CI_PIPELINE_ID
++    DASHBOARD_ENDPOINT: $DASHBOARD_ENDPOINT
++    MCORE_MR_COMMIT: $MCORE_MR_COMMIT
++    MCORE_BACKWARDS_COMMIT: $MCORE_BACKWARDS_COMMIT
++  inherit:
++    variables: true
++
++integration:run_lts:
++  extends: [.integration_run]
++  variables:
++    ENVIRONMENT: lts
++
++integration:run_dev:
++  extends: [.integration_run]
++  variables:
++    ENVIRONMENT: dev
+diff --git a/.gitlab/stages/03.publish.yml b/.gitlab/stages/03.publish.yml
+deleted file mode 100644
+index 48ea9bfb..00000000
+--- a/.gitlab/stages/03.publish.yml
++++ /dev/null
+@@ -1,126 +0,0 @@
+-.publish_common_freeze:
+-  stage: publish
+-  rules:
+-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $PUBLISH == "yes" && $PUBLISH_SCOPE == "code-freeze"
+-      when: manual
+-    - when: never
+-
+-.publish_common_release:
+-  stage: publish
+-  rules:
+-    - if: $CI_COMMIT_BRANCH =~ /^core_r/ && $PUBLISH == "yes" && $PUBLISH_SCOPE == "release"
+-      when: manual
+-    - if: $PUBLISH == "yes" && $PUBLISH_SCOPE == "release"
+-      when: manual
+-      variables:
+-        PUBLISH_DRYRUN: 'yes'
+-    - when: never
+-
+-publish:release_branch:
+-  extends: [.publish_common_freeze]
+-  image: ${CI_MCORE_LTS_IMAGE}:${CI_PIPELINE_ID}
+-  needs: [test:build_image]
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/utility
+-    - team/megatron
+-  variables:
+-    GIT_STRATEGY: 'none'
+-  script:
+-    - git fetch origin $CI_DEFAULT_BRANCH
+-    - git config --global user.email "mcore-bot@nvidia.com"
+-    - git config --global user.name "Mcore Bot"
+-    - git remote set-url origin "https://gitlab-ci-token:${PAT}@${GITLAB_ENDPOINT}/$CI_PROJECT_NAMESPACE/megatron-lm.git"
+-    - sed -i "/^PRE_RELEASE/c\PRE_RELEASE = ''" megatron/core/package_info.py
+-    - VERSION=$(python -c "from megatron import core; print(core.__version__)")
+-    - RELEASE_BRANCH=core_r$VERSION
+-    - git switch --force-create $RELEASE_BRANCH origin/$CI_DEFAULT_BRANCH
+-    - |
+-      MESSAGE='{
+-        "blocks": [
+-          {
+-            "type": "section",
+-            "text": {
+-              "type": "mrkdwn",
+-              "text": "Releasebot 🤖: Megatron Core has been frozen 🎉 to branch `'"$RELEASE_BRANCH"'`"
+-            }
+-          }
+-        ]
+-      }'
+-    - >
+-      curl -X POST -H "Content-type: application/json" --data "$MESSAGE" ${MCORE_NOTIFICATION_HOOK_MAIN}
+-
+-
+-    - git switch --force-create bot/chore/bump-version
+-    - git add megatron/core/package_info.py
+-    - >
+-      git commit -m "chore: adjust version version"
+-
+-
+-    - git push -u origin bot/chore/bump-version
+-    - >
+-      curl \
+-        --header "PRIVATE-TOKEN: $PAT" \
+-        --url https://${GITLAB_ENDPOINT}/api/v4/projects/${CI_PROJECT_ID}/merge_requests \
+-        -d "source_branch=bot/chore/bump-version" \
+-        -d "target_branch=$RELEASE_BRANCH" \
+-        -d "title=chore: Fix version of \`$RELEASE_BRANCH\`" \
+-        -d "description=[🤖]: Hi @okoenig 👋,<br><br>we've adjusted the version number of \`$RELEASE_BRANCH\` for you! 🚀<br><br>Please review and approve this cherry pick by your convenience\!"
+-
+-publish:pypi_build_wheel:
+-  extends: [test:pypi_build_wheel, .publish_common_release]
+-  dependencies: []
+-  variables:
+-    PUBLISH_DRYRUN: 'no'
+-
+-publish:pypi_test_wheel:
+-  extends: [test:pypi_test_wheel, .publish_common_release]
+-  needs: [publish:pypi_build_wheel]
+-  variables:
+-    PUBLISH_DRYRUN: 'no'
+-
+-publish:pypi_push_wheel:
+-  extends: [test:pypi_push_wheel, .publish_common_release]
+-  needs: [publish:pypi_test_wheel]
+-  dependencies: [publish:pypi_test_wheel]
+-  variables:
+-    PUBLISH_DRYRUN: 'no'
+-
+-publish:gh_release:
+-  extends: [test:gh_release, .publish_common_release]
+-  dependencies: [publish:pypi_test_wheel]
+-  needs: [publish:pypi_test_wheel]
+-  variables:
+-    PUBLISH_DRYRUN: 'no'
+-
+-publish:notify_release:
+-  needs: [publish:pypi_push_wheel, publish:gh_release]
+-  extends: [test:notify_release, .publish_common_release]
+-  variables:
+-    PUBLISH_DRYRUN: 'no'
+-
+-publish:docs:
+-  extends: [.publish_common_release]
+-  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
+-  tags: 
+-    - arch/amd64
+-    - env/prod
+-    - origin/jet-fleet
+-    - owner/jet-core
+-    - purpose/utility
+-    - team/megatron
+-  script:
+-    - cd ..
+-    - rm -rf documentation && git clone https://gitlab-ci-token:${PROJECT_ACCESS_TOKEN_MCORE}@${GITLAB_ENDPOINT}/nemo-megatron-core-tme/documentation.git
+-    - cd documentation/megatron-lm
+-      git fetch origin '+refs/merge-requests/*:refs/remotes/merge-requests/*'
+-    - git fetch origin $CI_COMMIT_SHA
+-    - git checkout $CI_COMMIT_SHA
+-    - cd ..
+-    - git add megatron-lm
+-    - >
+-      git commit -m 'feat: Bump mcore'
+-    - git push
+diff --git a/.gitlab/stages/02.functional-tests.yml b/.gitlab/stages/04.functional-tests.yml
+similarity index 72%
+rename from .gitlab/stages/02.functional-tests.yml
+rename to .gitlab/stages/04.functional-tests.yml
+index ac13ee02..9df24bb0 100644
+--- a/.gitlab/stages/02.functional-tests.yml
++++ b/.gitlab/stages/04.functional-tests.yml
+@@ -1,11 +1,9 @@
+ .functional_tests_rules:
+   stage: functional_tests
+   rules:
+-    - if: $FUNCTIONAL_TEST == "yes" && ($CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true")
+-      allow_failure: true
+     - if: $FUNCTIONAL_TEST == "yes"
++      when: on_success
+     - when: never
+-
+ default:
+   id_tokens:
+     VAULT_JWT_TOKEN:
+@@ -19,13 +17,18 @@ include:
+ functional:configure:
+   needs:
+     - test:build_image
++    - test:build_nemo_image
+     - job: test:unit_tests_pyt(DEV)_mcore(latest)
+       optional: true
+     - job: test:unit_tests_pyt(LTS)_mcore(latest)
+       optional: true
++    - job: integration:run_lts
++      optional: true
++    - job: integration:run_dev
++      optional: true
+   extends: [.functional_tests_rules]
+   image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
+-  tags: 
++  tags:
+     - arch/amd64
+     - env/prod
+     - origin/jet-fleet
+@@ -39,10 +42,10 @@ functional:configure:
+   script:
+     - set -x
+     - |
+-      A100_CLUSTER=$([[ "$FUNCTIONAL_TEST_CLUSTER_A100" != "" ]] && echo $FUNCTIONAL_TEST_CLUSTER_A100 || echo $DEFAULT_A100_CLUSTER)
+-      H100_CLUSTER=$([[ "$FUNCTIONAL_TEST_CLUSTER_H100" != "" ]] && echo $FUNCTIONAL_TEST_CLUSTER_H100 || echo $DEFAULT_H100_CLUSTER)
++      A100_CLUSTER=$([[ "$CLUSTER_A100" != "" ]] && echo $CLUSTER_A100 || echo $DEFAULT_A100_CLUSTER)
++      H100_CLUSTER=$([[ "$CLUSTER_H100" != "" ]] && echo $CLUSTER_H100 || echo $DEFAULT_H100_CLUSTER)
+     - |
+-      RECORD_CHECKPOINTS=$([[ "$CI_MERGE_REQUEST_LABELS" == *"Record checkpoints"* ]] && echo "true" || echo "false")
++      RECORD_CHECKPOINTS=$([[ "$CI_MERGE_REQUEST_LABELS" == *"Record checkpoints"* || "$FUNCTIONAL_TEST_RECORD_CHECKPOINTS" == "yes" ]] && echo "true" || echo "false")
+     - |
+       if [[ "$FUNCTIONAL_TEST_SCOPE" == "release" || "$FUNCTIONAL_TEST_SCOPE" == "pre-release" ]]; then
+         FUNCTIONAL_TEST_NAME=$(eval echo $FUNCTIONAL_TEST_NAME)
+@@ -68,6 +71,7 @@ functional:configure:
+         "--dependent-job functional:configure"
+         "--record-checkpoints ${RECORD_CHECKPOINTS}"
+         "--slurm-account ${CI_SLURM_ACCOUNT}"
++        "--no-enable-warmup"
+       )
+     - |
+       export PYTHONPATH=$(pwd)
+@@ -89,9 +93,10 @@ functional:configure:
+       - functional-test-job-dev.yaml
+       - tests/test_utils/local_recipes
+ 
+-.run:
+-  stage: functional_tests
+-  needs: [functional:configure]
++.functional_run:
++  needs:
++    - functional:configure
++    - test:build_image
+   extends: [.functional_tests_rules]
+   trigger:
+     include:
+@@ -104,32 +109,35 @@ functional:configure:
+     CI_MCORE_LTS_IMAGE: $CI_MCORE_LTS_IMAGE
+     GITLAB_ENDPOINT: $GITLAB_ENDPOINT
+     PARENT_PIPELINE_ID: $CI_PIPELINE_ID
++    DASHBOARD_ENDPOINT: $DASHBOARD_ENDPOINT
++    MCORE_MR_COMMIT: $MCORE_MR_COMMIT
++    MCORE_BACKWARDS_COMMIT: $MCORE_BACKWARDS_COMMIT
++
+   inherit:
+     variables: true
+ 
+ functional:run_lts:
+-  extends: [.run]
++  extends: [.functional_run]
+   variables:
+     ENVIRONMENT: lts
+ 
+ functional:run_dev:
+-  extends: [.run]
++  extends: [.functional_run]
+   variables:
+     ENVIRONMENT: dev
+ 
+ functional:run_nemo:
+   extends: [.functional_tests_rules]
+   trigger:
+-    project: 'dl/joc/nemo-ci'
++    project: "dl/joc/nemo-ci"
+     branch: main-mirror
+     strategy: depend
+   inherit:
+     variables: true
+   variables:
+     MCORE_COMMIT: $CI_COMMIT_SHA
+-    TEST_LLM_MODULE: 'True'
+-    TEST_ALIGNER_MODULE: 'False'
+-    TEST_DATA_CURATOR_MODULE: 'False'
++    TEST_NEMO2_MODULE: "True"
++    ALLOW_FAILURE_DEPENDENCY: "True"
+     TESTS_TO_RUN_ON_THIS_COMMIT: nightly
+   rules:
+     - if: $FUNCTIONAL_TEST == "yes"
+@@ -137,42 +145,57 @@ functional:run_nemo:
+       allow_failure: true
+     - when: never
+ 
+-functional:notify:
++functional:x_notify:
+   extends: [.functional_tests_rules]
+-  image: badouralix/curl-jq
++  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
+   needs:
+     - functional:run_lts
+     - functional:run_dev
+   tags:
+-    - mcore-docker-node-small
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
+   variables:
+     WEBHOOK_URL: ${MCORE_NOTIFICATION_HOOK}
+     RO_API_TOKEN: ${PROJECT_ACCESS_TOKEN_MCORE}
+     CONTEXT: $FUNCTIONAL_TEST_SCOPE
+   script:
+-    - apk add bash
+-    - apk add --update coreutils
+     - env
+     - export WEBHOOK_URL=${MCORE_NOTIFICATION_HOOK}
+     - export RO_API_TOKEN=${PROJECT_ACCESS_TOKEN_MCORE}
+     - export GITLAB_ENDPOINT
+     - export CONTEXT=$FUNCTIONAL_TEST_SCOPE
+-    - export DATE=$(date +"%Y-%m-%d")
+-    - bash tests/test_utils/shell_scripts/notify.sh ${CI_PIPELINE_ID} "functional:run_"
++    - export TAG_TEAM=$([[ "$CI_COMMIT_BRANCH" == "main" ]] && echo "1" || "0")
++    - export TEAM_SLUG=$SLACK_ADMIN
++    - |
++      python tests/test_utils/python_scripts/notify.py \
++        --pipeline-id "${CI_PIPELINE_ID}" \
++        --check-for functional-tests \
++        --pipeline-context $CONTEXT \
++        --pipeline-created-at "${CI_PIPELINE_CREATED_AT}"
++
+   artifacts:
+     when: always
+     paths:
+       - scripts
+   rules:
+-    - if: $CI_PIPELINE_SOURCE == "schedule" && $FUNCTIONAL_TEST == "yes"
++    - if: ($CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_BRANCH == "main") && $FUNCTIONAL_TEST == "yes"
+       when: always
+     - when: never
+ 
+-functional:download_golden_values:
++functional:x_download_golden_values:
+   extends: [.functional_tests_rules]
+   image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
+   tags:
+-    - mcore-docker-node-small
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
+   script:
+     - env
+     - export RO_API_TOKEN=${PROJECT_ACCESS_TOKEN_MCORE}
+diff --git a/.gitlab/stages/05.publish.yml b/.gitlab/stages/05.publish.yml
+new file mode 100644
+index 00000000..81125607
+--- /dev/null
++++ b/.gitlab/stages/05.publish.yml
+@@ -0,0 +1,545 @@
++.publish_common_freeze:
++  stage: publish
++  rules:
++    - if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH) && $PUBLISH == "yes" && $PUBLISH_SCOPE == "code-freeze"
++      when: manual
++    - when: never
++
++.publish_common_release:
++  stage: publish
++  rules:
++    - if: $CI_COMMIT_BRANCH =~ /^core_r/ && $PUBLISH == "yes" && $PUBLISH_SCOPE == "release"
++      when: manual
++    - if: $PUBLISH == "yes" && $PUBLISH_SCOPE == "release"
++      when: manual
++    - when: never
++
++publish:test_release_pypi_build_wheel:
++  extends: [.test_rules]
++  stage: publish
++  image:
++    name: ${IMAGE}
++    entrypoint: [""]
++  services:
++    - name: docker:24.0.5-dind
++      variables:
++        HEALTHCHECK_TCP_PORT: "2376"
++  needs: [test:build_image]
++  parallel:
++    matrix:
++      - PLATFORM: arm64
++        IMAGE: quay.io/pypa/manylinux_2_28_aarch64
++      - PLATFORM: amd64
++        IMAGE: quay.io/pypa/manylinux_2_28_x86_64
++  tags:
++    - arch/${PLATFORM}
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/builder-small
++    - team/megatron
++  variables:
++    PY_ENV: pytorch_25.03
++    KUBERNETES_SERVICE_MEMORY_REQUEST: 16Gi
++    KUBERNETES_SERVICE_MEMORY_LIMIT: 16Gi
++    PUBLISH_DRYRUN: "yes"
++    KUBERNETES_SERVICE_CPU_REQUEST: 4
++    KUBERNETES_SERVICE_CPU_LIMIT: 8
++  before_script:
++    - env
++    - eval PUBLISH_COMMIT=$PUBLISH_COMMIT
++    - env
++    - git fetch origin $PUBLISH_COMMIT
++    - git checkout $PUBLISH_COMMIT
++  script:
++    - echo $PUBLISH_DRYRUN
++    - |
++      if [ "$PUBLISH_DRYRUN" = "yes" ]; then
++        PRE_RELEASE=$(sed -n "s/.*PRE_RELEASE = '\(.*\)'/\1/p" megatron/core/package_info.py)
++        sed -i "/^PRE_RELEASE/c\PRE_RELEASE = '${PRE_RELEASE}.dev$((RANDOM % 900000 + 100000))'" megatron/core/package_info.py 
++      fi
++
++    - /opt/python/cp310-cp310/bin/python -m build
++    - /opt/python/cp311-cp311/bin/python -m build
++    - auditwheel repair dist/*.whl
++    - rm -rf dist/*.whl
++
++    - pushd megatron/core
++    - EXPECTED_RELEASE_NUMBER=$(/opt/python/cp311-cp311/bin/python -c "import package_info; print(package_info.__version__)")
++    - popd
++    - echo "EXPECTED_RELEASE_NUMBER_$PLATFORM=$EXPECTED_RELEASE_NUMBER" | tee -a build.env
++  artifacts:
++    paths:
++      - megatron/core/package_info.py
++      - wheelhouse/
++      - dist/
++    reports:
++      dotenv: build.env
++  retry:
++    max: 2
++
++publish:test_release_pypi_test_wheel:
++  extends: [.test_rules]
++  stage: publish
++  image:
++    name: python:3.11
++    entrypoint: [""]
++  needs:
++    - job: publish:test_release_pypi_build_wheel
++      optional: true
++  parallel:
++    matrix:
++      - PLATFORM: arm64
++      - PLATFORM: amd64
++  services:
++    - name: docker:24.0.5-dind
++      variables:
++        HEALTHCHECK_TCP_PORT: "2376"
++  tags:
++    - arch/${PLATFORM}
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/builder-small
++    - team/megatron
++  variables:
++    KUBERNETES_SERVICE_MEMORY_REQUEST: 16Gi
++    KUBERNETES_SERVICE_MEMORY_LIMIT: 16Gi
++    KUBERNETES_SERVICE_CPU_REQUEST: 4
++    KUBERNETES_SERVICE_CPU_LIMIT: 8
++    GIT_STRATEGY: none
++    PUBLISH_DRYRUN: "yes"
++  script:
++    - rm -rf megatron
++    - pip install -U --no-cache-dir pip
++    - |
++      if [[ "$PLATFORM" == "arm64" ]]; then
++        pip install --no-cache-dir wheelhouse/*cp311*aarch64.whl
++      else
++        pip install --no-cache-dir wheelhouse/*cp311*x86_64.whl
++      fi
++
++    - RELEASE_NUMBER=$(python -c "from megatron import core; print(core.__version__)")
++
++    - |
++      if [[ "$PLATFORM" == "arm64" ]]; then
++        test "$EXPECTED_RELEASE_NUMBER_arm64" == "$RELEASE_NUMBER"
++      else
++        test "$EXPECTED_RELEASE_NUMBER_amd64" == "$RELEASE_NUMBER"
++      fi
++
++    - echo "RELEASE_NUMBER=$RELEASE_NUMBER" | tee -a build.env
++  artifacts:
++    reports:
++      dotenv: build.env
++    paths:
++      - wheelhouse/
++      - dist/
++  retry:
++    max: 2
++
++publish:test_release_pypi_push_wheel:
++  extends: [.test_rules]
++  image: python:3.11
++  stage: publish
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  needs: [publish:test_release_pypi_test_wheel]
++  variables:
++    GIT_STRATEGY: none
++    PUBLISH_DRYRUN: "yes"
++  timeout: 3m
++  script:
++    - echo $PUBLISH_DRYRUN
++    - |
++      if [ "$PUBLISH_DRYRUN" = "yes" ]; then
++        REPOSITORY=testpypi
++        export TWINE_USERNAME=$TWINE_TEST_USERNAME
++        export TWINE_PASSWORT=$TWINE_TEST_PASSWORD
++      else
++        REPOSITORY=pypi
++        export TWINE_USERNAME=$TWINE_PROD_USERNAME
++        export TWINE_PASSWORT=$TWINE_PROD_PASSWORD
++      fi
++
++    - ls -al dist/
++    - ls -al wheelhouse/
++    - pip install twine
++
++    - |
++      if [[ "$PUBLISH_DRYRUN" != "yes" ]]; then
++        twine upload --verbose -u $TWINE_USERNAME -p $TWINE_PASSWORT --repository   $REPOSITORY wheelhouse/* dist/*
++      fi
++
++  rules:
++    - if: $PUBLISH == "yes" && $PUBLISH_SCOPE == "review-reminder"
++      when: never
++    - if: $UNIT_TEST == 'yes' && $CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' && $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED != "true"
++      allow_failure: true
++      when: on_success
++    - when: on_success
++      allow_failure: true
++
++publish:test_release_github:
++  extends: [.test_rules]
++  needs: [publish:test_release_pypi_test_wheel]
++  stage: publish
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  image: nentangso/alpine-git-curl-jq
++  before_script:
++    - eval PUBLISH_COMMIT=$PUBLISH_COMMIT
++    - git fetch origin $PUBLISH_COMMIT
++    - git checkout $PUBLISH_COMMIT
++  variables:
++    PUBLISH_DRYRUN: "yes"
++  script:
++    - echo $PUBLISH_DRYRUN
++    - NAME="NVIDIA Megatron Core $RELEASE_NUMBER"
++    - IS_PRERELEASE=$([[ "$RELEASE_NUMBER" == *rc* ]] && echo "true" || echo "false")
++    - |
++      if [[ "$IS_PRERELEASE" == "true" ]]; then
++        DATE=$(date +"%Y-%m-%d")
++        CHANGELOG="Prerelease: $NAME ($DATE)"
++      else
++        CHANGELOG=$(awk '/^## '"$NAME"'/{flag=1; next} /^## /{flag=0} flag' CHANGELOG.md)
++        CHANGELOG=$(echo "$CHANGELOG" | sed '/./!d')
++      fi
++
++    - |
++      PAYLOAD=$(jq -nc \
++                  --arg TAG_NAME "v${RELEASE_NUMBER}" \
++                  --arg CI_COMMIT_SHA "$PUBLISH_COMMIT" \
++                  --arg NAME "$NAME" \
++                  --arg BODY "$CHANGELOG" \
++                  --argjson PRERELEASE "$IS_PRERELEASE" \
++                  '{
++                      "tag_name": $TAG_NAME,
++                      "target_commitish": $CI_COMMIT_SHA,
++                      "name": $NAME,
++                      "body": $BODY,
++                      "draft": false,
++                      "prerelease": $PRERELEASE,
++                      "generate_release_notes": false
++                  }'
++              )
++      echo -E "$PAYLOAD" | tee -a payload.txt
++
++    - cat payload.txt
++    - |
++      CMD=$(echo -E 'curl -L \
++        -X POST \
++        -H "Accept: application/vnd.github+json" \
++        -H "Authorization: Bearer '"$GH_TOKEN"'" \
++        -H "X-GitHub-Api-Version: 2022-11-28" \
++        https://api.github.com/repos/NVIDIA/Megatron-LM/releases \
++        -d @payload.txt
++      ')
++
++    - |
++      if [[ "$PUBLISH_DRYRUN" == "yes" ]]; then
++        echo -E "$CMD"
++      else
++        eval "$CMD"
++      fi
++
++publish:test_release_notify:
++  needs: [publish:test_release_pypi_test_wheel, publish:test_release_pypi_push_wheel, publish:test_release_github]
++  extends: [.test_rules]
++  image: badouralix/curl-jq
++  stage: publish
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  variables:
++    PUBLISH_DRYRUN: "yes"
++  script:
++    - echo $PUBLISH_DRYRUN
++    - URL="https://github.com/NVIDIA/Megatron-LM/releases/tag/core_r$RELEASE_NUMBER"
++    - |
++      cat << EOF > message.json
++      {
++          "blocks": [
++            {
++              "type": "section",
++              "text": {
++                "type": "mrkdwn",
++                "text": "Releasebot 🤖: Megatron-Core released <${URL}|core_r${RELEASE_NUMBER}> 🚀"
++              }
++            }
++          ]
++      }
++      EOF
++
++    - cat message.json
++
++    - |
++      CMD=$(echo curl \
++        -X POST \
++        -H "Content-type: application/json" \
++        -d @message.json ${MCORE_NOTIFICATION_HOOK_MAIN}
++      )
++
++      if [[ "$PUBLISH_DRYRUN" == "yes" ]]; then
++        echo "$CMD"
++      else
++        eval "$CMD"
++      fi
++
++publish:test_release_version_bump:
++  needs: [publish:test_release_pypi_test_wheel, publish:test_release_pypi_push_wheel, publish:test_release_github]
++  extends: [.test_rules]
++  image: nentangso/alpine-git-curl-jq
++  stage: publish
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  before_script:
++    - eval PUBLISH_COMMIT=$PUBLISH_COMMIT
++    - eval PUBLISH_VERSION_BUMP_BRANCH=$PUBLISH_VERSION_BUMP_BRANCH
++    - git fetch origin $PUBLISH_COMMIT
++    - git checkout $PUBLISH_COMMIT
++  variables:
++    PUBLISH_DRYRUN: "yes"
++  script:
++    - env
++    - echo $PUBLISH_DRYRUN
++    - MAJOR=$(cat megatron/core/package_info.py | awk '/^MAJOR = /' | awk -F"= " '{print $2}')
++    - MINOR=$(cat megatron/core/package_info.py | awk '/^MINOR = /' | awk -F"= " '{print $2}')
++    - PATCH=$(cat megatron/core/package_info.py | awk '/^PATCH = /' | awk -F"= " '{print $2}')
++    - PRERELEASE=$(cat megatron/core/package_info.py | awk '/^PRE_RELEASE = /' | awk -F"= " '{print $2}' | tr -d '"' | tr -d "'")
++
++    - |
++      if [[ "$PRERELEASE" != "" ]]; then
++        NEXT_PATCH=$PATCH
++        NEXT_PRERELEASE=rc$((${PRERELEASE#rc} + 1))
++      else
++        NEXT_PATCH=$((${PATCH} + 1))
++        NEXT_PRERELEASE=$NEXT_PRERELEASE
++      fi
++
++    - sed -i "/^PATCH/c\PATCH = $NEXT_PATCH" megatron/core/package_info.py
++    - sed -i "/^PRE_RELEASE/c\PRE_RELEASE = '$NEXT_PRERELEASE'" megatron/core/package_info.py
++
++    - git config --global user.email "mcore-bot@nvidia.com"
++    - git config --global user.name "Mcore Bot"
++    - git remote set-url origin "https://gitlab-ci-token:${PAT}@${GITLAB_ENDPOINT}/$CI_PROJECT_NAMESPACE/megatron-lm.git"
++    - |
++      CMD=$(
++        cat <<'EOF'
++          git switch --force-create bot/chore/bump-version && \
++          git add megatron/core/package_info.py && \
++          git commit -m "chore: adjust version version" && \
++          git push -f -u origin bot/chore/bump-version && \
++          curl \
++            --header "PRIVATE-TOKEN: $PAT" \
++            --url "https://${GITLAB_ENDPOINT}/api/v4/projects/${CI_PROJECT_ID}/merge_requests" \
++            -d "source_branch=bot/chore/bump-version" \
++            -d "target_branch=$PUBLISH_VERSION_BUMP_BRANCH" \
++            -d "title=chore: Fix version of \`$PUBLISH_VERSION_BUMP_BRANCH\`" \
++            -d "description=[🤖]: Hi @okoenig 👋,<br><br>we've adjusted the version number of \`$PUBLISH_VERSION_BUMP_BRANCH\` for you! 🚀<br><br>Please review and approve this cherry pick by your convenience\!"
++      EOF
++      )
++
++    - |
++      if [[ "$PUBLISH_DRYRUN" == "yes" ]]; then
++        echo "$CMD"
++      else
++        eval "$CMD"
++      fi
++
++publish:code_freeze:
++  extends: [.publish_common_freeze]
++  image: ${CI_MCORE_LTS_IMAGE}:${CI_PIPELINE_ID}
++  needs: [test:build_image]
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  script:
++    - git fetch origin $CI_DEFAULT_BRANCH
++    - git config --global user.email "mcore-bot@nvidia.com"
++    - git config --global user.name "Mcore Bot"
++    - git remote set-url origin "https://gitlab-ci-token:${PAT}@${GITLAB_ENDPOINT}/$CI_PROJECT_NAMESPACE/megatron-lm.git"
++    - sed -i "/^PRE_RELEASE/c\PRE_RELEASE = ''" megatron/core/package_info.py
++    - VERSION=$(python -c "from megatron import core; print(core.__version__)")
++    - RELEASE_BRANCH=core_r$VERSION
++    - git switch --force-create $RELEASE_BRANCH origin/$CI_DEFAULT_BRANCH
++    - git push -u origin $RELEASE_BRANCH
++    - |
++      MESSAGE='{
++        "blocks": [
++          {
++            "type": "section",
++            "text": {
++              "type": "mrkdwn",
++              "text": "Releasebot 🤖: Megatron Core has been frozen 🎉 to branch `'"$RELEASE_BRANCH"'`"
++            }
++          }
++        ]
++      }'
++    - |
++      curl -X POST -H "Content-type: application/json" --data "$MESSAGE" ${MCORE_NOTIFICATION_HOOK_MAIN}
++
++    - git switch main
++    - git switch --force-create bot/chore/bump-version
++    - git add megatron/core/package_info.py
++    - |
++      git commit -m "chore: adjust version version"
++    - git push -u origin bot/chore/bump-version
++    - |
++      curl \
++        --header "PRIVATE-TOKEN: $PAT" \
++        --url https://${GITLAB_ENDPOINT}/api/v4/projects/${CI_PROJECT_ID}/merge_requests \
++        -d "source_branch=bot/chore/bump-version" \
++        -d "target_branch=$RELEASE_BRANCH" \
++        -d "title=chore: Fix version of \`$RELEASE_BRANCH\`" \
++        -d "description=[🤖]: Hi @okoenig 👋,<br><br>we've adjusted the version number of \`$RELEASE_BRANCH\` for you! 🚀<br><br>Please review and approve this cherry pick by your convenience\!"
++
++publish:release_pypi_build_wheel:
++  extends: [publish:test_release_pypi_build_wheel, .publish_common_release]
++  dependencies: []
++  variables:
++    PUBLISH_DRYRUN: "no"
++
++publish:release_pypi_test_wheel:
++  extends: [publish:test_release_pypi_test_wheel, .publish_common_release]
++  needs: [publish:release_pypi_build_wheel]
++  variables:
++    PUBLISH_DRYRUN: "no"
++
++publish:release_pypi_push_wheel:
++  extends: [publish:test_release_pypi_push_wheel, .publish_common_release]
++  needs: [publish:release_pypi_test_wheel]
++  dependencies: [publish:release_pypi_test_wheel]
++  variables:
++    PUBLISH_DRYRUN: "no"
++
++publish:release_github:
++  extends: [publish:test_release_github, .publish_common_release]
++  dependencies: [publish:release_pypi_test_wheel]
++  needs: [publish:release_pypi_test_wheel]
++  variables:
++    PUBLISH_DRYRUN: "no"
++
++publish:release_version_bump:
++  needs: [publish:release_pypi_test_wheel]
++  extends: [publish:test_release_version_bump, .publish_common_release]
++  variables:
++    PUBLISH_DRYRUN: "no"
++
++publish:release_notify:
++  needs: [publish:release_pypi_test_wheel, publish:release_pypi_push_wheel, publish:release_github]
++  extends: [publish:test_release_notify, .publish_common_release]
++  dependencies: [publish:release_pypi_test_wheel]
++  variables:
++    PUBLISH_DRYRUN: "no"
++
++publish:docs:
++  extends: [.publish_common_release]
++  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  before_script:
++    - eval PUBLISH_COMMIT=$PUBLISH_COMMIT
++    - git fetch origin '+refs/merge-requests/*:refs/remotes/merge-requests/*'
++    - git fetch origin $PUBLISH_COMMIT
++    - git checkout $PUBLISH_COMMIT
++  script:
++    - cd ..
++    - rm -rf documentation && git clone --recursive https://gitlab-ci-token:${PAT}@${GITLAB_ENDPOINT}/nemo-megatron-core-tme/documentation.git
++    - cd documentation/megatron-lm
++    - git config --global user.email "mcore-bot@nvidia.com"
++    - git config --global user.name "Mcore Bot"
++    - git fetch origin '+refs/merge-requests/*:refs/remotes/merge-requests/*'
++    - git fetch origin $PUBLISH_COMMIT
++    - git checkout $PUBLISH_COMMIT
++    - cd ..
++    - git add megatron-lm
++    - |
++      git commit -m 'feat: Bump mcore'
++
++    - git push
++  rules:
++    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $CI_PIPELINE_SOURCE == "push"'
++      allow_failure: true
++    - when: never
++
++publish:upload_statistics:
++  stage: publish
++  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
++  needs:
++    - job: test:unit_tests_pyt(DEV)_mcore(legacy)
++      optional: true
++    - job: test:unit_tests_pyt(LTS)_mcore(legacy)
++      optional: true
++    - job: test:unit_tests_pyt(DEV)_mcore(latest)
++    - job: test:unit_tests_pyt(LTS)_mcore(latest)
++    - job: functional:run_lts
++      optional: true
++    - job: functional:run_dev
++      optional: true
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  script:
++    - env
++    - export RO_API_TOKEN=${PROJECT_ACCESS_TOKEN_MCORE}
++    - export GITLAB_ENDPOINT
++    - export DASHBOARD_ENDPOINT
++    - python tests/test_utils/python_scripts/dashboard.py --pipeline-id ${CI_PIPELINE_ID}
++  rules:
++    - if: ($CI_MERGE_REQUEST_EVENT_TYPE == 'merged_result' || $CI_MERGE_REQUEST_EVENT_TYPE == 'merge_train') && ($UNIT_TEST == "yes" || $INTEGRATION_TEST == "yes" || $FUNCTIONAL_TEST == "yes")
++      when: always
++      allow_failure: true
++    - when: never
++
++public:review_reminder:
++  stage: publish
++  image: ${UTILITY_IMAGE}:${CI_PIPELINE_ID}
++  script:
++    - export GITLAB_ENDPOINT
++    - export RO_API_TOKEN=${PAT}
++    - export SLACK_WEBHOOK_URL=${SLACK_REMINDER_HOOK}
++    - export SLACK_API_TOKEN=${SLACK_API_TOKEN}
++    - python tests/test_utils/python_scripts/auto_reminder.py
++  tags:
++    - arch/amd64
++    - env/prod
++    - origin/jet-fleet
++    - owner/jet-core
++    - purpose/utility
++    - team/megatron
++  rules:
++    - if: $CI_COMMIT_BRANCH == "ci-review-reminder" && $PUBLISH == "yes" && $PUBLISH_SCOPE == "review-reminder"
++    - when: never
+diff --git a/megatron-lm-musa-patch b/megatron-lm-musa-patch
+new file mode 160000
+index 00000000..32dfbca0
+--- /dev/null
++++ b/megatron-lm-musa-patch
+@@ -0,0 +1 @@
++Subproject commit 32dfbca01f215d0bba47dd799f623d1f19b3b7a7
+diff --git a/megatron/core/extensions/transformer_engine.py b/megatron/core/extensions/transformer_engine.py
+index 1d5725cc..ab667855 100644
+--- a/megatron/core/extensions/transformer_engine.py
++++ b/megatron/core/extensions/transformer_engine.py
+@@ -1344,16 +1344,30 @@ try:
+ 
+     from transformer_engine.pytorch.permutation import (
+         moe_permute,
+-        moe_sort_chunks_by_index,
++        # moe_sort_chunks_by_index,
+         moe_unpermute,
+     )
+ 
+     fused_permute = moe_permute
+     fused_unpermute = moe_unpermute
+-    fused_sort_chunks_by_index = moe_sort_chunks_by_index
++    fused_sort_chunks_by_index = None #moe_sort_chunks_by_index
+ 
+ except ImportError:
+ 
+     fused_permute = None
+     fused_unpermute = None
+     fused_sort_chunks_by_index = None
++
++try:
++
++    from transformer_engine.pytorch.cross_entropy import parallel_cross_entropy
++
++    def te_parallel_cross_entropy(logits: torch.Tensor, labels: torch.Tensor):
++        """Wrapper function for TE's Cross Entropy Loss kernel"""
++        return parallel_cross_entropy(
++            logits, labels, 0.0, False, get_tensor_model_parallel_group(check_initialized=False)
++        )
++
++except ImportError:
++
++    te_parallel_cross_entropy = None
+\ No newline at end of file
+diff --git a/megatron/core/models/common/language_module/language_module.py b/megatron/core/models/common/language_module/language_module.py
+index cb26be12..898e7f0b 100644
+--- a/megatron/core/models/common/language_module/language_module.py
++++ b/megatron/core/models/common/language_module/language_module.py
+@@ -13,7 +13,10 @@ from megatron.core.transformer.enums import AttnBackend
+ from megatron.core.transformer.module import MegatronModule
+ from megatron.core.transformer.transformer_config import TransformerConfig
+ from megatron.core.utils import make_tp_sharded_tensor_for_checkpoint
+-
++try:
++    from megatron.core.extensions.transformer_engine import te_parallel_cross_entropy
++except:
++    te_parallel_cross_entropy = None
+ 
+ class LanguageModule(MegatronModule):
+     """Base language module that has common helper functions used across GPT, BERT etc.
+@@ -76,7 +79,10 @@ class LanguageModule(MegatronModule):
+         # [b s] => [s b]
+         labels = labels.transpose(0, 1).contiguous()
+         if self.config.cross_entropy_loss_fusion:
+-            loss = fused_vocab_parallel_cross_entropy(logits, labels)
++            # loss = fused_vocab_parallel_cross_entropy(logits, labels)
++            # HACK(yehua.zhang): replace fuse cross entropy to triton
++            labels = torch.as_strided(labels, labels.size(), (labels.size()[1], 1))
++            loss = te_parallel_cross_entropy(logits, labels)
+         else:
+             loss = tensor_parallel.vocab_parallel_cross_entropy(logits, labels)
+ 
+diff --git a/megatron/core/optimizer/clip_grads.py b/megatron/core/optimizer/clip_grads.py
+index 0f33f919..f5cb2c49 100644
+--- a/megatron/core/optimizer/clip_grads.py
++++ b/megatron/core/optimizer/clip_grads.py
+@@ -87,7 +87,7 @@ def get_grad_norm_fp32(
+     # Calculate norm.
+     if norm_type == inf:
+         total_norm = max(grad.abs().max() for grad in grads_for_norm)
+-        total_norm_cuda = torch.tensor([float(total_norm)], dtype=torch.float, device='cuda')
++        total_norm_cuda = torch.tensor([float(total_norm)], dtype=torch.float, device='musa')
+         # Take max across all data-parallel GPUs if using FSDP and then all model-parallel GPUs.
+         if data_parallel_group:
+             torch.distributed.all_reduce(
+@@ -100,7 +100,7 @@ def get_grad_norm_fp32(
+ 
+     else:
+         if norm_type == 2.0:
+-            dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device='cuda')
++            dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device='musa')
+             # Use apex's multi-tensor applier for efficiency reasons.
+             # Multi-tensor applier takes a function and a list of list
+             # and performs the operation on that list all in one kernel.
+@@ -112,7 +112,7 @@ def get_grad_norm_fp32(
+                     False,  # no per-parameter norm
+                 )
+             else:
+-                grad_norm = torch.tensor([0], dtype=torch.float, device='cuda')
++                grad_norm = torch.tensor([0], dtype=torch.float, device='musa')
+             # Since we will be summing across data parallel groups,
+             # we need the pow(norm-type).
+             total_norm = grad_norm**norm_type
+@@ -171,7 +171,7 @@ def clip_grad_by_total_norm_fp32(
+     # Scale.
+     clip_coeff = max_norm / (total_norm + 1.0e-6)
+     if clip_coeff < 1.0:
+-        dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device='cuda')
++        dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device='musa')
+         multi_tensor_applier(
+             multi_tensor_scale_impl, dummy_overflow_buf, [grads, grads], clip_coeff
+         )
+@@ -203,7 +203,7 @@ def count_zeros_fp32(
+     #   - grad should not be none
+     #   - parameter should not be shared
+     #   - should not be a replica due to tensor model parallelism
+-    total_num_zeros = torch.tensor([0.0], dtype=torch.float, device='cuda')
++    total_num_zeros = torch.tensor([0.0], dtype=torch.float, device='musa')
+     data_parallel_group = None
+     for param in parameters:
+         grad_attr = "decoupled_grad" if use_decoupled_grad else "grad"
+diff --git a/megatron/core/tensor_parallel/cross_entropy.py b/megatron/core/tensor_parallel/cross_entropy.py
+index 27c8f063..bd589083 100644
+--- a/megatron/core/tensor_parallel/cross_entropy.py
++++ b/megatron/core/tensor_parallel/cross_entropy.py
+@@ -59,6 +59,7 @@ class VocabParallelCrossEntropy:
+         predicted_logits_1d = logits_2d[arange_1d, masked_target_1d]
+         predicted_logits_1d = predicted_logits_1d.clone().contiguous()
+         predicted_logits = predicted_logits_1d.view_as(target)
++        # print(f'target_mask is {target_mask.shape}, {target_mask.dtype}, predicted_logits is {predicted_logits.shape}, {predicted_logits.dtype}')
+         predicted_logits[target_mask] = 0.0
+ 
+         exp_logits = vocab_parallel_logits
+diff --git a/megatron/core/tensor_parallel/mappings.py b/megatron/core/tensor_parallel/mappings.py
+index cdd72068..66bf2083 100644
+--- a/megatron/core/tensor_parallel/mappings.py
++++ b/megatron/core/tensor_parallel/mappings.py
+@@ -439,6 +439,10 @@ class _AllToAll(torch.autograd.Function):
+                 dtype=input.dtype,
+                 device=torch.cuda.current_device(),
+             )
++        # print(f'output_split_sizes is {output_split_sizes}')
++        # print(f'input_split_sizes is {input_split_sizes}')
++        # print(f'output is {output.shape}')
++        # print(f'input is {input.shape}')
+         torch.distributed.all_to_all_single(
+             output,
+             input,
+diff --git a/megatron/core/transformer/moe/experts.py b/megatron/core/transformer/moe/experts.py
+index fc0cf3e6..2a857991 100644
+--- a/megatron/core/transformer/moe/experts.py
++++ b/megatron/core/transformer/moe/experts.py
+@@ -682,11 +682,12 @@ class TEGroupedMLP(MegatronModule):
+             output (torch.Tensor): The output of the local experts.
+         """
+         tokens_per_expert = tokens_per_expert.tolist()
+-        if self.config.fp8:
+-            actual_tokens_per_expert = tokens_per_expert
+-            permuted_local_hidden_states, tokens_per_expert = self.fp8_padding(
+-                permuted_local_hidden_states, tokens_per_expert
+-            )
++        # TODO(yehua.zhang): musa groupgemm do not need to padding
++        # if self.config.fp8:
++        #     actual_tokens_per_expert = tokens_per_expert
++        #     permuted_local_hidden_states, tokens_per_expert = self.fp8_padding(
++        #         permuted_local_hidden_states, tokens_per_expert
++        #     )
+ 
+         intermediate_parallel, bias_parallel = self.linear_fc1(
+             permuted_local_hidden_states, tokens_per_expert
+@@ -734,8 +735,9 @@ class TEGroupedMLP(MegatronModule):
+         output, output_bias = self.linear_fc2(intermediate_parallel, tokens_per_expert)
+ 
+         # upad and concat the output
+-        if self.config.fp8:
+-            output = self.fp8_unpadding(output, actual_tokens_per_expert)
++        # TODO(yehua.zhang): musa groupgemm do not need to unpadding
++        # if self.config.fp8:
++        #     output = self.fp8_unpadding(output, actual_tokens_per_expert)
+ 
+         return output, output_bias
+ 
+diff --git a/megatron/core/transformer/moe/moe_utils.py b/megatron/core/transformer/moe/moe_utils.py
+index cf7cf2b4..87886e38 100644
+--- a/megatron/core/transformer/moe/moe_utils.py
++++ b/megatron/core/transformer/moe/moe_utils.py
+@@ -354,7 +354,8 @@ def sort_chunks_by_idxs(
+     input: torch.Tensor, split_sizes: torch.Tensor, sorted_idxs: torch.Tensor, fused: bool = False
+ ):
+     """Split and sort the input tensor based on the split_sizes and sorted indices."""
+-    if fused:
++    # TODO(yehua.zhang) optimize the sort chunk kernel
++    if False:#fused:
+         if not HAVE_TE or fused_sort_chunks_by_index is None:
+             raise ValueError(
+                 "fused_sort_chunks_by_index is not available. Please install TE >= 2.1.0."
+@@ -403,7 +404,8 @@ def group_limited_topk(
+         Tuple[torch.Tensor, torch.Tensor]: Probs and indices tensor.
+     """
+     # Organize the experts into groups
+-    group_scores = scores.view(num_tokens, num_groups, -1).topk(2, dim=-1)[0].sum(dim=-1)
++    # TODO(yehua.zhang) delete the max
++    group_scores = scores.view(num_tokens, num_groups, -1).max(dim=-1).values #.topk(2, dim=-1)[0].sum(dim=-1)
+     group_idx = torch.topk(group_scores, k=group_topk, dim=-1, sorted=False)[1]
+     group_mask = torch.zeros_like(group_scores)
+     group_mask.scatter_(1, group_idx, 1)
+diff --git a/megatron/core/transformer/moe/router.py b/megatron/core/transformer/moe/router.py
+index 5965c16d..75023684 100644
+--- a/megatron/core/transformer/moe/router.py
++++ b/megatron/core/transformer/moe/router.py
+@@ -112,9 +112,11 @@ class TopKRouter(Router):
+                 torch.zeros(self.config.num_moe_experts, dtype=torch.float32),
+                 persistent=False,
+             )
++            self.local_tokens_per_expert = self.local_tokens_per_expert.cuda()
+             self.register_buffer(
+                 'expert_bias', torch.zeros(self.config.num_moe_experts, dtype=torch.float32)
+             )
++            self.expert_bias = self.expert_bias.cuda()
+         else:
+             self.local_tokens_per_expert = None
+             self.expert_bias = None
+diff --git a/megatron/core/transformer/transformer_config.py b/megatron/core/transformer/transformer_config.py
+index d92d86e7..36bbba73 100644
+--- a/megatron/core/transformer/transformer_config.py
++++ b/megatron/core/transformer/transformer_config.py
+@@ -755,8 +755,8 @@ class TransformerConfig(ModelParallelConfig):
+                     "apply_rope_fusion is not available. Please install TE >= 1.4 or Apex."
+                 )
+ 
+-            if self.multi_latent_attention:
+-                raise ValueError("multi_latent_attention does not support apply_rope_fusion.")
++            # if self.multi_latent_attention:
++            #     raise ValueError("multi_latent_attention does not support apply_rope_fusion.")
+ 
+         if self.multi_latent_attention and self.rotary_interleaved:
+             raise ValueError("rotary_interleaved does not work with multi_latent_attention.")
+@@ -857,12 +857,12 @@ class TransformerConfig(ModelParallelConfig):
+                 fused_unpermute,
+             )
+ 
+-            if (
+-                fused_permute is None
+-                or fused_sort_chunks_by_index is None
+-                or fused_unpermute is None
+-            ):
+-                raise ValueError("fused permutation is not available. Please install TE >= 2.1.0.")
++            # if (
++            #     fused_permute is None
++            #     or fused_sort_chunks_by_index is None
++            #     or fused_unpermute is None
++            # ):
++            #     raise ValueError("fused permutation is not available. Please install TE >= 2.1.0.")
+ 
+         if self.cp_comm_type is not None:
+             if isinstance(self.cp_comm_type, list):
+diff --git a/megatron/training/tokenizer/tokenizer.py b/megatron/training/tokenizer/tokenizer.py
+index 620a0cbb..556e7cbf 100644
+--- a/megatron/training/tokenizer/tokenizer.py
++++ b/megatron/training/tokenizer/tokenizer.py
+@@ -129,7 +129,7 @@ class _HuggingFaceTokenizer(MegatronTokenizer):
+             )
+ 
+         # TODO(bnorick): download tokenizer once to lustre and use force offline to make sure all tasks read it from there
+-        self._tokenizer = transformers.AutoTokenizer.from_pretrained(
++        self._tokenizer = transformers.AutoTokenizer.from_pretrained(trust_remote_code=True, 
+             pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs
+         )
+         self._vocab = self._tokenizer.get_vocab()
+diff --git a/megatron/training/training.py b/megatron/training/training.py
+index 7cf6fcbd..768dcd2c 100644
+--- a/megatron/training/training.py
++++ b/megatron/training/training.py
+@@ -52,6 +52,7 @@ from megatron.core.rerun_state_machine import (
+     RerunDataIterator,
+     RerunMode,
+ )
++from megatron.core.fp8_utils import get_fp8_scale_and_amax
+ from megatron.training.initialize import initialize_megatron
+ from megatron.training.initialize import write_args_to_tensorboard
+ from megatron.training.initialize import set_jit_fusion_options
+@@ -582,9 +583,9 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
+     # GPU allocation.
+     # For FSDP2, we don't allocate GPU memory here. We allocate GPU memory
+     # in the fully_shard function of FSDP2 instead.
+-    if not (args.use_torch_fsdp2 and args.use_cpu_initialization) and not args.init_model_with_meta_device:
+-        for model_module in model:
+-            model_module.cuda(torch.cuda.current_device())
++    # if not (args.use_torch_fsdp2 and args.use_cpu_initialization) and not args.init_model_with_meta_device:
++    #     for model_module in model:
++    #         model_module.cuda(torch.cuda.current_device())
+ 
+     # Fp16 conversion.
+     if args.fp16 or args.bf16:
+@@ -595,15 +596,19 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
+     # param) to its amax_history. The following logic will correct the amax_history back.
+     for model_module in model:
+         for param in model_module.parameters():
+-            if is_float8tensor(param) and param._fp8_meta is not None:
+-                fp8_meta = param._fp8_meta['scaling_fwd']
+-                fp8_meta_index = param._fp8_meta_index
+-                if hasattr(param, 'get_high_precision_init_val'):
+-                    fp8_meta.amax_history[0][fp8_meta_index].copy_(
+-                        param.get_high_precision_init_val().abs().max()
+-                    )
+-                else:
+-                    fp8_meta.amax_history[0][fp8_meta_index] = 0
++            if is_float8tensor(param): #and param._fp8_meta is not None:
++                # TODO(yehua.zhang): move the fp8_meta_index
++                scale, amax = get_fp8_scale_and_amax(param)
++                # amax = 0
++                amax[0].zero_()
++                # fp8_meta = param._fp8_meta['scaling_fwd']
++                # fp8_meta_index = param._fp8_meta_index
++                # if hasattr(param, 'get_high_precision_init_val'):
++                #     fp8_meta.amax_history[0][fp8_meta_index].copy_(
++                #         param.get_high_precision_init_val().abs().max()
++                #     )
++                # else:
++                #     fp8_meta.amax_history[0][fp8_meta_index] = 0
+ 
+     if wrap_with_ddp:
+         if args.use_torch_fsdp2:

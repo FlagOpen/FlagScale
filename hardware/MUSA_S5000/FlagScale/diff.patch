@@ -1,0 +1,1704 @@
+diff --git a/examples/deepseek_v3/conf/train.yaml b/examples/deepseek_v3/conf/train.yaml
+index 86fa1e1d..db6639fb 100644
+--- a/examples/deepseek_v3/conf/train.yaml
++++ b/examples/deepseek_v3/conf/train.yaml
+@@ -8,7 +8,7 @@ experiment:
+   seed: 42
+   save_steps: 10000
+   load: None
+-  exp_dir: /xxx
++  exp_dir: ./output_openseek
+   ckpt_format: torch
+   task:
+     type: train
+@@ -18,13 +18,30 @@ experiment:
+     per_node_task: false
+     no_shared_fs: false
+     rdzv_backend: static
+-    hostfile: null
+-  cmds:
+-    before_start: "ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale"
++    hostfile: ./hostfile
++    ssh_port: 62216
++  # cmds:
++  #   before_start: "ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale"
+   envs:
+     LOGLEVEL: "INFO"
+-    CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
++    MUSA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
+     CUDA_DEVICE_MAX_CONNECTIONS: 1
++    MUSA_KERNEL_TIMEOUT: 3200000
++    ACCELERATOR_BACKEND: musa
++    MCCL_PROTOS: 2
++    MCCL_CHECK_POINTERS: 0
++    OMP_NUM_THREADS: 4
++    MCCL_ALGOS: 1
++    MCCL_BUFFSIZE: 20971520
++    MUSA_BLOCK_SCHEDULE_MODE: 1
++    MCCL_IB_GID_INDEX: 3
++    MCCL_NET_SHARED_BUFFERS: 0
++    NO_LOSS_REDUCE: 1
++    # ENABLE_ZERO_BUBBLE: 1
++    MUSA_USERQ : 1
++    ENABLE_D2H_IN_PERMUTATION: 1
++    # ENABLE_PROFILER: 1
++    # PROFILER_FREQ: 4
+ 
+ action: run
+ 
+diff --git a/examples/deepseek_v3/conf/train/16b_a3b.yaml b/examples/deepseek_v3/conf/train/16b_a3b.yaml
+index fe469de9..24899b5c 100644
+--- a/examples/deepseek_v3/conf/train/16b_a3b.yaml
++++ b/examples/deepseek_v3/conf/train/16b_a3b.yaml
+@@ -1,10 +1,10 @@
+ system:
+   no_shared_fs: ${experiment.runner.no_shared_fs}
+-  num_workers: 16
+-  tensor_model_parallel_size: 2
+-  pipeline_model_parallel_size: 2
+-  decoder_first_pipeline_num_layers: 13
+-  expert_model_parallel_size: 2
++  num_workers: 8
++  tensor_model_parallel_size: 1
++  pipeline_model_parallel_size: 4
++  decoder_first_pipeline_num_layers: 6
++  expert_model_parallel_size: 1
+   context_parallel_size: 1
+   disable_bias_linear: true
+   reset_position_ids: True
+@@ -12,9 +12,9 @@ system:
+   qk_layernorm: true
+   sequence_parallel: true
+   use_distributed_optimizer: true
+-  overlap_grad_reduce: true
+-  overlap_param_gather: true
+-  finetune: false
++  overlap_grad_reduce: false
++  overlap_param_gather: false
++  finetune: true
+   precision:
+     bf16: true
+     attention_softmax_in_fp32: true
+@@ -22,8 +22,8 @@ system:
+   logging:
+     log_interval: 1
+     tensorboard_log_interval: 1
+-    wandb_project: ${experiment.exp_name}
+-    wandb_exp_name: ${experiment.exp_name}
++    # wandb_project: ${experiment.exp_name}
++    # wandb_exp_name: ${experiment.exp_name}
+     log_timers_to_tensorboard: true
+     log_validation_ppl_to_tensorboard: true
+     log_throughput: true
+@@ -31,9 +31,10 @@ system:
+     log_num_zeros_in_grad: true
+     log_memory_to_tensorboard: true
+   checkpoint:
+-    save_interval: ${experiment.save_steps}
+-    load: ${experiment.load}
+-    ckpt_format: ${experiment.ckpt_format}
++    save_interval: 1000
++    load: /home/dist/haoran/converted_bf16_model
++    ckpt_format: torch
++    no_load_optim: true
+ 
+ model:
+   transformer_impl: transformer_engine
+@@ -55,7 +56,9 @@ model:
+   position_embedding_type: rope
+   untie_embeddings_and_output_weights: true
+   no_position_embedding: true
+-  no_rope_fusion: true
++  no_rope_fusion: false
++  # fp8_format: hybrid
++  # fp8_param_gather: true
+ 
+   # mla args ==================
+   multi_latent_attention: true
+@@ -67,7 +70,7 @@ model:
+   # moe args ===================
+   ffn_hidden_size: 11264
+   moe_ffn_hidden_size: 1408
+-  moe_grouped_gemm: true
++  moe_grouped_gemm: false
+   moe_shared_expert_intermediate_size: 2816
+   num_experts: 64
+   moe_router_load_balancing_type: "seq_aux_loss"
+@@ -82,19 +85,19 @@ model:
+   moe_router_topk: 6
+   moe_router_topk_scaling_factor: 2.446
+   moe_token_dispatcher_type: "alltoall"
+-  # moe_permute_fusion: true
++  moe_permute_fusion: true
+ 
+   # mtp args ====================
+-  mtp_num_layers: 1
+-  mtp_loss_scaling_factor: 0.3
++  # mtp_num_layers: 1
++  # mtp_loss_scaling_factor: 0.3
+ 
+   # training
+   seed: ${experiment.seed}
+   # finetune: false
+   micro_batch_size: 1
+-  global_batch_size: 2048
++  global_batch_size: 256
+   eval_iters: 0
+-  train_samples: 244141056 #1T #29297664 #120B tokens
++  train_samples: 768000 #1T #29297664 #120B tokens
+ 
+   optimizer:
+     weight_decay: 0.1
+@@ -103,18 +106,19 @@ model:
+     lr_scheduler:
+       lr: 3.0e-3
+       min_lr: 3.0e-4
+-      lr_warmup_samples: 2048000
++      lr_warmup_samples: 76800
+       lr_decay_style: WSD
+       lr_wsd_decay_style: cosine
+-      lr_wsd_decay_samples: 2048
++      lr_wsd_decay_samples: 768
+ 
+ 
+ data:
+-  data_path: /path
++  data_path: /home/dist/haoran/perf_logs/XLC_2025_openseek/dataset/cosmopedia-v2-full_text_document
+   split: 1
+-  no_mmap_bin_files: true
+   tokenizer:
+-    tokenizer_type: QwenTokenizerFS
+-    tokenizer_path: examples/aquila/qwentokenizer
++    tokenizer_type: HuggingFaceTokenizer
++    tokenizer_model: /home/dist/haoran/perf_logs/hf_ckpt
++    # tiktoken_pattern: v1
++    # tiktoken_special_tokens: None
+     vocab_size: 151851
+     make_vocab_size_divisible_by: 64
+diff --git a/examples/llama3/conf/train.yaml b/examples/llama3/conf/train.yaml
+index 8b3acdfd..d07401f5 100644
+--- a/examples/llama3/conf/train.yaml
++++ b/examples/llama3/conf/train.yaml
+@@ -1,24 +1,42 @@
+ defaults:
+-  - train: 70b
++  - train: 8b
+   - _self_
+ 
+ experiment:
+   exp_name: llama3
+-  exp_dir: ./outputs_llama3_70b
++  exp_dir: ./outputs_llama3_8b
+   task:
+     type: train
+     backend: megatron
+     entrypoint: ./flagscale/train/train_gpt.py
+   runner:
+-    backend: torchrun
+-    nnodes: 4
+-    nproc_per_node: 8
+-    hostfile: ${hostfile??}
++    per_node_task: false
++    no_shared_fs: false
++    rdzv_backend: static
++    hostfile: ./hostfile
++    ssh_port: 62216
++    # backend: torchrun
++    # nnodes: 4
++    # nproc_per_node: 8
++    # hostfile: ./hostfile
++    # ssh_port: 62216
++  # cmds:
++  #   before_start: "ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale"
+   envs:
+-    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
++    LOGLEVEL: "INFO"
++    MUSA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
+     CUDA_DEVICE_MAX_CONNECTIONS: 1
+-    NVTE_APPLY_QK_LAYER_SCALING: 0
+-    NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
++    MUSA_KERNEL_TIMEOUT: 3200000
++    ACCELERATOR_BACKEND: musa
++    MCCL_PROTOS: 1
++    MCCL_CHECK_POINTERS: 0
++    OMP_NUM_THREADS: 4
++    #MCCL_ALGOS: 1
++    #MCCL_BUFFSIZE: 20971520
++    #MUSA_BLOCK_SCHEDULE_MODE: 1
++    #MCCL_IB_GID_INDEX: 3
++    #MCCL_NET_SHARED_BUFFERS: 0
++  
+ action: run
+ 
+ hydra:
+diff --git a/examples/llama3/conf/train/70b.yaml b/examples/llama3/conf/train/70b.yaml
+index 8e4a06be..ad20e27d 100644
+--- a/examples/llama3/conf/train/70b.yaml
++++ b/examples/llama3/conf/train/70b.yaml
+@@ -1,28 +1,31 @@
+ system:
+   tensor_model_parallel_size: 8
+-  pipeline_model_parallel_size: 4
+-  make_vocab_size_divisible_by: 64
++  pipeline_model_parallel_size: 2
+   disable_bias_linear: True
+   sequence_parallel: True
+   use_flash_attn: True
+   use_distributed_optimizer: True
+-  use_mcore_models: True
+-  transformer_impl: transformer_engine
++
++  #fp8-param-gather: True
+   precision:
+     bf16: True
+-    attention_softmax_in_fp32: True
+-    accumulate_allreduce_grads_in_fp32: True
++    attention_softmax_in_fp32: true
++    accumulate_allreduce_grads_in_fp32: true
+   logging:
+     log_interval: 1
+     tensorboard_log_interval: 1
+-    wandb_project: "train-llama3-70B"
+-    wandb_exp_name: "train-llama3-70B"
++    # wandb_project: "train-llama3-70B"
++    # wandb_exp_name: "train-llama3-70B"
+   checkpoint:
+-    ckpt_format: torch
+-    save_interval: 100
++    save_interval: 10000
++    # ckpt_format: torch
++    # save_interval: 100
+ 
+ model:
+-  num_layers: 80
++  use_mcore_models: True
++  transformer_impl: transformer_engine
++  fp8-format: hybrid
++  num_layers: 40
+   hidden_size: 8192
+   num_attention_heads: 64
+   group_query_attention: True
+@@ -31,13 +34,14 @@ model:
+   seq_length: 8192
+   max_position_embeddings: 8192
+   norm_epsilon: 1e-5
+-  norm_init_weight: 0.02
++  #norm_init_weight: 0.02
+   use_rotary_position_embeddings: True
+   rotary_base: 500000
+-  no_position_embedding: True
+-  reset_position_ids: True
++  #no_position_embedding: True
++  #reset_position_ids: True
+   add_qkv_bias: false
+-  reset_attention_mask: True
++  #reset_attention_mask: True
++  position_embedding_type: rope
+   swiglu: True
+   normalization: RMSNorm
+   untie_embeddings_and_output_weights: True
+@@ -45,10 +49,9 @@ model:
+   attention_dropout: 0.0
+   hidden_dropout: 0.0
+   clip_grad: 1.0
+-
+   train_samples: 6160066
+   micro_batch_size: 1
+-  global_batch_size: 1024
++  global_batch_size: 32
+   seed: 42
+ 
+   optimizer:
+@@ -64,9 +67,11 @@ model:
+       lr_decay_style: cosine
+ 
+ data:
+-  data_path: ${data_path:??}
++  data_path: /home/dist/haoran/perf_logs/XLC_2025_llama3/dataset/dedup-md5-pile-pile-cc_text_document
++  data_cache_path: /home/dist/haoran/FlagScale/llama3_data2
+   split: 1
+   tokenizer:
+-    tokenizer_type: Llama3TokenizerFS
+-    tokenizer_path: ${tokenizer_path:??}
++    tokenizer_type: HuggingFaceTokenizer
++    tokenizer_model: /home/dist/haoran/perf_logs/XLC_2025_llama3/tokenizer/
+     vocab_size: 128256
++    make_vocab_size_divisible_by: 64
+diff --git a/examples/llama3/conf/train/8b.yaml b/examples/llama3/conf/train/8b.yaml
+index 41e3c1d8..2fe322a8 100644
+--- a/examples/llama3/conf/train/8b.yaml
++++ b/examples/llama3/conf/train/8b.yaml
+@@ -1,6 +1,6 @@
+ system:
+-  tensor_model_parallel_size: 4
+-  pipeline_model_parallel_size: 2
++  tensor_model_parallel_size: 2
++  pipeline_model_parallel_size: 1
+   disable_bias_linear: True
+   use_flash_attn: True
+   sequence_parallel: True
+@@ -12,16 +12,18 @@ system:
+   logging:
+     log_interval: 1
+     tensorboard_log_interval: 1
+-    wandb_project: "train-llama3-8B"
+-    wandb_exp_name: "train-test-8B"
++    # wandb_project: "train-llama3-8B"
++    # wandb_exp_name: "train-test-8B"
+   checkpoint:
+-    load: outputs_llama3/checkpoint_mc
+-    save_interval: 10
+-    finetune: True
++    # load: outputs_llama3/checkpoint_mc
++    save_interval: 10000
++    # finetune: True
+ 
+ model:
+   use_mcore_models: True
+   transformer_impl: transformer_engine
++  fp8-format: hybrid
++  fp8-param-gather: True
+   num_layers: 32
+   hidden_size: 4096
+   ffn_hidden_size: 14336
+@@ -47,7 +49,7 @@ model:
+   eval_iters: 100
+   eval_interval: 1000
+   micro_batch_size: 1
+-  global_batch_size: 2048
++  global_batch_size: 128
+ 
+   optimizer:
+     weight_decay: 1e-2
+@@ -60,10 +62,11 @@ model:
+       lr_decay_style: cosine
+ 
+ data:
+-  data_path: examples/llama/pile-openwebtext_text_document/pile-openwebtext_text_document
++  data_path: /home/dist/haoran/perf_logs/XLC_2025_llama3/dataset/dedup-md5-pile-pile-cc_text_document
++  data_cache_path: /home/dist/haoran/FlagScale/llama3_data
+   split: 1
+   tokenizer:
+-    tokenizer_type: Llama3TokenizerFS
+-    tokenizer_path: meta-llama3/Meta-Llama-3-8B
++    tokenizer_type: HuggingFaceTokenizer
++    tokenizer_model: /home/dist/haoran/perf_logs/XLC_2025_llama3/tokenizer/
+     vocab_size: 128256
+     make_vocab_size_divisible_by: 64
+diff --git a/examples/qwen2_5_vl/conf/train.yaml b/examples/qwen2_5_vl/conf/train.yaml
+index a46b04c7..3037969f 100644
+--- a/examples/qwen2_5_vl/conf/train.yaml
++++ b/examples/qwen2_5_vl/conf/train.yaml
+@@ -4,7 +4,11 @@ defaults:
+ 
+ experiment:
+   exp_name: train_qwen2_5_vl_7b
+-  exp_dir: ./${experiment.exp_name}
++  seed: 42
++  save_steps: 10000
++  load: None
++  exp_dir: ./outputs_qwen2.5
++  ckpt_format: torch
+   task:
+     type: train
+     backend: megatron
+@@ -13,15 +17,33 @@ experiment:
+     backend: torchrun
+     nnodes: 1
+     nproc_per_node: 8
+-    hostfile: null
++      #per_node_task: false
++      #no_shared_fs: false
++      #rdzv_backend: static
++      #hostfile: /home/dist/edison/FlagScale/examples/qwen2_5_vl/conf/train/hostfile
++    ssh_port: 62216
+   envs:
+-    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
++    LOGLEVEL: INFO
++    MUSA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
+     CUDA_DEVICE_MAX_CONNECTIONS: 1
+-    NVTE_APPLY_QK_LAYER_SCALING: 0
+-    NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
++    MUSA_KERNEL_TIMEOUT: 3200000
++    ACCELERATOR_BACKEND: musa
++    MCCL_PROTOS: 2
++    MCCL_CHECK_POINTERS: 0
++    OMP_NUM_THREADS: 4
++    MCCL_ALGOS: 1
++    MCCL_BUFFSIZE: 20971520
++    MUSA_BLOCK_SCHEDULE_MODE: 1
++    MCCL_IB_GID_INDEX: 3
++    MCCL_NET_SHARED_BUFFERS: 0
++    MUSA_USERQ : 1
++    #CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
++    #CUDA_DEVICE_MAX_CONNECTIONS: 1
++    #NVTE_APPLY_QK_LAYER_SCALING: 0
++    #NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
+ 
+ action: run
+ 
+ hydra:
+   run:
+-    dir: ${experiment.exp_dir}/hydra
++    dir: /home/dist/edison/FlagScale/outputs_qwen2.5/hydra
+diff --git a/examples/qwen2_5_vl/conf/train/7b.yaml b/examples/qwen2_5_vl/conf/train/7b.yaml
+index c9c12fc0..99a613eb 100644
+--- a/examples/qwen2_5_vl/conf/train/7b.yaml
++++ b/examples/qwen2_5_vl/conf/train/7b.yaml
+@@ -1,6 +1,6 @@
+ system:
+-  tensor_model_parallel_size: 2
+-  pipeline_model_parallel_size: 1
++  tensor_model_parallel_size: 1
++  pipeline_model_parallel_size: 2
+   context_parallel_size: 1
+   # decoder_first_pipeline_num_layers: 10
+   disable_bias_linear: True
+@@ -8,8 +8,8 @@ system:
+   use_distributed_optimizer: True
+   sequence_parallel: True
+   tp_comm_overlap: False
+-  overlap_grad_reduce: True
+-  overlap_param_gather: True
++  overlap_grad_reduce: False
++  overlap_param_gather: False
+   use_mcore_models: True
+   transformer_impl: transformer_engine
+   # recompute_method: "uniform"
+@@ -23,14 +23,14 @@ system:
+     log_interval: 1
+     tensorboard_log_interval: 1
+     log_throughput: True
+-    wandb_project: ${experiment.exp_name}
+-    wandb_exp_name: ${experiment.exp_name}
++      #wandb_project: ${experiment.exp_name}
++      #wandb_exp_name: ${experiment.exp_name}
+     log_params_norm: True
+     log_num_zeros_in_grad: True
+   checkpoint:
+     save_interval: 1000
+-    pretrained_checkpoint: xxx/Qwen2.5-VL-7B-Instruct_mc
+-    dataloader_save: ${experiment.exp_dir}/checkpoints/dataloader
++    pretrained_checkpoint: /home/dist/edison/FlagScale/examples/qwen2_5_vl/conf/train/flagscale_ckpt_tp1pp2
++    dataloader_save: /home/dist/edison/FlagScale/outputs_qwen2.5/checkpoints/dataloader
+     use_dist_ckpt: False
+     ckpt_format: torch
+     async_save: False
+@@ -53,10 +53,10 @@ model:
+   attention_dropout: 0.0
+   hidden_dropout: 0.0
+   clip_grad: 1.0
+-  train_iters: 20000
++  train_iters: 5000
+   eval_iters: 0
+   micro_batch_size: 1
+-  global_batch_size: 320
++  global_batch_size: 256
+   allow_missing_vision_projection_checkpoint: False
+   apply_layernorm_1p: False
+   group_query_attention: True
+@@ -64,7 +64,7 @@ model:
+   untie_embeddings_and_output_weights: True
+ 
+   # position embedding
+-  position_embedding_type: mrope
++  position_embedding_type: rope
+   rotary_percent: 1.0
+   rotary_base: 1000000
+   rotary_seq_len_interpolation_factor: 1
+@@ -72,6 +72,7 @@ model:
+   mrope_section: [16, 24, 24]
+   eod_mask_loss: False
+ 
++  fp8-format: hybrid
+   # vision model
+   freeze_LM: False
+   freeze_ViT: False
+@@ -89,12 +90,13 @@ model:
+       lr_decay_style: cosine
+ 
+ data:
+-  data_path: xxx/data/llava-datasets/wds
++  data_path: /home/dist/haoran/perf_logs/XLC_2025_qwen2.5_vl/dataset
+   dataloader_type: external
+   split: 100,0,0
+   tokenizer:
+     tokenizer_type: Qwen2VLTokenizer
+-    tokenizer_path: xxx/Qwen2.5-VL-7B-Instruct_mc
++      #tokenizer_model: /home/dist/edison/FlagScale/examples/qwen2_5_vl/conf/train/Qwen2.5-VL-7B-Instruct
++    tokenizer_model: /home/dist/edison/FlagScale/examples/qwen2_5_vl/conf/train/flagscale_ckpt_tp1pp2
+     vocab_size: 152064 # 7b
+     extra_vocab_size: 421
+     make_vocab_size_divisible_by: 64
+diff --git a/flagscale/runner/runner_train.py b/flagscale/runner/runner_train.py
+index aa8f2f7b..c0761f6f 100644
+--- a/flagscale/runner/runner_train.py
++++ b/flagscale/runner/runner_train.py
+@@ -280,7 +280,7 @@ def run_node(
+     dryrun,
+ ):
+     cur_envs = add_decive_extra_config(user_envs, resource_info["type"])
+-    visible_devices = cur_envs.get("CUDA_VISIBLE_DEVICES", None)
++    visible_devices = cur_envs.get("MUSA_VISIBLE_DEVICES", None)
+     if visible_devices is not None and isinstance(visible_devices, str):
+         visible_devices = visible_devices.split(",")
+         num_visible_devices = len(visible_devices)
+diff --git a/flagscale/train/extra_valid.py b/flagscale/train/extra_valid.py
+index a9f199a1..2bb389aa 100644
+--- a/flagscale/train/extra_valid.py
++++ b/flagscale/train/extra_valid.py
+@@ -79,9 +79,9 @@ def build_extra_valid_datasets(build_extra_valid_dataset_provider):
+     """Build extra_valid datasets."""
+ 
+     args = get_args()
+-
++    return [None]
+     if args.extra_valid_data_path is None:
+-        return [None]
++       return [None]
+ 
+     assert (
+         len(args.extra_valid_data_path) % 2 == 0
+diff --git a/flagscale/train/train.py b/flagscale/train/train.py
+index 3eb11e71..3b54464f 100644
+--- a/flagscale/train/train.py
++++ b/flagscale/train/train.py
+@@ -11,7 +11,7 @@ import math
+ import os
+ import sys
+ from typing import List
+-
++# sys.path.append("/home/dist/haoran/FlagScale/Megatron-LM")
+ import torch.distributed
+ from megatron.training.log_handler import CustomHandler
+ 
+@@ -40,12 +40,12 @@ from megatron.core.utils import (
+     StragglerDetector,
+     is_te_min_version,
+ )
+-from megatron.core.fp8_utils import correct_amax_history_if_needed
++# from megatron.core.fp8_utils import correct_amax_history_if_needed
+ from megatron.training.checkpointing import load_checkpoint
+ from megatron.training.checkpointing import save_checkpoint
+ from megatron.training.checkpointing import checkpoint_exists
+ from megatron.core.transformer.module import Float16Module
+-from megatron.core.distributed import DistributedDataParallelConfig, TorchFullyShardedDataParallelConfig
++from megatron.core.distributed import DistributedDataParallelConfig #, TorchFullyShardedDataParallelConfig
+ from megatron.core.distributed import DistributedDataParallel as DDP
+ from megatron.core.distributed.custom_fsdp import FullyShardedDataParallel as custom_FSDP
+ 
+@@ -81,11 +81,11 @@ from megatron.core.parallel_state import (
+     model_parallel_is_initialized,
+ )
+ from megatron.core.pipeline_parallel import get_forward_backward_func
+-from megatron.core.pipeline_parallel.schedules import (
+-    convert_schedule_table_to_order,
+-    get_pp_rank_microbatches,
+-    get_schedule_table,
+-)
++# from megatron.core.pipeline_parallel.schedules import (
++#     # convert_schedule_table_to_order,
++#     # get_pp_rank_microbatches,
++#     get_schedule_table,
++# )
+ from megatron.core.num_microbatches_calculator import (
+     destroy_num_microbatches_calculator,
+     get_current_global_batch_size,
+@@ -127,7 +127,11 @@ from flagscale.train.stablelm2_scheduler import StableLM2SchedulerConfig
+ from flagscale.train.global_vars import get_parallel_context, get_spiky_loss_detector
+ from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
+ from flagscale.train.theoretical_memory_usage import report_theoretical_memory as fs_report_theoretical_memory
+-
++sys.path.append("/home/dist/haoran/FlagScale/megatron-lm-musa-patch")
++from musa_patch.profiling import (
++    maybe_enable_profiling,
++    maybe_enable_memory_snapshot
++)
+ stimer = StragglerDetector()
+ 
+ 
+@@ -401,6 +405,7 @@ def num_floating_point_operations(args, batch_size):
+         return total_floating_point_operations
+ 
+     # Main entrypoint for FLOPs calculation.
++    args.is_hybrid_model = False
+     if args.is_hybrid_model:
+         # Calculate the number of each type of layer.
+         num_attn_layers, num_mamba_layers, num_mlp_layers = calculate_layer_counts()
+@@ -1056,18 +1061,18 @@ def pretrain(
+ 
+         print_datetime('after training is done')
+ 
+-        if not args.auto_tune:
+-            if args.save and iteration != 0 and iteration % args.save_interval != 0:
+-                save_checkpoint(
+-                    iteration,
+-                    model,
+-                    optimizer,
+-                    opt_param_scheduler,
+-                    num_floating_point_operations_so_far,
+-                    checkpointing_context,
+-                    train_data_iterator=train_data_iterator,
+-                    preprocess_common_state_dict_fn=preprocess_common_state_dict,
+-                )
++        #if not args.auto_tune:
++        # if args.save and iteration != 0 and iteration % args.save_interval != 0:
++        #     save_checkpoint(
++        #         iteration,
++        #         model,
++        #         optimizer,
++        #         opt_param_scheduler,
++        #         num_floating_point_operations_so_far,
++        #         checkpointing_context,
++        #         train_data_iterator=train_data_iterator,
++        #         preprocess_common_state_dict_fn=preprocess_common_state_dict,
++        #     )
+ 
+         one_logger and one_logger.log_metrics(
+             {'app_train_loop_finish_time': one_logger_utils.get_timestamp_in_ms()}
+@@ -1291,7 +1296,7 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
+     #               from the current fp8 param) to its amax_history. The below function will correct
+     #               the amax_history back.
+     # After TE2.x: Below function is an empty function and does nothing.
+-    correct_amax_history_if_needed(model)
++    # correct_amax_history_if_needed(model)
+ 
+     if wrap_with_ddp:
+         if args.use_torch_fsdp2:
+@@ -1426,7 +1431,7 @@ def get_optimizer_param_scheduler(optimizer):
+         override_opt_param_scheduler=args.override_opt_param_scheduler,
+         wsd_decay_steps=wsd_decay_steps,
+         lr_wsd_decay_style=args.lr_wsd_decay_style,
+-        stablelm2_scheduler_config=stablelm2_scheduler_config,
++        # stablelm2_scheduler_config=stablelm2_scheduler_config,
+     )
+ 
+     return opt_param_scheduler
+@@ -1583,18 +1588,18 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
+     timers = get_timers()
+ 
+     # CUDA Graph capturing only executes once, when it's the first training iteration.
+-    if args.curr_iteration == args.iteration and args.external_cuda_graph:
+-        cuda_graph_capture(model, config, args)
+-
+-        # Set grad to zero.
+-        for model_chunk in model:
+-            model_chunk.zero_grad_buffer()
+-        optimizer.zero_grad()
++    # if args.curr_iteration == args.iteration and args.external_cuda_graph:
++    #     cuda_graph_capture(model, config, args)
+ 
+-        # Collect garbage and empty unused memory.
+-        gc.collect()
+-        torch.cuda.empty_cache()
++    #     # Set grad to zero.
++    #     for model_chunk in model:
++    #         model_chunk.zero_grad_buffer()
++    #     optimizer.zero_grad()
+ 
++    #     # Collect garbage and empty unused memory.
++    #     gc.collect()
++    #     torch.cuda.empty_cache()
++    iteration = args.iteration
+     rerun_state_machine = get_rerun_state_machine()
+     while rerun_state_machine.should_run_forward_backward(data_iterator):
+         # Set grad to zero.
+@@ -1602,13 +1607,13 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
+             model_chunk.zero_grad_buffer()
+         optimizer.zero_grad()
+ 
+-        if has_nvidia_modelopt:
+-            # [ModelOpt]: Pipeline-parallel Distillation stacks student and teacher tensors
+-            adjust_tensor_shapes_fn = get_tensor_shapes_adjust_fn_for_distillation(
+-                model, args.seq_length, args.micro_batch_size, args.decoder_seq_length
+-            )
+-        else:
+-            adjust_tensor_shapes_fn = None
++        # if has_nvidia_modelopt:
++        #     # [ModelOpt]: Pipeline-parallel Distillation stacks student and teacher tensors
++        #     adjust_tensor_shapes_fn = get_tensor_shapes_adjust_fn_for_distillation(
++        #         model, args.seq_length, args.micro_batch_size, args.decoder_seq_length
++        #     )
++        # else:
++        #     adjust_tensor_shapes_fn = None
+ 
+         # Forward pass.
+         forward_backward_func = get_forward_backward_func()
+@@ -1621,22 +1626,22 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
+             micro_batch_size=args.micro_batch_size,
+             decoder_seq_length=args.decoder_seq_length,
+             forward_only=False,
+-            adjust_tensor_shapes_fn=adjust_tensor_shapes_fn,
++            # adjust_tensor_shapes_fn=adjust_tensor_shapes_fn,
+         )
+     should_checkpoint, should_exit, exit_code = rerun_state_machine.should_checkpoint_and_exit()
+     if should_exit:
+         return {}, True, should_checkpoint, should_exit, exit_code, None, None
+ 
+     ########## FlagScale Begin ##########
+-    if args.auto_skip_spiky_loss and (args.consumed_train_samples > args.lr_warmup_samples and args.curr_iteration > args.lr_warmup_iters):
+-        spiky_loss_detector = get_spiky_loss_detector()
+-        loss_ = spiky_loss_detector.reduce_losses(losses_reduced)
+-        is_spiky_loss = spiky_loss_detector.is_spkiy_loss(loss_)
+-        is_spiky_loss_tensor = torch.tensor(is_spiky_loss, dtype=torch.int, device="cuda")
+-        torch.distributed.all_reduce(is_spiky_loss_tensor, op=torch.distributed.ReduceOp.MAX)
+-        is_spiky_loss = is_spiky_loss_tensor.item()
+-        if is_spiky_loss > 0:
+-            return {}, True, should_checkpoint, should_exit, exit_code, None, None
++    # if args.auto_skip_spiky_loss and (args.consumed_train_samples > args.lr_warmup_samples and args.curr_iteration > args.lr_warmup_iters):
++    #     spiky_loss_detector = get_spiky_loss_detector()
++    #     loss_ = spiky_loss_detector.reduce_losses(losses_reduced)
++    #     is_spiky_loss = spiky_loss_detector.is_spkiy_loss(loss_)
++    #     is_spiky_loss_tensor = torch.tensor(is_spiky_loss, dtype=torch.int, device="cuda")
++    #     torch.distributed.all_reduce(is_spiky_loss_tensor, op=torch.distributed.ReduceOp.MAX)
++    #     is_spiky_loss = is_spiky_loss_tensor.item()
++    #     if is_spiky_loss > 0:
++    #         return {}, True, should_checkpoint, should_exit, exit_code, None, None
+     ########## FlagScale End ##########
+ 
+     # Empty unused memory.
+@@ -1681,9 +1686,9 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
+         torch.cuda.empty_cache()
+ 
+     # Set the manual hooks when CUDA Graphs are enabled.
+-    if args.curr_iteration == args.iteration and args.external_cuda_graph:
+-        if args.use_distributed_optimizer and args.overlap_param_gather:
+-            cuda_graph_set_manual_hooks(model)
++    # if args.curr_iteration == args.iteration and args.external_cuda_graph:
++    #     if args.use_distributed_optimizer and args.overlap_param_gather:
++    #         cuda_graph_set_manual_hooks(model)
+ 
+     if mpu.is_pipeline_last_stage(ignore_virtual=True):
+         # Average loss across microbatches.
+@@ -1865,29 +1870,29 @@ def training_log(
+                 writer.add_scalar('params-norm vs samples', params_norm, args.consumed_train_samples)
+             if wandb_writer:
+                 wandb_writer.log({'params-norm': params_norm}, iteration)
+-        if args.log_memory_to_tensorboard:
+-            mem_stats = torch.cuda.memory_stats()
+-            if writer:
+-                writer.add_scalar(
+-                    "mem-reserved-bytes", mem_stats["reserved_bytes.all.current"], iteration
+-                )
+-                writer.add_scalar(
+-                    "mem-allocated-bytes", mem_stats["allocated_bytes.all.current"], iteration
+-                )
+-                writer.add_scalar(
+-                    "mem-max-allocated-bytes", mem_stats["allocated_bytes.all.peak"], iteration
+-                )
+-                writer.add_scalar("mem-allocated-count", mem_stats["allocation.all.current"], iteration)
+-            if wandb_writer:
+-                wandb_writer.log(
+-                    {"mem-reserved-bytes": mem_stats["reserved_bytes.all.current"]}, iteration
+-                )
+-                wandb_writer.log(
+-                    {"mem-allocated-bytes": mem_stats["allocated_bytes.all.current"]}, iteration
+-                )
+-                wandb_writer.log(
+-                    {"mem-allocated-count": mem_stats["allocation.all.current"]}, iteration
+-                )
++        # if args.log_memory_to_tensorboard:
++        #     mem_stats = torch.cuda.memory_stats()
++        #     if writer:
++        #         writer.add_scalar(
++        #             "mem-reserved-bytes", mem_stats["reserved_bytes.all.current"], iteration
++        #         )
++        #         writer.add_scalar(
++        #             "mem-allocated-bytes", mem_stats["allocated_bytes.all.current"], iteration
++        #         )
++        #         writer.add_scalar(
++        #             "mem-max-allocated-bytes", mem_stats["allocated_bytes.all.peak"], iteration
++        #         )
++        #         writer.add_scalar("mem-allocated-count", mem_stats["allocation.all.current"], iteration)
++        #     if wandb_writer:
++        #         wandb_writer.log(
++        #             {"mem-reserved-bytes": mem_stats["reserved_bytes.all.current"]}, iteration
++        #         )
++        #         wandb_writer.log(
++        #             {"mem-allocated-bytes": mem_stats["allocated_bytes.all.current"]}, iteration
++        #         )
++        #         wandb_writer.log(
++        #             {"mem-allocated-count": mem_stats["allocation.all.current"]}, iteration
++        #         )
+ 
+     if args.num_experts is not None:
+         moe_loss_scale = 1 / get_num_microbatches()
+@@ -1903,10 +1908,10 @@ def training_log(
+             wandb_writer=wandb_writer,
+             total_loss_dict=total_loss_dict,
+             per_layer_logging=args.moe_per_layer_logging,
+-            force_initialize=True,
+-            track_names=track_names,
+-            num_layers=args.num_layers,
+-            moe_layer_freq=args.moe_layer_freq,
++            # force_initialize=True,
++            # track_names=track_names,
++            # num_layers=args.num_layers,
++            # moe_layer_freq=args.moe_layer_freq,
+         )
+     if args.mtp_num_layers is not None:
+         mtp_loss_scale = 1 / get_num_microbatches()
+@@ -1984,17 +1989,17 @@ def training_log(
+         total_loss_dict[skipped_iters_key] = 0
+         total_loss_dict[nan_iters_key] = 0
+         print_rank_last(log_string)
+-        if not args.auto_tune:
+-            if report_memory_flag:
+-                # Report memory after optimizer state has been initialized.
+-                if torch.distributed.get_rank() == 0:
+-                    num_microbatches = get_num_microbatches()
+-                    report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
+-                report_memory(f'(after {iteration} iterations)')
+-                report_memory_flag = False
+-        else:
+-            report_memory(f'(after {iteration} iterations)')
+-            report_memory_flag = False
++        # if not args.auto_tune:
++        #     if report_memory_flag:
++        #         # Report memory after optimizer state has been initialized.
++        #         if torch.distributed.get_rank() == 0:
++        #             num_microbatches = get_num_microbatches()
++        #             report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
++        #         report_memory(f'(after {iteration} iterations)')
++        #         report_memory_flag = False
++        # else:
++        report_memory(f'(after {iteration} iterations)')
++        report_memory_flag = False
+         timers.log(timers_to_log, normalizer=args.log_interval)
+ 
+     return report_memory_flag
+@@ -2280,16 +2285,16 @@ def train(
+     timers = get_timers()
+     one_logger = get_one_logger()
+ 
+-    if args.run_workload_inspector_server:
+-        try:
+-            from workload_inspector.utils.webserver import run_server
+-            import threading
++    # if args.run_workload_inspector_server:
++    #     try:
++    #         from workload_inspector.utils.webserver import run_server
++    #         import threading
+ 
+-            threading.Thread(
+-                target=run_server, daemon=True, args=(torch.distributed.get_rank(),)
+-            ).start()
+-        except ModuleNotFoundError:
+-            print_rank_0("workload inspector module not found.")
++    #         threading.Thread(
++    #             target=run_server, daemon=True, args=(torch.distributed.get_rank(),)
++    #         ).start()
++    #     except ModuleNotFoundError:
++    #         print_rank_0("workload inspector module not found.")
+ 
+     # Write args to tensorboard
+     write_args_to_tensorboard()
+@@ -2297,7 +2302,73 @@ def train(
+     # Turn on training mode which enables dropout.
+     for model_module in model:
+         model_module.train()
+-
++        
++    def print_inf_name(name):
++        def check_inf_nan(grad):
++            if torch.isinf(grad).any():
++                print("Inf detected in gradients!", name)
++                print(grad)
++            elif torch.isnan(grad).any():
++                print("NaN detected in gradients!",name)
++                print(grad)
++            else:
++                print(name, grad)
++        return check_inf_nan
++
++    def forward_output(name):
++        def forward_hook(module, input, output):
++            print(f"Inside {module.__class__.__name__} forward hook")
++            print(f"Input: {input}")  # 假设输入是个张量
++            print(f"Output: {output}")
++            index = 0
++            if module.__class__.__name__ == "TERowParallelLinear" and index == 0:
++                global_rank = torch.distributed.get_rank()
++                if global_rank == 0:
++                    torch.save(input[0].cpu(), f'global-{global_rank}.{module.__class__.__name__}.input.pt')
++                    index += 1
++
++            try:
++                print(f"weight: {module.weight}")
++            except:
++                pass
++            # print("Output is all zero:", torch.all(output == 0))
++            # if torch.all(output == 0):
++            #     global_rank = torch.distributed.get_rank()
++            #     torch.save(input[0].cpu(), f'global-{global_rank}.{name}.all_zero.pt')
++        return forward_hook
++
++    def backward_output(name):
++       def print_backward_hook(module, grad_input, grad_output):
++           #torch.set_printoptions(profile='full')
++            if len(grad_output) > 0 and grad_output[0] != None :
++                for idx, output in enumerate(grad_output):
++                    if output is not None and (torch.isinf(output).any() or torch.isnan(output).any()):
++                        global_rank = torch.distributed.get_rank()
++                        print(module.__class__, 'backward ends', name, len(grad_output), len(grad_input))
++                        print("is_inf1:", torch.isinf(output).any(), "is_nan1:",torch.isnan(output).any(), output,'global_rank', global_rank)
++            if len(grad_input) > 0 and grad_input[0] !=None:
++                for idx, input in enumerate(grad_input):
++                    print(module.__class__, 'backward ends', name, grad_output, grad_input)
++                    # if input is not None and (torch.isinf(input).any() or torch.isnan(input).any()):
++                    #     global_rank = torch.distributed.get_rank()
++                    #     print(module.__class__, 'backward ends', name, len(grad_output), len(grad_input))
++                    #     print("is_inf2:", torch.isinf(input).any(), "is_nan2:",torch.isnan(input).any(),input, 'global_rank', global_rank, "idx:", idx)
++                    #     for idx1, output in enumerate(grad_output):
++                    #         torch.save(input.cpu(), f'global-{global_rank}.{name}.{idx1}.nan1.grad_output.pt')
++                    #     for idx2, input in enumerate(grad_input):
++                    #         torch.save(input.cpu(), f'global-{global_rank}.{name}.{idx2}.nan2.grad_input.pt')
++       return print_backward_hook
++    # print(model)
++    # for name, module in model[0].named_modules():
++
++    #     # print(name, model_module)
++    #    # module.register_forward_pre_hook(print_pre_forward_hook)
++    #    # module.register_forward_hook(print_forward_hook)
++    # #    if name == 'model.layers.2.self_attn.core_attention.pv' or name == 'model.layers.2.self_attn.core_attention.softmax':
++    #        #module.register_full_backward_pre_hook(print_pre_backward_hook)
++    #        #if name == 'model.layers.25.input_layernorm':
++    #     module.register_forward_hook(forward_output(name))
++    #     module.register_full_backward_hook(backward_output(name))
+     # Tracking loss.
+     total_loss_dict = {}
+ 
+@@ -2452,30 +2523,108 @@ def train(
+         print_rank_0(f">>> Weight hashes match after {iteration} iterations...")
+ 
+     # Run training iterations till done.
+-    while iteration < args.train_iters:
+-        if args.profile and torch.distributed.get_rank() in args.profile_ranks:
+-            if args.use_pytorch_profiler:
+-                prof.step()
+-            elif iteration == args.profile_step_start:
+-                torch.cuda.cudart().cudaProfilerStart()
+-                torch.autograd.profiler.emit_nvtx(record_shapes=True).__enter__()
+-
+-        ft_integration.on_checkpointing_start()
+-        maybe_finalize_async_save(blocking=False)
+-        ft_integration.on_checkpointing_end(is_async_finalization=True)
+-
+-        # Update number of microbatches first without consistency check to decide if a
+-        # checkpoint should be saved. If the number of microbatches is different
+-        # from the previous iteration, save a checkpoint. Then run consistency check
+-        # to make sure training configuration is still valid.
+-        update_num_microbatches(args.consumed_train_samples, consistency_check=False, verbose=True)
+-        if get_num_microbatches() != num_microbatches and iteration != 0 \
+-            and args.save_when_num_microbatches_change:
+-            assert get_num_microbatches() > num_microbatches, (
+-                f"Number of microbatches should be increasing due to batch size rampup; "
+-                f"instead going from {num_microbatches} to {get_num_microbatches()}"
++    with maybe_enable_profiling(
++        args, global_step=iteration
++    ) as torch_profiler:
++        while iteration < args.train_iters:
++            print_rank_0(f"go in  after {iteration} iterations...")
++            if args.profile and torch.distributed.get_rank() in args.profile_ranks:
++                if args.use_pytorch_profiler:
++                    prof.step()
++                elif iteration == args.profile_step_start:
++                    torch.cuda.cudart().cudaProfilerStart()
++                    torch.autograd.profiler.emit_nvtx(record_shapes=True).__enter__()
++
++            ft_integration.on_checkpointing_start()
++            maybe_finalize_async_save(blocking=False)
++            ft_integration.on_checkpointing_end(is_async_finalization=True)
++
++            # Update number of microbatches first without consistency check to decide if a
++            # checkpoint should be saved. If the number of microbatches is different
++            # from the previous iteration, save a checkpoint. Then run consistency check
++            # to make sure training configuration is still valid.
++            update_num_microbatches(args.consumed_train_samples, consistency_check=False, verbose=True)
++            if get_num_microbatches() != num_microbatches and iteration != 0 \
++                and args.save_when_num_microbatches_change:
++                assert get_num_microbatches() > num_microbatches, (
++                    f"Number of microbatches should be increasing due to batch size rampup; "
++                    f"instead going from {num_microbatches} to {get_num_microbatches()}"
++                )
++                if args.save is not None:
++                    save_checkpoint_and_time(
++                        iteration,
++                        model,
++                        optimizer,
++                        opt_param_scheduler,
++                        num_floating_point_operations_so_far,
++                        checkpointing_context,
++                        train_data_iterator=train_data_iterator,
++                    )
++            num_microbatches = get_num_microbatches()
++            update_num_microbatches(args.consumed_train_samples, consistency_check=True, verbose=True)
++
++            # Completely skip iteration if needed.
++            if iteration in args.iterations_to_skip:
++                # Dummy train_step to fast forward train_data_iterator.
++                dummy_train_step(train_data_iterator)
++                iteration += 1
++                batch_size = (
++                    mpu.get_data_parallel_world_size() * args.micro_batch_size * get_num_microbatches()
++                )
++                args.consumed_train_samples += batch_size
++                args.skipped_train_samples += batch_size
++                continue
++
++            # Run training step.
++            args.curr_iteration = iteration
++
++            ########## FlagScale Begin ##########
++            args.skip_samples_range = None
++            args.skip_iters_range = None
++            if args.skip_samples_range or args.skip_iters_range:
++                current_global_batch_size = get_current_global_batch_size()
++                start_skip_iteration = 0
++                end_skip_iteration = 0
++                if args.skip_samples_range:
++                    if args.consumed_train_samples + current_global_batch_size > args.skip_samples_range[0] and args.consumed_train_samples < args.skip_samples_range[1]:
++                        num_skipped_iters = (args.skip_samples_range[1] - args.consumed_train_samples + current_global_batch_size - 1) // current_global_batch_size
++                        args.skip_samples_range[1] = args.consumed_train_samples + num_skipped_iters * current_global_batch_size
++                        start_skip_iteration = iteration
++                        end_skip_iteration = iteration + num_skipped_iters
++                else:
++                    if iteration >= args.skip_iters_range[0] and iteration < args.skip_iters_range[1]:
++                        start_skip_iteration = iteration
++                        end_skip_iteration = args.skip_iters_range[1]
++                while iteration >= start_skip_iteration and iteration < end_skip_iteration:
++                    if mpu.is_pipeline_first_stage() or mpu.is_pipeline_last_stage():
++                        for _ in range(get_num_microbatches()):
++                            _ = next(train_data_iterator)
++                    args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
++                                            args.micro_batch_size * \
++                                            get_num_microbatches()
++                    update_num_microbatches(args.consumed_train_samples, consistency_check=True, verbose=True)
++                    iteration += 1
++
++                args.curr_iteration = iteration
++                if rerun_state_machine.current_iteration != iteration:
++                    print_rank_0(f"Setting rerun_state_machine.current_iteration to {iteration}...")
++                    rerun_state_machine.current_iteration = iteration
++            ########## FlagScale end ##########
++
++            ft_integration.on_training_step_start()
++            (
++                loss_dict,
++                skipped_iter,
++                should_checkpoint,
++                should_exit,
++                exit_code,
++                grad_norm,
++                num_zeros_in_grad,
++            ) = train_step(
++                forward_step_func, train_data_iterator, model, optimizer, opt_param_scheduler, config
+             )
+-            if args.save is not None:
++            ft_integration.on_training_step_end()
++            if should_checkpoint:
+                 save_checkpoint_and_time(
+                     iteration,
+                     model,
+@@ -2485,228 +2634,101 @@ def train(
+                     checkpointing_context,
+                     train_data_iterator=train_data_iterator,
+                 )
+-        num_microbatches = get_num_microbatches()
+-        update_num_microbatches(args.consumed_train_samples, consistency_check=True, verbose=True)
+-
+-        # Completely skip iteration if needed.
+-        if iteration in args.iterations_to_skip:
+-            # Dummy train_step to fast forward train_data_iterator.
+-            dummy_train_step(train_data_iterator)
++            if should_exit:
++                break
++
++            # Enable forward pre-hooks after first set of forward and backward passes.
++            # When running in fp16, skip all NaN iterations until steady-state loss scaling value
++            # is reached.
++            if iteration == start_iteration:
++                if skipped_iter:
++                    # Only enable forward pre-hook after a training step has successfully run. Relevant
++                    # for fp16 codepath where first XX iterations are skipped until steady-state loss
++                    # scale value is reached.
++                    start_iteration = iteration + 1
++                else:
++                    # Enable forward pre-hook after training step has successfully run. All subsequent
++                    # forward passes will use the forward pre-hook / `param_sync_func` in
++                    # `forward_backward_func`.
++                    if should_disable_forward_pre_hook(args):
++                        enable_forward_pre_hook(model)
++                        config.param_sync_func = param_sync_func
++                        pre_hook_enabled = True
++            if torch_profiler:
++                    torch_profiler.step()
+             iteration += 1
+             batch_size = (
+                 mpu.get_data_parallel_world_size() * args.micro_batch_size * get_num_microbatches()
+             )
+             args.consumed_train_samples += batch_size
+-            args.skipped_train_samples += batch_size
+-            continue
+-
+-        # Run training step.
+-        args.curr_iteration = iteration
+-
+-        ########## FlagScale Begin ##########
+-        if args.skip_samples_range or args.skip_iters_range:
+-            current_global_batch_size = get_current_global_batch_size()
+-            start_skip_iteration = 0
+-            end_skip_iteration = 0
+-            if args.skip_samples_range:
+-                if args.consumed_train_samples + current_global_batch_size > args.skip_samples_range[0] and args.consumed_train_samples < args.skip_samples_range[1]:
+-                    num_skipped_iters = (args.skip_samples_range[1] - args.consumed_train_samples + current_global_batch_size - 1) // current_global_batch_size
+-                    args.skip_samples_range[1] = args.consumed_train_samples + num_skipped_iters * current_global_batch_size
+-                    start_skip_iteration = iteration
+-                    end_skip_iteration = iteration + num_skipped_iters
+-            else:
+-                if iteration >= args.skip_iters_range[0] and iteration < args.skip_iters_range[1]:
+-                    start_skip_iteration = iteration
+-                    end_skip_iteration = args.skip_iters_range[1]
+-            while iteration >= start_skip_iteration and iteration < end_skip_iteration:
+-                if mpu.is_pipeline_first_stage() or mpu.is_pipeline_last_stage():
+-                    for _ in range(get_num_microbatches()):
+-                        _ = next(train_data_iterator)
+-                args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
+-                                           args.micro_batch_size * \
+-                                           get_num_microbatches()
+-                update_num_microbatches(args.consumed_train_samples, consistency_check=True, verbose=True)
+-                iteration += 1
+-
+-            args.curr_iteration = iteration
+-            if rerun_state_machine.current_iteration != iteration:
+-                print_rank_0(f"Setting rerun_state_machine.current_iteration to {iteration}...")
+-                rerun_state_machine.current_iteration = iteration
+-        ########## FlagScale end ##########
+-
+-        ft_integration.on_training_step_start()
+-        (
+-            loss_dict,
+-            skipped_iter,
+-            should_checkpoint,
+-            should_exit,
+-            exit_code,
+-            grad_norm,
+-            num_zeros_in_grad,
+-        ) = train_step(
+-            forward_step_func, train_data_iterator, model, optimizer, opt_param_scheduler, config
+-        )
+-        ft_integration.on_training_step_end()
+-        if should_checkpoint:
+-            save_checkpoint_and_time(
+-                iteration,
+-                model,
+-                optimizer,
+-                opt_param_scheduler,
+-                num_floating_point_operations_so_far,
+-                checkpointing_context,
+-                train_data_iterator=train_data_iterator,
++            num_skipped_samples_in_batch = (
++                get_current_global_batch_size() - get_current_running_global_batch_size()
+             )
+-        if should_exit:
+-            break
+-
+-        # Enable forward pre-hooks after first set of forward and backward passes.
+-        # When running in fp16, skip all NaN iterations until steady-state loss scaling value
+-        # is reached.
+-        if iteration == start_iteration:
+-            if skipped_iter:
+-                # Only enable forward pre-hook after a training step has successfully run. Relevant
+-                # for fp16 codepath where first XX iterations are skipped until steady-state loss
+-                # scale value is reached.
+-                start_iteration = iteration + 1
++            if args.decrease_batch_size_if_needed:
++                assert num_skipped_samples_in_batch >= 0
+             else:
+-                # Enable forward pre-hook after training step has successfully run. All subsequent
+-                # forward passes will use the forward pre-hook / `param_sync_func` in
+-                # `forward_backward_func`.
+-                if should_disable_forward_pre_hook(args):
+-                    enable_forward_pre_hook(model)
+-                    config.param_sync_func = param_sync_func
+-                    pre_hook_enabled = True
+-
+-        iteration += 1
+-        batch_size = (
+-            mpu.get_data_parallel_world_size() * args.micro_batch_size * get_num_microbatches()
+-        )
+-        args.consumed_train_samples += batch_size
+-        num_skipped_samples_in_batch = (
+-            get_current_global_batch_size() - get_current_running_global_batch_size()
+-        )
+-        if args.decrease_batch_size_if_needed:
+-            assert num_skipped_samples_in_batch >= 0
+-        else:
+-            assert num_skipped_samples_in_batch == 0
+-        args.skipped_train_samples += num_skipped_samples_in_batch
+-        num_floating_point_operations_in_batch = num_floating_point_operations(args, batch_size)
+-        num_floating_point_operations_so_far += num_floating_point_operations_in_batch
+-        num_floating_point_operations_since_last_log_event += num_floating_point_operations_in_batch
+-
+-        # Logging.
+-        if not optimizer.is_stub_optimizer:
+-            loss_scale = optimizer.get_loss_scale().item()
+-        else:
+-            loss_scale = 1.0
+-        params_norm = None
+-
+-        if args.log_params_norm:
+-            params_norm = calc_params_l2_norm(model)
+-        learning_rate = None
+-        decoupled_learning_rate = None
+-        for param_group in optimizer.param_groups:
+-            if param_group['is_decoupled_lr']:
+-                decoupled_learning_rate = param_group['lr']
++                assert num_skipped_samples_in_batch == 0
++            args.skipped_train_samples += num_skipped_samples_in_batch
++            num_floating_point_operations_in_batch = num_floating_point_operations(args, batch_size)
++            num_floating_point_operations_so_far += num_floating_point_operations_in_batch
++            num_floating_point_operations_since_last_log_event += num_floating_point_operations_in_batch
++
++            # Logging.
++            if not optimizer.is_stub_optimizer:
++                loss_scale = optimizer.get_loss_scale().item()
+             else:
+-                learning_rate = param_group['lr']
+-        report_memory_flag = training_log(
+-            loss_dict,
+-            total_loss_dict,
+-            learning_rate,
+-            decoupled_learning_rate,
+-            iteration,
+-            loss_scale,
+-            report_memory_flag,
+-            skipped_iter,
+-            grad_norm,
+-            params_norm,
+-            num_zeros_in_grad,
+-        )
+-
+-        # Evaluation.
+-        if args.eval_interval and iteration % args.eval_interval == 0 and args.do_valid:
+-            timers('interval-time').stop()
+-            if should_disable_forward_pre_hook(args):
+-                disable_forward_pre_hook(model)
+-                pre_hook_enabled = False
+-            if args.manual_gc and args.manual_gc_eval:
+-                # Collect all objects.
+-                gc.collect()
+-            prefix = f'iteration {iteration}'
+-            timers('eval-time', log_level=0).start(barrier=True)
+-            evaluate_and_print_results(
+-                prefix,
+-                forward_step_func,
+-                valid_data_iterator,
+-                model,
++                loss_scale = 1.0
++            params_norm = None
++
++            if args.log_params_norm:
++                params_norm = calc_params_l2_norm(model)
++            learning_rate = None
++            decoupled_learning_rate = None
++            for param_group in optimizer.param_groups:
++                if param_group['is_decoupled_lr']:
++                    decoupled_learning_rate = param_group['lr']
++                else:
++                    learning_rate = param_group['lr']
++            report_memory_flag = training_log(
++                loss_dict,
++                total_loss_dict,
++                learning_rate,
++                decoupled_learning_rate,
+                 iteration,
+-                process_non_loss_data_func,
+-                config,
+-                verbose=False,
+-                write_to_tensorboard=True,
+-                non_loss_data_func=non_loss_data_func,
++                loss_scale,
++                report_memory_flag,
++                skipped_iter,
++                grad_norm,
++                params_norm,
++                num_zeros_in_grad,
+             )
+-            eval_duration += timers('eval-time').elapsed()
+-            eval_iterations += args.eval_iters
+-            timers('eval-time').stop()
+-            one_logger_utils.track_e2e_metrics()
+-
+-            if args.manual_gc and args.manual_gc_eval:
+-                # Collect only the objects created and used in evaluation.
+-                gc.collect(generation=0)
+-            if should_disable_forward_pre_hook(args):
+-                enable_forward_pre_hook(model)
+-                pre_hook_enabled = True
+-            timers('interval-time', log_level=0).start(barrier=True)
+-
+-
+-        # Extra Evaluation =====================================================================
+-        if args.extra_eval_interval and iteration % args.extra_eval_interval == 0:
+-            # NOTE(zhaoyinglia): Must rebuild the dataloaders for extra validation here,
+-            # to guarantee extra validation start from extra_iter=0 every time,
+-            # but we don't need to rebuild the datasets.
+-            if args.virtual_pipeline_model_parallel_size is not None:
+-                extra_valid_data_iterator = []
+-                for i in range(len(model)):
+-                    mpu.set_virtual_pipeline_model_parallel_rank(i)
+-                    extra_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
+-                    extra_valid_data_iterator.append(extra_iterators)
+-            else:
+-                extra_valid_data_iterator = (
+-                    build_extra_valid_data_iterators(extra_valid_dataset_provider)
+-                )
+-            timers('interval-time').stop()
+-            # do_extra_valid flag is used to indicate that we are doing extra validation
+-            # and is set in the build_extra_valid_data_iterators function
+-            if getattr(args, "do_extra_valid", False):
++
++            # Evaluation.
++            if args.eval_interval and iteration % args.eval_interval == 0 and args.do_valid:
++                timers('interval-time').stop()
+                 if should_disable_forward_pre_hook(args):
+                     disable_forward_pre_hook(model)
+                     pre_hook_enabled = False
+                 if args.manual_gc and args.manual_gc_eval:
+                     # Collect all objects.
+                     gc.collect()
+-                prefix = 'iteration {}'.format(iteration)
+-                for extra_valid_index, extra_valid_data_itr in enumerate(extra_valid_data_iterator):
+-                    timers('extra-eval-time', log_level=0).start(barrier=True)
+-                    extra_eval_iters = args.extra_eval_iters_list[extra_valid_index]
+-                    extra_evaluate_and_print_results(
+-                        extra_valid_index,
+-                        prefix,
+-                        forward_step_func,
+-                        extra_valid_data_itr,
+-                        model,
+-                        iteration,
+-                        process_non_loss_data_func,
+-                        config,
+-                        verbose=False,
+-                        write_to_tensorboard=True,
+-                        non_loss_data_func=non_loss_data_func
+-                    )
+-                    extra_eval_duration += timers('extra-eval-time').elapsed()
+-                    extra_eval_iterations += extra_eval_iters
+-                    timers('extra-eval-time').stop()
++                prefix = f'iteration {iteration}'
++                timers('eval-time', log_level=0).start(barrier=True)
++                evaluate_and_print_results(
++                    prefix,
++                    forward_step_func,
++                    valid_data_iterator,
++                    model,
++                    iteration,
++                    process_non_loss_data_func,
++                    config,
++                    verbose=False,
++                    write_to_tensorboard=True,
++                    non_loss_data_func=non_loss_data_func,
++                )
++                eval_duration += timers('eval-time').elapsed()
++                eval_iterations += args.eval_iters
++                timers('eval-time').stop()
+                 one_logger_utils.track_e2e_metrics()
+ 
+                 if args.manual_gc and args.manual_gc_eval:
+@@ -2716,31 +2738,88 @@ def train(
+                     enable_forward_pre_hook(model)
+                     pre_hook_enabled = True
+                 timers('interval-time', log_level=0).start(barrier=True)
+-        # =======================================================================================
+ 
+-        # Miscellaneous post-training-step functions (e.g., FT heartbeats, GC).
+-        # Some of these only happen at specific iterations.
+-        post_training_step_callbacks(
+-            model,
+-            optimizer,
+-            opt_param_scheduler,
+-            iteration,
+-            prof,
+-            num_floating_point_operations_since_last_log_event,
+-        )
+ 
+-        # Checkpoint and decide whether to exit.
+-        should_exit = checkpoint_and_decide_exit(
+-            model,
+-            optimizer,
+-            opt_param_scheduler,
+-            iteration,
+-            num_floating_point_operations_so_far,
+-            checkpointing_context,
+-            train_data_iterator,
+-        )
+-        if should_exit:
+-            break
++            # Extra Evaluation =====================================================================
++            args.extra_eval_interval = False
++            if args.extra_eval_interval and iteration % args.extra_eval_interval == 0:
++                # NOTE(zhaoyinglia): Must rebuild the dataloaders for extra validation here,
++                # to guarantee extra validation start from extra_iter=0 every time,
++                # but we don't need to rebuild the datasets.
++                if args.virtual_pipeline_model_parallel_size is not None:
++                    extra_valid_data_iterator = []
++                    for i in range(len(model)):
++                        mpu.set_virtual_pipeline_model_parallel_rank(i)
++                        extra_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
++                        extra_valid_data_iterator.append(extra_iterators)
++                else:
++                    extra_valid_data_iterator = (
++                        build_extra_valid_data_iterators(extra_valid_dataset_provider)
++                    )
++                timers('interval-time').stop()
++                # do_extra_valid flag is used to indicate that we are doing extra validation
++                # and is set in the build_extra_valid_data_iterators function
++                if getattr(args, "do_extra_valid", False):
++                    if should_disable_forward_pre_hook(args):
++                        disable_forward_pre_hook(model)
++                        pre_hook_enabled = False
++                    if args.manual_gc and args.manual_gc_eval:
++                        # Collect all objects.
++                        gc.collect()
++                    prefix = 'iteration {}'.format(iteration)
++                    for extra_valid_index, extra_valid_data_itr in enumerate(extra_valid_data_iterator):
++                        timers('extra-eval-time', log_level=0).start(barrier=True)
++                        extra_eval_iters = args.extra_eval_iters_list[extra_valid_index]
++                        extra_evaluate_and_print_results(
++                            extra_valid_index,
++                            prefix,
++                            forward_step_func,
++                            extra_valid_data_itr,
++                            model,
++                            iteration,
++                            process_non_loss_data_func,
++                            config,
++                            verbose=False,
++                            write_to_tensorboard=True,
++                            non_loss_data_func=non_loss_data_func
++                        )
++                        extra_eval_duration += timers('extra-eval-time').elapsed()
++                        extra_eval_iterations += extra_eval_iters
++                        timers('extra-eval-time').stop()
++                    one_logger_utils.track_e2e_metrics()
++
++                    if args.manual_gc and args.manual_gc_eval:
++                        # Collect only the objects created and used in evaluation.
++                        gc.collect(generation=0)
++                    if should_disable_forward_pre_hook(args):
++                        enable_forward_pre_hook(model)
++                        pre_hook_enabled = True
++                    timers('interval-time', log_level=0).start(barrier=True)
++            # =======================================================================================
++
++            # Miscellaneous post-training-step functions (e.g., FT heartbeats, GC).
++            # Some of these only happen at specific iterations.
++            post_training_step_callbacks(
++                model,
++                optimizer,
++                opt_param_scheduler,
++                iteration,
++                prof,
++                num_floating_point_operations_since_last_log_event,
++            )
++            # Checkpoint and decide whether to exit.
++            print_rank_0('go in checkpoint_and_decide_exit')
++            should_exit = checkpoint_and_decide_exit(
++                model,
++                optimizer,
++                opt_param_scheduler,
++                iteration,
++                num_floating_point_operations_so_far,
++                checkpointing_context,
++                train_data_iterator,
++            )
++            if should_exit:
++                break
+ 
+     one_logger_utils.track_e2e_metrics()
+ 
+diff --git a/flagscale/train/train_gpt.py b/flagscale/train/train_gpt.py
+index c7b69cab..77d69938 100644
+--- a/flagscale/train/train_gpt.py
++++ b/flagscale/train/train_gpt.py
+@@ -6,6 +6,17 @@ from functools import partial
+ from typing import List, Optional, Tuple, Union
+ 
+ import torch
++import os 
++import sys
++sys.path.append(os.path.dirname(
++    os.path.dirname(os.path.abspath(__file__))))
++sys.path.append("/home/dist/haoran/FlagScale/megatron-lm-musa-patch")
++# sys.path.append("/home/dist/haoran/FlagScale/Megatron-LM")
++
++if os.getenv("ACCELERATOR_BACKEND", "musa") == "musa":
++    import musa_patch
++else:
++    pass
+ 
+ from megatron.core import parallel_state
+ from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
+@@ -16,7 +27,7 @@ from megatron.core.models.gpt.gpt_layer_specs import (
+     get_gpt_decoder_block_spec,
+     get_gpt_layer_local_spec,
+     get_gpt_layer_with_transformer_engine_spec,
+-    get_gpt_mtp_block_spec,
++    # get_gpt_mtp_block_spec,
+ )
+ from megatron.core.models.gpt.heterogeneous.heterogeneous_layer_specs import (
+     get_gpt_heterogeneous_layer_spec,
+@@ -127,10 +138,10 @@ def model_provider(
+             if args.num_experts:
+                 # Define the decoder block spec
+                 transformer_layer_spec = get_gpt_decoder_block_spec(
+-                    config, use_transformer_engine=use_te, normalization=args.normalization
++                    config, use_transformer_engine=use_te #, normalization=args.normalization
+                 )
+-            elif args.heterogeneous_layers_config_path is not None:
+-                transformer_layer_spec = get_gpt_heterogeneous_layer_spec(config, use_te)
++            # elif args.heterogeneous_layers_config_path is not None:
++            #     transformer_layer_spec = get_gpt_heterogeneous_layer_spec(config, use_te)
+             else:
+                 # Define the decoder layer spec
+                 if use_te:
+@@ -151,6 +162,7 @@ def model_provider(
+                         normalization=args.normalization,
+                     )
+         mtp_block_spec = None
++        args.mtp_num_layers = None
+         if args.mtp_num_layers is not None:
+             mtp_block_spec = get_gpt_mtp_block_spec(
+                 config, transformer_layer_spec, use_transformer_engine=use_te
+@@ -170,8 +182,8 @@ def model_provider(
+             rotary_percent=args.rotary_percent,
+             rotary_base=args.rotary_base,
+             rope_scaling=args.use_rope_scaling,
+-            mtp_block_spec=mtp_block_spec,
+-            vp_stage=vp_stage,
++            # mtp_block_spec=mtp_block_spec,
++            # vp_stage=vp_stage,
+         )
+ 
+     return model
+@@ -283,7 +295,7 @@ def forward_step(data_iterator, model: GPTModel):
+             output_tensor = model(tokens, position_ids, attention_mask, labels=labels)
+         else:
+             output_tensor = model(
+-                tokens, position_ids, attention_mask, labels=labels, loss_mask=loss_mask
++                tokens, position_ids, attention_mask, labels=labels#, loss_mask=loss_mask
+             )
+ 
+     # [ModelOpt]: model is needed to access ModelOpt distillation losses
+@@ -319,8 +331,8 @@ def core_gpt_dataset_config_from_args(args):
+         reset_attention_mask=args.reset_attention_mask,
+         eod_mask_loss=args.eod_mask_loss,
+         create_attention_mask=args.create_attention_mask_in_dataloader,
+-        object_storage_cache_path=args.object_storage_cache_path,
+-        mid_level_dataset_surplus=args.mid_level_dataset_surplus,
++        # object_storage_cache_path=args.object_storage_cache_path,
++        # mid_level_dataset_surplus=args.mid_level_dataset_surplus,
+     )
+ 
+ 
+@@ -362,7 +374,7 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
+     para_ctx = get_parallel_context()
+     if para_ctx is not None:
+         config = para_ctx.get_dataset_config()
+-
++    args.apply_sft_dataset_separated_loss_mask_if_existed = False
+     if config is None:
+         if args.apply_sft_dataset_separated_loss_mask_if_existed:
+             config = core_sft_dataset_config_from_args(args)
+diff --git a/flagscale/train/train_qwen2_5_vl.py b/flagscale/train/train_qwen2_5_vl.py
+index 73958bd3..e194cb9c 100644
+--- a/flagscale/train/train_qwen2_5_vl.py
++++ b/flagscale/train/train_qwen2_5_vl.py
+@@ -20,6 +20,11 @@ from functools import partial
+ from copy import deepcopy
+ from typing import Union, Optional, Tuple
+ 
++if os.getenv("ACCELERATOR_BACKEND", "musa") == "musa":
++    import musa_patch
++else:
++    pass
++
+ import torch
+ import torch._dynamo
+ 
+@@ -99,34 +104,45 @@ def model_provider(
+     vision_model_spec = get_qwen2vl_vision_model_spec()
+     vision_projector_spec = get_mlp_module_spec(add_norm=False).submodules
+ 
++    #build_model_context_args = {}
++    #try:
++    #    import torch_musa
++    #    from transformer_engine.pytorch import fp8_model_init
++
++    #    build_model_context = fp8_model_init
++    #    build_model_context_args["enabled"] = True
++    #    build_model_context_args["preserve_high_precision_init_val"] = True
++    #except:
++    #    raise RuntimeError("--fp8-param-gather requires `fp8_model_init` from TransformerEngine, but not found.")
++    #with build_model_context(**build_model_context_args):
+     model = Qwen2_5VLModel(
+-        language_transformer_config=config,
+-        language_transformer_layer_spec=transformer_layer_spec,
+-        language_vocab_size=args.padded_vocab_size,
+-        language_max_sequence_length=args.max_position_embeddings,
+-
+-        vision_transformer_config=vision_config,
+-        vision_transformer_layer_spec=vision_model_spec,
+-        drop_vision_class_token=False, # NOTE: no class token to drop?
+-
+-        vision_projection_config=vision_projector_config,
+-        vision_projection_layer_spec=vision_projector_spec,
+-        vision_projection_type='mlp',
+-        allow_missing_vision_projection_checkpoint= args.allow_missing_vision_projection_checkpoint,
+-
+-        language_position_embedding_type=args.position_embedding_type,
+-        language_rotary_percent=args.rotary_percent,
+-        language_rotary_base=args.rotary_base,
+-
+-        pre_process=pre_process,
+-        post_process=post_process,
+-        add_decoder=add_decoder,
+-        add_encoder=add_encoder,
+-
+-        fp16_lm_cross_entropy=args.fp16_lm_cross_entropy,
+-        parallel_output=True,
+-        language_share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
+-    )
++            language_transformer_config=config,
++            language_transformer_layer_spec=transformer_layer_spec,
++            language_vocab_size=args.padded_vocab_size,
++            language_max_sequence_length=args.max_position_embeddings,
++
++            vision_transformer_config=vision_config,
++            vision_transformer_layer_spec=vision_model_spec,
++            drop_vision_class_token=False, # NOTE: no class token to drop?
++
++            vision_projection_config=vision_projector_config,
++            vision_projection_layer_spec=vision_projector_spec,
++            vision_projection_type='mlp',
++            allow_missing_vision_projection_checkpoint= args.allow_missing_vision_projection_checkpoint,
++
++            language_position_embedding_type=args.position_embedding_type,
++            language_rotary_percent=args.rotary_percent,
++            language_rotary_base=args.rotary_base,
++
++            pre_process=pre_process,
++            post_process=post_process,
++            add_decoder=add_decoder,
++            add_encoder=add_encoder,
++
++            fp16_lm_cross_entropy=args.fp16_lm_cross_entropy,
++            parallel_output=True,
++            language_share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
++        )
+ 
+     model.freeze(
+         freeze_language_model=args.freeze_LM,
