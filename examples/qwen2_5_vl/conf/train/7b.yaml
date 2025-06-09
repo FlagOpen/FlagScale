@@ -1,7 +1,7 @@
 system:
   num_workers: 1
   calculate_per_token_loss: true
-  tensor_model_parallel_size: 1
+  tensor_model_parallel_size: 2
   pipeline_model_parallel_size: 1
   context_parallel_size: 1
   # decoder_first_pipeline_num_layers: 12
@@ -47,7 +47,7 @@ model:
   num_attention_heads: 28
   num_query_groups: 4
   seq_length: 2048
-  max_padding_length: 2048 # (cutoff_len)max 32768, chane according the dataset
+  max_padding_length: 2048 # (cutoff_len)max 32768, change according the dataset
   # especial for qwen2.5-vl
   enable_variable_seq_lengths: True
   max_position_embeddings: 128000 # only useful for additional position embedding
