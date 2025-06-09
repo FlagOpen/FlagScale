@@ -38,56 +38,11 @@ Before running the script, ensure you have a password-free SSH login to the remo
 ## Configuration
 
 1. For Email:
-
-   Modify the provided configuration file 'config-email.yaml' example to set actual values:
-
-   ```yaml
-   # Target email address for receiving alerts
-   target_email: example_alert@domain.com  # The email address that will receive alerts
-
-   # SMTP server setup for sending emails
-   smtp_server: smtp.example.com  # The SMTP server used for sending emails
-
-   # Email address used to send alerts
-   source_email: example_sender@domain.com  # The email address to send alerts from
-
-   # Remote host IP address for accessing log files
-   remote_host: 192.0.2.1  # The IP address of the remote host where logs are stored
-
-   # Username for SSH login to the remote host
-   remote_user: example_user  # The username for SSH login
-
-   # Port number for SSH access
-   remote_port: 22  # Standard SSH port
-
-   # Path to the log file on the remote host
-   remote_log_path: /path/example_log_file.log  # Path to the log file
-
-   # Interval in seconds for log checking
-   check_interval: 1200  # Check logs every 1200 seconds
-   ```
+   Modify the provided configuration file [config-email.yaml](config-email.yaml) example to set actual values:
 
 2. For Feishu Root
 
-   Modify the provided configuration file 'config-feishu.yaml' example to set actual values:
-
-   ```yaml
-   # Remote host IP address for accessing log files
-   remote_host: 192.0.2.1  # The IP address of the remote host where logs are stored
-
-   # Username for SSH login to the remote host
-   remote_user: example_user  # The username for SSH login
-
-   # Port number for SSH access
-   remote_port: 22  # Standard SSH port
-
-   # Path to the log file on the remote host
-   remote_log_path: /path/example_log_file.log  # Path to the log file
-
-   # Interval in seconds for log checking
-   check_interval: 1200  # Check logs every 1200 seconds
-   ```
-
+   Modify the provided configuration file [config-feishu.yaml](config-feishu.yaml) example to set actual values:
 
 ## Usage
 
