@@ -1,11 +1,14 @@
-backends_commit: {}
+backends_commit:
+  vllm: 0408efc6d0c17fba17b2be38d0d0f02e96d2bf9d
 backends_version:
   FlagScale: 0.8.0
-commit: 64b4f41af25f2622b4c8a06aec3410ac9216b0e3
+  vllm: 0.7.2
+commit: 39c0adcf0db48417ded4842c92067626bd55562f
 contact: ''
 device_type: Metax_C550
 models:
+- deepseek_r1
 - deepseek_r1_w8a8
-- deepseek_r1_distill_qwen_32b
+- qwen3
 task:
 - inference
