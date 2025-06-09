@@ -62,14 +62,15 @@ class VisionRotaryEmbedding(nn.Module):
     """
     def __init__(self, dim: int, theta: float = 10000.0) -> None:
         super().__init__()
-        inv_freq = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=torch.float) / dim))
+        # NOTE(lizhiyu): print inv_freq to check it.
+        inv_freq = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=torch.bfloat16) / dim))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
     def forward(self, seqlen: int) -> torch.Tensor:
         seq = torch.arange(seqlen, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
         # freqs [seq_len, dim // 2]
         freqs = torch.outer(seq, self.inv_freq)
-        return freqs.float()
+        return freqs
 
 # reference from https://github.com/huggingface/transformers/blob/0ad3710d4767d4ac7ee95f33f8554373e59efade/src/transformers/models/qwen2_5_vl/modular_qwen2_5_vl.py#L243
 class Qwen2_5VisionModel(VisionModule):

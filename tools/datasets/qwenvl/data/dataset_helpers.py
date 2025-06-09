@@ -14,6 +14,9 @@
 # limitations under the License.
 import dataclasses
 import json
+import logging
+import math
+import os
 import re
 import sys
 import traceback
@@ -23,8 +26,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import PIL
 import torch
 
+from PIL import Image
 from torchvision import transforms as T
 
 from megatron.energon import Batch, DefaultTaskEncoder, VQASample
@@ -32,6 +37,11 @@ from megatron.training import get_args
 from megatron.training.global_vars import get_tokenizer
 from tools.datasets.qwenvl.data.energon.chatml import ChatMLSample
 from tools.datasets.qwenvl.data.image_processing import get_visual_transform
+
+dataset_logger = logging.getLogger(__name__)
+FIRST_MAX_PADDING_FLAG = True
+IGNORE_IDX = -100
+MAX_IMG_THRESHHOLD = 5000
 
 
 # Type for intermediate batch, after batch()
@@ -88,8 +98,9 @@ def convert_to_qwen2vl_content(
     mm_idx = defaultdict(int)
     for matched in re.finditer(pattern, user_input):
         start, end = matched.span()
-        if start > cur:
-            contents.append({"type": "text", "text": user_input[cur:start].strip()})
+        text = user_input[cur:start]
+        if text:
+            contents.append({"type": "text", "text": text})
 
         contents.append(
             {
@@ -102,7 +113,7 @@ def convert_to_qwen2vl_content(
         mm_idx[matched.string[start:end][1:-1]] += 1
 
     if cur < len(user_input):
-        contents.append({"type": "text", "text": user_input[cur : len(user_input)].strip()})
+        contents.append({"type": "text", "text": user_input[cur : len(user_input)]})
 
     return contents
 
@@ -118,6 +129,9 @@ class TaskEncoder(
         super().__init__()
 
         self.args = get_args()
+        self.tp_size = self.args.tensor_model_parallel_size
+        self.cp_size = self.args.context_parallel_size
+        self.sequence_parallel = self.args.sequence_parallel
 
         self.tokenizer = get_tokenizer()
 
@@ -126,6 +140,9 @@ class TaskEncoder(
         self.patch_size = self.args.patch_size
 
         self.seq_len = self.args.max_padding_length
+
+        self.vision_root = self.args.vision_root
+        assert self.vision_root is not None, "Please give the vision root."
 
     def encode_sample(self, sample: Union[VQASample, ChatMLSample]):
         if isinstance(sample, VQASample):
@@ -184,17 +201,100 @@ class TaskEncoder(
             thw_grids.append((grid_t, grid_h, grid_w))
         return flattened, np.array(thw_grids)
 
-    def encode_chatml(self, sample: ChatMLSample):
-        # TODO: modify get_visual_transform to add more augmentations
-        imgs = [get_visual_transform(img)[0] for img in sample.imgs]
-        videos = [[get_visual_transform(frame)[0] for frame in video] for video in sample.videos]
-        # NOTE: make n_frames even foreach video
-        for i, video in enumerate(videos):
-            videos[i] = video[: len(video) // 2 * 2]
+    # copy from
+    def _preprocess_image(
+        self, image: PIL.Image, image_max_pixels: int = 768 * 768, image_min_pixels: int = 32 * 32
+    ) -> PIL.Image:
+        r"""
+        Pre-processes a single image.
+        """
+        if (image.width * image.height) > image_max_pixels:
+            resize_factor = math.sqrt(image_max_pixels / (image.width * image.height))
+            width, height = int(image.width * resize_factor), int(image.height * resize_factor)
+            image = image.resize((width, height))
 
-        # NOTE: flatten all images
-        flattened_imgs, image_thw_grids = self._flatten_visual_inputs(imgs, is_image=True)
-        flattened_videos, video_thw_grids = self._flatten_visual_inputs(videos, is_image=False)
+        if (image.width * image.height) < image_min_pixels:
+            resize_factor = math.sqrt(image_min_pixels / (image.width * image.height))
+            width, height = int(image.width * resize_factor), int(image.height * resize_factor)
+            image = image.resize((width, height))
+
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+
+        if min(image.width, image.height) < 28:
+            width, height = max(image.width, 28), max(image.height, 28)
+            image = image.resize((width, height), resample=Image.Resampling.NEAREST)
+
+        if image.width / image.height > 200:
+            width, height = image.height * 180, image.height
+            image = image.resize((width, height), resample=Image.Resampling.NEAREST)
+
+        if image.height / image.width > 200:
+            width, height = image.width, image.width * 180
+            image = image.resize((width, height), resample=Image.Resampling.NEAREST)
+
+        return image
+
+    def encode_chatml(self, sample: ChatMLSample):
+        # # TODO: modify get_visual_transform to add more augmentations
+        # imgs = [get_visual_transform(os.path.join(self.vision_root, img))[0] for img in sample.imgs]
+        # videos = [
+        #     [get_visual_transform(os.path.join(self.vision_root, frame))[0] for frame in video]
+        #     for video in sample.videos
+        # ]
+        # # NOTE: make n_frames even foreach video
+        # for i, video in enumerate(videos):
+        #     videos[i] = video[: len(video) // 2 * 2]
+
+        # # NOTE: flatten all images
+        # flattened_imgs, image_thw_grids = self._flatten_visual_inputs(imgs, is_image=True)
+        # flattened_videos, video_thw_grids = self._flatten_visual_inputs(videos, is_image=False)
+
+        #######################################################################################
+        # NOTE(lizhiyu): use the transformers processor
+        if sample.imgs is not None and len(sample.imgs) > 0:
+            imgs = []
+            for img in sample.imgs:
+                img_path = os.path.join(self.vision_root, img)
+                try:
+                    image = PIL.Image.open(img_path)
+                    image = self._preprocess_image(
+                        image=image,
+                        image_max_pixels=self.args.image_max_pixels,
+                        image_min_pixels=self.args.image_min_pixels,
+                    )
+                    imgs.append(image)
+                except Exception as e:
+                    raise ValueError(
+                        f"Failed to open image: {img_path}. Error: {e} of smaple[{sample.__key__}]"
+                    )
+                    # raise InternalWarning(
+                    #     f"Failed to open image: {img_path}. Error: {e} of smaple[{sample.__key__}]"
+                    # )
+            imgs_info = self.tokenizer.processor.image_processor(imgs, return_tensors="np")
+            flattened_imgs = imgs_info["pixel_values"]
+            image_thw_grids = imgs_info["image_grid_thw"]
+        else:
+            flattened_imgs = []
+            image_thw_grids = []
+
+        if sample.videos is not None and len(sample.videos) > 0:
+            videos = [
+                [PIL.Image.open(os.path.join(self.vision_root, frame)) for frame in video]
+                for video in sample.videos
+            ]
+            # NOTE: make n_frames even foreach video
+            for i, video in enumerate(videos):
+                videos[i] = video[: len(video) // 2 * 2]
+            videos_info = self.tokenizer.processor.image_processor(
+                images=None, videos=videos, return_tensors="pt"
+            )
+            flattened_videos = videos_info["pixel_values_videos"]
+            video_thw_grids = videos_info["video_grid_thw"]
+        else:
+            flattened_videos = []
+            video_thw_grids = []
+        #######################################################################################
 
         # NOTE: generate qwen2vl conversations
         conversation = (
@@ -212,6 +312,8 @@ class TaskEncoder(
         content_key = "value" if "from" in conversation[0] else "content"
 
         # NOTE: assume the conversation format is: [System]? (User Assistant)+
+        # convert text message to standand format
+        #  add system as first item, refercence: https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct/blob/main/chat_template.json
         converted_conversation = []
         if len(conversation) % 2 == 0:
             # Default Prompt
@@ -219,11 +321,19 @@ class TaskEncoder(
                 {"role": "system", "content": "You are a helpful assistant."}
             )
         else:
+            dataset_logger.warning(
+                f"The sample [{sample.__key__}] has odd number of conversation turns, and we will use the first turn as system prompt. BUT this may be wrong. Pelase check the sample."
+            )
             converted_conversation.append(
                 {"role": "system", "content": conversation[0][content_key]}
             )
+            ## NOTE(lizhiyu): Force set system Prompt: "You are a helpful assistant."
+            # converted_conversation.append(
+            #     {"role": "system", "content": "You are a helpful assistant."}
+            # )
             conversation = conversation[1:]
 
+        # add QA conversion as the left items
         EXPECTED_ROLE = ["human", "gpt"]
         for turn_idx, turn in enumerate(conversation):
             role = turn[role_key]
@@ -251,9 +361,10 @@ class TaskEncoder(
         system_prompt_prefix = len(
             self.tokenizer.apply_chat_template([conversation[0]], tokenize=True)
         )
-        assistant_generation_prefix = 3
-        pad_token_id = self.tokenizer.pad_token_id
-
+        assistant_generation_prefix = 3  # <im_start>assistant\n
+        # pad_token_id = self.tokenizer.pad_token_id
+        # NOTE(lizhiyu): Align to llama-f
+        pad_token_id = IGNORE_IDX
         target[:system_prompt_prefix] = pad_token_id
         offset = system_prompt_prefix
         for turn_idx, turn in enumerate(conversation[1:]):
@@ -270,11 +381,13 @@ class TaskEncoder(
             elif turn["role"] == "assistant":
                 target[offset : offset + assistant_generation_prefix] = pad_token_id
             offset += n_tokens
+        # current "target" don't pad vision token.
 
         # NOTE: expand image_pad & video_pad
-        merge_length = self.merge_size**2
+        merge_length = self.merge_size**2  # 2**2 = 4
         image_token_id, video_token_id = self.tokenizer.encode(["<|image_pad|>", "<|video_pad|>"])
 
+        # get the indices of the origin <|image_pad|> and <|video_pad|>
         image_token_indices = np.where(input_ids == image_token_id)[0]
         assert len(image_token_indices) == len(
             image_thw_grids
@@ -287,6 +400,8 @@ class TaskEncoder(
             video_thw_grids, dtype=np.int64
         )
 
+        # video_thw_grids shape: [n, 3]
+        # origin_seq_len + (all_image_token - 1) + (all_vision_token - 1)  ----> -1 because the pad token in origin text
         target_length = (
             input_ids.shape[0]
             - image_thw_grids.shape[0]
@@ -295,13 +410,17 @@ class TaskEncoder(
             + video_thw_grids.prod(axis=-1).sum() // merge_length
         )
         if target_length > self.seq_len:
-            raise InternalWarning(f"Long sequence with length {target_length} found, dropped...")
+            # raise InternalWarning(f"Long sequence with length {target_length} found, dropped...")
+            dataset_logger.warning(
+                f"Samle id [{sample.__key__}] has long sequence with length {target_length}, cutoff to max [self.seq_len+64={self.seq_len}] in batch function..."
+            )
         final_input_ids = np.zeros(target_length, dtype=input_ids.dtype)
         final_input_masks = final_input_ids.copy()
 
         image_idx, video_idx = 0, 0
         indices = np.sort(np.concatenate([image_token_indices, video_token_indices]))
 
+        # cur_x: origin text token idx,  cur_y: final text token idx
         cur_x, cur_y = 0, 0
         for idx in indices:
             token_id = input_ids[idx]
@@ -329,11 +448,15 @@ class TaskEncoder(
         target = np.roll(final_input_masks, shift=-1)
         target[-1] = pad_token_id
 
+        # NOTE(lizhiyu): we also check it in the train scripts.
         if (target == pad_token_id).all():
-            raise InternalWarning("Sample with all masked label, dropped.")
+            raise InternalWarning(
+                f"Sample id [{sample.__key__}] with all masked label, the data is invalid! Dropped!"
+            )
 
         image_input_mask = final_input_ids == self.tokenizer.image_token_id
         video_input_mask = final_input_ids == self.tokenizer.video_token_id
+
         # collect data
         return ImageTaskSample(
             __key__=sample.__key__,
@@ -407,14 +530,14 @@ class TaskEncoder(
         if len(input_ids) > self.seq_len:
             raise InternalWarning(f"Long sequence with length {len(input_ids)} found, dropped...")
 
-        target = np.array(input_ids[1:] + [self.tokenizer.pad_token_id])
+        target = np.array(input_ids[1:] + [IGNORE_IDX])
         if len(user_input_ids) >= len(input_ids):
             raise InternalWarning(f"Sample not supported, dropped...")
         # ensure user inputs is a prefix of full text
         if not (np.array(user_input_ids) == np.array(input_ids[: len(user_input_ids)])).all():
             raise InternalWarning(f"Sample not supported, dropped...")
         # mask input
-        target[: len(user_input_ids) - 1] = self.tokenizer.pad_token_id
+        target[: len(user_input_ids) - 1] = IGNORE_IDX
 
         img_token_id = self.tokenizer.image_token_id
         image_input_mask = np.array(input_ids) == img_token_id
@@ -436,7 +559,12 @@ class TaskEncoder(
 
     def batch(self, samples: List[ImageTaskSample]) -> VQATaskBatch:
         # Stack images to [num_tiles, c, h, w]. If there are no images (text-only), then use a dummy image.
-        imgs = [img for s in samples for img in s.imgs]
+        # imgs = [img for s in samples for img in s.imgs]
+
+        ####################################################
+        # NOTE(lizhiyu): use the transformers processor
+        imgs = [s.imgs for s in samples if isinstance(s.imgs, np.ndarray) and s.imgs.size > 0]
+        ####################################################
         if len(imgs) > 0:
             imgs = torch.cat([torch.from_numpy(img) for img in imgs])
         else:
@@ -453,7 +581,14 @@ class TaskEncoder(
             image_thw_grids = torch.empty([0, 3], dtype=torch.long)
 
         # Stack videos to [num_tiles, c, h, w]. If there are no videos (text-only), then use a dummy video.
-        videos = [video for s in samples for video in s.videos]
+        # videos = [video for s in samples for video in s.videos]
+
+        ####################################################
+        # NOTE(lizhiyu): use the transformers processor
+        videos = [
+            s.videos for s in samples if isinstance(s.videos, np.ndarray) and s.videos.size > 0
+        ]
+        ####################################################
         if len(videos) > 0:
             videos = torch.cat([torch.from_numpy(video) for video in videos])
         else:
@@ -477,16 +612,30 @@ class TaskEncoder(
         else:
             video_thw_grids = torch.empty([0, 3], dtype=torch.long)
 
-        # If the user hasn't defined a target sequence length, then use the max along the sample lengths.
-        max_seq_len = self.seq_len
-        if not max_seq_len:
-            max_seq_len = max(len(s.text) for s in samples)
+        global FIRST_MAX_PADDING_FLAG, MAX_IMG_THRESHHOLD
+        # NOTE(lizhiyu): Clear the cache only when the current image length is longer than the past maxisum length.
+        if image_thw_grids.prod(axis=-1).sum() // 4 > MAX_IMG_THRESHHOLD:
+            MAX_IMG_THRESHHOLD = image_thw_grids.prod(axis=-1).sum() // 4
+            FIRST_MAX_PADDING_FLAG = True
 
+        if not self.args.enable_variable_seq_lengths:
+            max_seq_len = self.seq_len
+        else:
+            # NOTE: this is a hack to get the max padding length for the first batch to avoid OOM because of cached memory in torch
+            if FIRST_MAX_PADDING_FLAG:
+                max_seq_len = self.seq_len
+                FIRST_MAX_PADDING_FLAG = False
+            else:
+                max_seq_len = max(len(s.text) for s in samples)
+                max_seq_len = min(max_seq_len, self.seq_len)
+        # NOTE: we need to make sure the max_seq_len is divisible by tp_size * cp_size
+        if self.cp_size > 1 or self.sequence_parallel:
+            max_seq_len = math.ceil(max_seq_len / (self.tp_size * self.cp_size)) * (
+                self.tp_size * self.cp_size
+            )
         text_mat = np.full((len(samples), max_seq_len), self.tokenizer.pad_token_id, dtype=np.int64)
         # +1 to accommodate shift to left by one later.
-        target_mat = np.full(
-            (len(samples), max_seq_len), self.tokenizer.pad_token_id, dtype=np.int64
-        )
+        target_mat = np.full((len(samples), max_seq_len), IGNORE_IDX, dtype=np.int64)
 
         image_input_masks = np.zeros_like(text_mat, dtype=bool)
         video_input_masks = np.zeros_like(text_mat, dtype=bool)
