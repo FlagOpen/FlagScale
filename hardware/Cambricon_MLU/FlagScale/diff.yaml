@@ -1,0 +1,11 @@
+backends_commit: {}
+backends_version:
+  FlagScale: main
+commit: bebd6189de770fa8317e9d0bf7f98182804eaa73
+contact: ''
+device_type: Cambricon_MLU
+models:
+- aquila
+- qwen
+task:
+- inference

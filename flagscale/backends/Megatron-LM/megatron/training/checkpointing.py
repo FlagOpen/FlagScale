@@ -637,9 +637,7 @@ def maybe_save_dataloader_state(train_iterator, iteration, dataloader_save_path)
 
     torch.distributed.barrier(group=mpu.get_data_parallel_group())
 
-    if mpu.get_data_parallel_rank() == 0:
-        ensure_directory_exists(data_state_save_path)
-
+    ensure_directory_exists(data_state_save_path)
     torch.distributed.barrier(group=mpu.get_data_parallel_group())
 
     dataloader_save_dict = {}

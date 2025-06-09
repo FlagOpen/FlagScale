@@ -7,96 +7,50 @@ import tempfile
 
 import yaml
 
+from encryption_utils import decrypt_file
+from file_utils import copy, create_symlinks, delete_file
 from git.repo import Repo
+from logger_utils import get_unpatch_logger
+from patch import normalize_backend
 
 DELETED_FILE_NAME = "deleted_files.txt"
 FLAGSCALE_BACKEND = "FlagScale"
+logger = get_unpatch_logger()
 
 
-logger = logging.getLogger("FlagScaleUnpatchLogger")
-logger.setLevel(logging.INFO)
-
-
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("[FlagScale-Unpatch] %(levelname)s | %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.propagate = False
-
-
-def unpatch(main_path, src, dst, submodule_name, mode="symlink", force=False):
+def unpatch(
+    main_path,
+    src,
+    dst,
+    submodule_name,
+    mode="symlink",
+    force=False,
+    backend_commit={},
+    fs_extension=True,
+):
     """Unpatch the backend with symlinks."""
-    if submodule_name.split("/")[-1] != FLAGSCALE_BACKEND:
+    if submodule_name != FLAGSCALE_BACKEND:
         logger.info(f"Unpatching backend {submodule_name}...")
-        init_submodule(main_path, dst, submodule_name, force=force)
-        assert mode in ["symlink", "copy"]
-        if mode == "copy":
-            _copy(src, dst)
-        elif mode == "symlink":
-            _create_symlinks(src, dst)
-        deleted_files_path = os.path.join(src, DELETED_FILE_NAME)
-        if os.path.lexists(deleted_files_path):
-            _delete_file(deleted_files_path, dst)
+        submodule_commit = None
+        if backend_commit and backend_commit[submodule_name] is not None:
+            submodule_commit = backend_commit[submodule_name]
+        init_submodule(main_path, dst, submodule_name, force=force, commit=submodule_commit)
+        if fs_extension:
+            assert mode in ["symlink", "copy"]
+            if mode == "copy":
+                copy(src, dst)
+            elif mode == "symlink":
+                create_symlinks(src, dst)
+            deleted_files_path = os.path.join(src, DELETED_FILE_NAME)
+            if os.path.lexists(deleted_files_path):
+                delete_file(deleted_files_path, dst)
+        else:
+            logger.info(
+                f"FlagScale extension for {submodule_name} is disabled, skipping unpatching..."
+            )
 
 
-def _copy(src, dst):
-    for root, dirs, files in os.walk(src):
-        for filename in files:
-            src_file = os.path.join(root, filename)
-            if src_file == os.path.join(src, DELETED_FILE_NAME):
-                continue
-
-            rel_path = os.path.relpath(src_file, src)
-            dst_file = os.path.join(dst, rel_path)
-
-            dst_file_dir = os.path.dirname(dst_file)
-            if not os.path.lexists(dst_file_dir):
-                os.makedirs(dst_file_dir)
-
-            if os.path.lexists(dst_file):
-                os.remove(dst_file)
-            assert not os.path.lexists(dst_file)
-            shutil.copyfile(src_file, dst_file)
-            logger.info(f"Copying file: {dst_file} -> {src_file}")
-
-
-def _delete_file(file_path, dst):
-    with open(file_path, "r", encoding="utf-8") as f:
-        deleted_files = f.readlines()
-        for deleted_file in deleted_files:
-            deleted_file = deleted_file.strip()
-            deleted_file_path = os.path.join(dst, deleted_file)
-            if os.path.lexists(deleted_file_path):
-                os.remove(deleted_file_path)
-                logger.info(f"Deleting file: {deleted_file_path}")
-            else:
-                logger.warning(f"File not found for deletion: {deleted_file_path}")
-
-
-def _create_symlinks(src, dst):
-    for root, dirs, files in os.walk(src):
-        for filename in files:
-            src_file = os.path.join(root, filename)
-            if src_file == os.path.join(src, DELETED_FILE_NAME):
-                continue
-
-            rel_path = os.path.relpath(src_file, src)
-            dst_file = os.path.join(dst, rel_path)
-
-            dst_file_dir = os.path.dirname(dst_file)
-            if not os.path.lexists(dst_file_dir):
-                os.makedirs(dst_file_dir)
-
-            if os.path.lexists(dst_file):
-                os.remove(dst_file)
-            assert not os.path.lexists(dst_file)
-            os.symlink(src_file, dst_file)
-
-            logger.info(f"Creating symbolic link: {dst_file} -> {src_file}")
-
-
-def init_submodule(main_path, dst, submodule_name, force=False):
+def init_submodule(main_path, dst, submodule_name, force=False, commit=None):
     if os.path.lexists(dst) and len(os.listdir(dst)) > 0 and not force:
         logger.info(f"Skipping {submodule_name} initialization, as it already lexists.")
         return
@@ -105,6 +59,7 @@ def init_submodule(main_path, dst, submodule_name, force=False):
         "When you perform unpatch, the specified submodule will be fully restored to its initial state, regardless of any modifications you may have made within the submodule."
     )
     repo = Repo(main_path)
+    submodule_name = "third_party" + "/" + submodule_name
     submodule = repo.submodule(submodule_name)
     try:
         git_modules_path = os.path.join(main_path, ".git", "modules", submodule_name)
@@ -114,6 +69,10 @@ def init_submodule(main_path, dst, submodule_name, force=False):
         if os.path.exists(submodule_worktree_path):
             shutil.rmtree(submodule_worktree_path)
         submodule.update(init=True, force=force)
+        if commit:
+            sub_repo = submodule.module()
+            sub_repo.git.reset('--hard', commit)
+            logger.info(f"Reset {submodule_name} to commit {commit}.")
     except:
         logger.info("Retrying to initialize submodule...")
         git_modules_path = os.path.join(main_path, ".git", "modules", submodule_name)
@@ -123,6 +82,10 @@ def init_submodule(main_path, dst, submodule_name, force=False):
         if os.path.exists(submodule_worktree_path):
             shutil.rmtree(submodule_worktree_path)
         submodule.update(init=True, force=force)
+        if commit:
+            sub_repo = submodule.module()
+            sub_repo.git.reset('--hard', commit)
+            logger.info(f"Reset {submodule_name} to commit {commit}.")
     logger.info(f"Initialized {submodule_name} submodule.")
 
 
@@ -140,7 +103,11 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, c
         assert backends
         history_yaml = os.path.join(main_path, "hardware", "patch_history.yaml")
         if not os.path.exists(history_yaml):
-            raise ValueError(f"Yaml {history_yaml} does not exist.")
+            logger.warning(
+                f"Yaml {history_yaml} does not exist. Please check the hardware/patch_history.yaml."
+            )
+            logger.warning("Try to use the current commit to unpatch.")
+            return main_repo.head.commit.hexsha
 
         # Backend key
         backends_key = "+".join(sorted(backends))
@@ -178,7 +145,9 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, c
     return newest_flagscale_commit
 
 
-def apply_hardware_patch(device_type, backends, commit, main_path, init_submodule):
+def apply_hardware_patch(
+    device_type, backends, commit, main_path, need_init_submodule, key_path=None
+):
     build_path = os.path.join(main_path, "build", device_type)
     final_path = os.path.join(build_path, os.path.basename(main_path))
 
@@ -206,6 +175,8 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
         # Check backend path and patch file path
         all_base_commit_id = set()
         patch_files = []
+        patch_backends = []
+        backends_commit = {}
         for backend in backends:
             backend_path = os.path.join(device_path, backend)
             if not os.path.exists(backend_path):
@@ -217,9 +188,15 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
             patch_file = None
             base_commit_id = None
             for file in os.listdir(backend_path):
-                if file.endswith(".patch"):
+                if file.endswith(".patch") or file.endswith(".patch.encrypted"):
                     patch_file = os.path.join(backend_path, file)
-                    base_commit_id = file.split(".")[0]
+                    yaml_file = os.path.join(backend_path, "diff.yaml")
+                    with open(yaml_file, "r") as f:
+                        info = yaml.safe_load(f)
+                        base_commit_id = info["commit"]
+                        if "backends_commit" in info and backend in info["backends_commit"]:
+                            backends_commit[backend] = info["backends_commit"][backend]
+                        assert base_commit_id
                     try:
                         repo.commit(base_commit_id)
                     except ValueError:
@@ -230,12 +207,12 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
             assert base_commit_id
             all_base_commit_id.add(base_commit_id)
             patch_files.append(patch_file)
+            patch_backends.append(backend)
         all_base_commit_id = list(all_base_commit_id)
 
         # Sort the commit by appearance order
         position = {}
         rev_list = repo.git.rev_list('--topo-order', 'HEAD').splitlines()
-        rev_list = [commit[:7] for commit in rev_list]
         for idx, commit in enumerate(rev_list):
             if commit in all_base_commit_id:
                 position[commit] = idx
@@ -247,7 +224,7 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
 
         sorted_commits = sorted(all_base_commit_id, key=lambda x: position[x])
         # Get the neweset base_commit_id
-        base_commit_id = sorted_commits[-1]
+        base_commit_id = sorted_commits[0]
         logger.info(f"Step 3: Finding the newset base commit {base_commit_id} to checkout.")
 
         temp_unpatch_path = tempfile.mkdtemp()
@@ -257,20 +234,45 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
         repo.git.checkout(base_commit_id)
 
         logger.info(f"Step 5: Applying patch:")
-        for patch_file in patch_files:
-            repo.git.apply("--index", "--whitespace", "fix", patch_file)
-            logger.info(f"Patch {patch_file} has been applied.")
+        for idx, patch_file in enumerate(patch_files):
+            # Check if the patch file is encrypted
+            new_patch_file = patch_file
+            if patch_file.endswith(".encrypted"):
+                if key_path is not None:
+                    private_key_path = os.path.join(key_path, "private_key.pem")
+                    new_patch_file = decrypt_file(patch_file, private_key_path)
+                else:
+                    raise ValueError(
+                        f"Patch file {patch_file} is encrypted, but no key path provided."
+                    )
+            backend = patch_backends[idx]
+            if backend != FLAGSCALE_BACKEND:
+                # init submodule
+                if need_init_submodule:
+                    logger.info(
+                        f"    Initializing submodule {backend} in temp unpatch path {temp_unpatch_path}..."
+                    )
+                    dst = os.path.join(temp_unpatch_path, "third_party", backend)
+                    src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
+                    # Initialize the submodule
 
-        logger.info(f"Step 6: Initializing submodule in temp unpatch path {temp_unpatch_path}...")
-        if init_submodule:
-            for backend in backends:
-                submodule_name = f"third_party/{backend}"
-                dst = os.path.join(temp_unpatch_path, "third_party", backend)
-                src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
-                # NOTE: mode must be 'copy' because the temp unpatch path will be moved
-                unpatch(temp_unpatch_path, src, dst, submodule_name, mode="copy", force=True)
+                    submodule_commit = None
+                    if backends_commit and backend in backends_commit:
+                        submodule_commit = backends_commit[backend]
+                    init_submodule(
+                        temp_unpatch_path, dst, backend, force=True, commit=submodule_commit
+                    )
+            submodule_path = (
+                os.path.join(temp_unpatch_path, "third_party", backend)
+                if backend != FLAGSCALE_BACKEND
+                else temp_unpatch_path
+            )
 
-        logger.info(f"Step 7: Moving patched temp path {temp_unpatch_path} to {final_path}")
+            repo = Repo(submodule_path)
+            repo.git.apply("--whitespace", "fix", new_patch_file)
+            logger.info(f"    Patch {new_patch_file} has been applied.")
+
+        logger.info(f"Step 6: Moving patched temp path {temp_unpatch_path} to {final_path}")
         os.makedirs(build_path, exist_ok=True)
         shutil.move(temp_unpatch_path, final_path)
         logger.info(f"Unpatch Ended.")
@@ -297,7 +299,7 @@ def apply_hardware_patch(device_type, backends, commit, main_path, init_submodul
     return final_path
 
 
-def validate_args(device_type, task, commit, main_path):
+def validate_unpatch_args(device_type, tasks, commit, main_path):
     main_repo = Repo(main_path)
     if commit:
         # Check if the commit exists in the FlagScale
@@ -313,8 +315,22 @@ def validate_args(device_type, task, commit, main_path):
         ):
             raise ValueError("Device type is not invalid!")
 
-    if device_type or task:
-        assert device_type and task, "The args device_type, task must not be None."
+    if device_type or tasks:
+        assert device_type and tasks, "The args device_type, task must not be None."
+
+
+def backend_commit_mapping(backends, backends_commit):
+    backend_commit = {}
+    for idx, backend in enumerate(backends):
+        if backend == FLAGSCALE_BACKEND:
+            assert backends_commit == [None], "FlagScale backend commit must be None."
+        else:
+            if idx >= len(backends_commit):
+                backend_commit[backend] = None
+            else:
+                backend_commit[backend] = backends_commit[idx]
+
+    return backend_commit
 
 
 if __name__ == "__main__":
@@ -322,10 +338,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--backend",
         nargs="+",
-        choices=["Megatron-LM", "vllm", "Megatron-Energon", "FlagScale"],
+        type=normalize_backend,
         default=["Megatron-LM"],
         help="Backend to unpatch (default: Megatron-LM)",
     )
+
     parser.add_argument(
         "--mode",
         choices=["symlink", "copy"],
@@ -346,7 +363,7 @@ if __name__ == "__main__":
         "--commit", type=str, default=None, help="Unpatch based on this commit. Default is None."
     )
     parser.add_argument(
-        "--force", action="store_true", help="Force update the backend even if it already exists."
+        '--no-force', dest='force', action='store_false', help='Do not force update the backend.'
     )
     parser.add_argument(
         "--no-init-submodule",
@@ -354,18 +371,36 @@ if __name__ == "__main__":
         dest="init_submodule",
         help="Do not initialize and update submodules. Default is True.",
     )
+    parser.add_argument(
+        "--key-path",
+        type=str,
+        default=None,
+        help="The path for storing public and private keys. Be careful not to upload to the Git repository.",
+    )
+    parser.add_argument(
+        "--no-fs-extension",
+        action="store_false",
+        dest="fs_extension",
+        help="Disable fs extension. Default is True.",
+    )
+    parser.add_argument(
+        "--backend-commit", nargs="+", default=[None], help="The backend commit to checkout."
+    )
 
     args = parser.parse_args()
     backends = args.backend
     device_type = args.device_type
     tasks = args.task
     commit = args.commit
-
-    # When unpatching, the submodule will be initialized forcefully
-    args.force = True
+    key_path = args.key_path
+    backends_commit = args.backend_commit
+    fs_extension = args.fs_extension
 
     if not isinstance(backends, list):
         backends = [backends]
+
+    if not isinstance(backends_commit, list):
+        backends_commit = [backends_commit]
 
     if tasks is not None and not isinstance(tasks, list):
         tasks = [tasks]
@@ -377,7 +412,8 @@ if __name__ == "__main__":
     # FlagScale
     main_path = os.path.dirname(script_dir)
 
-    validate_args(device_type, tasks, commit, main_path)
+    validate_unpatch_args(device_type, tasks, commit, main_path)
+    backend_commit = backend_commit_mapping(backends, backends_commit)
 
     if FLAGSCALE_BACKEND in backends:
         assert (
@@ -388,11 +424,21 @@ if __name__ == "__main__":
     commit = commit_to_checkout(main_path, device_type, tasks, backends, commit)
     if commit is not None:
         # Checkout to the commit and apply the patch to build FlagScale
-        apply_hardware_patch(device_type, backends, commit, main_path, args.init_submodule)
+        apply_hardware_patch(
+            device_type, backends, commit, main_path, args.init_submodule, key_path=key_path
+        )
 
     else:
         for backend in backends:
-            submodule_name = f"third_party/{backend}"
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
-            unpatch(main_path, src, dst, submodule_name, mode=args.mode, force=args.force)
+            unpatch(
+                main_path,
+                src,
+                dst,
+                backend,
+                mode=args.mode,
+                force=args.force,
+                backend_commit=backend_commit,
+                fs_extension=fs_extension,
+            )

@@ -45,11 +45,16 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
 
 2. Install the requirements:
     ```sh
-    cd FlagScale/install
-    ./install-requirements.sh --env train
-    ./install-requirements.sh --env inference
+    cd FlagScale
+    ./install/install-requirements.sh --env train
+    ./install/install-requirements.sh --env inference
     ```
     The above instructions create two conda environments: `flagscale-train` and `flagscale-inference`, which contain the dependency environments for training and inference, respectively.
+
+    The llama.cpp backend (CPU by default) is alternative, for example:
+    ```sh
+    ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
+    ```
 
 3. Unpatch the backend code adaptation of FlagScale as needed
     ```
@@ -127,7 +132,7 @@ We support the model serving of DeepSeek R1 and have implemented the `flagscale 
 2. **Install FlagScale CLI:**
     ```sh
     cd FlagScale
-    pip install .
+    PYTHONPATH=./:$PYTHONPATH pip install . --verbose --no-build-isolation
     ```
 
 3. **One-click serve:**

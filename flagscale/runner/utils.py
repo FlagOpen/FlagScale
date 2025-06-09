@@ -19,7 +19,6 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm.asyncio import tqdm
 
 from flagscale.logger import logger
-from flagscale.serve.metric import calculate_metrics
 
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 
@@ -387,6 +386,8 @@ async def async_request_openai_chat_completions(
             "max_completion_tokens": request_func_input.output_len,
             "stream": True,
             "stream_options": {"include_usage": True},
+            # max_completion_tokens is invalid for llama.cpp
+            "n_predict": request_func_input.output_len,
         }
         if request_func_input.ignore_eos:
             payload["ignore_eos"] = request_func_input.ignore_eos
@@ -429,8 +430,12 @@ async def async_request_openai_chat_completions(
                                     output.itl.append(timestamp - most_recent_timestamp)
 
                                 generated_text += content or ""
-                            elif usage := data.get("usage"):
-                                output.output_tokens = usage.get("completion_tokens")
+
+                            # llamap.cpp's last response has "choices", bot delta is null
+                            # sglang's response has key "usage" but value is null
+                            if usage := data.get("usage", {}):
+                                if completion_tokens := usage.get("completion_tokens"):
+                                    output.output_tokens = completion_tokens
 
                             most_recent_timestamp = timestamp
 
@@ -491,6 +496,9 @@ async def benchmark(
     pbar.close()
 
     benchmark_duration = time.perf_counter() - benchmark_start_time
+
+    ### import here to avoid dependency issue
+    from flagscale.serve.metric import calculate_metrics
 
     metrics, actual_output_lens = calculate_metrics(
         input_requests=input_requests,
