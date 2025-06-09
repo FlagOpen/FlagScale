@@ -52,7 +52,7 @@ def _get_param_groups(
     min_lr: float,
     decoupled_lr: Optional[float],
     decoupled_min_lr: Optional[float],
-    vision_ration
+    vision_ration,
 ) -> List[Dict]:
     """Create parameter groups for optimizer.
 
@@ -224,7 +224,6 @@ def _get_param_groups_and_buffers(
     lr_mult: float,
     filter_fn: Callable,
     buffer_name: str,
-    vision_ration=0.1,
 ) -> Tuple[List[Dict], Dict[int, List[_ParamAndGradBuffer]]]:
     """Returns parameter groups and buffer for optimizer.
 
@@ -256,7 +255,7 @@ def _get_param_groups_and_buffers(
         min_lr=config.min_lr,
         decoupled_lr=config.decoupled_lr,
         decoupled_min_lr=config.decoupled_min_lr,
-        vision_ration=vision_ration,
+        vision_ration=config.vision_ration, # NOTE(lizhiyu): The vision ration is used to scale the learning rate for vision model parameters. Added by FlagScale.
     )
     param_groups = list(filter(filter_fn, param_groups))
     buffers = {}
@@ -456,7 +455,6 @@ def get_megatron_optimizer(
     scale_lr_cond: Optional[Callable] = None,
     lr_mult: float = 1.0,
     use_gloo_process_groups: bool = True,
-    vision_ration=0.1,
 ) -> MegatronOptimizer:
     """Retrieve the Megatron optimizer for model chunks.
 
@@ -552,7 +550,6 @@ def get_megatron_optimizer(
             lr_mult=lr_mult,
             filter_fn=lambda g: not g['is_expert_parallel'],
             buffer_name='buffers',
-            vision_ration=vision_ration,
         )
         for model_chunk in dense_model_chunks:
             model_chunk.overlap_param_gather_with_optimizer_step = (
@@ -592,7 +589,6 @@ def get_megatron_optimizer(
         lr_mult=lr_mult,
         filter_fn=lambda g: g['is_expert_parallel'],
         buffer_name='expert_parallel_buffers',
-        vision_ration=vision_ration,
     )
     if len(moe_param_groups) > 0:
         expert_mp_group = mpu.get_expert_tensor_model_pipeline_parallel_group()

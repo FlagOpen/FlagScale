@@ -211,7 +211,10 @@ class Qwen2_5VLModel(MegatronModule):
             vision_embeds = None
             if vision_grid_thw.shape[0] > 0:
                 # NOTE(lizhiyu): Reference https://github.com/huggingface/transformers/blob/40a493c7ed4f19f08eadb0639cf26d49bfa5e180/src/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py#L1612
-                vision_data = vision_data.type(torch.bfloat16)
+                if self.config.bf16:
+                    vision_data = vision_data.to(torch.bfloat16)
+                elif self.config.fp16:
+                    vision_data = vision_data.to(torch.float16)
                 vision_embeds = self.vision_model(
                     vision_data=vision_data, # If None, vision model should use intermediate outputs (EPP > 1)
                     grid_thw=vision_grid_thw # should provided in each EPP stage

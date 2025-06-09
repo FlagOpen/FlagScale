@@ -1467,7 +1467,6 @@ def setup_model_and_optimizer(
         scale_lr_cond,
         lr_mult,
         use_gloo_process_groups=args.enable_gloo_process_groups,
-        vision_ration=args.vision_ration,
     )
     opt_param_scheduler = get_optimizer_param_scheduler(optimizer)
 

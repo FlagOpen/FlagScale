@@ -24,7 +24,7 @@ def get_vision_model_config(args, config):
     # mlp: hidden_size -> intermediate_size -> embed_dim, silu
     # NOTE: here we provide a workaround to solve the wrong layer amount when VPP of decoder is on
     if config.num_layers in[28, 36]:
-        config.ffn_hidden_size = 3420 # 7B 70B
+        config.ffn_hidden_size = 3420 # 7B 72B
     else:
         config.ffn_hidden_size = 3456 # 32B
 
