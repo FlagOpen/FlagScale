@@ -2,13 +2,13 @@
 # We must store the path of vision data, not the real data.
 
 import json
+import math
 import os
 import pickle
 
 from argparse import ArgumentParser
 from typing import List, Union
 
-import math
 import cv2
 import webdataset as wds
 import yaml
@@ -57,10 +57,10 @@ def convert(
         print(f"Warning: {image_key} not found in the first entry")
     if video_key not in data[0]:
         print(f"Warning: {video_key} not found in the first entry")
+
     # custom webdataset ShardWriter Encoder
     # "jpgs": the key when saving the image, see line 93
     # "videos": the key when saving the video, see line 92
-
     add_handlers(default_handlers, 'jpgs', lambda data: pickle.dumps(data))
     add_handlers(default_handlers, 'videos', lambda data: pickle.dumps(data))
 
@@ -205,7 +205,7 @@ if __name__ == "__main__":
         video_key=args.videos_key,
         vision_dir=args.vision_root,
         dp_size=args.dp_size,
-        drop_last=args.drop_last
+        drop_last=args.drop_last,
     )
     print(f"Generating Configurations")
     # NOTE: split_ratio: train/val/test
