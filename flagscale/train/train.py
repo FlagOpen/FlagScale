@@ -2607,7 +2607,7 @@ def train(
             params_norm = calc_params_l2_norm(model)
         learning_rate = None
         decoupled_learning_rate = None
-        for param_group in enumerate(optimizer.param_groups):
+        for param_group in optimizer.param_groups:
             if param_group['is_decoupled_lr']:
                 decoupled_learning_rate = param_group['lr']
             else:
