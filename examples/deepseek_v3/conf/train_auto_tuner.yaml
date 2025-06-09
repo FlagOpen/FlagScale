@@ -8,7 +8,7 @@ experiment:
   seed: 42
   save_steps: 10000
   load: null
-  exp_dir: /share/project/zhaoyingli/experiments/${experiment.exp_name}
+  exp_dir: xxx
   ckpt_format: torch
   task:
     type: train
@@ -20,7 +20,7 @@ experiment:
     rdzv_backend: static
     nnodes: 4
     nproc_per_node: 8
-    hostfile: /share/project/zhaoyingli/hostfiles/hostfile.4
+    hostfile: null
   cmds:
     before_start: ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale-train
   envs:

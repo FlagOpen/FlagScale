@@ -9,7 +9,7 @@ experiment:
   seed: 42
   save_steps: 10000
   load: null
-  exp_dir: /share/project/zhaoyingli/experiments/${experiment.exp_name}
+  exp_dir: xxx
   ckpt_format: torch
   task:
     type: train
