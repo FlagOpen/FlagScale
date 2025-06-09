@@ -18,9 +18,14 @@ Training anomaly monitoring relies on historical training data analysis using va
 - Sends corresponding abnormal information prompt emails based on log analysis results, including sample content for clarity.
 - Configurable check interval.
 
+## Run
+
+The monitoring program runs on the user's local machine.
+
 ## Prerequisites
 
 Before running the script, ensure you have a password-free SSH login to the remote host.
+
 
 ## Installation
 
