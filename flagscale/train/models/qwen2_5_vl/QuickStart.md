@@ -10,8 +10,6 @@ cd FlagScale
 
 ## 1.2. Apply the submodule patch code
 
-Reference [convert.md](../../../../tools/checkpoint/qwen2_5_vl/convert.md)
-
 ```bash
 python ./tools/patch/unpatch.py --backend=Megatron-LM
 python ./tools/patch/unpatch.py --backend=Megatron-Energon
@@ -23,6 +21,7 @@ cp -r src/megatron/energon/ ../Megatron-LM/megatron/
 You can also refered the readme in `https://github.com/FlagOpen/FlagScale.git`
 # 2. Prepare checkpoint
 
+Reference [convert.md](../../../../tools/checkpoint/qwen2_5_vl/convert.md)
 ```bash
 mkdir -p /mnt/qwen2.5-vl-ckpts
 cd /mnt/qwen2.5-vl-ckpts
