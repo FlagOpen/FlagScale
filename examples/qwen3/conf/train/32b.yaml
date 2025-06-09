@@ -25,6 +25,7 @@ system:
     log_num_zeros_in_grad: true
     log_memory_to_tensorboard: true
   checkpoint:
+    async_save: true
     save_interval: ${experiment.save_steps}
     load: ${experiment.load}
     ckpt_format: ${experiment.ckpt_format}
@@ -56,7 +57,7 @@ model:
 
   # training
   seed: ${experiment.seed}
-  # finetune: false
+  finetune: false
   micro_batch_size: 1
   global_batch_size: 128 #2048
   eval_iters: 0
@@ -78,7 +79,7 @@ model:
 data:
   reset_position_ids: True
   reset_attention_mask: True
-  data_path: /share/project/zhaoyingli/data/pile/pile_wikipedia_demo
+  data_path: /path
   split: 1
   no_mmap_bin_files: true
   tokenizer:

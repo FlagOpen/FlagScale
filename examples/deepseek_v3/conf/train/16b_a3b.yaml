@@ -8,8 +8,8 @@ system:
   context_parallel_size: 1
   sequence_parallel: true
   use_distributed_optimizer: true
-  # overlap_grad_reduce: true
-  # overlap_param_gather: true
+  overlap_grad_reduce: true
+  overlap_param_gather: true
   precision:
     bf16: true
     attention_softmax_in_fp32: true
@@ -79,9 +79,9 @@ model:
   moe_router_topk_scaling_factor: 2.446
   moe_token_dispatcher_type: "alltoall"
 
-  # # mtp args ====================
-  # mtp_num_layers: 1
-  # mtp_loss_scaling_factor: 0.3
+  # mtp args ====================
+  mtp_num_layers: 1
+  mtp_loss_scaling_factor: 0.3
 
   # training
   seed: ${experiment.seed}
@@ -107,7 +107,7 @@ model:
 data:
   reset_position_ids: True
   reset_attention_mask: True
-  data_path: /share/project/zhaoyingli/data/pile/pile_wikipedia_demo
+  data_path: /path
   split: 1
   no_mmap_bin_files: true
   tokenizer:

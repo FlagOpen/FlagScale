@@ -87,7 +87,7 @@ model:
 data:
   reset_position_ids: True
   reset_attention_mask: True
-  data_path: /share/project/zhaoyingli/data/pile/pile_wikipedia_demo
+  data_path: /path
   split: 1
   no_mmap_bin_files: true
   tokenizer:

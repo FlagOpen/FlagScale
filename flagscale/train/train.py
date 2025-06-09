@@ -1945,11 +1945,6 @@ def training_log(
             elapsed_time_per_iteration * 10**12 * args.world_size
         )
 
-        throughput_fs = num_floating_point_operations_fs(args, batch_size) / (
-            elapsed_time_per_iteration * 10**12 * args.world_size
-        )
-        print(f"{throughput=}, {throughput_fs=}")
-
         one_logger_utils.track_e2e_metrics(args.log_throughput, throughput)
 
         if args.log_timers_to_tensorboard:
@@ -2013,7 +2008,7 @@ def training_log(
                     num_microbatches = get_num_microbatches()
                     report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
                 report_memory(f'(after {iteration} iterations)')
-                # report_memory_flag = False
+                report_memory_flag = False
         else:
             num_microbatches = get_num_microbatches()
             fs_report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
