@@ -54,21 +54,50 @@ index 719a6726..bb2a28fd 100644
 -    enable_chunked_prefill: true
 +    distributed_executor_backend: ray
 \ No newline at end of file
+diff --git a/examples/deepseek_r1_distill_qwen/conf/serve/32b.yaml b/examples/deepseek_r1_distill_qwen/conf/serve/32b.yaml
+index ef0e04b9..fc2b4ced 100644
+--- a/examples/deepseek_r1_distill_qwen/conf/serve/32b.yaml
++++ b/examples/deepseek_r1_distill_qwen/conf/serve/32b.yaml
+@@ -1,14 +1,18 @@
+ - serve_id: vllm_model
+   engine: vllm
+   engine_args:
+-    model: /share/DeepSeek-R1-Distill-Qwen-32B # should be customized
+-    served_model_name: deepseek-r1-distill-qwen-32b-flagos
++    model: /share/project/deepseek_distill/deepseek-ai/Deepseek-R1-Distill-Qwen-32B # should be customized
++      #served_model_name: deepseek-r1-distill-qwen-32b-flagos
+     tensor_parallel_size: 8
+     max_model_len: 32768
++    max_num_batched_tokens: 32768
++    max_seq_len_to_capture: 32768
++    swap_space: 16
+     pipeline_parallel_size: 1
+-    max_num_seqs: 8 # Even at full 32,768 context usage, 8 concurrent operations won't trigger OOM
+-    gpu_memory_utilization: 0.9
+-    port: 9010
++    max_num_seqs: 256 # Even at full 32,768 context usage, 8 concurrent operations won't trigger OOM
++    gpu_memory_utilization: 0.95
++    port: 8000
+     trust_remote_code: true
+-    enforce_eager: true
+-    enable_chunked_prefill: true
++    enforce_eager: false
++    enable_chunked_prefill: false
++    distributed_executor_backend: ray
 diff --git a/examples/deepseek_r1_w8a8/conf/hostfile.txt b/examples/deepseek_r1_w8a8/conf/hostfile.txt
 new file mode 100644
-index 00000000..544e3d37
+index 00000000..1410176e
 --- /dev/null
 +++ b/examples/deepseek_r1_w8a8/conf/hostfile.txt
 @@ -0,0 +1,5 @@
-+# ip slots type=xxx[optional]
++# ip slots type=x.x.x.x
 +# master node
 +x.x.x.x slots=8 type=gpu
 +# worker nodes
 +x.x.x.x slots=8 type=gpu
-\ No newline at end of file
 diff --git a/examples/deepseek_r1_w8a8/conf/serve.yaml b/examples/deepseek_r1_w8a8/conf/serve.yaml
 new file mode 100644
-index 00000000..32cbf6a0
+index 00000000..370bc3ca
 --- /dev/null
 +++ b/examples/deepseek_r1_w8a8/conf/serve.yaml
 @@ -0,0 +1,20 @@
@@ -84,7 +113,7 @@ index 00000000..32cbf6a0
 +    use_fs_serve: false
 +  runner:
 +    hostfile: examples/deepseek_r1_w8a8/conf/hostfile.txt
-+    docker: flagrelease_metax
++    docker: ds_flagscale3
 +    ssh_port: 22
 +  cmds:
 +    before_start:
@@ -94,23 +123,24 @@ index 00000000..32cbf6a0
 +    dir: ${experiment.exp_dir}/hydra
 diff --git a/examples/deepseek_r1_w8a8/conf/serve/671b_w8a8.yaml b/examples/deepseek_r1_w8a8/conf/serve/671b_w8a8.yaml
 new file mode 100644
-index 00000000..1f4911e0
+index 00000000..ee3171e8
 --- /dev/null
 +++ b/examples/deepseek_r1_w8a8/conf/serve/671b_w8a8.yaml
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,14 @@
 +- serve_id: vllm_model
 +  engine: vllm
 +  engine_args:
-+    model: /nfs/deepseek_r1_bf16_w8a8/vllm_quant_model # path of weight of deepseek r1
++    model: /share/project/zhangyu.d/deepseek_r1_bf16_w8a8/vllm_quant_model # path of weight of deepseek r1
 +    tensor_parallel_size: 8
 +    pipeline_parallel_size: 2
-+    gpu_memory_utilization: 0.9
-+    max_model_len: 4096
++    gpu_memory_utilization: 0.95
++    max_model_len: 32768
++    max_seq_len_to_capture: 32768
++    max_num_batched_tokens: 32768
 +    swap_space: 16
 +    dtype: bfloat16
 +    trust_remote_code: true
 +    distributed_executor_backend: ray
-\ No newline at end of file
 diff --git a/examples/qwen3/conf/serve.yaml b/examples/qwen3/conf/serve.yaml
 index d8006ef8..7859ad53 100644
 --- a/examples/qwen3/conf/serve.yaml

@@ -96,7 +96,7 @@ def _apply_rotary_pos_emb_bshd_vision(
     """
     rot_dim = freqs.shape[-1]
     input_dtype = t.dtype
-    t = t.to(freqs.dtype)
+    t = t.float()
     # ideally t_pass is empty so rotary pos embedding is applied to all tensor t
     t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
 
@@ -107,8 +107,8 @@ def _apply_rotary_pos_emb_bshd_vision(
 
     # first part is cosine component
     # second part is sine component, need to change signs with _rotate_half method
-    cos_ = (torch.cos(freqs) * mscale)
-    sin_ = (torch.sin(freqs) * mscale)
+    cos_ = torch.cos(freqs).float()
+    sin_ = torch.sin(freqs).float()
     t = (t * cos_) + (_rotate_half(t, rotary_interleaved) * sin_)
     return torch.cat((t, t_pass), dim=-1).to(input_dtype)
 
