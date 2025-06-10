@@ -11,14 +11,14 @@ experiment:
     use_fs_serve: false
   runner:
     type: cloud
-    hostfile: ${oc.env:HOSTFILE}
-    master_addr: ${oc.env:MASTER_ADDR}
+    hostfile: ${oc.env:HOSTFILE, null}
+    master_addr: ${oc.env:MASTER_ADDR, 127.0.0.1}
     master_port: 7396
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
 
   cmds:
-    before_start: source activate flagscale-inference
+    before_start: source /root/miniconda3/bin/activate flagscale-inference
 
 action: run
 
