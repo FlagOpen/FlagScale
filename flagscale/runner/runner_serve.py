@@ -1,8 +1,10 @@
 import asyncio
+import collections
 import contextlib
 import copy
 import json
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -184,6 +186,39 @@ def match_address(address):
         return hostname == address
     # Local host Scene
     return True
+
+
+def parse_cloud_hostfile(hostfile_path):
+    if hostfile_path is None or not os.path.isfile(hostfile_path):
+        logger.warning(
+            f"Hostfile {hostfile_path} not found. The training will proceed using only local resources."
+        )
+        return None
+
+    resources = collections.OrderedDict()
+
+    with open(hostfile_path, "r") as fd:
+        hostfile_lines = fd.readlines()
+
+    for line in hostfile_lines:
+        line = line.strip()
+        if line.startswith("#") or line == "":
+            # hostfile comment or empty line, ignore
+            continue
+        else:
+            host = line
+            num_slots = int(os.getenv("AIRS_ACCELERATOR_NUM", "1"))
+            machine_type = "gpu"
+            resources[host] = {"slots": num_slots, "type": machine_type}
+
+    assert all(info["type"] == None for _, info in resources.items()) or all(
+        info["type"] != None for _, info in resources.items()
+    ), "All hosts must have the a machine type or no machine type specified."
+
+    if len(resources) == 0:
+        raise ValueError("Hostfile is empty or not formatted correctly. Please check the hostfile.")
+
+    return resources
 
 
 def _generate_run_script_serve(config, host, node_rank, cmd, background=True, with_test=False):
@@ -724,6 +759,8 @@ def _generate_stop_script(config, host, node_rank):
         f.write(f"\n")
         f.write(f"{before_start_cmd}\n")
         f.write(f"\n")
+        envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
+        f.write(f"{envs_str}\n")
 
         if nodes:
             if deploy_config.get("prefill_decode_disaggregation", False):
@@ -750,6 +787,8 @@ def _generate_stop_script(config, host, node_rank):
                         node_cmd = f"${{ray_path}} stop && pkill -f python"
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
+                        if envs_str:
+                            node_cmd = f"{envs_str} && " + node_cmd
 
                         ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
 
@@ -1120,7 +1159,7 @@ class CloudServeRunner(RunnerBase):
         self.resources = None
 
         if hostfile_path:
-            self.resources = parse_hostfile(hostfile_path)
+            self.resources = parse_cloud_hostfile(hostfile_path)
             for key, value in self.resources.items():
                 if not value.get("type", None):
                     logger.warning(
