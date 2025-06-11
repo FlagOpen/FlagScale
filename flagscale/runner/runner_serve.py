@@ -540,9 +540,11 @@ def _generate_cloud_run_script_serve(
     host_run_script_file = os.path.join(
         logging_config.scripts_dir, node_id, f"host_{node_rank}_{host}_run.sh"
     )
-    host_pid_file = os.path.join(logging_config.pids_dir, node_id, f"host_{node_rank}_{host}.pid")
+    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
+    if node_id:
+        os.makedirs(os.path.join(logging_config.scripts_dir, node_id), exist_ok=True)
 
     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     cmds_config = config.experiment.get("cmds", None)
