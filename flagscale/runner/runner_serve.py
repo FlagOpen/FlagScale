@@ -630,8 +630,8 @@ def _generate_cloud_run_script_serve(
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
                         f.write(f"{node_cmd}\n")
-                if not is_address_matched:
-                    raise ValueError(f"The current node can not match any given node.")
+            if not is_address_matched:
+                raise ValueError(f"The current node can not match any given node.")
 
         else:
             # Note: config key device_type is specified for single node serving in neither gpu or cpu.
@@ -664,22 +664,23 @@ def _generate_cloud_run_script_serve(
             if node_cmd:
                 f.write(f"{node_cmd}\n")
 
-        f.write(f"mkdir -p {logging_config.log_dir}\n")
-        f.write(f"mkdir -p {logging_config.pids_dir}\n")
-        f.write(f"\n")
-        f.write(f"cd {root_dir}\n")
-        f.write(f"\n")
-        f.write(f'cmd="{cmd}"\n')
-        f.write(f"\n")
-        # TODO: need a option to control whether to append or overwrite the output file
-        # Now, it always appends to the output file
-        f.write("echo '=========== launch task ==========='\n")
-        if background:
-            f.write(
-                f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
-            )
-        else:
-            f.write(f'bash -c "$cmd; sync" >> {host_output_file} 2>&1\n')
+        if is_master(config):
+            f.write(f"mkdir -p {logging_config.log_dir}\n")
+            f.write(f"mkdir -p {logging_config.pids_dir}\n")
+            f.write(f"\n")
+            f.write(f"cd {root_dir}\n")
+            f.write(f"\n")
+            f.write(f'cmd="{cmd}"\n')
+            f.write(f"\n")
+            # TODO: need a option to control whether to append or overwrite the output file
+            # Now, it always appends to the output file
+            f.write("echo '=========== launch task ==========='\n")
+            if background:
+                f.write(
+                    f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
+                )
+            else:
+                f.write(f'bash -c "$cmd; sync" >> {host_output_file} 2>&1\n')
         f.write("\n")
         f.flush()
         os.fsync(f.fileno())
