@@ -11,7 +11,7 @@ experiment:
     use_fs_serve: false
   runner:
     type: cloud
-    hostfile: ${oc.env:HOSTFILE, null}
+    hostfile: ${oc.env:HOSTFILE, /etc/hostfile}
     master_addr: ${oc.env:MASTER_ADDR, 127.0.0.1}
     master_port: 7396
   envs:
