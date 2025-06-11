@@ -1,0 +1,59 @@
+BI_V150:
+  inference:
+    FlagScale+vllm:
+    - 39c0adcf0db48417ded4842c92067626bd55562f
+    vllm:
+    - 39c0adcf0db48417ded4842c92067626bd55562f
+    FlagScale:
+    - 39c0adcf0db48417ded4842c92067626bd55562f
+Cambricon_MLU:
+  inference:
+    FlagScale+vllm:
+    - 10faa30d1635fb8a102a48352d196870841100a0
+    - 1d6faaad9c56e3e5ccae0526a6a977fae46650d2
+    vllm:
+    - 10faa30d1635fb8a102a48352d196870841100a0
+    - 1d6faaad9c56e3e5ccae0526a6a977fae46650d2
+    FlagScale:
+    - 10faa30d1635fb8a102a48352d196870841100a0
+    - 1d6faaad9c56e3e5ccae0526a6a977fae46650d2
+Kunlunxin_R310p:
+  inference:
+    FlagScale+vllm:
+    - 571b9880d2b81ffe85e87e2e0bc3cf23f1d402d9
+    vllm:
+    - 571b9880d2b81ffe85e87e2e0bc3cf23f1d402d9
+    FlagScale:
+    - 571b9880d2b81ffe85e87e2e0bc3cf23f1d402d9
+MUSA_S5000:
+  train:
+    FlagScale+Megatron-LM:
+    - e4a55046ec83451444b03de17d0a743794e85a87
+    - ab023d3c849cbe22c586cba5970260dd501093f2
+    - ad8411712dfbbdf03ec791878d32d578e917593f
+    Megatron-LM:
+    - e4a55046ec83451444b03de17d0a743794e85a87
+    - ab023d3c849cbe22c586cba5970260dd501093f2
+    - ad8411712dfbbdf03ec791878d32d578e917593f
+    FlagScale:
+    - e4a55046ec83451444b03de17d0a743794e85a87
+    - ab023d3c849cbe22c586cba5970260dd501093f2
+    - ad8411712dfbbdf03ec791878d32d578e917593f
+Metax_C550:
+  inference:
+    FlagScale+vllm:
+    - 2c0b2d6123bab89e85b84e2a33ba7bd50f70de48
+    - 6798d71df02b1d7c7dc6d659573a2e33c2b1021e
+    vllm:
+    - 2c0b2d6123bab89e85b84e2a33ba7bd50f70de48
+    - 6798d71df02b1d7c7dc6d659573a2e33c2b1021e
+    FlagScale:
+    - 2c0b2d6123bab89e85b84e2a33ba7bd50f70de48
+    - 6798d71df02b1d7c7dc6d659573a2e33c2b1021e
+  train:
+    FlagScale+Megatron-LM:
+    - 242842398986e61cdd43b0b3e2b03e95f6553899
+    Megatron-LM:
+    - 242842398986e61cdd43b0b3e2b03e95f6553899
+    FlagScale:
+    - 242842398986e61cdd43b0b3e2b03e95f6553899
