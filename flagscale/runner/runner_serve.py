@@ -570,13 +570,13 @@ def _generate_cloud_run_script_serve(
         f.write(f"fi\n")
         f.write(f"\n")
         envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
+        f.write(f"{envs_str}\n")
 
         if nodes:
             f.write(f"ray_path=$(realpath $(which ray))\n")
             master_ip = nodes[0][0]
-            target_port = nodes[0][1].get("port")
 
-            master_port = target_port if target_port else get_free_port()
+            master_port = config.experiment.runner.get("master_port", 7396)
 
             address = f"{master_ip}:{master_port}"
             is_address_matched = False
