@@ -18,6 +18,7 @@ from flagscale.runner.utils import (
     benchmark,
     dummy_random_input,
     flatten_dict_to_args,
+    get_addr,
     get_free_port,
     get_ip_addr,
     get_nproc_per_node,
@@ -528,16 +529,18 @@ def _generate_cloud_run_script_serve(
 ):
     nodes = config.get("nodes", None)
     logging_config = config.logging
-
+    node_id = ""
+    if nodes:
+        node_id = get_addr()
     no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
     if no_shared_fs:
         host_output_file = os.path.join(logging_config.log_dir, f"host.output")
     else:
         host_output_file = os.path.join(logging_config.log_dir, f"host_{node_rank}_{host}.output")
     host_run_script_file = os.path.join(
-        logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
+        logging_config.scripts_dir, node_id, f"host_{node_rank}_{host}_run.sh"
     )
-    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
+    host_pid_file = os.path.join(logging_config.pids_dir, node_id, f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
 
