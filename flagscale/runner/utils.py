@@ -306,7 +306,7 @@ def get_addr():
     return socket.gethostname()
 
 
-def is_master(config):
+def is_master(config, resources=None):
     """Check if current node is master."""
     nnodes = config.experiment.runner.get("nnodes", 1)
 
@@ -317,7 +317,8 @@ def is_master(config):
         if os.environ.get("AIRS_HOSTFILE_PATH", None):
             hostfile = os.environ["AIRS_HOSTFILE_PATH"]
 
-    resources = parse_hostfile(hostfile)
+    if not resources:
+        resources = parse_hostfile(hostfile)
     if not resources and nnodes > 1:
         raise ValueError("In the multi-node mode, please set the hostfile")
 
