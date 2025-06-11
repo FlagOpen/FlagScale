@@ -25,6 +25,13 @@ Kunlunxin_R310p:
     - 571b9880d2b81ffe85e87e2e0bc3cf23f1d402d9
     FlagScale:
     - 571b9880d2b81ffe85e87e2e0bc3cf23f1d402d9
+  train:
+    FlagScale+Megatron-LM:
+    - 25e9b91b3428e74da262d631fa3e2c13f3e2e2c3
+    Megatron-LM:
+    - 25e9b91b3428e74da262d631fa3e2c13f3e2e2c3
+    FlagScale:
+    - 25e9b91b3428e74da262d631fa3e2c13f3e2e2c3
 MUSA_S5000:
   train:
     FlagScale+Megatron-LM:
