@@ -232,6 +232,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         f.write(f"fi\n")
         f.write(f"\n")
         envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
+        f.write(f"{envs_str}\n")
 
         if nodes:
             if deploy_config.get("prefill_decode_disaggregation", False):
@@ -397,6 +398,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
 
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
+                        if envs_str:
+                            node_cmd = f"{envs_str} && " + node_cmd
 
                         ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
 
@@ -459,6 +462,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             )
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
+                        if envs_str:
+                            node_cmd = f"{envs_str} && " + node_cmd
                         ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
                         if docker_name:
                             ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
