@@ -631,7 +631,7 @@ def _generate_cloud_run_script_serve(
                     )
                 if match_address(ip):
                     is_address_matched = True
-                    if is_master(config):
+                    if is_master(config, collections.OrderedDict(nodes)):
                         # master node
                         f.write(f"# start cluster\n")
                         f.write(f"# master node\n")
@@ -701,7 +701,7 @@ def _generate_cloud_run_script_serve(
             if node_cmd:
                 f.write(f"{node_cmd}\n")
 
-        if is_master(config):
+        if not nodes or is_master(config, collections.OrderedDict(nodes)):
             f.write(f"mkdir -p {logging_config.log_dir}\n")
             f.write(f"mkdir -p {logging_config.pids_dir}\n")
             f.write(f"\n")
