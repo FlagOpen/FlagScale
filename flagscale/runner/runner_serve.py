@@ -155,7 +155,7 @@ def _update_auto_engine_args(config, model="vllm_model"):
                 nproc_per_node = int(config.experiment.runner.get("nproc_per_node", 1))
                 tensor_parallel_size = 2 ** int(math.floor(math.log2(nproc_per_node)))
             if model_args.get("pipeline_parallel_size", None):
-                pipeline_parallel_size = int(model_args.get("tensor_parallel_size"))
+                pipeline_parallel_size = int(model_args.get("pipeline_parallel_size"))
             else:
                 pipeline_parallel_size = len(config.get("nodes", [])) or 1
             model_args["tensor_parallel_size"] = tensor_parallel_size
