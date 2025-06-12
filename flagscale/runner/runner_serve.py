@@ -180,7 +180,7 @@ def _update_config_serve(config: DictConfig):
 
     OmegaConf.set_struct(config, False)
 
-    if config.experiment.runner.type == "cloud":
+    if config.experiment.runner.get("type", "ssh") == "cloud":
         # set auto tp and pp size
         _update_auto_engine_args(config)
     if deploy_config.get("prefill_decode_disaggregation", False):
