@@ -3,10 +3,12 @@ backends_commit:
 backends_version:
   FlagScale: 0.8.0
   vllm: 0.7.3
-commit: d86a121880f2a849cfabd22582acb08f49a2512a
+commit: 242842398986e61cdd43b0b3e2b03e95f6553899
 contact: yongpeng.zhang@iluvatar.com
 device_type: BI_V150
 models:
-- qwen3 30b-a3b
+- ds
+- minicpm-o
+- ds-distill-qwen for jn
 task:
 - inference
