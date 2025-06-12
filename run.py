@@ -64,7 +64,7 @@ def main(config: DictConfig) -> None:
         else:
             if config.experiment.runner.get("type", "ssh") == "ssh":
                 runner = SSHServeRunner(config)
-            elif config.experiment.runner.get("type") == "cloud":
+            elif config.experiment.runner.get("type", "ssh") == "cloud":
                 runner = CloudServeRunner(config)
             else:
                 raise ValueError(f"Unknown runner type {config.runner.type}")
