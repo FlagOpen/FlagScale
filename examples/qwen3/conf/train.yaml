@@ -1,13 +1,15 @@
 defaults:
   - _self_
-  - train: 30b_a3b
+  # - train: 30b_a3b
+  - train: 32b
 
 experiment:
-  exp_name: Qwen3-Test
+  # exp_name: Qwen3-30b-a3b-Train
+  exp_name: Qwen3-32b-Train
   seed: 42
   save_steps: 10000
-  load: None
-  exp_dir: /xxx
+  load: null
+  exp_dir: xxx
   ckpt_format: torch
   task:
     type: train
@@ -19,7 +21,7 @@ experiment:
     rdzv_backend: static
     hostfile: null
   cmds:
-    before_start: "ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale"
+    before_start: ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale-train
   envs:
     LOGLEVEL: "INFO"
     CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
