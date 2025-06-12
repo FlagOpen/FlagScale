@@ -14,6 +14,7 @@ experiment:
     hostfile: ${oc.env:HOSTFILE, /etc/hostfile}
     master_addr: ${oc.env:MASTER_ADDR, 127.0.0.1}
     master_port: 7396
+    device_type: ${oc.env:DEVICE_TYPE, gpu}
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
 

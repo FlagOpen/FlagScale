@@ -3,11 +3,13 @@ import collections
 import contextlib
 import copy
 import json
+import math
 import os
 import re
 import shlex
 import shutil
 import signal
+import socket
 import subprocess
 
 import psutil
@@ -135,6 +137,39 @@ def _get_profile_args(config, model="vllm_model"):
     return profile_args
 
 
+def _update_auto_engine_args(config, model="vllm_model"):
+    serve_config = config.get("serve", [])
+    if not serve_config:
+        raise ValueError(f"No 'serve' configuration found in task config: {serve_config}")
+    engine_args = {}
+
+    for item in serve_config:
+        if item.get("serve_id", None) == model:
+            engine_args = item.get("engine_args", {})
+
+            model_args_str = os.environ.get("MODEL_ARGS", {})
+            model_args = json.loads(model_args_str)
+            if model_args.get("tensor_parallel_size", None):
+                tensor_parallel_size = int(model_args.get("tensor_parallel_size"))
+            else:
+                nproc_per_node = int(config.experiment.runner.get("nproc_per_node", 1))
+                tensor_parallel_size = 2 ** int(math.floor(math.log2(nproc_per_node)))
+            if model_args.get("pipeline_parallel_size", None):
+                pipeline_parallel_size = int(model_args.get("tensor_parallel_size"))
+            else:
+                pipeline_parallel_size = len(config.get("nodes", [])) or 1
+            model_args["tensor_parallel_size"] = tensor_parallel_size
+            model_args["pipeline_parallel_size"] = pipeline_parallel_size
+            engine_args.update(model_args)
+            item.engine_args = engine_args
+
+            break
+    if not engine_args:
+        raise ValueError(f"No 'engine_args' configuration found in task config: {serve_config}")
+
+    return engine_args
+
+
 def _update_config_serve(config: DictConfig):
     deploy_config = config.experiment.get("deploy", {})
 
@@ -145,6 +180,9 @@ def _update_config_serve(config: DictConfig):
 
     OmegaConf.set_struct(config, False)
 
+    if config.experiment.runner.type == "cloud":
+        # set auto tp and pp size
+        _update_auto_engine_args(config)
     if deploy_config.get("prefill_decode_disaggregation", False):
         deploy_config["pd_proxy_port"] = get_free_port()
 
@@ -181,11 +219,8 @@ def match_address(address):
     if is_ip_addr(address):
         return get_ip_addr() == address
     else:
-        output = subprocess.run("hostname", check=True, shell=True, text=True, capture_output=True)
-        hostname = output.stdout.strip()
+        hostname = socket.gethostname()
         return hostname == address
-    # Local host Scene
-    return True
 
 
 def parse_cloud_hostfile(hostfile_path):
@@ -614,11 +649,10 @@ def _generate_cloud_run_script_serve(
 
         if nodes:
             f.write(f"ray_path=$(realpath $(which ray))\n")
-            master_ip = nodes[0][0]
-
+            master_addr = config.experiment.runner.get("master_addr")
             master_port = config.experiment.runner.get("master_port", 7396)
 
-            address = f"{master_ip}:{master_port}"
+            address = f"{master_addr}:{master_port}"
             is_address_matched = False
             for index, (ip, node) in enumerate(nodes):
                 if not node.get("type", None):
@@ -863,7 +897,30 @@ class SSHServeRunner(RunnerBase):
         self.host = None
 
     def _prepare(self):
+        self.resources = None
+        hostfile_path = self.config.experiment.runner.get("hostfile", None)
+        if hostfile_path:
+            if os.path.isabs(hostfile_path):
+                hostfile_path = hostfile_path
+            else:
+                hostfile_path = os.path.join(os.getcwd(), hostfile_path)
+            if not os.path.exists(hostfile_path):
+                raise ValueError(f"The hostfile {hostfile_path} does not exist")
+        if hostfile_path:
+            self.resources = parse_hostfile(hostfile_path)
+            for key, value in self.resources.items():
+                if not value.get("type", None):
+                    logger.warning(
+                        f"The hostfile key type is not set for host {key}, using gpu by default"
+                    )
+                    self.resources[key]["type"] = "gpu"
+            if self.resources:
+                OmegaConf.set_struct(self.config, False)
+                self.config["nodes"] = list(self.resources.items())
+                OmegaConf.set_struct(self.config, True)
+
         _update_config_serve(self.config)
+
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
@@ -882,29 +939,7 @@ class SSHServeRunner(RunnerBase):
             raise ValueError(
                 f"Invalid config entrypoint: {entrypoint}, must be a python file path or null."
             )
-        hostfile_path = self.config.experiment.runner.get("hostfile", None)
-        if hostfile_path:
-            if os.path.isabs(hostfile_path):
-                hostfile_path = hostfile_path
-            else:
-                hostfile_path = os.path.join(os.getcwd(), hostfile_path)
-            if not os.path.exists(hostfile_path):
-                raise ValueError(f"The hostfile {hostfile_path} does not exist")
 
-        self.resources = None
-
-        if hostfile_path:
-            self.resources = parse_hostfile(hostfile_path)
-            for key, value in self.resources.items():
-                if not value.get("type", None):
-                    logger.warning(
-                        f"The hostfile key type is not set for host {key}, using gpu by default"
-                    )
-                    self.resources[key]["type"] = "gpu"
-            if self.resources:
-                OmegaConf.set_struct(self.config, False)
-                self.config["nodes"] = list(self.resources.items())
-                OmegaConf.set_struct(self.config, True)
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
