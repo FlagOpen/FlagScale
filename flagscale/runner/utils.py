@@ -96,6 +96,26 @@ def get_host_name_or_ip():
     return IP
 
 
+def get_addr():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            if not ip.startswith == "127.0.0.1":
+                return ip
+    except:
+        pass
+
+    try:
+        ip = socket.gethostbyname(socket.getfqdn())
+        if not ip.startswith == "127.0.0.1":
+            return ip
+    except:
+        pass
+
+    return socket.gethostname()
+
+
 def run_local_command(cmd, dryrun=False, query=False):
     logger.info(f"Run the local command: {cmd}")
     if dryrun:
