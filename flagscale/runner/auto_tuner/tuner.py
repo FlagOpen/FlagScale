@@ -309,12 +309,14 @@ class ServeAutoTunner(AutoTuner):
         logger.addHandler(handler)
         self.logger = logger
         self.handler = handler
-        deploy_config = config.experiment.get("deploy", {})
+        deploy_config = config.experiment.get("runner", {}).get("deploy", {})
 
         if not deploy_config.get("use_fs_serve", True) and deploy_config.get("port", None):
             for item in config.serve:
                 if item.get("serve_id") == "vllm_model":
-                    item.engine_args["port"] = config.experiment.get("deploy", {}).get("port", None)
+                    item.engine_args["port"] = (
+                        config.experiment.get("runner", {}).get("deploy", {}).get("port", None)
+                    )
 
         # Deepcopy the original config to isolate from each task config
         # Modify the orig config when run best task
@@ -374,6 +376,14 @@ class ServeAutoTunner(AutoTuner):
 
         # Checkout search mode on the platform
         self.has_checkout = False
+        self.tune_pd = False
+        self.prefill_best_strategy = None
+        self.decode_best_strategy = None
+        self.enable_prefill_decode_disaggregation = (
+            self.config.experiment.get("runner", {})
+            .get("deploy", {})
+            .get("prefill_decode_disaggregation", False)
+        )
 
     def tune(self):
         """
@@ -390,6 +400,10 @@ class ServeAutoTunner(AutoTuner):
             self.gen()
             if not self.cur_strategy:
                 break
+            if self.cur_strategy.get("tune_pd_instance", False):
+                self.config.experiment.runner.deploy.prefill_decode_disaggregation = False
+            elif self.cur_strategy.get("prefill_decode_disaggregation", False):
+                self.config.experiment.runner.deploy.prefill_decode_disaggregation = True
             self.logger.info(f"Run task_{self.idx}: {self.cur_strategy}")
             self.run()
             self.logger.info(f"Monitor task_{self.idx}:")
@@ -397,14 +411,38 @@ class ServeAutoTunner(AutoTuner):
             self.logger.info(f"Record task_{self.idx}:")
             self.record()
 
-            # get best strategy
-            best_strategy = self.get_best()
-            if best_strategy:
-                self.logger.info(
-                    f"Best strategy tuned so far: {best_strategy}, and {self.recorder.metric} is {best_strategy[self.recorder.metric]}."
+            if self.cur_strategy.get("tune_pd_instance", False):
+                # get best strategy of prefill and decode type
+                prefill_metric = "prompt_throughput"
+                self.prefill_best_strategy = self.get_best(
+                    metric=prefill_metric, sorted_order="descend"
                 )
+                if self.prefill_best_strategy:
+                    self.logger.info(
+                        f"Best prefill strategy tuned so far: {self.prefill_best_strategy}, and {prefill_metric} is {self.prefill_best_strategy[prefill_metric]}."
+                    )
+                else:
+                    self.logger.info(f"No prefill strategy can run so far.")
+                decode_metric = "output_throughput"
+                self.decode_best_strategy = self.get_best(
+                    metric=decode_metric, sorted_order="descend"
+                )
+                if self.decode_best_strategy:
+                    self.logger.info(
+                        f"Best decode strategy tuned so far: {self.decode_best_strategy}, and {decode_metric} is {self.decode_best_strategy[decode_metric]}."
+                    )
+                else:
+                    self.logger.info(f"No decode strategy can run so far.")
             else:
-                self.logger.info(f"No strategy can run so far.")
+                # get best strategy
+                best_strategy = self.get_best()
+                if best_strategy:
+                    self.logger.info(
+                        f"Best strategy tuned so far: {best_strategy}, and {self.recorder.metric} is {best_strategy[self.recorder.metric]}."
+                    )
+                else:
+                    self.logger.info(f"No strategy can run so far.")
+
         tuner_end_time = time.time()
         self.logger.info(f"AutoTuner Ended in {tuner_end_time - tuner_start_time} seconds.")
 
@@ -419,6 +457,61 @@ class ServeAutoTunner(AutoTuner):
             best_task.action = "run"
             runner = SSHServeRunner(best_task)
             runner.run()
+
+    def gen(self):
+        """Generate a task to run."""
+        # 1. Get a strategy from searcher
+        # 2. Whether prune by pruner
+        # 3. If not pruned, generate the task by generator
+        strategy = self.searcher.search()
+        self.logger.info(f"Strategy: ---------------- {strategy}")
+        self.logger.info(f"self.decode_best_strategy: ---------------- {self.decode_best_strategy}")
+        self.logger.info(
+            f"tune_pd_instance: {strategy.get('tune_pd_instance', False)} ---------------- prefill_decode_disaggregation: {strategy.get('prefill_decode_disaggregation', False)}"
+        )
+        if strategy.get("tune_pd_instance", False):
+            self.config.experiment.runner.deploy.prefill_decode_disaggregation = False
+        elif strategy.get("prefill_decode_disaggregation", False):
+            self.logger.info(f"before update config {self.config}--------------")
+            self.config.experiment.runner.deploy.prefill_decode_disaggregation = True
+            self.config.experiment.runner.deploy.prefill_num = strategy.get("prefill_num", 1)
+            self.config.experiment.runner.deploy.decode_num = strategy.get("decode_num", 1)
+            self.logger.info(f"after update config {self.config}--------------")
+            if (
+                self.config.experiment.get("auto_tuner", {})
+                .get("performance", {})
+                .get("metric", None)
+                == "prompt_throughput"
+                and self.prefill_best_strategy
+            ):
+                strategy.update(self.prefill_best_strategy)
+            elif self.decode_best_strategy:
+                strategy.update(self.decode_best_strategy)
+            else:
+                self.logger.warning("No availble strategy for prefill or decode strategy.")
+        while strategy and (self.pruner is not None and self.pruner.prune(strategy, self.history)):
+            strategy = self.searcher.search()
+        if strategy:
+            self.idx += 1
+            strategy["idx"] = self.idx
+            pruned_count = self.pruner.pruned_count if self.pruner is not None else 0
+            pruned_by_memory_model = (
+                self.pruner.pruned_by_memory_model if self.pruner is not None else 0
+            )
+            if "memory_model" in self.config.experiment.auto_tuner:
+                self.logger.info(
+                    f"Searching {self.idx+pruned_count} / {len(self.searcher.strategies)} strategy, Pruned {pruned_count} strategy, {pruned_by_memory_model} by memory model."
+                )
+            else:
+                self.logger.info(
+                    f"Searching {self.idx+pruned_count} / {len(self.searcher.strategies)} strategy, Pruned {pruned_count} strategy."
+                )
+            self.logger.info(f"Generate task_{self.idx}")
+            self.cur_strategy = strategy
+            self.cur_task = self.generator.gen(strategy)
+            self.logger.warning(f"self.cur_task******* {self.cur_task} **********")
+        else:
+            self.cur_strategy = None
 
     def run(self, task=None):
         # Instantiate a runner and run the task
@@ -498,10 +591,11 @@ class ServeAutoTunner(AutoTuner):
     def record(self):
         self.recorder.record(self.cur_strategy, self.cur_result)
         self.history.append(self.recorder.cur_strategy)
+        self.logger.warning(f"add history ====================== {self.history} ========= ")
         self.recorder.save(self.history)
 
-    def get_best(self):
-        sorted_history = self.recorder.sort(self.history)
+    def get_best(self, metric=None, sorted_order=None):
+        sorted_history = self.recorder.sort(self.history, metric=metric, sorted_order=sorted_order)
         if sorted_history and sorted_history[0] and sorted_history[0][self.recorder.metric]:
             return sorted_history[0]
         return None
