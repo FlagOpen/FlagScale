@@ -226,7 +226,7 @@ def match_address(address):
 def parse_cloud_hostfile(hostfile_path):
     if hostfile_path is None or not os.path.isfile(hostfile_path):
         logger.warning(
-            f"Hostfile {hostfile_path} not found. The training will proceed using only local resources."
+            f"Hostfile {hostfile_path} not found. The task will proceed using only local resources."
         )
         return None
 
@@ -1140,12 +1140,6 @@ class SSHServeRunner(RunnerBase):
 
 
 class CloudServeRunner(RunnerBase):
-    def __init__(self, config: DictConfig):
-        super().__init__(config)
-        self.task_type = getattr(self.config.experiment.task, "type", None)
-        assert self.task_type == "train", f"Unsupported task type: {self.task_type}"
-        self._prepare()
-
     def __init__(self, config: DictConfig):
         super().__init__(config)
         self.task_type = getattr(self.config.experiment.task, "type", None)
