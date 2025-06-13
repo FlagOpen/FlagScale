@@ -1,0 +1,10 @@
+backends_commit: {}
+backends_version:
+  FlagScale: main
+commit: 3568f8c9e08f94b8c5ed42f79cf0e295b99d4559
+contact: malin@tsingmicro.com
+device_type: Tsing_micro
+models:
+- Llama3-70B
+task:
+- train
