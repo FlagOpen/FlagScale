@@ -1,0 +1,2543 @@
+diff --git a/examples/tsing/deepseek_r1/conf/serve.yaml b/examples/tsing/deepseek_r1/conf/serve.yaml
+new file mode 100644
+index 00000000..ed20bf30
+--- /dev/null
++++ b/examples/tsing/deepseek_r1/conf/serve.yaml
+@@ -0,0 +1,32 @@
++defaults:
++  - _self_
++  - serve: 671b
++experiment:
++  exp_name: deepseek_r1
++  exp_dir: /data/fslog/ts_outputs_deepseek_server
++  task:
++    type: serve
++    entrypoint: flagscale/backends/tsing/deepseek_r1/run_tsing_deepseek_server.py
++  deploy:
++    use_fs_serve: false
++  runner:
++    # hostfile: examples/deepseek_r1/conf/hostfile.txt
++    # docker: flagrelease_nv
++    type: ssh_tsing_ds
++    ssh_port: 22
++  envs:
++    # CUDA_DEVICE_MAX_CONNECTIONS: 1
++    # CUDA_VISIBLE_DEVICES: 0
++    PJRT_DEVICE: TX8
++    TX8_NUM_DEVICES: 32
++    PJRT_LOCAL_WORLD_SIZE: 32
++    PJRT_GROUP_RANK: 0
++    VLLM_LOGGING_LEVEL: WARNING
++  cmds:
++    # before_start: source /root/miniconda3/bin/activate flagscale-inference && export GLOO_SOCKET_IFNAME=bond0 # replace "bond0" with your own network card
++    before_start: ""
++action: run
++hydra:
++  run:
++    dir: ${experiment.exp_dir}/hydra
++
+diff --git a/examples/tsing/deepseek_r1/conf/serve/671b.yaml b/examples/tsing/deepseek_r1/conf/serve/671b.yaml
+new file mode 100644
+index 00000000..15b5cbcf
+--- /dev/null
++++ b/examples/tsing/deepseek_r1/conf/serve/671b.yaml
+@@ -0,0 +1,11 @@
++- serve_id: vllm_model
++  engine: vllm
++  engine_args:
++    model: /data/LM/hf/DeepSeek-R1 # path of weight of deepseek r1
++    tensor_parallel_size: 8
++    pipeline_parallel_size: 4
++    max_model_len: 32768
++    max_num_seqs: 256
++    trust_remote_code: true
++    enable_chunked_prefill: true
++    extra_args: "--device=txnpu --load_format=tx --num_gpu_blocks_override=1024 --block_size=16 --model-dtype bfloat16 -cn 0..31 --max-model-len=32768 -ts=32 --trust-remote-code -cd /data/ds-r1-128g-0406 --uvicorn-log-level warning"
+diff --git a/flagscale/backends/tsing/deepseek_r1/run_tsing_deepseek_server.py b/flagscale/backends/tsing/deepseek_r1/run_tsing_deepseek_server.py
+new file mode 100755
+index 00000000..2ead875e
+--- /dev/null
++++ b/flagscale/backends/tsing/deepseek_r1/run_tsing_deepseek_server.py
+@@ -0,0 +1,768 @@
++import asyncio
++import importlib
++import inspect
++import multiprocessing
++import os,json,re
++import builtins
++import re
++import copy
++import signal
++import socket
++import json
++import tempfile
++import argparse
++from argparse import Namespace
++from contextlib import asynccontextmanager
++from transformers import AutoTokenizer
++from functools import partial
++from http import HTTPStatus
++from typing import AsyncIterator, Set
++
++import uvloop
++from fastapi import APIRouter, FastAPI, Request
++from fastapi.exceptions import RequestValidationError
++from fastapi.middleware.cors import CORSMiddleware
++from fastapi.responses import JSONResponse, Response, StreamingResponse
++from starlette.datastructures import State
++from starlette.routing import Mount
++from typing_extensions import assert_never
++
++import vllm.envs as envs
++from vllm.config import ModelConfig
++from vllm.engine.arg_utils import AsyncEngineArgs
++from vllm.engine.async_llm_engine import AsyncLLMEngine
++from vllm.engine.multiprocessing.client import MQLLMEngineClient
++from vllm.engine.multiprocessing.engine import run_mp_engine
++from vllm.engine.protocol import EngineClient
++from vllm.entrypoints.launcher import serve_http
++from vllm.entrypoints.logger import RequestLogger
++from vllm.entrypoints.openai.cli_args import (make_arg_parser,
++                                              validate_parsed_serve_args)
++# yapf conflicts with isort for this block
++# yapf: disable
++from vllm.entrypoints.openai.protocol import (ChatCompletionRequest,
++                                              ChatCompletionResponse,
++                                              CompletionRequest,
++                                              CompletionResponse,
++                                              DetokenizeRequest,
++                                              DetokenizeResponse,
++                                              EmbeddingRequest,
++                                              EmbeddingResponse, ErrorResponse,
++                                              LoadLoraAdapterRequest,
++                                              TokenizeRequest,
++                                              TokenizeResponse,
++                                              UnloadLoraAdapterRequest)
++# yapf: enable
++from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
++from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
++from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
++from vllm.entrypoints.openai.serving_engine import BaseModelPath
++from vllm.entrypoints.openai.serving_tokenization import (
++    OpenAIServingTokenization)
++from vllm.entrypoints.openai.tool_parsers import ToolParserManager
++from vllm.logger import init_logger
++from vllm.usage.usage_lib import UsageContext
++from vllm.utils import FlexibleArgumentParser, get_open_zmq_ipc_path
++from vllm.version import __version__ as VLLM_VERSION
++from pytxda.txda import txda
++from utils.utils import *
++
++
++parser = FlexibleArgumentParser(
++    description="vLLM OpenAI-Compatible RESTful API server.")
++parser = make_arg_parser(parser)
++
++parser.add_argument('-cn', '--card-num', default='0,1,2,3', help="The card number for run. Default:0,1,2,3")
++parser.add_argument('-cd', '--case-dir', required=True, type=str, default=None, help="The path of chip_out")
++parser.add_argument('-ts', '--tp-size', type=int, default=4, help="TP_size.")
++parser.add_argument('--model-dtype', default=4, choices=['bfloat16', 'int8'], help="The type of model.")
++parser.add_argument('-lp', '--txda-log-path', type=str, default="", help="The path of log_file for txda")
++
++args = parser.parse_args()
++
++args.card_num = parse_int_list_cn(args.card_num,args.tp_size)
++max_sequence_length_num = args.max_model_len if args.max_model_len is not None else 8192
++modify_model_config_r1(args.model, get_subdirectories(args.case_dir), max_sequence_length_num)
++
++TIMEOUT_KEEP_ALIVE = 5  # seconds
++
++prometheus_multiproc_dir: tempfile.TemporaryDirectory
++
++# Cannot use __name__ (https://github.com/vllm-project/vllm/pull/4765)
++logger = init_logger('vllm.entrypoints.openai.api_server')
++
++_running_tasks: Set[asyncio.Task] = set()
++
++env_list = args.card_num
++environ_num = ','.join(str(x) for x in env_list)
++TXDA_VISIBLE_DEVICES = environ_num
++
++HISTORY_TOKEN_NUM_TOKENIZER = None
++
++def _run_mp_engine(engine_args, usage_context, ipc_path, tp_size, cards_list, txda_log_path):
++    ctx = tx8_init_txda(tp_size, cards_list, txda_log_path)
++
++    def inner_handler(signum, frame):
++        ctx.destroy_context()
++
++    signal.signal(signal.SIGINT, inner_handler)
++    run_mp_engine(engine_args, usage_context, ipc_path)
++
++
++@asynccontextmanager
++async def lifespan(app: FastAPI):
++    try:
++        if app.state.log_stats:
++            task = None
++        else:
++            task = None
++        try:
++            yield
++        finally:
++            if task is not None:
++                task.cancel()
++    finally:
++        # Ensure app state including engine ref is gc'd
++        del app.state
++
++
++@asynccontextmanager
++async def build_async_engine_client(
++        args: Namespace) -> AsyncIterator[EngineClient]:
++
++    # Context manager to handle engine_client lifecycle
++    # Ensures everything is shutdown and cleaned up on error/exit
++    engine_args = AsyncEngineArgs.from_cli_args(args)
++
++    async with build_async_engine_client_from_engine_args(
++            engine_args, args.disable_frontend_multiprocessing) as engines:
++        yield engines
++
++
++@asynccontextmanager
++async def build_async_engine_client_from_engine_args(
++    engine_args: AsyncEngineArgs,
++    disable_frontend_multiprocessing: bool = False,
++) -> AsyncIterator[EngineClient]:
++    """
++    Create EngineClient, either:
++        - in-process using the AsyncLLMEngine Directly
++        - multiprocess using AsyncLLMEngine RPC
++
++    Returns the Client or None if the creation failed.
++    """
++
++    # Fall back
++    # TODO: fill out feature matrix.
++    if (MQLLMEngineClient.is_unsupported_config(engine_args)
++            or disable_frontend_multiprocessing):
++        engine_config = engine_args.create_engine_config()
++        uses_ray = getattr(AsyncLLMEngine._get_executor_cls(engine_config),
++                           "uses_ray", False)
++
++        build_engine = partial(AsyncLLMEngine.from_engine_args,
++                               engine_args=engine_args,
++                               engine_config=engine_config,
++                               usage_context=UsageContext.OPENAI_API_SERVER)
++        if uses_ray:
++            # Must run in main thread with ray for its signal handlers to work
++            engine_client = build_engine()
++        else:
++            engine_client = await asyncio.get_running_loop().run_in_executor(
++                None, build_engine)
++
++        yield engine_client
++        return
++
++    # Otherwise, use the multiprocessing AsyncLLMEngine.
++    else:
++        if "PROMETHEUS_MULTIPROC_DIR" not in os.environ:
++            # Make TemporaryDirectory for prometheus multiprocessing
++            # Note: global TemporaryDirectory will be automatically
++            #   cleaned up upon exit.
++            global prometheus_multiproc_dir
++            prometheus_multiproc_dir = tempfile.TemporaryDirectory()
++            os.environ[
++                "PROMETHEUS_MULTIPROC_DIR"] = prometheus_multiproc_dir.name
++        else:
++            logger.warning(
++                "Found PROMETHEUS_MULTIPROC_DIR was set by user. "
++                "This directory must be wiped between vLLM runs or "
++                "you will find inaccurate metrics. Unset the variable "
++                "and vLLM will properly handle cleanup.")
++
++        #the subprocess list
++        engine_process_list = []
++        mp_engine_client_list = []
++
++        rank_list = list(map(int, TXDA_VISIBLE_DEVICES.split(',')))
++        TP_size = args.tp_size
++        group_len = len(rank_list) // TP_size
++        if args.txda_log_path != "":
++            make_dir(args.txda_log_path)
++        log_path_list = [f"{args.txda_log_path}/log_txda_{i}.log"
++                                for i in range(group_len)]
++
++        for i in range(len(rank_list) // TP_size):
++            cards_list = rank_list[i*TP_size : i*TP_size + TP_size]
++
++            # Select random path for IPC.
++            ipc_path = get_open_zmq_ipc_path()
++            logger.info("Multiprocessing frontend to use %s for IPC Path.",
++                        ipc_path)
++
++            # Start RPCServer in separate process (holds the LLMEngine).
++            # the current process might have CUDA context,
++            # so we need to spawn a new process
++            context = multiprocessing.get_context("spawn")
++
++            engine_process = context.Process(target=_run_mp_engine,
++                                            args=(engine_args,
++                                                UsageContext.OPENAI_API_SERVER,
++                                                ipc_path,
++                                                TP_size,
++                                                cards_list,
++                                                log_path_list[i]))
++            engine_process.start()
++            logger.info("Started engine process with PID %d", engine_process.pid)
++
++            engine_process_list.append(engine_process)
++
++            # Build RPCClient, which conforms to EngineClient Protocol.
++            # NOTE: Actually, this is not true yet. We still need to support
++            # embedding models via RPC (see TODO above)
++            engine_config = engine_args.create_engine_config()
++            mp_engine_client = MQLLMEngineClient(ipc_path, engine_config)
++            mp_engine_client_list.append(mp_engine_client)
++
++        try:
++            while True:
++                try:
++                    for mp_engine_client_instance in mp_engine_client_list:
++                        await mp_engine_client_instance.setup()
++                    break
++                except TimeoutError:
++                    for engine_process_instance in engine_process_list:
++                        if not engine_process_instance.is_alive():
++                            raise RuntimeError(
++                                "Engine process failed to start") from None
++
++            yield mp_engine_client_list  # type: ignore[misc]
++        finally:
++            # Ensure rpc server process was terminated
++            for engine_process_instance in engine_process_list:
++                engine_process_instance.terminate()
++
++            # Close all open connections to the backend
++            for mp_engine_client_instance in mp_engine_client_list:
++                mp_engine_client_instance.close()
++
++            # Wait for engine process to join
++            for engine_process_instance in engine_process_list:
++                engine_process_instance.join(12)
++
++            for engine_process_instance in engine_process_list:
++                if engine_process_instance.exitcode is None:
++                    # Kill if taking longer than 12 seconds to stop
++                    engine_process_instance.kill()
++
++            # Lazy import for prometheus multiprocessing.
++            # We need to set PROMETHEUS_MULTIPROC_DIR environment variable
++            # before prometheus_client is imported.
++            # See https://prometheus.github.io/client_python/multiprocess/
++            from prometheus_client import multiprocess
++            for engine_process_instance in engine_process_list:
++                multiprocess.mark_process_dead(engine_process_instance.pid)
++
++
++router = APIRouter()
++
++
++def mount_metrics(app: FastAPI):
++    # Lazy import for prometheus multiprocessing.
++    # We need to set PROMETHEUS_MULTIPROC_DIR environment variable
++    # before prometheus_client is imported.
++    # See https://prometheus.github.io/client_python/multiprocess/
++    from prometheus_client import (CollectorRegistry, make_asgi_app,
++                                   multiprocess)
++
++    prometheus_multiproc_dir_path = os.getenv("PROMETHEUS_MULTIPROC_DIR", None)
++    if prometheus_multiproc_dir_path is not None:
++        logger.info("vLLM to use %s as PROMETHEUS_MULTIPROC_DIR",
++                    prometheus_multiproc_dir_path)
++        registry = CollectorRegistry()
++        multiprocess.MultiProcessCollector(registry)
++
++        # Add prometheus asgi middleware to route /metrics requests
++        metrics_route = Mount("/metrics", make_asgi_app(registry=registry))
++    else:
++        # Add prometheus asgi middleware to route /metrics requests
++        metrics_route = Mount("/metrics", make_asgi_app())
++
++    # Workaround for 307 Redirect for /metrics
++    metrics_route.path_regex = re.compile("^/metrics(?P<path>.*)$")
++    app.routes.append(metrics_route)
++
++
++def chat(request: Request) -> OpenAIServingChat:
++    for item in request.app.state.openai_serving_chat:
++        if not item.is_busy:
++            item.is_busy = True
++            return item
++    return None
++
++
++def completion(request: Request) -> OpenAIServingCompletion:
++    for item in request.app.state.openai_serving_completion:
++        if not item.is_busy:
++            item.is_busy = True
++            return item
++    return None
++
++def tokenization(request: Request) -> OpenAIServingTokenization:
++    for item in request.app.state.openai_serving_tokenization:
++        if not item.is_busy:
++            item.is_busy = True
++            return item
++    return None
++
++def embedding(request: Request) -> OpenAIServingEmbedding:
++    for item in request.app.state.openai_serving_embedding:
++        if not item.is_busy:
++            item.is_busy = True
++            return item
++    return None
++
++def engine_client(request: Request) -> EngineClient:
++    return request.app.state.engine_client[0]
++
++
++def chat_history(request: ChatCompletionRequest, raw_request: Request):
++    user = request.user
++    print(f"/v1/chat/completions request, user: {user}")
++
++    if user is None:
++        return
++
++    messages = request.messages
++    for msg in messages:
++        msg['token_length'] = len(HISTORY_TOKEN_NUM_TOKENIZER.apply_chat_template([msg], tokenize=True, add_generation_prompt=True))
++    history = raw_request.app.state.user_history.get(user)
++
++    if history is None:
++        raw_request.app.state.user_history[user] = copy.deepcopy(messages)
++    else:
++        raw_request.app.state.user_history[user].extend(messages)
++        request.messages = copy.deepcopy(raw_request.app.state.user_history[user])
++
++
++def update_history(request: ChatCompletionRequest, raw_request: Request, assistant_gen_text: str):
++    user = request.user
++    if user is None:
++        return
++
++    assistant_response = {"role": "assistant", "content": assistant_gen_text}
++
++    assistant_response_len = len(HISTORY_TOKEN_NUM_TOKENIZER.apply_chat_template([assistant_response], tokenize=True, add_generation_prompt=True))
++    assistant_response['token_length'] = assistant_response_len
++
++    history = raw_request.app.state.user_history.get(user)
++    if history is not None:
++        raw_request.app.state.user_history[user].append(assistant_response)
++
++    #truncat the history
++    history_len = 0
++    truncated_history = []
++    for history_item in reversed(raw_request.app.state.user_history[user]):
++        history_len += history_item['token_length']
++        if history_len > (MAX_MODEL_LEN // 2):
++            break
++        else:
++            truncated_history.insert(0, history_item)
++
++    #truncat happens
++    if len(truncated_history) != len(raw_request.app.state.user_history[user]):
++        raw_request.app.state.user_history[user] = truncated_history
++
++
++@router.get("/health")
++async def health(raw_request: Request) -> Response:
++    """Health check."""
++    await engine_client(raw_request).check_health()
++    return Response(status_code=200)
++
++
++@router.post("/tokenize")
++async def tokenize(request: TokenizeRequest, raw_request: Request):
++    tok = tokenization(raw_request)
++    if tok is None:
++        return JSONResponse(content="No available TX cards", status_code=500)
++
++    generator = await tok.create_tokenize(request)
++    if isinstance(generator, ErrorResponse):
++        result = JSONResponse(content=generator.model_dump(),
++                            status_code=generator.code)
++        tok.is_busy = False
++        return result
++    elif isinstance(generator, TokenizeResponse):
++        result = JSONResponse(content=generator.model_dump())
++
++        tok.is_busy = False
++        return result
++
++    assert_never(generator)
++
++
++@router.post("/detokenize")
++async def detokenize(request: DetokenizeRequest, raw_request: Request):
++    tok = tokenization(raw_request)
++    if tok is None:
++        return JSONResponse(content="No available TX cards", status_code=500)
++
++    generator = await tok.create_detokenize(request)
++    if isinstance(generator, ErrorResponse):
++        result = JSONResponse(content=generator.model_dump(),
++                            status_code=generator.code)
++        tok.is_busy = False
++        return result
++    elif isinstance(generator, DetokenizeResponse):
++        result = JSONResponse(content=generator.model_dump())
++
++        tok.is_busy = False
++        return result
++
++    assert_never(generator)
++
++
++@router.get("/v1/models")
++async def show_available_models(raw_request: Request):
++    comple = completion(raw_request)
++    if comple is None:
++        return JSONResponse(content="No available TX cards", status_code=500)
++
++    models = await comple.show_available_models()
++
++    comple.is_busy = False
++
++    return JSONResponse(content=models.model_dump())
++
++
++@router.get("/version")
++async def show_version():
++    ver = {"version": VLLM_VERSION}
++    return JSONResponse(content=ver)
++
++
++@router.post("/v1/chat/completions")
++async def create_chat_completion(request: ChatCompletionRequest,
++                                 raw_request: Request):
++    cha = chat(raw_request)
++    if cha is None:
++        return JSONResponse(content="No available TX cards", status_code=500)
++
++    chat_history(request, raw_request)
++
++    generator = await cha.create_chat_completion(
++        request, raw_request)
++
++    if isinstance(generator, ErrorResponse):
++        cha.is_busy = False
++        return JSONResponse(content=generator.model_dump(),
++                            status_code=generator.code)
++
++    elif isinstance(generator, ChatCompletionResponse):
++        cha.is_busy = False
++        return JSONResponse(content=generator.model_dump())
++
++    async def _generator(*args, **kwargs):
++        gen_txt = ""
++        async for data in generator:
++            if data.startswith("data:") and data[5:].find("{") != -1:
++                data_json = json.loads(data[5:])
++                choices = data_json.get("choices", None)
++                if choices is not None:
++                    token_txt = choices[0].get("delta", {}).get("content", "")
++                    gen_txt += token_txt
++
++            yield data
++
++        cha.is_busy = False
++        update_history(request, raw_request, gen_txt)
++
++    return StreamingResponse(content=_generator(), media_type="text/event-stream")
++
++
++@router.post("/v1/completions")
++async def create_completion(request: CompletionRequest, raw_request: Request):
++    comple = completion(raw_request)
++    if comple is None:
++        return JSONResponse(content="No available TX cards", status_code=500)
++
++    generator = await comple.create_completion(
++        request, raw_request)
++    if isinstance(generator, ErrorResponse):
++        comple.is_busy = False
++        return JSONResponse(content=generator.model_dump(),
++                            status_code=generator.code)
++    elif isinstance(generator, CompletionResponse):
++        comple.is_busy = False
++        return JSONResponse(content=generator.model_dump())
++
++    async def _generator(*args, **kwargs):
++        async for data in generator:
++            yield data
++        comple.is_busy = False
++
++    return StreamingResponse(content=_generator(), media_type="text/event-stream")
++
++
++@router.post("/v1/embeddings")
++async def create_embedding(request: EmbeddingRequest, raw_request: Request):
++    emb = embedding(raw_request)
++    if emb is None:
++        return JSONResponse(content="No available TX cards", status_code=500)
++
++    generator = await emb.create_embedding(request, raw_request)
++    if isinstance(generator, ErrorResponse):
++        result = JSONResponse(content=generator.model_dump(),
++                            status_code=generator.code)
++
++        emb.is_busy=False
++        return result
++    elif isinstance(generator, EmbeddingResponse):
++        result = JSONResponse(content=generator.model_dump())
++
++        emb.is_busy=False
++        return result
++
++    assert_never(generator)
++
++
++def build_app(args: Namespace) -> FastAPI:
++    if args.disable_fastapi_docs:
++        app = FastAPI(openapi_url=None,
++                      docs_url=None,
++                      redoc_url=None,
++                      lifespan=lifespan)
++    else:
++        app = FastAPI(lifespan=lifespan)
++    app.include_router(router)
++    app.root_path = args.root_path
++
++    mount_metrics(app)
++
++    app.add_middleware(
++        CORSMiddleware,
++        allow_origins=args.allowed_origins,
++        allow_credentials=args.allow_credentials,
++        allow_methods=args.allowed_methods,
++        allow_headers=args.allowed_headers,
++    )
++
++    @app.exception_handler(RequestValidationError)
++    async def validation_exception_handler(_, exc):
++        chat = app.state.openai_serving_chat[0]
++        err = chat.create_error_response(message=str(exc))
++        return JSONResponse(err.model_dump(),
++                            status_code=HTTPStatus.BAD_REQUEST)
++
++    if token := envs.VLLM_API_KEY or args.api_key:
++
++        @app.middleware("http")
++        async def authentication(request: Request, call_next):
++            root_path = "" if args.root_path is None else args.root_path
++            if request.method == "OPTIONS":
++                return await call_next(request)
++            if not request.url.path.startswith(f"{root_path}/v1"):
++                return await call_next(request)
++            if request.headers.get("Authorization") != "Bearer " + token:
++                return JSONResponse(content={"error": "Unauthorized"},
++                                    status_code=401)
++            return await call_next(request)
++
++    for middleware in args.middleware:
++        module_path, object_name = middleware.rsplit(".", 1)
++        imported = getattr(importlib.import_module(module_path), object_name)
++        if inspect.isclass(imported):
++            app.add_middleware(imported)
++        elif inspect.iscoroutinefunction(imported):
++            app.middleware("http")(imported)
++        else:
++            raise ValueError(f"Invalid middleware {middleware}. "
++                             f"Must be a function or a class.")
++
++    return app
++
++
++def init_app_state(
++    engine_clients: list[EngineClient],
++    model_config: ModelConfig,
++    state: State,
++    args: Namespace,
++) -> None:
++    if args.served_model_name is not None:
++        served_model_names = args.served_model_name
++    else:
++        served_model_names = [args.model]
++
++    if args.disable_log_requests:
++        request_logger = None
++    else:
++        request_logger = RequestLogger(max_log_len=args.max_log_len)
++
++    base_model_paths = [
++        BaseModelPath(name=name, model_path=args.model)
++        for name in served_model_names
++    ]
++
++    state.engine_clients = engine_clients
++    state.log_stats = not args.disable_log_stats
++
++    state.openai_serving_chat=[]
++    state.openai_serving_completion=[]
++    state.openai_serving_embedding=[]
++    state.openai_serving_tokenization=[]
++
++    for engine_client in engine_clients:
++        openai_serving_chat = OpenAIServingChat(
++            engine_client,
++            model_config,
++            base_model_paths,
++            args.response_role,
++            lora_modules=args.lora_modules,
++            prompt_adapters=args.prompt_adapters,
++            request_logger=request_logger,
++            chat_template=args.chat_template,
++            return_tokens_as_token_ids=args.return_tokens_as_token_ids,
++            enable_auto_tools=args.enable_auto_tool_choice,
++            tool_parser=args.tool_call_parser)
++
++        openai_serving_chat.is_busy = False
++        state.openai_serving_chat.append(openai_serving_chat)
++        engine_client.serving_chat = openai_serving_chat
++
++        openai_serving_completion = OpenAIServingCompletion(
++            engine_client,
++            model_config,
++            base_model_paths,
++            lora_modules=args.lora_modules,
++            prompt_adapters=args.prompt_adapters,
++            request_logger=request_logger,
++            return_tokens_as_token_ids=args.return_tokens_as_token_ids,
++        )
++
++        openai_serving_completion.is_busy = False
++        state.openai_serving_completion.append(openai_serving_completion)
++        engine_client.serving_completion = openai_serving_completion
++
++        openai_serving_embedding = OpenAIServingEmbedding(
++            engine_client,
++            model_config,
++            base_model_paths,
++            request_logger=request_logger,
++        )
++
++        openai_serving_embedding.is_busy = False
++        state.openai_serving_embedding.append(openai_serving_embedding)
++        engine_client.serving_embedding = openai_serving_embedding
++
++        openai_serving_tokenization = OpenAIServingTokenization(
++            engine_client,
++            model_config,
++            base_model_paths,
++            lora_modules=args.lora_modules,
++            request_logger=request_logger,
++            chat_template=args.chat_template,
++        )
++
++        openai_serving_tokenization.is_busy = False
++        state.openai_serving_tokenization.append(openai_serving_tokenization)
++        engine_client.serving_tokenization = openai_serving_tokenization
++
++    state.user_history = {}
++
++async def run_server(args, **uvicorn_kwargs) -> None:
++    logger.info("vLLM API server version %s", VLLM_VERSION)
++    logger.info("args: %s", args)
++
++    if args.tool_parser_plugin and len(args.tool_parser_plugin) > 3:
++        ToolParserManager.import_tool_parser(args.tool_parser_plugin)
++
++    valide_tool_parses = ToolParserManager.tool_parsers.keys()
++    if args.enable_auto_tool_choice \
++        and args.tool_call_parser not in valide_tool_parses:
++        raise KeyError(f"invalid tool call parser: {args.tool_call_parser} "
++                       f"(chose from {{ {','.join(valide_tool_parses)} }})")
++
++    # workaround to make sure that we bind the port before the engine is set up.
++    # This avoids race conditions with ray.
++    # see https://github.com/vllm-project/vllm/issues/8204
++    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
++    sock.bind(("", args.port))
++
++    def signal_handler(*_) -> None:
++        # Interrupt server on sigterm while initializing
++        raise KeyboardInterrupt("terminated")
++
++    signal.signal(signal.SIGTERM, signal_handler)
++
++    async with build_async_engine_client(args) as engine_clients:
++        app = build_app(args)
++
++        model_config = await engine_clients[0].get_model_config()
++        init_app_state(engine_clients, model_config, app.state, args)
++
++        shutdown_task = await serve_http(
++            app,
++            host=args.host,
++            port=args.port,
++            log_level=args.uvicorn_log_level,
++            timeout_keep_alive=TIMEOUT_KEEP_ALIVE,
++            ssl_keyfile=args.ssl_keyfile,
++            ssl_certfile=args.ssl_certfile,
++            ssl_ca_certs=args.ssl_ca_certs,
++            ssl_cert_reqs=args.ssl_cert_reqs,
++            fd=sock.fileno(),
++            **uvicorn_kwargs,
++        )
++
++    # NB: Await server shutdown only after the backend context is exited
++    await shutdown_task
++
++def tx8_init_txda(tp_size, cards_list, txda_log_path):
++    txda.txdaInitRuntime()
++    if args.txda_log_path != "":
++        logfile = txda_log_path
++    else:
++        logfile = ""
++    txdalogger = txda.TxdaLogger(logfile, txda.LoggerLevel.Debug)
++    ctx = txda.TxdaContext(txdalogger)
++    result = txda.TxdaResult.SUCCESS
++
++    case_dir = get_subdirectories(args.case_dir)
++
++    option = "-O2"
++    enable_compile = False
++
++    ctx.set_device_idx(txda.TxdaResult.SUCCESS, cards_list, tp_size)
++    ctx.init(result, tp_size, case_dir, option, enable_compile)
++    for idx in range(5, 19):
++        ctx.set_model_map(4, idx)
++
++    ctx.compile_and_load_model(result)
++
++    return ctx
++
++if __name__ == "__main__":
++    # NOTE(simon):
++    # This section should be in sync with vllm/scripts.py for CLI entrypoints.
++
++    validate_parsed_serve_args(args)
++
++    if args.max_model_len is not None:
++        MAX_MODEL_LEN = args.max_model_len
++    HISTORY_TOKEN_NUM_TOKENIZER = AutoTokenizer.from_pretrained(args.model)
++    uvloop.run(run_server(args))
++
++
++
+diff --git a/flagscale/backends/tsing/deepseek_r1/utils/utils.py b/flagscale/backends/tsing/deepseek_r1/utils/utils.py
+new file mode 100755
+index 00000000..8a408f4c
+--- /dev/null
++++ b/flagscale/backends/tsing/deepseek_r1/utils/utils.py
+@@ -0,0 +1,217 @@
++import time
++import os
++import logging
++import json, argparse
++import pickle
++import sys
++import csv
++import re
++import argparse
++from argparse import Namespace
++
++# 记录日志，同时输出至控制台以及File文件中
++class Logger():
++    def __init__(self, LoggerName, FileName, CmdLevel, FileLevel):
++        self.logger = logging.getLogger(LoggerName)
++        self.logger.setLevel(logging.DEBUG)
++        fmt = logging.Formatter('%(asctime)s %(name)s [%(levelname)s]: %(message)s')
++        fh = logging.FileHandler(FileName, encoding='utf-8')
++        fh.setLevel(FileLevel)
++        ch = logging.StreamHandler()
++        ch.setLevel(CmdLevel)
++        fh.setFormatter(fmt)
++        ch.setFormatter(fmt)
++        self.logger.addHandler(fh)
++        self.logger.addHandler(ch)
++
++    def debug(self, message):
++        self.logger.debug(message)
++    def info(self, message):
++        self.logger.info(message)
++    def warning(self, message):
++        self.logger.warning(message)
++    def error(self, message):
++        self.logger.error(message)
++    def critical(self, message):
++        self.logger.critical(message)
++    def close(self, message):
++        self.logger.disabled = True
++
++#保存response至csv文件中
++def create_response_csv(prompt_path, csvfile=None):
++    csv_file = csvfile if csvfile else prompt_path
++    if os.path.exists(csv_file):
++        os.remove(csv_file)
++    width = [5, 150, 70]
++    with open(csv_file, 'w') as f:
++        csv_writer = csv.writer(f)
++        csv_head = ['num', 'response', 'prompt']
++        csv_writer.writerow(csv_head)
++    return csv_file
++
++#保存first_token数据至csv文件中
++def create_response_csv_first_token(prompt_path, csvfile=None):
++    csv_file = csvfile if csvfile else prompt_path
++    if os.path.exists(csv_file):
++        os.remove(csv_file)
++    with open(csv_file, 'w') as f:
++        csv_writer = csv.writer(f)
++        csv_head = ['Title', 'First_token_time']
++        csv_writer.writerow(csv_head)
++    return csv_file
++
++#保存toke_calc数据至csv文件中
++def create_response_csv_token_calc(prompt_path, csvfile=None):
++    csv_file = csvfile if csvfile else prompt_path
++    if os.path.exists(csv_file):
++        os.remove(csv_file)
++    with open(csv_file, 'w') as f:
++        csv_writer = csv.writer(f)
++        csv_head = ['Title', 'Token_calc']
++        csv_writer.writerow(csv_head)
++    return csv_file
++
++def write_csv(csv_file, csv_row):
++    if not isinstance(csv_row, list):
++        raise Exception(f"{csv_row} is {type(csv_row)}, must be list!")
++    with open(csv_file, 'a', encoding='utf-8') as f:
++        csv_writer = csv.writer(f)
++        csv_writer.writerow(csv_row)
++
++def change_dos_to_unix(file):
++    with open(file, 'rb+') as file_handle:
++        all_text = file_handle.read()
++        all_change_txt = all_text.replace(b'\r\r', b'\n')
++        file_handle.seek(0, 0)
++        file_handle.truncate()
++        file_handle.write(all_change_txt)
++
++# 获取prompt提问
++def getQuestList(filePath, max_num=-1):
++    quests_list = []
++    with open(filePath, 'r', encoding='utf-8-sig') as file:
++        for i, line in enumerate(file):
++            if max_num > 0 and i >= max_num:
++                break
++            quests_list.append(line.strip())
++    return quests_list
++
++# 列表展平
++def flatten_list(nested_list):
++    flat_list = []
++    for item in nested_list:
++        if isinstance(item, list):
++            flat_list.extend(flatten_list(item))
++        else:
++            flat_list.append(item)
++    return flat_list
++
++# min/max/average值计算
++def calc_min_max_ave(num_list):
++    min_num, max_num, ave_num = round(min(num_list), 3), round(max(num_list), 3), round(sum(num_list)/len(num_list), 3)
++    return min_num, max_num, ave_num
++
++def make_dir(dir_path):
++    if not os.path.exists(dir_path):
++        os.makedirs(dir_path)
++
++def modify_model_config(model_path, kcore_path, model_dtype, max_seq_length, tp_size):
++    if not os.path.exists(f"{model_path}/config.json"):
++        raise Exception(f"config.json for model missing,please check!")
++
++    with open(f"{model_path}/config.json", 'r', encoding='utf-8') as f:
++        config = json.load(f)
++
++    if "param_dir" in config:
++        config["param_dir"] = kcore_path
++    else:
++        raise Exception(f"{model_path}/config.json missing param_dir,please check!")
++
++    if "max_sequence_length" in config:
++        config["max_sequence_length"] = max_seq_length
++    else:
++        raise Exception(f"{model_path}/config.json missing max_sequence_length,please check!")
++
++    if "use_dtype_at_inference" in config:
++        config["use_dtype_at_inference"] = model_dtype
++    else:
++        raise Exception(f"{model_path}/config.json missing use_dtype_at_inference,please check!")
++
++    if "tensor_parallel" in config:
++        if tp_size==1:
++            config["tensor_parallel"]["use_tp"] = False
++            config["tensor_parallel"]["parallel_size"] = tp_size
++        else:
++            config["tensor_parallel"]["use_tp"] = True
++            config["tensor_parallel"]["parallel_size"] = tp_size
++    else:
++        raise Exception(f"{model_path}/config.json missing tensor_parallel,please check!")
++
++    with open(f"{model_path}/config.json", 'w', encoding='utf-8') as f:
++        json.dump(config, f, indent=4, ensure_ascii=False)
++
++def modify_model_config_r1(model_path, kcore_path, max_seq_length):
++    if not os.path.exists(f"{model_path}/config.json"):
++        raise Exception(f"config.json for model missing,please check!")
++
++    with open(f"{model_path}/config.json", 'r', encoding='utf-8') as f:
++        config = json.load(f)
++
++    if "param_dir" in config:
++        config["param_dir"] = kcore_path
++    else:
++        raise Exception(f"{model_path}/config.json missing param_dir,please check!")
++
++    if "max_sequence_length" in config:
++        config["max_sequence_length"] = max_seq_length
++    else:
++        raise Exception(f"{model_path}/config.json missing max_sequence_length,please check!")
++
++
++    with open(f"{model_path}/config.json", 'w', encoding='utf-8') as f:
++        json.dump(config, f, indent=4, ensure_ascii=False)
++
++
++def parse_int_list_cn(s,tp_size):
++    try:
++        int_list_cn = []
++        card_num = ''.join(s.split())
++        parts = card_num.split(",")
++        for part in parts:
++            if '..' in part:
++                start,end = part.split('..')
++                for num in range(int(start), int(end)+1):
++                    int_list_cn.append(num)
++            else:
++                int_list_cn.append(int(part))
++        int_list_cn.sort()
++        if not all(0 <= num <= 31 for num in int_list_cn):
++            raise argparse.ArgumentTypeError("Card number must be a continuous integer from 0 to 31.")
++        for index in range(0, len(int_list_cn), tp_size):
++            if len(int_list_cn) != 1:
++                check_list = []
++                for i in range(index, index+tp_size):
++                    check_list.append(int_list_cn[i])
++                if sorted(check_list) != list(range(min(check_list), max(check_list) + 1)):
++                    raise argparse.ArgumentTypeError("Card number must be a continuous integer from 0 to 31.")
++            else:
++                check_str = int_list_cn[0]
++    except ValueError:
++        raise argparse.ArgumentTypeError("Card number must be a continuous integer from 0 to 31.")
++    return int_list_cn
++
++def get_subdirectories(directory):
++    subdirs = []
++    subdirs.append(f"{directory}/0_4/node_0_0")
++    for i in range(4, 61, 3):
++        subdir = ""
++        subdir += f"{directory}/{i}_{i+3}/node_0_0"
++        subdirs.append(subdir)
++    case_dir = ""
++    for path in subdirs:
++        if os.path.exists(path):
++            case_dir += f"{path} "
++        else:    
++            raise Exception(f"{path} not exist, please check!")
++    case_dir = case_dir.strip() 
++    return case_dir
+diff --git a/flagscale/runner/runner_serve_tsing.py b/flagscale/runner/runner_serve_tsing.py
+new file mode 100644
+index 00000000..ffdfc407
+--- /dev/null
++++ b/flagscale/runner/runner_serve_tsing.py
+@@ -0,0 +1,778 @@
++import asyncio
++import contextlib
++import copy
++import json
++import os
++import shlex
++import shutil
++import signal
++
++import psutil
++
++from omegaconf import DictConfig, OmegaConf
++
++from flagscale.runner.runner_base import JobStatus, RunnerBase
++from flagscale.runner.utils import (
++    ResourceManager,
++    benchmark,
++    dummy_random_input,
++    flatten_dict_to_args,
++    get_free_port,
++    get_nproc_per_node,
++    logger,
++    parse_hostfile,
++    run_local_command,
++)
++
++
++def _get_multiple_free_ports(num=1, exclude_ports=[]):
++    allocated_ports = []
++    for i in range(num):
++        port = get_free_port()
++        while port in allocated_ports or port in exclude_ports:
++            port = get_free_port()
++        allocated_ports.append(port)
++    return allocated_ports
++
++
++def _get_args_vllm(config: DictConfig):
++    # see the following link for more details
++    # https://github.com/facebookresearch/hydra/discussions/2750
++    config_dict = OmegaConf.to_container(config, resolve=True)
++
++    # step2: restructuring the config
++    # config_dict = config_dict["serve"]
++    config_dict["logging"].pop("log_dir")
++    config_dict["logging"].pop("scripts_dir")
++    config_dict["logging"].pop("pids_dir")
++    if not config_dict.get("logging"):
++        config_dict.pop("logging")
++
++    # step3: dict -> yaml
++    logging_config = config.logging
++    new_config = OmegaConf.create(config_dict)
++    new_conf_file = os.path.join(logging_config.scripts_dir, f"serve.yaml")
++
++    # step4: write the new yaml file to `outputs_dir/serve_logs/scripts/serve.yaml`
++    with open(new_conf_file, "w") as f:
++        OmegaConf.save(config=new_config, f=f.name, resolve=True)
++
++    args = []
++    # args.append(f"--config-path={new_conf_file}")
++    model_path = config_dict['serve'][0]['engine_args']['model']
++    args.append(f"--model={model_path}")
++    for extra_arg in config_dict['serve'][0]['engine_args']['extra_args'].split(" "):
++        args.append(extra_arg)
++
++    return args
++
++
++def _reset_serve_port(config):
++    model_port = None
++    deploy_port = config.experiment.get("deploy", {}).get("port", None)
++    OmegaConf.set_struct(config, False)
++
++    for item in config.serve:
++        if item.get("serve_id", None) == "vllm_model":
++            if deploy_port:
++                model_port = deploy_port
++                item.engine_args["port"] = deploy_port
++            else:
++                model_port = item.engine_args.get("port", 8000)
++            break
++    OmegaConf.set_struct(config, True)
++    if not model_port:
++        logger.warning(f"No 'model_port' configuration found in task config: {config}")
++    return model_port
++
++
++def _get_inference_engine(config):
++    serve_config = config.get("serve", [])
++    if not serve_config:
++        raise ValueError(f"No 'serve' configuration found in task config: {serve_config}")
++    if serve_config and len(serve_config) > 1:
++        logger.warning(f"Multiple 'serve' configurations found in task config: {serve_config}")
++
++    engine = serve_config[0].get("engine", None)
++    return engine
++
++
++def _get_engine_args(config, model="vllm_model"):
++    serve_config = config.get("serve", [])
++    if not serve_config:
++        raise ValueError(f"No 'serve' configuration found in task config: {serve_config}")
++    engine_args = {}
++
++    for item in serve_config:
++        if item.get("serve_id", None) == model:
++            engine_args = item.get("engine_args", {})
++            break
++    if not engine_args:
++        raise ValueError(f"No 'engine_args' configuration found in task config: {serve_config}")
++
++    return engine_args
++
++
++def _update_config_serve(config: DictConfig):
++    deploy_config = config.experiment.get("deploy", {})
++
++    exp_dir = os.path.abspath(config.experiment.exp_dir)
++    if not os.path.isdir(exp_dir):
++        os.makedirs(exp_dir)
++    assert os.path.isdir(exp_dir), f"Directory {exp_dir} does not exist."
++
++    OmegaConf.set_struct(config, False)
++
++    if deploy_config.get("prefill_decode_disaggregation", False):
++        deploy_config["pd_proxy_port"] = get_free_port()
++
++    if config.get("logging", None) is None:
++        config.logging = DictConfig({})
++
++    log_dir = os.path.join(exp_dir, f"serve_logs")
++    scripts_dir = os.path.join(log_dir, "scripts")
++    pids_dir = os.path.join(log_dir, "pids")
++
++    config.logging.log_dir = log_dir
++    config.logging.scripts_dir = scripts_dir
++    config.logging.pids_dir = pids_dir
++
++    os.makedirs(config.logging.scripts_dir, exist_ok=True)
++    OmegaConf.set_struct(config, True)
++
++
++def _generate_run_script_serve(config, host, node_rank, cmd, background=True, with_test=False):
++    nodes = config.get("nodes", None)
++    logging_config = config.logging
++
++    no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
++    if no_shared_fs:
++        host_output_file = os.path.join(logging_config.log_dir, f"host.output")
++    else:
++        host_output_file = os.path.join(logging_config.log_dir, f"host_{node_rank}_{host}.output")
++    host_run_script_file = os.path.join(
++        logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
++    )
++    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
++
++    os.makedirs(logging_config.scripts_dir, exist_ok=True)
++
++    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
++    cmds_config = config.experiment.get("cmds", None)
++    ssh_port = config.experiment.runner.get("ssh_port", 22)
++    docker_name = config.experiment.runner.get("docker", None)
++    if cmds_config:
++        before_start_cmd = cmds_config.get("before_start", "")
++    else:
++        before_start_cmd = ""
++    # cmd += f" --log-dir={logging_config.log_dir}"
++    try:
++        import vllm
++
++        vllm_path = os.path.dirname(vllm.__path__[0])
++    except Exception as e:
++        vllm_path = f"{root_dir}/vllm"
++    deploy_config = config.experiment.get("deploy", {})
++    envs = config.experiment.get("envs", {})
++    with open(host_run_script_file, "w") as f:
++        f.write("#!/bin/bash\n\n")
++        f.write("set -x\n")
++        f.write(f"\n")
++        f.write(f"{before_start_cmd}\n")
++        f.write(f"\n")
++
++        # f.write(f'if [ -z "$PYTHONPATH" ]; then\n')
++        # f.write(f"    export PYTHONPATH={vllm_path}:{root_dir}\n")
++        # f.write(f"else\n")
++        # f.write(f'    export PYTHONPATH="$PYTHONPATH:{vllm_path}:{root_dir}"\n')
++        # f.write(f"fi\n")
++        # f.write(f"\n")
++        f.write(f'export PYTHONPATH="$PYTHONPATH:{root_dir}"\n')
++        envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
++
++        if nodes:
++            if deploy_config.get("prefill_decode_disaggregation", False):
++                resource_manager = ResourceManager(nodes)
++                master_ip = nodes[0][0]
++                target_port = nodes[0][1].get("port")
++                p_num = deploy_config.get("prefill_num", 1)
++                d_num = deploy_config.get("decode_num", 1)
++                ports_num = (p_num + d_num) * 2
++                kv_related_ports = _get_multiple_free_ports(ports_num)
++                pd_proxy_port = deploy_config.get("pd_proxy_port", None)
++                if not pd_proxy_port:
++                    raise ValueError(f"PD disaggregation requires a proxy port to be set.")
++
++                engine_args = _get_engine_args(config)
++                command_items = ["vllm", "serve"]
++                command_items.append(engine_args["model"])
++                other_args = flatten_dict_to_args(engine_args, ["model", "port"])
++                command_items.extend(other_args)
++                vllm_command = " ".join(command_items)
++                if before_start_cmd:
++                    vllm_command = f"{before_start_cmd} && " + vllm_command
++                if envs_str:
++                    vllm_command = f"{envs_str} && " + vllm_command
++                p_address = deploy_config.get("prefill_address", "auto")
++                d_address = deploy_config.get("decode_address", "auto")
++                tensor_parallel_size = engine_args.get("tensor_parallel_size", 1)
++                pipeline_parallel_size = engine_args.get("pipeline_parallel_size", 1)
++                each_instance_card_num = tensor_parallel_size * pipeline_parallel_size
++                default_log_dir = deploy_config.get(
++                    "prefill_decode_log_dir", logging_config.log_dir
++                )
++
++                f.write(f"# clean nodes \n")
++                if len(nodes) > 1:
++                    for ip, node in nodes[1:]:
++                        if not node.get("type", None):
++                            raise ValueError(
++                                f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
++                            )
++                        if not node.get("slots", None):
++                            raise ValueError(
++                                f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
++                            )
++                        node_cmd = f"mkdir -p {default_log_dir} && pkill -f vllm"
++
++                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
++
++                        if docker_name:
++                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
++                        f.write(f"{ssh_cmd}\n")
++
++                f.write("pkill -f 'run_inference_engine'\n")
++                f.write("pkill -f 'run_fs_serve_vllm'\n")
++                f.write("pkill -f 'vllm serve'\n")
++                f.write("pkill -f 'run_disagg_xpyd_router'\n")
++                f.write(f"mkdir -p {default_log_dir}\n")
++                f.write(f"\n")
++
++                f.write("echo '=========== launch prefill instance ==========='\n")
++
++                for i in range(p_num):
++                    kv_port = kv_related_ports.pop()
++                    http_port = kv_related_ports.pop()
++                    p_kv_config = {
++                        "kv_connector": "P2pConnector",
++                        "kv_role": "kv_producer",
++                        "kv_port": str(kv_port),
++                        "kv_connector_extra_config": {
++                            "proxy_ip": master_ip,
++                            "proxy_port": str(pd_proxy_port),
++                            "http_port": str(http_port),
++                        },
++                    }
++                    logger.info(
++                        f"============= prefill instance {i}, p_kv_config: {p_kv_config} ============="
++                    )
++                    card_ids = resource_manager.get_available_card_ids(
++                        address=p_address, num=each_instance_card_num
++                    )
++                    card_ids_str = ",".join(map(str, card_ids))
++                    ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
++
++                    p_kv_config_json = json.dumps(p_kv_config)
++                    p_instance_log_path = os.path.join(default_log_dir, f"prefill_{i}.log")
++
++                    if p_address != master_ip:
++                        p_kv_config_formate_json = p_kv_config_json.replace('"', '\\"')
++                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_formate_json}'\\''"
++                        if docker_name:
++                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {p_instance_log_path} 2>&1 &'\""
++                        else:
++                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {p_instance_log_path} 2>&1 &"'
++                        f.write(f"{ssh_cmd}\n\n")
++                    else:
++                        p_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_json}'\\''"
++                        f.write(f"p_{i}_cmd='{p_cmd}'\n")
++                        f.write(f"\n")
++                        f.write(
++                            f'nohup bash -c "$p_{i}_cmd; sync" >> {p_instance_log_path} 2>&1 &\n\n'
++                        )
++
++                f.write("echo '=========== launch decode instance ==========='\n")
++
++                for j in range(d_num):
++                    kv_port = kv_related_ports.pop()
++                    http_port = kv_related_ports.pop()
++                    d_kv_config = {
++                        "kv_connector": "P2pConnector",
++                        "kv_role": "kv_consumer",
++                        "kv_port": str(kv_port),
++                        "kv_connector_extra_config": {
++                            "proxy_ip": master_ip,
++                            "proxy_port": str(pd_proxy_port),
++                            "http_port": str(http_port),
++                        },
++                    }
++                    logger.info(
++                        f"============= decode instance {i}, d_kv_config: {d_kv_config} ============="
++                    )
++                    card_ids = resource_manager.get_available_card_ids(
++                        address=d_address, num=each_instance_card_num
++                    )
++                    card_ids_str = ",".join(map(str, card_ids))
++                    ids_env = f"export CUDA_VISIBLE_DEVICES={card_ids_str}"
++
++                    d_kv_config_json = json.dumps(d_kv_config)
++                    d_instance_log_path = os.path.join(default_log_dir, f"decode_{j}.log")
++
++                    if d_address != master_ip:
++                        d_kv_config_formate_json = d_kv_config_json.replace('"', '\\"')
++                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_formate_json}'\\''"
++                        if docker_name:
++                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {d_instance_log_path} 2>&1 &'\""
++                        else:
++                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
++                        f.write(f"{ssh_cmd}\n\n")
++                    else:
++                        d_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_json}'\\''"
++                        f.write(f"d_{j}_cmd='{d_cmd}'\n")
++                        f.write(f"\n")
++                        f.write(
++                            f'nohup bash -c "$d_{i}_cmd; sync" >> {d_instance_log_path} 2>&1 &\n\n'
++                        )
++
++            else:
++                f.write(f"ray_path=$(realpath $(which ray))\n")
++                master_ip = nodes[0][0]
++                target_port = nodes[0][1].get("port")
++
++                f.write(f"# clean nodes \n")
++                if len(nodes) > 1:
++                    for ip, node in nodes[1:]:
++                        if not node.get("type", None):
++                            raise ValueError(
++                                f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
++                            )
++                        if not node.get("slots", None):
++                            raise ValueError(
++                                f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
++                            )
++                        node_cmd = f"${{ray_path}} stop"
++
++                        if before_start_cmd:
++                            node_cmd = f"{before_start_cmd} && " + node_cmd
++
++                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
++
++                        if docker_name:
++                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
++                        f.write(f"{ssh_cmd}\n")
++                if before_start_cmd:
++                    f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
++                else:
++                    f.write(f"${{ray_path}} stop\n")
++                f.write("pkill -f 'run_inference_engine'\n")
++                f.write("pkill -f 'run_fs_serve_vllm'\n")
++                f.write("pkill -f 'vllm serve'\n")
++                f.write(f"\n")
++
++                master_port = target_port if target_port else get_free_port()
++
++                address = f"{master_ip}:{master_port}"
++                for index, (ip, node) in enumerate(nodes):
++                    if not node.get("type", None):
++                        raise ValueError(
++                            f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
++                        )
++                    if not node.get("slots", None):
++                        raise ValueError(
++                            f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
++                        )
++                    if index == 0:
++                        # master node
++                        f.write(f"# start cluster\n")
++                        f.write(f"# master node\n")
++                        if node.type == "gpu":
++                            node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
++                        elif node.type == "cpu":
++                            node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
++                        else:
++                            resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
++                            node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
++                        if before_start_cmd:
++                            node_cmd = f"{before_start_cmd} && " + node_cmd
++                        f.write(f"{node_cmd}\n")
++
++                    else:
++                        resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
++                        node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
++                    if before_start_cmd:
++                        node_cmd = f"{before_start_cmd} && " + node_cmd
++                    f.write(f"{node_cmd}\n")
++
++                else:
++                    # worker nodes
++                    if index == 1:
++                        f.write(f"\n")
++                        f.write(f"# worker nodes\n")
++                    if node.type == "gpu":
++                        node_cmd = (
++                            f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
++                        )
++
++                    elif node.type == "cpu":
++                        node_cmd = (
++                            f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
++                        )
++                    else:
++                        resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
++                        node_cmd = (
++                            f"${{ray_path}} start --address={address} --resources='{resource}'"
++                        )
++                    if before_start_cmd:
++                        node_cmd = f"{before_start_cmd} && " + node_cmd
++                    ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
++                    if docker_name:
++                        ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
++                    f.write(f"{ssh_cmd}\n")
++        else:
++            # Note: config key device_type is specified for single node serving in neither gpu or cpu.
++            device_type = None
++            nproc_per_node = None
++            if config.experiment.get("runner", None) and config.experiment.runner.get(
++                "device_type", None
++            ):
++                device_type = config.experiment.runner.get("device_type", None)
++                nproc_per_node = config.experiment.runner.get("nproc_per_node", None)
++                if nproc_per_node is None:
++                    raise ValueError(
++                        f"nproc_per_node must be specified when device_type {device_type} is specified."
++                    )
++            node_cmd = None
++
++            if deploy_config.get("use_fs_serve", True) and config.serve[0].get("engine", None):
++                f.write(f"ray_path=$(realpath $(which ray))\n")
++                if not device_type:
++                    node_cmd = f"${{ray_path}} start --head"
++                elif device_type == "gpu":
++                    node_cmd = f"${{ray_path}} start --head --num-gpus={nproc_per_node}"
++                elif device_type == "cpu":
++                    node_cmd = f"${{ray_path}} start --head --num-cpus={nproc_per_node}"
++                else:
++                    resource = json.dumps({device_type: nproc_per_node}).replace('"', '\\"')
++                    node_cmd = f"${{ray_path}} start --head --resources='{resource}'"
++            if before_start_cmd:
++                node_cmd = f"{before_start_cmd} && {node_cmd}" if node_cmd else before_start_cmd
++            if node_cmd:
++                f.write(f"{node_cmd}\n")
++
++        f.write(f"mkdir -p {logging_config.log_dir}\n")
++        f.write(f"mkdir -p {logging_config.pids_dir}\n")
++        f.write(f"\n")
++        f.write(f"cd {root_dir}\n")
++        f.write(f"\n")
++        f.write(f'cmd="{cmd}"\n')
++        f.write(f"\n")
++        # TODO: need a option to control whether to append or overwrite the output file
++        # Now, it always appends to the output file
++        f.write("echo '=========== launch task ==========='\n")
++        if background:
++            f.write(
++                f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
++            )
++        else:
++            f.write(f'bash -c "$cmd; sync" >> {host_output_file} 2>&1\n')
++        f.write("\n")
++        f.flush()
++        os.fsync(f.fileno())
++    os.chmod(host_run_script_file, 0o755)
++
++    return host_run_script_file
++
++
++def _generate_stop_script(config, host, node_rank):
++    logging_config = config.logging
++
++    host_stop_script_file = os.path.join(
++        logging_config.scripts_dir, f"host_{node_rank}_{host}_stop.sh"
++    )
++
++    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
++
++    os.makedirs(logging_config.scripts_dir, exist_ok=True)
++
++    cmds_config = config.experiment.get("cmds", None)
++    if cmds_config:
++        after_stop = cmds_config.get("after_stop", "")
++    else:
++        after_stop = ""
++    with open(host_stop_script_file, "w") as f:
++        f.write("#!/bin/bash\n\n")
++        f.write(f"ray_path=$(realpath $(which ray))\n")
++        f.write(f"${{ray_path}} stop\n")
++        f.write("pkill -f 'run_inference_engine'\n")
++        f.write("pkill -f 'run_fs_serve_vllm'\n")
++        f.write("pkill -f 'vllm serve'\n")
++        f.write(f"{after_stop}\n")
++        f.flush()
++        os.fsync(f.fileno())
++    os.chmod(host_stop_script_file, 0o755)
++
++    return host_stop_script_file
++
++
++def kill_process_tree(pid):
++    try:
++        parent = psutil.Process(pid)
++    except psutil.NoSuchProcess:
++        return
++
++    # Get all children recursively
++    children = parent.children(recursive=True)
++
++    # Send SIGKILL to all children first
++    for child in children:
++        with contextlib.suppress(ProcessLookupError):
++            os.kill(child.pid, signal.SIGTERM)
++
++    # Finally kill the parent
++    with contextlib.suppress(ProcessLookupError):
++        os.kill(pid, signal.SIGKILL)
++
++
++class SSHServeRunnerTsing(RunnerBase):
++    def __init__(self, config: DictConfig):
++        super().__init__(config)
++        self.task_type = getattr(self.config.experiment.task, "type", None)
++        assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
++        self.deploy_config = self.config.experiment.get("deploy", {})
++        self.inference_engine = _get_inference_engine(self.config)
++        self.use_fs_serve = self.deploy_config.get("use_fs_serve", True)
++        self.port = _reset_serve_port(config)
++        self._prepare()
++        self.host = None
++
++    def _prepare(self):
++        _update_config_serve(self.config)
++        self.user_args = _get_args_vllm(self.config)
++        self.user_envs = self.config.experiment.get("envs", {})
++        entrypoint = self.config.experiment.task.get("entrypoint", None)
++        if self.inference_engine:
++            if self.config.experiment.get("deploy", {}).get("prefill_decode_disaggregation", False):
++                self.user_script = "flagscale/serve/run_disagg_xpyd_router.py"
++            elif not self.use_fs_serve:
++                # self.user_script = "flagscale/serve/run_inference_engine.py"
++                self.user_script = "flagscale/backends/tsing/deepseek_r1/run_tsing_deepseek_server.py"
++            else:
++                self.user_script = "flagscale/serve/run_fs_serve_vllm.py"
++        elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
++            self.user_script = entrypoint
++        elif entrypoint is None:
++            self.user_script = "flagscale/serve/run_serve.py"
++        else:
++            raise ValueError(
++                f"Invalid config entrypoint: {entrypoint}, must be a python file path or null."
++            )
++        hostfile_path = self.config.experiment.runner.get("hostfile", None)
++        if hostfile_path:
++            if os.path.isabs(hostfile_path):
++                hostfile_path = hostfile_path
++            else:
++                hostfile_path = os.path.join(os.getcwd(), hostfile_path)
++            if not os.path.exists(hostfile_path):
++                raise ValueError(f"The hostfile {hostfile_path} does not exist")
++
++        self.resources = None
++
++        if hostfile_path:
++            self.resources = parse_hostfile(hostfile_path)
++            for key, value in self.resources.items():
++                if not value.get("type", None):
++                    logger.warning(
++                        f"The hostfile key type is not set for host {key}, using gpu by default"
++                    )
++                    self.resources[key]["type"] = "gpu"
++            if self.resources:
++                OmegaConf.set_struct(self.config, False)
++                self.config["nodes"] = list(self.resources.items())
++                OmegaConf.set_struct(self.config, True)
++        logger.info("\n************** configuration **************")
++        logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
++
++    def _run_each(
++        self,
++        host,
++        master_addr,
++        master_port,
++        nnodes,
++        node_rank,
++        nproc_per_node,
++        with_test=False,
++        dryrun=False,
++    ):
++        export_cmd = []
++        for k, v in self.user_envs.items():
++            export_cmd += [f"{k}={v}"]
++
++        cmd = shlex.join(export_cmd + ["python"] + [self.user_script] + self.user_args)
++
++        host_run_script_file = _generate_run_script_serve(
++            self.config, host, node_rank, cmd, background=True, with_test=with_test
++        )
++
++        run_local_command(f"bash {host_run_script_file}", dryrun)
++
++    def run(self, with_test=False, dryrun=False):
++        num_visible_devices = None
++        visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
++        if visible_devices is not None and isinstance(visible_devices, str):
++            visible_devices = visible_devices.split(",")
++            num_visible_devices = len(visible_devices)
++
++        runner_config = self.config.experiment.runner
++
++        # If hostfile is not provided, run the job on localhost
++        nproc_from_args = runner_config.get("nproc_per_node", None)
++        nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
++        available_addr = runner_config.get("master_addr", "localhost")
++        available_port = runner_config.get("master_port", get_free_port())
++        self._run_each(
++            "localhost",
++            available_addr,
++            available_port,
++            1,
++            0,
++            nproc_per_node,
++            with_test=with_test,
++            dryrun=dryrun,
++        )
++        self.host = available_addr
++
++    def _stop_each(self, host, node_rank):
++        logging_config = self.config.logging
++        host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
++        with open(host_pid_file, "r") as f:
++            pid = f.readlines()[0]
++            pid = int(pid.strip())
++        kill_process_tree(pid)
++
++        ray_executable = shutil.which("ray")
++        if ray_executable:
++            ray_path = os.path.realpath(ray_executable)
++            os.system(f"{ray_path} stop")
++        else:
++            logger.info("Failed to find ray path")
++
++        os.system("pkill -f run_inference_engine")
++        os.system("pkill -f run_fs_serve_vllm")
++        os.system("pkill -f 'vllm serve'")
++
++    def stop(self):
++        self._stop_each("localhost", 0)
++        return
++
++    def _generate_query_script(self, host, node_rank):
++        """Genetrate the query script for each host."""
++        logging_config = self.config.logging
++
++        host_query_script_file = os.path.join(
++            logging_config.scripts_dir, f"host_{node_rank}_{host}_query.sh"
++        )
++
++        host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
++        os.makedirs(logging_config.scripts_dir, exist_ok=True)
++
++        with open(host_query_script_file, "w") as f:
++            f.write("#!/bin/bash\n\n")
++            f.write("if [ -f " + host_pid_file + " ]; then\n")
++            f.write("    pid=$(cat " + host_pid_file + ")\n")
++            f.write("    ps -p $pid -o state --no-headers\n")
++            f.write("else\n")
++            # TODO: This is a temporary fix. We need to find a better way to query the job.
++            f.write(
++                "    pid=$(ps aux | grep -E 'run_fs_serve_vllm|run_inference_engine' | grep -v grep | head -n 1 | awk '{print $2}')\n"
++            )
++            f.write("    ps -p $pid -o state --no-headers\n")
++            f.write("fi\n")
++            f.flush()
++            os.fsync(f.fileno())
++        os.chmod(host_query_script_file, 0o755)
++
++        return host_query_script_file
++
++    def _query_each(self, host, node_rank):
++        "Query each node status."
++        host_query_script_file = self._generate_query_script(host, node_rank)
++        logging_config = self.config.logging
++        result = ""
++        try:
++            result = run_local_command(f"bash {host_query_script_file}", query=True)
++        except Exception as e:
++            logger.error(f"Failed to query job status on {host}: {e}")
++        result = result.stdout.rstrip() if result else ""
++        return result
++
++    def _query_status(self):
++        "Query Job status."
++        results = []
++        result = self._query_each("localhost", 0)
++        results.append(result)
++        if all((status != "" and status != "Z") for status in results):
++            job_status = JobStatus.RUNNING
++        elif all((status == "" or status == "Z") for status in results):
++            job_status = JobStatus.COMPLETED_OR_IDLE
++        else:
++            job_status = JobStatus.TRANSITIONAL
++        return job_status
++
++    def _serve_alive(self):
++        engine_args = _get_engine_args(self.config)
++        model_name = engine_args.get("served_model_name", None) or engine_args.get("model", None)
++
++        if not model_name:
++            raise ValueError("No model specified in config file.")
++
++        from openai import OpenAI
++
++        # Modify OpenAI's API key and API base to use vLLM's API server.
++        api_key = "EMPTY"
++        api_url = f"http://{self.host}:{self.port}/v1"
++        logger.info(f"Testing API {api_url}")
++
++        try:
++            client = OpenAI(api_key=api_key, base_url=api_url)
++            messages = [{"role": "user", "content": "who are you?"}]
++            response = client.chat.completions.create(model=model_name, messages=messages)
++        except Exception as e:
++            # logger.info(f"API {api_url} is not ready, please wait a moment")
++            return False
++
++        return True
++
++    def _profile_serve(self):
++        from vllm.transformers_utils.tokenizer import get_tokenizer
++
++        tokenizer_mode = "auto"
++        engine_args = _get_engine_args(self.config)
++
++        trust_remote_code = engine_args.get("trust_remote_code", False)
++
++        model_name = engine_args.get("served_model_name", None) or engine_args.get("model", None)
++
++        if not model_name:
++            raise ValueError("No model specified in config file.")
++
++        tokenizer = get_tokenizer(
++            model_name, tokenizer_mode=tokenizer_mode, trust_remote_code=trust_remote_code
++        )
++
++        dummy_input_requests = dummy_random_input(tokenizer=tokenizer, num_prompts=200)
++        api_url = f"http://{self.host}:{self.port}/v1/chat/completions"
++        logger.info(f"Profiling API {api_url}")
++
++        ### allow metric = [\"ttft\", \"tpot\", \"itl\", \"e2el\"]
++        ### allow percentiles = [\"25,50,75\"]
++        result = asyncio.run(
++            benchmark(
++                api_url,
++                model=model_name,
++                tokenizer=tokenizer,
++                input_requests=dummy_input_requests,
++                selected_percentile_metrics="ttft,tpot,itl,e2el".split(","),
++                selected_percentiles=[float(99)],
++            )
++        )
++        return result
+diff --git a/flagscale/runner/runner_tsing.py b/flagscale/runner/runner_tsing.py
+new file mode 100644
+index 00000000..7fbde06e
+--- /dev/null
++++ b/flagscale/runner/runner_tsing.py
+@@ -0,0 +1,601 @@
++import multiprocessing
++import os
++import shlex
++import time
++
++from datetime import datetime
++
++from omegaconf import DictConfig, OmegaConf
++
++from flagscale.runner.runner_base import JobStatus, RunnerBase
++from flagscale.runner.utils import (
++    add_decive_extra_config,
++    flatten_dict_to_args,
++    get_free_port,
++    get_host_name_or_ip,
++    get_nnodes,
++    get_nproc_per_node,
++    logger,
++    parse_hostfile,
++    run_local_command,
++    run_scp_command,
++    run_ssh_command,
++)
++from flagscale.runner.runner_train import SSHTrainRunner
++
++_MAX_CPU_COUNT = multiprocessing.cpu_count()
++
++
++def flatten_dict_to_args_tsing(config_dict, ignore_keys=[]):
++    args = []
++    for key, value in config_dict.items():
++        if key in ignore_keys:
++            continue
++        # key = key.replace("_", "-")
++        if isinstance(value, dict):
++            args.extend(flatten_dict_to_args_tsing(value, ignore_keys))
++        elif isinstance(value, list):
++            args.append(f"--{key}")
++            for v in value:
++                args.append(f"{v}")
++        elif isinstance(value, bool):
++            if value:
++                args.append(f"--{key}")
++        else:
++            args.append(f"--{key}")
++            args.append(f"{value}")
++    return args
++
++def _get_args_tsing(config: DictConfig):
++    assert (
++        config.experiment.task.backend == "tsing"
++    ), "This function only supports tsing backend."
++
++    # Convert the DictConfig to a regular dictionary
++    config_dict = OmegaConf.to_container(config, resolve=True)
++    config_dict = config_dict["train"]
++
++    new_config_dict = {}
++    new_config_dict.update(config_dict["model"])
++    new_config_dict.update(config_dict["data"])
++    new_config_dict.update(config_dict["system"])
++    new_config_dict.update(config_dict["optimizer"])
++    new_config_dict.update(config_dict["distributed"])
++
++    ignore_keys = ["details_dir", "scripts_dir", "pids_dir"]
++    # Flatten the dictionary to a list 
++    # of arguments
++    args = flatten_dict_to_args_tsing(new_config_dict, ignore_keys)
++
++    return args
++
++
++def _create_exp_dir(config: DictConfig):
++    exp_dir = os.path.abspath(config.experiment.exp_dir)
++    if not os.path.isdir(exp_dir):
++        os.makedirs(exp_dir)
++    assert os.path.isdir(exp_dir), f"Directory {exp_dir} does not exist."
++
++
++def _get_runner_cmd_train(
++    host, master_addr, master_port, nnodes, node_rank, nproc_per_node, config: DictConfig
++):
++    runner_config = config.experiment.runner
++
++    backend = runner_config.get("backend", "python")
++
++    runner_args = OmegaConf.to_container(runner_config, resolve=True)
++    if "type" in runner_args:
++        del runner_args["type"]
++    if "backend" in runner_args:
++        del runner_args["backend"]
++    if "per_node_task" in runner_args:
++        del runner_args["per_node_task"]
++    if "hostfile" in runner_args:
++        del runner_args["hostfile"]
++    if "ssh_port" in runner_args:
++        del runner_args["ssh_port"]
++    if "master_addr" in runner_args:
++        del runner_args["master_addr"]
++    if "master_port" in runner_args:
++        del runner_args["master_port"]
++
++    runner_cmd = []
++    for be_item in backend.split(" "):
++        runner_cmd.append(be_item)
++    for key, value in runner_args.items():
++        if isinstance(value, bool):
++            if value:
++                runner_cmd.append(f"--{key}")
++        else:
++            runner_cmd.append(f"--{key}")
++            runner_cmd.append(f"{value}")
++    return runner_cmd
++
++
++def _generate_run_script_train(config, host, node_rank, cmd, background=True, with_test=False):
++    system_config = config.train.system
++    logging_config = config.train.system.logging
++
++    host_output_file = os.path.join(logging_config.logging_dir, f"host_{node_rank}_{host}.output")
++    host_run_script_file = os.path.join(
++        logging_config.scripts_dir, f"host_{node_rank}_{host}_run.sh"
++    )
++    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
++
++    os.makedirs(logging_config.scripts_dir, exist_ok=True)
++
++    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
++    tsing_examples_dir = os.path.join(root_dir, "flagscale/backends/tsing/llama70b/")
++    cmds_config = config.experiment.get("cmds", None)
++    if cmds_config:
++        before_start = cmds_config.get("before_start", "")
++    else:
++        before_start = ""
++    with open(host_run_script_file, "w") as f:
++        f.write("#!/bin/bash\n\n")
++        f.write(f"{before_start}\n")
++        f.write(f"mkdir -p {system_config.logging.logging_dir}\n")
++        f.write(f"mkdir -p {system_config.logging.pids_dir}\n")
++        f.write(f"mkdir -p {system_config.logging.details_dir}\n")
++        f.write(f"mkdir -p {system_config.resume_from_checkpoint}\n")
++        f.write(f"rm -r {system_config.resume_from_checkpoint}/*\n")
++        f.write(f"\n")
++        f.write(f"cd {root_dir}\n")
++        f.write(f"\n")
++        f.write(f"export PYTHONPATH={tsing_examples_dir}:{tsing_examples_dir}/llama3_70B_finetune:{root_dir}:${{PYTHONPATH}}\n")
++        f.write(f"\n")
++        f.write(f'cmd="{cmd}"\n')
++        f.write(f"\n")
++        if with_test:
++            f.write(f'bash -c "$cmd; sync" \n')
++        else:
++            # TODO: need a option to control whether to append or overwrite the output file
++            # Now, it always appends to the output file
++            if background:
++                f.write(
++                    f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
++                    # f"""nohup bash -c "/login_home/zhanghao/workspace/FlagScale/third_party/examples/power_test/run_tx8.sh & tsmvs_pid=\$!; trap 'kill \$tsmvs_pid' SIGTERM EXIT; $cmd" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}"""
++                    # f"""nohup bash -c "/login_home/zhanghao/workspace/FlagScale/third_party/examples/power_test/run_tx8.sh > /dev/null 2>&1 & tsmvs_pid=\$!; trap 'kill \$tsmvs_pid' SIGTERM EXIT; $cmd" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}"""
++                )
++            else:
++                f.write(f'bash -c "$cmd; sync" >> {host_output_file} 2>&1\n')
++        f.write("\n")
++        f.flush()
++        os.fsync(f.fileno())
++    os.chmod(host_run_script_file, 0o755)
++
++    return host_run_script_file
++
++
++def _generate_stop_script_train(config, host, node_rank):
++    if getattr(config, "train", None):
++        logging_config = config.train.system.logging
++    else:
++        logging_config = config.inference.system.logging
++
++    host_stop_script_file = os.path.join(
++        logging_config.scripts_dir, f"host_{node_rank}_{host}_stop.sh"
++    )
++
++    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
++
++    os.makedirs(logging_config.scripts_dir, exist_ok=True)
++
++    cmds_config = config.experiment.get("cmds", None)
++    if cmds_config:
++        after_stop = cmds_config.get("after_stop", "")
++    else:
++        after_stop = ""
++    with open(host_stop_script_file, "w") as f:
++        f.write("#!/bin/bash\n\n")
++        f.write("if [ -f " + host_pid_file + " ]; then\n")
++        f.write("    pid=$(cat " + host_pid_file + ")\n")
++        f.write("    pkill -P $pid\n")
++        f.write("else\n")
++        # TODO: This is a temporary fix. We need to find a better way to stop the job.
++        f.write("    pkill -f 'torchrun'\n")
++        f.write("fi\n")
++        f.write(f"{after_stop}\n")
++        f.flush()
++        os.fsync(f.fileno())
++    os.chmod(host_stop_script_file, 0o755)
++
++    return host_stop_script_file
++
++
++def run_node(
++    func,
++    node_rank,
++    host,
++    resource_info,
++    user_envs,
++    runner_config,
++    nnodes,
++    available_ip,
++    available_port,
++    with_test,
++    dryrun,
++):
++    cur_envs = add_decive_extra_config(user_envs, resource_info["type"])
++    visible_devices = cur_envs.get("TXDA_VISIBLE_DEVICES", None)
++    if visible_devices is not None and isinstance(visible_devices, str):
++        visible_devices = visible_devices.split(",")
++        num_visible_devices = len(visible_devices)
++    nproc_from_hostfile = resource_info["slots"]
++    nproc_from_args = runner_config.get("nproc_per_node", None)
++    nproc_per_node = get_nproc_per_node(nproc_from_hostfile, nproc_from_args, num_visible_devices)
++    master_addr = runner_config.get("master_addr", available_ip)
++    master_port = runner_config.get("master_port", available_port)
++    func(
++        host,
++        master_addr,
++        master_port,
++        nnodes,
++        node_rank,
++        nproc_per_node,
++        device_type=resource_info["type"],
++        with_test=with_test,
++        dryrun=dryrun,
++        cur_envs=cur_envs,
++    )
++
++
++class SSHTrainRunnerTsing(SSHTrainRunner):
++    def __init__(self, config: DictConfig):
++        super().__init__(config)
++        self.task_type = getattr(self.config.experiment.task, "type", None)
++        assert self.task_type == "train", f"Unsupported task type: {self.task_type}"
++        self._prepare()
++
++    def _prepare(self):
++        _create_exp_dir(self.config)
++        self.user_args = _get_args_tsing(self.config)
++        self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
++        self.user_envs = self.config.experiment.get("envs", {})
++        
++        self.user_script = self.config.experiment.task.entrypoint
++        self.resources = parse_hostfile(self.config.experiment.runner.get("hostfile", None))
++        logger.info("\n************** configuration **************")
++        logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
++
++    def _run_each(
++        self,
++        host,
++        master_addr,
++        master_port,
++        nnodes,
++        node_rank,
++        nproc_per_node,
++        device_type=None,
++        with_test=False,
++        dryrun=False,
++        cur_envs=None,
++    ):
++        export_cmd = []
++
++        for k, v in cur_envs.items():
++            if k == 'PJRT_GROUP_RANK':
++                v = node_rank
++            export_cmd += [f"{k}={v}"]
++        
++        # print(export_cmd)
++        # raise
++
++        runner_cmd = _get_runner_cmd_train(
++            host, master_addr, master_port, nnodes, node_rank, nproc_per_node, self.config
++        )
++
++        cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
++
++        logging_config = self.config.train.system.logging
++        host_run_script_file = _generate_run_script_train(
++            self.config, host, node_rank, cmd, background=True, with_test=with_test
++        )
++
++        if host != "localhost":
++            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
++            # Step 1: make sure the scripts_dir exists on the remote host
++            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, dryrun)
++
++            # Step 2: copy the host_run_script_file to the remote host
++            # no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
++            # if no_shared_fs:
++            run_scp_command(
++                host, host_run_script_file, logging_config.scripts_dir, ssh_port, dryrun
++            )
++
++            # Step 3: run the host_run_script_file on the remote host
++            run_ssh_command(host, f"bash {host_run_script_file}", ssh_port, dryrun)
++        else:
++            run_local_command(f"bash {host_run_script_file}", dryrun)
++
++    def run(self, with_test=False, dryrun=False, monitor=True, interval=10):
++
++        num_visible_devices = None
++        runner_config = self.config.experiment.runner
++
++        # If hostfile is provided, use the resources from the hostfile
++        if self.resources is not None:
++            nnodes_from_hostfile = len(self.resources.keys())
++            nnodes_from_args = runner_config.get("nnodes", None)
++            nnodes = get_nnodes(nnodes_from_hostfile, nnodes_from_args)
++            available_ip = list(self.resources.keys())[0]
++            available_port = get_free_port()
++            num_processes = min(nnodes, _MAX_CPU_COUNT)
++            with multiprocessing.Pool(processes=num_processes) as pool:
++                tasks = []
++                for node_rank, (host, resource_info) in enumerate(self.resources.items()):
++                    if node_rank >= nnodes:
++                        break
++                    args = (
++                        self._run_each,
++                        node_rank,
++                        host,
++                        resource_info,
++                        self.user_envs,
++                        runner_config,
++                        nnodes,
++                        available_ip,
++                        available_port,
++                        with_test,
++                        dryrun,
++                    )
++                    tasks.append(args)
++                pool.starmap(run_node, tasks)
++        else:
++            # If hostfile is not provided, run the job on localhost
++            visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
++            if visible_devices is not None and isinstance(visible_devices, str):
++                visible_devices = visible_devices.split(",")
++                num_visible_devices = len(visible_devices)
++            nproc_from_args = runner_config.get("nproc_per_node", None)
++            nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
++            available_addr = runner_config.get("master_addr", "localhost")
++            available_port = runner_config.get("master_port", get_free_port())
++            self._run_each(
++                "localhost",
++                available_addr,
++                available_port,
++                1,
++                0,
++                nproc_per_node,
++                with_test=with_test,
++                dryrun=dryrun,
++                cur_envs=self.user_envs,
++            )
++        # If need monitor, query status continually
++        if monitor:
++            # sleep to wait task already started
++            time.sleep(interval)
++            try:
++                while True:
++                    status = self._query_status()
++                    logger.info(f"Job Status: {status.name}")
++                    if status == JobStatus.COMPLETED_OR_IDLE:
++                        break
++                    time.sleep(interval)
++                logger.info("Job Ended.")
++            except Exception as e:
++                logger.info(e)
++
++    def _stop_each(self, host, node_rank):
++        host_stop_script_file = _generate_stop_script_train(self.config, host, node_rank)
++        logging_config = self.config.train.system.logging
++
++        if host != "localhost":
++            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
++            # Step 1: make sure the scripts_dir exists on the remote host
++            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port)
++            # Step 2: copy the host_run_script_file to the remote host
++            # no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
++            # if no_shared_fs:
++            run_scp_command(host, host_stop_script_file, logging_config.scripts_dir, ssh_port)
++            # Step 3: run the host_run_script_file on the remote host
++            run_ssh_command(host, f"bash {host_stop_script_file}", ssh_port)
++        else:
++            run_local_command(f"bash {host_stop_script_file}")
++
++    def stop(self):
++        if self.resources is None:
++            self._stop_each("localhost", 0)
++            return
++
++        nnodes = get_nnodes(len(self.resources), self.config.experiment.runner.get("nnodes", None))
++
++        num_processes = min(nnodes, _MAX_CPU_COUNT)
++        with multiprocessing.Pool(processes=num_processes) as pool:
++            tasks = []
++            for node_rank, (host, _) in enumerate(self.resources.items()):
++                if node_rank >= nnodes:
++                    break
++                args = (host, node_rank)
++                tasks.append(args)
++            pool.starmap(self._stop_each, tasks)
++
++    def _generate_query_script(self, host, node_rank):
++        """Genetrate the query script for each host."""
++        logging_config = self.config.train.system.logging
++
++        host_query_script_file = os.path.join(
++            logging_config.scripts_dir, f"host_{node_rank}_{host}_query.sh"
++        )
++
++        host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
++
++        os.makedirs(logging_config.scripts_dir, exist_ok=True)
++
++        with open(host_query_script_file, "w") as f:
++            f.write("#!/bin/bash\n\n")
++            f.write("if [ -f " + host_pid_file + " ]; then\n")
++            f.write("    pid=$(cat " + host_pid_file + ")\n")
++            f.write("    ps -p $pid -o state --no-headers\n")
++            f.write("else\n")
++            # TODO: This is a temporary fix. We need to find a better way to query the job.
++            f.write(
++                "    pid=$(ps aux | grep 'torchrun' | grep -v grep | head -n 1 | awk '{print $2}')\n"
++            )
++            f.write("    ps -p $pid -o state --no-headers\n")
++            f.write("fi\n")
++            f.flush()
++            os.fsync(f.fileno())
++        os.chmod(host_query_script_file, 0o755)
++
++        return host_query_script_file
++
++    def _generate_query_sub_process_script(self, host, node_rank):
++        """Genetrate the query script for each host."""
++        logging_config = self.config.train.system.logging
++
++        host_query_sub_process_script_file = os.path.join(
++            logging_config.scripts_dir, f"host_{node_rank}_{host}_query_sub_process.sh"
++        )
++
++        host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
++
++        os.makedirs(logging_config.scripts_dir, exist_ok=True)
++
++        with open(host_query_sub_process_script_file, "w") as f:
++            f.write("#!/bin/bash\n\n")
++            f.write("if [ -f " + host_pid_file + " ]; then\n")
++            f.write("    pid=$(cat " + host_pid_file + ")\n")
++            f.write("    ps -eo pid,ppid | awk -v ppid=$pid '$2 == ppid {print $1}'\n")
++            f.write("else\n")
++            # TODO: This is a temporary fix. We need to find a better way to query the job.
++            f.write(
++                "    pid=$(ps aux | grep 'torchrun' | grep -v grep | head -n 1 | awk '{print $2}')\n"
++            )
++            f.write("    ps -eo pid,ppid | awk -v ppid=$pid '$2 == ppid {print $1}'\n")
++            f.write("fi\n")
++            f.flush()
++            os.fsync(f.fileno())
++        os.chmod(host_query_sub_process_script_file, 0o755)
++
++        return host_query_sub_process_script_file
++
++    def _query_each(self, host, node_rank):
++        "Query each node status."
++        host_query_script_file = self._generate_query_script(host, node_rank)
++        logging_config = self.config.train.system.logging
++        result = ""
++        if host != "localhost":
++            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
++            # Step 1: make sure the scripts_dir exists on the remote host
++            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, query=True)
++            # Step 2: copy the host_run_script_file to the remote host
++            # no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
++            # if no_shared_fs:
++            run_scp_command(host, host_query_script_file, logging_config.scripts_dir, ssh_port)
++            # Step 3: run the host_run_script_file on the remote host
++            try:
++                result = run_ssh_command(
++                    host, f"bash {host_query_script_file}", ssh_port, query=True
++                )
++            except Exception as e:
++                logger.error(f"Failed to query job status on {host}: {e}")
++        else:
++            try:
++                result = run_local_command(f"bash {host_query_script_file}", query=True)
++            except Exception as e:
++                logger.error(f"Failed to query job status on {host}: {e}")
++        result = result.stdout.rstrip() if result else ""
++        return result
++
++    def _query_each_sub_process(self, host, node_rank):
++        "Query each node sub process status."
++        host_query_script_file = self._generate_query_sub_process_script(host, node_rank)
++        logging_config = self.config.train.system.logging
++        result = ""
++        if host != "localhost":
++            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
++            # Step 1: make sure the scripts_dir exists on the remote host
++            run_ssh_command(host, f"mkdir -p {logging_config.scripts_dir}", ssh_port, query=True)
++            # Step 2: copy the host_run_script_file to the remote host
++            # no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
++            # if no_shared_fs:
++            run_scp_command(host, host_query_script_file, logging_config.scripts_dir, ssh_port)
++            # Step 3: run the host_run_script_file on the remote host
++            try:
++                result = run_ssh_command(
++                    host, f"bash {host_query_script_file}", ssh_port, query=True
++                )
++            except Exception as e:
++                logger.error(f"Failed to query sub process status on {host}: {e}")
++        else:
++            try:
++                result = run_local_command(f"bash {host_query_script_file}", query=True)
++            except Exception as e:
++                logger.error(f"Failed to query sub process status on {host}: {e}")
++        result = result.stdout.rstrip() if result else ""
++        return result
++
++    def _query_status(self):
++        "Query Job status."
++        results = []
++        if self.resources is None:
++            result = self._query_each("localhost", 0)
++            results.append(result)
++
++        else:
++            host_list = list(self.resources.keys())
++            for host, _ in self.resources.items():
++                node_rank = host_list.index(host)
++                result = self._query_each(host, node_rank)
++                results.append(result)
++        if all((status != "" and status != "Z") for status in results):
++            job_status = JobStatus.RUNNING
++        elif all((status == "" or status == "Z") for status in results):
++            job_status = JobStatus.COMPLETED_OR_IDLE
++        else:
++            job_status = JobStatus.TRANSITIONAL
++        return job_status
++
++    def _query_sub_process_status(self):
++        "Query sub process status."
++        results = []
++        if self.resources is None:
++            result = self._query_each_sub_process("localhost", 0)
++            results.append(result)
++
++        else:
++            host_list = list(self.resources.keys())
++            for host, _ in self.resources.items():
++                node_rank = host_list.index(host)
++                result = self._query_each_sub_process(host, node_rank)
++                results.append(result)
++        if all(status for status in results):
++            status = True
++        else:
++            status = False
++        return status
++
++    def query(self, interval=10, timeout=None):
++        """
++        Query job status and log.
++        There are three kinds of status for a Job:
++            RUNNING: The job is running.
++            COMPLETED_OR_IDLE: The job is completed or idle.
++            TRANSITIONAL: The job is starting or stopping.
++
++        Args:
++            interval (int, optional): The interval of querying job status. Default: 10.
++            timeout (float, optional): The timeout of query job status, if None, the query will keep indefinitely. Default: None.
++
++        Returns:
++            None
++
++        """
++        if timeout is None:
++            while True:
++                job_status = self._query_status()
++                logger.info(f"Job status: {job_status.name}")
++                time.sleep(interval)
++        else:
++            start_time = time.time()
++            cur_time = time.time()
++            while cur_time - start_time < timeout:
++                job_status = self._query_status()
++                logger.info(f"Job status: {job_status.name}")
++                time.sleep(interval)
++                cur_time = time.time()
++
+diff --git a/run_tsing.py b/run_tsing.py
+new file mode 100644
+index 00000000..afc0403c
+--- /dev/null
++++ b/run_tsing.py
+@@ -0,0 +1,94 @@
++import hydra
++
++from omegaconf import DictConfig
++
++from flagscale.runner.auto_tuner import AutoTuner, ServeAutoTunner
++from flagscale.runner.runner_compress import SSHCompressRunner
++from flagscale.runner.runner_inference import SSHInferenceRunner
++from flagscale.runner.runner_serve import SSHServeRunner
++from flagscale.runner.runner_serve_tsing import SSHServeRunnerTsing
++from flagscale.runner.runner_train import CloudTrainRunner, SSHTrainRunner
++from flagscale.runner.runner_tsing import SSHTrainRunnerTsing
++from flagscale.runner.utils import is_master
++
++# To accommodate the scenario where the before_start field is used to switch to the actual environment during program execution,
++# we have placed the import statements inside the function body rather than at the beginning of the file.
++
++
++@hydra.main(version_base=None, config_name="config")
++def main(config: DictConfig) -> None:
++    task_type = config.experiment.task.get("type", "train")
++    if task_type == "train":
++        if config.action == "auto_tune":
++            # For MPIRUN scene, just one autotuner process.
++            # NOTE: This is a temporary solution and will be updated with cloud runner.
++            if is_master(config):
++                tuner = AutoTuner(config)
++                tuner.tune()
++        else:
++            if config.experiment.runner.get("type", "ssh") == "ssh":
++                runner = SSHTrainRunner(config)
++            elif config.experiment.runner.get("type") == "cloud":
++                runner = CloudTrainRunner(config)
++            elif config.experiment.runner.get("type") == "ssh_tsing":
++                runner = SSHTrainRunnerTsing(config)
++            else:
++                raise ValueError(f"Unknown runner type {config.runner.type}")
++
++            if config.action == "run":
++                runner.run()
++            elif config.action == "dryrun":
++                runner.run(dryrun=True)
++            elif config.action == "test":
++                runner.run(with_test=True)
++            elif config.action == "stop":
++                runner.stop()
++            elif config.action == "query":
++                runner.query()
++            else:
++                raise ValueError(f"Unknown action {config.action}")
++    elif task_type == "inference":
++        runner = SSHInferenceRunner(config)
++        if config.action == "run":
++            runner.run()
++        elif config.action == "dryrun":
++            runner.run(dryrun=True)
++        elif config.action == "stop":
++            runner.stop()
++        else:
++            raise ValueError(f"Unknown action {config.action}")
++    elif task_type == "serve":
++        if config.action == "auto_tune":
++            # For MPIRUN scene, just one autotuner process.
++            # NOTE: This is a temporary solution and will be updated with cloud runner.
++            tuner = ServeAutoTunner(config)
++            tuner.tune()
++        else:
++            if config.experiment.runner.get("type") == "ssh_tsing_ds":
++                runner = SSHServeRunnerTsing(config)
++            else:
++                runner = SSHServeRunner(config)
++            if config.action == "run":
++                runner.run()
++            elif config.action == "test":
++                runner.run(with_test=True)
++            elif config.action == "stop":
++                runner.stop()
++            else:
++                raise ValueError(f"Unknown action {config.action}")
++    elif task_type == "compress":
++        runner = SSHCompressRunner(config)
++        if config.action == "run":
++            runner.run()
++        elif config.action == "dryrun":
++            runner.run(dryrun=True)
++        elif config.action == "stop":
++            runner.stop()
++        else:
++            raise ValueError(f"Unknown action {config.action}")
++    else:
++        raise ValueError(f"Unknown task type {task_type}")
++
++
++if __name__ == "__main__":
++    main()
