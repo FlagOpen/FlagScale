@@ -56,7 +56,9 @@ class Recorder:
 
             # Task failed and the code may have logical errors
             else:
-                strategy["performance"] = None
+                # HACK: record the performance when task exits in the last allreduce of training
+                performace = self.grep_performance(peformance_path, self.metric)
+                strategy["performance"] = performace
                 strategy["max_mem"] = self.grep_max_memory(host_path)
                 strategy["error"] = "|".join(list(errors))
 
@@ -242,11 +244,11 @@ class Recorder:
             self.logger.info(f"task_{self.cur_strategy['idx']} performance: {None}")
             return None
         if len(performance) == 1:
-            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {performance[0]}")
+            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {performance[0]} ms")
             return round(performance[0], 3)
         else:
             average = sum(performance[1:]) / (len(performance) - 1)
-            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {average}")
+            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {average} ms")
             return round(average, 3)
 
     def grep_error(self, path, pattern="Error:"):
