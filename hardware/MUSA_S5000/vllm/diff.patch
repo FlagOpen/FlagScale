@@ -1,18 +1,3 @@
-diff --git a/setup.py b/setup.py
-index d8a336c2d..2ee08f693 100755
---- a/setup.py
-+++ b/setup.py
-@@ -650,3 +650,10 @@ setup(
-     cmdclass=cmdclass,
-     package_data=package_data,
- )
-+vllm_musa_dir = "vllm_musa"
-+subprocess.run(
-+    ["pip", "install", "-e", ".", "--no-build-isolation", "-v"],
-+    cwd=vllm_musa_dir,
-+    check=True,
-+    text=True,
-+)
 diff --git a/vllm/__init__.py b/vllm/__init__.py
 index 457780824..d6b7c52f1 100644
 --- a/vllm/__init__.py
