@@ -3,10 +3,10 @@ backends_commit:
 backends_version:
   FlagScale: 0.8.0
   Megatron-LM: 0.12.0
-commit: 6798d71df02b1d7c7dc6d659573a2e33c2b1021e
-contact: mengxiao.li@metax-tech.com
-device_type: Metax_C550
+commit: ad8411712dfbbdf03ec791878d32d578e917593f
+contact: ppy_1203@163.com
+device_type: Hygon_BW1000
 models:
-- Llama3-70B
+- llama3-70b
 task:
 - train

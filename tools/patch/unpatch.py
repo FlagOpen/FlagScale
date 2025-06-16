@@ -117,7 +117,9 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, c
         with open(history_yaml, 'r') as f:
             history = yaml.safe_load(f)
             if device_type not in history:
-                raise ValueError(f"Device type {device_type} not found in {history_yaml}.")
+                logger.warning(f"Device type {device_type} not found in {history_yaml}.")
+                logger.warning("Try to use the current commit to unpatch.")
+                return main_repo.head.commit.hexsha
 
             # Find the newest flagscale commit in the history
             for task in tasks:
@@ -139,9 +141,11 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, c
                         f"The commit ID {newest_flagscale_commit} does not exist in the FlagScale. Please check the {history_yaml}"
                     )
                     newest_flagscale_commit = None
-        assert (
-            newest_flagscale_commit is not None
-        ), f"FlagScale Commit for device type {device_type}, task {task} is not found. Please check the {history_yaml}."
+        if not newest_flagscale_commit:
+            logger.warning(
+                f"No valid commit found for device type {device_type}, task {task} in {history_yaml}. Try to use the current commit to unpatch."
+            )
+            return main_repo.head.commit.hexsha
     return newest_flagscale_commit
 
 
