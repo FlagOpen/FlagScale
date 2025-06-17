@@ -17,6 +17,3 @@ def flatten_dict_to_args(config_dict, ignore_keys=[]):
             args.append(f"--{key}")
             args.append(f"{value}")
     return args
-
-
-serve_cli_args = {}

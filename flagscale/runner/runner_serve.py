@@ -24,7 +24,6 @@ from flagscale.runner.utils import (
     parse_hostfile,
     run_local_command,
 )
-from flagscale.utils import serve_cli_args
 
 
 def _get_multiple_free_ports(num=1, exclude_ports=[]):
@@ -67,9 +66,8 @@ def _get_args_vllm(config: DictConfig):
 
 def _reset_serve_port(config):
     model_port = None
-    deploy_port = serve_cli_args.get("port", None) or config.experiment.get("deploy", {}).get(
-        "port", None
-    )
+    cli_args_port = config.experiment.get("runner", {}).get("cli_args", {}).get("port", None)
+    deploy_port = cli_args_port or config.experiment.get("deploy", {}).get("port", None)
     OmegaConf.set_struct(config, False)
 
     for item in config.serve:
@@ -142,8 +140,10 @@ def _update_config_serve(config: DictConfig):
     if config.get("logging", None) is None:
         config.logging = DictConfig({})
 
-    cli_model_path = serve_cli_args.get("model_path", None)
-    cli_engine_args = serve_cli_args.get("engine_args", None)
+    cli_model_path = config.experiment.get("runner", {}).get("cli_args", {}).get("model_path", None)
+    cli_engine_args = (
+        config.experiment.get("runner", {}).get("cli_args", {}).get("engine_args", None)
+    )
     if cli_model_path or cli_engine_args:
         for item in config.serve:
             if item.get("serve_id", None) == "vllm_model":
@@ -152,7 +152,6 @@ def _update_config_serve(config: DictConfig):
                 if cli_engine_args:
                     item.engine_args.update(json.loads(cli_engine_args))
     print(config)
-    print(serve_cli_args)
     breakpoint()
 
     log_dir = os.path.join(exp_dir, f"serve_logs")

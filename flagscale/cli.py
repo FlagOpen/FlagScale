@@ -5,8 +5,6 @@ import sys
 import click
 import yaml
 
-from .utils import serve_cli_args
-
 VERSION = "0.6.0"
 
 
@@ -77,12 +75,6 @@ def serve(model_name, yaml_path=None, model_path=None, port=None, engine_args=No
     """
     from run import main as run_main
 
-    if model_path:
-        serve_cli_args["model_path"] = model_path
-    if port:
-        serve_cli_args["port"] = port
-    if engine_args:
-        serve_cli_args["engine_args"] = engine_args
     print(model_path, port, engine_args)
 
     if yaml_path:
@@ -114,11 +106,11 @@ def serve(model_name, yaml_path=None, model_path=None, port=None, engine_args=No
     click.echo(f"config_name: {config_name}")
     args = ["run.py", f"--config-path={config_path}", f"--config-name={config_name}"]
     if model_path:
-        args.append(f"model_path={model_path}")
+        args.append(f"+experiment.runner.cli_args.model_path={model_path}")
     if port:
-        args.append(f"port={port}")
+        args.append(f"+experiment.runner.cli_args.port={port}")
     if engine_args:
-        args.append(f"engine_args='{engine_args}'")
+        args.append(f"+experiment.runner.cli_args.engine_args='{engine_args}'")
     print(args)
     breakpoint()
     sys.argv = args
