@@ -5,7 +5,7 @@ import sys
 import click
 import yaml
 
-from utils import serve_cli_args
+from .utils import serve_cli_args
 
 VERSION = "0.6.0"
 
@@ -113,9 +113,9 @@ def serve(model_name, yaml_path=None, model_path=None, port=None, engine_args=No
     click.echo(f"config_path: {config_path}")
     click.echo(f"config_name: {config_name}")
     args = ["run.py", f"--config-path={config_path}", f"--config-name={config_name}"]
-    if config_path:
+    if model_path:
         args.append(f"--model_path={model_path}")
-    if config_name:
+    if port:
         args.append(f"--port={port}")
     if engine_args:
         args.append(f"--engine_args='{engine_args}'")
