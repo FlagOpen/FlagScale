@@ -16,8 +16,6 @@ from flagscale.runner.utils import is_master
 @hydra.main(version_base=None, config_name="config")
 def main(config: DictConfig) -> None:
     task_type = config.experiment.task.get("type", "train")
-    print(config)
-    breakpoint()
     if task_type == "train":
         if config.action == "auto_tune":
             # For MPIRUN scene, just one autotuner process.

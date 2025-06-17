@@ -111,8 +111,6 @@ def serve(model_name, yaml_path=None, model_path=None, port=None, engine_args=No
         args.append(f"+experiment.runner.cli_args.port={port}")
     if engine_args:
         args.append(f"+experiment.runner.cli_args.engine_args='{engine_args}'")
-    print(args)
-    breakpoint()
     sys.argv = args
     run_main()
 

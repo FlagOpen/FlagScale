@@ -66,9 +66,14 @@ def _get_args_vllm(config: DictConfig):
 
 def _reset_serve_port(config):
     model_port = None
+    deploy_port = config.experiment.get("deploy", {}).get("port", None)
     cli_args_port = config.experiment.get("runner", {}).get("cli_args", {}).get("port", None)
-    deploy_port = cli_args_port or config.experiment.get("deploy", {}).get("port", None)
+
     OmegaConf.set_struct(config, False)
+
+    if cli_args_port:
+        deploy_port = cli_args_port
+        config.experiment.deploy.port = cli_args_port
 
     for item in config.serve:
         if item.get("serve_id", None) == "vllm_model":
@@ -151,8 +156,6 @@ def _update_config_serve(config: DictConfig):
                     item.engine_args["model"] = cli_model_path
                 if cli_engine_args:
                     item.engine_args.update(json.loads(cli_engine_args))
-    print(config)
-    breakpoint()
 
     log_dir = os.path.join(exp_dir, f"serve_logs")
     scripts_dir = os.path.join(log_dir, "scripts")
