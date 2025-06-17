@@ -59,9 +59,9 @@ def train(model_name, yaml_path=None):
 @click.argument("model_name", type=str)
 @click.argument("yaml_path", type=click.Path(exists=True), required=False)
 @click.option(
-    "--model-path", "model_path", required=False, type=str, help="The name of the Docker image"
+    "--model-path", "model_path", required=False, type=str, help="The weight path of model"
 )
-@click.option("--port", "port", required=False, type=int, help="The name of the Docker image")
+@click.option("--port", "port", required=False, type=int, help="The port of serve")
 @click.option(
     "--engine-args",
     "engine_args",
@@ -74,8 +74,6 @@ def serve(model_name, yaml_path=None, model_path=None, port=None, engine_args=No
     Serve model from yaml.
     """
     from run import main as run_main
-
-    print(model_path, port, engine_args)
 
     if yaml_path:
         if os.path.isabs(yaml_path):
