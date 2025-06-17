@@ -5,6 +5,8 @@ import sys
 import click
 import yaml
 
+from utils import serve_cli_args
+
 VERSION = "0.6.0"
 
 
@@ -58,11 +60,31 @@ def train(model_name, yaml_path=None):
 @flagscale.command()
 @click.argument("model_name", type=str)
 @click.argument("yaml_path", type=click.Path(exists=True), required=False)
-def serve(model_name, yaml_path=None):
+@click.option(
+    "--model-path", "model_path", required=False, type=str, help="The name of the Docker image"
+)
+@click.option("--port", "port", required=False, type=int, help="The name of the Docker image")
+@click.option(
+    "--engine-args",
+    "engine_args",
+    required=False,
+    type=str,
+    help="Model config as JSON string, e.g. '{\"a\":1, \"b\":2}'",
+)
+def serve(model_name, yaml_path=None, model_path=None, port=None, engine_args=None):
     """
     Serve model from yaml.
     """
     from run import main as run_main
+
+    if model_path:
+        serve_cli_args["model_path"] = model_path
+    if port:
+        serve_cli_args["port"] = port
+    if engine_args:
+        serve_cli_args["engine_args"] = engine_args
+    print(model_path, port, engine_args)
+    breakpoint()
 
     if yaml_path:
         if os.path.isabs(yaml_path):
