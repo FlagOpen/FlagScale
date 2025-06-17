@@ -84,7 +84,6 @@ def serve(model_name, yaml_path=None, model_path=None, port=None, engine_args=No
     if engine_args:
         serve_cli_args["engine_args"] = engine_args
     print(model_path, port, engine_args)
-    breakpoint()
 
     if yaml_path:
         if os.path.isabs(yaml_path):
@@ -113,8 +112,16 @@ def serve(model_name, yaml_path=None, model_path=None, port=None, engine_args=No
     config_name = os.path.splitext(os.path.basename(yaml_path))[0]
     click.echo(f"config_path: {config_path}")
     click.echo(f"config_name: {config_name}")
-
-    sys.argv = ["run.py", f"--config-path={config_path}", f"--config-name={config_name}"]
+    args = ["run.py", f"--config-path={config_path}", f"--config-name={config_name}"]
+    if config_path:
+        args.append(f"--model_path={model_path}")
+    if config_name:
+        args.append(f"--port={port}")
+    if engine_args:
+        args.append(f"--engine_args='{engine_args}'")
+    print(args)
+    breakpoint()
+    sys.argv = args
     run_main()
 
 
