@@ -114,11 +114,11 @@ def serve(model_name, yaml_path=None, model_path=None, port=None, engine_args=No
     click.echo(f"config_name: {config_name}")
     args = ["run.py", f"--config-path={config_path}", f"--config-name={config_name}"]
     if model_path:
-        args.append(f"--model_path={model_path}")
+        args.append(f"model_path={model_path}")
     if port:
-        args.append(f"--port={port}")
+        args.append(f"port={port}")
     if engine_args:
-        args.append(f"--engine_args='{engine_args}'")
+        args.append(f"engine_args='{engine_args}'")
     print(args)
     breakpoint()
     sys.argv = args
