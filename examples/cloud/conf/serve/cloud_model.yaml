@@ -1,9 +1,8 @@
 - serve_id: vllm_model
   engine: vllm
   engine_args:
-    model: ${oc.env:MODEL_PATH}
-    served_model_name: ${oc.env:MODEL_NAME}
-    port: ${oc.env:PORT, 8000}
+    model: null
+    port: 8000
     host: 0.0.0.0
     tensor_parallel_size: 1
     pipeline_parallel_size: 1
