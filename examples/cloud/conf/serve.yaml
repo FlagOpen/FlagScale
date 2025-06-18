@@ -1,0 +1,27 @@
+defaults:
+- _self_
+- serve: cloud_model
+
+experiment:
+  exp_name: cloud
+  exp_dir: outputs/${experiment.exp_name}
+  task:
+    type: serve
+  deploy:
+    use_fs_serve: false
+  runner:
+    type: cloud
+    hostfile: ${oc.env:HOSTFILE}
+    master_addr: ${oc.env:MASTER_ADDR}
+    master_port: 7396
+  envs:
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+
+  cmds:
+    before_start: source activate flagscale-inference
+
+action: run
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra

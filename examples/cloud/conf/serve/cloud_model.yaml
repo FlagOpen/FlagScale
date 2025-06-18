@@ -1,0 +1,13 @@
+- serve_id: vllm_model
+  engine: vllm
+  engine_args:
+    model: ${oc.env:MODEL_PATH}
+    served_model_name: ${oc.env:MODEL_NAME}
+    port: ${oc.env:PORT}
+    host: 0.0.0.0
+    tensor_parallel_size: 1
+    pipeline_parallel_size: 1
+    gpu_memory_utilization: 0.9
+    max_model_len: 32768
+    max_num_seqs: 256
+    trust_remote_code: true
