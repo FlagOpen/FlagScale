@@ -58,7 +58,18 @@ def train(model_name, yaml_path=None):
 @flagscale.command()
 @click.argument("model_name", type=str)
 @click.argument("yaml_path", type=click.Path(exists=True), required=False)
-def serve(model_name, yaml_path=None):
+@click.option(
+    "--model-path", "model_path", required=False, type=str, help="The weight path of model"
+)
+@click.option("--port", "port", required=False, type=int, help="The port of serve")
+@click.option(
+    "--engine-args",
+    "engine_args",
+    required=False,
+    type=str,
+    help="Model config as JSON string, e.g. '{\"a\":1, \"b\":2}'",
+)
+def serve(model_name, yaml_path=None, model_path=None, port=None, engine_args=None):
     """
     Serve model from yaml.
     """
@@ -91,8 +102,14 @@ def serve(model_name, yaml_path=None):
     config_name = os.path.splitext(os.path.basename(yaml_path))[0]
     click.echo(f"config_path: {config_path}")
     click.echo(f"config_name: {config_name}")
-
-    sys.argv = ["run.py", f"--config-path={config_path}", f"--config-name={config_name}"]
+    args = ["run.py", f"--config-path={config_path}", f"--config-name={config_name}"]
+    if model_path:
+        args.append(f"+experiment.runner.cli_args.model_path={model_path}")
+    if port:
+        args.append(f"+experiment.runner.cli_args.port={port}")
+    if engine_args:
+        args.append(f"+experiment.runner.cli_args.engine_args='{engine_args}'")
+    sys.argv = args
     run_main()
 
 

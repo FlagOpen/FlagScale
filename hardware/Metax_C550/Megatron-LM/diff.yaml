@@ -3,7 +3,7 @@ backends_commit:
 backends_version:
   FlagScale: 0.8.0
   Megatron-LM: 0.12.0
-commit: 6798d71df02b1d7c7dc6d659573a2e33c2b1021e
+commit: 0d48518e02778b022dacb96eac45ef408554d7c1
 contact: mengxiao.li@metax-tech.com
 device_type: Metax_C550
 models:

@@ -3,7 +3,7 @@ backends_commit:
 backends_version:
   FlagScale: 0.8.0
   Megatron-LM: 0.12.0
-commit: 64b4f41af25f2622b4c8a06aec3410ac9216b0e3
+commit: 3568f8c9e08f94b8c5ed42f79cf0e295b99d4559
 contact: 762496815@qq.com
 device_type: Huawei_Atlas800TA3
 models:
