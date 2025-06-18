@@ -16,6 +16,7 @@ experiment:
   cmds:
     before_start: source /root/miniconda3/bin/activate flagscale
   envs:
+    VLLM_USE_FLASHINFER_SAMPLER: 0
     VLLM_LOGGING_LEVEL: "INFO"
     CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
