@@ -898,6 +898,24 @@ class SSHServeRunner(RunnerBase):
         self.host = None
 
     def _prepare(self):
+        self.user_args = _get_args_vllm(self.config)
+        self.user_envs = self.config.experiment.get("envs", {})
+        entrypoint = self.config.experiment.task.get("entrypoint", None)
+        if self.inference_engine:
+            if self.config.experiment.get("deploy", {}).get("prefill_decode_disaggregation", False):
+                self.user_script = "flagscale/serve/run_disagg_xpyd_router.py"
+            elif not self.use_fs_serve:
+                self.user_script = "flagscale/serve/run_inference_engine.py"
+            else:
+                self.user_script = "flagscale/serve/run_fs_serve_vllm.py"
+        elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
+            self.user_script = entrypoint
+        elif entrypoint is None:
+            self.user_script = "flagscale/serve/run_serve.py"
+        else:
+            raise ValueError(
+                f"Invalid config entrypoint: {entrypoint}, must be a python file path or null."
+            )
         self.resources = None
         hostfile_path = self.config.experiment.runner.get("hostfile", None)
         if hostfile_path:
@@ -921,25 +939,6 @@ class SSHServeRunner(RunnerBase):
                 OmegaConf.set_struct(self.config, True)
 
         _update_config_serve(self.config)
-
-        self.user_args = _get_args_vllm(self.config)
-        self.user_envs = self.config.experiment.get("envs", {})
-        entrypoint = self.config.experiment.task.get("entrypoint", None)
-        if self.inference_engine:
-            if self.config.experiment.get("deploy", {}).get("prefill_decode_disaggregation", False):
-                self.user_script = "flagscale/serve/run_disagg_xpyd_router.py"
-            elif not self.use_fs_serve:
-                self.user_script = "flagscale/serve/run_inference_engine.py"
-            else:
-                self.user_script = "flagscale/serve/run_fs_serve_vllm.py"
-        elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
-            self.user_script = entrypoint
-        elif entrypoint is None:
-            self.user_script = "flagscale/serve/run_serve.py"
-        else:
-            raise ValueError(
-                f"Invalid config entrypoint: {entrypoint}, must be a python file path or null."
-            )
 
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
@@ -1158,6 +1157,29 @@ class CloudServeRunner(RunnerBase):
         self.host = None
 
     def _prepare(self):
+        self.resources = None
+        hostfile_path = self.config.experiment.runner.get("hostfile", None)
+        if hostfile_path:
+            if os.path.isabs(hostfile_path):
+                hostfile_path = hostfile_path
+            else:
+                hostfile_path = os.path.join(os.getcwd(), hostfile_path)
+            if not os.path.exists(hostfile_path):
+                raise ValueError(f"The hostfile {hostfile_path} does not exist")
+
+        if hostfile_path:
+            self.resources = parse_cloud_hostfile(hostfile_path)
+            for key, value in self.resources.items():
+                if not value.get("type", None):
+                    logger.warning(
+                        f"The hostfile key type is not set for host {key}, using gpu by default"
+                    )
+                    self.resources[key]["type"] = "gpu"
+            if self.resources:
+                OmegaConf.set_struct(self.config, False)
+                self.config["nodes"] = list(self.resources.items())
+                OmegaConf.set_struct(self.config, True)
+
         _update_config_serve(self.config)
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
@@ -1177,29 +1199,6 @@ class CloudServeRunner(RunnerBase):
             raise ValueError(
                 f"Invalid config entrypoint: {entrypoint}, must be a python file path or null."
             )
-        hostfile_path = self.config.experiment.runner.get("hostfile", None)
-        if hostfile_path:
-            if os.path.isabs(hostfile_path):
-                hostfile_path = hostfile_path
-            else:
-                hostfile_path = os.path.join(os.getcwd(), hostfile_path)
-            if not os.path.exists(hostfile_path):
-                raise ValueError(f"The hostfile {hostfile_path} does not exist")
-
-        self.resources = None
-
-        if hostfile_path:
-            self.resources = parse_cloud_hostfile(hostfile_path)
-            for key, value in self.resources.items():
-                if not value.get("type", None):
-                    logger.warning(
-                        f"The hostfile key type is not set for host {key}, using gpu by default"
-                    )
-                    self.resources[key]["type"] = "gpu"
-            if self.resources:
-                OmegaConf.set_struct(self.config, False)
-                self.config["nodes"] = list(self.resources.items())
-                OmegaConf.set_struct(self.config, True)
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
