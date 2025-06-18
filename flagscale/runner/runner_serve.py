@@ -137,7 +137,7 @@ def _get_profile_args(config, model="vllm_model"):
     return profile_args
 
 
-def _update_auto_engine_args(config, model="vllm_model"):
+def _update_auto_engine_args(config, model="vllm_model", new_engine_args={}):
     serve_config = config.get("serve", [])
     if not serve_config:
         raise ValueError(f"No 'serve' configuration found in task config: {serve_config}")
@@ -147,20 +147,18 @@ def _update_auto_engine_args(config, model="vllm_model"):
         if item.get("serve_id", None) == model:
             engine_args = item.get("engine_args", {})
 
-            model_args_str = os.environ.get("MODEL_ARGS", {})
-            model_args = json.loads(model_args_str)
-            if model_args.get("tensor_parallel_size", None):
-                tensor_parallel_size = int(model_args.get("tensor_parallel_size"))
+            if new_engine_args.get("tensor_parallel_size", None):
+                tensor_parallel_size = int(new_engine_args.get("tensor_parallel_size"))
             else:
                 nproc_per_node = int(config.experiment.runner.get("nproc_per_node", 1))
                 tensor_parallel_size = 2 ** int(math.floor(math.log2(nproc_per_node)))
-            if model_args.get("pipeline_parallel_size", None):
-                pipeline_parallel_size = int(model_args.get("pipeline_parallel_size"))
+            if new_engine_args.get("pipeline_parallel_size", None):
+                pipeline_parallel_size = int(new_engine_args.get("pipeline_parallel_size"))
             else:
                 pipeline_parallel_size = len(config.get("nodes", [])) or 1
-            model_args["tensor_parallel_size"] = tensor_parallel_size
-            model_args["pipeline_parallel_size"] = pipeline_parallel_size
-            engine_args.update(model_args)
+            new_engine_args["tensor_parallel_size"] = tensor_parallel_size
+            new_engine_args["pipeline_parallel_size"] = pipeline_parallel_size
+            engine_args.update(new_engine_args)
             item.engine_args = engine_args
 
             break
@@ -180,9 +178,6 @@ def _update_config_serve(config: DictConfig):
 
     OmegaConf.set_struct(config, False)
 
-    if config.experiment.runner.get("type", "ssh") == "cloud":
-        # set auto tp and pp size
-        _update_auto_engine_args(config)
     if deploy_config.get("prefill_decode_disaggregation", False):
         deploy_config["pd_proxy_port"] = get_free_port()
 
@@ -190,9 +185,11 @@ def _update_config_serve(config: DictConfig):
         config.logging = DictConfig({})
 
     cli_model_path = config.experiment.get("runner", {}).get("cli_args", {}).get("model_path", None)
-    cli_engine_args = (
+    cli_engine_args_str = (
         config.experiment.get("runner", {}).get("cli_args", {}).get("engine_args", None)
     )
+    cli_engine_args = json.loads(cli_engine_args) if cli_engine_args_str else {}
+
     if cli_model_path or cli_engine_args:
         for item in config.serve:
             if item.get("serve_id", None) == "vllm_model":
@@ -200,6 +197,10 @@ def _update_config_serve(config: DictConfig):
                     item.engine_args["model"] = cli_model_path
                 if cli_engine_args:
                     item.engine_args.update(json.loads(cli_engine_args))
+
+    if config.experiment.runner.get("type", "ssh") == "cloud":
+        # set auto tp and pp size
+        _update_auto_engine_args(config, new_engine_args=cli_engine_args)
 
     log_dir = os.path.join(exp_dir, f"serve_logs")
     scripts_dir = os.path.join(log_dir, "scripts")
