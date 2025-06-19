@@ -52,9 +52,9 @@ jobs:
 
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           if [ "${{ inputs.backend }}" = "megatron" ] || [ "${{ inputs.backend }}" = "flagscale" ]; then
-            python tools/patch/unpatch.py --backend Megatron-LM
+            PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
           elif [ "${{ inputs.backend }}" = "vllm" ]; then
-            python tools/patch/unpatch.py --backend vllm
+            PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
           else
             echo "Unknown backend type: ${{ inputs.backend }}"
             exit 1
