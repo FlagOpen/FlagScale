@@ -27,6 +27,13 @@ commands=(
     # "tests/scripts/functional_tests/test_task.sh --type serve --task base"
 )
 
+if [ ! -f tests/functional_runtime.txt ];then
+    touch tests/functional_runtime.txt
+else
+    echo "" > tests/functional_runtime.txt
+fi
+
+echo "start time: $(date +"%Y-%m-%d %H:%M:%S")" >> tests/functional_runtime.txt
 for cmd in "${commands[@]}"; do
     # Execute the command
     $cmd
@@ -40,3 +47,6 @@ for cmd in "${commands[@]}"; do
         exit 1
     fi
 done
+echo "end time: $(date +"%Y-%m-%d %H:%M:%S")" >> tests/functional_runtime.txt
+
+python tests/scripts/test.time_statistics.py functional
