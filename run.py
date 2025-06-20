@@ -1,6 +1,8 @@
+import warnings
+
 import hydra
 
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.auto_tuner import AutoTuner, ServeAutoTunner
 from flagscale.runner.runner_compress import SSHCompressRunner
@@ -13,8 +15,21 @@ from flagscale.runner.utils import is_master
 # we have placed the import statements inside the function body rather than at the beginning of the file.
 
 
+def check_and_reset_deploy_config(config: DictConfig) -> None:
+    if config.experiment.get("deploy", {}):
+        OmegaConf.set_struct(config.experiment.runner, False)
+        config.experiment.runner.deploy = config.experiment.deploy
+        del config.experiment.deploy
+        warnings.warn(
+            "'config.experiment.deploy' has been moved to 'config.experiment.runner.deploy'. "
+            "Support for the old location will be removed in a future release."
+        )
+        OmegaConf.set_struct(config.experiment.runner, True)
+
+
 @hydra.main(version_base=None, config_name="config")
 def main(config: DictConfig) -> None:
+    check_and_reset_deploy_config(config)
     task_type = config.experiment.task.get("type", "train")
     if task_type == "train":
         if config.action == "auto_tune":
