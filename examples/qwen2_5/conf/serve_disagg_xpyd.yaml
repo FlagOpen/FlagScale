@@ -7,18 +7,18 @@ experiment:
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
-  deploy:
-    port: 10001
-    use_fs_serve: false
-    prefill_decode_disaggregation: true
-    prefill_num: 2
-    prefill_address: x.x.x.x # optional, default "auto"
-    decode_num: 2
-    decode_address: x.x.x.x # optional, default "auto"
-    prefill_decode_strategy: slo # optional, one of [slo|random|robin], default slo
   runner:
     hostfile: examples/qwen/conf/hostfile.txt
     docker: fr-v2
+    deploy:
+      port: 10001
+      use_fs_serve: false
+      prefill_decode_disaggregation: true
+      prefill_num: 2
+      prefill_address: x.x.x.x # optional, default "auto"
+      decode_num: 2
+      decode_address: x.x.x.x # optional, default "auto"
+      prefill_decode_strategy: slo # optional, one of [slo|random|robin], default slo
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     VLLM_USE_V1: 0
