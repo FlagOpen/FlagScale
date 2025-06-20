@@ -365,6 +365,7 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
             # Remove the backend
             if os.path.exists(patch_dir):
                 shutil.rmtree(patch_dir)
+                repo.git.rm('-r', patch_dir, ignore_unmatch=True)
             os.makedirs(patch_dir, exist_ok=True)
             shutil.copy(temp_patch_path, os.path.join(patch_dir, file_name))
             shutil.copy(temp_yaml_path, os.path.join(patch_dir, yaml_file_name))

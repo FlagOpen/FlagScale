@@ -4,7 +4,7 @@ defaults:
   - train: 16b_a3b
 
 experiment:
-  exp_name: DeepSeek-V3-Test
+  exp_name: DeepSeek-16b-a3b
   seed: 42
   save_steps: 10000
   load: None

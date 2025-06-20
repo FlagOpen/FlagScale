@@ -487,6 +487,64 @@ def warm_up_comm_group(config):
     if config.enable_hetero:
         from flagscale.train.hetero.p2p_communication import warm_up_comm_group_hetero
         warm_up_comm_group_hetero(config)
+        return
+
+    # NOTE(lizhiyu): For enbale config.variable_seq_lengths and pp_size > 2
+    if not config.variable_seq_lengths or get_pipeline_model_parallel_world_size() <= 2:
+        return
+    config.variable_seq_lengths=False
+    rank = torch.distributed.get_rank()
+    pp_group = get_pipeline_model_parallel_group()
+    # This is arbitrary because the shape of the recv tensor needs
+    # to be specified when communicating.
+    # It can be changed into any other shape.
+    tensor_shape = [1]
+    to_send_tensor= torch.empty(
+            tensor_shape,
+            requires_grad=True,
+            device=torch.cuda.current_device(),
+            dtype=config.pipeline_dtype,
+        )
+    to_recv_tensor= torch.empty(
+            tensor_shape,
+            requires_grad=True,
+            device=torch.cuda.current_device(),
+            dtype=config.pipeline_dtype,
+        )
+
+    group_ranks = torch.distributed.get_process_group_ranks(pp_group)
+    pipeline_rank = get_pipeline_model_parallel_rank()
+    if pipeline_rank == 0:
+        _communicate(
+            tensor_send_next=to_send_tensor,
+            tensor_send_prev=None,
+            recv_prev=False,
+            recv_next=False,
+            tensor_shape=to_recv_tensor.shape,
+            config=config,
+            group=pp_group,
+        )
+    elif pipeline_rank == len(group_ranks) - 1:
+        _communicate(
+            tensor_send_next=None,
+            tensor_send_prev=None,
+            recv_prev=True,
+            recv_next=False,
+            tensor_shape=to_recv_tensor.shape,
+            config=config,
+            group=pp_group,
+        )
+    elif rank in group_ranks:
+        _communicate(
+            tensor_send_next=to_send_tensor,
+            tensor_send_prev=None,
+            recv_prev=True,
+            recv_next=False,
+            tensor_shape=to_recv_tensor.shape,
+            config=config,
+            group=pp_group,
+        )
+    config.variable_seq_lengths = True
 
 def recv_forward(
     tensor_shape: Shape, config: ModelParallelConfig, is_first_stage: bool

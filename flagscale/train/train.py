@@ -504,12 +504,12 @@ def num_floating_point_operations_fs(args, batch_size):
                 * args.hidden_size
             )
         else:
-            # Attention projection size.
-            query_projection_size = args.kv_channels * args.num_attention_heads
-            kv_projection_size = args.kv_channels * args.num_query_groups
             # Group Query Attention.
             if not args.group_query_attention:
                 args.num_query_groups = args.num_attention_heads
+            # Attention projection size.
+            query_projection_size = args.kv_channels * args.num_attention_heads
+            kv_projection_size = args.kv_channels * args.num_query_groups
             # qkv proj
             num_flops_attn = (
                 2
@@ -533,7 +533,11 @@ def num_floating_point_operations_fs(args, batch_size):
             )
 
         # Part 2: MLP or MoE =====================================================================
-        moe_ffn_hidden_size = args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size
+        moe_ffn_hidden_size = (
+            args.moe_ffn_hidden_size
+            if args.moe_ffn_hidden_size is not None
+            else args.ffn_hidden_size
+        )
         shared_expert_ffn_hidden_size = (
             0
             if args.moe_shared_expert_intermediate_size is None
@@ -559,11 +563,16 @@ def num_floating_point_operations_fs(args, batch_size):
                 moe_layer_pattern = args.moe_layer_freq
             else:
                 raise RuntimeError("Illegal --moe-layer-freq argument provided!")
-            assert len(moe_layer_pattern) == args.num_layers
+            assert len(moe_layer_pattern) == args.num_layers, (
+                f"Invalid length of moe_layer_pattern: {len(moe_layer_pattern)}, "
+                f"expected {args.num_layers}, "
+                f"current moe layer pattern: {args.moe_layer_freq}"
+            )
             num_moe_layers = sum(moe_layer_pattern)  # Number of 1s in `moe_layer_pattern`.
             num_dense_layers = args.num_layers - num_moe_layers
             num_experts_routed_to = args.moe_router_topk
             num_experts = args.num_experts
+            last_layer_is_moe = moe_layer_pattern[-1]
 
         num_flops_dense_mlp = (
             4 # mlp (two linear)
@@ -604,8 +613,16 @@ def num_floating_point_operations_fs(args, batch_size):
         )
 
         # Part3: MTP =============================================================================
+        if args.mtp_num_layers is not None:
+            mtp_num_layers = args.mtp_num_layers
+            num_moe_layers += last_layer_is_moe * mtp_num_layers
+            num_dense_layers += (1 - last_layer_is_moe) * mtp_num_layers
+            num_layers = args.num_layers + mtp_num_layers
+        else:
+            mtp_num_layers = 0
+            num_layers = args.num_layers
+
         num_flops_mtp = 0
-        mtp_num_layers = 0 if not getattr(args, "mtp_num_layers", None) else args.mtp_num_layers
         if mtp_num_layers > 0:
             num_flops_mtp = (
                 # MTP eh norm + final nrom
@@ -2221,6 +2238,8 @@ def training_log(
                 report_memory(f'(after {iteration} iterations)')
                 report_memory_flag = False
         else:
+            num_microbatches = get_num_microbatches()
+            fs_report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
             report_memory(f'(after {iteration} iterations)')
             report_memory_flag = False
         timers.log(timers_to_log, normalizer=args.log_interval)
@@ -2366,6 +2385,7 @@ def post_training_step_callbacks(
         check_adlr_autoresume_termination(iteration, model, optimizer, opt_param_scheduler)
 
     # Profiling.
+    torch.cuda.nvtx.range_pop() # for iteratrion
     if (
         args.profile
         and iteration == args.profile_step_end
@@ -2691,7 +2711,7 @@ def train(
             elif iteration == args.profile_step_start:
                 torch.cuda.cudart().cudaProfilerStart()
                 torch.autograd.profiler.emit_nvtx(record_shapes=True).__enter__()
-
+        torch.cuda.nvtx.range_push(f"iteration num {iteration}") # NOTE(lizhiyu): add iteration num tag for profile
         ft_integration.on_checkpointing_start()
         maybe_finalize_async_save(blocking=False)
         ft_integration.on_checkpointing_end(is_async_finalization=True)

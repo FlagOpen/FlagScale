@@ -52,6 +52,7 @@ def _get_param_groups(
     min_lr: float,
     decoupled_lr: Optional[float],
     decoupled_min_lr: Optional[float],
+    vision_ration,
 ) -> List[Dict]:
     """Create parameter groups for optimizer.
 
@@ -107,6 +108,8 @@ def _get_param_groups(
             else:
                 # Do not regularize biases and norm parameters.
                 no_wd = name.endswith(".bias") or len(param.shape) == 1
+                # NOTE(lizhiyu): hack for qwen2.5vl
+                # no_wd = name.endswith(".bias")
 
             if scale_lr_cond is not None:
                 scale_lr = scale_lr_cond(name, param)
@@ -129,8 +132,14 @@ def _get_param_groups(
                 param, 'is_embedding_or_output_parameter', False
             ):
                 is_decoupled_lr = True
+            
+            is_vision_model_param = False
+            if "vision_model" in name:
+                is_vision_model_param = True
+            else:
+                is_vision_model_param = False
 
-            key = (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr)
+            key = (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr, is_vision_model_param)
             if key not in params_map:
                 params_map[key] = []
             if (
@@ -142,7 +151,7 @@ def _get_param_groups(
                 params_map[key].append(param)
 
     param_groups = []
-    for (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr), params in params_map.items():
+    for (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr, is_vision_model_param), params in params_map.items():
         assert len(params) > 0
         param_group = {
             'params': params,
@@ -150,6 +159,7 @@ def _get_param_groups(
             'lr_mult': _lr_mult,
             'is_expert_parallel': is_expert_parallel,
             'is_decoupled_lr': is_decoupled_lr,
+            'is_vision_model_param': is_vision_model_param,
         }
         param_groups.append(param_group)
 
@@ -159,6 +169,7 @@ def _get_param_groups(
         min_lr=min_lr,
         decoupled_lr=decoupled_lr,
         decoupled_min_lr=decoupled_min_lr,
+        vision_ration=vision_ration,
     )
 
     return param_groups
@@ -170,6 +181,7 @@ def _update_min_and_max_lr_in_param_groups(
     min_lr: float,
     decoupled_lr: Optional[float],
     decoupled_min_lr: Optional[float],
+    vision_ration = 0.1,
 ) -> List[Dict]:
     """
     Updates `max_lr` and `min_lr` values in each parameter group, and returns new list.
@@ -198,7 +210,7 @@ def _update_min_and_max_lr_in_param_groups(
             param_group['max_lr'] = decoupled_lr
             param_group['min_lr'] = decoupled_min_lr
         else:
-            param_group['max_lr'] = lr
+            param_group['max_lr'] = lr if not param_group['is_vision_model_param'] else lr * vision_ration # NOTE(lizhiyu): change the ration here
             param_group['min_lr'] = min_lr
     return param_groups
 
@@ -243,6 +255,7 @@ def _get_param_groups_and_buffers(
         min_lr=config.min_lr,
         decoupled_lr=config.decoupled_lr,
         decoupled_min_lr=config.decoupled_min_lr,
+        vision_ration=config.vision_ration, # NOTE(lizhiyu): The vision ration is used to scale the learning rate for vision model parameters. Added by FlagScale.
     )
     param_groups = list(filter(filter_fn, param_groups))
     buffers = {}

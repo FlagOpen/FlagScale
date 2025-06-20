@@ -1,0 +1,12 @@
+backends_commit:
+  Megatron-LM: 47b99b6ca0132a8d7c5321ac16a32a0ec9f9e192
+backends_version:
+  FlagScale: main
+  Megatron-LM: main
+commit: 81bb8725b9387816b3e2992ac842ac7047758d57
+contact: ''
+device_type: Tsing_micro
+models:
+- Llama3-70B
+task:
+- train

@@ -1,12 +1,13 @@
 backends_commit:
-  vllm: ba41cc90e8ef7f236347b2f1599eec2cbb9e1f0d
+  Megatron-LM: 47b99b6ca0132a8d7c5321ac16a32a0ec9f9e192
 backends_version:
-  FlagScale: v0.8.0
-  vllm: 0.8.5
-commit: 772b479cd30576fe2a2b7989797066b6b1e19de6
+  FlagScale: 0.8.0
+  Megatron-LM: 0.12.0
+commit: ba7c854fbfeae7676229b5457c05694aaa6b7781
 contact: ''
 device_type: Kunlunxin_R310p
 models:
-- deepseek_r1
+- Qwen2.5 VL 7B
+- Llama3 70B
 task:
-- inference
+- train
