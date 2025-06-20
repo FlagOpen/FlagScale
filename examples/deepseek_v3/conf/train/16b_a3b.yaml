@@ -55,15 +55,14 @@ model:
   rotary_base: 1000000
   swiglu: true
   normalization: RMSNorm
-  qk_layernorm: true
   init_method_std: 0.02
   attention_dropout: 0.0
   hidden_dropout: 0.0
+  clip_grad: 1.0
   position_embedding_type: rope
   untie_embeddings_and_output_weights: true
   no_position_embedding: true
   no_rope_fusion: true
-  disable_bias_linear: true
 
   # mla args ==================
   multi_latent_attention: true
@@ -91,6 +90,7 @@ model:
   moe_router_topk: 6
   moe_router_topk_scaling_factor: 2.446
   moe_token_dispatcher_type: "alltoall"
+  # moe_permute_fusion: true
 
   # mtp args ====================
   # mtp_num_layers: 1
@@ -98,14 +98,17 @@ model:
 
   # training
   seed: ${experiment.seed}
-  finetune: false
+  # finetune: false
   micro_batch_size: 1
-  global_batch_size: 128 #2048
+  # global_batch_size: 2048
+  # global_batch_size: 20
+  # global_batch_size: 128
+  global_batch_size: 256
   eval_iters: 0
-  train_iters: 102400
+  # train_samples: 244141056 #1T #29297664 #120B tokens
+  train_samples: 32000
 
   optimizer:
-    clip_grad: 1.0
     weight_decay: 0.1
     adam_beta1: 0.9
     adam_beta2: 0.95
@@ -115,13 +118,11 @@ model:
       lr_warmup_samples: 1000
       lr_decay_style: WSD
       lr_wsd_decay_style: cosine
-      lr_wsd_decay_iters: 10
+      lr_wsd_decay_samples: 2048
+
 
 data:
   data_path: /share/project/zhaoyingli/datasets/pile/pile_wikipedia_demo
-  reset_position_ids: True
-  reset_attention_mask: True
-  data_path: /path
   split: 1
   no_mmap_bin_files: true
   tokenizer:
