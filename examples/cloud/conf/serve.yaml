@@ -7,8 +7,6 @@ experiment:
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
-  deploy:
-    use_fs_serve: false
   runner:
     type: cloud
     hostfile: ${oc.env:HOSTFILE, /etc/hostfile}
@@ -16,6 +14,8 @@ experiment:
     master_port: 7396
     device_type: ${oc.env:DEVICE_TYPE, gpu}
     nproc_per_node: ${oc.env:AIRS_ACCELERATOR_NUM, 1}
+    deploy:
+      use_fs_serve: false
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
 
