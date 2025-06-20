@@ -8,13 +8,13 @@ experiment:
   task:
     type: serve
     entrypoint: null
-  deploy:
-    port: 6701
-    use_fs_serve: true
   runner:
     hostfile: null #examples/robobrain/conf/hostfile.txt
     docker: robobrain
     ssh_port: 22
+    deploy:
+      port: 6701
+      use_fs_serve: true
 
   cmds:
     before_start: export RAY_DEDUP_LOGS=0

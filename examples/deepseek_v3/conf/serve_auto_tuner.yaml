@@ -7,13 +7,13 @@ experiment:
   exp_dir: ./outputs/${experiment.exp_name}
   task:
     type: serve
-  deploy:
-    use_fs_serve: false
   runner:
     nnodes: 2
     nproc_per_node: 8
     hostfile: examples/deepseek/conf/hostfile.txt
     docker: ds
+    deploy:
+      use_fs_serve: false
   auto_tuner:
     space:
       tensor_model_parallel_size: [4, 8]

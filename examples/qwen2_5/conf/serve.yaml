@@ -7,10 +7,10 @@ experiment:
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
-  deploy:
-    use_fs_serve: false
   runner:
     hostfile: null
+    deploy:
+      use_fs_serve: false
   envs:
     CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
