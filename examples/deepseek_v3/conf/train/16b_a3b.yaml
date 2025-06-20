@@ -38,6 +38,11 @@ system:
     ckpt_format: ${experiment.ckpt_format}
 
 model:
+  profile: True
+  profile-step-start: 2
+  profile-step-end: 3
+  profile_ranks: 0
+
   transformer_impl: transformer_engine
   num_layers: 8
   hidden_size: 2048

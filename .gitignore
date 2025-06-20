@@ -13,7 +13,9 @@ outputs
 *.out
 .idea/
 third_party/*
-
+model_*
+dualpipev_test/*
+profile/*
 # test results
 tests/functional_tests/test_cases/*/*/results_test
 

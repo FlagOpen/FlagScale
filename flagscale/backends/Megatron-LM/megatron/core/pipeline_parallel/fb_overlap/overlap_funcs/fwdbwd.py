@@ -667,6 +667,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
     # Unperm2 Bwd
     # check if backward unpermutation alltoall is launched at bwd layer before
+    torch.cuda.nvtx.range_push("transformer_layer_forward_moe_backward_moe_overlaping")
     if bwd_unperm_a2a_handle is None:
         run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad)
         # Async Unperm A2A
@@ -678,6 +679,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         )
     else:
         unperm1_out_grad = bwd_layer_output_grad
+    # torch.cuda.nvtx.range_pop()
 
     with checkpoint_context:
 
@@ -927,13 +929,16 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         next_iter_output_tensor_grad, bwd_p2p_handles = p2p_comm_helper(bwd_pp_comm_params, bwd_layer_graph.layer_input.grad)
 
     # process shared experts, backward for weights
+    # torch.cuda.nvtx.range_push("Shared Experts Bwd")
     call_shared_experts_backward_dw(bwd_layer_graph)
     turn_shared_experts_delay_wgrad_compute(bwd_layer_graph, enable=False)
-
+    # torch.cuda.nvtx.range_pop()
     # process attention, backward for weights
+    # torch.cuda.nvtx.range_push("Attention Bwd") 
     call_attention_backward_dw(bwd_layer_graph)
     turn_attention_delay_wgrad_compute(bwd_layer_graph, enable=False)
-    
+    torch.cuda.nvtx.range_pop()
+
     saved_tensors = (
         (attention_out, detached_attention_out),
         (pre_mlp_layernorm_output, detached_mlp_input),
