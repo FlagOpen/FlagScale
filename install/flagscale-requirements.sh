@@ -67,8 +67,7 @@ pip install -r ./requirements/requirements-common.txt
 
 # TransformerEngine
 # Megatron-LM requires TE >= 2.1.0.
-transformer_engine=$(pip show transformer_engine)
-if [ $? -eq 0 ]; then
+if pip list | grep -q transformer_engine; then
     pip show transformer_engine
 else
     git clone --recursive https://github.com/NVIDIA/TransformerEngine.git
@@ -80,8 +79,7 @@ else
 fi
 
 # cudnn frontend
-nvidia_cudnn_cu12=$(pip show nvidia-cudnn-cu12)
-if [ $? -eq 0 ];then
+if pip list | grep -q nvidia-cudnn-cu12;then
     pip show nvidia-cudnn-cu12
 
 else  
@@ -92,8 +90,7 @@ else
 fi
 
 # Megatron-LM requires flash-attn >= 2.1.1, <= 2.7.3
-flash_attn=$(pip show flash_attn)
-if [ $? -eq 0 ];then
+if pip list | grep -q flash_attn;then
     pip show flash_attn
 else
     cu=$(nvcc --version | grep "Cuda compilation tools" | awk '{print $5}' | cut -d '.' -f 1)
@@ -106,8 +103,7 @@ else
 fi
 
 # From Megatron-LM log
-flashattn_hopper=$(pip show flashattn-hopper)
-if [ $? -eq 0];then
+if pip list | grep -q flashattn-hopper;then
     pip show flashattn-hopper
 else
     pip install "git+https://github.com/Dao-AILab/flash-attention.git@v2.7.2#egg=flashattn-hopper&subdirectory=hopper"
