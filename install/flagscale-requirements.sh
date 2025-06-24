@@ -67,33 +67,54 @@ pip install -r ./requirements/requirements-common.txt
 
 # TransformerEngine
 # Megatron-LM requires TE >= 2.1.0.
-git clone --recursive https://github.com/NVIDIA/TransformerEngine.git
-cd TransformerEngine
-git checkout 5bee81e
-pip install .
-cd ..
-rm -r ./TransformerEngine
+transformer_engine=$(pip show transformer_engine)
+if [ $? -eq 0 ]; then
+    pip show transformer_engine
+else
+    git clone --recursive https://github.com/NVIDIA/TransformerEngine.git
+    cd TransformerEngine
+    git checkout 5bee81e
+    pip install .
+    cd ..
+    rm -r ./TransformerEngine
+fi
 
 # cudnn frontend
-pip install nvidia-cudnn-cu12==9.7.1.26
-CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" pip install nvidia-cudnn-frontend
-python -c "import torch; print('cuDNN version:', torch.backends.cudnn.version());"
-python -c "from transformer_engine.pytorch.utils import get_cudnn_version; get_cudnn_version()"
+nvidia_cudnn_cu12=$(pip show nvidia-cudnn-cu12)
+if [ $? -eq 0 ];then
+    pip show nvidia-cudnn-cu12
+
+else  
+    pip install nvidia-cudnn-cu12==9.7.1.26
+    CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" pip install nvidia-cudnn-frontend
+    python -c "import torch; print('cuDNN version:', torch.backends.cudnn.version());"
+    python -c "from transformer_engine.pytorch.utils import get_cudnn_version; get_cudnn_version()"
+fi
 
 # Megatron-LM requires flash-attn >= 2.1.1, <= 2.7.3
-cu=$(nvcc --version | grep "Cuda compilation tools" | awk '{print $5}' | cut -d '.' -f 1)
-torch=$(pip show torch | grep Version | awk '{print $2}' | cut -d '+' -f 1 | cut -d '.' -f 1,2)
-cp=$(python3 --version | awk '{print $2}' | awk -F. '{print $1$2}')
-cxx=$(g++ --version | grep 'g++' | awk '{print $3}' | cut -d '.' -f 1)
-wget https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.0.post2/flash_attn-2.8.0.post2+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
-pip install flash_attn-2.8.0.post2+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
-rm flash_attn-2.8.0.post2+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
+flash_attn=$(pip show flash_attn)
+if [ $? -eq 0 ];then
+    pip show flash_attn
+else
+    cu=$(nvcc --version | grep "Cuda compilation tools" | awk '{print $5}' | cut -d '.' -f 1)
+    torch=$(pip show torch | grep Version | awk '{print $2}' | cut -d '+' -f 1 | cut -d '.' -f 1,2)
+    cp=$(python3 --version | awk '{print $2}' | awk -F. '{print $1$2}')
+    cxx=$(g++ --version | grep 'g++' | awk '{print $3}' | cut -d '.' -f 1)
+    wget https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.0.post2/flash_attn-2.8.0.post2+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
+    pip install flash_attn-2.8.0.post2+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
+    rm flash_attn-2.8.0.post2+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
+fi
 
 # From Megatron-LM log
-pip install "git+https://github.com/Dao-AILab/flash-attention.git@v2.7.2#egg=flashattn-hopper&subdirectory=hopper"
-python_path=`python -c "import site; print(site.getsitepackages()[0])"`
-mkdir -p $python_path/flashattn_hopper
-wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILab/flash-attention/v2.7.2/hopper/flash_attn_interface.py
+flashattn_hopper=$(pip show flashattn-hopper)
+if [ $? -eq 0];then
+    pip show flashattn-hopper
+else
+    pip install "git+https://github.com/Dao-AILab/flash-attention.git@v2.7.2#egg=flashattn-hopper&subdirectory=hopper"
+    python_path=`python -c "import site; print(site.getsitepackages()[0])"`
+    mkdir -p $python_path/flashattn_hopper
+    wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILab/flash-attention/v2.7.2/hopper/flash_attn_interface.py
+fi
 
 # If env equals 'train'
 if [ "${env}" == "train" ]; then
