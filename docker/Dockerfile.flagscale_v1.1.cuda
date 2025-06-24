@@ -95,6 +95,12 @@ ENV PATH=/usr/local/mpi/bin:${PATH} \
         LD_LIBRARY_PATH=/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:${LD_LIBRARY_PATH}
 
 ARG CUDNN_VERSION=9.7.1
+# ARG FLAGSCALE_REPO
+# ARG FLAGSCALE_BRANCH
+# ARG FLAGSCALE_COMMIT
+ARG FLAGSCALE_REPO=https://github.com/zihugithub/FlagScale.git
+ARG FLAGSCALE_BRANCH=image_reduction
+ARG FLAGSCALE_COMMIT=edc26d46
 
 ##############################################################################
 # OPENMPI
@@ -113,12 +119,11 @@ RUN cd ${STAGE_DIR} && \
     mv /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun.real && \
         echo '#!/bin/bash' > /usr/local/mpi/bin/mpirun && \
         echo 'mpirun.real --allow-run-as-root --prefix /usr/local/mpi "$@"' >> /usr/local/mpi/bin/mpirun && \
-        chmod a+x /usr/local/mpi/bin/mpirun
-
-##############################################################################
-# Install cuDNN (NVIDIA CUDA Deep Neural Network library)
-##############################################################################
-RUN cd ${STAGE_DIR} && \
+        chmod a+x /usr/local/mpi/bin/mpirun && \
+    ##########################################################################
+    # Install cuDNN (NVIDIA CUDA Deep Neural Network library)
+    ##########################################################################
+    cd ${STAGE_DIR} && \
         CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
         CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
         CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
@@ -132,7 +137,16 @@ RUN cd ${STAGE_DIR} && \
         chmod a+r /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/libcudnn* && \
         echo "export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:\$PATH" >> ~/.bashrc && \
         echo "export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:\$LD_LIBRARY_PATH" >> ~/.bashrc && \
-        cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
+        cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2 && \
+    ##########################################################################
+    # Clone FlagScale
+    ##########################################################################
+    cd ${STAGE_DIR} && \
+        git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
+        { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
+    cd FlagScale && \
+        git checkout ${FLAGSCALE_COMMIT} || \
+        { echo "Error: Failed to checkout commit ${FLAGSCALE_COMMIT}. Please ensure the commit ID is correct and exists in the repository."; exit 1; }
 
 ##############################################################################
 ########################  Install Conda environment  #########################
@@ -140,32 +154,25 @@ RUN cd ${STAGE_DIR} && \
 
 FROM comput AS conda
 
-# ARG FLAGSCALE_REPO
-# ARG FLAGSCALE_BRANCH
-# ARG FLAGSCALE_COMMIT
-
 ##############################################################################
-# Clone FlagScale
+# Install flagscale-common requirements
 ##############################################################################
-ARG FLAGSCALE_REPO=https://github.com/zihugithub/FlagScale.git
-ARG FLAGSCALE_BRANCH=image_reduction
-ARG FLAGSCALE_COMMIT=edc26d46
-
-RUN cd ${STAGE_DIR} && \
-    git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
-    { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
-    cd FlagScale && \
-    git checkout ${FLAGSCALE_COMMIT} || \
-    { echo "Error: Failed to checkout commit ${FLAGSCALE_COMMIT}. Please ensure the commit ID is correct and exists in the repository."; exit 1; } && \
+RUN cd ${STAGE_DIR}/FlagScale && \
     chmod +x install/flagscale-requirements.sh && \
-    ##########################################################################
-    # Install flagscale requirements
-    ##########################################################################
-    cd ${STAGE_DIR}/FlagScale && \
-        # Install flagscale-train requirements
-        ./install/flagscale-requirements.sh --env train && \
-        # Install flagscale-inference requirements
-        ./install/flagscale-requirements.sh --env inference --llama-cpp-backend cuda
+    chmod +x install/install-requirements.sh && \
+    ./install/install-requirements.sh
+
+##############################################################################
+# Install flagscale-train requirements
+##############################################################################
+RUN cd ${STAGE_DIR}/FlagScale && \
+    ./install/flagscale-requirements.sh --env train
+
+##############################################################################
+# Install flagscale-inference requirements
+##############################################################################
+RUN cd ${STAGE_DIR}/FlagScale && \
+   ./install/flagscale-requirements.sh --env inference --llama-cpp-backend cuda
 
 ##############################################################################
 # Clear
