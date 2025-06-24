@@ -188,7 +188,7 @@ def _update_config_serve(config: DictConfig):
     cli_engine_args_str = (
         config.experiment.get("runner", {}).get("cli_args", {}).get("engine_args", None)
     )
-    cli_engine_args = json.loads(cli_engine_args) if cli_engine_args_str else {}
+    cli_engine_args = json.loads(cli_engine_args_str) if cli_engine_args_str else {}
 
     if cli_model_path or cli_engine_args:
         for item in config.serve:
@@ -196,7 +196,7 @@ def _update_config_serve(config: DictConfig):
                 if cli_model_path:
                     item.engine_args["model"] = cli_model_path
                 if cli_engine_args:
-                    item.engine_args.update(json.loads(cli_engine_args))
+                    item.engine_args.update(cli_engine_args)
 
     if config.experiment.runner.get("type", "ssh") == "cloud":
         # set auto tp and pp size
