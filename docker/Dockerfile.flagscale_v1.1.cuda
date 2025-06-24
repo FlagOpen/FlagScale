@@ -11,7 +11,6 @@ ENV SCCACHE_S3_NO_CREDENTIALS=0
 
 ARG PYTHON_VERSION=3.12
 
-
 ##############################################################################
 # Temporary Installation Directory
 ##############################################################################
@@ -100,7 +99,7 @@ ARG CUDNN_VERSION=9.7.1
 # ARG FLAGSCALE_COMMIT
 ARG FLAGSCALE_REPO=https://github.com/zihugithub/FlagScale.git
 ARG FLAGSCALE_BRANCH=image_reduction
-ARG FLAGSCALE_COMMIT=edc26d46
+ARG FLAGSCALE_COMMIT=8d774e61
 
 ##############################################################################
 # OPENMPI
