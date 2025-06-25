@@ -1,0 +1,10 @@
+FROM flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.0-conda_base_join
+
+##############################################################################
+# Temporary Installation Directory
+##############################################################################
+# ENV STAGE_DIR=/tmp
+# RUN mkdir -p ${STAGE_DIR}
+# ENV WORK_DIR=/workspace
+# RUN mkdir -p ${WORK_DIR}
+RUN pip install git+https://github.com/fanshiqing/grouped_gemm@v1.1.2
