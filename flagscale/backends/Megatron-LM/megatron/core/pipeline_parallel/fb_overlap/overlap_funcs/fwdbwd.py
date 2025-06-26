@@ -667,7 +667,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
     # Unperm2 Bwd
     # check if backward unpermutation alltoall is launched at bwd layer before
-    torch.cuda.nvtx.range_push("transformer_layer_forward_moe_backward_moe_overlaping")
+    # torch.cuda.nvtx.range_push("transformer_layer_forward_moe_backward_moe_overlaping")
     if bwd_unperm_a2a_handle is None:
         run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad)
         # Async Unperm A2A
@@ -937,7 +937,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     # torch.cuda.nvtx.range_push("Attention Bwd") 
     call_attention_backward_dw(bwd_layer_graph)
     turn_attention_delay_wgrad_compute(bwd_layer_graph, enable=False)
-    torch.cuda.nvtx.range_pop()
+    # torch.cuda.nvtx.range_pop()
 
     saved_tensors = (
         (attention_out, detached_attention_out),

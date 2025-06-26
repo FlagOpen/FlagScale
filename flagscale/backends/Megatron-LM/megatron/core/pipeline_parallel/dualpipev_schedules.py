@@ -677,7 +677,7 @@ def forward_backward_pipelining_with_cutinhalf(
     collect_non_loss_data: bool = False,
     first_val_step: bool = None,
 ):
-    print(f"Starting forward_backward_pipelining_with_cutinhalf function")
+    # print(f"Starting forward_backward_pipelining_with_cutinhalf function")
     from megatron.training import get_args
     args = get_args()
     

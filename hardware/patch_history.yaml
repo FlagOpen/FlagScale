@@ -98,10 +98,13 @@ Hygon_BW1000:
   inference:
     FlagScale+vllm:
     - b51ca00869d4e61c35f07f65c76074f14ff47570
+    - de2e27596c0cc54c73261060e9cca4ef4f74aaa5
     vllm:
     - b51ca00869d4e61c35f07f65c76074f14ff47570
+    - de2e27596c0cc54c73261060e9cca4ef4f74aaa5
     FlagScale:
     - b51ca00869d4e61c35f07f65c76074f14ff47570
+    - de2e27596c0cc54c73261060e9cca4ef4f74aaa5
 Huawei_Atlas800TA3:
   train:
     FlagScale+Megatron-LM:
