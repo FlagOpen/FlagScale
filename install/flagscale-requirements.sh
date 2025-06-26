@@ -118,7 +118,7 @@ if [ "${env}" == "train" ]; then
     python tools/patch/unpatch.py --backend Megatron-LM
 
     # Navigate to requirements directory and install training dependencies
-    pip install -r ./requirements/train/megatron/requirements-cuda.txt
+    pip install --no-cache-dir -r ./requirements/train/megatron/requirements-cuda.txt
 
     # apex train
     git clone https://github.com/NVIDIA/apex

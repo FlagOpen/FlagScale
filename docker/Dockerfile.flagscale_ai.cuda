@@ -1,5 +1,5 @@
 ARG CUDA_VERSION=12.8.1
-FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS base
+FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND noninteractive \
     TZ=Asia/Shanghai \
@@ -15,12 +15,9 @@ ENV DEBIAN_FRONTEND noninteractive \
 
 ARG PYTHON_VERSION=3.12 \
     CUDNN_VERSION=9.7.1 \
-    # ARG FLAGSCALE_REPO
-    # ARG FLAGSCALE_BRANCH
-    # ARG FLAGSCALE_COMMIT
     FLAGSCALE_REPO=https://github.com/zihugithub/FlagScale.git \
     FLAGSCALE_BRANCH=image_reduction \
-    FLAGSCALE_COMMIT=8bf98ad4
+    FLAGSCALE_COMMIT=519bdd27
 
 ##############################################################################
 # Temporary Installation Directory
@@ -100,7 +97,7 @@ RUN cd ${STAGE_DIR} && \
         curl -L -o sccache.tar.gz https://github.com/mozilla/sccache/releases/download/v0.8.1/sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz && \
         tar -xzf sccache.tar.gz && \
         mv sccache-v0.8.1-x86_64-unknown-linux-musl/sccache /usr/bin/sccache && \
-        rm -rf sccache.tar.gz sccache-v0.8.1-x86_64-unknown-linux-musl
+        rm -rf sccache.tar.gz sccache-v0.8.1-x86_64-unknown-linux-musl/sccache
 
 ##############################################################################
 # OPENMPI
@@ -119,7 +116,8 @@ RUN cd ${STAGE_DIR} && \
     mv /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun.real && \
         echo '#!/bin/bash' > /usr/local/mpi/bin/mpirun && \
         echo 'mpirun.real --allow-run-as-root --prefix /usr/local/mpi "$@"' >> /usr/local/mpi/bin/mpirun && \
-        chmod a+x /usr/local/mpi/bin/mpirun
+        chmod a+x /usr/local/mpi/bin/mpirun && \
+    rm -rf /usr/local/mpi/bin/mpirun
 
 ##############################################################################
 # Install cuDNN (NVIDIA CUDA Deep Neural Network library)
@@ -151,20 +149,11 @@ RUN cd ${STAGE_DIR} && \
     git checkout ${FLAGSCALE_COMMIT} || \
     { echo "Error: Failed to checkout commit ${FLAGSCALE_COMMIT}. Please ensure the commit ID is correct and exists in the repository."; exit 1; } && \
     chmod +x install/flagscale-requirements.sh && \
-##############################################################################
-# Install flagscale-common requirements
-##############################################################################
-    cd ${STAGE_DIR}/FlagScale && \
-    chmod +x install/flagscale-requirements.sh && \
-    chmod +x install/install-requirements.sh && \
-    ./install/install-requirements.sh && \
+    chmod +x install/install-flagscale.sh && \
+    ./install/install-flagscale.sh && \
     ./install/flagscale-requirements.sh --env train && \
-    ./install/flagscale-requirements.sh --env inference --llama-cpp-backend cuda
-
-##############################################################################
-# Clear
-##############################################################################
-RUN apt-get clean && \
+    ./install/flagscale-requirements.sh --env inference --llama-cpp-backend cuda && \
+    apt-get clean && \
     pip cache purge && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf ${STAGE_DIR}/*
