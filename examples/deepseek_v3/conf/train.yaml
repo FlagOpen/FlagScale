@@ -20,6 +20,7 @@ experiment:
     no_shared_fs: false
     rdzv_backend: static
     hostfile: hostfile.4
+    # hostfile: null
   cmds:
     before_start: "ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale-train"
   envs:
@@ -32,4 +33,4 @@ action: run
 
 hydra:
   run:
-    dir: ${experiment.exp_dir}/hydra
+     dir: ${experiment.exp_dir}/hydra

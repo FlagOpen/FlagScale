@@ -750,6 +750,7 @@ def forward_backward_pipelining_with_cutinhalf(
     pp_size = parallel_state.get_pipeline_model_parallel_world_size()
     rank = parallel_state.get_pipeline_model_parallel_rank()    
     schedule = generate_dualpipev_schedule(pp_size, num_microbatches)
+    # print(f"[DEBUG] schedule is {schedule}")
 
     model_type = get_model_type(model[0])
 
@@ -1484,6 +1485,7 @@ def forward_backward_pipelining_with_cutinhalf(
             merged_output_tensors.append(
                 (output_tensors[1 - bwd_model_chunk_id].pop(0), 1 - bwd_model_chunk_id))
 
+    # print(f"[DeBUG][Cooldown] Waiting for bwd handles")
     bwd_wait_handles_recv = None
     for i in range(pp_size):
 
@@ -1512,14 +1514,17 @@ def forward_backward_pipelining_with_cutinhalf(
                 input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config, model_graph
             )
         else:
+            # print(f"[DeBUG][Cooldown] backward step")
             input_tensor_grad = backward_step(
                 input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config
             )
 
         if i == pp_size - 1:
+            # print(f"[DeBUG][Cooldown] send backward")
             bwd_wait_handles = send_backward(input_tensor_grad,
                                              tensor_shape, config, bwd_model_chunk_id, async_op=True)
         elif i >= schedule['cooldown'][rank][0] - 1:
+            # print(f"[DeBUG][Cooldown] send backward")
             bwd_wait_handles = send_backward(input_tensor_grad,
                                              tensor_shape, config, bwd_model_chunk_id, async_op=True)
             output_tensor_grad_bwd, bwd_wait_handles_recv = recv_backward(
@@ -1529,6 +1534,7 @@ def forward_backward_pipelining_with_cutinhalf(
                 output_tensor_grad_bwd = input_tensor_grad
             else:
                 #  send_backward_recv_slave_backward
+                # print(f"[DeBUG][Cooldown] send forward recv slave backward")
                 output_tensor_grad_bwd, bwd_wait_handles = send_forward_recv_slave_forward(input_tensor_grad,
                                                                                            tensor_shape, config, 1 - bwd_model_chunk_id)
 
@@ -1539,12 +1545,14 @@ def forward_backward_pipelining_with_cutinhalf(
             else:
                 req.wait()
         bwd_wait_handles = None
-
+    
+    # print(f"[DeBUG][GradSync] Enable Grad Sync")
     enable_grad_sync()
     if config.grad_sync_func is not None:
         config.grad_sync_func[0](model[0].parameters())
         config.grad_sync_func[1](model[1].parameters())
 
+    # print(f"[DeBUG][GradSync] Finalize model grads")
     if config.finalize_model_grads_func is not None and not forward_only:
 
         # If defer_embedding_wgrad_compute is enabled we need to do the
@@ -1562,3 +1570,4 @@ def forward_backward_pipelining_with_cutinhalf(
         config.timers('forward-backward',
                       log_level=1).stop()
     return forward_data_store
+
