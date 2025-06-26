@@ -1,4 +1,4 @@
-ARG CUDA_VERSION=12.4.1
+ARG CUDA_VERSION=12.8.1
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND noninteractive
@@ -35,7 +35,8 @@ RUN apt-get update && \
         tmux tzdata \
         unzip \
         vim \
-        wget
+        wget && \
+    rm -rf /var/lib/apt/lists/*
 
 ##############################################################################
 # Install Python
@@ -57,7 +58,21 @@ RUN add-apt-repository ppa:deadsnakes/ppa && \
         # When installing an updated version with pip, an attempt will be made to uninstall the old version,
         # but the uninstallation will fail and manual deletion is required.
         rm -r /usr/lib/python3/dist-packages/blinker && \
-        rm /usr/lib/python3/dist-packages/blinker-1.4.egg-info
+        rm /usr/lib/python3/dist-packages/blinker-1.4.egg-info && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+##############################################################################
+# Install Miniconda
+##############################################################################
+RUN cd ${STAGE_DIR} && \
+        mkdir -p ~/miniconda3 && \
+        wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh && \
+        bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3 && \
+        rm -rf ~/miniconda3/miniconda.sh && \
+        ~/miniconda3/bin/conda init bash && \
+        ~/miniconda3/bin/conda config --set auto_activate_base false && \
+        ~/miniconda3/bin/conda config --set default_python ${PYTHON_VERSION} && \
+        rm -rf ${STAGE_DIR}/*
 
 ##############################################################################
 # SCCACHE
@@ -96,28 +111,16 @@ RUN mv /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun.real && \
         chmod a+x /usr/local/mpi/bin/mpirun
 
 ##############################################################################
-# Install Miniconda
-##############################################################################
-RUN cd ${STAGE_DIR} && \
-        mkdir -p ~/miniconda3 && \
-        wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh && \
-        bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3 && \
-        rm -rf ~/miniconda3/miniconda.sh && \
-        ~/miniconda3/bin/conda init bash && \
-        ~/miniconda3/bin/conda config --set auto_activate_base false && \
-        ~/miniconda3/bin/conda config --set default_python ${PYTHON_VERSION}
-
-##############################################################################
 # Install cuDNN (NVIDIA CUDA Deep Neural Network library)
 ##############################################################################
-ARG CUDNN_VERSION=9.5.0
+ARG CUDNN_VERSION=9.7.1
 RUN cd ${STAGE_DIR} && \
         CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
         CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
         CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
         CUDA_MINOR=$(echo "${CUDA_VERSION}" | cut -d. -f2) && \
-        wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}.50_cuda${CUDA_MAJOR}-archive.tar.xz && \
-        tar -xJvf cudnn-linux-x86_64-${CUDNN_VERSION}.50_cuda12-archive.tar.xz && \
+        wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda${CUDA_MAJOR}-archive.tar.xz && \
+        tar -xJvf cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda12-archive.tar.xz && \
         mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include && \
         mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64 && \
         cp cudnn-*-archive/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/ && \
@@ -125,14 +128,18 @@ RUN cd ${STAGE_DIR} && \
         chmod a+r /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/libcudnn* && \
         echo "export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:\$PATH" >> ~/.bashrc && \
         echo "export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:\$LD_LIBRARY_PATH" >> ~/.bashrc && \
-        cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
+        cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2 && \
+    rm -rf cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda12-archive.tar.xz cudnn-*-archive/include/cudnn*.h cudnn-*-archive/lib/libcudnn*
 
 ##############################################################################
 # Clone FlagScale
 ##############################################################################
-ARG FLAGSCALE_REPO
-ARG FLAGSCALE_BRANCH
-ARG FLAGSCALE_COMMIT
+# ARG FLAGSCALE_REPO
+# ARG FLAGSCALE_BRANCH
+# ARG FLAGSCALE_COMMIT
+ARG FLAGSCALE_REPO=https://github.com/zihugithub/FlagScale.git
+ARG FLAGSCALE_BRANCH=image_reduction
+ARG FLAGSCALE_COMMIT=edc26d46
 RUN cd ${STAGE_DIR} && \
     git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
     { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
@@ -151,12 +158,12 @@ RUN cd ${STAGE_DIR}/FlagScale && \
 # Install flagscale-inference requirements
 ##############################################################################
 RUN cd ${STAGE_DIR}/FlagScale && \
-    apt-get install -y --no-install-recommends curl && \
-    ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
+   ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
 
-# ##############################################################################
-# # Clear
-# ##############################################################################
+##############################################################################
+# Clear
+##############################################################################
 RUN apt-get clean && \
-        rm -rf /var/lib/apt/lists/* && \
-        rm -rf ${STAGE_DIR}/*
+    pip cache purge && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf ${STAGE_DIR}/*
