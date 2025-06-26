@@ -48,7 +48,6 @@ CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" pip install nvidia-cudnn-fronten
 python -c "import torch; print('cuDNN version:', torch.backends.cudnn.version());"
 python -c "from transformer_engine.pytorch.utils import get_cudnn_version; get_cudnn_version()"
 
-
 # Megatron-LM requires flash-attn >= 2.1.1, <= 2.8.0.post2
 cu=$(nvcc --version | grep "Cuda compilation tools" | awk '{print $5}' | cut -d '.' -f 1)
 torch=$(pip show torch | grep Version | awk '{print $2}' | cut -d '+' -f 1 | cut -d '.' -f 1,2)

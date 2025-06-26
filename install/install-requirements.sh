@@ -77,7 +77,7 @@ cd ..
 rm -r ./TransformerEngine
 
 # cudnn frontend
-pip install nvidia-cudnn-cu12==9.5.0.50
+pip install nvidia-cudnn-cu12==9.7.1.26
 CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" pip install nvidia-cudnn-frontend
 python -c "import torch; print('cuDNN version:', torch.backends.cudnn.version());"
 python -c "from transformer_engine.pytorch.utils import get_cudnn_version; get_cudnn_version()"
