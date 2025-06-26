@@ -4,7 +4,7 @@ system:
   tensor_model_parallel_size: 1
   pipeline_model_parallel_size: 4
   # num_layers_per_virtual_pipeline_stage: 1
-  expert_model_parallel_size: 2
+  expert_model_parallel_size: 8
   context_parallel_size: 1
   disable_bias_linear: true
   reset_position_ids: True
@@ -38,10 +38,10 @@ system:
     ckpt_format: ${experiment.ckpt_format}
 
 model:
-  profile: True
-  profile-step-start: 2
-  profile-step-end: 3
-  profile_ranks: 0
+  # profile: True
+  # profile-step-start: 2
+  # profile-step-end: 3
+  # profile_ranks: [0,8,16,24]
 
   transformer_impl: transformer_engine
   num_layers: 8
@@ -122,11 +122,11 @@ model:
 
 
 data:
-  data_path: /share/project/zhaoyingli/datasets/pile/pile_wikipedia_demo
+  data_path: /share/project/zhaoyingli/data/pile/pile_wikipedia_demo
   split: 1
   no_mmap_bin_files: true
   tokenizer:
     tokenizer_type: QwenTokenizerFS
-    tokenizer_path: /share/project/daizijian/qwentokenizer
+    tokenizer_path: /share/project/zhaoyingli/codes/FlagScale/examples/aquila/qwentokenizer
     vocab_size: 151851
     make_vocab_size_divisible_by: 64

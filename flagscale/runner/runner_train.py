@@ -349,7 +349,11 @@ class SSHTrainRunner(RunnerBase):
             else:
                 self.user_args += ["--hetero-current-device-type", device_type]
 
-        cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
+        # cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
+        # from datetime import datetime
+        # now_str = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        nsyscmd = f"nsys profile -s none -t nvtx,cuda -o ./profile/{host}-$current_time.nsys-rep --force-overwrite true --capture-range=cudaProfilerApi --capture-range-end=stop".split(" ")
+        cmd = shlex.join(export_cmd + nsyscmd + runner_cmd + [self.user_script] + self.user_args)
 
         logging_config = self.config.train.system.logging
         host_run_script_file = _generate_run_script_train(
