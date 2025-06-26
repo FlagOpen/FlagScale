@@ -139,7 +139,7 @@ RUN cd ${STAGE_DIR} && \
 # ARG FLAGSCALE_COMMIT
 ARG FLAGSCALE_REPO=https://github.com/zihugithub/FlagScale.git
 ARG FLAGSCALE_BRANCH=image_reduction
-ARG FLAGSCALE_COMMIT=546e8390
+ARG FLAGSCALE_COMMIT=cf0686e7
 RUN cd ${STAGE_DIR} && \
     git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
     { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
