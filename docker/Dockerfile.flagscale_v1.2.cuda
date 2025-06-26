@@ -75,7 +75,7 @@ RUN cd ${STAGE_DIR} && \
 ######################## Install the computing module ########################
 ##############################################################################
 
-FROM base AS comput
+FROM base AS build
 
 ##############################################################################
 # SCCACHE
@@ -134,12 +134,6 @@ RUN cd ${STAGE_DIR} && \
         cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
 
 ##############################################################################
-########################  Install Conda environment  #########################
-##############################################################################
-
-FROM comput AS conda
-
-##############################################################################
 # Clone FlagScale
 ##############################################################################
 # ARG FLAGSCALE_REPO
@@ -183,3 +177,9 @@ RUN apt-get clean && \
     pip cache purge && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf ${STAGE_DIR}/*
+
+FROM build AS enter_conda
+##############################################################################
+# Automatically enter the conda environment when running the container
+##############################################################################
+RUN echo "conda activate flagscale-agent" >> ~/.bashrc

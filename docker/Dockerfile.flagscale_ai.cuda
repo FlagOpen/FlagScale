@@ -1,20 +1,30 @@
 ARG CUDA_VERSION=12.8.1
-FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
+FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS base
 
-ENV DEBIAN_FRONTEND noninteractive
-ENV TZ=Asia/Shanghai
-ENV STAGE_DIR=/tmp
-ENV WORK_DIR=/workspace
-ENV SCCACHE_BUCKET_NAME=flagscale-build-sccache
-ENV SCCACHE_REGION_NAME=cn-north-1
-ENV SCCACHE_S3_NO_CREDENTIALS=0
+ENV DEBIAN_FRONTEND noninteractive \
+    TZ=Asia/Shanghai \
+    STAGE_DIR=/tmp \
+    WORK_DIR=/workspace \
+    SCCACHE_BUCKET_NAME=flagscale-build-sccache \
+    SCCACHE_REGION_NAME=cn-north-1 \
+    SCCACHE_S3_NO_CREDENTIALS=0 \
+    OPENMPI_BASEVERSION=4.1 \
+    OPENMPI_VERSION=${OPENMPI_BASEVERSION}.6 \
+    PATH=/usr/local/mpi/bin:${PATH} \
+    LD_LIBRARY_PATH=/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:${LD_LIBRARY_PATH}
 
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.12 \
+    CUDNN_VERSION=9.7.1 \
+    # ARG FLAGSCALE_REPO
+    # ARG FLAGSCALE_BRANCH
+    # ARG FLAGSCALE_COMMIT
+    FLAGSCALE_REPO=https://github.com/zihugithub/FlagScale.git \
+    FLAGSCALE_BRANCH=image_reduction \
+    FLAGSCALE_COMMIT=8bf98ad4
 
 ##############################################################################
 # Temporary Installation Directory
 ##############################################################################
-
 RUN mkdir -p ${STAGE_DIR} && \
     mkdir -p ${WORK_DIR}
 
@@ -42,10 +52,12 @@ RUN apt-get update && \
         unzip \
         vim \
         wget && \
-    ##########################################################################
-    # Install Python
-    ##########################################################################
-    add-apt-repository ppa:deadsnakes/ppa && \
+    rm -rf /var/lib/apt/lists/*
+
+##############################################################################
+# Install Python
+##############################################################################
+RUN add-apt-repository ppa:deadsnakes/ppa && \
         apt-get update -y && \
         apt-get install -y python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-venv && \
         update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 && \
@@ -53,8 +65,6 @@ RUN apt-get update && \
         ln -sf /usr/bin/python${PYTHON_VERSION}-config /usr/bin/python3-config && \
         ln -s /usr/bin/python3 /usr/bin/python && \
         apt install python3-distutils python3-pip -y && \
-        apt-get clean && \
-        rm -rf /var/lib/apt/lists/* && \
         python -m ensurepip --upgrade && \
         python -m pip install --upgrade setuptools && \
         # Blinker 1.4 version is installed using the distutls installation tool, which is an old Python package installation method.
@@ -62,10 +72,13 @@ RUN apt-get update && \
         # but the uninstallation will fail and manual deletion is required.
         rm -r /usr/lib/python3/dist-packages/blinker && \
         rm /usr/lib/python3/dist-packages/blinker-1.4.egg-info && \
-    ##########################################################################
-    # Install Miniconda
-    ##########################################################################
-    cd ${STAGE_DIR} && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+
+##############################################################################
+# Install Miniconda
+##############################################################################
+RUN cd ${STAGE_DIR} && \
         mkdir -p ~/miniconda3 && \
         wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh && \
         bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3 && \
@@ -73,31 +86,21 @@ RUN apt-get update && \
         ~/miniconda3/bin/conda init bash && \
         ~/miniconda3/bin/conda config --set auto_activate_base false && \
         ~/miniconda3/bin/conda config --set default_python ${PYTHON_VERSION} && \
-        ######################################################################
-        # SCCACHE
-        ######################################################################
-        echo "Installing sccache..." && \
-        curl -L -o sccache.tar.gz https://github.com/mozilla/sccache/releases/download/v0.8.1/sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz && \
-        tar -xzf sccache.tar.gz && \
-        mv sccache-v0.8.1-x86_64-unknown-linux-musl/sccache /usr/bin/sccache && \
-        rm -rf sccache.tar.gz sccache-v0.8.1-x86_64-unknown-linux-musl
+    rm -rf ${STAGE_DIR}/*
 
 ##############################################################################
 ######################## Install the computing module ########################
 ##############################################################################
 
-ENV OPENMPI_BASEVERSION=4.1
-ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.6
-ENV PATH=/usr/local/mpi/bin:${PATH} \
-        LD_LIBRARY_PATH=/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:${LD_LIBRARY_PATH}
-
-ARG CUDNN_VERSION=9.7.1
-# ARG FLAGSCALE_REPO
-# ARG FLAGSCALE_BRANCH
-# ARG FLAGSCALE_COMMIT
-ARG FLAGSCALE_REPO=https://github.com/zihugithub/FlagScale.git
-ARG FLAGSCALE_BRANCH=image_reduction
-ARG FLAGSCALE_COMMIT=19c929ab
+##############################################################################
+# SCCACHE
+##############################################################################
+RUN cd ${STAGE_DIR} && \
+        echo "Installing sccache..." && \
+        curl -L -o sccache.tar.gz https://github.com/mozilla/sccache/releases/download/v0.8.1/sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz && \
+        tar -xzf sccache.tar.gz && \
+        mv sccache-v0.8.1-x86_64-unknown-linux-musl/sccache /usr/bin/sccache && \
+        rm -rf sccache.tar.gz sccache-v0.8.1-x86_64-unknown-linux-musl
 
 ##############################################################################
 # OPENMPI
@@ -116,11 +119,12 @@ RUN cd ${STAGE_DIR} && \
     mv /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun.real && \
         echo '#!/bin/bash' > /usr/local/mpi/bin/mpirun && \
         echo 'mpirun.real --allow-run-as-root --prefix /usr/local/mpi "$@"' >> /usr/local/mpi/bin/mpirun && \
-        chmod a+x /usr/local/mpi/bin/mpirun && \
-    ##########################################################################
-    # Install cuDNN (NVIDIA CUDA Deep Neural Network library)
-    ##########################################################################
-    cd ${STAGE_DIR} && \
+        chmod a+x /usr/local/mpi/bin/mpirun
+
+##############################################################################
+# Install cuDNN (NVIDIA CUDA Deep Neural Network library)
+##############################################################################
+RUN cd ${STAGE_DIR} && \
         CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
         CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
         CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
@@ -135,41 +139,27 @@ RUN cd ${STAGE_DIR} && \
         echo "export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:\$PATH" >> ~/.bashrc && \
         echo "export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:\$LD_LIBRARY_PATH" >> ~/.bashrc && \
         cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2 && \
-    ##########################################################################
-    # Clone FlagScale
-    ##########################################################################
-    cd ${STAGE_DIR} && \
-        git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
-        { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
+    rm -rf cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda12-archive.tar.xz cudnn-*-archive/include/cudnn*.h cudnn-*-archive/lib/libcudnn*
+
+##############################################################################
+# Clone FlagScale
+##############################################################################
+RUN cd ${STAGE_DIR} && \
+    git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
+    { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
     cd FlagScale && \
-        git checkout ${FLAGSCALE_COMMIT} || \
-        { echo "Error: Failed to checkout commit ${FLAGSCALE_COMMIT}. Please ensure the commit ID is correct and exists in the repository."; exit 1; }
-
-##############################################################################
-########################  Install Conda environment  #########################
-##############################################################################
-
+    git checkout ${FLAGSCALE_COMMIT} || \
+    { echo "Error: Failed to checkout commit ${FLAGSCALE_COMMIT}. Please ensure the commit ID is correct and exists in the repository."; exit 1; } && \
+    chmod +x install/flagscale-requirements.sh && \
 ##############################################################################
 # Install flagscale-common requirements
 ##############################################################################
-RUN cd ${STAGE_DIR}/FlagScale && \
+    cd ${STAGE_DIR}/FlagScale && \
     chmod +x install/flagscale-requirements.sh && \
     chmod +x install/install-requirements.sh && \
     ./install/install-requirements.sh && \
     ./install/flagscale-requirements.sh --env train && \
     ./install/flagscale-requirements.sh --env inference --llama-cpp-backend cuda
-
-# ##############################################################################
-# # Install flagscale-train requirements
-# ##############################################################################
-# RUN cd ${STAGE_DIR}/FlagScale && \
-#     ./install/flagscale-requirements.sh --env train
-
-# ##############################################################################
-# # Install flagscale-inference requirements
-# ##############################################################################
-# RUN cd ${STAGE_DIR}/FlagScale && \
-#    ./install/flagscale-requirements.sh --env inference --llama-cpp-backend cuda
 
 ##############################################################################
 # Clear
