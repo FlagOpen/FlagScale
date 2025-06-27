@@ -62,14 +62,14 @@ RUN mv /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun.real && \
 ##############################################################################
 # Install cuDNN (NVIDIA CUDA Deep Neural Network library)
 ##############################################################################
-ARG CUDNN_VERSION=9.5.0
+ARG CUDNN_VERSION=9.7.1
 RUN cd ${STAGE_DIR} && \
         CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
         CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
         CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
         CUDA_MINOR=$(echo "${CUDA_VERSION}" | cut -d. -f2) && \
-        wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}.50_cuda${CUDA_MAJOR}-archive.tar.xz && \
-        tar -xJvf cudnn-linux-x86_64-${CUDNN_VERSION}.50_cuda12-archive.tar.xz && \
+        wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda${CUDA_MAJOR}-archive.tar.xz && \
+        tar -xJvf cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda12-archive.tar.xz && \
         mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include && \
         mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64 && \
         cp cudnn-*-archive/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/ && \
@@ -176,8 +176,7 @@ FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS final
 
 # ARG CUDNN_VERSION=9.5.0
 # ARG PYTHON_VERSION=3.12
-ARG STAGE_DIR=/tmp \
-    WORK_DIR=/workspace
+ARG WORK_DIR=/workspace
 
 ENV TZ=Asia/Shanghai
 ENV DEBIAN_FRONTEND noninteractive
