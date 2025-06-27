@@ -212,11 +212,11 @@ RUN ln -s /usr/local/openmpi-${OPENMPI_VERSION} /usr/local/mpi && \
     python -m pip install --upgrade setuptools && \
     echo '#!/bin/bash' > /usr/local/mpi/bin/mpirun && \
     echo 'mpirun.real --allow-run-as-root --prefix /usr/local/mpi "$@"' >> /usr/local/mpi/bin/mpirun && \
-    chmod a+x /usr/local/mpi/bin/mpirun
+    chmod a+x /usr/local/mpi/bin/mpirun && \
     chmod a+r /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/libcudnn* && \
     echo "export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:\$PATH" >> ~/.bashrc && \
     echo "export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:\$LD_LIBRARY_PATH" >> ~/.bashrc && \
-    cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
+    cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2 && \
     ~/miniconda3/bin/conda init bash && \
     ~/miniconda3/bin/conda config --set auto_activate_base false && \
     ~/miniconda3/bin/conda config --set default_python ${PYTHON_VERSION}
