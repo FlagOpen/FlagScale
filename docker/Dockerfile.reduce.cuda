@@ -140,7 +140,7 @@ FROM python-conda AS build-flagscale
 # ARG FLAGSCALE_COMMIT
 ARG FLAGSCALE_REPO=https://github.com/zihugithub/FlagScale.git
 ARG FLAGSCALE_BRANCH=image_reduction
-ARG FLAGSCALE_COMMIT=
+ARG FLAGSCALE_COMMIT=dcad933c
 
 RUN cd ${STAGE_DIR} && \
     git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
