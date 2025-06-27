@@ -118,7 +118,6 @@ RUN cd ${STAGE_DIR} && \
         ~/miniconda3/bin/conda config --set auto_activate_base false && \
         ~/miniconda3/bin/conda config --set default_python ${PYTHON_VERSION}
 
-
 ##############################################################################
 # SCCACHE
 ##############################################################################
@@ -207,7 +206,6 @@ COPY --from=build-flagscale /usr/bin /usr/bin
 RUN ln -s /usr/local/openmpi-${OPENMPI_VERSION} /usr/local/mpi && \
     ln -sf /usr/bin/python${PYTHON_VERSION}-config /usr/bin/python3-config && \
     ln -s /usr/bin/python3 /usr/bin/python && \
-    
     python -m ensurepip --upgrade && \
     python -m pip install --upgrade setuptools && \
     echo '#!/bin/bash' > /usr/local/mpi/bin/mpirun && \
