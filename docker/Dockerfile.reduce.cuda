@@ -177,6 +177,7 @@ FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS final
 # ARG CUDNN_VERSION=9.5.0
 # ARG PYTHON_VERSION=3.12
 ARG WORK_DIR=/workspace
+ARG STAGE_DIR=/tmp
 
 ENV TZ=Asia/Shanghai
 ENV DEBIAN_FRONTEND noninteractive
