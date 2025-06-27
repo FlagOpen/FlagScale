@@ -5,10 +5,10 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from redis import ConnectionPool, Redis
-from redis.exceptions import ConnectionError, RedisError, TimeoutError, WatchError
+from redis.exceptions import ConnectionError, RedisError, TimeoutError
 
 
-class Communicator:
+class Collaborator:
     def __init__(
         self,
         host: str = "localhost",
@@ -18,7 +18,7 @@ class Communicator:
         password: Optional[str] = None,
     ):
         """
-        Initialize Redis communicator with individual parameters.
+        Initialize Redis with individual parameters.
 
         Args:
             host (str): Redis server hostname/IP. Default: "localhost".
@@ -50,7 +50,7 @@ class Communicator:
             self._clear_db()
 
     @classmethod
-    def from_config(cls, config: Dict[str, Union[str, int, bool]]) -> "Communicator":
+    def from_config(cls, config: Dict[str, Union[str, int, bool]]) -> "Collaborator":
         """
         Alternative constructor that initializes from a configuration dictionary.
 
@@ -64,7 +64,7 @@ class Communicator:
                     - clear (bool)
 
         Returns:
-            Communicator: New instance configured with the provided settings.
+            Collaborator: New instance configured with the provided settings.
 
         Example:
             >>> config = {
@@ -74,7 +74,7 @@ class Communicator:
             ...     "password": "secret",
             ...     "clear": True
             ... }
-            >>> comm = Communicator.from_config(config)
+            >>> coll = Collaborator.from_config(config)
         """
         return cls(
             host=config.get("host", "localhost"),  # Fallback to default if not provided
@@ -260,8 +260,8 @@ class Communicator:
             bool: True if update succeeded, False on failure
 
         Example:
-            >>> comm.update_agent_busy("robot_1", True)  # Set busy
-            >>> comm.update_agent_busy("robot_1", False) # Set available
+            >>> coll.update_agent_busy("robot_1", True)  # Set busy
+            >>> coll.update_agent_busy("robot_1", False) # Set available
         """
         try:
             redis_client = self._get_conn()
@@ -307,7 +307,7 @@ class Communicator:
 
         Example:
             >>> # Wait for robot1 and robot2 to become free
-            >>> success = comm.wait_agent_free(["robot1", "robot2"])
+            >>> success = coll.wait_agent_free(["robot1", "robot2"])
             >>> if success:
             >>>     print("All agents are now available")
         """
