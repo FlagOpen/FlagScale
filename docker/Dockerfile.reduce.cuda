@@ -10,8 +10,6 @@ ENV TZ=Asia/Shanghai
 ##############################################################################
 ENV STAGE_DIR=/tmp
 RUN mkdir -p ${STAGE_DIR}
-# ENV WORK_DIR=/workspace
-# RUN mkdir -p ${WORK_DIR}
 
 ##############################################################################
 # Install Basic Utilities
@@ -137,9 +135,12 @@ FROM python-conda AS build-flagscale
 ##############################################################################
 # Clone FlagScale
 ##############################################################################
-ARG FLAGSCALE_REPO
-ARG FLAGSCALE_BRANCH
-ARG FLAGSCALE_COMMIT
+# ARG FLAGSCALE_REPO
+# ARG FLAGSCALE_BRANCH
+# ARG FLAGSCALE_COMMIT
+ARG FLAGSCALE_REPO=https://github.com/zihugithub/FlagScale.git
+ARG FLAGSCALE_BRANCH=image_reduction
+ARG FLAGSCALE_COMMIT=
 
 RUN cd ${STAGE_DIR} && \
     git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
@@ -170,28 +171,29 @@ RUN apt-get clean && \
         rm -rf ${STAGE_DIR}/*
 
 # ===================== Final Stage: Minimal Runtime Image =====================
-FROM nvcr.io/nvidia/cuda:12.8.1-runtime-ubuntu22.04 AS final
 
-ARG CUDA_VERSION=12.8.1
-ARG CUDNN_VERSION=9.5.0
-ARG PYTHON_VERSION=3.12
+FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS final
+
+# ARG CUDNN_VERSION=9.5.0
+# ARG PYTHON_VERSION=3.12
+ARG STAGE_DIR=/tmp \
+    WORK_DIR=/workspace
 
 ENV TZ=Asia/Shanghai
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
-ENV OPENMPI_BASEVERSION=4.1
-ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.6
+# ENV OPENMPI_BASEVERSION=4.1
+# ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.6
 ENV PATH=/usr/local/mpi/bin:${PATH} \
     LD_LIBRARY_PATH=/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:${LD_LIBRARY_PATH}
-ENV SCCACHE_BUCKET_NAME=flagscale-build-sccache
-ENV SCCACHE_REGION_NAME=cn-north-1
-ENV SCCACHE_S3_NO_CREDENTIALS=0
+# ENV SCCACHE_BUCKET_NAME=flagscale-build-sccache
+# ENV SCCACHE_REGION_NAME=cn-north-1
+# ENV SCCACHE_S3_NO_CREDENTIALS=0
 
-ENV STAGE_DIR=/tmp
-ENV WORK_DIR=/workspace
 
-RUN mkdir -p ${WORK_DIR}
-RUN mkdir -p ${STAGE_DIR}
+
+RUN mkdir -p ${WORK_DIR} && \
+    mkdir -p ${STAGE_DIR}
 
 ##############################################################################
 # Copy necessary files from build stages
