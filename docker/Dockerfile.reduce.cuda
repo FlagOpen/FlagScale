@@ -204,7 +204,6 @@ COPY --from=build-flagscale /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/
 COPY --from=build-flagscale /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/ /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/
 COPY --from=build-flagscale /root/miniconda3 /root/miniconda3
 COPY --from=build-flagscale /usr/bin /usr/bin
-COPY --from=build-flagscale 
 RUN ln -s /usr/local/openmpi-${OPENMPI_VERSION} /usr/local/mpi && \
     ln -sf /usr/bin/python${PYTHON_VERSION}-config /usr/bin/python3-config && \
     ln -s /usr/bin/python3 /usr/bin/python && \
