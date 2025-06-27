@@ -175,26 +175,26 @@ RUN apt-get clean && \
 
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS final
 
-# ARG CUDNN_VERSION=9.5.0
-# ARG PYTHON_VERSION=3.12
+ARG CUDNN_VERSION=9.7.1
+ARG PYTHON_VERSION=3.12
 ARG WORK_DIR=/workspace
 ARG STAGE_DIR=/tmp
 
 ENV TZ=Asia/Shanghai
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
-# ENV OPENMPI_BASEVERSION=4.1
-# ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.6
+
+ENV OPENMPI_BASEVERSION=4.1
+ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.6
 ENV PATH=/usr/local/mpi/bin:${PATH} \
     LD_LIBRARY_PATH=/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:${LD_LIBRARY_PATH}
-# ENV SCCACHE_BUCKET_NAME=flagscale-build-sccache
-# ENV SCCACHE_REGION_NAME=cn-north-1
-# ENV SCCACHE_S3_NO_CREDENTIALS=0
-
-
 
 RUN mkdir -p ${WORK_DIR} && \
-    mkdir -p ${STAGE_DIR}
+    mkdir -p ${STAGE_DIR} && \
+    CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
+    CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
+    CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
+    CUDA_MINOR=$(echo "${CUDA_VERSION}" | cut -d. -f2)
 
 ##############################################################################
 # Copy necessary files from build stages
@@ -202,6 +202,7 @@ RUN mkdir -p ${WORK_DIR} && \
 
 COPY --from=build-flagscale /usr/local/mpi /usr/local/mpi
 COPY --from=build-flagscale /usr/local/mpi/bin/mpirun.real /usr/local/mpi/bin/mpirun.real
+
 COPY --from=build-flagscale /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/ /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/
 COPY --from=build-flagscale /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/ /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/
 COPY --from=build-flagscale /root/miniconda3 /root/miniconda3
