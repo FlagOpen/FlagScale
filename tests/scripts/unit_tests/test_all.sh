@@ -37,7 +37,17 @@ commands=(
     # "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset your_subset"
 )
 
+if [ ! -f tests/unit_runtime.txt ];then
+    touch tests/unit_runtime.txt
+else
+    echo "" > tests/unit_runtime.txt
+fi
+echo "start time: $(date +"%Y-%m-%d %H:%M:%S")" >> tests/unit_runtime.txt
+
 for cmd in "${commands[@]}"; do
+
+    running_start_time=`date +%s`
+
     # Execute the command
     $cmd
     # Capture the return value
@@ -49,5 +59,13 @@ for cmd in "${commands[@]}"; do
         # Throw an exception by exiting the script with a non-zero status
         exit 1
     fi
+
+    running_end_time=`date +%s`
+    echo ">>>: ${cmd} runtime: $((running_end_time-running_start_time))" >> tests/unit_runtime.txt
+
     echo "Success: Command '$cmd' successed"
 done
+
+echo "end time: $(date +"%Y-%m-%d %H:%M:%S")" >> tests/unit_runtime.txt
+
+python tests/scripts/test.time_statistics.py unit
