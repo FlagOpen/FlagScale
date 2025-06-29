@@ -195,22 +195,24 @@ if [ "${env}" == "inference" ]; then
     python tools/patch/unpatch.py --backend omniinfer
 
     # Build omniinfer
-    # build whl
+    # build whl for vllm
+    mkdir -p ./third_party/omniinfer/build/dist
     cd ./third_party/omniinfer/infer_engines/vllm
-    bash build.sh
     VLLM_TARGET_DEVICE=empty python setup.py bdist_wheel
     mv dist/vllm* ../../build/dist
 
-    pip install build
+    # build whl for omniinfer
     cd ../..
+    pip install build
     python -m build
     mv dist/omni_i* ./build/dist
 
+    # build whl for omniinfer omni_placement
     cd ./omni/accelerators/placement
     python setup.py bdist_wheel
-    mv dist/omni_placement* ../../../../build/dist
+    mv dist/omni_placement* ../../../build/dist
 
-    # install whl
+    # install 3 whl
     cd ../../../../build/dist
     pip install omni_i*.whl
     pip install vllm*.whl
