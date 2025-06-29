@@ -194,6 +194,28 @@ if [ "${env}" == "inference" ]; then
     python tools/patch/unpatch.py --backend llama.cpp
     python tools/patch/unpatch.py --backend omniinfer
 
+    # Build omniinfer
+    # build whl
+    cd ./third_party/omniinfer/infer_engines/vllm
+    bash build.sh
+    VLLM_TARGET_DEVICE=empty python setup.py bdist_wheel
+    mv dist/vllm* ../../build/dist
+
+    pip install build
+    cd ../..
+    python -m build
+    mv dist/omni_i* ./build/dist
+
+    cd ./omni/accelerators/placement
+    python setup.py bdist_wheel
+    mv dist/omni_placement* ../../../../build/dist
+
+    # install whl
+    cd ../../../../build/dist
+    pip install omni_i*.whl
+    pip install vllm*.whl
+    pip install omni_placement*.whl
+
     # Build vllm
     # Navigate to requirements directory and install inference dependencies
     pip install -r ./third_party/vllm/requirements/build.txt
