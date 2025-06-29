@@ -192,6 +192,7 @@ if [ "${env}" == "inference" ]; then
     # Unpatch
     python tools/patch/unpatch.py --backend vllm
     python tools/patch/unpatch.py --backend llama.cpp
+    python tools/patch/unpatch.py --backend omniinfer
 
     # Build vllm
     # Navigate to requirements directory and install inference dependencies
