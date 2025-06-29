@@ -12,12 +12,14 @@ print_help() {
 # Initialize the variable
 env=""
 llama_cpp_backend="cpu"
+omni_infer="0"
 
 # Parse command-line options
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --env) env="$2"; shift ;;  # Assign the value after '--env'
         --llama-cpp-backend) llama_cpp_backend="$2"; shift ;;  # Assign the value after '--llama-cpp-backend'
+        --omni_infer) omni_infer="$2"; shift ;;  # Assign the value after '--llama-cpp-backend'
         --help|-h) print_help; exit 0 ;;
         *) echo "Error: Unknown parameter passed."; print_help; exit 1 ;;
     esac
@@ -194,30 +196,6 @@ if [ "${env}" == "inference" ]; then
     python tools/patch/unpatch.py --backend llama.cpp
     python tools/patch/unpatch.py --backend omniinfer
 
-    # Build omniinfer
-    # build whl for vllm
-    mkdir -p ./third_party/omniinfer/build/dist
-    cd ./third_party/omniinfer/infer_engines/vllm
-    VLLM_TARGET_DEVICE=empty python setup.py bdist_wheel
-    mv dist/vllm* ../../build/dist
-
-    # build whl for omniinfer
-    cd ../..
-    pip install build
-    python -m build
-    mv dist/omni_i* ./build/dist
-
-    # build whl for omniinfer omni_placement
-    cd ./omni/accelerators/placement
-    python setup.py bdist_wheel
-    mv dist/omni_placement* ../../../build/dist
-
-    # install 3 whl
-    cd ../../../../build/dist
-    pip install omni_i*.whl
-    pip install vllm*.whl
-    pip install omni_placement*.whl
-
     # Build vllm
     # Navigate to requirements directory and install inference dependencies
     pip install -r ./third_party/vllm/requirements/build.txt
@@ -280,6 +258,35 @@ if [ "${env}" == "inference" ]; then
             exit 1
             ;;
     esac
+
+    if [ "${omni_infer}" == "1" ]; then
+
+        # Build omniinfer
+        # build whl for vllm
+        mkdir -p ./third_party/omniinfer/build/dist
+        cd ./third_party/omniinfer/infer_engines/vllm
+        VLLM_TARGET_DEVICE=empty python setup.py bdist_wheel
+        mv dist/vllm* ../../build/dist
+
+        # build whl for omniinfer
+        cd ../..
+        pip install build
+        python -m build
+        mv dist/omni_i* ./build/dist
+
+        # build whl for omniinfer omni_placement
+        cd ./omni/accelerators/placement
+        python setup.py bdist_wheel
+        mv dist/omni_placement* ../../../build/dist
+
+        # install 3 whl
+        cd ../../../build/dist
+        pip install omni_i*.whl
+        pip install vllm*.whl
+        pip install omni_placement*.whl
+
+        cd ../../../..
+    fi
 
     # For FlagRelease
     pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
