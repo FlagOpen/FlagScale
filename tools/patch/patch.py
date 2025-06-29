@@ -455,6 +455,8 @@ def normalize_backend(backend):
         return "sglang"
     elif input_lower in ["llama.cpp", "llama_cpp"]:
         return "llama.cpp"
+    elif input_lower in ["omniinfer", "omnii_nfer", "OmniInfer"]:
+        return "omniinfer"
 
     raise ValueError(f'Unsupported backend {backend}')
 
