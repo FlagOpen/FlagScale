@@ -1,0 +1,4 @@
+include omni_planner/*.py
+include omni_planner/*.so
+include omni_planner/optim/*.py
+exclude omni_planner/cpp/*.cpp

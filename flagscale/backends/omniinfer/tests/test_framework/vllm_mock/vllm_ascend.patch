@@ -1,0 +1,25 @@
+diff --git a/vllm_ascend/models/__init__.py b/vllm_ascend/models/__init__.py
+index f60c28c..a2fe627 100644
+--- a/vllm_ascend/models/__init__.py
++++ b/vllm_ascend/models/__init__.py
+@@ -29,3 +29,20 @@ def register_model():
+     ModelRegistry.register_model(
+         "DeepseekV3ForCausalLM",
+         "vllm_ascend.models.deepseek_v3:CustomDeepseekV3ForCausalLM")
++
++    import os
++    if os.getenv("RANDOM_MODE", default=False) or os.getenv("CAPTURE_MODE", default=False) or os.getenv("REPLAY_MODE", default=False):
++        from vllm_ascend.models.mock import mock_model_class_factory
++
++        ModelRegistry.register_model(
++            "DeepseekV2ForCausalLM",
++            mock_model_class_factory(CustomDeepseekV2ForCausalLM))
++            
++        from vllm.model_executor.models.qwen2 import Qwen2ForCausalLM
++        ModelRegistry.register_model(
++            "Qwen2ForCausalLM",
++            mock_model_class_factory(Qwen2ForCausalLM))
++        
++        ModelRegistry.register_model(
++            "DeepseekV3ForCausalLM",
++            mock_model_class_factory(CustomDeepseekV3ForCausalLM))

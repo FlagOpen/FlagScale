@@ -1,0 +1,14 @@
+# provider yaml配置
+# openai
+# 如果要启用某个服务, 按照实例添加对应的参数
+# api_key 和 base_url 不同时为空
+# 使用自建服务, api_key 可以填写任意非空字符, base_url 添加类似 http://0.0.0.0:8080/v1 的url
+# model_name, 启动服务时的 model; 如果有设置 served-model-name, 则填写 served-model-name
+providers:
+  -
+    id: 'ascend-vllm'
+    name: 'ascend-vllm'
+    api_key: 'EMPTY'
+    base_url: 'http://127.0.0.1:8000/v1/chat/completions'
+    model_name: 'deepseek'
+    model_category: 'deepseek-r1'

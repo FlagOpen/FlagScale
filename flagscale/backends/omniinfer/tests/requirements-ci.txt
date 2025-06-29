@@ -1,0 +1,27 @@
+setuptools==80.0.0
+pytest-html
+coverage
+pytest-env
+requests
+pytest-xdist
+openpyxl
+pytest-repeat
+func_timeout
+aiohttp>=3.8.5 ; python_version >= "3.9" and python_version < "4.0"
+numpy>=1.25.0,<2.0.0 ; python_version >= "3.9" and python_version < "4.0"
+tqdm>=4.65.0 ; python_version >= "3.9" and python_version < "4.0"
+transformers>=4.29.2 ; python_version >= "3.9" and python_version < "4.0"
+pandas>=2.0.3 ; python_version >= "3.9" and python_version < "4.0"
+openpyxl>=3.1.2 ; python_version >= "3.9" and python_version < "4.0"
+matplotlib>=3.8.2; python_version >= "3.9" and python_version < "4.0"
+pyyaml>=6.0.2; python_version >= "3.9" and python_version < "4.0"
+requests>=2.32.3; python_version >= "3.9" and python_version < "4.0"
+
+pandas
+jinja2
+scipy
+openai
+tabulate
+tqdm
+fire
+numpy

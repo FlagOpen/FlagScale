@@ -1,0 +1,206 @@
+diff --git a/vllm_ascend/distributed/communicator.py b/vllm_ascend/distributed/communicator.py
+index 7c14bef..fcef34e 100644
+--- a/vllm_ascend/distributed/communicator.py
++++ b/vllm_ascend/distributed/communicator.py
+@@ -32,7 +32,7 @@ class NPUCommunicator(DeviceCommunicatorBase):
+         super().__init__(cpu_group, device, device_group, unique_name)
+         # TODO(hz): Refer to CudaCommunicator's implementation to integrate PyHcclCommunicator
+         # init device according to rank
+-        self.device = torch.npu.current_device()
++        self.device = torch.device("cpu")
+ 
+     def all_to_all(self,
+                    input_: torch.Tensor,
+diff --git a/vllm_ascend/models/__init__.py b/vllm_ascend/models/__init__.py
+index 51cd5a5..18561e1 100644
+--- a/vllm_ascend/models/__init__.py
++++ b/vllm_ascend/models/__init__.py
+@@ -33,3 +33,20 @@ def register_model():
+     ModelRegistry.register_model(
+         "DeepseekV3ForCausalLM",
+         "vllm_ascend.models.deepseek_v3:CustomDeepseekV3ForCausalLM")
++
++    import os
++    if os.getenv("RANDOM_MODE", default=False) or os.getenv("CAPTURE_MODE", default=False) or os.getenv("REPLAY_MODE", default=False):
++        from vllm_ascend.models.mock import mock_model_class_factory
++
++        ModelRegistry.register_model(
++            "DeepseekV2ForCausalLM",
++            mock_model_class_factory(CustomDeepseekV2ForCausalLM))
++            
++        from vllm.model_executor.models.qwen2 import Qwen2ForCausalLM
++        ModelRegistry.register_model(
++            "Qwen2ForCausalLM",
++            mock_model_class_factory(Qwen2ForCausalLM))
++        
++        ModelRegistry.register_model(
++            "DeepseekV3ForCausalLM",
++            mock_model_class_factory(CustomDeepseekV3ForCausalLM))
+\ No newline at end of file
+diff --git a/vllm_ascend/worker/model_runner_v1.py b/vllm_ascend/worker/model_runner_v1.py
+index 82c9927..55985f2 100644
+--- a/vllm_ascend/worker/model_runner_v1.py
++++ b/vllm_ascend/worker/model_runner_v1.py
+@@ -195,7 +195,7 @@ class NPUModelRunner:
+                 max_model_len=self.model_config.max_model_len,
+                 max_num_blocks_per_req=self.max_num_blocks_per_req,
+                 device=self.device,
+-                pin_memory=True,
++                pin_memory=False,
+                 vocab_size=self.model_config.get_vocab_size(),
+             )
+         self.input_ids = torch.zeros(self.max_num_tokens,
+@@ -236,7 +236,7 @@ class NPUModelRunner:
+                 (3, self.max_num_tokens + 1),
+                 dtype=torch.int64,
+                 device="cpu",
+-                pin_memory=True)
++                pin_memory=False)
+ 
+         self.inputs_embeds = torch.zeros(
+             (self.max_num_tokens, self.hidden_size),
+@@ -254,29 +254,29 @@ class NPUModelRunner:
+         self.input_ids_cpu = torch.zeros(self.max_num_tokens,
+                                          dtype=torch.int32,
+                                          device="cpu",
+-                                         pin_memory=True)
++                                         pin_memory=False)
+         self.positions_cpu = torch.zeros(self.max_num_tokens,
+                                          dtype=torch.int64,
+                                          device="cpu",
+-                                         pin_memory=True)
++                                         pin_memory=False)
+         self.positions_np = self.positions_cpu.numpy()
+ 
+         self.slot_mapping_cpu = torch.zeros(self.max_num_tokens,
+                                             dtype=torch.int32,
+                                             device="cpu",
+-                                            pin_memory=True)
++                                            pin_memory=False)
+         self.slot_mapping_np = self.slot_mapping_cpu.numpy()
+ 
+         self.query_start_loc_cpu = torch.zeros(self.max_num_reqs + 1,
+                                                dtype=torch.int32,
+                                                device="cpu",
+-                                               pin_memory=True)
++                                               pin_memory=False)
+         self.query_start_loc_np = self.query_start_loc_cpu.numpy()
+ 
+         self.seq_lens_cpu = torch.zeros(self.max_num_reqs,
+                                         dtype=torch.int32,
+                                         device="cpu",
+-                                        pin_memory=True)
++                                        pin_memory=False)
+         self.seq_lens_np = self.seq_lens_cpu.numpy()
+ 
+         self.input_positions_cpu = torch.arange(0,
+@@ -1068,7 +1068,7 @@ class NPUModelRunner:
+         else:
+             logits = None
+ 
+-        NPUPlatform.synchronize()
++        # NPUPlatform.synchronize()
+         del hidden_states, logits, dummy_kv_caches
+         self.encoder_cache.clear()
+         gc.collect()
+@@ -1076,12 +1076,14 @@ class NPUModelRunner:
+     def load_model(self) -> None:
+         logger.info("Starting to load model %s...", self.model_config.model)
+ 
+-        with DeviceMemoryProfiler() as m:  # noqa: SIM117
+-            self.model = get_model(vllm_config=self.vllm_config)
+-            if self.lora_config:
+-                raise ValueError("LoRA model is not supported on NPU now.")
++        # with DeviceMemoryProfiler() as m:  # noqa: SIM117
++        self.model = get_model(vllm_config=self.vllm_config)
++        return
++            # if self.lora_config:
++            #     raise ValueError("LoRA model is not supported on NPU now.")
+         logger.info("Loading model weights took %.4f GB",
+                     m.consumed_memory / float(2**30))
++        
+ 
+         # adapter torch compile with npu_backend
+         if self.enable_torchair_graph_mode:
+@@ -1115,7 +1117,7 @@ class NPUModelRunner:
+             kv_cache_config: Configuration for the KV cache, including the KV
+             cache size of each layer
+         """
+-        import torch_npu
++        # import torch_npu
+         kv_caches: Dict[str, torch.Tensor] = {}
+         if not (vllm_version_is("0.8.5") or vllm_version_is("0.8.5.post1")):
+             self.input_batch = InputBatch(
+@@ -1123,11 +1125,12 @@ class NPUModelRunner:
+                 max_model_len=self.model_config.max_model_len,
+                 max_num_batched_tokens=self.max_num_tokens,
+                 device=self.device,
+-                pin_memory=True,
++                pin_memory=False,
+                 vocab_size=self.model_config.get_vocab_size(),
+                 kv_cache_config=kv_cache_config,
+             )
+ 
++        return
+         for kv_cache_group in kv_cache_config.kv_cache_groups:
+             kv_cache_spec = kv_cache_group.kv_cache_spec
+             for layer_name in kv_cache_group.layer_names:
+@@ -1154,14 +1157,14 @@ class NPUModelRunner:
+                             kv_cache_shape[:-1] +
+                             (self.model_config.hf_text_config.kv_lora_rank, ),
+                             dtype=self.dtype,
+-                            pin_memory=True,
++                            pin_memory=False,
+                             device=self.device)
+                         layer_kv_cache_pe = torch.zeros(
+                             kv_cache_shape[:-1] +
+                             (self.model_config.hf_text_config.qk_rope_head_dim,
+                              ),
+                             dtype=self.dtype,
+-                            pin_memory=True,
++                            pin_memory=False,
+                             device=self.device)
+                         kv_caches[layer_name] = (layer_kv_cache_nope,
+                                                  layer_kv_cache_pe)
+@@ -1222,6 +1225,14 @@ class NPUModelRunner:
+                 raise ValueError(
+                     f"Unknown attention type: {attn_module.attn_type}")
+ 
++        kv_cache_spec["mock.0"] = FullAttentionSpec(  # HACK
++            block_size=block_size,
++            num_kv_heads=1,
++            head_size=16,
++            dtype=torch.bfloat16,
++            use_mla=use_mla
++        )
++
+         return kv_cache_spec
+ 
+     def capture_model(self) -> None:
+diff --git a/vllm_ascend/worker/worker_v1.py b/vllm_ascend/worker/worker_v1.py
+index 273d33c..26a82b4 100644
+--- a/vllm_ascend/worker/worker_v1.py
++++ b/vllm_ascend/worker/worker_v1.py
+@@ -115,10 +115,10 @@ class NPUWorker(WorkerBase):
+ 
+     def init_device(self):
+         if self.device_config.device.type == "npu":
+-            self.device = torch.device(f"npu:{self.local_rank}")
+-            NPUPlatform.set_device(self.device)
+-            NPUPlatform.empty_cache()
+-            self.init_npu_memory = NPUPlatform.mem_get_info()[0]
++            self.device = torch.device(f"cpu")
++            # NPUPlatform.set_device(self.device)
++            # NPUPlatform.empty_cache()
++            # self.init_npu_memory = NPUPlatform.mem_get_info()[0]
+         else:
+             info = f"Not support device type: {self.device_config.device}"
+             logger.error(info)
+@@ -148,6 +148,7 @@ class NPUWorker(WorkerBase):
+             else:
+                 raise NotImplementedError
+ 
++        return int(100000000)
+         runner_kv_caches: List[torch.Tensor] = []
+         bind_kv_cache(
+             kv_caches,

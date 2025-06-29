@@ -1,0 +1,157 @@
+diff --git a/vllm/entrypoints/openai/serving_completion.py b/vllm/entrypoints/openai/serving_completion.py
+index cc549d47e..677b73034 100644
+--- a/vllm/entrypoints/openai/serving_completion.py
++++ b/vllm/entrypoints/openai/serving_completion.py
+@@ -89,6 +89,7 @@ class OpenAIServingCompletion(OpenAIServing):
+         # if exists, replace prompt with request.kv_transfer_params
+         if request.kv_transfer_params and "prompt_token_ids" in request.kv_transfer_params:
+             request.prompt = request.kv_transfer_params["prompt_token_ids"]
++            request.max_tokens -= 1
+ 
+         # Return error for unsupported features.
+         if request.suffix is not None:
+@@ -209,6 +210,11 @@ class OpenAIServingCompletion(OpenAIServing):
+         final_res_batch: list[Optional[RequestOutput]] = [None] * num_prompts
+         try:
+             async for i, res in result_generator:
++                if request.kv_transfer_params is not None:
++                    prompt_token_ids = res.prompt_token_ids[-1]
++                    new_tokens = tokenizer.convert_ids_to_tokens(prompt_token_ids)
++                    prompt_text = tokenizer.convert_tokens_to_string([new_tokens])
++                    res.outputs[0].text = prompt_text + res.outputs[0].text
+                 final_res_batch[i] = res
+ 
+             for i, final_res in enumerate(final_res_batch):
+@@ -223,12 +229,13 @@ class OpenAIServingCompletion(OpenAIServing):
+             final_res_batch_checked = cast(list[RequestOutput],
+                                            final_res_batch)
+ 
+-            prompt_token_ids = []
+-            for req_output in final_res_batch_checked:
+-                prompt_token_ids.append(req_output.prompt_token_ids) 
+-            if final_res_batch_checked[0].kv_transfer_params:
+-                ## In Prefill node, the response will carry prompt_token_ids with kv_transfer_params
+-                final_res_batch_checked[0].kv_transfer_params["prompt_token_ids"] = prompt_token_ids
++            # prompt_token_ids = []
++            for idx_req, req_output in enumerate(final_res_batch_checked):
++                ext_token_ids = req_output.prompt_token_ids
++                ext_token_ids.append(req_output.outputs[0].token_ids[0])
++                if req_output.kv_transfer_params:
++                    ## In Prefill node, the response will carry prompt_token_ids with kv_transfer_params
++                    req_output.kv_transfer_params["prompt_token_ids"] = ext_token_ids
+ 
+             response = self.request_output_to_completion_response(
+                 final_res_batch_checked,
+@@ -283,6 +290,27 @@ class OpenAIServingCompletion(OpenAIServing):
+         else:
+             include_usage, include_continuous_usage = False, False
+ 
++        if request.kv_transfer_params is not None:
++            if not all(isinstance(x, list) for x in request.prompt):
++                request.prompt = [request.prompt]
++            for idx_prompt, prompt_tmp in enumerate(request.prompt):
++                if isinstance(prompt_tmp, list) and all(isinstance(x, int) for x in prompt_tmp):
++                    prompt_token_ids = prompt_tmp[-1]
++                    new_tokens = tokenizer.convert_ids_to_tokens(prompt_token_ids)
++                    prompt_text = tokenizer.convert_tokens_to_string([new_tokens])
++                    chunk = CompletionStreamResponse(
++                        id=request_id,
++                        created=created_time,
++                        model=model_name,
++                        choices=[
++                            CompletionResponseStreamChoice(
++                                index=idx_prompt,
++                                text = prompt_text,
++                            )
++                        ])
++                    response_json = chunk.model_dump_json(exclude_unset=False)
++                    yield f"data: {response_json}\n\n"
++
+         try:
+             async for prompt_idx, res in result_generator:
+                 prompt_token_ids = res.prompt_token_ids
+diff --git a/vllm/v1/core/sched/scheduler.py b/vllm/v1/core/sched/scheduler.py
+index c599f04c8..77aadcf3b 100644
+--- a/vllm/v1/core/sched/scheduler.py
++++ b/vllm/v1/core/sched/scheduler.py
+@@ -765,7 +765,10 @@ class Scheduler(SchedulerInterface):
+                 # stopped = check_stop(request, self.max_model_len)
+                 stopped = request.append_output_token_id_modify(output_token_id, self.max_model_len)
+                 if stopped:
+-                    kv_transfer_params = self._free_request(request)
++                    if spec_token_ids is None:
++                        kv_transfer_params = self._free_request(request, [])
++                    else:
++                        kv_transfer_params = self._free_request(request, spec_token_ids)
+                     del new_token_ids[num_new:]  # Trim new tokens if needed.
+                     break
+ 
+@@ -875,11 +878,11 @@ class Scheduler(SchedulerInterface):
+             request.status = finished_status
+             self._free_request(request)
+ 
+-    def _free_request(self, request: Request) -> Optional[dict[str, Any]]:
++    def _free_request(self, request: Request, spec_token_ids: Optional[list[int]]=[]) -> Optional[dict[str, Any]]:
+ 
+         assert request.is_finished()
+ 
+-        delay_free_blocks, kv_xfer_params = self._connector_finished(request)
++        delay_free_blocks, kv_xfer_params = self._connector_finished(request, spec_token_ids)
+         self.encoder_cache_manager.free(request)
+         self._cached_reqs_data.pop(request.request_id, None)
+         self.finished_req_ids.add(request.request_id)
+@@ -948,7 +951,7 @@ class Scheduler(SchedulerInterface):
+         return self.connector
+ 
+     def _connector_finished(
+-            self, request: Request) -> tuple[bool, Optional[dict[str, Any]]]:
++            self, request: Request, spec_token_ids: list[int]) -> tuple[bool, Optional[dict[str, Any]]]:
+         """
+         Invoke the KV connector request_finished() method if applicable.
+ 
+@@ -960,7 +963,7 @@ class Scheduler(SchedulerInterface):
+         assert len(self.kv_cache_config.kv_cache_groups
+                    ) == 1, "KV connector only supports one KV cache group now"
+         block_ids = self.kv_cache_manager.get_block_ids(request.request_id)[0]
+-        return self.connector.request_finished(request, block_ids)
++        return self.connector.request_finished(request, block_ids, spec_token_ids)
+ 
+     def _update_waiting_for_remote_kv(self, request: Request) -> bool:
+         """
+@@ -988,12 +991,11 @@ class Scheduler(SchedulerInterface):
+         if self.vllm_config.speculative_config is not None:
+             request.spec_token_ids.append(0)
+ 
+-        # very dangerous changes! 
+-        # self.kv_cache_manager.single_type_manager.cache_blocks(
+-        #     request,
+-        #     self.kv_cache_manager.req_to_block_hashes[request.request_id],
+-        #     num_computed_tokens,
+-        # )
++        self.kv_cache_manager.single_type_manager.cache_blocks(
++            request,
++            self.kv_cache_manager.req_to_block_hashes[request.request_id],
++            ((request.num_tokens - 1) // self.block_size) * self.block_size,
++        )
+ 
+         # Update the request state for scheduling.
+         # request.num_computed_tokens = num_computed_tokens
+diff --git a/vllm/v1/engine/core.py b/vllm/v1/engine/core.py
+index 4d5f4d3d1..bc57b2fc1 100644
+--- a/vllm/v1/engine/core.py
++++ b/vllm/v1/engine/core.py
+@@ -219,6 +219,14 @@ class EngineCore:
+                 scheduler_stats=self.scheduler.make_stats(),
+             )
+         scheduler_output = self.scheduler.schedule()
++        if (scheduler_output.kv_connector_metadata is not None) and (scheduler_output.scheduled_new_reqs!=[]):
++            if scheduler_output.kv_connector_metadata.requests != {}:
++                for new_req in scheduler_output.scheduled_new_reqs:
++                    if scheduler_output.kv_connector_metadata.requests[new_req.req_id].spec_token_ids != []:
++                        scheduler_output.scheduled_spec_decode_tokens[new_req.req_id] \
++                            = scheduler_output.kv_connector_metadata.requests[new_req.req_id].spec_token_ids
++                        scheduler_output.num_scheduled_tokens[new_req.req_id] += len(scheduler_output.scheduled_spec_decode_tokens[new_req.req_id])
++                        scheduler_output.total_num_scheduled_tokens += len(scheduler_output.scheduled_spec_decode_tokens[new_req.req_id])
+         model_output = self.execute_model(scheduler_output)
+         engine_core_outputs = self.scheduler.update_from_output(
+             scheduler_output, model_output)  # type: ignore
