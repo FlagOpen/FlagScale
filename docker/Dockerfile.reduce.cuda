@@ -35,7 +35,7 @@ RUN apt-get update && \
         unzip \
         vim \
         wget
-
+        
 ##############################################################################
 # OPENMPI
 ##############################################################################
@@ -200,14 +200,19 @@ RUN mkdir -p ${WORK_DIR} && \
 ##############################################################################
 # Copy necessary files from build stages
 ##############################################################################
+# Copy necessary files from the basic stage (such as installed libraries, tools, etc.)
+COPY --from=base /usr/bin /usr/bin
+COPY --from=base /usr/share /usr/share
+COPY --from=base /usr/lib /usr/lib
 
+# ------------------
 COPY --from=build-flagscale /usr/local/mpi /usr/local/mpi
 COPY --from=build-flagscale /usr/local/mpi/bin/mpirun.real /usr/local/mpi/bin/mpirun.real
 
 COPY --from=build-flagscale /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/ /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/
 COPY --from=build-flagscale /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/ /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/
 COPY --from=build-flagscale /root/miniconda3 /root/miniconda3
-COPY --from=build-flagscale /usr/bin /usr/bin
+
 RUN ln -s /usr/local/openmpi-${OPENMPI_VERSION} /usr/local/mpi && \
     ln -sf /usr/bin/python${PYTHON_VERSION}-config /usr/bin/python3-config && \
     ln -s /usr/bin/python3 /usr/bin/python && \
