@@ -1,5 +1,5 @@
 ARG CUDA_VERSION=12.8.1
-FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS base
+FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
@@ -134,12 +134,6 @@ RUN cd ${STAGE_DIR} && \
         cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
 
 ##############################################################################
-########################  Install Conda environment  #########################
-##############################################################################
-
-FROM comput AS conda
-
-##############################################################################
 # Clone FlagScale
 ##############################################################################
 # ARG FLAGSCALE_REPO
@@ -160,9 +154,7 @@ RUN cd ${STAGE_DIR} && \
 # Install flagscale-common requirements
 ##############################################################################
 RUN cd ${STAGE_DIR}/FlagScale && \
-    chmod +x install/flagscale-requirements.sh && \
-    chmod +x install/install-requirements.sh && \
-    ./install/install-requirements.sh
+    chmod +x install/flagscale-requirements.sh
 
 ##############################################################################
 # Install flagscale-train requirements
