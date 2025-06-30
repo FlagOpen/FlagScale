@@ -1,3 +1,5 @@
+# Adapted from this PR: vllm-project/vllm#20220
+
 # SPDX-License-Identifier: Apache-2.0
 
 # Copyright 2025 The Baidu_Ernie team.
