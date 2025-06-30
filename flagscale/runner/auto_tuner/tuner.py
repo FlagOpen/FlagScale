@@ -309,12 +309,14 @@ class ServeAutoTunner(AutoTuner):
         logger.addHandler(handler)
         self.logger = logger
         self.handler = handler
-        deploy_config = config.experiment.get("deploy", {})
+        deploy_config = config.experiment.get("runner", {}).get("deploy", {})
 
         if not deploy_config.get("use_fs_serve", True) and deploy_config.get("port", None):
             for item in config.serve:
                 if item.get("serve_id") == "vllm_model":
-                    item.engine_args["port"] = config.experiment.get("deploy", {}).get("port", None)
+                    item.engine_args["port"] = (
+                        config.experiment.get("runner", {}).get("deploy", {}).get("port", None)
+                    )
 
         # Deepcopy the original config to isolate from each task config
         # Modify the orig config when run best task
