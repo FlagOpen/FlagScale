@@ -54,6 +54,7 @@ megatron:
         - test_t5_model.py::TestT5Model::test_forward_output_encoder_hidden_only
         - test_t5_model.py::TestT5Model::test_forward_with_encoder_hidden_states
         - test_llava_model.py::test_llava_model_parallelism
+        - test_llava_model.py::TestLLaVAModel::test_forward
     pipeline_parallel:
       - default
     post_training:
@@ -83,7 +84,12 @@ megatron:
         - test_attention.py::TestParallelAttention::test_gpu_forward
         - test_attention.py::TestParallelAttention::test_fused_rope_gpu_forward
         - test_attention.py::TestParallelAttention::test_checkpointed_gpu_forward
+        - test_attention_packed_seq.py::TestParallelAttentionWithPackedSequence::test_gpu_forward
+        - test_attention_packed_seq.py::TestParallelAttentionWithPackedSequence::test_fused_rope_gpu_forward
+        - test_attention_packed_seq.py::TestParallelAttentionWithPackedSequence::test_checkpointed_gpu_forward
         - test_attention_packed_seq.py::TestParallelAttentionWithPackedPaddedSequence::test_gpu_forward
+        - test_attention_packed_seq.py::TestParallelAttentionWithPackedPaddedSequence::test_fused_rope_gpu_forward
+        - test_attention_packed_seq.py::TestParallelAttentionWithPackedPaddedSequence::test_checkpointed_gpu_forward
         - test_multi_latent_attention.py::TestParallelMLAAttention::test_gpu_forward
         - test_multi_latent_attention.py::TestParallelMLAAttention::test_fused_rope_gpu_forward
         - test_multi_latent_attention.py::TestParallelMLAAttention::test_checkpointed_gpu_forward
