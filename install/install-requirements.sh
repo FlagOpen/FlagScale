@@ -259,12 +259,26 @@ if [ "${env}" == "inference" ]; then
             ;;
     esac
 
+    cd ../..
+    # Build omniinfer
     if [ "${omni_infer}" == "1" ]; then
+        # process repo
+        find ./third_party/omniinfer -type f -exec dos2unix {} +
+        find ./third_party/omniinfer -type f -path '*.sh' -exec chmod a+x {} \;
 
-        # Build omniinfer
+        # unpatch vllm
+        cd ./third_party/omniinfer/infer_engines/
+        git clone https://github.com/vllm-project/vllm.git
+        bash bash_install_code.sh
+        cd ../../..
+
+        # install dependencies
+        pip install -r ./third_party/omniinfer/tests/requirements.txt
+
         # build whl for vllm
         mkdir -p ./third_party/omniinfer/build/dist
         cd ./third_party/omniinfer/infer_engines/vllm
+        git checkout 65334ef3
         VLLM_TARGET_DEVICE=empty python setup.py bdist_wheel
         mv dist/vllm* ../../build/dist
 
