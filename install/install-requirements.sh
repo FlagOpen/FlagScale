@@ -269,6 +269,7 @@ if [ "${env}" == "inference" ]; then
         # unpatch vllm
         cd ./third_party/omniinfer/infer_engines/
         git clone https://github.com/vllm-project/vllm.git
+        git checkout 65334ef3
         bash bash_install_code.sh
         cd ../../..
 
@@ -278,7 +279,6 @@ if [ "${env}" == "inference" ]; then
         # build whl for vllm
         mkdir -p ./third_party/omniinfer/build/dist
         cd ./third_party/omniinfer/infer_engines/vllm
-        git checkout 65334ef3
         VLLM_TARGET_DEVICE=empty python setup.py bdist_wheel
         mv dist/vllm* ../../build/dist
 
