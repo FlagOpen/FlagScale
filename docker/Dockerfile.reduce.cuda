@@ -175,6 +175,7 @@ RUN apt-get clean && \
 
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS final
 
+ARG CUDA_VERSION=12.8.1
 ARG CUDNN_VERSION=9.7.1
 ARG PYTHON_VERSION=3.12
 ARG WORK_DIR=/workspace
