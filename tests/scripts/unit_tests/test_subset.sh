@@ -23,7 +23,7 @@ if [ -z "$backend" ] || [ -z "$subset" ]; then
 fi
 
 # Set default values for optional parameters
-coverage=${coverage:-"True"}
+coverage=${coverage:-"False"}
 
 # Configuration file path
 config_file="tests/scripts/unit_tests/config.yml"
