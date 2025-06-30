@@ -1,11 +1,13 @@
+import warnings
+
 import hydra
 
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.auto_tuner import AutoTuner, ServeAutoTunner
 from flagscale.runner.runner_compress import SSHCompressRunner
 from flagscale.runner.runner_inference import SSHInferenceRunner
-from flagscale.runner.runner_serve import SSHServeRunner
+from flagscale.runner.runner_serve import CloudServeRunner, SSHServeRunner
 from flagscale.runner.runner_train import CloudTrainRunner, SSHTrainRunner
 from flagscale.runner.utils import is_master
 
@@ -13,8 +15,21 @@ from flagscale.runner.utils import is_master
 # we have placed the import statements inside the function body rather than at the beginning of the file.
 
 
+def check_and_reset_deploy_config(config: DictConfig) -> None:
+    if config.experiment.get("deploy", {}):
+        OmegaConf.set_struct(config.experiment.runner, False)
+        config.experiment.runner.deploy = config.experiment.deploy
+        del config.experiment.deploy
+        warnings.warn(
+            "'config.experiment.deploy' has been moved to 'config.experiment.runner.deploy'. "
+            "Support for the old location will be removed in a future release."
+        )
+        OmegaConf.set_struct(config.experiment.runner, True)
+
+
 @hydra.main(version_base=None, config_name="config")
 def main(config: DictConfig) -> None:
+    check_and_reset_deploy_config(config)
     task_type = config.experiment.task.get("type", "train")
     if task_type == "train":
         if config.action == "auto_tune":
@@ -62,7 +77,12 @@ def main(config: DictConfig) -> None:
             tuner = ServeAutoTunner(config)
             tuner.tune()
         else:
-            runner = SSHServeRunner(config)
+            if config.experiment.runner.get("type", "ssh") == "ssh":
+                runner = SSHServeRunner(config)
+            elif config.experiment.runner.get("type", "ssh") == "cloud":
+                runner = CloudServeRunner(config)
+            else:
+                raise ValueError(f"Unknown runner type {config.runner.type}")
             if config.action == "run":
                 runner.run()
             elif config.action == "test":

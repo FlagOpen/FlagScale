@@ -9,6 +9,13 @@ BI_V150:
     FlagScale:
     - 39c0adcf0db48417ded4842c92067626bd55562f
     - b27c70232f9350ef513cd482a109a950b32e033a
+  train:
+    FlagScale+Megatron-LM:
+    - bc57c7643c05da338251f31d203c9fdc66710a17
+    Megatron-LM:
+    - bc57c7643c05da338251f31d203c9fdc66710a17
+    FlagScale:
+    - bc57c7643c05da338251f31d203c9fdc66710a17
 Cambricon_MLU:
   inference:
     FlagScale+vllm:
@@ -31,10 +38,13 @@ Kunlunxin_R310p:
   train:
     FlagScale+Megatron-LM:
     - 25e9b91b3428e74da262d631fa3e2c13f3e2e2c3
+    - 86a9634302da78433aef8dcf2d748771ba6393dd
     Megatron-LM:
     - 25e9b91b3428e74da262d631fa3e2c13f3e2e2c3
+    - 86a9634302da78433aef8dcf2d748771ba6393dd
     FlagScale:
     - 25e9b91b3428e74da262d631fa3e2c13f3e2e2c3
+    - 86a9634302da78433aef8dcf2d748771ba6393dd
 MUSA_S5000:
   train:
     FlagScale+Megatron-LM:
@@ -85,6 +95,16 @@ Hygon_BW1000:
     - f52f1dd7b25c7fcc4aa1658c9162667abc10e356
     FlagScale:
     - f52f1dd7b25c7fcc4aa1658c9162667abc10e356
+  inference:
+    FlagScale+vllm:
+    - b51ca00869d4e61c35f07f65c76074f14ff47570
+    - de2e27596c0cc54c73261060e9cca4ef4f74aaa5
+    vllm:
+    - b51ca00869d4e61c35f07f65c76074f14ff47570
+    - de2e27596c0cc54c73261060e9cca4ef4f74aaa5
+    FlagScale:
+    - b51ca00869d4e61c35f07f65c76074f14ff47570
+    - de2e27596c0cc54c73261060e9cca4ef4f74aaa5
 Huawei_Atlas800TA3:
   train:
     FlagScale+Megatron-LM:
@@ -104,3 +124,10 @@ Tsing_micro:
     - d74930cde8af4a6c9aaafada20e7a7c857a1d316
     FlagScale:
     - d74930cde8af4a6c9aaafada20e7a7c857a1d316
+  train:
+    FlagScale+Megatron-LM:
+    - ba7c854fbfeae7676229b5457c05694aaa6b7781
+    Megatron-LM:
+    - ba7c854fbfeae7676229b5457c05694aaa6b7781
+    FlagScale:
+    - ba7c854fbfeae7676229b5457c05694aaa6b7781

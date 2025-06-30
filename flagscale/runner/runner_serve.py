@@ -1,11 +1,15 @@
 import asyncio
+import collections
 import contextlib
 import copy
 import json
+import math
 import os
+import re
 import shlex
 import shutil
 import signal
+import socket
 import subprocess
 
 import psutil
@@ -18,8 +22,12 @@ from flagscale.runner.utils import (
     benchmark,
     dummy_random_input,
     flatten_dict_to_args,
+    get_addr,
     get_free_port,
+    get_ip_addr,
     get_nproc_per_node,
+    is_ip_addr,
+    is_master,
     logger,
     parse_hostfile,
     run_local_command,
@@ -66,14 +74,14 @@ def _get_args_vllm(config: DictConfig):
 
 def _reset_serve_port(config):
     model_port = None
-    deploy_port = config.experiment.get("deploy", {}).get("port", None)
+    deploy_port = config.experiment.get("runner", {}).get("deploy", {}).get("port", None)
     cli_args_port = config.experiment.get("runner", {}).get("cli_args", {}).get("port", None)
 
     OmegaConf.set_struct(config, False)
 
     if cli_args_port:
         deploy_port = cli_args_port
-        config.experiment.deploy.port = cli_args_port
+        config.experiment.runner.deploy.port = cli_args_port
 
     for item in config.serve:
         if item.get("serve_id", None) == "vllm_model":
@@ -129,8 +137,39 @@ def _get_profile_args(config, model="vllm_model"):
     return profile_args
 
 
+def _update_auto_engine_args(config, model="vllm_model", new_engine_args={}):
+    serve_config = config.get("serve", [])
+    if not serve_config:
+        raise ValueError(f"No 'serve' configuration found in task config: {serve_config}")
+    engine_args = {}
+
+    for item in serve_config:
+        if item.get("serve_id", None) == model:
+            engine_args = item.get("engine_args", {})
+
+            if new_engine_args.get("tensor_parallel_size", None):
+                tensor_parallel_size = int(new_engine_args.get("tensor_parallel_size"))
+            else:
+                nproc_per_node = int(config.experiment.runner.get("nproc_per_node", 1))
+                tensor_parallel_size = 2 ** int(math.floor(math.log2(nproc_per_node)))
+            if new_engine_args.get("pipeline_parallel_size", None):
+                pipeline_parallel_size = int(new_engine_args.get("pipeline_parallel_size"))
+            else:
+                pipeline_parallel_size = len(config.get("nodes", [])) or 1
+            new_engine_args["tensor_parallel_size"] = tensor_parallel_size
+            new_engine_args["pipeline_parallel_size"] = pipeline_parallel_size
+            engine_args.update(new_engine_args)
+            item.engine_args = engine_args
+
+            break
+    if not engine_args:
+        raise ValueError(f"No 'engine_args' configuration found in task config: {serve_config}")
+
+    return engine_args
+
+
 def _update_config_serve(config: DictConfig):
-    deploy_config = config.experiment.get("deploy", {})
+    deploy_config = config.experiment.get("runner", {}).get("deploy", {})
 
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     if not os.path.isdir(exp_dir):
@@ -146,16 +185,22 @@ def _update_config_serve(config: DictConfig):
         config.logging = DictConfig({})
 
     cli_model_path = config.experiment.get("runner", {}).get("cli_args", {}).get("model_path", None)
-    cli_engine_args = (
+    cli_engine_args_str = (
         config.experiment.get("runner", {}).get("cli_args", {}).get("engine_args", None)
     )
+    cli_engine_args = json.loads(cli_engine_args_str) if cli_engine_args_str else {}
+
     if cli_model_path or cli_engine_args:
         for item in config.serve:
             if item.get("serve_id", None) == "vllm_model":
                 if cli_model_path:
                     item.engine_args["model"] = cli_model_path
                 if cli_engine_args:
-                    item.engine_args.update(json.loads(cli_engine_args))
+                    item.engine_args.update(cli_engine_args)
+
+    if config.experiment.runner.get("type", "ssh") == "cloud":
+        # set auto tp and pp size
+        _update_auto_engine_args(config, new_engine_args=cli_engine_args)
 
     log_dir = os.path.join(exp_dir, f"serve_logs")
     scripts_dir = os.path.join(log_dir, "scripts")
@@ -167,6 +212,49 @@ def _update_config_serve(config: DictConfig):
 
     os.makedirs(config.logging.scripts_dir, exist_ok=True)
     OmegaConf.set_struct(config, True)
+
+
+def match_address(address):
+    """Check if current node is matched."""
+
+    if is_ip_addr(address):
+        return get_ip_addr() == address
+    else:
+        hostname = socket.gethostname()
+        return hostname == address
+
+
+def parse_cloud_hostfile(hostfile_path):
+    if hostfile_path is None or not os.path.isfile(hostfile_path):
+        logger.warning(
+            f"Hostfile {hostfile_path} not found. The task will proceed using only local resources."
+        )
+        return None
+
+    resources = collections.OrderedDict()
+
+    with open(hostfile_path, "r") as fd:
+        hostfile_lines = fd.readlines()
+
+    for line in hostfile_lines:
+        line = line.strip()
+        if line.startswith("#") or line == "":
+            # hostfile comment or empty line, ignore
+            continue
+        else:
+            host = line
+            num_slots = int(os.getenv("AIRS_ACCELERATOR_NUM", "1"))
+            machine_type = "gpu"
+            resources[host] = {"slots": num_slots, "type": machine_type}
+
+    assert all(info["type"] == None for _, info in resources.items()) or all(
+        info["type"] != None for _, info in resources.items()
+    ), "All hosts must have the a machine type or no machine type specified."
+
+    if len(resources) == 0:
+        raise ValueError("Hostfile is empty or not formatted correctly. Please check the hostfile.")
+
+    return resources
 
 
 def _generate_run_script_serve(config, host, node_rank, cmd, background=True, with_test=False):
@@ -200,7 +288,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         vllm_path = os.path.dirname(vllm.__path__[0])
     except Exception as e:
         vllm_path = f"{root_dir}/vllm"
-    deploy_config = config.experiment.get("deploy", {})
+    deploy_config = config.experiment.get("runner", {}).get("deploy", {})
     envs = config.experiment.get("envs", {})
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
@@ -216,6 +304,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         f.write(f"fi\n")
         f.write(f"\n")
         envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
+        f.write(f"{envs_str}\n")
 
         if nodes:
             if deploy_config.get("prefill_decode_disaggregation", False):
@@ -381,6 +470,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
 
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
+                        if envs_str:
+                            node_cmd = f"{envs_str} && " + node_cmd
 
                         ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
 
@@ -443,6 +534,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             )
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
+                        if envs_str:
+                            node_cmd = f"{envs_str} && " + node_cmd
                         ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
                         if docker_name:
                             ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
@@ -502,6 +595,172 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
     return host_run_script_file
 
 
+def _generate_cloud_run_script_serve(
+    config, host, node_rank, cmd, background=True, with_test=False
+):
+    nodes = config.get("nodes", None)
+    logging_config = config.logging
+    node_id = ""
+    if nodes:
+        node_id = get_addr()
+    no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
+    if no_shared_fs:
+        host_output_file = os.path.join(logging_config.log_dir, f"host.output")
+    else:
+        host_output_file = os.path.join(logging_config.log_dir, f"host_{node_rank}_{host}.output")
+    host_run_script_file = os.path.join(
+        logging_config.scripts_dir, node_id, f"host_{node_rank}_{host}_run.sh"
+    )
+    host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
+
+    os.makedirs(logging_config.scripts_dir, exist_ok=True)
+    if node_id:
+        os.makedirs(os.path.join(logging_config.scripts_dir, node_id), exist_ok=True)
+
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    cmds_config = config.experiment.get("cmds", None)
+    if cmds_config:
+        before_start_cmd = cmds_config.get("before_start", "")
+    else:
+        before_start_cmd = ""
+    cmd += f" --log-dir={logging_config.log_dir}"
+    try:
+        import vllm
+
+        vllm_path = os.path.dirname(vllm.__path__[0])
+    except Exception as e:
+        vllm_path = f"{root_dir}/vllm"
+    deploy_config = config.experiment.get("runner", {}).get("deploy", {})
+    envs = config.experiment.get("envs", {})
+    with open(host_run_script_file, "w") as f:
+        f.write("#!/bin/bash\n\n")
+        f.write("set -x\n")
+        f.write(f"\n")
+        f.write(f"{before_start_cmd}\n")
+        f.write(f"\n")
+
+        f.write(f'if [ -z "$PYTHONPATH" ]; then\n')
+        f.write(f"    export PYTHONPATH={vllm_path}:{root_dir}\n")
+        f.write(f"else\n")
+        f.write(f'    export PYTHONPATH="$PYTHONPATH:{vllm_path}:{root_dir}"\n')
+        f.write(f"fi\n")
+        f.write(f"\n")
+        envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
+        f.write(f"{envs_str}\n")
+
+        if nodes:
+            f.write(f"ray_path=$(realpath $(which ray))\n")
+            master_addr = config.experiment.runner.get("master_addr")
+            master_port = config.experiment.runner.get("master_port", 7396)
+
+            address = f"{master_addr}:{master_port}"
+            is_address_matched = False
+            for index, (ip, node) in enumerate(nodes):
+                if not node.get("type", None):
+                    raise ValueError(
+                        f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
+                    )
+                if not node.get("slots", None):
+                    raise ValueError(
+                        f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+                    )
+                if match_address(ip):
+                    is_address_matched = True
+                    if is_master(config, collections.OrderedDict(nodes)):
+                        # master node
+                        f.write(f"# start cluster\n")
+                        f.write(f"# master node\n")
+                        if node.type == "gpu":
+                            node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
+                        elif node.type == "cpu":
+                            node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
+                        else:
+                            resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                            node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
+                        if before_start_cmd:
+                            node_cmd = f"{before_start_cmd} && " + node_cmd
+                        f.write(f"{node_cmd}\n")
+                    else:
+                        # worker nodes
+                        if index == 1:
+                            f.write(f"\n")
+                            f.write(f"# worker nodes\n")
+                        if node.type == "gpu":
+                            node_cmd = (
+                                f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
+                            )
+
+                        elif node.type == "cpu":
+                            node_cmd = (
+                                f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
+                            )
+                        else:
+                            resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                            node_cmd = (
+                                f"${{ray_path}} start --address={address} --resources='{resource}'"
+                            )
+                        if before_start_cmd:
+                            node_cmd = f"{before_start_cmd} && " + node_cmd
+                        f.write(f"{node_cmd}\n")
+            if not is_address_matched:
+                raise ValueError(f"The current node can not match any given node.")
+
+        else:
+            # Note: config key device_type is specified for single node serving in neither gpu or cpu.
+            device_type = None
+            nproc_per_node = None
+            if config.experiment.get("runner", None) and config.experiment.runner.get(
+                "device_type", None
+            ):
+                device_type = config.experiment.runner.get("device_type", None)
+                nproc_per_node = config.experiment.runner.get("nproc_per_node", None)
+                if nproc_per_node is None:
+                    raise ValueError(
+                        f"nproc_per_node must be specified when device_type {device_type} is specified."
+                    )
+            node_cmd = None
+
+            if deploy_config.get("use_fs_serve", True) and config.serve[0].get("engine", None):
+                f.write(f"ray_path=$(realpath $(which ray))\n")
+                if not device_type:
+                    node_cmd = f"${{ray_path}} start --head"
+                elif device_type == "gpu":
+                    node_cmd = f"${{ray_path}} start --head --num-gpus={nproc_per_node}"
+                elif device_type == "cpu":
+                    node_cmd = f"${{ray_path}} start --head --num-cpus={nproc_per_node}"
+                else:
+                    resource = json.dumps({device_type: nproc_per_node}).replace('"', '\\"')
+                    node_cmd = f"${{ray_path}} start --head --resources='{resource}'"
+            if before_start_cmd:
+                node_cmd = f"{before_start_cmd} && {node_cmd}" if node_cmd else before_start_cmd
+            if node_cmd:
+                f.write(f"{node_cmd}\n")
+
+        if not nodes or is_master(config, collections.OrderedDict(nodes)):
+            f.write(f"mkdir -p {logging_config.log_dir}\n")
+            f.write(f"mkdir -p {logging_config.pids_dir}\n")
+            f.write(f"\n")
+            f.write(f"cd {root_dir}\n")
+            f.write(f"\n")
+            f.write(f'cmd="{cmd}"\n')
+            f.write(f"\n")
+            # TODO: need a option to control whether to append or overwrite the output file
+            # Now, it always appends to the output file
+            f.write("echo '=========== launch task ==========='\n")
+            if background:
+                f.write(
+                    f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
+                )
+            else:
+                f.write(f'bash -c "$cmd; sync" >> {host_output_file} 2>&1\n')
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(host_run_script_file, 0o755)
+
+    return host_run_script_file
+
+
 def _generate_stop_script(config, host, node_rank):
     logging_config = config.logging
 
@@ -527,7 +786,7 @@ def _generate_stop_script(config, host, node_rank):
     else:
         before_start_cmd = ""
 
-    deploy_config = config.experiment.get("deploy", {})
+    deploy_config = config.experiment.get("runner", {}).get("deploy", {})
     envs = config.experiment.get("envs", {})
     with open(host_stop_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
@@ -535,6 +794,8 @@ def _generate_stop_script(config, host, node_rank):
         f.write(f"\n")
         f.write(f"{before_start_cmd}\n")
         f.write(f"\n")
+        envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
+        f.write(f"{envs_str}\n")
 
         if nodes:
             if deploy_config.get("prefill_decode_disaggregation", False):
@@ -561,6 +822,8 @@ def _generate_stop_script(config, host, node_rank):
                         node_cmd = f"${{ray_path}} stop && pkill -f python"
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
+                        if envs_str:
+                            node_cmd = f"{envs_str} && " + node_cmd
 
                         ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
 
@@ -622,7 +885,7 @@ class SSHServeRunner(RunnerBase):
         super().__init__(config)
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
-        self.deploy_config = self.config.experiment.get("deploy", {})
+        self.deploy_config = self.config.experiment.get("runner", {}).get("deploy", {})
         if not self.config.experiment.task.get("entrypoint", None):
             self.inference_engine = _get_inference_engine(self.config)
             self.port = _reset_serve_port(config)
@@ -640,7 +903,11 @@ class SSHServeRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
         if self.inference_engine:
-            if self.config.experiment.get("deploy", {}).get("prefill_decode_disaggregation", False):
+            if (
+                self.config.experiment.get("runner", {})
+                .get("deploy", {})
+                .get("prefill_decode_disaggregation", False)
+            ):
                 self.user_script = "flagscale/serve/run_disagg_xpyd_router.py"
             elif not self.use_fs_serve:
                 self.user_script = "flagscale/serve/run_inference_engine.py"
@@ -662,9 +929,7 @@ class SSHServeRunner(RunnerBase):
                 hostfile_path = os.path.join(os.getcwd(), hostfile_path)
             if not os.path.exists(hostfile_path):
                 raise ValueError(f"The hostfile {hostfile_path} does not exist")
-
         self.resources = None
-
         if hostfile_path:
             self.resources = parse_hostfile(hostfile_path)
             for key, value in self.resources.items():
@@ -677,6 +942,7 @@ class SSHServeRunner(RunnerBase):
                 OmegaConf.set_struct(self.config, False)
                 self.config["nodes"] = list(self.resources.items())
                 OmegaConf.set_struct(self.config, True)
+
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
@@ -874,3 +1140,120 @@ class SSHServeRunner(RunnerBase):
             )
         )
         return result
+
+
+class CloudServeRunner(RunnerBase):
+    def __init__(self, config: DictConfig):
+        super().__init__(config)
+        self.task_type = getattr(self.config.experiment.task, "type", None)
+        assert self.task_type == "serve", f"Unsupported task type: {self.task_type}"
+        self.deploy_config = self.config.experiment.get("runner", {}).get("deploy", {})
+        if not self.config.experiment.task.get("entrypoint", None):
+            self.inference_engine = _get_inference_engine(self.config)
+            self.port = _reset_serve_port(config)
+        else:
+            self.inference_engine = None
+            self.port = None
+        self.use_fs_serve = self.deploy_config.get("use_fs_serve", True)
+
+        self._prepare()
+        self.host = None
+
+    def _prepare(self):
+        self.resources = None
+        hostfile_path = self.config.experiment.runner.get("hostfile", None)
+        if hostfile_path:
+            if os.path.isabs(hostfile_path):
+                hostfile_path = hostfile_path
+            else:
+                hostfile_path = os.path.join(os.getcwd(), hostfile_path)
+            if not os.path.exists(hostfile_path):
+                raise ValueError(f"The hostfile {hostfile_path} does not exist")
+
+        if hostfile_path:
+            self.resources = parse_cloud_hostfile(hostfile_path)
+            for key, value in self.resources.items():
+                if not value.get("type", None):
+                    logger.warning(
+                        f"The hostfile key type is not set for host {key}, using gpu by default"
+                    )
+                    self.resources[key]["type"] = "gpu"
+            if self.resources:
+                OmegaConf.set_struct(self.config, False)
+                self.config["nodes"] = list(self.resources.items())
+                OmegaConf.set_struct(self.config, True)
+
+        _update_config_serve(self.config)
+        self.user_args = _get_args_vllm(self.config)
+        self.user_envs = self.config.experiment.get("envs", {})
+        entrypoint = self.config.experiment.task.get("entrypoint", None)
+        if self.inference_engine:
+            if (
+                self.config.experiment.get("runner", {})
+                .get("deploy", {})
+                .get("prefill_decode_disaggregation", False)
+            ):
+                self.user_script = "flagscale/serve/run_disagg_xpyd_router.py"
+            elif not self.use_fs_serve:
+                self.user_script = "flagscale/serve/run_inference_engine.py"
+            else:
+                self.user_script = "flagscale/serve/run_fs_serve_vllm.py"
+        elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
+            self.user_script = entrypoint
+        elif entrypoint is None:
+            self.user_script = "flagscale/serve/run_serve.py"
+        else:
+            raise ValueError(
+                f"Invalid config entrypoint: {entrypoint}, must be a python file path or null."
+            )
+        logger.info("\n************** configuration **************")
+        logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
+
+    def _run_each(
+        self,
+        host,
+        master_addr,
+        master_port,
+        nnodes,
+        node_rank,
+        nproc_per_node,
+        with_test=False,
+        dryrun=False,
+    ):
+        export_cmd = []
+        for k, v in self.user_envs.items():
+            export_cmd += [f"{k}={v}"]
+
+        cmd = shlex.join(export_cmd + ["python"] + [self.user_script] + self.user_args)
+
+        host_run_script_file = _generate_cloud_run_script_serve(
+            self.config, host, node_rank, cmd, background=True, with_test=with_test
+        )
+
+        run_local_command(f"bash {host_run_script_file}", dryrun)
+
+    def run(self, with_test=False, dryrun=False):
+        num_visible_devices = None
+        visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
+        if visible_devices is not None and isinstance(visible_devices, str):
+            visible_devices = visible_devices.split(",")
+            num_visible_devices = len(visible_devices)
+
+        runner_config = self.config.experiment.runner
+
+        # If hostfile is not provided, run the job on localhost
+        nproc_from_args = runner_config.get("nproc_per_node", None)
+        nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
+        available_addr = runner_config.get("master_addr", "localhost")
+        available_port = runner_config.get("master_port", get_free_port())
+        self._run_each(
+            "localhost",
+            available_addr,
+            available_port,
+            1,
+            0,
+            nproc_per_node,
+            with_test=with_test,
+            dryrun=dryrun,
+        )
+        self.host = available_addr
