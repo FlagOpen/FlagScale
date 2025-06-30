@@ -22,6 +22,9 @@ if [ -z "$backend" ] || [ -z "$subset" ]; then
     exit 1
 fi
 
+# Set default values for optional parameters
+coverage=${coverage:-"True"}
+
 # Configuration file path
 config_file="tests/scripts/unit_tests/config.yml"
 if [ ! -f "$config_file" ]; then
