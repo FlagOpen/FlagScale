@@ -50,17 +50,16 @@ jobs:
 
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           if [ "${{ inputs.type }}" = "train" ] || [ "${{ inputs.type }}" = "hetero_train" ]; then
-            python tools/patch/unpatch.py --backend Megatron-LM
+            PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
             if [ "${{ inputs.task }}" = "llava_onevision" ]; then
-              python tools/patch/unpatch.py --backend Megatron-Energon
+              PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-Energon" --verbose --no-build-isolation
               cp -r third_party/Megatron-Energon/src/megatron/energon third_party/Megatron-LM/megatron
             fi
           elif [ "${{ inputs.type }}" = "inference" ] || [ "${{ inputs.type }}" = "serve" ]; then
-            python tools/patch/unpatch.py --backend vllm
             source /root/miniconda3/bin/activate flagscale-inference
             pip install scikit-build scikit-build-core
             pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
-            MAX_JOBS=$(nproc) pip install --no-build-isolation -v ./third_party/vllm/.
+            PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
           else
             echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
