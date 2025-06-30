@@ -1,4 +1,6 @@
-# ===================== Stage: Base with CUDA and Dependencies =====================
+##############################################################################
+# ================== Stage: Base with CUDA and Dependencies ==================
+##############################################################################
 ARG CUDA_VERSION=12.8.1
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS base
 
@@ -10,6 +12,8 @@ ENV TZ=Asia/Shanghai
 ##############################################################################
 ENV STAGE_DIR=/tmp
 RUN mkdir -p ${STAGE_DIR}
+ENV WORK_DIR=/workspace
+RUN mkdir -p ${WORK_DIR}
 
 ##############################################################################
 # Install Basic Utilities
@@ -35,52 +39,6 @@ RUN apt-get update && \
         unzip \
         vim \
         wget
-        
-##############################################################################
-# OPENMPI
-##############################################################################
-ENV OPENMPI_BASEVERSION=4.1
-ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.6
-RUN cd ${STAGE_DIR} && \
-        wget -q -O - https://download.open-mpi.org/release/open-mpi/v${OPENMPI_BASEVERSION}/openmpi-${OPENMPI_VERSION}.tar.gz | tar xzf - && \
-        cd openmpi-${OPENMPI_VERSION} && \
-        ./configure --prefix=/usr/local/openmpi-${OPENMPI_VERSION} && \
-        make -j"$(nproc)" install && \
-        ln -s /usr/local/openmpi-${OPENMPI_VERSION} /usr/local/mpi && \
-        # Sanity check:
-        test -f /usr/local/mpi/bin/mpic++ && \
-        cd .. && \
-        rm -r openmpi-${OPENMPI_VERSION}
-ENV PATH=/usr/local/mpi/bin:${PATH} \
-        LD_LIBRARY_PATH=/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:${LD_LIBRARY_PATH}
-# Create a wrapper for OpenMPI to allow running as root by default
-RUN mv /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun.real && \
-        echo '#!/bin/bash' > /usr/local/mpi/bin/mpirun && \
-        echo 'mpirun.real --allow-run-as-root --prefix /usr/local/mpi "$@"' >> /usr/local/mpi/bin/mpirun && \
-        chmod a+x /usr/local/mpi/bin/mpirun
-
-##############################################################################
-# Install cuDNN (NVIDIA CUDA Deep Neural Network library)
-##############################################################################
-ARG CUDNN_VERSION=9.7.1
-RUN cd ${STAGE_DIR} && \
-        CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
-        CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
-        CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
-        CUDA_MINOR=$(echo "${CUDA_VERSION}" | cut -d. -f2) && \
-        wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda${CUDA_MAJOR}-archive.tar.xz && \
-        tar -xJvf cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda12-archive.tar.xz && \
-        mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include && \
-        mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64 && \
-        cp cudnn-*-archive/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/ && \
-        cp -P cudnn-*-archive/lib/libcudnn* /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/ && \
-        chmod a+r /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/libcudnn* && \
-        echo "export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:\$PATH" >> ~/.bashrc && \
-        echo "export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:\$LD_LIBRARY_PATH" >> ~/.bashrc && \
-        cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
-
-# ===================== Stage: Python and Conda Installation ====================
-FROM base AS python-conda
 
 ##############################################################################
 # Install Python
@@ -105,21 +63,6 @@ RUN add-apt-repository ppa:deadsnakes/ppa && \
         rm /usr/lib/python3/dist-packages/blinker-1.4.egg-info
 
 ##############################################################################
-# Install Miniconda
-##############################################################################
-RUN cd ${STAGE_DIR} && \
-        mkdir -p ~/miniconda3 && \
-        wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh && \
-        bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3 && \
-        rm -rf ~/miniconda3/miniconda.sh && \
-        ~/miniconda3/bin/conda init bash && \
-        ~/miniconda3/bin/conda config --set auto_activate_base false && \
-        ~/miniconda3/bin/conda config --set default_python ${PYTHON_VERSION}
-
-# ===================== Stage: Build FlagScale =====================
-FROM python-conda AS build-flagscale
-
-##############################################################################
 # SCCACHE
 ##############################################################################
 ENV SCCACHE_BUCKET_NAME=flagscale-build-sccache
@@ -133,15 +76,66 @@ RUN cd ${STAGE_DIR} && \
         rm -rf sccache.tar.gz sccache-v0.8.1-x86_64-unknown-linux-musl
 
 ##############################################################################
+# OPENMPI
+##############################################################################
+ENV OPENMPI_BASEVERSION=4.1
+ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.6
+RUN cd ${STAGE_DIR} && \
+        wget -q -O - https://download.open-mpi.org/release/open-mpi/v${OPENMPI_BASEVERSION}/openmpi-${OPENMPI_VERSION}.tar.gz | tar xzf - && \
+        cd openmpi-${OPENMPI_VERSION} && \
+        ./configure --prefix=/usr/local/openmpi-${OPENMPI_VERSION} && \
+        make -j"$(nproc)" install && \
+        ln -s /usr/local/openmpi-${OPENMPI_VERSION} /usr/local/mpi && \
+        # Sanity check:
+        test -f /usr/local/mpi/bin/mpic++ && \
+        cd .. && \
+        rm -r openmpi-${OPENMPI_VERSION}
+ENV PATH=/usr/local/mpi/bin:${PATH} \
+        LD_LIBRARY_PATH=/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:${LD_LIBRARY_PATH}
+# Create a wrapper for OpenMPI to allow running as root by default
+RUN mv /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun.real && \
+        echo '#!/bin/bash' > /usr/local/mpi/bin/mpirun && \
+        echo 'mpirun.real --allow-run-as-root --prefix /usr/local/mpi "$@"' >> /usr/local/mpi/bin/mpirun && \
+        chmod a+x /usr/local/mpi/bin/mpirun
+
+##############################################################################
+# Install Miniconda
+##############################################################################
+RUN cd ${STAGE_DIR} && \
+        mkdir -p ~/miniconda3 && \
+        wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh && \
+        bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3 && \
+        rm -rf ~/miniconda3/miniconda.sh && \
+        ~/miniconda3/bin/conda init bash && \
+        ~/miniconda3/bin/conda config --set auto_activate_base false && \
+        ~/miniconda3/bin/conda config --set default_python ${PYTHON_VERSION}
+
+##############################################################################
+# Install cuDNN (NVIDIA CUDA Deep Neural Network library)
+##############################################################################
+ARG CUDNN_VERSION=9.7.1
+RUN cd ${STAGE_DIR} && \
+        CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
+        CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
+        CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
+        CUDA_MINOR=$(echo "${CUDA_VERSION}" | cut -d. -f2) && \
+        wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda${CUDA_MAJOR}-archive.tar.xz && \
+        tar -xJvf cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda12-archive.tar.xz && \
+        mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include && \
+        mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64 && \
+        cp cudnn-*-archive/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/ && \
+        cp -P cudnn-*-archive/lib/libcudnn* /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/ && \
+        chmod a+r /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/libcudnn* && \
+        echo "export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:\$PATH" >> ~/.bashrc && \
+        echo "export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:\$LD_LIBRARY_PATH" >> ~/.bashrc && \
+        cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
+
+##############################################################################
 # Clone FlagScale
 ##############################################################################
-# ARG FLAGSCALE_REPO
-# ARG FLAGSCALE_BRANCH
-# ARG FLAGSCALE_COMMIT
-ARG FLAGSCALE_REPO=https://github.com/zihugithub/FlagScale.git
-ARG FLAGSCALE_BRANCH=image_reduction
-ARG FLAGSCALE_COMMIT=dcad933c
-
+ARG FLAGSCALE_REPO
+ARG FLAGSCALE_BRANCH
+ARG FLAGSCALE_COMMIT
 RUN cd ${STAGE_DIR} && \
     git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
     { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
@@ -170,32 +164,21 @@ RUN apt-get clean && \
         rm -rf /var/lib/apt/lists/* && \
         rm -rf ${STAGE_DIR}/*
 
-
-# ===================== Final Stage: Minimal Runtime Image =====================
-
+##############################################################################
+# ==================== Final Stage: Minimal Runtime Image ====================
+##############################################################################
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS final
 
-ARG CUDA_VERSION=12.8.1
-ARG CUDNN_VERSION=9.7.1
-ARG PYTHON_VERSION=3.12
 ARG WORK_DIR=/workspace
 ARG STAGE_DIR=/tmp
-
 ENV TZ=Asia/Shanghai
 ENV DEBIAN_FRONTEND noninteractive
-ENV TZ=Asia/Shanghai
 
-ENV OPENMPI_BASEVERSION=4.1
-ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.6
-ENV PATH=/usr/local/mpi/bin:${PATH} \
-    LD_LIBRARY_PATH=/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:${LD_LIBRARY_PATH}
-
+##############################################################################
+# Temporary Installation Directory
+##############################################################################
 RUN mkdir -p ${WORK_DIR} && \
-    mkdir -p ${STAGE_DIR} && \
-    CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
-    CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
-    CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
-    CUDA_MINOR=$(echo "${CUDA_VERSION}" | cut -d. -f2)
+    mkdir -p ${STAGE_DIR}
 
 ##############################################################################
 # Copy necessary files from build stages
@@ -204,6 +187,8 @@ RUN mkdir -p ${WORK_DIR} && \
 COPY --from=base /usr/bin /usr/bin
 COPY --from=base /usr/share /usr/share
 COPY --from=base /usr/lib /usr/lib
+
+COPY --from=base /root/.bashrc /root/.bashrc
 
 # ------------------
 COPY --from=build-flagscale /usr/local/mpi /usr/local/mpi
