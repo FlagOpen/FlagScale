@@ -3,7 +3,7 @@ defaults:
 - serve: 300b
 
 experiment:
-  exp_name: ernie34_300b
+  exp_name: ernie45_300b
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
