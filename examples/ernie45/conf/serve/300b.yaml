@@ -1,21 +1,20 @@
 - serve_id: vllm_model
   engine: vllm
   engine_args:
-    model: /nfs/hcr/models/PaddlePaddle/ERNIE-4.5-300B-A47B-Base-PT
+    model: /models/PaddlePaddle/ERNIE-4.5-300B-A47B-Base-PT
     host: 0.0.0.0
-    max_model_len: 256
-    max_num_seqs: 1
+    max_model_len: 128000
+    max_num_seqs: 8
     uvicorn_log_level: warning
     port: 30000
   engine_args_specific:
     vllm:
       tensor_parallel_size: 8
-      pipeline_parallel_size: 1
+      pipeline_parallel_size: 2
       gpu_memory_utilization: 0.98
       trust_remote_code: true
-      # GMEM not enough if disable eager mode
-      enforce_eager: true
-      # enable_chunked_prefill: true
+      # enforce_eager: true
+      enable_chunked_prefill: true
   profile:
     prefix_len: 0
     input_len: 1024
