@@ -1,16 +1,15 @@
-# DeepSeek 16B, 2.4A Model
 defaults:
   - _self_
-  - train: 16b_a3b
+  - train: 671b_a31b
 
 experiment:
   exp_name: DeepSeek-16b-a3b
   seed: 42
   save_steps: 10000
   load: None
-  exp_dir: ./dualpipev_large_overlap_gbs256
-  # exp_dir: ./dualpipev_base_gbs256_profile
-  # exp_dir: ./1f1b_gbs1024 
+  exp_dir: ./dualpipev_large_overlap_3_gbs256
+  # exp_dir: ./dualpipev_large_base_gbs256
+  # exp_dir: ./1f1b_large_gbs256 
   ckpt_format: torch
   task:
     type: train

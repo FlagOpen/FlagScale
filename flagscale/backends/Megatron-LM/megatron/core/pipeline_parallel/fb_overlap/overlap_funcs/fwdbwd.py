@@ -667,8 +667,9 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
     # Unperm2 Bwd
     # check if backward unpermutation alltoall is launched at bwd layer before
-    # torch.cuda.nvtx.range_push("transformer_layer_forward_moe_backward_moe_overlaping")
+    
     if bwd_unperm_a2a_handle is None:
+        torch.cuda.nvtx.range_push("combine b call")
         run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad)
         # Async Unperm A2A
         _, unperm1_out_grad, bwd_unperm_a2a_handle = async_all_to_all(
@@ -677,9 +678,10 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             bwd_layer_graph.input_splits,
             ep_group
         )
+        torch.cuda.nvtx.range_pop()
     else:
         unperm1_out_grad = bwd_layer_output_grad
-    # torch.cuda.nvtx.range_pop()
+    
 
     with checkpoint_context:
 
@@ -688,6 +690,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         residual1 = detached_layer_input
 
         # input_layernorm + AttentionForward
+        torch.cuda.nvtx.range_push("attn f")
         hidden_states = attention_forward(
             fwd_layer, detached_layer_input, residual1,
             attention_mask=attention_mask,
@@ -696,6 +699,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             packed_seq_params=packed_seq_params,
             recompute_norm=recomp_norm
         )
+        
 
         attention_out, detached_attention_out = hidden_states, detach_tensor(hidden_states)
 
@@ -710,7 +714,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         # MLP.
         detached_mlp_input = detach_tensor(pre_mlp_layernorm_output)
         probs, routing_map = router_forward(fwd_layer, detached_mlp_input)
-        
+
         moe_shared_expert_overlap = False
         if tp_size > 1 and use_shared_experts and moe_shared_expert_overlap:
             # launch tp comm here and wait last aync comm finish
@@ -724,27 +728,52 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         # Token Permutation Forward
         probs_detached = detach_tensor(probs, checkpoint_forward=checkpoint)
         perm1_local_input_tokens, perm1_probs, tokens_per_expert = alltoall_token_perm1(fwd_layer.mlp.token_dispatcher, detached_mlp_input, probs_detached, routing_map)
+        torch.cuda.nvtx.range_pop()
 
     last_comm_handle = shared_experts_allgather_handle if shared_experts_allgather_handle else bwd_unperm_a2a_handle
     with checkpoint_context:
         # Async Perm A2A.
-        _, perm1_local_input_tokens_a2a, perm1_local_input_tokens_a2a_handle = async_all_to_all(
-            perm1_local_input_tokens,
+        torch.cuda.nvtx.range_push("dispatch f call, combine b call wait")
+        # _, perm1_local_input_tokens_a2a, perm1_local_input_tokens_a2a_handle = async_all_to_all(
+        #     perm1_local_input_tokens,
+        #     fwd_layer.mlp.token_dispatcher.output_splits,
+        #     fwd_layer.mlp.token_dispatcher.input_splits,
+        #     ep_group,
+        #     event=last_comm_handle,
+        #     stream=torch.cuda.current_stream(),
+        # )
+        # last_comm_handle_1 = perm1_local_input_tokens_a2a_handle
+        # _, perm1_probs_a2a, perm1_probs_a2a_handle = async_all_to_all(
+        #     perm1_probs,
+        #     fwd_layer.mlp.token_dispatcher.output_splits,
+        #     fwd_layer.mlp.token_dispatcher.input_splits,
+        #     ep_group,
+        #     stream=torch.cuda.current_stream(),
+        # )
+        # last_comm_handle_2 = perm1_probs_a2a_handle
+
+        _, perm1_probs_a2a, perm1_probs_a2a_handle = async_all_to_all(
+            perm1_probs,
             fwd_layer.mlp.token_dispatcher.output_splits,
             fwd_layer.mlp.token_dispatcher.input_splits,
             ep_group,
             event=last_comm_handle,
             stream=torch.cuda.current_stream(),
         )
-        last_comm_handle_1 = perm1_local_input_tokens_a2a_handle
-        _, perm1_probs_a2a, perm1_probs_a2a_handle = async_all_to_all(
-            perm1_probs,
+        last_comm_handle_2 = perm1_probs_a2a_handle
+
+        _, perm1_local_input_tokens_a2a, perm1_local_input_tokens_a2a_handle = async_all_to_all(
+            perm1_local_input_tokens,
             fwd_layer.mlp.token_dispatcher.output_splits,
             fwd_layer.mlp.token_dispatcher.input_splits,
             ep_group,
             stream=torch.cuda.current_stream(),
         )
-        last_comm_handle_2 = perm1_probs_a2a_handle
+        last_comm_handle_1 = perm1_local_input_tokens_a2a_handle
+       
+
+
+        torch.cuda.nvtx.range_pop()
 
     with checkpoint_context:
         shared_expert_output = None
@@ -765,6 +794,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         assert not recomp_norm, "not support recompute norm"
         fwd_layer.norm_ckpt2.discard_output()
 
+    torch.cuda.nvtx.range_push("mlp b")
     bwd_unperm_a2a_handle.wait()
     bwd_unperm_a2a_handle = None
     run_graph_backward(bwd_layer_graph.unperm1_graph, unperm1_out_grad)
@@ -773,22 +803,35 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
     run_graph_backward(bwd_layer_graph.perm2_graph, keep_graph=True)  # keep for dw
     run_graph_backward(bwd_layer_graph.perm2_append_graph, keep_graph=True)
-    
+    torch.cuda.nvtx.range_pop()
+
+    torch.cuda.nvtx.range_push("dispatch f wait")
     perm1_local_input_tokens_a2a_handle.wait()
     perm1_local_input_tokens_a2a_handle = None
     perm1_probs_a2a_handle.wait()
     perm1_probs_a2a_handle = None
     perm1_local_input_tokens.untyped_storage().resize_(0)
     perm1_probs.untyped_storage().resize_(0)
+    torch.cuda.nvtx.range_pop()
     
-    _, perm1_out1_grad, bwd_perm_a2a_handle1 = async_all_to_all(
-        bwd_layer_graph.perm_a2a_graph[1].grad,
-        bwd_layer_graph.input_splits,
-        bwd_layer_graph.output_splits,
-        ep_group,
-        stream=torch.cuda.current_stream(),
-    )
-    last_comm_handle_1 = bwd_perm_a2a_handle1
+    torch.cuda.nvtx.range_push("dispatch b call")
+    # _, perm1_out1_grad, bwd_perm_a2a_handle1 = async_all_to_all(
+    #     bwd_layer_graph.perm_a2a_graph[1].grad,
+    #     bwd_layer_graph.input_splits,
+    #     bwd_layer_graph.output_splits,
+    #     ep_group,
+    #     stream=torch.cuda.current_stream(),
+    # )
+    # last_comm_handle_1 = bwd_perm_a2a_handle1
+    # _, perm1_out2_grad, bwd_perm_a2a_handle2 = async_all_to_all(
+    #     bwd_layer_graph.perm_a2a_append_graph[1].grad,
+    #     bwd_layer_graph.input_splits,
+    #     bwd_layer_graph.output_splits,
+    #     ep_group,
+    #     stream=torch.cuda.current_stream(),
+    # )
+    # last_comm_handle_2 = bwd_perm_a2a_handle2
+
     _, perm1_out2_grad, bwd_perm_a2a_handle2 = async_all_to_all(
         bwd_layer_graph.perm_a2a_append_graph[1].grad,
         bwd_layer_graph.input_splits,
@@ -797,6 +840,16 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         stream=torch.cuda.current_stream(),
     )
     last_comm_handle_2 = bwd_perm_a2a_handle2
+    _, perm1_out1_grad, bwd_perm_a2a_handle1 = async_all_to_all(
+        bwd_layer_graph.perm_a2a_graph[1].grad,
+        bwd_layer_graph.input_splits,
+        bwd_layer_graph.output_splits,
+        ep_group,
+        stream=torch.cuda.current_stream(),
+    )
+    last_comm_handle_1 = bwd_perm_a2a_handle1
+
+    torch.cuda.nvtx.range_pop()
 
     # launch shared expert grad allgather here
     if tp_size > 1 and moe_shared_expert_overlap:
@@ -807,12 +860,15 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         backward_ag_shared = bwd_layer_graph.shared_experts_graph[1].grad
         backward_ag_shared_handle = None
 
+    torch.cuda.nvtx.range_push("mlp w")
     # Grouped MLP dw computation
     call_experts_backward_dw(bwd_layer_graph)
     turn_experts_delay_wgrad_compute(bwd_layer_graph, enable=False)
+    torch.cuda.nvtx.range_pop()
     
 
     with checkpoint_context:
+        torch.cuda.nvtx.range_push("mlp f")
         detached_perm1_local_input_tokens_a2a = detach_tensor(perm1_local_input_tokens_a2a, checkpoint_forward=checkpoint)
         detached_perm1_probs_a2a = detach_tensor(perm1_probs_a2a, checkpoint_forward=checkpoint)
         # Token Perm2 Forward.
@@ -836,21 +892,29 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             rs_shared_experts_handle.wait()
             rs_shared_experts_handle = None
             share_experts_graph.untyped_storage().resize_(0)
+        torch.cuda.nvtx.range_pop()
+
+        torch.cuda.nvtx.range_push("dispatch b wait")
         bwd_perm_a2a_handle1.wait()
         bwd_perm_a2a_handle1 = None
         bwd_perm_a2a_handle2.wait()
         bwd_perm_a2a_handle2 = None
+        torch.cuda.nvtx.range_pop()
+
     if backward_ag_shared_handle is not None:
         # ensure tp comm is not overlaped with alltoall comm
         backward_ag_shared_handle.wait()
         backward_ag_shared_handle = None
     # move shared experts backward before unpermF all2all to avoid tp comm colision.
     
+    torch.cuda.nvtx.range_push("shared experts b")
     turn_shared_experts_delay_wgrad_compute(bwd_layer_graph, enable=True)
     run_graph_backward(bwd_layer_graph.shared_experts_graph, backward_ag_shared, keep_grad=True)  # dw computation
+    torch.cuda.nvtx.range_pop()
 
     with checkpoint_context:
         # launch async all2all in the middle of attention graph backward
+        torch.cuda.nvtx.range_push("combine f call")
         _, unperm1_hidden_states_a2a, unperm1_hidden_states_a2a_handle = async_all_to_all(
             unperm1_hidden_states,
             fwd_layer.mlp.token_dispatcher.input_splits,
@@ -858,7 +922,9 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             ep_group,
             stream=torch.cuda.current_stream(),
         )
+        torch.cuda.nvtx.range_pop()
 
+    torch.cuda.nvtx.range_push("attn b")
     run_graph_backward(bwd_layer_graph.perm1_graph, perm1_out1_grad)
     run_graph_backward(bwd_layer_graph.perm1_append_graph, perm1_out2_grad)
     perm1_out1_grad.untyped_storage().resize_(0)
@@ -868,22 +934,30 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     
     turn_attention_delay_wgrad_compute(bwd_layer_graph, enable=True)
     run_graph_backward(bwd_layer_graph.attn_graph, keep_grad=True)
+    torch.cuda.nvtx.range_pop()
 
+
+    
     if next_bwd_layer_graph is not None and getattr(next_bwd_layer_graph, 'is_moe_layer', False):
         run_graph_backward(next_bwd_layer_graph.unperm2_graph, bwd_layer_graph.layer_input.grad, keep_graph=True)
 
+    torch.cuda.nvtx.range_push("combine f wait")
     unperm1_hidden_states_a2a_handle.wait()
     unperm1_hidden_states_a2a_handle = None
     unperm1_hidden_states.untyped_storage().resize_(0)
+    torch.cuda.nvtx.range_pop()
 
     next_layer_output_grad, next_bwd_unperm_a2a_handle = bwd_layer_graph.layer_input.grad, None
     if next_bwd_layer_graph is not None and getattr(next_bwd_layer_graph, 'is_moe_layer', False):
+        torch.cuda.nvtx.range_push("combine b call")
         _, next_layer_output_grad, next_bwd_unperm_a2a_handle = async_all_to_all(
             next_bwd_layer_graph.unperm_a2a_graph[1].grad,
             next_bwd_layer_graph.output_splits,
             next_bwd_layer_graph.input_splits,
             ep_group
         )
+        torch.cuda.nvtx.range_pop()
+
     with checkpoint_context:
         detached_unperm1_hidden_states_a2a = detach_tensor(unperm1_hidden_states_a2a, checkpoint_forward=checkpoint)
         route_expert_output, _ = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm1_hidden_states_a2a)
@@ -929,15 +1003,16 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         next_iter_output_tensor_grad, bwd_p2p_handles = p2p_comm_helper(bwd_pp_comm_params, bwd_layer_graph.layer_input.grad)
 
     # process shared experts, backward for weights
-    # torch.cuda.nvtx.range_push("Shared Experts Bwd")
+    torch.cuda.nvtx.range_push("shared experts w")
     call_shared_experts_backward_dw(bwd_layer_graph)
     turn_shared_experts_delay_wgrad_compute(bwd_layer_graph, enable=False)
-    # torch.cuda.nvtx.range_pop()
+    torch.cuda.nvtx.range_pop()
+    
     # process attention, backward for weights
-    # torch.cuda.nvtx.range_push("Attention Bwd") 
+    torch.cuda.nvtx.range_push("attn w") 
     call_attention_backward_dw(bwd_layer_graph)
     turn_attention_delay_wgrad_compute(bwd_layer_graph, enable=False)
-    # torch.cuda.nvtx.range_pop()
+    torch.cuda.nvtx.range_pop()
 
     saved_tensors = (
         (attention_out, detached_attention_out),
@@ -970,3 +1045,4 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     return (output, context, graph,
             (next_layer_output_grad, next_bwd_unperm_a2a_handle),
             P2PCommOutput(next_iter_input_tensor, next_iter_output_tensor_grad, fwd_p2p_handles, bwd_p2p_handles, bwd_layer_graph.layer_input.grad))
+

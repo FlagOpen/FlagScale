@@ -1155,6 +1155,7 @@ def forward_backward_pipelining_with_cutinhalf(
 
         if args.moe_fb_overlap and not firstFB_no_overlap:
             if not only_bwd:
+                torch.cuda.nvtx.range_push("overlap, overlap")
                 if fwd_wait_handles is not None:
                     for req in fwd_wait_handles:
                         if type(req) is str:
@@ -1245,6 +1246,7 @@ def forward_backward_pipelining_with_cutinhalf(
                         deallocate_output_tensor(
                             output_tensor_slave_chunk, config.deallocate_pipeline_outputs)
                         fwd_wait_handles_slave_chunk = None
+                torch.cuda.nvtx.range_pop()
             else:
                 if fwd_wait_handles is not None:
                     for req in fwd_wait_handles:
@@ -1296,7 +1298,7 @@ def forward_backward_pipelining_with_cutinhalf(
                 fwd_microbatch = master_cur_microbatch if fwd_model_chunk_id == master_chunk_id else slave_cur_microbatch
                 set_dualpipe_chunk(fwd_model_chunk_id)
 
-            #    torch.cuda.nvtx.range_push("FB no overlap")
+                torch.cuda.nvtx.range_push("overlap, first fb no overlap")
                 if args.moe_fb_overlap:
                     input_tensors[fwd_model_chunk_id].append(
                         (fwd_microbatch, input_tensor))
@@ -1414,7 +1416,7 @@ def forward_backward_pipelining_with_cutinhalf(
                     deallocate_output_tensor(
                         output_tensor_slave_chunk, config.deallocate_pipeline_outputs)
                     fwd_wait_handles_slave_chunk = None
-           #     torch.cuda.nvtx.range_pop()
+                torch.cuda.nvtx.range_pop()
 
             # only run backward
             else:

@@ -119,13 +119,13 @@ def transformer_layer_forward_backward_overlaping(
                 bwd_layer_graph.layer, bwd_layer_graph.layer_input, *bwd_layer_graph.layer_inputs, checkpoint=False
             )
 
-        # torch.cuda.nvtx.range_push("fb_overlap_func")
+        torch.cuda.nvtx.range_push("transformer layer, fb_overlap_func")
         out = fb_overlap_func(
             fwd_layer, hidden_states, attention_mask, bwd_layer_output_grad, bwd_layer_graph, bwd_unperm_a2a_handle,
             next_bwd_layer_graph, context, context_mask, rotary_pos_emb, inference_params,
             packed_seq_params, pp_comm_params, bwd_pp_comm_params, checkpoint=checkpoint
         )
-        # torch.cuda.nvtx.range_pop()
+        torch.cuda.nvtx.range_pop()
 
         if checkpoint:
             out[2].record_layer_inputs(
@@ -133,3 +133,4 @@ def transformer_layer_forward_backward_overlaping(
                 inference_params, packed_seq_params, use_orig_layer_forward
             )
         return out
+
