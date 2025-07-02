@@ -66,8 +66,8 @@ COPY --from=base /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun
 # Migrating Miniconda
 COPY --from=base /root/miniconda3 /root/miniconda3
 # Migrating cuDNN (NVIDIA CUDA Deep Neural Network library)
-COPY --from=base /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include
-COPY --from=base /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64 /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64
+COPY --from=base /usr/local/cuda-12.8/include /usr/local/cuda-12.8/include
+COPY --from=base /usr/local/cuda-12.8/lib64 /usr/local/cuda-12.8/lib64
 COPY --from=base /root/.bashrc /root/.bashrc
 
 RUN ln -sf /usr/bin/python3.12-config /usr/bin/python3-config && \
