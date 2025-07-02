@@ -16,3 +16,6 @@
 [submodule "third_party/sglang"]
 	path = third_party/sglang
 	url = https://github.com/sgl-project/sglang.git
+[submodule "third_party/omniinfer"]
+	path = third_party/omniinfer
+	url = https://gitee.com/omniai/omniinfer.git
