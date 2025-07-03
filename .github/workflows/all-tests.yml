@@ -99,7 +99,7 @@ jobs:
         task:
           - aquila
           # - deepseek # TODO: need fix
-          # - mixtral # TODO: need fix
+          - mixtral # TODO: need fix
           # - llava_onevision # TODO: need fix
     name: "train-${{ matrix.task }}"
     with:
@@ -135,10 +135,10 @@ jobs:
     strategy:
       matrix:
         task:
-          - deepseek
-          - deepseek_flaggems
+          # - deepseek
+          # - deepseek_flaggems
           - qwen3
-          - qwen3_flaggems
+          # - qwen3_flaggems
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
