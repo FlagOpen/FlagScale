@@ -149,10 +149,7 @@ class TELinear(te.pytorch.Linear):
         extra_kwargs = _get_extra_te_kwargs(config)
 
         if config.moe_fb_overlap:
-            print(f"TELinear, dw detach, backward for input and backward for weight is seperated")
             extra_kwargs["delay_wgrad_compute"] = True
-        else:
-            print(f"TELinear, not dw detach")
 
         if tp_comm_buffer_name and tp_comm_buffer_name not in ['qkv', 'proj', 'fc1', 'fc2']:
             self.config.tp_comm_overlap = False
@@ -346,11 +343,7 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
         extra_kwargs = _get_extra_te_kwargs(config)
 
         if config.moe_fb_overlap:
-            print(f"TELayerNormColumnParallelLinear, dw detach, backward for input and backward for weight is seperated")
             extra_kwargs["delay_wgrad_compute"] = True
-        else:
-            print(f"TELayerNormColumnParallelLinear, not dw detach")
-
 
         self.tp_size = tp_group.size()
         self.tp_rank = tp_group.rank()
@@ -932,12 +925,8 @@ if is_te_min_version("1.9.0.dev0"):
             extra_kwargs["ub_name"] = tp_comm_buffer_name
 
             if config.moe_fb_overlap:
-                print(f"TEGroupedLinear, dw detach, backward for input and backward for weight is seperated")
                 extra_kwargs["delay_wgrad_compute"] = True
-            else:
-                print(f"TEGroupedLinear, not dw detach")
             
-
             self.expert_parallel = self.config.expert_model_parallel_size > 1
             if is_expert:
                 extra_kwargs["rng_tracker_name"] = get_expert_parallel_rng_tracker_name()

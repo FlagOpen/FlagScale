@@ -6,11 +6,15 @@ from .modules.utils import (
     LayerGraph, P2PCommParams
 )
 
-from .overlap_funcs import (
+from .overlap_funcs.fwd import (
     transformer_layer_forward_moe,
     transformer_layer_forward_dense,
+)
+from .overlap_funcs.bwd import (
     transformer_layer_backward_moe,
     transformer_layer_backward_dense,
+)
+from .overlap_funcs.fwdbwd import (
     transformer_layer_forward_moe_backward_moe_overlaping,
     transformer_layer_forward_dense_backward_moe_overlaping,
     transformer_layer_forward_moe_backward_dense_overlaping,
