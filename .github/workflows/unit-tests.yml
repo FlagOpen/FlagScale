@@ -44,10 +44,11 @@ jobs:
           submodules: false
           set-safe-directory: true
 
-      - name: Unit Test Coverage Online Report
-        run: |
-          REPORT_ADDR=$(cat "/workspace/config/report_address")
-          echo "After 'Run Unit Test' is completed/stopped, you can access the test coverage report at http://${REPORT_ADDR}/${{github.sha}}/cov-report-${{ inputs.backend }}/index.html"
+      # TODO: Re-enable when you have a public IP
+      # - name: Unit Test Coverage Online Report
+      #   run: |
+      #     REPORT_ADDR=$(cat "/workspace/config/report_address")
+      #     echo "After 'Run Unit Test' is completed/stopped, you can access the test coverage report at http://${REPORT_ADDR}/${{github.sha}}/cov-report-${{ inputs.backend }}/index.html"
 
       - name: Run Unit Test
         run: |
