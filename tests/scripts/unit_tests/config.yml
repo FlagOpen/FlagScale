@@ -13,24 +13,13 @@ megatron:
   subset:
     data:
       deselect:
-       - test_bin_reader.py::test_bin_reader
-       - test_builder.py::test_builder
-       - test_multimodal_dataset.py::test_multimodal_dataset
-       - test_multimodal_dataset.py::test_mock_multimodal_dataset
-       - test_gpt_dataset.py::test_mock_gpt_dataset
+      - skip_unit_test_modules
     dist_checkpointing:
       type: single
       ignore:
         - models/test_mamba.py
-        - test_fp8.py
-        - test_replication.py
       deselect:
-        - models/test_retro_model.py::TestRetroModel::test_sharded_state_dict_save_load
-        - models/test_bert_model.py::TestBERTModelReconfiguration::test_vocab_size_padding_change
-        - models/test_gpt_model.py::TestGPTModelReconfiguration::test_vocab_size_padding_change
-        - test_fully_parallel.py::TestFullyParallelSaveAndLoad::test_memory_usage
-        - test_local.py::TestLocalCheckpointing::test_basic_save_load_scenarios
-        - test_serialization.py::TestSerialization::test_tensor_shape_mismatch
+        - skip_unit_test_modules
     distributed:
       type: single
     export:
@@ -39,11 +28,7 @@ megatron:
       - default
     inference:
       ignore:
-        - engines/test_mcore_engine.py
-        - test_modelopt_module_spec.py
-        - text_generation_controllers/test_encoder_decoder_text_generation_controller.py
-        - text_generation_controllers/test_simple_text_generation_controller.py
-        - text_generation_controllers/test_vlm_text_generation_controller.py
+        - skip_unit_test_modules
       deselect:
         - engines/test_dynamic_engine.py::TestDynamicInferenceEngine
     models:
@@ -53,15 +38,15 @@ megatron:
         - test_t5_model.py::TestT5Model::test_post_process_forward
         - test_t5_model.py::TestT5Model::test_forward_output_encoder_hidden_only
         - test_t5_model.py::TestT5Model::test_forward_with_encoder_hidden_states
-        - test_llava_model.py::test_llava_model_parallelism
+        - test_llava_model.py::TestLLaVAModel::test_forward
     pipeline_parallel:
       - default
     post_training:
-      ignore: test_modelopt_module_spec.py
+      ignore: 
+        - test_modelopt_module_spec.py
     ssm:
       ignore:
         - test_mamba_block.py
-        - test_mamba_hybrid_layer_allocation.py
         - test_mamba_layer.py
         - test_mamba_mixer.py
     tensor_parallel:
@@ -69,12 +54,10 @@ megatron:
     transformer/moe:
       type: single
       ignore:
-        - test_upcycling.py
+        - skip_unit_test_modules
       deselect:
         - test_a2a_token_dispatcher.py::TestAlltoAllDispatcher
-        - test_grouped_mlp.py::TestTEGroupedMLP::test_gpu_forward_backward_with_no_tokens_allocated
         - test_moe_layer_discrepancy.py
-        - test_moe_layer.py::TestMoELayerInit::test_moe_with_late_initialize
     transformer:
       depth: 1
       ignore:
@@ -83,20 +66,22 @@ megatron:
         - test_attention.py::TestParallelAttention::test_gpu_forward
         - test_attention.py::TestParallelAttention::test_fused_rope_gpu_forward
         - test_attention.py::TestParallelAttention::test_checkpointed_gpu_forward
+        - test_attention_packed_seq.py::TestParallelAttentionWithPackedSequence::test_gpu_forward
+        - test_attention_packed_seq.py::TestParallelAttentionWithPackedSequence::test_fused_rope_gpu_forward
+        - test_attention_packed_seq.py::TestParallelAttentionWithPackedSequence::test_checkpointed_gpu_forward
         - test_attention_packed_seq.py::TestParallelAttentionWithPackedPaddedSequence::test_gpu_forward
+        - test_attention_packed_seq.py::TestParallelAttentionWithPackedPaddedSequence::test_fused_rope_gpu_forward
+        - test_attention_packed_seq.py::TestParallelAttentionWithPackedPaddedSequence::test_checkpointed_gpu_forward
         - test_multi_latent_attention.py::TestParallelMLAAttention::test_gpu_forward
-        - test_multi_latent_attention.py::TestParallelMLAAttention::test_fused_rope_gpu_forward
-        - test_multi_latent_attention.py::TestParallelMLAAttention::test_checkpointed_gpu_forward
         - test_multi_latent_attention.py::TestParallelMLAAttentionPrecision::test_gpu_forward_thd_precision
         - test_multi_token_prediction.py::TestMultiTokenPrediction::test_fp8_support
         - test_retro_attention.py::TestRetroAttention::test_gpu_forward
-        - test_transformer_block.py::TestPipelineParallelTransformerBlock::test_layer_builder
     ./:
       depth: 1
       ignore:
-        - test_utilities.py
+        - skip_unit_test_modules
       deselect:
-        - test_parallel_state.py::test_different_initialize_order_unconsistency
+        - skip_unit_test_modules
 
 flagscale:
   set_environment:
