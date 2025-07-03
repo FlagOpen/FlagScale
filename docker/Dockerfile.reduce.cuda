@@ -220,21 +220,21 @@ COPY --from=base /usr/bin/python3.12-config /usr/bin/python3.12-config
 COPY --from=base /usr/bin/python3 /usr/bin/python3
 # Migrating OPENMPI
 COPY --from=base /usr/local/openmpi-4.1.6 /usr/local/openmpi-4.1.6
-COPY --from=base /usr/local/mpi/bin/mpirun.real /usr/local/mpi/bin/mpirun.real
-COPY --from=base /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun
+COPY --from=base /usr/local/mpi usr/local/mpi
 # Migrating Miniconda
 COPY --from=base /root/miniconda3 /root/miniconda3
 # Migrating cuDNN (NVIDIA CUDA Deep Neural Network library)
-COPY --from=base /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include
-COPY --from=base /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64 /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64
+COPY --from=base /usr/local/cuda-12.8/include /usr/local/cuda-12.8/include
+COPY --from=base /usr/local/cuda-12.8/lib64 /usr/local/cuda-12.8/lib64
 COPY --from=base /root/.bashrc /root/.bashrc
 
 RUN ln -sf /usr/bin/python3.12-config /usr/bin/python3-config && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     # OPENMPI
-    ln -s /usr/local/openmpi-4.1.6 /usr/local/mpi && \
+    ln -sf /usr/local/openmpi-4.1.6 /usr/local/mpi && \
     test -f /usr/local/mpi/bin/mpic++ && \
     # Miniconda
     ~/miniconda3/bin/conda init bash && \
     ~/miniconda3/bin/conda config --set auto_activate_base false && \
     ~/miniconda3/bin/conda config --set default_python 3.12
+
