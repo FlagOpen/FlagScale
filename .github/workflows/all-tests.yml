@@ -40,8 +40,8 @@ jobs:
     strategy:
       matrix:
         subset:
-          # - data
-          - dist_checkpointing
+          - data
+          # - dist_checkpointing
           - distributed
           - export
           - fusions
