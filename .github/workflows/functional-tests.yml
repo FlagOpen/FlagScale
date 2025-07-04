@@ -13,6 +13,9 @@ on:
       image:
         required: true
         type: string
+      flaggems:
+        required: true
+        type: string
 
 jobs:
   functional-test:
