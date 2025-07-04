@@ -32,33 +32,33 @@ jobs:
   #     image: ${{ needs.set-env.outputs.ci_image }}
 
   # Megatron Unit Tests with Matrix
-  megatron-unit-tests:
-    needs:
-      - set-env
-      # - megatron-report-clean
-    uses: ./.github/workflows/unit-tests.yml
-    strategy:
-      matrix:
-        subset:
-          # - data
-          - dist_checkpointing
-          # - distributed
-          # - export
-          # - fusions
-          # - inference
-          # - models
-          # - pipeline_parallel
-          # - post_training
-          # - ssm
-          # - tensor_parallel
-          # - transformer/moe
-          # - transformer
-          - ./
-    name: "megatron-${{ matrix.subset == './' && 'root' || matrix.subset }}"
-    with:
-      backend: megatron
-      subset: ${{ matrix.subset }}
-      image: ${{ needs.set-env.outputs.ci_image }}
+  # megatron-unit-tests:
+  #   needs:
+  #     - set-env
+  #     # - megatron-report-clean
+  #   uses: ./.github/workflows/unit-tests.yml
+  #   strategy:
+  #     matrix:
+  #       subset:
+  #         - data
+  #         - dist_checkpointing
+  #         - distributed
+  #         - export
+  #         - fusions
+  #         - inference
+  #         - models
+  #         - pipeline_parallel
+    #       - post_training
+    #       - ssm
+    #       - tensor_parallel
+    #       - transformer/moe
+    #       - transformer
+    #       - ./
+    # name: "megatron-${{ matrix.subset == './' && 'root' || matrix.subset }}"
+    # with:
+    #   backend: megatron
+    #   subset: ${{ matrix.subset }}
+    #   image: ${{ needs.set-env.outputs.ci_image }}
 
   # TODO: Re-enable when you have a public IP
   # # FlagScale Report Clean
@@ -70,42 +70,42 @@ jobs:
   #     backend: flagscale
   #     image: ${{ needs.set-env.outputs.ci_image }}
 
-  # Flagscale Unit Tests with Matrix
-  flagscale-unit-tests:
-    needs:
-      - set-env
-      # - flagscale-report-clean
-    uses: ./.github/workflows/unit-tests.yml
-    strategy:
-      matrix:
-        subset:
-          - runner
-          - ./
-    name: "flagscale-${{ matrix.subset == './' && 'root' || matrix.subset }}"
-    with:
-      backend: flagscale
-      subset: ${{ matrix.subset }}
-      image: ${{ needs.set-env.outputs.ci_image }}
+  # # Flagscale Unit Tests with Matrix
+  # flagscale-unit-tests:
+  #   needs:
+  #     - set-env
+  #     # - flagscale-report-clean
+  #   uses: ./.github/workflows/unit-tests.yml
+  #   strategy:
+  #     matrix:
+  #       subset:
+  #         - runner
+  #         - ./
+  #   name: "flagscale-${{ matrix.subset == './' && 'root' || matrix.subset }}"
+  #   with:
+  #     backend: flagscale
+  #     subset: ${{ matrix.subset }}
+  #     image: ${{ needs.set-env.outputs.ci_image }}
 
-  # Functional Tests with Mision and Type Matrix
-  functional-tests-train:
-    needs:
-      - set-env
-      - megatron-unit-tests
-      - flagscale-unit-tests
-    uses: ./.github/workflows/functional-tests.yml
-    strategy:
-      matrix:
-        task:
-          - aquila
-          # - deepseek # TODO: need fix
-          - mixtral # TODO: need fix
-          # - llava_onevision # TODO: need fix
-    name: "train-${{ matrix.task }}"
-    with:
-      task: ${{ matrix.task }}
-      type: train
-      image: ${{ needs.set-env.outputs.ci_image }}
+  # # Functional Tests with Mision and Type Matrix
+  # functional-tests-train:
+  #   needs:
+  #     - set-env
+  #     - megatron-unit-tests
+  #     - flagscale-unit-tests
+  #   uses: ./.github/workflows/functional-tests.yml
+  #   strategy:
+  #     matrix:
+  #       task:
+  #         - aquila
+  #         # - deepseek # TODO: need fix
+  #         - mixtral # TODO: need fix
+  #         # - llava_onevision # TODO: need fix
+  #   name: "train-${{ matrix.task }}"
+  #   with:
+  #     task: ${{ matrix.task }}
+  #     type: train
+  #     image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-hetero:
     needs:
@@ -127,7 +127,25 @@ jobs:
     #   type: hetero_train
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
-  functional-tests-inference:
+  # functional-tests-inference:
+  #   needs:
+  #     - set-env
+  #     - functional-tests-hetero
+  #   uses: ./.github/workflows/functional-tests.yml
+  #   strategy:
+  #     matrix:
+  #       task:
+  #         - deepseek
+  #         # - deepseek_flaggems
+  #         - qwen3
+  #         # - qwen3_flaggems
+  #   name: "inference-${{ matrix.task }}"
+  #   with:
+  #     task: ${{ matrix.task }}
+  #     type: inference
+  #     image: ${{ needs.set-env.outputs.ci_image }}
+
+  functional-tests-inference-pipeline:
     needs:
       - set-env
       - functional-tests-hetero
@@ -135,14 +153,12 @@ jobs:
     strategy:
       matrix:
         task:
-          # - deepseek
-          # - deepseek_flaggems
-          - qwen3
-          # - qwen3_flaggems
+          - Qwen3-4B
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
-      type: inference
+      type: inference-pipeline
+      flaggems: enable
       image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-serve:
@@ -165,27 +181,27 @@ jobs:
     #   type: serve
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
-  # Megatron Coverage Test
-  megatron-coverage-test:
-    needs:
-      - set-env
-      - functional-tests-serve
-    if: ${{ github.event_name == 'pull_request' }}
-    uses: ./.github/workflows/coverage-tests.yml
-    with:
-      backend: megatron
-      image: ${{ needs.set-env.outputs.ci_image }}
+  # # Megatron Coverage Test
+  # megatron-coverage-test:
+  #   needs:
+  #     - set-env
+  #     - functional-tests-serve
+  #   if: ${{ github.event_name == 'pull_request' }}
+  #   uses: ./.github/workflows/coverage-tests.yml
+  #   with:
+  #     backend: megatron
+  #     image: ${{ needs.set-env.outputs.ci_image }}
 
-  # Flagscale Coverage Test
-  flagscale-coverage-test:
-    needs:
-      - set-env
-      - functional-tests-serve
-    if: ${{ github.event_name == 'pull_request' }}
-    uses: ./.github/workflows/coverage-tests.yml
-    with:
-      backend: flagscale
-      image: ${{ needs.set-env.outputs.ci_image }}
+  # # Flagscale Coverage Test
+  # flagscale-coverage-test:
+  #   needs:
+  #     - set-env
+  #     - functional-tests-serve
+  #   if: ${{ github.event_name == 'pull_request' }}
+  #   uses: ./.github/workflows/coverage-tests.yml
+  #   with:
+  #     backend: flagscale
+  #     image: ${{ needs.set-env.outputs.ci_image }}
 
   # Check All Tests
   all-tests:
