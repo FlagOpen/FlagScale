@@ -164,7 +164,7 @@ jobs:
   functional-tests-serve:
     needs:
       - set-env
-      - functional-tests-inference
+      # - functional-tests-inference
     runs-on: ubuntu-latest
     steps:
       - name: Mock Run
@@ -210,7 +210,8 @@ jobs:
       - flagscale-unit-tests
       - functional-tests-train
       - functional-tests-hetero
-      - functional-tests-inference
+      # - functional-tests-inference
+      - functional-tests-inference-pipeline
       - functional-tests-serve
       - megatron-coverage-test
       - flagscale-coverage-test
