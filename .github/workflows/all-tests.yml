@@ -41,7 +41,7 @@ jobs:
       matrix:
         subset:
           # - data
-          # - dist_checkpointing
+          - dist_checkpointing
           # - distributed
           # - export
           # - fusions
