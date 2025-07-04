@@ -107,14 +107,14 @@ jobs:
   #     type: train
   #     image: ${{ needs.set-env.outputs.ci_image }}
 
-  functional-tests-hetero:
-    needs:
-      - set-env
-      - functional-tests-train
-    runs-on: ubuntu-latest
-    steps:
-      - name: Mock Run
-        run: echo "test need fix"
+  # functional-tests-hetero:
+  #   needs:
+  #     - set-env
+  #     - functional-tests-train
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Mock Run
+  #       run: echo "test need fix"
     # TODO: test need fix
     # uses: ./.github/workflows/functional-tests.yml
     # strategy:
@@ -148,7 +148,7 @@ jobs:
   functional-tests-inference-pipeline:
     needs:
       - set-env
-      - functional-tests-hetero
+      # - functional-tests-hetero
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
