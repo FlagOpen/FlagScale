@@ -5,9 +5,9 @@ train:
 # TODO: need fix
 #   deepseek:
 #     -tp2_pp2_ep2
-#   mixtral:
-#     -tp2_pp1_ep2
-#     -tp4_pp1_ep2
+  mixtral:
+    -tp2_pp1_ep2
+    -tp4_pp1_ep2
 #   llava_onevision:
 #     -tp2
 #     -tp4
@@ -23,10 +23,10 @@ inference:
     -tp2
   qwen3:
     -tp2
-  deepseek_flaggems:
-    -tp2
-  qwen3_flaggems:
-    -tp2
+  # deepseek_flaggems:
+  #   -tp2
+  # qwen3_flaggems:
+  #   -tp2
 
 # TODO: need fix
 # serve:
