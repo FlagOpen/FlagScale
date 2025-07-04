@@ -161,14 +161,14 @@ jobs:
       flaggems: enable
       image: ${{ needs.set-env.outputs.ci_image }}
 
-  functional-tests-serve:
-    needs:
-      - set-env
-      - functional-tests-inference
-    runs-on: ubuntu-latest
-    steps:
-      - name: Mock Run
-        run: echo "test need fix"
+  # functional-tests-serve:
+  #   needs:
+  #     - set-env
+  #     - functional-tests-inference
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Mock Run
+  #       run: echo "test need fix"
     # TODO: test need fix
     # uses: ./.github/workflows/functional-tests.yml
     # strategy:
@@ -204,17 +204,17 @@ jobs:
   #     image: ${{ needs.set-env.outputs.ci_image }}
 
   # Check All Tests
-  all-tests:
-    needs:
-      - megatron-unit-tests
-      - flagscale-unit-tests
-      - functional-tests-train
-      - functional-tests-hetero
-      - functional-tests-inference
-      - functional-tests-serve
-      - megatron-coverage-test
-      - flagscale-coverage-test
-    runs-on: ubuntu-latest
-    steps:
-      - name: All Tests Completed
-        run: echo "All tests completed successfully!"
+  # all-tests:
+  #   needs:
+  #     - megatron-unit-tests
+  #     - flagscale-unit-tests
+  #     - functional-tests-train
+  #     - functional-tests-hetero
+  #     - functional-tests-inference
+  #     - functional-tests-serve
+  #     - megatron-coverage-test
+  #     - flagscale-coverage-test
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: All Tests Completed
+  #       run: echo "All tests completed successfully!"
