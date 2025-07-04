@@ -40,20 +40,20 @@ jobs:
     strategy:
       matrix:
         subset:
-          - data
+          # - data
           # - dist_checkpointing
-          - distributed
-          - export
-          - fusions
-          - inference
-          - models
-          - pipeline_parallel
-          - post_training
-          - ssm
-          - tensor_parallel
-          - transformer/moe
-          - transformer
-          # - ./
+          # - distributed
+          # - export
+          # - fusions
+          # - inference
+          # - models
+          # - pipeline_parallel
+          # - post_training
+          # - ssm
+          # - tensor_parallel
+          # - transformer/moe
+          # - transformer
+          - ./
     name: "megatron-${{ matrix.subset == './' && 'root' || matrix.subset }}"
     with:
       backend: megatron
