@@ -61,5 +61,5 @@ jobs:
             exit 1
           fi
 
-          # # Execute the test coverage script with the appropriate backend and id (commit SHA)
-          # tests/scripts/unit_tests/test_coverage.sh --backend ${{ inputs.backend }} --id ${{ github.sha }} --status online
+          # Execute the test coverage script with the appropriate backend and id (commit SHA)
+          tests/scripts/unit_tests/test_coverage.sh --backend ${{ inputs.backend }} --id ${{ github.sha }} --status online
