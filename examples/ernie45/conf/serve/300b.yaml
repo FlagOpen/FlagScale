@@ -1,12 +1,10 @@
 - serve_id: vllm_model
   engine: vllm
   engine_args:
-    model: /models/PaddlePaddle/ERNIE-4.5-300B-A47B-Base-PT
-    #model: PaddlePaddle/ERNIE-4.5-300B-A47B-PT # add Post-trained models
+    model: PaddlePaddle/ERNIE-4.5-300B-A47B-PT # add Post-trained models
     host: 0.0.0.0
     max_model_len: 128000
-    max_num_seqs: 8
-    #max_num_seqs: 256 # for high-throughput server
+    max_num_seqs: 256 # for high-throughput server
     uvicorn_log_level: warning
     port: 30000
   engine_args_specific:
