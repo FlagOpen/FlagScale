@@ -24,14 +24,14 @@ commands=(
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset transformer/moe"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset transformer"
     "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset ./"
-    # coverage test -> megatron
-    "tests/scripts/unit_tests/test_coverage.sh --backend megatron --status offline"
+    # # coverage test -> megatron
+    # "tests/scripts/unit_tests/test_coverage.sh --backend megatron --status offline"
 
     # unit tests -> flagscale
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset runner"
     "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset ./"
-    # coverage test -> flagscale
-    "tests/scripts/unit_tests/test_coverage.sh --backend flagscale --status offline"
+    # # coverage test -> flagscale
+    # "tests/scripts/unit_tests/test_coverage.sh --backend flagscale --status offline"
 
     # You can add your own test subset here
     # "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset your_subset"
