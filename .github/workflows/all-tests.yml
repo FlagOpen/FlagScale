@@ -129,24 +129,24 @@ jobs:
     #   flaggems: disable
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
-  # functional-tests-inference:
-  #   needs:
-  #     - set-env
-  #     - functional-tests-hetero
-  #   uses: ./.github/workflows/functional-tests.yml
-  #   strategy:
-  #     matrix:
-  #       task:
-  #         - deepseek
-  #         # - deepseek_flaggems
-  #         - qwen3
-  #         # - qwen3_flaggems
-  #   name: "inference-${{ matrix.task }}"
-  #   with:
-  #     task: ${{ matrix.task }}
-  #     type: inference
-  #     flaggems: disable
-  #     image: ${{ needs.set-env.outputs.ci_image }}
+  functional-tests-inference:
+    needs:
+      - set-env
+      - functional-tests-hetero
+    uses: ./.github/workflows/functional-tests.yml
+    strategy:
+      matrix:
+        task:
+          - deepseek
+          # - deepseek_flaggems
+          - qwen3
+          # - qwen3_flaggems
+    name: "inference-${{ matrix.task }}"
+    with:
+      task: ${{ matrix.task }}
+      type: inference
+      flaggems: disable
+      image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-inference-pipeline:
     needs:
