@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import os
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
@@ -9,8 +10,12 @@ import torch
 from vllm.config import VllmConfig
 from vllm.distributed.kv_transfer.kv_connector.v1.base import (
     KVConnectorBase_V1, KVConnectorMetadata, KVConnectorRole)
-from vllm.distributed.kv_transfer.kv_connector.v1.p2p.p2p_nccl_engine import (
-    P2pNcclEngine)
+
+if os.getenv("USE_FLAGCX", "false").lower() in ("1", "true"):
+    from vllm.distributed.kv_transfer.kv_connector.v1.p2p.flagcx_p2p_nccl_engine import P2pNcclEngine
+else:
+    from vllm.distributed.kv_transfer.kv_connector.v1.p2p.p2p_nccl_engine import (
+        P2pNcclEngine)
 from vllm.distributed.parallel_state import get_world_group
 from vllm.forward_context import get_forward_context
 from vllm.logger import init_logger
