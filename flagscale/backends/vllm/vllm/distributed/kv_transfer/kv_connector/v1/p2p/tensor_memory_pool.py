@@ -1,3 +1,6 @@
+
+# Copied adopted from https://github.com/vllm-project/vllm/blob/eccdc8318c50ad3e2adfaaf99d714a8dccc6ab16/vllm/distributed/kv_transfer/kv_connector/v1/p2p/tensor_memory_pool.py
+# Below is the original copyright:
 # SPDX-License-Identifier: Apache-2.0
 
 import atexit
