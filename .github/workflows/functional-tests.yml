@@ -64,6 +64,5 @@ jobs:
             echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
           fi
-          if ${{ inputs.flaggems }}; then
           tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
         shell: bash
