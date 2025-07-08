@@ -399,7 +399,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     logger.info(
                         f"============= prefill instance {i}, p_kv_config: {p_kv_config} ============="
                     )
-                    card_ids = resource_manager.get_available_card_ids(
+                    card_ids, update_p_address = resource_manager.get_available_card_ids(
                         address=p_address, num=each_instance_card_num
                     )
                     card_ids_str = ",".join(map(str, card_ids))
@@ -408,13 +408,13 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     p_kv_config_json = json.dumps(p_kv_config)
                     p_instance_log_path = os.path.join(default_log_dir, f"prefill_{i}.log")
 
-                    if p_address != master_ip:
+                    if update_p_address != master_ip and len(nodes) > 1:
                         p_kv_config_formate_json = p_kv_config_json.replace('"', '\\"')
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_formate_json}'\\''"
                         if docker_name:
-                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {p_instance_log_path} 2>&1 &'\""
+                            ssh_cmd = f"ssh -f -n -p {ssh_port} {update_p_address} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {p_instance_log_path} 2>&1 &'\""
                         else:
-                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {p_instance_log_path} 2>&1 &"'
+                            ssh_cmd = f'ssh -f -n -p {ssh_port} {update_p_address} "{node_cmd} > {p_instance_log_path} 2>&1 &"'
                         f.write(f"{ssh_cmd}\n\n")
                     else:
                         p_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_json}'\\''"
@@ -457,7 +457,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     logger.info(
                         f"============= decode instance {j}, d_kv_config: {d_kv_config} ============="
                     )
-                    card_ids = resource_manager.get_available_card_ids(
+                    card_ids, update_d_address = resource_manager.get_available_card_ids(
                         address=d_address, num=each_instance_card_num
                     )
                     card_ids_str = ",".join(map(str, card_ids))
@@ -466,13 +466,13 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     d_kv_config_json = json.dumps(d_kv_config)
                     d_instance_log_path = os.path.join(default_log_dir, f"decode_{j}.log")
 
-                    if d_address != master_ip:
+                    if update_d_address != master_ip and len(nodes) > 1:
                         d_kv_config_formate_json = d_kv_config_json.replace('"', '\\"')
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_formate_json}'\\''"
                         if docker_name:
-                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {d_instance_log_path} 2>&1 &'\""
+                            ssh_cmd = f"ssh -f -n -p {ssh_port} {update_d_address} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {d_instance_log_path} 2>&1 &'\""
                         else:
-                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
+                            ssh_cmd = f'ssh -f -n -p {ssh_port} {update_d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
                         f.write(f"{ssh_cmd}\n\n")
                     else:
                         d_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_json}'\\''"
