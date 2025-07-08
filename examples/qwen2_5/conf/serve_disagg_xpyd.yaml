@@ -8,7 +8,7 @@ experiment:
   task:
     type: serve
   runner:
-    hostfile: examples/qwen/conf/hostfile.txt
+    hostfile: examples/qwen2_5/conf/hostfile.txt
     docker: pd
     deploy:
       port: 10001
