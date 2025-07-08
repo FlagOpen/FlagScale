@@ -105,7 +105,6 @@ jobs:
     with:
       task: ${{ matrix.task }}
       type: train
-      flaggems: disable
       image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-hetero:
@@ -126,7 +125,6 @@ jobs:
     # with:
     #   task: ${{ matrix.task }}
     #   type: hetero_train
-    #   flaggems: disable
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-inference:
@@ -165,7 +163,6 @@ jobs:
     # with:
     #   task: ${{ matrix.task }}
     #   type: serve
-    #   flaggems: disable
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
   # Megatron Coverage Test
