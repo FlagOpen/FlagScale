@@ -9,21 +9,21 @@ experiment:
     type: serve
   runner:
     hostfile: examples/qwen/conf/hostfile.txt
-    docker: fr-v2
+    docker: pd
     deploy:
       port: 10001
       use_fs_serve: false
       prefill_decode_disaggregation: true
       prefill_num: 2
-      prefill_address: x.x.x.x # optional, default "auto"
+      #prefill_address: "x.x.x.x" # optional, default "auto"
       decode_num: 2
-      decode_address: x.x.x.x # optional, default "auto"
+      #decode_address: x.x.x.x # optional, default "auto"
       prefill_decode_strategy: slo # optional, one of [slo|random|robin], default slo
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     VLLM_USE_V1: 0
     FLAGCX_SOCKET_IFNAME: bond0
-    FLAGCX_PATH: /path/to/FlagCX/
+    FLAGCX_PATH: /mine/ip16/project/FlagCX
     FLAGCX_DEBUG: TRACE
     FLAGCX_DEBUG_SUBSYS: ALL
     USE_FLAGCX: true
