@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[int] = None):
     """Get the index offset of current pipeline stage, given the level of pipelining."""
     pipeline_rank = parallel_state.get_pipeline_model_parallel_rank()
+    from megatron.training import get_args
+    args = get_args()
     if not parallel_state.is_inside_encoder():
         pp_decoder_start = parallel_state.get_pipeline_model_parallel_decoder_start()
         if pp_decoder_start is not None:
@@ -137,12 +139,50 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                     else pipeline_rank - 1
                 )
 
-                if pipeline_rank == 0:
-                    offset = 0
+                if args.schedules_method != "dualpipev":
+                    if pipeline_rank == 0:
+                        offset = 0
+                    else:
+                        offset = (
+                            middle_pipeline_rank * num_layers_per_pipeline_rank
+                        ) + num_layers_in_first_pipeline_stage
                 else:
-                    offset = (
-                        middle_pipeline_rank * num_layers_per_pipeline_rank
-                    ) + num_layers_in_first_pipeline_stage
+                    # for dualpipev, not even pp stages
+                    num_layers_in_first_pipeline_stage_first_chunk = num_layers_in_first_pipeline_stage // 2
+                    if num_layers_in_first_pipeline_stage % 2 != 0:
+                        num_layers_in_first_pipeline_stage_first_chunk = num_layers_in_first_pipeline_stage_first_chunk + 1
+                    num_layers_in_first_pipeline_stage_second_chunk = num_layers_in_first_pipeline_stage - num_layers_in_first_pipeline_stage_first_chunk
+    
+                    num_layers_in_last_pipeline_stage_first_chunk = num_layers_in_last_pipeline_stage // 2
+                    if num_layers_in_last_pipeline_stage % 2 != 0:
+                        num_layers_in_last_pipeline_stage_first_chunk = num_layers_in_last_pipeline_stage_first_chunk + 1
+                    num_layers_in_last_pipeline_stage_second_chunk = num_layers_in_last_pipeline_stage - num_layers_in_last_pipeline_stage_first_chunk
+
+
+                    num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank // 2
+                    if num_layers_per_pipeline_rank % 2 != 0:
+                        num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank_first_chunk + 1
+                    num_layers_per_pipeline_rank_second_chunk = num_layers_per_pipeline_rank - num_layers_per_pipeline_rank_first_chunk
+                    
+                    # process first chunk
+                    if args.dualpipev_first_chunk:
+                        if pipeline_rank == 0:
+                            offset = 0
+                        else:
+                            offset = (
+                                middle_pipeline_rank * num_layers_per_pipeline_rank_first_chunk
+                            ) + num_layers_in_first_pipeline_stage_first_chunk
+                    # process second chunk
+                    else:
+                        if pipeline_rank == 0:
+                            offset = config.num_layers - num_layers_in_first_pipeline_stage_second_chunk
+                        else:
+                            offset = config.num_layers - (
+                                (middle_pipeline_rank+1) * num_layers_per_pipeline_rank_second_chunk
+                            ) - num_layers_in_first_pipeline_stage_second_chunk
+
+
+
         else:
             num_layers = config.num_layers
 
@@ -176,8 +216,6 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                 ):
                     offset -= 1
             else:
-                from megatron.training import get_args
-                args = get_args()
                 if args.schedules_method != "dualpipev":
                     offset = pipeline_rank * num_layers_per_pipeline_rank
 
