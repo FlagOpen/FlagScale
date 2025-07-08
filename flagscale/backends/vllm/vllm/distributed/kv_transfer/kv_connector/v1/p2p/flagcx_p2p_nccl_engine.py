@@ -125,6 +125,8 @@ class P2pNcclEngine:
         self.send_stream = torch.cuda.Stream()
         self.recv_stream = torch.cuda.Stream()
 
+        self.flagcx_streams = {}
+
         mem_pool_size_gb = self.config.get_from_extra_config(
             "mem_pool_size_gb", DEFAULT_MEM_POOL_SIZE_GB)
         self.pool = TensorMemoryPool(max_block_size=int(mem_pool_size_gb) *
@@ -169,11 +171,16 @@ class P2pNcclEngine:
             self._ping_thread.start()
 
         logger.info(
-            "💯P2pNcclEngine init, rank:%d, local_rank:%d, http_address:%s, "
+            "P2pNcclEngine init, rank:%d, local_rank:%d, http_address:%s, "
             "zmq_address:%s, proxy_address:%s, send_type:%s, buffer_size_"
             "threshold:%.2f, nccl_num_channels:%s", self.rank, self.local_rank,
             self.http_address, self.zmq_address, self.proxy_address,
             self.send_type, self.buffer_size_threshold, self.nccl_num_channels)
+
+    def __del__(self):
+        # free flagcx streams
+        for _, flagcx_stream in self.flagcx_streams.items():
+            self.flagcx.adaptor_stream_free(flagcx_stream)
 
     def _create_connect(self, remote_address: typing.Optional[str] = None):
         assert remote_address is not None
@@ -183,11 +190,11 @@ class P2pNcclEngine:
             sock.connect(f"tcp://{remote_address}")
             self.socks[remote_address] = sock
             if remote_address in self.comms:
-                logger.info("👋comm exists, remote_address:%s, comms:%s",
+                logger.info("comm exists, remote_address:%s, comms:%s",
                             remote_address, self.comms)
                 return sock, self.comms[remote_address]
 
-            unique_id = self.flagcx.flagcxGetUniqueId()
+            unique_id = self.flagcx.flagcxGetUniqueId().contents
             data = {"cmd": "NEW", "unique_id": bytes(unique_id.internal)}
             sock.send(msgpack.dumps(data))
 
@@ -199,7 +206,7 @@ class P2pNcclEngine:
                     comm = self.flagcx.flagcxCommInitRank(
                         2, ctypes.byref(unique_id), rank)
                 self.comms[remote_address] = (comm, rank)
-                logger.info("🤝flagcxCommInitRank Success, %s👉%s, MyRank: %s",
+                logger.info("flagcxCommInitRank Success, %s --> %s, MyRank: %s",
                             self.zmq_address, remote_address, rank)
 
         return self.socks[remote_address], self.comms[remote_address]
@@ -233,7 +240,7 @@ class P2pNcclEngine:
                         ) * oldest_tenser.numel()
                         self.buffer_size -= oldest_tenser_size
                         logger.info(
-                            "⛔[GET]Send to %s, tensor_id:%s, tensor_size:%d,"
+                            "[GET]Send to %s, tensor_id:%s, tensor_size:%d,"
                             " buffer_size:%d, oldest_tenser_size:%d, rank:%d",
                             remote_address, tensor_id, tensor_size,
                             self.buffer_size, oldest_tenser_size, self.rank)
@@ -241,7 +248,7 @@ class P2pNcclEngine:
                     self.send_store[tensor_id] = tensor
                     self.buffer_size += tensor_size
                     logger.debug(
-                        "🔵[GET]Send to %s, tensor_id:%s, tensor_size:%d, "
+                        "[GET]Send to %s, tensor_id:%s, tensor_size:%d, "
                         "shape:%s, rank:%d, buffer_size:%d(%.2f%%)",
                         remote_address, tensor_id, tensor_size, tensor.shape,
                         self.rank, self.buffer_size,
@@ -272,7 +279,7 @@ class P2pNcclEngine:
             else:
                 duration = time.time() - start_time
                 logger.warning(
-                    "🔴[PUT]Recv From %s, tensor_id:%s, duration:%.3fms, "
+                    "[PUT]Recv From %s, tensor_id:%s, duration:%.3fms, "
                     "rank:%d", remote_address, tensor_id, duration * 1000,
                     self.rank)
             return tensor
@@ -293,7 +300,7 @@ class P2pNcclEngine:
         message = sock.recv()
         data = msgpack.loads(message)
         if data["ret"] != 0:
-            logger.warning("🔴[GET]Recv From %s, tensor_id: %s, ret: %d",
+            logger.warning("[GET]Recv From %s, tensor_id: %s, ret: %d",
                            remote_address, tensor_id, data["ret"])
             return None
 
@@ -304,6 +311,12 @@ class P2pNcclEngine:
         self._recv(comm, tensor, rank ^ 1, self.recv_stream)
 
         return tensor
+
+    def _get_or_create_flagcx_stream(self, stream):
+        key = hash(stream)
+        if key not in self.flagcx_streams:
+            self.flagcx_streams[key] = self.flagcx.adaptor_stream_copy(stream)
+        return self.flagcx_streams[key]
 
     def _listen_for_requests(self):
         while True:
@@ -323,7 +336,7 @@ class P2pNcclEngine:
                                 2, ctypes.byref(unique_id), rank)
                         self.comms[remote_address.decode()] = (comm, rank)
                         logger.info(
-                            "🤝flagcxCommInitRank Success, %s👈%s, MyRank:%s",
+                            "flagcxCommInitRank Success, %s <-- %s, MyRank:%s",
                             self.zmq_address, remote_address.decode(), rank)
                 elif data["cmd"] == "PUT":
                     tensor_id = data["tensor_id"]
@@ -344,8 +357,8 @@ class P2pNcclEngine:
                             addr = self.pool.store_tensor(tensor)
                             tensor = (addr, tensor.dtype, tensor.shape)
                             logger.warning(
-                                "🔴[PUT]Recv Tensor, Out Of Threshold, "
-                                "%s👈%s, data:%s, addr:%d", self.zmq_address,
+                                "[PUT]Recv Tensor, Out Of Threshold, "
+                                "%s <-- %s, data:%s, addr:%d", self.zmq_address,
                                 remote_address.decode(), data, addr)
                         else:
                             self.buffer_size += tensor_size
@@ -355,7 +368,7 @@ class P2pNcclEngine:
                             [remote_address, b"1"])
                         tensor = None
                         logger.warning(
-                            "🔴[PUT]Recv Tensor, Out Of Memory, %s👈%s, "
+                            "[PUT]Recv Tensor, Out Of Memory, %s <-- %s, "
                             "data:%s", self.zmq_address,
                             remote_address.decode(), data)
 
@@ -390,7 +403,7 @@ class P2pNcclEngine:
                                    self.send_stream)
                 else:
                     logger.warning(
-                        "🚧Unexpected, Received message from %s, data:%s",
+                        "Unexpected, Received message from %s, data:%s",
                         remote_address, data)
 
     def _have_sent_tensor_id(self, tensor_id: str):
@@ -423,7 +436,7 @@ class P2pNcclEngine:
                     self.send_queue_cv.wait()
             duration = time.time() - start_time
             logger.debug(
-                "🚧[PUT_ASYNC]It took %.3fms to wait for the send_queue"
+                "[PUT_ASYNC]It took %.3fms to wait for the send_queue"
                 " to be empty, rank:%d", duration * 1000, self.rank)
 
     def _send_sync(
@@ -450,7 +463,7 @@ class P2pNcclEngine:
         response = sock.recv()
         if response != b"0":
             logger.error(
-                "🔴Send Tensor, Peer Out Of Memory/Threshold, %s 👉 %s, "
+                "Send Tensor, Peer Out Of Memory/Threshold, %s --> %s, "
                 "MyRank:%s, data:%s, tensor:%s, size:%fGB, response:%s",
                 self.zmq_address, remote_address, rank, data, tensor.shape,
                 tensor.element_size() * tensor.numel() / 1024**3,
@@ -524,9 +537,10 @@ class P2pNcclEngine:
             stream = current_stream()
 
         with torch.cuda.stream(stream):
+            flagcx_stream = self._get_or_create_flagcx_stream(stream)
             self.flagcx.flagcxSend(buffer_type(tensor.data_ptr()), tensor.numel(),
                                flagcxDataTypeEnum.from_torch(tensor.dtype), dst,
-                               comm, cudaStream_t(stream.cuda_stream))
+                               comm, flagcx_stream)
         stream.synchronize()
 
     def _recv(self, comm, tensor: torch.Tensor, src: int, stream=None):
@@ -537,9 +551,10 @@ class P2pNcclEngine:
             stream = current_stream()
 
         with torch.cuda.stream(stream):
+            flagcx_stream = self._get_or_create_flagcx_stream(stream)
             self.flagcx.flagcxRecv(buffer_type(tensor.data_ptr()), tensor.numel(),
                                flagcxDataTypeEnum.from_torch(tensor.dtype), src,
-                               comm, cudaStream_t(stream.cuda_stream))
+                               comm, flagcx_stream)
         stream.synchronize()
 
     def close(self) -> None:

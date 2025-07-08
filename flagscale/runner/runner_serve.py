@@ -305,6 +305,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         f.write(f"\n")
         envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
         f.write(f"{envs_str}\n")
+        use_vllm_v1 = os.getenv("USE_VLLM_V1", "true").lower() in ("1", "true")
 
         if nodes:
             if deploy_config.get("prefill_decode_disaggregation", False):
@@ -369,16 +370,32 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 for i in range(p_num):
                     kv_port = kv_related_ports.pop()
                     http_port = kv_related_ports.pop()
-                    p_kv_config = {
-                        "kv_connector": "P2pConnector",
-                        "kv_role": "kv_producer",
-                        "kv_port": str(kv_port),
-                        "kv_connector_extra_config": {
-                            "proxy_ip": master_ip,
-                            "proxy_port": str(pd_proxy_port),
-                            "http_port": str(http_port),
-                        },
-                    }
+                    if use_vllm_v1:
+                        p_kv_config = {
+                            "kv_connector": "P2pNcclConnector",
+                            "kv_role": "kv_producer",
+                            "kv_port": str(kv_port),
+                            "kv_buffer_size": "1e1",
+                            "kv_connector_extra_config": {
+                                "send_type": "PUT_ASYNC",
+                                "nccl_num_channels": "16",
+                                "proxy_ip": master_ip,
+                                "proxy_port": str(pd_proxy_port),
+                                "http_port": str(http_port),
+                            },
+                        }
+
+                    else:
+                        p_kv_config = {
+                            "kv_connector": "P2pConnector",
+                            "kv_role": "kv_producer",
+                            "kv_port": str(kv_port),
+                            "kv_connector_extra_config": {
+                                "proxy_ip": master_ip,
+                                "proxy_port": str(pd_proxy_port),
+                                "http_port": str(http_port),
+                            },
+                        }
                     logger.info(
                         f"============= prefill instance {i}, p_kv_config: {p_kv_config} ============="
                     )
@@ -412,16 +429,31 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 for j in range(d_num):
                     kv_port = kv_related_ports.pop()
                     http_port = kv_related_ports.pop()
-                    d_kv_config = {
-                        "kv_connector": "P2pConnector",
-                        "kv_role": "kv_consumer",
-                        "kv_port": str(kv_port),
-                        "kv_connector_extra_config": {
-                            "proxy_ip": master_ip,
-                            "proxy_port": str(pd_proxy_port),
-                            "http_port": str(http_port),
-                        },
-                    }
+                    if use_vllm_v1:
+                        d_kv_config = {
+                            "kv_connector": "P2pNcclConnector",
+                            "kv_role": "kv_consumer",
+                            "kv_port": str(kv_port),
+                            "kv_buffer_size": "8e9",
+                            "kv_connector_extra_config": {
+                                "send_type": "PUT_ASYNC",
+                                "nccl_num_channels": "16",
+                                "proxy_ip": master_ip,
+                                "proxy_port": str(pd_proxy_port),
+                                "http_port": str(http_port),
+                            },
+                        }
+                    else:
+                        d_kv_config = {
+                            "kv_connector": "P2pConnector",
+                            "kv_role": "kv_consumer",
+                            "kv_port": str(kv_port),
+                            "kv_connector_extra_config": {
+                                "proxy_ip": master_ip,
+                                "proxy_port": str(pd_proxy_port),
+                                "http_port": str(http_port),
+                            },
+                        }
                     logger.info(
                         f"============= decode instance {j}, d_kv_config: {d_kv_config} ============="
                     )
