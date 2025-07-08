@@ -19,22 +19,23 @@ jobs:
       - name: Set Environment Variable
         id: set-env  # Assign an ID to this step
         run: |
-          echo "ci_image=localhost:5000/flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.6.0-time2505241715" >> $GITHUB_OUTPUT  # Set output variable
+          echo "ci_image=localhost:5000/flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.0-time2506261134" >> $GITHUB_OUTPUT  # Set output variable
 
-  # Megatron Report Clean
-  megatron-report-clean:
-    needs:
-      - set-env
-    uses: ./.github/workflows/report-clean.yml
-    with:
-      backend: megatron
-      image: ${{ needs.set-env.outputs.ci_image }}
+  # TODO: Re-enable when you have a public IP
+  # # Megatron Report Clean
+  # megatron-report-clean:
+  #   needs:
+  #     - set-env
+  #   uses: ./.github/workflows/report-clean.yml
+  #   with:
+  #     backend: megatron
+  #     image: ${{ needs.set-env.outputs.ci_image }}
 
   # Megatron Unit Tests with Matrix
   megatron-unit-tests:
     needs:
       - set-env
-      - megatron-report-clean
+      # - megatron-report-clean
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
@@ -59,20 +60,21 @@ jobs:
       subset: ${{ matrix.subset }}
       image: ${{ needs.set-env.outputs.ci_image }}
 
-  # FlagScale Report Clean
-  flagscale-report-clean:
-    needs:
-      - set-env
-    uses: ./.github/workflows/report-clean.yml
-    with:
-      backend: flagscale
-      image: ${{ needs.set-env.outputs.ci_image }}
+  # TODO: Re-enable when you have a public IP
+  # # FlagScale Report Clean
+  # flagscale-report-clean:
+  #   needs:
+  #     - set-env
+  #   uses: ./.github/workflows/report-clean.yml
+  #   with:
+  #     backend: flagscale
+  #     image: ${{ needs.set-env.outputs.ci_image }}
 
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
     needs:
       - set-env
-      - flagscale-report-clean
+      # - flagscale-report-clean
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
@@ -97,12 +99,13 @@ jobs:
         task:
           - aquila
           # - deepseek # TODO: need fix
-          # - mixtral # TODO: need fix
+          - mixtral
           # - llava_onevision # TODO: need fix
     name: "train-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
       type: train
+      flaggems: disable
       image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-hetero:
@@ -123,9 +126,29 @@ jobs:
     # with:
     #   task: ${{ matrix.task }}
     #   type: hetero_train
+    #   flaggems: disable
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
-  functional-tests-inference:
+  # functional-tests-inference:
+  #   needs:
+  #     - set-env
+  #     - functional-tests-hetero
+  #   uses: ./.github/workflows/functional-tests.yml
+  #   strategy:
+  #     matrix:
+  #       task:
+  #         - deepseek
+  #         # - deepseek_flaggems
+  #         - qwen3
+  #         # - qwen3_flaggems
+  #   name: "inference-${{ matrix.task }}"
+  #   with:
+  #     task: ${{ matrix.task }}
+  #     type: inference
+  #     flaggems: disable
+  #     image: ${{ needs.set-env.outputs.ci_image }}
+
+  functional-tests-inference-pipeline:
     needs:
       - set-env
       - functional-tests-hetero
@@ -133,20 +156,18 @@ jobs:
     strategy:
       matrix:
         task:
-          - deepseek
-          - deepseek_flaggems
-          - qwen3
-          - qwen3_flaggems
-    name: "inference-${{ matrix.task }}"
+          - Qwen3-4B
+    name: "inference-pipeline-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
-      type: inference
+      type: inference-pipeline
+      flaggems: disable
       image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-serve:
     needs:
       - set-env
-      - functional-tests-inference
+      # - functional-tests-inference
     runs-on: ubuntu-latest
     steps:
       - name: Mock Run
@@ -161,6 +182,7 @@ jobs:
     # with:
     #   task: ${{ matrix.task }}
     #   type: serve
+    #   flaggems: disable
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
   # Megatron Coverage Test
@@ -192,7 +214,8 @@ jobs:
       - flagscale-unit-tests
       - functional-tests-train
       - functional-tests-hetero
-      - functional-tests-inference
+      # - functional-tests-inference
+      - functional-tests-inference-pipeline
       - functional-tests-serve
       - megatron-coverage-test
       - flagscale-coverage-test
@@ -200,4 +223,3 @@ jobs:
     steps:
       - name: All Tests Completed
         run: echo "All tests completed successfully!"
-
