@@ -158,28 +158,48 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                         num_layers_in_last_pipeline_stage_first_chunk = num_layers_in_last_pipeline_stage_first_chunk + 1
                     num_layers_in_last_pipeline_stage_second_chunk = num_layers_in_last_pipeline_stage - num_layers_in_last_pipeline_stage_first_chunk
 
-
                     num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank // 2
                     if num_layers_per_pipeline_rank % 2 != 0:
                         num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank_first_chunk + 1
                     num_layers_per_pipeline_rank_second_chunk = num_layers_per_pipeline_rank - num_layers_per_pipeline_rank_first_chunk
-                    
+
                     # process first chunk
                     if args.dualpipev_first_chunk:
+                        middle_pipeline_rank = (
+                            pipeline_rank
+                            if config.num_layers_in_first_pipeline_stage is None
+                            else pipeline_rank - 1
+                        )
                         if pipeline_rank == 0:
                             offset = 0
                         else:
                             offset = (
                                 middle_pipeline_rank * num_layers_per_pipeline_rank_first_chunk
                             ) + num_layers_in_first_pipeline_stage_first_chunk
+                    
                     # process second chunk
                     else:
-                        if pipeline_rank == 0:
-                            offset = config.num_layers - num_layers_in_first_pipeline_stage_second_chunk
+                        start_offset = (
+                            config.pipeline_model_parallel_size * num_layers_per_pipeline_rank_first_chunk
+                        )
+                        if num_layers_in_first_pipeline_stage_first_chunk > 0:
+                            start_offset = start_offset - num_layers_per_pipeline_rank_first_chunk + num_layers_in_first_pipeline_stage_first_chunk 
+                        if num_layers_in_last_pipeline_stage_first_chunk > 0:
+                            start_offset = start_offset - num_layers_per_pipeline_rank_first_chunk + num_layers_in_last_pipeline_stage_first_chunk
+
+                        middle_pipeline_rank = (
+                            config.pipeline_model_parallel_size - 1 - pipeline_rank
+                            if config.num_layers_in_last_pipeline_stage is None
+                            else config.pipeline_model_parallel_size - 1 - pipeline_rank - 1
+                        )
+
+                        if pipeline_rank == config.pipeline_model_parallel_size - 1:
+                            offset = start_offset
                         else:
-                            offset = config.num_layers - (
-                                (middle_pipeline_rank+1) * num_layers_per_pipeline_rank_second_chunk
-                            ) - num_layers_in_first_pipeline_stage_second_chunk
+                            offset = start_offset + (
+                                middle_pipeline_rank * num_layers_per_pipeline_rank_second_chunk
+                            ) + num_layers_in_last_pipeline_stage_second_chunk
+
 
 
 
@@ -228,11 +248,16 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                     ):
                         offset -= 1
                 else:
-                    num_layers_per_pipeline_rank = num_layers_per_pipeline_rank // 2
+                    num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank // 2
+                    if num_layers_per_pipeline_rank % 2 != 0:
+                        num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank_first_chunk + 1
+                    num_layers_per_pipeline_rank_second_chunk = num_layers_per_pipeline_rank - num_layers_per_pipeline_rank_first_chunk
+
                     if args.dualpipev_first_chunk:
-                        offset = pipeline_rank * num_layers_per_pipeline_rank
+                        offset = pipeline_rank * num_layers_per_pipeline_rank_first_chunk
                     else:
-                        offset = config.num_layers - ((pipeline_rank+1) * num_layers_per_pipeline_rank)
+                        offset = config.num_layers - ((pipeline_rank+1) * num_layers_per_pipeline_rank_second_chunk)
+
     else:
         offset = 0
     return offset
