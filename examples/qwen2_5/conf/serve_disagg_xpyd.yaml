@@ -26,6 +26,7 @@ experiment:
     FLAGCX_DEBUG: TRACE
     FLAGCX_DEBUG_SUBSYS: ALL
     USE_FLAGCX: true
+    VLLM_USE_V1: 1 # optional, default 1
   cmds:
     before_start: source /root/miniconda3/bin/activate flagscale-inference
 
