@@ -1,9 +1,7 @@
-backends_commit:
-  vllm: ed6e9075d31e32c8548b480a47d1ffb77da1f54c
+backends_commit: {}
 backends_version:
   FlagScale: main
-  vllm: 0.7.3
-commit: 38b68cb613674d2beaa58295d73765923fc6d7b8
+commit: 43c7cbf97cacdbc96c4b48a0a03d1141cdd1e2e2
 contact: ''
 device_type: Huawei_Atlas800TA3
 models:
