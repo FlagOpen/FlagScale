@@ -305,7 +305,9 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         f.write(f"\n")
         envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
         f.write(f"{envs_str}\n")
-        use_vllm_v1 = os.getenv("VLLM_USE_V1", "true").lower() in ("1", "true")
+        use_vllm_v1 = (os.getenv("VLLM_USE_V1", "true").lower() in ("1", "true")) and (
+            envs.get("VLLM_USE_V1", "true").lower() in ("1", "true")
+        )
 
         if nodes:
             if deploy_config.get("prefill_decode_disaggregation", False):
