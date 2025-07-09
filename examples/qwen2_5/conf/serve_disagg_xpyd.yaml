@@ -18,7 +18,7 @@ experiment:
       #prefill_address: x.x.x.x # optional, default "auto"
       decode_num: 2
       #decode_address: x.x.x.x # optional, default "auto"
-      prefill_decode_strategy: slo # optional, one of [slo|random|robin], default slo
+      prefill_decode_strategy: random # optional, one of [slo|random|robin], default slo
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     FLAGCX_SOCKET_IFNAME: bond0
