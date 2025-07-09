@@ -21,7 +21,6 @@ experiment:
       prefill_decode_strategy: slo # optional, one of [slo|random|robin], default slo
   envs:
     CUDA_DEVICE_MAX_CONNECTIONS: 1
-    VLLM_USE_V1: 0
     FLAGCX_SOCKET_IFNAME: bond0
     FLAGCX_PATH: /path/to/FlagCX/
     FLAGCX_DEBUG: TRACE
