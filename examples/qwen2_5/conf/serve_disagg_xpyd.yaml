@@ -15,7 +15,7 @@ experiment:
       use_fs_serve: false
       prefill_decode_disaggregation: true
       prefill_num: 2
-      #prefill_address: "x.x.x.x" # optional, default "auto"
+      #prefill_address: x.x.x.x # optional, default "auto"
       decode_num: 2
       #decode_address: x.x.x.x # optional, default "auto"
       prefill_decode_strategy: slo # optional, one of [slo|random|robin], default slo
