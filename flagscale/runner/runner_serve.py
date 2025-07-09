@@ -427,6 +427,9 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         )
 
                 f.write("echo '=========== launch decode instance ==========='\n")
+                decode_gpu_memory_utilization = deploy_config.get(
+                    "decode_gpu_memory_utilization", 0.7
+                )
 
                 for j in range(d_num):
                     kv_port = kv_related_ports.pop()
@@ -470,14 +473,14 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
 
                     if update_d_address != master_ip and len(nodes) > 1:
                         d_kv_config_formate_json = d_kv_config_json.replace('"', '\\"')
-                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --gpu-memory-utilization 0.7 --kv-transfer-config '\\''{d_kv_config_formate_json}'\\''"
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --gpu-memory-utilization {decode_gpu_memory_utilization} --kv-transfer-config '\\''{d_kv_config_formate_json}'\\''"
                         if docker_name:
                             ssh_cmd = f"ssh -f -n -p {ssh_port} {update_d_address} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {d_instance_log_path} 2>&1 &'\""
                         else:
                             ssh_cmd = f'ssh -f -n -p {ssh_port} {update_d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
                         f.write(f"{ssh_cmd}\n\n")
                     else:
-                        d_cmd = f"{ids_env} && {vllm_command} --port {http_port} --gpu-memory-utilization 0.7 --kv-transfer-config '\\''{d_kv_config_json}'\\''"
+                        d_cmd = f"{ids_env} && {vllm_command} --port {http_port} --gpu-memory-utilization {decode_gpu_memory_utilization} --kv-transfer-config '\\''{d_kv_config_json}'\\''"
                         f.write(f"d_{j}_cmd='{d_cmd}'\n")
                         f.write(f"\n")
                         f.write(
