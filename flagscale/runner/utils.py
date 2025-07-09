@@ -718,7 +718,7 @@ class ResourceManager:
                 raise ValueError("Insufficient resources")
             allocated_ids = list(range(node_found["used"], node_found["used"] + num))
             node_found["used"] += num
-            return allocated_ids
+            return allocated_ids, address
 
         # For address == "auto", traverse all nodes (master node first, then worker nodes)
         for node in self.nodes:
@@ -727,7 +727,7 @@ class ResourceManager:
                 if free >= num:
                     allocated_ids = list(range(node["used"], node["used"] + num))
                     node["used"] += num
-                    return allocated_ids
+                    return allocated_ids, node["address"]
 
         # If no node satisfies the allocation request, raise an error.
         resource_status = self.get_status()
