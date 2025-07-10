@@ -102,7 +102,7 @@ def test_inference_equal(test_path, test_type, test_task, test_case):
 
     for result_line, gold_value_line in zip(result_lines, gold_value_lines):
         print(result_line, gold_value_line)
-        assert result_line == gold_value_line
+        assert result_line.rstrip('\n') == gold_value_line.rstrip('\n')
 
 
 @pytest.mark.usefixtures("test_path", "test_type", "test_task", "test_case")
