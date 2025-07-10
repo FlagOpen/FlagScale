@@ -7,32 +7,27 @@ experiment:
   exp_name: DeepSeek-16b-a3b
   seed: 42
   save_steps: 10000
-  load: None
-  exp_dir: ./dualpipev_large_overlap_gbs256
-  # exp_dir: ./dualpipev_base_gbs256_profile
-  # exp_dir: ./1f1b_gbs1024 
+  load: null
+  exp_dir: xxx
   ckpt_format: torch
   task:
     type: train
     backend: megatron
     entrypoint: flagscale/train/train_gpt.py
   runner:
-    ssh_port: 6700
     per_node_task: false
     no_shared_fs: false
     rdzv_backend: static
-    hostfile: hostfile.4
-    # hostfile: null
+    hostfile: null
   cmds:
-    before_start: "ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale-train"
+    before_start: ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale-train
   envs:
     LOGLEVEL: "INFO"
     CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
-    # CUDA_VISIBLE_DEVICES: "0,1,2,3"
     CUDA_DEVICE_MAX_CONNECTIONS: 1
 
 action: run
 
 hydra:
   run:
-     dir: ${experiment.exp_dir}/hydra
+    dir: ${experiment.exp_dir}/hydra

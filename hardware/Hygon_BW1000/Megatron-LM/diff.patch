@@ -7006,7 +7006,7 @@ index c5d750e8..40e6b123 100644
 +                          help='Threshold for skipping spiky loss iterations.')
 +    return parser
 diff --git a/megatron/training/checkpointing.py b/megatron/training/checkpointing.py
-index a706c181..c1a27231 100644
+index a706c181..f66415fb 100644
 --- a/megatron/training/checkpointing.py
 +++ b/megatron/training/checkpointing.py
 @@ -239,12 +239,14 @@ def read_metadata(tracker_filename):
@@ -7025,6 +7025,17 @@ index a706c181..c1a27231 100644
 +        iters_cuda = torch.tensor([iteration], dtype=torch.long, device='cuda' if 'nccl' in torch.distributed.get_backend() else 'cpu')
          torch.distributed.all_reduce(iters_cuda, op=torch.distributed.ReduceOp.MAX)
          max_iter = iters_cuda[0].item()
+ 
+@@ -636,8 +638,8 @@ def maybe_save_dataloader_state(train_iterator, iteration, dataloader_save_path)
+ 
+     torch.distributed.barrier(group=mpu.get_data_parallel_group())
+ 
+-    if mpu.get_data_parallel_rank() == 0:
+-        ensure_directory_exists(data_state_save_path)
++    #if mpu.get_data_parallel_rank() == 0:
++    ensure_directory_exists(data_state_save_path)
+ 
+     torch.distributed.barrier(group=mpu.get_data_parallel_group())
  
 @@ -1056,6 +1058,10 @@ def load_args_from_checkpoint(
              checkpoint_args, 'add_bias_linear', not getattr(checkpoint_args, 'disable_bias_linear')

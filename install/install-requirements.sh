@@ -79,7 +79,7 @@ cd ..
 rm -r ./TransformerEngine
 
 # cudnn frontend
-pip install nvidia-cudnn-cu12==9.5.0.50
+pip install nvidia-cudnn-cu12==9.7.1.26
 CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" pip install nvidia-cudnn-frontend
 python -c "import torch; print('cuDNN version:', torch.backends.cudnn.version());"
 python -c "from transformer_engine.pytorch.utils import get_cudnn_version; get_cudnn_version()"
@@ -89,9 +89,10 @@ cu=$(nvcc --version | grep "Cuda compilation tools" | awk '{print $5}' | cut -d 
 torch=$(pip show torch | grep Version | awk '{print $2}' | cut -d '+' -f 1 | cut -d '.' -f 1,2)
 cp=$(python3 --version | awk '{print $2}' | awk -F. '{print $1$2}')
 cxx=$(g++ --version | grep 'g++' | awk '{print $3}' | cut -d '.' -f 1)
-wget https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
-pip install flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
-rm flash_attn-2.7.3+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
+flash_attn_version="2.8.0.post2"
+wget https://github.com/Dao-AILab/flash-attention/releases/download/v${flash_attn_version}/flash_attn-${flash_attn_version}+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
+pip install --no-cache-dir flash_attn-${flash_attn_version}+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
+rm flash_attn-${flash_attn_version}+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
 
 # From Megatron-LM log
 pip install "git+https://github.com/Dao-AILab/flash-attention.git@v2.7.2#egg=flashattn-hopper&subdirectory=hopper"
@@ -155,7 +156,7 @@ if [ "${env}" == "train" ]; then
     fi
 
     # Replace the following code with torch version 2.6.0
-    if [[ $torch_version == *"2.6.0"* ]];then
+    if [[ $torch_version == *"2.6.0"* ]] || [[ $torch_version == *"2.7.0"* ]];then
         # Check and replace line 908
         LINE_908=$(sed -n '908p' "$FILE")
         EXPECTED_908='                if num_nodes_waiting > 0:'

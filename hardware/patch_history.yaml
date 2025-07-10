@@ -116,6 +116,19 @@ Huawei_Atlas800TA3:
     FlagScale:
     - f54888ff0b7a3f042be0b8f5bd41176a0fe79e6f
     - 10e79271435ec4fdbae89be7d2c310fe93771604
+  inference:
+    FlagScale+vllm:
+    - 1d3c4b66bd2d214f6d25ce45c412a1b6ec043a90
+    - 38b68cb613674d2beaa58295d73765923fc6d7b8
+    - 64a63535d3cfea98b4b55d10e9f3e005f0e3cbe1
+    vllm:
+    - 1d3c4b66bd2d214f6d25ce45c412a1b6ec043a90
+    - 38b68cb613674d2beaa58295d73765923fc6d7b8
+    - 64a63535d3cfea98b4b55d10e9f3e005f0e3cbe1
+    FlagScale:
+    - 1d3c4b66bd2d214f6d25ce45c412a1b6ec043a90
+    - 38b68cb613674d2beaa58295d73765923fc6d7b8
+    - 64a63535d3cfea98b4b55d10e9f3e005f0e3cbe1
 Tsing_micro:
   inference:
     FlagScale+vllm:

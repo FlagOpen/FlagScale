@@ -48,7 +48,15 @@ def load_hf_tokenizer(model_path: str):
 
 def count_chat_tokens(messages: List[Dict[str, Any]]) -> int:
     tokenizer = load_hf_tokenizer(MODEL_PATH)
-    text = tokenizer.apply_chat_template(messages, add_generation_prompt=False, tokenize=False)
+    normalized_message = []
+    for msg in messages:
+        content = msg["content"]
+        if isinstance(content, list):
+            content = "".join(part["text"] for part in content if part.get("type") == "text")
+        normalized_message.append({"role": msg["role"], "content": content})
+    text = tokenizer.apply_chat_template(
+        normalized_message, add_generation_prompt=False, tokenize=False
+    )
     return len(tokenizer.encode(text, add_special_tokens=False))
 
 
