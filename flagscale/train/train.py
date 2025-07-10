@@ -2166,6 +2166,7 @@ def training_log(
 
             with open(args.memory_snapshot_path, 'wb') as f:
                 dump(snapshot, f)
+
         elapsed_time = timers('interval-time').elapsed(barrier=True)
         elapsed_time_per_iteration = elapsed_time / total_iterations
 
@@ -2385,7 +2386,7 @@ def post_training_step_callbacks(
         check_adlr_autoresume_termination(iteration, model, optimizer, opt_param_scheduler)
 
     # Profiling.
-    # torch.cuda.nvtx.range_pop() # for iteratrion
+    torch.cuda.nvtx.range_pop() # for iteratrion
     if (
         args.profile
         and iteration == args.profile_step_end
@@ -2711,7 +2712,7 @@ def train(
             elif iteration == args.profile_step_start:
                 torch.cuda.cudart().cudaProfilerStart()
                 torch.autograd.profiler.emit_nvtx(record_shapes=True).__enter__()
-        # torch.cuda.nvtx.range_push(f"iteration num {iteration}") # NOTE(lizhiyu): add iteration num tag for profile
+        torch.cuda.nvtx.range_push(f"iteration num {iteration}") # NOTE(lizhiyu): add iteration num tag for profile
         ft_integration.on_checkpointing_start()
         maybe_finalize_async_save(blocking=False)
         ft_integration.on_checkpointing_end(is_async_finalization=True)

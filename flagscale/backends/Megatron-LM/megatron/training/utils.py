@@ -607,7 +607,6 @@ def get_batch_on_this_tp_rank(data_iterator):
         elif mpu.is_pipeline_first_stage():
             labels = None
             loss_mask = None
-         
             _broadcast(tokens)
             _broadcast(attention_mask)
             _broadcast(position_ids)
@@ -646,4 +645,3 @@ def get_batch_on_this_tp_rank(data_iterator):
 
 def update_use_dist_ckpt(args):
     args.use_dist_ckpt = args.ckpt_format != "torch"
-
