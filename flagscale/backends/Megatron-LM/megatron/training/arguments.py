@@ -1031,6 +1031,46 @@ def validate_args(args, defaults={}):
             + f"The supported position embedding types are rope and none."
         )
 
+    if args.schedules_method == "dualpipev":
+        assert args.pipeline_model_parallel_size > 1, (
+            "DualPipeV can only be used for pipeline scheduling in MoE models, "
+        "thus requiring both pipeline parallelism and expert parallelism."
+        )
+        assert args.expert_model_parallel_size > 1, (
+            "DualPipeV can only be used for pipeline scheduling in MoE models, "
+        "thus requiring both pipeline parallelism and expert parallelism."
+        )
+
+        middle_stage_layers = args.num_layers
+        num_middle_stages = args.pipeline_model_parallel_size
+        if args.decoder_first_pipeline_num_layers is not None:
+            middle_stage_layers = middle_stage_layers - args.decoder_first_pipeline_num_layers
+            num_middle_stages = num_middle_stages - 1
+            assert args.decoder_first_pipeline_num_layers % 2 == 0, (
+                "The first pipeline stage must contain an even number of Transformer layers, "
+                "so that DualPipeV can split it into two model chunks."
+            )
+        if args.decoder_last_pipeline_num_layers is not None:
+            middle_stage_layers = middle_stage_layers - args.decoder_last_pipeline_num_layers
+            num_middle_stages = num_middle_stages - 1
+            assert args.decoder_last_pipeline_num_layers % 2 == 0, (
+                "The last pipeline stage must contain an even number of Transformer layers, "
+                "so that DualPipeV can split it into two model chunks."
+            )
+        if num_middle_stages > 0:
+            assert middle_stage_layers > 0, "Layers can not be empty"
+            assert middle_stage_layers % num_middle_stages == 0, "Layers must be even split"
+            num_layers_in_middle_stages = middle_stage_layers // num_middle_stages
+            assert num_layers_in_middle_stages % 2 == 0, (
+                "The middle pipeline stage must contain an even number of Transformer layers, "
+                "so that DualPipeV can split it into two model chunks."
+            )
+
+        assert args.moe_shared_expert_overlap is False, (
+                " DualPipeV does not support simultaneous use with moe_shared_expert_overlap currently."
+        )
+
+
     # Print arguments.
     _print_args("arguments", args)
 
@@ -1900,6 +1940,10 @@ def _add_training_args(parser):
                        choices=['nccl', 'ucc'],
                        help='Select a communicator backend for pipeline parallel communication. '
                        'If None, the default backend will be used.')
+    group.add_argument('--schedules-method', type=str, default=None, 
+                       choices=['dualpipev'])
+    group.add_argument('--moe-fb-overlap', action='store_true',
+                       help='Overlapping of moe a2a communication and forward/backward computation')
 
     return parser
 

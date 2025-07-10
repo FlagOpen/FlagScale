@@ -56,7 +56,7 @@ try:
 except ImportError:
     HAVE_FSDP2 = False
 
-from megatron.core.distributed import finalize_model_grads
+from megatron.core.distributed import finalize_model_grads, finalize_model_grads_for_dualpipev
 from megatron.core.enums import ModelType
 from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig
 from megatron.core.rerun_state_machine import (
@@ -101,9 +101,9 @@ from megatron.training.utils import (
     check_adlr_autoresume_termination,
     logical_and_across_model_parallel_group,
     reduce_max_stat_across_model_parallel_group,
-    is_last_rank,
+    # is_last_rank,
     print_rank_0,
-    print_rank_last,
+    # print_rank_last,
     report_memory,
     unwrap_model,
     update_use_dist_ckpt,
@@ -129,6 +129,26 @@ from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
 from flagscale.train.theoretical_memory_usage import report_theoretical_memory as fs_report_theoretical_memory
 
 stimer = StragglerDetector()
+
+
+def is_last_rank():
+    args = get_args()
+    if mpu.get_pipeline_model_parallel_world_size() > 1:
+        if args.schedules_method == "dualpipev":
+            return mpu.is_pipeline_first_stage(ignore_virtual=True)
+        else:
+            return torch.distributed.get_rank() == mpu.get_last_rank_when_using_pipeline() 
+    else:
+        return torch.distributed.get_rank() == (
+            torch.distributed.get_world_size() - 1)
+
+def print_rank_last(message):
+    """If distributed is initialized, print only on last rank."""
+    if torch.distributed.is_initialized():
+        if is_last_rank():
+            print(message, flush=True)
+    else:
+        print(message, flush=True)
 
 
 def destroy_global_state():
@@ -909,6 +929,7 @@ def pretrain(
             It can run e.g. benchmarks.
     """
 
+    print('entering pretrain flagscale')
     # Initalize and get arguments, timers, and Tensorboard writer.
     initialize_megatron(
         extra_args_provider=extra_args_provider,
@@ -1017,6 +1038,16 @@ def pretrain(
         for i in range(len(model)):
             mpu.set_virtual_pipeline_model_parallel_rank(i)
             iterators = build_train_valid_test_data_iterators(train_valid_test_dataset_provider)
+            train_data_iterator.append(iterators[0])
+            valid_data_iterator.append(iterators[1])
+            test_data_iterator.append(iterators[2])
+    elif args.schedules_method == 'dualpipev':
+        train_data_iterator = []
+        valid_data_iterator = []
+        test_data_iterator = []
+        for _ in range(2):
+            iterators = build_train_valid_test_data_iterators(
+                train_valid_test_dataset_provider)
             train_data_iterator.append(iterators[0])
             valid_data_iterator.append(iterators[1])
             test_data_iterator.append(iterators[2])
@@ -1134,6 +1165,12 @@ def pretrain(
             for i in range(len(model)):
                 mpu.set_virtual_pipeline_model_parallel_rank(i)
                 extra_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
+                extra_valid_data_iterator.append(extra_iterators)
+        elif args.schedules_method == 'dualpipev':
+            extra_valid_data_iterator = []
+            for _ in range(2):
+                extra_iterators = build_extra_valid_data_iterators(
+                    extra_valid_dataset_provider)
                 extra_valid_data_iterator.append(extra_iterators)
         else:
             extra_valid_data_iterator = (
@@ -1380,6 +1417,91 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
     return model
 
 
+def get_model_for_dualpipev(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap_with_ddp=True):
+    """Build the model."""
+    args = get_args()
+    args.model_type = model_type
+
+    assert model_type != ModelType.encoder_and_decoder, \
+        "Interleaved schedule not supported for model with both encoder and decoder"
+    model = []
+
+    pre_process, post_process = False, False
+    if mpu.is_pipeline_first_stage():
+        pre_process = True
+
+    args.dualpipev_first_chunk = True
+    first_model = model_provider_func(
+        pre_process=pre_process,
+        post_process=post_process
+    )
+    first_model.model_type = model_type
+    model.append(first_model)
+
+    args.dualpipev_first_chunk = False
+    second_model = model_provider_func(
+        pre_process=post_process,
+        post_process=pre_process
+    )
+    second_model.model_type = model_type
+    model.append(second_model)
+
+    if not isinstance(model, list):
+        model = [model]
+
+    # Set tensor model parallel attributes if not set.
+    # Only parameters that are already tensor model parallel have these
+    # attributes set for them. We should make sure the default attributes
+    # are set for all params so the optimizer can use them.
+    for model_module in model:
+        for param in model_module.parameters():
+            tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
+
+    # Print number of parameters.
+    if mpu.get_data_parallel_rank() == 0:
+        print(' > number of parameters on (tensor, pipeline) '
+              'model parallel rank ({}, {}): {}'.format(
+                  mpu.get_tensor_model_parallel_rank(),
+                  mpu.get_pipeline_model_parallel_rank(),
+                  sum([sum([p.nelement() for p in model_module.parameters()])
+                       for model_module in model])), flush=True)
+
+    # GPU allocation.
+    for model_module in model:
+        model_module.cuda(torch.cuda.current_device())
+    
+    # Fp16 conversion.
+    if args.fp16 or args.bf16:
+        config = get_model_config(model[0])
+        model = [Float16Module(config, model_module) for model_module in model]
+
+    if wrap_with_ddp:
+        config = get_model_config(model[0])
+        ddp_config = DistributedDataParallelConfig(
+            grad_reduce_in_fp32=args.accumulate_allreduce_grads_in_fp32,
+            overlap_grad_reduce=args.overlap_grad_reduce,
+            overlap_param_gather=args.overlap_param_gather,
+            use_distributed_optimizer=args.use_distributed_optimizer,
+            check_for_nan_in_grad=args.check_for_nan_in_loss_and_grad,
+            bucket_size=args.ddp_bucket_size,
+            average_in_collective=args.ddp_average_in_collective)
+        model = [DDP(config,
+                     ddp_config,
+                     model_chunk,
+                     # Turn off bucketing for model_chunk 2 onwards, since communication for these
+                     # model chunks is overlapped with compute anyway.
+                     disable_bucketing=(model_chunk_idx > 0))
+                 for (model_chunk_idx, model_chunk) in enumerate(model)]
+
+        # Broadcast params from data parallel src rank to other data parallel ranks.
+        if args.data_parallel_random_init:
+            for model_module in model:
+                model_module.broadcast_params()
+
+    return model
+
+
+
 def get_optimizer_param_scheduler(optimizer):
     """Build the learning rate scheduler."""
     args = get_args()
@@ -1462,7 +1584,11 @@ def setup_model_and_optimizer(
     timers = get_timers()
     one_logger = get_one_logger()
 
-    model = get_model(model_provider_func, model_type)
+    if args.schedules_method == "dualpipev":
+        model = get_model_for_dualpipev(model_provider_func, model_type)
+    else:
+        model = get_model(model_provider_func, model_type)
+
     unwrapped_model = unwrap_model(model)
 
     config = None
@@ -1703,6 +1829,109 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
             cuda_graph_set_manual_hooks(model)
 
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
+        # Average loss across microbatches.
+        loss_reduced = {}
+        for key in losses_reduced[0].keys():
+            val = [x[key].view(-1) for x in losses_reduced]
+            if val[0].numel() == 2:
+                # there is one dict per microbatch. in new reporting, we average
+                # over the total number of tokens across the global batch.
+                val = torch.vstack(val).sum(dim=0)
+                torch.distributed.all_reduce(
+                    val,
+                    group=mpu.get_data_parallel_group(with_context_parallel=True)
+                )
+                loss_reduced[key] = val[0] / val[1]
+            elif val[0].numel() == 1:
+                # legacy behavior, we average over the number of microbatches
+                val = torch.cat(val).mean()
+                loss_reduced[key] = val
+            else:
+                raise ValueError(f"Invalid value shape: {val[0].shape} for key {key}")
+        return (
+            loss_reduced,
+            skipped_iter,
+            should_checkpoint,
+            should_exit,
+            exit_code,
+            grad_norm,
+            num_zeros_in_grad,
+        )
+    return {}, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
+
+
+def train_step_for_dualpipev(forward_step_func, data_iterator,
+               model, optimizer, opt_param_scheduler, config):
+    """Single training step."""
+    args = get_args()
+    timers = get_timers()
+
+    rerun_state_machine = get_rerun_state_machine()
+    while rerun_state_machine.should_run_forward_backward(data_iterator):
+        # Set grad to zero.
+        for model_chunk in model:
+            model_chunk.zero_grad_buffer()
+        optimizer.zero_grad()
+
+        # Forward pass.
+        forward_backward_func = get_forward_backward_func()
+        losses_reduced = forward_backward_func(
+            forward_step_func=forward_step_func,
+            data_iterator=data_iterator,
+            model=model,
+            num_microbatches=get_num_microbatches(),
+            seq_length=args.seq_length,
+            micro_batch_size=args.micro_batch_size,
+            decoder_seq_length=args.decoder_seq_length,
+            forward_only=False)
+    should_checkpoint, should_exit, exit_code = rerun_state_machine.should_checkpoint_and_exit()
+    if should_exit:
+        return {}, True, should_checkpoint, should_exit, exit_code, None, None
+    
+    # Empty unused memory.
+    if args.empty_unused_memory_level >= 1:
+        torch.cuda.empty_cache()
+
+    # Vision gradients.
+    if args.vision_pretraining and args.vision_pretraining_type == "dino":
+        unwrapped_model = unwrap_model(model[0])
+        unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
+
+    # Update parameters.
+    timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
+    update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
+    timers('optimizer').stop()
+
+    # when freezing sub-models we may have a mixture of successful and unsucessful ranks,
+    # so we must gather across mp ranks
+    update_successful = logical_and_across_model_parallel_group(update_successful)
+    # grad_norm and num_zeros_in_grad will be None on ranks without trainable params,
+    # so we must gather across mp ranks
+    grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
+    if args.log_num_zeros_in_grad:
+        num_zeros_in_grad = reduce_max_stat_across_model_parallel_group(num_zeros_in_grad)
+
+    # Vision momentum.
+    if args.vision_pretraining and args.vision_pretraining_type == "dino":
+        unwrapped_model = unwrap_model(model[0])
+        unwrapped_model.update_momentum(args.curr_iteration)
+
+    # Update learning rate.
+    if update_successful:
+        increment = get_num_microbatches() * \
+                    args.micro_batch_size * \
+                    args.data_parallel_size
+        opt_param_scheduler.step(increment=increment)
+        skipped_iter = 0
+    else:
+        skipped_iter = 1
+
+    # Empty unused memory.
+    if args.empty_unused_memory_level >= 2:
+        torch.cuda.empty_cache()
+
+    dualpipevlaststage = mpu.is_pipeline_first_stage(ignore_virtual=True)
+    if dualpipevlaststage:
         # Average loss across microbatches.
         loss_reduced = {}
         for key in losses_reduced[0].keys():
@@ -2363,7 +2592,11 @@ def train(
         config.param_sync_func = [model_chunk.start_param_sync for model_chunk in model]
         if len(model) == 1:
             config.param_sync_func = config.param_sync_func[0]
-    config.finalize_model_grads_func = finalize_model_grads
+    
+    if args.schedules_method == "dualpipev":
+        config.finalize_model_grads_func = finalize_model_grads_for_dualpipev
+    else:
+        config.finalize_model_grads_func = finalize_model_grads
 
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')
@@ -2555,17 +2788,28 @@ def train(
         ########## FlagScale end ##########
 
         ft_integration.on_training_step_start()
-        (
-            loss_dict,
-            skipped_iter,
-            should_checkpoint,
-            should_exit,
-            exit_code,
-            grad_norm,
-            num_zeros_in_grad,
-        ) = train_step(
-            forward_step_func, train_data_iterator, model, optimizer, opt_param_scheduler, config
-        )
+        if args.schedules_method == "dualpipev":
+            loss_dict, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad = \
+                train_step_for_dualpipev(forward_step_func,
+                        train_data_iterator,
+                        model,
+                        optimizer,
+                        opt_param_scheduler,
+                        config)
+            # print(f"train step for dualpipev output is loss_dict: {loss_dict}, skipped_iter: {skipped_iter}, should_checkpoint: {should_checkpoint}")
+            # print(f"train step for dualpipev output is should_exit: {should_exit}, exit_code: {exit_code}, grad_norm: {grad_norm}, num_zeros_in_grad: {num_zeros_in_grad}")
+        else:
+            (
+                loss_dict,
+                skipped_iter,
+                should_checkpoint,
+                should_exit,
+                exit_code,
+                grad_norm,
+                num_zeros_in_grad,
+            ) = train_step(
+                forward_step_func, train_data_iterator, model, optimizer, opt_param_scheduler, config
+            )
         ft_integration.on_training_step_end()
         if should_checkpoint:
             save_checkpoint_and_time(
@@ -2692,6 +2936,12 @@ def train(
                 for i in range(len(model)):
                     mpu.set_virtual_pipeline_model_parallel_rank(i)
                     extra_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
+                    extra_valid_data_iterator.append(extra_iterators)
+            elif args.schedules_method == 'dualpipev':
+                extra_valid_data_iterator = []
+                for _ in range(2):
+                    extra_iterators = build_extra_valid_data_iterators(
+                        extra_valid_dataset_provider)
                     extra_valid_data_iterator.append(extra_iterators)
             else:
                 extra_valid_data_iterator = (

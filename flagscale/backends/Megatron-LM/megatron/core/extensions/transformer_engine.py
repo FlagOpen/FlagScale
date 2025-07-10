@@ -148,6 +148,9 @@ class TELinear(te.pytorch.Linear):
 
         extra_kwargs = _get_extra_te_kwargs(config)
 
+        if config.moe_fb_overlap:
+            extra_kwargs["delay_wgrad_compute"] = True
+
         if tp_comm_buffer_name and tp_comm_buffer_name not in ['qkv', 'proj', 'fc1', 'fc2']:
             self.config.tp_comm_overlap = False
             warnings.warn(
@@ -338,6 +341,10 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
         self.is_first_microbatch = True
         self.disable_parameter_transpose_cache = self.config.disable_parameter_transpose_cache
         extra_kwargs = _get_extra_te_kwargs(config)
+
+        if config.moe_fb_overlap:
+            extra_kwargs["delay_wgrad_compute"] = True
+
         self.tp_size = tp_group.size()
         self.tp_rank = tp_group.rank()
 
@@ -916,6 +923,9 @@ if is_te_min_version("1.9.0.dev0"):
 
             extra_kwargs = _get_extra_te_kwargs(config)
             extra_kwargs["ub_name"] = tp_comm_buffer_name
+
+            if config.moe_fb_overlap:
+                extra_kwargs["delay_wgrad_compute"] = True
 
             self.expert_parallel = self.config.expert_model_parallel_size > 1
             if is_expert:
