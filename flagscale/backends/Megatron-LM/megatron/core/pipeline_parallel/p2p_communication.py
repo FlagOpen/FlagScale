@@ -12,6 +12,7 @@ from megatron.core.parallel_state import (
     get_pipeline_model_parallel_rank,
     get_pipeline_model_parallel_world_size,
 )
+from megatron.core.utils import nvtx_decorator
 
 # Types
 Shape = Union[List[int], torch.Size]
@@ -493,6 +494,7 @@ def warm_up_comm_group(config):
         )
     config.variable_seq_lengths = True
 
+@nvtx_decorator()
 def recv_forward(
     tensor_shape: Shape, config: ModelParallelConfig, is_first_stage: bool
 ) -> torch.Tensor:
@@ -521,6 +523,7 @@ def recv_forward(
     return input_tensor
 
 
+@nvtx_decorator()
 def recv_backward(
     tensor_shape: Shape, config: ModelParallelConfig, is_last_stage: bool
 ) -> torch.Tensor:
@@ -550,6 +553,7 @@ def recv_backward(
     return output_tensor_grad
 
 
+@nvtx_decorator()
 def send_forward(
     output_tensor: torch.Tensor, config: ModelParallelConfig, is_last_stage: bool
 ) -> None:
@@ -577,6 +581,7 @@ def send_forward(
             config.timers('forward-send').stop()
 
 
+@nvtx_decorator()
 def send_backward(
     input_tensor_grad: torch.Tensor, config: ModelParallelConfig, is_first_stage: bool
 ) -> None:
@@ -604,6 +609,7 @@ def send_backward(
             config.timers('backward-send').stop()
 
 
+@nvtx_decorator()
 def send_forward_recv_backward(
     output_tensor: torch.Tensor,
     tensor_shape: Shape,
@@ -636,6 +642,7 @@ def send_forward_recv_backward(
     return output_tensor_grad
 
 
+@nvtx_decorator()
 def send_backward_recv_forward(
     input_tensor_grad: torch.Tensor,
     tensor_shape: Shape,
@@ -668,6 +675,7 @@ def send_backward_recv_forward(
     return input_tensor
 
 
+@nvtx_decorator()
 def send_forward_recv_forward(
     output_tensor: torch.Tensor,
     recv_prev: bool,
@@ -697,6 +705,7 @@ def send_forward_recv_forward(
     return input_tensor
 
 
+@nvtx_decorator()
 def send_backward_recv_backward(
     input_tensor_grad: torch.Tensor,
     recv_next: bool,
@@ -726,6 +735,7 @@ def send_backward_recv_backward(
     return output_tensor_grad
 
 
+@nvtx_decorator()
 def send_forward_backward_recv_forward_backward(
     output_tensor: torch.Tensor,
     input_tensor_grad: torch.Tensor,
