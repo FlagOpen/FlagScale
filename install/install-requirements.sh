@@ -40,7 +40,7 @@ fi
 
 python -m pip install --upgrade pip
 
-if [ "$env" == "train" ] && [ "$env" == "inference" ]; then
+if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
     # Packages that need to be installed outside of the conda environment
     pip install -r ./requirements/requirements-base.txt
 fi
@@ -58,7 +58,7 @@ if conda env list | grep -q "flagscale-${env}"; then
     echo "Conda environment 'flagscale-${env}' already exists."
 else
     echo "Creating conda environment 'flagscale-${env}'..."
-    if [ "$env" == "train" ] && [ "$env" == "inference" ]; then
+    if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
         conda create --name "flagscale-${env}" python=$(python --version | awk '{print $2}' | cut -d '.' -f 1,2) -y
     fi
     if [ "$env" == "RL" ]; then
@@ -70,7 +70,7 @@ conda activate flagscale-${env}
 # Exit immediately if any command fails
 set -e
 
-if [ "$env" == "train" ] && [ "$env" == "inference" ]; then
+if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
     # This command updates `setuptools` to the latest version, ensuring compatibility and access to the latest features for Python package management.
     pip install --upgrade setuptools
 
