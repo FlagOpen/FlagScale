@@ -158,7 +158,7 @@ RUN cd ${STAGE_DIR}/FlagScale && \
 # Install flagscale-RL requirements
 ##############################################################################
 RUN cd ${STAGE_DIR}/FlagScale && \
-    ./install/install-requirements.sh --env rl
+    ./install/install-requirements.sh --env RL
 
 # ##############################################################################
 # # Clear
