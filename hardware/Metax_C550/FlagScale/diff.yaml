@@ -1,12 +1,14 @@
 backends_commit:
-  Megatron-LM: 47b99b6ca0132a8d7c5321ac16a32a0ec9f9e192
+  vllm: ba41cc90e8ef7f236347b2f1599eec2cbb9e1f0d
 backends_version:
   FlagScale: 0.8.0
-  Megatron-LM: 0.12.0
-commit: 0d48518e02778b022dacb96eac45ef408554d7c1
-contact: mengxiao.li@metax-tech.com
+  vllm: 0.8.5
+commit: e2550ae0cb8ad597afc6dc94f464941f4383b909
+contact: ''
 device_type: Metax_C550
 models:
-- Llama3-70B
+- deepseek_r1
+- deepseek_r1_w8a8
+- qwen3
 task:
-- train
+- inference
