@@ -5,7 +5,7 @@ set -e
 print_help() {
     echo "Usage: $0 [--env <train|inference>] [--llama-cpp-backend <cpu|metal|blas|openblas|blis|cuda|gpu|musa|vulkan_mingw64|vulkan_msys2|cann|arm_kleidi|hip|opencl_android|opencl_windows_arm64>]"
     echo "Options:"
-    echo "  --env <train|inference|rl>         Specify the environment type (required)"
+    echo "  --env <train|inference|RL>         Specify the environment type (required)"
     echo "  --llama-cpp-backend <backend>   Specify the llama.cpp backend (default: cpu)"
 }
 
@@ -26,15 +26,15 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-# Check if 'env' field is provided and is either 'train' | 'inference' | 'rl'
+# Check if 'env' field is provided and is either 'train' | 'inference' | 'RL'
 if [ -z "$env" ]; then
-    echo "Error: env field is required. Please specify either 'train' | 'inference' | 'rl'."
+    echo "Error: env field is required. Please specify either 'train' | 'inference' | 'RL'."
     exit 1
 fi
 
 # Check the value of env
-if [ "$env" != "train" ] && [ "$env" != "inference" ] && [ "$env" != "rl" ]; then
-    echo "Error: env must be 'train' | 'inference' | 'rl'."
+if [ "$env" != "train" ] && [ "$env" != "inference" ] && [ "$env" != "RL" ]; then
+    echo "Error: env must be 'train' | 'inference' | 'RL'."
     exit 1
 fi
 
@@ -61,8 +61,8 @@ else
     if [ "$env" == "train" ] && [ "$env" == "inference" ]; then
         conda create --name "flagscale-${env}" python=$(python --version | awk '{print $2}' | cut -d '.' -f 1,2) -y
     fi
-    if [ "$env" == "rl" ]; then
-        conda create --name flagscale-RL python==3.10 -y
+    if [ "$env" == "RL" ]; then
+        conda create --name "flagscale-${env}" python==3.10 -y
     fi
 fi
 conda activate flagscale-${env}
@@ -316,7 +316,7 @@ if [ "$env" == "train" ] && [ "$env" == "inference" ]; then
     fi
 fi
 
-if [ "$env" == "rl" ]; then
+if [ "$env" == "RL" ]; then
     # install verl
     git clone https://github.com/volcengine/verl.git
     cd verl
