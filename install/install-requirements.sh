@@ -200,6 +200,9 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
 
     # If env equals 'inference'
     if [ "${env}" == "inference" ]; then
+        # Navigate to requirements directory and install basic dependencies
+        pip install -r ./requirements/inference/requirements.txt
+
         # Unpatch
         python tools/patch/unpatch.py --backend vllm
         python tools/patch/unpatch.py --backend llama.cpp
