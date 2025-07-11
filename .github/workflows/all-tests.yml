@@ -2,9 +2,9 @@ name: All Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 concurrency:
   group: ${{ github.event.pull_request.number }}-${{ github.actor }}
@@ -14,15 +14,15 @@ jobs:
   set-env:
     runs-on: ubuntu-latest
     outputs:
-      ci_image: ${{ steps.set-env.outputs.ci_image }}  # Declare output variable
+      ci_image: ${{ steps.set-env.outputs.ci_image }} # Declare output variable
     steps:
       - name: Set Environment Variable
-        id: set-env  # Assign an ID to this step
+        id: set-env # Assign an ID to this step
         run: |
-          echo "ci_image=localhost:5000/flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.0-time2506261134" >> $GITHUB_OUTPUT  # Set output variable
+          echo "ci_image=localhost:5000/flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.0-time2507101713 " >> $GITHUB_OUTPUT  # Set output variable
 
   # TODO: Re-enable when you have a public IP
-  # # Megatron Report Clean
+  # Megatron Report Clean
   # megatron-report-clean:
   #   needs:
   #     - set-env
@@ -85,6 +85,20 @@ jobs:
     with:
       backend: flagscale
       subset: ${{ matrix.subset }}
+      image: ${{ needs.set-env.outputs.ci_image }}
+
+  functional-tests-rl:
+    needs:
+      - set-env
+    uses: ./.github/workflows/functional-tests.yml
+    strategy:
+      matrix:
+        task:
+          - qwen2_5
+    name: "rl-${{ matrix.task }}"
+    with:
+      task: ${{ matrix.task }}
+      type: rl
       image: ${{ needs.set-env.outputs.ci_image }}
 
   # Functional Tests with Mision and Type Matrix
@@ -198,6 +212,7 @@ jobs:
       - functional-tests-serve
       - megatron-coverage-test
       - flagscale-coverage-test
+      - functional-tests-rl
     runs-on: ubuntu-latest
     steps:
       - name: All Tests Completed

@@ -1,12 +1,10 @@
 train:
-  aquila:
-    -tp2_pp2
+  aquila: -tp2_pp2
     -tp4_pp2
-# TODO: need fix
-#   deepseek:
-#     -tp2_pp2_ep2
-  mixtral:
-    -tp2_pp1_ep2
+  # TODO: need fix
+  #   deepseek:
+  #     -tp2_pp2_ep2
+  mixtral: -tp2_pp1_ep2
     -tp4_pp1_ep2
 #   llava_onevision:
 #     -tp2
@@ -19,10 +17,8 @@ train:
 #     -dp2dp4_shared_embedding
 
 inference:
-  deepseek:
-    -tp2
-  qwen3:
-    -tp2
+  deepseek: -tp2
+  qwen3: -tp2
   # deepseek_flaggems:
   #   -tp2
   # qwen3_flaggems:
@@ -32,3 +28,6 @@ inference:
 # serve:
 #   base:
 #     -multiple_model
+
+rl:
+  qwen2_5: -0_5b
