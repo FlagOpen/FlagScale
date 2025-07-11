@@ -1362,6 +1362,18 @@ index 2a21fe14..5de99a6a 100644
  
  # reference from https://github.com/huggingface/transformers/blob/0ad3710d4767d4ac7ee95f33f8554373e59efade/src/transformers/models/qwen2_5_vl/modular_qwen2_5_vl.py#L243
  class Qwen2_5VisionModel(VisionModule):
+diff --git a/flagscale/train/theoretical_memory_usage.py b/flagscale/train/theoretical_memory_usage.py
+index e5da1d04..4f8b93cd 100644
+--- a/flagscale/train/theoretical_memory_usage.py
++++ b/flagscale/train/theoretical_memory_usage.py
+@@ -279,6 +279,7 @@ def compute_weight_and_optimizer_memory(args, verbose=False):
+     )
+ 
+     # Part3: MTP ============================================================================
++    args.mtp_num_layers = None
+     if args.mtp_num_layers is not None:
+         mtp_layer_is_moe = moe_layer_pattern[-1]
+         mtp_num_moe_layers = mtp_layer_is_moe * args.mtp_num_layers
 diff --git a/flagscale/train/train.py b/flagscale/train/train.py
 index 7039c1a2..2099d91e 100644
 --- a/flagscale/train/train.py
