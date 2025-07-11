@@ -19,7 +19,7 @@ jobs:
       - name: Set Environment Variable
         id: set-env  # Assign an ID to this step
         run: |
-          echo "ci_image=ocalhost:5000/flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.0-time2507101713" >> $GITHUB_OUTPUT  # Set output variable
+          echo "ci_image=localhost:5000/flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.0-time2507101713" >> $GITHUB_OUTPUT  # Set output variable
 
   # TODO: Re-enable when you have a public IP
   # # Megatron Report Clean

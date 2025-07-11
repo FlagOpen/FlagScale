@@ -154,6 +154,12 @@ RUN cd ${STAGE_DIR}/FlagScale && \
     apt-get install -y --no-install-recommends curl && \
     ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
 
+##############################################################################
+# Install flagscale-RL requirements
+##############################################################################
+RUN cd ${STAGE_DIR}/FlagScale && \
+    ./install/install-requirements.sh --env rl
+
 # ##############################################################################
 # # Clear
 # ##############################################################################
