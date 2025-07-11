@@ -457,6 +457,8 @@ def normalize_backend(backend):
         return "llama.cpp"
     elif input_lower in ["omniinfer", "omni_infer", "OmniInfer"]:
         return "omniinfer"
+    elif input_lower in ["verl"]:
+        return "verl"
 
     raise ValueError(f'Unsupported backend {backend}')
 

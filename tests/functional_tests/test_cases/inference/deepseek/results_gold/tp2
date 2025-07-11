@@ -1,7 +1,7 @@
 **************************************************
 output.prompt='The president of the United States'
-output.outputs[0].text=', George W. Bush, has been given a 95% confidence interval'
-output.outputs[0].token_ids=[11, 9857, 467, 13, 14079, 11, 702, 1012, 2661, 264, 220, 24, 20, 4, 12136, 9873]
+output.outputs[0].text=', the\n\\boxed{1}\n\n\\boxed{2}\n\n\\boxed{'
+output.outputs[0].token_ids=[11, 279, 198, 59, 79075, 90, 16, 630, 59, 79075, 90, 17, 630, 59, 79075, 90]
 **************************************************
 output.prompt='The capital of France'
 output.outputs[0].text=', Paris, is known for its iconic landmarks such as the Eiffel Tower'

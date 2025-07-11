@@ -199,6 +199,37 @@ def run_scp_command(host, src, dst, port=None, dryrun=False):
         sys.exit(result.returncode)
 
 
+def flatten_dict_to_args_verl(config_dict, pre_str=""):
+    args = []
+    if 'config-path' in config_dict:
+        args.append(f'--config-path={config_dict["config-path"]}')
+        config_dict.pop('config-path')
+
+    if 'config-name' in config_dict:
+        args.append(f'--config-name={config_dict["config-name"]}')
+        config_dict.pop('config-name')
+
+    for key, value in config_dict.items():
+
+        if isinstance(value, dict):
+            if key == 'append_kargs':
+                target_str = f"+"
+            else:
+                target_str = f"{key}."
+            args.extend(flatten_dict_to_args_verl(value, pre_str + target_str))
+        elif isinstance(value, list):
+            v_str = ""
+            for v in value:
+                v_str += f"{v}"
+            args.append(f"{pre_str+key}=" + v_str)
+        elif isinstance(value, bool):
+            args.append(f"{pre_str+key}={value}")
+        else:
+            args.append(f"{pre_str+key}=" + f"{value}")
+
+    return args
+
+
 def flatten_dict_to_args(config_dict, ignore_keys=[]):
     args = []
     for key, value in config_dict.items():
@@ -687,7 +718,7 @@ class ResourceManager:
                 raise ValueError("Insufficient resources")
             allocated_ids = list(range(node_found["used"], node_found["used"] + num))
             node_found["used"] += num
-            return allocated_ids
+            return allocated_ids, address
 
         # For address == "auto", traverse all nodes (master node first, then worker nodes)
         for node in self.nodes:
@@ -696,7 +727,7 @@ class ResourceManager:
                 if free >= num:
                     allocated_ids = list(range(node["used"], node["used"] + num))
                     node["used"] += num
-                    return allocated_ids
+                    return allocated_ids, node["address"]
 
         # If no node satisfies the allocation request, raise an error.
         resource_status = self.get_status()
