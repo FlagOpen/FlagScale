@@ -3,10 +3,10 @@ backends_commit:
 backends_version:
   FlagScale: 0.8.0
   Megatron-LM: 0.12.0
-commit: e2550ae0cb8ad597afc6dc94f464941f4383b909
+commit: 8473967eff51da1e77e79f8060a333d616480b68
 contact: ''
 device_type: MUSA_S5000
 models:
 - llama3
 task:
-- llama3
+- train
