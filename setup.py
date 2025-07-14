@@ -451,9 +451,11 @@ class FlagScaleInstallLib(_install_lib):
         raise ValueError(self.install_dir)
 
 
+from version import FLAGSCALE_VERSION
+
 setup(
     name="flag_scale",
-    version="0.8.0",
+    version=FLAGSCALE_VERSION,
     description="FlagScale is a comprehensive toolkit designed to support the entire lifecycle of large models, developed with the backing of the Beijing Academy of Artificial Intelligence (BAAI). ",
     url="https://github.com/FlagOpen/FlagScale",
     packages=[
