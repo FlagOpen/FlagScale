@@ -6,7 +6,8 @@ print_help() {
     echo "Usage: $0 [--env <train|inference>] [--llama-cpp-backend <cpu|metal|blas|openblas|blis|cuda|gpu|musa|vulkan_mingw64|vulkan_msys2|cann|arm_kleidi|hip|opencl_android|opencl_windows_arm64>]"
     echo "Options:"
     echo "  --env <train|inference|RL>         Specify the environment type (required)"
-    echo "  --llama-cpp-backend <backend>   Specify the llama.cpp backend (default: cpu)"
+    echo "  --llama-cpp-backend <backend>      Specify the llama.cpp backend (default: cpu)"
+    echo "  --omni_infer <value>               Specify omni inference value (optional)"
 }
 
 # Initialize the variable
@@ -40,8 +41,8 @@ fi
 
 python -m pip install --upgrade pip
 
+# If the environment is "train" or "inference", install the base dependency package
 if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
-    # Packages that need to be installed outside of the conda environment
     pip install -r ./requirements/requirements-base.txt
 fi
 
@@ -59,16 +60,18 @@ if conda env list | grep -q "flagscale-${env}"; then
 else
     echo "Creating conda environment 'flagscale-${env}'..."
     if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
+        # Use the current Python version of the system (e.g. 3.12)
         conda create --name "flagscale-${env}" python=$(python --version | awk '{print $2}' | cut -d '.' -f 1,2) -y
     fi
+
     if [ "$env" == "RL" ]; then
+        # Enforce the use of Python 3.10 for RL environments
         conda create --name "flagscale-${env}" python==3.10 -y
     fi
 fi
-conda activate flagscale-${env}
 
-# Exit immediately if any command fails
-set -e
+# Activate the target Conda environment
+conda activate flagscale-${env}
 
 if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
     # This command updates `setuptools` to the latest version, ensuring compatibility and access to the latest features for Python package management.
