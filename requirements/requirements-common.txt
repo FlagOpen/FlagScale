@@ -17,6 +17,7 @@ scikit-build-core
 sentencepiece
 tensorboard
 transformers
+ray
 
 # test
 coverage

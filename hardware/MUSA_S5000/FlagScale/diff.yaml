@@ -1,13 +1,12 @@
 backends_commit:
-  vllm: ed6e9075d31e32c8548b480a47d1ffb77da1f54c
+  Megatron-LM: fdfcef87004205eca69ea462b375578185ea01f6
 backends_version:
   FlagScale: 0.8.0
-  vllm: v0.7.3
-commit: 3568f8c9e08f94b8c5ed42f79cf0e295b99d4559
-contact: ''''''
+  Megatron-LM: 0.12.0
+commit: 8473967eff51da1e77e79f8060a333d616480b68
+contact: ''
 device_type: MUSA_S5000
 models:
-- minicpm_o_2.6
-- DeepSeek-R1-Distill-Qwen-32B
+- llama3
 task:
-- inference
+- train
