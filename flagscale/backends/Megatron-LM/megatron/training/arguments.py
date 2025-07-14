@@ -1070,6 +1070,14 @@ def validate_args(args, defaults={}):
                 " DualPipeV does not support simultaneous use with moe_shared_expert_overlap currently."
         )
 
+        if args.moe_fb_overlap:
+            assert args.overlap_grad_reduce is False and args.overlap_param_gather is False, (
+                " DualPipeV configured with moe_fb_overlap is incompatible with either overlap_grad_reduce or overlap_param_gather. "
+                " When moe_fb_overlap is enabled, DualPipeV activates the DW-split mechanism provided by Transformer Engine, "
+                " which causes all param.grad attributes to be None during the backward-for-inputs phase. "
+                " This absence of gradient tensors violates the assumptions of both overlap_grad_reduce and overlap_param_gather, precipitating an assertion failure within DDP."
+            )
+
 
     # Print arguments.
     _print_args("arguments", args)

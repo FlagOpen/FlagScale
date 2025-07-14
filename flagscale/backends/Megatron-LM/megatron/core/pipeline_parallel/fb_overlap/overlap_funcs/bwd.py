@@ -26,22 +26,11 @@ def transformer_layer_backward_moe(
     args = get_args()
     dispached_input, fc1_out, act_out, probs, indices, global_input_tokens_local_experts_indices = self.recompute_needed_tensors
     ep_group = parallel_state.get_expert_model_parallel_group()
-    tp_size = parallel_state.get_tensor_model_parallel_world_size()
-    if tp_size > 1:
-        shared_expert_grad = layer_output_grad if layer_output_grad is not None else self.unperm2_graph[1].grad
-        _, backward_ag_shared, backward_ag_shared_handle = async_all_gather(
-            shared_expert_grad, parallel_state.get_tensor_model_parallel_group()
-        )
-    else:
-        backward_ag_shared = layer_output_grad if layer_output_grad is not None else self.unperm2_graph[1].grad
-        backward_ag_shared_handle = None
+
+    backward_shared = layer_output_grad if layer_output_grad is not None else self.unperm2_graph[1].grad
 
     run_graph_backward(self.unperm2_graph, layer_output_grad, keep_grad=True)
-    if backward_ag_shared_handle is not None:
-        backward_ag_shared_handle.wait()
-        backward_ag_shared_handle = None
-        if layer_output_grad is not None:
-            layer_output_grad.untyped_storage().resize_(0)
+
     _, unperm1_out_grad, bwd_unperm_a2a_handle = async_all_to_all(
         self.unperm_a2a_graph[1].grad,
         self.output_splits,
@@ -51,7 +40,7 @@ def transformer_layer_backward_moe(
     # overlap alltoall by shared experts backward
     if self.shared_experts_graph[0] is not None:
         turn_shared_experts_delay_wgrad_compute(self, enable=True)
-        run_graph_backward(self.shared_experts_graph, backward_ag_shared, keep_grad=True)
+        run_graph_backward(self.shared_experts_graph, backward_shared, keep_grad=True)
         call_shared_experts_backward_dw(self)
         turn_shared_experts_delay_wgrad_compute(self, enable=False)
 
@@ -107,7 +96,6 @@ def transformer_layer_backward_moe(
 
 
 def transformer_layer_backward_dense(layer_output_grad, layer_graph):
-    
     turn_dense_mlp_delay_wgrad_compute(layer_graph, enable=True)
     run_graph_backward(layer_graph.unperm2_graph, layer_output_grad, keep_grad=True)
     run_graph_backward(layer_graph.pre_mlp_layernorm_graph)
@@ -119,5 +107,4 @@ def transformer_layer_backward_dense(layer_output_grad, layer_graph):
     run_graph_backward(layer_graph.attn_graph, keep_grad=True)
     call_attention_backward_dw(layer_graph)
     turn_attention_delay_wgrad_compute(layer_graph, enable=False)
-
     return layer_graph.layer_input.grad

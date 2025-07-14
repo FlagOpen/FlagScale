@@ -605,8 +605,6 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(position_ids)
 
         elif mpu.is_pipeline_first_stage():
-            labels = None
-            loss_mask = None
             _broadcast(tokens)
             _broadcast(attention_mask)
             _broadcast(position_ids)

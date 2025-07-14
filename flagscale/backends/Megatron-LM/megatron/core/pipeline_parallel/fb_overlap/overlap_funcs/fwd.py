@@ -38,9 +38,6 @@ def transformer_layer_forward_moe(
 ):
     # hidden_states: [s, b, h]
     args = get_args()
-    ep_group = parallel_state.get_expert_model_parallel_group()
-    tp_size = parallel_state.get_tensor_model_parallel_world_size()
-    tp_group = parallel_state.get_tensor_model_parallel_group()
     use_shared_experts = hasattr(self.mlp, 'shared_experts') and self.mlp.shared_experts is not None
     recomp_norm = getattr(args, 'recompute_norm', False)
 
@@ -48,7 +45,6 @@ def transformer_layer_forward_moe(
 
     # Residual connection.
     residual1 = detached_layer_input
-
     # input_layernorm + AttentionForward
     hidden_states = attention_forward(
         self, detached_layer_input, residual1,
@@ -58,7 +54,6 @@ def transformer_layer_forward_moe(
         packed_seq_params=packed_seq_params,
         recompute_norm=recomp_norm
     )
-
     attention_out, detached_attention_out = hidden_states, detach_tensor(hidden_states, checkpoint_forward=checkpoint)
 
     # Residual connection.
@@ -74,45 +69,34 @@ def transformer_layer_forward_moe(
     # MLP.
     detached_mlp_input = detach_tensor(pre_mlp_layernorm_output, checkpoint_forward=checkpoint)
 
-    moe_shared_expert_overlap = False
-    if tp_size > 1 and use_shared_experts and moe_shared_expert_overlap:
-        # shared experts tp communication
-        _, shared_experts_input, shared_experts_allgather_handle = async_all_gather(
-            detached_mlp_input, tp_group, is_use_get_global_memory_buffer=True
-        )
-        AG_SHARED_EXPERTS_INPUTS.append((shared_experts_input, shared_experts_allgather_handle))
-    else:
-        shared_experts_input, shared_experts_allgather_handle = detached_mlp_input, None
-
     # Router forward.
     probs, routing_map = router_forward(self, detached_mlp_input)
-    shared_expert_output = None
-
     # Token Perm1 Forward
     probs_detached = detach_tensor(probs, checkpoint_forward=checkpoint)
     perm1_local_input_tokens, perm1_probs, tokens_per_expert = alltoall_token_perm1(self.mlp.token_dispatcher, detached_mlp_input, probs_detached, routing_map)
-    if shared_experts_allgather_handle is not None:
-        # overlap shared experts tp comm by token perm1.
-        shared_experts_allgather_handle.wait()
     # Async Perm A2A.
     _, perm1_local_input_tokens_a2a, perm1_local_input_tokens_a2a_handle = async_all_to_all(
         perm1_local_input_tokens,
         self.mlp.token_dispatcher.output_splits,
         self.mlp.token_dispatcher.input_splits,
-        ep_group
+        self.mlp.token_dispatcher.ep_group,
     )
     _, perm1_probs_a2a, perm1_probs_a2a_handle = async_all_to_all(
         perm1_probs,
         self.mlp.token_dispatcher.output_splits,
         self.mlp.token_dispatcher.input_splits,
-        ep_group
+        self.mlp.token_dispatcher.ep_group,
     )
+
     # Shared Experts Forward.
+    shared_expert_output = None
     if use_shared_experts:
         shared_expert_output = self.mlp.shared_experts(detached_mlp_input)
+
     if recomp_norm:
         assert not recomp_norm, "not support recompute norm"
         self.norm_ckpt2.discard_output()
+
     # overlap perm a2a by shared experts computation.
     perm1_local_input_tokens_a2a_handle.wait()
     perm1_local_input_tokens_a2a_handle = None
@@ -122,14 +106,6 @@ def transformer_layer_forward_moe(
     # but backward func of perm1_local_input_tokens, is needed, so resize the storage but keep tensor.
     perm1_local_input_tokens.untyped_storage().resize_(0)
     perm1_probs.untyped_storage().resize_(0)
-    if tp_size > 1 and use_shared_experts and moe_shared_expert_overlap :
-        # tp comm for shared experts
-        share_experts_graph, shared_expert_output, rs_shared_experts_handle = async_reduce_scatter(
-            shared_expert_output, tp_group
-        )
-    else:
-        share_experts_graph = shared_expert_output
-        rs_shared_experts_handle = None
 
     detached_perm1_local_input_tokens_a2a = detach_tensor(perm1_local_input_tokens_a2a, checkpoint_forward=checkpoint)
     detached_perm1_probs_a2a = detach_tensor(perm1_probs_a2a, checkpoint_forward=checkpoint)
@@ -150,22 +126,17 @@ def transformer_layer_forward_moe(
     # Token Unperm1 Forward
     unperm1_hidden_states = alltoall_token_unperm1(self.mlp.token_dispatcher, detached_expert_output, detached_mlp_bias)
     expert_output.untyped_storage().resize_(0)
-    if rs_shared_experts_handle is not None:
-        # overlap shared experts tp comm by token perm2 + gmm
-        rs_shared_experts_handle.wait()
-        # share_experts_graph tensor storage is not need by backward,
-        # but backward func of share_experts_graph is needed, so resize the storage but keep tensor.
-        share_experts_graph.untyped_storage().resize_(0)
 
     # Launch Token Unperm2 A2A
     _, unperm1_hidden_states_a2a, unperm1_hidden_states_a2a_handle = async_all_to_all(
         unperm1_hidden_states,
         self.mlp.token_dispatcher.input_splits,
         self.mlp.token_dispatcher.output_splits,
-        ep_group
+        self.mlp.token_dispatcher.ep_group,
     )
     unperm1_hidden_states_a2a_handle.wait()
     unperm1_hidden_states_a2a_handle = None
+
     # unperm1_hidden_states tensor storage is not need by backward,
     # but backward func of unperm1_hidden_states is needed, so resize the storage but keep tensor.
     unperm1_hidden_states.untyped_storage().resize_(0)
@@ -173,12 +144,13 @@ def transformer_layer_forward_moe(
     route_expert_output, _ = alltoall_token_unperm2(self.mlp.token_dispatcher, detached_unperm1_hidden_states_a2a)
 
     if use_shared_experts:
+        shared_experts_graph = shared_expert_output
         detached_shared_expert_output = detach_tensor(shared_expert_output, checkpoint_forward=checkpoint)
         mlp_output = route_expert_output + detached_shared_expert_output
         shared_expert_output.untyped_storage().resize_(0)
     else:
         detached_shared_expert_output = None
-        share_experts_graph = None
+        shared_experts_graph = None
         mlp_output = route_expert_output
 
     if recomp_norm:
@@ -214,7 +186,7 @@ def transformer_layer_forward_moe(
         (unperm1_hidden_states, None),  # unperm1 graph
         (None, detached_unperm1_hidden_states_a2a),
         (output, None),  # unperm2 graph
-        (share_experts_graph, detached_shared_expert_output),
+        (shared_experts_graph, detached_shared_expert_output),
         detached_layer_input
     )
 
@@ -223,6 +195,7 @@ def transformer_layer_forward_moe(
         self.mlp.token_dispatcher.input_splits, self.mlp.token_dispatcher.output_splits, self,
         checkpointed=checkpoint
     )
+
     return output, context, graph
 
 
@@ -315,5 +288,4 @@ def transformer_layer_forward_dense(
         saved_tensors, [], None, None, self,
         checkpointed=checkpoint
     )
-
     return output, context, graph
