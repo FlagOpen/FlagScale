@@ -12,10 +12,13 @@ BI_V150:
   train:
     FlagScale+Megatron-LM:
     - bc57c7643c05da338251f31d203c9fdc66710a17
+    - 31614d56ace759fdec4d790f1322d54e21107695
     Megatron-LM:
     - bc57c7643c05da338251f31d203c9fdc66710a17
+    - 31614d56ace759fdec4d790f1322d54e21107695
     FlagScale:
     - bc57c7643c05da338251f31d203c9fdc66710a17
+    - 31614d56ace759fdec4d790f1322d54e21107695
 Cambricon_MLU:
   inference:
     FlagScale+vllm:
