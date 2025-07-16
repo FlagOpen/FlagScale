@@ -21,6 +21,13 @@ import torch
 from torch import multiprocessing as mp
 from torch.distributed.checkpoint import FileSystemWriter
 from torch.distributed.checkpoint.filesystem import DEFAULT_SUFFIX, _StoragePrefix, _write_item
+from torch.distributed.checkpoint.metadata import Metadata
+
+try:
+    from torch.distributed.checkpoint.filesystem import _StorageWriterTransforms
+except ImportError:
+    _StorageWriterTransforms = Any
+
 from torch.distributed.checkpoint.planner import SavePlan, SavePlanner, WriteItem, WriteItemType
 from torch.distributed.checkpoint.storage import WriteResult
 from torch.distributed.checkpoint.metadata import Metadata
@@ -504,6 +511,66 @@ class FileSystemWriterAsync(FileSystemWriter):
         return dataclasses.replace(
             local_plan, storage_data=_StoragePrefix(f"__{torch.distributed.get_rank()}_")
         )
+
+    def finish(self, metadata: Metadata, results: List[List[WriteResult]]) -> None:
+        """
+        Finish the checkpointing process.
+
+        Args:
+            metadata (Metadata): metadata to save
+            results (List[List[WriteResult]]): results to save
+        """
+        if self.use_msc:
+            import multistorageclient as msc
+
+            storage_md = dict()
+            for wr_list in results:
+                storage_md.update({wr.index: wr.storage_data for wr in wr_list})
+
+            metadata.storage_data = storage_md
+            metadata.storage_meta = self.storage_meta()
+
+            path = os.path.join(self.checkpoint_dir, ".metadata")
+
+            with msc.open(path, "wb") as metadata_file:
+                pickle.dump(metadata, metadata_file)
+        else:
+            super().finish(metadata, results)
+
+    def prepare_local_plan(self, plan: SavePlan) -> SavePlan:
+        """
+        Prepare the local plan for the checkpointing process.
+        """
+        if self.use_msc:
+            import multistorageclient as msc
+
+            msc.os.makedirs(str(self.checkpoint_dir), exist_ok=True)
+        else:
+            super().prepare_local_plan(plan)
+
+        return plan
+
+    @property
+    def checkpoint_id(self) -> Union[str, os.PathLike]:
+        """
+        return the checkpoint_id that will be used to save the checkpoint.
+        """
+        return str(self.checkpoint_dir)
+
+    @classmethod
+    def validate_checkpoint_id(cls, checkpoint_id: Union[str, os.PathLike]) -> bool:
+        """
+        Validate the checkpoint_id that will be used to save the checkpoint.
+
+        This method is available in PyTorch 2.3 and above.
+        """
+        if checkpoint_id.startswith("msc://"):
+            return True
+
+        if hasattr(FileSystemWriter, "validate_checkpoint_id"):
+            return FileSystemWriter.validate_checkpoint_id(checkpoint_id)
+
+        return False
 
 
 def _split_by_size_and_type(bins: int, items: List[WriteItem]) -> List[List[WriteItem]]:
