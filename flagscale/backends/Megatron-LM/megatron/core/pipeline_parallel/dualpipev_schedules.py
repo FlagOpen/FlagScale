@@ -3,7 +3,7 @@
 
 import contextlib
 from functools import wraps
-from typing import Iterator, List, Union
+from typing import Callable, Iterator, List, Optional, Union
 
 import torch
 
@@ -676,6 +676,7 @@ def forward_backward_pipelining_with_cutinhalf(
     forward_only: bool = False,
     collect_non_loss_data: bool = False,
     first_val_step: bool = None,
+    adjust_tensor_shapes_fn: Optional[Callable] = None,
 ):
     # print(f"Starting forward_backward_pipelining_with_cutinhalf function")
     from megatron.training import get_args
@@ -685,10 +686,12 @@ def forward_backward_pipelining_with_cutinhalf(
     assert (
         isinstance(model, list) and len(model) == 2
     ), 'Dualpipe Schedule only support chunk model for two consecutive chunks'
-
     assert (
         isinstance(data_iterator, list) and len(data_iterator) == 2
     ), 'Dualpipe Schedule only support two data_iterators'
+    assert (
+        adjust_tensor_shapes_fn is None
+    ), "adjust_tensor_shapes_fn is not supported for dualpipev pipeline parallelism"
 
     config = get_model_config(model[0])
     config.batch_p2p_comm = False
