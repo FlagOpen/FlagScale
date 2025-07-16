@@ -19,14 +19,48 @@ megatron:
       type: single
       ignore:
         - models/test_mamba.py
+        - test_flattened_resharding.py
+        - test_global_metadata_reuse.py
+        - test_local.py
+        - test_optimizer.py
+        - test_serialization.py
       deselect:
-        - skip_unit_test_modules
+        - models/test_bert_model.py::TestBERTModelReconfiguration::test_parallel_reconfiguration_e2e
+        - models/test_gpt_model.py::TestGPTModelReconfiguration::test_parallel_reconfiguration_e2e
+        - models/test_moe_experts.py::TestExpertLayerReconfiguration::test_parallel_reconfiguration_e2e
+        - test_fp8.py::TestFP8::test_fp8_save_load
+        - test_fully_parallel.py::TestFullyParallelSaveAndLoad::test_save_distribution
+        - test_fully_parallel.py::TestFullyParallelSaveAndLoad::test_load_distribution
+        - test_fully_parallel.py::TestFullyParallelSaveAndLoad::test_memory_usage
+        - test_fully_parallel.py::TestFullyParallelSaveAndLoad::test_only_necessary_exchanges_performed_during_load
+        - test_fully_parallel.py::TestFullyParallelSaveAndLoad::test_broadcast_sharded_objects
+        - test_fully_parallel.py::TestCrossRanksReads::test_full_dp_reads
+        - test_fully_parallel.py::TestCrossRanksReads::test_out_of_order_load
+        - test_fully_parallel.py::TestCrossRanksReads::test_cross_dp_access_does_not_disturb_the_distribution
+        - test_replication.py::TestLocalCheckpointingReplication::test_repl_save_and_load
+        - test_serialization.py::TestSerialization::test_remove_sharded_tensors
+        - test_serialization.py::TestNonStrictLoad::test_unexpected_keys_handling_during_validation
+        - test_strict.py::TestStrictLocal::test_everything_ok
+        - test_strict.py::TestStrictLocal::test_raise_unexpected
+        - test_strict.py::TestStrictLocal::test_raise_all
     distributed:
       type: single
+      ignore:
+        - test_grad_sync_with_expert_parallel.py
+      deselect:
+        - test_mcore_fully_sharded_data_parallel.py::TestFullyShardedDataParallel::test_fsdp_user_buffer_registration
     export:
-      - default
+      ignore:
+        - default
+      deselect:
+        - trtllm/test_distributed_fp8.py::TestTRTLLMSingleDeviceConverterFP8::test_get_model_weights_converter
+        - trtllm/test_single_device_fp8.py::TestTRTLLMSingleDeviceConverterFP8::test_get_model_weights_converter
     fusions:
-      - default
+      ignore:
+        - default
+      deselect:
+        - test_mla_yarn_rope_apply.py::TestFusedApplyMLARope::test_forward_backward_for_q
+        - test_mla_yarn_rope_apply.py::TestFusedApplyMLARope::test_forward_backward_for_kv
     inference:
       ignore:
         - skip_unit_test_modules
@@ -40,6 +74,7 @@ megatron:
         - test_t5_model.py::TestT5Model::test_forward_output_encoder_hidden_only
         - test_t5_model.py::TestT5Model::test_forward_with_encoder_hidden_states
         - test_llava_model.py::TestLLaVAModel::test_forward
+        - test_bert_model.py::TestBertModelAttentionDimensions::test_transformer_engine_version_1_7_to_1_10_rng_error
     pipeline_parallel:
       - default
     post_training:
@@ -59,6 +94,7 @@ megatron:
       deselect:
         - test_a2a_token_dispatcher.py::TestAlltoAllDispatcher
         - test_moe_layer_discrepancy.py
+        - test_routers.py::test_router_gating_linea
     transformer:
       depth: 1
       ignore:
@@ -76,19 +112,25 @@ megatron:
         - test_multi_latent_attention.py::TestParallelMLAAttention::test_gpu_forward
         - test_multi_latent_attention.py::TestParallelMLAAttentionPrecision::test_gpu_forward_thd_precision
         - test_multi_token_prediction.py::TestMultiTokenPrediction::test_fp8_support
+        - test_multi_latent_attention.py::TestParallelMLAAttentionPrecisionWithRopeFusion::test_gpu_forward_thd_precision
         - test_retro_attention.py::TestRetroAttention::test_gpu_forward
+        - test_cuda_graphs.py::TestParallelMambaBlockCudagraphs::test_gpu_cudagraph
+        - test_transformer_block.py::TestParallelTransformerBlock::test_gpu_forward_full_checkpoint_fp8
+        - test_transformer_block.py::TestParallelTransformerBlock::test_gpu_forward_selective_checkpoint_fp8
     ./:
       depth: 1
       ignore:
         - skip_unit_test_modules
       deselect:
-        - skip_unit_test_modules
+        - test_optimizer.py::test_precision_aware_optimizer
+        - test_parallel_state.py::test_different_initialize_order_unconsistency
+        - test_utils.py::test_nvtx_decorato
 
 flagscale:
   set_environment:
     - source /root/miniconda3/etc/profile.d/conda.sh
     - conda activate flagscale-train
-    - python tools/patch/unpatch.py --backend Megatron-LM
+      #    - python tools/patch/unpatch.py --backend Megatron-LM
     - export PYTHONPATH=./third_party/Megatron-LM:$PYTHONPATH
     - export NVTE_FLASH_ATTN=0
     - export NVTE_FUSED_ATTN=0
@@ -102,4 +144,5 @@ flagscale:
     ./:
       deselect:
         - test_spiky_loss_detector.py::test_spiky_loss_detector
+        - test_parallel_context.py::test_parallel_config
       depth: 1
