@@ -512,11 +512,10 @@ class TransformerBlock(MegatronModule):
 
         ########## FlagScale Begin ##########
         # for refined recompute
+        self.current_microbatch = -1
         if len(self.layers) > 0: # some pp-stage has no layers in pipeline_model_parallel_layout,such as embedding stage
             if hasattr(self.layers[0], 'current_microbatch'):
                 self.current_microbatch = self.layers[0].current_microbatch
-            else: # multimodal model
-                self.current_microbatch = -1
         ########## FlagScale End ##########
 
         inference_context = deprecate_inference_params(inference_context, inference_params)
