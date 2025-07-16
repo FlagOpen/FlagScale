@@ -56,7 +56,7 @@ try:
 except ImportError:
     HAVE_FSDP2 = False
 
-from megatron.core.distributed import finalize_model_grads, finalize_model_grads_for_dualpipev
+from megatron.core.distributed import finalize_model_grads
 from megatron.core.enums import ModelType
 from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig
 from megatron.core.rerun_state_machine import (
@@ -1521,7 +1521,6 @@ def setup_model_and_optimizer(
     one_logger = get_one_logger()
 
     model = get_model(model_provider_func, model_type)
-
     unwrapped_model = unwrap_model(model)
 
     config = None
@@ -1761,110 +1760,10 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
         if args.use_distributed_optimizer and args.overlap_param_gather:
             cuda_graph_set_manual_hooks(model)
 
-    if mpu.is_pipeline_last_stage(ignore_virtual=True):
-        # Average loss across microbatches.
-        loss_reduced = {}
-        for key in losses_reduced[0].keys():
-            val = [x[key].view(-1) for x in losses_reduced]
-            if val[0].numel() == 2:
-                # there is one dict per microbatch. in new reporting, we average
-                # over the total number of tokens across the global batch.
-                val = torch.vstack(val).sum(dim=0)
-                torch.distributed.all_reduce(
-                    val,
-                    group=mpu.get_data_parallel_group(with_context_parallel=True)
-                )
-                loss_reduced[key] = val[0] / val[1]
-            elif val[0].numel() == 1:
-                # legacy behavior, we average over the number of microbatches
-                val = torch.cat(val).mean()
-                loss_reduced[key] = val
-            else:
-                raise ValueError(f"Invalid value shape: {val[0].shape} for key {key}")
-        return (
-            loss_reduced,
-            skipped_iter,
-            should_checkpoint,
-            should_exit,
-            exit_code,
-            grad_norm,
-            num_zeros_in_grad,
-        )
-    return {}, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
-
-
-def train_step_for_dualpipev(forward_step_func, data_iterator,
-               model, optimizer, opt_param_scheduler, config):
-    """Single training step."""
-    args = get_args()
-    timers = get_timers()
-
-    rerun_state_machine = get_rerun_state_machine()
-    while rerun_state_machine.should_run_forward_backward(data_iterator):
-        # Set grad to zero.
-        for model_chunk in model:
-            model_chunk.zero_grad_buffer()
-        optimizer.zero_grad()
-
-        # Forward pass.
-        forward_backward_func = get_forward_backward_func()
-        losses_reduced = forward_backward_func(
-            forward_step_func=forward_step_func,
-            data_iterator=data_iterator,
-            model=model,
-            num_microbatches=get_num_microbatches(),
-            seq_length=args.seq_length,
-            micro_batch_size=args.micro_batch_size,
-            decoder_seq_length=args.decoder_seq_length,
-            forward_only=False)
-    should_checkpoint, should_exit, exit_code = rerun_state_machine.should_checkpoint_and_exit()
-    if should_exit:
-        return {}, True, should_checkpoint, should_exit, exit_code, None, None
-    
-    # Empty unused memory.
-    if args.empty_unused_memory_level >= 1:
-        torch.cuda.empty_cache()
-
-    # Vision gradients.
-    if args.vision_pretraining and args.vision_pretraining_type == "dino":
-        unwrapped_model = unwrap_model(model[0])
-        unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
-
-    # Update parameters.
-    timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
-    update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
-    timers('optimizer').stop()
-
-    # when freezing sub-models we may have a mixture of successful and unsucessful ranks,
-    # so we must gather across mp ranks
-    update_successful = logical_and_across_model_parallel_group(update_successful)
-    # grad_norm and num_zeros_in_grad will be None on ranks without trainable params,
-    # so we must gather across mp ranks
-    grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
-    if args.log_num_zeros_in_grad:
-        num_zeros_in_grad = reduce_max_stat_across_model_parallel_group(num_zeros_in_grad)
-
-    # Vision momentum.
-    if args.vision_pretraining and args.vision_pretraining_type == "dino":
-        unwrapped_model = unwrap_model(model[0])
-        unwrapped_model.update_momentum(args.curr_iteration)
-
-    # Update learning rate.
-    if update_successful:
-        increment = get_num_microbatches() * \
-                    args.micro_batch_size * \
-                    args.data_parallel_size
-        opt_param_scheduler.step(increment=increment)
-        skipped_iter = 0
-    else:
-        skipped_iter = 1
-
-    # Empty unused memory.
-    if args.empty_unused_memory_level >= 2:
-        torch.cuda.empty_cache()
-
-    dualpipevlaststage = mpu.is_pipeline_first_stage(ignore_virtual=True)
-    if dualpipevlaststage:
+    is_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=True)
+    if args.schedules_method == "dualpipev":
+        is_last_stage = mpu.is_pipeline_first_stage(ignore_virtual=True)
+    if is_last_stage:
         # Average loss across microbatches.
         loss_reduced = {}
         for key in losses_reduced[0].keys():
@@ -2525,11 +2424,7 @@ def train(
         config.param_sync_func = [model_chunk.start_param_sync for model_chunk in model]
         if len(model) == 1:
             config.param_sync_func = config.param_sync_func[0]
-    
-    if args.schedules_method == "dualpipev":
-        config.finalize_model_grads_func = finalize_model_grads_for_dualpipev
-    else:
-        config.finalize_model_grads_func = finalize_model_grads
+    config.finalize_model_grads_func = finalize_model_grads
 
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')
@@ -2721,28 +2616,17 @@ def train(
         ########## FlagScale end ##########
 
         ft_integration.on_training_step_start()
-        if args.schedules_method == "dualpipev":
-            loss_dict, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad = \
-                train_step_for_dualpipev(forward_step_func,
-                        train_data_iterator,
-                        model,
-                        optimizer,
-                        opt_param_scheduler,
-                        config)
-            # print(f"train step for dualpipev output is loss_dict: {loss_dict}, skipped_iter: {skipped_iter}, should_checkpoint: {should_checkpoint}")
-            # print(f"train step for dualpipev output is should_exit: {should_exit}, exit_code: {exit_code}, grad_norm: {grad_norm}, num_zeros_in_grad: {num_zeros_in_grad}")
-        else:
-            (
-                loss_dict,
-                skipped_iter,
-                should_checkpoint,
-                should_exit,
-                exit_code,
-                grad_norm,
-                num_zeros_in_grad,
-            ) = train_step(
-                forward_step_func, train_data_iterator, model, optimizer, opt_param_scheduler, config
-            )
+        (
+            loss_dict,
+            skipped_iter,
+            should_checkpoint,
+            should_exit,
+            exit_code,
+            grad_norm,
+            num_zeros_in_grad,
+        ) = train_step(
+            forward_step_func, train_data_iterator, model, optimizer, opt_param_scheduler, config
+        )
         ft_integration.on_training_step_end()
         if should_checkpoint:
             save_checkpoint_and_time(
