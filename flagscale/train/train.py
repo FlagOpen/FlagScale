@@ -929,7 +929,6 @@ def pretrain(
             It can run e.g. benchmarks.
     """
 
-    print('entering pretrain flagscale')
     # Initalize and get arguments, timers, and Tensorboard writer.
     initialize_megatron(
         extra_args_provider=extra_args_provider,
@@ -1268,6 +1267,28 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
                 this_model.model_type = model_type
                 this_model.vp_stage = i
                 model.append(this_model)
+        elif args.schedules_method == "dualpipev":
+            model = []
+
+            pre_process, post_process = False, False
+            if mpu.is_pipeline_first_stage():
+                pre_process = True
+
+            args.dualpipev_first_chunk = True
+            first_model = model_provider_func(
+                pre_process=pre_process,
+                post_process=post_process
+            )
+            first_model.model_type = model_type
+            model.append(first_model)
+
+            args.dualpipev_first_chunk = False
+            second_model = model_provider_func(
+                pre_process=post_process,
+                post_process=pre_process
+            )
+            second_model.model_type = model_type
+            model.append(second_model)
         else:
             pre_process = mpu.is_pipeline_first_stage(ignore_virtual=False)
             post_process = mpu.is_pipeline_last_stage(ignore_virtual=False)
@@ -1417,91 +1438,6 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
     return model
 
 
-def get_model_for_dualpipev(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap_with_ddp=True):
-    """Build the model."""
-    args = get_args()
-    args.model_type = model_type
-
-    assert model_type != ModelType.encoder_and_decoder, \
-        "Interleaved schedule not supported for model with both encoder and decoder"
-    model = []
-
-    pre_process, post_process = False, False
-    if mpu.is_pipeline_first_stage():
-        pre_process = True
-
-    args.dualpipev_first_chunk = True
-    first_model = model_provider_func(
-        pre_process=pre_process,
-        post_process=post_process
-    )
-    first_model.model_type = model_type
-    model.append(first_model)
-
-    args.dualpipev_first_chunk = False
-    second_model = model_provider_func(
-        pre_process=post_process,
-        post_process=pre_process
-    )
-    second_model.model_type = model_type
-    model.append(second_model)
-
-    if not isinstance(model, list):
-        model = [model]
-
-    # Set tensor model parallel attributes if not set.
-    # Only parameters that are already tensor model parallel have these
-    # attributes set for them. We should make sure the default attributes
-    # are set for all params so the optimizer can use them.
-    for model_module in model:
-        for param in model_module.parameters():
-            tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
-
-    # Print number of parameters.
-    if mpu.get_data_parallel_rank() == 0:
-        print(' > number of parameters on (tensor, pipeline) '
-              'model parallel rank ({}, {}): {}'.format(
-                  mpu.get_tensor_model_parallel_rank(),
-                  mpu.get_pipeline_model_parallel_rank(),
-                  sum([sum([p.nelement() for p in model_module.parameters()])
-                       for model_module in model])), flush=True)
-
-    # GPU allocation.
-    for model_module in model:
-        model_module.cuda(torch.cuda.current_device())
-    
-    # Fp16 conversion.
-    if args.fp16 or args.bf16:
-        config = get_model_config(model[0])
-        model = [Float16Module(config, model_module) for model_module in model]
-
-    if wrap_with_ddp:
-        config = get_model_config(model[0])
-        ddp_config = DistributedDataParallelConfig(
-            grad_reduce_in_fp32=args.accumulate_allreduce_grads_in_fp32,
-            overlap_grad_reduce=args.overlap_grad_reduce,
-            overlap_param_gather=args.overlap_param_gather,
-            use_distributed_optimizer=args.use_distributed_optimizer,
-            check_for_nan_in_grad=args.check_for_nan_in_loss_and_grad,
-            bucket_size=args.ddp_bucket_size,
-            average_in_collective=args.ddp_average_in_collective)
-        model = [DDP(config,
-                     ddp_config,
-                     model_chunk,
-                     # Turn off bucketing for model_chunk 2 onwards, since communication for these
-                     # model chunks is overlapped with compute anyway.
-                     disable_bucketing=(model_chunk_idx > 0))
-                 for (model_chunk_idx, model_chunk) in enumerate(model)]
-
-        # Broadcast params from data parallel src rank to other data parallel ranks.
-        if args.data_parallel_random_init:
-            for model_module in model:
-                model_module.broadcast_params()
-
-    return model
-
-
-
 def get_optimizer_param_scheduler(optimizer):
     """Build the learning rate scheduler."""
     args = get_args()
@@ -1584,10 +1520,7 @@ def setup_model_and_optimizer(
     timers = get_timers()
     one_logger = get_one_logger()
 
-    if args.schedules_method == "dualpipev":
-        model = get_model_for_dualpipev(model_provider_func, model_type)
-    else:
-        model = get_model(model_provider_func, model_type)
+    model = get_model(model_provider_func, model_type)
 
     unwrapped_model = unwrap_model(model)
 
