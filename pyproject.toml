@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=77.0", "wheel", "gitpython"]
-build-backend = "custom_build_backend.flagscale_build_backend"
+build-backend = "build_backend.flagscale_build_backend"
 
 [tool.black]
 line-length = 100
