@@ -7,6 +7,8 @@ from typing import List, Optional, Tuple
 
 import numpy
 
+import torch
+
 from ..utils import log_single_rank
 
 logger = logging.getLogger(__name__)
