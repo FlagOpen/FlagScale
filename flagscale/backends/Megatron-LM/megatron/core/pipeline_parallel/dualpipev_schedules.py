@@ -131,15 +131,12 @@ def recv_forward(tensor_shape: Shape, config: ModelParallelConfig, model_chunk_i
 
     See _communicate for argument details.
     """
-    # print(f"[DeBUG] Entering recv_forward: model_chunk_id={model_chunk_id}, async_op={async_op}, tensor_shape={tensor_shape}")
     
     recv_prev, recv_next = False, False
     if model_chunk_id == 0:
         recv_prev = True
-        # print(f"[DeBUG] model_chunk_id is 0, setting recv_prev=True")
     else:
         recv_next = True
-        # print(f"[DeBUG] model_chunk_id is not 0, setting recv_next=True")
 
     if (parallel_state.is_pipeline_first_stage() and recv_prev) or (parallel_state.is_pipeline_last_stage() and recv_next):
         fwd_wait_handles = None
@@ -147,9 +144,7 @@ def recv_forward(tensor_shape: Shape, config: ModelParallelConfig, model_chunk_i
     else:
         if config.timers is not None:
             config.timers('forward-recv', log_level=2).start()
-            # print(f"[DeBUG] Started forward-recv timer")
         
-        # print(f"[DeBUG] Calling _communicate for reception: recv_prev={recv_prev}, recv_next={recv_next}, async_op={not async_op}")
         tensor_recv_prev, tensor_recv_next, fwd_wait_handles = _communicate(
             tensor_send_next=None,
             tensor_send_prev=None,
@@ -161,13 +156,10 @@ def recv_forward(tensor_shape: Shape, config: ModelParallelConfig, model_chunk_i
         )
         if config.timers is not None:
             config.timers('forward-recv').stop()
-            # print(f"[DeBUG] Stopped forward-recv timer")
 
     if recv_prev:
-        # print(f"[DeBUG] Returning tensor_recv_prev: {tensor_recv_prev.shape if tensor_recv_prev is not None and hasattr(tensor_recv_prev, 'shape') else 'None'}")
         return tensor_recv_prev, fwd_wait_handles
     else:
-        # print(f"[DeBUG] Returning tensor_recv_next: {tensor_recv_next.shape if tensor_recv_next is not None and hasattr(tensor_recv_next, 'shape') else 'None'}")
         return tensor_recv_next, fwd_wait_handles
 
 
@@ -219,25 +211,21 @@ def send_forward_recv_forward(
 
     See _communicate for argument details.
     """
-    # print(f"[DeBUG] Entering send_forward_recv_forward with model_chunk_id={model_chunk_id}")
+
     recv_prev, recv_next = False, False
     tensor_send_next, tensor_send_prev = None, None
     if model_chunk_id == 0:
         if not parallel_state.is_pipeline_last_stage():
             tensor_send_next = output_tensor
-            # print(f"[DeBUG] model_chunk_id=0: Setting tensor_send_next, pipeline_rank={parallel_state.get_pipeline_model_parallel_rank()}")
         if not parallel_state.is_pipeline_first_stage():
             recv_prev = True
-            # print(f"[DeBUG] model_chunk_id=0: Setting recv_prev=True, pipeline_rank={parallel_state.get_pipeline_model_parallel_rank()}")
+    
     if model_chunk_id == 1:
         if not parallel_state.is_pipeline_first_stage():
             tensor_send_prev = output_tensor
-            # print(f"[DeBUG] model_chunk_id=1: Setting tensor_send_prev, pipeline_rank={parallel_state.get_pipeline_model_parallel_rank()}")
         if not parallel_state.is_pipeline_last_stage():
             recv_next = True
-            # print(f"[DeBUG] model_chunk_id=1: Setting recv_next=True, pipeline_rank={parallel_state.get_pipeline_model_parallel_rank()}")
 
-    # print(f"[DeBUG] Before communication: recv_prev={recv_prev}, recv_next={recv_next}")
     if config.timers is not None:
         config.timers('forward-send-forward-recv', log_level=2).start()
     tensor_recv_prev, tensor_recv_next, fwd_wait_handles = _communicate(
@@ -251,21 +239,16 @@ def send_forward_recv_forward(
     )
     if config.timers is not None:
         config.timers('forward-send-forward-recv').stop()
-    # print(f"[DeBUG] After communication: tensor_recv_prev={tensor_recv_prev is not None}, tensor_recv_next={tensor_recv_next is not None}")
 
     if model_chunk_id == 0:
         if not parallel_state.is_pipeline_first_stage():
-            # print(f"[DeBUG] Returning tensor_recv_prev for model_chunk_id=0, not first stage")
             return tensor_recv_prev, fwd_wait_handles
         else:
-            # print(f"[DeBUG] Returning None for model_chunk_id=0, first stage")
             return None, fwd_wait_handles
     else:
         if not parallel_state.is_pipeline_last_stage():
-            # print(f"[DeBUG] Returning tensor_recv_next for model_chunk_id=1, not last stage")
             return tensor_recv_next, fwd_wait_handles
         else:
-            # print(f"[DeBUG] Returning None for model_chunk_id=1, last stage")
             return None, fwd_wait_handles
 
 
@@ -664,7 +647,7 @@ def set_shared_embedding_from_dual_chunk(model1, model2):
         shared_embedding = model2.module.module.embedding.word_embeddings.weight
 
 
-def forward_backward_pipelining_with_cutinhalf(
+def forward_backward_pipelining_with_dualpipev(
     *,
     forward_step_func,
     data_iterator: Union[Iterator, List[Iterator]],
@@ -678,7 +661,7 @@ def forward_backward_pipelining_with_cutinhalf(
     first_val_step: bool = None,
     adjust_tensor_shapes_fn: Optional[Callable] = None,
 ):
-    # print(f"Starting forward_backward_pipelining_with_cutinhalf function")
+
     from megatron.training import get_args
     args = get_args()
     
@@ -753,7 +736,6 @@ def forward_backward_pipelining_with_cutinhalf(
     pp_size = parallel_state.get_pipeline_model_parallel_world_size()
     rank = parallel_state.get_pipeline_model_parallel_rank()    
     schedule = generate_dualpipev_schedule(pp_size, num_microbatches)
-    # print(f"[DEBUG] schedule is {schedule}")
 
     model_type = get_model_type(model[0])
 
@@ -1097,7 +1079,6 @@ def forward_backward_pipelining_with_cutinhalf(
             tensor_shape, config, slave_chunk_id)
 
         if recv_forward_handle is not None:
-            # print(f"Waiting for receive forward handles")
             for req in recv_forward_handle:
                 if type(req) is str:
                     recv_forward_handle[req].wait()
@@ -1146,15 +1127,12 @@ def forward_backward_pipelining_with_cutinhalf(
     fwd_model_chunk_id = master_chunk_id
     bwd_model_chunk_id = slave_chunk_id
     overlap_loop_range = schedule['overlap'][rank] + schedule['1b1overlap'][rank] + schedule['interleaved_backward'][rank]
-    # print(f"Starting overlap+1b1overlap+interleaved_backward phase: stage {rank} needs {overlap_loop_range} iterations")
     for iter_num in range(overlap_loop_range):
         only_bwd = False
         if fwd_model_chunk_id == master_chunk_id and master_cur_microbatch == master_microbatch_max:
             only_bwd = True
-            # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Master forward finished (mb {master_cur_microbatch}/{master_microbatch_max}), switching to only_bwd=True")
         if fwd_model_chunk_id == slave_chunk_id and slave_cur_microbatch == slave_microbatch_max:
             only_bwd = True
-            # print(f"[DeBUG][Overlap][Iter {iter_num+1}] Slave forward finished (mb {slave_cur_microbatch}/{slave_microbatch_max}), switching to only_bwd=True")
 
         if args.moe_fb_overlap and not firstFB_no_overlap:
             if not only_bwd:
@@ -1476,7 +1454,6 @@ def forward_backward_pipelining_with_cutinhalf(
     # Run cooldown phases
     merged_input_tensors = []
     merged_output_tensors = []
-    # print(f"[DeBUG][Cooldown] Merging remaining tensors. Input queues: {[len(q) for q in input_tensors]}, Output queues: {[len(q) for q in output_tensors]}. Current bwd_chunk={bwd_model_chunk_id}")
     while len(input_tensors[0]) > 0 or len(input_tensors[1]) > 0:
         if len(input_tensors[bwd_model_chunk_id]) > 0:
             merged_input_tensors.append(
@@ -1490,7 +1467,6 @@ def forward_backward_pipelining_with_cutinhalf(
             merged_output_tensors.append(
                 (output_tensors[1 - bwd_model_chunk_id].pop(0), 1 - bwd_model_chunk_id))
 
-    # print(f"[DeBUG][Cooldown] Waiting for bwd handles")
     bwd_wait_handles_recv = None
     for i in range(pp_size):
 
@@ -1519,17 +1495,14 @@ def forward_backward_pipelining_with_cutinhalf(
                 input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config, model_graph
             )
         else:
-            # print(f"[DeBUG][Cooldown] backward step")
             input_tensor_grad = backward_step(
                 input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config
             )
 
         if i == pp_size - 1:
-            # print(f"[DeBUG][Cooldown] send backward")
             bwd_wait_handles = send_backward(input_tensor_grad,
                                              tensor_shape, config, bwd_model_chunk_id, async_op=True)
         elif i >= schedule['cooldown'][rank][0] - 1:
-            # print(f"[DeBUG][Cooldown] send backward")
             bwd_wait_handles = send_backward(input_tensor_grad,
                                              tensor_shape, config, bwd_model_chunk_id, async_op=True)
             output_tensor_grad_bwd, bwd_wait_handles_recv = recv_backward(
@@ -1539,7 +1512,6 @@ def forward_backward_pipelining_with_cutinhalf(
                 output_tensor_grad_bwd = input_tensor_grad
             else:
                 #  send_backward_recv_slave_backward
-                # print(f"[DeBUG][Cooldown] send forward recv slave backward")
                 output_tensor_grad_bwd, bwd_wait_handles = send_forward_recv_slave_forward(input_tensor_grad,
                                                                                            tensor_shape, config, 1 - bwd_model_chunk_id)
 
@@ -1551,13 +1523,11 @@ def forward_backward_pipelining_with_cutinhalf(
                 req.wait()
         bwd_wait_handles = None
     
-    # print(f"[DeBUG][GradSync] Enable Grad Sync")
     enable_grad_sync()
     if config.grad_sync_func is not None:
         config.grad_sync_func[0](model[0].parameters())
         config.grad_sync_func[1](model[1].parameters())
 
-    # print(f"[DeBUG][GradSync] Finalize model grads")
     if config.finalize_model_grads_func is not None and not forward_only:
 
         # If defer_embedding_wgrad_compute is enabled we need to do the
