@@ -237,14 +237,6 @@ def _allreduce_embedding_grads(model: List[torch.nn.Module], config: Transformer
     _allreduce_word_embedding_grads(model, config)
     _allreduce_position_embedding_grads(model, config)
 
-def _allreduce_embedding_grads_dualpipev(model: List[torch.nn.Module], config: TransformerConfig):
-    # dualpipev no need to do embedding allreduce
-    # embedding and lm head are on save rank.
-    from megatron.training import get_args
-    if not get_args().untie_embeddings_and_output_weights:
-        raise NotImplementedError
-    else:
-        return
 
 def _allreduce_layernorm_grads(model: List[torch.nn.Module], config: TransformerConfig):
     """
@@ -355,10 +347,7 @@ def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torc
         config.timers('embedding-grads-all-reduce', log_level=1).start(
             barrier=config.barrier_with_L1_time
         )
-    if args.schedules_method == "dualpipev":
-        _allreduce_embedding_grads_dualpipev(model, config)
-    else:
-        _allreduce_embedding_grads(model, config)
+    _allreduce_embedding_grads(model, config)
     if config.timers is not None:
         config.timers('embedding-grads-all-reduce').stop()
 
