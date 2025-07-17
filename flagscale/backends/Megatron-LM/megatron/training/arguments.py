@@ -1078,6 +1078,10 @@ def validate_args(args, defaults={}):
                 " This absence of gradient tensors violates the assumptions of both overlap_grad_reduce and overlap_param_gather, precipitating an assertion failure within DDP."
             )
 
+        assert args.untie_embeddings_and_output_weights is True, (
+            " DualPipeV is not supported with shared embedding and lm head"
+        )
+
 
     # Print arguments.
     _print_args("arguments", args)
