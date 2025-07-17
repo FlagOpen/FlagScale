@@ -8,6 +8,8 @@ from datetime import datetime
 
 import torch
 
+from megatron.core.msc_utils import MultiStorageClientFeature, open_file
+
 try:
     from transformer_engine.pytorch.optimizers import multi_tensor_applier, multi_tensor_l2norm
 except ImportError:
@@ -144,9 +146,12 @@ def calc_params_l2_norm(model, force_create_fp32_copy=False):
             False,  # no per-parameter norm.
         )
         sharded_norm_2 = sharded_norm * sharded_norm
-        # Sum over all DP groups.
+        # Sum over all DP groups, including CP since distributed optimizer state is
+        # sharded jointly over DP+CP.
         torch.distributed.all_reduce(
-            sharded_norm_2, op=torch.distributed.ReduceOp.SUM, group=mpu.get_data_parallel_group()
+            sharded_norm_2,
+            op=torch.distributed.ReduceOp.SUM,
+            group=mpu.get_data_parallel_group(with_context_parallel=True)
         )
         norm_2 += sharded_norm_2
 
@@ -244,9 +249,7 @@ def average_losses_across_data_parallel_group(losses):
     """Reduce a tensor of losses across all GPUs."""
     averaged_losses = torch.cat([loss.clone().detach().view(1) for loss in losses])
     torch.distributed.all_reduce(averaged_losses, group=mpu.get_data_parallel_group())
-    averaged_losses = averaged_losses / torch.distributed.get_world_size(
-        group=mpu.get_data_parallel_group()
-    )
+    averaged_losses = averaged_losses / mpu.get_data_parallel_group().size()
 
     return averaged_losses
 
@@ -452,7 +455,7 @@ def append_to_progress_log(string, barrier=True):
     if barrier:
         torch.distributed.barrier()
     if torch.distributed.get_rank() == 0:
-        with open(progress_log_filename, 'a') as f:
+        with open_file(progress_log_filename, 'a') as f:
             job_id = os.getenv('SLURM_JOB_ID', '')
             num_gpus = args.world_size
             f.write(
@@ -477,14 +480,14 @@ def get_blend_and_blend_per_split(args):
     if use_data_path:
         if args.data_args_path is not None:
             assert args.data_path is None
-            with open(args.data_args_path, 'r') as f:
+            with open_file(args.data_args_path, 'r') as f:
                 blend = get_blend_from_list(f.read().split())
         else:
             assert args.data_path is not None
             blend = get_blend_from_list(args.data_path)
     elif use_per_split_data_path:
         if args.per_split_data_args_path is not None:
-            with open(args.per_split_data_args_path, 'r') as f:
+            with open_file(args.per_split_data_args_path, 'r') as f:
                 per_split_data_args = json.load(f)
                 # Each element in blend_per_split should be a list of files (and optional
                 # weights), so split string if needed.

@@ -8,6 +8,8 @@ import torch
 import torch.distributed
 
 from megatron.core import Timers
+from megatron.core.config import set_experimental_flag
+from megatron.core.energy_monitor import EnergyMonitor
 from megatron.core.num_microbatches_calculator import init_num_microbatches_calculator, unset_num_microbatches_calculator
 from megatron.training import dist_signal_handler
 from megatron.training.tokenizer import build_tokenizer
@@ -21,6 +23,7 @@ _GLOBAL_WANDB_WRITER = None
 _GLOBAL_ONE_LOGGER = None
 _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
+_GLOBAL_ENERGY_MONITOR = None
 _GLOBAL_SIGNAL_HANDLER = None
 
 def get_args():
@@ -63,6 +66,10 @@ def get_timers():
     _ensure_var_is_initialized(_GLOBAL_TIMERS, 'timers')
     return _GLOBAL_TIMERS
 
+def get_energy_monitor():
+    """Return energy monitor."""
+    _ensure_var_is_initialized(_GLOBAL_ENERGY_MONITOR, 'energy monitor')
+    return _GLOBAL_ENERGY_MONITOR
 
 def get_signal_handler():
     _ensure_var_is_initialized(_GLOBAL_SIGNAL_HANDLER, 'signal handler')
@@ -96,6 +103,10 @@ def set_global_variables(args, build_tokenizer=True):
         _ = _build_tokenizer(args)
     _set_adlr_autoresume(args)
     _set_timers(args)
+    _set_energy_monitor(args)
+
+    if args.enable_experimental:
+        set_experimental_flag(True)
 
     if args.exit_signal_handler:
         _set_signal_handler()
@@ -151,6 +162,7 @@ def unset_global_variables():
     global _GLOBAL_ONE_LOGGER
     global _GLOBAL_ADLR_AUTORESUME
     global _GLOBAL_TIMERS
+    global _GLOBAL_ENERGY_MONITOR
     global _GLOBAL_SIGNAL_HANDLER
 
     _GLOBAL_ARGS = None
@@ -161,6 +173,7 @@ def unset_global_variables():
     _GLOBAL_ONE_LOGGER = None
     _GLOBAL_ADLR_AUTORESUME = None
     _GLOBAL_TIMERS = None
+    _GLOBAL_ENERGY_MONITOR = None
     _GLOBAL_SIGNAL_HANDLER = None
 
     unset_num_microbatches_calculator()
@@ -221,6 +234,12 @@ def _set_wandb_writer(args):
         else:
             # Defaults to the save dir.
             save_dir = os.path.join(args.save, 'wandb')
+        wandb_config = vars(args)
+        if 'kitchen_config_file' in wandb_config and wandb_config['kitchen_config_file'] is not None:
+            # Log the contents of the config for discovery of what the quantization
+            # settings were.
+            with open(wandb_config['kitchen_config_file'], "r") as f:
+                wandb_config['kitchen_config_file_contents'] = f.read()
         save_dir = os.path.join(save_dir, "rank-{}".format(rank))
         os.makedirs(save_dir, exist_ok=True)
 
@@ -235,7 +254,7 @@ def _set_wandb_writer(args):
             'project': args.wandb_project,
             'mode': args.wandb_mode,
             'resume': 'auto',
-            'config': vars(args)}
+            'config': wandb_config}
 
         if args.wandb_mode == 'online' or args.wandb_api_key:
             assert args.wandb_api_key, 'wandb_api_key is required for online mode'
@@ -292,6 +311,12 @@ def _set_timers(args):
     _ensure_var_is_not_initialized(_GLOBAL_TIMERS, 'timers')
     _GLOBAL_TIMERS = Timers(args.timing_log_level, args.timing_log_option)
 
+def _set_energy_monitor(args):
+    """Initialize energy monitor."""
+    global _GLOBAL_ENERGY_MONITOR
+    _ensure_var_is_not_initialized(_GLOBAL_ENERGY_MONITOR, 'energy monitor')
+    _GLOBAL_ENERGY_MONITOR = EnergyMonitor()
+
 
 def _ensure_var_is_initialized(var, name):
     """Make sure the input variable is not None."""
@@ -323,6 +348,9 @@ def destroy_global_vars():
 
     global _GLOBAL_TIMERS
     _GLOBAL_TIMERS = None
+
+    global _GLOBAL_ENERGY_MONITOR
+    _GLOBAL_ENERGY_MONITOR = None
 
     global _GLOBAL_SIGNAL_HANDLER
     _GLOBAL_SIGNAL_HANDLER = None
