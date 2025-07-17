@@ -313,6 +313,8 @@ def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torc
     """
 
     config = get_model_config(model[0])
+    from megatron.training import get_args
+    args = get_args()
 
     # All-reduce / reduce-scatter across DP replicas.
     if config.timers is not None:
@@ -360,13 +362,17 @@ def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torc
         # the number of tokens is only present on the last stage, so broadcast it
         # to the other ranks in the pipeline parallel group.
         last_rank = parallel_state.get_pipeline_model_parallel_last_rank()
+        if args.schedules_method == "dualpipev":
+            last_rank = parallel_state.get_pipeline_model_parallel_first_rank()
         pp_group = parallel_state.get_pipeline_model_parallel_group()
 
         # NOTE: This is a hack to support multiple pipeline parallel groups. The origin
         #       parallel_state.get_pipeline_model_parallel_last_rank() only supports a single
         if isinstance(pp_group, list):
             last_rank = [parallel_state.get_pipeline_model_parallel_last_rank(g) for g in pp_group]
-
+            if args.schedules_method == "dualpipev":
+                last_rank = [parallel_state.get_pipeline_model_parallel_first_rank(g) for g in pp_group]
+        
         if not isinstance(last_rank, list):
             assert not isinstance(last_rank, list)
             last_rank = [last_rank]

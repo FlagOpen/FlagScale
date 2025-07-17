@@ -336,6 +336,11 @@ class TransformerConfig(ModelParallelConfig):
     first_last_layers_bf16 is True."""
 
     ####################
+    # DualPipeV related
+    ####################
+    moe_fb_overlap: bool = False
+
+    ####################
     # MoE related
     ####################
     moe_shared_expert_intermediate_size: Optional[int] = None
