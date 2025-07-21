@@ -9,7 +9,7 @@
     port: 30000
   engine_args_specific:
     vllm:
-      tensor_parallel_size: 16 # recommanded by Moonshot https://modelscope.cn/models/moonshotai/Kimi-K2-Instruct/file/view/master/docs%2Fdeploy_guidance.md?status=1
+      tensor_parallel_size: 16 # recommended by Moonshot https://modelscope.cn/models/moonshotai/Kimi-K2-Instruct/file/view/master/docs%2Fdeploy_guidance.md?status=1
       pipeline_parallel_size: 1
       gpu_memory_utilization: 0.98
       trust_remote_code: true

@@ -8,7 +8,7 @@ experiment:
   task:
     type: serve
   runner:
-    hostfile: examples/kimik2/conf/hostfile.txt
+    hostfile: examples/kimi_k2/conf/hostfile.txt
     nnodes: 2
     nproc_per_node: 8
     docker: flagos
