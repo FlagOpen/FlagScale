@@ -6,8 +6,8 @@ from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.auto_tuner import AutoTuner, ServeAutoTunner
 from flagscale.runner.runner_compress import SSHCompressRunner
-from flagscale.runner.runner_rl import SSHRLRunner
 from flagscale.runner.runner_inference import SSHInferenceRunner
+from flagscale.runner.runner_rl import SSHRLRunner
 from flagscale.runner.runner_serve import CloudServeRunner, SSHServeRunner
 from flagscale.runner.runner_train import CloudTrainRunner, SSHTrainRunner
 from flagscale.runner.utils import is_master
@@ -108,6 +108,8 @@ def main(config: DictConfig) -> None:
             runner.run()
         elif config.action == "dryrun":
             runner.run(dryrun=True)
+        elif config.action == "test":
+            runner.run(with_test=True)
         elif config.action == "stop":
             runner.stop()
         else:
