@@ -12,10 +12,13 @@ BI_V150:
   train:
     FlagScale+Megatron-LM:
     - bc57c7643c05da338251f31d203c9fdc66710a17
+    - 31614d56ace759fdec4d790f1322d54e21107695
     Megatron-LM:
     - bc57c7643c05da338251f31d203c9fdc66710a17
+    - 31614d56ace759fdec4d790f1322d54e21107695
     FlagScale:
     - bc57c7643c05da338251f31d203c9fdc66710a17
+    - 31614d56ace759fdec4d790f1322d54e21107695
 Cambricon_MLU:
   inference:
     FlagScale+vllm:
@@ -104,12 +107,15 @@ Hygon_BW1000:
     FlagScale+Megatron-LM:
     - f52f1dd7b25c7fcc4aa1658c9162667abc10e356
     - 102edee7113d7c40c9ee6cbaa5d40471b14a40a5
+    - 9ddae454b65e25f94a7bdf5a264b9f736161f597
     Megatron-LM:
     - f52f1dd7b25c7fcc4aa1658c9162667abc10e356
     - 102edee7113d7c40c9ee6cbaa5d40471b14a40a5
+    - 9ddae454b65e25f94a7bdf5a264b9f736161f597
     FlagScale:
     - f52f1dd7b25c7fcc4aa1658c9162667abc10e356
     - 102edee7113d7c40c9ee6cbaa5d40471b14a40a5
+    - 9ddae454b65e25f94a7bdf5a264b9f736161f597
   inference:
     FlagScale+vllm:
     - b51ca00869d4e61c35f07f65c76074f14ff47570

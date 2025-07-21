@@ -6513,7 +6513,7 @@ index 541cc47b..a41c7f59 100644
  
              prompts_plus_generations_segments.append(words)
 diff --git a/megatron/training/arguments.py b/megatron/training/arguments.py
-index c5d750e8..40e6b123 100644
+index c5d750e8..3fe42779 100644
 --- a/megatron/training/arguments.py
 +++ b/megatron/training/arguments.py
 @@ -53,6 +53,7 @@ def add_megatron_arguments(parser: argparse.ArgumentParser):
@@ -6781,6 +6781,20 @@ index c5d750e8..40e6b123 100644
      group.add_argument('--log-interval', type=int, default=100,
                         help='Report loss and timing interval.')
      group.add_argument('--exit-interval', type=int, default=None,
+@@ -1731,11 +1792,11 @@ def _add_training_args(parser):
+     group.add_argument('--optimizer', type=str, default='adam',
+                        choices=['adam', 'sgd'],
+                        help='Optimizer function')
+-    group.add_argument('--optimizer-cpu-offload', action='store_true',
++    group.add_argument('--optimizer-cpu-offload', action='store_false',
+                        help='Offload optimizer state to CPU')
+     group.add_argument('--optimizer-offload-fraction', type=float, default=1.0,
+                           help='Ratio of optimizer state to offload to CPU')
+-    group.add_argument('--use-torch-optimizer-for-cpu-offload', action='store_true',
++    group.add_argument('--use-torch-optimizer-for-cpu-offload', action='store_false',
+                        help="Use torch.optim.Optimizer instead of Megatron's optimizer in optimizer cpu offload mode.")
+     group.add_argument('--overlap-cpu-optimizer-d2h-h2d', action='store_true', default=False,
+                        help='Overlap CPU optimizer step, gradients D2H and updated parameters H2D.')
 @@ -1843,11 +1904,26 @@ def _add_learning_rate_args(parser):
                         'and initial warmup, the learning rate at each '
                         'iteration would be different.')
@@ -6957,6 +6971,15 @@ index c5d750e8..40e6b123 100644
  
      return parser
  
+@@ -2695,7 +2825,7 @@ def _add_experimental_args(parser):
+                        help = 'Config file to add additional arguments')
+ 
+     # Args of precision-aware optimizer
+-    group.add_argument('--use-precision-aware-optimizer', action='store_true',
++    group.add_argument('--use-precision-aware-optimizer', action='store_false',
+                        help='Use the precision-aware optimizer in TransformerEngine, which allows '
+                        'setting the main params and optimizer states to lower precision, such as '
+                        'fp16 and fp8.')
 @@ -2714,4 +2844,45 @@ def _add_msc_args(parser):
      group = parser.add_argument_group(title="msc")
      group.add_argument('--disable-msc', default=True, action='store_false', dest='enable_msc',
