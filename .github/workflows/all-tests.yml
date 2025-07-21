@@ -137,8 +137,10 @@ jobs:
         task:
           - deepseek
           - qwen3
+          - metax
           # - deepseek_flaggems   # TODO: need fix
           # - qwen3_flaggems      # TODO: need fix
+          # - metax_flaggems      # TODO: need fix
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
