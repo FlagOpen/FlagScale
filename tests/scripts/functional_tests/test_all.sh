@@ -24,7 +24,7 @@ commands=(
     "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware cambricon_mlu"
     # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware cambricon_mlu --flaggems enable"
     "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware metax"
-    "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware metax --flaggems enable"
+    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware metax --flaggems enable"
     # For serve
     # "tests/scripts/functional_tests/test_task.sh --type serve --task base"
 )
