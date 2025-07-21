@@ -3,7 +3,7 @@ system:
   num_workers: 16
   tensor_model_parallel_size: 2
   pipeline_model_parallel_size: 2
-  context_parallel_size: 1
+  context_parallel_size: 2
   disable_bias_linear: true
   reset_position_ids: True
   reset_attention_mask: True
@@ -35,7 +35,7 @@ system:
 
 model:
   transformer_impl: transformer_engine
-  num_layers: 40
+  num_layers: 10
   hidden_size: 5120
   ffn_hidden_size: 17408
   kv_channels: 128
@@ -57,13 +57,15 @@ model:
   no_position_embedding: true
   no_rope_fusion: true
 
+  # # magi attention
+  # magi_attention: true
+
   # training
   seed: ${experiment.seed}
-  # finetune: false
-  micro_batch_size: 1
-  global_batch_size: 2048
+  micro_batch_size: 2
+  global_batch_size: 256
   eval_iters: 0
-  train_samples: 244141056 #1T #29297664 #120B tokens
+  train_samples: 10000 #1T #29297664 #120B tokens
 
   optimizer:
     weight_decay: 0.1
@@ -72,14 +74,14 @@ model:
     lr_scheduler:
       lr: 3.0e-3
       min_lr: 3.0e-4
-      lr_warmup_samples: 2048000
+      lr_warmup_samples: 1000
       lr_decay_style: WSD
       lr_wsd_decay_style: cosine
       lr_wsd_decay_samples: 2048
 
 
 data:
-  data_path: /path
+  data_path: /share/project/zhaoyingli/data/pile/pile_wikipedia_demo
   split: 1
   no_mmap_bin_files: true
   tokenizer:
