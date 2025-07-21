@@ -60,6 +60,11 @@ jobs:
             pip install scikit-build scikit-build-core
             pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
+          elif [ "${{ inputs.type }}" = "rl" ]; then
+            python tools/patch/unpatch.py --backend verl
+            cd third_party/verl
+            pip install --no-deps -e .
+            cd ../..
           else
             echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
