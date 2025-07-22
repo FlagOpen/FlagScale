@@ -3,8 +3,8 @@ name: Test Runner
 
 # Trigger condition: Run on push events or manually
 on:
-  push:
-  workflow_dispatch:  # Enables manual triggering
+  pull_request:
+    branches: ["main"]
 
 jobs:
   test:
