@@ -27,6 +27,8 @@ commands=(
     # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware metax --flaggems enable"
     # For serve
     # "tests/scripts/functional_tests/test_task.sh --type serve --task base"
+    # For rl
+    "tests/scripts/functional_tests/test_task.sh --type rl --task qwen2_5"
 )
 
 for cmd in "${commands[@]}"; do
