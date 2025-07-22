@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     # Specify the runner name (must match agentName in runner config)
-    runs-on: metax
+    runs-on: [self-hosted, Linux, X64, gpus-2]
     
     steps:
       # Step 1: Checkout repository code
