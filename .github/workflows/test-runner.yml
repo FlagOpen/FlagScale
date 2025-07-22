@@ -1,0 +1,29 @@
+# .github/workflows/test-runner.yml
+name: Test Runner
+
+# Trigger condition: Run on push events or manually
+on:
+  push:
+  workflow_dispatch:  # Enables manual triggering
+
+jobs:
+  test:
+    # Specify the runner name (must match agentName in runner config)
+    runs-on: metax
+    
+    steps:
+      # Step 1: Checkout repository code
+      - name: Checkout code
+        uses: actions/checkout@v4  # GitHub Action to fetch code
+
+      # Step 2: Print OS information
+      - name: Print OS info
+        run: |
+          echo "Current OS information:"
+          uname -a  # Display kernel/arch details
+
+      # Step 3: Print environment variables
+      - name: Print environment
+        run: |
+          echo "Current environment variables:"
+          env  # List all environment variables
