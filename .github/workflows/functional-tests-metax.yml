@@ -16,7 +16,7 @@ on:
 
 jobs:
   functional-test-metax:
-    runs-on: [self-hosted, Linux, X64, gpus-2]
+    runs-on: [self-hosted, Linux, X64, metax-0, gpus-2]
     steps:
       - name: Run tests
         run: |
