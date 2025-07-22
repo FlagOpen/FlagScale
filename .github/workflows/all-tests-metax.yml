@@ -1,4 +1,4 @@
-name: All Tests
+name: All Tests Metax
 
 on:
   push:
@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  set-env:
+  metax-set-env:
     runs-on: ubuntu-latest
     outputs:
       ci_image: ${{ steps.set-env.outputs.ci_image }} # Declare output variable
