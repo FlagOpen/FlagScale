@@ -16,7 +16,7 @@ on:
 
 jobs:
   functional-test-metax:
-    runs-on: metax
+    runs-on: [self-hosted, metax]
     steps:
       - name: Run tests
         run: |
