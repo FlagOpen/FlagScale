@@ -19,32 +19,13 @@ jobs:
     runs-on: metax
     container:
       image: ${{ inputs.image }}
-      network_mode: host
-      uts: host
-      ipc: host
-      privileged: true
-      group_add:
-        - video
-      shm_size: 100gb
-      ulimits:
-        - name: memlock
-          soft: -1
-          hard: -1
-      security_opt:
-        - seccomp=unconfined
-        - apparmor=unconfined
-      devices:
-        - /dev/dri
-        - /dev/mxcd
-      volumes:
-        - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro
-        - /nfs/:/nfs/
-        - /data/:/data/
-        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
-        - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
       ports:
         - 80
-      options: --gpus all --hostname flagscale_cicd --user root --ulimit nofile=65535:65535
+      volumes:
+        - /home/flagscale_cicd/flask/static:/workspace/report
+        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
+        - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
+      options: --gpus all --shm-size=500g --hostname flagscale_cicd --user root --ulimit nofile=65535:65535
 
     steps:
       - name: Checkout Code
