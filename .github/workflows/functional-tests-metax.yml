@@ -1,5 +1,5 @@
 # .github/workflows/create-container-functional-tests.yml
-name: Functional Tests
+name: Functional Tests Metax
 
 on:
   workflow_call:
@@ -15,7 +15,7 @@ on:
         type: string
 
 jobs:
-  functional-test:
+  functional-test-metax:
     runs-on: metax
     container:
       image: ${{ inputs.image }}
@@ -28,7 +28,7 @@ jobs:
       options: --gpus all --shm-size=500g --hostname flagscale_cicd --user root --ulimit nofile=65535:65535
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Code Metax
         uses: actions/checkout@v4
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
@@ -44,7 +44,7 @@ jobs:
           submodules: false
           set-safe-directory: true
 
-      - name: Run Functional Test
+      - name: Run Functional Test Metax
         run: |
           pip install gitpython # TODO: Remove after updating the image
 

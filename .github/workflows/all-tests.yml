@@ -7,7 +7,7 @@ on:
     branches: ["main"]
 
 concurrency:
-  group: ${{ github.event.pull_request.number }}-${{ github.actor }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
   cancel-in-progress: true
 
 jobs:
