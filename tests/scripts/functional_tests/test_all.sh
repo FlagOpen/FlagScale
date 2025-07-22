@@ -23,8 +23,12 @@ commands=(
     # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware bi_v150 --flaggems enable"
     "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware cambricon_mlu"
     # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware cambricon_mlu --flaggems enable"
+    "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware metax"
+    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware metax --flaggems enable"
     # For serve
     # "tests/scripts/functional_tests/test_task.sh --type serve --task base"
+    # For rl
+    "tests/scripts/functional_tests/test_task.sh --type rl --task qwen2_5"
 )
 
 for cmd in "${commands[@]}"; do
