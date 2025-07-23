@@ -22,7 +22,7 @@ jobs:
         - 80
       volumes:
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
-      options: --uts=host --ipc=host --privileged=true --group-add video --shm-size 100gb --ulimit nofile=65535:65535 --ulimit memlock=-1 --security-opt seccomp=unconfined --security-opt apparmor=unconfined --device=/dev/dri --device=/dev/mxcd
+      options: --uts=host --ipc=host --privileged=true --group-add video --shm-size 100gb --ulimit nofile=65535:65535 --ulimit memlock=-1 --security-opt seccomp=unconfined --security-opt apparmor=unconfined --device=/dev/dri --device=/dev/mxcd --entrypoint /bin/bash
 
     steps:
       - name: Checkout Code
