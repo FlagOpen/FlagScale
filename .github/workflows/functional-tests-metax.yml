@@ -18,15 +18,12 @@ jobs:
     runs-on: [self-hosted, Linux, X64, metax-0, gpus-2]
     container:
       image: ${{ inputs.image }}
-      device:
-        - /dev/dri
-        - /dev/mxcd
       ports:
         - 80
       volumes:
         - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
-      options: --net=host --ipc=host --privileged=true --group-add video --shm-size 100gb --hostname flagscale_cicd --user root --ulimit nofile=65535:65535 --ulimit memlock=-1
+      options: --net=host --ipc=host --privileged=true --group-add video --shm-size 100gb --hostname flagscale_cicd --user root --ulimit nofile=65535:65535 --ulimit memlock=-1 --device=/dev/dri --device=/dev/mxcd
 
     steps:
       - name: Checkout Code
