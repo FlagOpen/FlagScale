@@ -1,9 +1,12 @@
-name: Test Coverage
+name: Functional Tests Nvidia
 
 on:
   workflow_call:
     inputs:
-      backend:
+      type:
+        required: true
+        type: string
+      task:
         required: true
         type: string
       image:
@@ -11,7 +14,7 @@ on:
         type: string
 
 jobs:
-  test-coverage:
+  functional-test:
     runs-on: [self-hosted, Linux, X64, nvidia-0, gpus-8]
     container:
       image: ${{ inputs.image }}
@@ -19,10 +22,9 @@ jobs:
         - 80
       volumes:
         - /home/flagscale_cicd/flask/static:/workspace/report
-        - /home/flagscale_cicd/flask/config:/workspace/config
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
         - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
-      options: --gpus all --shm-size=500g --hostname flagscale_cicd --ulimit nofile=65535:65535
+      options: --gpus all --shm-size=500g --hostname flagscale_cicd --user root --ulimit nofile=65535:65535
 
     steps:
       - name: Checkout Code
@@ -41,25 +43,30 @@ jobs:
           submodules: false
           set-safe-directory: true
 
-      # TODO: Re-enable when you have a public IP
-      # - name: Coverage Online Report
-      #   run: |
-      #     REPORT_ADDR=$(cat "/workspace/config/report_address")
-      #     echo "After 'Run Unit Tests and Check Coverage' is completed/stopped, you can access the test diff-coverage report at the http://${REPORT_ADDR}/${{github.sha}}/cov-report-${{ inputs.backend }}/diff-cover-report-${{ inputs.backend }}.html"
-
-      - name: Run Unit Tests and Check Coverage
+      - name: Run Functional Test
         run: |
           pip install gitpython # TODO: Remove after updating the image
 
           git config --global --add safe.directory /__w/FlagScale/FlagScale
-          if [ "${{ inputs.backend }}" = "megatron" ] || [ "${{ inputs.backend }}" = "flagscale" ]; then
+          if [ "${{ inputs.type }}" = "train" ] || [ "${{ inputs.type }}" = "hetero_train" ]; then
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
-          elif [ "${{ inputs.backend }}" = "vllm" ]; then
+            if [ "${{ inputs.task }}" = "llava_onevision" ]; then
+              PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-Energon" --verbose --no-build-isolation
+              cp -r third_party/Megatron-Energon/src/megatron/energon third_party/Megatron-LM/megatron
+            fi
+          elif [ "${{ inputs.type }}" = "inference" ] || [ "${{ inputs.type }}" = "serve" ] || [ "${{ inputs.type }}" = "inference-pipeline" ]; then
+            source /root/miniconda3/bin/activate flagscale-inference
+            pip install scikit-build scikit-build-core
+            pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
+          elif [ "${{ inputs.type }}" = "rl" ]; then
+            python tools/patch/unpatch.py --backend verl
+            cd third_party/verl
+            pip install --no-deps -e .
+            cd ../..
           else
-            echo "Unknown backend type: ${{ inputs.backend }}"
+            echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
           fi
-
-          # Execute the test coverage script with the appropriate backend and id (commit SHA)
-          tests/scripts/unit_tests/test_coverage.sh --backend ${{ inputs.backend }} --id ${{ github.sha }} --status online
+          tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
+        shell: bash

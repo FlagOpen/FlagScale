@@ -1,4 +1,3 @@
-# .github/workflows/create-container-functional-tests.yml
 name: Functional Tests Metax
 
 on:
@@ -15,9 +14,38 @@ on:
         type: string
 
 jobs:
-  functional-test-metax:
+  functional-test:
     runs-on: [self-hosted, Linux, X64, metax-0, gpus-2]
+    container:
+      image: ${{ inputs.image }}
+      device:
+        - /dev/dri
+        - /dev/mxcd
+      ports:
+        - 80
+      volumes:
+        - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro
+        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
+      options: --net=host --ipc=host --privileged=true --group-add video --shm-size 100gb --hostname flagscale_cicd --user root --ulimit nofile=65535:65535 --ulimit memlock=-1
+
     steps:
-      - name: Run tests
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          ssh-strict: true
+          ssh-user: git
+          persist-credentials: true
+          clean: true
+          sparse-checkout-cone-mode: true
+          fetch-tags: false
+          show-progress: true
+          lfs: false
+          submodules: false
+          set-safe-directory: true
+
+      - name: Run Functional Test
         run: |
-          echo "Running tests on metax runner, image ${{ inputs.image }}"
+          tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
+        shell: bash
