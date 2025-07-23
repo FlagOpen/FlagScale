@@ -68,7 +68,7 @@ jobs:
             echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
           fi
-          tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
+          tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }} --hardware metax
           exit_code=$?
           echo "Exit code: $exit_code"
         shell: bash
