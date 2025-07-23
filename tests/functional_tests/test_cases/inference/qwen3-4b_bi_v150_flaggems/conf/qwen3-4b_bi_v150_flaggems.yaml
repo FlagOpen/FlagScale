@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - inference: qwen3-4b_bi_v150
+  - inference: qwen3-4b_bi_v150_flaggems
 
 experiment:
-  exp_name: qwen3-4b_bi_v150
-  exp_dir: tests/functional_tests/test_cases/inference/qwen3-4b_bi_v150/results_test/bi_v150
+  exp_name: qwen3-4b_bi_v150_flaggems
+  exp_dir: tests/functional_tests/test_cases/inference/qwen3-4b_bi_v150_flaggems/results_test/qwen3-4b_bi_v150_flaggems
   task:
     type: inference
     backend: vllm
@@ -22,6 +22,7 @@ experiment:
     EXPERT_PARALLEL_EN: true
     VLLM_GRAPH_DEBUG: false
     VLLM_AVG_MOE_EN: 1
+    USE_FLAGGEMS: "true"
 
 action: run
 

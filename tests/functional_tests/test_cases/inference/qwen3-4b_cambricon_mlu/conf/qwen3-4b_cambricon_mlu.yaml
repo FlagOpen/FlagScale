@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - inference: qwen3-4b_bi_v150_flaggems
+  - inference: qwen3-4b_cambricon_mlu
 
 experiment:
-  exp_name: qwen3-4b_bi_v150_flaggems
-  exp_dir: tests/functional_tests/test_cases/inference/qwen3-4b_bi_v150_flaggems/results_test/bi_v150_flaggems
+  exp_name: qwen3-4b_cambricon_mlu
+  exp_dir: tests/functional_tests/test_cases/inference/qwen3-4b_cambricon_mlu/results_test/qwen3-4b_cambricon_mlu
   task:
     type: inference
     backend: vllm
@@ -15,14 +15,12 @@ experiment:
     before_start:
       source /root/miniconda3/bin/activate flagscale-inference
   envs:
-    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
     VLLM_LATENCY_DEBUG: true
     CNCL_CNPX_DOMAIN_ENABLE: 0
     PYTORCH_MLU_ALLOC_CONF: "expandable_segments:True"
     EXPERT_PARALLEL_EN: true
     VLLM_GRAPH_DEBUG: false
     VLLM_AVG_MOE_EN: 1
-    USE_FLAGGEMS: "true"
 
 action: run
 

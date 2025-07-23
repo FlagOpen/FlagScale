@@ -35,7 +35,7 @@ test_task() {
 
   # Check if the test type is "inference-pipeline"
   if [ "$_type" == "inference-pipeline" ]; then
-      _case_name="${_hardware}"
+      _case_name="qwen3-4b_${_hardware}"
       # If flaggems is enabled, append "_flaggems" to the case name
       if [ "$_flaggems" == "enable" ]; then
           _case_name="${_case_name}_flaggems"
@@ -104,7 +104,7 @@ test_task() {
         # TODO: rm when fix bug about "before start"
         source /root/miniconda3/bin/activate flagscale-inference
         run_command "python run.py --config-path tests/functional_tests/test_cases/inference/${_case}/conf --config-name ${_case} action=test" $attempt_i $_task $_type $_case
-        run_command "pytest -s tests/functional_tests/test_utils/test_result.py::test_inference_pipeline --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_task=${_case} --test_case=${_case}" $attempt_i $_task $_type $_case
+        run_command "pytest -s tests/functional_tests/test_utils/test_result.py::test_inference_pipeline --test_path=tests/functional_tests/test_cases --test_type=inference --test_task=${_case} --test_case=${_case}" $attempt_i $_task $_type $_case
       fi
 
       # todo: open this case
