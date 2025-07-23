@@ -48,6 +48,5 @@ jobs:
           echo "GID: $(id -g)"
           echo "Home: $HOME"
           whoami
-          source ~/.bashrc
           tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
         shell: bash
