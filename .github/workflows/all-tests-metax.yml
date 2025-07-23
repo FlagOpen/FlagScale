@@ -11,37 +11,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  set-env-metax:
+  set-env:
     runs-on: ubuntu-latest
     outputs:
-      ci_image_metax: ${{ steps.set-env.outputs.ci_image }} # Declare output variable
+      ci_image: ${{ steps.set-env.outputs.ci_image }} # Declare output variable
     steps:
       - name: Set Environment Variable
-        id: set-env-metax # Assign an ID to this step
+        id: set-env # Assign an ID to this step
         run: |
-          echo "ci_image_metax=localhost:5000/flagscale:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64-time2507211649" >> $GITHUB_OUTPUT  # Set output variable
+          echo "ci_image=localhost:5000/flagscale:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64-time2507211649" >> $GITHUB_OUTPUT  # Set output variable
 
-  functional-tests-inference-metax:
+  functional-tests-inference:
     needs:
-      - set-env-metax
+      - set-env
     uses: ./.github/workflows/functional-tests-metax.yml
     strategy:
       matrix:
         task:
           - deepseek
           - qwen3
-          # - deepseek_flaggems   # TODO: need fix
-          # - qwen3_flaggems      # TODO: need fix
-    name: "inference-${{ matrix.task }}-metax"
+    name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
       type: inference
-      image: ${{ needs.set-env-metax.outputs.ci_image_metax }}
+      image: ${{ needs.set-env.outputs.ci_image }}
 
   # Check All Tests
-  all-tests-metax:
+  all-tests:
     needs:
-      - functional-tests-inference-metax
+      - functional-tests-inference
     runs-on: ubuntu-latest
     steps:
       - name: All Tests Completed

@@ -20,4 +20,4 @@ jobs:
     steps:
       - name: Run tests
         run: |
-          echo "Running tests on metax runner"
+          echo "Running tests on metax runner, image ${{ inputs.image }}"
