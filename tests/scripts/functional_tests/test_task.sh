@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -eo pipefail
+
 echo "The current directory is: $(pwd)"
 
 # Function to execute a command and handle failures
