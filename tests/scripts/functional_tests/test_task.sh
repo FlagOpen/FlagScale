@@ -73,7 +73,9 @@ test_task() {
       echo "Attempt $attempt_i for task ${_task} with type ${_type} and case: ${_case}"
       echo "---------"
 
-      wait_for_gpu
+      if [ "${_hardware}" = "nvidia" ]; then
+        wait_for_gpu
+      fi
 
       # Remove previous results if they exist
       if [ "${_type}" = "train" ] || [ "${_type}" = "hetero_train" ] || [ "${_type}" = "inference" ] || [ "${_type}" = "rl" ]; then
