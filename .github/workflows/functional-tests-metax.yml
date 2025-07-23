@@ -43,6 +43,6 @@ jobs:
 
       - name: Run Functional Test
         run: |
-          python --version
+          source /root/miniconda3/bin/activate flagscale-inference
           tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
         shell: bash
