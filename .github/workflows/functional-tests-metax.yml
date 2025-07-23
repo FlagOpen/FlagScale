@@ -23,7 +23,7 @@ jobs:
       volumes:
         - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
-      options: --ipc=host --privileged=true --group-add video --shm-size 100gb --hostname flagscale_cicd --ulimit nofile=65535:65535 --ulimit memlock=-1 --device=/dev/dri --device=/dev/mxcd
+      options: --ipc=host --privileged=true --group-add video --shm-size 100gb --ulimit nofile=65535:65535 --ulimit memlock=-1 --device=/dev/dri --device=/dev/mxcd
 
     steps:
       - name: Checkout Code
@@ -44,5 +44,6 @@ jobs:
 
       - name: Run Functional Test
         run: |
+
           tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
         shell: bash
