@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - inference: nvidia
+  - inference: qwen3-4b_cambricon_mlu
 
 experiment:
-  exp_name: nvidia
-  exp_dir: tests/functional_tests/test_cases/inference-pipeline/nvidia/results_test/nvidia
+  exp_name: qwen3-4b_cambricon_mlu
+  exp_dir: tests/functional_tests/test_cases/inference/qwen3-4b_cambricon_mlu/results_test/cambricon_mlu
   task:
     type: inference
     backend: vllm

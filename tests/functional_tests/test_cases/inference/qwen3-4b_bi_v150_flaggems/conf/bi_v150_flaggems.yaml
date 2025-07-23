@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - inference: bi_v150_flaggems
+  - inference: qwen3-4b_bi_v150_flaggems
 
 experiment:
-  exp_name: bi_v150_flaggems
-  exp_dir: tests/functional_tests/test_cases/inference-pipeline/bi_v150_flaggems/results_test/bi_v150_flaggems
+  exp_name: qwen3-4b_bi_v150_flaggems
+  exp_dir: tests/functional_tests/test_cases/inference/qwen3-4b_bi_v150_flaggems/results_test/bi_v150_flaggems
   task:
     type: inference
     backend: vllm
