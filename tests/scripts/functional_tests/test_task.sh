@@ -34,6 +34,7 @@ test_task() {
   local _hardware=$4
   # Use parse_config.py to parse the YAML file with test type and test task
   local _cases=$(python tests/scripts/functional_tests/parse_config.py --config $CONFIG_FILE --type $_type --task $_task)
+  echo $_cases
 
   # Check if the test type is "inference-pipeline"
   if [ "$_type" == "inference-pipeline" ]; then
