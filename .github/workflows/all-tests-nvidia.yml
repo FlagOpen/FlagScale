@@ -25,7 +25,7 @@ jobs:
   megatron-unit-tests:
     needs:
       - set-env
-    uses: ./.github/workflows/unit-tests.yml
+    uses: ./.github/workflows/unit-tests-nvidia.yml
     strategy:
       matrix:
         subset:
@@ -53,7 +53,7 @@ jobs:
   flagscale-unit-tests:
     needs:
       - set-env
-    uses: ./.github/workflows/unit-tests.yml
+    uses: ./.github/workflows/unit-tests-nvidia.yml
     strategy:
       matrix:
         subset:
@@ -68,7 +68,7 @@ jobs:
   functional-tests-rl:
     needs:
       - set-env
-    uses: ./.github/workflows/functional-tests.yml
+    uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
         task:
@@ -85,7 +85,7 @@ jobs:
       - set-env
       - megatron-unit-tests
       - flagscale-unit-tests
-    uses: ./.github/workflows/functional-tests.yml
+    uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
         task:
@@ -123,7 +123,7 @@ jobs:
     needs:
       - set-env
       - functional-tests-hetero
-    uses: ./.github/workflows/functional-tests.yml
+    uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
         task:
