@@ -1,6 +1,10 @@
 # Copyright (c) 2023, NVIDIA CORPORATION.  All rights reserved.
 
-"""Pretrain GPT."""
+"""Pretrain and SFT GPT."""
+
+import datetime
+import os
+import torch
 
 from functools import partial
 from typing import List, Optional, Tuple, Union
@@ -8,6 +12,13 @@ from typing import List, Optional, Tuple, Union
 import torch
 
 from megatron.core import parallel_state
+from megatron.training import get_args
+from megatron.training import inprocess_restart
+from megatron.training import print_rank_0
+from megatron.training import get_timers
+from megatron.training import get_tokenizer
+from megatron.core import mpu
+from megatron.core.enums import ModelType
 from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
 from megatron.core.datasets.gpt_dataset import GPTDataset, GPTDatasetConfig, MockGPTDataset
 from megatron.core.enums import ModelType
@@ -127,7 +138,7 @@ def model_provider(
             if args.num_experts:
                 # Define the decoder block spec
                 transformer_layer_spec = get_gpt_decoder_block_spec(
-                    config, use_transformer_engine=use_te, normalization=args.normalization
+                    config, use_transformer_engine=use_te, normalization=args.normalization, qk_l2_norm=args.qk_l2_norm, vp_stage=vp_stage
                 )
             elif args.heterogeneous_layers_config_path is not None:
                 transformer_layer_spec = get_gpt_heterogeneous_layer_spec(config, use_te)
@@ -140,6 +151,8 @@ def model_provider(
                         args.qk_layernorm,
                         args.multi_latent_attention,
                         args.moe_use_legacy_grouped_gemm,
+                        qk_l2_norm=args.qk_l2_norm,
+                        use_kitchen=config.use_kitchen,
                     )
                 else:
                     transformer_layer_spec = get_gpt_layer_local_spec(
@@ -149,11 +162,12 @@ def model_provider(
                         args.multi_latent_attention,
                         args.moe_use_legacy_grouped_gemm,
                         normalization=args.normalization,
+                        use_kitchen=config.use_kitchen,
                     )
         mtp_block_spec = None
         if args.mtp_num_layers is not None:
             mtp_block_spec = get_gpt_mtp_block_spec(
-                config, transformer_layer_spec, use_transformer_engine=use_te
+                config, transformer_layer_spec, use_transformer_engine=use_te, vp_stage=vp_stage
             )
 
         model = GPTModel(
@@ -324,32 +338,6 @@ def core_gpt_dataset_config_from_args(args):
     )
 
 
-def core_sft_dataset_config_from_args(args):
-    tokenizer = get_tokenizer()
-
-    # Sometimes --data-path is too long, instead we parse it from a file.
-    blend: Optional[Tuple[List[str], Optional[List[float]]]]
-    blend_per_split: Optional[List[Optional[Tuple[List[str], Optional[List[float]]]]]]
-    blend, blend_per_split = get_blend_and_blend_per_split(args)
-
-    return SFTDatasetConfig(
-        random_seed=args.seed,
-        sequence_length=args.seq_length,
-        blend=blend,
-        blend_per_split=blend_per_split,
-        split=args.split,
-        num_dataset_builder_threads=args.num_dataset_builder_threads,
-        path_to_cache=args.data_cache_path,
-        mmap_bin_files=args.mmap_bin_files,
-        tokenizer=tokenizer,
-        reset_position_ids=args.reset_position_ids,
-        reset_attention_mask=args.reset_attention_mask,
-        eod_mask_loss=args.eod_mask_loss,
-        create_attention_mask=args.create_attention_mask_in_dataloader,
-        apply_sft_dataset_separated_loss_mask_if_existed=args.apply_sft_dataset_separated_loss_mask_if_existed,
-    )
-
-
 def train_valid_test_datasets_provider(train_val_test_num_samples):
     """Build the train test and validation datasets.
 
@@ -364,17 +352,15 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
         config = para_ctx.get_dataset_config()
 
     if config is None:
-        if args.apply_sft_dataset_separated_loss_mask_if_existed:
-            config = core_sft_dataset_config_from_args(args)
-        else:
-            config = core_gpt_dataset_config_from_args(args)
+        config = core_gpt_dataset_config_from_args(args)
 
-    if args.mock_data:
-        dataset_type = MockGPTDataset
-    elif args.apply_sft_dataset_separated_loss_mask_if_existed:
+    if args.sft:
         dataset_type = SFTDataset
     else:
-        dataset_type = GPTDataset
+        if args.mock_data:
+            dataset_type = MockGPTDataset
+        else:
+            dataset_type = GPTDataset
 
     print_rank_0("> building train, validation, and test datasets for GPT ...")
 
@@ -391,7 +377,11 @@ if __name__ == "__main__":
 
     # Temporary for transition to core datasets
     train_valid_test_datasets_provider.is_distributed = True
-    extra_valid_datasets_provider.is_distributed = True
+
+    # Optionally enable inprocess restart on pretrain
+    pretrain, store = inprocess_restart.maybe_wrap_for_inprocess_restart(pretrain)
+
+    extra_valid_datasets_provider.is_distributed = True ######## FlagScale ########
 
     pretrain(
         train_valid_test_datasets_provider,
@@ -400,5 +390,6 @@ if __name__ == "__main__":
         forward_step,
         args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
         extra_args_provider=add_modelopt_args if has_nvidia_modelopt else None,
+        store=store,
         extra_valid_dataset_provider=extra_valid_datasets_provider
     )

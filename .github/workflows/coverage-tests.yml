@@ -12,7 +12,7 @@ on:
 
 jobs:
   test-coverage:
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64, nvidia-0, gpus-8]
     container:
       image: ${{ inputs.image }}
       ports:
