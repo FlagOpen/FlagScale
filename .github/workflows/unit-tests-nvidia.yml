@@ -45,6 +45,11 @@ jobs:
 
       - name: Run Unit Test
         run: |
+          echo "USER: $USER"
+          echo "UID: $(id -u)"
+          echo "GID: $(id -g)"
+          echo "Home: $HOME"
+          whoami
           pip install gitpython # TODO: Remove after updating the image
 
           git config --global --add safe.directory /__w/FlagScale/FlagScale
