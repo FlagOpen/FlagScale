@@ -34,7 +34,6 @@ test_task() {
   local _hardware=$4
   # Use parse_config.py to parse the YAML file with test type and test task
   local _cases=$(python tests/scripts/functional_tests/parse_config.py --config $CONFIG_FILE --type $_type --task $_task)
-  echo $_cases
 
   # Check if the test type is "inference-pipeline"
   if [ "$_type" == "inference-pipeline" ]; then
@@ -59,7 +58,7 @@ test_task() {
   # Check if _cases is not an empty list
   if [ ${#_cases[@]} -eq 0 ]; then
     echo "No test cases found for task '$_task' with test type '$_type'. Exiting."
-    exit 0
+    exit 1
   fi
 
   # Loop through each test case, remove leading '-', and run the test
