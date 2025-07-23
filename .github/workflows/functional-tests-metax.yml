@@ -48,7 +48,6 @@ jobs:
           echo "GID: $(id -g)"
           echo "Home: $HOME"
           whoami
-          pip install -r requirements/requirements-base.txt
           tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
           exit_code=$?
           echo "Exit code: $exit_code"
