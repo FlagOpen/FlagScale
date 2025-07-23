@@ -16,7 +16,7 @@ on:
 
 jobs:
   functional-test:
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64, nvidia-0, gpus-8]
     container:
       image: ${{ inputs.image }}
       ports:
