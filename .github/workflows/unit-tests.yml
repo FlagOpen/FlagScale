@@ -16,7 +16,7 @@ on:
 
 jobs:
   unit-test:
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64, nvidia-0, gpus-8]
     container:
       image: ${{ inputs.image }}
       ports:
@@ -44,10 +44,11 @@ jobs:
           submodules: false
           set-safe-directory: true
 
-      - name: Unit Test Coverage Online Report
-        run: |
-          REPORT_ADDR=$(cat "/workspace/config/report_address")
-          echo "After 'Run Unit Test' is completed/stopped, you can access the test coverage report at http://${REPORT_ADDR}/${{github.sha}}/cov-report-${{ inputs.backend }}/index.html"
+      # TODO: Re-enable when you have a public IP
+      # - name: Unit Test Coverage Online Report
+      #   run: |
+      #     REPORT_ADDR=$(cat "/workspace/config/report_address")
+      #     echo "After 'Run Unit Test' is completed/stopped, you can access the test coverage report at http://${REPORT_ADDR}/${{github.sha}}/cov-report-${{ inputs.backend }}/index.html"
 
       - name: Run Unit Test
         run: |
@@ -55,12 +56,13 @@ jobs:
 
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           if [ "${{ inputs.backend }}" = "megatron" ] || [ "${{ inputs.backend }}" = "flagscale" ]; then
-            PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
+            echo ""
+            # PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
           elif [ "${{ inputs.backend }}" = "vllm" ]; then
             source /root/miniconda3/bin/activate flagscale-inference
             pip install scikit-build scikit-build-core
             pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
-            PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
+            # PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
           else
             echo "Unknown backend type: ${{ inputs.backend }}"
             exit 1

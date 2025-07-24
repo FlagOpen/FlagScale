@@ -1,14 +1,12 @@
 backends_commit:
-  vllm: 3015d5634e74d59704e2b39bab0dbe2e6f86a38a
+  vllm: b6553be1bc75f046b00046a4ad7576364d03c835
 backends_version:
   FlagScale: 0.8.0
-  vllm: 0.8.5
-commit: 1d3c4b66bd2d214f6d25ce45c412a1b6ec043a90
+  vllm: 0.9.1
+commit: a90319a45fe8985c8c3aad0d1ec0998b9c89710e
 contact: guohw1@sugon.com
 device_type: Hygon_BW1000
 models:
 - deepseek_r1
-- deepseek_r1_distill_qwen
-- minicpm_o_2.6
 task:
 - inference

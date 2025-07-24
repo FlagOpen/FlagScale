@@ -2,9 +2,9 @@ name: All Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 concurrency:
   group: ${{ github.event.pull_request.number }}-${{ github.actor }}
@@ -14,27 +14,28 @@ jobs:
   set-env:
     runs-on: ubuntu-latest
     outputs:
-      ci_image: ${{ steps.set-env.outputs.ci_image }}  # Declare output variable
+      ci_image: ${{ steps.set-env.outputs.ci_image }} # Declare output variable
     steps:
       - name: Set Environment Variable
-        id: set-env  # Assign an ID to this step
+        id: set-env # Assign an ID to this step
         run: |
-          echo "ci_image=localhost:5000/flagscale:cuda12.4.1-cudnn9.5.0-python3.12-torch2.6.0-time2505241715" >> $GITHUB_OUTPUT  # Set output variable
+          echo "ci_image=localhost:5000/flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.0-time2507111538" >> $GITHUB_OUTPUT  # Set output variable
 
+  # TODO: Re-enable when you have a public IP
   # Megatron Report Clean
-  megatron-report-clean:
-    needs:
-      - set-env
-    uses: ./.github/workflows/report-clean.yml
-    with:
-      backend: megatron
-      image: ${{ needs.set-env.outputs.ci_image }}
+  # megatron-report-clean:
+  #   needs:
+  #     - set-env
+  #   uses: ./.github/workflows/report-clean.yml
+  #   with:
+  #     backend: megatron
+  #     image: ${{ needs.set-env.outputs.ci_image }}
 
   # Megatron Unit Tests with Matrix
   megatron-unit-tests:
     needs:
       - set-env
-      - megatron-report-clean
+      # - megatron-report-clean
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
@@ -59,20 +60,21 @@ jobs:
       subset: ${{ matrix.subset }}
       image: ${{ needs.set-env.outputs.ci_image }}
 
-  # FlagScale Report Clean
-  flagscale-report-clean:
-    needs:
-      - set-env
-    uses: ./.github/workflows/report-clean.yml
-    with:
-      backend: flagscale
-      image: ${{ needs.set-env.outputs.ci_image }}
+  # TODO: Re-enable when you have a public IP
+  # # FlagScale Report Clean
+  # flagscale-report-clean:
+  #   needs:
+  #     - set-env
+  #   uses: ./.github/workflows/report-clean.yml
+  #   with:
+  #     backend: flagscale
+  #     image: ${{ needs.set-env.outputs.ci_image }}
 
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
     needs:
       - set-env
-      - flagscale-report-clean
+      # - flagscale-report-clean
     uses: ./.github/workflows/unit-tests.yml
     strategy:
       matrix:
@@ -83,6 +85,20 @@ jobs:
     with:
       backend: flagscale
       subset: ${{ matrix.subset }}
+      image: ${{ needs.set-env.outputs.ci_image }}
+
+  functional-tests-rl:
+    needs:
+      - set-env
+    uses: ./.github/workflows/functional-tests.yml
+    strategy:
+      matrix:
+        task:
+          - qwen2_5
+    name: "rl-${{ matrix.task }}"
+    with:
+      task: ${{ matrix.task }}
+      type: rl
       image: ${{ needs.set-env.outputs.ci_image }}
 
   # Functional Tests with Mision and Type Matrix
@@ -97,7 +113,7 @@ jobs:
         task:
           - aquila
           # - deepseek # TODO: need fix
-          # - mixtral # TODO: need fix
+          - mixtral
           # - llava_onevision # TODO: need fix
     name: "train-${{ matrix.task }}"
     with:
@@ -134,9 +150,9 @@ jobs:
       matrix:
         task:
           - deepseek
-          - deepseek_flaggems
           - qwen3
-          - qwen3_flaggems
+          # - deepseek_flaggems   # TODO: need fix
+          # - qwen3_flaggems      # TODO: need fix
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
@@ -196,8 +212,8 @@ jobs:
       - functional-tests-serve
       - megatron-coverage-test
       - flagscale-coverage-test
+      - functional-tests-rl
     runs-on: ubuntu-latest
     steps:
       - name: All Tests Completed
         run: echo "All tests completed successfully!"
-

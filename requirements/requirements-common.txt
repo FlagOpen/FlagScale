@@ -1,8 +1,8 @@
 # torch
-torch==2.6.0
-torchvision
-torchaudio
---extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.7.0+cu128
+torchaudio==2.7.0+cu128
+torchvision==0.22.0+cu128
+--extra-index-url https://download.pytorch.org/whl/cu128
 
 # base
 accelerate
@@ -17,6 +17,7 @@ scikit-build-core
 sentencepiece
 tensorboard
 transformers
+ray
 
 # test
 coverage

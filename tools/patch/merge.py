@@ -1,9 +1,11 @@
 import argparse
-import yaml
 import os
-from git.repo import Repo
 
+import yaml
+
+from git.repo import Repo
 from patch import normalize_backend
+
 
 def merge(backends, device_type, tasks, commit):
     """
@@ -52,6 +54,7 @@ def merge(backends, device_type, tasks, commit):
         yaml.dump(history, f, sort_keys=False)
     print(f"Patch history updated in {history_yaml}.")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Add patch history.")
     parser.add_argument(
@@ -71,9 +74,7 @@ if __name__ == "__main__":
         choices=["train", "inference", "post_train"],
         help="Task(s) to add.",
     )
-    parser.add_argument(
-        "--commit", type=str, required=True, help="Commit ID to record."
-    )
+    parser.add_argument("--commit", type=str, required=True, help="Commit ID to record.")
 
     args = parser.parse_args()
 

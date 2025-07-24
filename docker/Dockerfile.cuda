@@ -1,4 +1,4 @@
-ARG CUDA_VERSION=12.4.1
+ARG CUDA_VERSION=12.8.1
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND noninteractive
@@ -110,14 +110,14 @@ RUN cd ${STAGE_DIR} && \
 ##############################################################################
 # Install cuDNN (NVIDIA CUDA Deep Neural Network library)
 ##############################################################################
-ARG CUDNN_VERSION=9.5.0
+ARG CUDNN_VERSION=9.7.1
 RUN cd ${STAGE_DIR} && \
         CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
         CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
         CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
         CUDA_MINOR=$(echo "${CUDA_VERSION}" | cut -d. -f2) && \
-        wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}.50_cuda${CUDA_MAJOR}-archive.tar.xz && \
-        tar -xJvf cudnn-linux-x86_64-${CUDNN_VERSION}.50_cuda12-archive.tar.xz && \
+        wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda${CUDA_MAJOR}-archive.tar.xz && \
+        tar -xJvf cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda12-archive.tar.xz && \
         mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include && \
         mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64 && \
         cp cudnn-*-archive/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/ && \
@@ -153,6 +153,12 @@ RUN cd ${STAGE_DIR}/FlagScale && \
 RUN cd ${STAGE_DIR}/FlagScale && \
     apt-get install -y --no-install-recommends curl && \
     ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
+
+##############################################################################
+# Install flagscale-RL requirements
+##############################################################################
+RUN cd ${STAGE_DIR}/FlagScale && \
+    ./install/install-requirements.sh --env RL
 
 # ##############################################################################
 # # Clear

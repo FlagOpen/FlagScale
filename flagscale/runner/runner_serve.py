@@ -178,7 +178,7 @@ def _update_config_serve(config: DictConfig):
 
     OmegaConf.set_struct(config, False)
 
-    if deploy_config.get("prefill_decode_disaggregation", False):
+    if deploy_config.get("prefill_decode_disaggregation", False) and config.action != "stop":
         deploy_config["pd_proxy_port"] = get_free_port()
 
     if config.get("logging", None) is None:
@@ -305,6 +305,9 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         f.write(f"\n")
         envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
         f.write(f"{envs_str}\n")
+        use_vllm_v1 = (str(os.getenv("VLLM_USE_V1", "true")).lower() in ("1", "true")) and (
+            str(envs.get("VLLM_USE_V1", "true")).lower() in ("1", "true")
+        )
 
         if nodes:
             if deploy_config.get("prefill_decode_disaggregation", False):
@@ -369,20 +372,36 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 for i in range(p_num):
                     kv_port = kv_related_ports.pop()
                     http_port = kv_related_ports.pop()
-                    p_kv_config = {
-                        "kv_connector": "P2pConnector",
-                        "kv_role": "kv_producer",
-                        "kv_port": str(kv_port),
-                        "kv_connector_extra_config": {
-                            "proxy_ip": master_ip,
-                            "proxy_port": str(pd_proxy_port),
-                            "http_port": str(http_port),
-                        },
-                    }
+                    if use_vllm_v1:
+                        p_kv_config = {
+                            "kv_connector": "P2pNcclConnector",
+                            "kv_role": "kv_producer",
+                            "kv_port": str(kv_port),
+                            "kv_buffer_size": "1e1",
+                            "kv_connector_extra_config": {
+                                "send_type": "PUT_ASYNC",
+                                "nccl_num_channels": "16",
+                                "proxy_ip": master_ip,
+                                "proxy_port": str(pd_proxy_port),
+                                "http_port": str(http_port),
+                            },
+                        }
+
+                    else:
+                        p_kv_config = {
+                            "kv_connector": "P2pConnector",
+                            "kv_role": "kv_producer",
+                            "kv_port": str(kv_port),
+                            "kv_connector_extra_config": {
+                                "proxy_ip": master_ip,
+                                "proxy_port": str(pd_proxy_port),
+                                "http_port": str(http_port),
+                            },
+                        }
                     logger.info(
                         f"============= prefill instance {i}, p_kv_config: {p_kv_config} ============="
                     )
-                    card_ids = resource_manager.get_available_card_ids(
+                    card_ids, update_p_address = resource_manager.get_available_card_ids(
                         address=p_address, num=each_instance_card_num
                     )
                     card_ids_str = ",".join(map(str, card_ids))
@@ -391,13 +410,13 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     p_kv_config_json = json.dumps(p_kv_config)
                     p_instance_log_path = os.path.join(default_log_dir, f"prefill_{i}.log")
 
-                    if p_address != master_ip:
+                    if update_p_address != master_ip and len(nodes) > 1:
                         p_kv_config_formate_json = p_kv_config_json.replace('"', '\\"')
                         node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_formate_json}'\\''"
                         if docker_name:
-                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {p_instance_log_path} 2>&1 &'\""
+                            ssh_cmd = f"ssh -f -n -p {ssh_port} {update_p_address} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {p_instance_log_path} 2>&1 &'\""
                         else:
-                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {p_instance_log_path} 2>&1 &"'
+                            ssh_cmd = f'ssh -f -n -p {ssh_port} {update_p_address} "{node_cmd} > {p_instance_log_path} 2>&1 &"'
                         f.write(f"{ssh_cmd}\n\n")
                     else:
                         p_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{p_kv_config_json}'\\''"
@@ -408,24 +427,42 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         )
 
                 f.write("echo '=========== launch decode instance ==========='\n")
+                decode_gpu_memory_utilization = deploy_config.get(
+                    "decode_gpu_memory_utilization", 0.7
+                )
 
                 for j in range(d_num):
                     kv_port = kv_related_ports.pop()
                     http_port = kv_related_ports.pop()
-                    d_kv_config = {
-                        "kv_connector": "P2pConnector",
-                        "kv_role": "kv_consumer",
-                        "kv_port": str(kv_port),
-                        "kv_connector_extra_config": {
-                            "proxy_ip": master_ip,
-                            "proxy_port": str(pd_proxy_port),
-                            "http_port": str(http_port),
-                        },
-                    }
+                    if use_vllm_v1:
+                        d_kv_config = {
+                            "kv_connector": "P2pNcclConnector",
+                            "kv_role": "kv_consumer",
+                            "kv_port": str(kv_port),
+                            "kv_buffer_size": "8e9",
+                            "kv_connector_extra_config": {
+                                "send_type": "PUT_ASYNC",
+                                "nccl_num_channels": "16",
+                                "proxy_ip": master_ip,
+                                "proxy_port": str(pd_proxy_port),
+                                "http_port": str(http_port),
+                            },
+                        }
+                    else:
+                        d_kv_config = {
+                            "kv_connector": "P2pConnector",
+                            "kv_role": "kv_consumer",
+                            "kv_port": str(kv_port),
+                            "kv_connector_extra_config": {
+                                "proxy_ip": master_ip,
+                                "proxy_port": str(pd_proxy_port),
+                                "http_port": str(http_port),
+                            },
+                        }
                     logger.info(
                         f"============= decode instance {j}, d_kv_config: {d_kv_config} ============="
                     )
-                    card_ids = resource_manager.get_available_card_ids(
+                    card_ids, update_d_address = resource_manager.get_available_card_ids(
                         address=d_address, num=each_instance_card_num
                     )
                     card_ids_str = ",".join(map(str, card_ids))
@@ -434,16 +471,16 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                     d_kv_config_json = json.dumps(d_kv_config)
                     d_instance_log_path = os.path.join(default_log_dir, f"decode_{j}.log")
 
-                    if d_address != master_ip:
+                    if update_d_address != master_ip and len(nodes) > 1:
                         d_kv_config_formate_json = d_kv_config_json.replace('"', '\\"')
-                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_formate_json}'\\''"
+                        node_cmd = f"{ids_env} && {vllm_command} --port {http_port} --gpu-memory-utilization {decode_gpu_memory_utilization} --kv-transfer-config '\\''{d_kv_config_formate_json}'\\''"
                         if docker_name:
-                            ssh_cmd = f"ssh -f -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {d_instance_log_path} 2>&1 &'\""
+                            ssh_cmd = f"ssh -f -n -p {ssh_port} {update_d_address} \"docker exec {docker_name} /bin/bash -c '{node_cmd} > {d_instance_log_path} 2>&1 &'\""
                         else:
-                            ssh_cmd = f'ssh -f -n -p {ssh_port} {d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
+                            ssh_cmd = f'ssh -f -n -p {ssh_port} {update_d_address} "{node_cmd} > {d_instance_log_path} 2>&1 &"'
                         f.write(f"{ssh_cmd}\n\n")
                     else:
-                        d_cmd = f"{ids_env} && {vllm_command} --port {http_port} --kv-transfer-config '\\''{d_kv_config_json}'\\''"
+                        d_cmd = f"{ids_env} && {vllm_command} --port {http_port} --gpu-memory-utilization {decode_gpu_memory_utilization} --kv-transfer-config '\\''{d_kv_config_json}'\\''"
                         f.write(f"d_{j}_cmd='{d_cmd}'\n")
                         f.write(f"\n")
                         f.write(

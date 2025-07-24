@@ -6513,7 +6513,7 @@ index 541cc47b..a41c7f59 100644
  
              prompts_plus_generations_segments.append(words)
 diff --git a/megatron/training/arguments.py b/megatron/training/arguments.py
-index c5d750e8..40e6b123 100644
+index c5d750e8..3fe42779 100644
 --- a/megatron/training/arguments.py
 +++ b/megatron/training/arguments.py
 @@ -53,6 +53,7 @@ def add_megatron_arguments(parser: argparse.ArgumentParser):
@@ -6781,6 +6781,20 @@ index c5d750e8..40e6b123 100644
      group.add_argument('--log-interval', type=int, default=100,
                         help='Report loss and timing interval.')
      group.add_argument('--exit-interval', type=int, default=None,
+@@ -1731,11 +1792,11 @@ def _add_training_args(parser):
+     group.add_argument('--optimizer', type=str, default='adam',
+                        choices=['adam', 'sgd'],
+                        help='Optimizer function')
+-    group.add_argument('--optimizer-cpu-offload', action='store_true',
++    group.add_argument('--optimizer-cpu-offload', action='store_false',
+                        help='Offload optimizer state to CPU')
+     group.add_argument('--optimizer-offload-fraction', type=float, default=1.0,
+                           help='Ratio of optimizer state to offload to CPU')
+-    group.add_argument('--use-torch-optimizer-for-cpu-offload', action='store_true',
++    group.add_argument('--use-torch-optimizer-for-cpu-offload', action='store_false',
+                        help="Use torch.optim.Optimizer instead of Megatron's optimizer in optimizer cpu offload mode.")
+     group.add_argument('--overlap-cpu-optimizer-d2h-h2d', action='store_true', default=False,
+                        help='Overlap CPU optimizer step, gradients D2H and updated parameters H2D.')
 @@ -1843,11 +1904,26 @@ def _add_learning_rate_args(parser):
                         'and initial warmup, the learning rate at each '
                         'iteration would be different.')
@@ -6957,6 +6971,15 @@ index c5d750e8..40e6b123 100644
  
      return parser
  
+@@ -2695,7 +2825,7 @@ def _add_experimental_args(parser):
+                        help = 'Config file to add additional arguments')
+ 
+     # Args of precision-aware optimizer
+-    group.add_argument('--use-precision-aware-optimizer', action='store_true',
++    group.add_argument('--use-precision-aware-optimizer', action='store_false',
+                        help='Use the precision-aware optimizer in TransformerEngine, which allows '
+                        'setting the main params and optimizer states to lower precision, such as '
+                        'fp16 and fp8.')
 @@ -2714,4 +2844,45 @@ def _add_msc_args(parser):
      group = parser.add_argument_group(title="msc")
      group.add_argument('--disable-msc', default=True, action='store_false', dest='enable_msc',
@@ -7006,7 +7029,7 @@ index c5d750e8..40e6b123 100644
 +                          help='Threshold for skipping spiky loss iterations.')
 +    return parser
 diff --git a/megatron/training/checkpointing.py b/megatron/training/checkpointing.py
-index a706c181..c1a27231 100644
+index a706c181..f66415fb 100644
 --- a/megatron/training/checkpointing.py
 +++ b/megatron/training/checkpointing.py
 @@ -239,12 +239,14 @@ def read_metadata(tracker_filename):
@@ -7025,6 +7048,17 @@ index a706c181..c1a27231 100644
 +        iters_cuda = torch.tensor([iteration], dtype=torch.long, device='cuda' if 'nccl' in torch.distributed.get_backend() else 'cpu')
          torch.distributed.all_reduce(iters_cuda, op=torch.distributed.ReduceOp.MAX)
          max_iter = iters_cuda[0].item()
+ 
+@@ -636,8 +638,8 @@ def maybe_save_dataloader_state(train_iterator, iteration, dataloader_save_path)
+ 
+     torch.distributed.barrier(group=mpu.get_data_parallel_group())
+ 
+-    if mpu.get_data_parallel_rank() == 0:
+-        ensure_directory_exists(data_state_save_path)
++    #if mpu.get_data_parallel_rank() == 0:
++    ensure_directory_exists(data_state_save_path)
+ 
+     torch.distributed.barrier(group=mpu.get_data_parallel_group())
  
 @@ -1056,6 +1058,10 @@ def load_args_from_checkpoint(
              checkpoint_args, 'add_bias_linear', not getattr(checkpoint_args, 'disable_bias_linear')

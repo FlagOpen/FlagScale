@@ -16,7 +16,7 @@ on:
 
 jobs:
   functional-test:
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64, nvidia-0, gpus-8]
     container:
       image: ${{ inputs.image }}
       ports:
@@ -55,15 +55,19 @@ jobs:
               PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-Energon" --verbose --no-build-isolation
               cp -r third_party/Megatron-Energon/src/megatron/energon third_party/Megatron-LM/megatron
             fi
-          elif [ "${{ inputs.type }}" = "inference" ] || [ "${{ inputs.type }}" = "serve" ]; then
+          elif [ "${{ inputs.type }}" = "inference" ] || [ "${{ inputs.type }}" = "serve" ] || [ "${{ inputs.type }}" = "inference-pipeline" ]; then
             source /root/miniconda3/bin/activate flagscale-inference
             pip install scikit-build scikit-build-core
             pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
+          elif [ "${{ inputs.type }}" = "rl" ]; then
+            python tools/patch/unpatch.py --backend verl
+            cd third_party/verl
+            pip install --no-deps -e .
+            cd ../..
           else
             echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
           fi
-
           tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
         shell: bash
