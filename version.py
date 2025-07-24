@@ -19,6 +19,9 @@ BACKEND_DEVICE_VERSION = {
 
 
 def get_whl_version(backend, device):
+    if "metax" in device.lower():
+        device = "metax"
+
     if device == "gpu":
         return _get_whl_version_gpu(backend)
     elif device == "metax":
@@ -66,6 +69,8 @@ def _get_whl_version_metax(backend):
     def get_maca_version():
         default_version = "2.29.2.7"
         maca_path = os.getenv('MACA_PATH')
+        if not maca_path:
+            return default_version
         if not os.path.exists(maca_path):
             return default_version
         else:

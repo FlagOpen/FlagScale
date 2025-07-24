@@ -426,6 +426,8 @@ def install(backend, device="gpu", version=None):
     """
     from flag_scale.version import get_whl_version
 
+    if "metax" in device.lower():
+        device = "metax"
     versions, compatible_versions = get_whl_version(backend, device)
     if not compatible_versions:
         raise click.ClickException(f"No compatible versions found for {backend} on {device}.")

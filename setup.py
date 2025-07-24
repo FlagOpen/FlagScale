@@ -64,9 +64,33 @@ def _build_vllm(device):
         vllm_path = os.path.join(
             os.path.dirname(__file__), "build", device, "FlagScale", "third_party", "vllm"
         )
+    # Set env
+    env = os.environ.copy()
+    if "metax" in device.lower():
+        if "MACA_PATH" not in env:
+            env["MACA_PATH"] = "/opt/maca"
+        if "CUDA_PATH" not in env:
+            env["CUDA_PATH"] = "/usr/local/cuda"
+        env["CUCC_PATH"] = f'{env["MACA_PATH"]}/tools/cu-bridge'
+        env["PATH"] = (
+            f'{env["CUDA_PATH"]}/bin:'
+            f'{env["MACA_PATH"]}/mxgpu_llvm/bin:'
+            f'{env["MACA_PATH"]}/bin:'
+            f'{env["CUCC_PATH"]}/tools:'
+            f'{env["CUCC_PATH"]}/bin:'
+            f'{env.get("PATH", "")}'
+        )
+        env["LD_LIBRARY_PATH"] = (
+            f'{env["MACA_PATH"]}/lib:'
+            f'{env["MACA_PATH"]}/ompi/lib:'
+            f'{env["MACA_PATH"]}/mxgpu_llvm/lib:'
+            f'{env.get("LD_LIBRARY_PATH", "")}'
+        )
+        env["VLLM_INSTALL_PUNICA_KERNELS"] = "1"
     subprocess.check_call(
         [sys.executable, '-m', 'pip', 'install', '.', '--no-build-isolation', '--verbose'],
         cwd=vllm_path,
+        env=env,
     )
 
 
