@@ -1,63 +1,21 @@
-ARG CUDA_VERSION=12.8.1
-FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
+# Stage1: building stage
 
-ENV DEBIAN_FRONTEND noninteractive
-ENV TZ=Asia/Shanghai
+FROM cr.metax-tech.com/public-ai-release/maca/modelzoo.llm.vllm:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64 AS builder
 
 ##############################################################################
 # Temporary Installation Directory
 ##############################################################################
-ENV STAGE_DIR=/tmp
-RUN mkdir -p ${STAGE_DIR}
-ENV WORK_DIR=/workspace
-RUN mkdir -p ${WORK_DIR}
+WORKDIR /workspace
 
 ##############################################################################
 # Install Basic Utilities
 ##############################################################################
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends apt-utils && \
-    echo "N" | apt-get install -y --no-install-recommends pkg-config && \
-    apt-get install -y --no-install-recommends \
-        autotools-dev \
-        build-essential \
-        ca-certificates ccache cmake curl \
-        emacs \
-        gcc git git-lfs g++ \
-        htop \
-        iftop iotop \
-        libcairo2-dev libfontconfig-dev libibverbs1 libibverbs-dev libnuma-dev libx11-dev lsb-release \
-        net-tools nfs-common ninja-build \
-        openssh-server openssh-client \
-        pdsh psmisc \
-        rsync \
-        screen software-properties-common sudo \
-        tmux tzdata \
-        unzip \
-        vim \
-        wget
+    apt-get install -y --no-install-recommends git vim curl wget && \
+    rm -rf /var/lib/apt/lists/*
 
-##############################################################################
-# Install Python
-##############################################################################
-ARG PYTHON_VERSION=3.12
-RUN add-apt-repository ppa:deadsnakes/ppa && \
-        apt-get update -y && \
-        apt-get install -y python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-venv && \
-        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 && \
-        update-alternatives --set python3 /usr/bin/python${PYTHON_VERSION} && \
-        ln -sf /usr/bin/python${PYTHON_VERSION}-config /usr/bin/python3-config && \
-        ln -s /usr/bin/python3 /usr/bin/python && \
-        apt install python3-distutils python3-pip -y && \
-        apt-get clean && \
-        rm -rf /var/lib/apt/lists/* && \
-        python -m ensurepip --upgrade && \
-        python -m pip install --upgrade setuptools && \
-        # Blinker 1.4 version is installed using the distutls installation tool, which is an old Python package installation method.
-        # When installing an updated version with pip, an attempt will be made to uninstall the old version,
-        # but the uninstallation will fail and manual deletion is required.
-        rm -r /usr/lib/python3/dist-packages/blinker && \
-        rm /usr/lib/python3/dist-packages/blinker-1.4.egg-info
+# cmake >= 4.03
+RUN /opt/conda/bin/pip3 install cryptography gitpython cmake
 
 ##############################################################################
 # SCCACHE
@@ -73,59 +31,12 @@ RUN cd ${STAGE_DIR} && \
         rm -rf sccache.tar.gz sccache-v0.8.1-x86_64-unknown-linux-musl
 
 ##############################################################################
-# OPENMPI
+# used to generate cmakecache files
+# install tooklit Only, IGNORE driver or samples
 ##############################################################################
-ENV OPENMPI_BASEVERSION=4.1
-ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.6
-RUN cd ${STAGE_DIR} && \
-        wget -q -O - https://download.open-mpi.org/release/open-mpi/v${OPENMPI_BASEVERSION}/openmpi-${OPENMPI_VERSION}.tar.gz | tar xzf - && \
-        cd openmpi-${OPENMPI_VERSION} && \
-        ./configure --prefix=/usr/local/openmpi-${OPENMPI_VERSION} && \
-        make -j"$(nproc)" install && \
-        ln -s /usr/local/openmpi-${OPENMPI_VERSION} /usr/local/mpi && \
-        # Sanity check:
-        test -f /usr/local/mpi/bin/mpic++ && \
-        cd .. && \
-        rm -r openmpi-${OPENMPI_VERSION}
-ENV PATH=/usr/local/mpi/bin:${PATH} \
-        LD_LIBRARY_PATH=/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:${LD_LIBRARY_PATH}
-# Create a wrapper for OpenMPI to allow running as root by default
-RUN mv /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun.real && \
-        echo '#!/bin/bash' > /usr/local/mpi/bin/mpirun && \
-        echo 'mpirun.real --allow-run-as-root --prefix /usr/local/mpi "$@"' >> /usr/local/mpi/bin/mpirun && \
-        chmod a+x /usr/local/mpi/bin/mpirun
-
-##############################################################################
-# Install Miniconda
-##############################################################################
-RUN cd ${STAGE_DIR} && \
-        mkdir -p ~/miniconda3 && \
-        wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh && \
-        bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3 && \
-        rm -rf ~/miniconda3/miniconda.sh && \
-        ~/miniconda3/bin/conda init bash && \
-        ~/miniconda3/bin/conda config --set auto_activate_base false && \
-        ~/miniconda3/bin/conda config --set default_python ${PYTHON_VERSION}
-
-##############################################################################
-# Install cuDNN (NVIDIA CUDA Deep Neural Network library)
-##############################################################################
-ARG CUDNN_VERSION=9.7.1
-RUN cd ${STAGE_DIR} && \
-        CUDNN_MAJOR=$(echo "${CUDNN_VERSION}" | cut -d. -f1) && \
-        CUDNN_MINOR=$(echo "${CUDNN_VERSION}" | cut -d. -f2) && \
-        CUDA_MAJOR=$(echo "${CUDA_VERSION}" | cut -d. -f1) && \
-        CUDA_MINOR=$(echo "${CUDA_VERSION}" | cut -d. -f2) && \
-        wget https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda${CUDA_MAJOR}-archive.tar.xz && \
-        tar -xJvf cudnn-linux-x86_64-${CUDNN_VERSION}.26_cuda12-archive.tar.xz && \
-        mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include && \
-        mkdir -p /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64 && \
-        cp cudnn-*-archive/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/ && \
-        cp -P cudnn-*-archive/lib/libcudnn* /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/ && \
-        chmod a+r /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn*.h /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64/libcudnn* && \
-        echo "export PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/bin:\$PATH" >> ~/.bashrc && \
-        echo "export LD_LIBRARY_PATH=/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64:\$LD_LIBRARY_PATH" >> ~/.bashrc && \
-        cat /usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
+RUN wget https://developer.download.nvidia.com/compute/cuda/11.6.0/local_installers/cuda_11.6.0_510.39.01_linux.run && \    
+    sh cuda_11.6.0_510.39.01_linux.run --silent --toolkit && \
+    rm cuda_11.6.0_510.39.01_linux.run
 
 ##############################################################################
 # Clone FlagScale
@@ -133,36 +44,42 @@ RUN cd ${STAGE_DIR} && \
 ARG FLAGSCALE_REPO
 ARG FLAGSCALE_BRANCH
 ARG FLAGSCALE_COMMIT
-RUN cd ${STAGE_DIR} && \
-    git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
-    { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
-    cd FlagScale && \
-    git checkout ${FLAGSCALE_COMMIT} || \
-    { echo "Error: Failed to checkout commit ${FLAGSCALE_COMMIT}. Please ensure the commit ID is correct and exists in the repository."; exit 1; } && \
-    chmod +x install/install-requirements.sh
-
-##############################################################################
-# Install flagscale-train requirements
-##############################################################################
-RUN cd ${STAGE_DIR}/FlagScale && \
-    ./install/install-requirements.sh --env train
+RUN cd /workspace && \
+    git clone https://github.com/FlagOpen/FlagScale.git
+#     git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
+#     { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
+#     cd FlagScale && \
+#     git checkout ${FLAGSCALE_COMMIT} || \
+#     { echo "Error: Failed to checkout commit ${FLAGSCALE_COMMIT}. Please ensure the commit ID is correct and exists in the repository."; exit 1; } && \
 
 ##############################################################################
 # Install flagscale-inference requirements
 ##############################################################################
-RUN cd ${STAGE_DIR}/FlagScale && \
-    apt-get install -y --no-install-recommends curl && \
-    ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
+# 
+RUN cd /workspace/FlagScale && \
+    /opt/conda/bin/conda create --name flagscale-inference --clone base
 
-##############################################################################
-# Install flagscale-RL requirements
-##############################################################################
-RUN cd ${STAGE_DIR}/FlagScale && \
-    ./install/install-requirements.sh --env RL
+RUN cd /workspace/FlagScale && \
+    /opt/conda/bin/activate flagscale-inference && \
+    /opt/conda/bin/pip3 install hydra-core && \
+    /opt/conda/bin/python3 tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550
 
-# ##############################################################################
-# # Clear
-# ##############################################################################
-RUN apt-get clean && \
-        rm -rf /var/lib/apt/lists/* && \
-        rm -rf ${STAGE_DIR}/*
+RUN cd /workspace/FlagScale/build/Metax_C550/FlagScale/third_party/vllm/ && \
+    . /etc/profile.d/conda.sh && \
+    . ./env.sh && \
+    /opt/conda/bin/python3 setup.py bdist_wheel
+
+# Stage2: production-stage
+FROM cr.metax-tech.com/public-ai-release/maca/modelzoo.llm.vllm:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64
+
+ENV DEBIAN_FRONTEND noninteractive
+ENV TZ=Asia/Shanghai
+
+COPY --from=builder /workspace/FlagScale/build/Metax_C550/FlagScale/third_party/vllm/dist/ /tmp/dist/
+COPY --from=builder /opt/conda/envs/ /opt/conda/envs/
+
+RUN ls /tmp/dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl && \
+    . /etc/profile.d/conda.sh && \
+    pip uninstall -y vllm && \
+    /opt/conda/bin/activate flagscale-inference && \
+    pip install /tmp/dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl
