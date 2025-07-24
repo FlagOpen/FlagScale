@@ -149,15 +149,15 @@ jobs:
     strategy:
       matrix:
         include:
-          - task: deepseek
+          # - task: deepseek
           - task: qwen3
           # # - task: deepseek_flaggems      # TODO: need fix
           # # - task: qwen3_flaggems      # TODO: need fix
-          # - task: Qwen3-4B, pipeline: true
+          - task: Qwen3-4B, pipeline: true
           # # - task: Qwen3-4B, flaggems: enable, pipeline: true      # TODO: need fix
           # - task: Qwen3-4B, hardware: bi_v150, pipeline: true
           # # - task: Qwen3-4B, hardware: bi_v150, flaggems: enable, pipeline: true      # TODO: need fix
-          # - task: Qwen3-4B, hardware: cambricon_mlu, pipeline: true
+          - task: Qwen3-4B, hardware: cambricon_mlu, pipeline: true
           # # - task: Qwen3-4B, hardware: cambricon_mlu, flaggems: enable, pipeline: true      # TODO: need fix
           # - task: Qwen3-4B, hardware: metax, pipeline: true
           # # - task: Qwen3-4B, hardware: metax, flaggems: enable, pipeline: true      # TODO: need fix
