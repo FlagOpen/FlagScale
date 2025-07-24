@@ -48,6 +48,18 @@ jobs:
           echo "GID: $(id -g)"
           echo "Home: $HOME"
           whoami
+          git config --global --add safe.directory /__w/FlagScale/FlagScale
+          if [ "${{ inputs.type }}" = "inference" ]; then
+            source /opt/conda/bin/activate flagscale-inference
+            python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 
+            # TODO: Currently using the merged patch, the next step is to use the patch included in the current PR
+            # --commit <flagscale_commit>
+            cd build/Metax_C550
+            PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
+          else
+            echo "Unknown backend type: ${{ inputs.type }}"
+            exit 1
+          fi
           tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }} --hardware metax
           exit_code=$?
           echo "Exit code: $exit_code"
