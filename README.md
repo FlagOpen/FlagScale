@@ -75,6 +75,22 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     cd FlagScale
     cp -r third_party/Megatron-Energon/src/megatron/energon third_party/Megatron-LM/megatron
     ```
+    And we currently support two one-click installation methods: source installation and whl installation. Usage is as follows:
+
+    - Source Installation
+        ```sh
+        PYTHONPATH=./:$PYTHONPATH pip install . --no-build-isolation --verbose \
+        --config-settings=device=<device> \
+        --config-settings=backend=<backend>
+        ```
+
+    - Whl Installation
+        ```sh
+        PYTHONPATH=./:$PYTHONPATH pip install . --no-build-isolation --verbose
+        flagscale install <backend> --device=<device>
+        ```
+
+    More backends and chips will be supported in the future.
 
 5. Patch the modifications to the specified third_party backend for PR.
     ```
