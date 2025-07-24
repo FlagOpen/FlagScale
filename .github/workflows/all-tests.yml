@@ -98,6 +98,9 @@ jobs:
     name: "rl-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
+      hardware: ${{matrix.hardware || 'nvidia'}}
+      flaggems: ${{matrix.flaggems || 'disable'}}
+      pipeline: ${{matrix.pipeline || 'false'}}
       type: rl
       image: ${{ needs.set-env.outputs.ci_image }}
 
@@ -118,6 +121,9 @@ jobs:
     name: "train-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
+      hardware: ${{matrix.hardware || 'nvidia'}}
+      flaggems: ${{matrix.flaggems || 'disable'}}
+      pipeline: ${{matrix.pipeline || 'false'}}
       type: train
       image: ${{ needs.set-env.outputs.ci_image }}
 
@@ -138,26 +144,46 @@ jobs:
     # name: "hetero_train-${{ matrix.task }}"
     # with:
     #   task: ${{ matrix.task }}
+      # hardware: ${{matrix.hardware || 'nvidia'}}
+      # flaggems: ${{matrix.flaggems || 'disable'}}
+      # pipeline: ${{matrix.pipeline || 'false'}}
     #   type: hetero_train
     #   image: ${{ needs.set-env.outputs.ci_image }}
+
 
   functional-tests-inference:
     needs:
       - set-env
-      - functional-tests-hetero
+      # - functional-tests-hetero
     uses: ./.github/workflows/functional-tests.yml
     strategy:
       matrix:
-        task:
-          - deepseek
-          - qwen3
-          - metax
-          # - deepseek_flaggems   # TODO: need fix
-          # - qwen3_flaggems      # TODO: need fix
-          # - metax_flaggems      # TODO: need fix
+        include:
+          - task: deepseek
+          - task: qwen3
+          # - task: deepseek_flaggems      # TODO: need fix
+          # - task: qwen3_flaggems      # TODO: need fix
+          - task: Qwen3-4B
+            pipeline: true
+          # - task: Qwen3-4B, flaggems: enable, pipeline: true      # TODO: need fix
+          - task: Qwen3-4B
+            hardware: bi_v150
+            pipeline: true
+          # - task: Qwen3-4B, hardware: bi_v150, flaggems: enable, pipeline: true      # TODO: need fix
+          - task: Qwen3-4B
+            hardware: cambricon_mlu
+            pipeline: true
+          # - task: Qwen3-4B, hardware: cambricon_mlu, flaggems: enable, pipeline: true      # TODO: need fix
+          - task: Qwen3-4B
+            hardware: metax
+            pipeline: true
+          # - task: Qwen3-4B, hardware: metax, flaggems: enable, pipeline: true      # TODO: need fix
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
+      hardware: ${{matrix.hardware || 'nvidia'}}
+      flaggems: ${{matrix.flaggems || 'disable'}}
+      pipeline: ${{matrix.pipeline || 'false'}}
       type: inference
       image: ${{ needs.set-env.outputs.ci_image }}
 
@@ -178,6 +204,9 @@ jobs:
     # name: "serve-${{ matrix.task }}"
     # with:
     #   task: ${{ matrix.task }}
+      # hardware: ${{matrix.hardware || 'nvidia'}}
+      # flaggems: ${{matrix.flaggems || 'disable'}}
+      # pipeline: ${{matrix.pipeline || 'false'}}
     #   type: serve
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
