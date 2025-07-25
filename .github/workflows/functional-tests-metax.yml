@@ -53,9 +53,8 @@ jobs:
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           if [ "${{ inputs.type }}" = "inference" ]; then
             source /opt/conda/bin/activate flagscale-inference
-            python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 
-            # TODO: Currently using the merged patch, the next step is to use the patch included in the current PR
-            # --commit <flagscale_commit>
+            echo "Latest commit ID: ${{ github.sha }}"
+            python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 --commit ${{ github.sha }}
             cd build/Metax_C550/FlagScale/third_party/vllm
             source env.sh
             python setup.py bdist_wheel
