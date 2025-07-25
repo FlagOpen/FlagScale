@@ -3,9 +3,12 @@ name: All Tests Metax
 on:
   push:
     branches: ["main"]
+    paths:
+      - 'hardware/Metax_C550/**'
+      - '.github/workflows/*metax*.yml'
   pull_request:
     branches: ["main"]
-      paths:
+    paths:
       - 'hardware/Metax_C550/**'
       - '.github/workflows/*metax*.yml'
 
