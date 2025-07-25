@@ -6,8 +6,8 @@ on:
   pull_request:
     branches: ["main"]
       paths:
-      - 'hardware/Metax_C550/**'
-      - '.github/workflows/*metax*.yml'
+        - 'hardware/Metax_C550/**'
+        - '.github/workflows/*metax*.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
