@@ -58,7 +58,7 @@ jobs:
             cd build/Metax_C550/FlagScale/third_party/vllm
             source env.sh
             python setup.py bdist_wheel
-            pip uninstall vllm
+            pip uninstall vllm -y
             pip install dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl
           else
             echo "Unknown backend type: ${{ inputs.type }}"
