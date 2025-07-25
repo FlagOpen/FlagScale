@@ -53,8 +53,8 @@ jobs:
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           if [ "${{ inputs.type }}" = "inference" ]; then
             source /opt/conda/bin/activate flagscale-inference
-            echo "Latest commit ID: ${{ github.sha }}"
-            python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 --commit ${{ github.sha }}
+            echo "Original commit ID: ${{ github.event.pull_request.head.sha }}"
+            python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 --commit ${{ github.event.pull_request.head.sha }}
             cd build/Metax_C550/FlagScale/third_party/vllm
             source env.sh
             python setup.py bdist_wheel
