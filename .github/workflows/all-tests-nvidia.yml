@@ -121,7 +121,26 @@ jobs:
     #   task: ${{ matrix.task }}
     #   type: inference
     #   image: ${{ needs.set-env.outputs.ci_image }}
-  
+
+  functional-tests-serve:
+    needs:
+      - functional-tests-inference
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mock Run
+        run: echo "test need fix"
+    # TODO: test need fix
+    # uses: ./.github/workflows/functional-tests.yml
+    # strategy:
+    #   matrix:
+    #     task:
+    #       - base
+    # name: "serve-${{ matrix.task }}"
+    # with:
+    #   task: ${{ matrix.task }}
+    #   type: serve
+    #   image: ${{ needs.set-env.outputs.ci_image }}
+
   functional-tests-rl:
     needs:
       - functional-tests-inference
@@ -135,24 +154,6 @@ jobs:
       task: ${{ matrix.task }}
       type: rl
       image: ${{ needs.set-env.outputs.ci_image }}
-
-  functional-tests-serve:
-    needs:
-      - functional-tests-inference
-    steps:
-        - name: Mock Run
-          run: echo "For quick test"
-    # TODO: test need fix
-    # uses: ./.github/workflows/functional-tests.yml
-    # strategy:
-    #   matrix:
-    #     task:
-    #       - base
-    # name: "serve-${{ matrix.task }}"
-    # with:
-    #   task: ${{ matrix.task }}
-    #   type: serve
-    #   image: ${{ needs.set-env.outputs.ci_image }}
 
   # Check All Tests
   all-tests:
