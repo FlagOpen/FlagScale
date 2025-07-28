@@ -1,4 +1,6 @@
+##############################################################################
 # Stage1: building stage
+##############################################################################
 
 FROM cr.metax-tech.com/public-ai-release/maca/modelzoo.llm.vllm:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64 AS builder
 
@@ -14,27 +16,16 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git vim curl wget && \
     rm -rf /var/lib/apt/lists/*
 
+##############################################################################
 # cmake >= 4.03
+##############################################################################
 RUN /opt/conda/bin/pip3 install cryptography gitpython cmake
-
-##############################################################################
-# SCCACHE
-##############################################################################
-ENV SCCACHE_BUCKET_NAME=flagscale-build-sccache
-ENV SCCACHE_REGION_NAME=cn-north-1
-ENV SCCACHE_S3_NO_CREDENTIALS=0
-RUN cd ${STAGE_DIR} && \
-        echo "Installing sccache..." && \
-        curl -L -o sccache.tar.gz https://github.com/mozilla/sccache/releases/download/v0.8.1/sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz && \
-        tar -xzf sccache.tar.gz && \
-        mv sccache-v0.8.1-x86_64-unknown-linux-musl/sccache /usr/bin/sccache && \
-        rm -rf sccache.tar.gz sccache-v0.8.1-x86_64-unknown-linux-musl
 
 ##############################################################################
 # used to generate cmakecache files
 # install tooklit Only, IGNORE driver or samples
 ##############################################################################
-RUN wget https://developer.download.nvidia.com/compute/cuda/11.6.0/local_installers/cuda_11.6.0_510.39.01_linux.run && \    
+RUN wget https://developer.download.nvidia.com/compute/cuda/11.6.0/local_installers/cuda_11.6.0_510.39.01_linux.run && \
     sh cuda_11.6.0_510.39.01_linux.run --silent --toolkit && \
     rm cuda_11.6.0_510.39.01_linux.run
 
@@ -45,41 +36,27 @@ ARG FLAGSCALE_REPO
 ARG FLAGSCALE_BRANCH
 ARG FLAGSCALE_COMMIT
 RUN cd /workspace && \
-    git clone https://github.com/FlagOpen/FlagScale.git
-#     git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
-#     { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
-#     cd FlagScale && \
-#     git checkout ${FLAGSCALE_COMMIT} || \
-#     { echo "Error: Failed to checkout commit ${FLAGSCALE_COMMIT}. Please ensure the commit ID is correct and exists in the repository."; exit 1; } && \
+    { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
+    cd FlagScale && \
+    git checkout ${FLAGSCALE_COMMIT} || \
+    { echo "Error: Failed to checkout commit ${FLAGSCALE_COMMIT}. Please ensure the commit ID is correct and exists in the repository."; exit 1; } && \
+    chmod +x install/install-metax.sh
 
 ##############################################################################
 # Install flagscale-inference requirements
 ##############################################################################
-# 
 RUN cd /workspace/FlagScale && \
-    /opt/conda/bin/conda create --name flagscale-inference --clone base
+    chmod +x install/install-metax.sh && \
+    ./install/install-metax.sh --env inference
 
-RUN cd /workspace/FlagScale && \
-    /opt/conda/bin/activate flagscale-inference && \
-    /opt/conda/bin/pip3 install hydra-core && \
-    /opt/conda/bin/python3 tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550
-
-RUN cd /workspace/FlagScale/build/Metax_C550/FlagScale/third_party/vllm/ && \
-    . /etc/profile.d/conda.sh && \
-    . ./env.sh && \
-    /opt/conda/bin/python3 setup.py bdist_wheel
-
+##############################################################################
 # Stage2: production-stage
+##############################################################################
 FROM cr.metax-tech.com/public-ai-release/maca/modelzoo.llm.vllm:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
 
-COPY --from=builder /workspace/FlagScale/build/Metax_C550/FlagScale/third_party/vllm/dist/ /tmp/dist/
 COPY --from=builder /opt/conda/envs/ /opt/conda/envs/
 
-RUN ls /tmp/dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl && \
-    . /etc/profile.d/conda.sh && \
-    pip uninstall -y vllm && \
-    /opt/conda/bin/activate flagscale-inference && \
-    pip install /tmp/dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl
+RUN echo "conda activate base" >> ~/.bashrc
