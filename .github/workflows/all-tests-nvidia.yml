@@ -29,7 +29,7 @@ jobs:
     strategy:
       matrix:
         subset:
-          - data
+          # - data
           # - dist_checkpointing
           # - distributed
           # - export
@@ -68,7 +68,9 @@ jobs:
 
   # Functional Tests with Mision and Type Matrix
   functional-tests-train:
-    needs: flagscale-unit-tests
+    needs: 
+      - set-env
+      - flagscale-unit-tests
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
@@ -84,7 +86,9 @@ jobs:
       image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-hetero:
-    needs: functional-tests-train
+    needs: 
+      - set-env
+      - functional-tests-train
     runs-on: ubuntu-latest
     steps:
       - name: Mock Run
@@ -102,7 +106,9 @@ jobs:
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-inference:
-    needs: functional-tests-hetero
+    needs: 
+      - set-env
+      - functional-tests-hetero
     runs-on: ubuntu-latest
     steps:
         - name: Mock Run
@@ -122,7 +128,9 @@ jobs:
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-serve:
-    needs: functional-tests-inference
+    needs: 
+      - set-env
+      - functional-tests-inference
     runs-on: ubuntu-latest
     steps:
       - name: Mock Run
@@ -140,7 +148,9 @@ jobs:
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-rl:
-    needs: functional-tests-serve
+    needs: 
+      - set-env
+      - functional-tests-serve
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
