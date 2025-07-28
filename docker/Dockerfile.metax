@@ -36,6 +36,7 @@ ARG FLAGSCALE_REPO
 ARG FLAGSCALE_BRANCH
 ARG FLAGSCALE_COMMIT
 RUN cd /workspace && \
+    git clone -b ${FLAGSCALE_BRANCH} ${FLAGSCALE_REPO} || \
     { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
     cd FlagScale && \
     git checkout ${FLAGSCALE_COMMIT} || \
