@@ -46,7 +46,6 @@ RUN cd /workspace && \
 # Install flagscale-inference requirements
 ##############################################################################
 RUN cd /workspace/FlagScale && \
-    chmod +x install/install-metax.sh && \
     ./install/install-metax.sh --env inference
 
 ##############################################################################
