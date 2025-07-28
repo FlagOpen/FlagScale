@@ -23,8 +23,7 @@ jobs:
 
   # Megatron Unit Tests with Matrix
   megatron-unit-tests:
-    needs:
-      - set-env
+    needs: set-env
     uses: ./.github/workflows/unit-tests-nvidia.yml
     strategy:
       matrix:
@@ -51,8 +50,7 @@ jobs:
 
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
-    needs:
-      - megatron-unit-tests
+    needs: set-env
     uses: ./.github/workflows/unit-tests-nvidia.yml
     strategy:
       matrix:
@@ -67,8 +65,7 @@ jobs:
 
   # Functional Tests with Mision and Type Matrix
   functional-tests-train:
-    needs:
-      - flagscale-unit-tests
+    needs: set-env
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
@@ -84,8 +81,7 @@ jobs:
       image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-hetero:
-    needs:
-      - functional-tests-train
+    needs: set-env
     runs-on: ubuntu-latest
     steps:
       - name: Mock Run
@@ -103,12 +99,12 @@ jobs:
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-inference:
-    needs:
-      - functional-tests-hetero
-    uses: ./.github/workflows/functional-tests-nvidia.yml
+    needs: set-env
+    runs-on: ubuntu-latest
     steps:
         - name: Mock Run
           run: echo "For quick test"
+    # uses: ./.github/workflows/functional-tests-nvidia.yml
     # strategy:
     #   matrix:
     #     task:
@@ -123,8 +119,7 @@ jobs:
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-serve:
-    needs:
-      - functional-tests-inference
+    needs: set-env
     runs-on: ubuntu-latest
     steps:
       - name: Mock Run
@@ -142,8 +137,7 @@ jobs:
     #   image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-rl:
-    needs:
-      - functional-tests-inference
+    needs: set-env
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
