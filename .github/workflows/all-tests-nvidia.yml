@@ -138,12 +138,10 @@ jobs:
 
   functional-tests-serve:
     needs:
-      - set-env
       - functional-tests-inference
-    runs-on: ubuntu-latest
     steps:
-      - name: Mock Run
-        run: echo "test need fix"
+        - name: Mock Run
+          run: echo "For quick test"
     # TODO: test need fix
     # uses: ./.github/workflows/functional-tests.yml
     # strategy:
