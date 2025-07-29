@@ -1,0 +1,52 @@
+name: All Tests Metax
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - 'hardware/Metax_C550/**'
+      - '.github/workflows/*metax*.yml'
+  pull_request:
+    branches: ["main"]
+    paths:
+      - 'hardware/Metax_C550/**'
+      - '.github/workflows/*metax*.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
+
+jobs:
+  set-env:
+    runs-on: ubuntu-latest
+    outputs:
+      ci_image: ${{ steps.set-env.outputs.ci_image }} # Declare output variable
+    steps:
+      - name: Set Environment Variable
+        id: set-env # Assign an ID to this step
+        run: |
+          echo "ci_image=localhost:5000/flagscale:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64-time2507231716" >> $GITHUB_OUTPUT  # Set output variable
+
+  functional-tests-inference:
+    needs:
+      - set-env
+    uses: ./.github/workflows/functional-tests-metax.yml
+    strategy:
+      matrix:
+        task:
+          - deepseek_metax
+          # - qwen3_metax
+    name: "inference-${{ matrix.task }}"
+    with:
+      task: ${{ matrix.task }}
+      type: inference
+      image: ${{ needs.set-env.outputs.ci_image }}
+
+  # Check All Tests
+  all-tests:
+    needs:
+      - functional-tests-inference
+    runs-on: ubuntu-latest
+    steps:
+      - name: All Tests Completed
+        run: echo "All tests completed successfully!"

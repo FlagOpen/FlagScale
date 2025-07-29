@@ -17,8 +17,12 @@ train:
 #     -dp2dp4_shared_embedding
 
 inference:
-  deepseek: -tp2
-  qwen3: -tp2
+  deepseek: 
+    -tp2
+  deepseek_metax:
+    -tp2
+  qwen3:
+    -tp2
   # deepseek_flaggems:
   #   -tp2
   # qwen3_flaggems:
