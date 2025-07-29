@@ -58,5 +58,6 @@ ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
 
 COPY --from=builder /opt/conda/envs/ /opt/conda/envs/
+COPY --from=builder /usr/bin/ /usr/bin/
 
 RUN echo "conda activate base" >> ~/.bashrc
