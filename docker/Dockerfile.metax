@@ -57,7 +57,16 @@ FROM cr.metax-tech.com/public-ai-release/maca/modelzoo.llm.vllm:maca.ai2.33.0.13
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
 
+# Basic Utilities
 COPY --from=builder /opt/conda/envs/ /opt/conda/envs/
-COPY --from=builder /usr/bin/ /usr/bin/
+COPY --from=builder /etc /etc
+COPY --from=builder /var/lib/dpkg /var/lib/dpkg
+COPY --from=builder /var/lib/apt /var/lib/apt
+COPY --from=builder /usr/bin /usr/bin
+COPY --from=builder /usr/lib /usr/lib
+COPY --from=builder /usr/share /usr/share
+COPY --from=builder /usr/include /usr/include
+COPY --from=builder /usr/local /usr/local
+COPY --from=builder /root/.bashrc /root/.bashrc
 
 RUN echo "conda activate base" >> ~/.bashrc
