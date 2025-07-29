@@ -36,8 +36,9 @@ jobs:
     strategy:
       matrix:
         task:
-          - deepseek_metax
-          # - qwen3_metax
+          - DeepSeek-R1-Distill-Qwen-7B
+          # Using FlagGems will report an error
+          # - DeepSeek-R1-Distill-Qwen-7B__Flaggems
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
