@@ -45,45 +45,74 @@ wait_for_gpu_nvidia() {
         fi
 
         # Wait and show current status
-        echo "Waiting for GPU memory usage to drop below 50% (current usage: ${max_usage_percent}%)"
+        echo "Waiting for GPU memory usage to drop below 50% (current max usage: ${max_usage_percent}%)"
         sleep 1m
     done
 
-    echo "All GPUs have sufficient free memory, GPU memory usage ratio is below 50% (current usage: ${max_usage_percent}%)"
+    echo "All GPUs have sufficient free memory, GPU memory usage ratio is below 50% (current max usage: ${max_usage_percent}%)"
 }
 
-# Placeholder function for mx-smi support
-# TODO: Implement logic for mx-smi based GPU monitoring
+# Function to wait for GPU availability using mx-smi
+# This function monitors Metax GPU memory usage and waits until it's below 50%
 wait_for_gpu_metax() {
-    echo "Using mx-smi - waiting for GPU resources (implementation pending)"
-    sleep 1m
-}
+    # Check if mx-smi is available
+    if ! command -v mx-smi &> /dev/null; then
+        echo "Error: mx-smi not found"
+        exit 1
+    fi
 
-# Demo GPU support placeholder
-# This is a sample implementation that can be used as a template for other GPU types
-wait_for_gpu_demo() {
-    echo "Using demo GPU monitoring - this is a placeholder implementation"
+    while true; do
+        local memory_usage_array=()
+        local memory_total_array=()
+        
+        # Query GPU memory usage and total memory
+        # mx-smi --show-memory displays memory info in KBytes
+        # Extracting vram used and total values for each GPU
+        mapfile -t memory_usage_array < <(mx-smi --show-memory 2>/dev/null | grep -oP 'vram used\s*:\s*\K\d+' | tr -d ' ')
+        mapfile -t memory_total_array < <(mx-smi --show-memory 2>/dev/null | grep -oP 'vram total\s*:\s*\K\d+' | tr -d ' ')
 
-    # Simulate GPU resource checking
-    local demo_gpu_count=2
-    local max_memory_usage_ratio=60  # Simulate 60% usage
-    local threshold=50  # 50% threshold
-
-    while [ $max_memory_usage_ratio -gt $threshold ]; do
-        echo "Demo GPU waiting... Current max usage: ${max_memory_usage_ratio}% (threshold: ${threshold}%)"
-
-        # Simulate memory usage decreasing over time
-        max_memory_usage_ratio=$((max_memory_usage_ratio - 10))
-
-        # Ensure we don't go below zero
-        if [ $max_memory_usage_ratio -lt 0 ]; then
-            max_memory_usage_ratio=0
+        # Check if we got any data
+        if [ ${#memory_usage_array[@]} -eq 0 ] || [ ${#memory_total_array[@]} -eq 0 ]; then
+            echo "Warning: Failed to retrieve memory information from mx-smi"
+            sleep 1m
+            continue
         fi
 
+        local need_wait=false
+        local max_usage_percent=0
+
+        # Iterate through each GPU to calculate memory usage percentage
+        for ((i=0; i<${#memory_usage_array[@]}; i++)); do
+            local memory_usage_i=${memory_usage_array[$i]}
+            local memory_total_i=${memory_total_array[$i]}
+
+            # Validate that memory values are numeric and total memory is greater than 0
+            if [[ $memory_usage_i =~ ^[0-9]+$ ]] && [[ $memory_total_i =~ ^[0-9]+$ ]] && [ "$memory_total_i" -gt 0 ]; then
+                # Calculate percentage using integer arithmetic
+                local usage_percent=$((memory_usage_i * 100 / memory_total_i))
+                # Track the maximum usage percentage across all GPUs
+                if [ $usage_percent -gt $max_usage_percent ]; then
+                    max_usage_percent=$usage_percent
+                fi
+            else
+                # Log warning for invalid values and continue waiting
+                echo "Warning: Invalid memory values - usage: '$memory_usage_i', total: '$memory_total_i'"
+                need_wait=true
+                break
+            fi
+        done
+
+        # If max usage percentage does not exceed 50%, we can proceed
+        if [ "$need_wait" = false ] && [ $max_usage_percent -le 50 ]; then
+            break
+        fi
+
+        # Wait and show current status
+        echo "Waiting for Metax GPU memory usage to drop below 50% (current max usage: ${max_usage_percent}%)"
         sleep 1m
     done
 
-    echo "Demo GPUs have sufficient free memory, GPU memory usage ratio is below 50%"
+    echo "All Metax GPUs have sufficient free memory, GPU memory usage ratio is below 50% (current max usage: ${max_usage_percent}%)"
 }
 
 # Main function to detect GPU tool and call appropriate wait function
