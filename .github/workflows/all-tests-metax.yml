@@ -4,14 +4,14 @@ on:
   push:
     branches: ["main"]
     paths:
-      - 'hardware/Metax_C550/**'
       - '.github/workflows/*metax*.yml'
+      - 'hardware/Metax_C550/**'
       - 'tests/**'
   pull_request:
     branches: ["main"]
     paths:
-      - 'hardware/Metax_C550/**'
       - '.github/workflows/*metax*.yml'
+      - 'hardware/Metax_C550/**'
       - 'tests/**'
 
 concurrency:
