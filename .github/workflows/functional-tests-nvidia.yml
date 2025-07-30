@@ -57,7 +57,7 @@ jobs:
           elif [ "${{ inputs.type }}" = "inference" ] || [ "${{ inputs.type }}" = "serve" ]; then
             source /root/miniconda3/bin/activate flagscale-inference
             pip install scikit-build scikit-build-core
-            pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
+            pip install git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
           elif [ "${{ inputs.type }}" = "rl" ]; then
             python tools/patch/unpatch.py --backend verl
