@@ -113,7 +113,8 @@ jobs:
     strategy:
       matrix:
         task:
-          - deepseek
+          - DeepSeek-R1-Distill-Qwen-7B
+          - DeepSeek-R1-Distill-Qwen-7B__Flaggems
           - qwen3
           # - deepseek_flaggems   # TODO: need fix
           # - qwen3_flaggems      # TODO: need fix
