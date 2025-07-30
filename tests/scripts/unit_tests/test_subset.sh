@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -eo pipefail
+
 source tests/scripts/_gpu_check.sh
 
 echo "The current directory is: $(pwd)"
