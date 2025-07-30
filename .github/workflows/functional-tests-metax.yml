@@ -57,7 +57,8 @@ jobs:
             python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 --commit ${{ github.event.pull_request.head.sha }}
             cd build/Metax_C550/FlagScale/third_party/vllm
             source env.sh
-            pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
+            pip install scikit-build scikit-build-core
+            pip install git+https://github.com/FlagOpen/FlagGems.git@release_v3.0.0
             # python setup.py bdist_wheel
             # pip uninstall vllm -y
             # pip install dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl
