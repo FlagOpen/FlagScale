@@ -21,7 +21,9 @@ inference:
     -tp2
   DeepSeek-R1-Distill-Qwen-7B__Flaggems:
     -tp2
-  deepseek_metax:
+  DeepSeek-R1-Distill-Qwen-7B__Metax: 
+    -tp2
+  DeepSeek-R1-Distill-Qwen-7B__Metax__Flaggems:
     -tp2
   qwen3:
     -tp2
