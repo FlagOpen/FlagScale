@@ -37,8 +37,7 @@ jobs:
       matrix:
         task:
           - DeepSeek-R1-Distill-Qwen-7B__Metax
-          # Using FlagGems will report an error
-          # - DeepSeek-R1-Distill-Qwen-7B__Metax__Flaggems
+          - DeepSeek-R1-Distill-Qwen-7B__Metax__Flaggems
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
