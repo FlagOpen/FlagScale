@@ -56,4 +56,5 @@ RUN echo "conda activate base" >> ~/.bashrc
 ##############################################################################
 RUN apt-get clean && \
         rm -rf /var/lib/apt/lists/* && \
+        rm -rf /root/.cache/* && \
         rm -rf /workspace/FlagScale
