@@ -1,4 +1,5 @@
 import datetime
+import json
 import threading
 import time
 
@@ -339,6 +340,101 @@ class Collaborator:
 
         except (ConnectionError, TimeoutError, RedisError) as e:
             print(f"Error while waiting for agent status: {e}")
+            return False
+
+    def store_scene(self, scene_data: List[Dict]) -> Optional[bool]:
+        """
+        Store a list of scene objects into Redis as a hash.
+
+        Args:
+            scene_data (List): A dictionary with a 'scene' key whose value is a list of objects.
+
+        Example:
+            scene_data =  [
+                    {'name': 'kitchenTable', 'type': 'table', 'contains': ['apple', 'pear']},
+                    {'name': 'basket', 'type': 'container', 'contains': ['egg']}
+                ]
+            store_scene(scene_data)
+        """
+        try:
+            redis_client = self._get_conn()
+            for obj in scene_data:
+                name = obj["name"]
+                value = json.dumps({"type": obj["type"], "contains": obj["contains"]})
+                redis_client.hset("SCENE_INFO", name, value)
+            return True
+        except (ConnectionError, TimeoutError, RedisError) as e:
+            return False
+
+    def store_robot(self, robot_info: Dict) -> Optional[bool]:
+        """
+        Store a list of scene objects into Redis as a hash.
+
+        Args:
+            robot_info (List): A dictionary with a 'scene' key whose value is a list of objects.
+
+        Example:
+            robot_info = {'position': 'kitchenTable', 'holding': '', 'status': 'idle'}
+
+            store_robot(robot_info)
+        """
+        try:
+            redis_client = self._get_conn()
+            redis_client.hset("SCENE_INFO", "robot_info", json.dumps(robot_info))
+            return True
+        except (ConnectionError, TimeoutError, RedisError) as e:
+            return False
+
+    def get_scene_item(self, name: str) -> Optional[Union[Dict, str]]:
+        """
+        Get a specific object or robot info from Redis (SCENE_INFO hash).
+
+        Args:
+            name (str): The name of the object to retrieve (e.g., 'kitchenTable', 'basket', or 'robot_info').
+
+        Returns:
+            dict or str or None: The parsed value if it's JSON, raw string if not JSON, or None if not found.
+
+        Example:
+            get_scene_item('kitchenTable')
+            get_scene_item('robot_info')
+        """
+        try:
+            redis_client = self._get_conn()
+            raw_value = redis_client.hget("SCENE_INFO", name)
+            if raw_value is None:
+                return None
+            return json.loads(raw_value)
+        except (ConnectionError, TimeoutError, RedisError) as e:
+            return None
+
+    def update_scene_item(self, name: str, updates: Dict) -> Optional[bool]:
+        """
+        Update fields of a specific object stored in SCENE_INFO hash in Redis.
+
+        Args:
+            name (str): The key inside the SCENE_INFO hash (e.g., 'kitchenTable', 'robot_info')
+            updates (Dict): The fields and their new values to update.
+
+        Returns:
+            True if update is successful, False if Redis error occurs.
+
+        Example:
+            update_scene_item('kitchenTable', {'contains': ['apple', 'banana']})
+            update_scene_item('robot_info', {'position': 'basket'})
+        """
+        try:
+            redis_client = self._get_conn()
+            raw_value = redis_client.hget("SCENE_INFO", name)
+            if raw_value is None:
+                return False
+
+            current_data = json.loads(raw_value)
+            current_data.update(updates)
+
+            redis_client.hset("SCENE_INFO", name, json.dumps(current_data))
+            return True
+        except (ConnectionError, TimeoutError, RedisError) as e:
             return False
 
     # ----------------- Close Connection -----------------
