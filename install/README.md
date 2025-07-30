@@ -15,3 +15,9 @@
 ```bash
 ./install/install-requirements.sh --env RL
 ```
+
+# Install the environment for Metax inference.
+
+```bash
+./install/install-requirements-metax.sh --env inference
+```
