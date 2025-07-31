@@ -17,14 +17,14 @@ train:
 #     -dp2dp4_shared_embedding
 
 inference:
-  DeepSeek-R1-Distill-Qwen-7B: 
-    -tp2
-  DeepSeek-R1-Distill-Qwen-7B__Flaggems:
-    -tp2
-  DeepSeek-R1-Distill-Qwen-7B__Metax: 
-    -tp2
-  DeepSeek-R1-Distill-Qwen-7B__Metax__Flaggems:
-    -tp2
+  deepseek_r1_distill_qwen:
+    -7b-tp2
+  deepseek_r1_distill_qwen-flaggems:
+    -7b-tp2
+  deepseek_r1_distill_qwen-metax:
+    -7b-tp2
+  deepseek_r1_distill_qwen-metax-flaggems:
+    -7b-tp2
   qwen3:
     -tp2
   # deepseek_flaggems:
