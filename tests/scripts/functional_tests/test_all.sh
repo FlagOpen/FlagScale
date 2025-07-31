@@ -12,10 +12,10 @@ commands=(
     # "tests/scripts/functional_tests/test_task.sh --type hetero_train --task aquila"
     
     # For inference
-    "tests/scripts/functional_tests/test_task.sh --type inference --task DeepSeek-R1-Distill-Qwen-7B"
-    "tests/scripts/functional_tests/test_task.sh --type inference --task DeepSeek-R1-Distill-Qwen-7B__Flaggems"
-    "tests/scripts/functional_tests/test_task.sh --type inference --task DeepSeek-R1-Distill-Qwen-7B__Metax"
-    "tests/scripts/functional_tests/test_task.sh --type inference --task DeepSeek-R1-Distill-Qwen-7B__Metax__Flaggems"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-flaggems"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-metax"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-metax-flaggems"
     # For serve
     # "tests/scripts/functional_tests/test_task.sh --type serve --task base"
 )

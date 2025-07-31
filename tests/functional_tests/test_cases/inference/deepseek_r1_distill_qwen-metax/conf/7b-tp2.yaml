@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - inference: tp2
+  - inference: 7b-tp2
 
 experiment:
-  exp_name: DeepSeek-R1-Distill-Qwen-7B
-  exp_dir: tests/functional_tests/test_cases/inference/DeepSeek-R1-Distill-Qwen-7B/results_test/tp2
+  exp_name: deepseek_r1_distill_qwen-metax
+  exp_dir: tests/functional_tests/test_cases/inference/deepseek_r1_distill_qwen-metax/results_test/7b-tp2
   task:
     type: inference
     backend: vllm
