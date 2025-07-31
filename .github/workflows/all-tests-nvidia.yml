@@ -159,17 +159,17 @@ jobs:
       type: rl
       image: ${{ needs.set-env.outputs.ci_image }}
 
-  # Check All Tests
-  all-tests:
-    needs:
-      - megatron-unit-tests
-      - flagscale-unit-tests
-      - functional-tests-train
-      - functional-tests-hetero
-      - functional-tests-inference
-      - functional-tests-serve
-      - functional-tests-rl
-    runs-on: ubuntu-latest
-    steps:
-      - name: All Tests Completed
-        run: echo "All tests completed successfully!"
+  # # Check All Tests
+  # all-tests:
+  #   needs:
+  #     - megatron-unit-tests
+  #     - flagscale-unit-tests
+  #     - functional-tests-train
+  #     - functional-tests-hetero
+  #     - functional-tests-inference
+  #     - functional-tests-serve
+  #     - functional-tests-rl
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: All Tests Completed
+  #       run: echo "All tests completed successfully!"
