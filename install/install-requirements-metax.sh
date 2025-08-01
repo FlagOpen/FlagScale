@@ -54,14 +54,16 @@ python -m pip install --upgrade pip
 
 # If the environment is "train" or "inference", install the base dependency package
 if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
-    pip install -r ./requirements/requirements-base.txt
+    pip install -r ./requirements/requirements-base-metax.txt
 fi
 
 # Activate the target Conda environment
 conda activate flagscale-${env}
 
-# If env equals 'inference'
+# Navigate to requirements directory and install basic dependencies
+pip install -r ./requirements/requirements-common-metax.txt
 
+# If env equals 'inference'
 if [[ ${env} == "inference" ]]; then
     echo "[INFO] Entering inference mode setup..."
     # Basic dependency installation
