@@ -27,7 +27,7 @@ jobs:
       - name: Set Environment Variable
         id: set-env # Assign an ID to this step
         run: |
-          echo "ci_image=localhost:5000/flagscale:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64-time2507301134" >> $GITHUB_OUTPUT  # Set output variable
+          echo "ci_image=localhost:5000/flagscale:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64-time2508011530" >> $GITHUB_OUTPUT  # Set output variable
 
   functional-tests-inference:
     needs:
