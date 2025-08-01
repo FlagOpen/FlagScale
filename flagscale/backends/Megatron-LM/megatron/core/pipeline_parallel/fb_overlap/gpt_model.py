@@ -1,6 +1,5 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
-# Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
-# Some codes are adapted from Huawei MindSpeed
+# Mainly adopted from https://gitee.com/ascend/MindSpeed-LLM/blob/2.1.0/mindspeed_llm/core/pipeline_parallel/dualpipe/gpt_model.py
 
 from torch import Tensor
 

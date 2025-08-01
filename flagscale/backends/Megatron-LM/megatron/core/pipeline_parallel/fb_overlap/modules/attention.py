@@ -1,10 +1,4 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
-# Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
-# Some codes are adapted from Huawei MindSpeed
-
-### This is a seperated attention module, for forward-backward overlapping of dualpipev
-
-import torch
 
 from megatron.training import get_args
 

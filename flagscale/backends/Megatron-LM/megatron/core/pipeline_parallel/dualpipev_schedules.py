@@ -1,4 +1,6 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Mainly adopted from https://gitee.com/ascend/MindSpeed/blob/master/mindspeed/core/pipeline_parallel/dualpipev/dualpipev_schedules.py
+
 import contextlib
 from functools import wraps
 from typing import Callable, Iterator, List, Optional, Union
