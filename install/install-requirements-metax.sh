@@ -58,7 +58,7 @@ pip install -r ./requirements/requirements-base-metax.txt
 # Activate the target Conda environment
 conda activate flagscale-${env}
 
-# Navigate to requirements directory and install basic dependencies
+# install basic dependencies
 pip install -r ./requirements/requirements-common-metax.txt
 
 if [[ ${env} == "inference" ]]; then
