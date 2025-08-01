@@ -67,7 +67,7 @@ stimer = StragglerDetector()
 
 
 def model_provider(
-    pre_process=True, post_process=True, vp_stage: Optional[int] = None, dualpipev_first_chunk: Optional[bool] = False,
+    pre_process=True, post_process=True, vp_stage: Optional[int] = None, is_dualpipev_first_chunk: Optional[bool] = False,
 ) -> Union[GPTModel, megatron.legacy.model.GPTModel]:
     """Builds the model.
 
@@ -138,7 +138,7 @@ def model_provider(
             if args.num_experts:
                 # Define the decoder block spec
                 transformer_layer_spec = get_gpt_decoder_block_spec(
-                    config, use_transformer_engine=use_te, normalization=args.normalization, qk_l2_norm=args.qk_l2_norm, vp_stage=vp_stage, dualpipev_first_chunk=dualpipev_first_chunk,
+                    config, use_transformer_engine=use_te, normalization=args.normalization, qk_l2_norm=args.qk_l2_norm, vp_stage=vp_stage, is_dualpipev_first_chunk=is_dualpipev_first_chunk,
                 )
             elif args.heterogeneous_layers_config_path is not None:
                 transformer_layer_spec = get_gpt_heterogeneous_layer_spec(config, use_te)

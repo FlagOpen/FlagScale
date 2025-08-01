@@ -34,7 +34,7 @@ from megatron.core.utils import (
 logger = logging.getLogger(__name__)
 
 
-def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[int] = None, dualpipev_first_chunk: Optional[bool] = False):
+def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[int] = None, is_dualpipev_first_chunk: Optional[bool] = False):
     """Get the index offset of current pipeline stage, given the level of pipelining."""
     pipeline_rank = parallel_state.get_pipeline_model_parallel_rank()
     if not parallel_state.is_inside_encoder():
@@ -169,7 +169,7 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                     num_layers_per_pipeline_rank_second_chunk = num_layers_per_pipeline_rank - num_layers_per_pipeline_rank_first_chunk
 
                     # process first chunk
-                    if dualpipev_first_chunk:
+                    if is_dualpipev_first_chunk:
                         middle_pipeline_rank = (
                             pipeline_rank
                             if config.num_layers_in_first_pipeline_stage is None
@@ -258,7 +258,7 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                         num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank_first_chunk + 1
                     num_layers_per_pipeline_rank_second_chunk = num_layers_per_pipeline_rank - num_layers_per_pipeline_rank_first_chunk
 
-                    if dualpipev_first_chunk:
+                    if is_dualpipev_first_chunk:
                         offset = pipeline_rank * num_layers_per_pipeline_rank_first_chunk
                     else:
                         offset = config.num_layers - ((pipeline_rank+1) * num_layers_per_pipeline_rank_second_chunk)

@@ -1277,7 +1277,7 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
             first_model = model_provider_func(
                 pre_process=pre_process,
                 post_process=post_process,
-                dualpipev_first_chunk=True,
+                is_dualpipev_first_chunk=True,
             )
             first_model.model_type = model_type
             model.append(first_model)
@@ -1285,7 +1285,7 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
             second_model = model_provider_func(
                 pre_process=post_process,
                 post_process=pre_process,
-                dualpipev_first_chunk=False,
+                is_dualpipev_first_chunk=False,
             )
             second_model.model_type = model_type
             model.append(second_model)
