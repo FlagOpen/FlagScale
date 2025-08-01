@@ -30,27 +30,8 @@ CONFIG_FILE="tests/scripts/functional_tests/config.yml"
 test_task() {
   local _type=$1
   local _task=$2
-  local _flaggems=$3
-  local _hardware=$4
   # Use parse_config.py to parse the YAML file with test type and test task
   local _cases=$(python tests/scripts/functional_tests/parse_config.py --config $CONFIG_FILE --type $_type --task $_task)
-
-  # Check if the test type is "inference-pipeline"
-  if [ "$_type" == "inference-pipeline" ]; then
-      _case_name="${_hardware}"
-      # If flaggems is enabled, append "_flaggems" to the case name
-      if [ "$_flaggems" == "enable" ]; then
-          _case_name="${_case_name}_flaggems"
-      fi
-      _cases=($_case_name)  # Create an array with the case name
-      case_path="tests/functional_tests/test_cases/inference-pipeline/${_case_name}"
-      case_model_path="${case_path}/conf/inference/${_case_name}.yaml"
-
-      # Replace the model and tokenizer paths in the configuration file
-      # Using sed to replace the 2nd and 3rd lines of the YAML file
-      sed -i "2s|.*|  model: /home/gitlab-runner/data/${_task}|" "$case_model_path"
-      sed -i "3s|.*|  tokenizer: /home/gitlab-runner/data/${_task}|" "$case_model_path"
-  fi
 
   # Convert the parsed test cases to an array
   IFS=' ' read -r -a _cases <<< "$_cases"
@@ -83,35 +64,14 @@ test_task() {
         fi
       fi
 
-      if [ "${_type}" = "inference-pipeline" ]; then
-        result_path="tests/functional_tests/test_cases/${_type}/${_case}/results_test/${_case}"
-        if [ -d "$result_path" ]; then
-          rm -r "$result_path"
-        fi
-      fi
-
       if [ "${_type}" = "train" ] || [ "${_type}" = "hetero_train" ]; then
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_task}/conf --config-name ${_case} action=test" $attempt_i $_task $_type $_case
         run_command "pytest tests/functional_tests/test_utils/test_result.py::test_train_equal --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_task=${_task} --test_case=${_case}" $attempt_i $_task $_type $_case
       fi
 
       if [ "${_type}" = "inference" ]; then
-        # TODO: rm when fix bug about "before start"
-        if [ "${_hardware}" = "nvidia" ]; then
-          source /root/miniconda3/bin/activate flagscale-inference
-        fi
-        if [ "${_hardware}" = "metax" ]; then
-          source /opt/conda/bin/activate flagscale-inference
-        fi
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_task}/conf --config-name ${_case} action=test" $attempt_i $_task $_type $_case
         run_command "pytest -s tests/functional_tests/test_utils/test_result.py::test_inference_equal --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_task=${_task} --test_case=${_case}" $attempt_i $_task $_type $_case
-      fi
-
-      if [ "${_type}" = "inference-pipeline" ]; then
-        # TODO: rm when fix bug about "before start"
-        source /root/miniconda3/bin/activate flagscale-inference
-        run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_case}/conf --config-name ${_case} action=test" $attempt_i $_task $_type $_case
-        run_command "pytest -s tests/functional_tests/test_utils/test_result.py::test_inference_pipeline --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_task=${_case} --test_case=${_case}" $attempt_i $_task $_type $_case
       fi
 
       # todo: open this case
@@ -133,20 +93,11 @@ test_task() {
   done
 }
 
-# Initialize default values
-flaggems="disable"
-hardware="nvidia"
-
-# Define supported hardware options in a list (array)
-supported_hardware=("nvidia" "bi_v150" "cambricon_mlu", "metax")
-
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --type) type="$2"; shift ;;
         --task) task="$2"; shift ;;
-        --flaggems) flaggems="$2"; shift ;;
-        --hardware) hardware="$2"; shift ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
@@ -163,26 +114,9 @@ if [ -z "$task" ]; then
   exit 1
 fi
 
-# Validate flaggems parameter
-if [[ "$flaggems" != "enable" && "$flaggems" != "disable" ]]; then
-  echo "Error: --flaggems must be 'enable' or 'disable'"
-  exit 1
-fi
-
-# Convert hardware parameter to lowercase to ensure case-insensitive matching
-hardware=$(echo "$hardware" | tr '[:upper:]' '[:lower:]')
-
-# Validate hardware parameter using the supported hardware list
-if [[ ! " ${supported_hardware[@]} " =~ " $hardware " ]]; then
-  echo "Error: --hardware must be one of: ${supported_hardware[*]}"
-  exit 1
-fi
-
 # Print final parameter values for confirmation
 echo "Type: $type"
 echo "Task: $task"
-echo "Flaggems: $flaggems"
-echo "Hardware: $hardware"
 
 # Run the tests based on the provided test type and test task
-test_task "$type" "$task" "$flaggems" "$hardware"
+test_task "$type" "$task"
