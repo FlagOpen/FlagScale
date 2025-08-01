@@ -59,9 +59,9 @@ jobs:
             source env.sh
             pip install scikit-build scikit-build-core
             pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0
-            # python setup.py bdist_wheel
-            # pip uninstall vllm -y
-            # pip install dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl
+            python setup.py bdist_wheel
+            pip uninstall vllm -y
+            pip install dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl
           else
             echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
