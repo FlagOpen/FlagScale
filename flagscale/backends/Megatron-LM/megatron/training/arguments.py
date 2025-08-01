@@ -1109,6 +1109,62 @@ def validate_args(args, defaults={}):
     if args.external_cuda_graph:
         assert args.te_rng_tracker, "--te-rng-tracker must be enabled when using CUDA Graphs."
 
+    # DualPipeV related
+    if args.use_dualpipev:
+        assert args.pipeline_model_parallel_size > 1, (
+            "DualPipeV can only be used for pipeline scheduling in MoE models, "
+        "thus requiring both pipeline parallelism and expert parallelism."
+        )
+        assert args.expert_model_parallel_size > 1, (
+            "DualPipeV can only be used for pipeline scheduling in MoE models, "
+        "thus requiring both pipeline parallelism and expert parallelism."
+        )
+
+        middle_stage_layers = args.num_layers
+        num_middle_stages = args.pipeline_model_parallel_size
+        if args.decoder_first_pipeline_num_layers is not None:
+            middle_stage_layers = middle_stage_layers - args.decoder_first_pipeline_num_layers
+            num_middle_stages = num_middle_stages - 1
+            assert args.decoder_first_pipeline_num_layers % 2 == 0, (
+                "The first pipeline stage must contain an even number of Transformer layers, "
+                "so that DualPipeV can split it into two model chunks."
+            )
+        if args.decoder_last_pipeline_num_layers is not None:
+            middle_stage_layers = middle_stage_layers - args.decoder_last_pipeline_num_layers
+            num_middle_stages = num_middle_stages - 1
+            assert args.decoder_last_pipeline_num_layers % 2 == 0, (
+                "The last pipeline stage must contain an even number of Transformer layers, "
+                "so that DualPipeV can split it into two model chunks."
+            )
+        if num_middle_stages > 0:
+            assert middle_stage_layers > 0, "Layers can not be empty"
+            assert middle_stage_layers % num_middle_stages == 0, "Layers must be even split"
+            num_layers_in_middle_stages = middle_stage_layers // num_middle_stages
+            assert num_layers_in_middle_stages % 2 == 0, (
+                "The middle pipeline stage must contain an even number of Transformer layers, "
+                "so that DualPipeV can split it into two model chunks."
+            )
+
+        assert args.moe_shared_expert_overlap is False, (
+                " DualPipeV does not support simultaneous use with moe_shared_expert_overlap currently."
+        )
+
+        if args.moe_fb_overlap:
+            assert args.overlap_grad_reduce is False and args.overlap_param_gather is False, (
+                " DualPipeV configured with moe_fb_overlap is incompatible with either overlap_grad_reduce or overlap_param_gather. "
+                " When moe_fb_overlap is enabled, DualPipeV activates the DW-split mechanism provided by Transformer Engine, "
+                " which causes all param.grad attributes to be None during the backward-for-inputs phase. "
+                " This absence of gradient tensors violates the assumptions of both overlap_grad_reduce and overlap_param_gather, precipitating an assertion failure within DDP."
+            )
+            assert not args.moe_use_legacy_grouped_gemm, \
+                'delay_wgrad_compute is not supported with legacy groupedgemm implementation'
+            assert args.transformer_impl == 'transformer_engine', \
+                'delay_wgrad_compute is only supported with transformer_engine implementation'
+
+        assert args.untie_embeddings_and_output_weights is True, (
+            " DualPipeV is not supported with shared embedding and lm head"
+        )
+
     # Print arguments.
     _print_args("arguments", args)
 
@@ -2042,6 +2098,10 @@ def _add_training_args(parser):
                        'If None, the default backend will be used.')
     group.add_argument('--high-priority-stream-groups', nargs='*', type=str, default=[],
                        help='The communicator group names to use high priority streams.')
+    group.add_argument('--use-dualpipev', action='store_true',
+                       help='Use DualPipeV pipeline schedule method')
+    group.add_argument('--moe-fb-overlap', action='store_true',
+                       help='DualPipeV overlapping of moe a2a communication and forward/backward computation')
 
     return parser
 
