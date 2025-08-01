@@ -1,12 +1,12 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
-# Some codes are adapted from Huawei MindSpore
+# Some codes are adapted from Huawei MindSpeed
 
 import torch
 from megatron.core import parallel_state
 from megatron.training import get_args
 from megatron.core.transformer.moe.moe_utils import permute
-from megatron.core.pipeline_parallel.fb_overlap.modules.utils import async_all_to_all
-from ..modules.utils import (
+from megatron.core.pipeline_parallel.fb_overlap.modules.utils import (
+    async_all_to_all,
     run_graph_backward,
     turn_attention_delay_wgrad_compute,
     call_attention_backward_dw,

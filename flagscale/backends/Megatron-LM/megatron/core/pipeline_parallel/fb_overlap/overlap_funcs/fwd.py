@@ -1,20 +1,20 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
-# Some codes are adapted from Huawei MindSpore
+# Some codes are adapted from Huawei MindSpeed
 
 import torch
 from megatron.core.utils import make_viewless_tensor
 from megatron.core import parallel_state
 from megatron.training import get_args
-from megatron.core.pipeline_parallel.fb_overlap.modules.utils import async_all_to_all
-from ..modules.token_dispatcher import (
-    alltoall_token_perm1, alltoall_token_perm2,
-    alltoall_token_unperm1, alltoall_token_unperm2
-)
-from ..modules.attention import attention_forward
-from ..modules.utils import (
+from megatron.core.pipeline_parallel.fb_overlap.modules.utils import (
+    async_all_to_all,
     detach_tensor,
     LayerGraph,
 )
+from megatron.core.pipeline_parallel.fb_overlap.modules.token_dispatcher import (
+    alltoall_token_perm1, alltoall_token_perm2,
+    alltoall_token_unperm1, alltoall_token_unperm2
+)
+from megatron.core.pipeline_parallel.fb_overlap.modules.attention import attention_forward
 
 def router_forward(
     self,

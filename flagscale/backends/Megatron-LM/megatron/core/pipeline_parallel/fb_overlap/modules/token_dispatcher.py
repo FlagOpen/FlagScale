@@ -1,6 +1,6 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
-# Some codes are adapted from Huawei MindSpore
+# Some codes are adapted from Huawei MindSpeed
 
 ### This is seperated moe dispatch/combine module, for forward-backward overlapping of dualpipev
 

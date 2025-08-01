@@ -1,23 +1,22 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
-# Some codes are adapted from Huawei MindSpore
+# Some codes are adapted from Huawei MindSpeed
 
 from contextlib import nullcontext
 import torch
-from .modules.utils import (
+from megatron.core.pipeline_parallel.fb_overlap.modules.utils import (
     LayerGraph, P2PCommParams
 )
-
-from .overlap_funcs.fwd import (
+from megatron.core.pipeline_parallel.fb_overlap.overlap_funcs.fwd import (
     transformer_layer_forward_moe,
     transformer_layer_forward_dense,
 )
 
-from .overlap_funcs.bwd import (
+from megatron.core.pipeline_parallel.fb_overlap.overlap_funcs.bwd import (
     transformer_layer_backward_moe,
     transformer_layer_backward_dense,
 )
 
-from .overlap_funcs.fwdbwd import (
+from megatron.core.pipeline_parallel.fb_overlap.overlap_funcs.fwdbwd import (
     transformer_layer_forward_moe_backward_moe_overlapping,
     transformer_layer_forward_dense_backward_moe_overlapping,
     transformer_layer_forward_moe_backward_dense_overlapping,

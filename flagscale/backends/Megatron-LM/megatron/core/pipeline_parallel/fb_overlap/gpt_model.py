@@ -1,6 +1,6 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
-# Some codes are adapted from Huawei MindSpore
+# Some codes are adapted from Huawei MindSpeed
 
 from torch import Tensor
 
@@ -8,11 +8,11 @@ from megatron.core import InferenceParams
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import deprecate_inference_params
-from .transformer_block import (
+from megatron.core.pipeline_parallel.fb_overlap.transformer_block import (
     transformer_block_backward, transformer_block_forward_backward_overlapping,
     transformer_block_forward
 )
-from .modules.utils import (
+from megatron.core.pipeline_parallel.fb_overlap.modules.utils import (
     ModelGraph, detach_tensor, run_graph_backward
 )
 
