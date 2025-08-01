@@ -342,100 +342,74 @@ class Collaborator:
             print(f"Error while waiting for agent status: {e}")
             return False
 
-    def store_scene(self, scene_data: List[Dict]) -> Optional[bool]:
+    def record_environment(self, name: str, value: Dict[str, str]) -> Optional[bool]:
         """
-        Store a list of scene objects into Redis as a hash.
+        Store environment information into Redis as a hash field.
 
         Args:
-            scene_data (List): A dictionary with a 'scene' key whose value is a list of objects.
-
-        Example:
-            scene_data =  [
-                    {'name': 'kitchenTable', 'type': 'table', 'contains': ['apple', 'pear']},
-                    {'name': 'basket', 'type': 'container', 'contains': ['egg']}
-                ]
-            store_scene(scene_data)
-        """
-        try:
-            redis_client = self._get_conn()
-            for obj in scene_data:
-                name = obj["name"]
-                value = json.dumps({"type": obj["type"], "contains": obj["contains"]})
-                redis_client.hset("SCENE_INFO", name, value)
-            return True
-        except (ConnectionError, TimeoutError, RedisError) as e:
-            return False
-
-    def store_robot(self, robot_info: Dict) -> Optional[bool]:
-        """
-        Store a list of scene objects into Redis as a hash.
-
-        Args:
-            robot_info (List): A dictionary with a 'scene' key whose value is a list of objects.
-
-        Example:
-            robot_info = {'position': 'kitchenTable', 'holding': '', 'status': 'idle'}
-
-            store_robot(robot_info)
-        """
-        try:
-            redis_client = self._get_conn()
-            redis_client.hset("SCENE_INFO", "robot_info", json.dumps(robot_info))
-            return True
-        except (ConnectionError, TimeoutError, RedisError) as e:
-            return False
-
-    def get_scene_item(self, name: str) -> Optional[Union[Dict, str]]:
-        """
-        Get a specific object or robot info from Redis (SCENE_INFO hash).
-
-        Args:
-            name (str): The name of the object to retrieve (e.g., 'kitchenTable', 'basket', or 'robot_info').
+            name (str): The field name under the Redis hash key "ENVIRONMENT_INFO"
+            value (Dict[str, str]): A dictionary of key-value pairs to store for this environment
 
         Returns:
-            dict or str or None: The parsed value if it's JSON, raw string if not JSON, or None if not found.
+            Optional[bool]: True if successful, False if there's an error, None if not implemented
 
         Example:
-            get_scene_item('kitchenTable')
-            get_scene_item('robot_info')
+            >>> env_data = {
+                    'type': 'kitchen',
+                    'status': 'active',
+                    'lighting': 'bright'
+                }
+            >>> record_environment("home_kitchen", env_data)
+            True
+
+        Note:
+            The data is stored under the Redis hash key "ENVIRONMENT_INFO" with the given name as field.
+            Handles connection errors and Redis errors by returning False.
         """
         try:
             redis_client = self._get_conn()
-            raw_value = redis_client.hget("SCENE_INFO", name)
-            if raw_value is None:
-                return None
-            return json.loads(raw_value)
+            redis_client.hset("ENVIRONMENT_INFO", name, value)
+            return True
+        except (ConnectionError, TimeoutError, RedisError) as e:
+            return False
+
+    def read_environment(self, name: str) -> Optional[Union[Dict[str, str], str]]:
+        """
+        Retrieve environment information from Redis hash storage.
+
+        Args:
+            name (str): The key name of the environment data to retrieve from the "ENVIRONMENT_INFO" hash.
+
+        Returns:
+            Optional[Union[Dict[str, str], str]]:
+                - Dictionary if the stored value is a JSON string that can be parsed
+                - String if the value is not JSON or parsing fails
+                - None if the key doesn't exist or an error occurs
+
+        Example:
+            >>> # For JSON-stored data:
+            >>> read_environment("office_lighting")
+            {'status': 'on', 'brightness': '75%'}
+
+            >>> # For plain string data:
+            >>> read_environment("temperature")
+            "22.5°C"
+
+            >>> # When key doesn't exist:
+            >>> read_environment("nonexistent_key")
+            None
+
+        Note:
+            - The data is retrieved from the Redis hash key "ENVIRONMENT_INFO"
+            - Automatically attempts to parse JSON strings into dictionaries
+            - Returns None for any connection or Redis errors
+        """
+        try:
+            redis_client = self._get_conn()
+            raw_value = redis_client.hget("ENVIRONMENT_INFO", name)
+            return raw_value
         except (ConnectionError, TimeoutError, RedisError) as e:
             return None
-
-    def update_scene_item(self, name: str, updates: Dict) -> Optional[bool]:
-        """
-        Update fields of a specific object stored in SCENE_INFO hash in Redis.
-
-        Args:
-            name (str): The key inside the SCENE_INFO hash (e.g., 'kitchenTable', 'robot_info')
-            updates (Dict): The fields and their new values to update.
-
-        Returns:
-            True if update is successful, False if Redis error occurs.
-
-        Example:
-            update_scene_item('kitchenTable', {'contains': ['apple', 'banana']})
-            update_scene_item('robot_info', {'position': 'basket'})
-        """
-        try:
-            redis_client = self._get_conn()
-            raw_value = redis_client.hget("SCENE_INFO", name)
-            if raw_value is None:
-                return False
-
-            current_data = json.loads(raw_value)
-            current_data.update(updates)
-
-            redis_client.hset("SCENE_INFO", name, json.dumps(current_data))
-            return True
-        except (ConnectionError, TimeoutError, RedisError) as e:
-            return False
 
     # ----------------- Close Connection -----------------
     def _close_db(self) -> None:
