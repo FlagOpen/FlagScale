@@ -1179,8 +1179,11 @@ class Scheduler:
                     self._get_num_new_uncached_and_cached_tokens(
                         seq_group, SequenceStatus.WAITING, enable_chunking,
                         budget))
+
             num_new_tokens_uncached, num_new_tokens_uncached_negative = _update_num_new_tokens(
                 budget, num_new_tokens_uncached, num_new_tokens_uncached_negative)
+
+            num_new_tokens = num_new_tokens_uncached + num_new_tokens_cached
             num_new_tokens_negative = num_new_tokens_uncached_negative + num_new_tokens_cached_negative
             if num_new_tokens_negative > 0:
                 assert not self.scheduler_config.is_multi_step
@@ -1961,6 +1964,7 @@ class Scheduler:
             # --- FLAGSCALE MODIFICATION BEG ---
             if seq_group.has_negative_seqs():
                 negative_seq = seq_group.negative_seqs_dict[seq.seq_id]
+                negative_seq.status = SequenceStatus.WAITING
                 negative_seq.reset_state_for_recompute()
             # --- FLAGSCALE MODIFICATION END ---
         self._free_seq_group_cross_attn_blocks(seq_group)
