@@ -113,7 +113,10 @@ def get_forward_backward_func():
     """
     pipeline_model_parallel_size = parallel_state.get_pipeline_model_parallel_world_size()
     if pipeline_model_parallel_size > 1:
-        if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
+        if parallel_state.get_dualpipev_pipeline_model_parallel_world_size() is not None:
+            from megatron.core.pipeline_parallel.dualpipev_schedules import forward_backward_pipelining_with_dualpipev
+            forward_backward_func = forward_backward_pipelining_with_dualpipev
+        elif parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
             forward_backward_func = forward_backward_pipelining_with_interleaving
         else:
             forward_backward_func = forward_backward_pipelining_without_interleaving

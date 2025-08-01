@@ -426,8 +426,12 @@ def is_rank0():
 
 
 def is_last_rank():
+    args = get_args()
     if mpu.get_pipeline_model_parallel_world_size() > 1:
-        return torch.distributed.get_rank() == mpu.get_last_rank_when_using_pipeline() 
+        if args.use_dualpipev:
+            return mpu.is_pipeline_first_stage(ignore_virtual=True)
+        else:
+            return torch.distributed.get_rank() == mpu.get_last_rank_when_using_pipeline() 
     else:
         return torch.distributed.get_rank() == (
             torch.distributed.get_world_size() - 1)
@@ -551,9 +555,12 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(batch['position_ids'])
 
         elif mpu.is_pipeline_first_stage():
-            _broadcast(batch['tokens'])
-            _broadcast(batch['attention_mask'])
-            _broadcast(batch['position_ids'])
+           _broadcast(batch['tokens'])
+           _broadcast(batch['attention_mask'])
+           _broadcast(batch['position_ids'])
+           if args.use_dualpipev:
+                _broadcast(batch['loss_mask'])
+                _broadcast(batch['labels'])
 
         elif mpu.is_pipeline_last_stage():
             # Multi-Token Prediction (MTP) layers need tokens and position_ids to calculate embedding.
@@ -605,12 +612,15 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(position_ids)
 
         elif mpu.is_pipeline_first_stage():
-            labels = None
-            loss_mask = None
-
             _broadcast(tokens)
             _broadcast(attention_mask)
             _broadcast(position_ids)
+            if args.use_dualpipev:
+                _broadcast(loss_mask)
+                _broadcast(labels)
+            else:
+                labels = None
+                loss_mask = None 
 
         elif mpu.is_pipeline_last_stage():
             # Multi-Token Prediction (MTP) layers need tokens and position_ids to calculate embedding.
