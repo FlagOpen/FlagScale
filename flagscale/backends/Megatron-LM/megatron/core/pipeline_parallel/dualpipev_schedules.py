@@ -309,7 +309,7 @@ def generate_dualpipev_schedule(pp_size, num_microbatches):
     for i in range(pp_size // 2):
         num_warmup_stages[i] = pp_size - 2 - i * 2
 
-        num_interleaved_forward_stages[i] = i + 1  # 每个单位是一组1f1f
+        num_interleaved_forward_stages[i] = i + 1
 
         num_1b1w1f_stages[i] = pp_size // 2 - i - 1
 
@@ -331,7 +331,6 @@ def generate_dualpipev_schedule(pp_size, num_microbatches):
         'cooldown': num_cooldown_stages
     }
 
-    # validate
     # validate schedule
     for stage_type, stage_num_list in schedule_all_stages.items():
         for _, stage_num in enumerate(stage_num_list):
@@ -1212,7 +1211,7 @@ def forward_backward_pipelining_with_dualpipev(
                     slave_cur_microbatch += 1
 
                     if fwd_wait_handles_slave_chunk is not None:
-                        for req in fwd_wait_handles_slave_chunk:  # 同步上个阶段最后一个slave前向send
+                        for req in fwd_wait_handles_slave_chunk:
                             if type(req) is str:
                                 fwd_wait_handles_slave_chunk[req].wait()
                             else:
@@ -1377,7 +1376,7 @@ def forward_backward_pipelining_with_dualpipev(
                                                                                                 tensor_shape, config, fwd_model_chunk_id, async_op=True)
 
                 if fwd_wait_handles_slave_chunk is not None:
-                    for req in fwd_wait_handles_slave_chunk:  # 同步上个阶段最后一个slave前向send
+                    for req in fwd_wait_handles_slave_chunk:
                         if type(req) is str:
                             fwd_wait_handles_slave_chunk[req].wait()
                         else:
