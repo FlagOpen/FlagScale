@@ -55,6 +55,11 @@ jobs:
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           if [ "${{ inputs.backend }}" = "megatron" ] || [ "${{ inputs.backend }}" = "flagscale" ]; then
             echo ""
+            source /root/miniconda3/bin/activate flagscale-train
+            git clone https://github.com/NVIDIA/nvidia-resiliency-ext
+            cd nvidia-resiliency-ext
+            pip install .
+            cd ..
             # PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
           elif [ "${{ inputs.backend }}" = "vllm" ]; then
             source /root/miniconda3/bin/activate flagscale-inference

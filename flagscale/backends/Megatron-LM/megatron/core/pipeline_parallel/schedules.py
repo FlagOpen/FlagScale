@@ -22,6 +22,7 @@ from megatron.core.utils import (
     nvtx_range_pop,
     nvtx_range_push,
 )
+from flagscale.train.straggler_detection import StragglerDetectionWrapper
 
 # Types
 Shape = Union[List[int], torch.Size]
@@ -181,6 +182,7 @@ def set_current_microbatch(model, microbatch_id):
             layer.current_microbatch = microbatch_id
 
 
+@StragglerDetectionWrapper(level=2, section_name="microbatch_forward")
 def forward_step(
     forward_step_func,
     data_iterator,
@@ -365,6 +367,7 @@ def forward_step(
     return [output_tensor], num_tokens
 
 
+@StragglerDetectionWrapper(level=2, section_name="microbatch_backward")
 def backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, config):
     """Backward step through passed-in output tensor.
 
@@ -482,6 +485,9 @@ def forward_backward_no_pipelining(
         adjust_tensor_shapes_fn is None
     ), "adjust_tensor_shapes_fn is not supported for non-pipeline-parallel schedule"
 
+    from megatron.training.global_vars import get_args
+    args = get_args()
+
     config = get_model_config(model)
     if config.timers is not None:
         config.timers('forward-backward', log_level=1).start(barrier=config.barrier_with_L1_time)
@@ -508,10 +514,16 @@ def forward_backward_no_pipelining(
                 collect_non_loss_data,
                 is_first_microbatch=check_first_val_step(first_val_step, forward_only, i == 0),
                 current_microbatch=i,
+                user_specified_level=args.straggler_detection_level,
+                passed_warmup_stage=args.curr_iteration > args.straggler_detection_warmup_iterations,
             )
             total_num_tokens += num_tokens
             if not forward_only:
-                backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, config)
+                backward_step(
+                    input_tensor, output_tensor, output_tensor_grad, model_type, config,
+                    user_specified_level=args.straggler_detection_level, 
+                    passed_warmup_stage=args.curr_iteration > args.straggler_detection_warmup_iterations,
+                )
 
     # Run computation for last microbatch out of context handler (want to
     # synchronize gradients).
@@ -528,11 +540,19 @@ def forward_backward_no_pipelining(
             first_val_step, forward_only, num_microbatches == 1
         ),
         current_microbatch=num_microbatches - 1,
+        user_specified_level=args.straggler_detection_level,
+        passed_warmup_stage=args.curr_iteration > args.straggler_detection_warmup_iterations,
+        generate_report=forward_only and (args.curr_iteration % args.straggler_detection_interval) == 0
     )
     total_num_tokens += num_tokens
 
     if not forward_only:
-        backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, config)
+        backward_step(
+            input_tensor, output_tensor, output_tensor_grad, model_type, config,
+            user_specified_level=args.straggler_detection_level, 
+            passed_warmup_stage=args.curr_iteration > args.straggler_detection_warmup_iterations,
+            generate_report=not forward_only and (args.curr_iteration % args.straggler_detection_interval) == 0
+        )
 
     if config.finalize_model_grads_func is not None and not forward_only:
         # Finalize model grads (perform full grad all-reduce / reduce-scatter for

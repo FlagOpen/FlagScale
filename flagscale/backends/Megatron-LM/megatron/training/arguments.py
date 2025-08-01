@@ -1607,6 +1607,16 @@ def _add_ft_package_args(parser):
     group.add_argument('--calc-ft-timeouts', action='store_true',
                        help='If set, FT package will try to automatically compute the timeouts. '
                        'Note: This feature is for Nvidia internal use only.')
+    group.add_argument('--straggler-detection-level', type=int, 
+                       default=0, choices=range(0,3),
+                       help='Granularity of straggler detection level.'
+                       '    0: off.'
+                       '    1: per train step.'
+                       '    2: per train section.')
+    group.add_argument('--straggler-detection-interval', type=int, default=10,
+                       help='Interval in iterations for generating detection report.')
+    group.add_argument('--straggler-detection-warmup-iterations', type=int, default=50,
+                       help='Interval in iterations for generating detection report.')
     return parser
 
 

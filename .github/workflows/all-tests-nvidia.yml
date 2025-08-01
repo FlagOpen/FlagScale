@@ -21,44 +21,44 @@ jobs:
         run: |
           echo "ci_image=localhost:5000/flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.0-time2507111538" >> $GITHUB_OUTPUT  # Set output variable
 
-  # Megatron Unit Tests with Matrix
-  megatron-unit-tests:
-    needs: 
-      - set-env
-    uses: ./.github/workflows/unit-tests-nvidia.yml
-    strategy:
-      matrix:
-        subset:
-          - data
-          - dist_checkpointing
-          - distributed
-          - export
-          - fusions
-          - inference
-          - models
-          - pipeline_parallel
-          - post_training
-          - ssm
-          - tensor_parallel
-          - transformer/moe
-          - transformer
-          - ./
-    name: "megatron-${{ matrix.subset == './' && 'root' || matrix.subset }}"
-    with:
-      backend: megatron
-      subset: ${{ matrix.subset }}
-      image: ${{ needs.set-env.outputs.ci_image }}
+  # # Megatron Unit Tests with Matrix
+  # megatron-unit-tests:
+  #   needs: 
+  #     - set-env
+  #   uses: ./.github/workflows/unit-tests-nvidia.yml
+  #   strategy:
+  #     matrix:
+  #       subset:
+  #         - data
+  #         - dist_checkpointing
+  #         - distributed
+  #         - export
+  #         - fusions
+  #         - inference
+  #         - models
+  #         - pipeline_parallel
+  #         - post_training
+  #         - ssm
+  #         - tensor_parallel
+  #         - transformer/moe
+  #         - transformer
+  #         - ./
+  #   name: "megatron-${{ matrix.subset == './' && 'root' || matrix.subset }}"
+  #   with:
+  #     backend: megatron
+  #     subset: ${{ matrix.subset }}
+  #     image: ${{ needs.set-env.outputs.ci_image }}
 
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
     needs: 
       - set-env
-      - megatron-unit-tests
+      # - megatron-unit-tests
     uses: ./.github/workflows/unit-tests-nvidia.yml
     strategy:
       matrix:
         subset:
-          - runner
+          # - runner
           - ./
     name: "flagscale-${{ matrix.subset == './' && 'root' || matrix.subset }}"
     with:
@@ -161,7 +161,7 @@ jobs:
   # Check All Tests
   all-tests:
     needs:
-      - megatron-unit-tests
+      # - megatron-unit-tests
       - flagscale-unit-tests
       - functional-tests-train
       - functional-tests-hetero

@@ -49,6 +49,7 @@ jobs:
 
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           if [ "${{ inputs.type }}" = "train" ] || [ "${{ inputs.type }}" = "hetero_train" ]; then
+            source /root/miniconda3/bin/activate flagscale-train
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
             if [ "${{ inputs.task }}" = "llava_onevision" ]; then
               PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-Energon" --verbose --no-build-isolation
@@ -60,6 +61,7 @@ jobs:
             pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
           elif [ "${{ inputs.type }}" = "rl" ]; then
+            source /root/miniconda3/bin/activate flagscale-RL
             python tools/patch/unpatch.py --backend verl
             cd third_party/verl
             pip install --no-deps -e .
