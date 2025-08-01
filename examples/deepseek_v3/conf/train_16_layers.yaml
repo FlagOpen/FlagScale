@@ -9,7 +9,7 @@ experiment:
   seed: 42
   save_steps: 300
   load: None
-  exp_dir: /share/project/lixianduo/dualpipev/Test/${experiment.exp_name}/
+  exp_dir: /path
   ckpt_format: torch
   task:
     type: train
