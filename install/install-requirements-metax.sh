@@ -50,6 +50,13 @@ else
     conda create --name "flagscale-${env}" --clone base
 fi
 
+python -m pip install --upgrade pip
+
+# If the environment is "train" or "inference", install the base dependency package
+if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
+    pip install -r ./requirements/requirements-base.txt
+fi
+
 # Activate the target Conda environment
 conda activate flagscale-${env}
 
