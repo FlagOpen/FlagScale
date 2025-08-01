@@ -675,9 +675,6 @@ def forward_backward_pipelining_with_dualpipev(
 ):
     """ DualPipeV Schedules
     """
-    from megatron.training import get_args
-    args = get_args()
-    
     assert (
         isinstance(model, list) and len(model) == 2
     ), 'Dualpipe Schedule only support chunk model for two consecutive chunks'
@@ -837,7 +834,7 @@ def forward_backward_pipelining_with_dualpipev(
     ### Run warmup forward passes
     fwd_wait_handles_warmup = None
     for i in range(schedule['warmup'][rank]):
-        if args.moe_fb_overlap:
+        if config.moe_fb_overlap:
             input_tensors[master_chunk_id].append(
                 (master_cur_microbatch, input_tensor))
             output_tensor_warmup, _ = forward_step_helper(master_chunk_id, master_cur_microbatch, checkpoint_activations_microbatch,
@@ -892,7 +889,7 @@ def forward_backward_pipelining_with_dualpipev(
         is_first_microbatch = parallel_state.is_pipeline_last_stage() and (i == 0)
         set_dualpipe_chunk(master_chunk_id)
 
-        if args.moe_fb_overlap:
+        if config.moe_fb_overlap:
             input_tensors[master_chunk_id].append(
                 (master_cur_microbatch, input_tensor))
             output_tensor, _ = forward_step_helper(master_chunk_id, master_cur_microbatch, checkpoint_activations_microbatch,
@@ -964,7 +961,7 @@ def forward_backward_pipelining_with_dualpipev(
 
         set_dualpipe_chunk(slave_chunk_id)
 
-        if args.moe_fb_overlap:
+        if config.moe_fb_overlap:
             input_tensors[slave_chunk_id].append(
                 (slave_cur_microbatch, input_tensor_slave_chunk))
             output_tensor_slave_chunk, _ = forward_step_helper(
@@ -1025,7 +1022,7 @@ def forward_backward_pipelining_with_dualpipev(
     ### Run 1b1w1f stages for slave chunk
     bwd_wait_handles = None
     for i in range(schedule['1b1w1f'][rank]):
-        if args.moe_fb_overlap:
+        if config.moe_fb_overlap:
             if is_dualpipev_last_stgae(slave_chunk_id):
                 input_tensor_bwd = logits_inputs.pop(0)
                 output_tensor_bwd = output_tensors[slave_chunk_id][0]
@@ -1089,7 +1086,7 @@ def forward_backward_pipelining_with_dualpipev(
         # 1F: Forward pass
         set_dualpipe_chunk(slave_chunk_id)
 
-        if args.moe_fb_overlap:
+        if config.moe_fb_overlap:
             input_tensors[slave_chunk_id].append(
                 (slave_cur_microbatch, input_tensor_slave_chunk))
             output_tensor_slave_chunk, _ = forward_step_helper(
@@ -1134,7 +1131,7 @@ def forward_backward_pipelining_with_dualpipev(
         if fwd_model_chunk_id == slave_chunk_id and slave_cur_microbatch == slave_microbatch_max:
             only_bwd = True
 
-        if args.moe_fb_overlap and not firstFB_no_overlap:
+        if config.moe_fb_overlap and not firstFB_no_overlap:
             if not only_bwd:
                 if fwd_wait_handles is not None:
                     for req in fwd_wait_handles:
@@ -1273,7 +1270,7 @@ def forward_backward_pipelining_with_dualpipev(
                 fwd_microbatch = master_cur_microbatch if fwd_model_chunk_id == master_chunk_id else slave_cur_microbatch
                 set_dualpipe_chunk(fwd_model_chunk_id)
 
-                if args.moe_fb_overlap:
+                if config.moe_fb_overlap:
                     input_tensors[fwd_model_chunk_id].append(
                         (fwd_microbatch, input_tensor))
                     output_tensor, _ = forward_step_helper(
@@ -1331,7 +1328,7 @@ def forward_backward_pipelining_with_dualpipev(
                             req.wait()
                     bwd_wait_handles = None
 
-                if args.moe_fb_overlap:
+                if config.moe_fb_overlap:
                     if is_dualpipev_last_stgae(bwd_model_chunk_id):
                         input_tensor_bwd = logits_inputs.pop(0)
                         output_tensor_bwd = output_tensors[bwd_model_chunk_id][0]
@@ -1403,7 +1400,7 @@ def forward_backward_pipelining_with_dualpipev(
                             req.wait()
                     bwd_wait_handles = None
 
-                if args.moe_fb_overlap:
+                if config.moe_fb_overlap:
                     if is_dualpipev_last_stgae(bwd_model_chunk_id):
                         input_tensor_bwd = logits_inputs.pop(0)
                         output_tensor_bwd = output_tensors[bwd_model_chunk_id][0]
@@ -1475,7 +1472,7 @@ def forward_backward_pipelining_with_dualpipev(
         input_tensor_bwd = merged_input_tensors.pop(0)[1]
         output_tensor_bwd, bwd_model_chunk_id = merged_output_tensors.pop(0)
 
-        if args.moe_fb_overlap:
+        if config.moe_fb_overlap:
             model_graph = model_graphs[bwd_model_chunk_id].pop(0)
 
             input_tensor_grad = backward_step_with_model_graph(

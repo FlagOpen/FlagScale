@@ -1274,18 +1274,18 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
             if mpu.is_pipeline_first_stage():
                 pre_process = True
 
-            args.dualpipev_first_chunk = True
             first_model = model_provider_func(
                 pre_process=pre_process,
-                post_process=post_process
+                post_process=post_process,
+                dualpipev_first_chunk=True,
             )
             first_model.model_type = model_type
             model.append(first_model)
 
-            args.dualpipev_first_chunk = False
             second_model = model_provider_func(
                 pre_process=post_process,
-                post_process=pre_process
+                post_process=pre_process,
+                dualpipev_first_chunk=False,
             )
             second_model.model_type = model_type
             model.append(second_model)

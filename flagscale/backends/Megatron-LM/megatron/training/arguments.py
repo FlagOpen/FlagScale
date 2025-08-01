@@ -1164,6 +1164,9 @@ def validate_args(args, defaults={}):
         assert args.untie_embeddings_and_output_weights is True, (
             " DualPipeV is not supported with shared embedding and lm head"
         )
+        assert args.mtp_num_layers is None, (
+            "DualPipeV is not supported with multi-token-predictor currently"
+        )
 
     # Print arguments.
     _print_args("arguments", args)
