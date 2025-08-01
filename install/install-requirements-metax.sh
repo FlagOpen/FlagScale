@@ -69,8 +69,6 @@ if [[ ${env} == "inference" ]]; then
         echo "Error: pip not found. Please install Python package manager first."
         exit 1
     fi
-    pip install --upgrade pip
-    pip install hydra-core
 
     # Perform unpath operation
     echo "python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 ..."
