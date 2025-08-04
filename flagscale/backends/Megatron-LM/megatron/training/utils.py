@@ -427,7 +427,7 @@ def is_rank0():
 
 def is_last_rank():
     if mpu.get_pipeline_model_parallel_world_size() > 1:
-        if mpu.get_dualpipev_pipeline_model_parallel_world_size() > 1:
+        if mpu.get_dualpipev_pipeline_model_parallel_world_size() is not None:
             return mpu.is_pipeline_first_stage(ignore_virtual=True)
         else:
             return torch.distributed.get_rank() == mpu.get_last_rank_when_using_pipeline() 
@@ -557,7 +557,7 @@ def get_batch_on_this_tp_rank(data_iterator):
            _broadcast(batch['tokens'])
            _broadcast(batch['attention_mask'])
            _broadcast(batch['position_ids'])
-           if mpu.get_dualpipev_pipeline_model_parallel_world_size() > 1:
+           if mpu.get_dualpipev_pipeline_model_parallel_world_size() is not None:
                 _broadcast(batch['loss_mask'])
                 _broadcast(batch['labels'])
 
@@ -614,7 +614,7 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(tokens)
             _broadcast(attention_mask)
             _broadcast(position_ids)
-            if mpu.get_dualpipev_pipeline_model_parallel_world_size() > 1:
+            if mpu.get_dualpipev_pipeline_model_parallel_world_size() is not None:
                 _broadcast(loss_mask)
                 _broadcast(labels)
             else:
