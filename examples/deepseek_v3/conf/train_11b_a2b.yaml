@@ -1,8 +1,8 @@
-# DeepSeek light model with 16 layers
+# DeepSeek light model with 16 layers, 11b a2b
 # For DualPipeV Performance Testing
 defaults:
   - _self_
-  - train: 16b_a3b_16_layers
+  - train: 11b_a2b
 
 experiment:
   exp_name: DeepSeek-light
