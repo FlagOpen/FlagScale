@@ -140,4 +140,3 @@ def transformer_layer_forward_backward_overlapping(
                 inference_params, packed_seq_params, use_orig_layer_forward
             )
         return out
-

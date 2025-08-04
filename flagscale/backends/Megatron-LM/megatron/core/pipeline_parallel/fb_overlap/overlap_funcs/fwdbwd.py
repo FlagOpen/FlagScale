@@ -33,7 +33,6 @@ def router_forward(
     hidden_states
 ):
     probs, indices = self.mlp.router(hidden_states)
-
     return probs, indices
 
 
@@ -899,4 +898,3 @@ def transformer_layer_forward_moe_backward_moe_overlapping(
     return (output, context, graph,
             (next_layer_output_grad, next_bwd_unperm_a2a_handle),
             P2PCommOutput(next_iter_input_tensor, next_iter_output_tensor_grad, fwd_p2p_handles, bwd_p2p_handles, bwd_layer_graph.layer_input.grad))
-

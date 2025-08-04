@@ -204,10 +204,6 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                             offset = start_offset + (
                                 middle_pipeline_rank * num_layers_per_pipeline_rank_second_chunk
                             ) + num_layers_in_last_pipeline_stage_second_chunk
-
-
-
-
         else:
             num_layers = config.num_layers
 

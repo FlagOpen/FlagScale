@@ -57,6 +57,7 @@ def _maybe_dtoh_and_synchronize(
 
         return tokens_per_expert
 
+
 def preprocess(self, routing_map: torch.Tensor) -> torch.Tensor:
     
     """
@@ -222,7 +223,6 @@ def alltoall_token_perm1(
 
 
 def alltoall_token_perm2(self, global_input_tokens, global_probs, tokens_per_expert):
-
     if self.tp_size > 1:
         if self.output_splits_tp is None:
             output_split_sizes = None
@@ -283,7 +283,6 @@ def alltoall_token_unperm1(
     bias: torch.Tensor = None,
 ):
     assert bias is None, "Bias is not supported in MoEAlltoAllTokenDispatcher"
-
     # Unpermutation 2: Unsort tokens by local expert.
     if self.num_local_experts > 1:
         if self.drop_and_pad:
@@ -318,13 +317,10 @@ def alltoall_token_unperm1(
             input_split_sizes=input_split_sizes,
         ).to(hidden_states.dtype)
 
-
     return hidden_states
 
 
 def alltoall_token_unperm2(self, permutated_local_input_tokens):
-    # Unpermutation 1: AlltoAll output to output
-
    # Unpermutation 1: AlltoAll output to output
     output = unpermute(
         permutated_local_input_tokens,

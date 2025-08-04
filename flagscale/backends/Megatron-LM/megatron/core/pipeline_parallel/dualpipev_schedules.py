@@ -32,10 +32,12 @@ Shape = Union[List[int], torch.Size]
 
 _DUALPIPE_CHUNK = None
 
+
 def set_dualpipe_chunk(chunkid):
     """set_dualpipe_chunk for fp16forward patch"""
     global _DUALPIPE_CHUNK
     _DUALPIPE_CHUNK = chunkid
+
 
 def get_dualpipe_chunk():
     global _DUALPIPE_CHUNK
@@ -1045,7 +1047,6 @@ def forward_backward_pipelining_with_dualpipev(
                 input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config
             )
 
-        
         # If asynchronous, the memory will rise.
         bwd_wait_handles = send_backward(input_tensor_grad,
                                          tensor_shape, config, slave_chunk_id)
@@ -1527,4 +1528,3 @@ def forward_backward_pipelining_with_dualpipev(
         config.timers('forward-backward',
                       log_level=1).stop()
     return forward_data_store
-

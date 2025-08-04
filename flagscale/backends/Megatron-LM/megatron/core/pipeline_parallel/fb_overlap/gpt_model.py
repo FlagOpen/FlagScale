@@ -247,5 +247,3 @@ def gpt_model_forward_backward_overlapping(
         layer_graphs, hidden_states, preprocess_graph, detached_block_input
     )
     return loss, graph, pp_comm_output
-
-

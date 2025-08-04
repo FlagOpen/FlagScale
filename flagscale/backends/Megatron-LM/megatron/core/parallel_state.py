@@ -2043,11 +2043,12 @@ def get_virtual_pipeline_model_parallel_world_size():
     global _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
     return _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
 
+
 def get_dualpipev_pipeline_model_parallel_world_size():
     """Return the dualpipev pipeline-parallel world size."""
-
     global _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
     return _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
+
 
 def get_tensor_model_parallel_src_rank():
     """Calculate the global rank corresponding to the first local rank

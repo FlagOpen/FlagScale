@@ -2,6 +2,7 @@
 
 from megatron.training import get_args
 
+
 def attention_forward(
         self,
         hidden_states,
