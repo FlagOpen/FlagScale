@@ -74,18 +74,20 @@ else:
 logger = init_logger(__name__)
 
 # --- FLAGSCALE MODIFICATION BEG ---
-# Know more about FlagGems: https://github.com/FlagOpen/FlagGems
+# Know more about FlagGems: https://github.com/FlagOpen/FlagGems  
 import os
 if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
     try:
         print("Try to using FLAGGEMS...")
         import flag_gems
-        flag_gems.enable(record=True, unused=["exponential_", "softmax"], path="/tmp/gems_oplist.log.txt", forward_only=True)
+        flag_gems.enable(record=True, unused=["exponential_", "softmax"], path="/tmp/gems_oplist.log.txt")
         logger.info("Successfully enabled flag_gems as default ops implementation.")
-    except ImportError:
-        logger.warning("Failed to import 'flag_gems'. Falling back to default implementation.")
+    except ImportError as e:
+        # Throw an exception directly if failure occurs
+        raise ImportError("Failed to import 'flag_gems'. Please install flag_gems or set USE_FLAGGEMS=false to disable it.") from e
     except Exception as e:
-        logger.warning(f"Failed to enable 'flag_gems': {e}. Falling back to default implementation.")
+        # Throw an exception directly if failure occurs
+        raise RuntimeError(f"Failed to enable 'flag_gems': {e}. Please check your flag_gems installation or set USE_FLAGGEMS=false to disable it.") from e
 # --- FLAGSCALE MODIFICATION END ---
 
 class GPUModelRunner(LoRAModelRunnerMixin):
