@@ -51,12 +51,13 @@ except ImportError:
         LayerNormImpl = WrappedTorchNorm
 
 
-def get_num_layers_to_build(config: TransformerConfig, vp_stage: Optional[int] = None) -> int:
+def get_num_layers_to_build(config: TransformerConfig, vp_stage: Optional[int] = None, is_dualpipev_first_chunk: Optional[bool] = False) -> int:
     """
     Determine the number of transformer layers to build for the current pipeline stage.
     Args:
         config (TransformerConfig): Configuration object containing transformer model parameters.
         vp_stage (Optional[int]): Virtual pipeline stage number.
+        is_dualpipev_first_chunk(Optional[bool]): Is dualpipev first model chunk or not
 
     Returns:
         int: The number of layers to be built for the current pipeline stage.
@@ -155,7 +156,15 @@ def get_num_layers_to_build(config: TransformerConfig, vp_stage: Optional[int] =
         num_layers_per_virtual_stage = num_layers_per_pipeline_rank // vp_size
 
         num_layers_to_build = num_layers_per_virtual_stage
-
+    elif config.use_dualpipev:
+        num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank // 2
+        if num_layers_per_pipeline_rank % 2 != 0:
+            num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank_first_chunk + 1
+        num_layers_per_pipeline_rank_second_chunk = num_layers_per_pipeline_rank - num_layers_per_pipeline_rank_first_chunk
+        if is_dualpipev_first_chunk:
+            num_layers_to_build = num_layers_per_pipeline_rank_first_chunk
+        else:
+            num_layers_to_build = num_layers_per_pipeline_rank_second_chunk
     else:
         # Non-interleaved pipeline parallelism:
         # Each stage gets a contiguous set of layers.
