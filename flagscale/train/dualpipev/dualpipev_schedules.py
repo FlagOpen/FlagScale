@@ -22,9 +22,9 @@ from megatron.core import ModelParallelConfig
 from megatron.core.pipeline_parallel.p2p_communication import _communicate
 from megatron.core.pipeline_parallel.schedules import backward_step, set_current_microbatch, custom_backward, finish_embedding_wgrad_compute
 from megatron.core.models.gpt import GPTModel
-from megatron.core.pipeline_parallel.fb_overlap.gpt_model import gpt_model_forward_backward_overlapping, gpt_model_backward
-from megatron.core.pipeline_parallel.fb_overlap.transformer_layer import transformer_layer_forward_backward_overlapping
-from megatron.core.pipeline_parallel.fb_overlap.transformer_layer import P2PCommParams
+
+from flagscale.train.dualpipev.fb_overlap.gpt_model import gpt_model_forward_backward_overlapping, gpt_model_backward
+from flagscale.train.dualpipev.fb_overlap.transformer_layer import transformer_layer_forward_backward_overlapping, P2PCommParams
 
 
 # Types

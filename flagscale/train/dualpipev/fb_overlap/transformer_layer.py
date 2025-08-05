@@ -2,20 +2,20 @@
 
 from contextlib import nullcontext
 import torch
-from megatron.core.pipeline_parallel.fb_overlap.modules.utils import (
+from flagscale.train.dualpipev.fb_overlap.modules.utils import (
     LayerGraph, P2PCommParams
 )
-from megatron.core.pipeline_parallel.fb_overlap.overlap_funcs.fwd import (
+from flagscale.train.dualpipev.fb_overlap.overlap_funcs.fwd import (
     transformer_layer_forward_moe,
     transformer_layer_forward_dense,
 )
 
-from megatron.core.pipeline_parallel.fb_overlap.overlap_funcs.bwd import (
+from flagscale.train.dualpipev.fb_overlap.overlap_funcs.bwd import (
     transformer_layer_backward_moe,
     transformer_layer_backward_dense,
 )
 
-from megatron.core.pipeline_parallel.fb_overlap.overlap_funcs.fwdbwd import (
+from flagscale.train.dualpipev.fb_overlap.overlap_funcs.fwdbwd import (
     transformer_layer_forward_moe_backward_moe_overlapping,
     transformer_layer_forward_dense_backward_moe_overlapping,
     transformer_layer_forward_moe_backward_dense_overlapping,

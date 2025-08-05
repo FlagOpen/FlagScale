@@ -6,7 +6,7 @@ from megatron.core.utils import make_sharded_tensor_for_checkpoint, make_viewles
 from megatron.core import parallel_state, tensor_parallel
 from megatron.training import get_args
 from megatron.core.transformer.moe.moe_utils import permute
-from megatron.core.pipeline_parallel.fb_overlap.modules.utils import (
+from flagscale.train.dualpipev.fb_overlap.modules.utils import (
     async_all_to_all,
     detach_tensor, run_graph_backward, LayerGraph, is_p2p_comm_needed,
     p2p_comm_helper, P2PCommOutput, P2PCommParams,
@@ -19,11 +19,11 @@ from megatron.core.pipeline_parallel.fb_overlap.modules.utils import (
     turn_dense_mlp_delay_wgrad_compute,
     call_dense_mlp_backward_dw,
 ) 
-from megatron.core.pipeline_parallel.fb_overlap.modules.token_dispatcher import (
+from flagscale.train.dualpipev.fb_overlap.modules.token_dispatcher import (
     alltoall_token_perm1, alltoall_token_perm2,
     alltoall_token_unperm1, alltoall_token_unperm2
 )
-from megatron.core.pipeline_parallel.fb_overlap.modules.attention import (
+from flagscale.train.dualpipev.fb_overlap.modules.attention import (
     attention_forward,
 )
 

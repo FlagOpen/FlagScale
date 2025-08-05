@@ -7,11 +7,11 @@ from megatron.core import InferenceParams
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import deprecate_inference_params
-from megatron.core.pipeline_parallel.fb_overlap.transformer_block import (
+from flagscale.train.dualpipev.fb_overlap.transformer_block import (
     transformer_block_backward, transformer_block_forward_backward_overlapping,
     transformer_block_forward
 )
-from megatron.core.pipeline_parallel.fb_overlap.modules.utils import (
+from flagscale.train.dualpipev.fb_overlap.modules.utils import (
     ModelGraph, detach_tensor, run_graph_backward
 )
 

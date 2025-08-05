@@ -4,7 +4,7 @@ import torch
 from megatron.core import parallel_state
 from megatron.training import get_args
 from megatron.core.transformer.moe.moe_utils import permute
-from megatron.core.pipeline_parallel.fb_overlap.modules.utils import (
+from flagscale.train.dualpipev.fb_overlap.modules.utils import (
     async_all_to_all,
     run_graph_backward,
     turn_attention_delay_wgrad_compute,
