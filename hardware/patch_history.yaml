@@ -35,12 +35,15 @@ Kunlunxin_R310p:
     FlagScale+vllm:
     - 571b9880d2b81ffe85e87e2e0bc3cf23f1d402d9
     - 4817edc4333163c2b0870813a2cd6f99513ff627
+    - 88f686454ef361ecfec357c9c98d898b41bd8d81
     vllm:
     - 571b9880d2b81ffe85e87e2e0bc3cf23f1d402d9
     - 4817edc4333163c2b0870813a2cd6f99513ff627
+    - 88f686454ef361ecfec357c9c98d898b41bd8d81
     FlagScale:
     - 571b9880d2b81ffe85e87e2e0bc3cf23f1d402d9
     - 4817edc4333163c2b0870813a2cd6f99513ff627
+    - 88f686454ef361ecfec357c9c98d898b41bd8d81
   train:
     FlagScale+Megatron-LM:
     - 25e9b91b3428e74da262d631fa3e2c13f3e2e2c3
