@@ -79,6 +79,8 @@ _VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK = None
 _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = None
 _PIPELINE_MODEL_PARALLEL_SPLIT_RANK = None
 
+_DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = None
+
 _PIPELINE_MODEL_PARALLEL_DECODER_START = None
 
 # These values enable us to change the mpu sizes on the fly.
@@ -509,6 +511,7 @@ def initialize_model_parallel(
     get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
     create_gloo_process_groups: bool = True,
     high_priority_stream_groups: Optional[List[str]] = None,
+    create_dualpipev_parallel_size: bool = False,
 ) -> None:
     # pylint: disable=line-too-long
     """Initialize model data parallel groups.
@@ -739,6 +742,10 @@ def initialize_model_parallel(
         global _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
         _VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK = 0
         _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = virtual_pipeline_model_parallel_size
+
+    if create_dualpipev_parallel_size:
+        global _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
+        _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = pipeline_model_parallel_size
 
     if pipeline_model_parallel_split_rank is not None:
         global _PIPELINE_MODEL_PARALLEL_SPLIT_RANK
@@ -2037,6 +2044,12 @@ def get_virtual_pipeline_model_parallel_world_size():
     return _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
 
 
+def get_dualpipev_pipeline_model_parallel_world_size():
+    """Return the dualpipev pipeline-parallel world size."""
+    global _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
+    return _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
+
+
 def get_tensor_model_parallel_src_rank():
     """Calculate the global rank corresponding to the first local rank
     in the tensor model parallel group."""
@@ -2627,6 +2640,9 @@ def destroy_model_parallel():
 
     global _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
     _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = None
+
+    global _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
+    _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = None
 
     global _MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE
     _MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = None
