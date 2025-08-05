@@ -59,9 +59,7 @@ pip install -r ./requirements/requirements-base.txt
 conda activate flagscale-${env}
 
 # install basic dependencies
-pip show torch
-pip show torchaudio
-pip show torchvision
+pip install torch==2.6.0+metax2.33.0.5 torchaudio==2.4.1+metax2.33.0.5 torchvision==0.15.1+metax2.33.0.5 -i https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com
 pip install -r ./requirements/requirements-common.txt
 
 if [[ ${env} == "inference" ]]; then
