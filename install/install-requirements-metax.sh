@@ -50,10 +50,17 @@ else
     conda create --name "flagscale-${env}" --clone base
 fi
 
+python -m pip install --upgrade pip
+
+# If the environment is "train" or "inference", install the base dependency package
+pip install -r ./requirements/requirements-base.txt
+
 # Activate the target Conda environment
 conda activate flagscale-${env}
 
-# If env equals 'inference'
+# install basic dependencies
+pip install torch==2.6.0+metax2.33.0.5 torchaudio==2.4.1+metax2.33.0.5 torchvision==0.15.1+metax2.33.0.5 -i https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com
+pip install -r ./requirements/requirements-common.txt
 
 if [[ ${env} == "inference" ]]; then
     echo "[INFO] Entering inference mode setup..."
@@ -62,8 +69,6 @@ if [[ ${env} == "inference" ]]; then
         echo "Error: pip not found. Please install Python package manager first."
         exit 1
     fi
-    pip install --upgrade pip
-    pip install hydra-core
 
     # Perform unpath operation
     echo "python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 ..."
