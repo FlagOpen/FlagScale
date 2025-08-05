@@ -76,7 +76,7 @@ def create_group(
     group_desc=None,
 ):
     # NOTE(lizhiyu): Fix the bug of hanging when using torch >= 2.6 temporarily, but there will be an error in `dp2dp4_shared_embedding`
-    # use_local_synchronization = False
+    use_local_synchronization = False
     from megatron.core.parallel_state import create_group
     return create_group(
         ranks=ranks,
