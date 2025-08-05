@@ -49,9 +49,9 @@ jobs:
 
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           if [ "${{ inputs.type }}" = "train" ] || [ "${{ inputs.type }}" = "hetero_train" ]; then
-            PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
+            PYTHONPATH=./:$PYTHONPATH pip install . --no-build-isolation --verbose --config-settings=device="gpu" --config-settings=backend="Megatron-LM"
             if [ "${{ inputs.task }}" = "llava_onevision" ]; then
-              PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-Energon" --verbose --no-build-isolation
+              PYTHONPATH=./:$PYTHONPATH pip install . --no-build-isolation --verbose --config-settings=device="gpu" --config-settings=backend="Megatron-Energon"
               cp -r third_party/Megatron-Energon/src/megatron/energon third_party/Megatron-LM/megatron
             fi
           elif [ "${{ inputs.type }}" = "inference" ] || [ "${{ inputs.type }}" = "serve" ]; then
@@ -59,6 +59,7 @@ jobs:
             pip install scikit-build scikit-build-core
             pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
+            conda deactivate
           elif [ "${{ inputs.type }}" = "rl" ]; then
             python tools/patch/unpatch.py --backend verl
             cd third_party/verl

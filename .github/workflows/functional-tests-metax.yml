@@ -62,6 +62,7 @@ jobs:
             python setup.py bdist_wheel
             pip uninstall vllm -y
             pip install dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl
+            conda deactivate
           else
             echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
