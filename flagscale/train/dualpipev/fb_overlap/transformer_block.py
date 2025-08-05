@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Union
 
 import torch
+
 from torch import Tensor
 
 from megatron.core import parallel_state, tensor_parallel
@@ -63,10 +64,12 @@ else:
     LayerNormImpl = WrappedTorchNorm
 
 from megatron.training import get_args
-from .modules.utils import (
-    detach_tensor, LayerGraph, P2PCommParams
+
+from .modules.utils import LayerGraph, P2PCommParams, detach_tensor
+from .transformer_layer import (
+    transformer_layer_backward,
+    transformer_layer_forward_backward_overlapping,
 )
-from .transformer_layer import transformer_layer_backward, transformer_layer_forward_backward_overlapping
 
 
 def transformer_block_forward(
@@ -79,8 +82,7 @@ def transformer_block_forward(
     inference_params=None,
     packed_seq_params=None,
 ):
-    """ Forward function of transformer block
-    """
+    """Forward function of transformer block"""
     if not self.pre_process:
         # See set_input_tensor()
         hidden_states = self.input_tensor
@@ -100,11 +102,7 @@ def transformer_block_forward(
     #   likely redundant, since p2p_communication.py (likely originator)
     #   already creates viewless tensors. That said, make_viewless_tensor()
     #   is called here to be future-proof and corner-case-proof.
-    hidden_states = make_viewless_tensor(
-        inp=hidden_states,
-        requires_grad=True,
-        keep_graph=True,
-    )
+    hidden_states = make_viewless_tensor(inp=hidden_states, requires_grad=True, keep_graph=True)
 
     rng_context = nullcontext()
     fp8_context = nullcontext()
@@ -121,7 +119,10 @@ def transformer_block_forward(
                     recompute_skip_num_layers = 0
                     if self.config.fp8 and not hidden_states.requires_grad:
                         recompute_skip_num_layers += 1
-                    if (l_no >= recompute_skip_num_layers and l_no < self.config.recompute_num_layers + recompute_skip_num_layers):
+                    if (
+                        l_no >= recompute_skip_num_layers
+                        and l_no < self.config.recompute_num_layers + recompute_skip_num_layers
+                    ):
                         checkpoint = True
                 if self.config.recompute_method == 'uniform':
                     assert self.config.recompute_num_layers == 1
@@ -135,7 +136,7 @@ def transformer_block_forward(
                     rotary_pos_emb=rotary_pos_emb,
                     inference_params=inference_params,
                     packed_seq_params=packed_seq_params,
-                    checkpoint=checkpoint
+                    checkpoint=checkpoint,
                 )
                 layer_graphs.append(saved_graphs)
             if (
@@ -154,12 +155,8 @@ def transformer_block_forward(
     return (hidden_states, layer_graphs)
 
 
-def transformer_block_backward(
-    block_output_grad,
-    layer_graphs: List[LayerGraph],
-):
-    """ Backward function of transformer block
-    """
+def transformer_block_backward(block_output_grad, layer_graphs: List[LayerGraph]):
+    """Backward function of transformer block"""
     layer_output_grad = block_output_grad
     while len(layer_graphs) > 0:
         layer_graph = layer_graphs.pop(-1)
@@ -181,8 +178,7 @@ def transformer_block_forward_backward_overlapping(
     pp_comm_params: P2PCommParams = None,
     bwd_pp_comm_params: P2PCommParams = None,
 ):
-    """ Forward-backward overlapping function of transformer block
-    """
+    """Forward-backward overlapping function of transformer block"""
     # Delete the obsolete reference to the initial input tensor if necessary
     if isinstance(hidden_states, WrappedTensor):
         hidden_states = hidden_states.unwrap()
@@ -206,11 +202,7 @@ def transformer_block_forward_backward_overlapping(
     #   likely redundant, since p2p_communication.py (likely originator)
     #   already creates viewless tensors. That said, make_viewless_tensor()
     #   is called here to be future-proof and corner-case-proof.
-    hidden_states = make_viewless_tensor(
-        inp=hidden_states,
-        requires_grad=True,
-        keep_graph=True,
-    )
+    hidden_states = make_viewless_tensor(inp=hidden_states, requires_grad=True, keep_graph=True)
 
     if fwd_block.config.sequence_parallel:
         rng_context = tensor_parallel.get_cuda_rng_tracker().fork()
@@ -222,9 +214,15 @@ def transformer_block_forward_backward_overlapping(
     # if we are using other fp8 recipes, then the context manager enter&exit are free
     # we can wrap fp8_context within the for loop over layers, so that we can fine-grained
     # control which layer will be fp8 or bf16
-    use_outer_fp8_context = fwd_block.config.fp8 and fwd_block.config.fp8_recipe == Fp8Recipe.delayed
-    use_inner_fp8_context = fwd_block.config.fp8 and fwd_block.config.fp8_recipe != Fp8Recipe.delayed
-    outer_fp8_context = get_fp8_context(fwd_block.config) if use_outer_fp8_context else nullcontext()
+    use_outer_fp8_context = (
+        fwd_block.config.fp8 and fwd_block.config.fp8_recipe == Fp8Recipe.delayed
+    )
+    use_inner_fp8_context = (
+        fwd_block.config.fp8 and fwd_block.config.fp8_recipe != Fp8Recipe.delayed
+    )
+    outer_fp8_context = (
+        get_fp8_context(fwd_block.config) if use_outer_fp8_context else nullcontext()
+    )
 
     assert not fwd_block.config.enable_cuda_graph
     fwd_layer_graphs = []
@@ -250,34 +248,38 @@ def transformer_block_forward_backward_overlapping(
                     cur_p2p_params = P2PCommParams()
                     cur_bwd_p2p_params = P2PCommParams()
                 next_bwd_layer_graph = None
-                if (len(bwd_block_graphs) > 0 and
-                    not bwd_block_graphs[-1].checkpointed and
-                    l_no != len(fwd_block.layers) - 1
+                if (
+                    len(bwd_block_graphs) > 0
+                    and not bwd_block_graphs[-1].checkpointed
+                    and l_no != len(fwd_block.layers) - 1
                 ):
                     next_bwd_layer_graph = bwd_block_graphs[-1]
-            
-                fwd_hidden_states, fwd_context, fwd_layer_graph, \
-                (bwd_layer_output_grad, bwd_unperm_a2a_handle), \
-                pp_comm_output = \
-                    transformer_layer_forward_backward_overlapping(
-                        fwd_layer,
-                        fwd_hidden_states,
-                        attention_mask,
-                        bwd_layer_output_grad,
-                        bwd_layer_graph=bwd_layer_graph,
-                        bwd_unperm_a2a_handle=bwd_unperm_a2a_handle,
-                        next_bwd_layer_graph=next_bwd_layer_graph,
-                        context=fwd_context,
-                        context_mask=context_mask,
-                        rotary_pos_emb=rotary_pos_emb,
-                        inference_params=inference_params,
-                        packed_seq_params=packed_seq_params,
-                        pp_comm_params=cur_p2p_params,
-                        bwd_pp_comm_params=cur_bwd_p2p_params,
-                        checkpoint=checkpoint
-                    )
+
+                (
+                    fwd_hidden_states,
+                    fwd_context,
+                    fwd_layer_graph,
+                    (bwd_layer_output_grad, bwd_unperm_a2a_handle),
+                    pp_comm_output,
+                ) = transformer_layer_forward_backward_overlapping(
+                    fwd_layer,
+                    fwd_hidden_states,
+                    attention_mask,
+                    bwd_layer_output_grad,
+                    bwd_layer_graph=bwd_layer_graph,
+                    bwd_unperm_a2a_handle=bwd_unperm_a2a_handle,
+                    next_bwd_layer_graph=next_bwd_layer_graph,
+                    context=fwd_context,
+                    context_mask=context_mask,
+                    rotary_pos_emb=rotary_pos_emb,
+                    inference_params=inference_params,
+                    packed_seq_params=packed_seq_params,
+                    pp_comm_params=cur_p2p_params,
+                    bwd_pp_comm_params=cur_bwd_p2p_params,
+                    checkpoint=checkpoint,
+                )
                 fwd_layer_graphs.append(fwd_layer_graph)
-            
+
             if (
                 torch.is_grad_enabled()
                 and fwd_block.config.cpu_offloading
@@ -286,9 +288,16 @@ def transformer_block_forward_backward_overlapping(
                 fwd_hidden_states = fwd_block.group_prefetch_offload_commit_async(fwd_hidden_states)
 
     # Final layer norm.
-    if fwd_block.post_process and fwd_block.post_layer_norm and fwd_block.final_layernorm is not None:
+    if (
+        fwd_block.post_process
+        and fwd_block.post_layer_norm
+        and fwd_block.final_layernorm is not None
+    ):
         detached_hidden_states = detach_tensor(fwd_hidden_states)
-        fwd_layer_graphs[-1].unperm2_graph = (fwd_layer_graphs[-1].unperm2_graph[0], detached_hidden_states)
+        fwd_layer_graphs[-1].unperm2_graph = (
+            fwd_layer_graphs[-1].unperm2_graph[0],
+            detached_hidden_states,
+        )
         fwd_hidden_states = fwd_block.final_layernorm(detached_hidden_states)
 
     return (fwd_hidden_states, fwd_layer_graphs), bwd_layer_output_grad, pp_comm_output
