@@ -59,6 +59,9 @@ pip install -r ./requirements/requirements-base.txt
 conda activate flagscale-${env}
 
 # install basic dependencies
+pip show torch
+pip show torchaudio
+pip show torchvision
 pip install -r ./requirements/requirements-common.txt
 
 if [[ ${env} == "inference" ]]; then
