@@ -1452,6 +1452,9 @@ class ParallelContext:
         else:
             return 0
 
+    def get_intra_distributed_optimizer_instance_group(self):
+        return torch.distributed.group.WORLD
+
     def get_tensor_and_context_parallel_rank(self):
         """Return caller's rank in the joint tensor-model-parallel and context-parallel group."""
         if torch.distributed.is_available() and torch.distributed.is_initialized():
@@ -1599,8 +1602,13 @@ class ParallelContext:
         else:
             return 0
 
-    def get_intra_distributed_optimizer_instance_group(self):
-        return torch.distributed.group.WORLD
+    def get_expert_data_parallel_world_size(self):
+        """Return caller's rank in the expert data parallel group."""
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            return torch.distributed.get_rank(group=self.get_expert_data_parallel_group()).size()
+        else:
+            return 0
+
     ### End of expert-related functions region
 
     def set_global_memory_buffer(self):

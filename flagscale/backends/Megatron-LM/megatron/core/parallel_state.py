@@ -2504,16 +2504,22 @@ def get_expert_data_parallel_rank(partial_expert_data_parallel=False):
 
 def get_expert_data_parallel_world_size(partial_expert_data_parallel=False):
     """Return world size for the expert data parallel group."""
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_expert_data_parallel_world_size()
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return get_expert_data_parallel_group(
-            partial_expert_data_parallel=partial_expert_data_parallel.size()
-        )
+            partial_expert_data_parallel=partial_expert_data_parallel
+        ).size()
     else:
         return 0
 
 
 def get_intra_distributed_optimizer_instance_group():
     """Get the group of all GPUs in a distributed optimizer instance."""
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_intra_distributed_optimizer_instance_group()
     assert (
         _INTRA_DISTRIBUTED_OPTIMIZER_INSTANCE_GROUP is not None
     ), "Intra distributed optimizer instance group is not initialized"
