@@ -78,6 +78,8 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
     pip install --upgrade setuptools
 
     # Navigate to requirements directory and install basic dependencies
+    pip install torch==2.7.0+cu128 torchaudio==2.7.0+cu128 torchvision==0.22.0+cu128 --extra-index-url https://download.pytorch.org/whl/cu128
+    pip install deepspeed
     pip install -r ./requirements/requirements-common.txt
 
     # TransformerEngine
