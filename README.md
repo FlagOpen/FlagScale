@@ -56,6 +56,12 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
     ```
 
+    **Note**: To customize the environment according to your specific needs, follow the methods below:  
+
+    1. To install apt packages or basic drivers, add them to the platform-specific `Dockerfile` in the `docker` directory.
+    2. To include cross-platform Python packages, declare them in the corresponding files in the `requirements` directory.  
+    3. To include platform-specific Python packages, configure them in the corresponding files in the `install` directory.
+
 3. Unpatch the backend code adaptation of FlagScale as needed
     ```
     cd FlagScale
