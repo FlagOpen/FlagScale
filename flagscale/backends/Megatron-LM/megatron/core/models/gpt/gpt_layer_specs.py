@@ -8,6 +8,7 @@ from megatron.core.models.gpt.moe_module_specs import get_moe_module_spec
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
 from megatron.core.transformer.dot_product_attention import DotProductAttention
+from megatron.core.transformer.magi_attention import MagiAttention
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.mlp import MLP, MLPSubmodules
@@ -74,6 +75,7 @@ def get_gpt_layer_with_transformer_engine_spec(
     fp8: Optional[str] = None,  # pylint: disable=unused-arguments
     moe_use_legacy_grouped_gemm: Optional[bool] = False,
     qk_l2_norm: Optional[bool] = False,
+    magi_attention: Optional[bool] = False,
 ) -> ModuleSpec:
     """Use this spec to use lower-level Transformer Engine modules (required for fp8 training).
 
@@ -103,6 +105,12 @@ def get_gpt_layer_with_transformer_engine_spec(
         moe_use_legacy_grouped_gemm=moe_use_legacy_grouped_gemm,
     )
 
+    if magi_attention:
+        core_attention_module = MagiAttention
+    else:
+        core_attention_module = TEDotProductAttention
+    print(f"core_attention_module is {core_attention_module}")
+
     if multi_latent_attention:
         assert qk_l2_norm is False, "qk_l2_norm is not supported with MLA."
         return ModuleSpec(
@@ -126,7 +134,7 @@ def get_gpt_layer_with_transformer_engine_spec(
                             if qk_layernorm
                             else TEColumnParallelLinear
                         ),
-                        core_attention=TEDotProductAttention,
+                        core_attention=core_attention_module,
                         linear_proj=TERowParallelLinear,
                         q_layernorm=IdentityOp,
                         kv_layernorm=IdentityOp,
@@ -152,7 +160,7 @@ def get_gpt_layer_with_transformer_engine_spec(
                     params={"attn_mask_type": AttnMaskType.causal},
                     submodules=SelfAttentionSubmodules(
                         linear_qkv=TELayerNormColumnParallelLinear,
-                        core_attention=TEDotProductAttention,
+                        core_attention=core_attention_module,
                         linear_proj=TERowParallelLinear,
                         q_layernorm=(
                             L2Norm if qk_l2_norm else (qk_norm if qk_layernorm else IdentityOp)
@@ -179,6 +187,7 @@ def get_gpt_layer_local_spec(
     moe_use_legacy_grouped_gemm: Optional[bool] = False,
     normalization: Optional[str] = None,
     qk_l2_norm: Optional[bool] = False,
+    magi_attention: Optional[bool] = False,
 ) -> ModuleSpec:
     """Use this spec for an implementation using only modules in Megatron-Core.
 
@@ -214,6 +223,12 @@ def get_gpt_layer_local_spec(
         moe_use_legacy_grouped_gemm=moe_use_legacy_grouped_gemm,
     )
 
+    if magi_attention:
+        core_attention_module = MagiAttention
+    else:
+        core_attention_module = DotProductAttention
+    print(f"core_attention_module is {core_attention_module}")
+
     if multi_latent_attention:
         assert qk_l2_norm is False, "qk_l2_norm is not supported with MLA."
         return ModuleSpec(
@@ -229,7 +244,7 @@ def get_gpt_layer_local_spec(
                         linear_q_up_proj=ColumnParallelLinear,
                         linear_kv_down_proj=ColumnParallelLinear,
                         linear_kv_up_proj=ColumnParallelLinear,
-                        core_attention=DotProductAttention,
+                        core_attention=core_attention_module,
                         linear_proj=RowParallelLinear,
                         q_layernorm=LNImpl if qk_layernorm else IdentityOp,
                         kv_layernorm=LNImpl if qk_layernorm else IdentityOp,
@@ -251,7 +266,7 @@ def get_gpt_layer_local_spec(
                     params={"attn_mask_type": AttnMaskType.causal},
                     submodules=SelfAttentionSubmodules(
                         linear_qkv=ColumnParallelLinear,
-                        core_attention=DotProductAttention,
+                        core_attention=core_attention_module,
                         linear_proj=RowParallelLinear,
                         q_layernorm=(
                             L2Norm if qk_l2_norm else (LNImpl if qk_layernorm else IdentityOp)
@@ -332,6 +347,7 @@ def get_gpt_decoder_block_spec(
     use_transformer_engine: bool,
     normalization: Optional[str] = None,
     qk_l2_norm: Optional[bool] = False,
+    magi_attention: Optional[bool] = False,
 ) -> TransformerBlockSubmodules:
     """GPT block spec."""
     if use_transformer_engine:
@@ -348,6 +364,7 @@ def get_gpt_decoder_block_spec(
             multi_latent_attention=config.multi_latent_attention,
             moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
             qk_l2_norm=qk_l2_norm,
+            magi_attention=magi_attention,
         )
         if use_transformer_engine
         else get_gpt_layer_local_spec(
@@ -358,6 +375,7 @@ def get_gpt_decoder_block_spec(
             moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
             normalization=normalization,
             qk_l2_norm=qk_l2_norm,
+            magi_attention=magi_attention,
         )
     )
     moe_layer_spec = (
@@ -368,6 +386,7 @@ def get_gpt_decoder_block_spec(
             multi_latent_attention=config.multi_latent_attention,
             moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
             qk_l2_norm=qk_l2_norm,
+            magi_attention=magi_attention,
         )
         if use_transformer_engine
         else get_gpt_layer_local_spec(
@@ -378,6 +397,7 @@ def get_gpt_decoder_block_spec(
             moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
             normalization=normalization,
             qk_l2_norm=qk_l2_norm,
+            magi_attention=magi_attention,
         )
     )
 

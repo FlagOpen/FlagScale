@@ -27,6 +27,7 @@ from megatron.core.utils import (
     log_single_rank,
     make_viewless_tensor,
 )
+from magi_attention.dist_attn_runtime_mgr import DistAttnRuntimeKey
 
 logger = logging.getLogger(__name__)
 
@@ -453,6 +454,7 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
         sequence_len_offset: Optional[Tensor] = None,
         *,
         inference_params: Optional[Any] = None,
+        magi_attention_key: DistAttnRuntimeKey = None,
     ):
         """
         Perform a forward pass through the attention layer and the layernorms before and after
@@ -504,6 +506,7 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
             attention_bias=attention_bias,
             packed_seq_params=packed_seq_params,
             sequence_len_offset=sequence_len_offset,
+            magi_attention_key=magi_attention_key,
         )
 
         if self.recompute_input_layernorm:

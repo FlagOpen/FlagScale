@@ -532,6 +532,7 @@ class Attention(MegatronModule, ABC):
         sequence_len_offset: Optional[int] = None,
         *,
         inference_params: Optional[BaseInferenceContext] = None,
+        magi_attention_key=None,
     ) -> Tuple[Tensor, Tensor]:
         """
         Perform a forward pass through the attention module.
@@ -701,15 +702,27 @@ class Attention(MegatronModule, ABC):
         else:
             if inference_context is None or inference_context.is_static_batching():
                 # Static batching attention kernel.
-                core_attn_out = self.core_attention(
-                    query,
-                    key,
-                    value,
-                    attention_mask,
-                    attn_mask_type=attn_mask_type,
-                    attention_bias=attention_bias,
-                    packed_seq_params=packed_seq_params,
-                )
+                if magi_attention_key is not None:
+                    core_attn_out = self.core_attention(
+                        query,
+                        key,
+                        value,
+                        attention_mask,
+                        attn_mask_type=attn_mask_type,
+                        attention_bias=attention_bias,
+                        packed_seq_params=packed_seq_params,
+                        magi_attention_key=magi_attention_key,
+                    )
+                else:
+                    core_attn_out = self.core_attention(
+                        query,
+                        key,
+                        value,
+                        attention_mask,
+                        attn_mask_type=attn_mask_type,
+                        attention_bias=attention_bias,
+                        packed_seq_params=packed_seq_params,
+                    )
 
             else:
                 # Dynamic batching attention kernel.
