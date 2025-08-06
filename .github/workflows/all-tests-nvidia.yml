@@ -23,7 +23,7 @@ jobs:
 
   # Megatron Unit Tests with Matrix
   megatron-unit-tests:
-    needs: 
+    needs:
       - set-env
     uses: ./.github/workflows/unit-tests-nvidia.yml
     strategy:
@@ -102,14 +102,15 @@ jobs:
       image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-inference:
-    needs: 
+    needs:
       - set-env
       - functional-tests-hetero
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
         task:
-          - deepseek
+          - deepseek_r1_distill_qwen
+          - deepseek_r1_distill_qwen-flaggems
           - qwen3
           # - deepseek_flaggems   # TODO: need fix
           # - qwen3_flaggems      # TODO: need fix
