@@ -407,7 +407,9 @@ class Collaborator:
         try:
             redis_client = self._get_conn()
             raw_value = redis_client.hget("ENVIRONMENT_INFO", name)
-            return raw_value
+            if not raw_value:
+                return None
+            return json.loads(raw_value)
         except (ConnectionError, TimeoutError, RedisError) as e:
             return None
 
