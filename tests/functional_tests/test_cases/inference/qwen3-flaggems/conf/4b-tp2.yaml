@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - inference: tp2
+  - inference: 4b-tp2
 
 experiment:
   exp_name: qwen3_flaggems
-  exp_dir: tests/functional_tests/test_cases/inference/qwen3_flaggems/results_test/tp2
+  exp_dir: tests/functional_tests/test_cases/inference/qwen3-flaggems/results_test/4b-tp2
   task:
     type: inference
     backend: vllm
