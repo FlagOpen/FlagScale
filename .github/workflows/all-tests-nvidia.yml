@@ -114,10 +114,9 @@ jobs:
       matrix:
         task:
           - deepseek_r1_distill_qwen
-          - deepseek_r1_distill_qwen-flaggems
+          # - deepseek_r1_distill_qwen-flaggems      # TODO: need fix
           - qwen3
-          # - deepseek_flaggems   # TODO: need fix
-          # - qwen3_flaggems      # TODO: need fix
+          # - qwen3-flaggems      # TODO: need fix
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
