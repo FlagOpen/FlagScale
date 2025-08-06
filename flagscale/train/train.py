@@ -1030,7 +1030,6 @@ def pretrain(
     config = get_model_config(model[0])
 
     # Data stuff.
-    # print(f"before build_train_valid_test_data_iterators, train_valid_test_dataset_provider is {train_valid_test_dataset_provider}")
     app_metrics['app_build_dataiters_start_time'] = one_logger_utils.get_timestamp_in_ms()
     timers('train/valid/test-data-iterators-setup', log_level=0).start(barrier=True)
     if args.virtual_pipeline_model_parallel_size is not None:
@@ -1056,7 +1055,6 @@ def pretrain(
         train_data_iterator, valid_data_iterator, test_data_iterator = (
             build_train_valid_test_data_iterators(train_valid_test_dataset_provider)
         )
-    # print(f"after build_train_valid_test_data_iterators, train_data_iterator is {train_data_iterator}")
     timers('train/valid/test-data-iterators-setup').stop()
     print_datetime('after dataloaders are built')
     app_metrics['app_build_dataiters_finish_time'] = one_logger_utils.get_timestamp_in_ms()
@@ -1090,7 +1088,6 @@ def pretrain(
 
         iteration = 0
         if args.do_train and args.train_iters > 0:
-            # print(f"before call train, train_data_iterator is {train_data_iterator}")
             iteration, num_floating_point_operations_so_far = train(
                 forward_step_func,
                 model,
@@ -1703,7 +1700,6 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
 
         # Forward pass.
         forward_backward_func = get_forward_backward_func()
-        # print(f"in train.py, before call forward_backward_func, data_iterator is {data_iterator}")
         losses_reduced = forward_backward_func(
             forward_step_func=forward_step_func,
             data_iterator=data_iterator,
@@ -2667,7 +2663,7 @@ def train(
                 print_rank_0(f"Setting rerun_state_machine.current_iteration to {iteration}...")
                 rerun_state_machine.current_iteration = iteration
         ########## FlagScale end ##########
-        # print(f"before call train_step, train_data_iterator is {train_data_iterator}")
+
         ft_integration.on_training_step_start()
         (
             loss_dict,
