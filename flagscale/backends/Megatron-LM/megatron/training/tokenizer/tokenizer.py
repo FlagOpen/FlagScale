@@ -16,6 +16,7 @@ from .bert_tokenization import FullTokenizer as FullBertTokenizer
 from .gpt2_tokenization import GPT2Tokenizer
 from .gpt2_tokenization import AquilaTokenizer
 from megatron.training.tokenizer.multimodal_tokenizer import MultimodalTokenizer
+from megatron.training.tokenizer.sft_tokenizer import SFTTokenizer
 
 
 def build_tokenizer(args, **kwargs):
@@ -93,6 +94,11 @@ def build_tokenizer(args, **kwargs):
             args.special_tokens,
             args.image_tag_type,
             args.force_system_message,
+        )
+    elif args.tokenizer_type == "SFTTokenizer":
+        tokenizer = SFTTokenizer(
+            args.tokenizer_model,
+            args.sft_tokenizer_prompt_format, 
         )
     elif args.tokenizer_type == 'NullMultimodalTokenizer':
         assert args.vocab_size is not None
@@ -204,6 +210,10 @@ class _HuggingFaceTokenizer(MegatronTokenizer):
     @property
     def eod(self):
         return self._tokenizer.eos_token_id
+
+    @property
+    def bos(self):
+        return self._tokenizer.bos_token_id
 
 
 class _BertWordPieceTokenizer(MegatronTokenizer):

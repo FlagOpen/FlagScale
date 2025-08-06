@@ -10,7 +10,7 @@ import logging
 import math
 import os
 import sys
-from typing import List
+from typing import List, Optional
 
 import torch.distributed
 from megatron.training.log_handler import CustomHandler
@@ -32,6 +32,12 @@ try:
     has_nvidia_modelopt = True
 except ImportError:
     has_nvidia_modelopt = False
+
+try:
+    from nvidia_resiliency_ext.inprocess import CallWrapper
+except ImportError:
+    CallWrapper = type(None)
+
 
 from megatron.core import mpu, tensor_parallel
 from megatron.core.utils import (
@@ -116,6 +122,7 @@ from megatron.training.global_vars import (
     get_tensorboard_writer,
     get_wandb_writer,
     get_one_logger,
+    get_energy_monitor,
 )
 from megatron.training import one_logger_utils
 
@@ -129,6 +136,8 @@ from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
 from flagscale.train.theoretical_memory_usage import report_theoretical_memory as fs_report_theoretical_memory
 
 stimer = StragglerDetector()
+
+from megatron.core.msc_utils import MultiStorageClientFeature, open_file
 
 
 def destroy_global_state():
@@ -650,7 +659,7 @@ def get_start_time_from_progress_log():
     def _get_field(string, type):
         return type(string.split(': ')[1])
 
-    with open(progress_log_filename, 'r') as f:
+    with open_file(progress_log_filename, 'r') as f:
         for line in f:
             line = line.strip()
             line_tokens = line.split('\t')
@@ -874,7 +883,9 @@ def pretrain(
     get_embedding_ranks=None,
     get_position_embedding_ranks=None,
     non_loss_data_func=None,
-    extra_valid_dataset_provider=None,
+    store=None,
+    inprocess_call_wrapper: Optional[CallWrapper] = None,
+    extra_valid_dataset_provider=None, ###### FlagScale Add ##########
 ):
     """Main training program.
 
@@ -907,7 +918,15 @@ def pretrain(
         get_position_embedding_ranks (TODO):
         non_loss_data_func (callable): A custom function to call during evaluation.
             It can run e.g. benchmarks.
+        store: an optional instance of torch.distributed.Store, to be used by
+            torch.distributed.init_process_group
+        inprocess_call_wrapper: an optional instance of inprocess.CallWrapper,
+            it is automatically injected when in-process restart is in use
     """
+
+    if inprocess_call_wrapper is not None:
+        iteration = inprocess_call_wrapper.iteration
+        store = torch.distributed.PrefixStore(str(iteration), store)
 
     # Initalize and get arguments, timers, and Tensorboard writer.
     initialize_megatron(
@@ -915,6 +934,7 @@ def pretrain(
         args_defaults=args_defaults,
         get_embedding_ranks=get_embedding_ranks,
         get_position_embedding_ranks=get_position_embedding_ranks,
+        store=store,
     )
 
     args = get_args()
@@ -936,10 +956,12 @@ def pretrain(
     # This will be closer to what scheduler will see (outside of
     # image ... launches.
     global _TRAIN_START_TIME
+    ########## FlagScale Begin ##########
     if "cpu:gloo" == torch.distributed.get_backend():
         start_time_tensor = torch.tensor([_TRAIN_START_TIME], dtype=torch.double, device='cpu')
     else:
         start_time_tensor = torch.tensor([_TRAIN_START_TIME], dtype=torch.double, device='cuda')
+    ########## FlagScale Begin ##########
     torch.distributed.all_reduce(start_time_tensor, op=torch.distributed.ReduceOp.MIN)
     _TRAIN_START_TIME = start_time_tensor.item()
 
@@ -1016,8 +1038,17 @@ def pretrain(
         valid_data_iterator = []
         test_data_iterator = []
         for i in range(len(model)):
-            mpu.set_virtual_pipeline_model_parallel_rank(i)
             iterators = build_train_valid_test_data_iterators(train_valid_test_dataset_provider)
+            train_data_iterator.append(iterators[0])
+            valid_data_iterator.append(iterators[1])
+            test_data_iterator.append(iterators[2])
+    elif args.use_dualpipev:
+        train_data_iterator = []
+        valid_data_iterator = []
+        test_data_iterator = []
+        for _ in range(2):
+            iterators = build_train_valid_test_data_iterators(
+                train_valid_test_dataset_provider)
             train_data_iterator.append(iterators[0])
             valid_data_iterator.append(iterators[1])
             test_data_iterator.append(iterators[2])
@@ -1076,7 +1107,7 @@ def pretrain(
 
         print_datetime('after training is done')
 
-        if not args.auto_tune:
+        if not args.auto_tune: ########## FlagScale Add ##########
             if args.save and iteration != 0 and iteration % args.save_interval != 0:
                 save_checkpoint(
                     iteration,
@@ -1137,6 +1168,12 @@ def pretrain(
             for i in range(len(model)):
                 mpu.set_virtual_pipeline_model_parallel_rank(i)
                 extra_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
+                extra_valid_data_iterator.append(extra_iterators)
+        elif args.use_dualpipev:
+            extra_valid_data_iterator = []
+            for _ in range(2):
+                extra_iterators = build_extra_valid_data_iterators(
+                    extra_valid_dataset_provider)
                 extra_valid_data_iterator.append(extra_iterators)
         else:
             extra_valid_data_iterator = (
@@ -1225,18 +1262,39 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
                 ), "Interleaved schedule not supported for model with encoder on separate PP rank"
             model = []
             for i in range(args.virtual_pipeline_model_parallel_size):
-                mpu.set_virtual_pipeline_model_parallel_rank(i)
                 # Set pre_process and post_process only after virtual rank is set.
-                pre_process = mpu.is_pipeline_first_stage(ignore_virtual=False)
-                post_process = mpu.is_pipeline_last_stage(ignore_virtual=False)
+                pre_process = mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=i)
+                post_process = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=i)
                 this_model = model_provider_func(
                     pre_process=pre_process, post_process=post_process, vp_stage=i)
                 this_model.model_type = model_type
                 this_model.vp_stage = i
                 model.append(this_model)
+        elif args.use_dualpipev:
+            model = []
+
+            pre_process, post_process = False, False
+            if mpu.is_pipeline_first_stage():
+                pre_process = True
+
+            first_model = model_provider_func(
+                pre_process=pre_process,
+                post_process=post_process,
+                is_dualpipev_first_chunk=True,
+            )
+            first_model.model_type = model_type
+            model.append(first_model)
+
+            second_model = model_provider_func(
+                pre_process=post_process,
+                post_process=pre_process,
+                is_dualpipev_first_chunk=False,
+            )
+            second_model.model_type = model_type
+            model.append(second_model)
         else:
-            pre_process = mpu.is_pipeline_first_stage(ignore_virtual=False)
-            post_process = mpu.is_pipeline_last_stage(ignore_virtual=False)
+            pre_process = mpu.is_pipeline_first_stage()
+            post_process = mpu.is_pipeline_last_stage()
             add_encoder = True
             add_decoder = True
             if model_type == ModelType.encoder_and_decoder:
@@ -1280,7 +1338,7 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
     num_parameters = sum(
         [sum([p.nelement() for p in model_module.parameters()]) for model_module in model]
     )
-    if mpu.get_data_parallel_rank() == 0:
+    if mpu.get_data_parallel_rank() == 0 and mpu.get_context_parallel_rank() == 0:
         print(
             ' > number of parameters on (tensor, pipeline) '
             'model parallel rank ({}, {}): {}'.format(
@@ -1417,7 +1475,7 @@ def get_optimizer_param_scheduler(optimizer):
             lr_warmup_steps = args.lr_warmup_samples
     else:
         raise Exception('either train-iters or train-samples should be provided.')
-
+    ########## FlagScale Begin ##########
     stablelm2_scheduler_config = None
     if args.lr_decay_style == 'stablelm2-scheduler':
         stablelm2_scheduler_config = StableLM2SchedulerConfig(
@@ -1429,7 +1487,7 @@ def get_optimizer_param_scheduler(optimizer):
           cosine_max_lr=args.lr_decay_stablelm2_cosine_max_lr,
           cosine_period_samples=args.lr_decay_stablelm2_cosine_period_samples,
           decay_samples=args.lr_decay_stablelm2_decay_samples)
-
+    ########## FlagScale End ##########
     opt_param_scheduler = OptimizerParamScheduler(
         optimizer,
         init_lr=args.lr_warmup_init,
@@ -1467,7 +1525,7 @@ def setup_model_and_optimizer(
 
     model = get_model(model_provider_func, model_type)
     unwrapped_model = unwrap_model(model)
-
+    ########## FlagScale Begin ##########
     config = None
     para_ctx = get_parallel_context()
     if para_ctx is not None:
@@ -1479,6 +1537,7 @@ def setup_model_and_optimizer(
             if hasattr(args, f.name):
                 kwargs[f.name] = getattr(args, f.name)
         config = OptimizerConfig(**kwargs)
+    ########## FlagScale End ##########
     config.timers = timers
     optimizer = get_megatron_optimizer(
         config,
@@ -1498,13 +1557,25 @@ def setup_model_and_optimizer(
             "Upcycling should only be set for the first run when converting the dense model. "
             "All subsequent runs should remove this flag. "
         )
+        # before changing moe related global args, save them in local variables
         num_experts = args.num_experts
-        args.num_experts = None
         expert_model_parallel_size = args.expert_model_parallel_size
+        moe_ffn_hidden_size = args.ffn_hidden_size
+
+        # set dense model related args in to global args before getting dense model
+        args.num_experts = None
         args.expert_model_parallel_size = 1
+        args.ffn_hidden_size = moe_ffn_hidden_size * args.moe_upcycling_granularity
+
+        # get dense model
         dense_model_for_upcycling = get_model(model_provider_func, model_type)
+
+        # recover moe upcycling related args in global args before executing upcycling
         args.num_experts = num_experts
         args.expert_model_parallel_size = expert_model_parallel_size
+        args.ffn_hidden_size = moe_ffn_hidden_size
+
+        # execute upcycling
         _, args.num_floating_point_operations_so_far = upcycling_utils.load_and_upcycle_model(
             load_checkpoint,
             unwrapped_model,
@@ -1706,20 +1777,38 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
         if args.use_distributed_optimizer and args.overlap_param_gather:
             cuda_graph_set_manual_hooks(model)
 
-    if mpu.is_pipeline_last_stage(ignore_virtual=True):
+    is_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=True)
+    if args.use_dualpipev:
+        is_last_stage = mpu.is_pipeline_first_stage(ignore_virtual=True)
+    if is_last_stage:
         # Average loss across microbatches.
         loss_reduced = {}
+
         for key in losses_reduced[0].keys():
             val = [x[key].view(-1) for x in losses_reduced]
             if val[0].numel() == 2:
-                # there is one dict per microbatch. in new reporting, we average
-                # over the total number of tokens across the global batch.
-                val = torch.vstack(val).sum(dim=0)
-                torch.distributed.all_reduce(
-                    val,
-                    group=mpu.get_data_parallel_group(with_context_parallel=True)
-                )
-                loss_reduced[key] = val[0] / val[1]
+                if args.sft:
+                    # in mcore the normalization happens on micro batch instead of global
+                    val = torch.vstack(val)
+                    val = val[:, 0] / val[:, 1]
+                    val = val.mean()
+                    torch.distributed.all_reduce(
+                        val,
+                        group=mpu.get_data_parallel_group(with_context_parallel=True)
+                    )
+                    val /= torch.distributed.get_world_size(
+                        group=mpu.get_data_parallel_group(with_context_parallel=True)
+                    )
+                    loss_reduced[key] = val
+                else:
+                    # there is one dict per microbatch. in new reporting, we average
+                    # over the total number of tokens across the global batch.
+                    val = torch.vstack(val).sum(dim=0)
+                    torch.distributed.all_reduce(
+                        val,
+                        group=mpu.get_data_parallel_group(with_context_parallel=True)
+                    )
+                    loss_reduced[key] = val[0] / val[1]
             elif val[0].numel() == 1:
                 # legacy behavior, we average over the number of microbatches
                 val = torch.cat(val).mean()
@@ -1757,6 +1846,7 @@ def training_log(
     writer = get_tensorboard_writer()
     wandb_writer = get_wandb_writer()
     one_logger = get_one_logger()
+    energy_monitor = get_energy_monitor()
 
     # Advanced, skipped, and Nan iterations.
     advanced_iters_key = 'advanced iterations'
@@ -1971,6 +2061,17 @@ def training_log(
                     writer.add_scalar('throughput', throughput, iteration)
                 if wandb_writer:
                     wandb_writer.log({'throughput': throughput}, iteration)
+        if args.log_energy:
+            energy = (energy_monitor.lap() / total_iterations) / args.world_size
+            power = energy / elapsed_time_per_iteration
+            log_string += f' energy per GPU (J/iter/GPU): {energy:.1f} |'
+            log_string += f' power per GPU (W/GPU): {power:.1f} |'
+            if writer:
+                writer.add_scalar('iter-energy/gpu', energy, iteration)
+                writer.add_scalar('power/gpu', power, iteration)
+            if wandb_writer:
+                wandb_writer.log({'iter-energy/gpu': energy}, iteration)
+                wandb_writer.log({'power/gpu': power}, iteration)
         # Decoupled_learning_rate should be not None only on first and last pipeline stage.
         log_string += f' learning rate: {learning_rate:.6E} |'
         if args.decoupled_lr is not None and (
@@ -2005,7 +2106,7 @@ def training_log(
         total_loss_dict[skipped_iters_key] = 0
         total_loss_dict[nan_iters_key] = 0
         print_rank_last(log_string)
-        if not args.auto_tune:
+        if not args.auto_tune: ########## FlagScale Add ##########
             if report_memory_flag:
                 # Report memory after optimizer state has been initialized.
                 if torch.distributed.get_rank() == 0:
@@ -2080,9 +2181,12 @@ def save_checkpoint_and_time(
 ):
     args = get_args()
     timers = get_timers()
+    energy_monitor = get_energy_monitor()
 
     # Stop timer to get accurate train interval time and exclude checkpointing duration
     timers('interval-time').stop()
+    energy_monitor.pause()
+
     # Extra barrier is added to make sure all ranks report the max time.
     timer_key = 'save-checkpoint-non-persistent' if non_persistent_ckpt else 'save-checkpoint'
     timers(timer_key, log_level=0).start(barrier=True)
@@ -2118,6 +2222,7 @@ def save_checkpoint_and_time(
         )
 
     # Recover timing
+    energy_monitor.resume()
     timers('interval-time', log_level=0).start(barrier=True)
 
 
@@ -2302,6 +2407,7 @@ def train(
     """Training function: run train_step desired number of times, run validation, checkpoint."""
     args = get_args()
     timers = get_timers()
+    energy_monitor = get_energy_monitor()
     one_logger = get_one_logger()
 
     if args.run_workload_inspector_server:
@@ -2368,6 +2474,10 @@ def train(
         if len(model) == 1:
             config.param_sync_func = config.param_sync_func[0]
     config.finalize_model_grads_func = finalize_model_grads
+
+    if args.log_energy:
+        energy_monitor.setup()
+        energy_monitor.resume()
 
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')
@@ -2651,6 +2761,8 @@ def train(
 
         # Evaluation.
         if args.eval_interval and iteration % args.eval_interval == 0 and args.do_valid:
+            if args.log_energy:
+                energy_monitor.pause()
             timers('interval-time').stop()
             if should_disable_forward_pre_hook(args):
                 disable_forward_pre_hook(model)
@@ -2684,8 +2796,10 @@ def train(
                 enable_forward_pre_hook(model)
                 pre_hook_enabled = True
             timers('interval-time', log_level=0).start(barrier=True)
+            if args.log_energy:
+                energy_monitor.resume()
 
-
+        ######## FlagScale Begin ########
         # Extra Evaluation =====================================================================
         if args.extra_eval_interval and iteration % args.extra_eval_interval == 0:
             # NOTE(zhaoyinglia): Must rebuild the dataloaders for extra validation here,
@@ -2696,6 +2810,12 @@ def train(
                 for i in range(len(model)):
                     mpu.set_virtual_pipeline_model_parallel_rank(i)
                     extra_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
+                    extra_valid_data_iterator.append(extra_iterators)
+            elif args.use_dualpipev:
+                extra_valid_data_iterator = []
+                for _ in range(2):
+                    extra_iterators = build_extra_valid_data_iterators(
+                        extra_valid_dataset_provider)
                     extra_valid_data_iterator.append(extra_iterators)
             else:
                 extra_valid_data_iterator = (
@@ -2741,7 +2861,7 @@ def train(
                     pre_hook_enabled = True
                 timers('interval-time', log_level=0).start(barrier=True)
         # =======================================================================================
-
+        ######## FlagScale End ########
         # Miscellaneous post-training-step functions (e.g., FT heartbeats, GC).
         # Some of these only happen at specific iterations.
         post_training_step_callbacks(
@@ -2784,6 +2904,12 @@ def train(
     ft_integration.on_checkpointing_end(is_async_finalization=True)
     if args.enable_ft_package and ft_integration.get_rank_monitor_client() is not None:
         ft_integration.get_rank_monitor_client().shutdown_workload_monitoring()
+
+    if args.log_energy:
+        energy_monitor.lap()
+        total_energy = energy_monitor.get_total()
+        print_rank_0(f"Total training energy (GPU): {total_energy / 1e6} MJ")
+        energy_monitor.shutdown()
 
     # If any exit conditions (signal handler, duration, iterations) have been reached, exit.
     if should_exit:
@@ -2833,21 +2959,24 @@ def evaluate(
     eval_batch_size = args.global_batch_size
     eval_num_microbatches = eval_batch_size // (args.micro_batch_size * args.data_parallel_size)
 
+    ######## FlagScale Begin ########
     if extra_valid_index is not None:
         assert getattr(args, "extra_eval_iters_list") is not None, \
             "extra_eval_iters_list must be provided if extra_valid_index is not None"
         eval_iters = args.extra_eval_iters_list[extra_valid_index]
     else:
         eval_iters = args.eval_iters
-
+    ######## FlagScale End ########
     with torch.no_grad():
         iteration = 0
         if verbose:
+            ######## FlagScale Begin ########
             print_rank_0(f'Evaluating on {eval_iters * eval_batch_size} samples')
         while iteration < eval_iters:
             iteration += 1
             if verbose:
                 print_rank_0(f'Evaluating iter {iteration}/{eval_iters}')
+            ######## FlagScale End ########
 
             forward_backward_func = get_forward_backward_func()
             # Don't care about timing during evaluation
@@ -2878,13 +3007,29 @@ def evaluate(
                             [0.0, 0.0], dtype=torch.float
                         ).cuda()
                     val = [x[key].view(-1) for x in loss_dicts]
+
                     if val[0].numel() == 2:
-                        val = torch.vstack(val).sum(dim=0)
-                        torch.distributed.all_reduce(
-                            val,
-                            group=mpu.get_data_parallel_group(with_context_parallel=True)
-                        )
-                        total_loss_dict[key] += val
+                        if args.sft:
+                            # normalize over micro batch instead of global
+                            val = torch.vstack(val)
+                            val = val[:, 0] / val[:, 1]
+                            val = val.mean()
+                            torch.distributed.all_reduce(
+                                val,
+                                group=mpu.get_data_parallel_group(with_context_parallel=True)
+                            )
+                            val /= torch.distributed.get_world_size(
+                                group=mpu.get_data_parallel_group(with_context_parallel=True)
+                            )
+                            total_loss_dict[key][0] += val
+                            total_loss_dict[key][1] += 1
+                        else :
+                            val = torch.vstack(val).sum(dim=0)
+                            torch.distributed.all_reduce(
+                                val,
+                                group=mpu.get_data_parallel_group(with_context_parallel=True)
+                            )
+                            total_loss_dict[key] += val
                     elif val[0].numel() == 1:
                         val = torch.cat(val).sum()
                         total_loss_dict[key][0] += val

@@ -56,6 +56,11 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
     ```
 
+    **Note**: To customize the environment according to your specific needs, follow the methods below:  
+    1. To install apt packages or basic drivers, add them to the platform-specific `Dockerfile` in the `docker` directory.
+    2. To include cross-platform Python packages, declare them in the corresponding files in the `requirements` directory.
+    3. To include platform-specific Python packages, configure them in the corresponding files in the `install` directory.
+
 3. Unpatch the backend code adaptation of FlagScale as needed
     ```
     cd FlagScale
@@ -75,6 +80,22 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     cd FlagScale
     cp -r third_party/Megatron-Energon/src/megatron/energon third_party/Megatron-LM/megatron
     ```
+    And we currently support two one-click installation methods: source installation and whl installation. Usage is as follows:
+
+    - Source Installation
+        ```sh
+        PYTHONPATH=./:$PYTHONPATH pip install . --no-build-isolation --verbose \
+        --config-settings=device=<device> \
+        --config-settings=backend=<backend>
+        ```
+
+    - Whl Installation
+        ```sh
+        PYTHONPATH=./:$PYTHONPATH pip install . --no-build-isolation --verbose
+        flagscale install <backend> --device=<device>
+        ```
+
+    More backends and chips will be supported in the future.
 
 5. Patch the modifications to the specified third_party backend for PR.
     ```

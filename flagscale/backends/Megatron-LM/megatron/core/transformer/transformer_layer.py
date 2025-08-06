@@ -16,6 +16,7 @@ from megatron.core.dist_checkpointing.utils import apply_prefix_mapping
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.process_groups_config import ModelCommProcessGroups
 from megatron.core.transformer.cuda_graphs import CudaGraphManager
+from megatron.core.transformer.enums import LayerType
 from megatron.core.transformer.identity_op import IdentityFuncOp, IdentityOp
 from megatron.core.transformer.mlp import MLP
 from megatron.core.transformer.module import MegatronModule
@@ -26,13 +27,15 @@ from megatron.core.utils import (
     is_te_min_version,
     log_single_rank,
     make_viewless_tensor,
+    nvtx_range_pop,
+    nvtx_range_push,
 )
 from magi_attention.dist_attn_runtime_mgr import DistAttnRuntimeKey
 
 logger = logging.getLogger(__name__)
 
 
-def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[int] = None):
+def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[int] = None, is_dualpipev_first_chunk: Optional[bool] = False):
     """Get the index offset of current pipeline stage, given the level of pipelining."""
     pipeline_rank = parallel_state.get_pipeline_model_parallel_rank()
     if not parallel_state.is_inside_encoder():
@@ -43,6 +46,10 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
     if config.pipeline_model_parallel_size > 1:
         if config.enable_hetero:
             offset = sum(([0] + config.hetero_pipeline_layer_split)[: pipeline_rank + 1])
+        elif config.pipeline_model_parallel_layout:
+            offset = config.pipeline_model_parallel_layout.get_layer_offset(
+                layer_type=LayerType.decoder, vp_stage=vp_stage
+            )
         elif (
             config.num_layers_in_first_pipeline_stage is not None
             or config.num_layers_in_last_pipeline_stage is not None
@@ -138,12 +145,66 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                     else pipeline_rank - 1
                 )
 
-                if pipeline_rank == 0:
-                    offset = 0
+                if not config.use_dualpipev:
+                    if pipeline_rank == 0:
+                        offset = 0
+                    else:
+                        offset = (
+                            middle_pipeline_rank * num_layers_per_pipeline_rank
+                        ) + num_layers_in_first_pipeline_stage
                 else:
-                    offset = (
-                        middle_pipeline_rank * num_layers_per_pipeline_rank
-                    ) + num_layers_in_first_pipeline_stage
+                    # for dualpipev
+                    num_layers_in_first_pipeline_stage_first_chunk = num_layers_in_first_pipeline_stage // 2
+                    if num_layers_in_first_pipeline_stage % 2 != 0:
+                        num_layers_in_first_pipeline_stage_first_chunk = num_layers_in_first_pipeline_stage_first_chunk + 1
+                    num_layers_in_first_pipeline_stage_second_chunk = num_layers_in_first_pipeline_stage - num_layers_in_first_pipeline_stage_first_chunk
+    
+                    num_layers_in_last_pipeline_stage_first_chunk = num_layers_in_last_pipeline_stage // 2
+                    if num_layers_in_last_pipeline_stage % 2 != 0:
+                        num_layers_in_last_pipeline_stage_first_chunk = num_layers_in_last_pipeline_stage_first_chunk + 1
+                    num_layers_in_last_pipeline_stage_second_chunk = num_layers_in_last_pipeline_stage - num_layers_in_last_pipeline_stage_first_chunk
+
+                    num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank // 2
+                    if num_layers_per_pipeline_rank % 2 != 0:
+                        num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank_first_chunk + 1
+                    num_layers_per_pipeline_rank_second_chunk = num_layers_per_pipeline_rank - num_layers_per_pipeline_rank_first_chunk
+
+                    # process first chunk
+                    if is_dualpipev_first_chunk:
+                        middle_pipeline_rank = (
+                            pipeline_rank
+                            if config.num_layers_in_first_pipeline_stage is None
+                            else pipeline_rank - 1
+                        )
+                        if pipeline_rank == 0:
+                            offset = 0
+                        else:
+                            offset = (
+                                middle_pipeline_rank * num_layers_per_pipeline_rank_first_chunk
+                            ) + num_layers_in_first_pipeline_stage_first_chunk
+                    
+                    # process second chunk
+                    else:
+                        start_offset = (
+                            config.pipeline_model_parallel_size * num_layers_per_pipeline_rank_first_chunk
+                        )
+                        if num_layers_in_first_pipeline_stage_first_chunk > 0:
+                            start_offset = start_offset - num_layers_per_pipeline_rank_first_chunk + num_layers_in_first_pipeline_stage_first_chunk 
+                        if num_layers_in_last_pipeline_stage_first_chunk > 0:
+                            start_offset = start_offset - num_layers_per_pipeline_rank_first_chunk + num_layers_in_last_pipeline_stage_first_chunk
+
+                        middle_pipeline_rank = (
+                            config.pipeline_model_parallel_size - 1 - pipeline_rank
+                            if config.num_layers_in_last_pipeline_stage is None
+                            else config.pipeline_model_parallel_size - 1 - pipeline_rank - 1
+                        )
+
+                        if pipeline_rank == config.pipeline_model_parallel_size - 1:
+                            offset = start_offset
+                        else:
+                            offset = start_offset + (
+                                middle_pipeline_rank * num_layers_per_pipeline_rank_second_chunk
+                            ) + num_layers_in_last_pipeline_stage_second_chunk
         else:
             num_layers = config.num_layers
 
@@ -177,16 +238,28 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                 ):
                     offset -= 1
             else:
-                offset = pipeline_rank * num_layers_per_pipeline_rank
+                if not config.use_dualpipev:
+                    offset = pipeline_rank * num_layers_per_pipeline_rank
 
-                # Reduce the offset of embedding layer from the total layer number
-                if (
-                    config.account_for_embedding_in_pipeline_split
-                    and not parallel_state.is_pipeline_first_stage(
-                        ignore_virtual=False, vp_stage=vp_stage
-                    )
-                ):
-                    offset -= 1
+                    # Reduce the offset of embedding layer from the total layer number
+                    if (
+                        config.account_for_embedding_in_pipeline_split
+                        and not parallel_state.is_pipeline_first_stage(
+                            ignore_virtual=False, vp_stage=vp_stage
+                        )
+                    ):
+                        offset -= 1
+                else:
+                    num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank // 2
+                    if num_layers_per_pipeline_rank % 2 != 0:
+                        num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank_first_chunk + 1
+                    num_layers_per_pipeline_rank_second_chunk = num_layers_per_pipeline_rank - num_layers_per_pipeline_rank_first_chunk
+
+                    if is_dualpipev_first_chunk:
+                        offset = pipeline_rank * num_layers_per_pipeline_rank_first_chunk
+                    else:
+                        offset = config.num_layers - ((pipeline_rank+1) * num_layers_per_pipeline_rank_second_chunk)
+
     else:
         offset = 0
     return offset
@@ -433,10 +506,8 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
         This method calls the core computation of a transformer layer, including
         self-attention, cross-attention (if applicable), and feed-forward operations.
         """
-        pre_mlp_layernorm_output, residual, context = self._forward_attention(*args, **kwargs)
-        output = self._forward_mlp(
-            pre_mlp_layernorm_output, residual, kwargs.get("inference_context", None)
-        )
+        hidden_states, context = self._forward_attention(*args, **kwargs)
+        output = self._forward_mlp(hidden_states, kwargs.get("inference_context", None))
         return output, context
 
     def _forward_attention(
@@ -474,9 +545,8 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
                 during inference.
 
         Returns:
-            Tuple[Tensor, Tensor, Tensor]: A tuple containing:
-                pre_mlp_layernorm_output (Tensor): Transformed hidden states before the MLP.
-                residual (Tensor): Residual connection.
+            Tuple[Tensor, Tensor]: A tuple containing:
+                hidden_states (Tensor): Transformed hidden states before the MLP layernorm.
                 context (Tensor): Updated context tensor if cross-attention is used,
                 otherwise None.
         """
@@ -496,6 +566,7 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
             input_layernorm_output = self.input_layernorm(hidden_states)
 
         # Self attention.
+        nvtx_range_push(suffix="self_attention")
         attention_output_with_bias = self.self_attention(
             input_layernorm_output,
             attention_mask=attention_mask,
@@ -508,6 +579,7 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
             sequence_len_offset=sequence_len_offset,
             magi_attention_key=magi_attention_key,
         )
+        nvtx_range_pop(suffix="self_attention")
 
         if self.recompute_input_layernorm:
             # discard the output of the input layernorm and register the recompute
@@ -518,10 +590,12 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
 
         # TODO: could we move `bias_dropout_add_exec_handler` itself
         # inside the module provided in the `bias_dropout_add_spec` module?
+        nvtx_range_push(suffix="self_attn_bda")
         with self.bias_dropout_add_exec_handler():
             hidden_states = self.self_attn_bda(self.training, self.config.bias_dropout_fusion)(
                 attention_output_with_bias, residual, self.hidden_dropout
             )
+        nvtx_range_pop(suffix="self_attn_bda")
 
         # Residual connection.
         residual = hidden_states
@@ -547,6 +621,19 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
                 attention_output_with_bias, residual, self.hidden_dropout
             )
 
+        return hidden_states, context
+
+    def _forward_mlp(self, hidden_states, inference_context=None):
+        """
+        Perform a forward pass through the feed-forward layer.
+
+        Args:
+            hidden_states (Tensor): Transformed hidden states before the MLP layernorm.
+
+        Returns:
+            output (Tensor): Transformed hidden states of shape [s, b, h].
+        """
+
         # Residual connection.
         residual = hidden_states
 
@@ -559,25 +646,13 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
         else:
             pre_mlp_layernorm_output = self.pre_mlp_layernorm(hidden_states)
 
-        return pre_mlp_layernorm_output, residual, context
-
-    def _forward_mlp(self, pre_mlp_layernorm_output, residual, inference_context=None):
-        """
-        Perform a forward pass through the feed-forward layer.
-
-        Args:
-            pre_mlp_layernorm_output (Tensor): Transformed hidden states before the MLP.
-            residual (Tensor): Residual connection.
-
-        Returns:
-            output (Tensor): Transformed hidden states of shape [s, b, h].
-        """
-
+        nvtx_range_push(suffix="mlp")
         # Potentially chunk the MLP computation during prefill to minimize the peak activation size
         should_chunk_mlp_for_prefill = (
             self.config.mlp_chunks_for_prefill > 1
             and inference_context is not None
             and not inference_context.is_decode_only()
+            and not isinstance(self.mlp, IdentityOp)
         )
 
         if self.recompute_mlp:
@@ -619,13 +694,16 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
             self.pre_mlp_norm_checkpoint.discard_output_and_register_recompute(
                 mlp_output_with_bias[0]
             )
+        nvtx_range_pop(suffix="mlp")
 
         # TODO: could we move `bias_dropout_add_exec_handler` itself
         # inside the module provided in the `bias_dropout_add_spec` module?
+        nvtx_range_push(suffix="mlp_bda")
         with self.bias_dropout_add_exec_handler():
             hidden_states = self.mlp_bda(self.training, self.config.bias_dropout_fusion)(
                 mlp_output_with_bias, residual, self.hidden_dropout
             )
+        nvtx_range_pop(suffix="mlp_bda")
 
         # Jit compiled function creates 'view' tensor. This tensor
         # potentially gets saved in the MPU checkpoint function context,
@@ -735,14 +813,12 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
            attribute can be set to control the scope of the CUDA graph.
         2. If context is None, it cannot be returned as output.
         """
-        pre_mlp_layernorm_output, residual, context = self._forward_attention(*args, **kwargs)
+        hidden_states, context = self._forward_attention(*args, **kwargs)
 
-        cuda_graph_outputs = []
-        if self.config.cuda_graph_scope == "attn":
-            cuda_graph_outputs += [pre_mlp_layernorm_output, residual]
-        else:
-            output = self._forward_mlp(pre_mlp_layernorm_output, residual)
-            cuda_graph_outputs.append(output)
+        if self.config.cuda_graph_scope == "full":
+            hidden_states = self._forward_mlp(hidden_states)
+        cuda_graph_outputs = [hidden_states]
+
         if context is not None:
             cuda_graph_outputs.append(context)
         return tuple(cuda_graph_outputs)

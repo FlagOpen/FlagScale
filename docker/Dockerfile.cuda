@@ -138,8 +138,7 @@ RUN cd ${STAGE_DIR} && \
     { echo "Error: Failed to clone the repository or the branch IMAGE_250515 does not exist."; exit 1; } && \
     cd FlagScale && \
     git checkout ${FLAGSCALE_COMMIT} || \
-    { echo "Error: Failed to checkout commit ${FLAGSCALE_COMMIT}. Please ensure the commit ID is correct and exists in the repository."; exit 1; } && \
-    chmod +x install/install-requirements.sh
+    { echo "Error: Failed to checkout commit ${FLAGSCALE_COMMIT}. Please ensure the commit ID is correct and exists in the repository."; exit 1; }
 
 ##############################################################################
 # Install flagscale-train requirements
@@ -160,9 +159,9 @@ RUN cd ${STAGE_DIR}/FlagScale && \
 RUN cd ${STAGE_DIR}/FlagScale && \
     ./install/install-requirements.sh --env RL
 
-# ##############################################################################
-# # Clear
-# ##############################################################################
+##############################################################################
+# Clear
+##############################################################################
 RUN apt-get clean && \
         rm -rf /var/lib/apt/lists/* && \
         rm -rf ${STAGE_DIR}/*

@@ -145,7 +145,7 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
     else:
         return
 
-    if (torch.distributed.get_world_size(embed_group[0]) > 1):
+    if (embed_group[0].size() > 1):
         if parallel_state.is_pipeline_first_stage(ignore_virtual=True):
             model_module = model[0]
         elif parallel_state.is_pipeline_last_stage(ignore_virtual=True):
@@ -210,7 +210,7 @@ def _allreduce_position_embedding_grads(model: List[torch.nn.Module], config: Tr
     """
     if (
         parallel_state.is_rank_in_position_embedding_group()
-        and torch.distributed.get_world_size(parallel_state.get_position_embedding_group()) > 1
+        and parallel_state.get_position_embedding_group().size() > 1
     ):
         if parallel_state.is_pipeline_first_stage(ignore_virtual=True):
             model_module = model[0]
@@ -236,45 +236,6 @@ def _allreduce_embedding_grads(model: List[torch.nn.Module], config: Transformer
     """
     _allreduce_word_embedding_grads(model, config)
     _allreduce_position_embedding_grads(model, config)
-
-
-def _allreduce_layernorm_grads(model: List[torch.nn.Module], config: TransformerConfig):
-    """
-    All-reduce layernorm grads (for sequence parallelism).
-    """
-
-    # All-reduce layernorm parameters across model parallel nodes
-    # when sequence parallelism is used
-    if parallel_state.get_tensor_model_parallel_world_size() > 1 and (
-        config.sequence_parallel or config.qk_layernorm
-    ):
-        params = []
-        grads = []
-        for model_chunk in model:
-            ddp_config = model_chunk.ddp_config
-            for name, param in get_attr_wrapped_model(model_chunk, 'named_parameters')():
-                if param.requires_grad and (
-                    getattr(param, 'sequence_parallel', False)
-                    or 'q_layernorm' in name
-                    or 'k_layernorm' in name
-                ):
-                    params.append(param)
-                    grad_attr = _get_main_grad_attr(param, ddp_config.use_custom_fsdp)
-                    grad = getattr(param, grad_attr)
-                    grad = _unshard_if_dtensor(grad)
-                    grads.append(grad.data)
-        if grads:
-            coalesced = _flatten_dense_tensors(grads)
-            torch.distributed.all_reduce(
-                coalesced, group=parallel_state.get_tensor_model_parallel_group()
-            )
-            for param, buf, synced in zip(
-                params, grads, _unflatten_dense_tensors(coalesced, grads)
-            ):
-                buf.copy_(synced)
-                grad_attr = _get_main_grad_attr(param, ddp_config.use_custom_fsdp)
-                orig_grad = getattr(param, grad_attr)
-                setattr(param, grad_attr, _reshard_if_dtensor(buf, orig_grad))
 
 
 def _update_router_expert_bias(model: List[torch.nn.Module], config: TransformerConfig):
@@ -305,6 +266,70 @@ def _update_router_expert_bias(model: List[torch.nn.Module], config: Transformer
         expert_bias.copy_(updated_expert_bias)
 
 
+def _allreduce_non_tensor_model_parallel_grads(
+    model: List[torch.nn.Module], config: TransformerConfig
+):
+    """
+    All-reduce both layernorm grads (for sequence parallelism) and
+    gradients from modules with average_gradients_across_tp_domain=True
+    across tensor-model-parallel ranks.
+    """
+    if parallel_state.get_tensor_model_parallel_world_size() <= 1:
+        return
+
+    params_sum = []
+    grads_sum = []
+    params_avg = []
+    grads_avg = []
+
+    for model_chunk in model:
+        ddp_config = model_chunk.ddp_config
+        for name, param in get_attr_wrapped_model(model_chunk, 'named_parameters')():
+            if param.requires_grad:
+                # Check if this param needs average reduction (average_gradients_across_tp_domain)
+                if getattr(param, "average_gradients_across_tp_domain", False):
+                    params_avg.append(param)
+                    grad_attr = _get_main_grad_attr(param, ddp_config.use_custom_fsdp)
+                    grad = getattr(param, grad_attr)
+                    grad = _unshard_if_dtensor(grad)
+                    grads_avg.append(grad.data)
+                # Check if this param needs sum reduction (sequence parallel or qk_layernorm)
+                elif (config.sequence_parallel and getattr(param, "sequence_parallel", False)) or (
+                    config.qk_layernorm and ("q_layernorm" in name or "k_layernorm" in name)
+                ):
+                    params_sum.append(param)
+                    grad_attr = _get_main_grad_attr(param, ddp_config.use_custom_fsdp)
+                    grad = getattr(param, grad_attr)
+                    grad = _unshard_if_dtensor(grad)
+                    grads_sum.append(grad.data)
+
+    # Loop grads and perform correct all-reduce
+    for params, grads, all_reduce_op in zip(
+        [params_sum, params_avg],
+        [grads_sum, grads_avg],
+        [torch.distributed.ReduceOp.SUM, torch.distributed.ReduceOp.AVG],
+    ):
+        if grads:
+            coalesced = _flatten_dense_tensors(grads)
+            torch.distributed.all_reduce(
+                coalesced, op=all_reduce_op, group=parallel_state.get_tensor_model_parallel_group()
+            )
+            for param, buf, synced in zip(
+                params, grads, _unflatten_dense_tensors(coalesced, grads)
+            ):
+                buf.copy_(synced)
+                grad_attr = _get_main_grad_attr(param, ddp_config.use_custom_fsdp)
+                orig_grad = getattr(param, grad_attr)
+                setattr(param, grad_attr, _reshard_if_dtensor(buf, orig_grad))
+
+
+"""
+This is an alias to _allreduce_non_tensor_model_parallel_grads that we must
+maintain for legacy tests. We can remove this proxy in mcore 0.14.
+"""
+_allreduce_layernorm_grads = _allreduce_non_tensor_model_parallel_grads
+
+
 def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torch.Tensor] = None):
     """
     All-reduce all model grads across DP replicas, layernorm grads for sequence parallelism,
@@ -331,14 +356,14 @@ def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torc
     if config.timers is not None:
         config.timers('conditional-embedder-grads-all-reduce').stop()
 
-    # All-reduce layer-norm grads (for sequence parallelism).
+    # All-reduce layer-norm grads (for sequence parallelism) and non-tensor parallel modules.
     if config.timers is not None:
-        config.timers('layernorm-grads-all-reduce', log_level=1).start(
+        config.timers('non-tensor-parallel-grads-all-reduce', log_level=1).start(
             barrier=config.barrier_with_L1_time
         )
-    _allreduce_layernorm_grads(model, config)
+    _allreduce_non_tensor_model_parallel_grads(model, config)
     if config.timers is not None:
-        config.timers('layernorm-grads-all-reduce').stop()
+        config.timers('non-tensor-parallel-grads-all-reduce').stop()
 
     # All-reduce embedding grads (for pipeline parallelism).
     if config.timers is not None:
@@ -360,13 +385,17 @@ def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torc
         # the number of tokens is only present on the last stage, so broadcast it
         # to the other ranks in the pipeline parallel group.
         last_rank = parallel_state.get_pipeline_model_parallel_last_rank()
+        if config.use_dualpipev:
+            last_rank = parallel_state.get_pipeline_model_parallel_first_rank()
         pp_group = parallel_state.get_pipeline_model_parallel_group()
 
         # NOTE: This is a hack to support multiple pipeline parallel groups. The origin
         #       parallel_state.get_pipeline_model_parallel_last_rank() only supports a single
         if isinstance(pp_group, list):
             last_rank = [parallel_state.get_pipeline_model_parallel_last_rank(g) for g in pp_group]
-
+            if config.use_dualpipev:
+                last_rank = [parallel_state.get_pipeline_model_parallel_first_rank(g) for g in pp_group]
+        
         if not isinstance(last_rank, list):
             assert not isinstance(last_rank, list)
             last_rank = [last_rank]

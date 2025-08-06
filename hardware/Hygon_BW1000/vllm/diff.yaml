@@ -3,7 +3,7 @@ backends_commit:
 backends_version:
   FlagScale: 0.8.0
   vllm: 0.9.1
-commit: a90319a45fe8985c8c3aad0d1ec0998b9c89710e
+commit: 43898c8763729ecec31f2a86b6d29b12fcfb8d3c
 contact: guohw1@sugon.com
 device_type: Hygon_BW1000
 models:
