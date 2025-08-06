@@ -26,11 +26,13 @@ inference:
   deepseek_r1_distill_qwen-metax-flaggems:
     -7b-tp2
   qwen3:
-    -tp2
-  # deepseek_flaggems:
-  #   -tp2
-  # qwen3_flaggems:
-  #   -tp2
+    -4b-tp2
+  qwen3-flaggems:
+    -4b-tp2
+  qwen3-metax:
+    -4b-tp2
+  qwen3-metax-flaggems:
+    -4b-tp2
 
 # TODO: need fix
 # serve:
