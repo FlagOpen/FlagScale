@@ -10,19 +10,12 @@ commands=(
     # "tests/scripts/functional_tests/test_task.sh --type train --task llava_onevision"
     # For hetero-train
     # "tests/scripts/functional_tests/test_task.sh --type hetero_train --task aquila"
+    
     # For inference
-    "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek"
-    "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3"
-    # "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_flaggems"
-    # "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3_flaggems"
-    # For inference-pipeline
-    "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B"
-    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --flaggems enable"
-    # For inference-pipeline: other hardware
-    "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware bi_v150"
-    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware bi_v150 --flaggems enable"
-    "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware cambricon_mlu"
-    # "tests/scripts/functional_tests/test_task.sh --type inference-pipeline --task Qwen3-4B --hardware cambricon_mlu --flaggems enable"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-flaggems"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-metax"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-metax-flaggems"
     # For serve
     # "tests/scripts/functional_tests/test_task.sh --type serve --task base"
 )
