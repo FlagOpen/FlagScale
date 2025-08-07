@@ -630,13 +630,6 @@ def forward_step(data_iterator, model: GPTModel):
     return output_tensor, partial(loss_func, loss_mask, model=model)
 
 
-# def is_dataset_built_on_rank():
-#     return (
-#         parallel_state.is_pipeline_first_stage(ignore_virtual=True)
-#         or parallel_state.is_pipeline_last_stage(ignore_virtual=True)
-#     ) and parallel_state.get_tensor_model_parallel_rank() == 0
-
-
 def is_dataset_built_on_rank():
     return parallel_state.get_tensor_model_parallel_rank() == 0
 

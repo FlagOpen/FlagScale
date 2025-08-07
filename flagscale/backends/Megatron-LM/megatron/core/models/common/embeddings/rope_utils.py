@@ -17,32 +17,19 @@ from megatron.core.utils import is_te_min_version
 
 logger = logging.getLogger(__name__)
 
-torch.set_printoptions(
-    threshold=torch.inf,  # 不省略任何元素
-    edgeitems=3,         # 控制在省略打印时显示的首尾元素数量
-    linewidth=100,       # 设置每行的宽度
-    sci_mode=False       # 禁用科学计数法
-)
-
 # Prefer fused RoPE from Apex as we need the `transpose_output_memory` argument for the bshd trick.
 # See https://gitlab-master.nvidia.com/ADLR/megatron-lm/-/merge_requests/2469.
 try:
     # pylint: disable=unused-import
-    from apex.transformer.functional import fused_apply_rotary_pos_emb
+    from megatron.core.extensions.transformer_engine import fused_apply_rotary_pos_emb
 except ImportError:
-    try:
-        from megatron.core.extensions.transformer_engine import fused_apply_rotary_pos_emb
-    except ImportError:
-        fused_apply_rotary_pos_emb = None
+    fused_apply_rotary_pos_emb = None
 
 
 try:
     from megatron.core.extensions.transformer_engine import fused_apply_rotary_pos_emb_thd
 except ImportError:
-    try:
-        from apex.transformer.functional import fused_apply_rotary_pos_emb_thd
-    except ImportError:
-        fused_apply_rotary_pos_emb_thd = None
+    fused_apply_rotary_pos_emb_thd = None
 
 
 try:
@@ -78,8 +65,6 @@ def get_pos_emb_on_this_cp_rank(
     pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], -1, *pos_emb.shape[(seq_dim + 2) :])
     return pos_emb
 
-def pos_emb_idx_map(cp_idx: Tensor, seq_length: int, micro_batch_size: int) -> Tensor:
-    return cp_idx.div(micro_batch_size, rounding_mode='floor').clamp(max=seq_length-1)
 
 def get_pos_emb_on_this_cp_rank_magi(pos_emb: Tensor, magi_attention_key) -> Tensor:
     """Get the position embedding on the current context parallel rank(seq_dim=0).
@@ -92,18 +77,10 @@ def get_pos_emb_on_this_cp_rank_magi(pos_emb: Tensor, magi_attention_key) -> Ten
     args = get_args()
 
     cp_idx = get_position_ids(magi_attention_key)
-    # print(f"get_pos_emb_on_this_cp_rank_magi, pos_emb shape is {pos_emb.shape}")
-    # print(f"rank is {torch.distributed.get_rank()}")
-    # print(f"get_pos_emb_on_this_cp_rank_magi, cp_idx after get_position_ids is {cp_idx}")
-    # print(f"get_pos_emb_on_this_cp_rank, cp_idx shape is {cp_idx.shape}")
-
-    # cp_idx = pos_emb_idx_map(cp_idx, args.seq_length, args.micro_batch_size)
-    # print(f"get_pos_emb_on_this_cp_rank_magi, after cp_idx map, cp_idx is {cp_idx}")
-
     pos_emb = pos_emb[cp_idx]
-    # print(f"get_pos_emb_on_this_cp_rank_magi, after pos_emb[cp_idx], pos_emb shape is {pos_emb.shape}")
 
     return pos_emb
+
 
 def _rotate_half(x: Tensor, rotary_interleaved: bool) -> Tensor:
     """Change sign so the last dimension becomes [-odd, +even]
