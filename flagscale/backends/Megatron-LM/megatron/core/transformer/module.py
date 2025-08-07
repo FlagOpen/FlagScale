@@ -232,7 +232,8 @@ class Float16Module(MegatronModule):
         return self.module.set_input_tensor(input_tensor)
 
     def forward(self, *inputs, **kwargs):  # pylint: disable=missing-function-docstring
-        from megatron.core.pipeline_parallel.dualpipev_schedules import get_dualpipe_chunk
+        ######### FlagScale Begin ########
+        from flagscale.train.dualpipev.dualpipev_schedules import get_dualpipe_chunk
         if self.config.use_dualpipev:
             dualpipe_first_stage = parallel_state.is_pipeline_first_stage() and get_dualpipe_chunk() == 0
             if dualpipe_first_stage:
@@ -242,6 +243,7 @@ class Float16Module(MegatronModule):
             if dualpipe_last_stage:
                 outputs = float16_to_fp32(outputs)
             return outputs
+        ######### FlagScale End ########
         else:
             if parallel_state.is_pipeline_first_stage(ignore_virtual=False, vp_stage=self.vp_stage):
                 inputs = fp32_to_float16(inputs, self.float16_convertor)
