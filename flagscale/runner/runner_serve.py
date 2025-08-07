@@ -527,7 +527,11 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 master_port = target_port if target_port else get_free_port()
 
                 address = f"{master_ip}:{master_port}"
+                nodes_envs = config.experiment.runner.get("nodes_envs", {})
                 for index, (ip, node) in enumerate(nodes):
+                    diff_node_cmd = None
+                    if nodes_envs and ip in config.experiment.runner.nodes_envs and config.experiment.runner.nodes_envs[ip] is not None:
+                        diff_node_cmd = " && ".join(f"export {key}={value}" for key, value in config.experiment.runner.nodes_envs[ip].items())
                     if not node.get("type", None):
                         raise ValueError(
                             f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
@@ -547,6 +551,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         else:
                             resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
                             node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
+                        if diff_node_cmd:
+                            node_cmd = f"{diff_node_cmd} && " + node_cmd
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
                         f.write(f"{node_cmd}\n")
@@ -569,6 +575,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             node_cmd = (
                                 f"${{ray_path}} start --address={address} --resources='{resource}'"
                             )
+                        if diff_node_cmd:
+                            node_cmd = f"{diff_node_cmd} && " + node_cmd
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
                         if envs_str:
