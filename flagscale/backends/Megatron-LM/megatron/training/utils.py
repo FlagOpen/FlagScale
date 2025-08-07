@@ -568,7 +568,6 @@ def get_batch_on_this_tp_rank(data_iterator):
             if args.mtp_num_layers is not None or args.magi_attention:
                 _broadcast(batch['tokens'])
                 _broadcast(batch['position_ids'])
-            
             _broadcast(batch['labels'])
             _broadcast(batch['loss_mask'])
             _broadcast(batch['attention_mask'])
