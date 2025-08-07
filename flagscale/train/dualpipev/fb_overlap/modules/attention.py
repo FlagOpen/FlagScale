@@ -4,14 +4,14 @@ from megatron.training import get_args
 
 
 def attention_forward(
-        self,
-        hidden_states,
-        residual,
-        attention_mask=None,
-        inference_params=None,
-        rotary_pos_emb=None,
-        packed_seq_params=None,
-        recompute_norm=False
+    self,
+    hidden_states,
+    residual,
+    attention_mask=None,
+    inference_params=None,
+    rotary_pos_emb=None,
+    packed_seq_params=None,
+    recompute_norm=False,
 ):
     # Optional Input Layer norm
     def pre_norm(hidden_states):

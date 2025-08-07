@@ -1,25 +1,23 @@
 # Mainly adoped from https://gitee.com/ascend/MindSpeed/blob/master/mindspeed/core/transformer/moe/moe_feature/fb_overlap/transformer_layer.py
 
 from contextlib import nullcontext
+
 import torch
-from megatron.core.pipeline_parallel.fb_overlap.modules.utils import (
-    LayerGraph, P2PCommParams
-)
-from megatron.core.pipeline_parallel.fb_overlap.overlap_funcs.fwd import (
-    transformer_layer_forward_moe,
-    transformer_layer_forward_dense,
-)
 
-from megatron.core.pipeline_parallel.fb_overlap.overlap_funcs.bwd import (
-    transformer_layer_backward_moe,
+from flagscale.train.dualpipev.fb_overlap.modules.utils import LayerGraph, P2PCommParams
+from flagscale.train.dualpipev.fb_overlap.overlap_funcs.bwd import (
     transformer_layer_backward_dense,
+    transformer_layer_backward_moe,
 )
-
-from megatron.core.pipeline_parallel.fb_overlap.overlap_funcs.fwdbwd import (
-    transformer_layer_forward_moe_backward_moe_overlapping,
+from flagscale.train.dualpipev.fb_overlap.overlap_funcs.fwd import (
+    transformer_layer_forward_dense,
+    transformer_layer_forward_moe,
+)
+from flagscale.train.dualpipev.fb_overlap.overlap_funcs.fwdbwd import (
+    transformer_layer_forward_dense_backward_dense_overlapping,
     transformer_layer_forward_dense_backward_moe_overlapping,
     transformer_layer_forward_moe_backward_dense_overlapping,
-    transformer_layer_forward_dense_backward_dense_overlapping,
+    transformer_layer_forward_moe_backward_moe_overlapping,
 )
 
 
@@ -33,10 +31,9 @@ def transformer_layer_forward(
     inference_params=None,
     packed_seq_params=None,
     use_orig_layer_forward=False,
-    checkpoint=False
+    checkpoint=False,
 ):
-    """ Forward function of transformer layer, dense or moe
-    """
+    """Forward function of transformer layer, dense or moe"""
     if checkpoint:
         checkpoint_context = torch.no_grad()
     else:
@@ -50,25 +47,34 @@ def transformer_layer_forward(
             layer_forward_func = transformer_layer_forward_dense
 
         return layer_forward_func(
-            self, hidden_states, attention_mask,
-            context, context_mask, rotary_pos_emb, inference_params, packed_seq_params, checkpoint=checkpoint
+            self,
+            hidden_states,
+            attention_mask,
+            context,
+            context_mask,
+            rotary_pos_emb,
+            inference_params,
+            packed_seq_params,
+            checkpoint=checkpoint,
         )
 
 
-def transformer_layer_backward(
-    layer_output_grad,
-    layer_graph
-):
-    """ Backward function of transformer layer, dense or moe
-    """
+def transformer_layer_backward(layer_output_grad, layer_graph):
+    """Backward function of transformer layer, dense or moe"""
     if layer_graph.checkpointed:
         with torch.enable_grad():
             _, _, restored_layer_graph = transformer_layer_forward(
-                layer_graph.layer, layer_graph.layer_input, *layer_graph.layer_inputs, checkpoint=False
+                layer_graph.layer,
+                layer_graph.layer_input,
+                *layer_graph.layer_inputs,
+                checkpoint=False
             )
-            restored_layer_graph.unperm2_graph = (restored_layer_graph.unperm2_graph[0], layer_graph.unperm2_graph[1])
+            restored_layer_graph.unperm2_graph = (
+                restored_layer_graph.unperm2_graph[0],
+                layer_graph.unperm2_graph[1],
+            )
             layer_graph = restored_layer_graph
-    
+
     if layer_graph.is_moe_layer:
         return transformer_layer_backward_moe(layer_output_grad, layer_graph)
     else:
@@ -91,22 +97,35 @@ def transformer_layer_forward_backward_overlapping(
     pp_comm_params: P2PCommParams = None,
     bwd_pp_comm_params: P2PCommParams = None,
     use_orig_layer_forward=False,
-    checkpoint=False
+    checkpoint=False,
 ):
-    """ Forward-backward overlapping function of transformer layer, dense or moe
+    """Forward-backward overlapping function of transformer layer, dense or moe
     if bwd_layer_graph is None, execute forward without overlapping;
     if bwd_layer_graph is not None, there are four possible combinations:
     [forward dense, backward dense], [forward dense, backward moe], [forward moe, backward dense], [forward moe, backward moe]
     """
     if bwd_layer_graph is None:
         out = transformer_layer_forward(
-            fwd_layer, hidden_states, attention_mask, context, context_mask, rotary_pos_emb,
-            inference_params, packed_seq_params, use_orig_layer_forward, checkpoint=checkpoint
+            fwd_layer,
+            hidden_states,
+            attention_mask,
+            context,
+            context_mask,
+            rotary_pos_emb,
+            inference_params,
+            packed_seq_params,
+            use_orig_layer_forward,
+            checkpoint=checkpoint,
         )
         if len(out) > 2 and checkpoint:
             out[2].record_layer_inputs(
-                attention_mask, context, context_mask, rotary_pos_emb,
-                inference_params, packed_seq_params, use_orig_layer_forward
+                attention_mask,
+                context,
+                context_mask,
+                rotary_pos_emb,
+                inference_params,
+                packed_seq_params,
+                use_orig_layer_forward,
             )
         return out
 
@@ -125,18 +144,38 @@ def transformer_layer_forward_backward_overlapping(
 
         if bwd_layer_graph.checkpointed:
             _, _, bwd_layer_graph = transformer_layer_forward(
-                bwd_layer_graph.layer, bwd_layer_graph.layer_input, *bwd_layer_graph.layer_inputs, checkpoint=False
+                bwd_layer_graph.layer,
+                bwd_layer_graph.layer_input,
+                *bwd_layer_graph.layer_inputs,
+                checkpoint=False
             )
 
         out = fb_overlap_func(
-            fwd_layer, hidden_states, attention_mask, bwd_layer_output_grad, bwd_layer_graph, bwd_unperm_a2a_handle,
-            next_bwd_layer_graph, context, context_mask, rotary_pos_emb, inference_params,
-            packed_seq_params, pp_comm_params, bwd_pp_comm_params, checkpoint=checkpoint
+            fwd_layer,
+            hidden_states,
+            attention_mask,
+            bwd_layer_output_grad,
+            bwd_layer_graph,
+            bwd_unperm_a2a_handle,
+            next_bwd_layer_graph,
+            context,
+            context_mask,
+            rotary_pos_emb,
+            inference_params,
+            packed_seq_params,
+            pp_comm_params,
+            bwd_pp_comm_params,
+            checkpoint=checkpoint,
         )
 
         if checkpoint:
             out[2].record_layer_inputs(
-                attention_mask, context, context_mask, rotary_pos_emb,
-                inference_params, packed_seq_params, use_orig_layer_forward
+                attention_mask,
+                context,
+                context_mask,
+                rotary_pos_emb,
+                inference_params,
+                packed_seq_params,
+                use_orig_layer_forward,
             )
         return out

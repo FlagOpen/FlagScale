@@ -1,10 +1,13 @@
+from typing import Dict, List, Literal, Optional, Tuple, Union
+
 import torch
 import torch.distributed as dist
+
 from torch import Tensor
 from torch.autograd.variable import Variable
-from megatron.core.pipeline_parallel import p2p_communication
+
 from megatron.core.parallel_state import get_global_memory_buffer, get_tensor_model_parallel_rank
-from typing import Dict, Literal, Optional, Tuple, Union, List
+from megatron.core.pipeline_parallel import p2p_communication
 
 COMM_STREAM = None
 
@@ -40,7 +43,7 @@ def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event
                 output_split_sizes=output_split_sizes,
                 input_split_sizes=input_split_sizes,
                 group=group,
-                async_op=True
+                async_op=True,
             )
     else:
         handle = dist.all_to_all_single(
@@ -49,7 +52,7 @@ def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event
             output_split_sizes=output_split_sizes,
             input_split_sizes=input_split_sizes,
             group=group,
-            async_op=True
+            async_op=True,
         )
     return input_, a2a_out, handle
 
@@ -66,19 +69,16 @@ def detach_tensor(tensor, checkpoint_forward=False):
 
 def turn_attention_delay_wgrad_compute(bwd_layer_graph, enable=False):
     attention_layer = bwd_layer_graph.layer.self_attention
-    has_linear_qkv = any(
-        "linear_qkv" in name 
-        for name, _ in attention_layer.named_modules()
-    )
+    has_linear_qkv = any("linear_qkv" in name for name, _ in attention_layer.named_modules())
     if enable:
         attention_layer.linear_proj.wgrad_store.enable_delay_wgrad_compute()
-        if has_linear_qkv: # for self_attention
-             attention_layer.linear_qkv.wgrad_store.enable_delay_wgrad_compute()
-        else: # for multi_latent_attention
+        if has_linear_qkv:  # for self_attention
+            attention_layer.linear_qkv.wgrad_store.enable_delay_wgrad_compute()
+        else:  # for multi_latent_attention
             attention_layer.linear_kv_up_proj.wgrad_store.enable_delay_wgrad_compute()
             attention_layer.linear_kv_down_proj.wgrad_store.enable_delay_wgrad_compute()
             attention_layer.linear_q_proj.wgrad_store.enable_delay_wgrad_compute()
-        
+
     else:
         attention_layer.linear_proj.wgrad_store.disable_delay_wgrad_compute()
         if has_linear_qkv:
@@ -91,10 +91,7 @@ def turn_attention_delay_wgrad_compute(bwd_layer_graph, enable=False):
 
 def call_attention_backward_dw(bwd_layer_graph):
     attention_layer = bwd_layer_graph.layer.self_attention
-    has_linear_qkv = any(
-        "linear_qkv" in name 
-        for name, _ in attention_layer.named_modules()
-    )
+    has_linear_qkv = any("linear_qkv" in name for name, _ in attention_layer.named_modules())
 
     attention_layer.linear_proj.backward_dw()
     if has_linear_qkv:
@@ -174,7 +171,15 @@ def run_graph_backward(graph, output_tensor_grad=None, keep_graph=False, keep_gr
 
 
 class LayerGraph:
-    def __init__(self, saved_graph_and_graph_inputs, recompute_needed_tensors, input_splits, output_splits, layer, checkpointed=False):
+    def __init__(
+        self,
+        saved_graph_and_graph_inputs,
+        recompute_needed_tensors,
+        input_splits,
+        output_splits,
+        layer,
+        checkpointed=False,
+    ):
         if not checkpointed:
             self.attn_graph = saved_graph_and_graph_inputs[0]
             self.pre_mlp_layernorm_graph = saved_graph_and_graph_inputs[1]
@@ -233,7 +238,14 @@ class P2PCommParams:
 
 
 class P2PCommOutput:
-    def __init__(self, input_tensor=None, output_tensor_grad=None, fwd_wait_handles=None, bwd_wait_handles=None, input_tensor_grad=None):
+    def __init__(
+        self,
+        input_tensor=None,
+        output_tensor_grad=None,
+        fwd_wait_handles=None,
+        bwd_wait_handles=None,
+        input_tensor_grad=None,
+    ):
         self.input_tensor = input_tensor
         self.fwd_wait_handles = fwd_wait_handles
         self.output_tensor_grad = output_tensor_grad
@@ -242,8 +254,12 @@ class P2PCommOutput:
 
 
 def is_p2p_comm_needed(pp_comm_params: P2PCommParams):
-    return pp_comm_params is not None and \
-           (pp_comm_params.send_next or pp_comm_params.send_prev or pp_comm_params.recv_next or pp_comm_params.recv_prev)
+    return pp_comm_params is not None and (
+        pp_comm_params.send_next
+        or pp_comm_params.send_prev
+        or pp_comm_params.recv_next
+        or pp_comm_params.recv_prev
+    )
 
 
 def p2p_comm_helper(comm_params: P2PCommParams, tensor_tosend):
@@ -262,7 +278,7 @@ def p2p_comm_helper(comm_params: P2PCommParams, tensor_tosend):
         recv_next=comm_params.recv_next,
         tensor_shape=comm_params.tensor_shape,
         wait_on_reqs=False,
-        config=comm_params.config
+        config=comm_params.config,
     )
 
     if comm_params.recv_next:
