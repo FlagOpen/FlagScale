@@ -151,6 +151,7 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                         offset = (
                             middle_pipeline_rank * num_layers_per_pipeline_rank
                         ) + num_layers_in_first_pipeline_stage
+                ######### FlagScale Begin ########
                 else:
                     # for dualpipev
                     num_layers_in_first_pipeline_stage_first_chunk = num_layers_in_first_pipeline_stage // 2
@@ -204,6 +205,7 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                             offset = start_offset + (
                                 middle_pipeline_rank * num_layers_per_pipeline_rank_second_chunk
                             ) + num_layers_in_last_pipeline_stage_second_chunk
+                ######### FlagScale End ########
         else:
             num_layers = config.num_layers
 
@@ -248,6 +250,7 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                         )
                     ):
                         offset -= 1
+                ######### FlagScale Begin ########
                 else:
                     num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank // 2
                     if num_layers_per_pipeline_rank % 2 != 0:
@@ -258,6 +261,7 @@ def get_transformer_layer_offset(config: TransformerConfig, vp_stage: Optional[i
                         offset = pipeline_rank * num_layers_per_pipeline_rank_first_chunk
                     else:
                         offset = config.num_layers - ((pipeline_rank+1) * num_layers_per_pipeline_rank_second_chunk)
+                ######### FlagScale End ########
 
     else:
         offset = 0
