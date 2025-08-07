@@ -427,6 +427,7 @@ def is_rank0():
 
 def is_last_rank():
     if mpu.get_pipeline_model_parallel_world_size() > 1:
+        ######### FlagScale Modify ########
         if mpu.get_dualpipev_pipeline_model_parallel_world_size() is not None:
             return mpu.is_pipeline_first_stage(ignore_virtual=True)
         else:
@@ -557,9 +558,11 @@ def get_batch_on_this_tp_rank(data_iterator):
            _broadcast(batch['tokens'])
            _broadcast(batch['attention_mask'])
            _broadcast(batch['position_ids'])
+            ######### FlagScale Begin ########
            if mpu.get_dualpipev_pipeline_model_parallel_world_size() is not None:
                 _broadcast(batch['loss_mask'])
                 _broadcast(batch['labels'])
+            ######### FlagScale End ########
 
         elif mpu.is_pipeline_last_stage():
             # Multi-Token Prediction (MTP) layers need tokens and position_ids to calculate embedding.
@@ -614,6 +617,7 @@ def get_batch_on_this_tp_rank(data_iterator):
             _broadcast(tokens)
             _broadcast(attention_mask)
             _broadcast(position_ids)
+            ######### FlagScale Modify ########
             if mpu.get_dualpipev_pipeline_model_parallel_world_size() is not None:
                 _broadcast(loss_mask)
                 _broadcast(labels)
