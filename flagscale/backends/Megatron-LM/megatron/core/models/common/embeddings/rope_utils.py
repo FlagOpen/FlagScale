@@ -41,6 +41,13 @@ except ImportError:
 __all__ = ['apply_rotary_emb_flash']
 
 
+# torch.set_printoptions(
+#     threshold=torch.inf,  # 不省略任何元素
+#     edgeitems=3,         # 控制在省略打印时显示的首尾元素数量
+#     linewidth=100,       # 设置每行的宽度
+#     sci_mode=False       # 禁用科学计数法
+# )
+
 def get_pos_emb_on_this_cp_rank(
     pos_emb: Tensor, seq_dim: int, cp_group: torch.distributed.ProcessGroup
 ) -> Tensor:
@@ -75,9 +82,13 @@ def get_pos_emb_on_this_cp_rank_magi(pos_emb: Tensor, magi_attention_key) -> Ten
     from magi_attention.api import get_position_ids
     from megatron.training import get_args
     args = get_args()
+    # print(f"pos_emb shape is {pos_emb}")
 
     cp_idx = get_position_ids(magi_attention_key)
+    # print(f"cp idx is {cp_idx}")
+
     pos_emb = pos_emb[cp_idx]
+    # print(f"pos_emb shape is {pos_emb.shape}")
 
     return pos_emb
 
