@@ -84,6 +84,8 @@ from magi_attention.meta.solver.overlap_solver import (
     UniformOverlapAlg,
     GreedyOverlapAlg,
 )
+MAGI_CHUNK_SIZE = 32
+####### magi attention end ######
 
 stimer = StragglerDetector()
 
@@ -216,29 +218,21 @@ def model_provider(
 
 
 def new_squash_batch_dim(x):
+    assert x.shape[0] == 1, "Magi Attention is not supported with micro_batch_size > 1"
     x_merged = rearrange(x, "b s ... -> (s b) ...")
     return x_merged
+
 
 def prepare_data(input):
     # input with shape [b, s]
     args = get_args()
-    config = core_transformer_config_from_args(args)
-
-    head_dim = config.hidden_size // config.num_attention_heads
-    chunk_size = 32
-
     # squash batch dim.
-    # print(f"train_gpt, prepare_data, before squash, input shape is {input.shape}")
     input = new_squash_batch_dim(input)
-    # print(f"train_gpt, prepare_data, after squash, input shape is {input.shape}")
-    pad_size = compute_pad_size(input.size(0), args.context_parallel_size, head_dim, chunk_size)
-    # print(f"train_gpt, prepare_data, head_dim is {head_dim}, cp size is {args.context_parallel_size}, chunk_size is {chunk_size}")
-    # print(f"train_gpt, prepare_data, pad_size is {pad_size}")
-
+    pad_size = compute_pad_size(input.size(0), args.context_parallel_size, head_dim=args.kv_channels, chunk_size=MAGI_CHUNK_SIZE)
     return input, pad_size
 
 
-def prepare_magi_attention(input, attention_mask, pad_size, cp_group):
+def prepare_magi_attention(input, pad_size, cp_group):
     dist_attn_config = DistAttnConfig(
         dispatch_config=DispatchConfig(alg=MinHeapDispatchAlg()),
         overlap_config=OverlapConfig(
@@ -259,9 +253,6 @@ def prepare_magi_attention(input, attention_mask, pad_size, cp_group):
     args = get_args()
     config = core_transformer_config_from_args(args)
 
-    head_dim = config.hidden_size // config.num_attention_heads
-    total_seq_length = args.micro_batch_size * args.seq_length
-
     # fake: text img img text img img text
     # text: 0-10
     # img: 10-100
@@ -270,29 +261,23 @@ def prepare_magi_attention(input, attention_mask, pad_size, cp_group):
     # img: 400-600
     # img: 600-1000
     # text: 1000-last
-    q_ranges_list = [[0, 10], [10, 100], [100, 400], [100, 400], [400, 600], [400, 600], [600, total_seq_length], [600, total_seq_length], [600, total_seq_length]]
-    k_ranges_list = [[0, 10], [0, 100], [0, 10], [100, 400], [0, 10], [100, 600], [0, 10], [100, 400], [600, total_seq_length]]
+    q_ranges_list = [[0, 10], [10, 100], [100, 400], [100, 400], [400, 600], [400, 600], [600, args.seq_length], [600, args.seq_length], [600, args.seq_length]]
+    k_ranges_list = [[0, 10], [0, 100], [0, 10], [100, 400], [0, 10], [100, 600], [0, 10], [100, 400], [600, args.seq_length]]
     attn_mask_type = [AttnMaskType.CAUSAL, AttnMaskType.FULL, AttnMaskType.FULL, AttnMaskType.CAUSAL, AttnMaskType.FULL, AttnMaskType.FULL, AttnMaskType.FULL, AttnMaskType.FULL, AttnMaskType.CAUSAL]
-    
-
     # print(f"q_ranges_list is {q_ranges_list}")
     # print(f"k_ranges_list is {k_ranges_list}")
     # print(f"attn_mask_type is {attn_mask_type}")
 
-
-    total_seqlen_q = total_seq_length
-    total_seqlen_k = total_seq_length
-    chunk_size = 32
     x_padded, dist_attn_runtime_key = magi_attn_flex_dispatch(
                 input,
                 q_ranges=AttnRanges.from_ranges(q_ranges_list),
                 k_ranges=AttnRanges.from_ranges(k_ranges_list),
                 attn_mask_type=attn_mask_type,
-                total_seqlen_q=total_seqlen_q,
-                total_seqlen_k=total_seqlen_k,
-                head_dim=head_dim,
+                total_seqlen_q=args.seq_length,
+                total_seqlen_k=args.seq_length,
+                head_dim=args.kv_channels,
                 pad_size=pad_size,
-                chunk_size=chunk_size,
+                chunk_size=MAGI_CHUNK_SIZE,
                 cp_group=cp_group,
                 cp_mesh=None,
                 dist_attn_config=dist_attn_config,
@@ -303,33 +288,29 @@ def prepare_magi_attention(input, attention_mask, pad_size, cp_group):
 
     return x_padded, dist_attn_runtime_key
 
+
 def dispatch_along_cp_rank(batch: Dict[str, Any]):
     """slice data along sequence dimension for context parallelisms and prepare magiattention key."""
-    
     # process tokens
     tokens = batch['tokens']
-    attention_mask = batch['attention_mask']
     if tokens is None:
         return
 
     tokens, pad_size_for_tokens = prepare_data(tokens)
     cp_group = mpu.get_context_parallel_group()
     input, dist_attn_runtime_key = prepare_magi_attention(
-                tokens, attention_mask, pad_size_for_tokens, cp_group,
+                tokens, pad_size_for_tokens, cp_group,
             )
-    # print(f"train_gpt, dispatch_along_cp_rank, after prepare_magi_attention, input shape is {input.shape}")
+
     # reshape, megatron need batch_dim for input.
     args = get_args()
     micro_batch_size = args.micro_batch_size
-
     input = input.view(args.seq_length // args.context_parallel_size, -1).view(micro_batch_size, -1)
-    # print(f"train_gpt, dispatch_along_cp_rank, after view, input shape is {input.shape}")
     batch['tokens'] = input
     
     # process others
     batch['key'] = dist_attn_runtime_key
     batch['position_ids'] = get_position_ids(dist_attn_runtime_key)
-    # print(f"dist attn runtime key is {dist_attn_runtime_key}")
 
     return batch
 
