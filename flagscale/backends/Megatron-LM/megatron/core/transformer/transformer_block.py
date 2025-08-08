@@ -156,6 +156,7 @@ def get_num_layers_to_build(config: TransformerConfig, vp_stage: Optional[int] =
         num_layers_per_virtual_stage = num_layers_per_pipeline_rank // vp_size
 
         num_layers_to_build = num_layers_per_virtual_stage
+    ######### FlagScale Begin ########
     elif config.use_dualpipev:
         num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank // 2
         if num_layers_per_pipeline_rank % 2 != 0:
@@ -165,6 +166,7 @@ def get_num_layers_to_build(config: TransformerConfig, vp_stage: Optional[int] =
             num_layers_to_build = num_layers_per_pipeline_rank_first_chunk
         else:
             num_layers_to_build = num_layers_per_pipeline_rank_second_chunk
+    ######### FlagScale End ########
     else:
         # Non-interleaved pipeline parallelism:
         # Each stage gets a contiguous set of layers.
