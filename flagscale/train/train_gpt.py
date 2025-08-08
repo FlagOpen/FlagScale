@@ -291,24 +291,36 @@ def prepare_magi_attention(input, pad_size, cp_group):
 
 def dispatch_along_cp_rank(batch: Dict[str, Any]):
     """slice data along sequence dimension for context parallelisms and prepare magiattention key."""
-    # process tokens
-    tokens = batch['tokens']
-    if tokens is None:
-        return
+    args = get_args()
+    tokens = batch['tokens'] #[b, s], b=1
+    position_ids = batch['position_ids'] #[b, s], b=1
+    assert tokens is not None and position_ids is not None, "tokens and position_ids must be provided for magi attention"
 
-    tokens, pad_size_for_tokens = prepare_data(tokens)
+    # tokens
+    tokens, pad_size_for_tokens = prepare_data(tokens) #[b*s], [s]
     cp_group = mpu.get_context_parallel_group()
     input, dist_attn_runtime_key = prepare_magi_attention(
-                tokens, pad_size_for_tokens, cp_group,
-            )
-
+        tokens, pad_size_for_tokens, cp_group,
+    ) #[s/cp_size]
+    print(f"after prepare_magi_attention, input shape is {input.shape}")
     # reshape, megatron need batch_dim for input.
-    args = get_args()
     micro_batch_size = args.micro_batch_size
-    input = input.view(args.seq_length // args.context_parallel_size, -1).view(micro_batch_size, -1)
+    input = input.view(micro_batch_size, -1) #[b, s], b=1
     batch['tokens'] = input
     
-    # process others
+    # position_ids
+    
+
+
+
+    # labels
+    # skip processing, logits will be undispatched to be full tensors
+    # loss_mask
+    # skip processing, logits will be undispatched to be full tensors
+
+
+
+    # others
     batch['key'] = dist_attn_runtime_key
     batch['position_ids'] = get_position_ids(dist_attn_runtime_key)
 
