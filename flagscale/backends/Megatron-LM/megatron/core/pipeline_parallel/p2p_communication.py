@@ -563,7 +563,7 @@ def send_forward(
     """
     if config.enable_hetero:
         from flagscale.train.hetero.p2p_communication import send_forward_hetero
-        send_forward_hetero(output_tensor, config)
+        send_forward_hetero(output_tensor, config, is_last_stage=is_last_stage)
         return
 
     if not is_last_stage:
