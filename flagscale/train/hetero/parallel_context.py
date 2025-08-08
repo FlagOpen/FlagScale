@@ -813,9 +813,6 @@ class ParallelContext:
                 position_embedding_ranks = ranks
             group = create_group(embedding_ranks, timeout=self._timeout, use_local_synchronization=False, group_desc="embd")
             if self._rank in embedding_ranks and ("embd" not in self._global_group_ranks or embedding_ranks not in self._global_group_ranks["embd"]):
-                x = torch.rand(2,3, device=torch.cuda.current_device())
-                torch.distributed.all_reduce(x, group=group)
-                print(f"After all reduce: x: {x.sum()}")
                 self._global_process_groups["embd"].append(group)
                 self._global_process_group_to_ranks[group] = embedding_ranks
                 self._global_group_ranks["embd"].append(embedding_ranks)
