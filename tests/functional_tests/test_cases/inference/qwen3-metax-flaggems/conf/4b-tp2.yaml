@@ -27,6 +27,7 @@ experiment:
     CUDNN_BENCHMARK: "false"
     CUDNN_DETERMINISTIC: "true"
     USE_FLAGGEMS: "true"
+    GEMS_VENDOR: "metax"
 
 action: run
 
