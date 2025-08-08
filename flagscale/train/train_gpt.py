@@ -237,188 +237,6 @@ def prepare_data(input):
 
     return input, pad_size
 
-def split_attention_mask_naive(
-    attention_mask: torch.Tensor
-):
-    """
-    Split a 2-D attention mask into the largest possible rectangular or
-    lower-triangular sub-masks, using only PyTorch tensors.
-
-    Parameters
-    ----------
-    attention_mask : torch.Tensor
-        Boolean tensor of shape [seq_length, seq_length].
-        True means “token can attend”.
-
-    Returns
-    -------
-    q_ranges : List[List[int, int]]
-        List of (q_start, q_end) in **left-closed, right-open** form.
-    k_ranges : List[List[int, int]]
-        List of (k_start, k_end) in **left-closed, right-open** form.
-    types : List[AttnMaskType]
-        Either 'AttnMaskType.FULL' (rectangle) or 'AttnMaskType.CAUSAL' (lower-triangle).
-    """
-    device = attention_mask.device
-    seq_length = attention_mask.size(0)
-
-    used = torch.zeros_like(attention_mask, dtype=torch.bool)
-
-    q_ranges: List[List[int, int]] = []
-    k_ranges: List[List[int, int]] = []
-    types: List[AttnMaskType] = []
-
-    for q0 in range(seq_length):
-        for k0 in range(seq_length):
-            print(f"processing location: [{q0}, {k0}]")
-            if used[q0, k0] or not attention_mask[q0, k0]:
-                continue
-
-            # 1. Try the largest possible rectangle ---------------------------
-            q_end = seq_length
-            for q1 in range(q0 + 1, seq_length + 1):
-                if torch.any(~attention_mask[q0:q1, k0]) or torch.any(used[q0:q1, k0]):
-                    q_end = q1
-                    break
-
-            k_end = seq_length
-            for k1 in range(k0 + 1, seq_length + 1):
-                if torch.any(~attention_mask[q0, k0:k1]) or torch.any(used[q0, k0:k1]):
-                    k_end = k1
-                    break
-
-            if q_end > q0 and k_end > k0:
-                sub = attention_mask[q0:q_end, k0:k_end]
-                cov = used[q0:q_end, k0:k_end]
-                if torch.all(sub) and not torch.any(cov):
-                    q_ranges.append((q0, q_end))
-                    k_ranges.append((k0, k_end))
-                    types.append(AttnMaskType.FULL)
-                    used[q0:q_end, k0:k_end] = True
-                    continue
-
-            # 2. Rectangle failed; attempt lower-triangle ---------------------
-            max_len = min(seq_length - q0, seq_length - k0)
-            for l in range(max_len, 0, -1):
-                q_end = q0 + l
-                k_end = k0 + l
-                ref = torch.tril(torch.ones((l, l), dtype=torch.bool, device=device))
-                sub = attention_mask[q0:q_end, k0:k_end]
-                cov = used[q0:q_end, k0:k_end]
-                if torch.equal(sub, ref) and not torch.any(cov):
-                    q_ranges.append((q0, q_end))
-                    k_ranges.append((k0, k_end))
-                    types.append(AttnMaskType.CAUSAL)
-                    used[q0:q_end, k0:k_end] = True
-                    break
-
-    return q_ranges, k_ranges, types
-
-
-@torch.no_grad()
-def split_attention_mask(
-    attention_mask: torch.Tensor,
-    max_block_exp: int = 13,          # max block size = 2^max_block_exp
-) -> tuple[List[List[int]], List[List[int]], List[AttnMaskType]]:
-    """
-    Ultra-long-sequence optimized splitter.
-
-    Complexity:  O(seq_length log seq_length) time,
-                 O(seq_length)      memory.
-
-    Returns
-    -------
-    q_ranges : List[List[int]]
-        Each element is [q_start, q_end) (left-closed, right-open).
-    k_ranges : List[List[int]]
-        Each element is [k_start, k_end).
-    types    : List[AttnMaskType]
-        Mask type of the corresponding block.
-    """
-    device = attention_mask.device
-    seq_len = attention_mask.size(0)
-    mask = attention_mask.bool()
-
-    # outputs
-    q_ranges: List[List[int]] = []
-    k_ranges: List[List[int]] = []
-    types: List[AttnMaskType] = []
-
-    # track already-covered positions
-    used = torch.zeros(seq_len + 1, seq_len + 1, dtype=torch.bool, device=device)
-
-    # iterate block sizes in decreasing order
-    for exp in range(min(max_block_exp, seq_len.bit_length()), 0, -1):
-        block = 1 << exp
-        # print(f"exp {exp}, block size {block}")
-        num_q = (seq_len + block - 1) // block
-        num_k = (seq_len + block - 1) // block
-
-        # candidate top-left corners
-        q0_all = torch.arange(0, seq_len, block, device=device).view(-1, 1)
-        k0_all = torch.arange(0, seq_len, block, device=device).view(1, -1)
-
-        q1_all = torch.minimum(q0_all + block, torch.tensor(seq_len, device=device))
-        k1_all = torch.minimum(k0_all + block, torch.tensor(seq_len, device=device))
-
-        # flatten indices
-        q0_flat = q0_all.expand(num_q, num_k).reshape(-1)
-        k0_flat = k0_all.expand(num_q, num_k).reshape(-1)
-        q1_flat = q1_all.expand(num_q, num_k).reshape(-1)
-        k1_flat = k1_all.expand(num_q, num_k).reshape(-1)
-
-        # keep valid & uncovered blocks
-        valid = (q0_flat < q1_flat) & (k0_flat < k1_flat)
-        valid &= ~used[q0_flat, k0_flat]
-        if not valid.any():
-            continue
-
-        q0, k0, q1, k1 = q0_flat[valid], k0_flat[valid], q1_flat[valid], k1_flat[valid]
-
-        # -------- 1. detect FULL (rectangular) blocks --------
-        prefix = mask.cumsum(0).cumsum(1)
-        ones = q1 - q0
-        zeros = torch.zeros_like(ones)
-        area = ones * (k1 - k0)
-        ok = prefix[q1 - 1, k1 - 1] \
-             - prefix[q0 - 1, k1 - 1] \
-             - prefix[q1 - 1, k0 - 1] \
-             + prefix[q0 - 1, k0 - 1] == area
-        ok &= (q0 == 0) | (k0 == 0)  # boundary guard
-
-        # mark FULL blocks
-        for flag, r0, c0, r1, c1 in zip(ok.tolist(), q0.tolist(), k0.tolist(), q1.tolist(), k1.tolist()):
-            if flag and not used[r0, c0]:
-                q_ranges.append([int(r0), int(r1)])
-                k_ranges.append([int(c0), int(c1)])
-                types.append(AttnMaskType.FULL)
-                used[r0:r1, c0:c1] = True
-
-        # -------- 2. detect CAUSAL (lower-triangular) blocks --------
-        tri = torch.tril(torch.ones(block, block, device=device))
-        ok_tri = torch.zeros(q0.numel(), dtype=torch.bool, device=device)
-
-        for i in range(q0.numel()):
-            r0, c0, r1, c1 = q0[i], k0[i], q1[i], k1[i]
-            h = r1 - r0
-            w = c1 - c0
-            if h != w:
-                continue
-            sub = mask[r0:r1, c0:c1]
-            if torch.equal(sub, tri[:h, :h]) and not used[r0, c0]:
-                q_ranges.append([int(r0), int(r1)])
-                k_ranges.append([int(c0), int(c1)])
-                types.append(AttnMaskType.CAUSAL)
-                used[r0:r1, c0:c1] = True
-
-    # deterministic ordering (optional)
-    order = [i for i, _ in sorted(enumerate(q_ranges), key=lambda x: (x[1][0], x[1][1]))]
-    q_ranges = [q_ranges[i] for i in order]
-    k_ranges = [k_ranges[i] for i in order]
-    types = [types[i] for i in order]
-
-    return q_ranges, k_ranges, types
-
 
 def prepare_magi_attention(input, attention_mask, pad_size, cp_group):
     dist_attn_config = DistAttnConfig(
@@ -443,12 +261,20 @@ def prepare_magi_attention(input, attention_mask, pad_size, cp_group):
 
     head_dim = config.hidden_size // config.num_attention_heads
     total_seq_length = args.micro_batch_size * args.seq_length
-    half_seq_length = total_seq_length // 2
+
+    # fake: text img img text img img text
+    # text: 0-10
+    # img: 10-100
+    # img: 100-300
+    # text: 300-400
+    # img: 400-600
+    # img: 600-1000
+    # text: 1000-last
+    q_ranges_list = [[0, 10], [10, 100], [100, 400], [100, 400], [400, 600], [400, 600], [600, total_seq_length], [600, total_seq_length], [600, total_seq_length]]
+    k_ranges_list = [[0, 10], [0, 100], [0, 10], [100, 400], [0, 10], [100, 600], [0, 10], [100, 400], [600, total_seq_length]]
+    attn_mask_type = [AttnMaskType.CAUSAL, AttnMaskType.FULL, AttnMaskType.FULL, AttnMaskType.CAUSAL, AttnMaskType.FULL, AttnMaskType.FULL, AttnMaskType.FULL, AttnMaskType.FULL, AttnMaskType.CAUSAL]
     
-    # # dispatch input data to each rank and get key.
-    # print(f"original attention_mask shape is {attention_mask.shape}")
-    attention_mask = ~attention_mask
-    q_ranges_list, k_ranges_list, attn_mask_type = split_attention_mask(attention_mask[0][0])
+
     # print(f"q_ranges_list is {q_ranges_list}")
     # print(f"k_ranges_list is {k_ranges_list}")
     # print(f"attn_mask_type is {attn_mask_type}")
