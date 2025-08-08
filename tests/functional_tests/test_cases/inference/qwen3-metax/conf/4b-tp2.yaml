@@ -1,20 +1,19 @@
 defaults:
   - _self_
-  - train: tp2
+  - inference: 4b-tp2
 
 experiment:
-  exp_name: tp2
-  exp_dir: tests/functional_tests/test_cases/train/llava_onevision/results_test/tp2
+  exp_name: qwen3-metax
+  exp_dir: tests/functional_tests/test_cases/inference/qwen3-metax/results_test/4b-tp2
   task:
-    type: train
-    backend: megatron
-    entrypoint: flagscale/train/train_llava_onevision.py
+    type: inference
+    backend: vllm
+    entrypoint: flagscale/inference/inference_aquila.py
   runner:
-    backend: torchrun
-    ssh_port: null
-  shell_cmds: null
+    hostfile: null
   cmds:
-    before_start: cp -r ./third_party/Megatron-Energon/src/megatron/energon ./third_party/Megatron-LM/megatron && source /root/miniconda3/bin/activate flagscale-train
+    before_start:
+      source /opt/conda/bin/activate flagscale-inference
   envs:
     HYDRA_FULL_ERROR: 1
     CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
