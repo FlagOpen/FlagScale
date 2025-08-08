@@ -1,4 +1,5 @@
 import datetime
+import json
 import threading
 import time
 
@@ -340,6 +341,77 @@ class Collaborator:
         except (ConnectionError, TimeoutError, RedisError) as e:
             print(f"Error while waiting for agent status: {e}")
             return False
+
+    def record_environment(self, name: str, value: Dict[str, str]) -> Optional[bool]:
+        """
+        Store environment information into Redis as a hash field.
+
+        Args:
+            name (str): The field name under the Redis hash key "ENVIRONMENT_INFO"
+            value (Dict[str, str]): A dictionary of key-value pairs to store for this environment
+
+        Returns:
+            Optional[bool]: True if successful, False if there's an error, None if not implemented
+
+        Example:
+            >>> env_data = {
+                    'type': 'kitchen',
+                    'status': 'active',
+                    'lighting': 'bright'
+                }
+            >>> record_environment("home_kitchen", env_data)
+            True
+
+        Note:
+            The data is stored under the Redis hash key "ENVIRONMENT_INFO" with the given name as field.
+            Handles connection errors and Redis errors by returning False.
+        """
+        try:
+            redis_client = self._get_conn()
+            redis_client.hset("ENVIRONMENT_INFO", name, value)
+            return True
+        except (ConnectionError, TimeoutError, RedisError) as e:
+            return False
+
+    def read_environment(self, name: str) -> Optional[Union[Dict[str, str], str]]:
+        """
+        Retrieve environment information from Redis hash storage.
+
+        Args:
+            name (str): The key name of the environment data to retrieve from the "ENVIRONMENT_INFO" hash.
+
+        Returns:
+            Optional[Union[Dict[str, str], str]]:
+                - Dictionary if the stored value is a JSON string that can be parsed
+                - String if the value is not JSON or parsing fails
+                - None if the key doesn't exist or an error occurs
+
+        Example:
+            >>> # For JSON-stored data:
+            >>> read_environment("office_lighting")
+            {'status': 'on', 'brightness': '75%'}
+
+            >>> # For plain string data:
+            >>> read_environment("temperature")
+            "22.5°C"
+
+            >>> # When key doesn't exist:
+            >>> read_environment("nonexistent_key")
+            None
+
+        Note:
+            - The data is retrieved from the Redis hash key "ENVIRONMENT_INFO"
+            - Automatically attempts to parse JSON strings into dictionaries
+            - Returns None for any connection or Redis errors
+        """
+        try:
+            redis_client = self._get_conn()
+            raw_value = redis_client.hget("ENVIRONMENT_INFO", name)
+            if not raw_value:
+                return None
+            return json.loads(raw_value)
+        except (ConnectionError, TimeoutError, RedisError) as e:
+            return None
 
     # ----------------- Close Connection -----------------
     def _close_db(self) -> None:
