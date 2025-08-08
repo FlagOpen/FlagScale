@@ -649,6 +649,12 @@ class TransformerConfig(ModelParallelConfig):
     quant_recipe: Optional[RecipeConfig] = None
     """Configuration of any quantization to be applied to the model"""
 
+    ####################
+    # magi attention
+    ####################
+    magi_attention: bool = False
+    """Whether to use magi attention."""
+
     def __post_init__(self):
         """Python dataclass method that is used to modify attributes after initialization.
         See https://docs.python.org/3/library/dataclasses.html#post-init-processing for more

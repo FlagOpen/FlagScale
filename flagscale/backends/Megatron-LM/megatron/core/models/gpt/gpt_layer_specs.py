@@ -7,6 +7,8 @@ from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core.models.backends import BackendSpecProvider, LocalSpecProvider
 from megatron.core.models.gpt.moe_module_specs import get_moe_module_spec_for_backend
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
+from megatron.core.transformer.dot_product_attention import DotProductAttention
+from megatron.core.transformer.magi_attention import MagiAttention
 from megatron.core.transformer.enums import AttnMaskType, LayerType
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.mlp import MLP, MLPSubmodules
@@ -75,6 +77,7 @@ def get_gpt_layer_with_transformer_engine_spec(
     qk_l2_norm: Optional[bool] = False,
     use_te_op_fuser: Optional[bool] = False,
     use_kitchen: bool = False,
+    magi_attention: Optional[bool] = False,
 ) -> ModuleSpec:
     """Use this spec to use lower-level Transformer Engine modules (required for fp8 training).
 
@@ -116,6 +119,12 @@ def get_gpt_layer_with_transformer_engine_spec(
         use_te_op_fuser=use_te_op_fuser,
     )
 
+    if magi_attention:
+        core_attention_module = MagiAttention
+    else:
+        core_attention_module = TEDotProductAttention
+    print(f"core_attention_module is {core_attention_module}")
+
     if multi_latent_attention:
         assert qk_l2_norm is False, "qk_l2_norm is not supported with MLA."
         linear_q_up_proj = (
@@ -141,7 +150,7 @@ def get_gpt_layer_with_transformer_engine_spec(
                         linear_q_up_proj=linear_q_up_proj,
                         linear_kv_down_proj=backend.column_parallel_linear(),
                         linear_kv_up_proj=linear_kv_up_proj,
-                        core_attention=backend.core_attention(),
+                        core_attention=core_attention_module,
                         linear_proj=backend.row_parallel_linear(),
                         q_layernorm=IdentityOp,
                         kv_layernorm=IdentityOp,
@@ -163,7 +172,7 @@ def get_gpt_layer_with_transformer_engine_spec(
                     params={"attn_mask_type": AttnMaskType.causal},
                     submodules=SelfAttentionSubmodules(
                         linear_qkv=backend.column_parallel_layer_norm_linear(),
-                        core_attention=backend.core_attention(),
+                        core_attention=core_attention_module,
                         linear_proj=backend.row_parallel_linear(),
                         q_layernorm=(
                             L2Norm if qk_l2_norm else (qk_norm if qk_layernorm else IdentityOp)
@@ -199,6 +208,7 @@ def get_gpt_layer_local_spec(
     normalization: Optional[str] = None,
     qk_l2_norm: Optional[bool] = False,
     use_kitchen: bool = False,
+    magi_attention: Optional[bool] = False,
 ) -> ModuleSpec:
     """Use this spec for an implementation using only modules in Megatron-Core.
 
@@ -242,6 +252,12 @@ def get_gpt_layer_local_spec(
         moe_use_legacy_grouped_gemm=moe_use_legacy_grouped_gemm,
     )
 
+    if magi_attention:
+        core_attention_module = MagiAttention
+    else:
+        core_attention_module = DotProductAttention
+    print(f"core_attention_module is {core_attention_module}")
+
     if multi_latent_attention:
         assert qk_l2_norm is False, "qk_l2_norm is not supported with MLA."
         return ModuleSpec(
@@ -257,7 +273,7 @@ def get_gpt_layer_local_spec(
                         linear_q_up_proj=backend.column_parallel_linear(),
                         linear_kv_down_proj=backend.column_parallel_linear(),
                         linear_kv_up_proj=backend.column_parallel_linear(),
-                        core_attention=backend.core_attention(),
+                        core_attention=core_attention_module,
                         linear_proj=backend.row_parallel_linear(),
                         q_layernorm=qk_norm if qk_layernorm else IdentityOp,
                         kv_layernorm=qk_norm if qk_layernorm else IdentityOp,
@@ -279,7 +295,7 @@ def get_gpt_layer_local_spec(
                     params={"attn_mask_type": AttnMaskType.causal},
                     submodules=SelfAttentionSubmodules(
                         linear_qkv=backend.column_parallel_linear(),
-                        core_attention=backend.core_attention(),
+                        core_attention=core_attention_module,
                         linear_proj=backend.row_parallel_linear(),
                         q_layernorm=(
                             L2Norm if qk_l2_norm else (qk_norm if qk_layernorm else IdentityOp)
@@ -395,6 +411,7 @@ def get_gpt_decoder_block_spec(
     qk_l2_norm: Optional[bool] = False,
     vp_stage: Optional[int] = None,
     is_dualpipev_first_chunk: Optional[bool] = False,
+    magi_attention: Optional[bool] = False,
 ) -> TransformerBlockSubmodules:
     """GPT block spec."""
     if use_transformer_engine:
@@ -407,6 +424,7 @@ def get_gpt_decoder_block_spec(
             moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
             qk_l2_norm=qk_l2_norm,
             use_kitchen=config.use_kitchen,
+            magi_attention=magi_attention,
         )
         moe_layer_spec = get_gpt_layer_with_transformer_engine_spec(
             num_experts=config.num_moe_experts,
@@ -416,6 +434,7 @@ def get_gpt_decoder_block_spec(
             moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
             qk_l2_norm=qk_l2_norm,
             use_kitchen=config.use_kitchen,
+            magi_attention=magi_attention,
         )
     else:
         layer_norm_impl = LNImpl
@@ -428,6 +447,7 @@ def get_gpt_decoder_block_spec(
             normalization=normalization,
             qk_l2_norm=qk_l2_norm,
             use_kitchen=config.use_kitchen,
+            magi_attention=magi_attention,
         )
         moe_layer_spec = get_gpt_layer_local_spec(
             num_experts=config.num_moe_experts,
@@ -438,6 +458,7 @@ def get_gpt_decoder_block_spec(
             normalization=normalization,
             qk_l2_norm=qk_l2_norm,
             use_kitchen=config.use_kitchen,
+            magi_attention=magi_attention,
         )
 
     # Parse config.moe_layer_freq to determine the pattern of expert/dense layers.

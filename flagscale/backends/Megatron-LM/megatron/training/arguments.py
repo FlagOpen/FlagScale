@@ -78,6 +78,7 @@ def add_megatron_arguments(parser: argparse.ArgumentParser):
     parser = _add_msc_args(parser)
     parser = _add_kitchen_quantization_arguments(parser)
     parser = _add_sft_args(parser)
+    parser = _add_magi_attention_args(parser)
 
     return parser
 
@@ -1104,6 +1105,9 @@ def validate_args(args, defaults={}):
             f"Multi-Token Prediction (MTP) is not supported with {args.position_embedding_type} position embedding type."
             + f"The supported position embedding types are rope and none."
         )
+    
+    if args.magi_attention:
+        assert args.micro_batch_size == 1, "Magi Attention is not supported with micro_batch_size > 1"
 
     # CUDA Graphs
     if args.external_cuda_graph:
@@ -3234,5 +3238,11 @@ def _add_auto_skip_spiky_loss(parser):
                        help='Automatically skip spiky loss iterations.')
     group.add_argument('--spiky-loss-threshold', type=float, default=0.2,
                           help='Threshold for skipping spiky loss iterations.')
+    return parser
+
+def _add_magi_attention_args(parser):
+    group = parser.add_argument_group(title='magi attention')
+    group.add_argument('--magi-attention', action='store_true',
+                       help='Use magi attention for model.')
     return parser
 ########## FlagScale End ##########

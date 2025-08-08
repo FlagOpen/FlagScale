@@ -7,9 +7,10 @@ import os
 import torch
 
 from functools import partial
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict, Any
 
 import torch
+from einops import rearrange
 
 from megatron.core import parallel_state
 from megatron.training import get_args
@@ -62,6 +63,29 @@ from flagscale.train.extra_valid import extra_valid_datasets_provider
 from flagscale.train.train import pretrain
 from flagscale.train.global_vars import get_parallel_context
 
+####### magi attention import ######
+from magi_attention.api import magi_attn_flex_dispatch, magi_attn_flex_key, undispatch, calc_attn, squash_batch_dim, full_attention_to_varlen_attention, compute_pad_size   # func tools and interface
+from magi_attention.api.magi_attn_interface import get_position_ids
+from magi_attention.api.functools import pad_at_dim
+from magi_attention.common.ranges import AttnRanges
+from magi_attention.common.enum import AttnMaskType, AttnOverlapMode, OverlapAlgType
+from magi_attention.config import DistAttnConfig
+from magi_attention.meta.solver.dispatch_solver import (
+    DispatchConfig,
+    LBDispatchAlg,
+    DPDispatchAlg,
+    BSDispatchAlg,
+    MinHeapDispatchAlg,
+    BTPDispatchAlg,
+    ToppHeapDispatchAlg,
+)
+from magi_attention.meta.solver.overlap_solver import (
+    OverlapConfig,
+    UniformOverlapAlg,
+    GreedyOverlapAlg,
+)
+MAGI_CHUNK_SIZE = 32
+####### magi attention end ######
 
 stimer = StragglerDetector()
 
@@ -138,7 +162,7 @@ def model_provider(
             if args.num_experts:
                 # Define the decoder block spec
                 transformer_layer_spec = get_gpt_decoder_block_spec(
-                    config, use_transformer_engine=use_te, normalization=args.normalization, qk_l2_norm=args.qk_l2_norm, vp_stage=vp_stage, is_dualpipev_first_chunk=is_dualpipev_first_chunk,
+                    config, use_transformer_engine=use_te, normalization=args.normalization, qk_l2_norm=args.qk_l2_norm, vp_stage=vp_stage, is_dualpipev_first_chunk=is_dualpipev_first_chunk, magi_attention=config.magi_attention,
                 )
             elif args.heterogeneous_layers_config_path is not None:
                 transformer_layer_spec = get_gpt_heterogeneous_layer_spec(config, use_te)
@@ -153,6 +177,7 @@ def model_provider(
                         args.moe_use_legacy_grouped_gemm,
                         qk_l2_norm=args.qk_l2_norm,
                         use_kitchen=config.use_kitchen,
+                        magi_attention=config.magi_attention,
                     )
                 else:
                     transformer_layer_spec = get_gpt_layer_local_spec(
@@ -163,6 +188,7 @@ def model_provider(
                         args.moe_use_legacy_grouped_gemm,
                         normalization=args.normalization,
                         use_kitchen=config.use_kitchen,
+                        magi_attention=config.magi_attention,
                     )
         mtp_block_spec = None
         if args.mtp_num_layers is not None:
@@ -191,20 +217,118 @@ def model_provider(
     return model
 
 
+def new_squash_batch_dim(x):
+    assert x.shape[0] == 1, "Magi Attention is not supported with micro_batch_size > 1"
+    x_merged = rearrange(x, "b s ... -> (s b) ...")
+    return x_merged
+
+
+def prepare_data(input):
+    # input with shape [b, s]
+    args = get_args()
+    # squash batch dim.
+    input = new_squash_batch_dim(input)
+    pad_size = compute_pad_size(input.size(0), args.context_parallel_size, head_dim=args.kv_channels, chunk_size=MAGI_CHUNK_SIZE)
+    return input, pad_size
+
+
+def prepare_magi_attention(input, pad_size, cp_group):
+    dist_attn_config = DistAttnConfig(
+        dispatch_config=DispatchConfig(alg=MinHeapDispatchAlg()),
+        overlap_config=OverlapConfig(
+            enable=True,
+            mode=AttnOverlapMode.STATIC,
+            degree=4,
+            min_chunk_size=13,
+            max_num_chunks=52,
+            alg=UniformOverlapAlg(
+                random_costs=True,
+                random_seed=42,
+            ),
+        ),
+        high_bandwith_domain_size=8,
+        deterministic=False,
+    )
+
+    args = get_args()
+    config = core_transformer_config_from_args(args)
+
+    # fake: text img img text img img text
+    # text: 0-10
+    # img: 10-100
+    # img: 100-300
+    # text: 300-400
+    # img: 400-600
+    # img: 600-1000
+    # text: 1000-last
+    q_ranges_list = [[0, 10], [10, 100], [100, 400], [100, 400], [400, 600], [400, 600], [600, args.seq_length], [600, args.seq_length], [600, args.seq_length]]
+    k_ranges_list = [[0, 10], [0, 100], [0, 10], [100, 400], [0, 10], [100, 600], [0, 10], [100, 400], [600, args.seq_length]]
+    attn_mask_type = [AttnMaskType.CAUSAL, AttnMaskType.FULL, AttnMaskType.FULL, AttnMaskType.CAUSAL, AttnMaskType.FULL, AttnMaskType.FULL, AttnMaskType.FULL, AttnMaskType.FULL, AttnMaskType.CAUSAL]
+    # print(f"q_ranges_list is {q_ranges_list}")
+    # print(f"k_ranges_list is {k_ranges_list}")
+    # print(f"attn_mask_type is {attn_mask_type}")
+
+    x_padded, dist_attn_runtime_key = magi_attn_flex_dispatch(
+                input,
+                q_ranges=AttnRanges.from_ranges(q_ranges_list),
+                k_ranges=AttnRanges.from_ranges(k_ranges_list),
+                attn_mask_type=attn_mask_type,
+                total_seqlen_q=args.seq_length,
+                total_seqlen_k=args.seq_length,
+                head_dim=args.kv_channels,
+                pad_size=pad_size,
+                chunk_size=MAGI_CHUNK_SIZE,
+                cp_group=cp_group,
+                cp_mesh=None,
+                dist_attn_config=dist_attn_config,
+                is_same_source=True,
+                is_q_permutable=True,
+                is_k_permutable=True,
+          )
+
+    return x_padded, dist_attn_runtime_key
+
+
+def dispatch_along_cp_rank(batch: Dict[str, Any]):
+    """slice data along sequence dimension for context parallelisms and prepare magiattention key."""
+    # process tokens
+    tokens = batch['tokens']
+    if tokens is None:
+        return
+
+    tokens, pad_size_for_tokens = prepare_data(tokens)
+    cp_group = mpu.get_context_parallel_group()
+    input, dist_attn_runtime_key = prepare_magi_attention(
+                tokens, pad_size_for_tokens, cp_group,
+            )
+
+    # reshape, megatron need batch_dim for input.
+    args = get_args()
+    micro_batch_size = args.micro_batch_size
+    input = input.view(args.seq_length // args.context_parallel_size, -1).view(micro_batch_size, -1)
+    batch['tokens'] = input
+    
+    # process others
+    batch['key'] = dist_attn_runtime_key
+    batch['position_ids'] = get_position_ids(dist_attn_runtime_key)
+
+    return batch
+
+
 def get_batch(data_iterator):
     """Generate a batch."""
-
-    # TODO: this is pretty hacky, find a better way
-    if (not parallel_state.is_pipeline_first_stage(ignore_virtual=True)) and (
-        not parallel_state.is_pipeline_last_stage(ignore_virtual=True)
-    ):
-        return None, None, None, None, None
+    # print(f"in rank {torch.distributed.get_rank()}, call get_batch, data_iterator is {data_iterator}")
 
     # get batches based on the TP rank you are on
     batch = get_batch_on_this_tp_rank(data_iterator)
+    # print(f"get batch, batch is {batch}")
 
-    # slice batch along sequence dimension for context parallelism
-    batch = get_batch_on_this_cp_rank(batch)
+    args = get_args()
+    if args.magi_attention:
+        batch = dispatch_along_cp_rank(batch)
+    else:
+        # slice batch along sequence dimension for context parallelism
+        batch = get_batch_on_this_cp_rank(batch)
 
     return batch.values()
 
@@ -289,26 +413,32 @@ def forward_step(data_iterator, model: GPTModel):
     timers('batch-generator', log_level=2).start()
     global stimer
     with stimer(bdata=True):
-        tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data_iterator)
+        if args.magi_attention:
+            tokens, labels, loss_mask, attention_mask, position_ids, key = get_batch(data_iterator)
+            # print(f"in rank {torch.distributed.get_rank()}, after get_batch, tokens is {tokens}, key is {key}")
+        else:
+            tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data_iterator)
     timers('batch-generator').stop()
 
     with stimer:
         if args.use_legacy_models:
             output_tensor = model(tokens, position_ids, attention_mask, labels=labels)
         else:
-            output_tensor = model(
-                tokens, position_ids, attention_mask, labels=labels, loss_mask=loss_mask
-            )
+            if args.magi_attention:
+                output_tensor = model(
+                    tokens, position_ids, attention_mask, labels=labels, loss_mask=loss_mask, magi_attention_key=key
+                )
+            else:
+                output_tensor = model(
+                    tokens, position_ids, attention_mask, labels=labels, loss_mask=loss_mask
+                )
 
     # [ModelOpt]: model is needed to access ModelOpt distillation losses
     return output_tensor, partial(loss_func, loss_mask, model=model)
 
 
 def is_dataset_built_on_rank():
-    return (
-        parallel_state.is_pipeline_first_stage(ignore_virtual=True)
-        or parallel_state.is_pipeline_last_stage(ignore_virtual=True)
-    ) and parallel_state.get_tensor_model_parallel_rank() == 0
+    return parallel_state.get_tensor_model_parallel_rank() == 0
 
 
 def core_gpt_dataset_config_from_args(args):

@@ -24,6 +24,7 @@ from megatron.core.models.common.embeddings.rope_utils import (  # for backward 
     _rotate_half,
     apply_rotary_pos_emb,
     get_pos_emb_on_this_cp_rank,
+    get_pos_emb_on_this_cp_rank_magi,
 )
 from megatron.core.utils import deprecate_inference_params
 
@@ -66,6 +67,7 @@ class RotaryEmbedding(nn.Module):
         rope_scaling_factor: float = 8.0,
         use_cpu_initialization: bool = False,
         cp_group: Optional[torch.distributed.ProcessGroup] = None,
+        magi_attention: bool = False,
     ) -> None:
         super().__init__()
 
@@ -88,6 +90,8 @@ class RotaryEmbedding(nn.Module):
             if cp_group is not None
             else parallel_state.get_context_parallel_group(check_initialized=False)
         )
+
+        self.magi_attention = magi_attention
 
     def _apply_scaling(
         self,
@@ -148,7 +152,7 @@ class RotaryEmbedding(nn.Module):
         return cos, sin
 
     @lru_cache(maxsize=32)
-    def forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = False) -> Tensor:
+    def forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = False, magi_attention_key = None) -> Tensor:
         """Forward pass of RoPE embedding.
 
         Args:
@@ -174,6 +178,12 @@ class RotaryEmbedding(nn.Module):
             )
         # emb [seq_length, .., dim]
         emb = emb[:, None, None, :]
+        
+        if self.magi_attention:
+            assert magi_attention_key is not None, "Magi_attention_key must be provided when using magi_attention"
+            emb = get_pos_emb_on_this_cp_rank_magi(emb, magi_attention_key)
+            return emb
+
         if self.cp_group is not None and self.cp_group.size() > 1 and not packed_seq:
             # slice rotary_pos_emb along sequence dimension and select the parition of the current
             # CP rank

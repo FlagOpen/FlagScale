@@ -50,6 +50,8 @@ except ImportError:
 
         LayerNormImpl = WrappedTorchNorm
 
+from magi_attention.dist_attn_runtime_mgr import DistAttnRuntimeKey
+
 
 def get_num_layers_to_build(config: TransformerConfig, vp_stage: Optional[int] = None, is_dualpipev_first_chunk: Optional[bool] = False) -> int:
     """
@@ -491,6 +493,7 @@ class TransformerBlock(MegatronModule):
         sequence_len_offset: Optional[Tensor] = None,
         *,
         inference_params: Optional[BaseInferenceContext] = None,
+        magi_attention_key: DistAttnRuntimeKey = None,
     ):
         """
         Perform the forward pass through the transformer block.
@@ -668,6 +671,7 @@ class TransformerBlock(MegatronModule):
                             inference_context=inference_context,
                             packed_seq_params=packed_seq_params,
                             sequence_len_offset=sequence_len_offset,
+                            magi_attention_key=magi_attention_key,
                         )
 
                     if (

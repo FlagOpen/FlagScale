@@ -568,7 +568,7 @@ def get_batch_on_this_tp_rank(data_iterator):
             # Multi-Token Prediction (MTP) layers need tokens and position_ids to calculate embedding.
             # Currently the Multi-Token Prediction (MTP) layers is fixed on the last stage, so we need
             # to broadcast tokens and position_ids to all of the tensor parallel ranks on the last stage.
-            if args.mtp_num_layers is not None:
+            if args.mtp_num_layers is not None or args.magi_attention:
                 _broadcast(batch['tokens'])
                 _broadcast(batch['position_ids'])
             _broadcast(batch['labels'])
@@ -629,7 +629,7 @@ def get_batch_on_this_tp_rank(data_iterator):
             # Multi-Token Prediction (MTP) layers need tokens and position_ids to calculate embedding.
             # Currently the Multi-Token Prediction (MTP) layers is fixed on the last stage, so we need
             # to broadcast tokens and position_ids to all of the tensor parallel ranks on the last stage.
-            if args.mtp_num_layers is not None:
+            if args.mtp_num_layers is not None or args.magi_attention:
                 _broadcast(tokens)
                 _broadcast(position_ids)
             else:
