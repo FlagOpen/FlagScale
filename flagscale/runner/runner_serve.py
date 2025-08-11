@@ -303,7 +303,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         f.write(f'    export PYTHONPATH="$PYTHONPATH:{vllm_path}:{root_dir}"\n')
         f.write(f"fi\n")
         f.write(f"\n")
-        envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
+        envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items() if key != 'nodes_envs')
         f.write(f"{envs_str}\n")
         use_vllm_v1 = (str(os.getenv("VLLM_USE_V1", "true")).lower() in ("1", "true")) and (
             str(envs.get("VLLM_USE_V1", "true")).lower() in ("1", "true")
@@ -527,11 +527,11 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 master_port = target_port if target_port else get_free_port()
 
                 address = f"{master_ip}:{master_port}"
-                nodes_envs = config.experiment.runner.get("nodes_envs", {})
+                nodes_envs = config.experiment.get("envs", {}).get("nodes_envs", {})
                 for index, (ip, node) in enumerate(nodes):
                     diff_node_cmd = None
-                    if nodes_envs and ip in config.experiment.runner.nodes_envs and config.experiment.runner.nodes_envs[ip] is not None:
-                        diff_node_cmd = " && ".join(f"export {key}={value}" for key, value in config.experiment.runner.nodes_envs[ip].items())
+                    if nodes_envs and nodes_envs.get(ip, None) is not None:
+                        diff_node_cmd = " && ".join(f"export {key}={value}" for key, value in nodes_envs[ip].items())
                     if not node.get("type", None):
                         raise ValueError(
                             f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
@@ -1004,7 +1004,8 @@ class SSHServeRunner(RunnerBase):
     ):
         export_cmd = []
         for k, v in self.user_envs.items():
-            export_cmd += [f"{k}={v}"]
+            if k != 'nodes_envs':
+                export_cmd += [f"{k}={v}"]
 
         cmd = shlex.join(export_cmd + ["python"] + [self.user_script] + self.user_args)
 
