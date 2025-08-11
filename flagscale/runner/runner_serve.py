@@ -531,9 +531,9 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 address = f"{master_ip}:{master_port}"
                 nodes_envs = config.experiment.get("envs", {}).get("nodes_envs", {})
                 for index, (ip, node) in enumerate(nodes):
-                    diff_node_cmd = None
+                    per_node_cmd = None
                     if nodes_envs and nodes_envs.get(ip, None) is not None:
-                        diff_node_cmd = " && ".join(
+                        per_node_cmd = " && ".join(
                             f"export {key}={value}" for key, value in nodes_envs[ip].items()
                         )
                     if not node.get("type", None):
@@ -555,8 +555,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         else:
                             resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
                             node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
-                        if diff_node_cmd:
-                            node_cmd = f"{diff_node_cmd} && " + node_cmd
+                        if per_node_cmd:
+                            node_cmd = f"{per_node_cmd} && " + node_cmd
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
                         f.write(f"{node_cmd}\n")
@@ -579,8 +579,8 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             node_cmd = (
                                 f"${{ray_path}} start --address={address} --resources='{resource}'"
                             )
-                        if diff_node_cmd:
-                            node_cmd = f"{diff_node_cmd} && " + node_cmd
+                        if per_node_cmd:
+                            node_cmd = f"{per_node_cmd} && " + node_cmd
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
                         if envs_str:
