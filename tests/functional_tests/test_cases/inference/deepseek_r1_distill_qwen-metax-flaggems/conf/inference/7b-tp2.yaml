@@ -6,6 +6,7 @@ llm:
   pipeline_parallel_size: 1
   gpu_memory_utilization: 0.9
   seed: 1234
+  enforce_eager: true
 
 generate:
   prompts: [
@@ -13,5 +14,6 @@ generate:
     "The capital of France",
   ]
   sampling:
-    top_p: 0.1
-    temperature: 0.1
+    top_p: 1.0
+    temperature: 0.0
+    seed: 1234
