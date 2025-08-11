@@ -9,6 +9,8 @@ The test module supports:
 
 This section introduces how to use these features.
 
+> **Note**: Please run the test commands in a non-Conda environment or in the `base` Conda environment. During test execution, the system will automatically switch to the corresponding Conda environment, such as `flagscale-train` or `flagscale-inference`.
+
 ---
 
 ## Unit Testing
