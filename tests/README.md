@@ -4,9 +4,8 @@ The test module supports:
 
 1. Unit testing for different backends and operation modes.
 2. Functional testing revolves around the training, compression, inference, and service of large language models.
-3. Monitoring incremental code test coverage and viewing test reports online.
-4. Ensuring code style consistency.
-5. The test function has been added to the flagscale instruction system.
+3. Ensuring code style consistency.
+4. The test function has been added to the flagscale instruction system.
 
 This section introduces how to use these features.
 
@@ -31,7 +30,7 @@ flagscale test --unit --backend ${BACKEND} --subset ${SUBSET}
 Please set the following variables:
 
 - `BACKEND`: Specifies the backend for unit testing, either `megatron` or `flagscale`.
-- `SUBSET`: The directory for unit tests. Check the directories within `tests/unit_tests` and `megatron/tests/unit_tests` for specific folders. Note: `./` represents the root directory of the above folders.
+- `SUBSET`: The directory for unit tests. Check the directories within `tests/unit_tests` and `third_party/Megatron-LM/tests/unit_tests` for specific folders. Note: `./` represents the root directory of the above folders.
 
 ### Run All Unit Tests Locally
 
@@ -49,7 +48,7 @@ flagscale test --unit-all
 
 ### Run Unit Tests Online
 
-When you create a PR using your forked repository, the testing workflow will automatically trigger. Find the corresponding action for your [PR](https://github.com/FlagOpen/FlagScale/pulls) in [All Tests](https://github.com/FlagOpen/FlagScale/actions/workflows/all-tests.yml) to view the results.
+When you create a PR using your forked repository, the testing workflow will automatically trigger. Find the corresponding action for your [PR](https://github.com/FlagOpen/FlagScale/pulls) in [All Tests Nvidia](https://github.com/FlagOpen/FlagScale/actions/workflows/all-tests-nvidia.yml) to view the results. The process for other chips is similar.
 
 ### Adding Unit Tests
 
@@ -59,7 +58,7 @@ When you create a PR using your forked repository, the testing workflow will aut
 
 - **Adding a Unit Test Directory**
 
-  1. Add a test directory and files in the appropriate location. For `flagscale`, the path is `tests/unit_tests/${NEW_FOLD}`. For `megatron`, it's `megatron/tests/unit_tests/${NEW_FOLD}`. `NEW_FOLD` refers to the name of the new test folder.
+  1. Add a test directory and files in the appropriate location. For `flagscale`, the path is `tests/unit_tests/${NEW_FOLD}`. For `megatron`, it's `third_party/Megatron-LM/tests/unit_tests/${NEW_FOLD}`. `NEW_FOLD` refers to the name of the new test folder.
 
   2. Update the configuration file `tests/scripts/unit_tests/config.yml` to include configuration for the directory, specifying `ignore`, `type`, and `depth` as needed. Unspecified parameters will default to pre-defined settings. Below is the **configuration file explanation:**
 
@@ -68,13 +67,20 @@ When you create a PR using your forked repository, the testing workflow will aut
      megatron:
        # Set the environment required before running unit tests
        set_environment:
-        - cd megatron
-        - export PYTHONPATH=..:$PYTHONPATH
+         - source /root/miniconda3/etc/profile.d/conda.sh
+         - conda activate flagscale-train
+         - python tools/patch/unpatch.py --backend Megatron-LM
+         - cd third_party/Megatron-LM
+         - export PYTHONPATH=../..:$PYTHONPATH
+         - export NVTE_FLASH_ATTN=0
+         - export NVTE_FUSED_ATTN=0
+         - ulimit -n 65535
        # Specify the target folder for test coverage
        coverage_fold:
          core
        # Select different tests for different test directories
        subset:
+         ...
          # Use default configuration if not shown
          dist_checkpointing:
            # Files to ignore during testing
@@ -99,29 +105,23 @@ When you create a PR using your forked repository, the testing workflow will aut
 
   3. Online Test Configuration
 
-     Modify the workflow configuration in `.github/workflows/all-tests.yml` to activate online testing:
+     Modify the workflow configuration in `.github/workflows/all-tests-nvidia.yml` to activate online testing, the process for other chips is similar.:
 
      ```yaml
      ...
 
      # Megatron Unit Tests with Matrix
      megatron-unit-tests:
-       uses: ./.github/workflows/unit-tests.yml
+       needs:
+         - set-env
+         uses: ./.github/workflows/unit-tests-nvidia.yml
        strategy:
          matrix:
            subset:
              # Add your new folder if you have a new test directory
              - {NEW_FOLD}
              - data
-             - dist_checkpointing
-             - distributed
-             - fusions
-             - inference
-             - models
-             - pipeline_parallel
-             - tensor_parallel
-             - transformer/moe
-             - transformer
+             - ...
              - ./
        name: "megatron-${{ matrix.subset == './' && 'root' || matrix.subset }}"
        with:
@@ -130,47 +130,6 @@ When you create a PR using your forked repository, the testing workflow will aut
 
      ...
      ```
-
-### Viewing Unit Test Coverage Report
-
-- **View Locally:**
-
-  Open the following in a browser:
-  `/workspace/report/${ID}/cov-report-${BACKEND}/index.html`
-
-  - `ID`: Use `0` when running locally.
-  - `BACKEND`: `flagscale` or `megatron`.
-
-- **View Online:**
-
-  Find the corresponding action for your [PR](https://github.com/FlagOpen/FlagScale/pulls) in [All Tests](https://github.com/FlagOpen/FlagScale/actions/workflows/all-tests.yml), open any unit test under `flagscale` or `megatron`, and click the address provided under `Unit Test Coverage Online Report` to view the test report.
-
-### Viewing Incremental Code Test Coverage Report
-
-- **View Locally:**
-
-  1. Run the command:
-     ```bash
-     # Ensure unit tests have been run locally before executing this command
-     ./tests/scripts/unit_tests/test_coverage.sh --backend ${BACKEND} --status ${STATUS}
-     ```
-
-     Please set the following variables:
-
-     - `BACKEND`: `flagscale` or `megatron`.
-     - `STATUS`: `online` or `offline`.
-
-  2. View the report:
-
-     Open the following in a browser:
-     `/workspace/report/${ID}/diff-cover-report-${BACKEND}.html`
-     Use these variables:
-     - `ID`: Use `0` when running locally.
-     - `BACKEND`: `flagscale` or `megatron`.
-
-- **View Online:**
-
-  Find the corresponding action for your [PR](https://github.com/FlagOpen/FlagScale/pulls) in [All Tests](https://github.com/FlagOpen/FlagScale/actions/workflows/all-tests.yml), open the `flagscale-coverage-test` or `megatron-coverage-test` jobs, and click on the address under `Coverage Online Report` to view the test report online.
 
 ---
 
@@ -192,7 +151,7 @@ flagscale test --functional --type ${TYPE} --task ${TASK}
 
 Please set the following variables:
 
-- `TYPE`: The type of functional testing, supporting `train` or `hetero_train`.
+- `TYPE`: The type of functional testing, supporting `train` or `hetero_train` or `inference`.
 - `TASK`: The task used for functional testing, in conjunction with `TYPE`. Specific tasks can be found under the `tests/functional_tests/test_cases` directory.
 
 ### Run All Functional Tests Locally
@@ -211,21 +170,22 @@ flagscale test --functional-all
 
 ### Run Functional Tests Online
 
-Find the corresponding action for your [PR](https://github.com/FlagOpen/FlagScale/pulls) in [All Tests](https://github.com/FlagOpen/FlagScale/actions/workflows/all-tests.yml) to view the results.
+Find the corresponding action for your [PR](https://github.com/FlagOpen/FlagScale/pulls) in [All Tests Nvidia](https://github.com/FlagOpen/FlagScale/actions/workflows/all-tests-nvidia.yml) to view the results. The process for other chips is similar.
 
 ### Adding Functional Tests
+
+The following shows how to add a functional test for training. Other similar tasks are similar.
 
 1. Update the functional test configuration file `tests/scripts/functional_tests/config.yml` to include relevant experiment configurations:
 
    ```yaml
    ...
-   # Hardware mode: homogeneous or heterogeneous
    train:
      # Models used
      aquila:
-        # Parallel modes
-        -tp2_pp2
-        -tp4_pp2
+       # Parallel modes
+       - tp2_pp2
+       - tp4_pp2
    ...
    ```
 
@@ -277,19 +237,13 @@ Find the corresponding action for your [PR](https://github.com/FlagOpen/FlagScal
 
 ## Code Style Check
 
-1. **Run Manually:**
-
-   ```bash
-   ./tests/scripts/format_tests/test_format.sh
-   ```
-
-2. **Run via Pre-commit:**
+1. **Run via Pre-commit:**
 
    ```bash
    pre-commit install
    ```
    Code format checks will run automatically upon committing.
 
-3. **Online Format Check:**
+2. **Online Format Check:**
 
    Find the corresponding action for your [PR](https://github.com/FlagOpen/FlagScale/pulls) in the [Format Check](https://github.com/FlagOpen/FlagScale/actions/workflows/format.yml).
