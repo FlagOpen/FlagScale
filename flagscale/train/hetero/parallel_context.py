@@ -755,6 +755,7 @@ class ParallelContext:
             if mesh_index == len(self._process_meshes):
                 aggregated_ranks = [rank for ranks in path for rank in ranks]
                 self._global_all_group_ranks[group_name].append(aggregated_ranks)
+                # NOTE: "use_local_synchronization=True" works well in torhch <= 2.5, but it causes hang in torch >= 2.6
                 group = create_group(aggregated_ranks, timeout=self._timeout, use_local_synchronization=False, group_desc=group_name)
                 if self._rank in aggregated_ranks:
                     self._global_process_groups[group_name].append(group)
@@ -790,7 +791,7 @@ class ParallelContext:
         self._global_parallel_ranks["last_rank"] = pp_ranks[-1][-1] if isinstance(pp_ranks[0], list) else pp_ranks[-1]
 
         # build global embedding process groups
-        for ranks in self._global_all_group_ranks["pp"]:
+        for ranks in self._global_all_group_ranks["pp"]: # NOTE: Make sure all the ranks to execute the "create_group" API.
             if len(ranks) > 1:
                 embedding_ranks = [ranks[0], ranks[-1]]
                 position_embedding_ranks = [ranks[0]]
