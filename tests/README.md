@@ -52,17 +52,19 @@ When you create a PR using your forked repository, the testing workflow will aut
 
 ### Adding Unit Tests
 
+For `flagscale`, the test path is `tests/unit_tests`. For `megatron`, it's `third_party/Megatron-LM/tests/unit_tests`.
+
 - **Adding a Single Test Function**
 
   - Directly add a function named `test_${NEW_FUNCTION}` inside the appropriate test file. `NEW_FUNCTION` refers to the name of the new test function.
 
 - **Adding a Single Unit Test File**
 
-  - Directly add a file named `test_${NEW_TEST}.py` in the appropriate directory. `NEW_TEST` refers to the name of the new test.
+  - Directly add a file named `test_${NEW_FILE}.py` in the appropriate directory. `NEW_FILE` refers to the name of the new test, which should include the `test_${NEW_FUNCTION}` function.
 
 - **Adding a Unit Test Directory**
 
-  1. Add a test directory and files in the appropriate location. For `flagscale`, the path is `tests/unit_tests/${NEW_FOLD}`. For `megatron`, it's `third_party/Megatron-LM/tests/unit_tests/${NEW_FOLD}`. `NEW_FOLD` refers to the name of the new test folder.
+  1. Add a test directory named `${NEW_FOLD}` and the corresponding files in the appropriate location, which should include `test_${NEW_FILE}.py` and the `test_${NEW_FUNCTION}` function.
 
   2. Update the configuration file `tests/scripts/unit_tests/config.yml` to include configuration for the directory, specifying `ignore`, `type`, and `depth` as needed. Unspecified parameters will default to pre-defined settings. Below is the **configuration file explanation:**
 
