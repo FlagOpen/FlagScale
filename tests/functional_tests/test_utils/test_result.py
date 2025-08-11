@@ -93,7 +93,7 @@ def test_inference_equal(test_path, test_type, test_task, test_case):
     with open(gold_value_path, "r") as file:
         gold_value_lines = file.readlines()
 
-    # Remove the blank line at the end
+    # Remove the blank line at the end.
     if gold_value_lines:
         last_non_empty = len(gold_value_lines) - 1
         while last_non_empty >= 0 and not gold_value_lines[last_non_empty].strip():
