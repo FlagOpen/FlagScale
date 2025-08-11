@@ -303,7 +303,9 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
         f.write(f'    export PYTHONPATH="$PYTHONPATH:{vllm_path}:{root_dir}"\n')
         f.write(f"fi\n")
         f.write(f"\n")
-        envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items() if key != 'nodes_envs')
+        envs_str = " && ".join(
+            f"export {key}={value}" for key, value in envs.items() if key != 'nodes_envs'
+        )
         f.write(f"{envs_str}\n")
         use_vllm_v1 = (str(os.getenv("VLLM_USE_V1", "true")).lower() in ("1", "true")) and (
             str(envs.get("VLLM_USE_V1", "true")).lower() in ("1", "true")
@@ -531,7 +533,9 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                 for index, (ip, node) in enumerate(nodes):
                     diff_node_cmd = None
                     if nodes_envs and nodes_envs.get(ip, None) is not None:
-                        diff_node_cmd = " && ".join(f"export {key}={value}" for key, value in nodes_envs[ip].items())
+                        diff_node_cmd = " && ".join(
+                            f"export {key}={value}" for key, value in nodes_envs[ip].items()
+                        )
                     if not node.get("type", None):
                         raise ValueError(
                             f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
