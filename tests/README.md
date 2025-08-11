@@ -52,6 +52,10 @@ When you create a PR using your forked repository, the testing workflow will aut
 
 ### Adding Unit Tests
 
+- **Adding a Single Test Function**
+
+  - Directly add a function named `test_${NEW_FUNCTION}` inside the appropriate test file. `NEW_FUNCTION` refers to the name of the new test function.
+
 - **Adding a Single Unit Test File**
 
   - Directly add a file named `test_${NEW_TEST}.py` in the appropriate directory. `NEW_TEST` refers to the name of the new test.
