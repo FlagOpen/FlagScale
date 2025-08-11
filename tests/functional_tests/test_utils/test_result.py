@@ -99,7 +99,7 @@ def test_inference_equal(test_path, test_type, test_task, test_case):
         while last_non_empty >= 0 and not gold_value_lines[last_non_empty].strip():
             last_non_empty -= 1
         if last_non_empty >= 0:
-            gold_value_lines = gold_value_lines[:last_non_empty + 1]
+            gold_value_lines = gold_value_lines[: last_non_empty + 1]
         else:
             gold_value_lines = []
 
