@@ -179,17 +179,15 @@ class LanguageModule(MegatronModule):
                 else: # for multiple embedding groups in heterogeneous mode
                     with torch.no_grad():
                         original_dtype = weight.dtype
-                        if original_dtype == torch.bfloat16: # gloo backend doesn't support bfloat16
+                        if (original_dtype == torch.bfloat16) and torch.distributed.get_backend(group=embedding_group[0])=="cpu:gloo": # gloo backend doesn't support bfloat16
                             weight = weight.to(torch.float32)
-                        if torch.distributed.get_backend(group=embedding_group[0]) == 'cpu:gloo':
                             weight.data = weight.data.cpu()
                         original_weight = weight.clone().detach().data
                         for group in embedding_group:
                             weight.data.copy_(original_weight)
                             torch.distributed.all_reduce(weight.data, group=group)
-                        if original_dtype == torch.bfloat16:
+                        if original_dtype != weight.dtype:
                             weight = weight.to(original_dtype)
-                        if weight.device == torch.device('cpu'):
                             weight.data = weight.data.cuda()
 
         elif not getattr(LanguageModule, "embedding_warning_printed", False):
