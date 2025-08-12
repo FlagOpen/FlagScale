@@ -8,7 +8,7 @@ commands=(
     "tests/scripts/functional_tests/test_task.sh --type train --task mixtral"
     "tests/scripts/functional_tests/test_task.sh --type train --task llava_onevision"
     # For hetero-train
-    # "tests/scripts/functional_tests/test_task.sh --type hetero_train --task aquila"
+    "tests/scripts/functional_tests/test_task.sh --type hetero_train --task aquila"
     
     # For inference
     "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen"
