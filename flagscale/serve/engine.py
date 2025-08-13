@@ -136,6 +136,7 @@ class ServeEngine:
     def check_config(self, config):
         if not config.get("runner", {}).get("deploy", None):
             raise ValueError("key deploy is missing for deployment configuration.")
+        self.check_dag
         # if not config.deploy.get("models", None):
         #     raise ValueError("key models is missing for building dag pipeline.")
 
