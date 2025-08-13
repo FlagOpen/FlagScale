@@ -2,6 +2,7 @@ import importlib
 import importlib.util
 import inspect
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -22,11 +23,15 @@ from pydantic import create_model
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
-from flagscale.logger import logger
+# from flagscale.logger import logger
+logger = logging.getLogger("ray.serve")
+
+logger.setLevel(logging.INFO)
 
 
 def load_class_from_file(file_path: str, class_name: str):
     file_path = os.path.abspath(file_path)
+    logger.info(f"Loading class {class_name} from file: {file_path}")
     sys.path.insert(0, os.path.dirname(file_path))
     module_name = os.path.splitext(os.path.basename(file_path))[0]
     spec = importlib.util.spec_from_file_location(module_name, file_path)
