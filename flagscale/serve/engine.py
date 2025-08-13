@@ -370,7 +370,7 @@ class ServeEngine:
         else:
             ray.init(address=address)
 
-    def run_router_task(self):
+    def run_task(self):
         graph = build_graph(self.config)
         serve.start(http_options={"port": self.exp_config.runner.deploy.get("port", 8000)})
         serve.run(
