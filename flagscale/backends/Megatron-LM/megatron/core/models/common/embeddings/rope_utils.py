@@ -77,6 +77,7 @@ def get_pos_emb_on_this_cp_rank_magi(pos_emb: Tensor, magi_attention_key) -> Ten
     args = get_args()
 
     cp_idx = get_position_ids(magi_attention_key)
+
     pos_emb = pos_emb[cp_idx]
 
     return pos_emb
