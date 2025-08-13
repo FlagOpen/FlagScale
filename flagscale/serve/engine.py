@@ -375,7 +375,7 @@ class ServeEngine:
         serve.start(http_options={"port": self.exp_config.runner.deploy.get("port", 8000)})
         serve.run(
             graph,
-            name="demo_dynamic",
+            name=self.exp_config.exp_name,
             route_prefix=self.exp_config.runner.deploy.get("name", "/"),
             blocking=True,
         )
