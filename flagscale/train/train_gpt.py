@@ -302,27 +302,26 @@ def dispatch_along_cp_rank(batch: Dict[str, Any]):
     input, dist_attn_runtime_key = prepare_magi_attention(
         tokens, pad_size_for_tokens, cp_group,
     ) #[s/cp_size]
-    print(f"after prepare_magi_attention, input shape is {input.shape}")
     # reshape, megatron need batch_dim for input.
     micro_batch_size = args.micro_batch_size
     input = input.view(micro_batch_size, -1) #[b, s], b=1
     batch['tokens'] = input
     
     # position_ids
-    
-
-
+    if not args.use_rotary_position_embeddings:
+        magi_position_ids = get_position_ids(dist_attn_runtime_key)
+        orig_position_ids = batch['position_ids']
+        batch['position_ids'] = orig_position_ids[magi_position_ids]
 
     # labels
     # skip processing, logits will be undispatched to be full tensors
     # loss_mask
     # skip processing, logits will be undispatched to be full tensors
-
-
+    # attention_mask
+    # skip processing, will be processed in magi attn initialization
 
     # others
     batch['key'] = dist_attn_runtime_key
-    batch['position_ids'] = get_position_ids(dist_attn_runtime_key)
 
     return batch
 
