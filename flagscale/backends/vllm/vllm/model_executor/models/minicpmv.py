@@ -1,4 +1,4 @@
-# Copied adopted from https://github.com/tc-mb/vllm/blob/support-MiniCPM-V-4/vllm/model_executor/models/minicpmv.py
+# Copied from https://github.com/tc-mb/vllm/blob/support-MiniCPM-V-4/vllm/model_executor/models/minicpmv.py
 
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
