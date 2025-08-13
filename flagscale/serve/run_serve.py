@@ -5,7 +5,7 @@ from flagscale.serve.engine import ServeEngine
 def main():
     config = parse_config()
     engine = ServeEngine(config)
-    engine.build_task()
+    # engine.build_task()
     engine.run_router_task()
 
 

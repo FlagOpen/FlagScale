@@ -1,37 +1,143 @@
 import importlib
+import importlib.util
+import inspect
 import json
 import os
 import subprocess
 import sys
 
 from pathlib import Path
+from typing import Any, Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
 import omegaconf
 import ray
 import uvicorn
+import yaml
 
 from dag_utils import check_and_get_port
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import create_model
-from ray import workflow
+from ray import serve
+from ray.serve.handle import DeploymentHandle
 
 from flagscale.logger import logger
+
+RequestData = create_model(
+    "Request", **{field: (type_, ...) for field, type_ in zip(["prompt"], [str])}
+)
+
+
+def load_class_from_file(file_path: str, class_name: str):
+    file_path = os.path.abspath(file_path)
+    module_name = os.path.splitext(os.path.basename(file_path))[0]
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if spec is None:
+        raise ImportError(f"Cannot create module spec from {file_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if not hasattr(module, class_name):
+        raise ImportError(f"Class {class_name} not found in {file_path}")
+    return getattr(module, class_name)
+
+
+def make_deployment(logic_cls, **deploy_kwargs):
+    @serve.deployment(**deploy_kwargs)
+    class WrappedModel:
+        def __init__(self):
+            self.logic = logic_cls()
+
+        async def forward(self, *args, **kwargs):
+            if inspect.iscoroutinefunction(self.logic.forward):
+                return await self.logic.forward(*args, **kwargs)
+            return self.logic.forward(*args, **kwargs)
+
+    return WrappedModel
+
+
+@serve.deployment
+class FinalModel:
+    def __init__(self, graph_config: Dict[str, Any], handles: Dict[str, DeploymentHandle]):
+        self.graph_config = graph_config
+        self.handles = handles
+
+        # determine return nodes
+        all_nodes = set(graph_config.keys())
+        dep_nodes = {dep for cfg in graph_config.values() for dep in cfg.get("depends", [])}
+        self.roots = list(all_nodes - dep_nodes)
+        assert len(self.roots) == 1, "Only one return node is allowed"
+
+    async def __call__(self, http_request: RequestData):
+        request_data = await http_request.json()
+        results_cache = {}
+
+        async def run_node(node_name, **input_data):
+            if node_name in results_cache:
+                return results_cache[node_name]
+
+            node_cfg = self.graph_config[node_name]
+            handle = self.handles[node_name]
+
+            if node_cfg.get("depends"):
+                dep_results = []
+                for dep in node_cfg["depends"]:
+                    res = await run_node(dep, **input_data)
+                    dep_results.append(res)
+                if len(dep_results) == 1:
+                    result = await handle.forward.remote(dep_results[0])
+                else:
+                    result = await handle.forward.remote(*dep_results)
+            else:
+                result = await handle.forward.remote(**input_data)
+
+            results_cache[node_name] = result
+            return result
+
+        final_results = {}
+        root = self.roots[0]
+        final_results[root] = await run_node(root, **request_data)
+        return final_results[root]
+
+
+def build_graph(connection_list):
+    # Convert list of dicts with 'serve_id' to dict keyed by serve_id
+    connection = {
+        cfg["serve_id"]: {k: v for k, v in cfg.items() if k != "serve_id"}
+        for cfg in connection_list
+    }
+
+    handles = {}
+    deployments = {}
+    for name, cfg in connection.items():
+        logic_cls = load_class_from_file(cfg["module"], cfg["name"])
+        resources = cfg.get("resources", {})
+        ray_actor_options = {}
+        if "num_gpus" in resources:
+            ray_actor_options["num_gpus"] = resources["num_gpus"]
+        deploy_kwargs = {
+            "num_replicas": resources.get("num_replicas", 1),
+            "ray_actor_options": ray_actor_options,
+        }
+        deployments[name] = make_deployment(logic_cls, **deploy_kwargs)
+        handles[name] = deployments[name].bind()
+
+    root_model = FinalModel.bind(connection, handles)
+    return root_model
 
 
 class ServeEngine:
     def __init__(self, config):
         self.config = config.serve
         self.exp_config = config.experiment
-        self.check_config(self.config)
+        self.check_config(self.exp_config)
         self.tasks = {}
 
     def check_config(self, config):
-        if not config.get("deploy", None):
+        if not config.get("runner", {}).get("deploy", None):
             raise ValueError("key deploy is missing for deployment configuration.")
-        if not config.deploy.get("models", None):
-            raise ValueError("key models is missing for building dag pipeline.")
+        # if not config.deploy.get("models", None):
+        #     raise ValueError("key models is missing for building dag pipeline.")
 
     def find_final_node(self):
         whole_nodes = set(self.config["deploy"]["models"].keys())
@@ -281,106 +387,110 @@ class ServeEngine:
         else:
             ray.init(address=address)
 
-    def build_task(self):
-        self.check_dag()
-        pythonpath_tmp = set()
-        for model_alias, model_config in self.config["deploy"]["models"].items():
-            module_name = model_config["module"]
-            path = Path(module_name)
-            module_dir = str(path.parent)
-            pythonpath_tmp.add(os.path.abspath(module_dir))
-        pythonpath = ":".join(pythonpath_tmp)
-        self.init_task(pythonpath=pythonpath)
+    # def build_task(self):
+    #     self.check_dag()
+    #     pythonpath_tmp = set()
+    #     for model_alias, model_config in self.config["deploy"]["models"].items():
+    #         module_name = model_config["module"]
+    #         path = Path(module_name)
+    #         module_dir = str(path.parent)
+    #         pythonpath_tmp.add(os.path.abspath(module_dir))
+    #     pythonpath = ":".join(pythonpath_tmp)
+    #     self.init_task(pythonpath=pythonpath)
 
-        for model_alias, model_config in self.config["deploy"]["models"].items():
-            module_name = model_config["module"]
-            model_name = model_config["name"]
-            path = Path(module_name)
-            module_tmp = path.stem
-            module_dir = str(path.parent)
-            sys.path.append(module_dir)
-            module = importlib.import_module(module_tmp)
-            model = getattr(module, model_name)
-            resources = model_config.resources
-            num_gpus = resources.get("gpu", 0)
-            num_cpus = resources.get("cpu", 1)
-            customs = {res: resources[res] for res in resources if res not in ["gpu", "cpu"]}
-            self.tasks[model_alias] = ray.remote(model).options(
-                num_cpus=num_cpus, num_gpus=num_gpus, resources=customs
-            )
-        return
+    #     for model_alias, model_config in self.config["deploy"]["models"].items():
+    #         module_name = model_config["module"]
+    #         model_name = model_config["name"]
+    #         path = Path(module_name)
+    #         module_tmp = path.stem
+    #         module_dir = str(path.parent)
+    #         sys.path.append(module_dir)
+    #         module = importlib.import_module(module_tmp)
+    #         model = getattr(module, model_name)
+    #         resources = model_config.resources
+    #         num_gpus = resources.get("gpu", 0)
+    #         num_cpus = resources.get("cpu", 1)
+    #         customs = {res: resources[res] for res in resources if res not in ["gpu", "cpu"]}
+    #         self.tasks[model_alias] = ray.remote(model).options(
+    #             num_cpus=num_cpus, num_gpus=num_gpus, resources=customs
+    #         )
+    #     return
 
-    def run_task(self, *input_data):
-        assert len(self.tasks) > 0
-        models_to_process = list(self.config["deploy"]["models"].keys())
-        model_nodes = {}
+    # def run_task(self, *input_data):
+    #     assert len(self.tasks) > 0
+    #     models_to_process = list(self.config["deploy"]["models"].keys())
+    #     model_nodes = {}
 
-        while models_to_process:
-            progress = False
-            for model_alias in list(models_to_process):
-                model_config = self.config["deploy"]["models"][model_alias]
-                dependencies = []
-                if "depends" in model_config:
-                    deps = model_config["depends"]
-                    if not isinstance(deps, (list, omegaconf.listconfig.ListConfig)):
-                        deps = [deps]
-                    dependencies = deps
-                else:
-                    dependencies = []
+    #     while models_to_process:
+    #         progress = False
+    #         for model_alias in list(models_to_process):
+    #             model_config = self.config["deploy"]["models"][model_alias]
+    #             dependencies = []
+    #             if "depends" in model_config:
+    #                 deps = model_config["depends"]
+    #                 if not isinstance(deps, (list, omegaconf.listconfig.ListConfig)):
+    #                     deps = [deps]
+    #                 dependencies = deps
+    #             else:
+    #                 dependencies = []
 
-                if all(dep in model_nodes for dep in dependencies):
-                    if dependencies:
-                        if len(dependencies) > 1:
-                            inputs = [model_nodes[dep] for dep in dependencies]
-                            model_nodes[model_alias] = self.tasks[model_alias].bind(*inputs)
-                        else:
-                            model_nodes[model_alias] = self.tasks[model_alias].bind(
-                                model_nodes[dependencies[0]]
-                            )
-                    else:
-                        if len(input_data) == 0:
-                            model_nodes[model_alias] = self.tasks[model_alias].bind()
-                        else:
-                            model_nodes[model_alias] = self.tasks[model_alias].bind(*input_data)
-                    models_to_process.remove(model_alias)
-                    progress = True
-            if not progress:
-                raise ValueError("Circular dependency detected in model configuration")
+    #             if all(dep in model_nodes for dep in dependencies):
+    #                 if dependencies:
+    #                     if len(dependencies) > 1:
+    #                         inputs = [model_nodes[dep] for dep in dependencies]
+    #                         model_nodes[model_alias] = self.tasks[model_alias].bind(*inputs)
+    #                     else:
+    #                         model_nodes[model_alias] = self.tasks[model_alias].bind(
+    #                             model_nodes[dependencies[0]]
+    #                         )
+    #                 else:
+    #                     if len(input_data) == 0:
+    #                         model_nodes[model_alias] = self.tasks[model_alias].bind()
+    #                     else:
+    #                         model_nodes[model_alias] = self.tasks[model_alias].bind(*input_data)
+    #                 models_to_process.remove(model_alias)
+    #                 progress = True
+    #         if not progress:
+    #             raise ValueError("Circular dependency detected in model configuration")
 
-        logger.info(f" =========== deploy model_nodes {model_nodes} ============= ")
-        find_final_node = self.find_final_node()
+    #     logger.info(f" =========== deploy model_nodes {model_nodes} ============= ")
+    #     find_final_node = self.find_final_node()
 
-        final_node = model_nodes[find_final_node]
-        # pydot is required to plot DAG, install it with `pip install pydot`.
-        # ray.dag.vis_utils.plot(final_node, "output.jpg")
-        final_result = workflow.run(final_node)
-        return final_result
+    #     final_node = model_nodes[find_final_node]
+    #     # pydot is required to plot DAG, install it with `pip install pydot`.
+    #     # ray.dag.vis_utils.plot(final_node, "output.jpg")
+    #     final_result = workflow.run(final_node)
+    #     return final_result
 
-    def run_router_task(self, method="post"):
-        router_config = self.config["deploy"].get("service")
-        assert router_config and len(router_config) > 0
+    # def run_router_task(self, method="post"):
+    #     router_config = self.config["deploy"].get("service")
+    #     assert router_config and len(router_config) > 0
 
-        name = router_config["name"]
-        port = router_config["port"]
-        request_names = router_config["request"]["names"]
-        request_types = router_config["request"]["types"]
+    #     name = router_config["name"]
+    #     port = router_config["port"]
+    #     request_names = router_config["request"]["names"]
+    #     request_types = router_config["request"]["types"]
 
-        RequestData = create_model(
-            "Request", **{field: (type_, ...) for field, type_ in zip(request_names, request_types)}
-        )
-        app = FastAPI()
+    #     RequestData = create_model(
+    #         "Request", **{field: (type_, ...) for field, type_ in zip(request_names, request_types)}
+    #     )
+    #     app = FastAPI()
 
-        if method.lower() == "post":
+    #     if method.lower() == "post":
 
-            @app.post(name)
-            async def route_handler(request_data: RequestData):
-                input_data = tuple(getattr(request_data, field) for field in request_names)
-                try:
-                    response = self.run_task(*input_data)
-                    return response
-                except Exception as e:
-                    raise HTTPException(status_code=400, detail=str(e))
+    #         @app.post(name)
+    #         async def route_handler(request_data: RequestData):
+    #             input_data = tuple(getattr(request_data, field) for field in request_names)
+    #             try:
+    #                 response = self.run_task(*input_data)
+    #                 return response
+    #             except Exception as e:
+    #                 raise HTTPException(status_code=400, detail=str(e))
 
-        else:
-            raise ValueError(f"Unsupported HTTP method: {method}")
-        uvicorn.run(app, host="127.0.0.1", port=port)
+    #     else:
+    #         raise ValueError(f"Unsupported HTTP method: {method}")
+    #     uvicorn.run(app, host="127.0.0.1", port=port)
+
+    def run_router_task(self):
+        graph = build_graph(self.config)
+        serve.run(graph, name="demo_dynamic", route_prefix="/", blocking=True)
