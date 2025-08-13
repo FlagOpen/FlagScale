@@ -157,7 +157,7 @@ class ServeEngine:
     def check_dag(self, visibilization=True):
         # Ensure that all dependencies are valid
         dag = {}
-        for model_alias, model_config in self.config["deploy"]["models"].items():
+        for model_alias, model_config in self.config:
             dependencies = []
             if "depends" in model_config:
                 deps = model_config["depends"]
@@ -286,7 +286,7 @@ class ServeEngine:
             _visualize_dag_with_force_directed_layout(dag, dag_img_path)
 
     def init_task(self, pythonpath=""):
-
+        self.check_dag()
         hostfile = self.config.get("hostfile", None)
         address = "auto"
         exp_path = os.path.join(self.exp_config.exp_dir, "ray_workflow")
@@ -416,81 +416,12 @@ class ServeEngine:
     #         )
     #     return
 
-    # def run_task(self, *input_data):
-    #     assert len(self.tasks) > 0
-    #     models_to_process = list(self.config["deploy"]["models"].keys())
-    #     model_nodes = {}
-
-    #     while models_to_process:
-    #         progress = False
-    #         for model_alias in list(models_to_process):
-    #             model_config = self.config["deploy"]["models"][model_alias]
-    #             dependencies = []
-    #             if "depends" in model_config:
-    #                 deps = model_config["depends"]
-    #                 if not isinstance(deps, (list, omegaconf.listconfig.ListConfig)):
-    #                     deps = [deps]
-    #                 dependencies = deps
-    #             else:
-    #                 dependencies = []
-
-    #             if all(dep in model_nodes for dep in dependencies):
-    #                 if dependencies:
-    #                     if len(dependencies) > 1:
-    #                         inputs = [model_nodes[dep] for dep in dependencies]
-    #                         model_nodes[model_alias] = self.tasks[model_alias].bind(*inputs)
-    #                     else:
-    #                         model_nodes[model_alias] = self.tasks[model_alias].bind(
-    #                             model_nodes[dependencies[0]]
-    #                         )
-    #                 else:
-    #                     if len(input_data) == 0:
-    #                         model_nodes[model_alias] = self.tasks[model_alias].bind()
-    #                     else:
-    #                         model_nodes[model_alias] = self.tasks[model_alias].bind(*input_data)
-    #                 models_to_process.remove(model_alias)
-    #                 progress = True
-    #         if not progress:
-    #             raise ValueError("Circular dependency detected in model configuration")
-
-    #     logger.info(f" =========== deploy model_nodes {model_nodes} ============= ")
-    #     find_final_node = self.find_final_node()
-
-    #     final_node = model_nodes[find_final_node]
-    #     # pydot is required to plot DAG, install it with `pip install pydot`.
-    #     # ray.dag.vis_utils.plot(final_node, "output.jpg")
-    #     final_result = workflow.run(final_node)
-    #     return final_result
-
-    # def run_router_task(self, method="post"):
-    #     router_config = self.config["deploy"].get("service")
-    #     assert router_config and len(router_config) > 0
-
-    #     name = router_config["name"]
-    #     port = router_config["port"]
-    #     request_names = router_config["request"]["names"]
-    #     request_types = router_config["request"]["types"]
-
-    #     RequestData = create_model(
-    #         "Request", **{field: (type_, ...) for field, type_ in zip(request_names, request_types)}
-    #     )
-    #     app = FastAPI()
-
-    #     if method.lower() == "post":
-
-    #         @app.post(name)
-    #         async def route_handler(request_data: RequestData):
-    #             input_data = tuple(getattr(request_data, field) for field in request_names)
-    #             try:
-    #                 response = self.run_task(*input_data)
-    #                 return response
-    #             except Exception as e:
-    #                 raise HTTPException(status_code=400, detail=str(e))
-
-    #     else:
-    #         raise ValueError(f"Unsupported HTTP method: {method}")
-    #     uvicorn.run(app, host="127.0.0.1", port=port)
-
     def run_router_task(self):
         graph = build_graph(self.config)
-        serve.run(graph, name="demo_dynamic", route_prefix="/", blocking=True)
+        serve.start(http_options={"port": self.exp_config.runner.deploy.get("port", 8000)})
+        serve.run(
+            graph,
+            name="demo_dynamic",
+            route_prefix=self.exp_config.runner.deploy.get("name", "/"),
+            blocking=True,
+        )
