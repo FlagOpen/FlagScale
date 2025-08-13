@@ -10,6 +10,16 @@ experiment:
     entrypoint: null
   runner:
     hostfile: null
+    deploy:
+      port: 6701
+      use_fs_serve: true
+      enable_omposition: true
+      name: /generate
+      request:
+        args:
+          - prompt
+        types:
+          - str
   envs:
     CUDA_VISIBLE_DEVICES: 0,1,2,3
     CUDA_DEVICE_MAX_CONNECTIONS: 1
