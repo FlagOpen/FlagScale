@@ -13,5 +13,6 @@ generate:
     "The capital of France",
   ]
   sampling:
-    top_p: 0.1
-    temperature: 0.1
+    top_p: 1.0
+    top_k: 1
+    temperature: 0.0
