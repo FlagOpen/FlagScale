@@ -1,0 +1,30 @@
+defaults:
+  - _self_
+  - serve: multiple_models
+
+experiment:
+  exp_name: multiple_models
+  exp_dir: outputs/${experiment.exp_name}
+  task:
+    type: serve
+    entrypoint: null
+  runner:
+    hostfile: null # /path/to/hostfile.txt
+    deploy:
+      port: 6701
+      use_fs_serve: true
+      enable_omposition: true
+      name: /generate
+      request:
+        args:
+          - prompt
+        types:
+          - str
+  cmds:
+    before_start: export RAY_DEDUP_LOGS=0
+
+action: auto_tune
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra
