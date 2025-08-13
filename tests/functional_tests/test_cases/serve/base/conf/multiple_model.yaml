@@ -13,7 +13,7 @@ experiment:
     deploy:
       port: 6701
       use_fs_serve: true
-      enable_omposition: true
+      enable_composition: true
       name: /generate
       request:
         args:
