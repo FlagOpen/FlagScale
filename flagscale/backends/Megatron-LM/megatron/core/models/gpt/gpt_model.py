@@ -296,11 +296,16 @@ class GPTModel(LanguageModule):
                 rotary_seq_len = self.rotary_pos_emb.get_rotary_seq_len(
                     inference_context, self.decoder, decoder_input, self.config, packed_seq_params
                 )
+                #### modify for rope + position_ids
+                batch_size, _ = position_ids.shape
+                assert batch_size == 1, "only support micro_batch_size is 1 in emu-mntp-dfm training"
                 rotary_pos_emb = self.rotary_pos_emb(
                     rotary_seq_len,
                     packed_seq=packed_seq_params is not None
                     and packed_seq_params.qkv_format == 'thd',
                     magi_attention_key=magi_attention_key,
+                    position_ids=position_ids,
+                    # position_ids=None,
                 )
         elif self.position_embedding_type == 'mrope' and not self.config.multi_latent_attention:
             if self.training or not self.config.flash_decode:
