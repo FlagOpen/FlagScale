@@ -23,7 +23,7 @@ experiment:
   cmds:
     before_start: export RAY_DEDUP_LOGS=0
 
-action: auto_tune
+action: run
 
 hydra:
   run:
