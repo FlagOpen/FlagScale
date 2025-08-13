@@ -130,35 +130,18 @@ class ServeEngine:
     def __init__(self, config):
         self.config = config.serve
         self.exp_config = config.experiment
-        self.check_config(self.exp_config)
+        self.check_task(self.exp_config)
         self.tasks = {}
 
-    def check_config(self, config):
+    def check_task(self, config):
         if not config.get("runner", {}).get("deploy", None):
             raise ValueError("key deploy is missing for deployment configuration.")
-        self.check_dag
-        # if not config.deploy.get("models", None):
-        #     raise ValueError("key models is missing for building dag pipeline.")
-
-    def find_final_node(self):
-        whole_nodes = set(self.config["deploy"]["models"].keys())
-        dependencies = set()
-
-        for model_alias, model_config in self.config["deploy"]["models"].items():
-            if len(model_config.get("depends", [])) > 0:
-                dependencies.update(model_config.depends)
-
-        output_node = whole_nodes - dependencies
-        if len(output_node) != 1:
-            raise ValueError(
-                f"There should only have one final node but there are {len(output_node)} nodes {output_node}."
-            )
-        return list(output_node)[0]
+        self.check_dag()
 
     def check_dag(self, visibilization=True):
         # Ensure that all dependencies are valid
         dag = {}
-        for model_alias, model_config in self.config:
+        for model_alias, model_config in ((k, v) for d in self.config for k, v in d.items()):
             dependencies = []
             if "depends" in model_config:
                 deps = model_config["depends"]
@@ -287,7 +270,6 @@ class ServeEngine:
             _visualize_dag_with_force_directed_layout(dag, dag_img_path)
 
     def init_task(self, pythonpath=""):
-        self.check_dag()
         hostfile = self.config.get("hostfile", None)
         address = "auto"
         exp_path = os.path.join(self.exp_config.exp_dir, "ray_workflow")
@@ -387,35 +369,6 @@ class ServeEngine:
             ray.init(address=address, runtime_env={"env_vars": {"PYTHONPATH": pythonpath}})
         else:
             ray.init(address=address)
-
-    # def build_task(self):
-    #     self.check_dag()
-    #     pythonpath_tmp = set()
-    #     for model_alias, model_config in self.config["deploy"]["models"].items():
-    #         module_name = model_config["module"]
-    #         path = Path(module_name)
-    #         module_dir = str(path.parent)
-    #         pythonpath_tmp.add(os.path.abspath(module_dir))
-    #     pythonpath = ":".join(pythonpath_tmp)
-    #     self.init_task(pythonpath=pythonpath)
-
-    #     for model_alias, model_config in self.config["deploy"]["models"].items():
-    #         module_name = model_config["module"]
-    #         model_name = model_config["name"]
-    #         path = Path(module_name)
-    #         module_tmp = path.stem
-    #         module_dir = str(path.parent)
-    #         sys.path.append(module_dir)
-    #         module = importlib.import_module(module_tmp)
-    #         model = getattr(module, model_name)
-    #         resources = model_config.resources
-    #         num_gpus = resources.get("gpu", 0)
-    #         num_cpus = resources.get("cpu", 1)
-    #         customs = {res: resources[res] for res in resources if res not in ["gpu", "cpu"]}
-    #         self.tasks[model_alias] = ray.remote(model).options(
-    #             num_cpus=num_cpus, num_gpus=num_gpus, resources=customs
-    #         )
-    #     return
 
     def run_router_task(self):
         graph = build_graph(self.config)
