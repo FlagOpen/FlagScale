@@ -15,4 +15,4 @@ class ModelB:
 
 if __name__ == "__main__":
     prompt = "introduce Bruce Lee"
-    print(ModelA()(prompt))
+    print(ModelA().forward(prompt))
