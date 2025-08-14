@@ -4,7 +4,7 @@ defaults:
 
 experiment:
   exp_name: multiple_model
-  exp_dir: tests/functional_tests/test_cases/serve/base/results_test/multiple_model
+  exp_dir: tests/functional_tests/test_cases/serve/utils/models
   task:
     type: serve
     entrypoint: null
