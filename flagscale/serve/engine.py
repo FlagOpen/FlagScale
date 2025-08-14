@@ -289,100 +289,6 @@ class ServeEngine:
             _visualize_dag_with_force_directed_layout(dag, dag_img_path)
 
     def init_task(self, pythonpath=""):
-        hostfile = self.model_config.get("hostfile", None)
-        address = "auto"
-        exp_path = os.path.join(self.exp_config.exp_dir, "ray_workflow")
-        ray_path = os.path.abspath(exp_path)
-        if hostfile:
-            head_ip, head_port = next(
-                (
-                    (node.master.ip, node.master.get("port", None))
-                    for node in hostfile.nodes
-                    if "master" in node
-                ),
-                (None, None),
-            )
-            if head_ip is None:
-                raise ValueError(
-                    f"Failed to start Ray cluster using hostfile {hostfile} due to master node missing. Please ensure that the file exists and has the correct format."
-                )
-            if head_port is None:
-                port = check_and_get_port()
-            else:
-                port = check_and_get_port(target_port=int(head_port))
-            cmd = ["ray", "start", "--head", f"--port={port}", f"--storage={ray_path}"]
-            logger.info(f"head node command: {cmd}")
-            head_result = subprocess.run(
-                cmd, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
-            )
-            if head_result.returncode != 0:
-                logger.warning(
-                    f"Head Node cmd {ssh_cmd} failed with return code {head_result.returncode}."
-                )
-                logger.warning(f"Output: {head_result.stdout}")
-                logger.warning(f"Error: {head_result.stderr}")
-                sys.exit(head_result.returncode)
-            address = f"{head_ip}:{port}"
-
-            for item in hostfile.nodes:
-                if "node" in item:
-                    node = item.node
-                    if node.type == "gpu":
-                        node_cmd = f"ray start --address={address} --num-gpus={node.slots}"
-
-                    elif node.type == "cpu":
-                        node_cmd = f"ray start --address={address} --num-cpus={node.slots}"
-                    else:
-                        resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
-                        node_cmd = f"ray start --address={address} --resources='{resource}'"
-                    if self.exp_config.get("cmds", "") and self.exp_config.cmds.get(
-                        "before_start", ""
-                    ):
-                        before_start_cmd = self.exp_config.cmds.before_start
-                        node_cmd = (
-                            f"export RAY_STORAGE={ray_path} && {before_start_cmd} && " + node_cmd
-                        )
-
-                    if node.get("port", None):
-                        ssh_cmd = f'ssh -n -p {node.port} {node.ip} "{node_cmd}"'
-                    else:
-                        ssh_cmd = f'ssh -n {node.ip} "{node_cmd}"'
-
-                    logger.info(f"worker node command: {cmd}")
-
-                    result = subprocess.run(
-                        ssh_cmd,
-                        shell=True,
-                        check=True,
-                        capture_output=True,
-                        text=True,
-                        encoding="utf-8",
-                        errors="replace",
-                    )
-                    if result.returncode != 0:
-                        logger.warning(
-                            f"SSH command {ssh_cmd} failed with return code {result.returncode}."
-                        )
-                        logger.warning(f"Output: {result.stdout}")
-                        logger.warning(f"Error: {result.stderr}")
-                        sys.exit(result.returncode)
-        else:
-            port = check_and_get_port()
-            head_ip = "127.0.0.1"
-            cmd = ["ray", "start", "--head", f"--port={port}", f"--storage={ray_path}"]
-            logger.info(f"head node command: {cmd}")
-            head_result = subprocess.run(
-                cmd, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
-            )
-            if head_result.returncode != 0:
-                logger.warning(
-                    f"local command {cmd} failed with return code {head_result.returncode}."
-                )
-                logger.warning(f"Output: {head_result.stdout}")
-                logger.warning(f"Error: {head_result.stderr}")
-                sys.exit(head_result.returncode)
-            address = f"{head_ip}:{port}"
-
         logger.info(f" =========== pythonpath {pythonpath} -----------------------")
         runtime_env = {}
         working_dir = (
@@ -394,9 +300,9 @@ class ServeEngine:
             runtime_env["working_dir"] = working_dir
             runtime_env["excludes"] = ["*.log", "*.out"]
         if runtime_env:
-            ray.init(address=address, runtime_env=runtime_env)
+            ray.init(runtime_env=runtime_env)
         else:
-            ray.init(address=address)
+            ray.init()
 
     def run_task(self):
         graph = build_graph(self.config)
