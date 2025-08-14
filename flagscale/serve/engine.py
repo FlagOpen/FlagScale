@@ -28,12 +28,6 @@ logger = logging.getLogger("ray.serve")
 
 logger.setLevel(logging.INFO)
 
-ray.init(
-    runtime_env={
-        "working_dir": "/mine/ip15/github_flagscale/tests/functional_tests/test_cases/serve/utils/models"
-    }
-)
-
 
 def load_class_from_file(file_path: str, class_name: str):
     file_path = os.path.abspath(file_path)
@@ -156,7 +150,7 @@ class ServeEngine:
         self.model_config = config.serve
         self.exp_config = config.experiment
         self.check_task(self.exp_config)
-        self.tasks = {}
+        self.init_task()
 
     def check_task(self, config):
         if not config.get("runner", {}).get("deploy", None):
@@ -390,8 +384,17 @@ class ServeEngine:
             address = f"{head_ip}:{port}"
 
         logger.info(f" =========== pythonpath {pythonpath} -----------------------")
+        runtime_env = {}
+        working_dir = (
+            self.exp_config.runner.deploy.get("working_dir", "") or self.exp_config.exp_dir
+        )
         if pythonpath:
-            ray.init(address=address, runtime_env={"env_vars": {"PYTHONPATH": pythonpath}})
+            runtime_env["env_vars"] = {"PYTHONPATH": pythonpath}
+        if working_dir:
+            runtime_env["working_dir"] = working_dir
+            runtime_env["excludes"] = ["*.log", "*.out"]
+        if runtime_env:
+            ray.init(address=address, runtime_env=runtime_env)
         else:
             ray.init(address=address)
 
