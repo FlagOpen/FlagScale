@@ -252,7 +252,7 @@ def test_rl_equal(test_path, test_type, test_task, test_case):
 
 @pytest.mark.usefixtures("test_path", "test_type", "test_task", "test_case")
 def test_serve_equal(test_path, test_type, test_task, test_case):
-    config_path = os.path.join(test_path, test_type, test_task, "conf", f"{test_case.yaml}")
+    config_path = os.path.join(test_path, test_type, test_task, "conf", f"{test_case}.yaml")
     print("config_path============= ", config_path)
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
