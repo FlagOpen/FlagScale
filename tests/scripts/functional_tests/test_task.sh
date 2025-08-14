@@ -57,7 +57,7 @@ test_task() {
       wait_for_gpu
 
       # Remove previous results if they exist
-      if [ "${_type}" = "train" ] || [ "${_type}" = "hetero_train" ] || [ "${_type}" = "inference" ] || [ "${_type}" = "rl" ]; then
+      if [ "${_type}" = "train" ] || [ "${_type}" = "hetero_train" ] || [ "${_type}" = "inference" ] || [ "${_type}" = "rl" ] || [ "${_type}" = "serve" ]; then
         result_path="tests/functional_tests/test_cases/${_type}/${_task}/results_test/${_case}"
         if [ -d "$result_path" ]; then
           rm -r "$result_path"
@@ -74,12 +74,11 @@ test_task() {
         run_command "pytest -s tests/functional_tests/test_utils/test_result.py::test_inference_equal --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_task=${_task} --test_case=${_case}" $attempt_i $_task $_type $_case
       fi
 
-      # todo: open this case
-      # if [ "${_type}" = "serve" ]; then
-      #   run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_task}/conf --config-name ${_case} action=run; sleep 1m" $attempt_i $_task $_type $_case
-      #   run_command "pytest tests/functional_tests/test_utils/test_call.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_task=${_task} --test_case=${_case}" $attempt_i $_task $_type $_case
-      #   run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_task}/conf --config-name ${_case} action=stop" $attempt_i $_task $_type $_case
-      # fi
+      if [ "${_type}" = "serve" ]; then
+         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_task}/conf --config-name ${_case} action=test; sleep 1m" $attempt_i $_task $_type $_case
+         run_command "pytest tests/functional_tests/test_utils/test_call.py --test_path=tests/functional_tests/test_cases --test_type=${_type} --test_task=${_task} --test_case=${_case}" $attempt_i $_task $_type $_case
+         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_task}/conf --config-name ${_case} action=stop" $attempt_i $_task $_type $_case
+      fi
 
       if [ "${_type}" = "rl" ]; then
         run_command "python run.py --config-path tests/functional_tests/test_cases/${_type}/${_task}/conf --config-name ${_case} action=test" $attempt_i $_task $_type $_case
