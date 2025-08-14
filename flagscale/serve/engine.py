@@ -28,6 +28,12 @@ logger = logging.getLogger("ray.serve")
 
 logger.setLevel(logging.INFO)
 
+ray.init(
+    runtime_env={
+        "working_dir": "/mine/ip15/github_flagscale/tests/functional_tests/test_cases/serve/utils/models"
+    }
+)
+
 
 def load_class_from_file(file_path: str, class_name: str):
     file_path = os.path.abspath(file_path)
@@ -133,9 +139,6 @@ def build_graph(config):
         ray_actor_options = {}
         if "num_gpus" in resources:
             ray_actor_options["num_gpus"] = resources["num_gpus"]
-        ray_actor_options["runtime_env"] = {
-            "working_dir": "/mine/ip15/github_flagscale/tests/functional_tests/test_cases/serve/utils/models"
-        }
         deploy_kwargs = {
             "num_replicas": resources.get("num_replicas", 1),
             "ray_actor_options": ray_actor_options,
