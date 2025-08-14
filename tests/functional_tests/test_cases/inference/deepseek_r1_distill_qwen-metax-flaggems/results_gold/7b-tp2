@@ -6,4 +6,3 @@ output.outputs[0].token_ids=[11, 9857, 467, 13, 14079, 11, 702, 1012, 2661, 264,
 output.prompt='The capital of France'
 output.outputs[0].text=', Paris, is known for its iconic landmarks. and, in the city of'
 output.outputs[0].token_ids=[11, 12095, 11, 374, 3881, 369, 1181, 26277, 59924, 13, 323, 11, 304, 279, 3283, 315]
-
