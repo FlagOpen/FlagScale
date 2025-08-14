@@ -133,6 +133,9 @@ def build_graph(config):
         ray_actor_options = {}
         if "num_gpus" in resources:
             ray_actor_options["num_gpus"] = resources["num_gpus"]
+        ray_actor_options["runtime_env"] = {
+            "working_dir": "/mine/ip15/github_flagscale/tests/functional_tests/test_cases/serve/utils/models"
+        }
         deploy_kwargs = {
             "num_replicas": resources.get("num_replicas", 1),
             "ray_actor_options": ray_actor_options,
