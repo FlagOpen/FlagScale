@@ -1,10 +1,12 @@
 train:
-  aquila: -tp2_pp2
+  aquila:
+    -tp2_pp2
     -tp4_pp2
   # TODO: need fix
   #   deepseek:
   #     -tp2_pp2_ep2
-  mixtral: -tp2_pp1_ep2
+  mixtral:
+    -tp2_pp1_ep2
     -tp4_pp1_ep2
   # llava_onevision:
   #   -tp2

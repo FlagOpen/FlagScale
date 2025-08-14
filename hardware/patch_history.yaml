@@ -77,10 +77,16 @@ MUSA_S5000:
   inference:
     FlagScale+vllm:
     - 94f704b211fedd83456f38c811857bc8d2b71369
+    - b497133390a9ca8132538e9cc4f91545ead3500d
+    - 878aa3be4b1fed9deb7de873ced79eaf5eb424ba
     vllm:
     - 94f704b211fedd83456f38c811857bc8d2b71369
+    - b497133390a9ca8132538e9cc4f91545ead3500d
+    - 878aa3be4b1fed9deb7de873ced79eaf5eb424ba
     FlagScale:
     - 94f704b211fedd83456f38c811857bc8d2b71369
+    - b497133390a9ca8132538e9cc4f91545ead3500d
+    - 878aa3be4b1fed9deb7de873ced79eaf5eb424ba
 Metax_C550:
   inference:
     FlagScale+vllm:
@@ -182,7 +188,10 @@ Tsing_micro:
   train:
     FlagScale+Megatron-LM:
     - ba7c854fbfeae7676229b5457c05694aaa6b7781
+    - ff41d6d017730504fac2fc62226a615b38558433
     Megatron-LM:
     - ba7c854fbfeae7676229b5457c05694aaa6b7781
+    - ff41d6d017730504fac2fc62226a615b38558433
     FlagScale:
     - ba7c854fbfeae7676229b5457c05694aaa6b7781
+    - ff41d6d017730504fac2fc62226a615b38558433
