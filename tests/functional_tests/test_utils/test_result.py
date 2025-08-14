@@ -4,7 +4,8 @@ import os
 import numpy as np
 import pytest
 import requests
-import yaml
+
+from omegaconf import DictConfig, OmegaConf
 
 
 def find_directory(start_path, target_dir_name):
@@ -255,10 +256,18 @@ def test_serve_equal(test_path, test_type, test_task, test_case):
     config_path = os.path.join(test_path, test_type, test_task, "conf", f"{test_case}.yaml")
     print("config_path============= ", config_path)
     with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-    print("config------------------ ", config)
-    # response = requests.post(
-    # "http://localhost:6701/generate", json={"prompt": "Introduce Bruce Lee"}
-    # )
-    # greeting = response.text
-    # print(greeting)
+        origin_config = OmegaConf.load(f)
+        whole_config_path = os.path.join(
+            origin_config["experiment"]["exp_dir"], "serve_logs/scripts/serve.yaml"
+        )
+        whole_config = OmegaConf.load(whole_config_path)
+    print("config------------------ ", origin_config)
+    print("whole_config------------------ ", whole_config)
+    deploy_config = whole_config.experiment.runner.deploy
+    if deploy_config.get("enable_composition", False):
+        url = f"http://localhost:{deploy_config.port}" + deploy_config.get("name", "/")
+
+        response = requests.post(url, json={"prompt": "Introduce Bruce Lee"})
+        greeting = response.text
+        print(greeting)
+        assert len(greeting) > 0, "Response is empty."
