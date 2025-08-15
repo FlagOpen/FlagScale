@@ -17,3 +17,4 @@ generate:
     top_p: 0.1
     top_k: 1
     temperature: 0.0
+    seed: 1234
