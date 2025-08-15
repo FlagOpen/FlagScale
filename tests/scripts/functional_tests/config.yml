@@ -34,10 +34,9 @@ inference:
   # qwen3_flaggems:
   #   -tp2
 
-# TODO: need fix
-# serve:
-#   base:
-#     -multiple_model
+serve:
+  base:
+    -multiple_model
 
 rl:
   qwen2_5: -0_5b
