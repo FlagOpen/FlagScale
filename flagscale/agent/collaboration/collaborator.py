@@ -371,6 +371,7 @@ class Collaborator:
             redis_client.hset("ENVIRONMENT_INFO", name, value)
             return True
         except (ConnectionError, TimeoutError, RedisError) as e:
+            print(f"Error Failed to write ENVIRONMENT_INFO[{name}] = {value}: {type(e).__name__} - {e}")
             return False
 
     def read_environment(self, name: str) -> Optional[Union[Dict[str, str], str]]:
@@ -411,6 +412,7 @@ class Collaborator:
                 return None
             return json.loads(raw_value)
         except (ConnectionError, TimeoutError, RedisError) as e:
+            print(f"Error Failed to read ENVIRONMENT_INFO[{name}]: {type(e).__name__} - {e}")
             return None
 
     # ----------------- Close Connection -----------------
