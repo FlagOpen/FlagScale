@@ -247,4 +247,3 @@ def test_rl_equal(test_path, test_type, test_task, test_case):
         best_reward > target_reward
     ), f"Best reward must be greater than {target_reward}. best_reward: {best_reward}"
     print("Check passes")
-
