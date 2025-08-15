@@ -1,6 +1,6 @@
 llm:
-  model: /home/gitlab-runner/data/DeepSeek-R1-Distill-Qwen-7B
-  tokenizer: /home/gitlab-runner/data/DeepSeek-R1-Distill-Qwen-7B
+  model: /home/gitlab-runner/data/Qwen3-4B
+  tokenizer: /home/gitlab-runner/data/Qwen3-4B
   trust_remote_code: true
   tensor_parallel_size: 2
   pipeline_parallel_size: 1
@@ -9,7 +9,7 @@ llm:
 
 generate:
   prompts: [
-    "The president of the United States",
+    "The first President of the United States",
     "The capital of France",
   ]
   sampling:
