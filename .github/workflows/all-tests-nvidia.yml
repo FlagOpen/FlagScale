@@ -128,7 +128,7 @@ jobs:
     steps:
       - name: Mock Run
         run: echo "test need fix"
-    uses: ./.github/workflows/functional-tests.yml
+    uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
         task:
