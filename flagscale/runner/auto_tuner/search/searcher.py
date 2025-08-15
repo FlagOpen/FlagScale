@@ -293,7 +293,7 @@ class Searcher:
         self._sort("context_parallel_size", space["context_parallel_size"], priority)
 
         # Set expert parallel degree
-        if  not hasattr(config.train.model, "num_experts"):
+        if not hasattr(config.train.model, "num_experts"):
             space["expert_model_parallel_size"] = [1]
         else:
             space["expert_model_parallel_size"] = (
@@ -301,7 +301,8 @@ class Searcher:
                 if "expert_model_parallel_size" not in config.experiment.auto_tuner.space
                 or config.experiment.auto_tuner.space.expert_model_parallel_size == "auto"
                 else config.experiment.auto_tuner.space.expert_model_parallel_size
-        )
+            )
+
         self._sort("expert_model_parallel_size", space["expert_model_parallel_size"], priority)
 
         return space
