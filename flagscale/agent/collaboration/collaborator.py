@@ -261,8 +261,8 @@ class Collaborator:
             bool: True if update succeeded, False on failure
 
         Example:
-            >>> coll.update_agent_busy("robot_1", True)  # Set busy
-            >>> coll.update_agent_busy("robot_1", False) # Set available
+            >>> coll.update_agent_busy("agent_1", True)  # Set busy
+            >>> coll.update_agent_busy("agent_1", False) # Set available
         """
         try:
             redis_client = self._get_conn()
@@ -307,8 +307,8 @@ class Collaborator:
                 - False if timeout occurred
 
         Example:
-            >>> # Wait for robot1 and robot2 to become free
-            >>> success = coll.wait_agent_free(["robot1", "robot2"])
+            >>> # Wait for agent_1 and agent_2 to become free
+            >>> success = coll.wait_agent_free(["agent_1", "agent_2"])
             >>> if success:
             >>>     print("All agents are now available")
         """
