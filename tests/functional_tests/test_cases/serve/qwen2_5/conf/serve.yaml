@@ -11,6 +11,7 @@ experiment:
   runner:
     hostfile: null
     deploy:
+      port: 6701
       use_fs_serve: false
   envs:
     CUDA_VISIBLE_DEVICES: 0

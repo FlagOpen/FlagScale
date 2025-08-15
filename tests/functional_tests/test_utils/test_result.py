@@ -3,6 +3,9 @@ import os
 
 import numpy as np
 import pytest
+import requests
+
+from omegaconf import DictConfig, OmegaConf
 
 
 def find_directory(start_path, target_dir_name):
@@ -246,3 +249,24 @@ def test_rl_equal(test_path, test_type, test_task, test_case):
         result_json["val-core/openai/gsm8k/reward/mean@1"],
         atol=0.05,
     ), "Result not close to gold result"
+
+
+@pytest.mark.usefixtures("test_path", "test_type", "test_task", "test_case")
+def test_serve_equal(test_path, test_type, test_task, test_case):
+    config_path = os.path.join(test_path, test_type, test_task, "conf", f"{test_case}.yaml")
+    print("[Serve] config_path ", config_path)
+    with open(config_path, "r") as f:
+        origin_config = OmegaConf.load(f)
+        whole_config_path = os.path.join(
+            origin_config["experiment"]["exp_dir"], "serve_logs/scripts/serve.yaml"
+        )
+        whole_config = OmegaConf.load(whole_config_path)
+    print("[Serve] whole_config ", whole_config)
+    deploy_config = whole_config.experiment.runner.deploy
+    if deploy_config.get("enable_composition", False):
+        url = f"http://localhost:{deploy_config.port}" + deploy_config.get("name", "/")
+
+        response = requests.post(url, json={"prompt": "Introduce Bruce Lee"})
+        greeting = response.text
+        print("[Serve] result ", greeting)
+        assert len(greeting) > 5, "Response is empty."
