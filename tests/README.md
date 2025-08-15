@@ -159,7 +159,7 @@ flagscale test --functional --type ${TYPE} --task ${TASK}
 
 Please set the following variables:
 
-- `TYPE`: The type of functional testing, supporting `train` or `hetero_train` or `inference`.
+- `TYPE`: The type of functional testing, supporting `train` or `hetero_train` or `inference` or `serve`.
 - `TASK`: The task used for functional testing, in conjunction with `TYPE`. Specific tasks can be found under the `tests/functional_tests/test_cases` directory.
 
 ### Run All Functional Tests Locally
