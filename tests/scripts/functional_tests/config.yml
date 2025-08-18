@@ -23,7 +23,7 @@ inference:
     -7b-tp2
   deepseek_r1_distill_qwen-metax:
     -7b-tp2
-  deepseek_r1_distill_qwen-metax-flaggems:
+  deepseek_r1_distill_qwen-flaggems-metax:
     -7b-tp2
   qwen3:
     -tp2
