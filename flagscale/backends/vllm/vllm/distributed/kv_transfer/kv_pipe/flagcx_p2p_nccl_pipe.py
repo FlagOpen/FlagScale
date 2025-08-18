@@ -1,4 +1,4 @@
-# Mainly adopted from vllm/distributed/kv_transfer/kv_pipe/p2p_nccl_pipe.py
+# Mainly adopted from https://github.com/vllm-project/vllm/blob/1ad957950ffc1552af5abda78c03d88ddb67945b/vllm/distributed/kv_transfer/kv_pipe/p2p_nccl_pipe.py.
 # Below is the original copyright:
 # SPDX-License-Identifier: Apache-2.0
 import os
@@ -14,6 +14,9 @@ import torch
 import zmq
 import ctypes
 import sys
+
+from vllm.config import KVTransferConfig
+
 sys.path.append(os.getenv('FLAGCX_PATH'))
 from plugin.interservice.flagcx_wrapper import (
     FLAGCXLibrary,
@@ -22,7 +25,7 @@ from plugin.interservice.flagcx_wrapper import (
     flagcxComm_t,
     flagcxDataTypeEnum,
 )
-from vllm.config import KVTransferConfig
+
 from vllm.utils import current_stream, get_ip
 
 logger = logging.getLogger(__name__)
@@ -260,12 +263,6 @@ class P2pNcclPipe:
 
         return tensor
 
-    def _get_or_create_flagcx_stream(self, stream):
-        key = hash(stream)
-        if key not in self.flagcx_streams:
-            self.flagcx_streams[key] = self.flagcx.adaptor_stream_copy(stream)
-        return self.flagcx_streams[key]
-
     def _listen_for_requests(self):
         while True:
             socks = dict(self.poller.poll())
@@ -435,6 +432,12 @@ class P2pNcclPipe:
         while True:
             sock.send(msgpack.dumps(data))
             time.sleep(3)
+
+    def _get_or_create_flagcx_stream(self, stream):
+        key = hash(stream)
+        if key not in self.flagcx_streams:
+            self.flagcx_streams[key] = self.flagcx.adaptor_stream_copy(stream)
+        return self.flagcx_streams[key]
 
     def _send(self, comm, tensor: torch.Tensor, dst: int, stream=None):
         assert tensor.device == self.device, (
