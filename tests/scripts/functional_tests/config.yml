@@ -24,7 +24,7 @@ inference:
     -7b-tp2
   deepseek_r1_distill_qwen-metax:
     -7b-tp2
-  deepseek_r1_distill_qwen-metax-flaggems:
+  deepseek_r1_distill_qwen-flaggems-metax:
     -7b-tp2
   qwen3:
     -4b-tp2
@@ -32,7 +32,7 @@ inference:
     -4b-tp2
   qwen3-metax:
     -4b-tp2
-  qwen3-metax-flaggems:
+  qwen3-flaggems-metax:
     -4b-tp2
 
 # TODO: need fix
