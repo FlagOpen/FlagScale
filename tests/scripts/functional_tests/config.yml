@@ -37,8 +37,8 @@ inference:
 # TODO: need fix
 serve:
    qwen2_5:
-     -serve
-     -serve_multiple_instance
+     -0.5b
+     -0.5b_multiple_instance
 
 rl:
   qwen2_5: -0_5b
