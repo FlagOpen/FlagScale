@@ -1,4 +1,4 @@
-# Mainly adopted from https://github.com/vllm-project/vllm/blob/1ad957950ffc1552af5abda78c03d88ddb67945b/vllm/distributed/kv_transfer/kv_pipe/p2p_nccl_pipe.py.
+# Mainly adopted from vllm/distributed/kv_transfer/kv_pipe/p2p_nccl_pipe.py
 # Below is the original copyright:
 # SPDX-License-Identifier: Apache-2.0
 import os
@@ -141,7 +141,7 @@ class P2pNcclPipe:
 
             with torch.cuda.device(self.device):
                 rank = 0
-                comm = self.flagcx.flagcxCommInitRank(
+                comm: flagcxComm_t = self.flagcx.flagcxCommInitRank(
                     2, ctypes.byref(unique_id), rank)
                 self.comms[remote_address] = (comm, rank)
                 logger.info("🤝ncclCommInitRank Success, %s👉%s, MyRank: %s",
@@ -261,10 +261,10 @@ class P2pNcclPipe:
         return tensor
 
     def _get_or_create_flagcx_stream(self, stream):
-	    key = hash(stream)
-	    if key not in self.flagcx_streams:
-	        self.flagcx_streams[key] = self.flagcx.adaptor_stream_copy(stream)
-	    return self.flagcx_streams[key]
+        key = hash(stream)
+        if key not in self.flagcx_streams:
+            self.flagcx_streams[key] = self.flagcx.adaptor_stream_copy(stream)
+        return self.flagcx_streams[key]
 
     def _listen_for_requests(self):
         while True:
@@ -279,9 +279,7 @@ class P2pNcclPipe:
                         bytes(data["unique_id"]))
                     with torch.cuda.device(self.device):
                         rank = 1
-                        # comm: ncclComm_t = self.nccl.ncclCommInitRank(
-                        #     2, unique_id, rank)
-                        comm = self.flagcx.flagcxCommInitRank(
+                        comm: flagcxComm_t = self.flagcx.flagcxCommInitRank(
                             2, ctypes.byref(unique_id), rank)
                         self.comms[remote_address.decode()] = (comm, rank)
                         logger.info(
@@ -310,7 +308,8 @@ class P2pNcclPipe:
                             self.router_socket.send_multipart(
                                 [remote_address, b"0"])
                             comm, rank = self.comms[remote_address.decode()]
-                            self._recv(comm, tensor, rank ^ 1, self.recv_stream)
+                            self._recv(comm, tensor, rank ^ 1,
+                                       self.recv_stream)
                             logger.info(
                                 "🔵[PUT]Recv Tensor, %s👈%s, MyRank:%s, "
                                 "data:%s, shape:%s", self.zmq_address,
@@ -350,7 +349,9 @@ class P2pNcclPipe:
                         [remote_address, msgpack.dumps(data)])
 
                     if data["ret"] == 0:
-                        self._send(comm, tensor.to(self.device), rank ^ 1, self.send_stream)
+                        comm, rank = self.comms[remote_address.decode()]
+                        self._send(comm, tensor.to(self.device), rank ^ 1,
+                                   self.send_stream)
 
                     logger.info(
                         "🔵[GET]Send Tensor, %s👉%s, "
@@ -361,8 +362,6 @@ class P2pNcclPipe:
                         "🚧Unexpected, Received message from %s, data:%s",
                         remote_address, data)
 
-    # Asynchronous sending may cause conflicts between P2P NCCL and
-    # NCCL used in TP/PP, which can lead to deadlock issues.
     def _send_async(self):
         while True:
             with self.send_queue_cv:
@@ -442,26 +441,26 @@ class P2pNcclPipe:
             f"this nccl communicator is created to work on {self.device}, "
             f"but the input tensor is on {tensor.device}")
         if stream is None:
-            stream = current_stream() #e.g., torch.cuda.current_stream()
+            stream = current_stream()
 
         with torch.cuda.stream(stream):
             flagcx_stream = self._get_or_create_flagcx_stream(stream)
             self.flagcx.flagcxSend(buffer_type(tensor.data_ptr()), tensor.numel(),
-                            flagcxDataTypeEnum.from_torch(tensor.dtype), dst,
-                            comm, flagcx_stream)
+                                   flagcxDataTypeEnum.from_torch(tensor.dtype), dst,
+                                   comm, flagcx_stream)
 
     def _recv(self, comm, tensor: torch.Tensor, src: int, stream=None):
         assert tensor.device == self.device, (
             f"this nccl communicator is created to work on {self.device}, "
             f"but the input tensor is on {tensor.device}")
         if stream is None:
-            stream = current_stream() #e.g., torch.cuda.current_stream()
+            stream = current_stream()
 
         with torch.cuda.stream(stream):
             flagcx_stream = self._get_or_create_flagcx_stream(stream)
             self.flagcx.flagcxRecv(buffer_type(tensor.data_ptr()), tensor.numel(),
-                            flagcxDataTypeEnum.from_torch(tensor.dtype), src,
-                            comm, flagcx_stream)
+                                   flagcxDataTypeEnum.from_torch(tensor.dtype), src,
+                                   comm, flagcx_stream)
 
     def close(self) -> None:
         self._listener_thread.join()

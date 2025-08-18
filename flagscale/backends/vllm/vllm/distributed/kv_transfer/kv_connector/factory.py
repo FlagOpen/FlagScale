@@ -117,13 +117,6 @@ KVConnectorFactory.register_connector(
     "vllm.distributed.kv_transfer.kv_connector.v1.shared_storage_connector",
     "SharedStorageConnector")
 
-# --- FLAGSCALE MODIFICATION BEG ---
-KVConnectorFactory.register_connector(
-    "P2pNcclConnector",
-    "vllm.distributed.kv_transfer.kv_connector.v1.p2p.p2p_nccl_connector",
-    "P2pNcclConnector")
-# --- FLAGSCALE MODIFICATION END ---
-
 KVConnectorFactory.register_connector(
     "P2pNcclConnector",
     "vllm.distributed.kv_transfer.kv_connector.v1.p2p.p2p_nccl_connector",

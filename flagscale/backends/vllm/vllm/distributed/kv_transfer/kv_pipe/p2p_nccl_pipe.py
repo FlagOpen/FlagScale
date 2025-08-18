@@ -1,4 +1,3 @@
-# Copied adopted from https://github.com/vllm-project/vllm/blob/1ad957950ffc1552af5abda78c03d88ddb67945b/vllm/distributed/kv_transfer/kv_pipe/p2p_nccl_pipe.py.
 # Below is the original copyright:
 # SPDX-License-Identifier: Apache-2.0
 import logging
