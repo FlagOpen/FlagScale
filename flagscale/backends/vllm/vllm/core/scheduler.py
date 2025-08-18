@@ -348,7 +348,11 @@ def _update_num_new_tokens(
     budget: SchedulingBudget,
     num_new_tokens: int = 0,
     num_new_tokens_negative: int = 0,
+    enable_chunking: bool = False,
 ):
+    if not enable_chunking:
+        return num_new_tokens, num_new_tokens_negative
+
     remaining_token_budget = budget.remaining_token_budget()
     if num_new_tokens + num_new_tokens_negative >= remaining_token_budget:
         min_num_new_tokens = min(num_new_tokens, remaining_token_budget // 2)
@@ -760,13 +764,17 @@ class Scheduler:
 
             # --- FLAGSCALE MODIFICATION BEG ---
             with _switch_seq_group(seq_group, seq_group.negative_seqs):
-                num_uncached_new_tokens_negative, _ = (
+                num_uncached_new_tokens_negative, _ = \
                     self._get_num_new_uncached_and_cached_tokens(
-                        seq_group, SequenceStatus.RUNNING, enable_chunking,
-                        budget))
+                        seq_group,
+                        SequenceStatus.RUNNING,
+                        enable_chunking,
+                        budget,
+                        partial_prefill_metadata,
+                    )
             num_running_tokens_negative = num_uncached_new_tokens_negative
             num_running_tokens, num_running_tokens_negative = _update_num_new_tokens(
-                budget, num_running_tokens, num_running_tokens_negative)
+                budget, num_running_tokens, num_running_tokens_negative, enable_chunking)
             # --- FLAGSCALE MODIFICATION END ---
 
             if num_running_tokens + num_running_tokens_negative == 0: # --- FLAGSCALE MODIFICATION ---
@@ -956,8 +964,7 @@ class Scheduler:
                         seq_group, SequenceStatus.SWAPPED, enable_chunking,
                         budget))
 
-            if num_new_tokens_uncached + num_new_tokens_uncached_negative == 0 \
-                or not budget.can_schedule(
+            if num_new_tokens_uncached + num_new_tokens_uncached_negative == 0 or not budget.can_schedule(
                     num_new_tokens=num_new_tokens_uncached + num_new_tokens_uncached_negative,
                     num_new_seqs=num_new_seqs,
             ):
@@ -1171,11 +1178,15 @@ class Scheduler:
             with _switch_seq_group(seq_group, seq_group.negative_seqs):
                 num_new_tokens_uncached_negative, num_new_tokens_cached_negative = (
                     self._get_num_new_uncached_and_cached_tokens(
-                        seq_group, SequenceStatus.WAITING, enable_chunking,
-                        budget))
+                        seq_group,
+                        SequenceStatus.WAITING,
+                        enable_chunking,
+                        budget,
+                        partial_prefill_metadata=partial_prefill_metadata,
+                    ))
 
             num_new_tokens_uncached, num_new_tokens_uncached_negative = _update_num_new_tokens(
-                budget, num_new_tokens_uncached, num_new_tokens_uncached_negative)
+                budget, num_new_tokens_uncached, num_new_tokens_uncached_negative, enable_chunking)
 
             num_new_tokens = num_new_tokens_uncached + num_new_tokens_cached
             num_new_tokens_negative = num_new_tokens_uncached_negative + num_new_tokens_cached_negative
@@ -1186,17 +1197,27 @@ class Scheduler:
 
             if not enable_chunking:
                 num_prompt_tokens = waiting_seqs[0].get_len()
-                assert num_new_tokens == num_prompt_tokens
+                if seq_group.has_negative_seqs():
+                    seq = waiting_seqs[0]
+                    neg_seq = seq_group.negative_seqs_dict[seq.seq_id]
+                    num_prompt_tokens += neg_seq.get_len()
+                assert num_new_tokens + num_new_tokens_negative == num_prompt_tokens
 
             prompt_limit = self._get_prompt_limit(seq_group)
             if num_new_tokens + num_new_tokens_negative > prompt_limit: # --- FLAGSCALE MODIFICATION ---
+                # --- FLAGSCALE MODIFICATION BEG ---
                 logger.warning(
                     "Input prompt (%d tokens) (%d negative tokens) is too long"
                     " and exceeds limit of %d",
                     num_new_tokens,
                     num_new_tokens_negative,
                     prompt_limit,
-                ) # --- FLAGSCALE MODIFICATION ---
+                )
+                if num_new_tokens_negative > 0:
+                    logger.warning(
+                        "CFG is enabled, setting enable_chunked_prefill to true can help."
+                    )
+                # --- FLAGSCALE MODIFICATION END ---
                 for seq in waiting_seqs:
                     seq.status = SequenceStatus.FINISHED_IGNORED
                 self.remove_seq_from_computed_blocks_tracker(
@@ -1270,8 +1291,7 @@ class Scheduler:
                 break
 
             num_new_seqs = seq_group.get_max_num_running_seqs()
-            if num_new_tokens_uncached + num_new_tokens_uncached_negative == 0 \
-                or not budget.can_schedule(
+            if num_new_tokens_uncached + num_new_tokens_uncached_negative == 0 or not budget.can_schedule(
                     num_new_tokens=num_new_tokens_uncached + num_new_tokens_uncached_negative,
                     num_new_seqs=num_new_seqs,
             ): # --- FLAGSCALE MODIFICATION ---
