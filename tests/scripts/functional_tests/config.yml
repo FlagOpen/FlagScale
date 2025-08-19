@@ -35,9 +35,10 @@ inference:
   #   -tp2
 
 # TODO: need fix
-# serve:
-#   base:
-#     -multiple_model
+serve:
+   qwen2_5:
+     -0.5b
+     -0.5b_multiple_instance
 
 rl:
   qwen2_5: -0_5b
