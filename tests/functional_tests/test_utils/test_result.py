@@ -252,8 +252,6 @@ def test_rl_equal(test_path, test_type, test_task, test_case):
     ), f"Best reward must be greater than {target_reward}. best_reward: {best_reward}"
     print("Check passes")
 
-    
-
 
 @pytest.mark.usefixtures("test_path", "test_type", "test_task", "test_case")
 def test_serve_equal(test_path, test_type, test_task, test_case):
