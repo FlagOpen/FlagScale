@@ -36,11 +36,11 @@ jobs:
     strategy:
       matrix:
         task:
-          - OPI-Llama-3.1-8B-Instruct-metax
           - deepseek_r1_distill_qwen-metax
+          - opi_llama3_1_instruct-metax
           # TODO: Need update for flaggems@v3.0
-          - OPI-Llama-3.1-8B-Instruct-metax-flaggems
           - deepseek_r1_distill_qwen-metax-flaggems
+          - opi_llama3_1_instruct-metax-flaggems
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}

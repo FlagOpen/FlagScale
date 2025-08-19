@@ -109,10 +109,10 @@ jobs:
     strategy:
       matrix:
         task:
-          - OPI-Llama-3.1-8B-Instruct
-          - OPI-Llama-3.1-8B-Instruct-flaggems
           - deepseek_r1_distill_qwen
           - deepseek_r1_distill_qwen-flaggems
+          - opi_llama3_1_instruct
+          - opi_llama3_1_instruct-flaggems
           - qwen3
           # - deepseek_flaggems   # TODO: need fix
           # - qwen3_flaggems      # TODO: need fix

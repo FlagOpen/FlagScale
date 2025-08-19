@@ -3,8 +3,8 @@ defaults:
   - inference: 8b-tp2
 
 experiment:
-  exp_name: OPI-Llama-3.1-8B-Instruct-metax-flaggems
-  exp_dir: tests/functional_tests/test_cases/inference/OPI-Llama-3.1-8B-Instruct-metax-flaggems/results_test/8b-tp2
+  exp_name: opi_llama3_1_instruct-metax-flaggems
+  exp_dir: tests/functional_tests/test_cases/inference/opi_llama3_1_instruct-metax-flaggems/results_test/8b-tp2
   task:
     type: inference
     backend: vllm
