@@ -22,6 +22,7 @@ commands=(
     "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3-flaggems-metax"
     # For serve
     "tests/scripts/functional_tests/test_task.sh --type serve --task qwen2_5"
+    "tests/scripts/functional_tests/test_task.sh --type serve --task base"
 )
 
 for cmd in "${commands[@]}"; do

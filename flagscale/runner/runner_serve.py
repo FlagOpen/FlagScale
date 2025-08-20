@@ -1246,7 +1246,7 @@ class CloudServeRunner(RunnerBase):
                 self.user_script = "flagscale/serve/run_fs_serve_vllm.py"
         elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
             self.user_script = entrypoint
-        elif entrypoint is None:
+        elif self.use_fs_serve and self.deploy_config.get("enable_composition", False):
             self.user_script = "flagscale/serve/run_serve.py"
         else:
             raise ValueError(

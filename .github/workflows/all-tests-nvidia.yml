@@ -123,11 +123,17 @@ jobs:
     needs:
       - set-env
       - functional-tests-inference
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mock Run
+        run: echo "test serve case"
+
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
         task:
           - qwen2_5
+          - base
     name: "serve-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
