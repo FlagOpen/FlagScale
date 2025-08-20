@@ -298,7 +298,7 @@ class ServeEngine:
             runtime_env["env_vars"] = {"PYTHONPATH": pythonpath}
         if working_dir:
             runtime_env["working_dir"] = working_dir
-            runtime_env["excludes"] = ["*.log", "*.out"]
+            runtime_env["excludes"] = ["*.log", "*.out", "*.output"]
         if runtime_env:
             ray.init(runtime_env=runtime_env)
         else:
