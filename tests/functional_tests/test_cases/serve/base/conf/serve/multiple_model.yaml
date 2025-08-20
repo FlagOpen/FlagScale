@@ -1,6 +1,6 @@
 - serve_id: A
   module: ./tests/functional_tests/test_cases/serve/utils/models/base_model.py
-  name: model_A
+  name: ModelA
   resources:
     num_replicas: 2
     num_gpus: 1
@@ -8,18 +8,18 @@
   module: ./tests/functional_tests/test_cases/serve/utils/models/base_model.py
   depends:
     - A
-  name: model_B
+  name: ModelB
   resources:
     num_replicas: 1
 - serve_id: C
   module: ./tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
   depends:
     - A
-  name: model_C
+  name: ModelC
 - serve_id: D
   module: ./tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
   depends:
     - B
     - C
-  name: model_D
+  name: ModelD
 
