@@ -1041,6 +1041,16 @@ def pretrain(
             train_data_iterator.append(iterators[0])
             valid_data_iterator.append(iterators[1])
             test_data_iterator.append(iterators[2])
+    elif args.use_dualpipev:
+        train_data_iterator = []
+        valid_data_iterator = []
+        test_data_iterator = []
+        for _ in range(2):
+            iterators = build_train_valid_test_data_iterators(
+                train_valid_test_dataset_provider)
+            train_data_iterator.append(iterators[0])
+            valid_data_iterator.append(iterators[1])
+            test_data_iterator.append(iterators[2])
     else:
         train_data_iterator, valid_data_iterator, test_data_iterator = (
             build_train_valid_test_data_iterators(train_valid_test_dataset_provider)
@@ -1156,6 +1166,12 @@ def pretrain(
                 mpu.set_virtual_pipeline_model_parallel_rank(i)
                 extra_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
                 extra_valid_data_iterator.append(extra_iterators)
+        elif args.use_dualpipev:
+            extra_valid_data_iterator = []
+            for _ in range(2):
+                extra_iterators = build_extra_valid_data_iterators(
+                    extra_valid_dataset_provider)
+                extra_valid_data_iterator.append(extra_iterators)
         else:
             extra_valid_data_iterator = (
                 build_extra_valid_data_iterators(extra_valid_dataset_provider)
@@ -1251,6 +1267,28 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
                 this_model.model_type = model_type
                 this_model.vp_stage = i
                 model.append(this_model)
+        elif args.use_dualpipev:
+            model = []
+
+            pre_process, post_process = False, False
+            if mpu.is_pipeline_first_stage():
+                pre_process = True
+
+            first_model = model_provider_func(
+                pre_process=pre_process,
+                post_process=post_process,
+                is_dualpipev_first_chunk=True,
+            )
+            first_model.model_type = model_type
+            model.append(first_model)
+
+            second_model = model_provider_func(
+                pre_process=post_process,
+                post_process=pre_process,
+                is_dualpipev_first_chunk=False,
+            )
+            second_model.model_type = model_type
+            model.append(second_model)
         else:
             pre_process = mpu.is_pipeline_first_stage()
             post_process = mpu.is_pipeline_last_stage()
@@ -1735,7 +1773,10 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
         if args.use_distributed_optimizer and args.overlap_param_gather:
             cuda_graph_set_manual_hooks(model)
 
-    if mpu.is_pipeline_last_stage(ignore_virtual=True):
+    is_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=True)
+    if args.use_dualpipev:
+        is_last_stage = mpu.is_pipeline_first_stage(ignore_virtual=True)
+    if is_last_stage:
         # Average loss across microbatches.
         loss_reduced = {}
 
@@ -2765,6 +2806,12 @@ def train(
                 for i in range(len(model)):
                     mpu.set_virtual_pipeline_model_parallel_rank(i)
                     extra_iterators = build_extra_valid_data_iterators(extra_valid_dataset_provider)
+                    extra_valid_data_iterator.append(extra_iterators)
+            elif args.use_dualpipev:
+                extra_valid_data_iterator = []
+                for _ in range(2):
+                    extra_iterators = build_extra_valid_data_iterators(
+                        extra_valid_dataset_provider)
                     extra_valid_data_iterator.append(extra_iterators)
             else:
                 extra_valid_data_iterator = (

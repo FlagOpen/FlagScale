@@ -79,6 +79,10 @@ _VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK = None
 _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = None
 _PIPELINE_MODEL_PARALLEL_SPLIT_RANK = None
 
+######### FlagScale Begin ########
+_DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = None
+######### FlagScale End ########
+
 _PIPELINE_MODEL_PARALLEL_DECODER_START = None
 
 # These values enable us to change the mpu sizes on the fly.
@@ -509,6 +513,7 @@ def initialize_model_parallel(
     get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
     create_gloo_process_groups: bool = True,
     high_priority_stream_groups: Optional[List[str]] = None,
+    create_dualpipev_parallel_size: bool = False,
 ) -> None:
     # pylint: disable=line-too-long
     """Initialize model data parallel groups.
@@ -739,6 +744,12 @@ def initialize_model_parallel(
         global _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
         _VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK = 0
         _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = virtual_pipeline_model_parallel_size
+
+    ######### FlagScale Begin ########
+    if create_dualpipev_parallel_size:
+        global _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
+        _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = pipeline_model_parallel_size
+    ######### FlagScale End ########
 
     if pipeline_model_parallel_split_rank is not None:
         global _PIPELINE_MODEL_PARALLEL_SPLIT_RANK
@@ -2037,6 +2048,14 @@ def get_virtual_pipeline_model_parallel_world_size():
     return _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
 
 
+######### FlagScale Begin ########
+def get_dualpipev_pipeline_model_parallel_world_size():
+    """Return the dualpipev pipeline-parallel world size."""
+    global _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
+    return _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
+######### FlagScale End ########
+
+
 def get_tensor_model_parallel_src_rank():
     """Calculate the global rank corresponding to the first local rank
     in the tensor model parallel group."""
@@ -2504,16 +2523,22 @@ def get_expert_data_parallel_rank(partial_expert_data_parallel=False):
 
 def get_expert_data_parallel_world_size(partial_expert_data_parallel=False):
     """Return world size for the expert data parallel group."""
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_expert_data_parallel_world_size()
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         return get_expert_data_parallel_group(
-            partial_expert_data_parallel=partial_expert_data_parallel.size()
-        )
+            partial_expert_data_parallel=partial_expert_data_parallel
+        ).size()
     else:
         return 0
 
 
 def get_intra_distributed_optimizer_instance_group():
     """Get the group of all GPUs in a distributed optimizer instance."""
+    para_ctx = get_parallel_context() 
+    if para_ctx is not None:
+        return para_ctx.get_intra_distributed_optimizer_instance_group()
     assert (
         _INTRA_DISTRIBUTED_OPTIMIZER_INSTANCE_GROUP is not None
     ), "Intra distributed optimizer instance group is not initialized"
@@ -2627,6 +2652,11 @@ def destroy_model_parallel():
 
     global _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
     _VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = None
+
+    ######### FlagScale Begin ########
+    global _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE
+    _DUALPIPEV_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = None
+    ######### FlagScale End ########
 
     global _MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE
     _MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = None

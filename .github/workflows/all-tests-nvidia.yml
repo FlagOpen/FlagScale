@@ -23,7 +23,7 @@ jobs:
 
   # Megatron Unit Tests with Matrix
   megatron-unit-tests:
-    needs: 
+    needs:
       - set-env
     uses: ./.github/workflows/unit-tests-nvidia.yml
     strategy:
@@ -89,31 +89,28 @@ jobs:
     needs: 
       - set-env
       - functional-tests-train
-    runs-on: ubuntu-latest
-    steps:
-      - name: Mock Run
-        run: echo "test need fix"
     # TODO: test need fix
-    # uses: ./.github/workflows/functional-tests.yml
-    # strategy:
-    #   matrix:
-    #     task:
-    #       - aquila
-    # name: "hetero_train-${{ matrix.task }}"
-    # with:
-    #   task: ${{ matrix.task }}
-    #   type: hetero_train
-    #   image: ${{ needs.set-env.outputs.ci_image }}
+    uses: ./.github/workflows/functional-tests-nvidia.yml
+    strategy:
+      matrix:
+        task:
+          - aquila
+    name: "hetero_train-${{ matrix.task }}"
+    with:
+      task: ${{ matrix.task }}
+      type: hetero_train
+      image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-inference:
-    needs: 
+    needs:
       - set-env
       - functional-tests-hetero
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
         task:
-          - deepseek
+          - deepseek_r1_distill_qwen
+          - deepseek_r1_distill_qwen-flaggems
           - qwen3
           # - deepseek_flaggems   # TODO: need fix
           # - qwen3_flaggems      # TODO: need fix
@@ -127,21 +124,16 @@ jobs:
     needs: 
       - set-env
       - functional-tests-inference
-    runs-on: ubuntu-latest
-    steps:
-      - name: Mock Run
-        run: echo "test need fix"
-    # TODO: test need fix
-    # uses: ./.github/workflows/functional-tests.yml
-    # strategy:
-    #   matrix:
-    #     task:
-    #       - base
-    # name: "serve-${{ matrix.task }}"
-    # with:
-    #   task: ${{ matrix.task }}
-    #   type: serve
-    #   image: ${{ needs.set-env.outputs.ci_image }}
+    uses: ./.github/workflows/functional-tests-nvidia.yml
+    strategy:
+      matrix:
+        task:
+          - qwen2_5
+    name: "serve-${{ matrix.task }}"
+    with:
+      task: ${{ matrix.task }}
+      type: serve
+      image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-rl:
     needs: 

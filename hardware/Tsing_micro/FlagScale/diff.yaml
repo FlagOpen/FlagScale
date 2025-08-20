@@ -3,7 +3,7 @@ backends_commit:
 backends_version:
   FlagScale: main
   Megatron-LM: main
-commit: 81bb8725b9387816b3e2992ac842ac7047758d57
+commit: 56143887976082d1d6729fadb0cafd4fe44e8cd6
 contact: ''
 device_type: Tsing_micro
 models:

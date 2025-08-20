@@ -376,6 +376,12 @@ class TransformerConfig(ModelParallelConfig):
     """Use the kitchen extension for transformer quantization."""
 
     ####################
+    # DualPipeV related
+    ####################
+    use_dualpipev: bool = False
+    moe_fb_overlap: bool = False
+
+    ####################
     # MoE related
     ####################
     moe_shared_expert_intermediate_size: Optional[int] = None
@@ -1264,6 +1270,9 @@ class TransformerConfig(ModelParallelConfig):
                     f"Length of no_rope list ({len(self.no_rope_freq)}) must match "
                     f"the number of layers ({self.num_layers})"
                 )
+
+        if self.moe_fb_overlap:
+            self.delay_wgrad_compute = True
 
 
 @dataclass
