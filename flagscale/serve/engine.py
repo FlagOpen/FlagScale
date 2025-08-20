@@ -24,13 +24,10 @@ from ray.serve.handle import DeploymentHandle
 
 from flagscale.logger import logger
 
-RequestData = create_model(
-    "Request", **{field: (type_, ...) for field, type_ in zip(["prompt"], [str])}
-)
-
 
 def load_class_from_file(file_path: str, class_name: str):
     file_path = os.path.abspath(file_path)
+    sys.path.insert(0, os.path.dirname(file_path))
     module_name = os.path.splitext(os.path.basename(file_path))[0]
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     if spec is None:
@@ -58,7 +55,12 @@ def make_deployment(logic_cls, **deploy_kwargs):
 
 @serve.deployment
 class FinalModel:
-    def __init__(self, graph_config: Dict[str, Any], handles: Dict[str, DeploymentHandle]):
+    def __init__(
+        self,
+        graph_config: Dict[str, Any],
+        handles: Dict[str, DeploymentHandle],
+        config: omegaconf.DictConfig,
+    ):
         self.graph_config = graph_config
         self.handles = handles
 
@@ -67,9 +69,19 @@ class FinalModel:
         dep_nodes = {dep for cfg in graph_config.values() for dep in cfg.get("depends", [])}
         self.roots = list(all_nodes - dep_nodes)
         assert len(self.roots) == 1, "Only one return node is allowed"
+        request_config = config.experiment.runner.deploy.request
+        self.request_base = create_model(
+            "Request",
+            **{
+                field: (type_, ...)
+                for field, type_ in zip(request_config.args, request_config.types)
+            },
+        )
 
-    async def __call__(self, http_request: RequestData):
-        request_data = await http_request.json()
+    async def __call__(self, http_request):
+        origin_request = await http_request.json()
+        request_data = self.request_base(**origin_request).dict()
+
         results_cache = {}
 
         async def run_node(node_name, **input_data):
@@ -100,7 +112,8 @@ class FinalModel:
         return final_results[root]
 
 
-def build_graph(connection_list):
+def build_graph(config):
+    connection_list = config.serve
     # Convert list of dicts with 'serve_id' to dict keyed by serve_id
     connection = {
         cfg["serve_id"]: {k: v for k, v in cfg.items() if k != "serve_id"}
@@ -122,13 +135,14 @@ def build_graph(connection_list):
         deployments[name] = make_deployment(logic_cls, **deploy_kwargs)
         handles[name] = deployments[name].bind()
 
-    root_model = FinalModel.bind(connection, handles)
+    root_model = FinalModel.bind(connection, handles, config)
     return root_model
 
 
 class ServeEngine:
     def __init__(self, config):
-        self.config = config.serve
+        self.config = config
+        self.model_config = config.serve
         self.exp_config = config.experiment
         self.check_task(self.exp_config)
         self.tasks = {}
@@ -141,7 +155,7 @@ class ServeEngine:
     def check_dag(self, visibilization=True):
         # Ensure that all dependencies are valid
         dag = {}
-        for model_alias, model_config in ((k, v) for d in self.config for k, v in d.items()):
+        for model_alias, model_config in ((k, v) for d in self.model_config for k, v in d.items()):
             dependencies = []
             if "depends" in model_config:
                 deps = model_config["depends"]
@@ -151,7 +165,7 @@ class ServeEngine:
             dag[model_alias] = dependencies
 
             for dep in dependencies:
-                if dep not in self.config["deploy"]["models"]:
+                if dep not in self.model_config["deploy"]["models"]:
                     raise ValueError(
                         f"Dependency {dep} for model {model_alias} not found in config['deploy']['models']"
                     )
@@ -270,7 +284,7 @@ class ServeEngine:
             _visualize_dag_with_force_directed_layout(dag, dag_img_path)
 
     def init_task(self, pythonpath=""):
-        hostfile = self.config.get("hostfile", None)
+        hostfile = self.model_config.get("hostfile", None)
         address = "auto"
         exp_path = os.path.join(self.exp_config.exp_dir, "ray_workflow")
         ray_path = os.path.abspath(exp_path)
