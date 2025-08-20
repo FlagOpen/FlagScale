@@ -455,7 +455,8 @@ class Collaborator:
                 except (ValueError, TypeError):
                     parsed_data[key] = value
             return parsed_data
-        except (ConnectionError, TimeoutError, RedisError):
+        except (ConnectionError, TimeoutError, RedisError) as e:
+            print(f"Error Failed to read ENVIRONMENT_INFO]: {type(e).__name__} - {e}")
             return None
 
     # ----------------- Close Connection -----------------
