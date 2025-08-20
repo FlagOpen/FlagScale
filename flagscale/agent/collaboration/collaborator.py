@@ -371,7 +371,9 @@ class Collaborator:
             redis_client.hset("ENVIRONMENT_INFO", name, value)
             return True
         except (ConnectionError, TimeoutError, RedisError) as e:
-            print(f"Error Failed to write ENVIRONMENT_INFO[{name}] = {value}: {type(e).__name__} - {e}")
+            print(
+                f"Error Failed to write ENVIRONMENT_INFO[{name}] = {value}: {type(e).__name__} - {e}"
+            )
             return False
 
     def read_environment(self, name: str) -> Optional[Union[Dict[str, str], str]]:
@@ -413,6 +415,47 @@ class Collaborator:
             return json.loads(raw_value)
         except (ConnectionError, TimeoutError, RedisError) as e:
             print(f"Error Failed to read ENVIRONMENT_INFO[{name}]: {type(e).__name__} - {e}")
+            return None
+
+    def read_all_environment(self) -> Optional[Dict[str, Union[Dict[str, str], str]]]:
+        """
+        Retrieve all environment information from Redis hash storage ("ENVIRONMENT_INFO").
+
+        Returns:
+            Optional[Dict[str, Union[Dict[str, str], str]]]:
+                - A dictionary mapping each key to its parsed value:
+                    * Dictionary if the stored value is JSON
+                    * String if the value is plain text or JSON parsing fails
+                - None if an error occurs or no data exists
+
+        Example:
+            >>> read_all_environment()
+            {
+                "office_lighting": {"status": "on", "brightness": "75%"},
+                "temperature": "22.5°C",
+                "humidity": {"value": "60", "unit": "%"}
+            }
+
+        Note:
+            - The data is retrieved from the Redis hash key "ENVIRONMENT_INFO"
+            - Automatically attempts to parse JSON strings into dictionaries
+            - Returns None for any connection or Redis errors
+        """
+
+        try:
+            redis_client = self._get_conn()
+            raw_data = redis_client.hgetall("ENVIRONMENT_INFO")
+            if not raw_data:
+                return None
+
+            parsed_data = {}
+            for key, value in raw_data.items():
+                try:
+                    parsed_data[key] = json.loads(value)
+                except (ValueError, TypeError):
+                    parsed_data[key] = value
+            return parsed_data
+        except (ConnectionError, TimeoutError, RedisError):
             return None
 
     # ----------------- Close Connection -----------------
