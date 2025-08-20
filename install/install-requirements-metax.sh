@@ -59,7 +59,7 @@ pip install -r ./requirements/requirements-base.txt
 conda activate flagscale-${env}
 
 # install basic dependencies
-pip install torch==2.6.0+metax2.33.0.5 torchaudio==2.4.1+metax2.33.0.5 torchvision==0.15.1+metax2.33.0.5 -i https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com
+pip install torch==2.6.0+metax3.0.0.3 torchaudio==2.4.1+metax3.0.0.3 torchvision==0.15.1+metax3.0.0.3 -i https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com
 pip install -r ./requirements/requirements-common.txt
 
 if [[ ${env} == "inference" ]]; then
@@ -89,11 +89,10 @@ if [[ ${env} == "inference" ]]; then
     # Enter the target directory and record the original path
     pushd "$build_dir" > /dev/null
 
-    WHEEL_PATH="dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl"
+    WHEEL_PATH="dist/vllm-0.8.5+maca3.0.0.8torch2.6-cp310-cp310-linux_x86_64.whl"
 
     {
         # Load environment variables
-        source /etc/profile.d/conda.sh && \
         source ./env.sh || { echo "Failed to source environment files"; exit 1; }
 
         echo "Setting up Python environment ..."
