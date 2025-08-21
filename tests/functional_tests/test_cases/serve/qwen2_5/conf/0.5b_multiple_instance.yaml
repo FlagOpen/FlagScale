@@ -29,7 +29,7 @@ experiment:
       interval: 20
       run_best: false
   cmds:
-    before_start: export RAY_DEDUP_LOGS=0
+    before_start: ulimit -n 65535 && export no_proxy="127.0.0.1,localhost" && source /root/miniconda3/bin/activate flagscale-inference
   envs:
     CUDA_VISIBLE_DEVICES: 0,1
 
