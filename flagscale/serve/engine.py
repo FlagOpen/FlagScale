@@ -67,7 +67,7 @@ class TaskManager:
         return
 
 
-def make_task_manager():
+def make_task_manager(config):
     return TaskManager.bind()
 
 
@@ -418,7 +418,7 @@ class ServeEngine:
 
     def run_task(self):
         graph = build_graph(self.config)
-        task_manager = make_task_manager()
+        task_manager = make_task_manager(self.config)
         serve.start(http_options={"port": self.exp_config.runner.deploy.get("port", 8000)})
         manager_prefix_name = "/manager"
         serve_prefix_name = self.exp_config.runner.deploy.get("name", "/")
