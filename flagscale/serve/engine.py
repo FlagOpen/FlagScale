@@ -29,7 +29,6 @@ logger = logging.getLogger("ray.serve")
 logger.setLevel(logging.INFO)
 
 
-
 def make_task_manager():
     local_app = FastAPI()
 
@@ -333,15 +332,8 @@ class ServeEngine:
         working_dir = (
             self.exp_config.runner.deploy.get("working_dir", "") or self.exp_config.exp_dir
         )
-        # if pythonpath:
-        #     runtime_env["env_vars"] = {"PYTHONPATH": pythonpath}
-
-        # pythonpath = "/mine/emu3.5/app"
-        # working_dir = ""
-        # if pythonpath:
-        #    runtime_env["env_vars"] = {"PYTHONPATH": "."}
-        pythonpath = "/mine/emu3.5/app"
-        runtime_env["env_vars"] = {"PYTHONPATH": pythonpath}
+        if pythonpath:
+            runtime_env["env_vars"] = {"PYTHONPATH": pythonpath}
 
         if working_dir:
             runtime_env["working_dir"] = working_dir
