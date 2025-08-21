@@ -52,6 +52,12 @@ echo "Setting up environment for: $env"
 # Load conda environment
 source ~/miniconda3/etc/profile.d/conda.sh
 
+# 不执行conda tos指令在执行Creating conda environment 时将报错
+# 接受 main 频道的 ToS
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+# 接受 r 频道的 ToS
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
 # Create and activate Conda virtual environment
 # The Python version used has been written into the conda config
 if conda env list | grep -q "flagscale-${env}"; then
