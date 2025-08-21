@@ -67,22 +67,22 @@ class TaskManager:
         return
 
 
-# def load_class_from_file(file_path: str, class_name: str):
-#     file_path = os.path.abspath(file_path)
-#     logger.info(f"Loading class {class_name} from file: {file_path}")
-#     sys.path.insert(0, os.path.dirname(file_path))
-#     module_name = os.path.splitext(os.path.basename(file_path))[0]
-#     spec = importlib.util.spec_from_file_location(module_name, file_path)
-#     if spec is None:
-#         raise ImportError(f"Cannot create module spec from {file_path}")
-#     module = importlib.util.module_from_spec(spec)
-#     spec.loader.exec_module(module)
-#     if not hasattr(module, class_name):
-#         raise ImportError(f"Class {class_name} not found in {file_path}")
-#     return getattr(module, class_name)
-
-
 def load_class_from_file(file_path: str, class_name: str):
+    file_path = os.path.abspath(file_path)
+    logger.info(f"Loading class {class_name} from file: {file_path}")
+    sys.path.insert(0, os.path.dirname(file_path))
+    module_name = os.path.splitext(os.path.basename(file_path))[0]
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if spec is None:
+        raise ImportError(f"Cannot create module spec from {file_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if not hasattr(module, class_name):
+        raise ImportError(f"Class {class_name} not found in {file_path}")
+    return getattr(module, class_name)
+
+
+def _2_load_class_from_file(file_path: str, class_name: str):
     file_path = os.path.abspath(file_path)
     module_dir = os.path.dirname(file_path)  # 当前文件目录 (/mine/emu3.5/app)
     project_root = module_dir  # 这里 app 目录就是根目录
