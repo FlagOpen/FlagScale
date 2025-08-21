@@ -67,6 +67,10 @@ class TaskManager:
         return
 
 
+def make_task_manager():
+    return TaskManager.bind()
+
+
 def load_class_from_file(file_path: str, class_name: str):
     file_path = os.path.abspath(file_path)
     logger.info(f"Loading class {class_name} from file: {file_path}")
@@ -414,6 +418,7 @@ class ServeEngine:
 
     def run_task(self):
         graph = build_graph(self.config)
+        task_manager = make_task_manager()
         serve.start(http_options={"port": self.exp_config.runner.deploy.get("port", 8000)})
         manager_prefix_name = "/manager"
         serve_prefix_name = self.exp_config.runner.deploy.get("name", "/")
@@ -421,10 +426,7 @@ class ServeEngine:
             manager_prefix_name != serve_prefix_name
         ), "router /manager exists, use another router name instead"
         serve.run(
-            TaskManager.bind(),
-            name="task_manager",
-            route_prefix=manager_prefix_name,
-            blocking=False,
+            task_manager, name="task_manager", route_prefix=manager_prefix_name, blocking=False
         )
         serve.run(
             graph, name=self.exp_config.exp_name, route_prefix=serve_prefix_name, blocking=True
