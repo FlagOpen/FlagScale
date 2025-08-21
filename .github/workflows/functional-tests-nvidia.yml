@@ -59,8 +59,6 @@ jobs:
             source /root/miniconda3/bin/activate flagscale-inference
             pip install scikit-build scikit-build-core
             pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0
-            export CC="sccache gcc"
-            export CXX="sccache g++"
             sccache --show-stats
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
             sccache --show-stats
