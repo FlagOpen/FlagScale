@@ -127,6 +127,9 @@ def _load_checkpoint(queue, args):
     # for hetero
     if margs.hetero_process_meshes is not None:
         margs.pipeline_model_parallel_size = sum(row[-1] for row in margs.hetero_process_meshes)
+        # NOTE: temp fix
+        margs.expert_tensor_parallel_size = margs.tensor_model_parallel_size
+        margs.expert_model_parallel_size = 1
     margs.data_parallel_size = 1
     margs.micro_batch_size = 1
 
@@ -289,12 +292,15 @@ def _load_checkpoint(queue, args):
                     # Set pre_process and post_process only after virtual rank is set.
                     pre_process = mpu.is_pipeline_first_stage()
                     post_process = mpu.is_pipeline_last_stage()
-                    this_model = model_plugin.get_mg_model(dtype, pre_process, post_process)
+                    # Convert the current vp_rank into the vp_stage parameter.
+                    this_model = model_plugin.get_mg_model(dtype, pre_process, post_process, vp_stage=vp_rank)
                     model_.append(this_model)
             else:
                 pre_process = mpu.is_pipeline_first_stage()
-                post_process = mpu.is_pipeline_last_stage()
-                model_ = [model_plugin.get_mg_model(dtype, pre_process, post_process)]
+                post_process = mpu.is_pipeline_last_stage() 
+                #Also pass vp_stage in here (at this point, its value will be 0)
+                vp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
+                model_ = [model_plugin.get_mg_model(dtype, pre_process, post_process, vp_stage=vp_rank)]
 
             margs.consumed_train_samples = 0
             margs.consumed_valid_samples = 0
