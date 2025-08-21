@@ -44,9 +44,10 @@ task_app = FastAPI()
 @serve.deployment(num_replicas=1)
 @serve.ingress(task_app)
 class TaskManager:
-    def __init__(self):
+    def __init__(self, config: omegaconf.DictConfig):
         self.task_status = {}
         self._lock = threading.Lock()
+        self.config = config
 
     @task_app.post("/set_task_status")
     async def set_task_status(self, req: TaskUpdate):
@@ -75,61 +76,6 @@ def load_class_from_file(file_path: str, class_name: str):
     file_path = os.path.abspath(file_path)
     logger.info(f"Loading class {class_name} from file: {file_path}")
     sys.path.insert(0, os.path.dirname(file_path))
-    module_name = os.path.splitext(os.path.basename(file_path))[0]
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if spec is None:
-        raise ImportError(f"Cannot create module spec from {file_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    if not hasattr(module, class_name):
-        raise ImportError(f"Class {class_name} not found in {file_path}")
-    return getattr(module, class_name)
-
-
-def _2_load_class_from_file(file_path: str, class_name: str):
-    file_path = os.path.abspath(file_path)
-    module_dir = os.path.dirname(file_path)  # 当前文件目录 (/mine/emu3.5/app)
-    project_root = module_dir  # 这里 app 目录就是根目录
-    parent_dir = os.path.dirname(module_dir)  # 上级目录 (/mine/emu3.5)
-
-    # === 兜底 sys.path 设置 ===
-    for p in [module_dir, project_root, parent_dir]:
-        if p not in sys.path:
-            sys.path.insert(0, p)
-
-    logger.info(f"Loading class {class_name} from file: {file_path}")
-
-    # 动态加载模块
-    module_name = os.path.splitext(os.path.basename(file_path))[0]
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if spec is None:
-        raise ImportError(f"Cannot create module spec from {file_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    if not hasattr(module, class_name):
-        raise ImportError(f"Class {class_name} not found in {file_path}")
-
-    return getattr(module, class_name)
-
-
-def _load_class_from_file(file_path: str, class_name: str):
-    file_path = os.path.abspath(file_path)
-    logger.info(f"Loading class {class_name} from file: {file_path}")
-    sys.path.insert(0, os.path.dirname(file_path))
-
-    import os
-    import sys
-
-    file_path = os.path.abspath(file_path)
-    module_dir = os.path.dirname(file_path)
-    root_dir = os.path.dirname(module_dir)  # 关键：app 上级目录
-
-    # 确保当前目录和上级目录都在 sys.path
-    for p in [module_dir, root_dir]:
-        if p not in sys.path:
-            sys.path.insert(0, p)
-
     module_name = os.path.splitext(os.path.basename(file_path))[0]
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     if spec is None:
@@ -238,7 +184,8 @@ def build_graph(config):
         handles[name] = deployments[name].bind()
 
     root_model = FinalModel.bind(connection, handles, config)
-    return root_model
+    manager_node = TaskManager.bind(config)
+    return root_model, manager_node
 
 
 class ServeEngine:
@@ -417,8 +364,8 @@ class ServeEngine:
             ray.init()
 
     def run_task(self):
-        graph = build_graph(self.config)
-        task_manager = make_task_manager(self.config)
+        graph, task_manager = build_graph(self.config)
+        # task_manager = make_task_manager(self.config)
         serve.start(http_options={"port": self.exp_config.runner.deploy.get("port", 8000)})
         manager_prefix_name = "/manager"
         serve_prefix_name = self.exp_config.runner.deploy.get("name", "/")
