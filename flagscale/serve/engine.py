@@ -67,10 +67,65 @@ class TaskManager:
         return
 
 
+# def load_class_from_file(file_path: str, class_name: str):
+#     file_path = os.path.abspath(file_path)
+#     logger.info(f"Loading class {class_name} from file: {file_path}")
+#     sys.path.insert(0, os.path.dirname(file_path))
+#     module_name = os.path.splitext(os.path.basename(file_path))[0]
+#     spec = importlib.util.spec_from_file_location(module_name, file_path)
+#     if spec is None:
+#         raise ImportError(f"Cannot create module spec from {file_path}")
+#     module = importlib.util.module_from_spec(spec)
+#     spec.loader.exec_module(module)
+#     if not hasattr(module, class_name):
+#         raise ImportError(f"Class {class_name} not found in {file_path}")
+#     return getattr(module, class_name)
+
+
 def load_class_from_file(file_path: str, class_name: str):
+    file_path = os.path.abspath(file_path)
+    module_dir = os.path.dirname(file_path)  # 当前文件目录 (/mine/emu3.5/app)
+    project_root = module_dir  # 这里 app 目录就是根目录
+    parent_dir = os.path.dirname(module_dir)  # 上级目录 (/mine/emu3.5)
+
+    # === 兜底 sys.path 设置 ===
+    for p in [module_dir, project_root, parent_dir]:
+        if p not in sys.path:
+            sys.path.insert(0, p)
+
+    logger.info(f"Loading class {class_name} from file: {file_path}")
+
+    # 动态加载模块
+    module_name = os.path.splitext(os.path.basename(file_path))[0]
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if spec is None:
+        raise ImportError(f"Cannot create module spec from {file_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    if not hasattr(module, class_name):
+        raise ImportError(f"Class {class_name} not found in {file_path}")
+
+    return getattr(module, class_name)
+
+
+def _load_class_from_file(file_path: str, class_name: str):
     file_path = os.path.abspath(file_path)
     logger.info(f"Loading class {class_name} from file: {file_path}")
     sys.path.insert(0, os.path.dirname(file_path))
+
+    import os
+    import sys
+
+    file_path = os.path.abspath(file_path)
+    module_dir = os.path.dirname(file_path)
+    root_dir = os.path.dirname(module_dir)  # 关键：app 上级目录
+
+    # 确保当前目录和上级目录都在 sys.path
+    for p in [module_dir, root_dir]:
+        if p not in sys.path:
+            sys.path.insert(0, p)
+
     module_name = os.path.splitext(os.path.basename(file_path))[0]
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     if spec is None:
@@ -336,7 +391,14 @@ class ServeEngine:
             runtime_env["env_vars"] = {"PYTHONPATH": pythonpath}
         if working_dir:
             runtime_env["working_dir"] = working_dir
-            runtime_env["excludes"] = ["*.log", "*.out", "*.output"]
+            runtime_env["excludes"] = [
+                "*.log",
+                "*.out",
+                "*.output",
+                "*.ckpt",
+                "*.safetensors",
+                "*.pth",
+            ]
         if runtime_env:
             ray.init(runtime_env=runtime_env)
         else:
