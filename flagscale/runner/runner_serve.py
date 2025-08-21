@@ -381,8 +381,6 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             "kv_port": str(kv_port),
                             "kv_buffer_size": "1e1",
                             "kv_connector_extra_config": {
-                                "send_type": "PUT_ASYNC",
-                                "nccl_num_channels": "16",
                                 "proxy_ip": master_ip,
                                 "proxy_port": str(pd_proxy_port),
                                 "http_port": str(http_port),
@@ -443,8 +441,6 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             "kv_port": str(kv_port),
                             "kv_buffer_size": "8e9",
                             "kv_connector_extra_config": {
-                                "send_type": "PUT_ASYNC",
-                                "nccl_num_channels": "16",
                                 "proxy_ip": master_ip,
                                 "proxy_port": str(pd_proxy_port),
                                 "http_port": str(http_port),
