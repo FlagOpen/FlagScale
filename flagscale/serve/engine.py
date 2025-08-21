@@ -29,46 +29,42 @@ logger = logging.getLogger("ray.serve")
 logger.setLevel(logging.INFO)
 
 
-class TaskUpdate(BaseModel):
-    id: str
-    status: str
 
+def make_task_manager():
+    local_app = FastAPI()
 
-class TaskQuery(BaseModel):
-    id: str
+    class TaskUpdate(BaseModel):
+        id: str
+        status: str
 
+    class TaskQuery(BaseModel):
+        id: str
 
-task_app = FastAPI()
+    @serve.deployment(num_replicas=1)
+    @serve.ingress(local_app)
+    class TaskManager:
+        def __init__(self):
+            self.task_status = {}
+            self._lock = threading.Lock()
 
+        @local_app.post("/set_task_status")
+        async def set_task_status(self, req: TaskUpdate):
+            with self._lock:
+                self.task_status[req.id] = req.status
+            return {"ok": True}
 
-@serve.deployment(num_replicas=1)
-@serve.ingress(task_app)
-class TaskManager:
-    def __init__(self, config: omegaconf.DictConfig):
-        self.task_status = {}
-        self._lock = threading.Lock()
-        self.config = config
+        @local_app.post("/get_task_status")
+        async def get_task_status(self, req: TaskQuery):
+            with self._lock:
+                status = self.task_status.get(req.id, "unknown")
+            return {"id": req.id, "status": status}
 
-    @task_app.post("/set_task_status")
-    async def set_task_status(self, req: TaskUpdate):
-        with self._lock:
-            self.task_status[req.id] = req.status
-        return
+        @local_app.post("/delete_task_status")
+        async def delete_task_status(self, req: TaskQuery):
+            with self._lock:
+                self.task_status.pop(req.id, None)
+            return {"ok": True}
 
-    @task_app.post("/get_task_status")
-    async def get_task_status(self, req: TaskQuery):
-        with self._lock:
-            status = self.task_status.get(req.id, "unknown")
-        return {"id": req.id, "status": status}
-
-    @task_app.post("/delete_task_status")
-    async def delete_task_status(self, req: TaskQuery):
-        with self._lock:
-            self.task_status.pop(req.id, None)
-        return
-
-
-def make_task_manager(config):
     return TaskManager.bind()
 
 
@@ -184,8 +180,7 @@ def build_graph(config):
         handles[name] = deployments[name].bind()
 
     root_model = FinalModel.bind(connection, handles, config)
-    manager_node = TaskManager.bind(config)
-    return root_model, manager_node
+    return root_model
 
 
 class ServeEngine:
@@ -364,8 +359,8 @@ class ServeEngine:
             ray.init()
 
     def run_task(self):
-        graph, task_manager = build_graph(self.config)
-        # task_manager = make_task_manager(self.config)
+        graph = build_graph(self.config)
+        task_manager = make_task_manager()
         serve.start(http_options={"port": self.exp_config.runner.deploy.get("port", 8000)})
         manager_prefix_name = "/manager"
         serve_prefix_name = self.exp_config.runner.deploy.get("name", "/")
