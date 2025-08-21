@@ -17,7 +17,7 @@ experiment:
     CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
   cmds:
-    before_start: ulimit -n 65535 && source /root/miniconda3/bin/activate flagscale-inference
+    before_start: ulimit -n 65535 && export no_proxy="127.0.0.1,localhost" && source /root/miniconda3/bin/activate flagscale-inference
 
 action: run
 
