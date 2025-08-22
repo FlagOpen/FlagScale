@@ -344,6 +344,11 @@ class ServeEngine:
                 "*.ckpt",
                 "*.safetensors",
                 "*.pth",
+                "*.pt",
+                "*.bin",
+                "*.pyc",
+                "**/.git/**",
+                "**/__pycache__/**",
             ]
         if runtime_env:
             ray.init(runtime_env=runtime_env)
