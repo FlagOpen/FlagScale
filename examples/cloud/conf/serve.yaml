@@ -9,8 +9,8 @@ experiment:
     type: serve
   runner:
     type: cloud
-    hostfile: ${oc.env:HOSTFILE, /etc/hostfile}
-    master_addr: ${oc.env:MASTER_ADDR, 127.0.0.1}
+    nnodes: ${oc.env:LWS_GROUP_SIZE, 1}
+    master_addr: ${oc.env:LWS_LEADER_ADDRESS, 127.0.0.1}
     master_port: 7396
     device_type: ${oc.env:DEVICE_TYPE, gpu}
     nproc_per_node: ${oc.env:AIRS_ACCELERATOR_NUM, 1}

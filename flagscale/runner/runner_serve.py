@@ -31,6 +31,10 @@ from flagscale.runner.utils import (
     logger,
     parse_hostfile,
     run_local_command,
+    is_ray_master_running,
+    wait_for_ray_master,
+    is_master_node,
+    get_master_hostname,
 )
 
 
@@ -142,7 +146,6 @@ def _update_auto_engine_args(config, model="vllm_model", new_engine_args={}):
     if not serve_config:
         raise ValueError(f"No 'serve' configuration found in task config: {serve_config}")
     engine_args = {}
-
     for item in serve_config:
         if item.get("serve_id", None) == model:
             engine_args = item.get("engine_args", {})
@@ -155,7 +158,8 @@ def _update_auto_engine_args(config, model="vllm_model", new_engine_args={}):
             if new_engine_args.get("pipeline_parallel_size", None):
                 pipeline_parallel_size = int(new_engine_args.get("pipeline_parallel_size"))
             else:
-                pipeline_parallel_size = len(config.get("nodes", [])) or 1
+                node_nums = int(config.experiment.runner.get("nnodes", 1))
+                pipeline_parallel_size = 2 ** int(math.floor(math.log2(node_nums)))
             new_engine_args["tensor_parallel_size"] = tensor_parallel_size
             new_engine_args["pipeline_parallel_size"] = pipeline_parallel_size
             engine_args.update(new_engine_args)
@@ -649,9 +653,7 @@ def _generate_cloud_run_script_serve(
 ):
     nodes = config.get("nodes", None)
     logging_config = config.logging
-    node_id = ""
-    if nodes:
-        node_id = get_addr()
+    node_id = get_addr()
     no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
     if no_shared_fs:
         host_output_file = os.path.join(logging_config.log_dir, f"host.output")
@@ -697,43 +699,55 @@ def _generate_cloud_run_script_serve(
         envs_str = " && ".join(f"export {key}={value}" for key, value in envs.items())
         f.write(f"{envs_str}\n")
 
-        if nodes:
+        if node_id:
             f.write(f"ray_path=$(realpath $(which ray))\n")
-            master_addr = config.experiment.runner.get("master_addr")
+            master_name_or_addr = config.experiment.runner.get("master_addr")
             master_port = config.experiment.runner.get("master_port", 7396)
+
+            current_node_is_master = False
+            if is_ip_addr(master_name_or_addr):
+                master_addr = master_name_or_addr
+                current_node_is_master = match_address(master_addr)
+            else:
+                master_addr = get_master_hostname(master_name_or_addr)
+                current_node_is_master = is_master_node(master_name_or_addr)
 
             address = f"{master_addr}:{master_port}"
             is_address_matched = False
-            for index, (ip, node) in enumerate(nodes):
-                if not node.get("type", None):
-                    raise ValueError(
-                        f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
-                    )
-                if not node.get("slots", None):
-                    raise ValueError(
-                        f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
-                    )
-                if match_address(ip):
-                    is_address_matched = True
-                    if is_master(config, collections.OrderedDict(nodes)):
-                        # master node
-                        f.write(f"# start cluster\n")
-                        f.write(f"# master node\n")
-                        if node.type == "gpu":
-                            node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
-                        elif node.type == "cpu":
-                            node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
-                        else:
-                            resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
-                            node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
-                        if before_start_cmd:
-                            node_cmd = f"{before_start_cmd} && " + node_cmd
-                        f.write(f"{node_cmd}\n")
+
+            ip = get_ip_addr()
+            node = {"type": config.experiment.runner.get("device_type", "gpu"), "slots": int(os.getenv("AIRS_ACCELERATOR_NUM", "1"))}
+            node = OmegaConf.create(node)
+
+            if not node.get("type", None):
+                raise ValueError(
+                    f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
+                )
+            if not node.get("slots", None):
+                raise ValueError(
+                    f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+                ) 
+            if match_address(ip):
+                is_address_matched = True
+                if current_node_is_master:
+                    # master node
+                    f.write(f"# start cluster\n")
+                    f.write(f"# master node\n")
+                    if node.type == "gpu":
+                        node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
+                    elif node.type == "cpu":
+                        node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
                     else:
-                        # worker nodes
-                        if index == 1:
-                            f.write(f"\n")
-                            f.write(f"# worker nodes\n")
+                        resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                        node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
+                    if before_start_cmd:
+                        node_cmd = f"{before_start_cmd} && " + node_cmd
+                    f.write(f"{node_cmd}\n")
+                else:
+                    # worker nodes
+                    f.write(f"\n")
+                    f.write(f"# worker nodes\n")
+                    if wait_for_ray_master(master_addr, master_port):
                         if node.type == "gpu":
                             node_cmd = (
                                 f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
@@ -751,6 +765,8 @@ def _generate_cloud_run_script_serve(
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
                         f.write(f"{node_cmd}\n")
+                    else:
+                        raise ValueError(f"The current node can not connect to master node")
             if not is_address_matched:
                 raise ValueError(f"The current node can not match any given node.")
 
@@ -785,7 +801,7 @@ def _generate_cloud_run_script_serve(
             if node_cmd:
                 f.write(f"{node_cmd}\n")
 
-        if not nodes or is_master(config, collections.OrderedDict(nodes)):
+        if not node_id or current_node_is_master:
             f.write(f"mkdir -p {logging_config.log_dir}\n")
             f.write(f"mkdir -p {logging_config.pids_dir}\n")
             f.write(f"\n")
