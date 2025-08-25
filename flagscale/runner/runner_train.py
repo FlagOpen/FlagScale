@@ -309,6 +309,30 @@ class SSHTrainRunner(RunnerBase):
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "train", f"Unsupported task type: {self.task_type}"
         self._prepare()
+        master_port = getattr(self.config.experiment.runner, "master_port", None)
+        self._kill_by_port(master_port, signal.SIGKILL)
+
+    def _kill_by_port(self, port, sig=signal.SIGKILL):
+        if port == None:
+            return
+        try:
+            result = subprocess.check_output(
+                f"netstat -tulpn | grep :{port}", shell=True, text=True
+            )
+            lines = result.strip().split("\n")
+            for line in lines:
+                parts = line.split()
+                if len(parts) >= 7:
+                    pid_program = parts[6]
+                    pid = pid_program.split("/")[0]
+                    try:
+                        os.kill(int(pid), sig)
+                    except PermissionError:
+                        print(f"No permission to kill process {pid} on port {port}")
+                    except Exception as e:
+                        print(f"Unexpected error killing {pid}: {e}")
+        except subprocess.CalledProcessError:
+            return
 
     def _prepare(self):
         _update_config_train(self.config)
