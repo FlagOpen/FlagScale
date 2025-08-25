@@ -1,0 +1,8 @@
+**************************************************
+output.prompt='The president of the United States'
+output.outputs[0].text=' is responsible for the repression of the spread of nuclear arms and the maintenance of the'
+output.outputs[0].token_ids=[374, 8647, 369, 279, 72498, 315, 279, 9041, 315, 11499, 11977, 323, 279, 13709, 315, 279]
+**************************************************
+output.prompt='The capital of France'
+output.outputs[0].text=', located in the heart of the hexagon, is a large and dynamic met'
+output.outputs[0].token_ids=[11, 7559, 304, 279, 4851, 315, 279, 12651, 6241, 11, 374, 264, 3544, 323, 8915, 2322]
