@@ -134,6 +134,7 @@ from flagscale.train.stablelm2_scheduler import StableLM2SchedulerConfig
 from flagscale.train.global_vars import get_parallel_context, get_spiky_loss_detector
 from flagscale.train.hetero.p2p_communication import get_device_type_for_comm
 from flagscale.train.theoretical_memory_usage import report_theoretical_memory as fs_report_theoretical_memory
+from flagscale.train.straggler_detection import initialize_straggler_detector, shutdown_straggler_detector, StragglerDetectionWrapper
 
 stimer = StragglerDetector()
 
@@ -940,6 +941,9 @@ def pretrain(
     args = get_args()
     timers = get_timers()
 
+    # Initialize Straggler Detection
+    initialize_straggler_detector(args.straggler_detection_level)
+
     if args.log_progress:
         append_to_progress_log("Starting job")
 
@@ -1206,6 +1210,7 @@ def pretrain(
     )
 
     ft_integration.shutdown()
+    shutdown_straggler_detector(args.straggler_detection_level)
     one_logger_utils.finish()
 
 
@@ -1665,6 +1670,7 @@ def dummy_train_step(data_iterator):
         batch = get_batch_on_this_cp_rank(batch)
 
 
+@StragglerDetectionWrapper(level=1, section_name="train_step")
 def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
     """Single training step."""
     args = get_args()
@@ -2664,6 +2670,7 @@ def train(
                 rerun_state_machine.current_iteration = iteration
         ########## FlagScale end ##########
 
+        args.generate_report = (iteration % args.straggler_detection_interval) == 0 and (args.straggler_detection_level == 1)
         ft_integration.on_training_step_start()
         (
             loss_dict,
