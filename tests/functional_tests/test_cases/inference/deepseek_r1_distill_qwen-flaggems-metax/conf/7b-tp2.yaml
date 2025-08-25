@@ -3,8 +3,8 @@ defaults:
   - inference: 7b-tp2
 
 experiment:
-  exp_name: deepseek_r1_distill_qwen-metax-flaggems
-  exp_dir: tests/functional_tests/test_cases/inference/deepseek_r1_distill_qwen-metax-flaggems/results_test/7b-tp2
+  exp_name: deepseek_r1_distill_qwen-flaggems-metax
+  exp_dir: tests/functional_tests/test_cases/inference/deepseek_r1_distill_qwen-flaggems-metax/results_test/7b-tp2
   task:
     type: inference
     backend: vllm
