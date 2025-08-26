@@ -738,7 +738,7 @@ def _generate_cloud_run_script_serve(
                     elif node.type == "cpu":
                         node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
                     else:
-                        resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                        resource = json.dumps({node.type: node.slots}).replace('"', '\"')
                         node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
@@ -758,7 +758,7 @@ def _generate_cloud_run_script_serve(
                                 f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
                             )
                         else:
-                            resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                            resource = json.dumps({node.type: node.slots}).replace('"', '\"')
                             node_cmd = (
                                 f"${{ray_path}} start --address={address} --resources='{resource}'"
                             )
