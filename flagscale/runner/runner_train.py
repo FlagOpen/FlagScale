@@ -193,6 +193,11 @@ def _generate_run_script_train(config, host, node_rank, cmd, background=True, wi
     if cmds_config:
         before_start = cmds_config.get("before_start", "")
     else:
+        nnodes = config.experiment.runner.get("nnodes", None)
+        if nnodes is not None and nnodes > 1:
+            raise ValueError(
+                f"Nndoes value is > 1, but 'cmd' configuration not found in experiment, please 'source /root/miniconda3/bin/activate flagscale-train' at slave node."
+            )
         before_start = ""
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
