@@ -25,16 +25,16 @@ from flagscale.runner.utils import (
     get_addr,
     get_free_port,
     get_ip_addr,
+    get_master_hostname,
     get_nproc_per_node,
     is_ip_addr,
     is_master,
+    is_master_node,
+    is_ray_master_running,
     logger,
     parse_hostfile,
     run_local_command,
-    is_ray_master_running,
     wait_for_ray_master,
-    is_master_node,
-    get_master_hostname,
 )
 
 
@@ -716,7 +716,10 @@ def _generate_cloud_run_script_serve(
             is_address_matched = False
 
             ip = get_ip_addr()
-            node = {"type": config.experiment.runner.get("device_type", "gpu"), "slots": int(os.getenv("AIRS_ACCELERATOR_NUM", "1"))}
+            node = {
+                "type": config.experiment.runner.get("device_type", "gpu"),
+                "slots": int(os.getenv("AIRS_ACCELERATOR_NUM", "1")),
+            }
             node = OmegaConf.create(node)
 
             if not node.get("type", None):
@@ -726,7 +729,7 @@ def _generate_cloud_run_script_serve(
             if not node.get("slots", None):
                 raise ValueError(
                     f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
-                ) 
+                )
             if match_address(ip):
                 is_address_matched = True
                 if current_node_is_master:

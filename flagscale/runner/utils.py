@@ -10,7 +10,7 @@ import time
 import traceback
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import aiohttp
 import numpy as np
@@ -19,7 +19,6 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm.asyncio import tqdm
 
 from flagscale.logger import logger
-from typing import Tuple, Optional
 
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 
@@ -28,7 +27,10 @@ def log_and_raise_error(message):
     logger.error(message)
     raise ValueError(message)
 
-def is_ray_master_running(master_ip: str, port: int = 6379, timeout: float = 5.0) -> Tuple[bool, Optional[str]]:
+
+def is_ray_master_running(
+    master_ip: str, port: int = 6379, timeout: float = 5.0
+) -> Tuple[bool, Optional[str]]:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(timeout)
@@ -44,9 +46,12 @@ def is_ray_master_running(master_ip: str, port: int = 6379, timeout: float = 5.0
     except Exception as e:
         return False, f"check the error: {str(e)}"
 
-def wait_for_ray_master(master_ip: str, port: int = 6379, max_attempts: int = 180, interval: int = 10) -> bool:
+
+def wait_for_ray_master(
+    master_ip: str, port: int = 6379, max_attempts: int = 180, interval: int = 10
+) -> bool:
     for attempt in range(max_attempts):
-        status, msg= is_ray_master_running(master_ip, port)
+        status, msg = is_ray_master_running(master_ip, port)
         logger.info(f"Check Ray master status (attempt {attempt+1}/{max_attempts}): {msg}")
 
         if status:
@@ -56,6 +61,7 @@ def wait_for_ray_master(master_ip: str, port: int = 6379, max_attempts: int = 18
             time.sleep(interval)
 
     return False
+
 
 def parse_hostfile(hostfile_path):
     if hostfile_path is None or not os.path.isfile(hostfile_path):
@@ -366,12 +372,14 @@ def is_master_node(lws_leader_address):
     else:
         return False
 
+
 def get_master_hostname(lws_leader_address):
 
     split_result = lws_leader_address.split('.')
     host_name = split_result[0]
 
     return host_name
+
 
 def get_ip_addr():
     """Get ip address."""
