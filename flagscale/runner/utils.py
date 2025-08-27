@@ -96,6 +96,26 @@ def get_host_name_or_ip():
     return IP
 
 
+def get_addr():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            if not ip.startswith == "127.0.0.1":
+                return ip
+    except:
+        pass
+
+    try:
+        ip = socket.gethostbyname(socket.getfqdn())
+        if not ip.startswith == "127.0.0.1":
+            return ip
+    except:
+        pass
+
+    return socket.gethostname()
+
+
 def run_local_command(cmd, dryrun=False, query=False):
     logger.info(f"Run the local command: {cmd}")
     if dryrun:
@@ -177,6 +197,37 @@ def run_scp_command(host, src, dst, port=None, dryrun=False):
         print(f"Output: {result.stdout}")
         print(f"Error: {result.stderr}")
         sys.exit(result.returncode)
+
+
+def flatten_dict_to_args_verl(config_dict, pre_str=""):
+    args = []
+    if 'config-path' in config_dict:
+        args.append(f'--config-path={config_dict["config-path"]}')
+        config_dict.pop('config-path')
+
+    if 'config-name' in config_dict:
+        args.append(f'--config-name={config_dict["config-name"]}')
+        config_dict.pop('config-name')
+
+    for key, value in config_dict.items():
+
+        if isinstance(value, dict):
+            if key == 'append_kargs':
+                target_str = f"+"
+            else:
+                target_str = f"{key}."
+            args.extend(flatten_dict_to_args_verl(value, pre_str + target_str))
+        elif isinstance(value, list):
+            v_str = ""
+            for v in value:
+                v_str += f"{v}"
+            args.append(f"{pre_str+key}=" + v_str)
+        elif isinstance(value, bool):
+            args.append(f"{pre_str+key}={value}")
+        else:
+            args.append(f"{pre_str+key}=" + f"{value}")
+
+    return args
 
 
 def flatten_dict_to_args(config_dict, ignore_keys=[]):
@@ -286,7 +337,7 @@ def get_ip_addr():
     return ip
 
 
-def is_master(config):
+def is_master(config, resources=None):
     """Check if current node is master."""
     nnodes = config.experiment.runner.get("nnodes", 1)
 
@@ -297,7 +348,8 @@ def is_master(config):
         if os.environ.get("AIRS_HOSTFILE_PATH", None):
             hostfile = os.environ["AIRS_HOSTFILE_PATH"]
 
-    resources = parse_hostfile(hostfile)
+    if not resources:
+        resources = parse_hostfile(hostfile)
     if not resources and nnodes > 1:
         raise ValueError("In the multi-node mode, please set the hostfile")
 
@@ -666,7 +718,7 @@ class ResourceManager:
                 raise ValueError("Insufficient resources")
             allocated_ids = list(range(node_found["used"], node_found["used"] + num))
             node_found["used"] += num
-            return allocated_ids
+            return allocated_ids, address
 
         # For address == "auto", traverse all nodes (master node first, then worker nodes)
         for node in self.nodes:
@@ -675,7 +727,7 @@ class ResourceManager:
                 if free >= num:
                     allocated_ids = list(range(node["used"], node["used"] + num))
                     node["used"] += num
-                    return allocated_ids
+                    return allocated_ids, node["address"]
 
         # If no node satisfies the allocation request, raise an error.
         resource_status = self.get_status()

@@ -25,6 +25,7 @@ from megatron.core.rerun_state_machine import (
 from megatron.core.utils import get_te_version, is_te_min_version, is_torch_min_version
 from megatron.legacy import fused_kernels
 from megatron.training import get_adlr_autoresume, get_args, get_tensorboard_writer
+from megatron.training import inprocess_restart
 from megatron.training.arguments import parse_args, validate_args
 from megatron.training.async_utils import init_persistent_async_worker
 from megatron.training.checkpointing import load_args_from_checkpoint
@@ -46,6 +47,7 @@ def initialize_megatron(
     get_embedding_ranks=None,
     get_position_embedding_ranks=None,
     parsed_args=None,
+    store=None,
 ):
     """Set global variables, initialize distributed, and
     set autoresume and random seeds.
@@ -129,7 +131,7 @@ def initialize_megatron(
     def finish_mpu_init():
         args = get_args()
         # Pytorch distributed.
-        _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks)
+        _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks, store)
 
         # Random seeds for reproducibility.
         if args.rank == 0:
@@ -309,7 +311,7 @@ def _initialize_tp_communicators():
         )
 
 
-def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
+def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks, store):
     """Initialize torch.distributed and core model parallel."""
     args = get_args()
 
@@ -342,6 +344,7 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
         # Call the init process
         init_process_group_kwargs = {
             'backend': args.distributed_backend,
+            'store': store,
             'world_size': args.world_size,
             'rank': args.rank,
             'timeout': timedelta(minutes=args.distributed_timeout_minutes),
@@ -356,6 +359,7 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
         #     init_process_group_kwargs['device_id'] = device_id
 
         torch.distributed.init_process_group(**init_process_group_kwargs)
+        inprocess_restart.maybe_force_nccl_backend_init(device_id)
 
     # Set the tensor model-parallel, pipeline model-parallel, and
     # data-parallel communicators.
@@ -368,12 +372,28 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
         if mpu.model_parallel_is_initialized():
             print("model parallel is already initialized")
         else:
+            # Deprecation warning for encoder pipeline parallelism
+            if args.encoder_pipeline_model_parallel_size > 0 or args.encoder_tensor_model_parallel_size > 0:
+                warnings.warn(
+                    "Encoder-specific pipeline parallelism functionality is deprecated and will be removed in core_r0.14.0. "
+                    "This includes the parameters 'encoder_tensor_model_parallel_size' and 'encoder_pipeline_model_parallel_size', "
+                    "as well as all associated encoder pipeline parallel logic and infrastructure. "
+                    "This functionality is being replaced by the new 'orthotope' parallelism management system, which provides "
+                    "a more general and flexible approach to handling complex parallelism configurations including encoder-decoder models. "
+                    "Please refrain from building new features or dependencies on encoder pipeline parallelism as this entire "
+                    "capability will not be supported in future releases. For migration guidance and information on the orthotope "
+                    "system, please refer to the Megatron-LM documentation.",
+                    DeprecationWarning,
+                    stacklevel=2
+                )
+            
             mpu.initialize_model_parallel(
                 args.tensor_model_parallel_size,
                 args.pipeline_model_parallel_size,
                 args.virtual_pipeline_model_parallel_size,
                 args.pipeline_model_parallel_split_rank,
                 pipeline_model_parallel_comm_backend=args.pipeline_model_parallel_comm_backend,
+                use_sharp=args.use_sharp,
                 context_parallel_size=args.context_parallel_size,
                 hierarchical_context_parallel_sizes=args.hierarchical_context_parallel_sizes,
                 expert_model_parallel_size=args.expert_model_parallel_size,
@@ -387,6 +407,8 @@ def _initialize_distributed(get_embedding_ranks, get_position_embedding_ranks):
                 get_embedding_ranks=get_embedding_ranks,
                 get_position_embedding_ranks=get_position_embedding_ranks,
                 create_gloo_process_groups=args.enable_gloo_process_groups,
+                high_priority_stream_groups=args.high_priority_stream_groups,
+                create_dualpipev_parallel_size=args.use_dualpipev,
             )
             if args.rank == 0:
                 print(

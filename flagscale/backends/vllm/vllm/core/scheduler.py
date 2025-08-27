@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import contextlib # --- FLAGSCALE MODIFICATION ---
 import enum
@@ -15,7 +16,6 @@ from vllm.config import CacheConfig, LoRAConfig, SchedulerConfig
 from vllm.core.interfaces import AllocStatus, BlockSpaceManager
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
-from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sequence import (Sequence, SequenceData, SequenceGroup,
                            SequenceGroupBase, SequenceGroupMetadata,
                            SequenceGroupMetadataDelta, SequenceStage,
@@ -166,8 +166,6 @@ class SchedulerOutputs:
         if self.num_loras > 0:
             self._sort_by_lora_ids()
 
-        self.num_prompt_adapters: int = len(self.prompt_adapter_requests)
-
     def is_empty(self) -> bool:
         # NOTE: We do not consider the ignored sequence groups.
         return (not self.scheduled_seq_groups and not self.blocks_to_swap_in
@@ -193,14 +191,6 @@ class SchedulerOutputs:
             g.seq_group.lora_request
             for g in self.scheduled_seq_groups
             if g.seq_group.lora_request is not None
-        }
-
-    @property
-    def prompt_adapter_requests(self) -> Set[PromptAdapterRequest]:
-        return {
-            g.seq_group.prompt_adapter_request
-            for g in self.scheduled_seq_groups
-            if g.seq_group.prompt_adapter_request is not None
         }
 
 
@@ -358,7 +348,11 @@ def _update_num_new_tokens(
     budget: SchedulingBudget,
     num_new_tokens: int = 0,
     num_new_tokens_negative: int = 0,
+    enable_chunking: bool = False,
 ):
+    if not enable_chunking:
+        return num_new_tokens, num_new_tokens_negative
+
     remaining_token_budget = budget.remaining_token_budget()
     if num_new_tokens + num_new_tokens_negative >= remaining_token_budget:
         min_num_new_tokens = min(num_new_tokens, remaining_token_budget // 2)
@@ -770,13 +764,17 @@ class Scheduler:
 
             # --- FLAGSCALE MODIFICATION BEG ---
             with _switch_seq_group(seq_group, seq_group.negative_seqs):
-                num_uncached_new_tokens_negative, _ = (
+                num_uncached_new_tokens_negative, _ = \
                     self._get_num_new_uncached_and_cached_tokens(
-                        seq_group, SequenceStatus.RUNNING, enable_chunking,
-                        budget))
+                        seq_group,
+                        SequenceStatus.RUNNING,
+                        enable_chunking,
+                        budget,
+                        partial_prefill_metadata,
+                    )
             num_running_tokens_negative = num_uncached_new_tokens_negative
             num_running_tokens, num_running_tokens_negative = _update_num_new_tokens(
-                budget, num_running_tokens, num_running_tokens_negative)
+                budget, num_running_tokens, num_running_tokens_negative, enable_chunking)
             # --- FLAGSCALE MODIFICATION END ---
 
             if num_running_tokens + num_running_tokens_negative == 0: # --- FLAGSCALE MODIFICATION ---
@@ -966,11 +964,12 @@ class Scheduler:
                         seq_group, SequenceStatus.SWAPPED, enable_chunking,
                         budget))
 
-            if num_new_tokens_uncached + num_new_tokens_uncached_negative == 0 \
-                or not budget.can_schedule(
+            if num_new_tokens_uncached + num_new_tokens_uncached_negative == 0 or not budget.can_schedule(
                     num_new_tokens=num_new_tokens_uncached + num_new_tokens_uncached_negative,
                     num_new_seqs=num_new_seqs,
             ):
+                self.remove_seq_from_computed_blocks_tracker(
+                    seq_group, SequenceStatus.SWAPPED)
                 break
             # --- FLAGSCALE MODIFICATION END ---
 
@@ -1097,6 +1096,9 @@ class Scheduler:
             # Put the sequence back into the waiting queue
             waiting_queue.appendleft(seq_group)
 
+            self.remove_seq_from_computed_blocks_tracker(
+                seq_group, SequenceStatus.WAITING)
+
         waiting_queue = deque(sorted(waiting_queue, key=self._get_priority))
 
         self.waiting = waiting_queue
@@ -1145,6 +1147,7 @@ class Scheduler:
             )
         ignored_seq_groups: List[SequenceGroup] = []
         seq_groups: List[ScheduledSequenceGroup] = []
+        using_prompt_embeds: bool = False
 
         waiting_queue = self.waiting
 
@@ -1175,10 +1178,17 @@ class Scheduler:
             with _switch_seq_group(seq_group, seq_group.negative_seqs):
                 num_new_tokens_uncached_negative, num_new_tokens_cached_negative = (
                     self._get_num_new_uncached_and_cached_tokens(
-                        seq_group, SequenceStatus.WAITING, enable_chunking,
-                        budget))
+                        seq_group,
+                        SequenceStatus.WAITING,
+                        enable_chunking,
+                        budget,
+                        partial_prefill_metadata=partial_prefill_metadata,
+                    ))
+
             num_new_tokens_uncached, num_new_tokens_uncached_negative = _update_num_new_tokens(
-                budget, num_new_tokens_uncached, num_new_tokens_uncached_negative)
+                budget, num_new_tokens_uncached, num_new_tokens_uncached_negative, enable_chunking)
+
+            num_new_tokens = num_new_tokens_uncached + num_new_tokens_cached
             num_new_tokens_negative = num_new_tokens_uncached_negative + num_new_tokens_cached_negative
             if num_new_tokens_negative > 0:
                 assert not self.scheduler_config.is_multi_step
@@ -1187,19 +1197,31 @@ class Scheduler:
 
             if not enable_chunking:
                 num_prompt_tokens = waiting_seqs[0].get_len()
-                assert num_new_tokens == num_prompt_tokens
+                if seq_group.has_negative_seqs():
+                    seq = waiting_seqs[0]
+                    neg_seq = seq_group.negative_seqs_dict[seq.seq_id]
+                    num_prompt_tokens += neg_seq.get_len()
+                assert num_new_tokens + num_new_tokens_negative == num_prompt_tokens
 
             prompt_limit = self._get_prompt_limit(seq_group)
             if num_new_tokens + num_new_tokens_negative > prompt_limit: # --- FLAGSCALE MODIFICATION ---
+                # --- FLAGSCALE MODIFICATION BEG ---
                 logger.warning(
                     "Input prompt (%d tokens) (%d negative tokens) is too long"
                     " and exceeds limit of %d",
                     num_new_tokens,
                     num_new_tokens_negative,
                     prompt_limit,
-                ) # --- FLAGSCALE MODIFICATION ---
+                )
+                if num_new_tokens_negative > 0:
+                    logger.warning(
+                        "CFG is enabled, setting enable_chunked_prefill to true can help."
+                    )
+                # --- FLAGSCALE MODIFICATION END ---
                 for seq in waiting_seqs:
                     seq.status = SequenceStatus.FINISHED_IGNORED
+                self.remove_seq_from_computed_blocks_tracker(
+                    seq_group, SequenceStatus.FINISHED_IGNORED)
                 ignored_seq_groups.append(seq_group)
                 waiting_queue.popleft()
                 continue
@@ -1213,6 +1235,8 @@ class Scheduler:
             can_allocate = self.block_manager.can_allocate(
                 seq_group, num_lookahead_slots=num_lookahead_slots)
             if can_allocate == AllocStatus.LATER:
+                self.remove_seq_from_computed_blocks_tracker(
+                    seq_group, SequenceStatus.WAITING)
                 break
             elif can_allocate == AllocStatus.NEVER:
                 logger.warning(
@@ -1224,7 +1248,20 @@ class Scheduler:
                 ) # --- FLAGSCALE MODIFICATION ---
                 for seq in waiting_seqs:
                     seq.status = SequenceStatus.FINISHED_IGNORED
+                self.remove_seq_from_computed_blocks_tracker(
+                    seq_group, SequenceStatus.FINISHED_IGNORED)
                 ignored_seq_groups.append(seq_group)
+                waiting_queue.popleft()
+                continue
+
+            # We cannot mix sequence groups that use prompt embeds and
+            # those that do not.
+            if len(seq_groups) == 0:
+                using_prompt_embeds = seq_group.uses_prompt_embeds()
+            if using_prompt_embeds != seq_group.uses_prompt_embeds():
+                self.remove_seq_from_computed_blocks_tracker(
+                    seq_group, SequenceStatus.WAITING)
+                leftover_waiting_sequences.appendleft(seq_group)
                 waiting_queue.popleft()
                 continue
 
@@ -1238,6 +1275,8 @@ class Scheduler:
                         and len(curr_loras) >= self.lora_config.max_loras):
                     # We don't have a space for another LoRA, so
                     # we ignore this request for now.
+                    self.remove_seq_from_computed_blocks_tracker(
+                        seq_group, SequenceStatus.WAITING)
                     leftover_waiting_sequences.appendleft(seq_group)
                     waiting_queue.popleft()
                     continue
@@ -1247,14 +1286,17 @@ class Scheduler:
                 # We've reached the budget limit - since there might be
                 # continuous prefills in the running queue, we should break
                 # to avoid scheduling any new prefills.
+                self.remove_seq_from_computed_blocks_tracker(
+                    seq_group, SequenceStatus.WAITING)
                 break
 
             num_new_seqs = seq_group.get_max_num_running_seqs()
-            if num_new_tokens_uncached + num_new_tokens_uncached_negative == 0 \
-                or not budget.can_schedule(
+            if num_new_tokens_uncached + num_new_tokens_uncached_negative == 0 or not budget.can_schedule(
                     num_new_tokens=num_new_tokens_uncached + num_new_tokens_uncached_negative,
                     num_new_seqs=num_new_seqs,
             ): # --- FLAGSCALE MODIFICATION ---
+                self.remove_seq_from_computed_blocks_tracker(
+                    seq_group, SequenceStatus.WAITING)
                 break
 
             # Can schedule this request.
@@ -1387,17 +1429,39 @@ class Scheduler:
 
         # Merge lists
         num_prefill_groups = len(prefills.seq_groups)
+        ignored_seq_groups_for_embeds = list[SequenceGroup]()
         if num_prefill_groups > 0:
             scheduled_seq_groups = prefills.seq_groups
             scheduled_seq_groups.extend(running_scheduled.decode_seq_groups)
+            ignored_seq_groups_for_embeds.clear()
         else:
             scheduled_seq_groups = running_scheduled.decode_seq_groups
+            if len(scheduled_seq_groups) > 0:
+                using_prompt_embeds = scheduled_seq_groups[
+                    0].seq_group.uses_prompt_embeds()
+                ignored_seq_groups_for_embeds.clear()
+                indices_ignored = list[int]()
+                for i, schedule_seq_group in enumerate(scheduled_seq_groups):
+                    if using_prompt_embeds !=\
+                        schedule_seq_group.seq_group.uses_prompt_embeds():
+                        ignored_seq_groups_for_embeds.append(
+                            schedule_seq_group.seq_group)
+                        indices_ignored.append(i)
+                if len(ignored_seq_groups_for_embeds) > 0:
+                    scheduled_seq_groups = [
+                        group for i, group in enumerate(scheduled_seq_groups)
+                        if i not in indices_ignored
+                    ]
+            else:
+                ignored_seq_groups_for_embeds.clear()
+
         scheduled_seq_groups.extend(swapped_in.decode_seq_groups)
 
         blocks_to_copy = running_scheduled.blocks_to_copy
         blocks_to_copy.extend(swapped_in.blocks_to_copy)
 
         ignored_seq_groups = prefills.ignored_seq_groups
+        ignored_seq_groups.extend(ignored_seq_groups_for_embeds)
         ignored_seq_groups.extend(swapped_in.infeasible_seq_groups)
 
         return SchedulerOutputs(
@@ -1720,7 +1784,6 @@ class Scheduler:
                     multi_modal_placeholders=(
                         seq_group.multi_modal_placeholders
                         if scheduler_outputs.num_prefill_groups > 0 else None),
-                    prompt_adapter_request=seq_group.prompt_adapter_request,
                 )
             else:
                 # When SPMD mode is enabled, we only send delta data except for
@@ -1778,6 +1841,20 @@ class Scheduler:
     def free_seq(self, seq: Sequence) -> None:
         """Free a sequence from a block table."""
         self.block_manager.free(seq)
+
+    def remove_seq_from_computed_blocks_tracker(
+            self, seq_group: SequenceGroup,
+            status: Optional[SequenceStatus]) -> None:
+        seqs = seq_group.get_seqs(status=status)
+        for seq in seqs:
+            self._remove_seq_from_computed_blocks_tracker(seq)
+
+    def _remove_seq_from_computed_blocks_tracker(self, seq: Sequence) -> None:
+        """
+        Free a sequence computed blocks tracker _seq_id_to_blocks_hashes
+        and _seq_id_to_num_tokens_computed.
+        """
+        self.block_manager.remove_seq_from_computed_blocks_tracker(seq)
 
     def _free_finished_seqs(self, seq_group: SequenceGroup) -> None:
         """Free finished seqs in a sequence group."""
@@ -1928,6 +2005,7 @@ class Scheduler:
             # --- FLAGSCALE MODIFICATION BEG ---
             if seq_group.has_negative_seqs():
                 negative_seq = seq_group.negative_seqs_dict[seq.seq_id]
+                negative_seq.status = SequenceStatus.WAITING
                 negative_seq.reset_state_for_recompute()
             # --- FLAGSCALE MODIFICATION END ---
         self._free_seq_group_cross_attn_blocks(seq_group)

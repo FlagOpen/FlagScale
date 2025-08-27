@@ -16,6 +16,7 @@ from megatron.core.fusions.fused_layer_norm import FusedLayerNorm
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.process_groups_config import ModelCommProcessGroups
+from megatron.core.transformer.enums import LayerType
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec, build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -50,16 +51,24 @@ except ImportError:
         LayerNormImpl = WrappedTorchNorm
 
 
-def get_num_layers_to_build(config: TransformerConfig, vp_stage: Optional[int] = None) -> int:
+def get_num_layers_to_build(config: TransformerConfig, vp_stage: Optional[int] = None, is_dualpipev_first_chunk: Optional[bool] = False) -> int:
     """
     Determine the number of transformer layers to build for the current pipeline stage.
     Args:
         config (TransformerConfig): Configuration object containing transformer model parameters.
         vp_stage (Optional[int]): Virtual pipeline stage number.
+        is_dualpipev_first_chunk(Optional[bool]): Is dualpipev first model chunk or not
 
     Returns:
         int: The number of layers to be built for the current pipeline stage.
     """
+    # If we have a custom PP layout, straightforwardly
+    # return the number of decoders in the layout array.
+    if config.pipeline_model_parallel_layout is not None:
+        return config.pipeline_model_parallel_layout.get_num_layers_to_build(
+            layer_type=LayerType.decoder, vp_stage=vp_stage
+        )
+
     if (
         config.num_layers_in_first_pipeline_stage is not None
         or config.num_layers_in_last_pipeline_stage is not None
@@ -85,10 +94,15 @@ def get_num_layers_to_build(config: TransformerConfig, vp_stage: Optional[int] =
             layers_to_distribute -= config.num_layers_in_last_pipeline_stage
             pipeline_stages_left -= 1
 
-        assert (
-            layers_to_distribute % pipeline_stages_left == 0
-        ), "With uneven pipelineing the left over layers must be divisible by left over stages"
-        num_layers_per_pipeline_rank = layers_to_distribute // pipeline_stages_left
+        # If pp_size <= 2, we do not have any intermediate pipeline stages, and we do not
+        # need to check if the left over layers are divisible by the left over stages.
+        if pipeline_stages_left > 0:
+            assert (
+                layers_to_distribute % pipeline_stages_left == 0
+            ), "With uneven pipelineing the left over layers must be divisible by left over stages"
+            num_layers_per_pipeline_rank = layers_to_distribute // pipeline_stages_left
+        else:
+            num_layers_per_pipeline_rank = 0
 
         # If the uneven first (last) pipeline stage is enabled, return the specified number
         # of layers for all virtual pipeline parallel stages within the first (last) pipeline
@@ -142,7 +156,17 @@ def get_num_layers_to_build(config: TransformerConfig, vp_stage: Optional[int] =
         num_layers_per_virtual_stage = num_layers_per_pipeline_rank // vp_size
 
         num_layers_to_build = num_layers_per_virtual_stage
-
+    ######### FlagScale Begin ########
+    elif config.use_dualpipev:
+        num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank // 2
+        if num_layers_per_pipeline_rank % 2 != 0:
+            num_layers_per_pipeline_rank_first_chunk = num_layers_per_pipeline_rank_first_chunk + 1
+        num_layers_per_pipeline_rank_second_chunk = num_layers_per_pipeline_rank - num_layers_per_pipeline_rank_first_chunk
+        if is_dualpipev_first_chunk:
+            num_layers_to_build = num_layers_per_pipeline_rank_first_chunk
+        else:
+            num_layers_to_build = num_layers_per_pipeline_rank_second_chunk
+    ######### FlagScale End ########
     else:
         # Non-interleaved pipeline parallelism:
         # Each stage gets a contiguous set of layers.
@@ -499,10 +523,10 @@ class TransformerBlock(MegatronModule):
 
         ########## FlagScale Begin ##########
         # for refined recompute
-        if hasattr(self.layers[0], 'current_microbatch'):
-            self.current_microbatch = self.layers[0].current_microbatch
-        else: # multimodal model
-            self.current_microbatch = -1
+        self.current_microbatch = -1
+        if len(self.layers) > 0: # some pp-stage has no layers in pipeline_model_parallel_layout,such as embedding stage
+            if hasattr(self.layers[0], 'current_microbatch'):
+                self.current_microbatch = self.layers[0].current_microbatch
         ########## FlagScale End ##########
 
         inference_context = deprecate_inference_params(inference_context, inference_params)
@@ -514,10 +538,6 @@ class TransformerBlock(MegatronModule):
         if not self.pre_process:
             # See set_input_tensor()
             hidden_states = self.input_tensor
-
-        # Update the inference parameters with the current batch size in case it is variable
-        if inference_context and not self.training:
-            inference_context.current_batch_size = hidden_states.size(1)
 
         # Viewless tensor.
         # - We only need to create a viewless tensor in the case of micro batch
@@ -667,6 +687,11 @@ class TransformerBlock(MegatronModule):
                 inp=hidden_states, requires_grad=True, keep_graph=True
             )
 
+        # If this TransformerBlock is empty, input and output hidden states will be the same node
+        # on the computational graph and will lead to unexpected errors in pipeline schedules.
+        if not self.pre_process and len(self.layers) == 0 and not self.final_layernorm:
+            hidden_states = hidden_states.clone()
+
         return hidden_states
 
     def sharded_state_dict(
@@ -689,6 +714,9 @@ class TransformerBlock(MegatronModule):
         non_homogeneous_layers = metadata is not None and metadata.get(
             'non_homogeneous_layers', False
         )
+        if self.config.hetereogenous_dist_checkpoint:
+            non_homogeneous_layers = True
+
         if isinstance(self.config.moe_layer_freq, int):
             if self.config.moe_layer_freq > 1:
                 non_homogeneous_layers = True

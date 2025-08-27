@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -eo pipefail
+
 source tests/scripts/_gpu_check.sh
 
 echo "The current directory is: $(pwd)"
@@ -21,6 +23,9 @@ if [ -z "$backend" ] || [ -z "$subset" ]; then
     echo "Usage: $0 --backend <backend> --subset <subset> [--id <id>]"
     exit 1
 fi
+
+# Set default values for optional parameters
+coverage=${coverage:-"False"}
 
 # Configuration file path
 config_file="tests/scripts/unit_tests/config.yml"

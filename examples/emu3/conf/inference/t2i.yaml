@@ -8,6 +8,7 @@ llm:
   pipeline_parallel_size: 1
   gpu_memory_utilization: 0.5
   disable_log_stats: false
+  enable_chunked_prefill: true
 
 generate:
   mode: 'G'
@@ -17,7 +18,7 @@ generate:
   ]
   ratios: [
     "1:1",
-    "16:9"
+    "16:9",
   ]
   sampling:
     top_k: 2048

@@ -133,14 +133,16 @@ class LanguageModule(MegatronModule):
             return
 
         if (
-            parallel_state.is_pipeline_first_stage(ignore_virtual=False)
+            parallel_state.is_pipeline_first_stage(ignore_virtual=False, vp_stage=self.vp_stage)
             and self.pre_process
             and not self.post_process
         ):
             self.shared_embedding_or_output_weight().shared_embedding = True
 
         if (self.post_process or getattr(self, 'mtp_process', False)) and not self.pre_process:
-            assert not parallel_state.is_pipeline_first_stage(ignore_virtual=False)
+            assert not parallel_state.is_pipeline_first_stage(
+                ignore_virtual=False, vp_stage=self.vp_stage
+            )
             # set weights of the duplicated embedding to 0 here,
             # then copy weights from pre processing stage using all_reduce below.
             weight = self.shared_embedding_or_output_weight()
@@ -164,7 +166,9 @@ class LanguageModule(MegatronModule):
         # Ensure that first and last stages have the same initial parameter
         # values.
         if torch.distributed.is_initialized():
-            if parallel_state.is_rank_in_embedding_group(ignore_virtual=False):
+            if parallel_state.is_rank_in_embedding_group(
+                ignore_virtual=False, vp_stage=self.vp_stage
+            ):
                 weight = self.shared_embedding_or_output_weight()
                 weight.data = weight.data.cuda()
                 embedding_group = parallel_state.get_embedding_group()
@@ -175,17 +179,15 @@ class LanguageModule(MegatronModule):
                 else: # for multiple embedding groups in heterogeneous mode
                     with torch.no_grad():
                         original_dtype = weight.dtype
-                        if original_dtype == torch.bfloat16: # gloo backend doesn't support bfloat16
+                        if (original_dtype == torch.bfloat16) and torch.distributed.get_backend(group=embedding_group[0])=="cpu:gloo": # gloo backend doesn't support bfloat16
                             weight = weight.to(torch.float32)
-                        if torch.distributed.get_backend(group=embedding_group[0]) == 'cpu:gloo':
                             weight.data = weight.data.cpu()
                         original_weight = weight.clone().detach().data
                         for group in embedding_group:
                             weight.data.copy_(original_weight)
                             torch.distributed.all_reduce(weight.data, group=group)
-                        if original_dtype == torch.bfloat16:
+                        if original_dtype != weight.dtype:
                             weight = weight.to(original_dtype)
-                        if weight.device == torch.device('cpu'):
                             weight.data = weight.data.cuda()
 
         elif not getattr(LanguageModule, "embedding_warning_printed", False):

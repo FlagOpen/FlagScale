@@ -12,6 +12,7 @@ from megatron.core.parallel_state import (
     get_pipeline_model_parallel_rank,
     get_pipeline_model_parallel_world_size,
 )
+from megatron.core.utils import nvtx_decorator
 
 # Types
 Shape = Union[List[int], torch.Size]
@@ -434,7 +435,66 @@ def warm_up_comm_group(config):
     if config.enable_hetero:
         from flagscale.train.hetero.p2p_communication import warm_up_comm_group_hetero
         warm_up_comm_group_hetero(config)
+        return
 
+    # NOTE(lizhiyu): For enbale config.variable_seq_lengths and pp_size > 2
+    if not config.variable_seq_lengths or get_pipeline_model_parallel_world_size() <= 2:
+        return
+    config.variable_seq_lengths=False
+    rank = torch.distributed.get_rank()
+    pp_group = get_pipeline_model_parallel_group()
+    # This is arbitrary because the shape of the recv tensor needs
+    # to be specified when communicating.
+    # It can be changed into any other shape.
+    tensor_shape = [1]
+    to_send_tensor= torch.empty(
+            tensor_shape,
+            requires_grad=True,
+            device=torch.cuda.current_device(),
+            dtype=config.pipeline_dtype,
+        )
+    to_recv_tensor= torch.empty(
+            tensor_shape,
+            requires_grad=True,
+            device=torch.cuda.current_device(),
+            dtype=config.pipeline_dtype,
+        )
+
+    group_ranks = torch.distributed.get_process_group_ranks(pp_group)
+    pipeline_rank = get_pipeline_model_parallel_rank()
+    if pipeline_rank == 0:
+        _communicate(
+            tensor_send_next=to_send_tensor,
+            tensor_send_prev=None,
+            recv_prev=False,
+            recv_next=False,
+            tensor_shape=to_recv_tensor.shape,
+            config=config,
+            group=pp_group,
+        )
+    elif pipeline_rank == len(group_ranks) - 1:
+        _communicate(
+            tensor_send_next=None,
+            tensor_send_prev=None,
+            recv_prev=True,
+            recv_next=False,
+            tensor_shape=to_recv_tensor.shape,
+            config=config,
+            group=pp_group,
+        )
+    elif rank in group_ranks:
+        _communicate(
+            tensor_send_next=to_send_tensor,
+            tensor_send_prev=None,
+            recv_prev=True,
+            recv_next=False,
+            tensor_shape=to_recv_tensor.shape,
+            config=config,
+            group=pp_group,
+        )
+    config.variable_seq_lengths = True
+
+@nvtx_decorator()
 def recv_forward(
     tensor_shape: Shape, config: ModelParallelConfig, is_first_stage: bool
 ) -> torch.Tensor:
@@ -463,6 +523,7 @@ def recv_forward(
     return input_tensor
 
 
+@nvtx_decorator()
 def recv_backward(
     tensor_shape: Shape, config: ModelParallelConfig, is_last_stage: bool
 ) -> torch.Tensor:
@@ -492,6 +553,7 @@ def recv_backward(
     return output_tensor_grad
 
 
+@nvtx_decorator()
 def send_forward(
     output_tensor: torch.Tensor, config: ModelParallelConfig, is_last_stage: bool
 ) -> None:
@@ -501,7 +563,7 @@ def send_forward(
     """
     if config.enable_hetero:
         from flagscale.train.hetero.p2p_communication import send_forward_hetero
-        send_forward_hetero(output_tensor, config)
+        send_forward_hetero(output_tensor, config, is_last_stage=is_last_stage)
         return
 
     if not is_last_stage:
@@ -519,6 +581,7 @@ def send_forward(
             config.timers('forward-send').stop()
 
 
+@nvtx_decorator()
 def send_backward(
     input_tensor_grad: torch.Tensor, config: ModelParallelConfig, is_first_stage: bool
 ) -> None:
@@ -546,6 +609,7 @@ def send_backward(
             config.timers('backward-send').stop()
 
 
+@nvtx_decorator()
 def send_forward_recv_backward(
     output_tensor: torch.Tensor,
     tensor_shape: Shape,
@@ -578,6 +642,7 @@ def send_forward_recv_backward(
     return output_tensor_grad
 
 
+@nvtx_decorator()
 def send_backward_recv_forward(
     input_tensor_grad: torch.Tensor,
     tensor_shape: Shape,
@@ -610,6 +675,7 @@ def send_backward_recv_forward(
     return input_tensor
 
 
+@nvtx_decorator()
 def send_forward_recv_forward(
     output_tensor: torch.Tensor,
     recv_prev: bool,
@@ -639,6 +705,7 @@ def send_forward_recv_forward(
     return input_tensor
 
 
+@nvtx_decorator()
 def send_backward_recv_backward(
     input_tensor_grad: torch.Tensor,
     recv_next: bool,
@@ -668,6 +735,7 @@ def send_backward_recv_backward(
     return output_tensor_grad
 
 
+@nvtx_decorator()
 def send_forward_backward_recv_forward_backward(
     output_tensor: torch.Tensor,
     input_tensor_grad: torch.Tensor,
