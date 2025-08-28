@@ -108,12 +108,12 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
     cp=$(python3 --version | awk '{print $2}' | awk -F. '{print $1$2}')
     cxx=$(g++ --version | grep 'g++' | awk '{print $3}' | cut -d '.' -f 1)
     flash_attn_version="2.8.0.post2"
-    wget https://github.com/Dao-AILab/flash-attention/releases/download/v${flash_attn_version}/flash_attn-${flash_attn_version}+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
+    wget --continue --timeout=60 --no-check-certificate --tries=5 --waitretry=10 https://github.com/Dao-AILab/flash-attention/releases/download/v${flash_attn_version}/flash_attn-${flash_attn_version}+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
     uv pip install --no-cache-dir flash_attn-${flash_attn_version}+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
     rm flash_attn-${flash_attn_version}+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
 
     # From Megatron-LM log
-    uv pip install "git+https://github.com/Dao-AILab/flash-attention.git@v2.7.2#egg=flashattn-hopper&subdirectory=hopper"
+    uv pip install --no-build-isolation "git+https://github.com/Dao-AILab/flash-attention.git@v2.7.2#egg=flashattn-hopper&subdirectory=hopper"
     python_path=`python -c "import site; print(site.getsitepackages()[0])"`
     mkdir -p $python_path/flashattn_hopper
     wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILab/flash-attention/v2.7.2/hopper/flash_attn_interface.py
