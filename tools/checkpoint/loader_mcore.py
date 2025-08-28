@@ -24,7 +24,6 @@ def add_arguments(parser):
 
 
 def _load_checkpoint(queue, args):
-
     """
     prepare import module
     """
@@ -48,9 +47,9 @@ def _load_checkpoint(queue, args):
         from megatron.core import mpu
         from megatron.legacy import fused_kernels
         from megatron.core.tensor_parallel.random import (
-                get_cuda_rng_tracker, _DATA_PARALLEL_RNG_TRACKER_NAME,
-                _EXPERT_PARALLEL_RNG_TRACKER_NAME, _MODEL_PARALLEL_RNG_TRACKER_NAME
-            )
+            get_cuda_rng_tracker, _DATA_PARALLEL_RNG_TRACKER_NAME,
+            _EXPERT_PARALLEL_RNG_TRACKER_NAME, _MODEL_PARALLEL_RNG_TRACKER_NAME
+        )
         from tools.checkpoint.utils import _ConverterFakeProcessGroup
     except ModuleNotFoundError:
         print("Unable to import Megatron, please specify the path to Megatron using --megatron-path. Exiting.")
@@ -118,25 +117,29 @@ def _load_checkpoint(queue, args):
     _set_arg("moe_router_score_function")
     # for mtp
     _set_arg("mtp_num_layers")
-
+    
     # for hetero
     _set_arg("enable_hetero")
     _set_arg("hetero_process_meshes")
     _set_arg("hetero_pipeline_layer_split")
 
-    # for hetero
-    if margs.hetero_process_meshes is not None:
+    is_heterogeneous = hasattr(checkpoint_args, 'hetero_process_meshes') and \
+                       getattr(checkpoint_args, 'hetero_process_meshes') is not None
+    
+    if is_heterogeneous:
+        print("="*20 + " HETEROGENEOUS CHECKPOINT DETECTED " + "="*20)
         margs.pipeline_model_parallel_size = sum(row[-1] for row in margs.hetero_process_meshes)
-        # NOTE: temp fix
-        margs.expert_tensor_parallel_size = margs.tensor_model_parallel_size
-        margs.expert_model_parallel_size = 1
+    else:
+        print("="*20 + " HOMOGENEOUS CHECKPOINT DETECTED " + "="*20)
+
+
     margs.data_parallel_size = 1
     margs.micro_batch_size = 1
 
     # Arguments do sanity checks on the world size, but we don't care,
     # so trick it into thinking we are plenty of processes
     margs.world_size = margs.tensor_model_parallel_size * margs.pipeline_model_parallel_size * margs.expert_model_parallel_size
-
+    
     # Explicitly copy data types from checkpoint.
     margs.fp16 = checkpoint_args.fp16
     margs.bf16 = checkpoint_args.bf16
@@ -144,10 +147,10 @@ def _load_checkpoint(queue, args):
     # Expert parallelism requires sequence parallelism
     if margs.expert_model_parallel_size > 1:
         margs.sequence_parallel = True
-
+    
     # set env for moe
     os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
-
+    
     # Layernorm has bias; RMSNorm does not.
     if hasattr(checkpoint_args, 'normalization'):
         margs.norm_has_bias = checkpoint_args.normalization == "LayerNorm"
@@ -164,7 +167,6 @@ def _load_checkpoint(queue, args):
                 setattr(margs, arg_name, default)
             else:
                 print(f"Checkpoint does not specify the argument {arg_name}. Exiting.")
-                print(f"Arguments: {margs}")
                 queue.put("exit")
                 exit(1)
 
@@ -194,7 +196,6 @@ def _load_checkpoint(queue, args):
 
     # build global variable (eg: tokenizer)
     set_global_variables(margs, build_tokenizer=False)
-
     # Suppress warning about torch.distributed not being initialized.
     module.MegatronModule.embedding_warning_printed = True
 
@@ -216,24 +217,7 @@ def _load_checkpoint(queue, args):
     fake_ep_group = _ConverterFakeProcessGroup(size=ep_size)
     mpu._TENSOR_MODEL_PARALLEL_GROUP = fake_tp_group
     mpu._EXPERT_MODEL_PARALLEL_GROUP = fake_ep_group
-    # For backward compatibility during local parallel states refactoring
-    fake_pp_group = _ConverterFakeProcessGroup(size=margs.pipeline_model_parallel_size)
-    fake_cp_group = _ConverterFakeProcessGroup(size=margs.context_parallel_size)
-    fake_dp_group = _ConverterFakeProcessGroup(size=margs.data_parallel_size)
-    fake_etp_group = _ConverterFakeProcessGroup(size=margs.expert_tensor_parallel_size)
-    edp_parallel_size = margs.tensor_model_parallel_size * margs.context_parallel_size // (margs.expert_tensor_parallel_size * margs.expert_model_parallel_size)
-    fake_edp_group = _ConverterFakeProcessGroup(size=edp_parallel_size)
-    fake_etp_ep_group = _ConverterFakeProcessGroup(size=margs.expert_tensor_parallel_size*margs.expert_model_parallel_size)
-    fake_tcp_group = _ConverterFakeProcessGroup(size=margs.tensor_model_parallel_size*margs.context_parallel_size)
-    mpu._PIPELINE_MODEL_PARALLEL_GROUP = fake_pp_group
-    mpu._CONTEXT_PARALLEL_GROUP = fake_cp_group
-    mpu._DATA_PARALLEL_GROUP = fake_dp_group
-    mpu._EXPERT_TENSOR_PARALLEL_GROUP = fake_etp_group
-    mpu._EXPERT_DATA_PARALLEL_GROUP = fake_edp_group
-    mpu._EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP = fake_etp_ep_group
-    mpu._TENSOR_AND_CONTEXT_PARALLEL_GROUP = fake_tcp_group
 
-    # fused kernel
     fused_kernels.load(margs)
 
     # random
@@ -243,7 +227,6 @@ def _load_checkpoint(queue, args):
     CUDA_RNG_STATE_TRACKER.add(_MODEL_PARALLEL_RNG_TRACKER_NAME, 44)
     CUDA_RNG_STATE_TRACKER.add(_EXPERT_PARALLEL_RNG_TRACKER_NAME, 45)
 
-    # metadata
     md = types.SimpleNamespace()
     md.model_type = args.model_type
     md.num_layers = margs.num_layers
@@ -268,43 +251,49 @@ def _load_checkpoint(queue, args):
     md.true_vocab_size = args.true_vocab_size # true (non-padded) vocab size
     md.make_vocab_size_divisible_by = margs.make_vocab_size_divisible_by
     md.checkpoint_args = checkpoint_args
+    # 在metadata中记录异构信息
+    md.is_heterogeneous = is_heterogeneous
+    if is_heterogeneous:
+        md.hetero_process_meshes = margs.hetero_process_meshes
+        md.hetero_pipeline_layer_split = margs.hetero_pipeline_layer_split
+
 
     consumed_train_samples = None
     consumed_valid_samples = None
-    def get_models(count, dtype):
+    
+    # 逐 PP 阶段加载模型
+    # get_models 必须接收当前stage的并行度参数
+    def get_models(count, dtype, current_tp_size, current_ep_size):
         # for one pp stage
         nonlocal consumed_train_samples
         nonlocal consumed_valid_samples
-        tp_size = margs.tensor_model_parallel_size
-        pp_size = margs.pipeline_model_parallel_size
-        vp_size = margs.virtual_pipeline_model_parallel_size or 1
+        
+        # 使用传入的并行度参数来设置伪分布式环境
+        mpu.set_tensor_model_parallel_world_size(current_tp_size)
+        mpu.set_expert_model_parallel_world_size(current_ep_size)
+        mpu._TENSOR_MODEL_PARALLEL_GROUP = _ConverterFakeProcessGroup(size=current_tp_size)
+        mpu._EXPERT_MODEL_PARALLEL_GROUP = _ConverterFakeProcessGroup(size=current_ep_size)
 
         models = [[] for _ in range(vp_size)]
         for rank_id in range(count):
-            tp_rank = rank_id % tp_size
-            ep_rank = rank_id // tp_size
+            tp_rank = rank_id % current_tp_size
+            ep_rank = rank_id // current_tp_size
             mpu.set_tensor_model_parallel_rank(tp_rank)
             mpu.set_expert_model_parallel_rank(ep_rank)
-            if pp_size > 1 and vp_size > 1:
-                model_ = []
-                for vp_rank in range(vp_size):
-                    mpu.set_virtual_pipeline_model_parallel_rank(vp_rank)
-                    # Set pre_process and post_process only after virtual rank is set.
-                    pre_process = mpu.is_pipeline_first_stage()
-                    post_process = mpu.is_pipeline_last_stage()
-                    # Convert the current vp_rank into the vp_stage parameter.
-                    this_model = model_plugin.get_mg_model(dtype, pre_process, post_process, vp_stage=vp_rank)
-                    model_.append(this_model)
-            else:
+
+            model_ = []
+            for vp_rank in range(vp_size):
+                mpu.set_virtual_pipeline_model_parallel_rank(vp_rank)
                 pre_process = mpu.is_pipeline_first_stage()
-                post_process = mpu.is_pipeline_last_stage() 
-                #Also pass vp_stage in here (at this point, its value will be 0)
-                vp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
-                model_ = [model_plugin.get_mg_model(dtype, pre_process, post_process, vp_stage=vp_rank)]
+                post_process = mpu.is_pipeline_last_stage()
+                # 修复vp_stage未传递的错误
+                this_model = model_plugin.get_mg_model(dtype, pre_process, post_process, vp_stage=vp_rank)
+                model_.append(this_model)
 
             margs.consumed_train_samples = 0
             margs.consumed_valid_samples = 0
             margs.exit_on_missing_checkpoint = True
+            # 真正加载权重
             load_checkpoint(model_, None, None)
 
             if consumed_train_samples is not None:
@@ -321,13 +310,28 @@ def _load_checkpoint(queue, args):
                 models[vp_rank].append(model_[vp_rank])
 
             # Print memory usage.
-            print_memory_usage("loader", rank_id, count)
+            print_memory_usage(f"loader pp_rank={mpu.get_pipeline_model_parallel_rank()}", rank_id, count)
 
         return models
 
     # Get first pipe stage and load ckpt
     mpu.set_pipeline_model_parallel_rank(0)
-    all_models = [get_models(tp_size * ep_size, margs.params_dtype)]
+
+    # 在调用get_models之前，必须先确定当前stage的并行度
+    if is_heterogeneous:
+        # 异构模式下，pp_rank=0时，使用第一个mesh的配置
+        mesh_config_0 = margs.hetero_process_meshes[0]
+        current_tp = mesh_config_0[0]
+        current_ep = mesh_config_0[2]
+        print(f"Loading PP stage 0 with HETERO config: TP={current_tp}, EP={current_ep}")
+    else:
+        # 同构模式，使用全局配置（原始逻辑）
+        current_tp = margs.tensor_model_parallel_size
+        current_ep = margs.expert_model_parallel_size
+        print(f"Loading PP stage 0 with HOMO config: TP={current_tp}, EP={current_ep}")
+    
+    # 调用 get_models 时传入计算好的并行度
+    all_models = [get_models(current_tp * current_ep, margs.params_dtype, current_tp, current_ep)]
     models = all_models[0][0] # pp0vpp0
 
     md.consumed_train_samples = consumed_train_samples
@@ -340,18 +344,42 @@ def _load_checkpoint(queue, args):
 
     # Send embeddings
     message = dict()
+    # 从models[tp_rank]提取word_embeddings.weight、position_embeddings.weight 可能需要合并 TP 分片
     ckpt_plugin.get_embedding_ckpt(message, models, margs)
     queue_put("embeddings", message)
 
     # Send transformer layer
     total_layer_num = 0
+    # 保持原始的交错式加载和发送循环
     for vp_rank in range(vp_size):
         mpu.set_virtual_pipeline_model_parallel_rank(vp_rank)
         for pp_rank in range(pp_size):
             mpu.set_pipeline_model_parallel_rank(pp_rank)
 
             if pp_rank > 0 and vp_rank == 0:
-                all_models.append(get_models(tp_size * ep_size, margs.params_dtype))
+                # 在加载新的pp stage时，同样需要先确定该stage的并行度
+                if is_heterogeneous:
+                    pp_stage_counter = 0
+                    current_mesh_idx = -1
+                    for i, mesh in enumerate(margs.hetero_process_meshes):
+                        mesh_pp_size = mesh[-1]
+                        if pp_rank < pp_stage_counter + mesh_pp_size:
+                            current_mesh_idx = i
+                            break
+                        pp_stage_counter += mesh_pp_size
+                    
+                    mesh_config = margs.hetero_process_meshes[current_mesh_idx]
+                    current_tp = mesh_config[0]
+                    current_ep = mesh_config[2]
+                    print(f"Loading PP stage {pp_rank} with HETERO config: TP={current_tp}, EP={current_ep}")
+                else:
+                    # 同构模式，使用全局配置
+                    current_tp = margs.tensor_model_parallel_size
+                    current_ep = margs.expert_model_parallel_size
+                    print(f"Loading PP stage {pp_rank} with HOMO config: TP={current_tp}, EP={current_ep}")
+                
+                # 调用 get_models 时传入计算好的并行度
+                all_models.append(get_models(current_tp * current_ep, margs.params_dtype, current_tp, current_ep))
 
             models = all_models[pp_rank][vp_rank]
             for layer_id in range(len(models[0].decoder.layers)):
@@ -374,7 +402,7 @@ def _load_checkpoint(queue, args):
         queue_put("output layer", message)
 
     message = dict()
-    if margs.mtp_num_layers:
+    if hasattr(margs, 'mtp_num_layers') and margs.mtp_num_layers:
         for mtp_layer_id in range(margs.mtp_num_layers):
             message = dict()
             ckpt_plugin.get_mtp_ckpt(message, models, mtp_layer_id, margs)

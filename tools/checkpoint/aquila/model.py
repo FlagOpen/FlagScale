@@ -4,9 +4,6 @@ from megatron.core.enums import ModelType
 
 model_type = ModelType.encoder_or_decoder  # Megatron's model_type
 
-#import sys
-#MODEL_HUB="/nfs/lizhiyu/data/llama_model"
-#sys.path.append(MODEL_HUB)
 def get_hf_model(dtype, model_path=None, config=None):
     try:
         from .llama_model.modeling_llama import LlamaForCausalLM
@@ -35,12 +32,10 @@ def get_hf_model(dtype, model_path=None, config=None):
     return model
 
 
-# Add the parameter vp_stage=None in the function definition.
 def get_mg_model(dtype, pre_process, post_process, vp_stage=None):
     from flagscale.train.train_gpt import model_provider
 
     s_time = time.time()
-    #Pass the received vp_stage parameter to the model_provider function.
     model = model_provider(pre_process, post_process, vp_stage=vp_stage).to(dtype)
     print("> build megatron model elapsed time:", time.time() - s_time)
     return model
