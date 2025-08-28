@@ -195,7 +195,7 @@ class Collaborator:
             return False
 
     def read_agent_info(self, agent_name: str) -> Optional[Dict[str, str]]:
-        """Read agent data from AGENT_INFO hash."""
+        """Read agent info from AGENT_INFO hash."""
         try:
             redis_client = self._get_conn()
             return redis_client.hget("AGENT_INFO", agent_name)
