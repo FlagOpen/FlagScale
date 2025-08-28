@@ -26,6 +26,18 @@ experiment:
     NVTE_FUSED_ATTN: 0
     CUDNN_BENCHMARK: "false"
     CUDNN_DETERMINISTIC: "true"
+    # Fixing randomness and computational behavior by setting a series of environment variables
+    SEED: 1234
+    PYTHONHASHSEED: 0
+    MKL_NUM_THREADS: 1
+    OMP_NUM_THREADS: 1
+    NUMEXPR_NUM_THREADS: 1
+    SCIPY_RDRANDOM: 0
+    TF_DETERMINISTIC_OPS: 1
+    TORCH_CUDNN_DETERMINISM: true
+    CUDA_LAUNCH_BLOCKING: 1
+    NCCL_DEBUG: INFO
+    MAGIC_CACHE: disabled
 
 action: run
 
