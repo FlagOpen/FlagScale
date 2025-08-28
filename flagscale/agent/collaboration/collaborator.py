@@ -204,7 +204,7 @@ class Collaborator:
             return None
 
     def read_all_agents_info(self) -> Dict[str, Dict[str, str]]:
-        """Read all agents from AGENT_INFO hash."""
+        """Read all agents info from AGENT_INFO hash."""
         try:
             redis_client = self._get_conn()
             return redis_client.hgetall("AGENT_INFO")
