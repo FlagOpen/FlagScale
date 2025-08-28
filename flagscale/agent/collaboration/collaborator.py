@@ -203,7 +203,7 @@ class Collaborator:
             print(f"Error retrieving agent {agent_name}: {e}")
             return None
 
-    def read_all_agents(self) -> Dict[str, Dict[str, str]]:
+    def read_all_agents_info(self) -> Dict[str, Dict[str, str]]:
         """Read all agents from AGENT_INFO hash."""
         try:
             redis_client = self._get_conn()
