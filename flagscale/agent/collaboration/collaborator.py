@@ -194,7 +194,7 @@ class Collaborator:
             print(f"Failed to register agent {agent_name}: {e}")
             return False
 
-    def read_agent(self, agent_name: str) -> Optional[Dict[str, str]]:
+    def read_agent_info(self, agent_name: str) -> Optional[Dict[str, str]]:
         """Read agent data from AGENT_INFO hash."""
         try:
             redis_client = self._get_conn()
