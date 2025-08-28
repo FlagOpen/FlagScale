@@ -549,7 +549,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                         elif node.type == "cpu":
                             node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
                         else:
-                            resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                            resource = json.dumps({node.type: node.slots}).replace('"', '\"')
                             node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
                         if per_node_cmd:
                             node_cmd = f"{per_node_cmd} && " + node_cmd
@@ -720,7 +720,7 @@ def _generate_cloud_run_script_serve(
                         elif node.type == "cpu":
                             node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
                         else:
-                            resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                            resource = json.dumps({node.type: node.slots}).replace('"', '\"')
                             node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
                         if before_start_cmd:
                             node_cmd = f"{before_start_cmd} && " + node_cmd
@@ -740,7 +740,7 @@ def _generate_cloud_run_script_serve(
                                 f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
                             )
                         else:
-                            resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+                            resource = json.dumps({node.type: node.slots}).replace('"', '\"')
                             node_cmd = (
                                 f"${{ray_path}} start --address={address} --resources='{resource}'"
                             )
@@ -774,7 +774,7 @@ def _generate_cloud_run_script_serve(
                 elif device_type == "cpu":
                     node_cmd = f"${{ray_path}} start --head --num-cpus={nproc_per_node}"
                 else:
-                    resource = json.dumps({device_type: nproc_per_node}).replace('"', '\\"')
+                    resource = json.dumps({device_type: nproc_per_node}).replace('"', '\"')
                     node_cmd = f"${{ray_path}} start --head --resources='{resource}'"
             if before_start_cmd:
                 node_cmd = f"{before_start_cmd} && {node_cmd}" if node_cmd else before_start_cmd
@@ -1246,7 +1246,7 @@ class CloudServeRunner(RunnerBase):
                 self.user_script = "flagscale/serve/run_fs_serve_vllm.py"
         elif isinstance(entrypoint, str) and entrypoint.endswith(".py"):
             self.user_script = entrypoint
-        elif entrypoint is None:
+        elif self.use_fs_serve and self.deploy_config.get("enable_composition", False):
             self.user_script = "flagscale/serve/run_serve.py"
         else:
             raise ValueError(
