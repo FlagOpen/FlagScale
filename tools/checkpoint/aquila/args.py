@@ -48,7 +48,7 @@ def load_args_hf2mg(args):
 
 
 def save_args_mg2hf(args):
-    from .llama_model.configuration_llama import LlamaConfig
+    from transformers import LlamaConfig
 
     config = LlamaConfig(
         vocab_size=args.vocab_size,

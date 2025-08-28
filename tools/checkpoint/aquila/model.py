@@ -4,13 +4,10 @@ from megatron.core.enums import ModelType
 
 model_type = ModelType.encoder_or_decoder  # Megatron's model_type
 
+
 def get_hf_model(dtype, model_path=None, config=None):
-    try:
-        from .llama_model.modeling_llama import LlamaForCausalLM
-    except ImportError:
-        print(
-            "Failed to import LlamaForCausalLM from modeling_llama, please add the model of huggingface style."
-        )
+    from transformers import LlamaForCausalLM
+
     s_time = time.time()
     if model_path and not config:
         model = LlamaForCausalLM.from_pretrained(

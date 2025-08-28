@@ -176,7 +176,6 @@ def get_num_layers_to_build(config: TransformerConfig, vp_stage: Optional[int] =
             num_layers_to_build = config.hetero_pipeline_layer_split[pipeline_rank]
         else:
             num_layers_to_build = num_layers_per_pipeline_rank
-    # return num_layers_to_build
 
     # The embedding (or loss) layer cannot function as a standalone transformer layer
     # Reduce the number of layers to construct by 1 on the first (or last) stage if the
