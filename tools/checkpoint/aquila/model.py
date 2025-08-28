@@ -6,12 +6,8 @@ model_type = ModelType.encoder_or_decoder  # Megatron's model_type
 
 
 def get_hf_model(dtype, model_path=None, config=None):
-    try:
-        from .llama_model.modeling_llama import LlamaForCausalLM
-    except ImportError:
-        print(
-            "Failed to import LlamaForCausalLM from modeling_llama, please add the model of huggingface style."
-        )
+    from transformers import LlamaForCausalLM
+
     s_time = time.time()
     if model_path and not config:
         model = LlamaForCausalLM.from_pretrained(
@@ -33,10 +29,10 @@ def get_hf_model(dtype, model_path=None, config=None):
     return model
 
 
-def get_mg_model(dtype, pre_process, post_process):
+def get_mg_model(dtype, pre_process, post_process, vp_stage=None):
     from flagscale.train.train_gpt import model_provider
 
     s_time = time.time()
-    model = model_provider(pre_process, post_process).to(dtype)
+    model = model_provider(pre_process, post_process, vp_stage=vp_stage).to(dtype)
     print("> build megatron model elapsed time:", time.time() - s_time)
     return model
