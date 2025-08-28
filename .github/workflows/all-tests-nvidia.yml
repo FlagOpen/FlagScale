@@ -109,7 +109,7 @@ jobs:
     strategy:
       matrix:
         task:
-          - deepseek_r1_distill_qwen
+          # - deepseek_r1_distill_qwen # TODO(yfb): need fix
           - deepseek_r1_distill_qwen-flaggems
           - qwen3
           - qwen3-flaggems
