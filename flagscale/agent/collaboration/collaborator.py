@@ -194,8 +194,8 @@ class Collaborator:
             print(f"Failed to register agent {agent_name}: {e}")
             return False
 
-    def retrieve_agent(self, agent_name: str) -> Optional[Dict[str, str]]:
-        """Retrieve agent data from AGENT_INFO hash."""
+    def read_agent(self, agent_name: str) -> Optional[Dict[str, str]]:
+        """Read agent data from AGENT_INFO hash."""
         try:
             redis_client = self._get_conn()
             return redis_client.hget("AGENT_INFO", agent_name)
@@ -203,8 +203,8 @@ class Collaborator:
             print(f"Error retrieving agent {agent_name}: {e}")
             return None
 
-    def retrieve_all_agents(self) -> Dict[str, Dict[str, str]]:
-        """Retrieve all agents from AGENT_INFO hash."""
+    def read_all_agents(self) -> Dict[str, Dict[str, str]]:
+        """Read all agents from AGENT_INFO hash."""
         try:
             redis_client = self._get_conn()
             return redis_client.hgetall("AGENT_INFO")
@@ -212,8 +212,8 @@ class Collaborator:
             print(f"Error retrieving agent registry: {e}")
             return {}
 
-    def retrieve_all_agents_name(self) -> List[str]:
-        """Retrieve all agent names (keys) from AGENT_INFO hash.
+    def read_all_agents_name(self) -> List[str]:
+        """Read all agent names (keys) from AGENT_INFO hash.
 
         Returns:
             List[str]: List of all agent names/keys.
@@ -378,10 +378,10 @@ class Collaborator:
 
     def read_environment(self, name: str) -> Optional[Union[Dict[str, str], str]]:
         """
-        Retrieve environment information from Redis hash storage.
+        read environment information from Redis hash storage.
 
         Args:
-            name (str): The key name of the environment data to retrieve from the "ENVIRONMENT_INFO" hash.
+            name (str): The key name of the environment data to read from the "ENVIRONMENT_INFO" hash.
 
         Returns:
             Optional[Union[Dict[str, str], str]]:
@@ -403,60 +403,29 @@ class Collaborator:
             None
 
         Note:
-            - The data is retrieved from the Redis hash key "ENVIRONMENT_INFO"
+            - The data is read from the Redis hash key "ENVIRONMENT_INFO"
             - Automatically attempts to parse JSON strings into dictionaries
             - Returns None for any connection or Redis errors
         """
         try:
             redis_client = self._get_conn()
-            raw_value = redis_client.hget("ENVIRONMENT_INFO", name)
-            if not raw_value:
-                return None
-            return json.loads(raw_value)
-        except (ConnectionError, TimeoutError, RedisError) as e:
-            print(f"Error Failed to read ENVIRONMENT_INFO[{name}]: {type(e).__name__} - {e}")
-            return None
+            if name:
+                raw_value = redis_client.hget("ENVIRONMENT_INFO", name)
+                if raw_value is None:
+                    return None
+                return json.loads(raw_value)
 
-    def read_all_environment(self) -> Optional[Dict[str, Union[Dict[str, str], str]]]:
-        """
-        Retrieve all environment information from Redis hash storage ("ENVIRONMENT_INFO").
-
-        Returns:
-            Optional[Dict[str, Union[Dict[str, str], str]]]:
-                - A dictionary mapping each key to its parsed value:
-                    * Dictionary if the stored value is JSON
-                    * String if the value is plain text or JSON parsing fails
-                - None if an error occurs or no data exists
-
-        Example:
-            >>> read_all_environment()
-            {
-                "office_lighting": {"status": "on", "brightness": "75%"},
-                "temperature": "22.5°C",
-                "humidity": {"value": "60", "unit": "%"}
-            }
-
-        Note:
-            - The data is retrieved from the Redis hash key "ENVIRONMENT_INFO"
-            - Automatically attempts to parse JSON strings into dictionaries
-            - Returns None for any connection or Redis errors
-        """
-
-        try:
-            redis_client = self._get_conn()
             raw_data = redis_client.hgetall("ENVIRONMENT_INFO")
-            if not raw_data:
-                return None
-
-            parsed_data = {}
+            result = {}
             for key, value in raw_data.items():
                 try:
-                    parsed_data[key] = json.loads(value)
+                    result[key] = json.loads(value)
                 except (ValueError, TypeError):
-                    parsed_data[key] = value
-            return parsed_data
+                    result[key] = value
+            return result if result else None
+
         except (ConnectionError, TimeoutError, RedisError) as e:
-            print(f"Error Failed to read ENVIRONMENT_INFO]: {type(e).__name__} - {e}")
+            print(f"Error Failed to read ENVIRONMENT_INFO[{name}]: {type(e).__name__} - {e}")
             return None
 
     # ----------------- Close Connection -----------------
