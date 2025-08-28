@@ -24,7 +24,7 @@ jobs:
         - /home/flagscale_cicd/flask/static:/workspace/report
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
         - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
-        - /home/flagscale_cicd/sccache:/github/home/.cache/sccache
+        - /home/flagscale_cicd/sccache:/root/.cache/sccache
       options: --gpus all --shm-size=500g --hostname flagscale_cicd --user root --ulimit nofile=65535:65535
 
     steps:
@@ -59,6 +59,7 @@ jobs:
             source /root/miniconda3/bin/activate flagscale-inference
             pip install scikit-build scikit-build-core
             pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0
+            export SCCACHE_DIR=/root/.cache/sccache
             sccache --start-server
             sccache --show-stats
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
