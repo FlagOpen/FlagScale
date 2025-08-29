@@ -89,7 +89,7 @@ if [[ ${env} == "inference" ]]; then
     # Enter the target directory and record the original path
     pushd "$build_dir" > /dev/null
 
-    WHEEL_PATH="dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl"
+    WHEEL_PATH="dist/vllm-*-linux_x86_64.whl"
 
     {
         # Load environment variables
