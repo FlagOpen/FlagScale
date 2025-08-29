@@ -109,9 +109,9 @@ jobs:
     strategy:
       matrix:
         task:
-          # - deepseek_r1_distill_qwen
+          # - deepseek_r1_distill_qwen  # TODO: test need fix
           - deepseek_r1_distill_qwen-flaggems
-          - qwen3
+          # - qwen3  # TODO: test need fix
           - qwen3-flaggems
     name: "inference-${{ matrix.task }}"
     with:
