@@ -57,15 +57,11 @@ def build_payload(args) -> Dict[str, Any]:
         "right_wrist_0_rgb": encode_image(args.right_wrist_img),
     }
     # 3. Image masks (True: image is valid)
-    image_masks = {
-        "base_0_rgb": True,
-        "left_wrist_0_rgb": True,
-        "right_wrist_0_rgb": True,
-    }
+    image_masks = {"base_0_rgb": True, "left_wrist_0_rgb": True, "right_wrist_0_rgb": True}
     return {
         "instruction": "Grab the orange and put it into the basket.",
-        "qpos": [[ random.random() for _ in range(args.state_dim)]],
-        "eef_pose": [[ random.random() for _ in range(args.state_dim)]],
+        "qpos": [[random.random() for _ in range(args.state_dim)]],
+        "eef_pose": [[random.random() for _ in range(args.state_dim)]],
         "state": state,
         "high_level_instruction": args.high_level_instruction,
         "fine_grained_instruction": args.fine_grained_instruction,
@@ -88,26 +84,31 @@ def pretty_print_resp(resp: requests.Response) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Client for RoboBrain-Robotics inference API")
-    parser.add_argument("--host", default="127.0.0.1",
-                        help="Host of local SSH tunnel (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=15000,
-                        help="Port of local SSH tunnel (default: 15000)")
-    parser.add_argument("--base-img", required=True,
-                        help="Path to base camera RGB image")
-    parser.add_argument("--left-wrist-img", required=True,
-                        help="Path to left wrist camera RGB image")
-    parser.add_argument("--right-wrist-img", required=True,
-                        help="Path to right wrist camera RGB image")
-    parser.add_argument("--state-dim", type=int, default=14,
-                        help="Dim of robot low-dim state vector (default: 14)")
+    parser = argparse.ArgumentParser(description="Client for RoboBrain-Robotics inference API")
+    parser.add_argument(
+        "--host", default="127.0.0.1", help="Host of local SSH tunnel (default: 127.0.0.1)"
+    )
+    parser.add_argument(
+        "--port", type=int, default=15000, help="Port of local SSH tunnel (default: 15000)"
+    )
+    parser.add_argument("--base-img", required=True, help="Path to base camera RGB image")
+    parser.add_argument(
+        "--left-wrist-img", required=True, help="Path to left wrist camera RGB image"
+    )
+    parser.add_argument(
+        "--right-wrist-img", required=True, help="Path to right wrist camera RGB image"
+    )
+    parser.add_argument(
+        "--state-dim", type=int, default=14, help="Dim of robot low-dim state vector (default: 14)"
+    )
     parser.add_argument("--num-steps", type=int, default=20)
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--do-sample", action="store_true")
-    parser.add_argument("--high-level-instruction", default="Grab the orange and put it into the basket.")
+    parser.add_argument(
+        "--high-level-instruction", default="Grab the orange and put it into the basket."
+    )
     parser.add_argument("--fine-grained-instruction", default=None)
     args = parser.parse_args()
 
@@ -116,23 +117,22 @@ def main():
 
     # 1. Health-check
     check_health(base_url)
-
     # 2. Build payload
     payload = build_payload(args)
-
     # 3. POST /infer
     try:
         t0 = time.time()
-        resp = requests.post(f"{base_url}/infer",
-                             headers={"Content-Type": "application/json"},
-                             data=json.dumps(payload),
-                             timeout=300)
+        resp = requests.post(
+            f"{base_url}/infer",
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(payload),
+            timeout=300,
+        )
         elapsed = (time.time() - t0) * 1000
         resp.raise_for_status()
     except requests.RequestException as e:
         print(f"[Error] HTTP request failed: {e}")
         sys.exit(1)
-
     print(f"[√] Response OK ({resp.status_code})  -  {elapsed:.1f}ms")
     pretty_print_resp(resp)
 
