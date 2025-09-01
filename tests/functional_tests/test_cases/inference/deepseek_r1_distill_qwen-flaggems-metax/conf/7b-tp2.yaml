@@ -19,6 +19,8 @@ experiment:
     CUBLAS_WORKSPACE_CONFIG: ":4096:8"
     CUDNN_BENCHMARK: "false"
     CUDNN_DETERMINISTIC: "true"
+    USE_FLAGGEMS: "true"
+    GEMS_VENDOR: "metax"
     # Quantitative perception training related
     NVTE_APPLY_QK_LAYER_SCALING: 0
     NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
