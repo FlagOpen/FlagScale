@@ -1,12 +1,15 @@
 import multiprocessing
 import os
 import shlex
+import threading
 import time
 
 from datetime import datetime
 
 from omegaconf import DictConfig, OmegaConf
 
+from flagscale.runner.elastic.diagnostic import generate_diagnostic_report
+from flagscale.runner.elastic.log_collector import collect_logs
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.utils import (
     add_decive_extra_config,
@@ -39,7 +42,7 @@ def _get_args_megatron(config: DictConfig):
     new_config_dict.update(config_dict["model"])
     new_config_dict.update(config_dict["data"])
 
-    ignore_keys = ["log_dir", "details_dir", "scripts_dir", "pids_dir"]
+    ignore_keys = ["log_dir", "details_dir", "scripts_dir", "pids_dir", "diagnostic_dir"]
     # Flatten the dictionary to a list of arguments
     args = flatten_dict_to_args(new_config_dict, ignore_keys)
 
@@ -93,7 +96,7 @@ def _update_config_train(config: DictConfig):
     scripts_dir = os.path.join(log_dir, "scripts")
     pids_dir = os.path.join(log_dir, "pids")
     details_dir = os.path.join(log_dir, "details")
-
+    diagnostic_dir = os.path.join(log_dir, "diagnostic")
     config.checkpoint.save = ckpt_save_dir
     config.checkpoint.load = ckpt_load_dir
     config.logging.log_dir = log_dir
@@ -102,7 +105,7 @@ def _update_config_train(config: DictConfig):
     config.logging.details_dir = details_dir
     config.logging.tensorboard_dir = tensorboard_dir
     config.logging.wandb_save_dir = wandb_dir
-
+    config.logging.diagnostic_dir = diagnostic_dir
     OmegaConf.set_struct(config, False)
 
 
@@ -372,6 +375,8 @@ class SSHTrainRunner(RunnerBase):
             run_ssh_command(host, f"bash {host_run_script_file}", ssh_port, dryrun)
         else:
             run_local_command(f"bash {host_run_script_file}", dryrun)
+        # log_file = collect_logs(self.config, host, node_rank, logging_config.diagnostic_dir, dryrun)
+        # generate_diagnostic_report(self.config, host, node_rank, log_file)
 
     def run(self, with_test=False, dryrun=False, monitor=False, interval=10):
 
@@ -429,18 +434,52 @@ class SSHTrainRunner(RunnerBase):
             )
         # If need monitor, query status continually
         if monitor:
-            # sleep to wait task already started
-            time.sleep(interval)
             try:
+                # Perform single status query
+                status = self._query_status()
+                logger.info(f"Initial Job Status: {status.name}")
+                if status == JobStatus.RUNNING:
+                    # Start asynchronous log collection
+                    log_thread = threading.Thread(target=self._monitor_logs, args=(1,))
+                    log_thread.daemon = True
+                    log_thread.start()
+                    logger.info("Started log monitoring thread")
+                else:
+                    logger.info(
+                        f"Job is not running (status: {status.name}), skipping log monitoring"
+                    )
+                    self.collect_and_diagnose_logs()  # Final collection
+                    return
+                # Wait for job completion
                 while True:
                     status = self._query_status()
                     logger.info(f"Job Status: {status.name}")
                     if status == JobStatus.COMPLETED_OR_IDLE:
+                        self.collect_and_diagnose_logs()
                         break
                     time.sleep(interval)
                 logger.info("Job Ended.")
             except Exception as e:
-                logger.info(e)
+                logger.error(f"Error during monitoring: {e}")
+                self.collect_and_diagnose_logs()  # Ensure final collection on error
+                raise
+        else:
+            self.collect_and_diagnose_logs()
+
+    def _monitor_logs(self, interval):
+        """Run log collection and diagnostics in a separate thread."""
+        time.sleep(3)  # Reduced initial delay
+        start_time = time.time()
+        while True:
+            try:
+                self.collect_and_diagnose_logs()
+                logger.debug(
+                    f"Log monitoring cycle completed in {time.time() - start_time:.2f} seconds, sleeping for {interval} seconds"
+                )
+                start_time = time.time()
+            except Exception as e:
+                logger.error(f"Error in log monitoring: {e}")
+            time.sleep(interval)
 
     def _stop_each(self, host, node_rank):
         host_stop_script_file = _generate_stop_script_train(self.config, host, node_rank)
@@ -632,35 +671,92 @@ class SSHTrainRunner(RunnerBase):
             status = False
         return status
 
+    def collect_and_diagnose_logs(self):
+        logging_config = self.config.train.system.logging
+        host_list = (
+            [host for host, _ in self.resources.items()] if self.resources else ["localhost"]
+        )
+        no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
+        for node_rank, host in enumerate(host_list):
+            log_file_path = os.path.join(
+                logging_config.log_dir,
+                f"host{'_' + str(node_rank) + '_' + host if not no_shared_fs else ''}.output",
+            )
+            combined_file = os.path.join(
+                logging_config.diagnostic_dir, f"host_{node_rank}_{host}_combined.log"
+            )
+            logger.debug(
+                f"Checking source log file {log_file_path}, size: {os.path.getsize(log_file_path) if os.path.exists(log_file_path) else 0}"
+            )
+            log_file = collect_logs(self.config, host, node_rank, logging_config.diagnostic_dir)
+            logger.debug(
+                f"Collected log file {log_file}, size: {os.path.getsize(log_file) if log_file and os.path.exists(log_file) else 0}"
+            )
+            if log_file and os.path.exists(log_file) and os.path.getsize(log_file) > 0:
+                try:
+                    # Read log content
+                    with open(log_file, 'r') as log_f:
+                        log_content = log_f.read()
+                    if not log_content.strip():
+                        logger.info(
+                            f"No new logs collected for {host} (node {node_rank}): Log file {log_file_path} is empty"
+                        )
+                    else:
+                        # Generate diagnostic report as string
+                        diagnostic_report = generate_diagnostic_report(
+                            self.config, host, node_rank, log_file, return_content=True
+                        )
+                        # Write to combined file
+                        os.makedirs(os.path.dirname(combined_file), exist_ok=True)
+                        with open(combined_file, 'a') as f:  # Append mode
+                            f.write(
+                                f"\n=== Collection Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n"
+                            )
+                            f.write("=== Log Content ===\n")
+                            f.write(log_content)
+                            f.write("\n=== Diagnostic Report ===\n")
+                            f.write(
+                                diagnostic_report
+                                if diagnostic_report
+                                else "No diagnostic report generated\n"
+                            )
+                        logger.info(
+                            f"Appended log and diagnostic report for {host} (node {node_rank}) to {combined_file}"
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to combine logs and diagnostics for {host} (node {node_rank}): {e}"
+                    )
+                finally:
+                    # Clean up temporary log file
+                    if log_file and os.path.exists(log_file):
+                        try:
+                            os.remove(log_file)
+                            logger.debug(f"Removed temporary log file {log_file}")
+                        except Exception as e:
+                            logger.error(f"Failed to remove temporary log file {log_file}: {e}")
+            else:
+                logger.info(
+                    f"No new logs collected for {host} (node {node_rank}): Log file {log_file_path} not found or empty"
+                )
+                # Skip writing to combined file if no logs are available
+
     def query(self, interval=10, timeout=None):
-        """
-        Query job status and log.
-        There are three kinds of status for a Job:
-            RUNNING: The job is running.
-            COMPLETED_OR_IDLE: The job is completed or idle.
-            TRANSITIONAL: The job is starting or stopping.
-
-        Args:
-            interval (int, optional): The interval of querying job status. Default: 10.
-            timeout (float, optional): The timeout of query job status, if None, the query will keep indefinitely. Default: None.
-
-        Returns:
-            None
-
-        """
-        if timeout is None:
-            while True:
+        start_time = time.time()
+        # Initial delay to allow training to start and generate logs
+        time.sleep(5)  # Wait 5 seconds before first collection
+        while timeout is None or time.time() - start_time < timeout:
+            try:
                 job_status = self._query_status()
                 logger.info(f"Job status: {job_status.name}")
-                time.sleep(interval)
-        else:
-            start_time = time.time()
-            cur_time = time.time()
-            while cur_time - start_time < timeout:
-                job_status = self._query_status()
-                logger.info(f"Job status: {job_status.name}")
-                time.sleep(interval)
-                cur_time = time.time()
+                if job_status == JobStatus.COMPLETED_OR_IDLE:
+                    self.collect_and_diagnose_logs()  # Dynamic log collection and diagnostics
+                    break
+            except Exception as e:
+                logger.error(f"Error querying status: {e}")
+                self.collect_and_diagnose_logs()  # Ensure final collection on error
+                break
+            time.sleep(interval)
 
 
 class CloudTrainRunner(RunnerBase):
