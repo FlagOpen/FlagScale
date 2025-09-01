@@ -42,6 +42,19 @@ jobs:
           submodules: false
           set-safe-directory: true
 
+      - name: Install sccache
+        run: |
+          set -eux
+          SCCACHE_VERSION=0.8.1
+          curl -L https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz \
+            | tar xz
+          mv sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/bin/sccache
+          chmod +x /usr/bin/sccache
+          echo "SCCACHE_DIR=/root/.cache/sccache" >> $GITHUB_ENV
+          echo "RUSTC_WRAPPER=$(which sccache)" >> $GITHUB_ENV
+          echo "PATH=/usr/bin/sccache:$PATH" >> $GITHUB_ENV
+          sccache --version
+
       - name: Run Functional Test
         run: |
           echo "USER: $USER"
@@ -51,6 +64,7 @@ jobs:
           echo "PWD: ${PWD}"
           whoami
           git config --global --add safe.directory /__w/FlagScale/FlagScale
+          sccache --show-stats || true
           if [ "${{ inputs.type }}" = "inference" ]; then
             source /opt/conda/bin/activate flagscale-inference
             echo "Original commit ID: ${{ github.event.pull_request.head.sha }}"
@@ -59,6 +73,13 @@ jobs:
             source env.sh
             pip install scikit-build scikit-build-core
             pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0
+            echo "[INFO] Configuring compiler cache (sccache) ..."
+            export CC=/root/cu-bridge/bin/gcc
+            export CXX=/root/cu-bridge/bin/g++
+            export CMAKE_C_COMPILER_LAUNCHER=$(which sccache)
+            export CMAKE_CXX_COMPILER_LAUNCHER=$(which sccache)
+            export CMAKE_CUDA_COMPILER_LAUNCHER=$(which sccache)
+            export CXXFLAGS="-I/opt/maca/include -I/opt/maca/include/mcr -I/opt/maca/include/common -I/opt/maca/include/mcsparse -I/opt/maca/include/mcsolver"
             python setup.py bdist_wheel
             pip uninstall vllm -y
             pip install dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl
@@ -71,4 +92,5 @@ jobs:
           tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
           exit_code=$?
           echo "Exit code: $exit_code"
+          sccache --show-stats
         shell: bash
