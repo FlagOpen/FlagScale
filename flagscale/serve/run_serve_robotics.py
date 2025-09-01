@@ -175,9 +175,7 @@ def service_info():
 @app.route('/replay', methods=['GET'])
 def replay_api():
     try: 
-        # /share/project/section/RoboBrain_Robotic_AGX/videos/train/1/1_cam_right_wrist.mp4
-        # /share/project/section/RoboBrain_Robotic_AGX/videos/train/1/1.hdf5
-        with h5py.File('/share/project/section/RoboBrain_Robotic_newdragon/videos/train/0/0.hdf5', 'r') as f:
+        with h5py.File(ENGINE_CONFIG.replay_file, 'r') as f:
             action = f['action'][:]
             qpos = f['qpos'][:]
 
