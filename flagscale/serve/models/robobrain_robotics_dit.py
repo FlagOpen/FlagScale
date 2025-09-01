@@ -164,8 +164,3 @@ class RoboBrainRobotics(PreTrainedModel):
         action_head_outputs = self.action_head.get_action(backbone_outputs, action_inputs)
         print(f"action_forward time: {(time.time() - start_time) * 1000:.1f} ms");start_time = time.time()
         return action_head_outputs
-
-
-
-
-        
