@@ -331,9 +331,9 @@ class SSHTrainRunner(RunnerBase):
                     try:
                         os.kill(int(pid), signal.SIGKILL)
                     except PermissionError:
-                        print(f"No permission to kill process {pid} on port {port}")
+                        logger.error(f"No permission to kill process {pid} on port {port}")
                     except Exception as e:
-                        print(f"Unexpected error killing {pid}: {e}")
+                        logger.error(f"Unexpected error killing {pid}: {e}")
             while True:
                 random_port = random.randint(1024, 65535)
                 try:
