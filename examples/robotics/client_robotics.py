@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Dict, Any, List
 from PIL import Image
+import random
 
 import numpy as np
 import requests
@@ -28,7 +29,6 @@ def encode_image(path: str) -> str:
         buffer.seek(0)
         jpeg_binary = buffer.read()
         return base64.b64encode(jpeg_binary).decode("utf-8")
-
     return base64.b64encode(path.read_bytes()).decode("utf-8")
 
 
@@ -50,32 +50,22 @@ def build_payload(args) -> Dict[str, Any]:
     """Construct JSON payload for /infer."""
     # 1. Dummy robot state (batch=1, dim=args.state_dim)
     state = np.random.uniform(-1, 1, size=(1, args.state_dim)).tolist()
-
     # 2. Encode images
     img_sample = {
         "base_0_rgb": encode_image(args.base_img),
         "left_wrist_0_rgb": encode_image(args.left_wrist_img),
         "right_wrist_0_rgb": encode_image(args.right_wrist_img),
     }
-
     # 3. Image masks (True: image is valid)
     image_masks = {
         "base_0_rgb": True,
         "left_wrist_0_rgb": True,
         "right_wrist_0_rgb": True,
     }
-
     return {
         "instruction": "Grab the orange and put it into the basket.",
-        "qpos": [[
-            -0.01149589,  0.05770622, -0.46988356,  0.14222455,  1.1301906 ,
-            -0.06859156,  0.6587    , -0.01123422,  0.05732245, -0.46956956,
-             0.14300956,  1.1301209 , -0.06841711,  0.6594    ]],
-        "eef_pose": [[
-             3.0600000e-03,  1.1642000e-02,  2.6428699e-01,  3.0234338e+03,
-             9.4453729e+02, -3.1400916e+03,  6.5869999e-01,  3.0300000e-03,
-             1.1706000e-02,  2.6421201e-01,  3.0220203e+03,  9.4467694e+02,
-            -3.1407200e+03,  6.5939999e-01]],
+        "qpos": [[ random.random() for _ in range(args.state_dim)]],
+        "eef_pose": [[ random.random() for _ in range(args.state_dim)]],
         "state": state,
         "high_level_instruction": args.high_level_instruction,
         "fine_grained_instruction": args.fine_grained_instruction,
