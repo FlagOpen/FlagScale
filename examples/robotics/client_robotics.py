@@ -1,18 +1,19 @@
 import argparse
 import base64
+import io
 import json
 import os
-import io
+import random
 import sys
 import time
+
 from pathlib import Path
-from typing import Dict, Any, List
-from PIL import Image
-import random
+from typing import Any, Dict, List
 
 import numpy as np
 import requests
 
+from PIL import Image
 
 IMG_WIDTH = 640
 IMG_HEIGHT = 480
