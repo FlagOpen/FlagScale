@@ -6,3 +6,4 @@
     port: 5000
     flask_debug: True
     flask_threaded: True
+    replay_file: /share/project/section/RoboBrain_Robotic_newdragon/videos/train/0/0.hdf5

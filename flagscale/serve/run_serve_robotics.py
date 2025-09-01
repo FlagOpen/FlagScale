@@ -20,8 +20,6 @@ from flagscale import serve
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename='app.log',  # 指定日志输出文件
-    filemode='a'
 )
 logger = logging.getLogger(__name__)
 
@@ -198,23 +196,23 @@ def infer_api():
         if model is None:
             return jsonify({
                 "success": False,
-                "error": "model not loaded"
+                "error": "Model not loaded"
             }), 503
         data = request.get_json()
         if not data:
             return jsonify({
                 "success": False,
-                "error": "request format error"
+                "error": "Request format error"
             }), 400
         if 'qpos' not in data:
             return jsonify({
                 "success": False,
-                "error": "request requires: qpos"
+                "error": "Request requires: qpos"
             }), 400
         if 'eef_pose' not in data:
             return jsonify({
                 "success": False,
-                "error": "request requires: eef_pose"
+                "error": "Request requires: eef_pose"
             }), 400
         try:
             state = np.array(data['qpos'])
@@ -230,12 +228,12 @@ def infer_api():
         except Exception as e:
             return jsonify({
                 "success": False,
-                "error": f"state parameters process error: {e}"
+                "error": f"State parameters processing error: {e}"
             }), 400
         if instruction is None:
             return jsonify({
                 "success": False,
-                "error": "request requires instruction"
+                "error": "Request requires instruction"
             }), 400
         images_tensor = None
         if images is not None:
@@ -278,17 +276,12 @@ def infer_api():
                         actions_denorm[i] - actions_denorm[i - 1]
                     )
                 gt_delta_actions = np.array(gt_delta_actions)
-                # actions_denorm shape: [10, action_dim]
                 for i in range(1, actions_denorm.shape[0]):
                     for col in [6, 13]:
                         actions_denorm[i, col] = actions_denorm[0, col]
-
-                    # for col in [3, 4, 5, 10, 11, 12]:
-                    #     actions_denorm[i, col] = actions_denorm[0, col]
-                # horizon = 10
                 
             except Exception as e:
-                logger.error(f"动作数据反归一化失败: {e}")
+                logger.error(f"Action de-norm failed: {e}")
                 
         processing_time = time.time() - start_time
         result['processing_time'] = processing_time
@@ -302,7 +295,7 @@ def infer_api():
         
     except Exception as e:
         processing_time = time.time() - start_time
-        logger.error(f"推理失败: {e}")
+        logger.error(f"Inference error: {e}")
         logger.error(traceback.format_exc())
         return jsonify({
             "success": False,
@@ -327,7 +320,6 @@ def internal_error(error):
 
 
 def main():
-    import pdb; pdb.set_trace()
     if not load_model():
         logger.error("Model load failed, exiting.")
         sys.exit(1)
