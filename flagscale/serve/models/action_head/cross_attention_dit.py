@@ -3,14 +3,11 @@ from typing import Optional
 
 import torch
 import torch.nn.functional as F
+
 from diffusers import ConfigMixin, ModelMixin
 from diffusers.configuration_utils import register_to_config
 from diffusers.models.attention import Attention, FeedForward
-from diffusers.models.embeddings import (
-    SinusoidalPositionalEmbedding,
-    TimestepEmbedding,
-    Timesteps,
-)
+from diffusers.models.embeddings import SinusoidalPositionalEmbedding, TimestepEmbedding, Timesteps
 from torch import nn
 
 

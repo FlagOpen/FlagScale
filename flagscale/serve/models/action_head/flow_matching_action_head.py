@@ -3,16 +3,13 @@ from dataclasses import dataclass, field
 
 import torch
 import torch.nn.functional as F
+
 from torch import nn
 from torch.distributions import Beta
 from transformers import PretrainedConfig
 from transformers.feature_extraction_utils import BatchFeature
 
-from .action_encoder import (
-    SinusoidalPositionalEncoding,
-    swish,
-)
-
+from .action_encoder import SinusoidalPositionalEncoding, swish
 from .cross_attention_dit import DiT, SelfAttentionTransformer
 
 
