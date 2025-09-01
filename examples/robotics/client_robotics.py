@@ -1,17 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Client for RoboBrain-Robotics inference API (via SSH port-forward)
-Author : Huaihai Lyu
-Usage  : python client_robobrain_robotics.py \
-           --host xxx.xxx.xxx.xxx \
-           --port 5000 \
-           --base-img base_rgb.png \
-           --left-wrist-img left_wrist_rgb.png \
-           --right-wrist-img right_wrist_rgb.png \
-           --num-steps 20
-"""
-
 import argparse
 import base64
 import json
@@ -30,7 +16,7 @@ import requests
 IMG_WIDTH = 640
 IMG_HEIGHT = 480
 
-# ---------- Helper functions -------------------------------------------------
+
 def encode_image(path: str) -> str:
     """Read image as base64 string."""
     path = Path(path)
@@ -72,7 +58,7 @@ def build_payload(args) -> Dict[str, Any]:
         "right_wrist_0_rgb": encode_image(args.right_wrist_img),
     }
 
-    # 3. Image masks (True 表示该路图像可见 / 有效)
+    # 3. Image masks (True: image is valid)
     image_masks = {
         "base_0_rgb": True,
         "left_wrist_0_rgb": True,
@@ -80,7 +66,7 @@ def build_payload(args) -> Dict[str, Any]:
     }
 
     return {
-        "instruction": "请让机器人将桌面上左边的物品放置到右边",
+        "instruction": "Grab the orange and put it into the basket.",
         "qpos": [[
             -0.01149589,  0.05770622, -0.46988356,  0.14222455,  1.1301906 ,
             -0.06859156,  0.6587    , -0.01123422,  0.05732245, -0.46956956,
@@ -93,8 +79,8 @@ def build_payload(args) -> Dict[str, Any]:
         "state": state,
         "high_level_instruction": args.high_level_instruction,
         "fine_grained_instruction": args.fine_grained_instruction,
-        "images": [img_sample],          # batch size = 1
-        "image_masks": [image_masks],    # 同上
+        "images": [img_sample],
+        "image_masks": [image_masks],
         "num_steps": args.num_steps,
         "temperature": args.temperature,
         "top_p": args.top_p,
@@ -111,7 +97,6 @@ def pretty_print_resp(resp: requests.Response) -> None:
         print(resp.text)
 
 
-# ---------- Main -------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
         description="Client for RoboBrain-Robotics inference API")
@@ -132,7 +117,7 @@ def main():
     parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--do-sample", action="store_true")
-    parser.add_argument("--high-level-instruction", default="请让机器人前进并避开障碍物")
+    parser.add_argument("--high-level-instruction", default="Grab the orange and put it into the basket.")
     parser.add_argument("--fine-grained-instruction", default=None)
     args = parser.parse_args()
 
@@ -148,10 +133,10 @@ def main():
     # 3. POST /infer
     try:
         t0 = time.time()
-        resp = requests.post(f"{base_url}/han",
+        resp = requests.post(f"{base_url}/infer",
                              headers={"Content-Type": "application/json"},
                              data=json.dumps(payload),
-                             timeout=300)   # 5-min timeout
+                             timeout=300)
         elapsed = (time.time() - t0) * 1000
         resp.raise_for_status()
     except requests.RequestException as e:
