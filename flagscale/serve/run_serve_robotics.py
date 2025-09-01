@@ -1,6 +1,5 @@
-from flagscale.serve.arguments import parse_config
-from flagscale.serve.engine import ServeEngine
-from flagscale import serve
+
+
 import os
 import sys
 import torch
@@ -9,11 +8,14 @@ import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from models.robobrain_robotics_dit import RoboBrainRobotics, RoboBrainRoboticsConfig
-from transformers import Qwen2_5_VLConfig
 import numpy as np
 import time
 import traceback
+import base64
+from PIL import Image
+import io
 
+from flagscale import serve
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,33 +28,22 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
-# 服务配置
-SERVICE_CONFIG = {
-    'host': '0.0.0.0',  # 监听所有网络接口
-    'port': 5000,       # 服务端口
-    'debug': True,     # 生产环境设为False
-    'threaded': True,   # 启用多线程
-    'max_content_length': 16 * 1024 * 1024  # 最大请求大小16MB
-}
-
-# 加载模型
-MODEL_PATH = "/share/project/lyx/robobrain-robotics/output/robotics_post_train_dit/agilex_filtered_90w--freeze_vit=True--freeze_llm=True--dit500M--lr=1e-04--action_horizon=64/epoch_9"
-CONFIG_PATH = "/share/project/lyx/robobrain-robotics/output/robotics_post_train_dit/agilex_filtered_90w--freeze_vit=True--freeze_llm=True--dit500M--lr=1e-04--action_horizon=64/epoch_9"
-
+serve.load_args()
+TASK_CONFIG = serve.task_config
+ENGINE_CONFIG = TASK_CONFIG.serve[0].engine_args
 
 model = None
 
 def load_model():
-    """加载模型"""
     global model
     try:
-        logger.info("开始加载模型...")
-        config = RoboBrainRoboticsConfig.from_pretrained(CONFIG_PATH)
+        logger.info("Start load model.")
+        config = RoboBrainRoboticsConfig.from_pretrained(ENGINE_CONFIG.model)
         config.training = False
         devide_id = os.environ.get("EGL_DEVICE_ID", "0")
         device = f"cuda:{devide_id}" if torch.cuda.is_available() else "cpu"
         model = RoboBrainRobotics.from_pretrained(
-            MODEL_PATH,
+            ENGINE_CONFIG.model,
             config=config,
             torch_dtype=torch.float32,
             # attn_implementation="flash_attention_2",
@@ -60,17 +51,14 @@ def load_model():
         ).to(torch.float32)
         model.eval()
         
-        # 如果有GPU则使用GPU
         if torch.cuda.is_available():
             model = model.cuda()
-            logger.info(f"模型已加载到GPU: {torch.cuda.get_device_name()}")
+            logger.info(f"Load model to GPU-{torch.cuda.get_device_name()} done. ")
         else:
-            logger.info("模型已加载到CPU")
-            
-        logger.info("模型加载完成！")
+            logger.info("Load model to CPU done.")
         return True
     except Exception as e:
-        logger.error(f"模型加载失败: {e}")
+        logger.error(f"Load model error: {e}")
         logger.error(traceback.format_exc())
         return False
 
@@ -85,7 +73,7 @@ def inverse_transform(x_norm, scale, offset):
     return (x_norm - offset) / scale
 
      
-action_quantiles_low = {
+ACTION_QUANTILES_LOW = {
     "action": {
         "quantiles_low_": [-0.008952002273872495, -0.0075089819729328156, -0.008938997983932495, -0.09321874380111694, -0.04934048652648926, -0.08562564849853516, -0.0356999933719635, -0.008957445621490479, -0.00789663940668106, -0.008612995967268944, -0.08561980724334717, -0.04220205545425415, -0.0927119106054306, -0.021585147362202406],
         "quantiles_high_": [0.009830005466938019, 0.008996007964015007, 0.012891992926597595, 0.08754575252532959, 0.04377281665802002, 0.09669125080108643, 0.04218482971191406, 0.00984799861907959, 0.007583707571029663, 0.01218000054359436, 0.08659172058105469, 0.040928006172180176, 0.0775449275970459, 0.03149998188018799],
@@ -100,25 +88,20 @@ action_quantiles_low = {
     }
 }
 
-import base64
-from PIL import Image
-import io
-
 
 def decode_image_base64(image_base64):
-    """解码base64图片"""
     try:
         image_data = base64.b64decode(image_base64)
         image = Image.open(io.BytesIO(image_data)).convert('RGB')
-        image = np.array(image).astype(np.float32) / 255.0  # 归一化到0-1
-        image = torch.from_numpy(image).permute(2, 0, 1)  # [C, H, W]
+        image = np.array(image).astype(np.float32) / 255.0
+        # shape to: [C, H, W]
+        image = torch.from_numpy(image).permute(2, 0, 1)
         return image
     except Exception as e:
-        logger.error(f"图片解码失败: {e}")
-        raise ValueError(f"图片解码失败: {e}")
+        logger.error(f"Image decode error: {e}")
+        raise ValueError(f"Image decode error: {e}")
 
 def process_images(images_json):
-    """处理图片列表"""
     # images_json: List[Dict[str, base64]]
     processed = []
     for i, sample in enumerate(images_json):
@@ -128,23 +111,20 @@ def process_images(images_json):
                 sample_dict[k] = decode_image_base64(v)
             processed.append(sample_dict)
         except Exception as e:
-            logger.error(f"处理第{i}个样本的图片失败: {e}")
-            raise ValueError(f"处理第{i}个样本的图片失败: {e}")
+            logger.error(f"Image[{i}] decode error: {e}")
+            raise ValueError(f"Image[{i}] decode error: {e}")
     return processed
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """健康检查端点"""
     try:
-        # 检查模型是否已加载
         if model is None:
             return jsonify({
                 "status": "error",
-                "message": "模型未加载",
+                "message": "model not loaded",
                 "timestamp": time.time()
             }), 503
         
-        # 检查GPU状态
         gpu_info = {}
         if torch.cuda.is_available():
             gpu_info = {
@@ -165,7 +145,7 @@ def health_check():
             "timestamp": time.time()
         })
     except Exception as e:
-        logger.error(f"健康检查失败: {e}")
+        logger.error(f"health check failed: {e}")
         return jsonify({
             "status": "error",
             "message": str(e),
@@ -174,7 +154,6 @@ def health_check():
 
 @app.route('/info', methods=['GET'])
 def service_info():
-    """服务信息端点"""
     return jsonify({
         "service_name": "RoboBrain Robotics API",
         "version": "1.0.0",
@@ -185,8 +164,8 @@ def service_info():
             "infer": "/infer"
         },
         "model_info": {
-            "model_path": MODEL_PATH,
-            "config_path": CONFIG_PATH,
+            "model_path": ENGINE_CONFIG.model,
+            "config_path": ENGINE_CONFIG.model,
             "action_dim": getattr(model.config, 'action_dim', 'unknown') if model else 'unknown',
             "action_horizon": getattr(model.config, 'action_horizon', 'unknown') if model else 'unknown'
         },
@@ -195,7 +174,6 @@ def service_info():
 
 @app.route('/replay', methods=['GET'])
 def replay_api():
-    """ground truth qpos API"""
     try: 
         # /share/project/section/RoboBrain_Robotic_AGX/videos/train/1/1_cam_right_wrist.mp4
         # /share/project/section/RoboBrain_Robotic_AGX/videos/train/1/1.hdf5
@@ -209,79 +187,62 @@ def replay_api():
             "qpos": qpos.tolist(),
         })
     except Exception as e:
-        logger.error(f"获取ground truth qpos失败: {e}")
+        logger.error(f"Access ground truth qpos failed: {e}")
         return jsonify({
             "success": False,
             "error": str(e)
         }), 500
 
-@app.route('/han', methods=['POST'])
+@app.route('/infer', methods=['POST'])
 def infer_api():
-    """推理API端点"""
     start_time = time.time()
-    
     try:
-        # 检查模型是否已加载
         if model is None:
             return jsonify({
                 "success": False,
-                "error": "模型未加载，请检查服务状态"
+                "error": "model not loaded"
             }), 503
-        
-        # 解析请求数据
         data = request.get_json()
         if not data:
             return jsonify({
                 "success": False,
-                "error": "请求数据为空或格式错误"
+                "error": "request format error"
             }), 400
-        
-        # 验证必需字段
         if 'qpos' not in data:
             return jsonify({
                 "success": False,
-                "error": "缺少必需字段: qpos"
+                "error": "request requires: qpos"
             }), 400
         if 'eef_pose' not in data:
             return jsonify({
                 "success": False,
-                "error": "缺少必需字段: eef_pose"
+                "error": "request requires: eef_pose"
             }), 400
-        
-        
-        # 处理状态数据
         try:
             state = np.array(data['qpos'])
             eef_pose = np.array(data['eef_pose'])
-            scale = np.array(action_quantiles_low['qpos']['scale_'])
-            offset = np.array(action_quantiles_low['qpos']['offset_'])
+            scale = np.array(ACTION_QUANTILES_LOW['qpos']['scale_'])
+            offset = np.array(ACTION_QUANTILES_LOW['qpos']['offset_'])
             state_norm = transform(state, scale, offset)
             state_tensor = torch.tensor(state_norm, dtype=torch.float32)
             instruction = data.get('instruction')
             images = data.get('images')
-            
-            # 如果有GPU则移动到GPU
             if torch.cuda.is_available():
                 state_tensor = state_tensor.cuda()
         except Exception as e:
             return jsonify({
                 "success": False,
-                "error": f"状态数据处理失败: {e}"
+                "error": f"state parameters process error: {e}"
             }), 400
-
-        # 验证指令参数
         if instruction is None:
             return jsonify({
                 "success": False,
-                "error": "必须提供 instruction"
+                "error": "request requires instruction"
             }), 400
-
-        # 处理图片数据
         images_tensor = None
         if images is not None:
             try:
                 images_tensor = process_images(images)
-                # 如果有GPU则移动到GPU
                 if torch.cuda.is_available():
                     for sample in images_tensor:
                         for key in sample:
@@ -289,28 +250,20 @@ def infer_api():
             except Exception as e:
                 return jsonify({
                     "success": False,
-                    "error": f"图片处理失败: {e}"
+                    "error": f"image process failed: {e}"
                 }), 400
-
-        # 执行推理
-        print(f"pre-processing time: {(time.time() - start_time) * 1000:.1f} ms");start_time = time.time()
-        print(f"开始推理，状态维度: {state_tensor.shape}, 指令: {instruction}, 图片数量: {len(images_tensor) if images_tensor else 0}")
-        logger.info(f"开始推理，状态维度: {state_tensor.shape}, 指令: {instruction}, 图片数量: {len(images_tensor) if images_tensor else 0}")
-        
+        logger.info(f"Inference start. state.shape: {state_tensor.shape}, instruction: {instruction}, num_images: {len(images_tensor) if images_tensor else 0}")
         with torch.no_grad():
             result = model.get_action(
                 state=state_tensor,
                 instruction=[instruction],
                 image=images_tensor,
             )
-            print(f"infer time: {(time.time() - start_time) * 1000:.1f} ms");start_time = time.time()
-
-        # 处理动作数据
         delta_actions = result.data['action_pred'].squeeze(0).cpu().numpy()
         if delta_actions is not None:
             try:
-                scale = np.array(action_quantiles_low['action']['scale_'])
-                offset = np.array(action_quantiles_low['action']['offset_'])
+                scale = np.array(ACTION_QUANTILES_LOW['action']['scale_'])
+                offset = np.array(ACTION_QUANTILES_LOW['action']['offset_'])
                 eef_pose_norm = transform(eef_pose, scale, offset)
                 actions = []
                 current_eef_pose = eef_pose_norm
@@ -338,15 +291,10 @@ def infer_api():
                 
             except Exception as e:
                 logger.error(f"动作数据反归一化失败: {e}")
-                # 不返回错误，保持原始数据
-
-        # 添加处理时间信息
+                
         processing_time = time.time() - start_time
         result['processing_time'] = processing_time
-        
-        logger.info(f"推理完成，耗时: {processing_time:.2f}秒")
-        print(f"post-processing time: {(time.time() - start_time) * 1000:.1f} ms");start_time = time.time()
-        
+        logger.info(f"Inference cost: {processing_time:.2f}s")
         return jsonify({
             "success": True, 
             "result": actions_denorm.tolist(),
@@ -366,56 +314,38 @@ def infer_api():
 
 @app.errorhandler(404)
 def not_found(error):
-    """404错误处理"""
     return jsonify({
         "success": False,
-        "error": "接口不存在",
-        "available_endpoints": ["/health", "/info", "/infer"]
+        "error": "API not exist.",
+        "available_endpoints": ["/health", "/info", "/infer", "/replay"]
     }), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    """500错误处理"""
     return jsonify({
         "success": False,
-        "error": "服务器内部错误"
+        "error": "Internal server error."
     }), 500
 
 
 def main():
-    serve.load_args()
-    TASK_CONFIG = serve.task_config
-
-    config = parse_config()
-    
-    # 加载模型
-    # Does not needed for replay
+    import pdb; pdb.set_trace()
     if not load_model():
-        logger.error("模型加载失败，服务无法启动")
+        logger.error("Model load failed, exiting.")
         sys.exit(1)
-    
-    # 打印服务信息
-    print(f"RoboBrain Robotics API 服务启动中...")
-    print(f"服务地址: http://{SERVICE_CONFIG['host']}:{SERVICE_CONFIG['port']}")
-    print(f"可用端点:")
-    print(f"  - GET  /health  - 健康检查")
-    print(f"  - GET  /info    - 服务信息")
-    print(f"  - GET  /replay  - 获取replay数据")
-    print(f"  - POST /infer   - 推理接口")
-    print(f"RoboBrain Robotics API 服务启动中...")
-    logger.info(f"服务地址: http://{SERVICE_CONFIG['host']}:{SERVICE_CONFIG['port']}")
-    logger.info(f"可用端点:")
-    logger.info(f"  - GET  /health  - 健康检查")
-    logger.info(f"  - GET  /info    - 服务信息")
-    logger.info(f"  - GET  /replay  - 获取replay数据")
-    logger.info(f"  - POST /infer   - 推理接口")
-    
-    # 启动服务
+
+    logger.info(f"Serve URL: http://{ENGINE_CONFIG['host']}:{ENGINE_CONFIG['port']}")
+    logger.info(f"Available API:")
+    logger.info(f"  - GET  /health  - health check")
+    logger.info(f"  - GET  /info    - service info")
+    logger.info(f"  - GET  /replay  - get replay ground truth qpos")
+    logger.info(f"  - POST /infer   - inference api")
+
     app.run(
-        host=SERVICE_CONFIG['host'],
-        port=SERVICE_CONFIG['port'],
-        debug=SERVICE_CONFIG['debug'],
-        threaded=SERVICE_CONFIG['threaded']
+        host=ENGINE_CONFIG['host'],
+        port=ENGINE_CONFIG['port'],
+        debug=ENGINE_CONFIG['flask_debug'],
+        threaded=ENGINE_CONFIG['flask_threaded']
     ) 
 
 
