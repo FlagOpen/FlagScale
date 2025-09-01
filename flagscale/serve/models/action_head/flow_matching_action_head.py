@@ -118,8 +118,7 @@ class FlowmatchingActionHeadConfig(PretrainedConfig):
         default=1000, metadata={"help": "Number of timestep discretization buckets."}
     )
     num_inference_timesteps: int = field(
-        default=None,
-        metadata={"help": "Number of inference steps for noise diffusion."},
+        default=None, metadata={"help": "Number of inference steps for noise diffusion."}
     )
     max_num_embodiments: int = field(default=32, metadata={"help": "Number of embodiments."})
     tune_projector: bool = field(default=True, metadata={"help": "Whether to tune the projector."})
@@ -147,10 +146,7 @@ class FlowmatchingActionHead(nn.Module):
     config_class = FlowmatchingActionHeadConfig
     supports_gradient_checkpointing = True
 
-    def __init__(
-        self,
-        config: FlowmatchingActionHeadConfig,
-    ):
+    def __init__(self, config: FlowmatchingActionHeadConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.input_embedding_dim = config.input_embedding_dim
@@ -325,9 +321,7 @@ class FlowmatchingActionHead(nn.Module):
         action_mask = action_input.action_mask
         loss = F.mse_loss(pred_actions, velocity, reduction="none") * action_mask
         loss = loss.sum() / action_mask.sum()
-        output_dict = {
-            "loss": loss,
-        }
+        output_dict = {"loss": loss}
         return BatchFeature(data=output_dict)
 
     @torch.no_grad()
@@ -377,9 +371,7 @@ class FlowmatchingActionHead(nn.Module):
 
             # Run model forward.
             model_output = self.model(
-                hidden_states=sa_embs,
-                encoder_hidden_states=vl_embs,
-                timestep=timesteps_tensor,
+                hidden_states=sa_embs, encoder_hidden_states=vl_embs, timestep=timesteps_tensor
             )
             pred = self.action_decoder(model_output, embodiment_id)
 

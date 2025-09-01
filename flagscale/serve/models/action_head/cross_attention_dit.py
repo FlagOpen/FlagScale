@@ -39,11 +39,7 @@ class AdaLayerNorm(nn.Module):
         self.linear = nn.Linear(embedding_dim, output_dim)
         self.norm = nn.LayerNorm(output_dim // 2, norm_eps, norm_elementwise_affine)
 
-    def forward(
-        self,
-        x: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         temb = self.linear(self.silu(temb))
         scale, shift = temb.chunk(2, dim=1)
         x = self.norm(x) * (1 + scale[:, None]) + shift[:, None]
