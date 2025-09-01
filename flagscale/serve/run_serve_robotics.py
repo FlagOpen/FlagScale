@@ -1,17 +1,19 @@
+import base64
+import io
+import logging
 import os
 import sys
-import torch
-import h5py
-import logging
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from models.robobrain_robotics_dit import RoboBrainRobotics, RoboBrainRoboticsConfig
-import numpy as np
 import time
 import traceback
-import base64
+
+import h5py
+import numpy as np
+import torch
+
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from models.robobrain_robotics_dit import RoboBrainRobotics, RoboBrainRoboticsConfig
 from PIL import Image
-import io
 
 from flagscale import serve
 
