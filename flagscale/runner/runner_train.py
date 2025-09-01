@@ -1,5 +1,6 @@
 import multiprocessing
 import os
+import random
 import shlex
 import signal
 import subprocess
@@ -312,10 +313,10 @@ class SSHTrainRunner(RunnerBase):
         assert self.task_type == "train", f"Unsupported task type: {self.task_type}"
         self._prepare()
         master_port = getattr(self.config.experiment.runner, "master_port", None)
-        self._kill_by_port(master_port, signal.SIGKILL)
+        self.random_port_no_use(master_port)
 
-    def _kill_by_port(self, port, sig=signal.SIGKILL):
-        if port == None:
+    def random_port_no_use(self, port):
+        if port is None:
             return
         try:
             result = subprocess.check_output(
@@ -328,11 +329,20 @@ class SSHTrainRunner(RunnerBase):
                     pid_program = parts[6]
                     pid = pid_program.split("/")[0]
                     try:
-                        os.kill(int(pid), sig)
+                        os.kill(int(pid), signal.SIGKILL)
                     except PermissionError:
                         print(f"No permission to kill process {pid} on port {port}")
                     except Exception as e:
                         print(f"Unexpected error killing {pid}: {e}")
+            while True:
+                random_port = random.randint(1024, 65535)
+                try:
+                    subprocess.check_output(
+                        f"netstat -tulpn | grep :{random_port}", shell=True, text=True
+                    )
+                except subprocess.CalledProcessError:
+                    self.config.experiment.runner.master_port = random_port
+                    return
         except subprocess.CalledProcessError:
             return
 
