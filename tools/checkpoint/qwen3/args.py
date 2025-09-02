@@ -1,5 +1,5 @@
-import os
 import json
+import os
 
 
 def load_args_hf2mg(args):
@@ -31,16 +31,16 @@ def load_args_hf2mg(args):
 
     args.seq_length = 2048
     args.global_batch_size = 1024
-    args.iteration = 1 # '0', 'release' don't work
+    args.iteration = 1  # '0', 'release' don't work
     args.add_position_embedding = False
-    args.swiglu = True # hf_args["hidden_act"] -> "silu"
+    args.swiglu = True  # hf_args["hidden_act"] -> "silu"
     args.group_query_attention = True
     args.qk_layernorm = True
     args.normalization = "RMSNorm"
     args.tokenizer_type = "Qwen2TokenizerFS"
     args.use_rotary_position_embeddings = True
     args.add_bias_linear = False
-    args.add_qkv_bias = False # hf_args["attention_bias"] -> flase
+    args.add_qkv_bias = False  # hf_args["attention_bias"] -> flase
     args.make_vocab_size_divisible_by = 64
     args.consumed_train_samples = 0
     args.consumed_valid_samples = 0
