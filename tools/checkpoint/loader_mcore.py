@@ -290,7 +290,7 @@ def _load_checkpoint(queue, args):
                     # Set pre_process and post_process only after virtual rank is set.
                     pre_process = mpu.is_pipeline_first_stage()
                     post_process = mpu.is_pipeline_last_stage()
-                    this_model = model_plugin.get_mg_model(dtype, pre_process, post_process, vp_stage=vp_rank)
+                    this_model = model_plugin.get_mg_model(dtype, pre_process, post_process)
                     model_.append(this_model)
             else:
                 pre_process = mpu.is_pipeline_first_stage()
