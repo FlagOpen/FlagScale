@@ -203,8 +203,7 @@ def _load_checkpoint(queue, args):
     mpu.set_tensor_model_parallel_world_size(tp_size)
     mpu.set_pipeline_model_parallel_world_size(pp_size)
     mpu.set_expert_model_parallel_world_size(ep_size)
-    if vp_size > 1:
-        mpu.set_virtual_pipeline_model_parallel_world_size(vp_size)
+    mpu.set_virtual_pipeline_model_parallel_world_size(margs.virtual_pipeline_model_parallel_size)
     mpu.set_tensor_model_parallel_rank(0)
     mpu.set_pipeline_model_parallel_rank(0)
     mpu.set_expert_model_parallel_rank(0)
