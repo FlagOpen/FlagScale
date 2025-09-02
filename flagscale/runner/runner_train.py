@@ -313,9 +313,9 @@ class SSHTrainRunner(RunnerBase):
         assert self.task_type == "train", f"Unsupported task type: {self.task_type}"
         self._prepare()
         master_port = getattr(self.config.experiment.runner, "master_port", None)
-        self.random_port_no_use(master_port)
+        self.random_no_use_port(master_port)
 
-    def random_port_no_use(self, port):
+    def random_no_use_port(self, port):
         if port is None:
             return
         try:
