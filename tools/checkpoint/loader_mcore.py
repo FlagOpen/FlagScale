@@ -203,7 +203,8 @@ def _load_checkpoint(queue, args):
     mpu.set_tensor_model_parallel_world_size(tp_size)
     mpu.set_pipeline_model_parallel_world_size(pp_size)
     mpu.set_expert_model_parallel_world_size(ep_size)
-    mpu.set_virtual_pipeline_model_parallel_world_size(vp_size)
+    if vp_size > 1:
+        mpu.set_virtual_pipeline_model_parallel_world_size(vp_size)
     mpu.set_tensor_model_parallel_rank(0)
     mpu.set_pipeline_model_parallel_rank(0)
     mpu.set_expert_model_parallel_rank(0)
@@ -289,7 +290,7 @@ def _load_checkpoint(queue, args):
                     # Set pre_process and post_process only after virtual rank is set.
                     pre_process = mpu.is_pipeline_first_stage()
                     post_process = mpu.is_pipeline_last_stage()
-                    this_model = model_plugin.get_mg_model(dtype, pre_process, post_process)
+                    this_model = model_plugin.get_mg_model(dtype, pre_process, post_process, vp_stage=vp_rank)
                     model_.append(this_model)
             else:
                 pre_process = mpu.is_pipeline_first_stage()
