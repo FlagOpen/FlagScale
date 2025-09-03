@@ -46,6 +46,27 @@ def _get_args_megatron(config: DictConfig):
     return args
 
 
+def _get_args_robotics(config: DictConfig):
+    assert (
+        config.experiment.task.backend == "robotics"
+    ), "This function only supports robotics backend."
+
+    # Convert the DictConfig to a regular dictionary
+    config_dict = OmegaConf.to_container(config, resolve=True)
+    config_dict = config_dict["train"]
+
+    new_config_dict = {}
+    # new_config_dict.update(config_dict["system"])
+    new_config_dict.update(config_dict["model"])
+    # new_config_dict.update(config_dict["data"])
+
+    ignore_keys = ["log_dir", "details_dir", "scripts_dir", "pids_dir"]
+    # Flatten the dictionary to a list of arguments
+    args = flatten_dict_to_args(new_config_dict, ignore_keys)
+    args = [config_dict["data"]["config_name"]] + args
+    return args
+
+
 def _update_config_train(config: DictConfig):
     exp_dir = os.path.abspath(config.experiment.exp_dir)
     if not os.path.isdir(exp_dir):
@@ -312,7 +333,10 @@ class SSHTrainRunner(RunnerBase):
 
     def _prepare(self):
         _update_config_train(self.config)
-        self.user_args = _get_args_megatron(self.config)
+        if self.config.experiment.task.backend == "megatron":
+            self.user_args = _get_args_megatron(self.config)
+        elif self.config.experiment.task.backend == "robotics":
+            self.user_args = _get_args_robotics(self.config)
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         self.user_envs = self.config.experiment.get("envs", {})
         self.user_script = self.config.experiment.task.entrypoint
@@ -674,8 +698,10 @@ class CloudTrainRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         self.user_script = self.config.experiment.task.entrypoint
         _update_config_train(self.config)
-        self.user_args = _get_args_megatron(self.config)
-
+        if self.config.experiment.task.backend == "megatron":
+            self.user_args = _get_args_megatron(self.config)
+        elif self.config.experiment.task.backend == "robotics":
+            self.user_args = _get_args_robotics(self.config)
         logger.info("\n************** configuration ***********")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
