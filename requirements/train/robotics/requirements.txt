@@ -51,9 +51,6 @@ deepspeed
 diffusers
 dill
 distro
-dm-control
-dm-env
-dm-tree
 docstring-parser
 donfig
 draccus
@@ -163,6 +160,7 @@ msgpack
 mujoco
 multidict
 multiprocess
+# multiscaledeformableattention
 mypy-extensions
 namex
 nbformat
@@ -195,8 +193,8 @@ omegaconf
 openai
 opencv-python
 opencv-python-headless
-openpi
-openpi-client
+# openpi
+# openpi-client
 opt-einsum
 optax
 optree
@@ -205,7 +203,7 @@ orderly-set
 oss2
 packaging
 pandas
-panopticapi
+# panopticapi
 parso
 pathspec
 pexpect
@@ -309,7 +307,7 @@ torchvision
 tqdm
 tqdm-loggable
 traitlets
-transformers
+transformers>=4.55.0
 tree
 treescope
 triton
@@ -336,3 +334,6 @@ yarl
 zarr
 zipp
 zstandard
+dm-control
+dm-env
+dm-tree
