@@ -1,8 +1,10 @@
+import json
 import logging
 import os
 import re
 import subprocess
 
+import numpy as np
 import pandas as pd
 
 
@@ -302,17 +304,52 @@ class Recorder:
         assert sorted_history is not None
         return sorted_history
 
+    def to_str(self, v):
+        if v is None or (isinstance(v, float) and np.isnan(v)):
+            return ""
+        if isinstance(v, (int, float, bool, str)):
+            return str(v)
+
     def save(self, history):
-        """Store history to csv file."""
-        # sort history
         sorted_history = self.sort(history)
         df = pd.DataFrame(sorted_history)
         cols = df.columns.tolist()
-        cols.insert(0, cols.pop(cols.index("idx")))
-        df = df.reindex(columns=cols)
-        if "stopped_by_tuner" in df.columns:
+        if "idx" in cols:
+            cols.insert(0, cols.pop(cols.index("idx")))
+        if "stopped_by_tuner" in cols:
             df = df.drop(columns=["stopped_by_tuner"])
+        df = df.reindex(columns=cols)
+        for c in df.columns:
+            df[c] = df[c].map(self.to_str)
         df.to_csv(self.path, index=False, escapechar="\\")
+
+    def parse_value(self, s):
+        if s == "":
+            return None
+        ls = s.lower()
+        if ls in ("true", "false"):
+            return ls == "true"
+        try:
+            if s.isdigit():
+                return int(s)
+        except Exception:
+            pass
+        try:
+            if all(ch in "0123456789+-.eE" for ch in s) and any(ch.isdigit() for ch in s):
+                return float(s)
+        except Exception:
+            pass
+        return s
+
+    def read(self):
+        if not os.path.exists(self.path):
+            return []
+        df = pd.read_csv(
+            self.path, dtype=str, keep_default_na=False, na_filter=False, escapechar="\\"
+        )
+        for c in df.columns:
+            df[c] = df[c].map(self.parse_value)
+        return df.to_dict(orient="records")
 
 
 class ServeRecorder(Recorder):
