@@ -269,10 +269,9 @@ def _generate_patch_file_for_backend(
             temp_file = tempfile.NamedTemporaryFile(
                 delete=False, mode="w", encoding="utf-8", suffix=".patch"
             )
-            if not file_diff.endswith("\n"):
-                file_diff += "\n"
-
             temp_file.write(file_diff)
+
+            temp_file.write("\n")
             temp_file.flush()
             temp_file.close()
 
