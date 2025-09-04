@@ -61,32 +61,26 @@ def init_submodule(main_path, dst, submodule_name, force=False, commit=None):
     repo = Repo(main_path)
     submodule_name = "third_party" + "/" + submodule_name
     submodule = repo.submodule(submodule_name)
-    try:
-        git_modules_path = os.path.join(main_path, ".git", "modules", submodule_name)
-        if os.path.exists(git_modules_path):
-            shutil.rmtree(git_modules_path)
-        submodule_worktree_path = os.path.join(main_path, submodule_name)
-        if os.path.exists(submodule_worktree_path):
-            shutil.rmtree(submodule_worktree_path)
-        submodule.update(init=True, force=force)
-        if commit:
-            sub_repo = submodule.module()
-            sub_repo.git.reset('--hard', commit)
-            logger.info(f"Reset {submodule_name} to commit {commit}.")
-    except:
-        logger.info("Retrying to initialize submodule...")
-        git_modules_path = os.path.join(main_path, ".git", "modules", submodule_name)
-        if os.path.exists(git_modules_path):
-            shutil.rmtree(git_modules_path)
-        submodule_worktree_path = os.path.join(main_path, submodule_name)
-        if os.path.exists(submodule_worktree_path):
-            shutil.rmtree(submodule_worktree_path)
-        submodule.update(init=True, force=force)
-        if commit:
-            sub_repo = submodule.module()
-            sub_repo.git.reset('--hard', commit)
-            logger.info(f"Reset {submodule_name} to commit {commit}.")
-    logger.info(f"Initialized {submodule_name} submodule.")
+    retry_times = 2
+    for _ in range(retry_times):
+        try:
+            git_modules_path = os.path.join(main_path, ".git", "modules", submodule_name)
+            if os.path.exists(git_modules_path):
+                shutil.rmtree(git_modules_path)
+            submodule_worktree_path = os.path.join(main_path, submodule_name)
+            if os.path.exists(submodule_worktree_path):
+                shutil.rmtree(submodule_worktree_path)
+            submodule.update(init=True, force=force)
+            if commit:
+                sub_repo = submodule.module()
+                sub_repo.git.reset('--hard', commit)
+                logger.info(f"Reset {submodule_name} to commit {commit}.")
+            logger.info(f"Initialized {submodule_name} submodule.")
+            break
+
+        except Exception as e:
+            logger.error(f"Exception occurred: {e}", exc_info=True)
+            logger.info(f"Retrying to initialize submodule {submodule_name}...")
 
 
 def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, commit=None):
@@ -293,22 +287,39 @@ def apply_hardware_patch(
     except Exception as e:
         logger.error(f"Exception occurred: {e}", exc_info=True)
 
-        # # Clean up temp directory
-        # if "temp_path" in locals() and os.path.exists(temp_path):
-        #     logger.info(f"Cleaning up temp path: {temp_path}")
-        #     shutil.rmtree(temp_path, ignore_errors=True)
+        # Clean up temp directory
+        if "temp_path" in locals() and os.path.exists(temp_path):
+            logger.info(f"Cleaning up temp path: {temp_path}")
+            shutil.rmtree(temp_path, ignore_errors=True)
 
-        # # Clean up temp directory
-        # if "temp_unpatch_path" in locals() and os.path.exists(temp_unpatch_path):
-        #     logger.info(f"Cleaning up temp path: {temp_unpatch_path}")
-        #     shutil.rmtree(temp_unpatch_path, ignore_errors=True)
+        # Clean up temp directory
+        if "temp_unpatch_path" in locals() and os.path.exists(temp_unpatch_path):
+            logger.info(f"Cleaning up temp path: {temp_unpatch_path}")
+            shutil.rmtree(temp_unpatch_path, ignore_errors=True)
 
-        # # Clean up build directory
-        # if os.path.exists(build_path):
-        #     logger.info(f"Cleaning up build path: {build_path}")
-        #     shutil.rmtree(build_path, ignore_errors=True)
+        # Clean up build directory
+        if os.path.exists(build_path):
+            logger.info(f"Cleaning up build path: {build_path}")
+            shutil.rmtree(build_path, ignore_errors=True)
 
         raise ValueError("Error occurred during unpatching.")
+
+    finally:
+        # Clean up temp directory
+        if "temp_path" in locals() and os.path.exists(temp_path):
+            logger.info(f"Cleaning up temp path: {temp_path}")
+            shutil.rmtree(temp_path, ignore_errors=True)
+
+        # Clean up temp directory
+        if "temp_unpatch_path" in locals() and os.path.exists(temp_unpatch_path):
+            logger.info(f"Cleaning up temp path: {temp_unpatch_path}")
+            shutil.rmtree(temp_unpatch_path, ignore_errors=True)
+
+        # Clean up build directory
+        if os.path.exists(build_path):
+            logger.info(f"Cleaning up build path: {build_path}")
+            shutil.rmtree(build_path, ignore_errors=True)
+
     return final_path
 
 
