@@ -1,5 +1,5 @@
 ARG CUDA_VERSION=12.8.1
-FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
+FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS base
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=Asia/Shanghai
@@ -159,14 +159,20 @@ ENV UV_LINK_MODE=copy
 ##############################################################################
 # Install flagscale-train requirements
 ##############################################################################
-RUN --mount=type=cache,target=/root/.cache/install \
+FROM base AS build_train
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.cache/conda \
     cd ${STAGE_DIR}/FlagScale && \
     ./install/install-requirements.sh --env train
 
 ##############################################################################
 # Install flagscale-inference requirements
 ##############################################################################
-RUN --mount=type=cache,target=/root/.cache/install \
+FROM base AS build_inference
+ENV SCCACHE_DIR=/root/.cache/sccache
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.cache/conda \
+    --mount=type=cache,target=/root/.cache/sccache \
     cd ${STAGE_DIR}/FlagScale && \
     apt-get install -y --no-install-recommends curl && \
     ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
@@ -174,9 +180,19 @@ RUN --mount=type=cache,target=/root/.cache/install \
 ##############################################################################
 # Install flagscale-RL requirements
 ##############################################################################
-RUN --mount=type=cache,target=/root/.cache/install \
+FROM base AS build_rl
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.cache/conda \
     cd ${STAGE_DIR}/FlagScale && \
     ./install/install-requirements.sh --env RL
+
+##############################################################################
+# Building flagscale-train | flagscale-inference | flagscale-RL 
+##############################################################################
+FROM base AS final
+COPY --from=build_train /root/miniconda3 /root/miniconda3
+COPY --from=build_inference /root/miniconda3/envs/flagscale-inference /root/miniconda3/envs/flagscale-inference
+COPY --from=build_rl /root/miniconda3/envs/flagscale-RL /root/miniconda3/envs/flagscale-RL
 
 ##############################################################################
 # Clear

@@ -83,7 +83,7 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
     uv pip install --upgrade setuptools
 
     # Navigate to requirements directory and install basic dependencies
-    uv pip install torch==2.7.0+cu128 torchaudio==2.7.0+cu128 torchvision==0.22.0+cu128 --extra-index-url https://download.pytorch.org/whl/cu128
+    uv pip install torch==2.7.1+cu128 torchaudio==2.7.1+cu128 torchvision==0.22.1+cu128 --extra-index-url https://download.pytorch.org/whl/cu128
     uv pip install deepspeed
     uv pip install -r ./requirements/requirements-common.txt
 
@@ -97,10 +97,11 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
     rm -r ./TransformerEngine
 
     # cudnn frontend
-    pip install nvidia-cudnn-cu12==9.7.1.26
-    CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" pip install nvidia-cudnn-frontend
+    uv pip install nvidia-cudnn-cu12==9.7.1.26
+    CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" uv pip install nvidia-cudnn-frontend
     python -c "import torch; print('cuDNN version:', torch.backends.cudnn.version());"
-    python -c "from transformer_engine.pytorch.utils import get_cudnn_version; get_cudnn_version()"
+    # 执行该命令报错
+    # python -c "from transformer_engine.pytorch.utils import get_cudnn_version; get_cudnn_version()"
 
     # Megatron-LM requires flash-attn >= 2.1.1, <= 2.7.3
     cu=$(nvcc --version | grep "Cuda compilation tools" | awk '{print $5}' | cut -d '.' -f 1)
@@ -124,12 +125,12 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
         python tools/patch/unpatch.py --backend Megatron-LM
 
         # Navigate to requirements directory and install training dependencies
-        uv pip install -r ./requirements/train/megatron/requirements-cuda.txt
+        uv pip install --no-build-isolation -r ./requirements/train/megatron/requirements-cuda.txt
 
         # apex train
         git clone https://github.com/NVIDIA/apex
         cd apex
-        uv pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --global-option="--use-ninja" --config-settings '--build-option=--cpp_ext' --config-settings '--build-option=--cuda_ext' ./
+        pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --global-option="--use-ninja" --config-settings '--build-option=--cpp_ext' --config-settings '--build-option=--cuda_ext' ./
         cd ..
         rm -r ./apex
 
@@ -226,7 +227,12 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
         uv pip install "git+https://github.com/state-spaces/mamba.git@v2.2.4"
         uv pip install -r ./third_party/vllm/requirements/dev.txt
 
+        echo $SCCACHE_DIR
+        which sccache
+        sccache --version
+        sccache --show-stats
         MAX_JOBS=$(nproc) pip install --no-build-isolation -v ./third_party/vllm/.
+        sccache --show-stats
 
         # Navigate to requirements directory and install serving dependencies
         uv pip install -r ./requirements/serving/requirements.txt
