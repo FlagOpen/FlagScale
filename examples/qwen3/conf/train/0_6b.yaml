@@ -73,17 +73,15 @@ model:
       lr: 3.0e-3
       min_lr: 3.0e-4
       lr_warmup_samples: 2048000
-      lr_decay_style: WSD
-      lr_wsd_decay_style: cosine
-      lr_wsd_decay_samples: 2048
+      lr_decay_style: cosine
 
 
 data:
-  data_path: /pile_wikipedia_demo
+  data_path: /path/to/dataset
   split: 1
   no_mmap_bin_files: true
   tokenizer:
     tokenizer_type: QwenTokenizerFS
     tokenizer_path: Qwen3-0.6B
-    vocab_size: 151851
+    vocab_size: 151936
     make_vocab_size_divisible_by: 64
