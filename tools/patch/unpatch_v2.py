@@ -183,6 +183,7 @@ def apply_hardware_patch(
         backends_commit = {}
 
         for backend in backends:
+            force_init = True
             backend_path = os.path.join(device_path, backend)
             if not os.path.exists(backend_path):
                 raise ValueError(f"{backend_path} is not found.")
@@ -259,19 +260,21 @@ def apply_hardware_patch(
             if backend != FLAGSCALE_BACKEND:
                 # init submodule
                 if need_init_submodule:
-                    logger.info(
-                        f"    Initializing submodule {backend} in temp unpatch path {temp_unpatch_path}..."
-                    )
-                    dst = os.path.join(temp_unpatch_path, "third_party", backend)
-                    src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
-                    # Initialize the submodule
+                    if force_init:
+                        logger.info(
+                            f"    Initializing submodule {backend} in temp unpatch path {temp_unpatch_path}..."
+                        )
+                        dst = os.path.join(temp_unpatch_path, "third_party", backend)
+                        src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
+                        # Initialize the submodule
 
-                    submodule_commit = None
-                    if backends_commit and backend in backends_commit:
-                        submodule_commit = backends_commit[backend]
-                    init_submodule(
-                        temp_unpatch_path, dst, backend, force=True, commit=submodule_commit
-                    )
+                        submodule_commit = None
+                        if backends_commit and backend in backends_commit:
+                            submodule_commit = backends_commit[backend]
+                        init_submodule(
+                            temp_unpatch_path, dst, backend, force=True, commit=submodule_commit
+                        )
+                        force_init = False
             submodule_path = (
                 os.path.join(temp_unpatch_path, "third_party", backend)
                 if backend != FLAGSCALE_BACKEND
@@ -290,20 +293,20 @@ def apply_hardware_patch(
     except Exception as e:
         logger.error(f"Exception occurred: {e}", exc_info=True)
 
-        # Clean up temp directory
-        if "temp_path" in locals() and os.path.exists(temp_path):
-            logger.info(f"Cleaning up temp path: {temp_path}")
-            shutil.rmtree(temp_path, ignore_errors=True)
+        # # Clean up temp directory
+        # if "temp_path" in locals() and os.path.exists(temp_path):
+        #     logger.info(f"Cleaning up temp path: {temp_path}")
+        #     shutil.rmtree(temp_path, ignore_errors=True)
 
-        # Clean up temp directory
-        if "temp_unpatch_path" in locals() and os.path.exists(temp_unpatch_path):
-            logger.info(f"Cleaning up temp path: {temp_unpatch_path}")
-            shutil.rmtree(temp_unpatch_path, ignore_errors=True)
+        # # Clean up temp directory
+        # if "temp_unpatch_path" in locals() and os.path.exists(temp_unpatch_path):
+        #     logger.info(f"Cleaning up temp path: {temp_unpatch_path}")
+        #     shutil.rmtree(temp_unpatch_path, ignore_errors=True)
 
-        # Clean up build directory
-        if os.path.exists(build_path):
-            logger.info(f"Cleaning up build path: {build_path}")
-            shutil.rmtree(build_path, ignore_errors=True)
+        # # Clean up build directory
+        # if os.path.exists(build_path):
+        #     logger.info(f"Cleaning up build path: {build_path}")
+        #     shutil.rmtree(build_path, ignore_errors=True)
 
         raise ValueError("Error occurred during unpatching.")
     return final_path
