@@ -271,6 +271,7 @@ def _generate_patch_file_for_backend(
             )
             if not file_diff.endswith("\n"):
                 file_diff += "\n"
+
             temp_file.write(file_diff)
             temp_file.flush()
             temp_file.close()
@@ -405,7 +406,7 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
         # Commit the patch file with the same message.
         logger.info("Committing the patch file...")
         commit_msg = patch_info["commit_msg"]
-        repo.git.commit("-m", commit_msg)
+        repo.git.commit("--no-verify", "-m", commit_msg)
 
         logger.info(
             "Commit successfully! If you want to push, try 'git push origin HEAD:refs/heads/(your branch)' or  'git push --force origin HEAD:refs/heads/(your branch)'"
