@@ -1,15 +1,16 @@
 defaults:
   - _self_
   # - train: 30b_a3b
-  - train: 32b
+  #- train: 14b
+  - train: 0_6b
 
 experiment:
   # exp_name: Qwen3-30b-a3b-Train
-  exp_name: Qwen3-32b-Train
+  exp_name: Qwen3-06b-Train
   seed: 42
-  save_steps: 10000
+  save_steps: 20
   load: null
-  exp_dir: xxx
+  exp_dir: output_qwen3_archi
   ckpt_format: torch
   task:
     type: train
@@ -24,7 +25,7 @@ experiment:
     before_start: ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale-train
   envs:
     LOGLEVEL: "INFO"
-    CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
+    CUDA_VISIBLE_DEVICES: "0"
     CUDA_DEVICE_MAX_CONNECTIONS: 1
 
 action: run
