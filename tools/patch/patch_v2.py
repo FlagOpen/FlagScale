@@ -282,8 +282,6 @@ def _generate_patch_file_for_backend(
             for patch_path, rel_path in temp_patch_files_with_relpath:
                 encrypted_path = encrypt_file(patch_path, key_path)
                 encrypted_files_with_relpath.append((encrypted_path, rel_path))
-                if encrypted_path != patch_path:
-                    os.remove(patch_path)
             temp_patch_files_with_relpath = encrypted_files_with_relpath
 
         temp_yaml_file = tempfile.NamedTemporaryFile(
@@ -389,7 +387,11 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
 
             # Copy each patch file preserving relative path inside patch_dir
             for temp_patch_path, rel_path in patch_files_with_relpath:
-                dst_patch_path = os.path.join(patch_dir, f"{rel_path}.patch")
+                dst_patch_path = (
+                    os.path.join(patch_dir, f"{rel_path}.patch")
+                    if key_path is None
+                    else os.path.join(patch_dir, f"{rel_path}.patch.encrypted")
+                )
                 os.makedirs(os.path.dirname(dst_patch_path), exist_ok=True)
                 shutil.copy(temp_patch_path, dst_patch_path)
                 repo.git.add(dst_patch_path)
@@ -450,7 +452,7 @@ def validate_patch_args(device_type, task, commit, main_path):
             or len(device_type.split("_")) != 2
             or not device_type.split("_")[0][0].isupper()
         ):
-            raise ValueError("Device type is not invalid!")
+            raise ValueError("Device type is invalid!")
 
     if commit or device_type or task:
         assert (

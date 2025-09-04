@@ -326,7 +326,7 @@ def validate_unpatch_args(device_type, tasks, commit, main_path):
             or len(device_type.split("_")) != 2
             or not device_type.split("_")[0][0].isupper()
         ):
-            raise ValueError("Device type is not invalid!")
+            raise ValueError("Device type is invalid!")
 
     if device_type or tasks:
         assert device_type and tasks, "The args device_type, task must not be None."

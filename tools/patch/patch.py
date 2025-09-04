@@ -422,7 +422,7 @@ def validate_patch_args(device_type, task, commit, main_path):
             or len(device_type.split("_")) != 2
             or not device_type.split("_")[0][0].isupper()
         ):
-            raise ValueError("Device type is not invalid!")
+            raise ValueError("Device type is invalid!")
 
     if commit or device_type or task:
         assert (
