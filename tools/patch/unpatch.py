@@ -1,8 +1,6 @@
 import argparse
-import logging
 import os
 import shutil
-import sys
 import tempfile
 
 import yaml
@@ -59,7 +57,7 @@ def init_submodule(main_path, dst, submodule_name, force=False, commit=None):
         "When you perform unpatch, the specified submodule will be fully restored to its initial state, regardless of any modifications you may have made within the submodule."
     )
     repo = Repo(main_path)
-    submodule_name = "third_party" + "/" + submodule_name
+    submodule_name = os.path.join("third_party", submodule_name)
     submodule = repo.submodule(submodule_name)
     retry_times = 2
     for _ in range(retry_times):
@@ -306,11 +304,6 @@ def apply_hardware_patch(
             logger.info(f"Cleaning up temp path: {temp_unpatch_path}")
             shutil.rmtree(temp_unpatch_path, ignore_errors=True)
 
-        # Clean up build directory
-        if os.path.exists(build_path):
-            logger.info(f"Cleaning up build path: {build_path}")
-            shutil.rmtree(build_path, ignore_errors=True)
-
     return final_path
 
 
@@ -326,6 +319,7 @@ def validate_unpatch_args(device_type, tasks, commit, main_path):
         if (
             device_type.count("_") != 1
             or len(device_type.split("_")) != 2
+            or not device_type.split("_")[0]
             or not device_type.split("_")[0][0].isupper()
         ):
             raise ValueError("Device type is invalid!")

@@ -2,12 +2,11 @@ import argparse
 import copy
 import os
 import shutil
-import sys
 import tempfile
 
 import yaml
 
-from encryption_utils import encrypt_file, generate_rsa_keypair
+from encryption_utils import encrypt_file
 from file_utils import sync_to_flagscale
 from git.repo import Repo
 from git_utils import (
@@ -37,7 +36,7 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
                     If the mode is copy, the file will be copied to the source and the symbolic link will not be created.
     """
 
-    submodule_path = "third_party" + "/" + submodule_name
+    submodule_path = os.path.join("third_party", submodule_name)
     logger.info(f"Patching backend {submodule_path}...")
 
     # Get the submodule repo and the commit in FlagScale.
@@ -200,7 +199,7 @@ def _generate_patch_file_for_backend(
     assert not repo.bare
     try:
         repo_path = (
-            os.path.join(main_path, "third_party" + "/" + backend)
+            os.path.join(main_path, "third_party", backend)
             if backend != FLAGSCALE_BACKEND
             else main_path
         )
@@ -329,7 +328,7 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
             if backend != FLAGSCALE_BACKEND:
                 # Get the submodule repo and the commit in FlagScale.
                 main_repo = Repo(main_path)
-                submodule_path = "third_party" + "/" + backend
+                submodule_path = os.path.join("third_party", backend)
                 submodule = main_repo.submodule(submodule_path)
                 sub_repo = submodule.module()
                 submodule_commit_in_fs = repo.head.commit.tree[submodule_path].hexsha
