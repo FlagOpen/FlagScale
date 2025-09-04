@@ -1,7 +1,7 @@
 system:
   no_shared_fs: ${experiment.runner.no_shared_fs}
   num_workers: 16
-  tensor_model_parallel_size: 8
+  tensor_model_parallel_size: 1
   pipeline_model_parallel_size: 1
   context_parallel_size: 1
   disable_bias_linear: true
