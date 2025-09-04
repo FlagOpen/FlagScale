@@ -9,7 +9,7 @@ from datetime import datetime
 from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.elastic.diagnostic import generate_diagnostic_report
-from flagscale.runner.elastic.log_collector import collect_logs
+from flagscale.runner.elastic.log_collector import collect_logs, reset_log_collection, cleanup_log_collection
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.utils import (
     add_decive_extra_config,
@@ -313,6 +313,7 @@ class SSHTrainRunner(RunnerBase):
         super().__init__(config)
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "train", f"Unsupported task type: {self.task_type}"
+        self._monitoring_active = False
         self._prepare()
 
     def _prepare(self):
@@ -377,16 +378,16 @@ class SSHTrainRunner(RunnerBase):
             run_ssh_command(host, f"bash {host_run_script_file}", ssh_port, dryrun)
         else:
             run_local_command(f"bash {host_run_script_file}", dryrun)
-        time.sleep(10)
-        try:
-            while True:
-                status = self._query_status()
-                if status == JobStatus.COMPLETED_OR_IDLE:
-                    break
-                threading.Thread(target=self.collect_and_diagnose_logs).start()
-                time.sleep(10)
-        except Exception as e:
-            logger.info(e)
+        
+        # Start asynchronous monitoring
+        monitor_thread = threading.Thread(
+            target=self._monitor_and_collect_logs,
+            daemon=True  # Set to a daemon thread that terminates automatically when the main program exits
+        )
+        monitor_thread.start()
+
+        logger.info(f"Started log monitoring for training job on {host} (node {node_rank})")
+        logger.info("Training job started successfully. Monitoring is running in the background.")
 
     def run(self, with_test=False, dryrun=False, monitor=False, interval=10):
 
@@ -475,6 +476,11 @@ class SSHTrainRunner(RunnerBase):
             run_local_command(f"bash {host_stop_script_file}")
 
     def stop(self):
+        # Stop monitoring
+        self._monitoring_active = False
+        # Clean up the log collection state
+        cleanup_log_collection()
+
         if self.resources is None:
             self._stop_each("localhost", 0)
             return
@@ -677,77 +683,84 @@ class SSHTrainRunner(RunnerBase):
                 time.sleep(interval)
                 cur_time = time.time()
 
-    def collect_and_diagnose_logs(
-        config, resources, logger, collect_logs, generate_diagnostic_report
-    ):
-        logging_config = config.train.system.logging
-        host_list = [host for host, _ in resources.items()] if resources else ["localhost"]
-        no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
+    def _monitor_and_collect_logs(self):
+        """Monitor training status and collect logs in the background"""
+        self._monitoring_active = True
+        try:
+            while self._monitoring_active:
+                status = self._query_status()
+                
+                if hasattr(self, 'resources') and self.resources:
+                    for node_rank, (host, _) in enumerate(self.resources.items()):
+                        if not self._monitoring_active:
+                            break
+                        self._collect_and_diagnose_single_node(host, node_rank, 
+                                                              status != JobStatus.RUNNING)
+                else:
+                    # Single machine
+                    self._collect_and_diagnose_single_node("localhost", 0, 
+                                                          status != JobStatus.RUNNING)
+                
+                if status == JobStatus.COMPLETED_OR_IDLE:
+                    logger.info("Training completed. Final log collection finished.")
+                    break
+                    
+                for _ in range(10):
+                    if not self._monitoring_active:
+                        break
+                    time.sleep(1)
+                
+        except Exception as e:
+            logger.error(f"Error in log monitoring: {e}")
+        finally:
+            self._monitoring_active = False
 
-        for node_rank, host in enumerate(host_list):
-            log_file_path = os.path.join(
-                logging_config.log_dir,
-                f"host{'_' + str(node_rank) + '_' + host if not no_shared_fs else ''}.output",
+    def _collect_and_diagnose_single_node(self, host, node_rank, process_completed=False):
+        """Collect and diagnose logs for a single node"""
+        try:
+            logging_config = self.config.train.system.logging
+            
+            log_file = collect_logs(
+                self.config, host, node_rank, 
+                logging_config.diagnostic_dir, 
+                dryrun=False,
+                process_running=not process_completed
             )
-            combined_file = os.path.join(
-                logging_config.diagnostic_dir, f"host_{node_rank}_{host}_combined.log"
-            )
-            logger.debug(
-                f"Checking source log file {log_file_path}, size: {os.path.getsize(log_file_path) if os.path.exists(log_file_path) else 0}"
-            )
-            log_file = collect_logs(config, host, node_rank, logging_config.diagnostic_dir)
-            logger.debug(
-                f"Collected log file {log_file}, size: {os.path.getsize(log_file) if log_file and os.path.exists(log_file) else 0}"
-            )
-
+            
             if log_file and os.path.exists(log_file) and os.path.getsize(log_file) > 0:
-                try:
-                    # Read log content
-                    with open(log_file, 'r') as log_f:
-                        log_content = log_f.read()
-                    if not log_content.strip():
-                        logger.debug(
-                            f"No new logs collected for {host} (node {node_rank}): Log file {log_file_path} is empty"
-                        )
-                    else:
-                        # Generate diagnostic report
-                        diagnostic_report = generate_diagnostic_report(
-                            config, host, node_rank, log_file, return_content=True
-                        )
-                        # Write to combined file
-                        os.makedirs(os.path.dirname(combined_file), exist_ok=True)
-                        with open(combined_file, 'a') as f:  # Append mode
-                            f.write(
-                                f"\n=== Collection Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n"
-                            )
-                            f.write("=== Log Content ===\n")
-                            f.write(log_content)
-                            f.write("\n=== Diagnostic Report ===\n")
-                            f.write(
-                                diagnostic_report
-                                if diagnostic_report
-                                else "No diagnostic report generated\n"
-                            )
-                        logger.debug(
-                            f"Appended log and diagnostic report for {host} (node {node_rank}) to {combined_file}"
-                        )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to combine logs and diagnostics for {host} (node {node_rank}): {e}"
-                    )
-                finally:
-                    # Clean up temporary log file
-                    if log_file and os.path.exists(log_file):
-                        try:
-                            os.remove(log_file)
-                            logger.debug(f"Removed temporary log file {log_file}")
-                        except Exception as e:
-                            logger.error(f"Failed to remove temporary log file {log_file}: {e}")
-            else:
-                logger.debug(
-                    f"No new logs collected for {host} (node {node_rank}): Log file {log_file_path} not found or empty"
+                diagnostic_report = generate_diagnostic_report(
+                    self.config, host, node_rank, log_file, return_content=True
                 )
-
+                
+                combined_file = os.path.join(
+                    logging_config.diagnostic_dir, 
+                    f"host_{node_rank}_{host}_combined.log"
+                )
+                
+                os.makedirs(os.path.dirname(combined_file), exist_ok=True)
+                
+                with open(log_file, 'r') as log_f:
+                    log_content = log_f.read()
+                
+                with open(combined_file, 'a') as f:
+                    f.write(f"\n=== Collection Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+                    f.write("=== Log Content ===\n")
+                    f.write(log_content)
+                    f.write("\n=== Diagnostic Report ===\n")
+                    f.write(diagnostic_report if diagnostic_report else "No diagnostic report generated\n")
+                
+                logger.debug(f"Updated combined log for {host} (node {node_rank})")
+                
+                try:
+                    os.remove(log_file)
+                except:
+                    pass
+            
+            if process_completed:
+                reset_log_collection(host, node_rank)
+                
+        except Exception as e:
+            logger.error(f"Failed to collect and diagnose logs for {host} (node {node_rank}): {e}")
 
 class CloudTrainRunner(RunnerBase):
     def __init__(self, config: DictConfig):
