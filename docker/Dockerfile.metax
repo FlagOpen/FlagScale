@@ -1,4 +1,4 @@
-FROM cr.metax-tech.com/public-ai-release/maca/modelzoo.llm.vllm:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64
+FROM cr.metax-tech.com/public-ai-release/maca/modelzoo.llm.vllm:maca.ai3.0.0.5-torch2.6-py310-ubuntu22.04-amd64
 
 ##############################################################################
 # Temporary Installation Directory
