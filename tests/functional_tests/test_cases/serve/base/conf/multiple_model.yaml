@@ -1,20 +1,26 @@
 defaults:
   - _self_
-  - serve: 0.5b
+  - serve: multiple_model
 
 experiment:
-  exp_name: qwen2_5
-  exp_dir: tests/functional_tests/test_cases/serve/qwen2_5/results_test/0.5b
+  exp_name: multiple_model
+  exp_dir: tests/functional_tests/test_cases/serve/utils/models
   task:
     type: serve
     entrypoint: null
   runner:
     hostfile: null
     deploy:
-      port: 6703
-      use_fs_serve: false
+      port: 6701
+      use_fs_serve: true
+      enable_composition: true
+      name: /generate
+      request:
+        args:
+          - prompt
+        types:
+          - str
   envs:
-    CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     no_proxy: "127.0.0.1,localhost"
   cmds:
