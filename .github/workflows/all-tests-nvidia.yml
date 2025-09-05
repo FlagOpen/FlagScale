@@ -128,6 +128,7 @@ jobs:
       matrix:
         task:
           - qwen2_5
+          - base
     name: "serve-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
