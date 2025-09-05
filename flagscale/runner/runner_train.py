@@ -1,6 +1,10 @@
 import multiprocessing
 import os
+import random
 import shlex
+import signal
+import subprocess
+import sys
 import time
 
 from datetime import datetime
@@ -309,6 +313,41 @@ class SSHTrainRunner(RunnerBase):
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "train", f"Unsupported task type: {self.task_type}"
         self._prepare()
+        master_port = getattr(self.config.experiment.runner, "master_port", None)
+        self.random_one_no_use_port(master_port)
+
+    def random_one_no_use_port(self, port):
+        if port is None:
+            return
+        try:
+            result = subprocess.check_output(
+                f"netstat -tulpn | grep :{port}", shell=True, text=True
+            )
+            lines = result.strip().split("\n")
+            for line in lines:
+                parts = line.split()
+                if len(parts) >= 7:
+                    pid_program = parts[6]
+                    pid = pid_program.split("/")[0]
+                    try:
+                        os.kill(int(pid), signal.SIGKILL)
+                    except PermissionError:
+                        logger.error(f"No permission to kill process {pid} on port {port}")
+                        sys.exit()
+                    except Exception as e:
+                        logger.error(f"Unexpected error killing {pid}: {e}")
+                        sys.exit()
+            while True:
+                random_port = random.randint(1024, 65535)
+                try:
+                    subprocess.check_output(
+                        f"netstat -tulpn | grep :{random_port}", shell=True, text=True
+                    )
+                except subprocess.CalledProcessError:
+                    self.config.experiment.runner.master_port = random_port
+                    return
+        except subprocess.CalledProcessError:
+            return
 
     def _prepare(self):
         _update_config_train(self.config)
