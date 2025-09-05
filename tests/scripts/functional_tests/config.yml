@@ -26,6 +26,10 @@ inference:
     -7b-tp2
   deepseek_r1_distill_qwen-flaggems-metax:
     -7b-tp2
+  opi_llama3_1_instruct-metax:
+    -8b-tp2
+  opi_llama3_1_instruct-flaggems-metax:
+    -8b-tp2
   qwen3:
     -4b-tp2
   qwen3-flaggems:
