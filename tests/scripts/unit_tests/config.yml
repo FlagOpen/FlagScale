@@ -78,7 +78,7 @@ megatron:
     pipeline_parallel:
       - default
     post_training:
-      ignore: 
+      ignore:
         - test_modelopt_module_spec.py
     ssm:
       ignore:
@@ -146,3 +146,16 @@ flagscale:
         - test_spiky_loss_detector.py::test_spiky_loss_detector
         - test_parallel_context.py::test_parallel_config
       depth: 1
+
+flagscale-inference:
+  set_environment:
+    - source /root/miniconda3/etc/profile.d/conda.sh
+    - conda activate flagscale-inference
+    - ulimit -n 65535
+  subset:
+    models:
+      type: batch
+      depth: all
+    transforms:
+      type: batch
+      depth: all
