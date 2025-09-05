@@ -91,7 +91,7 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
     # Megatron-LM requires TE >= 2.1.0.
     git clone --recursive https://github.com/NVIDIA/TransformerEngine.git
     cd TransformerEngine
-    git checkout 5bee81e
+    git checkout e9a5fa4e  # Date:   Thu Sep 4 22:39:53 2025 +0200
     uv pip install .
     cd ..
     rm -r ./TransformerEngine
@@ -100,8 +100,7 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
     uv pip install nvidia-cudnn-cu12==9.7.1.26
     CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" uv pip install nvidia-cudnn-frontend
     python -c "import torch; print('cuDNN version:', torch.backends.cudnn.version());"
-    # 执行该命令报错
-    # python -c "from transformer_engine.pytorch.utils import get_cudnn_version; get_cudnn_version()"
+    python -c "from transformer_engine.pytorch.utils import get_cudnn_version; get_cudnn_version()"
 
     # Megatron-LM requires flash-attn >= 2.1.1, <= 2.7.3
     cu=$(nvcc --version | grep "Cuda compilation tools" | awk '{print $5}' | cut -d '.' -f 1)
@@ -175,7 +174,7 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
         fi
 
         # Replace the following code with torch version 2.6.0
-        if [[ $torch_version == *"2.6.0"* ]] || [[ $torch_version == *"2.7.0"* ]];then
+        if [[ $torch_version == *"2.6.0"* ]] || [[ $torch_version == *"2.7.0"* ]]  || [[ $torch_version == *"2.7.1"* ]];then
             # Check and replace line 908
             LINE_908=$(sed -n '908p' "$FILE")
             EXPECTED_908='                if num_nodes_waiting > 0:'

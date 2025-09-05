@@ -143,7 +143,7 @@ RUN cd ${STAGE_DIR} && \
 ##############################################################################
 # Install uv for faster pip installs
 ##############################################################################
-RUN --mount=type=cache,target=/root/.cache/install \
+RUN --mount=type=cache,target=/root/.cache/pip \
     python3 -m pip install uv
 # This timeout (in seconds) is necessary when installing some dependencies via uv since it's likely to time out
 ENV UV_HTTP_TIMEOUT=500
@@ -160,8 +160,10 @@ ENV UV_LINK_MODE=copy
 # Install flagscale-train requirements
 ##############################################################################
 FROM base AS build_train
+ENV TORCH_CUDA_ARCH_LIST="6.0;6.1;7.0;7.5;8.0;8.6;9.0"
 RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=cache,target=/root/.cache/conda \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cache/conda-anaconda-tos \
     cd ${STAGE_DIR}/FlagScale && \
     ./install/install-requirements.sh --env train
 
@@ -171,7 +173,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 FROM base AS build_inference
 ENV SCCACHE_DIR=/root/.cache/sccache
 RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=cache,target=/root/.cache/conda \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cache/conda-anaconda-tos \
     --mount=type=cache,target=/root/.cache/sccache \
     cd ${STAGE_DIR}/FlagScale && \
     apt-get install -y --no-install-recommends curl && \
@@ -182,7 +185,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 ##############################################################################
 FROM base AS build_rl
 RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=cache,target=/root/.cache/conda \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cache/conda-anaconda-tos \
     cd ${STAGE_DIR}/FlagScale && \
     ./install/install-requirements.sh --env RL
 
