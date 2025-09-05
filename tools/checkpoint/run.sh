@@ -107,3 +107,16 @@ python convert.py \
     --target-params-dtype bf16 \
     --true-vocab-size 128256 \
     --megatron-path <xxx>
+
+python convert.py \
+    --model-type qwen3 \
+    --loader mcore \
+    --saver transformers \
+    --load-dir $loaddir \
+    --save-dir $outputs \
+    --target-tensor-parallel-size 1 \
+    --target-pipeline-parallel-size 1 \
+    --target-expert-parallel-size 1 \
+    --target-params-dtype bf16 \
+    --true-vocab-size 151851 \
+    --megatron-path <xxx>
