@@ -69,17 +69,22 @@ def make_task_manager():
 
 def load_class_from_file(file_path: str, class_name: str):
     file_path = os.path.abspath(file_path)
+    module_dir = os.path.dirname(file_path)
     logger.info(f"Loading class {class_name} from file: {file_path}")
-    sys.path.insert(0, os.path.dirname(file_path))
-    module_name = os.path.splitext(os.path.basename(file_path))[0]
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if spec is None:
-        raise ImportError(f"Cannot create module spec from {file_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    if not hasattr(module, class_name):
-        raise ImportError(f"Class {class_name} not found in {file_path}")
-    return getattr(module, class_name)
+    sys.path.insert(0, module_dir)
+    try:
+        module_name = os.path.splitext(os.path.basename(file_path))[0]
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if spec is None:
+            raise ImportError(f"Cannot create module spec from {file_path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if not hasattr(module, class_name):
+            raise ImportError(f"Class {class_name} not found in {file_path}")
+        return getattr(module, class_name)
+    finally:
+        if sys.path[0] == module_dir:
+            sys.path.pop(0)
 
 
 def make_deployment(logic_cls, **deploy_kwargs):

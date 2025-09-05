@@ -32,6 +32,6 @@ class Model2Logic:
 
 
 class Model3Logic:
-    def forward(self, arg1: str, arg2: str):
+    def forward(self, arg1: str, arg2: str) -> str:
         res = arg1 + arg2 + "__model3__"
         return res
