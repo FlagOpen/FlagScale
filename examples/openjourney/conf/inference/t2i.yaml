@@ -1,0 +1,21 @@
+defaults:
+  - transforms: default
+  - _self_
+
+diffusion:
+  # TODO(yupu): into different groups
+  # 1. for loading model
+  # 2. for engine
+  model_config:
+    model: ${experiment.model}
+    dtype: bfloat16
+    trust_remote_code: true
+  engine_config:
+    results_path: ${experiment.exp_dir}/results
+
+generate:
+  prompt: "retro serie of different cars with different colors and shapes, mdjrny-v4 style"
+  width: 512
+  height: 512
+  num_inference_steps: 50
+  guidance_scale: 7.0
