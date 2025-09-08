@@ -1,7 +1,9 @@
 """Intelligent tool matcher using semantic embeddings"""
 
+import logging
 import numpy as np
 from typing import List, Tuple, Dict, Any, Optional
+from collections import OrderedDict
 
 
 class ToolMatcher:
@@ -13,8 +15,9 @@ class ToolMatcher:
         self.tools = []
         self.tool_embeddings = []
         self.model = None
-        self._query_cache = {}  # Cache for query embeddings
+        self._query_cache = OrderedDict()  # LRU Cache for query embeddings
         self._cache_max_size = 100  # Maximum cache size
+        self.logger = logging.getLogger(__name__)
         self._init_model()
     
     def _init_model(self):
@@ -25,34 +28,34 @@ class ToolMatcher:
             
             # Check network connectivity with multiple fallbacks
             if not self._check_network_connectivity():
-                print("⚠️  Network unavailable for model download. Will return all tools on match.")
+                self.logger.warning("Network unavailable for model download. Will return all tools on match.")
                 self.model = None
                 return
             
             # Try to load model with local cache first
             try:
                 self.model = SentenceTransformer("all-MiniLM-L6-v2")
-                print("✅ Semantic model initialized successfully")
+                self.logger.info("Semantic model initialized successfully")
             except Exception as e:
-                print(f"⚠️  Failed to load model (may need download): {e}")
-                print("⚠️  Will return all tools on match.")
+                self.logger.warning(f"Failed to load model (may need download): {e}")
+                self.logger.warning("Will return all tools on match.")
                 self.model = None
                 
         except ImportError:
-            print("⚠️  sentence-transformers not available. Install with: pip install sentence-transformers")
-            print("⚠️  Will return all tools on match.")
+            self.logger.warning("sentence-transformers not available. Install with: pip install sentence-transformers")
+            self.logger.warning("Will return all tools on match.")
             self.model = None
         except Exception as e:
-            print(f"⚠️  Failed to initialize semantic model: {e}. Will return all tools on match.")
+            self.logger.warning(f"Failed to initialize semantic model: {e}. Will return all tools on match.")
             self.model = None
     
     def _check_network_connectivity(self) -> bool:
-        """Check network connectivity with multiple endpoints"""
+        """Check network connectivity with  endpoint"""
         import urllib.request
         import socket
         
         endpoints = [
-            'https://huggingface.co'
+            'https://huggingface.co',
         ]
         
         for endpoint in endpoints:
@@ -82,9 +85,9 @@ class ToolMatcher:
             
             if tool_texts:
                 self.tool_embeddings = self.model.encode(tool_texts, convert_to_tensor=True)
-                print(f"✅ Generated embeddings for {len(self.tools)} tools")
+                self.logger.info(f"Generated embeddings for {len(self.tools)} tools")
         except Exception as e:
-            print(f"⚠️  Failed to generate embeddings: {e}")
+            self.logger.warning(f"Failed to generate embeddings: {e}")
             self.tool_embeddings = []
     
     def match_tools(self, task: str) -> List[Tuple[str, float]]:
@@ -97,12 +100,15 @@ class ToolMatcher:
         if self.model and len(self.tool_embeddings) > 0:
             return self._semantic_match(task)
         else:
-            # Return all tools without filtering, score set to 1.0
-            results: List[Tuple[str, float]] = []
-            for i, tool in enumerate(self.tools):
-                name = tool.get("function", {}).get("name", f"tool_{i}")
-                results.append((name, 1.0))
-            return results
+            return self._get_all_tools_fallback()
+    
+    def _get_all_tools_fallback(self) -> List[Tuple[str, float]]:
+        """Fallback method to return all tools with score 1.0"""
+        results: List[Tuple[str, float]] = []
+        for i, tool in enumerate(self.tools):
+            name = tool.get("function", {}).get("name", f"tool_{i}")
+            results.append((name, 1.0))
+        return results
     
     def _semantic_match(self, task: str) -> List[Tuple[str, float]]:
         """Semantic matching using embeddings with caching"""
@@ -120,27 +126,24 @@ class ToolMatcher:
             tool_scores.sort(key=lambda x: x[1], reverse=True)
             return tool_scores[:self.max_tools]
         except Exception as e:
-            print(f"⚠️  Semantic matching failed: {e}")
+            self.logger.warning(f"Semantic matching failed: {e}")
             # If semantic path fails, return all tools
-            results: List[Tuple[str, float]] = []
-            for i, tool in enumerate(self.tools):
-                name = tool.get("function", {}).get("name", f"tool_{i}")
-                results.append((name, 1.0))
-            return results
+            return self._get_all_tools_fallback()
     
     def _get_cached_embedding(self, task: str):
-        """Get embedding from cache or compute and cache it"""
+        """Get embedding from cache or compute and cache it - LRU cache"""
         if task in self._query_cache:
+            # Move to end (most recently used)
+            self._query_cache.move_to_end(task)
             return self._query_cache[task]
         
         # Compute new embedding
         embedding = self.model.encode([task], convert_to_tensor=True)
         
-        # Manage cache size
+        # Manage cache size with LRU eviction
         if len(self._query_cache) >= self._cache_max_size:
-            # Remove oldest entry (simple FIFO)
-            oldest_key = next(iter(self._query_cache))
-            del self._query_cache[oldest_key]
+            # Remove least recently used entry (first item)
+            self._query_cache.popitem(last=False)
         
         self._query_cache[task] = embedding
         return embedding
@@ -167,5 +170,6 @@ class ToolMatcher:
             
             similarity = np.dot(a_norm, b_norm.T)
             return similarity.squeeze()
-        except Exception:
+        except Exception as e:
+            self.logger.warning(f"Cosine similarity calculation failed: {e}")
             return np.zeros(len(self.tools))
