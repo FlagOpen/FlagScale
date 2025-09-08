@@ -305,4 +305,3 @@ class P2pConnector(KVConnectorBase):
 
     def close(self):
         self.p2p_nccl_pipe.close()
-

@@ -40,8 +40,10 @@ from typing_extensions import TypeVar
 
 from vllm.config import VllmConfig
 from vllm.model_executor.layers.quantization import QuantizationConfig
+# --- FLAGSCALE MODIFICATION BEG ---
 from vllm.model_executor.layers.quantization.awq import AWQConfig
 from vllm.model_executor.layers.quantization.awq_marlin import AWQMarlinConfig
+# --- FLAGSCALE MODIFICATION END ---
 from vllm.model_executor.layers.resampler import (BaseResampler, Resampler2,
                                                   get_2d_sincos_pos_embed)
 from vllm.model_executor.model_loader.utils import set_default_torch_dtype
@@ -335,17 +337,21 @@ class MiniCPMVProcessingInfo(BaseProcessingInfo):
 
         return hf_processor
 
+    # --- FLAGSCALE MODIFICATION BEG ---
     def get_image_processor(self, **kwargs: object):
         return self.get_hf_processor(**kwargs).image_processor
+    # --- FLAGSCALE MODIFICATION END ---
 
     def get_model_version(self):
         return get_version_by_config(self.get_hf_config())
 
     def get_supported_mm_limits(self) -> Mapping[str, Optional[int]]:
         mm_limits = {"image": None}
+        # --- FLAGSCALE MODIFICATION BEG ---
         if self.get_model_version() == (2,
                                         6) or self.get_model_version() == (4,
                                                                            0):
+        # --- FLAGSCALE MODIFICATION END ---
             mm_limits["video"] = None
 
         return mm_limits
@@ -627,7 +633,7 @@ class MiniCPMVMultiModalProcessor(BaseMultiModalProcessor[_I]):
     ) -> dict[str, NestedTensors]:
         # This processor supports zipping prompt and mm_data together
         if self.info.get_model_version() == (
-                2, 6) or self.info.get_model_version() == (4, 0):
+                2, 6) or self.info.get_model_version() == (4, 0): # --- FLAGSCALE MODIFICATION ---
             inputs = super()._call_hf_processor(
                 prompt=prompts,  # type: ignore
                 mm_data=mm_data,
@@ -686,6 +692,7 @@ class MiniCPMVMultiModalProcessor(BaseMultiModalProcessor[_I]):
         hf_processor_mm_kwargs: Mapping[str, object],
         out_mm_kwargs: MultiModalKwargs,
     ) -> Sequence[PromptUpdate]:
+        # --- FLAGSCALE MODIFICATION BEG ---
         placeholders = [("image", self.info.image_pattern),
                         ("video", self.info.video_pattern)]
 
@@ -698,6 +705,7 @@ class MiniCPMVMultiModalProcessor(BaseMultiModalProcessor[_I]):
             if sub_pattern != pattern:
                 additional_placeholders.append((modality, sub_pattern))
         placeholders += additional_placeholders
+        # --- FLAGSCALE MODIFICATION END ---
 
         def get_image_replacement(item_idx: int):
             images = mm_items.get_items(
@@ -727,12 +735,14 @@ class MiniCPMVMultiModalProcessor(BaseMultiModalProcessor[_I]):
             "video": get_video_replacement,
         }
 
+        # --- FLAGSCALE MODIFICATION BEG ---
         return [
             PromptReplacement(modality=modality,
                               target=pattern,
                               replacement=get_replacement[modality])
             for modality, pattern in placeholders
         ]
+        # --- FLAGSCALE MODIFICATION END ---
 
     def _get_mm_fields_config(
         self,
@@ -1277,13 +1287,16 @@ class MiniCPMV2_6(MiniCPMVBaseModel, SupportsLoRA):
 
         return self.resampler(vision_embedding, tgt_sizes)
 
+    # --- FLAGSCALE MODIFICATION BEG ---
     def load_weights(self, weights: Iterable[tuple[str,
                                                    torch.Tensor]]) -> set[str]:
         loader = AutoWeightsLoader(self,
                                    skip_prefixes=["apm.", "audio", "tts"])
         return loader.load_weights(weights)
+    # --- FLAGSCALE MODIFICATION END ---
 
 
+# --- FLAGSCALE MODIFICATION BEG ---
 class MiniCPMV4_0(MiniCPMVBaseModel, SupportsLoRA):
     packed_modules_mapping = {
         "qkv_proj": [
@@ -1388,13 +1401,14 @@ class MiniCPMV4_0(MiniCPMVBaseModel, SupportsLoRA):
         loader = AutoWeightsLoader(self,
                                    skip_prefixes=["apm.", "audio", "tts"])
         return loader.load_weights(weights)
+# --- FLAGSCALE MODIFICATION END ---
 
 
 _SUPPORT_VERSION = {
     (2, 0): MiniCPMV2_0,
     (2, 5): MiniCPMV2_5,
     (2, 6): MiniCPMV2_6,
-    (4, 0): MiniCPMV4_0,
+    (4, 0): MiniCPMV4_0, # --- FLAGSCALE MODIFICATION ---
 }
 
 
@@ -1422,10 +1436,12 @@ class MiniCPMV(MiniCPMVBaseModel, SupportsMultiModal, SupportsLoRA):
         # Dispatch class based on version
         instance_cls = _SUPPORT_VERSION.get(version)
         if instance_cls is None:
+            # --- FLAGSCALE MODIFICATION BEG ---
             supported_versions = ", ".join(
                 [f"{v[0]}.{v[1]}" for v in sorted(_SUPPORT_VERSION.keys())])
             raise ValueError(f"Currently, MiniCPMV only supports versions "
                              f"{supported_versions}. Got version: {version}")
+            # --- FLAGSCALE MODIFICATION END ---
 
         # quant_config references base class members,
         # so update values before init is called

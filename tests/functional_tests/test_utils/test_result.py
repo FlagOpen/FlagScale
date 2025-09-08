@@ -96,6 +96,16 @@ def test_inference_equal(test_path, test_type, test_task, test_case):
     with open(gold_value_path, "r") as file:
         gold_value_lines = file.readlines()
 
+    # Remove the blank line at the end.
+    if gold_value_lines:
+        last_non_empty = len(gold_value_lines) - 1
+        while last_non_empty >= 0 and not gold_value_lines[last_non_empty].strip():
+            last_non_empty -= 1
+        if last_non_empty >= 0:
+            gold_value_lines = gold_value_lines[: last_non_empty + 1]
+        else:
+            gold_value_lines = []
+
     print("\nResult checking")
     print("Result: ", result_lines)
     print("Gold Result: ", gold_value_lines)
@@ -255,6 +265,7 @@ def test_rl_equal(test_path, test_type, test_task, test_case):
 def test_serve_equal(test_path, test_type, test_task, test_case):
     config_path = os.path.join(test_path, test_type, test_task, "conf", f"{test_case}.yaml")
     print("[Serve] config_path ", config_path)
+
     with open(config_path, "r") as f:
         origin_config = OmegaConf.load(f)
         whole_config_path = os.path.join(
@@ -270,3 +281,36 @@ def test_serve_equal(test_path, test_type, test_task, test_case):
         greeting = response.text
         print("[Serve] result ", greeting)
         assert len(greeting) > 5, "Response is empty."
+    else:
+        serve_config = whole_config.get("serve", [])
+        if not serve_config:
+            raise ValueError(
+                f"No 'serve_config' configuration found in task config: {whole_config}"
+            )
+        serve_config = serve_config[0]
+        if serve_config.get("engine", "vllm") == "vllm":
+            engine_args = serve_config.get("engine_args", {})
+            model_name = engine_args.get("served_model_name", None) or engine_args.get(
+                "model", None
+            )
+            if not model_name:
+                raise ValueError(
+                    f"Missing 'served_model_name' or 'model' argument in 'engine_args': {engine_args}"
+                )
+            url = f"http://localhost:{deploy_config.port}/v1/completions"
+
+            headers = {"Content-Type": "application/json"}
+
+            data = {
+                "model": model_name,
+                "prompt": "Introduce Bruce Lee in details",
+                "max_tokens": 20,
+                "temperature": 0,
+                "stream": False,
+            }
+
+            response = requests.post(url, headers=headers, data=json.dumps(data))
+            assert response.status_code == 200, "Request failed with status code: {}".format(
+                response.status_code
+            )
+            print("[Serve] result ", response.json())

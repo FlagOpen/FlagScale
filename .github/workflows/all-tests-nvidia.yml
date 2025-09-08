@@ -51,7 +51,7 @@ jobs:
 
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
-    needs: 
+    needs:
       - set-env
       - megatron-unit-tests
     uses: ./.github/workflows/unit-tests-nvidia.yml
@@ -68,7 +68,7 @@ jobs:
 
   # Functional Tests with Mision and Type Matrix
   functional-tests-train:
-    needs: 
+    needs:
       - set-env
       - flagscale-unit-tests
     uses: ./.github/workflows/functional-tests-nvidia.yml
@@ -76,9 +76,9 @@ jobs:
       matrix:
         task:
           - aquila
-          # - deepseek # TODO: need fix
+          - deepseek
           - mixtral
-          # - llava_onevision # TODO: need fix
+          - llava_onevision
     name: "train-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
@@ -86,7 +86,7 @@ jobs:
       image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-hetero:
-    needs: 
+    needs:
       - set-env
       - functional-tests-train
     # TODO: test need fix
@@ -112,8 +112,7 @@ jobs:
           - deepseek_r1_distill_qwen
           - deepseek_r1_distill_qwen-flaggems
           - qwen3
-          # - deepseek_flaggems   # TODO: need fix
-          # - qwen3_flaggems      # TODO: need fix
+          - qwen3-flaggems
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
@@ -121,7 +120,7 @@ jobs:
       image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-serve:
-    needs: 
+    needs:
       - set-env
       - functional-tests-inference
     uses: ./.github/workflows/functional-tests-nvidia.yml
@@ -129,6 +128,7 @@ jobs:
       matrix:
         task:
           - qwen2_5
+          - base
     name: "serve-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
@@ -136,7 +136,7 @@ jobs:
       image: ${{ needs.set-env.outputs.ci_image }}
 
   functional-tests-rl:
-    needs: 
+    needs:
       - set-env
       - functional-tests-serve
     uses: ./.github/workflows/functional-tests-nvidia.yml
