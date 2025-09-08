@@ -6,6 +6,7 @@ llm:
   pipeline_parallel_size: 1
   gpu_memory_utilization: 0.9
   seed: 1234
+  enforce_eager: true
 
 generate:
   prompts: [
