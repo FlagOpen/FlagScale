@@ -596,16 +596,25 @@ def save_checkpoint(iteration, model, optimizer, opt_param_scheduler, num_floati
         def wandb_finalize_fn():
             ######### FlagScale Begin #########
             #NOTE(lizhiyu): The tracker file is created by rank 0 but wandb_finalize_fn is called on the last rank.
+            import time as pytime
+
             tracker_file = get_checkpoint_tracker_filename(save_dir)
-            while True:
+
+            timeout_seconds = 600  # 10 minutes
+            wait_interval_seconds = 5
+            max_retries = timeout_seconds // wait_interval_seconds
+
+            for _ in range(max_retries):
                 if isfile(tracker_file):
                     with open(tracker_file, 'r') as f:
                         content = f.read().strip()
                         if content == str(iteration):
-                            break
+                            break  # Success
                 print(f'WandB finalization waiting for the tracker file {tracker_file} to update...')
-                import time as pytime
-                pytime.sleep(5)
+                pytime.sleep(wait_interval_seconds)
+            else:
+                # This block executes if the loop completes without a `break`.
+                raise RuntimeError(f"Timed out waiting for tracker file {tracker_file} to be updated for iteration {iteration} after {timeout_seconds} seconds.")
             ######### FlagScale End #########
             wandb_utils.on_save_checkpoint_success(checkpoint_name, get_checkpoint_tracker_filename(save_dir), save_dir, iteration)
         if args.async_save:
