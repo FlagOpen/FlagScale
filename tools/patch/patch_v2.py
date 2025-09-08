@@ -1,6 +1,7 @@
 import argparse
 import copy
 import os
+import re
 import shutil
 import tempfile
 
@@ -198,6 +199,7 @@ def _generate_patch_file_for_backend(
     repo = Repo(main_path)
     assert not repo.bare
     try:
+        patch_dir = os.path.join(main_path, "hardware", patch_info["device_type"], backend)
         repo_path = (
             os.path.join(main_path, "third_party", backend)
             if backend != FLAGSCALE_BACKEND
@@ -251,11 +253,6 @@ def _generate_patch_file_for_backend(
                     backend_dir = os.path.join(main_path, "flagscale", "backends", item)
                     flagscale_diff_args.append(f':(exclude){backend_dir}')
 
-        temp_patch_files = []
-        # Generate patch for each backend
-        temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w", encoding="utf-8")
-        temp_patch_path = temp_file.name
-        temp_patch_files.append(temp_patch_path)
         diff_data = (
             repo.git.diff(commit, "HEAD", "--binary")
             if backend != FLAGSCALE_BACKEND
@@ -264,26 +261,47 @@ def _generate_patch_file_for_backend(
         if not diff_data:
             raise ValueError(f"No changes in backend {backend}.")
 
-        temp_file.write(diff_data)
-        # add \n to the end of the file
-        temp_file.write("\n")
-        temp_file.flush()
+        splits = re.split(r'(?=^diff --git a/)', diff_data, flags=re.MULTILINE)
+
+        temp_patch_files_with_relpath = []
+        for file_diff in splits:
+            if not file_diff.strip():
+                continue
+
+            m = re.match(r'diff --git a/.+ b/(.+)', file_diff.splitlines()[0])
+            if not m:
+                continue
+            filepath = m.group(1)  # relative path like megatron/train.py
+
+            temp_file = tempfile.NamedTemporaryFile(
+                delete=False, mode="w", encoding="utf-8", suffix=".patch"
+            )
+            temp_file.write(file_diff)
+
+            temp_file.write("\n")
+            temp_file.flush()
+            temp_file.close()
+
+            temp_patch_files_with_relpath.append((temp_file.name, filepath))
+
         if key_path is not None:
-            temp_patch_path = encrypt_file(temp_patch_path, key_path)
-            logger.info(f"Encrypted patch file {temp_patch_path} with public key.")
+            encrypted_files_with_relpath = []
+            for patch_path, rel_path in temp_patch_files_with_relpath:
+                encrypted_path = encrypt_file(patch_path, key_path)
+                encrypted_files_with_relpath.append((encrypted_path, rel_path))
+            temp_patch_files_with_relpath = encrypted_files_with_relpath
 
         temp_yaml_file = tempfile.NamedTemporaryFile(
             delete=False, mode="w", encoding="utf-8", suffix=".yaml"
         )
         temp_yaml_path = temp_yaml_file.name
-        temp_patch_files.append(temp_yaml_path)
         data = copy.deepcopy(patch_info)
         assert flagscale_commit is not None, "FlagScale commit must be specified."
         data["commit"] = flagscale_commit
-        del data["commit_msg"]
+        if "commit_msg" in data:
+            del data["commit_msg"]
         yaml.dump(data, temp_yaml_file, sort_keys=True, allow_unicode=True)
         temp_yaml_file.flush()
-        patch_dir = os.path.join(main_path, "hardware", patch_info["device_type"], backend)
 
         # Step5: Checkout to current branch and pop the stash.
         logger.info(f"Step 5: Checkouting to current branch and pop the stash...")
@@ -309,7 +327,7 @@ def _generate_patch_file_for_backend(
             logger.error(f"Failed to roll back: {cleanup_error}", exc_info=True)
             raise cleanup_error
 
-    return patch_dir, temp_patch_path, temp_yaml_path
+    return patch_dir, temp_patch_files_with_relpath, temp_yaml_path
 
 
 def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=None):
@@ -330,40 +348,39 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
                 main_repo = Repo(main_path)
                 submodule_path = os.path.join("third_party", backend)
                 submodule = main_repo.submodule(submodule_path)
-                sub_repo = submodule.module()
                 submodule_commit_in_fs = repo.head.commit.tree[submodule_path].hexsha
                 if backend in patch_info["backends_commit"]:
                     submodule_commit_in_fs = patch_info["backends_commit"][backend]
-                patch_dir, temp_patch_path, temp_yaml_path = _generate_patch_file_for_backend(
-                    main_path,
-                    submodule_commit_in_fs,
-                    backend,
-                    patch_info,
-                    key_path=key_path,
-                    flagscale_commit=commit,
+                patch_dir, patch_files_with_relpath, temp_yaml_path = (
+                    _generate_patch_file_for_backend(
+                        main_path,
+                        submodule_commit_in_fs,
+                        backend,
+                        patch_info,
+                        key_path=key_path,
+                        flagscale_commit=commit,
+                    )
                 )
             else:
-                patch_dir, temp_patch_path, temp_yaml_path = _generate_patch_file_for_backend(
-                    main_path,
-                    commit,
-                    backend,
-                    patch_info,
-                    key_path=key_path,
-                    flagscale_commit=commit,
+                patch_dir, patch_files_with_relpath, temp_yaml_path = (
+                    _generate_patch_file_for_backend(
+                        main_path,
+                        commit,
+                        backend,
+                        patch_info,
+                        key_path=key_path,
+                        flagscale_commit=commit,
+                    )
                 )
-            patches[backend] = [patch_dir, temp_patch_path, temp_yaml_path]
+            patches[backend] = [patch_dir, patch_files_with_relpath, temp_yaml_path]
 
         logger.info(f"Checking out {commit}...")
         repo.git.checkout(commit)
 
-        # Stage the patch file.
-        logger.info("Staging the generated patch file...")
-        file_name = f"diff.patch" if key_path is None else f"diff.patch.encrypted"
-        yaml_file_name = f"diff.yaml"
+        logger.info("Staging the generated patch files...")
         patch_dir_need_to_clean = []
-        temp_patch_files = []
         for backend in patches:
-            patch_dir, temp_patch_path, temp_yaml_path = patches[backend]
+            patch_dir, patch_files_with_relpath, temp_yaml_path = patches[backend]
             patch_dir_exist = os.path.exists(patch_dir)
 
             if not patch_dir_exist:
@@ -374,17 +391,30 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
                 shutil.rmtree(patch_dir)
                 repo.git.rm('-r', patch_dir, ignore_unmatch=True)
             os.makedirs(patch_dir, exist_ok=True)
-            shutil.copy(temp_patch_path, os.path.join(patch_dir, file_name))
-            shutil.copy(temp_yaml_path, os.path.join(patch_dir, yaml_file_name))
-            repo.git.add(os.path.join(patch_dir, file_name))
-            repo.git.add(os.path.join(patch_dir, yaml_file_name))
-            temp_patch_files.append(temp_patch_path)
+
+            # Copy each patch file preserving relative path inside patch_dir
+            for temp_patch_path, rel_path in patch_files_with_relpath:
+                dst_patch_path = (
+                    os.path.join(patch_dir, f"{rel_path}.patch")
+                    if key_path is None
+                    else os.path.join(patch_dir, f"{rel_path}.patch.encrypted")
+                )
+                os.makedirs(os.path.dirname(dst_patch_path), exist_ok=True)
+                shutil.copy(temp_patch_path, dst_patch_path)
+                repo.git.add(dst_patch_path)
+                temp_patch_files.append(temp_patch_path)
+
+            # Copy yaml file
+            yaml_file_name = "diff.yaml"
+            dst_yaml_path = os.path.join(patch_dir, yaml_file_name)
+            shutil.copy(temp_yaml_path, dst_yaml_path)
+            repo.git.add(dst_yaml_path)
             temp_patch_files.append(temp_yaml_path)
 
         # Commit the patch file with the same message.
         logger.info("Committing the patch file...")
         commit_msg = patch_info["commit_msg"]
-        repo.git.commit("-m", commit_msg)
+        repo.git.commit("--no-verify", "-m", commit_msg)
 
         logger.info(
             "Commit successfully! If you want to push, try 'git push origin HEAD:refs/heads/(your branch)' or  'git push --force origin HEAD:refs/heads/(your branch)'"

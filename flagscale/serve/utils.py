@@ -3,8 +3,6 @@ import threading
 
 from functools import wraps
 
-import ray
-
 from omegaconf import OmegaConf
 
 task_config = OmegaConf.create()
@@ -41,39 +39,3 @@ def load_args() -> None:
     task_config.update({"log_dir": args.log_dir})
 
     return
-
-
-class TaskManager:
-    def __init__(self):
-        pass
-
-
-def init():
-    ray.init(address="auto")
-
-
-def run():
-    ray.run()
-
-
-def stop():
-    ray.shutdown()
-
-
-def remote(*args, **kwargs):
-    """Transform a function into a Ray task"""
-    load_args()
-
-    def _merge_kwargs(func_name, **kwargs):
-        new_kwargs = kwargs.copy()
-        models = task_config.serve.deploy.get("models", None)
-        if models and func_name in models:
-            new_kwargs.update(models[func_name])
-            if "model_name" not in kwargs:
-                new_kwargs.pop("model_name", None)
-
-        return new_kwargs
-
-    new_kwargs = _merge_kwargs(kwargs["name"], **kwargs)
-
-    return ray.remote(*args, **new_kwargs)
