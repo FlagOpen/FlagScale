@@ -1,5 +1,5 @@
 # Use default configuration if not shown
-megatron:
+train_megatron:
   set_environment:
     - source /root/miniconda3/etc/profile.d/conda.sh
     - conda activate flagscale-train
@@ -126,7 +126,7 @@ megatron:
         - test_parallel_state.py::test_different_initialize_order_unconsistency
         - test_utils.py::test_nvtx_decorato
 
-flagscale:
+train_flagscale:
   set_environment:
     - source /root/miniconda3/etc/profile.d/conda.sh
     - conda activate flagscale-train
@@ -147,7 +147,7 @@ flagscale:
         - test_parallel_context.py::test_parallel_config
       depth: 1
 
-flagscale-inference:
+inference_flagscale:
   set_environment:
     - source /root/miniconda3/etc/profile.d/conda.sh
     - conda activate flagscale-inference

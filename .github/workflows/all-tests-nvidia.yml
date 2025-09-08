@@ -21,8 +21,8 @@ jobs:
         run: |
           echo "ci_image=localhost:5000/flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.0-time2507111538" >> $GITHUB_OUTPUT  # Set output variable
 
-  # Megatron Unit Tests with Matrix
-  megatron-unit-tests:
+  # train-megatron Unit Tests with Matrix
+  train-megatron-unit-tests:
     needs:
       - set-env
     uses: ./.github/workflows/unit-tests-nvidia.yml
@@ -43,26 +43,43 @@ jobs:
           - transformer/moe
           - transformer
           - ./
-    name: "megatron-${{ matrix.subset == './' && 'root' || matrix.subset }}"
+    name: "train-megatron-${{ matrix.subset == './' && 'root' || matrix.subset }}"
     with:
-      backend: megatron
+      backend: train_megatron
       subset: ${{ matrix.subset }}
       image: ${{ needs.set-env.outputs.ci_image }}
 
-  # Flagscale Unit Tests with Matrix
-  flagscale-unit-tests:
+  # train-flagscale Unit Tests with Matrix
+  train-flagscale-unit-tests:
     needs:
       - set-env
-      - megatron-unit-tests
+      - train-megatron-unit-tests
     uses: ./.github/workflows/unit-tests-nvidia.yml
     strategy:
       matrix:
         subset:
           - runner
           - ./
-    name: "flagscale-${{ matrix.subset == './' && 'root' || matrix.subset }}"
+    name: "train-flagscale-${{ matrix.subset == './' && 'root' || matrix.subset }}"
     with:
-      backend: flagscale
+      backend: train_flagscale
+      subset: ${{ matrix.subset }}
+      image: ${{ needs.set-env.outputs.ci_image }}
+
+  # inference-flagscale Unit Tests with Matrix
+  inference-flagscale-unit-tests:
+    needs:
+      - set-env
+      - train-flagscale-unit-tests
+    uses: ./.github/workflows/unit-tests-nvidia.yml
+    strategy:
+      matrix:
+        subset:
+          - models
+          - transforms
+    name: "inference-flagscale-${{ matrix.subset == './' && 'root' || matrix.subset }}"
+    with:
+      backend: inference_flagscale
       subset: ${{ matrix.subset }}
       image: ${{ needs.set-env.outputs.ci_image }}
 
@@ -70,7 +87,7 @@ jobs:
   functional-tests-train:
     needs:
       - set-env
-      - flagscale-unit-tests
+      - inference-flagscale-unit-tests
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
@@ -153,8 +170,9 @@ jobs:
   # Check All Tests
   all-tests:
     needs:
-      - megatron-unit-tests
-      - flagscale-unit-tests
+      - train-megatron-unit-tests
+      - train-flagscale-unit-tests
+      - inference-flagscale-unit-tests
       - functional-tests-train
       - functional-tests-hetero
       - functional-tests-inference
