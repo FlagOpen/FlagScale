@@ -173,37 +173,44 @@ def apply_hardware_patch(
         patch_files = []
         patch_backends = []
         backends_commit = {}
+
         for backend in backends:
+            force_init = True
             backend_path = os.path.join(device_path, backend)
             if not os.path.exists(backend_path):
                 raise ValueError(f"{backend_path} is not found.")
 
-            error = f"Patch files in {backend_path} must be a file with a .patch suffix and a file with a .yaml suffix."
-            if len(os.listdir(backend_path)) != 2:
-                raise ValueError(error)
-            patch_file = None
-            base_commit_id = None
-            for file in os.listdir(backend_path):
-                if file.endswith(".patch") or file.endswith(".patch.encrypted"):
-                    patch_file = os.path.join(backend_path, file)
-                    yaml_file = os.path.join(backend_path, "diff.yaml")
-                    with open(yaml_file, "r") as f:
-                        info = yaml.safe_load(f)
-                        base_commit_id = info["commit"]
-                        if "backends_commit" in info and backend in info["backends_commit"]:
-                            backends_commit[backend] = info["backends_commit"][backend]
-                        assert base_commit_id
-                    try:
-                        repo.commit(base_commit_id)
-                    except ValueError:
-                        raise ValueError(
-                            f"The commit ID {base_commit_id} does not exist in the FlagScale."
-                        )
-            assert patch_file
-            assert base_commit_id
+            yaml_file = os.path.join(backend_path, "diff.yaml")
+            if not os.path.isfile(yaml_file):
+                raise ValueError(f"Missing diff.yaml in {backend_path}")
+
+            with open(yaml_file, "r") as f:
+                info = yaml.safe_load(f)
+                base_commit_id = info["commit"]
+                if "backends_commit" in info and backend in info["backends_commit"]:
+                    backends_commit[backend] = info["backends_commit"][backend]
+                assert base_commit_id
+                try:
+                    repo.commit(base_commit_id)
+                except ValueError:
+                    raise ValueError(
+                        f"The commit ID {base_commit_id} does not exist in the FlagScale."
+                    )
             all_base_commit_id.add(base_commit_id)
-            patch_files.append(patch_file)
-            patch_backends.append(backend)
+
+            # Recursively collect all patch files (.patch or .patch.encrypted)
+            backend_patch_files = []
+            for root, _, files in os.walk(backend_path):
+                for file in files:
+                    if file.endswith(".patch") or file.endswith(".patch.encrypted"):
+                        backend_patch_files.append(os.path.join(root, file))
+
+            if not backend_patch_files:
+                raise ValueError(f"No patch files found in {backend_path}")
+
+            patch_files.extend(backend_patch_files)
+            patch_backends.extend([backend] * len(backend_patch_files))
+
         all_base_commit_id = list(all_base_commit_id)
 
         # Sort the commit by appearance order
@@ -221,7 +228,7 @@ def apply_hardware_patch(
         sorted_commits = sorted(all_base_commit_id, key=lambda x: position[x])
         # Get the neweset base_commit_id
         base_commit_id = sorted_commits[0]
-        logger.info(f"Step 3: Finding the newset base commit {base_commit_id} to checkout.")
+        logger.info(f"Step 3: Finding the newest base commit {base_commit_id} to checkout.")
 
         temp_unpatch_path = tempfile.mkdtemp()
         logger.info(f"Step 4: Copying {temp_path} to temp unpatch path {temp_unpatch_path}")
@@ -245,19 +252,21 @@ def apply_hardware_patch(
             if backend != FLAGSCALE_BACKEND:
                 # init submodule
                 if need_init_submodule:
-                    logger.info(
-                        f"    Initializing submodule {backend} in temp unpatch path {temp_unpatch_path}..."
-                    )
-                    dst = os.path.join(temp_unpatch_path, "third_party", backend)
-                    src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
-                    # Initialize the submodule
+                    if force_init:
+                        logger.info(
+                            f"    Initializing submodule {backend} in temp unpatch path {temp_unpatch_path}..."
+                        )
+                        dst = os.path.join(temp_unpatch_path, "third_party", backend)
+                        src = os.path.join(temp_unpatch_path, "flagscale", "backends", backend)
+                        # Initialize the submodule
 
-                    submodule_commit = None
-                    if backends_commit and backend in backends_commit:
-                        submodule_commit = backends_commit[backend]
-                    init_submodule(
-                        temp_unpatch_path, dst, backend, force=True, commit=submodule_commit
-                    )
+                        submodule_commit = None
+                        if backends_commit and backend in backends_commit:
+                            submodule_commit = backends_commit[backend]
+                        init_submodule(
+                            temp_unpatch_path, dst, backend, force=True, commit=submodule_commit
+                        )
+                        force_init = False
             submodule_path = (
                 os.path.join(temp_unpatch_path, "third_party", backend)
                 if backend != FLAGSCALE_BACKEND

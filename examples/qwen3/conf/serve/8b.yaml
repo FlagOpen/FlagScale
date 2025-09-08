@@ -1,12 +1,12 @@
 - serve_id: vllm_model
   engine: vllm
   engine_args:
-    model: /tmp/model/Qwen3-8B
-    served_model_name: qwen3-8b
+    model: ${oc.env:QWEN3_PATH}
     host: 0.0.0.0
     uvicorn_log_level: warning
-    port: 30000
+    port: ${oc.env:QWEN3_PORT}
     gpu_memory_utilization: 0.9
     trust_remote_code: true
     no_enable_prefix_caching: true
     compilation_config: '{"full_cuda_graph": true}'
+
