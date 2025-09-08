@@ -95,7 +95,10 @@ if "x070" in os.environ["RWKV_MY_TESTING"]:
         @staticmethod
         def forward(ctx, w, q, k, v, z, b):
             B, T, H, C = w.shape
-            assert T % CHUNK_LEN == 0
+            if not isinstance(T, int) or T <= 0:
+                raise ValueError(f"Invalid sequence length T: {T}. Expected a positive integer.")
+            if T % CHUNK_LEN != 0:
+                raise ValueError(f"T must be a multiple of CHUNK_LEN ({CHUNK_LEN}), got T={T}.")
             assert all(i.dtype == torch.bfloat16 for i in [w, q, k, v, z, b])
             assert all(i.is_contiguous() for i in [w, q, k, v, z, b])
             y = torch.empty_like(v)
@@ -112,12 +115,24 @@ if "x070" in os.environ["RWKV_MY_TESTING"]:
             assert all(i.dtype == torch.bfloat16 for i in [dy])
             assert all(i.is_contiguous() for i in [dy])
             w, q, k, v, z, b, s, sa = ctx.saved_tensors
-            dw, dq, dk, dv, dz, db = [torch.empty_like(x) for x in [
-                w, q, k, v, z, b]]
+            grad_placeholders = {
+                "dw": torch.empty_like(w),
+                "dq": torch.empty_like(q),
+                "dk": torch.empty_like(k),
+                "dv": torch.empty_like(v),
+                "dz": torch.empty_like(z),
+                "db": torch.empty_like(b),
+            }
             torch.ops.wind_backstepping.backward(
-                w, q, k, v, z, b, dy, s, sa, dw, dq, dk, dv, dz, db
+                w, q, k, v, z, b, dy, s, sa,
+                grad_placeholders["dw"],
+                grad_placeholders["dq"],
+                grad_placeholders["dk"],
+                grad_placeholders["dv"],
+                grad_placeholders["dz"],
+                grad_placeholders["db"],
             )
-            return dw, dq, dk, dv, dz, db
+            return grad_placeholders["dw"], grad_placeholders["dq"], grad_placeholders["dk"], grad_placeholders["dv"], grad_placeholders["dz"], grad_placeholders["db"]
 
     def RUN_CUDA_RWKV7g(q, w, k, v, a, b):
         B, T, HC = q.shape
@@ -172,7 +187,7 @@ class RWKV_Tmix_x070(nn.Module):
                 for i in range(shape[0]):
                     nn.init.orthogonal_(x[i], gain=gain * scale)
             else:
-                assert False
+                raise ValueError(f"Unexpected shape: {shape}")
             return x
 
         www = torch.zeros(C)
