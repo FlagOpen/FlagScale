@@ -603,7 +603,7 @@ def save_checkpoint(iteration, model, optimizer, opt_param_scheduler, num_floati
                         content = f.read().strip()
                         if content == str(iteration):
                             break
-                print_rank_0(f'WandB finalization waiting for the tracker file {tracker_file} to update...')
+                print(f'WandB finalization waiting for the tracker file {tracker_file} to update...')
                 import time as pytime
                 pytime.sleep(5)
             ######### FlagScale End #########
