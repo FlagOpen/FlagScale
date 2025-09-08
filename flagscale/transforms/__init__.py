@@ -34,7 +34,9 @@ def create_transforms_from_config(cfg: DictConfig) -> List[Transform]:
         try:
             inst = cls(**kwargs)
         except TypeError as e:
-            raise TypeError(f"Failed to instantiate transform '{name}' with kwargs {kwargs}: {e}")
+            raise TypeError(
+                f"Failed to instantiate transform '{name}' with kwargs {kwargs}: {e}"
+            ) from e
         instances.append(inst)
 
     return instances

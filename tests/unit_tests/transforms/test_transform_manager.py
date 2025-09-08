@@ -32,6 +32,9 @@ class TestTransform1(Transform):
     def spec(self):
         return TransformSpec(name="TestTransform1", phase="pre_compile", priority=10)
 
+    def apply(self, model: nn.Module) -> bool:
+        return True
+
 
 class TestTransform2(Transform):
     """To test the `requires` constraint and `supports` constraint"""
@@ -47,6 +50,9 @@ class TestTransform2(Transform):
         else:
             return True
 
+    def apply(self, model: nn.Module) -> bool:
+        return True
+
 
 class TestTransform3(Transform):
     """To test the `compile` phase and `preflight` constraint"""
@@ -55,6 +61,9 @@ class TestTransform3(Transform):
         return TransformSpec(name="TestTransform3", phase="compile", priority=0)
 
     def preflight(self) -> bool:
+        return True
+
+    def apply(self, model: nn.Module) -> bool:
         return True
 
 
@@ -66,6 +75,9 @@ class TestTransform4(Transform):
             name="TestTransform4", phase="post_compile", priority=0, forbids=["TestTransform2"]
         )
 
+    def apply(self, model: nn.Module) -> bool:
+        return True
+
 
 class TestTransform5(Transform):
     """To test the `post_compile` phase and `after` constraint"""
@@ -74,6 +86,9 @@ class TestTransform5(Transform):
         return TransformSpec(
             name="TestTransform5", phase="post_compile", priority=0, after=["TestTransform4"]
         )
+
+    def apply(self, model: nn.Module) -> bool:
+        return True
 
 
 class TestTransform6(Transform):
@@ -88,6 +103,9 @@ class TestTransform6(Transform):
             after=["TestTransform4"],
         )
 
+    def apply(self, model: nn.Module) -> bool:
+        return True
+
 
 class TestTransform7(Transform):
     """To test the `post_compile` phase and `before` constraint and `priority` constraint"""
@@ -96,6 +114,9 @@ class TestTransform7(Transform):
         return TransformSpec(
             name="TestTransform7", phase="post_compile", priority=100, before=["TestTransform6"]
         )
+
+    def apply(self, model: nn.Module) -> bool:
+        return True
 
 
 class TestTransform8(Transform):
@@ -106,6 +127,9 @@ class TestTransform8(Transform):
             name="TestTransform8", phase="adolescence", priority=0, after=["TestTransform7"]
         )
 
+    def apply(self, model: nn.Module) -> bool:
+        return True
+
 
 class TestTransform9(Transform):
     """To test the `preflight` constraint"""
@@ -115,6 +139,9 @@ class TestTransform9(Transform):
 
     def preflight(self) -> bool:
         return False
+
+    def apply(self, model: nn.Module) -> bool:
+        return True
 
 
 class TransformManagerTests(unittest.TestCase):

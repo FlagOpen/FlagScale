@@ -21,10 +21,9 @@ class LogIOHook(ModelHook):
         """
 
         super().__init__()
-        logger_func = getattr(logger, log_level)
-        if logger_func is None:
+        if not hasattr(logger, log_level) or not callable(getattr(logger, log_level)):
             raise ValueError(f"Invalid log level: {log_level}")
-        self._logger_func = logger_func
+        self._logger_func = getattr(logger, log_level)
 
     def pre_forward(self, module: nn.Module, *args, **kwargs) -> Tuple[Tuple[Any], Dict[str, Any]]:
         def shape_of(x: torch.Tensor) -> str:

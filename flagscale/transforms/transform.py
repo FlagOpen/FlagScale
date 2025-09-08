@@ -68,6 +68,7 @@ class Transform(ABC):
         """
         return True
 
+    @abstractmethod
     def apply(self, model: BaseAdapter | nn.Module) -> bool:
         """
         Apply the transform to the model.
@@ -78,4 +79,4 @@ class Transform(ABC):
         Returns:
             True if the transform is applied successfully, False otherwise.
         """
-        return False
+        ...

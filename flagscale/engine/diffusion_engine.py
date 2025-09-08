@@ -110,6 +110,6 @@ class DiffusionEngine:
 
         os.makedirs(self.results_path, exist_ok=True)
         image = outputs.images[0]
-        image.save(self.results_path + "/result.png")
+        image.save(os.path.join(self.results_path, "result.png"))
 
         return True

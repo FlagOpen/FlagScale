@@ -210,13 +210,15 @@ class TransformManager:
 
         plan = self.plan(model)
         if not dry_run:
-            # TODO(yupu): Check if the transform is applied successfully
             for t in plan.pre:
-                t.apply(model)
+                if not t.apply(model):
+                    logger.warning(f"Transform '{t.spec().name}' failed to apply.")
             for t in plan.compile:
-                t.apply(model)
+                if not t.apply(model):
+                    logger.warning(f"Transform '{t.spec().name}' failed to apply.")
             for t in plan.post:
-                t.apply(model)
+                if not t.apply(model):
+                    logger.warning(f"Transform '{t.spec().name}' failed to apply.")
         else:
             info = ""
             info += "Pre-compile transforms:\n"
