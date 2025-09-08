@@ -63,8 +63,28 @@ jobs:
             export SCCACHE_DIR=/root/.cache/sccache
             sccache --start-server
             sccache --show-stats
+            START_TIME=$(date +%s.%N)
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
+            END_TIME=$(date +%s.%N)
+
+            # computation time
+            ELAPSED_SECONDS=$(echo "$END_TIME - $START_TIME" | bc)
+            ELAPSED_MINUTES=$(echo "$ELAPSED_SECONDS / 60" | bc)
+            REMAINING_SECONDS=$(echo "$ELAPSED_SECONDS - $ELAPSED_MINUTES * 60" | bc)
+
+            # Format time display
+            FORMATTED_START=$(date -d "@$START_TIME" "+%Y-%m-%d %H:%M:%S")
+            FORMATTED_END=$(date -d "@$END_TIME" "+%Y-%m-%d %H:%M:%S")
+
             sccache --show-stats
+
+            echo "================================"
+            echo "Build time statistics"
+            echo "================================"
+            echo "Start time: ${FORMATTED_START}"
+            echo "End time: ${FORMATTED_END}"
+            echo "Total time taken: ${ELAPSED_MINUTES} minutes ${REMAINING_SECONDS} seconds"
+            echo "================================"
             conda deactivate
           elif [ "${{ inputs.type }}" = "rl" ]; then
             python tools/patch/unpatch.py --backend verl
