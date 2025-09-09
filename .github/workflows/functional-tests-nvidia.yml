@@ -64,13 +64,14 @@ jobs:
             sccache --start-server
             sccache --show-stats
             START_TIME=$(date +%s.%N)
+
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
             END_TIME=$(date +%s.%N)
 
             # computation time
-            ELAPSED_SECONDS=$(echo "$END_TIME - $START_TIME" | bc)
-            ELAPSED_MINUTES=$(echo "$ELAPSED_SECONDS / 60" | bc)
-            REMAINING_SECONDS=$(echo "$ELAPSED_SECONDS - $ELAPSED_MINUTES * 60" | bc)
+            ELAPSED_SECONDS=$(awk "BEGIN {print $END_TIME - $START_TIME}")
+            ELAPSED_MINUTES=$(awk "BEGIN {print int($ELAPSED_SECONDS / 60)}")
+            REMAINING_SECONDS=$(awk "BEGIN {print $ELAPSED_SECONDS - $ELAPSED_MINUTES * 60}")
 
             # Format time display
             FORMATTED_START=$(date -d "@$START_TIME" "+%Y-%m-%d %H:%M:%S")
