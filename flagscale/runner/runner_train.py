@@ -319,6 +319,9 @@ class SSHTrainRunner(RunnerBase):
     def random_one_no_use_port(self, port):
         if port is None:
             return
+        if not str(port).isdigit():
+            logger.error(f"Invalid port '{port}' provided. Port must be a number.")
+            sys.exit(1)
         try:
             result = subprocess.check_output(
                 f"netstat -tulpn | grep :{port}", shell=True, text=True
@@ -330,7 +333,11 @@ class SSHTrainRunner(RunnerBase):
                     pid_program = parts[6]
                     pid = pid_program.split("/")[0]
                     try:
-                        os.kill(int(pid), signal.SIGKILL)
+                        pid_int = int(pid)
+                        # Try to terminate gracefully first
+                        os.kill(pid_int, signal.SIGTERM)
+                        time.sleep(0.5) # Wait for graceful shutdown
+                        os.kill(int(pid_int), signal.SIGKILL)
                     except PermissionError:
                         logger.error(f"No permission to kill process {pid} on port {port}")
                         sys.exit()
@@ -338,12 +345,13 @@ class SSHTrainRunner(RunnerBase):
                         logger.error(f"Unexpected error killing {pid}: {e}")
                         sys.exit()
             while True:
-                random_port = random.randint(1024, 65535)
+                random_port = get_free_port()
                 try:
                     subprocess.check_output(
                         f"netstat -tulpn | grep :{random_port}", shell=True, text=True
                     )
                 except subprocess.CalledProcessError:
+                    logger.info(f"Master port was in use. Assigned new random port: {new_port}")
                     self.config.experiment.runner.master_port = random_port
                     return
         except subprocess.CalledProcessError:
