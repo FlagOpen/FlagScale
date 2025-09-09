@@ -327,17 +327,17 @@ class Recorder:
         if s == "":
             return None
         ls = s.lower()
-        if ls in ("true", "false"):
-            return ls == "true"
+        if ls == "true":
+            return True
+        if ls == "false":
+            return False
         try:
-            if s.isdigit():
-                return int(s)
-        except Exception:
+            return int(s)
+        except ValueError:
             pass
         try:
-            if all(ch in "0123456789+-.eE" for ch in s) and any(ch.isdigit() for ch in s):
-                return float(s)
-        except Exception:
+            return float(s)
+        except ValueError:
             pass
         return s
 

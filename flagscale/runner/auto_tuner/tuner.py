@@ -99,11 +99,7 @@ class AutoTuner:
         self.history = self.recorder.read()
 
         # resume searcher idx
-        self.searcher.algo.idx = (
-            int(self.find_search_num_value(log_path)) - 1
-            if int(self.find_search_num_value(log_path)) - 1 > 0
-            else 0
-        )
+        self.searcher.algo.idx = max(0, int(self.find_search_num_value(log_path)) - 1)
 
         # Each task has its own runner
         self.runner = None
@@ -133,8 +129,7 @@ class AutoTuner:
         if self.searcher.algo.idx >= 0:
             last_task_path = os.path.join(dir_path, "task_" + str(self.idx + 1))
             self.clear_log(last_task_path)
-            self.idx = self.idx
-            self.searcher.algo.idx = self.searcher.algo.idx - 1
+            # self.searcher.algo.idx = self.searcher.algo.idx - 1
 
         # Checkout search mode on the platform
         self.has_checkout = False
