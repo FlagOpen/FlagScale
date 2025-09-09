@@ -753,8 +753,8 @@ class SSHTrainRunner(RunnerBase):
                 
                 try:
                     os.remove(log_file)
-                except:
-                    pass
+                except OSError as e:
+                    logger.warning(f"Could not remove temporary log file {log_file}: {e}")
             
             if process_completed:
                 reset_log_collection(host, node_rank)
