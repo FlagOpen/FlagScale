@@ -1,0 +1,25 @@
+- serve_id: A
+  module: examples/qwen2_5/models.py
+  name: Model1Logic
+  resources:
+    num_replicas: 2
+    num_gpus: 1
+
+- serve_id: B
+  module: examples/qwen2_5/models.py
+  depends:
+    - A
+  name: Model2Logic
+  resources:
+    num_replicas: 1
+    num_gpus: 1
+
+- serve_id: C
+  module: examples/qwen2_5/models.py
+  depends:
+    - A
+    - B
+  name: Model3Logic
+  resources:
+    num_replicas: 1
+    num_gpus: 1

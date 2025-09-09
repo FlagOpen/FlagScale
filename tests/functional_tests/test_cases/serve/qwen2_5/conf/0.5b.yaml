@@ -11,11 +11,12 @@ experiment:
   runner:
     hostfile: null
     deploy:
-      port: 6701
+      port: 6703
       use_fs_serve: false
   envs:
     CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
+    no_proxy: "127.0.0.1,localhost"
   cmds:
     before_start: ulimit -n 65535 && source /root/miniconda3/bin/activate flagscale-inference
 
