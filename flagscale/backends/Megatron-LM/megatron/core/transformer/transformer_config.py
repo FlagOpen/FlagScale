@@ -649,6 +649,24 @@ class TransformerConfig(ModelParallelConfig):
     quant_recipe: Optional[RecipeConfig] = None
     """Configuration of any quantization to be applied to the model"""
 
+    ####################
+    # LoRA
+    ####################
+    use_lora: bool = False
+    """Use lora for finetuning"""
+    lora_rank: Optional[int] = None
+    """Lora rank."""
+    lora_scale_alpha: Optional[int] = None
+    """Lora scale alpha."""
+    lora_dropout_prob: Optional[float] = None
+    """Lora dropout prob"""
+    lora_dropout_pos: Optional[str] = None
+    """Lora dropout pos"""
+    lora_a_init_method: Optional[str] = None
+    """Lora a init method"""
+    lora_b_init_method: Optional[str] = None
+    """Lora b init method"""
+
     def __post_init__(self):
         """Python dataclass method that is used to modify attributes after initialization.
         See https://docs.python.org/3/library/dataclasses.html#post-init-processing for more

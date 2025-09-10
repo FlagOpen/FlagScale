@@ -153,6 +153,8 @@ def model_provider(
                         args.moe_use_legacy_grouped_gemm,
                         qk_l2_norm=args.qk_l2_norm,
                         use_kitchen=config.use_kitchen,
+                        use_lora=args.use_lora,
+                        lora_target_modules=args.lora_target_modules,
                     )
                 else:
                     transformer_layer_spec = get_gpt_layer_local_spec(

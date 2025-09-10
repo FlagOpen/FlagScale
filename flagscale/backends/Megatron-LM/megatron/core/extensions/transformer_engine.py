@@ -5,6 +5,7 @@ import io
 import os
 import pickle
 import warnings
+import math
 from typing import Any, Callable, List, Optional, Tuple, Type
 
 import torch
@@ -73,6 +74,22 @@ def _get_extra_te_kwargs(config: TransformerConfig):
 def condition_init_method(config, init_method):
     """Condition TE init_method on config.perform_initialization."""
     return init_method if config.perform_initialization else (lambda w: None)
+
+
+def lora_a_init(config, default_method):
+    if config.lora_a_init_method == 'kaiming':
+        return lambda w: torch.nn.init.kaiming_uniform_(w, a=math.sqrt(5))
+    elif config.lora_a_init_method == 'xavier':
+        return lambda w: torch.nn.init.uniform_(w)
+    else:
+        return default_method
+
+
+def lora_b_init(config, default_method):
+    if config.lora_b_init_method == "zero":
+        return lambda w: torch.nn.init.zeros_(w)
+    else:
+        return default_method
 
 
 class TENorm:
@@ -607,6 +624,125 @@ class TEColumnParallelLinear(TELinear):
         if self.config.delay_wgrad_compute:
             super().backward_dw()
 
+class TELoRALinear:
+
+    def forward(self, x):
+        # main branch
+        if self.te_return_bias:
+            res = super().forward(x)
+        else:
+            res, _ = super().forward(x)
+
+        # lora branch
+        if self.dropout_pos == 'pre':
+            x = self.dropout(x)
+        
+        if self.te_return_bias:
+            lora_res = self.lora_b(self.lora_a(x))
+        else:
+            tmp, _ = self.lora_a(x)
+            lora_res, _ = self.lora_b(tmp)
+        lora_res = lora_res * self.scale
+        
+        if self.dropout_pos == 'post':
+            lora_res = self.dropout(lora_res)
+
+        res = res + lora_res
+        if self.te_return_bias:
+            return res
+        return res, None
+    
+    def __repr__(self):
+        return (
+            f"{type(self).__name__}(in_features={self.in_features}, "
+            f"out_features={self.out_features}, bias={self.use_bias}, TP={self.tp_size})"
+            f"{type(self).__name__}.lora_a(in_features={self.lora_a.in_features}, "
+            f"out_features={self.lora_a.out_features}, bias={self.lora_a.use_bias}, TP={self.lora_a.tp_size})"
+            f"{type(self).__name__}.lora_b(in_features={self.lora_b.in_features}, "
+            f"out_features={self.lora_b.out_features}, bias={self.lora_b.use_bias}, TP={self.lora_b.tp_size})"
+        )
+
+
+class TELoRAColumnParallelLinear(TELoRALinear, TEColumnParallelLinear):
+    """
+    Wrapper for LoRA layer.
+    """
+
+    def __init__(
+        self,
+        input_size: int,
+        output_size: int,
+        *,
+        config: ModelParallelConfig,
+        init_method: Callable,
+        gather_output: bool,
+        bias: bool,
+        skip_bias_add: bool,
+        is_expert: bool,
+        skip_weight_param_allocation: bool = False,
+        tp_comm_buffer_name: Optional[str] = None,
+        tp_group: Optional[torch.distributed.ProcessGroup] = None,
+    ):
+
+        super().__init__(
+            input_size=input_size,
+            output_size=output_size,
+            config=config,
+            init_method=init_method,
+            gather_output=gather_output,
+            bias=bias,
+            skip_bias_add=skip_bias_add,
+            is_expert=is_expert,
+            skip_weight_param_allocation=skip_weight_param_allocation,
+            tp_comm_buffer_name=tp_comm_buffer_name,
+            tp_group=tp_group,
+        )
+        
+        # freeze main model grads
+        self.weight.requires_grad = False
+        if self.bias is not None:
+            self.bias.requires_grad = False
+
+        self.lora_a = TELinear(
+            input_size=input_size,
+            output_size=config.lora_rank,
+            parallel_mode="duplicated",
+            config=config,
+            init_method=lora_a_init(config, init_method),
+            bias=bias,
+            skip_bias_add=skip_bias_add,
+            skip_weight_param_allocation=False,
+            tp_comm_buffer_name=tp_comm_buffer_name,
+            is_expert=is_expert,
+            symmetric_ar_type=config.symmetric_ar_type,
+            tp_group=None,
+        )
+
+        self.lora_b = TEColumnParallelLinear(
+            input_size=config.lora_rank,
+            output_size=output_size,
+            config=config,
+            init_method=lora_b_init(config, init_method),
+            gather_output=gather_output,
+            bias=bias,
+            skip_bias_add=skip_bias_add,
+            is_expert=is_expert,
+            skip_weight_param_allocation=skip_weight_param_allocation,
+            tp_comm_buffer_name=tp_comm_buffer_name,
+            tp_group=tp_group,
+        )
+
+        self.dropout = torch.nn.Dropout(p=config.lora_dropout_prob)
+        self.scale = config.lora_scale_alpha / config.lora_rank
+        self.dropout_pos = config.lora_dropout_pos
+
+    def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
+        """Sharding along axis 0, bias sharded"""
+        state_dict = self.state_dict(prefix='', keep_vars=True)
+        return make_sharded_tensors_for_checkpoint(
+            state_dict, prefix, {'weight': 0, 'bias': 0, 'lora_b.weight': 0, 'lora_b.bias': 0}, sharded_offsets
+        )
+
 
 class TERowParallelLinear(TELinear):
     """Wrapper for the Transformer-Engine's `Linear` layer
@@ -700,6 +836,86 @@ class TERowParallelLinear(TELinear):
         """Compute weight gradients during the backward pass if delay_wgrad_compute is enabled."""
         if self.config.delay_wgrad_compute:
             super().backward_dw()
+
+
+class TELoRARowParallelLinear(TELoRALinear, TERowParallelLinear):
+    """
+    Wrapper for the LoRA layer.
+    """
+
+    def __init__(
+        self,
+        input_size: int,
+        output_size: int,
+        *,
+        config: ModelParallelConfig,
+        init_method: Callable,
+        bias: bool,
+        input_is_parallel: bool,
+        skip_bias_add: bool,
+        is_expert: bool,
+        tp_comm_buffer_name: Optional[str] = None,
+        tp_group: Optional[torch.distributed.ProcessGroup] = None,
+    ):
+
+        super().__init__(
+            input_size=input_size,
+            output_size=output_size,
+            config=config,
+            init_method=init_method,
+            bias=bias,
+            input_is_parallel=input_is_parallel,
+            skip_bias_add=skip_bias_add,
+            is_expert=is_expert,
+            tp_comm_buffer_name=tp_comm_buffer_name,
+            tp_group=tp_group,
+        )
+
+        # freeze main model grads
+        self.weight.requires_grad = False
+        if self.bias is not None:
+            self.bias.requires_grad = False
+        
+        self.lora_a = TERowParallelLinear(
+            input_size=input_size,
+            output_size=config.lora_rank,
+            config=config,
+            init_method=lora_a_init(config, init_method),
+            bias=bias,
+            input_is_parallel=input_is_parallel,
+            skip_bias_add=skip_bias_add,
+            is_expert=is_expert,
+            tp_comm_buffer_name=tp_comm_buffer_name,
+            tp_group=tp_group,
+        )
+
+        self.lora_b = TELinear(
+            input_size=config.lora_rank,
+            output_size=output_size,
+            parallel_mode="duplicated",
+            config=config,
+            init_method=lora_b_init(config, init_method),
+            bias=bias,
+            skip_bias_add=skip_bias_add,
+            skip_weight_param_allocation=False,
+            tp_comm_buffer_name=tp_comm_buffer_name,
+            is_expert=is_expert,
+            symmetric_ar_type=config.symmetric_ar_type,
+            tp_group=None,
+        )
+
+        self.dropout = torch.nn.Dropout(p=config.lora_dropout_prob)
+        self.scale = config.lora_scale_alpha / config.lora_rank
+        self.dropout_pos = config.lora_dropout_pos
+
+        self.tp_group = get_tensor_model_parallel_group_if_none(tp_group)
+
+    def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
+        """Sharding along axis 1, bias not sharded"""
+        state_dict = self.state_dict(prefix='', keep_vars=True)
+        return make_sharded_tensors_for_checkpoint(
+            state_dict, prefix, {'weight': 1, 'lora_a.weight': 1}, sharded_offsets
+        )
 
 
 class TEDotProductAttention(te.pytorch.DotProductAttention):

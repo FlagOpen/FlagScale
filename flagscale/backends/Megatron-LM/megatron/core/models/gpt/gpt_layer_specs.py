@@ -1,7 +1,7 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 
 import warnings
-from typing import Optional, Union
+from typing import Optional, Union, List, Dict
 
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core.models.backends import BackendSpecProvider, LocalSpecProvider
@@ -75,6 +75,8 @@ def get_gpt_layer_with_transformer_engine_spec(
     qk_l2_norm: Optional[bool] = False,
     use_te_op_fuser: Optional[bool] = False,
     use_kitchen: bool = False,
+    use_lora: Optional[bool] = False,
+    lora_target_modules: Optional[List[str]] = None,
 ) -> ModuleSpec:
     """Use this spec to use lower-level Transformer Engine modules (required for fp8 training).
 
@@ -114,6 +116,8 @@ def get_gpt_layer_with_transformer_engine_spec(
         moe_grouped_gemm=moe_grouped_gemm,
         moe_use_legacy_grouped_gemm=moe_use_legacy_grouped_gemm,
         use_te_op_fuser=use_te_op_fuser,
+        use_lora=use_lora,
+        lora_target_modules=lora_target_modules,
     )
 
     if multi_latent_attention:
@@ -155,6 +159,10 @@ def get_gpt_layer_with_transformer_engine_spec(
         )
     else:
         qk_norm = backend.layer_norm(for_qk=True)
+
+        linear_qkv_module = backend.lora_column_parallel_linear() if use_lora and 'linear_qkv' in lora_target_modules else backend.column_parallel_layer_norm_linear()
+        linear_proj_module = backend.lora_row_parallel_linear() if use_lora and 'linear_proj' in lora_target_modules else backend.row_parallel_linear()
+            
         return ModuleSpec(
             module=TransformerLayer,
             submodules=TransformerLayerSubmodules(
@@ -162,9 +170,9 @@ def get_gpt_layer_with_transformer_engine_spec(
                     module=SelfAttention,
                     params={"attn_mask_type": AttnMaskType.causal},
                     submodules=SelfAttentionSubmodules(
-                        linear_qkv=backend.column_parallel_layer_norm_linear(),
+                        linear_qkv=linear_qkv_module,
                         core_attention=backend.core_attention(),
-                        linear_proj=backend.row_parallel_linear(),
+                        linear_proj=linear_proj_module,
                         q_layernorm=(
                             L2Norm if qk_l2_norm else (qk_norm if qk_layernorm else IdentityOp)
                         ),
@@ -361,20 +369,22 @@ def get_mlp_module_spec_for_backend(
     moe_grouped_gemm: Optional[bool] = False,
     moe_use_legacy_grouped_gemm: Optional[bool] = False,
     use_te_op_fuser: Optional[bool] = False,
+    use_lora: Optional[bool] = False,
+    lora_target_modules: Optional[List[str]] = None,
 ) -> ModuleSpec:
     """Helper function to get module spec for MLP/MoE"""
 
-    linear_fc2 = backend.row_parallel_linear()
+    linear_fc2 = backend.lora_row_parallel_linear() if use_lora and 'linear_fc2' in lora_target_modules else backend.row_parallel_linear()
 
     if num_experts is None:
         # Dense MLP w/ or w/o TE modules.
         if use_te_op_fuser:
             return ModuleSpec(module=TEFusedMLP)
         elif backend.fuse_layernorm_and_linear():
-            linear_fc1 = backend.column_parallel_layer_norm_linear()
+            linear_fc1 = backend.lora_column_parallel_linear() if use_lora and 'linear_fc1' in lora_target_modules else backend.column_parallel_layer_norm_linear()
             assert linear_fc1 is not None
         else:
-            linear_fc1 = backend.column_parallel_linear()
+            linear_fc1 = backend.lora_column_parallel_linear() if use_lora and 'linear_fc1' in lora_target_modules else backend.column_parallel_linear()
         return ModuleSpec(
             module=MLP, submodules=MLPSubmodules(linear_fc1=linear_fc1, linear_fc2=linear_fc2)
         )

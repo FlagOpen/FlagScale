@@ -1168,6 +1168,17 @@ def validate_args(args, defaults={}):
             "DualPipeV is not supported with multi-token-predictor currently"
         )
 
+    if args.use_lora:
+        assert args.transformer_impl == 'transformer_engine', \
+            'LoRA is only supported with transformer_engine implementation'
+        assert not args.multi_latent_attention, "Multi latent attention with lora layers is not supported"
+        assert args.recompute_granularity is None and args.recompute_method is None and args.recompute_modules is None, (
+            " When LoRA is employed in conjunction with the Recompute strategy, the computational graph may be abnormally truncated. "
+            " To enable their simultaneous use, the Recompute mechanism in megatron.core.tensor_parallel.random.py should be revised to adopt the latest torch.utils.checkpoint implementation with the argument use_reentrant=False."
+        )
+        assert args.num_experts is None, "LoRA is not supported with MoE"
+    
+
     # Print arguments.
     _print_args("arguments", args)
 
@@ -1559,6 +1570,29 @@ def _add_network_size_args(parser):
                        'We compute the average of the MTP losses across all depths, '
                        'and multiply it the scaling factor to obtain the overall MTP loss, '
                        'which serves as an additional training objective.')
+    group.add_argument('--use-lora', action='store_true',
+                       help='Use lora for finetuning.')
+    group.add_argument('--lora-rank', type=int, default=8)
+    group.add_argument('--lora-scale-alpha', type=int, default=16)
+    group.add_argument('--lora-dropout-prob', type=float, default=0.0,
+                       help='Dropout prob of lora linear')
+    group.add_argument('--lora-dropout-pos', type=str, default='pre',
+                       choices=['pre', 'post'],
+                       help='Dropout position of lora linear')
+    group.add_argument(
+        '--lora-target-modules',
+        nargs='*',
+        choices=['linear_qkv', 'linear_proj', 'linear_fc1', 'linear_fc2'],
+        default=['linear_qkv', 'linear_proj', 'linear_fc1', 'linear_fc2'],
+        help='LoRA target modules list. Valid choices: linear_qkv, linear_proj, '
+            'linear_fc1, linear_fc2, output_layer. Default selects all five.'
+    )
+    group.add_argument('--lora-a-init-method', type=str, default=None,
+        choices=['kaiming', 'xavier'],
+        help='Init method of lora a')
+    group.add_argument('--lora-b-init-method', type=str, default=None,
+        choices=['zero'],
+        help='Init method of lora b')
     return parser
 
 
