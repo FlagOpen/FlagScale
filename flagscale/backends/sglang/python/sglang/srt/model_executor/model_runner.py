@@ -149,7 +149,7 @@ if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
     try:
         print("Try to using FLAGGEMS...")
         import flag_gems
-        flag_gems.enable(record=True, once=True, unused=["exponential_"], path="/tmp/gems_oplist.log.txt")
+        flag_gems.enable(record=True, once=True, unused=["exponential_"], path=os.getenv("FLAGGEMS_LOG_PATH", "/tmp/gems_oplist.log.txt"))
         logger.info("Successfully enabled flag_gems as default ops implementation.")
     except ImportError as e:
         # Throw an exception directly if failure occurs
