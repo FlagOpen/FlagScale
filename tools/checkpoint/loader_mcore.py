@@ -256,6 +256,7 @@ def _load_checkpoint(queue, args):
     md.add_bias_linear = margs.add_bias_linear
     md.add_qkv_bias = margs.add_qkv_bias
     md.norm_has_bias = margs.norm_has_bias
+    md.qk_layernorm = margs.qk_layernorm
     md.swiglu = margs.swiglu
     md.previous_num_experts = margs.num_experts
     md.previous_tensor_parallel_size = margs.tensor_model_parallel_size
