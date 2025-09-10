@@ -120,7 +120,6 @@ class Attention(MegatronModule, ABC):
         # so these two will be the same
         self.query_projection_size = self.config.kv_channels * self.config.num_attention_heads
         self.kv_projection_size = self.config.kv_channels * self.config.num_query_groups
-        print(f"kv projection size = {self.kv_projection_size}")
 
         if model_comm_pgs is None:
             model_comm_pgs = ModelCommProcessGroups.use_mpu_process_groups(
@@ -824,10 +823,6 @@ class SelfAttention(Attention):
             tp_comm_buffer_name='qkv',
             tp_group=self.model_comm_pgs.tp,
         )
-
-        print(f"qkv input size = {self.config.hidden_size}")
-        print(f"qkv output size = {self.query_projection_size}")
-        print(f"qkv output size = {self.kv_projection_size}")
 
         if submodules.q_layernorm is not None:
             if not self.config.qk_layernorm_hidden_dim:
