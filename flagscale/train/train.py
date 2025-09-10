@@ -11,6 +11,8 @@ import math
 import os
 import sys
 from typing import List, Optional
+from collections import namedtuple
+from functools import partial
 
 import torch.distributed
 from megatron.training.log_handler import CustomHandler
@@ -1242,6 +1244,30 @@ def update_train_iters(args):
     print_rank_0(f'setting training iterations to {args.train_iters}')
 
 
+def load_state_dict_hook_ignore_param_names(
+    param_names: List[str], module: torch.nn.Module, incompatible_keys: namedtuple
+):
+    """Hook to ignore missing keys during checkpoint loading.
+    """
+    for param_name in param_names:
+        if param_name in incompatible_keys.missing_keys:
+            logging.getLogger(__name__).warning(
+                f"{param_name} being removed from incompatible_keys.missing_keys in this model"
+            )
+            incompatible_keys.missing_keys.remove(param_name)
+
+def freeze_lora_layers(
+    module: torch.nn.Module,
+):
+    """Hook to freeze main model grads in lora linear layers
+    """
+    for name, param in module.named_parameters():
+        param.requires_grad = False
+    for name, param in module.named_parameters():
+        if "lora" in name:
+            param.requires_grad = True
+
+
 def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap_with_ddp=True):
     """Build the model."""
     args = get_args()
@@ -1330,6 +1356,22 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
     for model_module in model:
         for param in model_module.parameters():
             tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
+
+    # skip lora lora parameters and freeze main grads in lora layers
+    if args.use_lora:
+        for model_module in model:
+            lora_param_names = []
+            for name in model_module.state_dict().keys():
+                if "lora" in name:
+                    lora_param_names.append(name)
+            model_module.register_load_state_dict_post_hook(
+                partial(
+                    load_state_dict_hook_ignore_param_names,
+                    lora_param_names,
+                )
+            )
+
+            freeze_lora_layers(model_module)
 
     # Print number of parameters.
     num_parameters = sum(
@@ -1621,6 +1663,14 @@ def setup_model_and_optimizer(
     else:
         args.iteration = 0
         args.num_floating_point_operations_so_far = 0
+
+    if args.use_lora:
+        if isinstance(unwrapped_model, list):
+            for model_module in unwrapped_model:
+                freeze_lora_layers(model_module)
+        else:
+            freeze_lora_layers(unwrapped_model)
+
 
     # get model without FP16 and/or DDP wrappers
     if (
