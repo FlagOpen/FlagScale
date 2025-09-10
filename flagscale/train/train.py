@@ -1671,7 +1671,6 @@ def setup_model_and_optimizer(
         else:
             freeze_lora_layers(unwrapped_model)
 
-
     # get model without FP16 and/or DDP wrappers
     if (
         args.iteration == 0
