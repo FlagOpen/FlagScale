@@ -27,21 +27,6 @@ system:
     ckpt_format: torch
     save_interval: 1193 #2385
 
-  # hetero:
-  #   enable_hetero: True
-  #   hetero_use_cpu_communication: False
-  #   use_partial_reduce_for_shared_embedding: True
-  #   # mesh format [tp1,cp1,ep1,dp1,pp1,(tp2,cp2...)]
-
-  #   hetero_pipeline_layer_split: [26,10]
-  #   #hetero_pipeline_layer_split: [18,18]
-  #   #hetero_process_meshes: [1, 1, 1, 32, 1, 1,1,1,32,1]
-  #   hetero_process_meshes: [1, 1, 1, 32, 1, 1,1,1,64,1]
-  #   #hetero_device_types: ["B150","B150"]
-  #   hetero_device_types: ["A800","B150"]
-
-  #   standalone_embedding_stage: False
-  #   hetero_current_device_type: "A800"
 model:
   transformer_impl: transformer_engine
   num_layers: 36

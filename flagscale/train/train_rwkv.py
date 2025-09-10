@@ -15,7 +15,7 @@ from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegat
 from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
 from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
 from megatron.core.rerun_state_machine import get_rerun_state_machine
-from flagscale.train.models.rwkv.rwkv_model import RWKVModel
+from megatron.core.models.rwkv import RWKVModel
 from megatron.training import pretrain
 from megatron.core.utils import StragglerDetector
 from megatron.core.transformer import TransformerConfig
@@ -63,16 +63,13 @@ def model_provider(pre_process=True, post_process=True, vp_stage=None) -> RWKVMo
         parallel_output=True,
     )
 
-def _is_middle_pipeline_stage(parallel_state):
-    """Return True if current rank is neither first nor last pipeline stage."""
-    first = parallel_state.is_pipeline_first_stage(ignore_virtual=True)
-    last = parallel_state.is_pipeline_last_stage(ignore_virtual=True)
-    return (not first) and (not last)
-
 def get_batch(data_iterator):
     """Generate a batch."""
 
-    if _is_middle_pipeline_stage(parallel_state):
+    # TODO: this is pretty hacky, find a better way
+    if (not parallel_state.is_pipeline_first_stage(ignore_virtual=True)) and (
+        not parallel_state.is_pipeline_last_stage(ignore_virtual=True)
+    ):
         return None, None, None, None, None
 
     # get batches based on the TP rank you are on
@@ -102,11 +99,15 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor, model: Optio
     if has_nvidia_modelopt and modelopt_args_enabled(args):  # [ModelOpt]
         return loss_func_modelopt(loss_mask, output_tensor, model=model)
 
+    # 将output_tensor展成一维，便于后续元素乘法计算
     losses = output_tensor.view(-1).float()
+    # 同理将loss_mask展成一维
     loss_mask = loss_mask.view(-1).float()
+    # 计算总loss（考虑到DP，不同rank上token数量不一致，先计算sum最后再求mean）
     loss = torch.sum(losses * loss_mask)
 
     # Check individual rank losses are not NaN prior to DP all-reduce.
+    # 用于检测并在必要时触发重跑或报警的机制
     rerun_state_machine = get_rerun_state_machine()
     if args.check_for_nan_in_loss_and_grad:
         rerun_state_machine.validate_result(
@@ -137,6 +138,7 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor, model: Optio
             fatal=False,
         )
 
+    # 统计本 micro-batch 中有效（非 padding）token 的数量
     num_tokens = loss_mask.sum().clone().detach().to(torch.int)
     reporting_loss = torch.cat([loss.clone().detach().view(1), num_tokens.view(1)])
 
@@ -226,7 +228,7 @@ def core_gpt_dataset_config_from_args(args):
         split=args.split,
         multiple_validation_sets=args.multiple_validation_sets,
         full_validation=args.full_validation,
-        num_dataset_builder_threads=args.num_dataset_builder_threads,
+        num_dataset_builder_threads=1,
         path_to_cache=args.data_cache_path,
         mmap_bin_files=args.mmap_bin_files,
         tokenizer=tokenizer,
