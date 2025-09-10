@@ -336,7 +336,7 @@ class SSHTrainRunner(RunnerBase):
                         pid_int = int(pid)
                         # Try to terminate gracefully first
                         os.kill(pid_int, signal.SIGTERM)
-                        time.sleep(0.5) # Wait for graceful shutdown
+                        time.sleep(0.5)  # Wait for graceful shutdown
                         os.kill(int(pid_int), signal.SIGKILL)
                     except PermissionError:
                         logger.error(f"No permission to kill process {pid} on port {port}")
@@ -346,6 +346,7 @@ class SSHTrainRunner(RunnerBase):
                         sys.exit()
             while True:
                 random_port = get_free_port()
+
                 try:
                     subprocess.check_output(
                         f"netstat -tulpn | grep :{random_port}", shell=True, text=True
