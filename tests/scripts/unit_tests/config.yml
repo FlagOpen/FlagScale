@@ -126,6 +126,29 @@ megatron:
         - test_parallel_state.py::test_different_initialize_order_unconsistency
         - test_utils.py::test_nvtx_decorato
 
+vllm:
+  set_environment:
+    - source /root/miniconda3/etc/profile.d/conda.sh
+    - conda activate flagscale-inference
+    - python tools/patch/unpatch.py --backend vllm
+    - cd third_party/vllm
+    - export PYTHONPATH=../..:$PYTHONPATH
+    - export NVTE_FLASH_ATTN=0
+    - export NVTE_FUSED_ATTN=0
+    - ulimit -n 65535
+      #- pip install -e .
+      #- python setup.py build_ext --inplace -j16
+  root: tests
+  subset:
+    cuda:
+      depth: 1
+      ignore:
+        - skip_unit_test_modules
+    plugins:
+      depth: 2
+      ignore:
+        - skip_unit_test_modules
+
 flagscale:
   set_environment:
     - source /root/miniconda3/etc/profile.d/conda.sh

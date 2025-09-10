@@ -49,6 +49,22 @@ jobs:
       subset: ${{ matrix.subset }}
       image: ${{ needs.set-env.outputs.ci_image }}
 
+  # Vllm Unit Tests with Matrix
+  vllm-unit-tests:
+    needs:
+      - set-env
+    uses: ./.github/workflows/unit-tests-nvidia.yml
+    strategy:
+      matrix:
+        subset:
+          - cuda
+          - plugins
+    name: "vllm-${{ matrix.subset == './' && 'root' || matrix.subset }}"
+    with:
+      backend: vllm
+      subset: ${{ matrix.subset }}
+      image: ${{ needs.set-env.outputs.ci_image }}
+
   # Flagscale Unit Tests with Matrix
   flagscale-unit-tests:
     needs:
