@@ -308,10 +308,19 @@ def run_node(
     )
 
 
-def update_cmd_with_hetero_config(cmd, hetero_extra_config):
-    if len(hetero_extra_config) == 0:
+def update_cmd_with_hetero_config(cmd, hetero_extra_config=None):
+    """
+    Update the command string with additional configuration options for speicial device.
+    Parameters:
+        cmd (str): The original command string to be updated.
+        hetero_extra_config (dict): A dictionary containing configuration
+                                     options to be applied to the command.
+    Returns:
+        str: The updated command string after applying the configuration.
+    """
+    if hetero_extra_config is None or len(hetero_extra_config) == 0:
         return cmd
-    cmd_parts = cmd.split()
+    cmd_parts = shlex.split(cmd)
 
     for key, value in hetero_extra_config.items():
         option = f"--{key}"
@@ -332,7 +341,7 @@ def update_cmd_with_hetero_config(cmd, hetero_extra_config):
             # NOTE: disable adding new options
             # elif value.lower() != "false":
             #     cmd_parts.extend([option, value])
-    return " ".join(cmd_parts)
+    return shlex.join(cmd_parts)
 
 
 class SSHTrainRunner(RunnerBase):
@@ -369,7 +378,6 @@ class SSHTrainRunner(RunnerBase):
 
         hetero_extra_config = {}
         for k, v in cur_envs.items():
-            print(k, v)
             if k.startswith("HETERO_") or k.startswith("hetero_"):
                 k = k[7:].lower().replace("_", "-")
                 hetero_extra_config[f'{k}'] = f'{v}'
