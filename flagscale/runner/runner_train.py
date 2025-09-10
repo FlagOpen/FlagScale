@@ -350,8 +350,8 @@ class SSHTrainRunner(RunnerBase):
                     subprocess.check_output(
                         f"netstat -tulpn | grep :{random_port}", shell=True, text=True
                     )
-                except subprocess.CalledProcessError:
-                    logger.info(f"Master port was in use. Assigned new random port: {new_port}")
+                except subprocess.CaledProcessError:
+                    logger.info(f"Master port was in use. Assigned new random port: {random_port}")
                     self.config.experiment.runner.master_port = random_port
                     return
         except subprocess.CalledProcessError:
