@@ -1585,7 +1585,7 @@ def _add_network_size_args(parser):
         choices=['linear_qkv', 'linear_proj', 'linear_fc1', 'linear_fc2'],
         default=['linear_qkv', 'linear_proj', 'linear_fc1', 'linear_fc2'],
         help='LoRA target modules list. Valid choices: linear_qkv, linear_proj, '
-            'linear_fc1, linear_fc2, output_layer. Default selects all five.'
+            'linear_fc1, linear_fc2. Default selects all five.'
     )
     group.add_argument('--lora-a-init-method', type=str, default=None,
         choices=['kaiming', 'xavier'],
