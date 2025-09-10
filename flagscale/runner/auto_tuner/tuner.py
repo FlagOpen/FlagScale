@@ -129,7 +129,7 @@ class AutoTuner:
         if self.searcher.algo.idx >= 0:
             last_task_path = os.path.join(dir_path, "task_" + str(self.idx + 1))
             self.clear_log(last_task_path)
-            self.searcher.algo.idx = self.idx - 1 
+            self.searcher.algo.idx = self.idx - 1
 
         # Checkout search mode on the platform
         self.has_checkout = False
