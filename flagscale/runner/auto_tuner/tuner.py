@@ -127,8 +127,8 @@ class AutoTuner:
 
         # clear breakpoint task log
         if self.searcher.algo.idx >= 0:
-            last_task_path = os.path.join(dir_path, "task_" + str(self.idx + 1))
-            self.clear_log(last_task_path)
+            breakpoint_task_path = os.path.join(dir_path, "task_" + str(self.idx + 1))
+            self.clear_log(breakpoint_task_path)
             self.searcher.algo.idx = self.idx - 1
 
         # Checkout search mode on the platform
