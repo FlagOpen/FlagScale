@@ -63,7 +63,7 @@ def main():
 
     args = parser.parse_args()
 
-    SimulatedFaultLoop(
+    simulated_fault_loop(
         log_file=args.log_file,
         error_keys=args.errors,
         interval=args.interval,
