@@ -1,15 +1,13 @@
 import multiprocessing
 import os
 import shlex
-import threading
 import time
 
 from datetime import datetime
 
 from omegaconf import DictConfig, OmegaConf
 
-from flagscale.runner.elastic.diagnostic import generate_diagnostic_report
-from flagscale.runner.elastic.log_collector import collect_logs, reset_log_collection, cleanup_log_collection
+from flagscale.runner.elastic.monitor_service import MonitorService
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.utils import (
     add_decive_extra_config,
@@ -96,7 +94,6 @@ def _update_config_train(config: DictConfig):
     scripts_dir = os.path.join(log_dir, "scripts")
     pids_dir = os.path.join(log_dir, "pids")
     details_dir = os.path.join(log_dir, "details")
-    diagnostic_dir = os.path.join(log_dir, "diagnostic")
 
     config.checkpoint.save = ckpt_save_dir
     config.checkpoint.load = ckpt_load_dir
@@ -106,7 +103,6 @@ def _update_config_train(config: DictConfig):
     config.logging.details_dir = details_dir
     config.logging.tensorboard_dir = tensorboard_dir
     config.logging.wandb_save_dir = wandb_dir
-    config.logging.diagnostic_dir = diagnostic_dir
 
     OmegaConf.set_struct(config, False)
 
@@ -216,6 +212,89 @@ def _generate_run_script_train(config, host, node_rank, cmd, background=True, wi
         f.write(f"\n")
         f.write(f'cmd="{cmd}"\n')
         f.write(f"\n")
+
+        # FEAT: create monitor script.
+        monitor_script_path = os.path.join(
+            logging_config.scripts_dir, f"monitor_{node_rank}_{host}.py"
+        )
+        with open(monitor_script_path, "w") as monitor_f:
+            monitor_f.write(
+                f'''#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, "{root_dir}")
+
+from omegaconf import OmegaConf
+from flagscale.runner.elastic.monitor_service import MonitorService
+from flagscale.runner.runner_base import JobStatus
+import time
+import subprocess
+
+time.sleep(3)
+
+config = OmegaConf.create({{
+    "train": {{
+        "system": {{
+            "logging": {{
+                "log_dir": "{logging_config.log_dir}"
+            }}
+        }}
+    }},
+    "experiment": {{
+        "runner": {{
+            "no_shared_fs": {str(no_shared_fs)},
+            "ssh_port": 22
+        }}
+    }}
+}})
+
+class DummyRunner:
+    def __init__(self):
+        self.resources = None
+        self.config = config
+
+    def _query_status(self):
+        pid_file = "{host_pid_file}"
+        if os.path.exists(pid_file):
+            try:
+                with open(pid_file, "r") as f:
+                    pid = int(f.read().strip())
+                result = subprocess.run(["ps", "-p", str(pid)], capture_output=True)
+                if result.returncode == 0:
+                    return JobStatus.RUNNING
+                else:
+                    return JobStatus.COMPLETED_OR_IDLE
+            except:
+                return JobStatus.COMPLETED_OR_IDLE
+        else:
+            return JobStatus.COMPLETED_OR_IDLE
+
+runner = DummyRunner()
+monitor = MonitorService(config, runner, interval=5)
+monitor.start_monitoring(enable_log_collection=True, enable_diagnostic=True)
+
+print("Monitor service started for training process")
+
+try:
+    while True:
+        status = runner._query_status()
+        if status == JobStatus.COMPLETED_OR_IDLE:
+            print("Training completed, stopping monitor")
+            break
+        time.sleep(10)
+except KeyboardInterrupt:
+    print("Monitor stopped by user")
+finally:
+    monitor.stop()
+'''
+            )
+        os.chmod(monitor_script_path, 0o755)
+
+        f.write(f'# Start monitoring service in background\n')
+        f.write(f'python {monitor_script_path} > /tmp/monitor_output.log 2>&1 &\n')
+        f.write(f'echo "Monitor service started in background"\n')
+        f.write(f'\n')
+
         if with_test:
             f.write(f'bash -c "$cmd; sync" \n')
         else:
@@ -313,7 +392,6 @@ class SSHTrainRunner(RunnerBase):
         super().__init__(config)
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "train", f"Unsupported task type: {self.task_type}"
-        self._monitoring_active = False
         self._prepare()
 
     def _prepare(self):
@@ -378,18 +456,16 @@ class SSHTrainRunner(RunnerBase):
             run_ssh_command(host, f"bash {host_run_script_file}", ssh_port, dryrun)
         else:
             run_local_command(f"bash {host_run_script_file}", dryrun)
-        
-        # Start asynchronous monitoring
-        monitor_thread = threading.Thread(
-            target=self._monitor_and_collect_logs,
-            daemon=True  # Set to a daemon thread that terminates automatically when the main program exits
-        )
-        monitor_thread.start()
 
-        logger.info(f"Started log monitoring for training job on {host} (node {node_rank})")
-        logger.info("Training job started successfully. Monitoring is running in the background.")
-
-    def run(self, with_test=False, dryrun=False, monitor=False, interval=10):
+    def run(
+        self,
+        with_test=False,
+        dryrun=False,
+        monitor=False,
+        interval=10,
+        enable_log_collection=True,
+        enable_diagnostic=True,
+    ):
 
         num_visible_devices = None
         runner_config = self.config.experiment.runner
@@ -445,18 +521,18 @@ class SSHTrainRunner(RunnerBase):
             )
         # If need monitor, query status continually
         if monitor:
-            # sleep to wait task already started
-            time.sleep(interval)
-            try:
-                while True:
-                    status = self._query_status()
-                    logger.info(f"Job Status: {status.name}")
-                    if status == JobStatus.COMPLETED_OR_IDLE:
-                        break
-                    time.sleep(interval)
-                logger.info("Job Ended.")
-            except Exception as e:
-                logger.info(e)
+            logger.info("Starting monitoring service...")
+            monitor_service = MonitorService(self.config, self, interval)
+            monitor_service.start_monitoring(
+                enable_log_collection=enable_log_collection, enable_diagnostic=enable_diagnostic
+            )
+            logger.info("Monitoring service started in background")
+            logger.info("Training job will continue running, monitor logs will be saved")
+
+            # Return the monitor_service instance for external control.
+            return monitor_service
+
+        return None
 
     def _stop_each(self, host, node_rank):
         host_stop_script_file = _generate_stop_script_train(self.config, host, node_rank)
@@ -476,11 +552,6 @@ class SSHTrainRunner(RunnerBase):
             run_local_command(f"bash {host_stop_script_file}")
 
     def stop(self):
-        # Stop monitoring
-        self._monitoring_active = False
-        # Clean up the log collection state
-        cleanup_log_collection()
-
         if self.resources is None:
             self._stop_each("localhost", 0)
             return
@@ -653,9 +724,41 @@ class SSHTrainRunner(RunnerBase):
             status = False
         return status
 
+    def query_once(self):
+        """
+        Query job status once (non-blocking).
+        There are three kinds of status for a Job:
+            RUNNING: The job is running.
+            COMPLETED_OR_IDLE: The job is completed or idle.
+            TRANSITIONAL: The job is starting or stopping.
+
+        Returns:
+            JobStatus: Current job status
+        """
+        return self._query_status()
+
+    def query(self, interval=10, enable_log_collection=True, enable_diagnostic=True):
+        """
+        Start independent monitoring service (non-blocking).
+
+        Args:
+            interval (int): Monitor interval in seconds
+            enable_log_collection (bool): Enable log collection
+            enable_diagnostic (bool): Enable diagnostic report generation
+
+        Returns:
+            MonitorService: Monitor service instance
+        """
+        monitor_service = MonitorService(self.config, self, interval)
+        monitor_service.start_monitoring(
+            enable_log_collection=enable_log_collection, enable_diagnostic=enable_diagnostic
+        )
+        logger.info(f"Independent monitoring service started with interval={interval}s")
+        return monitor_service
+
     def query(self, interval=10, timeout=None):
         """
-        Query job status and log.
+        Query job status and log with optional timeout (blocking).
         There are three kinds of status for a Job:
             RUNNING: The job is running.
             COMPLETED_OR_IDLE: The job is completed or idle.
@@ -668,12 +771,23 @@ class SSHTrainRunner(RunnerBase):
         Returns:
             None
 
+        Warning:
+                    This method is blocking and should be used with caution.
+                                Consider using query_once() or start_monitoring_service() for non-blocking alternatives.
         """
+        logger.warning(
+            "Using blocking query method. Consider using query_once() or start_monitoring_service()"
+        )
+
         if timeout is None:
-            while True:
-                job_status = self._query_status()
-                logger.info(f"Job status: {job_status.name}")
-                time.sleep(interval)
+            logger.warning("Entering indefinite blocking query loop. Press Ctrl+C to exit.")
+            try:
+                while True:
+                    job_status = self._query_status()
+                    logger.info(f"Job status: {job_status.name}")
+                    time.sleep(interval)
+            except KeyboardInterrupt:
+                logger.info("Query interrupted by user")
         else:
             start_time = time.time()
             cur_time = time.time()
@@ -682,85 +796,8 @@ class SSHTrainRunner(RunnerBase):
                 logger.info(f"Job status: {job_status.name}")
                 time.sleep(interval)
                 cur_time = time.time()
+            logger.info(f"Query timeout reached ({timeout}s)")
 
-    def _monitor_and_collect_logs(self):
-        """Monitor training status and collect logs in the background"""
-        self._monitoring_active = True
-        try:
-            while self._monitoring_active:
-                status = self._query_status()
-                
-                if hasattr(self, 'resources') and self.resources:
-                    for node_rank, (host, _) in enumerate(self.resources.items()):
-                        if not self._monitoring_active:
-                            break
-                        self._collect_and_diagnose_single_node(host, node_rank, 
-                                                              status != JobStatus.RUNNING)
-                else:
-                    # Single machine
-                    self._collect_and_diagnose_single_node("localhost", 0, 
-                                                          status != JobStatus.RUNNING)
-                
-                if status == JobStatus.COMPLETED_OR_IDLE:
-                    logger.info("Training completed. Final log collection finished.")
-                    break
-                    
-                for _ in range(10):
-                    if not self._monitoring_active:
-                        break
-                    time.sleep(1)
-                
-        except Exception as e:
-            logger.error(f"Error in log monitoring: {e}")
-        finally:
-            self._monitoring_active = False
-
-    def _collect_and_diagnose_single_node(self, host, node_rank, process_completed=False):
-        """Collect and diagnose logs for a single node"""
-        try:
-            logging_config = self.config.train.system.logging
-            
-            log_file = collect_logs(
-                self.config, host, node_rank, 
-                logging_config.diagnostic_dir, 
-                dryrun=False,
-                process_running=not process_completed
-            )
-            
-            if log_file and os.path.exists(log_file) and os.path.getsize(log_file) > 0:
-                diagnostic_report = generate_diagnostic_report(
-                    self.config, host, node_rank, log_file, return_content=True
-                )
-                
-                combined_file = os.path.join(
-                    logging_config.diagnostic_dir, 
-                    f"host_{node_rank}_{host}_combined.log"
-                )
-                
-                os.makedirs(os.path.dirname(combined_file), exist_ok=True)
-                
-                with open(log_file, 'r') as log_f:
-                    log_content = log_f.read()
-                
-                with open(combined_file, 'a') as f:
-                    f.write(f"\n=== Collection Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
-                    f.write("=== Log Content ===\n")
-                    f.write(log_content)
-                    f.write("\n=== Diagnostic Report ===\n")
-                    f.write(diagnostic_report if diagnostic_report else "No diagnostic report generated\n")
-                
-                logger.debug(f"Updated combined log for {host} (node {node_rank})")
-                
-                try:
-                    os.remove(log_file)
-                except:
-                    pass
-            
-            if process_completed:
-                reset_log_collection(host, node_rank)
-                
-        except Exception as e:
-            logger.error(f"Failed to collect and diagnose logs for {host} (node {node_rank}): {e}")
 
 class CloudTrainRunner(RunnerBase):
     def __init__(self, config: DictConfig):
