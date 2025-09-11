@@ -49,6 +49,12 @@ def main(config: DictConfig) -> None:
 
             if config.action == "run":
                 runner.run()
+                from flagscale.logger import logger
+
+                logger.info(
+                    "Training setup completed. Run the generated script to start training with monitoring."
+                )
+                logger.info("Monitor service will be started automatically when training begins.")
             elif config.action == "dryrun":
                 runner.run(dryrun=True)
             elif config.action == "test":
@@ -56,7 +62,11 @@ def main(config: DictConfig) -> None:
             elif config.action == "stop":
                 runner.stop()
             elif config.action == "query":
-                runner.query()
+                # runner.query()
+                status = runner.query_once()
+                from flagscale.logger import logger
+
+                logger.info(f"Current job status: {status.name}")
             else:
                 raise ValueError(f"Unknown action {config.action}")
     elif task_type == "inference":
