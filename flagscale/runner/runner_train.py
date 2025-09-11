@@ -314,49 +314,30 @@ class SSHTrainRunner(RunnerBase):
         assert self.task_type == "train", f"Unsupported task type: {self.task_type}"
         self._prepare()
         master_port = getattr(self.config.experiment.runner, "master_port", None)
-        self.random_one_no_use_port(master_port)
+        self._resolve_master_port_conflict(master_port)
 
-    def random_one_no_use_port(self, port):
+    def _resolve_master_port_conflict(self, port):
         if port is None:
             return
         if not str(port).isdigit():
             logger.error(f"Invalid port '{port}' provided. Port must be a number.")
+            # Raising an exception here would be more idiomatic than exiting.
             sys.exit(1)
-        try:
-            result = subprocess.check_output(
-                f"netstat -tulpn | grep :{port}", shell=True, text=True
-            )
-            lines = result.strip().split("\n")
-            for line in lines:
-                parts = line.split()
-                if len(parts) >= 7:
-                    pid_program = parts[6]
-                    pid = pid_program.split("/")[0]
-                    try:
-                        pid_int = int(pid)
-                        # Try to terminate gracefully first
-                        os.kill(pid_int, signal.SIGTERM)
-                        time.sleep(0.5)  # Wait for graceful shutdown
-                        os.kill(int(pid_int), signal.SIGKILL)
-                    except PermissionError:
-                        logger.error(f"No permission to kill process {pid} on port {port}")
-                        sys.exit()
-                    except Exception as e:
-                        logger.error(f"Unexpected error killing {pid}: {e}")
-                        sys.exit()
-            while True:
-                random_port = get_free_port()
 
-                try:
-                    subprocess.check_output(
-                        f"netstat -tulpn | grep :{random_port}", shell=True, text=True
-                    )
-                except subprocess.CaledProcessError:
-                    logger.info(f"Master port was in use. Assigned new random port: {random_port}")
-                    self.config.experiment.runner.master_port = random_port
-                    return
-        except subprocess.CalledProcessError:
-            return
+        import socket
+
+        port_in_use = False
+        try:
+            # Try to bind to the port to check if it's available.
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("", int(port)))
+        except OSError:
+            port_in_use = True
+
+        if port_in_use:
+            new_port = get_free_port()
+            logger.info(f"Master port {port} was in use. Assigned new random port: {new_port}")
+            self.config.experiment.runner.master_port = new_port
 
     def _prepare(self):
         _update_config_train(self.config)
