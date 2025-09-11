@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import argparse
 import copy
 import os
@@ -17,10 +18,45 @@ from git_utils import (
     get_submodule_commit,
 )
 from logger_utils import get_patch_logger
+import git
 
 DELETED_FILE_NAME = "deleted_files.txt"
 FLAGSCALE_BACKEND = "FlagScale"
 logger = get_patch_logger()
+
+
+def generate_and_save_patch(sub_repo, base_commit, file_path, status, src_dir):
+    
+    patch_content = ""
+    try:
+        if status in ['A', 'UT']:
+            full_file_path = os.path.join(sub_repo.working_dir, file_path)
+            patch_content = sub_repo.git.diff('--no-index', '/dev/null', file_path, with_extended_output=True)[1]
+
+        elif status in ['M', 'T', 'D']:
+            patch_content = sub_repo.git.diff(base_commit, '--', file_path, with_extended_output=True)[1]
+    except git.exc.GitCommandError as e:
+        if e.status == 1:
+            raw_output = str(e.stdout)
+            start_marker = "diff --git"
+            start_index = raw_output.find(start_marker)
+            end_index = raw_output.rfind("'")
+            patch_content = raw_output[start_index:end_index]
+        else:
+            raise e
+    if patch_content:
+        target_patch_path = os.path.join(src_dir, file_path + ".patch")
+        os.makedirs(os.path.dirname(target_patch_path), exist_ok=True)
+        
+        with open(target_patch_path, 'w', encoding='utf-8') as f:
+            content = patch_content if patch_content else ""
+            if content and not content.endswith('\n'):
+                content += '\n'
+            f.write(content)
+        logger.info(f"Generated patch for '{file_path}' (Status: {status})")
+    else:
+        logger.warning(f"No patch content generated for '{file_path}' (Status: {status})")
+
 
 
 def patch(main_path, submodule_name, src, dst, mode="symlink"):
@@ -64,6 +100,26 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
     untracked_file_statuses = get_file_statuses_for_untracked(untracked_files)
     file_statuses.update(untracked_file_statuses)
 
+    logger.info(f"Cleaning up old patch directory: {src}")
+    shutil.rmtree(src, ignore_errors=True)
+    os.makedirs(src)
+
+    if not file_statuses:
+        logger.info("No file changes detected. Nothing to patch.")
+        return  
+    logger.info(f"Found {len(file_statuses)} file change(s). Generating patches...")
+    for file_path, status_info in file_statuses.items():
+        status = status_info[0]
+        generate_and_save_patch(
+            sub_repo,
+            submodule_commit_in_fs,
+            file_path,
+            status,
+            src
+        )
+
+    logger.info("Patch generation completed successfully!")
+'''
     # Process the deleted files
     file_status_deleted = {}
     for file_path in file_statuses:
@@ -77,6 +133,7 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
         if file_statuses[file_path][0] == "D":
             continue
         sync_to_flagscale(file_path, file_statuses[file_path], src, dst, temp_file, mode=mode)
+        generate_and_save_patch
 
     # Process the deleted files
     if file_status_deleted:
@@ -108,7 +165,7 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
             if file_path not in file_statuses:
                 os.remove(os.path.join(root, file))
                 logger.info(f"Removing the file {file_path} in {src} due to no changes.")
-
+'''
 
 def patch_hardware(main_path, commit, backends, device_type, tasks, key_path=None):
     assert commit is not None, "The commit hash must be specified for hardware patch."
