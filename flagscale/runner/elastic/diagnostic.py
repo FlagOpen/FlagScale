@@ -12,7 +12,7 @@ error_types = {
     "outofmemoryerror": "OutOfMemoryError: The training process ran out of GPU memory.",
     "cuda out of memory": "OutOfMemoryError: CUDA out of memory error occurred.",
     # Connection and network errors
-    "rendezvousconne": "RendezvousConnectionError: Connection to rendezvous backend failed.",
+    "rendezvousconnectionerror": "RendezvousConnectionError: Connection to rendezvous backend failed.",
     "rendezvous": "RendezvousError: Rendezvous coordination failed between nodes.",
     "connection refused": "ConnectionError: Network connection refused.",
     "connection timeout": "ConnectionTimeout: Network connection timeout.",
