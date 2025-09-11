@@ -72,8 +72,8 @@ def save_args_mg2hf(args):
     )
     config.architectures = ["Qwen3ForCausalLM"]
     auto_map = dict()
-    auto_map['AutoConfig'] = 'configuration_qwen3.Qwen2Config'
-    auto_map['AutoModelForCausalLM'] = 'modeling_qwen3.Qwen2ForCausalLM'
+    auto_map['AutoConfig'] = 'configuration_qwen3.Qwen3Config'
+    auto_map['AutoModelForCausalLM'] = 'modeling_qwen3.Qwen3ForCausalLM'
     config.auto_map = auto_map
     config.save_pretrained(args.save)
 
