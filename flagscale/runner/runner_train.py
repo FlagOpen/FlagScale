@@ -3,6 +3,7 @@ import os
 import random
 import shlex
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -319,12 +320,15 @@ class SSHTrainRunner(RunnerBase):
     def _resolve_master_port_conflict(self, port):
         if port is None:
             return
-        if not str(port).isdigit():
-            logger.error(f"Invalid port '{port}' provided. Port must be a number.")
-            # Raising an exception here would be more idiomatic than exiting.
-            sys.exit(1)
-
-        import socket
+        try:
+            port_num = int(port)
+            if not (1 <= port_num <= 65535):
+                raise ValueError
+        except (ValueError, TypeError):
+            logger.error(
+                f"Invalid port '{port}' provided. Port must be an integer between 1 and 65535."
+            )
+            raise ValueError(f"Invalid port: {port}")
 
         port_in_use = False
         try:
