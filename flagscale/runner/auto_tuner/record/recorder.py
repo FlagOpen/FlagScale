@@ -309,6 +309,7 @@ class Recorder:
             return ""
         if isinstance(v, (int, float, bool, str)):
             return str(v)
+        return json.dumps(v)
 
     def save(self, history):
         sorted_history = self.sort(history)
@@ -338,6 +339,12 @@ class Recorder:
         try:
             return float(s)
         except ValueError:
+            pass
+        try:
+            # Check for JSON string start/end characters as a heuristic
+            if (s.startswith('[') and s.endswith(']')) or (s.startswith('{') and s.endswith('}')):
+                return json.loads(s)
+        except (json.JSONDecodeError, TypeError):
             pass
         return s
 
