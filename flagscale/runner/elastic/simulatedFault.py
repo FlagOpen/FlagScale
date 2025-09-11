@@ -21,7 +21,7 @@ error_keys_list = [
 ]
 
 
-def SimulatedFaultLoop(log_file="", error_keys=None, interval=5, iterations=1, mode="a"):
+def simulated_fault_loop(log_file="", error_keys=None, interval=5, iterations=1, mode="a"):
     """
     Simulate faults by writing only the error key (no description) to a log file.
     """

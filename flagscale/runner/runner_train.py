@@ -798,6 +798,87 @@ class SSHTrainRunner(RunnerBase):
                 cur_time = time.time()
             logger.info(f"Query timeout reached ({timeout}s)")
 
+<<<<<<< HEAD
+=======
+    def _monitor_and_collect_logs(self):
+        """Monitor training status and collect logs in the background"""
+        self._monitoring_active = True
+        try:
+            while self._monitoring_active:
+                status = self._query_status()
+                
+                if hasattr(self, 'resources') and self.resources:
+                    for node_rank, (host, _) in enumerate(self.resources.items()):
+                        if not self._monitoring_active:
+                            break
+                        self._collect_and_diagnose_single_node(host, node_rank, 
+                                                              status != JobStatus.RUNNING)
+                else:
+                    # Single machine
+                    self._collect_and_diagnose_single_node("localhost", 0, 
+                                                          status != JobStatus.RUNNING)
+                
+                if status == JobStatus.COMPLETED_OR_IDLE:
+                    logger.info("Training completed. Final log collection finished.")
+                    break
+                    
+                for _ in range(10):
+                    if not self._monitoring_active:
+                        break
+                    time.sleep(1)
+                
+        except Exception as e:
+            logger.error(f"Error in log monitoring: {e}")
+        finally:
+            self._monitoring_active = False
+
+    def _collect_and_diagnose_single_node(self, host, node_rank, process_completed=False):
+        """Collect and diagnose logs for a single node"""
+        try:
+            logging_config = self.config.train.system.logging
+            
+            log_file = collect_logs(
+                self.config, host, node_rank, 
+                logging_config.diagnostic_dir, 
+                dryrun=False,
+                process_running=not process_completed
+            )
+            
+            if log_file and os.path.exists(log_file) and os.path.getsize(log_file) > 0:
+                diagnostic_report = generate_diagnostic_report(
+                    self.config, host, node_rank, log_file, return_content=True
+                )
+                
+                combined_file = os.path.join(
+                    logging_config.diagnostic_dir, 
+                    f"host_{node_rank}_{host}_combined.log"
+                )
+                
+                os.makedirs(os.path.dirname(combined_file), exist_ok=True)
+                
+                with open(log_file, 'r') as log_f:
+                    log_content = log_f.read()
+                
+                with open(combined_file, 'a') as f:
+                    f.write(f"\n=== Collection Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+                    f.write("=== Log Content ===\n")
+                    f.write(log_content)
+                    f.write("\n=== Diagnostic Report ===\n")
+                    f.write(diagnostic_report if diagnostic_report else "No diagnostic report generated\n")
+                
+                logger.debug(f"Updated combined log for {host} (node {node_rank})")
+                
+                try:
+                    os.remove(log_file)
+                except OSError as e:
+                    logger.warning(f"Could not remove temporary log file {log_file}: {e}")
+            
+            if process_completed:
+                reset_log_collection(host, node_rank)
+                
+        except Exception as e:
+            logger.error(f"Failed to collect and diagnose logs for {host} (node {node_rank}): {e}")
+>>>>>>> ba556ac53b36e1272f8c0ec5b6ee476df9293d64
 
 class CloudTrainRunner(RunnerBase):
     def __init__(self, config: DictConfig):
