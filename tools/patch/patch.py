@@ -20,7 +20,6 @@ from git_utils import (
 from logger_utils import get_patch_logger
 import git
 
-DELETED_FILE_NAME = "deleted_files.txt"
 FLAGSCALE_BACKEND = "FlagScale"
 logger = get_patch_logger()
 
@@ -30,11 +29,10 @@ def generate_and_save_patch(sub_repo, base_commit, file_path, status, src_dir):
     patch_content = ""
     try:
         if status in ['A', 'UT']:
-            full_file_path = os.path.join(sub_repo.working_dir, file_path)
-            patch_content = sub_repo.git.diff('--no-index', '/dev/null', file_path, with_extended_output=True)[1]
+            patch_content = sub_repo.git.diff('--no-index', '/dev/null', file_path)
 
         elif status in ['M', 'T', 'D']:
-            patch_content = sub_repo.git.diff(base_commit, '--', file_path, with_extended_output=True)[1]
+            patch_content = sub_repo.git.diff(base_commit, '--', file_path)
     except git.exc.GitCommandError as e:
         if e.status == 1:
             raw_output = str(e.stdout)
@@ -119,53 +117,6 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
         )
 
     logger.info("Patch generation completed successfully!")
-'''
-    # Process the deleted files
-    file_status_deleted = {}
-    for file_path in file_statuses:
-        if file_statuses[file_path][0] == "D":
-            file_status_deleted[file_path] = file_statuses[file_path]
-
-    # Sync the files to FlagScale and skip the deleted files firstly
-    # Temp file is used to store the deleted files
-    temp_file = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False)
-    for file_path in file_statuses:
-        if file_statuses[file_path][0] == "D":
-            continue
-        sync_to_flagscale(file_path, file_statuses[file_path], src, dst, temp_file, mode=mode)
-        generate_and_save_patch
-
-    # Process the deleted files
-    if file_status_deleted:
-        try:
-            for file_path in file_status_deleted:
-                assert file_statuses[file_path][0] == "D"
-                sync_to_flagscale(
-                    file_path, file_status_deleted[file_path], src, dst, temp_file, mode=mode
-                )
-            deleted_log = os.path.join(src, DELETED_FILE_NAME)
-            temp_file.close()
-
-            shutil.move(temp_file.name, deleted_log)
-            if os.path.lexists(temp_file.name):
-                os.remove(temp_file.name)
-
-        except Exception as e:
-            logger.info(f"Error occurred while processing deleted files: {e}")
-            # Rollback
-            temp_file.close()
-            if os.path.lexists(temp_file.name):
-                os.remove(temp_file.name)
-            raise e
-
-    # Process the file which is not changed but in the src dictory.
-    for root, _, files in os.walk(src):
-        for file in files:
-            file_path = os.path.relpath(os.path.join(root, file), src)
-            if file_path not in file_statuses:
-                os.remove(os.path.join(root, file))
-                logger.info(f"Removing the file {file_path} in {src} due to no changes.")
-'''
 
 def patch_hardware(main_path, commit, backends, device_type, tasks, key_path=None):
     assert commit is not None, "The commit hash must be specified for hardware patch."
@@ -502,7 +453,8 @@ def normalize_backend(backend):
     Args:
         backend (str): Backend name provided by the user.
 
-    Returns:
+    Returns
+'''
         str: Standardized backend name.
     """
 

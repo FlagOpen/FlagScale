@@ -12,7 +12,6 @@ from git.repo import Repo
 from logger_utils import get_unpatch_logger
 from patch import normalize_backend
 
-DELETED_FILE_NAME = "deleted_files.txt"
 FLAGSCALE_BACKEND = "FlagScale"
 logger = get_unpatch_logger()
 
@@ -33,8 +32,7 @@ def apply_patches_from_directory(src_dir, dst_dir):
                         repo.git.apply(patch_file_path)
                     except git.exc.GitCommandError as e:
                         logger.error(f"Failed to apply patch '{patch_file_path}'. Error: {e.stderr}")
-                        #raise e
-                        list1.append(patch_file_path)
+                        raise e
 
     except Exception as e:
         logger.error(f"An error occurred while setting up patch application for '{dst_dir}': {e}")
@@ -45,11 +43,9 @@ def unpatch(
         src,
         dst,
         submodule_name,
-        mode="symlink",
         force=False,
         backend_commit={},
         fs_extension=True,
-        use_patch_files = False
         ):
     """Unpatch the backend with symlinks."""
     if submodule_name != FLAGSCALE_BACKEND:
@@ -59,17 +55,7 @@ def unpatch(
             submodule_commit = backend_commit[submodule_name]
         init_submodule(main_path, dst, submodule_name, force=force, commit=submodule_commit)
         if fs_extension:
-            if use_patch_files:
-                apply_patches_from_directory(src, dst)
-            else:
-                assert mode in ["symlink", "copy"]
-                if mode == "copy":
-                    copy(src, dst)
-                elif mode == "symlink":
-                    create_symlinks(src, dst)
-                deleted_files_path = os.path.join(src, DELETED_FILE_NAME)
-                if os.path.lexists(deleted_files_path):
-                    delete_file(deleted_files_path, dst)
+            apply_patches_from_directory(src, dst)
         else:
             logger.info(
                     f"FlagScale extension for {submodule_name} is disabled, skipping unpatching..."
@@ -381,12 +367,6 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--mode",
-        choices=["symlink", "copy"],
-        default="symlink",
-        help="Mode to unpatch (default: symlink)",
-    )
-    parser.add_argument(
         "--device-type", type=str, default=None, help="Device type. Default is None."
     )
     parser.add_argument(
@@ -420,13 +400,6 @@ if __name__ == "__main__":
         dest="fs_extension",
         help="Disable fs extension. Default is True.",
     )
-   
-    parser.add_argument(
-        "--use-patch-files",
-        action="store_true",
-        help="Enable the new mechanism to apply changes from .patch files. If not specified, the legacy copy/symlink method will be used."
-    )
-
     parser.add_argument(
         "--backend-commit", nargs="+", default=[None], help="The backend commit to checkout."
     )
@@ -439,7 +412,6 @@ if __name__ == "__main__":
     key_path = args.key_path
     backends_commit = args.backend_commit
     fs_extension = args.fs_extension
-    use_patch_files = args.use_patch_files 
 
     if not isinstance(backends, list):
         backends = [backends]
@@ -482,9 +454,7 @@ if __name__ == "__main__":
                 src,
                 dst,
                 backend,
-                mode=args.mode,
                 force=args.force,
                 backend_commit=backend_commit,
                 fs_extension=fs_extension,
-                use_patch_files = use_patch_files
             )
