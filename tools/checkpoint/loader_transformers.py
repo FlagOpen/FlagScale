@@ -123,6 +123,7 @@ def _load_checkpoint(queue, args):
     check_for_arg('swiglu', False)
     check_for_arg('disable_bias_linear', not getattr(margs, "add_bias_linear", False))
     check_for_arg('add_qkv_bias', getattr(margs, "add_bias_linear_qkv", False))
+    check_for_arg('qk_layernorm', getattr(margs, "qk_layernorm", False))
 
     """
     use megatron args build object and init env
@@ -143,6 +144,7 @@ def _load_checkpoint(queue, args):
     md.position_embedding_type = margs.position_embedding_type
     md.add_bias_linear = margs.add_bias_linear
     md.add_qkv_bias = margs.add_qkv_bias
+    md.qk_layernorm = margs.qk_layernorm
     md.norm_has_bias = margs.norm_has_bias
     md.swiglu = margs.swiglu
     md.previous_num_experts = margs.num_experts
