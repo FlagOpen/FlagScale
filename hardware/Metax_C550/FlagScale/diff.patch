@@ -112,18 +112,18 @@ index 00000000..ee3171e8
 +    trust_remote_code: true
 +    distributed_executor_backend: ray
 diff --git a/examples/qwen3/conf/serve.yaml b/examples/qwen3/conf/serve.yaml
-index f3e09dca..7859ad53 100644
+index f3e09dca..0a098508 100644
 --- a/examples/qwen3/conf/serve.yaml
 +++ b/examples/qwen3/conf/serve.yaml
 @@ -1,19 +1,16 @@
  defaults:
  - _self_
 -- serve: 0_6b
-+- serve: 32b
++- serve: 8b
  
  experiment:
 -  exp_name: qwen3_0.6b
-+  exp_name: qwen3_32b
++  exp_name: qwen3_8b
    exp_dir: outputs/${experiment.exp_name}
    task:
      type: serve
@@ -162,6 +162,27 @@ index 00000000..991ac232
 +      trust_remote_code: true
 +      distributed_executor_backend: ray
 \ No newline at end of file
+diff --git a/examples/qwen3/conf/serve/8b.yaml b/examples/qwen3/conf/serve/8b.yaml
+new file mode 100644
+index 00000000..f031034c
+--- /dev/null
++++ b/examples/qwen3/conf/serve/8b.yaml
+@@ -0,0 +1,15 @@
++- serve_id: vllm_model
++  engine: vllm
++  engine_args:
++    model: /nfs/models/Qwen3-8B/
++    host: 0.0.0.0
++    max_model_len: 4096
++    uvicorn_log_level: warning
++  engine_args_specific:
++    vllm:
++      tensor_parallel_size: 1
++      pipeline_parallel_size: 1
++      gpu_memory_utilization: 0.9
++      swap_space: 16
++      dtype: bfloat16
++      trust_remote_code: true
 diff --git a/examples/qwen3/conf/serve_atmb.yaml b/examples/qwen3/conf/serve_atmb.yaml
 index 34683dae..11c82b4e 100644
 --- a/examples/qwen3/conf/serve_atmb.yaml
