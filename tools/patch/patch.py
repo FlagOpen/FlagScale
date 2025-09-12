@@ -2,12 +2,11 @@ import argparse
 import copy
 import os
 import shutil
-import sys
 import tempfile
 
 import yaml
 
-from encryption_utils import encrypt_file, generate_rsa_keypair
+from encryption_utils import encrypt_file
 from file_utils import sync_to_flagscale
 from git.repo import Repo
 from git_utils import (
@@ -37,7 +36,7 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
                     If the mode is copy, the file will be copied to the source and the symbolic link will not be created.
     """
 
-    submodule_path = "third_party" + "/" + submodule_name
+    submodule_path = os.path.join("third_party", submodule_name)
     logger.info(f"Patching backend {submodule_path}...")
 
     # Get the submodule repo and the commit in FlagScale.
@@ -95,12 +94,20 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
                 os.remove(temp_file.name)
 
         except Exception as e:
-            print(f"Error occurred while processing deleted files: {e}")
+            logger.info(f"Error occurred while processing deleted files: {e}")
             # Rollback
             temp_file.close()
             if os.path.lexists(temp_file.name):
                 os.remove(temp_file.name)
             raise e
+
+    # Process the file which is not changed but in the src dictory.
+    for root, _, files in os.walk(src):
+        for file in files:
+            file_path = os.path.relpath(os.path.join(root, file), src)
+            if file_path not in file_statuses:
+                os.remove(os.path.join(root, file))
+                logger.info(f"Removing the file {file_path} in {src} due to no changes.")
 
 
 def patch_hardware(main_path, commit, backends, device_type, tasks, key_path=None):
@@ -117,7 +124,7 @@ def prompt_info(main_path, backends, device_type, tasks):
     logger.info("Prompting for patch information: ")
 
     backends_version = {}
-    print("1. Please enter backends version: ")
+    logger.info("1. Please enter backends version: ")
     for backend in backends:
         version = input(f"    {backend} version: ").strip()
         while not version:
@@ -126,7 +133,7 @@ def prompt_info(main_path, backends, device_type, tasks):
         backends_version[backend] = version
 
     backends_commit = {}
-    print("2. Please enter backends commit: ")
+    logger.info("2. Please enter backends commit: ")
     logger.info(
         "If a specific submodule commit is provided, it will be used to generate the diff and apply the patch. By default, the commit defined by FlagScale will be used."
     )
@@ -192,7 +199,7 @@ def _generate_patch_file_for_backend(
     assert not repo.bare
     try:
         repo_path = (
-            os.path.join(main_path, "third_party" + "/" + backend)
+            os.path.join(main_path, "third_party", backend)
             if backend != FLAGSCALE_BACKEND
             else main_path
         )
@@ -321,7 +328,7 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
             if backend != FLAGSCALE_BACKEND:
                 # Get the submodule repo and the commit in FlagScale.
                 main_repo = Repo(main_path)
-                submodule_path = "third_party" + "/" + backend
+                submodule_path = os.path.join("third_party", backend)
                 submodule = main_repo.submodule(submodule_path)
                 sub_repo = submodule.module()
                 submodule_commit_in_fs = repo.head.commit.tree[submodule_path].hexsha
@@ -420,9 +427,10 @@ def validate_patch_args(device_type, task, commit, main_path):
         if (
             device_type.count("_") != 1
             or len(device_type.split("_")) != 2
+            or not device_type.split("_")[0]
             or not device_type.split("_")[0][0].isupper()
         ):
-            raise ValueError("Device type is not invalid!")
+            raise ValueError("Device type is invalid!")
 
     if commit or device_type or task:
         assert (
