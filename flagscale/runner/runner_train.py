@@ -336,9 +336,6 @@ class SSHTrainRunner(RunnerBase):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.bind(("", int(port)))
         except OSError:
-            port_in_use = True
-
-        if port_in_use:
             new_port = get_free_port()
             logger.info(f"Master port {port} was in use. Assigned new random port: {new_port}")
             self.config.experiment.runner.master_port = new_port
