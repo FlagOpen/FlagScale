@@ -97,6 +97,10 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
     # Process the untracked files
     untracked_file_statuses = get_file_statuses_for_untracked(untracked_files)
     file_statuses.update(untracked_file_statuses)
+    
+    logger.info(f"Cleaning up old patch directory: {src}")
+    shutil.rmtree(src, ignore_errors=True)
+    os.makedirs(src)
 
     if not file_statuses:
         logger.info("No file changes detected. Nothing to patch.")
