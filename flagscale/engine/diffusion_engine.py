@@ -79,6 +79,42 @@ class DiffusionEngine:
 
         self.transforms_cfg = transforms_cfg
 
+        self.transforms_cfg = transforms_cfg
+
+        self.device = self.model_config.get("device", False)
+        self.check_param(self.device, "device")
+
+        self.enable_xformers = self.model_config.get("enable_xformers", False)
+        self.check_param(self.enable_xformers, "enable_xformers")
+
+        self.enable_model_cpu_offload = self.model_config.get("enable_model_cpu_offload", False)
+        self.check_param(self.enable_model_cpu_offload, "enable_model_cpu_offload")
+
+        self.enable_sequential_cpu_offload = self.model_config.get(
+            "enable_sequential_cpu_offload", False
+        )
+        self.check_param(self.enable_sequential_cpu_offload, "enable_sequential_cpu_offload")
+
+        self.enable_attention_slicing = self.model_config.get("enable_attention_slicing", False)
+        self.check_param(self.enable_attention_slicing, "enable_attention_slicing")
+
+        self.enable_vae_slicing = self.model_config.get("enable_vae_slicing", False)
+        self.check_param(self.enable_vae_slicing, "enable_vae_slicing")
+        self.enable_vae_tiling = self.model_config.get("enable_vae_tiling", False)
+        self.check_param(self.enable_vae_tiling, "enable_vae_tiling")
+
+        self.fuse_qkv_projections = self.model_config.get("fuse_qkv_projections", False)
+        self.check_param(self.fuse_qkv_projections, "fuse_qkv_projections")
+        self.components = self.model_config.get("components", False)
+        self.check_param(self.components, "components")
+
+        self.to_cuda = self.model_config.get("to_cuda", True)
+        self.check_param(self.to_cuda, "to_cuda")
+
+    def check_param(self, model_param, param_name):
+        if not isinstance(model_param, bool):
+            raise ValueError(f"the value of {param_name}  must be boolean (True or False)")
+
     def generate(self, **kwargs) -> Any:
         """Generate the output."""
 
@@ -100,8 +136,26 @@ class DiffusionEngine:
 
         pipeline = DiffusionPipeline.from_pretrained(pretrained_model_name_or_path, **kwargs)
         # TODO(yupu): Read from config
-        pipeline.to("cuda")
-
+        if self.to_cuda:
+            pipeline.to("cuda")
+        if self.device:
+            print(pipeline.device)
+        if self.enable_xformers:
+            pipeline.enable_xformers_memory_efficient_attention()
+        if self.enable_model_cpu_offload:
+            pipeline.enable_model_cpu_offload()
+        if self.enable_sequential_cpu_offload:
+            pipeline.enable_sequential_cpu_offload()
+        if self.enable_attention_slicing:
+            pipeline.enable_attention_slicing()
+        if self.enable_vae_slicing:
+            pipeline.enable_vae_slicing()
+        if self.enable_vae_tiling:
+            pipeline.enable_vae_tiling()
+        if self.fuse_qkv_projections:
+            pipeline.fuse_qkv_projections()
+        if self.components:
+            print(pipeline.components)
         return pipeline
 
     # TODO(yupu): save all kinds of outputs, and maybe move to adapter

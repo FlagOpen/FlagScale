@@ -10,6 +10,7 @@ diffusion:
     model: ${experiment.model}
     dtype: bfloat16
     trust_remote_code: true
+    to_cuda: true
   engine_config:
     results_path: ${experiment.exp_dir}/results
 
