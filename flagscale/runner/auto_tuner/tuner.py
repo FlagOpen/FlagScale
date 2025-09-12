@@ -153,7 +153,7 @@ class AutoTuner:
             with open(file_path, 'r', encoding='utf-8') as file:
                 matches = re.findall(r'Pruned (.*?) strategy', file.read())
                 return matches[-1] if matches else '0'
-        except (FileNotFoundError, IndexError, Exception):
+        except (FileNotFoundError, IndexError, IOError):
             return '0'
 
     # get serarch num from log
@@ -162,7 +162,7 @@ class AutoTuner:
             with open(file_path, 'r', encoding='utf-8') as file:
                 matches = re.findall(r'Searching (.*?) /', file.read())
                 return matches[-1] if matches else '0'
-        except (FileNotFoundError, IndexError, Exception):
+        except (FileNotFoundError, IndexError, IOError):
             return '0'
 
     def tune(self):
