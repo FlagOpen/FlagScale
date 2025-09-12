@@ -101,6 +101,11 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
     if not file_statuses:
         logger.info("No file changes detected. Nothing to patch.")
         return  
+    
+    logger.info(f"Cleaning up old patch directory: {src}")
+    shutil.rmtree(src, ignore_errors=True)
+    os.makedirs(src)
+
     logger.info(f"Found {len(file_statuses)} file change(s). Generating patches...")
     for file_path, status_info in file_statuses.items():
         status = status_info[0]
