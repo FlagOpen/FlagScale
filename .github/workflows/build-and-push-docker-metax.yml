@@ -1,0 +1,127 @@
+name: Run Tests and Push Meatx Docker Image 
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - '.github/workflows/*docker*.yml'
+      # - 'hardware/Metax_C550/**'
+  pull_request:
+    branches: ["main"]
+    paths:
+      - '.github/workflows/*docker*.yml'
+      # - 'hardware/Metax_C550/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
+
+jobs:
+  set-env:
+    runs-on: ubuntu-latest
+    outputs:
+      ci_image: ${{ steps.set-env.outputs.ci_image }} # Declare output variable
+      test_tasks: ${{ steps.set-tasks.outputs.test_tasks }}
+      test_type: ${{ steps.set-type.outputs.test_type }}
+    steps:
+      - name: Set CI base Image
+        id: set-image
+        run: |
+          echo "ci_image=localhost:5000/flagscale:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64-time2508051515" >> $GITHUB_OUTPUT  # Set output variable
+      - name: Set Test Tasks
+        id: set-tasks
+        run: |
+          echo "test_tasks=deepseek_r1_distill_qwen-metax,opi_llama3_1_instruct-metax,opi_llama3_1_instruct-flaggems-metax,qwen3-metax,qwen3-flaggems-metax" >> $GITHUB_OUTPUT
+      - name: Set Test Type
+        id: set-type
+        run: |
+          echo "test_type=inference" >> $GITHUB_OUTPUT
+
+  functional-tests-inference:
+    needs: set-env
+    runs-on: [self-hosted, Linux, X64, metax-0, gpus-2]
+    container:
+      image: ${{ needs.set-env.outputs.ci_image }}
+      options: >-
+        --ipc=host
+        --privileged=true
+        --group-add video
+        --shm-size 100gb
+        --hostname flagscale_cicd
+        --user root
+        --ulimit nofile=65535:65535
+        --ulimit memlock=-1
+        --device=/dev/dri
+        --device=/dev/mxcd
+      ports:
+        - 80
+      volumes:
+        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
+        - /home/flagscale_cicd/sccache:/root/.cache/sccache
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          ssh-strict: true
+          ssh-user: git
+          persist-credentials: true
+          clean: true
+          sparse-checkout-cone-mode: true
+          fetch-tags: false
+          show-progress: true
+          lfs: false
+          submodules: false
+          set-safe-directory: true
+
+      - name: Setup Environment Info
+        run: |
+          echo "USER: $USER"
+          echo "UID: $(id -u)"
+          echo "GID: $(id -g)"
+          echo "Home: $HOME"
+          echo "PWD: ${PWD}"
+          whoami
+          git config --global --add safe.directory /__w/FlagScale/FlagScale
+
+      - name: Prepare Inference Environment
+        if: ${{ needs.set-env.outputs.test_type == 'inference' }}
+        run: |
+          source /opt/conda/bin/activate flagscale-inference
+          echo "Original commit ID: ${{ github.event.pull_request.head.sha || github.sha }}"
+          
+          # Apply patches and build vllm
+          python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 --commit ${{ github.event.pull_request.head.sha || github.sha }}
+          cd build/Metax_C550/FlagScale/third_party/vllm
+          source env.sh
+          pip install scikit-build scikit-build-core
+          pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0
+          python setup.py bdist_wheel
+          pip uninstall vllm -y
+          pip install dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl
+          cd ../..
+          PYTHONPATH=./:$PYTHONPATH pip install . --verbose --no-build-isolation
+          source /opt/conda/bin/activate base
+
+      - name: Run Functional Tests
+        run: |
+          IFS=',' read -ra TASKS <<< "${{ needs.set-env.outputs.test_tasks }}"
+          for task in "${TASKS[@]}"; do
+            echo "Running test task: $task"
+            tests/scripts/functional_tests/test_task.sh --type ${{ needs.set-env.outputs.test_type }} --task "$task"
+            exit_code=$?
+            echo "Exit code for $task: $exit_code"
+            if [ $exit_code -ne 0 ]; then
+              echo "Test $task failed with exit code $exit_code"
+              exit $exit_code
+            fi
+          done
+
+  all-tests-completed:
+    needs: functional-tests-inference
+    runs-on: ubuntu-latest
+    steps:
+      - name: All Tests Completed Successfully
+        run: echo "✅ All functional tests completed successfully!"
