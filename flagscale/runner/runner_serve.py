@@ -702,14 +702,13 @@ def _generate_cloud_run_script_serve(
         if node_id:
             f.write(f"ray_path=$(realpath $(which ray))\n")
             master_name_or_addr = config.experiment.runner.get("master_addr")
-            master_port = config.experiment.runner.get("master_port", 7396)
+            master_port = int(config.experiment.runner.get("master_port"))
 
             current_node_is_master = False
+            master_addr = master_name_or_addr
             if is_ip_addr(master_name_or_addr):
-                master_addr = master_name_or_addr
                 current_node_is_master = match_address(master_addr)
             else:
-                master_addr = get_master_hostname(master_name_or_addr)
                 current_node_is_master = is_master_node(master_name_or_addr)
 
             address = f"{master_addr}:{master_port}"

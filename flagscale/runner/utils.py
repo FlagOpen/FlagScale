@@ -34,6 +34,7 @@ def is_ray_master_running(
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(timeout)
+            logger.info(f"Attempt to connect {master_ip}:{port}, timeout is {timeout}")
             result = s.connect_ex((master_ip, port))
 
             if result != 0:
@@ -50,6 +51,7 @@ def is_ray_master_running(
 def wait_for_ray_master(
     master_ip: str, port: int = 6379, max_attempts: int = 180, interval: int = 10
 ) -> bool:
+    logger.info(f"Master info is {master_ip}:{port}")
     for attempt in range(max_attempts):
         status, msg = is_ray_master_running(master_ip, port)
         logger.info(f"Check Ray master status (attempt {attempt+1}/{max_attempts}): {msg}")
