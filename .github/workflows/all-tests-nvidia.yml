@@ -170,6 +170,7 @@ jobs:
   all-tests:
     needs:
       - megatron-unit-tests
+      - vllm-unit-tests
       - flagscale-unit-tests
       - functional-tests-train
       - functional-tests-hetero

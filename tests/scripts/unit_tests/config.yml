@@ -136,8 +136,8 @@ vllm:
     - export NVTE_FLASH_ATTN=0
     - export NVTE_FUSED_ATTN=0
     - ulimit -n 65535
-      #- pip install -e .
-      #- python setup.py build_ext --inplace -j16
+    #- pip install -e .
+    - python setup.py build_ext --inplace -j16
   root: tests
   subset:
     cuda:
