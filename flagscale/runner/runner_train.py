@@ -1,6 +1,11 @@
 import multiprocessing
 import os
+import random
 import shlex
+import signal
+import socket
+import subprocess
+import sys
 import time
 
 from datetime import datetime
@@ -309,6 +314,31 @@ class SSHTrainRunner(RunnerBase):
         self.task_type = getattr(self.config.experiment.task, "type", None)
         assert self.task_type == "train", f"Unsupported task type: {self.task_type}"
         self._prepare()
+        master_port = getattr(self.config.experiment.runner, "master_port", None)
+        self._resolve_master_port_conflict(master_port)
+
+    def _resolve_master_port_conflict(self, port):
+        if port is None:
+            return
+        try:
+            port_num = int(port)
+            if not (1 <= port_num <= 65535):
+                raise ValueError
+        except (ValueError, TypeError):
+            logger.error(
+                f"Invalid port '{port}' provided. Port must be an integer between 1 and 65535."
+            )
+            raise ValueError(f"Invalid port: {port}")
+
+        port_in_use = False
+        try:
+            # Try to bind to the port to check if it's available.
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("", int(port)))
+        except OSError:
+            new_port = get_free_port()
+            logger.info(f"Master port {port} was in use. Assigned new random port: {new_port}")
+            self.config.experiment.runner.master_port = new_port
 
     def _prepare(self):
         _update_config_train(self.config)
