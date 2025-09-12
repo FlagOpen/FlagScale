@@ -113,7 +113,7 @@ jobs:
           done
 
   all-tests-completed:
-    needs: functional-tests
+    needs: functional-tests-inference
     runs-on: ubuntu-latest
     steps:
       - name: All Tests Completed Successfully
