@@ -7,7 +7,7 @@ import numpy as np
 from sklearn.decomposition import PCA
 
 
-def visualize_2d(latents_list, identifiers):
+def visualize_2d(latents_list, identifiers, output):
     """
     Visualizes latent vectors from multiple files in 2D using PCA,
     applying PCA separately to each dataset (matching original logic).
@@ -74,20 +74,28 @@ def visualize_2d(latents_list, identifiers):
     plt.tight_layout()
 
     output_file_base = "2d_pca_visualization_multi_separate"
-    plt.savefig(
-        f"{output_file_base}.png", dpi=300, bbox_extra_artists=(legend,), bbox_inches='tight'
-    )
-    plt.savefig(f"{output_file_base}.pdf", bbox_extra_artists=(legend,), bbox_inches='tight')
-    print(f"Plots saved as {output_file_base}.png and {output_file_base}.pdf")
+
+    if output != '' and not os.path.exists(output):
+        os.makedirs(output, exist_ok=True)
+
+    output_path = os.path.join(output, output_file_base)
+
+    plt.savefig(f"{output_path}.png", dpi=300, bbox_extra_artists=(legend,), bbox_inches='tight')
+    plt.savefig(f"{output_path}.pdf", bbox_extra_artists=(legend,), bbox_inches='tight')
+    print(f"Plots saved as {output_path}.png and {output_path}.pdf")
     plt.show()
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Visualize latent vectors from .npy files using separate PCA for each file (matching original logic)."
-    )
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         'files', nargs='+', help='Paths to the .npy files containing latent vectors.'
+    )
+    parser.add_argument(
+        '--output',
+        type=str,
+        default='pca_output',
+        help='Base name (without extension) for the output plot files. Default: %(default)s',
     )
     args = parser.parse_args()
 
@@ -120,7 +128,7 @@ def main():
         print("No valid files loaded. Exiting.")
         return
 
-    visualize_2d(latents_list, identifiers)
+    visualize_2d(latents_list, identifiers, args.output)
 
 
 if __name__ == "__main__":

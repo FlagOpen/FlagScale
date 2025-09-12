@@ -6,26 +6,26 @@ Example:
     python pca_3d_visualizer.py latents_run1.npy latents_run2.npy
 """
 
+import argparse
+import os
+
+import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
+
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.decomposition import PCA
 
 try:
     from matplotlib.colormaps import get_cmap
 except ImportError:
     from matplotlib.pyplot import get_cmap
 
-import argparse
-import os
-
-import matplotlib.animation as animation
-
-from mpl_toolkits.mplot3d import Axes3D
-from sklearn.decomposition import PCA
-
 
 def save_3d_animation(
     fig,
     ax,
+    output,
     filename="3d_pca_visualization.html",
     elev=20,
     azim_range=(0, 360),
@@ -61,8 +61,10 @@ def save_3d_animation(
     rot_animation = animation.FuncAnimation(fig, _animate, frames=frames, interval=50)
 
     print(f"Saving animation to {filename}...")
+    # filename=f"{output}/{filename}"
+    output_path = os.path.join(output, filename)
     try:
-        with open(filename, "w") as f:
+        with open(output_path, "w") as f:
             f.write(rot_animation.to_jshtml())
         print(f"Animation saved successfully to {filename}")
     except Exception as e:
@@ -74,7 +76,7 @@ def save_3d_animation(
             plt.rcParams['animation.embed_limit'] = original_limit
 
 
-def visualize_3d(latent_datasets, save_html=False, html_embed_limit=50):
+def visualize_3d(latent_datasets, output, html_embed_limit=50):
     """
     Visualizes multiple 3D PCA latent vector trajectories in a single plot.
 
@@ -216,9 +218,13 @@ def visualize_3d(latent_datasets, save_html=False, html_embed_limit=50):
     # Adjust elev and azim as needed for best visual.
     ax.view_init(elev=20, azim=-90)
 
+    if output != '' and not os.path.exists(output):
+        os.makedirs(output, exist_ok=True)
+
     save_3d_animation(
         fig,
         ax,
+        output,
         filename="3d_pca_visualization.html",
         elev=20,
         azim_range=(-90, 270),
@@ -227,8 +233,8 @@ def visualize_3d(latent_datasets, save_html=False, html_embed_limit=50):
         embed_limit_mb=html_embed_limit,
     )
 
-    plt.savefig("3d_pca_visualization_multiple_latents.png", dpi=300, bbox_inches='tight')
-    plt.savefig("3d_pca_visualization_multiple_latents.pdf", bbox_inches='tight')
+    plt.savefig(f"{output}/3d_pca_visualization_multiple_latents.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"{output}/3d_pca_visualization_multiple_latents.pdf", bbox_inches='tight')
 
     plt.show()
 
@@ -247,9 +253,10 @@ def main():
         help='Paths to the .npy files containing latent vectors.',
     )
     parser.add_argument(
-        '--save-html',
-        action='store_true',
-        help='Save the 3D plot as an interactive HTML animation.',
+        '--output',
+        type=str,
+        default='pca_output',
+        help='Base name (without extension) for the output plot files. Default: %(default)s',
     )
     parser.add_argument(
         '--html-embed-limit',
@@ -306,9 +313,7 @@ def main():
         latent_datasets.append((latents_3d, n_steps, label, series_color))
 
     if latent_datasets:
-        visualize_3d(
-            latent_datasets, save_html=args.save_html, html_embed_limit=args.html_embed_limit
-        )
+        visualize_3d(latent_datasets, output=args.output, html_embed_limit=args.html_embed_limit)
     else:
         print("No valid datasets were loaded. Exiting.")
 
