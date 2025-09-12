@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 
+import git
 import yaml
 
 from encryption_utils import encrypt_file
@@ -18,14 +19,13 @@ from git_utils import (
     get_submodule_commit,
 )
 from logger_utils import get_patch_logger
-import git
 
 FLAGSCALE_BACKEND = "FlagScale"
 logger = get_patch_logger()
 
 
 def generate_and_save_patch(sub_repo, base_commit, file_path, status, src_dir):
-    
+
     patch_content = ""
     try:
         if status in ['A', 'UT']:
@@ -45,7 +45,7 @@ def generate_and_save_patch(sub_repo, base_commit, file_path, status, src_dir):
     if patch_content:
         target_patch_path = os.path.join(src_dir, file_path + ".patch")
         os.makedirs(os.path.dirname(target_patch_path), exist_ok=True)
-        
+
         with open(target_patch_path, 'w', encoding='utf-8') as f:
             content = patch_content if patch_content else ""
             if content and not content.endswith('\n'):
@@ -54,7 +54,6 @@ def generate_and_save_patch(sub_repo, base_commit, file_path, status, src_dir):
         logger.info(f"Generated patch for '{file_path}' (Status: {status})")
     else:
         logger.warning(f"No patch content generated for '{file_path}' (Status: {status})")
-
 
 
 def patch(main_path, submodule_name, src, dst, mode="symlink"):
@@ -100,8 +99,8 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
 
     if not file_statuses:
         logger.info("No file changes detected. Nothing to patch.")
-        return  
-    
+        return
+
     logger.info(f"Cleaning up old patch directory: {src}")
     shutil.rmtree(src, ignore_errors=True)
     os.makedirs(src)
@@ -109,15 +108,10 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
     logger.info(f"Found {len(file_statuses)} file change(s). Generating patches...")
     for file_path, status_info in file_statuses.items():
         status = status_info[0]
-        generate_and_save_patch(
-            sub_repo,
-            submodule_commit_in_fs,
-            file_path,
-            status,
-            src
-        )
+        generate_and_save_patch(sub_repo, submodule_commit_in_fs, file_path, status, src)
 
     logger.info("Patch generation completed successfully!")
+
 
 def patch_hardware(main_path, commit, backends, device_type, tasks, key_path=None):
     assert commit is not None, "The commit hash must be specified for hardware patch."
@@ -449,14 +443,14 @@ def validate_patch_args(device_type, task, commit, main_path):
 
 def normalize_backend(backend):
     """
-    Normalize backend to standard backend names
+        Normalize backend to standard backend names
 
-    Args:
-        backend (str): Backend name provided by the user.
+        Args:
+            backend (str): Backend name provided by the user.
 
-    Returns
-'''
-        str: Standardized backend name.
+        Returns
+    '''
+            str: Standardized backend name.
     """
 
     input_lower = backend.lower()
