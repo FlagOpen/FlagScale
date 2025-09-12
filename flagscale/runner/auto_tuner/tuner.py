@@ -162,7 +162,7 @@ class AutoTuner:
             with open(file_path, 'r', encoding='utf-8') as file:
                 matches = re.findall(r'Searching (.*?) /', file.read())
                 return matches[-1] if matches else '0'
-        except (FileNotFoundError, IndexError, IOError):
+        except (FileNotFoundError, IndexError, Exception):
             return '0'
 
     def tune(self):
