@@ -1,4 +1,4 @@
-name: Build, Test and Push Meatx Docker Image 
+name: Push Meatx Docker Image 
 
 on:
   push:
