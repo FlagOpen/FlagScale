@@ -53,10 +53,10 @@ jobs:
           pip install gitpython # TODO: Remove after updating the image
 
           git config --global --add safe.directory /__w/FlagScale/FlagScale
-          if [ "${{ inputs.backend }}" = "megatron" ] || [ "${{ inputs.backend }}" = "flagscale" ]; then
+          if [ "${{ inputs.backend }}" = "train_megatron" ] || [ "${{ inputs.backend }}" = "train_flagscale" ]; then
             echo ""
             # PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
-          elif [ "${{ inputs.backend }}" = "vllm" ]; then
+          elif [ "${{ inputs.backend }}" = "vllm" ] || [ "${{ inputs.backend }}" = "inference_flagscale" ]; then
             source /root/miniconda3/bin/activate flagscale-inference
             pip install scikit-build scikit-build-core
             pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
