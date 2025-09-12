@@ -39,7 +39,7 @@ jobs:
 
   functional-tests-inference:
     needs: set-env
-    runs-on: ubuntu-latest
+    runs-on: [ubuntu-latest,self-hosted, Linux, X64, metax-0, gpus-2]
     container:
       image: ${{ needs.set-env.outputs.ci_image }}
       options: >-
