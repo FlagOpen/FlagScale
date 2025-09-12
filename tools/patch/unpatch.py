@@ -5,27 +5,48 @@ import tempfile
 
 import yaml
 
+import git
 from encryption_utils import decrypt_file
 from file_utils import copy, create_symlinks, delete_file
 from git.repo import Repo
 from logger_utils import get_unpatch_logger
 from patch import normalize_backend
 
-DELETED_FILE_NAME = "deleted_files.txt"
 FLAGSCALE_BACKEND = "FlagScale"
 logger = get_unpatch_logger()
 
+def apply_patches_from_directory(src_dir, dst_dir):
+    if not os.path.isdir(src_dir):
+        logger.warning(f"Patch directory '{src_dir}' does not exist. Nothing to apply.")
+        return
+
+    try:
+        repo = Repo(dst_dir)
+        for root, _, files in os.walk(src_dir):
+            for file in sorted(files):
+                if file.endswith(".patch"):
+                    patch_file_path = os.path.join(root, file)
+                    logger.info(f"Applying patch: {patch_file_path}")
+                    try:
+                        repo.git.apply(patch_file_path, check=True)
+                        repo.git.apply(patch_file_path)
+                    except git.exc.GitCommandError as e:
+                        logger.error(f"Failed to apply patch '{patch_file_path}'. Error: {e.stderr}")
+                        raise e
+
+    except Exception as e:
+        logger.error(f"An error occurred while setting up patch application for '{dst_dir}': {e}")
+        raise e
 
 def unpatch(
-    main_path,
-    src,
-    dst,
-    submodule_name,
-    mode="symlink",
-    force=False,
-    backend_commit={},
-    fs_extension=True,
-):
+        main_path,
+        src,
+        dst,
+        submodule_name,
+        force=False,
+        backend_commit={},
+        fs_extension=True,
+        ):
     """Unpatch the backend with symlinks."""
     if submodule_name != FLAGSCALE_BACKEND:
         logger.info(f"Unpatching backend {submodule_name}...")
@@ -34,18 +55,11 @@ def unpatch(
             submodule_commit = backend_commit[submodule_name]
         init_submodule(main_path, dst, submodule_name, force=force, commit=submodule_commit)
         if fs_extension:
-            assert mode in ["symlink", "copy"]
-            if mode == "copy":
-                copy(src, dst)
-            elif mode == "symlink":
-                create_symlinks(src, dst)
-            deleted_files_path = os.path.join(src, DELETED_FILE_NAME)
-            if os.path.lexists(deleted_files_path):
-                delete_file(deleted_files_path, dst)
+            apply_patches_from_directory(src, dst)
         else:
             logger.info(
-                f"FlagScale extension for {submodule_name} is disabled, skipping unpatching..."
-            )
+                    f"FlagScale extension for {submodule_name} is disabled, skipping unpatching..."
+                    )
 
 
 def init_submodule(main_path, dst, submodule_name, force=False, commit=None):
@@ -54,8 +68,8 @@ def init_submodule(main_path, dst, submodule_name, force=False, commit=None):
         return
     logger.info(f"Initializing submodule {submodule_name}...")
     logger.warning(
-        "When you perform unpatch, the specified submodule will be fully restored to its initial state, regardless of any modifications you may have made within the submodule."
-    )
+            "When you perform unpatch, the specified submodule will be fully restored to its initial state, regardless of any modifications you may have made within the submodule."
+            )
     repo = Repo(main_path)
     submodule_name = os.path.join("third_party", submodule_name)
     submodule = repo.submodule(submodule_name)
@@ -96,8 +110,8 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, c
         history_yaml = os.path.join(main_path, "hardware", "patch_history.yaml")
         if not os.path.exists(history_yaml):
             logger.warning(
-                f"Yaml {history_yaml} does not exist. Please check the hardware/patch_history.yaml."
-            )
+                    f"Yaml {history_yaml} does not exist. Please check the hardware/patch_history.yaml."
+                    )
             logger.warning("Try to use the current commit to unpatch.")
             return main_repo.head.commit.hexsha
 
@@ -120,9 +134,9 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, c
                 if backends_key not in history[device_type][task]:
                     continue
                 if (
-                    not isinstance(history[device_type][task][backends_key], list)
-                    or not history[device_type][task][backends_key]
-                ):
+                        not isinstance(history[device_type][task][backends_key], list)
+                        or not history[device_type][task][backends_key]
+                        ):
                     continue
                 newest_flagscale_commit = history[device_type][task][backends_key][-1]
                 try:
@@ -130,20 +144,20 @@ def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, c
                     break
                 except ValueError:
                     raise ValueError(
-                        f"The commit ID {newest_flagscale_commit} does not exist in the FlagScale. Please check the {history_yaml}"
-                    )
+                            f"The commit ID {newest_flagscale_commit} does not exist in the FlagScale. Please check the {history_yaml}"
+                            )
                     newest_flagscale_commit = None
         if not newest_flagscale_commit:
             logger.warning(
-                f"No valid commit found for device type {device_type}, task {task} in {history_yaml}. Try to use the current commit to unpatch."
-            )
+                    f"No valid commit found for device type {device_type}, task {task} in {history_yaml}. Try to use the current commit to unpatch."
+                    )
             return main_repo.head.commit.hexsha
     return newest_flagscale_commit
 
 
 def apply_hardware_patch(
-    device_type, backends, commit, main_path, need_init_submodule, key_path=None
-):
+        device_type, backends, commit, main_path, need_init_submodule, key_path=None
+        ):
     build_path = os.path.join(main_path, "build", device_type)
     final_path = os.path.join(build_path, os.path.basename(main_path))
 
@@ -197,8 +211,8 @@ def apply_hardware_patch(
                         repo.commit(base_commit_id)
                     except ValueError:
                         raise ValueError(
-                            f"The commit ID {base_commit_id} does not exist in the FlagScale."
-                        )
+                                f"The commit ID {base_commit_id} does not exist in the FlagScale."
+                                )
             assert patch_file
             assert base_commit_id
             all_base_commit_id.add(base_commit_id)
@@ -353,12 +367,6 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--mode",
-        choices=["symlink", "copy"],
-        default="symlink",
-        help="Mode to unpatch (default: symlink)",
-    )
-    parser.add_argument(
         "--device-type", type=str, default=None, help="Device type. Default is None."
     )
     parser.add_argument(
@@ -446,7 +454,6 @@ if __name__ == "__main__":
                 src,
                 dst,
                 backend,
-                mode=args.mode,
                 force=args.force,
                 backend_commit=backend_commit,
                 fs_extension=fs_extension,
