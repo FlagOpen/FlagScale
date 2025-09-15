@@ -35,6 +35,7 @@ commands=(
 
     # unit tests -> inference_flagscale
     "tests/scripts/unit_tests/test_subset.sh --backend inference_flagscale --subset models"
+    "tests/scripts/unit_tests/test_subset.sh --backend inference_flagscale --subset engine"
     "tests/scripts/unit_tests/test_subset.sh --backend inference_flagscale --subset transforms"
 
     # You can add your own test subset here

@@ -11,7 +11,9 @@ from flagscale.transforms.transform import Transform, TransformSpec
 
 
 class LogIOHook(ModelHook):
-    """A simple hook that logs the input shapes of a module."""
+    """A simple hook that logs the input shapes of a module.
+    Only used for debugging. Will be removed in the future.
+    """
 
     def __init__(self, log_level: str = "info") -> None:
         """Initialize the hook.

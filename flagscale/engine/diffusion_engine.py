@@ -1,15 +1,16 @@
+import itertools
 import os
 
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from omegaconf import DictConfig
-from typing_extensions import Optional
 
+from flagscale.engine.runtime_context import RuntimeContext
 from flagscale.models.adapters import BaseAdapter, create_adapter
 from flagscale.transforms import TransformManager, create_transforms_from_config
 
-# TODO(yupu): implmeent `DiffusionEngineConfig`, `DiffusionEngineOutput`
+# TODO(yupu): implement `DiffusionEngineConfig`, `DiffusionEngineOutput`
 # TODO(yupu): supports all kinds of outputs
 # e.g. `StableDiffusionPipelineOutput`
 # read more from https://github.com/huggingface/diffusers/blob/main/src/diffusers/utils/outputs.py#L40
@@ -43,6 +44,7 @@ class DiffusionEngine:
             self.engine_config.get("adapter", None), self.pipeline
         )
 
+        print(f"Transforms config: {transforms_cfg}")
         transforms = create_transforms_from_config(transforms_cfg)
         if transforms:
             manager = TransformManager(transforms)
@@ -118,8 +120,11 @@ class DiffusionEngine:
     def generate(self, **kwargs) -> Any:
         """Generate the output."""
 
-        outputs = self.pipeline(**kwargs)
-        return outputs
+        with RuntimeContext().session() as ctx:
+            # TODO(yupu): Remove this
+            ctx.state_ctx_provider = itertools.cycle(["default", "test1", "test2"]).__next__
+            outputs = self.pipeline(**kwargs)
+            return outputs
 
     # TODO(yupu): load custom models
     def load(

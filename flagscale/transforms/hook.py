@@ -5,7 +5,22 @@ import functools
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import torch
+
 from torch import nn
+
+from flagscale.transforms.state_store import ContextStateStore
+
+
+# Copied from https://github.com/huggingface/diffusers/blob/4a7556eaecc9872dea50ce161301edfa6392693c/src/diffusers/utils/torch_utils.py
+def is_compiled_module(module) -> bool:
+    """Check whether the module was compiled with torch.compile()"""
+    return isinstance(module, torch._dynamo.eval_frame.OptimizedModule)
+
+
+def unwrap_module(module):
+    """Unwraps a module if it was compiled with torch.compile()"""
+    return module._orig_mod if is_compiled_module(module) else module
 
 
 # TODO(yupu): Implement state and context
@@ -14,11 +29,11 @@ class ModelHook:
     Hook applied to a module.
     """
 
-    # TODO(yupu): Check if this is needed, should we put all state inside the `RuntimeContext`?
-    # _is_stateful: bool = False
-
     def __init__(self) -> None:
         self.fn_ref: "HookFunctionReference" = None
+        # A list of `ContextStateStore`s that the hook has access to. The stores could be shared across multiple hooks from the same transform.
+        # The transform should call `register_stateful` to register the stores.
+        self._stateful: List[ContextStateStore[Any]] = []
 
     def on_attach(self, module: nn.Module) -> nn.Module:
         """
@@ -44,6 +59,22 @@ class ModelHook:
         Called after the module's forward pass.
         """
         return output
+
+    def register_stateful(self, state_store: ContextStateStore[Any]) -> None:
+        """
+        Register a `ContextStateStore` for the hook.
+        """
+        self._stateful.append(state_store)
+
+    # TODO(yupu): Check correctness of this
+    def set_state_context(self, name: Optional[str] = None) -> None:
+        """
+        Set the state context for the hook.
+        """
+        for state_store in self._stateful:
+            state_store.set(name, None)
+
+    # TODO(yupu): reset?
 
 
 @dataclass
@@ -199,8 +230,21 @@ class ModuleHookRegistry:
                 if reg is not None:
                     reg.remove_hook(name, recursive=False)
 
+    # TODO(yupu): reset context? When?
     # TODO(yupu): State may be consumed by the hook, but by definition, it should be a `Transform`'s attribute.
     # TODO(yupu): Is it possible in reality to have multiple contexts for different hooks at the same time?
+
+    def set_state_context(self, name: Optional[str] = None) -> None:
+        # TODO(yupu): Does the order matter?
+        for hook_name in reversed(self._order):
+            self._hooks[hook_name].set_state_context(name)
+
+        for module_name, module in unwrap_module(self._module_ref).named_modules():
+            if module_name == "":
+                continue
+            reg = ModuleHookRegistry.get_registry_if_present(module)
+            if reg is not None:
+                reg.set_state_context(name)
 
     def __repr__(self) -> str:
         registry_repr = ""

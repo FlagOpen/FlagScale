@@ -1,2 +1,4 @@
 LogIOTransform:
   log_level: "info"
+StateContextTransform:
+  {}

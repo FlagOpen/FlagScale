@@ -3,11 +3,15 @@ from typing import Dict, List, Type
 from omegaconf import DictConfig
 
 from .infer.log_io import LogIOTransform
+from .infer.state_context_transform import StateContextTransform
 from .transform import Transform
 from .transform_manager import TransformManager
 
 # Registry of supported Transform classes by their class names.
-TRANSFORM_REGISTRY: Dict[str, Type[Transform]] = {"LogIOTransform": LogIOTransform}
+TRANSFORM_REGISTRY: Dict[str, Type[Transform]] = {
+    "LogIOTransform": LogIOTransform,
+    "StateContextTransform": StateContextTransform,
+}
 
 __all__ = ["create_transforms_from_config", "TransformManager"]
 
@@ -32,6 +36,7 @@ def create_transforms_from_config(cfg: DictConfig) -> List[Transform]:
             )
         # TODO(yupu): Maybe we should ignore unknown kwargs?
         try:
+            print(f"Creating transform {name} with kwargs {kwargs}")
             inst = cls(**kwargs)
         except TypeError as e:
             raise TypeError(

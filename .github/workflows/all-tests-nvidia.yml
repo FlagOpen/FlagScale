@@ -76,6 +76,7 @@ jobs:
       matrix:
         subset:
           - models
+          - engine
           - transforms
     name: "inference_flagscale-${{ matrix.subset == './' && 'root' || matrix.subset }}"
     with:

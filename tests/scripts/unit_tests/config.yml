@@ -156,6 +156,9 @@ inference_flagscale:
     models:
       type: batch
       depth: all
+    engine:
+      type: batch
+      depth: all
     transforms:
       type: batch
       depth: all
