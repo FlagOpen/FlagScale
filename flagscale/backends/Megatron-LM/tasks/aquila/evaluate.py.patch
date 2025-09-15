@@ -1,0 +1,8 @@
+diff --git a/tasks/aquila/evaluate.py b/tasks/aquila/evaluate.py
+new file mode 120000
+index 00000000..245cd72b
+--- /dev/null
++++ b/tasks/aquila/evaluate.py
+@@ -0,0 +1 @@
++/mnt/git_flagscale/patch_unpatch_pr/pr2_train_patch/FlagScale/flagscale/backends/Megatron-LM/tasks/aquila/evaluate.py
+\ No newline at end of file

@@ -1,0 +1,8 @@
+diff --git a/examples/multimodal/mlp_converter.py b/examples/multimodal/mlp_converter.py
+new file mode 120000
+index 00000000..2193843b
+--- /dev/null
++++ b/examples/multimodal/mlp_converter.py
+@@ -0,0 +1 @@
++/mnt/git_flagscale/patch_unpatch_pr/pr2_train_patch/FlagScale/flagscale/backends/Megatron-LM/examples/multimodal/mlp_converter.py
+\ No newline at end of file

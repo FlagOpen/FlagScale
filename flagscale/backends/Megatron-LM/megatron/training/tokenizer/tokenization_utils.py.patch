@@ -1,0 +1,8 @@
+diff --git a/megatron/training/tokenizer/tokenization_utils.py b/megatron/training/tokenizer/tokenization_utils.py
+new file mode 120000
+index 00000000..541a8b8f
+--- /dev/null
++++ b/megatron/training/tokenizer/tokenization_utils.py
+@@ -0,0 +1 @@
++/mnt/git_flagscale/patch_unpatch_pr/pr2_train_patch/FlagScale/flagscale/backends/Megatron-LM/megatron/training/tokenizer/tokenization_utils.py
+\ No newline at end of file
