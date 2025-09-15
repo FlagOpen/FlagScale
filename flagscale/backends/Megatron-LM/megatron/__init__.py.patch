@@ -1,8 +1,3 @@
 diff --git a/megatron/__init__.py b/megatron/__init__.py
-new file mode 120000
-index 00000000..090a19d0
---- /dev/null
-+++ b/megatron/__init__.py
-@@ -0,0 +1 @@
-+/mnt/git_flagscale/patch_unpatch_pr/pr2_train_patch/FlagScale/flagscale/backends/Megatron-LM/megatron/__init__.py
-\ No newline at end of file
+new file mode 100644
+index 00000000..e69de29b
