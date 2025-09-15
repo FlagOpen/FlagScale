@@ -85,11 +85,12 @@ model:
       lr_wsd_decay_samples: 2048
 
 data:
-  data_path: ${data_path:??}
+  data_path: ./data/my-gpt2_text_document
   split: 1
   no_mmap_bin_files: true
   tokenizer:
-    tokenizer_type: QwenTokenizerFS
-    tokenizer_path: ${tokenizer_model_path:??}
-    vocab_size: 151851
-    make_vocab_size_divisible_by: 64
+    tokenizer_type: AquilaTokenizerFS
+    vocab_file: ./examples/aquila/tokenizer/vocab.json
+    merge_file: ./examples/aquila/tokenizer/merges.txt
+    special_tokens_file: ./examples/aquila/tokenizer/special_tokens.txt
+    vocab_size: 100008

@@ -15,7 +15,7 @@ from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegat
 from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
 from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
 from megatron.core.rerun_state_machine import get_rerun_state_machine
-from megatron.core.models.rwkv import RWKVModel
+from flagscale.train.models.rwkv import RWKVModel
 from megatron.training import pretrain
 from megatron.core.utils import StragglerDetector
 from megatron.core.transformer import TransformerConfig
@@ -231,9 +231,7 @@ def core_gpt_dataset_config_from_args(args):
         blend=blend,
         blend_per_split=blend_per_split,
         split=args.split,
-        multiple_validation_sets=args.multiple_validation_sets,
-        full_validation=args.full_validation,
-        num_dataset_builder_threads=1,
+        num_dataset_builder_threads=args.num_dataset_builder_threads,
         path_to_cache=args.data_cache_path,
         mmap_bin_files=args.mmap_bin_files,
         tokenizer=tokenizer,

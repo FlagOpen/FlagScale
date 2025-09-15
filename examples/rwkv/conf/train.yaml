@@ -1,5 +1,5 @@
 defaults:
-  - train: 3b
+  - train: 0_1b
   - _self_
 
 experiment:
