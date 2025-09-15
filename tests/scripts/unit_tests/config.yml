@@ -135,7 +135,12 @@ flagscale:
     - export NVTE_FLASH_ATTN=0
     - export NVTE_FUSED_ATTN=0
     - ulimit -n 65535
+  coverage_fold:
+    flagscale
   subset:
+    elastic:
+      type: batch
+      depth: all
     runner:
       type: batch
       depth: all
