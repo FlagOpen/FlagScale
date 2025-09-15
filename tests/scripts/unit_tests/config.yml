@@ -153,10 +153,7 @@ inference_flagscale:
     - conda activate flagscale-inference
     - ulimit -n 65535
   subset:
-    models:
-      type: batch
-      depth: all
-    engine:
+    inference:
       type: batch
       depth: all
     transforms:
