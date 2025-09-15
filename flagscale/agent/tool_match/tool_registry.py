@@ -1,7 +1,5 @@
 """Tool registry for managing available tools"""
 
-import logging
-
 from typing import Any, Dict, List, Optional, Tuple
 
 from .tool_matcher import ToolMatcher
@@ -15,7 +13,6 @@ class ToolRegistry:
         self.categories = {}
         self.matcher = ToolMatcher(max_tools, min_similarity)
         self._needs_refit = False
-        self.logger = logging.getLogger(__name__)
 
     def register_tool(self, tool: Dict[str, Any], category: str = "general"):
         """Register a new tool"""
@@ -110,6 +107,27 @@ class ToolRegistry:
             self.matcher._query_cache.clear()
         self._needs_refit = True
 
+    def set_degradation(self, component: str, degraded: bool = True):
+        """Set degradation flag for a specific scoring component.
+
+        Args:
+            component: The scoring component ('semantic', 'keyword', 'category')
+            degraded: Whether to degrade (set weight to 0) or restore the component
+        """
+        self.matcher.set_degradation(component, degraded)
+
+    def get_degradation_status(self) -> Dict[str, bool]:
+        """Get current degradation status of all components."""
+        return self.matcher.get_degradation_status()
+
+    def reset_degradation(self):
+        """Reset all degradation flags to False."""
+        self.matcher.reset_degradation()
+
+    def get_effective_weights(self) -> Dict[str, float]:
+        """Get effective weights considering degradation flags."""
+        return self.matcher.get_effective_weights()
+
     def get_stats(self) -> Dict[str, Any]:
         """Get registry statistics"""
         return {
@@ -118,4 +136,6 @@ class ToolRegistry:
             "category_breakdown": {cat: len(tools) for cat, tools in self.categories.items()},
             "needs_refit": self._needs_refit,
             "cache_size": len(getattr(self.matcher, '_query_cache', {})),
+            "degradation_status": self.get_degradation_status(),
+            "effective_weights": self.get_effective_weights(),
         }
