@@ -9,7 +9,6 @@ import git
 import yaml
 
 from encryption_utils import encrypt_file
-from file_utils import sync_to_flagscale
 from git.repo import Repo
 from git_utils import (
     check_git_user_info,

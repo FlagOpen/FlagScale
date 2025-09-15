@@ -7,7 +7,6 @@ import git
 import yaml
 
 from encryption_utils import decrypt_file
-from file_utils import copy, create_symlinks, delete_file
 from git.repo import Repo
 from logger_utils import get_unpatch_logger
 from patch import normalize_backend
