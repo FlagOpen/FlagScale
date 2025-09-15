@@ -441,14 +441,13 @@ def validate_patch_args(device_type, task, commit, main_path):
 
 def normalize_backend(backend):
     """
-        Normalize backend to standard backend names
+    Normalize backend to standard backend names.
 
-        Args:
-            backend (str): Backend name provided by the user.
+    Args:
+        backend (str): Backend name provided by the user.
 
-        Returns
-    '''
-            str: Standardized backend name.
+    Returns:
+        str: Standardized backend name.
     """
 
     input_lower = backend.lower()
