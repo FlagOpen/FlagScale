@@ -1,18 +1,14 @@
-defaults:
-  - transforms: default
-  - _self_
-
-diffusion:
-  # TODO(yupu): into different groups
-  # 1. for loading model
-  # 2. for engine
+engine:
   model_config:
     model: ${experiment.model}
-    dtype: bfloat16
-    trust_remote_code: true
-    to_cuda: true
+    loader: diffusers
   engine_config:
     results_path: ${experiment.exp_dir}/results
+    transformations:
+      LogIOTransformation:
+        log_level: "info"
+      StateContextTransformation:
+        {}
 
 generate:
   prompt: "retro serie of different cars with different colors and shapes, mdjrny-v4 style"

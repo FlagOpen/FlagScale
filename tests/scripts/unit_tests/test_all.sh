@@ -34,8 +34,7 @@ commands=(
     # "tests/scripts/unit_tests/test_coverage.sh --backend train_flagscale --status offline"
 
     # unit tests -> inference_flagscale
-    "tests/scripts/unit_tests/test_subset.sh --backend inference_flagscale --subset models"
-    "tests/scripts/unit_tests/test_subset.sh --backend inference_flagscale --subset engine"
+    "tests/scripts/unit_tests/test_subset.sh --backend inference_flagscale --subset inference"
     "tests/scripts/unit_tests/test_subset.sh --backend inference_flagscale --subset transforms"
 
     # You can add your own test subset here

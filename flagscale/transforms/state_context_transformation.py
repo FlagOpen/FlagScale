@@ -2,10 +2,9 @@ from typing import Any, Dict, Tuple
 
 import torch.nn as nn
 
-from flagscale.engine.runtime_context import current_ctx
-from flagscale.models.adapters import BaseAdapter
+from flagscale.inference.runtime_context import current_ctx
 from flagscale.transforms.hook import ModelHook, ModuleHookRegistry
-from flagscale.transforms.transform import Transform, TransformSpec
+from flagscale.transforms.transformation import Transformation
 
 
 class StateContextHook(ModelHook):
@@ -23,7 +22,7 @@ class StateContextHook(ModelHook):
         ctx = current_ctx()
         if ctx:
             state_ctx = ctx.state_ctx
-            print(f"State context: {state_ctx}")
+            print(f"state_ctx: {state_ctx}")
             if state_ctx:
                 ModuleHookRegistry.get_or_create_registry(module).set_state_context(state_ctx)
         return args, kwargs
@@ -38,23 +37,14 @@ class StateContextHook(ModelHook):
         return output
 
 
-class StateContextTransform(Transform):
+class StateContextTransformation(Transformation):
     """A transform that sets the state context."""
 
     def __init__(self) -> None:
         super().__init__()
-        self._spec = TransformSpec(name="state_context", phase="post_compile", priority=-1)
 
-    def spec(self) -> TransformSpec:
-        return self._spec
-
-    def apply(self, model: BaseAdapter) -> bool:
-        backbone = model.backbone()
-
-        if isinstance(backbone, nn.Module):
-            reg = ModuleHookRegistry.get_or_create_registry(backbone)
-            hook = StateContextHook()
-            reg.register_hook(hook, "state_context")
-            return True
-        else:
-            raise ValueError(f"Unsupported backbone type: {type(backbone)}")
+    def apply(self, model: nn.Module) -> bool:
+        reg = ModuleHookRegistry.get_or_create_registry(model)
+        hook = StateContextHook()
+        reg.register_hook(hook, "state_context")
+        return True

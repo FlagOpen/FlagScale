@@ -75,8 +75,7 @@ jobs:
     strategy:
       matrix:
         subset:
-          - models
-          - engine
+          - inference
           - transforms
     name: "inference_flagscale-${{ matrix.subset == './' && 'root' || matrix.subset }}"
     with:

@@ -1,0 +1,171 @@
+import itertools
+import os
+
+from typing import Any, List, Tuple, Union
+
+import torch.nn as nn
+
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from omegaconf import DictConfig
+
+from flagscale.inference.runtime_context import RuntimeContext
+from flagscale.transforms import create_transformations_from_config
+
+
+def _check_required_fields(config_dict: DictConfig, required_fields: List[str]) -> None:
+    """Check if the required fields are in the config dict."""
+    if not config_dict:
+        raise ValueError("config_dict is empty")
+    for field in required_fields:
+        if field not in config_dict:
+            raise ValueError(f"Required field {field} is not in the config dict.")
+
+
+class InferenceEngine:
+    """A engine for model inference."""
+
+    def __init__(self, config_dict: DictConfig) -> None:
+        """Initialize the inference engine.
+
+        Args:
+            config_dict: The config dict. It consists of 2 parts:
+                - model_config: config for loading the model
+                    - model (mandatory): the model name or path
+                    - loader (mandatory): the loader for the model, available options: diffusers, transformers, custom, auto
+                    - other model loading parameters
+                - engine_config: engine related config
+                    - results_path (mandatory): the path to save the results
+                    - transformations: the transformations to apply to the model
+                    - other engine related parameters
+        """
+
+        self.validate_config(config_dict)
+        self.model_or_pipeline, self.backbone = self.load()
+        self.apply_transformations()
+
+    def validate_config(self, config_dict: DictConfig) -> None:
+        """Validate the config dict
+
+        Args:
+            config_dict: The config dict.
+        """
+
+        # ===== Model Config =====
+        self.model_config = config_dict.get("model_config", {})
+        _check_required_fields(self.model_config, ["loader", "model"])
+        # TODO(yupu): Should we distinguish between the model name and the model path?
+        self.model_name = self.model_config.model
+        self.loader = self.model_config.loader
+
+        # ===== Engine Config =====
+        self.engine_config = config_dict.get("engine_config", {})
+        _check_required_fields(self.engine_config, ["results_path"])
+        self.results_path = self.engine_config.results_path
+
+        # ===== Transforms Config =====
+        self.transforms_cfg = self.engine_config.get("transformations", {})
+
+    def load(self) -> Union[DiffusionPipeline, nn.Module]:
+        """Load the model or pipeline.
+
+        Returns:
+            The model or pipeline, depending on the loader.
+        """
+
+        if self.loader == "diffusers":
+            return self.load_diffusers_pipeline(self.model_name, **self.model_config)
+        elif self.loader == "transformers":
+            raise NotImplementedError("Transformers loader is not implemented")
+        elif self.loader == "custom":
+            raise NotImplementedError("Custom loader is not implemented")
+        elif self.loader == "auto":
+            raise NotImplementedError("Auto loader is not implemented")
+        else:
+            raise ValueError(f"Unsupported loader: {self.loader}")
+
+    def apply_transformations(self) -> None:
+        """Apply the transformations to the model or pipeline
+
+        `Transformation` will be applied in the EXACT order as specified in the config.
+        """
+
+        transformations = create_transformations_from_config(self.transforms_cfg)
+        for t in transformations:
+            success = t.apply(self.backbone)
+            if not success:
+                raise ValueError(f"Failed to apply transformation: {t}")
+
+    def generate(self, **kwargs) -> Any:
+        """Generate the output."""
+
+        with RuntimeContext().session() as ctx:
+            # TODO(yupu): Remove this
+            ctx.state_ctx_provider = itertools.cycle(["test1", "test2"]).__next__
+            outputs = self.model_or_pipeline(**kwargs)
+            return outputs
+
+    # TODO(yupu): save all kinds of outputs, and maybe move to adapter
+    def save(self, outputs) -> bool:
+        """Save the output."""
+
+        os.makedirs(self.results_path, exist_ok=True)
+        image = outputs.images[0]
+        image.save(os.path.join(self.results_path, "result.png"))
+
+        return True
+
+    def load_diffusers_pipeline(
+        self, pretrained_model_name_or_path: str, **kwargs
+    ) -> Tuple[DiffusionPipeline, nn.Module]:
+        """Load the DiffusionPipeline and find the backbone.
+
+        Args:
+            pretrained_model_name_or_path: The name or path of the pretrained model.
+            **kwargs: The kwargs for the `DiffusionPipeline.from_pretrained` method.
+                kwargs could contain methods for enabling/disabling certain features of the pipeline.
+                e.g. enable_xformers_memory_efficient_attention, enable_model_cpu_offload, etc.
+
+        Returns:
+            A tuple of the DiffusionPipeline and the backbone.
+            - pipeline: The DiffusionPipeline.
+            - backbone: The backbone of the DiffusionPipeline.
+        """
+
+        pipeline = DiffusionPipeline.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        device = kwargs.get("device", "cuda")
+        if device:
+            pipeline.to(device)
+
+        known_methods_wo_args = [
+            "enable_xformers_memory_efficient_attention",
+            "enable_model_cpu_offload",
+            "enable_sequential_cpu_offload",
+            "enable_attention_slicing",
+            "enable_vae_slicing",
+            "enable_vae_tiling",
+            "fuse_qkv_projections",
+        ]
+
+        for method in known_methods_wo_args:
+            if (
+                method in kwargs
+                and hasattr(pipeline, method)
+                and callable(getattr(pipeline, method))
+            ):
+                getattr(pipeline, method)()
+
+        # Simple heuristic to find the module to apply the transformations to
+        if hasattr(pipeline, "unet"):
+            backbone = pipeline.unet
+            assert isinstance(
+                backbone, nn.Module
+            ), f"unet should be a `nn.Module`, but got {type(backbone)}"
+        elif hasattr(pipeline, "transformer"):
+            backbone = pipeline.transformer
+            assert isinstance(
+                backbone, nn.Module
+            ), f"transformer should be a `nn.Module`, but got {type(backbone)}"
+        else:
+            raise ValueError(f"Failed to find the backbone of the DiffusionPipeline: {pipeline}")
+
+        return pipeline, backbone

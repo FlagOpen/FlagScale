@@ -4,7 +4,7 @@ from typing import Union
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
-from flagscale.engine.diffusion_engine import DiffusionEngine
+from flagscale.inference.inference_engine import InferenceEngine
 from flagscale.runner.utils import logger
 
 
@@ -18,21 +18,20 @@ def parse_config() -> Union[DictConfig, ListConfig]:
     args = parser.parse_args()
 
     config = OmegaConf.load(args.config_path)
+
     # TODO(yupu): Any checks?
 
     return config
 
 
 def inference(cfg: DictConfig) -> None:
-    """Run the diffusion model inference
+    """Run the model inference
 
     Args:
-        cfg: The configuration file
+        cfg: The parsed configuration
     """
 
-    model_cfg = cfg.get("diffusion", {})
-    transforms_cfg = cfg.get("transforms", {})
-    engine = DiffusionEngine(model_cfg, transforms_cfg)
+    engine = InferenceEngine(cfg.get("engine", {}))
 
     generate_cfg = cfg.get("generate", {})
     outputs = engine.generate(**generate_cfg)
@@ -41,7 +40,7 @@ def inference(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    cfg = parse_config()
-    assert isinstance(cfg, DictConfig)  # To make pyright happy
-    inference(cfg)
-    logger.info("Diffusion model inference completed")
+    parsed_cfg = parse_config()
+    assert isinstance(parsed_cfg, DictConfig)  # To make pyright happy
+    inference(parsed_cfg)
+    logger.info("Inference model inference completed")

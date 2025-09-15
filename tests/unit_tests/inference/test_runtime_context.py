@@ -1,23 +1,19 @@
 import unittest
 
-from flagscale.engine.runtime_context import RuntimeContext, current_ctx
+from flagscale.inference.runtime_context import RuntimeContext, current_ctx
 
 
 class TestRuntimeContext(unittest.TestCase):
     def test_current_none_when_inactive(self):
         self.assertIsNone(RuntimeContext.current())
-        self.assertFalse(RuntimeContext.is_active())
         self.assertIsNone(current_ctx())
 
     def test_session_activation_and_reset(self):
         ctx = RuntimeContext()
-        self.assertFalse(RuntimeContext.is_active())
         with ctx.session() as active:
-            self.assertTrue(RuntimeContext.is_active())
             self.assertIs(active, ctx)
             self.assertIs(RuntimeContext.current(), ctx)
             self.assertIs(current_ctx(), ctx)
-        self.assertFalse(RuntimeContext.is_active())
         self.assertIsNone(RuntimeContext.current())
 
     def test_nested_sessions_restore_previous(self):

@@ -2,45 +2,44 @@ from typing import Dict, List, Type
 
 from omegaconf import DictConfig
 
-from .infer.log_io import LogIOTransform
-from .infer.state_context_transform import StateContextTransform
-from .transform import Transform
-from .transform_manager import TransformManager
+from .log_io_transformation import LogIOTransformation
+from .state_context_transformation import StateContextTransformation
+from .transformation import Transformation
 
-# Registry of supported Transform classes by their class names.
-TRANSFORM_REGISTRY: Dict[str, Type[Transform]] = {
-    "LogIOTransform": LogIOTransform,
-    "StateContextTransform": StateContextTransform,
+# Registry of supported Transformation classes by their class names.
+_TRANSFORMATION_REGISTRY: Dict[str, Type[Transformation]] = {
+    "LogIOTransformation": LogIOTransformation,
+    "StateContextTransformation": StateContextTransformation,
 }
 
-__all__ = ["create_transforms_from_config", "TransformManager"]
+__all__ = ["create_transformations_from_config"]
 
 
-def create_transforms_from_config(cfg: DictConfig) -> List[Transform]:
-    """Instantiate transforms from the configuration
+def create_transformations_from_config(cfg: DictConfig) -> List[Transformation]:
+    """Instantiate transformations from the configuration
 
     Args:
         cfg: The configuration
 
     Returns:
-        A list of instantiated transforms
+        A list of instantiated transformations
     """
 
-    instances: List[Transform] = []
+    instances: List[Transformation] = []
 
     for name, kwargs in cfg.items():
-        cls = TRANSFORM_REGISTRY.get(name)
+        cls = _TRANSFORMATION_REGISTRY.get(name)
         if cls is None:
             raise KeyError(
-                f"Unknown transform class '{name}'. Available: {sorted(TRANSFORM_REGISTRY.keys())}"
+                f"Unknown transformation class '{name}'. Available: {sorted(_TRANSFORMATION_REGISTRY.keys())}"
             )
-        # TODO(yupu): Maybe we should ignore unknown kwargs?
         try:
-            print(f"Creating transform {name} with kwargs {kwargs}")
+            if kwargs is None:
+                kwargs = {}
             inst = cls(**kwargs)
         except TypeError as e:
             raise TypeError(
-                f"Failed to instantiate transform '{name}' with kwargs {kwargs}: {e}"
+                f"Failed to instantiate transformation '{name}' with kwargs {kwargs}: {e}"
             ) from e
         instances.append(inst)
 

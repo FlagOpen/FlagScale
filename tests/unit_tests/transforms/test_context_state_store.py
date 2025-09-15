@@ -1,6 +1,6 @@
 import unittest
 
-from flagscale.transforms.state_store import ContextStateStore
+from flagscale.transforms.context_state_store import ContextStateStore
 
 
 class DummyState:

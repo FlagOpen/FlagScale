@@ -9,7 +9,7 @@ import torch
 
 from torch import nn
 
-from flagscale.transforms.state_store import ContextStateStore
+from flagscale.transforms.context_state_store import ContextStateStore
 
 
 # Copied from https://github.com/huggingface/diffusers/blob/4a7556eaecc9872dea50ce161301edfa6392693c/src/diffusers/utils/torch_utils.py
@@ -72,7 +72,7 @@ class ModelHook:
         Set the state context for the hook.
         """
         for state_store in self._stateful:
-            state_store.set(name, None)
+            state_store.set_context(name)
 
     # TODO(yupu): reset?
 
