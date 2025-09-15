@@ -3,6 +3,7 @@ import os
 import shutil
 import tempfile
 
+import git
 import yaml
 
 from encryption_utils import decrypt_file
@@ -11,21 +12,37 @@ from git.repo import Repo
 from logger_utils import get_unpatch_logger
 from patch import normalize_backend
 
-DELETED_FILE_NAME = "deleted_files.txt"
 FLAGSCALE_BACKEND = "FlagScale"
 logger = get_unpatch_logger()
 
 
-def unpatch(
-    main_path,
-    src,
-    dst,
-    submodule_name,
-    mode="symlink",
-    force=False,
-    backend_commit={},
-    fs_extension=True,
-):
+def apply_patches_from_directory(src_dir, dst_dir):
+    if not os.path.isdir(src_dir):
+        logger.warning(f"Patch directory '{src_dir}' does not exist. Nothing to apply.")
+        return
+
+    try:
+        repo = Repo(dst_dir)
+        for root, _, files in os.walk(src_dir):
+            for file in sorted(files):
+                if file.endswith(".patch"):
+                    patch_file_path = os.path.join(root, file)
+                    logger.info(f"Applying patch: {patch_file_path}")
+                    try:
+                        repo.git.apply(patch_file_path, check=True)
+                        repo.git.apply(patch_file_path)
+                    except git.exc.GitCommandError as e:
+                        logger.error(
+                            f"Failed to apply patch '{patch_file_path}'. Error: {e.stderr}"
+                        )
+                        raise e
+
+    except Exception as e:
+        logger.error(f"An error occurred while setting up patch application for '{dst_dir}': {e}")
+        raise e
+
+
+def unpatch(main_path, src, dst, submodule_name, force=False, backend_commit={}, fs_extension=True):
     """Unpatch the backend with symlinks."""
     if submodule_name != FLAGSCALE_BACKEND:
         logger.info(f"Unpatching backend {submodule_name}...")
@@ -34,14 +51,8 @@ def unpatch(
             submodule_commit = backend_commit[submodule_name]
         init_submodule(main_path, dst, submodule_name, force=force, commit=submodule_commit)
         if fs_extension:
-            assert mode in ["symlink", "copy"]
-            if mode == "copy":
-                copy(src, dst)
-            elif mode == "symlink":
-                create_symlinks(src, dst)
-            deleted_files_path = os.path.join(src, DELETED_FILE_NAME)
-            if os.path.lexists(deleted_files_path):
-                delete_file(deleted_files_path, dst)
+            apply_patches_from_directory(src, dst)
+            logger.info(f"Successfully applied all patches to backend {submodule_name}")
         else:
             logger.info(
                 f"FlagScale extension for {submodule_name} is disabled, skipping unpatching..."
@@ -353,12 +364,6 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--mode",
-        choices=["symlink", "copy"],
-        default="symlink",
-        help="Mode to unpatch (default: symlink)",
-    )
-    parser.add_argument(
         "--device-type", type=str, default=None, help="Device type. Default is None."
     )
     parser.add_argument(
@@ -446,7 +451,6 @@ if __name__ == "__main__":
                 src,
                 dst,
                 backend,
-                mode=args.mode,
                 force=args.force,
                 backend_commit=backend_commit,
                 fs_extension=fs_extension,
