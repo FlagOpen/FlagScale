@@ -25,7 +25,6 @@ from flagscale.runner.utils import (
     get_addr,
     get_free_port,
     get_ip_addr,
-    get_master_hostname,
     get_nproc_per_node,
     is_ip_addr,
     is_master,
@@ -159,7 +158,10 @@ def _update_auto_engine_args(config, model="vllm_model", new_engine_args={}):
                 pipeline_parallel_size = int(new_engine_args.get("pipeline_parallel_size"))
             else:
                 node_nums = int(config.experiment.runner.get("nnodes", 1))
-                pipeline_parallel_size = 2 ** int(math.floor(math.log2(node_nums)))
+                if node_nums <= 0:
+                    raise ValueError(f"Number of nodes (nnodes) must be a positive integer, but got {node_nums}.")
+                else:
+                    pipeline_parallel_size = 2 ** int(math.floor(math.log2(node_nums)))
             new_engine_args["tensor_parallel_size"] = tensor_parallel_size
             new_engine_args["pipeline_parallel_size"] = pipeline_parallel_size
             engine_args.update(new_engine_args)
@@ -725,48 +727,46 @@ def _generate_cloud_run_script_serve(
                 raise ValueError(
                     f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
                 )
-            if match_address(ip):
-                is_address_matched = True
-                if current_node_is_master:
-                    # master node
-                    f.write(f"# start cluster\n")
-                    f.write(f"# master node\n")
+
+            is_address_matched = True
+            if current_node_is_master:
+                # master node
+                f.write(f"# start cluster\n")
+                f.write(f"# master node\n")
+                if node.type == "gpu":
+                    node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
+                elif node.type == "cpu":
+                    node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
+                else:
+                    resource = json.dumps({node.type: node.slots}).replace('"', '\"')
+                    node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
+                if before_start_cmd:
+                    node_cmd = f"{before_start_cmd} && " + node_cmd
+                f.write(f"{node_cmd}\n")
+            else:
+                # worker nodes
+                f.write(f"\n")
+                f.write(f"# worker nodes\n")
+                if wait_for_ray_master(master_addr, master_port):
                     if node.type == "gpu":
-                        node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
+                        node_cmd = (
+                            f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
+                        )
+
                     elif node.type == "cpu":
-                        node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
+                        node_cmd = (
+                            f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
+                        )
                     else:
                         resource = json.dumps({node.type: node.slots}).replace('"', '\"')
-                        node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
+                        node_cmd = (
+                            f"${{ray_path}} start --address={address} --resources='{resource}'"
+                        )
                     if before_start_cmd:
                         node_cmd = f"{before_start_cmd} && " + node_cmd
                     f.write(f"{node_cmd}\n")
                 else:
-                    # worker nodes
-                    f.write(f"\n")
-                    f.write(f"# worker nodes\n")
-                    if wait_for_ray_master(master_addr, master_port):
-                        if node.type == "gpu":
-                            node_cmd = (
-                                f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
-                            )
-
-                        elif node.type == "cpu":
-                            node_cmd = (
-                                f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
-                            )
-                        else:
-                            resource = json.dumps({node.type: node.slots}).replace('"', '\"')
-                            node_cmd = (
-                                f"${{ray_path}} start --address={address} --resources='{resource}'"
-                            )
-                        if before_start_cmd:
-                            node_cmd = f"{before_start_cmd} && " + node_cmd
-                        f.write(f"{node_cmd}\n")
-                    else:
-                        raise ValueError(f"The current node can not connect to master node")
-            if not is_address_matched:
-                raise ValueError(f"The current node can not match any given node.")
+                    raise ValueError(f"The current node can not connect to master node")
 
         else:
             # Note: config key device_type is specified for single node serving in neither gpu or cpu.

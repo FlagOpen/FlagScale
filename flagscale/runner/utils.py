@@ -366,21 +366,10 @@ def is_ip_addr(master):
 
 def is_master_node(lws_leader_address):
 
-    split_result = lws_leader_address.split('.')
-    host_name = split_result[0]
+    host_name = lws_leader_address.split('.')[0]
+    local_hostname = socket.gethostname().split('.')[0]
 
-    if socket.gethostname() == host_name:
-        return True
-    else:
-        return False
-
-
-def get_master_hostname(lws_leader_address):
-
-    split_result = lws_leader_address.split('.')
-    host_name = split_result[0]
-
-    return host_name
+    return host_name == local_hostname
 
 
 def get_ip_addr():
