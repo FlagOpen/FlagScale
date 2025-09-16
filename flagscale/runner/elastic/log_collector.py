@@ -49,12 +49,27 @@ def collect_logs(config, host, node_rank, destination_dir, dryrun=False):
             run_local(command, dryrun)
             logger.debug(f"Collected incremental local log to {dest_log_file}")
 
-        if os.path.exists(dest_log_file) and os.path.getsize(dest_log_file) > 0:
-            new_offset = os.path.getsize(src_log_file)
-            _log_offsets[log_key] = new_offset
-            return dest_log_file
+        # Check if the source file exists and update the offset
+        if os.path.exists(src_log_file):
+            current_src_size = os.path.getsize(src_log_file)
+            if current_src_size > offset:  # There is new content in the source file
+                _log_offsets[log_key] = current_src_size
+
+                if os.path.exists(dest_log_file) and os.path.getsize(dest_log_file) > 0:
+                    logger.debug(f"Collected {current_src_size - offset} bytes from {src_log_file}")
+                    return dest_log_file
+                else:
+                    logger.debug(f"No new content extracted from {src_log_file}")
+                    if os.path.exists(dest_log_file):
+                        os.remove(dest_log_file)
+                    return None
+            else:
+                logger.debug(f"No new content in source file {src_log_file}")
+                if os.path.exists(dest_log_file):
+                    os.remove(dest_log_file)
+                return None
         else:
-            logger.warning(f"Log file {src_log_file} not found or empty")
+            logger.debug(f"Source log file {src_log_file} not found")
             if os.path.exists(dest_log_file):
                 os.remove(dest_log_file)
             return None

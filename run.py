@@ -48,13 +48,14 @@ def main(config: DictConfig) -> None:
                 raise ValueError(f"Unknown runner type {config.runner.type}")
 
             if config.action == "run":
-                runner.run()
+                enable_monitoring = config.experiment.runner.get("enable_monitoring", True)
+                runner.run(enable_monitoring=enable_monitoring)
                 from flagscale.logger import logger
 
-                logger.info(
-                    "Training setup completed. Run the generated script to start training with monitoring."
-                )
-                logger.info("Monitor service will be started automatically when training begins.")
+                if enable_monitoring:
+                    logger.info(
+                        "Monitor service will be started automatically when training begins."
+                    )
             elif config.action == "dryrun":
                 runner.run(dryrun=True)
             elif config.action == "test":

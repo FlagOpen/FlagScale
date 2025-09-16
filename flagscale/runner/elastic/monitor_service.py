@@ -4,7 +4,6 @@ import sys
 import threading
 import time
 
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 from flagscale.runner.elastic.diagnostic import generate_diagnostic_report
@@ -128,7 +127,7 @@ class MonitorService:
 
         try:
             with open(status_log_file, "a", encoding="utf-8") as f:
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
                 f.write(f"[{timestamp}] Status: {status.name}\n")
         except Exception as e:
             logger.error(f"Failed to write status log: {e}")
@@ -160,6 +159,7 @@ class MonitorService:
 
     def _generate_diagnostic_for_host(self, host: str, node_rank: int):
         try:
+            log_file_path = None
             log_files = [
                 f
                 for f in os.listdir(self.monitor_log_dir)
@@ -172,14 +172,33 @@ class MonitorService:
                 )
                 log_file_path = os.path.join(self.monitor_log_dir, latest_log)
 
+            else:
+                no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
+                if no_shared_fs:
+                    src_log_file = os.path.join(
+                        self.config.train.system.logging.log_dir, "host.output"
+                    )
+                else:
+                    src_log_file = os.path.join(
+                        self.config.train.system.logging.log_dir, f"host_{node_rank}_{host}.output"
+                    )
+
+                if os.path.exists(src_log_file):
+                    log_file_path = src_log_file
+                    logger.debug(f"Using source log file for diagnostic: {src_log_file}")
+
+            if log_file_path and os.path.exists(log_file_path):
                 diagnostic_file = generate_diagnostic_report(
                     self.config, host, node_rank, log_file_path, return_content=False
                 )
-
                 if diagnostic_file:
                     logger.debug(
                         f"Generated diagnostic for {host} (node {node_rank}): {diagnostic_file}"
                     )
+            else:
+                logger.debug(
+                    f"No log file available for diagnostic generation: {host} (node {node_rank})"
+                )
         except Exception as e:
             logger.error(f"Failed to generate diagnostic for {host} (node {node_rank}): {e}")
 
