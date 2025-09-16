@@ -106,22 +106,23 @@ def patch(main_path, submodule_name, src, dst):
 
         if not file_statuses:
             logger.info("No file changes detected. Nothing to patch.")
+        
         else:
             logger.info(f"Found {len(file_statuses)} file change(s). Generating patches...")
             for file_path, status_info in file_statuses.items():
                 status = status_info[0]
                 generate_and_save_patch(sub_repo, submodule_commit_in_fs, file_path, status, src)
             logger.info("Patch generation completed successfully!")
-    
+
     except Exception as e:
         logger.error(f"An error occurred during patch generation: {e}", exc_info=True)
         shutil.rmtree(src, ignore_errors=True)
         shutil.copytree(temp_path, src, dirs_exist_ok=True)
+    
     finally:
-        if "temp_path" in locals() and os.path.exists(temp_path): 
+        if "temp_path" in locals() and os.path.exists(temp_path):
             logger.info(f"Cleaning up temp path: {temp_path}")
             shutil.rmtree(temp_path, ignore_errors=True)
-
 
 
 def patch_hardware(main_path, commit, backends, device_type, tasks, key_path=None):
