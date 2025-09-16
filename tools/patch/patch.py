@@ -41,6 +41,7 @@ def generate_and_save_patch(sub_repo, base_commit, file_path, status, src_dir):
             patch_content = raw_output[start_index:end_index]
         else:
             raise e
+
     if patch_content:
         target_patch_path = os.path.join(src_dir, file_path + ".patch")
         os.makedirs(os.path.dirname(target_patch_path), exist_ok=True)
@@ -93,19 +94,35 @@ def patch(main_path, submodule_name, src, dst):
     untracked_file_statuses = get_file_statuses_for_untracked(untracked_files)
     file_statuses.update(untracked_file_statuses)
 
-    logger.info(f"Cleaning up old patch directory: {src}")
-    shutil.rmtree(src, ignore_errors=True)
-    os.makedirs(src)
+    try:
+        if os.path.exists(src):
+            temp_path = tempfile.mkdtemp()
+            shutil.copytree(src, temp_path, dirs_exist_ok=True)
+            logger.info(f"Created a temporary backup of '{src}' at '{temp_path}'")
 
-    if not file_statuses:
-        logger.info("No file changes detected. Nothing to patch.")
-        return
-    logger.info(f"Found {len(file_statuses)} file change(s). Generating patches...")
-    for file_path, status_info in file_statuses.items():
-        status = status_info[0]
-        generate_and_save_patch(sub_repo, submodule_commit_in_fs, file_path, status, src)
+        logger.info(f"Cleaning up old patch directory: {src}")
+        shutil.rmtree(src, ignore_errors=True)
+        os.makedirs(src)
 
-    logger.info("Patch generation completed successfully!")
+        if not file_statuses:
+            logger.info("No file changes detected. Nothing to patch.")
+        else:
+            logger.info(f"Found {len(file_statuses)} file change(s). Generating patches...")
+            for file_path, status_info in file_statuses.items():
+                status = status_info[0]
+                generate_and_save_patch(sub_repo, submodule_commit_in_fs, file_path, status, src)
+            logger.info("Patch generation completed successfully!")
+    
+    except Exception as e:
+        logger.error(f"An error occurred during patch generation: {e}", exc_info=True)
+        shutil.rmtree(src, ignore_errors=True)
+        shutil.copytree(temp_path, src, dirs_exist_ok=True)
+    
+    finally:
+        if "temp_path" in locals() and os.path.exists(temp_path): 
+            logger.info(f"Cleaning up temp path: {temp_path}")
+            shutil.rmtree(temp_path, ignore_errors=True)
+
 
 
 def patch_hardware(main_path, commit, backends, device_type, tasks, key_path=None):
