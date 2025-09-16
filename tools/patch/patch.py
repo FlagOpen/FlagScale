@@ -55,7 +55,7 @@ def generate_and_save_patch(sub_repo, base_commit, file_path, status, src_dir):
         logger.warning(f"No patch content generated for '{file_path}' (Status: {status})")
 
 
-def patch(main_path, submodule_name, src, dst, mode="symlink"):
+def patch(main_path, submodule_name, src, dst):
     """
     Sync the submodule modifications to the corresponding backend in FlagScale.
     Args:
@@ -63,9 +63,6 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
         submodule_name (str): The name of the submodule to be patched, e.g., "Mgeatron-LM".
         src (str): The source directory of the submodule, e.g., "flagscale/backends/Megatron-LM".
         dst (str): The destination directory of the submodule, e.g., "third_party/Megatron-LM".
-        mode (str): The mode to patch (default: symlink),
-                    it means that the file will be copied to the source and a symbolic link from src to dst will be created.
-                    If the mode is copy, the file will be copied to the source and the symbolic link will not be created.
     """
 
     submodule_path = os.path.join("third_party", submodule_name)
@@ -483,13 +480,6 @@ if __name__ == "__main__":
         default=["Megatron-LM"],
         help="Backend to patch (default: Megatron-LM)",
     )
-
-    parser.add_argument(
-        "--mode",
-        choices=["symlink", "copy"],
-        default="symlink",
-        help="Mode to patch (default: symlink, it means that the file will be copied to the source and a symbolic link will be created)",
-    )
     parser.add_argument(
         "--commit", type=str, default=None, help="Patch based on this commit. Default is None."
     )
@@ -506,7 +496,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     backends = args.backend
-    mode = args.mode
     commit = args.commit
     tasks = args.task
     device_type = args.device_type
@@ -539,4 +528,4 @@ if __name__ == "__main__":
         for backend in backends:
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
-            patch(main_path, backend, src, dst, mode)
+            patch(main_path, backend, src, dst)
