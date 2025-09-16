@@ -95,6 +95,7 @@ def patch(main_path, submodule_name, src, dst):
     file_statuses.update(untracked_file_statuses)
 
     try:
+        # create temporary path
         if os.path.exists(src):
             temp_path = tempfile.mkdtemp()
             shutil.copytree(src, temp_path, dirs_exist_ok=True)
@@ -106,7 +107,7 @@ def patch(main_path, submodule_name, src, dst):
 
         if not file_statuses:
             logger.info("No file changes detected. Nothing to patch.")
-        
+
         else:
             logger.info(f"Found {len(file_statuses)} file change(s). Generating patches...")
             for file_path, status_info in file_statuses.items():
@@ -118,7 +119,7 @@ def patch(main_path, submodule_name, src, dst):
         logger.error(f"An error occurred during patch generation: {e}", exc_info=True)
         shutil.rmtree(src, ignore_errors=True)
         shutil.copytree(temp_path, src, dirs_exist_ok=True)
-    
+
     finally:
         if "temp_path" in locals() and os.path.exists(temp_path):
             logger.info(f"Cleaning up temp path: {temp_path}")
