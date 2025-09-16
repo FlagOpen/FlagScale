@@ -117,7 +117,6 @@ def patch(main_path, submodule_name, src, dst):
         logger.error(f"An error occurred during patch generation: {e}", exc_info=True)
         shutil.rmtree(src, ignore_errors=True)
         shutil.copytree(temp_path, src, dirs_exist_ok=True)
-    
     finally:
         if "temp_path" in locals() and os.path.exists(temp_path): 
             logger.info(f"Cleaning up temp path: {temp_path}")
