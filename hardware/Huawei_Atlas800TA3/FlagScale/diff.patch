@@ -1,0 +1,349 @@
+diff --git a/examples/kimi_k2/conf/hostfile.txt b/examples/kimi_k2/conf/hostfile.txt
+index 0d8b1e05..9bc3e31b 100644
+--- a/examples/kimi_k2/conf/hostfile.txt
++++ b/examples/kimi_k2/conf/hostfile.txt
+@@ -1,5 +1,5 @@
+ # ip slots type=xxx[optional]
+ # master node
+-x.x.x.x slots=8 type=gpu
++10.1.15.60 slots=16 type=gpu
+ # worker nodes
+-x.x.x.x slots=8 type=gpu
++10.1.15.235 slots=16 type=gpu
+diff --git a/examples/kimi_k2/conf/serve.yaml b/examples/kimi_k2/conf/serve.yaml
+index d3f822d3..03288e60 100644
+--- a/examples/kimi_k2/conf/serve.yaml
++++ b/examples/kimi_k2/conf/serve.yaml
+@@ -1,6 +1,6 @@
+ defaults:
+-- _self_
+-- serve: 1t
++  - _self_
++  - serve: 1t
+ 
+ experiment:
+   exp_name: k2_1t
+@@ -10,21 +10,24 @@ experiment:
+   runner:
+     hostfile: examples/kimi_k2/conf/hostfile.txt
+     nnodes: 2
+-    nproc_per_node: 8
+-    docker: flagos
++    nproc_per_node: 16
++    docker: flagscale-kimik2
+     ssh_port: 22
+   deploy:
+     use_fs_serve: false
+   envs:
+-    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
+-    CUDA_DEVICE_MAX_CONNECTIONS: 1
++    ASCEND_RT_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
++    PYTORCH_NPU_ALLOC_CONF: "expandable_segments:True"
++    VLLM_USE_V1: 1
++    VLLM_ENABLE_MC2: 1
++    VLLM_VERSION: 0.9.1
++    VLLM_ASCEND_ENABLE_TOPK_OPTIMIZE: 1
++    HCCL_BUFFSIZE: 1024
+     USE_FLAGGEMS: false
+-    RAY_CGRAPH_get_timeout: 60 # should be set when USE_FLAGGEMS=true, default is 10 from ray
+-  cmds:
+-    before_start: source /root/miniconda3/bin/activate flagscale-inference
+ 
+ action: run
+ 
+ hydra:
+   run:
+     dir: ${experiment.exp_dir}/hydra
++
+diff --git a/examples/kimi_k2/conf/serve/1t.yaml b/examples/kimi_k2/conf/serve/1t.yaml
+index 85849341..f17c2980 100644
+--- a/examples/kimi_k2/conf/serve/1t.yaml
++++ b/examples/kimi_k2/conf/serve/1t.yaml
+@@ -1,23 +1,34 @@
+ - serve_id: vllm_model
+   engine: vllm
+   engine_args:
+-    model: /models/Kimi-K2-Instruct # add Post-trained models
+-    served_model_name: Kimi-K2-Instruct-nvidia-origin # add Post-trained models
++    model: /data/shared/weights/Kimi-K2-Instruct-W8A8/ # add Post-trained models
++    served_model_name: Kimi-K2-Instruct # add Post-trained models
+     host: 0.0.0.0
+     uvicorn_log_level: warning
+-    max_model_len: 32768
++    max_num_seqs: 8
++    max_model_len: 35840
++    max_num_batched_tokens: 4096
+     port: 30000
+   engine_args_specific:
+     vllm:
+-      tensor_parallel_size: 16 # recommended by Moonshot https://modelscope.cn/models/moonshotai/Kimi-K2-Instruct/file/view/master/docs%2Fdeploy_guidance.md?status=1
+-      pipeline_parallel_size: 1
+-      gpu_memory_utilization: 0.98
++      tensor_parallel_size: 8 # recommended by Moonshot https://modelscope.cn/models/moonshotai/Kimi-K2-Instruct/file/view/master/docs%2Fdeploy_guidance.md?status=1
++      data-parallel-size: 4
++      data-parallel-size-local: 2
++      data-parallel-start-rank: 0
++      data-parallel-address: 10.1.15.60
++      data-parallel-rpc-port: 13389
++      gpu_memory_utilization: 0.90
++      enable_expert_parallel: true
++      quantization: ascend
++      additional_config: '{"torchair_graph_config":{"enabled":true, "graph_batch_sizes":[1,16], "enable_multistream_moe":true}, "enable_weight_nz_layout":true}'
+       trust_remote_code: true
+-      enforce_eager: true # enforce_eager is recommended to be set true, false may trigger unknown but reproduced NCCL exception
++      enforce_eager: false # enforce_eager is recommended to be set true, false may trigger unknown but reproduced NCCL exception
+       enable_chunked_prefill: true
++      enable_prefix_caching: false
+   profile:
+     prefix_len: 0
+     input_len: 1024
+     output_len: 1024
+     num_prompts: 128
+     range_ratio: 1
++
+diff --git a/flagscale/runner/runner_serve.py b/flagscale/runner/runner_serve.py
+index 4eda0370..70d8186b 100644
+--- a/flagscale/runner/runner_serve.py
++++ b/flagscale/runner/runner_serve.py
+@@ -43,7 +43,6 @@ def _get_multiple_free_ports(num=1, exclude_ports=[]):
+         allocated_ports.append(port)
+     return allocated_ports
+ 
+-
+ def _get_args_vllm(config: DictConfig):
+     # see the following link for more details
+     # https://github.com/facebookresearch/hydra/discussions/2750
+@@ -51,26 +50,39 @@ def _get_args_vllm(config: DictConfig):
+ 
+     # step2: restructuring the config
+     # config_dict = config_dict["serve"]
++    num_node = int(
++        config_dict["serve"][0]["engine_args_specific"]["vllm"]["data-parallel-size"]
++        // config_dict["serve"][0]["engine_args_specific"]["vllm"]["data-parallel-size-local"]
++    )
++
+     config_dict["logging"].pop("log_dir")
+     config_dict["logging"].pop("scripts_dir")
+     config_dict["logging"].pop("pids_dir")
+     if not config_dict.get("logging"):
+         config_dict.pop("logging")
+ 
+-    # step3: dict -> yaml
+-    logging_config = config.logging
+-    new_config = OmegaConf.create(config_dict)
+-    new_conf_file = os.path.join(logging_config.scripts_dir, f"serve.yaml")
++    args = []
++    for i in range(num_node):
++        config_dict["serve"][0]["engine_args_specific"]["vllm"]["data-parallel-start-rank"] = (
++            i * config_dict["serve"][0]["engine_args_specific"]["vllm"]["data-parallel-size-local"]
++        )
+ 
+-    # step4: write the new yaml file to `outputs_dir/serve_logs/scripts/serve.yaml`
+-    with open(new_conf_file, "w") as f:
+-        OmegaConf.save(config=new_config, f=f.name, resolve=True)
++        # step3: dict -> yaml
++        logging_config = config.logging
++        new_config = OmegaConf.create(config_dict)
++        new_conf_file = os.path.join(logging_config.scripts_dir, f"serve{i}.yaml")
+ 
+-    args = []
+-    args.append(f"--config-path={new_conf_file}")
++        # step4: write the new yaml file to `outputs_dir/serve_logs/scripts/serve.yaml`
++        with open(new_conf_file, "w") as f:
++            OmegaConf.save(config=new_config, f=f.name, resolve=True)
+ 
+-    return args
++        if i != 0:
++            config_dict["serve"][0]["engine_args_specific"]["vllm"]["headless"] = True
++            continue
+ 
++        args.append(f"--config-path={new_conf_file}")
++
++    return args
+ 
+ def _reset_serve_port(config):
+     model_port = None
+@@ -306,7 +318,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
+         envs_str = " && ".join(
+             f"export {key}={value}" for key, value in envs.items() if key != 'nodes_envs'
+         )
+-        f.write(f"{envs_str}\n")
++        #f.write(f"{envs_str}\n")
+         use_vllm_v1 = (str(os.getenv("VLLM_USE_V1", "true")).lower() in ("1", "true")) and (
+             str(envs.get("VLLM_USE_V1", "true")).lower() in ("1", "true")
+         )
+@@ -486,37 +498,11 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
+                         )
+ 
+             else:
+-                f.write(f"ray_path=$(realpath $(which ray))\n")
++                #f.write(f"ray_path=$(realpath $(which ray))\n")
+                 master_ip = nodes[0][0]
+                 target_port = nodes[0][1].get("port")
+ 
+                 f.write(f"# clean nodes \n")
+-                if len(nodes) > 1:
+-                    for ip, node in nodes[1:]:
+-                        if not node.get("type", None):
+-                            raise ValueError(
+-                                f"Node type must be specified for node {node}. Available types are 'cpu', 'gpu', or a custom resource name."
+-                            )
+-                        if not node.get("slots", None):
+-                            raise ValueError(
+-                                f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+-                            )
+-                        node_cmd = f"${{ray_path}} stop"
+-
+-                        if before_start_cmd:
+-                            node_cmd = f"{before_start_cmd} && " + node_cmd
+-                        if envs_str:
+-                            node_cmd = f"{envs_str} && " + node_cmd
+-
+-                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
+-
+-                        if docker_name:
+-                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+-                        f.write(f"{ssh_cmd}\n")
+-                if before_start_cmd:
+-                    f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
+-                else:
+-                    f.write(f"${{ray_path}} stop\n")
+                 f.write("pkill -f 'run_inference_engine'\n")
+                 f.write("pkill -f 'run_fs_serve_vllm'\n")
+                 f.write("pkill -f 'vllm serve'\n")
+@@ -540,51 +526,6 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
+                         raise ValueError(
+                             f"Number of slots must be specified for node {node}. This can be done by setting the 'slots' attribute."
+                         )
+-                    if index == 0:
+-                        # master node
+-                        f.write(f"# start cluster\n")
+-                        f.write(f"# master node\n")
+-                        if node.type == "gpu":
+-                            node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
+-                        elif node.type == "cpu":
+-                            node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
+-                        else:
+-                            resource = json.dumps({node.type: node.slots}).replace('"', '\"')
+-                            node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
+-                        if per_node_cmd:
+-                            node_cmd = f"{per_node_cmd} && " + node_cmd
+-                        if before_start_cmd:
+-                            node_cmd = f"{before_start_cmd} && " + node_cmd
+-                        f.write(f"{node_cmd}\n")
+-                    else:
+-                        # worker nodes
+-                        if index == 1:
+-                            f.write(f"\n")
+-                            f.write(f"# worker nodes\n")
+-                        if node.type == "gpu":
+-                            node_cmd = (
+-                                f"${{ray_path}} start --address={address} --num-gpus={node.slots}"
+-                            )
+-
+-                        elif node.type == "cpu":
+-                            node_cmd = (
+-                                f"${{ray_path}} start --address={address} --num-cpus={node.slots}"
+-                            )
+-                        else:
+-                            resource = json.dumps({node.type: node.slots}).replace('"', '\\"')
+-                            node_cmd = (
+-                                f"${{ray_path}} start --address={address} --resources='{resource}'"
+-                            )
+-                        if per_node_cmd:
+-                            node_cmd = f"{per_node_cmd} && " + node_cmd
+-                        if before_start_cmd:
+-                            node_cmd = f"{before_start_cmd} && " + node_cmd
+-                        if envs_str:
+-                            node_cmd = f"{envs_str} && " + node_cmd
+-                        ssh_cmd = f'ssh -n -p {ssh_port} {ip} "{node_cmd}"'
+-                        if docker_name:
+-                            ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+-                        f.write(f"{ssh_cmd}\n")
+         else:
+             # Note: config key device_type is specified for single node serving in neither gpu or cpu.
+             device_type = None
+@@ -616,27 +557,37 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
+             if node_cmd:
+                 f.write(f"{node_cmd}\n")
+ 
+-        f.write(f"mkdir -p {logging_config.log_dir}\n")
+-        f.write(f"mkdir -p {logging_config.pids_dir}\n")
+-        f.write(f"\n")
+-        f.write(f"cd {root_dir}\n")
+-        f.write(f"\n")
+-        f.write(f'cmd="{cmd}"\n')
+-        f.write(f"\n")
+-        # TODO: need a option to control whether to append or overwrite the output file
+-        # Now, it always appends to the output file
++
++        f.write("echo '==================================='\n")
+         f.write("echo '=========== launch task ==========='\n")
+-        if background:
+-            f.write(
+-                f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
+-            )
+-        else:
+-            f.write(f'bash -c "$cmd; sync" >> {host_output_file} 2>&1\n')
+-        f.write("\n")
+-        f.flush()
+-        os.fsync(f.fileno())
++        for i, (ip, node) in enumerate(nodes[:]):
++            envs_str = f'HCCL_IF_IP={ip} GLOO_SOCKET_IFNAME=enp196s0f0 TP_SOCKET_IFNAME=enp196s0f0 HCCL_SOCKET_IFNAME=enp196s0f0'
++            new_cmd = str(f'{envs_str} {cmd}').replace("serve0.yaml", f"serve{i}.yaml")
++            if i ==0:
++                f.write(f"mkdir -p {logging_config.log_dir}\n")
++                f.write(f"mkdir -p {logging_config.pids_dir}\n\n")
++                f.write(f"cd {root_dir}\n\n")
++                f.write(f'cmd="{new_cmd}"\n\n')
++                # TODO: need a option to control whether to append or overwrite the output file
++                # Now, it always appends to the output file
++
++                if background:
++                    f.write(
++                        f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
++                    )
++                else:
++                    f.write(f'bash -c "$cmd; sync" >> {host_output_file} 2>&1\n')
++                f.write("\n")
++            else:
++                new_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c 'mkdir -p {logging_config.log_dir} && mkdir -p {logging_config.pids_dir} && cd {root_dir} && touch {host_output_file} && {new_cmd}' >> {host_output_file} \" & "
++                f.write(f"{new_cmd}\n")
++
++            f.flush()
++            os.fsync(f.fileno())
+     os.chmod(host_run_script_file, 0o755)
+ 
++
++
+     return host_run_script_file
+ 
+ 
+@@ -876,9 +827,7 @@ def _generate_stop_script(config, host, node_rank):
+                             ssh_cmd = f"ssh -n -p {ssh_port} {ip} \"docker exec {docker_name} /bin/bash -c '{node_cmd}'\""
+                         f.write(f"{ssh_cmd}\n")
+                 if before_start_cmd:
+-                    f.write(f"{before_start_cmd} && ${{ray_path}} stop\n")
+-                else:
+-                    f.write(f"${{ray_path}} stop\n")
++                    f.write(f"{before_start_cmd}\n")
+                 f.write("pkill -f 'run_inference_engine'\n")
+                 f.write("pkill -f 'run_fs_serve_vllm'\n")
+                 f.write("pkill -f 'vllm serve'\n")
+@@ -891,8 +840,6 @@ def _generate_stop_script(config, host, node_rank):
+                 node_cmd = f"${{ray_path}} stop"
+             if before_start_cmd:
+                 node_cmd = f"{before_start_cmd} && {node_cmd}" if node_cmd else before_start_cmd
+-            if node_cmd:
+-                f.write(f"{node_cmd}\n")
+             f.write("pkill -f 'run_inference_engine'\n")
+             f.write("pkill -f 'run_fs_serve_vllm'\n")
+             f.write("pkill -f 'vllm serve'\n")
+diff --git a/fusion_result.json b/fusion_result.json
+new file mode 100644
+index 00000000..ec747fa4
+--- /dev/null
++++ b/fusion_result.json
+@@ -0,0 +1 @@
++null
+\ No newline at end of file
