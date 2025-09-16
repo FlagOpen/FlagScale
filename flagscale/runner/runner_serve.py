@@ -159,7 +159,9 @@ def _update_auto_engine_args(config, model="vllm_model", new_engine_args={}):
             else:
                 node_nums = int(config.experiment.runner.get("nnodes", 1))
                 if node_nums <= 0:
-                    raise ValueError(f"Number of nodes (nnodes) must be a positive integer, but got {node_nums}.")
+                    raise ValueError(
+                        f"Number of nodes (nnodes) must be a positive integer, but got {node_nums}."
+                    )
                 else:
                     pipeline_parallel_size = 2 ** int(math.floor(math.log2(node_nums)))
             new_engine_args["tensor_parallel_size"] = tensor_parallel_size
@@ -734,12 +736,18 @@ def _generate_cloud_run_script_serve(
                 f.write(f"# start cluster\n")
                 f.write(f"# master node\n")
                 if node.type == "gpu":
-                    node_cmd = f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
+                    node_cmd = (
+                        f"${{ray_path}} start --head --port={master_port} --num-gpus={node.slots}"
+                    )
                 elif node.type == "cpu":
-                    node_cmd = f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
+                    node_cmd = (
+                        f"${{ray_path}} start --head --port={master_port} --num-cpus={node.slots}"
+                    )
                 else:
                     resource = json.dumps({node.type: node.slots}).replace('"', '\"')
-                    node_cmd = f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
+                    node_cmd = (
+                        f"${{ray_path}} start --head --port={master_port} --resources='{resource}'"
+                    )
                 if before_start_cmd:
                     node_cmd = f"{before_start_cmd} && " + node_cmd
                 f.write(f"{node_cmd}\n")
