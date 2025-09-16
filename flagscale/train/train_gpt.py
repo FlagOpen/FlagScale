@@ -46,6 +46,8 @@ from megatron.training.yaml_arguments import core_transformer_config_from_yaml
 
 import megatron.legacy.model  # isort: skip
 
+from flagscale.train.peft.lora import LoRA
+
 # NOTE: Loading `megatron.legacy.model` earlier fails due to circular import
 
 try:
@@ -187,6 +189,15 @@ def model_provider(
             mtp_block_spec=mtp_block_spec,
             vp_stage=vp_stage,
         )
+
+        print(f"before transform, model is {model}")
+
+        lora = LoRA()
+        lora.apply_transform(model)
+
+        print(f"after transform, model is {model}")
+
+
 
     return model
 
