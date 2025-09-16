@@ -33,11 +33,11 @@ class TestRuntimeContext(unittest.TestCase):
         def provider():
             return "train"
 
-        ctx.state_ctx_provider = provider
+        ctx.state_scope_provider = provider
         with ctx.session():
-            self.assertEqual(ctx.state_ctx, "train")
+            self.assertEqual(ctx.state_scope, "train")
 
     def test_state_ctx_returns_none_without_provider(self):
         ctx = RuntimeContext()
         with ctx.session():
-            self.assertIsNone(ctx.state_ctx)
+            self.assertIsNone(ctx.state_scope)

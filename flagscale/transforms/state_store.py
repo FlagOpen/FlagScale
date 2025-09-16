@@ -5,7 +5,7 @@ from typing import Dict, Generic, Optional, Type, TypeVar
 S = TypeVar("S")
 
 
-class ContextStateStore(Generic[S]):
+class StateStore(Generic[S]):
     """A state store that manages states for different contexts."""
 
     def __init__(self, state_cls: Type[S], init_args=None, init_kwargs=None) -> None:
@@ -18,7 +18,7 @@ class ContextStateStore(Generic[S]):
         # State can be shared across modules or by a single module.
         self._state_by_context: Dict[str, S] = {}
         # The state context name that is currently in use.
-        self._current_context: Optional[str] = None
+        self._active_scope: Optional[str] = None
 
     def get_or_create_state(self) -> S:
         """Get or create a state for the current context.
@@ -29,22 +29,22 @@ class ContextStateStore(Generic[S]):
         Raises:
             ValueError: If no state context is currently in use.
         """
-        if self._current_context is None:
+        if self._active_scope is None:
             raise ValueError(
                 "No state context is currently in use. Please set a state context first."
             )
-        if self._current_context not in self._state_by_context:
-            self._state_by_context[self._current_context] = self._state_cls(
+        if self._active_scope not in self._state_by_context:
+            self._state_by_context[self._active_scope] = self._state_cls(
                 *self._init_args, **self._init_kwargs
             )
-        return self._state_by_context[self._current_context]
+        return self._state_by_context[self._active_scope]
 
-    def set_context(self, name: str):
+    def set_scope(self, name: str):
         """Set the current state context.
 
         Args:
             name: The name of the state context to set.
         """
-        self._current_context = name
+        self._active_scope = name
 
     # TODO(yupu): Reset?

@@ -7,12 +7,9 @@ import torch
 from torch import nn
 
 from flagscale.inference.runtime_context import RuntimeContext
-from flagscale.transforms.context_state_store import ContextStateStore
 from flagscale.transforms.hook import ModelHook, ModuleHookRegistry
-from flagscale.transforms.state_context_transformation import (
-    StateContextHook,
-    StateContextTransformation,
-)
+from flagscale.transforms.state_scope_transformation import StateScopeHook, StateScopeTransformation
+from flagscale.transforms.state_store import StateStore
 
 
 class DummyPipeline:
@@ -30,36 +27,36 @@ class DummyHook(ModelHook):
         return args, kwargs
 
 
-class TestStateContextTransform(unittest.TestCase):
+class TestStateScopeTransform(unittest.TestCase):
     def test_apply_registers_hook_on_backbone(self):
         pipeline = DummyPipeline()
-        transform = StateContextTransformation()
+        transform = StateScopeTransformation()
 
         applied = transform.apply(pipeline.unet)
         self.assertTrue(applied)
 
         reg = ModuleHookRegistry.get_registry_if_present(pipeline.unet)
         self.assertIsNotNone(reg)
-        self.assertIsInstance(reg.get_hook("state_context"), StateContextHook)
+        self.assertIsInstance(reg.get_hook("state_scope"), StateScopeHook)
 
     def test_hook_sets_and_resets_state_context_during_forward(self):
         pipeline = DummyPipeline()
         backbone = pipeline.unet
 
         reg = ModuleHookRegistry.get_or_create_registry(backbone)
-        store = ContextStateStore(dict)
+        store = StateStore(dict)
 
         # To make it work, we need to register the dummy hook first
         hook = DummyHook()
         reg.register_hook(hook, "dummy")
         hook.register_stateful(store)
 
-        transform = StateContextTransformation()
+        transform = StateScopeTransformation()
         transform.apply(backbone)
 
         x = torch.zeros(1, 2)
         ctx = RuntimeContext()
-        ctx.state_ctx_provider = lambda: "ctxA"
+        ctx.state_scope_provider = lambda: "ctxA"
         with ctx.session():
             _ = backbone(x)
 

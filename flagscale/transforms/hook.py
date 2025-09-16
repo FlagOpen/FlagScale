@@ -9,7 +9,7 @@ import torch
 
 from torch import nn
 
-from flagscale.transforms.context_state_store import ContextStateStore
+from flagscale.transforms.state_store import StateStore
 
 
 # Copied from https://github.com/huggingface/diffusers/blob/4a7556eaecc9872dea50ce161301edfa6392693c/src/diffusers/utils/torch_utils.py
@@ -31,9 +31,9 @@ class ModelHook:
 
     def __init__(self) -> None:
         self.fn_ref: "HookFunctionReference" = None
-        # A list of `ContextStateStore`s that the hook has access to. The stores could be shared across multiple hooks from the same transform.
+        # A list of `StateStore`s that the hook has access to. The stores could be shared across multiple hooks from the same transform.
         # The transform should call `register_stateful` to register the stores.
-        self._stateful: List[ContextStateStore[Any]] = []
+        self._stateful: List[StateStore[Any]] = []
 
     def on_attach(self, module: nn.Module) -> nn.Module:
         """
@@ -60,19 +60,18 @@ class ModelHook:
         """
         return output
 
-    def register_stateful(self, state_store: ContextStateStore[Any]) -> None:
+    def register_stateful(self, state_store: StateStore[Any]) -> None:
         """
-        Register a `ContextStateStore` for the hook.
+        Register a `StateStore` for the hook.
         """
         self._stateful.append(state_store)
 
-    # TODO(yupu): Check correctness of this
-    def set_state_context(self, name: Optional[str] = None) -> None:
+    def set_state_scope(self, name: Optional[str] = None) -> None:
         """
-        Set the state context for the hook.
+        Set the state scope for the hook.
         """
         for state_store in self._stateful:
-            state_store.set_context(name)
+            state_store.set_scope(name)
 
     # TODO(yupu): reset?
 
@@ -234,17 +233,17 @@ class ModuleHookRegistry:
     # TODO(yupu): State may be consumed by the hook, but by definition, it should be a `Transform`'s attribute.
     # TODO(yupu): Is it possible in reality to have multiple contexts for different hooks at the same time?
 
-    def set_state_context(self, name: Optional[str] = None) -> None:
+    def set_state_scope(self, name: Optional[str] = None) -> None:
         # TODO(yupu): Does the order matter?
         for hook_name in reversed(self._order):
-            self._hooks[hook_name].set_state_context(name)
+            self._hooks[hook_name].set_state_scope(name)
 
         for module_name, module in unwrap_module(self._module_ref).named_modules():
             if module_name == "":
                 continue
             reg = ModuleHookRegistry.get_registry_if_present(module)
             if reg is not None:
-                reg.set_state_context(name)
+                reg.set_state_scope(name)
 
     def __repr__(self) -> str:
         registry_repr = ""

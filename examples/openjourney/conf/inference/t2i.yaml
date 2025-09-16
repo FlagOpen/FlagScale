@@ -7,7 +7,7 @@ engine:
     transformations:
       LogIOTransformation:
         log_level: "info"
-      StateContextTransformation:
+      StateScopeTransformation:
         {}
 
 generate:

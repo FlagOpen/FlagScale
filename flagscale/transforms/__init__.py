@@ -3,13 +3,13 @@ from typing import Dict, List, Type
 from omegaconf import DictConfig
 
 from .log_io_transformation import LogIOTransformation
-from .state_context_transformation import StateContextTransformation
+from .state_scope_transformation import StateScopeTransformation
 from .transformation import Transformation
 
 # Registry of supported Transformation classes by their class names.
 _TRANSFORMATION_REGISTRY: Dict[str, Type[Transformation]] = {
     "LogIOTransformation": LogIOTransformation,
-    "StateContextTransformation": StateContextTransformation,
+    "StateScopeTransformation": StateScopeTransformation,
 }
 
 __all__ = ["create_transformations_from_config"]

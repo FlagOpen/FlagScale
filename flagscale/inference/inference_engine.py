@@ -100,7 +100,7 @@ class InferenceEngine:
 
         with RuntimeContext().session() as ctx:
             # TODO(yupu): Remove this
-            ctx.state_ctx_provider = itertools.cycle(["test1", "test2"]).__next__
+            ctx.state_scope_provider = itertools.cycle(["test1", "test2"]).__next__
             outputs = self.model_or_pipeline(**kwargs)
             return outputs
 

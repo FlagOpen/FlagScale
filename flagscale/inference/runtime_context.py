@@ -19,7 +19,7 @@ class RuntimeContext:
         # TODO(yupu): Do we need this?
         self.run_id: str = uuid.uuid4().hex
         # A provider of state context names. The context names could be used by `Transformation`s to access different part of the state stores.
-        self.state_ctx_provider: Optional[Callable[[], str | None]] = None
+        self.state_scope_provider: Optional[Callable[[], str | None]] = None
 
     @contextlib.contextmanager
     def session(self) -> ContextManager["RuntimeContext"]:
@@ -44,14 +44,14 @@ class RuntimeContext:
         return _current_ctx.get()
 
     @property
-    def state_ctx(self) -> Optional[str]:
+    def state_scope(self) -> Optional[str]:
         """Get the current state context name.
 
         Returns:
             Optional[str]: The current state context name, or None if no provider is set.
         """
 
-        p = self.state_ctx_provider
+        p = self.state_scope_provider
         return p() if callable(p) else None
 
 
