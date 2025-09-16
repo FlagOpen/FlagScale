@@ -3,11 +3,11 @@ name: All Tests Nvidia
 on:
   push:
     branches: ["main"]
-  paths-ignore:
+    paths-ignore:
       - 'hardware/**'
   pull_request:
     branches: ["main"]
-  paths-ignore:
+    paths-ignore:
       - 'hardware/**'
 
 concurrency:
