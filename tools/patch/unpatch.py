@@ -42,7 +42,7 @@ def apply_patches_from_directory(src_dir, dst_dir):
 
 
 def unpatch(main_path, src, dst, submodule_name, force=False, backend_commit={}, fs_extension=True):
-    """Unpatch the backend with symlinks."""
+    """Unpatch the backend with patches."""
     if submodule_name != FLAGSCALE_BACKEND:
         logger.info(f"Unpatching backend {submodule_name}...")
         submodule_commit = None
@@ -353,7 +353,7 @@ def backend_commit_mapping(backends, backends_commit):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Patch or unpatch backend with symlinks.")
+    parser = argparse.ArgumentParser(description="Patch or unpatch backend with patch files.")
     parser.add_argument(
         "--backend",
         nargs="+",
