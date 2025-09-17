@@ -185,7 +185,6 @@ def apply_hardware_patch(
         backends_commit = {}
 
         for backend in backends:
-            force_init = True
             backend_path = os.path.join(device_path, backend)
             if not os.path.exists(backend_path):
                 raise ValueError(f"{backend_path} is not found.")
@@ -238,7 +237,7 @@ def apply_hardware_patch(
         repo.git.checkout(base_commit_id)
 
         logger.info(f"Step 5: Applying patch:")
-        force_init = True
+        initialized_backends = set()
         for idx, patch_file in enumerate(patch_files):
             # Check if the patch file is encrypted
             new_patch_file = patch_file
@@ -254,7 +253,7 @@ def apply_hardware_patch(
             if backend != FLAGSCALE_BACKEND:
                 # init submodule
                 if need_init_submodule:
-                    if force_init:
+                    if backend not in initialized_backends:
                         logger.info(
                             f"    Initializing submodule {backend} in temp unpatch path {temp_unpatch_path}..."
                         )
@@ -268,7 +267,7 @@ def apply_hardware_patch(
                         init_submodule(
                             temp_unpatch_path, dst, backend, force=True, commit=submodule_commit
                         )
-                        force_init = False
+                        initialized_backends.add(backend)
             submodule_path = (
                 os.path.join(temp_unpatch_path, "third_party", backend)
                 if backend != FLAGSCALE_BACKEND
