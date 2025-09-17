@@ -10,7 +10,7 @@ import time
 import traceback
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import aiohttp
 import numpy as np
@@ -26,6 +26,43 @@ AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 def log_and_raise_error(message):
     logger.error(message)
     raise ValueError(message)
+
+
+def is_ray_master_running(
+    master_ip: str, port: int = 6379, timeout: float = 5.0
+) -> Tuple[bool, Optional[str]]:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(timeout)
+            logger.info(f"Attempt to connect {master_ip}:{port}, timeout is {timeout}")
+            result = s.connect_ex((master_ip, port))
+
+            if result != 0:
+                return False, f"waitting for master node {master_ip}:{port}"
+            else:
+                return True, f"master node is ready"
+
+    except socket.timeout:
+        return False, f"connect {master_ip}:{port} timeout"
+    except Exception as e:
+        return False, f"check the error: {str(e)}"
+
+
+def wait_for_ray_master(
+    master_ip: str, port: int = 6379, max_attempts: int = 180, interval: int = 10
+) -> bool:
+    logger.info(f"Master info is {master_ip}:{port}")
+    for attempt in range(max_attempts):
+        status, msg = is_ray_master_running(master_ip, port)
+        logger.info(f"Check Ray master status (attempt {attempt+1}/{max_attempts}): {msg}")
+
+        if status:
+            return True
+
+        if attempt < max_attempts - 1:
+            time.sleep(interval)
+
+    return False
 
 
 def parse_hostfile(hostfile_path):
@@ -325,6 +362,14 @@ def is_ip_addr(master):
         return True
     else:
         return False
+
+
+def is_master_node(lws_leader_address):
+
+    host_name = lws_leader_address.split('.')[0]
+    local_hostname = socket.gethostname().split('.')[0]
+
+    return host_name == local_hostname
 
 
 def get_ip_addr():
