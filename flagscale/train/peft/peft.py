@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from typing import Any, Callable, List, Optional, Tuple, Type
+from typing import Any, Callable, List, Optional, Tuple, Type, Dict
 from abc import ABC, abstractmethod
 
 
@@ -11,6 +11,22 @@ class PEFT(ABC):
     large language models efficiently by modifying only a small subset of the model's
     parameters.
     """
+    _REGISTRY: Dict[str, Type["PEFT"]] = {}
+
+    def __init_subclass__(cls, *, peft_type: str, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if peft_type in cls._REGISTRY:
+            raise ValueError(f"peft_type={peft_type} registered already!")
+        cls._REGISTRY[peft_type] = cls
+        cls._peft_type = peft_type
+    
+    @classmethod
+    def from_config(cls, config) -> "PEFT":
+        peft_type = config.peft_type
+        if peft_type not in cls._REGISTRY:
+            raise KeyError(f"Unsupported peft_type: {peft_type}, registered: {list(cls._REGISTRY)}")
+        sub_cls = cls._REGISTRY[peft_type]
+        return sub_cls(config)    
 
     @abstractmethod
     def transform(self, module, name=None, prefix=None):
@@ -37,13 +53,24 @@ class PEFT(ABC):
         """
         raise NotImplementedError("The transform method should be implemented by subclasses.")
 
-    def apply_transform(self, model):
+    def apply_transform(self, model: nn.Module):
         for full_name, module in model.named_modules():
             prefix, name = full_name.rsplit('.', 1) if '.' in full_name else ('', full_name)
             replaced_module = self.transform(module, name, prefix)
             if replaced_module == module:
                 continue
             model.set_submodule(full_name, replaced_module)
+    
+    def freeze_model(self, model: nn.Module):
+        """Apply a default freeze method to the model.
+        """
+        pass
+
+    def load_state_dict_pre_hooks(self, model: nn.Module):
+        pass
+
+    def load_state_dict_post_hooks(self, model: nn.Module):
+        pass
 
 
 class AdapterWrapper(nn.Module):
@@ -57,21 +84,6 @@ class AdapterWrapper(nn.Module):
         to_wrap (nn.Module): The main module to be wrapped.
         adapter (nn.Module): The adapter module to be applied.
 
-    Note:
-        This class is abstract and cannot be instantiated directly. Subclasses must
-        implement the forward method.
-
-    Example:
-        class LoRALinear(AdapterWrapper):
-            def __init__(self, to_wrap, adapter):
-                super().__init__(to_wrap, adapter)
-
-            def forward(self, x):
-                return self.to_wrap(x) + self.adapter(x)
-
-        main_module = nn.Linear(100, 100)
-        adapter = nn.Linear(100, 100)
-        parallel_adapter = LoRALinear(main_module, adapter)
     """
 
     def __init__(self, to_wrap: nn.Module, adapter: nn.Module):
@@ -161,4 +173,3 @@ class AdapterWrapper(nn.Module):
         sharded_state_dict.update(self.to_wrap.sharded_state_dict(prefix, sharded_offsets, metadata))
         sharded_state_dict.update(self.adapter.sharded_state_dict(f"{prefix}adapter.", sharded_offsets, metadata))
         return sharded_state_dict
-

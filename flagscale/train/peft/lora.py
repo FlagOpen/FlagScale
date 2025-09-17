@@ -1,7 +1,10 @@
 import torch
 import torch.nn as nn
-from typing import Any, Callable, List, Optional, Tuple, Type
+from typing import Any, Callable, List, Optional, Tuple, Type, Dict
 from dataclasses import dataclass, field
+from collections import namedtuple
+from functools import partial
+import logging
 
 from flagscale.train.peft.peft import PEFT, AdapterWrapper
 from flagscale.train.peft.utils import (
@@ -10,6 +13,7 @@ from flagscale.train.peft.utils import (
     ParallelLinearAdapter,
     match_module,
 )
+from megatron.training.utils import unwrap_model
 
 
 class LoRALinear(AdapterWrapper):
@@ -33,8 +37,7 @@ class LoRALinear(AdapterWrapper):
         return linear_output + adapter_output, bias
 
 
-
-class LoRA(PEFT):
+class LoRA(PEFT, peft_type='lora'):
     """
     Implements the LoRA (Low-Rank Adaptation) module for parameter-efficient fine-tuning.
 
@@ -43,21 +46,17 @@ class LoRA(PEFT):
     """
     def __init__(
         self,
-        target_modules: list[str] = ['linear_qkv', 'linear_proj', 'linear_fc1', 'linear_fc2'],
-        dim: int = 32,
-        alpha: int = 64,
-        dropout: float = 0.0,
-        dropout_position: str = 'pre',
-        in_init_method: str = 'xavier',
-        out_init_method: str = 'zero',
+        config,
     ):
-        self.target_modules = target_modules
-        self.dim = dim
-        self.alpha = alpha
-        self.dropout = dropout
-        self.dropout_position = dropout_position
-        self.in_init_method = in_init_method
-        self.out_init_method = out_init_method
+        super().__init__()
+        self.config = config
+        self.target_modules = config.lora_target_modules
+        self.dim = config.lora_dim
+        self.alpha = config.lora_alpha
+        self.dropout = config.lora_dropout
+        self.dropout_position = config.lora_dropout_position
+        self.in_init_method = config.lora_in_init_method
+        self.out_init_method = config.lora_out_init_method
 
     def transform(self, m: nn.Module, name=None, prefix=None):
         """
@@ -97,3 +96,59 @@ class LoRA(PEFT):
             return lora_linear
             
         return m
+    
+    def freeze_model(self, model: nn.Module):
+        """Freeze main model for lora
+        """
+        for name, param in model.named_parameters():
+            param.requires_grad = False
+        for name, param in model.named_parameters():
+            if 'adapter' in name:
+                param.requires_grad = True
+
+    def load_state_dict_pre_hooks(self, model: nn.Module):
+        def load_state_dict_hook_remap_main_model_params(
+            module: torch.nn.Module,
+            state_dict: Dict[str, Any],
+            prefix: str,
+            local_metadata: Optional[dict],
+            strict: bool,
+            missing_keys: List[str],
+            unexpected_keys: List[str],
+            errors: List[Any]  
+        ):
+            old_keys = [prefix + "weight", prefix + "bias"]
+            new_keys = [prefix + "to_wrap.weight", prefix + "to_wrap.bias"]
+            for old_key, new_key in zip(old_keys, new_keys):
+                if old_key in state_dict.keys():
+                    if new_key not in state_dict.keys():
+                        state_dict[new_key] = state_dict.pop(old_key)
+                    else:
+                        state_dict.pop(old_key)
+            
+        for name, module in model.named_modules():
+            if isinstance(module, LoRALinear):
+                module.register_load_state_dict_pre_hook(
+                    load_state_dict_hook_remap_main_model_params
+                )
+
+    def load_state_dict_post_hooks(self, model: nn.Module):
+        def load_state_dict_hook_ignore_param_names(
+            param_names: List[str], module: torch.nn.Module, incompatible_keys: namedtuple
+        ):
+            for param_name in param_names:
+                if param_name in incompatible_keys.missing_keys:
+                    logging.getLogger(__name__).warning(
+                        f"{param_name} being removed from incompatible_keys.missing_keys in this model"
+                    )
+                    incompatible_keys.missing_keys.remove(param_name)
+        lora_param_names = []
+        for name in model.state_dict().keys():
+            if "adapter" in name:
+                lora_param_names.append(name)
+        model.register_load_state_dict_post_hook(
+            partial(
+                load_state_dict_hook_ignore_param_names,
+                lora_param_names,
+            )
+        )

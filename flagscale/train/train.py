@@ -139,6 +139,8 @@ stimer = StragglerDetector()
 
 from megatron.core.msc_utils import MultiStorageClientFeature, open_file
 
+from flagscale.train.peft.peft import PEFT
+from flagscale.train.peft.lora import LoRA
 
 def destroy_global_state():
     destroy_global_vars()
@@ -1322,6 +1324,26 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
 
     if not isinstance(model, list):
         model = [model]
+
+    ######## FLAGSCALE BEGIN ########
+    # 1) init
+    config = get_model_config(model[0])
+    if config.peft_type is not None:
+        peft = PEFT.from_config(config)
+        unwrapped_model = unwrap_model(model)
+        if not isinstance(unwrapped_model, list):
+            unwrapped_model = [unwrapped_model]
+        # 2) transform
+        for model_module in unwrapped_model:
+            peft.apply_transform(model_module)
+        # 3) freeze model
+        for model_module in unwrapped_model:
+            peft.freeze_model(model_module)
+        # 4) load state dict
+        for model_module in unwrapped_model:
+            peft.load_state_dict_pre_hooks(model_module)
+            peft.load_state_dict_post_hooks(model_module)
+    ######## FLAGSCALE END   ########
 
     # Set tensor model parallel attributes if not set.
     # Only parameters that are already tensor model parallel have these

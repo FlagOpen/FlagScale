@@ -90,6 +90,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     parser = _add_hetero_args(parser)
     parser = _add_auto_tuner_args(parser)
     parser = _add_auto_skip_spiky_loss(parser)
+    parser = _add_peft_args(parser)
 
     # Custom arguments.
     if extra_args_provider is not None:
@@ -1167,6 +1168,11 @@ def validate_args(args, defaults={}):
         assert args.mtp_num_layers is None, (
             "DualPipeV is not supported with multi-token-predictor currently"
         )
+
+    if args.peft_type is not None:
+        assert args.transformer_impl == 'transformer_engine', \
+            'PEFT is only supported with transformer_engine implementation'
+        assert args.num_experts is None, "PEFT is not tested with MoE currently"
 
     # Print arguments.
     _print_args("arguments", args)
@@ -3234,5 +3240,33 @@ def _add_auto_skip_spiky_loss(parser):
                        help='Automatically skip spiky loss iterations.')
     group.add_argument('--spiky-loss-threshold', type=float, default=0.2,
                           help='Threshold for skipping spiky loss iterations.')
+    return parser
+
+def _add_peft_args(parser):
+    group = parser.add_argument_group(title='peft')
+    
+    group.add_argument('--peft-type', type=str, default=None,
+        help='PEFT type')
+    group.add_argument(
+        '--lora-target-modules',
+        nargs='*',
+        choices=['linear_qkv', 'linear_proj', 'linear_fc1', 'linear_fc2'],
+        default=['linear_qkv', 'linear_proj', 'linear_fc1', 'linear_fc2'],
+        help='LoRA target modules list. Valid choices: linear_qkv, linear_proj, '
+            'linear_fc1, linear_fc2. Default selects all.'
+    )
+    group.add_argument('--lora-dim', type=int, default=8)
+    group.add_argument('--lora-alpha', type=int, default=16)
+    group.add_argument('--lora-dropout', type=float, default=0.0,
+                       help='Dropout prob of lora linear')
+    group.add_argument('--lora-dropout-position', type=str, default='pre',
+                       choices=['pre', 'post'],
+                       help='Dropout position of lora linear')
+    group.add_argument('--lora-in-init-method', type=str, default='xavier',
+        choices=['normal', 'kaiming', 'xavier', 'zero'],
+        help='Init method of lora a')
+    group.add_argument('--lora-out-init-method', type=str, default='zero',
+        choices=['normal', 'kaiming', 'xavier', 'zero'],
+        help='Init method of lora b')
     return parser
 ########## FlagScale End ##########
