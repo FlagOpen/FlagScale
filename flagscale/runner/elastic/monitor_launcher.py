@@ -60,7 +60,7 @@ class MonitorRunner:
 
 def main():
     """Monitor the main function of the service"""
-    parser = argparse.ArgumentParser(descriptian="Start the FlagScale training monitoring service")
+    parser = argparse.ArgumentParser(description="Start the FlagScale training monitoring service")
     parser.add_argument("--log-dir", required=True, help="Log directory path")
     parser.add_argument(
         "--pid-file", required=True, help="The path of the PID file for the training process"
@@ -102,7 +102,7 @@ def main():
         enable_log_collection=args.enable_log_collection, enable_diagnostic=args.enable_diagnostic
     )
 
-    logger.info(f"The monitoring service has been started. Interval: {args.interva} seconds")
+    logger.info(f"The monitoring service has been started. Interval: {args.interval} seconds")
     logger.info(f"PID file: {args.pid_file}")
     logger.info(f"Log directory: {args.log_dir}")
 

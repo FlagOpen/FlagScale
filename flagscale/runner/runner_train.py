@@ -148,6 +148,8 @@ def _get_runner_cmd_train(
         del runner_args["master_addr"]
     if "master_port" in runner_args:
         del runner_args["master_port"]
+    if "enable_monitoring" in runner_args:
+        del runner_args["enable_monitoring"]
     runner_args["rdzv_id"] = rdzv_id
     # runner_args["master_addr"] = master_addr
     # runner_args["master_port"] = master_port
@@ -216,7 +218,7 @@ def _generate_run_script_train(
         f.write(f"\n")
         if enable_monitoring:
             monitor_launcher_path = os.path.join(
-                root_dir, "flagscale", "elastic", "monitor_launcher.py"
+                root_dir, "flagscale", "runner", "elastic", "monitor_launcher.py"
             )
             ssh_port = config.experiment.runner.get("ssh_port", 22)
             f.write(f'# Start monitoring service in background\n')

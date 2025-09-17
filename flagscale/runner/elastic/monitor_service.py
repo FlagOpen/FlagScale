@@ -33,6 +33,8 @@ class MonitorService:
         self.monitor_thread = None
         self.log_collection_enabled = True
         self.diagnostic_enabled = True
+        self.hang_detection_timeout = 1800  # 30 minutes in seconds
+        self.last_log_check_times = {}  # Track last modification time for each log file
 
         self.monitor_log_dir = os.path.join(config.train.system.logging.log_dir, "monitor")
         os.makedirs(self.monitor_log_dir, exist_ok=True)
@@ -103,6 +105,9 @@ class MonitorService:
 
                     if self.diagnostic_enabled:
                         self._generate_diagnostics()
+
+                    if self.diagnostic_enabled:
+                        self._check_and_report_hang()
 
                 except Exception as e:
                     logger.error(f"Error in monitoring loop: {e}")
@@ -201,6 +206,107 @@ class MonitorService:
                 )
         except Exception as e:
             logger.error(f"Failed to generate diagnostic for {host} (node {node_rank}): {e}")
+
+    def _check_log_hang(self, host: str, node_rank: int) -> bool:
+        """
+        Check if log file has not been updated for too long (hang detection)
+
+        Args:
+            host (str): Hostname
+            node_rank (int): Node rank
+
+        Returns:
+            bool: True if log appears to be hanging, False otherwise
+        """
+        try:
+            # Determine log file path
+            no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
+            if no_shared_fs:
+                log_file = os.path.join(self.config.train.system.logging.log_dir, "host.output")
+            else:
+                log_file = os.path.join(
+                    self.config.train.system.logging.log_dir, f"host_{node_rank}_{host}.output"
+                )
+
+            if not os.path.exists(log_file):
+                return False
+
+            # Get current modification time
+            current_mtime = os.path.getmtime(log_file)
+            current_time = time.time()
+
+            # Check if log file hasn't been updated for too long
+            time_since_update = current_time - current_mtime
+
+            if time_since_update > self.hang_detection_timeout:
+                logger.warning(
+                    f"Log file {log_file} has not been updated for {time_since_update:.0f} seconds"
+                )
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Error checking log hang for {host} (node {node_rank}): {e}")
+            return False
+
+    def _generate_hang_diagnostic(self, host: str, node_rank: int):
+        """
+        Generate hang diagnostic entry when log file is not updating
+
+        Args:
+            host (str): Hostname
+            node_rank (int): Node rank
+        """
+        try:
+            from flagscale.elastic.diagnostic import generate_diagnostic_report
+
+            # Create a temporary diagnostic content for hang detection
+            log_dir = self.monitor_log_dir
+            diagnostic_file = os.path.join(log_dir, f"host_{node_rank}_{host}_diagnostic.txt")
+            current_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+
+            # Determine log file name for reference
+            no_shared_fs = self.config.experiment.runner.get("no_shared_fs", False)
+            if no_shared_fs:
+                log_filename = "host.output"
+            else:
+                log_filename = f"host_{node_rank}_{host}.output"
+
+            hang_entry = f"[{current_time}] HangError: Process appears to be hanging - log file not updated for over {self.hang_detection_timeout//60} minutes. Check {log_filename}"
+
+            # Ensure diagnostic file exists with header if it doesn't
+            if not os.path.exists(diagnostic_file):
+                os.makedirs(os.path.dirname(diagnostic_file), exist_ok=True)
+                header_content = f"Diagnostic Report for {host} (node {node_rank})\n"
+                header_content += f"Generated at {current_time}\n"
+                header_content += "Analysis:\n"
+
+                with open(diagnostic_file, 'w', encoding='utf-8') as f:
+                    f.write(header_content)
+
+            # Append hang detection entry
+            with open(diagnostic_file, 'a', encoding='utf-8') as f:
+                f.write(f"{hang_entry}\n")
+
+            logger.info(
+                f"Added hang detection entry to diagnostic report for {host} (node {node_rank})"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to generate hang diagnostic for {host} (node {node_rank}): {e}")
+
+    def _check_and_report_hang(self):
+        """Check for hanging processes and report them"""
+        if not hasattr(self.runner, 'resources') or self.runner.resources is None:
+            # Local mode
+            if self._check_log_hang("localhost", 0):
+                self._generate_hang_diagnostic("localhost", 0)
+        else:
+            # Multi-node mode
+            for node_rank, (host, _) in enumerate(self.runner.resources.items()):
+                if self._check_log_hang(host, node_rank):
+                    self._generate_hang_diagnostic(host, node_rank)
 
     def get_status_summary(self) -> Dict[str, Any]:
         return {
