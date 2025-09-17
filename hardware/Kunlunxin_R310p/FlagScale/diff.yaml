@@ -1,12 +1,12 @@
 backends_commit:
-  vllm: b6553be1bc75f046b00046a4ad7576364d03c835
+  vllm: 6d8d0a24c02bfd84d46b3016b865a44f048ae84b
 backends_version:
   FlagScale: 0.8.0
   vllm: 0.8.5
-commit: 3297c7805ae13adddb8812304c53f67fd383668e
+commit: 2c45a2226067bc4f6a5dac1655cc780f4154b608
 contact: ''
 device_type: Kunlunxin_R310p
 models:
-- deepseek_r1_distill_l_qwen
+- qwen3-8b
 task:
 - inference
