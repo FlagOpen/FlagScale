@@ -190,15 +190,6 @@ def model_provider(
             vp_stage=vp_stage,
         )
 
-        print(f"before transform, model is {model}")
-
-        lora = LoRA()
-        lora.apply_transform(model)
-
-        print(f"after transform, model is {model}")
-
-
-
     return model
 
 
