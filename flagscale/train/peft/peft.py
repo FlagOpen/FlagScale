@@ -1,7 +1,8 @@
+from abc import ABC, abstractmethod
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+
 import torch
 import torch.nn as nn
-from typing import Any, Callable, List, Optional, Tuple, Type, Dict
-from abc import ABC, abstractmethod
 
 
 class PEFT(ABC):
@@ -11,6 +12,7 @@ class PEFT(ABC):
     large language models efficiently by modifying only a small subset of the model's
     parameters.
     """
+
     _REGISTRY: Dict[str, Type["PEFT"]] = {}
 
     def __init_subclass__(cls, *, peft_type: str, **kwargs):
@@ -19,14 +21,14 @@ class PEFT(ABC):
             raise ValueError(f"peft_type={peft_type} registered already!")
         cls._REGISTRY[peft_type] = cls
         cls._peft_type = peft_type
-    
+
     @classmethod
     def from_config(cls, config) -> "PEFT":
         peft_type = config.peft_type
         if peft_type not in cls._REGISTRY:
             raise KeyError(f"Unsupported peft_type: {peft_type}, registered: {list(cls._REGISTRY)}")
         sub_cls = cls._REGISTRY[peft_type]
-        return sub_cls(config)    
+        return sub_cls(config)
 
     @abstractmethod
     def transform(self, module, name=None, prefix=None):
@@ -60,10 +62,9 @@ class PEFT(ABC):
             if replaced_module == module:
                 continue
             model.set_submodule(full_name, replaced_module)
-    
+
     def freeze_model(self, model: nn.Module):
-        """Apply a default freeze method to the model.
-        """
+        """Apply a default freeze method to the model."""
         pass
 
     def load_state_dict_pre_hooks(self, model: nn.Module):
@@ -143,33 +144,8 @@ class AdapterWrapper(nn.Module):
 
         # Get state dict of the main module
         self.to_wrap.state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
-
         # Store adapter state dict under the "adapter" prefix in the destination dict
-        self.adapter.state_dict(destination=destination, prefix=f'{prefix}adapter.', keep_vars=keep_vars)
+        self.adapter.state_dict(
+            destination=destination, prefix=f'{prefix}adapter.', keep_vars=keep_vars
+        )
         return destination
-
-    def sharded_state_dict(
-        self,
-        prefix: str = '',
-        sharded_offsets: Tuple[Tuple[int, int, int]] = (),
-        metadata: Optional[dict] = None,
-    ) -> "ShardedStateDict":
-        """Retrieve the sharded state dictionary of the wrapped module and adapter.
-
-        This method is used for distributed checkpointing, combining the sharded states
-        of both the main module and the adapter.
-
-        Args:
-            prefix (str): A prefix added to parameter and buffer names. Defaults to ''.
-            sharded_offsets (Tuple[Tuple[int, int, int]]): Offsets for sharded parameters.
-                                                           Defaults to an empty tuple.
-            metadata (Optional[dict]): Additional metadata for the sharded state.
-                                       Defaults to None.
-
-        Returns:
-            ShardedStateDict: The combined sharded state dictionary.
-        """
-        sharded_state_dict = {}
-        sharded_state_dict.update(self.to_wrap.sharded_state_dict(prefix, sharded_offsets, metadata))
-        sharded_state_dict.update(self.adapter.sharded_state_dict(f"{prefix}adapter.", sharded_offsets, metadata))
-        return sharded_state_dict

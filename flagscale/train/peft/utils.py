@@ -1,10 +1,12 @@
 import math
 import re
+
 from importlib.metadata import version
 from typing import Any, Callable, List, Optional, Tuple, Type
 
 import packaging
 import torch
+
 from torch import nn
 
 from megatron.core import ModelParallelConfig, parallel_state
@@ -16,44 +18,26 @@ from megatron.core.tensor_parallel.mappings import (
 )
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 
-from flagscale.train.peft.import_utils import safe_import_from
-
-TEColumnParallelLinear, HAVE_TE_COL_LINEAR = safe_import_from(
-    "megatron.core.extensions.transformer_engine", "TEColumnParallelLinear"
-)
-TELayerNormColumnParallelLinear, HAVE_TE_LN_COL_LINEAR = safe_import_from(
-    "megatron.core.extensions.transformer_engine",
-    "TELayerNormColumnParallelLinear",
-)
-TEColumnParallelGroupedLinear, HAVE_TE_COL_GRP_LINEAR = safe_import_from(
-    "megatron.core.extensions.transformer_engine", "TEColumnParallelGroupedLinear"
-)
-TERowParallelLinear, HAVE_TE_ROW_LINEAR = safe_import_from(
-    "megatron.core.extensions.transformer_engine", "TERowParallelLinear"
-)
-TERowParallelGroupedLinear, HAVE_TE_ROW_GRP_LINEAR = safe_import_from(
-    "megatron.core.extensions.transformer_engine", "TERowParallelGroupedLinear"
-)
-TELinear, HAVE_TE_LINEAR = safe_import_from("megatron.core.extensions.transformer_engine", "TELinear")
-HAVE_TE = all(
-    (
-        HAVE_TE_COL_LINEAR,
-        HAVE_TE_LN_COL_LINEAR,
-        HAVE_TE_ROW_LINEAR,
-        HAVE_TE_LINEAR,
-        HAVE_TE_COL_GRP_LINEAR,
-        HAVE_TE_ROW_GRP_LINEAR,
+try:
+    from megatron.core.extensions.transformer_engine import (
+        TEColumnParallelGroupedLinear,
+        TEColumnParallelLinear,
+        TELayerNormColumnParallelLinear,
+        TELinear,
+        TERowParallelGroupedLinear,
+        TERowParallelLinear,
     )
-)
 
+    HAVE_TE = True
+except ImportError:
+    HAVE_TE = False
 
 TECL = (TEColumnParallelLinear, TELayerNormColumnParallelLinear, TEColumnParallelGroupedLinear)
 TERL = (TERowParallelLinear, TERowParallelGroupedLinear)
 
 
 def match_module(m, name, prefix, target_modules):
-    """
-    """
+    """ """
     full_name = f"{prefix}.{name}" if prefix else name
     for pattern in target_modules:
         if name == pattern or wildcard_match(pattern, full_name):
@@ -83,7 +67,6 @@ def get_adapter_attributes_from_linear(m: nn.Module):
     """
     Return input_is_parallel, in_features, out_feature attributes based on implementation of the base layer.
     """
-    disable_sequence_parallel_comm = not m.config.sequence_parallel
     base_linear_is_parallel = True
     if HAVE_TE and any(isinstance(m, te_column_parallel) for te_column_parallel in TECL):
         input_is_parallel = False
@@ -92,28 +75,9 @@ def get_adapter_attributes_from_linear(m: nn.Module):
         tp_size = parallel_state.get_tensor_model_parallel_world_size()
         in_features = m.in_features
         out_features = m.out_features * tp_size
-
         if isinstance(m, TELayerNormColumnParallelLinear):
             # LoRA is applied after layernorm, so layernorm output must be returned
             m.return_layernorm_output = True
-            # perf optimization for LoRA + SP
-            if hasattr(m, "ub_overlap_ag"):
-                ub_overlap_ag = m.ub_overlap_ag
-            elif hasattr(m, "ub_overlap_ag_fprop"):
-                ub_overlap_ag = m.ub_overlap_ag_fprop
-            else:
-                ub_overlap_ag = False
-            if m.config.sequence_parallel and not ub_overlap_ag:
-                m.return_layernorm_output_gathered = True
-                te_version = packaging.version.Version(version("transformer-engine"))
-                if te_version >= packaging.version.Version("1.5.0dev") and (
-                    not getattr(m.config, "tp_comm_overlap", False)
-                    or getattr(m.config, "tp_comm_overlap_disable_qkv", False)
-                ):
-                    # TE 1.5 introduces the option `return_layernorm_output_gathered`, so the all gather
-                    # in the forward method is not needed, so disable sp communications
-                    # unless TP communication overlap is used
-                    disable_sequence_parallel_comm = True
     elif HAVE_TE and any(isinstance(m, te_row_parallel) for te_row_parallel in TERL):
         input_is_parallel = True
         tp_size = parallel_state.get_tensor_model_parallel_world_size()
@@ -135,7 +99,7 @@ def get_adapter_attributes_from_linear(m: nn.Module):
     else:
         raise NotImplementedError(f"Layer type is unrecognized for LoRA: {type(m)}")
 
-    return input_is_parallel, in_features, out_features, disable_sequence_parallel_comm, base_linear_is_parallel
+    return (input_is_parallel, in_features, out_features, base_linear_is_parallel)
 
 
 def is_expert_linear(fqn):
@@ -189,7 +153,6 @@ class ParallelLinearAdapter(nn.Module):
         dropout: float = 0.0,
         alpha: float | None = None,
         dropout_position: str = 'post',
-        disable_sequence_parallel_comm: bool = True,
     ):
 
         super().__init__()
@@ -200,14 +163,6 @@ class ParallelLinearAdapter(nn.Module):
         self.dropout_position = dropout_position
         self.is_expert = is_expert
         self.input_is_parallel = input_is_parallel
-
-        # megatron_gpt_peft_models will provide this arg, but deprecated ones do not.
-        # in case this arg is not provided, use the dummy default config.
-        if model_parallel_config is None:
-            model_parallel_config = ModelParallelConfig()
-        _sequence_parallel = model_parallel_config.sequence_parallel
-        model_parallel_config.sequence_parallel = False  # SP is irrelevant for the lora linear layer
-        self.config = model_parallel_config
 
         if input_is_parallel:
             self.linear_in = TERowParallelLinear(
@@ -233,7 +188,7 @@ class ParallelLinearAdapter(nn.Module):
                 symmetric_ar_type=model_parallel_config.symmetric_ar_type,
                 skip_weight_param_allocation=False,
             )
-        
+
         if input_is_parallel:
             self.linear_out = TELinear(
                 input_size=dim,
@@ -264,12 +219,6 @@ class ParallelLinearAdapter(nn.Module):
             self.dropout = torch.nn.Dropout(p=dropout)
         else:
             self.dropout = None
-        
-        # revert config change in case it is read elsewhere
-        model_parallel_config.sequence_parallel = _sequence_parallel
-        self.disable_sequence_parallel_comm = disable_sequence_parallel_comm
-        if not _sequence_parallel:
-            self.disable_sequence_parallel_comm = True
 
     def _get_init_fn(self, init_method: str):
         if init_method == 'xavier':
@@ -289,26 +238,12 @@ class ParallelLinearAdapter(nn.Module):
         if self.dropout is not None and self.dropout_position == 'pre':
             x = self.dropout(x)
 
-        if not self.disable_sequence_parallel_comm and not self.input_is_parallel and not self.is_expert:
-            # for attention_qkv and linear_fc1
-            # layernorm before lora is impacted by sequence parallel,
-            # hence seq dim need to be gathered right before lora linear layers
-            # this function also handles the backward pass correctly
-            x = gather_from_sequence_parallel_region(x)
-        
-        x, _= self.linear_in(x)
-        x, _= self.linear_out(x)
+        x, _ = self.linear_in(x)
+        x, _ = self.linear_out(x)
 
-        if not self.disable_sequence_parallel_comm and self.input_is_parallel and not self.is_expert:
-            # for attention_dense and linear_fc2
-            # layernorm after lora is impacted by sequence parallel,
-            # hence seq dim need to be scattered right after lora linear layers
-            # this function also handles the backward pass correctly
-            x = scatter_to_sequence_parallel_region(x)
-        
         if self.dropout is not None and self.dropout_position == 'post':
             x = self.dropout(x)
-        
+
         x = x * (self.alpha / self.dim)
 
         return x
@@ -321,13 +256,17 @@ class ParallelLinearAdapter(nn.Module):
         since TP is sharded separately for the two logical matrices (gate and up)
         """
         sharded_state_dict = {}
-        linear_in_sd = self.linear_in.sharded_state_dict(f"{prefix}linear_in.", sharded_offsets, metadata)
-        linear_out_sd = self.linear_out.sharded_state_dict(f"{prefix}linear_out.", sharded_offsets, metadata)
+        linear_in_sd = self.linear_in.sharded_state_dict(
+            f"{prefix}linear_in.", sharded_offsets, metadata
+        )
+        linear_out_sd = self.linear_out.sharded_state_dict(
+            f"{prefix}linear_out.", sharded_offsets, metadata
+        )
 
         sharded_state_dict.update(linear_in_sd)
         sharded_state_dict.update(linear_out_sd)
         return sharded_state_dict
-        
+
     def __repr__(self):
         return (
             f"{type(self).__name__}(linear_in: in_features={self.linear_in.in_features}, "
