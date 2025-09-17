@@ -2,6 +2,7 @@
 import argparse
 import copy
 import os
+import re
 import shutil
 import tempfile
 
