@@ -46,7 +46,6 @@ from megatron.training.yaml_arguments import core_transformer_config_from_yaml
 
 import megatron.legacy.model  # isort: skip
 
-
 # NOTE: Loading `megatron.legacy.model` earlier fails due to circular import
 
 try:
