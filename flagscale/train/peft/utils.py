@@ -99,12 +99,7 @@ def get_adapter_attributes_from_linear(m: nn.Module):
     else:
         raise NotImplementedError(f"Layer type is unrecognized for LoRA: {type(m)}")
 
-    return (
-        input_is_parallel,
-        in_features,
-        out_features,
-        base_linear_is_parallel,
-    )
+    return (input_is_parallel, in_features, out_features, base_linear_is_parallel)
 
 
 def is_expert_linear(fqn):

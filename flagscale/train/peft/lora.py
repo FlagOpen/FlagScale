@@ -70,12 +70,9 @@ class LoRA(PEFT, peft_type='lora'):
         if (ans := match_module(m, name, prefix, self.target_modules)) is not None:
             (match, full_name) = ans
 
-            (
-                input_is_parallel,
-                in_features,
-                out_features,
-                base_linear_is_parallel,
-            ) = get_adapter_attributes_from_linear(m)
+            (input_is_parallel, in_features, out_features, base_linear_is_parallel) = (
+                get_adapter_attributes_from_linear(m)
+            )
 
             adapter = ParallelLinearAdapter(
                 in_features=in_features,
