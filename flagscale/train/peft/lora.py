@@ -1,19 +1,22 @@
+import logging
+
+from collections import namedtuple
+from dataclasses import dataclass, field
+from functools import partial
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+
 import torch
 import torch.nn as nn
-from typing import Any, Callable, List, Optional, Tuple, Type, Dict
-from dataclasses import dataclass, field
-from collections import namedtuple
-from functools import partial
-import logging
+
+from megatron.training.utils import unwrap_model
 
 from flagscale.train.peft.peft import PEFT, AdapterWrapper
 from flagscale.train.peft.utils import (
+    ParallelLinearAdapter,
     get_adapter_attributes_from_linear,
     is_expert_linear,
-    ParallelLinearAdapter,
     match_module,
 )
-from megatron.training.utils import unwrap_model
 
 
 class LoRALinear(AdapterWrapper):
@@ -25,10 +28,7 @@ class LoRALinear(AdapterWrapper):
     """
 
     def forward(
-        self,
-        x: torch.Tensor,
-        *args,
-        **kwargs,
+        self, x: torch.Tensor, *args, **kwargs
     ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         # pylint: disable=C0115,C0116
         linear_output, bias, layernorm_output = self.base_linear_forward(x, *args, **kwargs)
@@ -44,10 +44,8 @@ class LoRA(PEFT, peft_type='lora'):
     LoRA uses a low-rank projection to adapt the weights of a pre-trained model to a new downstream task.
     This class facilitates the application of LoRA to specific modules within the model architecture.
     """
-    def __init__(
-        self,
-        config,
-    ):
+
+    def __init__(self, config):
         super().__init__()
         self.config = config
         self.target_modules = config.lora_target_modules
@@ -72,9 +70,13 @@ class LoRA(PEFT, peft_type='lora'):
         if (ans := match_module(m, name, prefix, self.target_modules)) is not None:
             (match, full_name) = ans
 
-            input_is_parallel, in_features, out_features, disable_sp_comm, base_linear_is_parallel = (
-                get_adapter_attributes_from_linear(m)
-            )
+            (
+                input_is_parallel,
+                in_features,
+                out_features,
+                disable_sp_comm,
+                base_linear_is_parallel,
+            ) = get_adapter_attributes_from_linear(m)
 
             adapter = ParallelLinearAdapter(
                 in_features=in_features,
@@ -94,12 +96,11 @@ class LoRA(PEFT, peft_type='lora'):
 
             lora_linear = LoRALinear(m, adapter)
             return lora_linear
-            
+
         return m
-    
+
     def freeze_model(self, model: nn.Module):
-        """Freeze main model for lora
-        """
+        """Freeze main model for lora"""
         for name, param in model.named_parameters():
             param.requires_grad = False
         for name, param in model.named_parameters():
@@ -115,7 +116,7 @@ class LoRA(PEFT, peft_type='lora'):
             strict: bool,
             missing_keys: List[str],
             unexpected_keys: List[str],
-            errors: List[Any]  
+            errors: List[Any],
         ):
             old_keys = [prefix + "weight", prefix + "bias"]
             new_keys = [prefix + "to_wrap.weight", prefix + "to_wrap.bias"]
@@ -125,7 +126,7 @@ class LoRA(PEFT, peft_type='lora'):
                         state_dict[new_key] = state_dict.pop(old_key)
                     else:
                         state_dict.pop(old_key)
-            
+
         for name, module in model.named_modules():
             if isinstance(module, LoRALinear):
                 module.register_load_state_dict_pre_hook(
@@ -142,13 +143,11 @@ class LoRA(PEFT, peft_type='lora'):
                         f"{param_name} being removed from incompatible_keys.missing_keys in this model"
                     )
                     incompatible_keys.missing_keys.remove(param_name)
+
         lora_param_names = []
         for name in model.state_dict().keys():
             if "adapter" in name:
                 lora_param_names.append(name)
         model.register_load_state_dict_post_hook(
-            partial(
-                load_state_dict_hook_ignore_param_names,
-                lora_param_names,
-            )
+            partial(load_state_dict_hook_ignore_param_names, lora_param_names)
         )

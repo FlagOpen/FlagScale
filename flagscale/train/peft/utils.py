@@ -1,10 +1,12 @@
 import math
 import re
+
 from importlib.metadata import version
 from typing import Any, Callable, List, Optional, Tuple, Type
 
 import packaging
 import torch
+
 from torch import nn
 
 from megatron.core import ModelParallelConfig, parallel_state
@@ -18,13 +20,14 @@ from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 
 try:
     from megatron.core.extensions.transformer_engine import (
+        TEColumnParallelGroupedLinear,
         TEColumnParallelLinear,
         TELayerNormColumnParallelLinear,
-        TEColumnParallelGroupedLinear,
-        TERowParallelLinear,
-        TERowParallelGroupedLinear,
         TELinear,
+        TERowParallelGroupedLinear,
+        TERowParallelLinear,
     )
+
     HAVE_TE = True
 except ImportError:
     HAVE_TE = False
@@ -34,8 +37,7 @@ TERL = (TERowParallelLinear, TERowParallelGroupedLinear)
 
 
 def match_module(m, name, prefix, target_modules):
-    """
-    """
+    """ """
     full_name = f"{prefix}.{name}" if prefix else name
     for pattern in target_modules:
         if name == pattern or wildcard_match(pattern, full_name):
@@ -117,7 +119,13 @@ def get_adapter_attributes_from_linear(m: nn.Module):
     else:
         raise NotImplementedError(f"Layer type is unrecognized for LoRA: {type(m)}")
 
-    return input_is_parallel, in_features, out_features, disable_sequence_parallel_comm, base_linear_is_parallel
+    return (
+        input_is_parallel,
+        in_features,
+        out_features,
+        disable_sequence_parallel_comm,
+        base_linear_is_parallel,
+    )
 
 
 def is_expert_linear(fqn):
@@ -188,7 +196,9 @@ class ParallelLinearAdapter(nn.Module):
         if model_parallel_config is None:
             model_parallel_config = ModelParallelConfig()
         _sequence_parallel = model_parallel_config.sequence_parallel
-        model_parallel_config.sequence_parallel = False  # SP is irrelevant for the lora linear layer
+        model_parallel_config.sequence_parallel = (
+            False  # SP is irrelevant for the lora linear layer
+        )
         self.config = model_parallel_config
 
         if input_is_parallel:
@@ -215,7 +225,7 @@ class ParallelLinearAdapter(nn.Module):
                 symmetric_ar_type=model_parallel_config.symmetric_ar_type,
                 skip_weight_param_allocation=False,
             )
-        
+
         if input_is_parallel:
             self.linear_out = TELinear(
                 input_size=dim,
@@ -246,7 +256,7 @@ class ParallelLinearAdapter(nn.Module):
             self.dropout = torch.nn.Dropout(p=dropout)
         else:
             self.dropout = None
-        
+
         # revert config change in case it is read elsewhere
         model_parallel_config.sequence_parallel = _sequence_parallel
         self.disable_sequence_parallel_comm = disable_sequence_parallel_comm
@@ -271,26 +281,34 @@ class ParallelLinearAdapter(nn.Module):
         if self.dropout is not None and self.dropout_position == 'pre':
             x = self.dropout(x)
 
-        if not self.disable_sequence_parallel_comm and not self.input_is_parallel and not self.is_expert:
+        if (
+            not self.disable_sequence_parallel_comm
+            and not self.input_is_parallel
+            and not self.is_expert
+        ):
             # for attention_qkv and linear_fc1
             # layernorm before lora is impacted by sequence parallel,
             # hence seq dim need to be gathered right before lora linear layers
             # this function also handles the backward pass correctly
             x = gather_from_sequence_parallel_region(x)
-        
-        x, _= self.linear_in(x)
-        x, _= self.linear_out(x)
 
-        if not self.disable_sequence_parallel_comm and self.input_is_parallel and not self.is_expert:
+        x, _ = self.linear_in(x)
+        x, _ = self.linear_out(x)
+
+        if (
+            not self.disable_sequence_parallel_comm
+            and self.input_is_parallel
+            and not self.is_expert
+        ):
             # for attention_dense and linear_fc2
             # layernorm after lora is impacted by sequence parallel,
             # hence seq dim need to be scattered right after lora linear layers
             # this function also handles the backward pass correctly
             x = scatter_to_sequence_parallel_region(x)
-        
+
         if self.dropout is not None and self.dropout_position == 'post':
             x = self.dropout(x)
-        
+
         x = x * (self.alpha / self.dim)
 
         return x
@@ -303,13 +321,17 @@ class ParallelLinearAdapter(nn.Module):
         since TP is sharded separately for the two logical matrices (gate and up)
         """
         sharded_state_dict = {}
-        linear_in_sd = self.linear_in.sharded_state_dict(f"{prefix}linear_in.", sharded_offsets, metadata)
-        linear_out_sd = self.linear_out.sharded_state_dict(f"{prefix}linear_out.", sharded_offsets, metadata)
+        linear_in_sd = self.linear_in.sharded_state_dict(
+            f"{prefix}linear_in.", sharded_offsets, metadata
+        )
+        linear_out_sd = self.linear_out.sharded_state_dict(
+            f"{prefix}linear_out.", sharded_offsets, metadata
+        )
 
         sharded_state_dict.update(linear_in_sd)
         sharded_state_dict.update(linear_out_sd)
         return sharded_state_dict
-        
+
     def __repr__(self):
         return (
             f"{type(self).__name__}(linear_in: in_features={self.linear_in.in_features}, "
