@@ -1333,7 +1333,7 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
         unwrapped_model = unwrap_model(model)
         if not isinstance(unwrapped_model, list):
             unwrapped_model = [unwrapped_model]
-        
+
         for model_module in unwrapped_model:
             # 2) transform
             peft.apply_transform(model_module)
