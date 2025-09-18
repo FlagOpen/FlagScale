@@ -67,7 +67,6 @@ def get_adapter_attributes_from_linear(m: nn.Module):
     """
     Return input_is_parallel, in_features, out_feature attributes based on implementation of the base layer.
     """
-    layernorm_sequence_parallel_gathered = False
     base_linear_is_parallel = True
     if HAVE_TE and any(isinstance(m, te_column_parallel) for te_column_parallel in TECL):
         input_is_parallel = False
@@ -76,28 +75,9 @@ def get_adapter_attributes_from_linear(m: nn.Module):
         tp_size = parallel_state.get_tensor_model_parallel_world_size()
         in_features = m.in_features
         out_features = m.out_features * tp_size
-
         if isinstance(m, TELayerNormColumnParallelLinear):
             # LoRA is applied after layernorm, so layernorm output must be returned
             m.return_layernorm_output = True
-            # perf optimization for LoRA + SP
-            if hasattr(m, "ub_overlap_ag"):
-                ub_overlap_ag = m.ub_overlap_ag
-            elif hasattr(m, "ub_overlap_ag_fprop"):
-                ub_overlap_ag = m.ub_overlap_ag_fprop
-            else:
-                ub_overlap_ag = False
-            if m.config.sequence_parallel and not ub_overlap_ag:
-                m.return_layernorm_output_gathered = True
-                te_version = packaging.version.Version(version("transformer-engine"))
-                if te_version >= packaging.version.Version("1.5.0dev") and (
-                    not getattr(m.config, "tp_comm_overlap", False)
-                    or getattr(m.config, "tp_comm_overlap_disable_qkv", False)
-                ):
-                    # TE 1.5 introduces the option `return_layernorm_output_gathered`, so the all gather
-                    # in the forward method is not needed, so disable sp communications
-                    # unless TP communication overlap is used
-                    layernorm_sequence_parallel_gathered = True
     elif HAVE_TE and any(isinstance(m, te_row_parallel) for te_row_parallel in TERL):
         input_is_parallel = True
         tp_size = parallel_state.get_tensor_model_parallel_world_size()
@@ -123,7 +103,6 @@ def get_adapter_attributes_from_linear(m: nn.Module):
         input_is_parallel,
         in_features,
         out_features,
-        layernorm_sequence_parallel_gathered,
         base_linear_is_parallel,
     )
 
@@ -179,7 +158,6 @@ class ParallelLinearAdapter(nn.Module):
         dropout: float = 0.0,
         alpha: float | None = None,
         dropout_position: str = 'post',
-        layernorm_sequence_parallel_gathered: bool = False,
     ):
 
         super().__init__()
@@ -190,7 +168,6 @@ class ParallelLinearAdapter(nn.Module):
         self.dropout_position = dropout_position
         self.is_expert = is_expert
         self.input_is_parallel = input_is_parallel
-        self.layernorm_sequence_parallel_gathered = layernorm_sequence_parallel_gathered
 
         if input_is_parallel:
             self.linear_in = TERowParallelLinear(
@@ -265,11 +242,6 @@ class ParallelLinearAdapter(nn.Module):
         """ """
         if self.dropout is not None and self.dropout_position == 'pre':
             x = self.dropout(x)
-
-        # when using TELayernormColumnParallelLinear, it returns a full seq_length tensor
-        # scatter it into sequence parallel ranks
-        if self.layernorm_sequence_parallel_gathered and not self.input_is_parallel:
-            x = scatter_to_sequence_parallel_region(x)
 
         x, _ = self.linear_in(x)
         x, _ = self.linear_out(x)
