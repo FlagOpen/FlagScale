@@ -147,29 +147,3 @@ class AdapterWrapper(nn.Module):
         # Store adapter state dict under the "adapter" prefix in the destination dict
         self.adapter.state_dict(destination=destination, prefix=f'{prefix}adapter.', keep_vars=keep_vars)
         return destination
-
-    def sharded_state_dict(
-        self,
-        prefix: str = '',
-        sharded_offsets: Tuple[Tuple[int, int, int]] = (),
-        metadata: Optional[dict] = None,
-    ) -> "ShardedStateDict":
-        """Retrieve the sharded state dictionary of the wrapped module and adapter.
-
-        This method is used for distributed checkpointing, combining the sharded states
-        of both the main module and the adapter.
-
-        Args:
-            prefix (str): A prefix added to parameter and buffer names. Defaults to ''.
-            sharded_offsets (Tuple[Tuple[int, int, int]]): Offsets for sharded parameters.
-                                                           Defaults to an empty tuple.
-            metadata (Optional[dict]): Additional metadata for the sharded state.
-                                       Defaults to None.
-
-        Returns:
-            ShardedStateDict: The combined sharded state dictionary.
-        """
-        sharded_state_dict = {}
-        sharded_state_dict.update(self.to_wrap.sharded_state_dict(prefix, sharded_offsets, metadata))
-        sharded_state_dict.update(self.adapter.sharded_state_dict(f"{prefix}adapter.", sharded_offsets, metadata))
-        return sharded_state_dict
