@@ -1,5 +1,8 @@
 diff --git a/megatron/training/checkpointing.py b/megatron/training/checkpointing.py
-index 652333ac..0d3b38a2 100644
+<<<<<<< HEAD
+=======
+index 652333ac..0fdc3431 100644
+>>>>>>> b0a32df687caee25cdc4d63cfafd725b87d71049
 --- a/megatron/training/checkpointing.py
 +++ b/megatron/training/checkpointing.py
 @@ -255,12 +255,14 @@ def read_metadata(tracker_filename):
@@ -88,7 +91,10 @@ index 652333ac..0d3b38a2 100644
      _set_arg('untie_embeddings_and_output_weights', force=True)
      _set_arg('apply_layernorm_1p', force=True)
      _set_arg('normalization', force=True)
-@@ -1294,6 +1322,23 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load',
+<<<<<<< HEAD
+=======
+@@ -1294,6 +1322,31 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load',
+>>>>>>> b0a32df687caee25cdc4d63cfafd725b87d71049
              if ckpt_tp_pp != run_tp_pp:
                  print_rank_0("{}: RNG state will be ignored".format(mismatch_msg))
  
@@ -106,13 +112,17 @@ index 652333ac..0d3b38a2 100644
 +        mismatch_msg = "(TP, PP, EP) mismatch after resume ({} vs {} from checkpoint)".format(
 +            run_tp_pp_ep, ckpt_tp_pp_ep
 +        )
+<<<<<<< HEAD
 +        convert_to_ep = (args.expert_model_parallel_size != 1 and state_dict['args'].expert_model_parallel_size == 1)
-+        
-+
+=======
+>>>>>>> b0a32df687caee25cdc4d63cfafd725b87d71049
          sharded_sd_metadata = dist_checkpointing.load_content_metadata(preloaded_state_dict=state_dict)
          print_rank_0(f'sharded_state_dict metadata loaded from the checkpoint: {sharded_sd_metadata}')
          # Determine if optimizer state will be loaded
-@@ -1312,7 +1357,8 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load',
+<<<<<<< HEAD
+=======
+@@ -1312,7 +1365,8 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load',
+>>>>>>> b0a32df687caee25cdc4d63cfafd725b87d71049
                                                          if getattr(state_dict['args'], 'ckpt_fully_parallel_save', False)
                                                          else 'dp_zero_gather_scatter'),
                      }
@@ -122,12 +132,18 @@ index 652333ac..0d3b38a2 100644
                      raise RuntimeError(f"{mismatch_msg}: not supported for DistributedOptimizer with sharding type"
                                         f" {sharded_sd_metadata['distrib_optim_sharding_type']}."
                                         f" Please use `--ckpt-fully-parallel-save` flag during checkpoint saving.")
-@@ -1320,7 +1366,7 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load',
+<<<<<<< HEAD
+=======
+@@ -1320,7 +1374,7 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load',
+>>>>>>> b0a32df687caee25cdc4d63cfafd725b87d71049
              gen_sd_optim = None
              gen_sd_opt_param_scheduler = None
  
 -        optim_sd_kwargs = dict(metadata=sharded_sd_metadata, is_loading=True)
+<<<<<<< HEAD
 +        optim_sd_kwargs = dict(metadata=sharded_sd_metadata, is_loading=True, convert_to_ep=convert_to_ep) #add tp/pp to ep
+=======
+>>>>>>> b0a32df687caee25cdc4d63cfafd725b87d71049
          model_sd_kwargs = dict(metadata=sharded_sd_metadata)
  
          # Determine if rerun state will be loaded
