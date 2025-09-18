@@ -14,6 +14,8 @@ from flagscale.runner.auto_tuner.search.searcher import Searcher, ServeSearcher
 from flagscale.runner.runner_base import JobStatus
 from flagscale.runner.runner_serve import SSHServeRunner
 from flagscale.runner.runner_train import SSHTrainRunner
+from flagscale.runner.auto_tuner.hetero import HeteroGenerator, HeteroPruner, HeteroRecorder, HeteroSearcher
+from flagscale.runner.utils import parse_hostfile
 
 
 class AutoTuner:
@@ -73,10 +75,28 @@ class AutoTuner:
         )
 
         # Build core sub modules, such as Searcher, Pruner, Generator and Recorder
-        self.searcher = Searcher(self.config)
-        self.pruner = Pruner(self.config)
-        self.generator = Generator(self.config)
-        self.recorder = Recorder(self.config)
+        is_hetero_enabled = self.config.train.system.get("hetero", {}).get("enable_hetero", False)
+
+        if is_hetero_enabled:
+            self.logger.info("Initializing in Heterogeneous Mode.")
+            hostfile_path = self.config.experiment.runner.get("hostfile", None)
+            resources = parse_hostfile(hostfile_path)
+            if not resources:
+                raise ValueError(
+                    "Heterogeneous tuning requires a valid hostfile, but none was found or it was empty."
+                )
+            total_cards = sum(info['slots'] for info in resources.values())
+            self.config.experiment.auto_tuner.cards = total_cards
+            self.searcher = HeteroSearcher(self.config, resources)
+            self.pruner = HeteroPruner(self.config)
+            self.generator = HeteroGenerator(self.config)
+            self.recorder = HeteroRecorder(self.config)
+        else:
+            self.logger.info("Initializing in Homogeneous Mode.")
+            self.searcher = Searcher(self.config)
+            self.pruner = Pruner(self.config)
+            self.generator = Generator(self.config)
+            self.recorder = Recorder(self.config)
 
         # Each task has its own runner
         self.runner = None
@@ -282,6 +302,7 @@ class AutoTuner:
     def record(self):
         """Record the task result to csv"""
         self.recorder.record(self.cur_task, self.cur_strategy)
+        self.history.append(self.cur_strategy)
         self.recorder.save(self.history)
 
     def get_best(self):
