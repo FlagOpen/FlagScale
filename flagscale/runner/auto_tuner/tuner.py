@@ -525,6 +525,7 @@ class ServeAutoTunner(AutoTuner):
 
     def record(self):
         self.recorder.record(self.cur_strategy, self.cur_result)
+        self.history.append(self.recorder.cur_strategy)
         self.recorder.save(self.history)
 
     def get_best(self):
