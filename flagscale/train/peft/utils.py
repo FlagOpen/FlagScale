@@ -268,10 +268,7 @@ class ParallelLinearAdapter(nn.Module):
 
         # when using TELayernormColumnParallelLinear, it returns a full seq_length tensor
         # scatter it into sequence parallel ranks
-        if (
-            self.layernorm_sequence_parallel_gathered
-            and not self.input_is_parallel
-        ):
+        if self.layernorm_sequence_parallel_gathered and not self.input_is_parallel:
             x = scatter_to_sequence_parallel_region(x)
 
         x, _ = self.linear_in(x)
