@@ -67,7 +67,7 @@ def get_adapter_attributes_from_linear(m: nn.Module):
     """
     Return input_is_parallel, in_features, out_feature attributes based on implementation of the base layer.
     """
-    disable_sequence_parallel_comm = not m.config.sequence_parallel
+    layernorm_sequence_parallel_gathered = False
     base_linear_is_parallel = True
     if HAVE_TE and any(isinstance(m, te_column_parallel) for te_column_parallel in TECL):
         input_is_parallel = False
@@ -97,7 +97,7 @@ def get_adapter_attributes_from_linear(m: nn.Module):
                     # TE 1.5 introduces the option `return_layernorm_output_gathered`, so the all gather
                     # in the forward method is not needed, so disable sp communications
                     # unless TP communication overlap is used
-                    disable_sequence_parallel_comm = True
+                    layernorm_sequence_parallel_gathered = True
     elif HAVE_TE and any(isinstance(m, te_row_parallel) for te_row_parallel in TERL):
         input_is_parallel = True
         tp_size = parallel_state.get_tensor_model_parallel_world_size()
@@ -123,7 +123,7 @@ def get_adapter_attributes_from_linear(m: nn.Module):
         input_is_parallel,
         in_features,
         out_features,
-        disable_sequence_parallel_comm,
+        layernorm_sequence_parallel_gathered,
         base_linear_is_parallel,
     )
 
@@ -179,7 +179,7 @@ class ParallelLinearAdapter(nn.Module):
         dropout: float = 0.0,
         alpha: float | None = None,
         dropout_position: str = 'post',
-        disable_sequence_parallel_comm: bool = True,
+        layernorm_sequence_parallel_gathered: bool = False,
     ):
 
         super().__init__()
@@ -190,16 +190,7 @@ class ParallelLinearAdapter(nn.Module):
         self.dropout_position = dropout_position
         self.is_expert = is_expert
         self.input_is_parallel = input_is_parallel
-
-        # megatron_gpt_peft_models will provide this arg, but deprecated ones do not.
-        # in case this arg is not provided, use the dummy default config.
-        if model_parallel_config is None:
-            model_parallel_config = ModelParallelConfig()
-        _sequence_parallel = model_parallel_config.sequence_parallel
-        model_parallel_config.sequence_parallel = (
-            False  # SP is irrelevant for the lora linear layer
-        )
-        self.config = model_parallel_config
+        self.layernorm_sequence_parallel_gathered = layernorm_sequence_parallel_gathered
 
         if input_is_parallel:
             self.linear_in = TERowParallelLinear(
@@ -257,12 +248,6 @@ class ParallelLinearAdapter(nn.Module):
         else:
             self.dropout = None
 
-        # revert config change in case it is read elsewhere
-        model_parallel_config.sequence_parallel = _sequence_parallel
-        self.disable_sequence_parallel_comm = disable_sequence_parallel_comm
-        if not _sequence_parallel:
-            self.disable_sequence_parallel_comm = True
-
     def _get_init_fn(self, init_method: str):
         if init_method == 'xavier':
             init_fn = nn.init.xavier_normal_
@@ -281,30 +266,16 @@ class ParallelLinearAdapter(nn.Module):
         if self.dropout is not None and self.dropout_position == 'pre':
             x = self.dropout(x)
 
+        # when using TELayernormColumnParallelLinear, it returns a full seq_length tensor
+        # scatter it into sequence parallel ranks
         if (
-            not self.disable_sequence_parallel_comm
+            self.layernorm_sequence_parallel_gathered
             and not self.input_is_parallel
-            and not self.is_expert
         ):
-            # for attention_qkv and linear_fc1
-            # layernorm before lora is impacted by sequence parallel,
-            # hence seq dim need to be gathered right before lora linear layers
-            # this function also handles the backward pass correctly
-            x = gather_from_sequence_parallel_region(x)
+            x = scatter_to_sequence_parallel_region(x)
 
         x, _ = self.linear_in(x)
         x, _ = self.linear_out(x)
-
-        if (
-            not self.disable_sequence_parallel_comm
-            and self.input_is_parallel
-            and not self.is_expert
-        ):
-            # for attention_dense and linear_fc2
-            # layernorm after lora is impacted by sequence parallel,
-            # hence seq dim need to be scattered right after lora linear layers
-            # this function also handles the backward pass correctly
-            x = scatter_to_sequence_parallel_region(x)
 
         if self.dropout is not None and self.dropout_position == 'post':
             x = self.dropout(x)

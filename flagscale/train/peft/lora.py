@@ -74,7 +74,7 @@ class LoRA(PEFT, peft_type='lora'):
                 input_is_parallel,
                 in_features,
                 out_features,
-                disable_sp_comm,
+                layernorm_sequence_parallel_gathered,
                 base_linear_is_parallel,
             ) = get_adapter_attributes_from_linear(m)
 
@@ -91,7 +91,7 @@ class LoRA(PEFT, peft_type='lora'):
                 dropout=self.dropout,
                 alpha=self.alpha,
                 dropout_position=self.dropout_position,
-                disable_sequence_parallel_comm=disable_sp_comm,
+                layernorm_sequence_parallel_gathered=layernorm_sequence_parallel_gathered,
             )
 
             lora_linear = LoRALinear(m, adapter)
