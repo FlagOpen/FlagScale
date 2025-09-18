@@ -16,36 +16,18 @@ from megatron.core.tensor_parallel.mappings import (
 )
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 
-from flagscale.train.peft.import_utils import safe_import_from
-
-TEColumnParallelLinear, HAVE_TE_COL_LINEAR = safe_import_from(
-    "megatron.core.extensions.transformer_engine", "TEColumnParallelLinear"
-)
-TELayerNormColumnParallelLinear, HAVE_TE_LN_COL_LINEAR = safe_import_from(
-    "megatron.core.extensions.transformer_engine",
-    "TELayerNormColumnParallelLinear",
-)
-TEColumnParallelGroupedLinear, HAVE_TE_COL_GRP_LINEAR = safe_import_from(
-    "megatron.core.extensions.transformer_engine", "TEColumnParallelGroupedLinear"
-)
-TERowParallelLinear, HAVE_TE_ROW_LINEAR = safe_import_from(
-    "megatron.core.extensions.transformer_engine", "TERowParallelLinear"
-)
-TERowParallelGroupedLinear, HAVE_TE_ROW_GRP_LINEAR = safe_import_from(
-    "megatron.core.extensions.transformer_engine", "TERowParallelGroupedLinear"
-)
-TELinear, HAVE_TE_LINEAR = safe_import_from("megatron.core.extensions.transformer_engine", "TELinear")
-HAVE_TE = all(
-    (
-        HAVE_TE_COL_LINEAR,
-        HAVE_TE_LN_COL_LINEAR,
-        HAVE_TE_ROW_LINEAR,
-        HAVE_TE_LINEAR,
-        HAVE_TE_COL_GRP_LINEAR,
-        HAVE_TE_ROW_GRP_LINEAR,
+try:
+    from megatron.core.extensions.transformer_engine import (
+        TEColumnParallelLinear,
+        TELayerNormColumnParallelLinear,
+        TEColumnParallelGroupedLinear,
+        TERowParallelLinear,
+        TERowParallelGroupedLinear,
+        TELinear,
     )
-)
-
+    HAVE_TE = True
+except ImportError:
+    HAVE_TE = False
 
 TECL = (TEColumnParallelLinear, TELayerNormColumnParallelLinear, TEColumnParallelGroupedLinear)
 TERL = (TERowParallelLinear, TERowParallelGroupedLinear)

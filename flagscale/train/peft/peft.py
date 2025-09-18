@@ -143,7 +143,6 @@ class AdapterWrapper(nn.Module):
 
         # Get state dict of the main module
         self.to_wrap.state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
-
         # Store adapter state dict under the "adapter" prefix in the destination dict
         self.adapter.state_dict(destination=destination, prefix=f'{prefix}adapter.', keep_vars=keep_vars)
         return destination
