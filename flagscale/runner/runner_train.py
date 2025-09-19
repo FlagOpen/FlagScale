@@ -9,7 +9,6 @@ from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.utils import (
-    add_decive_extra_config,
     flatten_dict_to_args,
     get_free_port,
     get_host_name_or_ip,
@@ -20,6 +19,8 @@ from flagscale.runner.utils import (
     run_local_command,
     run_scp_command,
     run_ssh_command,
+    update_cmd_with_node_specific_config,
+    update_nodes_envs,
 )
 
 _MAX_CPU_COUNT = multiprocessing.cpu_count()
@@ -284,8 +285,10 @@ def run_node(
     with_test,
     dryrun,
 ):
-    cur_envs = add_decive_extra_config(user_envs, resource_info["type"])
-    visible_devices = cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+    cur_envs = update_nodes_envs(user_envs, host, resource_info)
+    # Get the number of visible devices from the environment variable, e.g. CUDA_VISIBLE_DEVICES, MLU_VISIBLE_DEVICES
+    # visible_devices = cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+    visible_devices = next((v for k, v in cur_envs.items() if k.endswith("_VISIBLE_DEVICES")), None)
     if visible_devices is not None and isinstance(visible_devices, str):
         visible_devices = visible_devices.split(",")
         num_visible_devices = len(visible_devices)
@@ -308,42 +311,6 @@ def run_node(
     )
 
 
-def update_cmd_with_hetero_config(cmd, hetero_extra_config=None):
-    """
-    Update the command string with additional configuration options for speicial device.
-    Parameters:
-        cmd (str): The original command string to be updated.
-        hetero_extra_config (dict): A dictionary containing configuration
-                                     options to be applied to the command.
-    Returns:
-        str: The updated command string after applying the configuration.
-    """
-    if hetero_extra_config is None or len(hetero_extra_config) == 0:
-        return cmd
-    cmd_parts = shlex.split(cmd)
-
-    for key, value in hetero_extra_config.items():
-        option = f"--{key}"
-        if option in cmd_parts:
-            idx = cmd_parts.index(option)
-            if value.lower() == "true":
-                continue
-            elif value.lower() == "false":
-                cmd_parts.pop(idx)
-            else:
-                if idx + 1 < len(cmd_parts) and not cmd_parts[idx + 1].startswith("--"):
-                    cmd_parts[idx + 1] = value
-                else:
-                    cmd_parts.insert(idx + 1, value)
-        else:
-            if value.lower() == "true":
-                cmd_parts.append(option)
-            # NOTE: disable adding new options
-            # elif value.lower() != "false":
-            #     cmd_parts.extend([option, value])
-    return shlex.join(cmd_parts)
-
-
 class SSHTrainRunner(RunnerBase):
     def __init__(self, config: DictConfig):
         super().__init__(config)
@@ -358,6 +325,8 @@ class SSHTrainRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         self.user_script = self.config.experiment.task.entrypoint
         self.resources = parse_hostfile(self.config.experiment.runner.get("hostfile", None))
+        self.device_type_specific = self.config.get("device_type_specific", None)
+        self.node_specific = self.config.get("node_specific", None)
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
@@ -376,12 +345,7 @@ class SSHTrainRunner(RunnerBase):
     ):
         export_cmd = []
 
-        hetero_extra_config = {}
         for k, v in cur_envs.items():
-            if k.startswith("HETERO_") or k.startswith("hetero_"):
-                k = k[7:].lower().replace("_", "-")
-                hetero_extra_config[f'{k}'] = f'{v}'
-                continue
             export_cmd += [f"{k}={v}"]
 
         runner_cmd = _get_runner_cmd_train(
@@ -396,8 +360,14 @@ class SSHTrainRunner(RunnerBase):
                 self.user_args += ["--hetero-current-device-type", device_type]
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
-        # update cmd with hetero_extra_config
-        cmd = update_cmd_with_hetero_config(cmd, hetero_extra_config)
+        # update cmd with node_specific_config
+        node_specific_config = {}
+        if device_type is None:
+            node_specific_config = (
+                self.device_type_specific.get(device_type, {}) if self.device_type_specific else {}
+            )
+        node_specific_config.update(self.node_specific.get(host, {}) if self.node_specific else {})
+        cmd = update_cmd_with_node_specific_config(cmd, node_specific_config)
 
         logging_config = self.config.train.system.logging
         host_run_script_file = _generate_run_script_train(
@@ -407,7 +377,7 @@ class SSHTrainRunner(RunnerBase):
             cmd,
             background=True,
             with_test=with_test,
-            root_dir=hetero_extra_config.get("root-dir", None),
+            root_dir=node_specific_config.get("build_dir", None),
         )
 
         if host != "localhost":

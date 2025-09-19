@@ -3,6 +3,7 @@ import collections
 import json
 import os
 import re
+import shlex
 import socket
 import subprocess
 import sys
@@ -291,27 +292,75 @@ def get_nproc_per_node(nproc_from_hostfile=None, nproc_from_args=None, num_visib
             return 1
 
 
-def add_decive_extra_config(config, device_type):
-    if device_type is None:
+def update_nodes_envs(env_config, ip_addr, resource_info):
+    device_type = resource_info.get("type", None)
+    assert ip_addr is not None, "ip address is required in resource_info"
+
+    cur_node_config = {}
+    if isinstance(env_config, DictConfig):
+        cur_node_config = OmegaConf.to_container(env_config, resolve=True)
+    else:
+        cur_node_config = env_config
+
+    device_types_envs = cur_node_config.pop("device_type_specific", None)
+    nodes_envs = cur_node_config.pop("node_specific", None)
+    if device_types_envs is None and nodes_envs is None:
         logger.warning(
             f"type in hostfile is not specified. All the nodes use the same arguments inlucding evnironment variables."
         )
-        return OmegaConf.to_container(config, resolve=True)
-    cur_node_config = {}
-    temp_dict = {}
-    if isinstance(config, DictConfig):
-        temp_dict = OmegaConf.to_container(config, resolve=True)
-    else:
-        temp_dict = config
-    for key, value in temp_dict.items():
-        if isinstance(value, dict):
-            if key == device_type:
-                cur_node_config.update(value)
-            else:
-                continue
-        else:
-            cur_node_config[key] = value
+        return cur_node_config
+
+    # update then envs according to the device type
+    if device_types_envs is not None and device_type is not None:
+        for k, v in device_types_envs.items():
+            if k == device_type:
+                cur_node_config.update(v)
+                break
+
+    # update the envs according to the ip address
+    if nodes_envs is not None:
+        for k, v in nodes_envs.items():
+            if k == ip_addr:
+                cur_node_config.update(v)
+                break
+
     return cur_node_config
+
+
+def update_cmd_with_node_specific_config(cmd, node_specific_config=None):
+    """
+    Update the command string with additional configuration options for speicial device.
+    Parameters:
+        cmd (str): The original command string to be updated.
+        node_specific_config (dict): A dictionary containing configuration
+                                     options to be applied to the command.
+    Returns:
+        str: The updated command string after applying the configuration.
+    """
+    if node_specific_config is None or len(node_specific_config) == 0:
+        return cmd
+    cmd_parts = shlex.split(cmd)
+
+    for key, value in node_specific_config.items():
+        option = f"--{key}"
+        if option in cmd_parts:
+            idx = cmd_parts.index(option)
+            if value.lower() == "true":
+                continue
+            elif value.lower() == "false":
+                cmd_parts.pop(idx)
+            else:
+                if idx + 1 < len(cmd_parts) and not cmd_parts[idx + 1].startswith("--"):
+                    cmd_parts[idx + 1] = value
+                else:
+                    cmd_parts.insert(idx + 1, value)
+        else:
+            if value.lower() == "true":
+                cmd_parts.append(option)
+            # NOTE: disable adding new options
+            # elif value.lower() != "false":
+            #     cmd_parts.extend([option, value])
+    return shlex.join(cmd_parts)
 
 
 def is_ip_addr(master):
