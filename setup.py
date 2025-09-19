@@ -263,7 +263,6 @@ class FlagScaleBuildPy(_build_py):
                 src,
                 dst,
                 backend,
-                mode="copy",
                 force=force,
                 backend_commit=backend_commit,
                 fs_extension=True,
