@@ -252,7 +252,6 @@ def infer_api():
                 logger.error(f"Action de-norm failed: {e}")
 
         processing_time = time.time() - start_time
-        result['processing_time'] = processing_time
         logger.info(f"Inference cost: {processing_time:.2f}s")
         return jsonify(
             {
