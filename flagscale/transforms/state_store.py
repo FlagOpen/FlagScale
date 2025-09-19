@@ -5,6 +5,13 @@ from typing import Dict, Generic, Optional, Type, TypeVar
 S = TypeVar("S")
 
 
+class BaseState:
+    def reset(self, *args, **kwargs):
+        raise NotImplementedError(
+            "BaseState::reset is not implemented. Please implement this method in the derived class."
+        )
+
+
 class StateStore(Generic[S]):
     """A state store that manages states for different contexts."""
 

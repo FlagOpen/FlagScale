@@ -1,0 +1,24 @@
+engine:
+  model_config:
+    model: ${experiment.model}
+    loader: diffusers
+    torch_dtype: torch.bfloat16
+    device: cuda
+  engine_config:
+    results_path: ${experiment.exp_dir}/results
+    transformations:
+      LogIOTransformation:
+        log_level: "info"
+      StateScopeTransformation:
+        {}
+      TaylorSeerTransformation:
+        order: 2
+        warmup_steps: 2
+        skip_interval_steps: 2
+    state_scopes:
+      ["test1", "test2", "test3"]
+
+generate:
+  prompt: "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage."
+  height: 480
+  width: 832

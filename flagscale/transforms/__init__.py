@@ -4,15 +4,19 @@ from omegaconf import DictConfig
 
 from .log_io_transformation import LogIOTransformation
 from .state_scope_transformation import StateScopeTransformation
+from .taylorseer_transformation import TaylorSeerTransformation
+from .timestep_tracker_transformation import TimestepTrackerTransformation
 from .transformation import Transformation
 
 # Registry of supported Transformation classes by their class names.
 _TRANSFORMATION_REGISTRY: Dict[str, Type[Transformation]] = {
     "LogIOTransformation": LogIOTransformation,
     "StateScopeTransformation": StateScopeTransformation,
+    "TimestepTrackerTransformation": TimestepTrackerTransformation,
+    "TaylorSeerTransformation": TaylorSeerTransformation,
 }
 
-__all__ = ["create_transformations_from_config"]
+__all__ = ["create_transformations_from_config", "create_default_transformations"]
 
 
 def create_transformations_from_config(cfg: DictConfig) -> List[Transformation]:
@@ -44,3 +48,7 @@ def create_transformations_from_config(cfg: DictConfig) -> List[Transformation]:
         instances.append(inst)
 
     return instances
+
+
+def create_default_transformations() -> List[Transformation]:
+    return [TimestepTrackerTransformation()]

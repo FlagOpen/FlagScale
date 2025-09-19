@@ -5,10 +5,20 @@ engine:
   engine_config:
     results_path: ${experiment.exp_dir}/results
     transformations:
-      LogIOTransformation:
-        log_level: "info"
+      # LogIOTransformation:
+      #   log_level: "info"
+      TaylorSeerTransformation:
+        order: 2
+        warmup_steps: 2
+        skip_interval_steps: 2
+      # TODO(yupu): The order is tricky...
+      TimestepTrackerTransformation:
+        {}
       StateScopeTransformation:
         {}
+    # TODO(yupu): Shouldn't this be arg of StateScopeTransformation?
+    state_scopes:
+      ["batched"]
 
 generate:
   prompt: "retro serie of different cars with different colors and shapes, mdjrny-v4 style"

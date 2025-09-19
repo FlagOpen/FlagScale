@@ -1,4 +1,5 @@
-# Modified from https://github.com/huggingface/diffusers/blob/4a7556eaecc9872dea50ce161301edfa6392693c/src/diffusers/hooks/hooks.py
+# Modified from
+# https://github.com/huggingface/diffusers/blob/4a7556eaecc9872dea50ce161301edfa6392693c/src/diffusers/hooks/hooks.py
 
 import functools
 
@@ -12,7 +13,8 @@ from torch import nn
 from flagscale.transforms.state_store import StateStore
 
 
-# Copied from https://github.com/huggingface/diffusers/blob/4a7556eaecc9872dea50ce161301edfa6392693c/src/diffusers/utils/torch_utils.py
+# Copied from
+# https://github.com/huggingface/diffusers/blob/4a7556eaecc9872dea50ce161301edfa6392693c/src/diffusers/utils/torch_utils.py
 def is_compiled_module(module) -> bool:
     """Check whether the module was compiled with torch.compile()"""
     return isinstance(module, torch._dynamo.eval_frame.OptimizedModule)
@@ -23,7 +25,6 @@ def unwrap_module(module):
     return module._orig_mod if is_compiled_module(module) else module
 
 
-# TODO(yupu): Implement state and context
 class ModelHook:
     """
     Hook applied to a module.
@@ -31,7 +32,8 @@ class ModelHook:
 
     def __init__(self) -> None:
         self.fn_ref: "HookFunctionReference" = None
-        # A list of `StateStore`s that the hook has access to. The stores could be shared across multiple hooks from the same transform.
+        # A list of `StateStore`s that the hook has access to.
+        # The stores could be shared across multiple hooks from the same transform.
         # The transform should call `register_stateful` to register the stores.
         self._stateful: List[StateStore[Any]] = []
 
@@ -59,6 +61,16 @@ class ModelHook:
         Called after the module's forward pass.
         """
         return output
+
+    def custom_forward(self, module: nn.Module, *args, **kwargs) -> Any:
+        """
+        Optional: Override the module's forward.
+
+        Override this method in subclasses to replace the module's forward. The signature must be
+        `custom_forward(module, *args, **kwargs)` and return the module output.
+        """
+        # Default behavior: delegate to the original forward. Subclasses may override.
+        return module.forward(*args, **kwargs)
 
     def register_stateful(self, state_store: StateStore[Any]) -> None:
         """
@@ -145,9 +157,8 @@ class ModuleHookRegistry:
             forward=self._module_ref.forward,
         )
 
-        # TODO(yupu): This implicitly requires a `custom_forward` method to be defined in the hook. Make it explicit.
-        # If hook provides a custom forward, use it instead and keep the original forward
-        if hasattr(hook, "custom_forward"):
+        # If custom_forward is overridden by subclass, use it to replace forward
+        if type(hook).custom_forward is not ModelHook.custom_forward:
             fn_ref.original_forward = self._module_ref.forward
             custom = functools.update_wrapper(
                 functools.partial(hook.custom_forward, self._module_ref), hook.custom_forward
@@ -234,6 +245,7 @@ class ModuleHookRegistry:
     # TODO(yupu): Is it possible in reality to have multiple contexts for different hooks at the same time?
 
     def set_state_scope(self, name: Optional[str] = None) -> None:
+        print(f"set_state_scope ModuleHookRegistry: {name}")
         # TODO(yupu): Does the order matter?
         for hook_name in reversed(self._order):
             self._hooks[hook_name].set_state_scope(name)
