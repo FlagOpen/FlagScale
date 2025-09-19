@@ -11,9 +11,11 @@ import ipdb
 import random
 import functools
 from torch.nn.parallel import DistributedDataParallel as DDP
+
 # import deepspeed
 import torch.distributed as dist
 import robotics.models.model as _model
+
 # import openpi.shared.array_typing as at
 import robotics.training.utils as training_utils
 import robotics.training.checkpoints as _checkpoints
@@ -21,7 +23,9 @@ import robotics.training.config as _config
 import robotics.training.data_loader as _data_loader
 import robotics.training.optimizer as _optimizer
 import robotics.training.utils as training_utils
+
 # import robotics.training.weight_loaders as _weight_loaders
+
 
 def init_ddp(config: _config.TrainConfig):
     torch.manual_seed(config.seed)
@@ -57,7 +61,10 @@ def init_logging():
         logger.addHandler(handler)
     logger.handlers[0].setFormatter(formatter)
 
-def init_wandb(config: _config.TrainConfig, *, resuming: bool, log_code: bool = False, enabled: bool = True):
+
+def init_wandb(
+    config: _config.TrainConfig, *, resuming: bool, log_code: bool = False, enabled: bool = True
+):
     if not enabled:
         wandb.init(mode="disabled")
         return
@@ -70,14 +77,13 @@ def init_wandb(config: _config.TrainConfig, *, resuming: bool, log_code: bool = 
         wandb.init(id=run_id, resume="must", project=config.project_name)
     else:
         wandb.init(
-            name=config.exp_name,
-            config=dataclasses.asdict(config),
-            project=config.project_name,
+            name=config.exp_name, config=dataclasses.asdict(config), project=config.project_name
         )
         (ckpt_dir / "wandb_id.txt").write_text(wandb.run.id)
 
     if log_code:
         wandb.run.log_code(epath.Path(__file__).parent.parent)
+
 
 def init_train_state(config: _config.TrainConfig, *, resume: bool, local_rank: int):
     model = config.model.create()
@@ -85,26 +91,47 @@ def init_train_state(config: _config.TrainConfig, *, resume: bool, local_rank: i
     model.action_head.to(dtype=getattr(torch, config.training_dtype))
     if config.freeze_vlm:
         for n, p in model.named_parameters():
-            if _model.is_vit(n, config.model.model_type) or _model.is_llm(n, config.model.model_type):
+            if _model.is_vit(n, config.model.model_type) or _model.is_llm(
+                n, config.model.model_type
+            ):
                 p.requires_grad = False
 
     if local_rank == 0:
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        llm_params = sum(p.numel() for n, p in model.named_parameters() if _model.is_llm(n, config.model.model_type))
-        vit_params = sum(p.numel() for n, p in model.named_parameters() if _model.is_vit(n, config.model.model_type))
-        action_expert_params = sum(p.numel() for n, p in model.named_parameters() if _model.is_action_expert(n, config.model.model_type))
+        llm_params = sum(
+            p.numel()
+            for n, p in model.named_parameters()
+            if _model.is_llm(n, config.model.model_type)
+        )
+        vit_params = sum(
+            p.numel()
+            for n, p in model.named_parameters()
+            if _model.is_vit(n, config.model.model_type)
+        )
+        action_expert_params = sum(
+            p.numel()
+            for n, p in model.named_parameters()
+            if _model.is_action_expert(n, config.model.model_type)
+        )
 
         logging.info(f"Total parameters: {total_params:,}")
-        logging.info(f"Trainable parameters: {trainable_params:,} ({100 * trainable_params / total_params:.2f}%)")
+        logging.info(
+            f"Trainable parameters: {trainable_params:,} ({100 * trainable_params / total_params:.2f}%)"
+        )
         logging.info(f"LLM parameters: {llm_params:,} ({100 * llm_params / total_params:.2f}%)")
         logging.info(f"ViT parameters: {vit_params:,} ({100 * vit_params / total_params:.2f}%)")
-        logging.info(f"Action Expert parameters: {action_expert_params:,} ({100 * action_expert_params / total_params:.2f}%)")
-        logging.info(f"Frozen parameters: {total_params - trainable_params:,} ({100 * (total_params - trainable_params) / total_params:.2f}%)")
+        logging.info(
+            f"Action Expert parameters: {action_expert_params:,} ({100 * action_expert_params / total_params:.2f}%)"
+        )
+        logging.info(
+            f"Frozen parameters: {total_params - trainable_params:,} ({100 * (total_params - trainable_params) / total_params:.2f}%)"
+        )
 
-    
     model = DDP(model, device_ids=[int(os.environ["LOCAL_RANK"])], find_unused_parameters=True)
-    optimizer, scheduler, clip_gradient_norm = _optimizer.create_optimizer(config.optimizer, config.lr_schedule, model.parameters())
+    optimizer, scheduler, clip_gradient_norm = _optimizer.create_optimizer(
+        config.optimizer, config.lr_schedule, model.parameters()
+    )
 
     train_state = training_utils.TrainState(
         step=0,
@@ -116,6 +143,7 @@ def init_train_state(config: _config.TrainConfig, *, resume: bool, local_rank: i
         ema_params=None,
     )
     return train_state
+
 
 def train_step(
     config: _config.TrainConfig,
@@ -133,8 +161,8 @@ def train_step(
     observation, actions = batch
     optimizer.zero_grad()
     chunked_loss = model(
-        observation.to(dtype=getattr(torch, config.training_dtype), device="cuda"), 
-        actions.to(dtype=getattr(torch, config.training_dtype), device="cuda")
+        observation.to(dtype=getattr(torch, config.training_dtype), device="cuda"),
+        actions.to(dtype=getattr(torch, config.training_dtype), device="cuda"),
     )
     loss = torch.mean(chunked_loss)
     loss.backward()
@@ -154,20 +182,20 @@ def train_step(
     #                 ema_params[name] = param.data.clone()
 
     def is_kernel(name, param):
-        return (
-            param.ndim > 1 and
-            not any(x in name for x in ["bias", "scale", "pos_embedding", "input_embedding"])
+        return param.ndim > 1 and not any(
+            x in name for x in ["bias", "scale", "pos_embedding", "input_embedding"]
         )
 
     kernel_params = [p for n, p in model.named_parameters() if is_kernel(n, p)]
     param_norm = float(torch.norm(torch.stack([torch.norm(p.detach()) for p in kernel_params])))
-    grad_norm = float(torch.norm(torch.stack([torch.norm(p.grad.detach()) for p in kernel_params if p.grad is not None])))
+    grad_norm = float(
+        torch.norm(
+            torch.stack([torch.norm(p.grad.detach()) for p in kernel_params if p.grad is not None])
+        )
+    )
     clip_norm = float(clip_norm)
 
-    new_state = dataclasses.replace(
-        state,
-        step=state.step + 1,
-    )
+    new_state = dataclasses.replace(state, step=state.step + 1)
 
     info = {
         "loss": float(loss.detach().cpu()),
@@ -201,6 +229,7 @@ def main(config: _config.TrainConfig):
     # data_iter = iter(data_loader)
     from tools.datasets.qwenvl.data.dataset_helpers_robotics import TaskEncoder
     from megatron.energon import get_train_dataset, get_loader, WorkerConfig
+
     ds = get_train_dataset(
         # "/share/project/hcr/tmp/datasets/wds-1",
         # "/share/project/hcr/tmp/datasets/wds-4",
@@ -245,13 +274,20 @@ def main(config: _config.TrainConfig):
             infos = []
         # batch = next(data_iter)
 
-        if dist.get_rank() == 0 and local_rank == 0 and (step % config.save_interval == 0 and step > start_step) or step == config.num_train_steps - 1:
+        if (
+            dist.get_rank() == 0
+            and local_rank == 0
+            and (step % config.save_interval == 0 and step > start_step)
+            or step == config.num_train_steps - 1
+        ):
             # _checkpoints.save_state(config.checkpoint_dir, train_state, data_loader)
             # save_dir = os.path.join(self.args.save_dir, f"epoch_{epoch}")
             # os.makedirs(save_dir, exist_ok=True)
-            torch.save(train_state.model.state_dict(), os.path.join(config.checkpoint_dir, f"model_step_{step}.pt"))
+            torch.save(
+                train_state.model.state_dict(),
+                os.path.join(config.checkpoint_dir, f"model_step_{step}.pt"),
+            )
         dist.barrier()
-
 
 
 if __name__ == "__main__":
