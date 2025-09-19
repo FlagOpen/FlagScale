@@ -337,7 +337,7 @@ def update_nodes_envs(env_config, ip_addr, resource_info):
     if isinstance(env_config, DictConfig):
         cur_node_config = OmegaConf.to_container(env_config, resolve=True)
     else:
-        cur_node_config = env_config
+        cur_node_config = env_config.copy()
 
     device_types_envs = cur_node_config.pop("device_type_specific", None)
     nodes_envs = cur_node_config.pop("node_specific", None)
@@ -349,17 +349,10 @@ def update_nodes_envs(env_config, ip_addr, resource_info):
 
     # update then envs according to the device type
     if device_types_envs is not None and device_type is not None:
-        for k, v in device_types_envs.items():
-            if k == device_type:
-                cur_node_config.update(v)
-                break
-
+        cur_node_config.update(device_types_envs.get(device_type, {}))
     # update the envs according to the ip address
     if nodes_envs is not None:
-        for k, v in nodes_envs.items():
-            if k == ip_addr:
-                cur_node_config.update(v)
-                break
+        cur_node_config.update(nodes_envs.get(ip_addr, {}))
 
     return cur_node_config
 
@@ -384,14 +377,16 @@ def update_cmd_with_node_specific_config(cmd, node_specific_config=None):
         if option in cmd_parts:
             idx = cmd_parts.index(option)
             if value.lower() == "true":
+                # If the option has a value, remove it.
+                if idx + 1 < len(cmd_parts) and not cmd_parts[idx + 1].startswith("--"):
+                    cmd_parts.pop(idx + 1)
                 continue
             elif value.lower() == "false":
-                cmd_parts.pop(idx)
-            else:
+                # If the option has a value, remove it along with the option.
                 if idx + 1 < len(cmd_parts) and not cmd_parts[idx + 1].startswith("--"):
-                    cmd_parts[idx + 1] = value
+                    del cmd_parts[idx : idx + 2]
                 else:
-                    cmd_parts.insert(idx + 1, value)
+                    cmd_parts.pop(idx)
         else:
             if value.lower() == "true":
                 cmd_parts.append(option)
