@@ -27,13 +27,11 @@ try:
         TERowParallelGroupedLinear,
         TERowParallelLinear,
     )
-
+    TECL = (TEColumnParallelLinear, TELayerNormColumnParallelLinear, TEColumnParallelGroupedLinear)
+    TERL = (TERowParallelLinear, TERowParallelGroupedLinear)
     HAVE_TE = True
 except ImportError:
     HAVE_TE = False
-
-TECL = (TEColumnParallelLinear, TELayerNormColumnParallelLinear, TEColumnParallelGroupedLinear)
-TERL = (TERowParallelLinear, TERowParallelGroupedLinear)
 
 
 def match_module(m, name, prefix, target_modules):
