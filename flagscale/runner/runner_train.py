@@ -362,7 +362,7 @@ class SSHTrainRunner(RunnerBase):
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
         # update cmd with node_specific_config
         node_specific_config = {}
-        if device_type is None:
+        if device_type is not None:
             node_specific_config = (
                 self.device_type_specific.get(device_type, {}) if self.device_type_specific else {}
             )
