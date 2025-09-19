@@ -54,11 +54,6 @@ jobs:
 
           git config --global --add safe.directory /__w/FlagScale/FlagScale
 
-          TMP_DIR=$(mktemp -d)
-          echo "Copying source to temporary directory: $TMP_DIR"
-          cp -r /__w/FlagScale/FlagScale/* $TMP_DIR
-          cd $TMP_DIR
-
           if [ "${{ inputs.backend }}" = "train_megatron" ] || [ "${{ inputs.backend }}" = "train_flagscale" ]; then
             echo ""
             # PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
@@ -77,6 +72,4 @@ jobs:
 
           exit_code=$?
           echo "Exit code: $exit_code"
-          cd -
-          rm -rf $TMP_DIR
         shell: bash
