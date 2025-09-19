@@ -1,3 +1,5 @@
+import time
+
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -164,8 +166,6 @@ class RoboBrainRobotics(PreTrainedModel):
         image: list[Dict[str, torch.Tensor] | Dict[str, Image.Image]],
         state: Optional[torch.Tensor],
     ):
-        import time
-
         start_time = time.time()
         backbone_inputs, action_inputs = self.prepare_input(instruction, image, state)
         print(f"backbone_inputs: {backbone_inputs}")
