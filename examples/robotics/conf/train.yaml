@@ -12,7 +12,8 @@ experiment:
   task:
     type: train
     backend: robotics
-    entrypoint: flagscale/train/train_robotics_fsdp.py
+    # entrypoint: flagscale/train/train_robotics_fsdp.py
+    entrypoint: flagscale/train/train_robotics_ddp_v3.py
   runner:
     per_node_task: false
     no_shared_fs: false
@@ -22,11 +23,13 @@ experiment:
     before_start: echo "Starting Robotics Training"
   envs:
     LOGLEVEL: "INFO"
-    CUDA_VISIBLE_DEVICES: "0,1,2,3"
+    CUDA_VISIBLE_DEVICES: "1"
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     # /share/project/fengyupu/conda_env/openpi/lib/python3.11/site-packages
-    PYTHONPATH: /share/project/hcr/repos/flag-scale:/share/project/hcr/repos/flag-scale/third_party/robotics/packages/lerobot:/share/project/lyx/openpi/packages/openpi-client/src
+    # PYTHONPATH: /share/project/hcr/repos/flag-scale:/share/project/hcr/repos/flag-scale/third_party/robotics/packages/lerobot:/share/project/lyx/openpi/packages/openpi-client/src
+    PYTHONPATH: /share/project/hcr/repos/flag-scale:/share/project/section/robotics_hcr/src:/share/project/section/robotics/packages/lerobot:/share/project/section/robotics/packages/openpi-client/src:/share/project/hcr/repos/flag-scale/third_party/Megatron-LM
     HF_LEROBOT_HOME: /share/project/lyx/openpi/data
+    WANDB_MODE: offline
 
 
 action: run

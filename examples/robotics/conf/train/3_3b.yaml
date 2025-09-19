@@ -8,4 +8,5 @@ model:
   assets_base_dir: /share/project/hcr/repos/flag-scale/assets
   
 data:
-  config_name: robotics_libero
+  # config_name: robotics_libero
+  config_name: test_single_data
