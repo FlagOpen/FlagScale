@@ -48,7 +48,25 @@ def main(config: DictConfig) -> None:
                 raise ValueError(f"Unknown runner type {config.runner.type}")
 
             if config.action == "run":
-                runner.run()
+                # Check the monitoring switch (monitoring is enabled by default)
+                enable_monitoring = config.experiment.runner.get("enable_monitoring", True)
+                # Check the GPU health check switch (disabled by default)
+                enable_gpu_health_check = config.experiment.runner.get(
+                    "enable_gpu_health_check", False
+                )
+
+                runner.run(
+                    enable_monitoring=enable_monitoring,
+                    enable_gpu_health_check=enable_gpu_health_check,
+                )
+                from flagscale.logger import logger
+
+                if enable_monitoring:
+                    logger.info(
+                        "Monitor service will be started automatically when training begins."
+                    )
+                if enable_gpu_health_check:
+                    logger.info("GPU health check will run before training starts.")
             elif config.action == "dryrun":
                 runner.run(dryrun=True)
             elif config.action == "test":
@@ -56,7 +74,11 @@ def main(config: DictConfig) -> None:
             elif config.action == "stop":
                 runner.stop()
             elif config.action == "query":
-                runner.query()
+                # runner.query()
+                status = runner.query_once()
+                from flagscale.logger import logger
+
+                logger.info(f"Current job status: {status.name}")
             else:
                 raise ValueError(f"Unknown action {config.action}")
     elif task_type == "inference":
