@@ -180,8 +180,8 @@ jobs:
       - functional_tests_train
       - functional_tests_hetero
       - functional_tests_inference
-      - functional-tests-serve
-      - functional-tests-rl
+      - functional_tests_serve
+      - functional_tests_rl
     runs-on: ubuntu-latest
     steps:
       - name: All Tests Completed
