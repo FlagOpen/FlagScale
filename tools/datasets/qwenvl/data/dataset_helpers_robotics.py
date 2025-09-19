@@ -11,39 +11,37 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import pprint
 import dataclasses
 import json
 import logging
 import math
 import os
+import pprint
 import re
 import sys
-import traceback
 import time
+import traceback
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL
-from PIL import Image
+import robotics.models.model as robotics_model
+import robotics.training.config as _config
+import robotics.transforms as _transforms
 import torch
 
+from PIL import Image
 from torchvision import transforms
+
 from megatron.energon import Batch, DefaultTaskEncoder, VQASample
 from megatron.training import get_args
 from megatron.training.global_vars import get_tokenizer
 from tools.datasets.qwenvl.data.energon.chatml_robotics import ChatMLSample
 from tools.datasets.qwenvl.data.image_processing import get_visual_transform
-import logging
-
-import robotics.models.model as robotics_model
-import robotics.transforms as _transforms
-import robotics.training.config as _config
-import robotics.models.model as robotics_model
 
 dataset_logger = logging.getLogger(__name__)
 

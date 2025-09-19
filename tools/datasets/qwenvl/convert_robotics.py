@@ -22,13 +22,13 @@ python convert_robotics.py \
 '''
 
 import json
+import math
 import os
 import pickle
 
 from argparse import ArgumentParser
 from typing import List, Union
 
-import math
 import cv2
 import webdataset as wds
 import yaml
