@@ -6,7 +6,6 @@ import platform
 import random
 
 import etils.epath as epath
-import ipdb
 import numpy as np
 import robotics.models.model as _model
 import robotics.training.checkpoints as _checkpoints
