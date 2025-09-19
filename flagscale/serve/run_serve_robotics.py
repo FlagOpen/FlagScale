@@ -39,8 +39,8 @@ def load_model():
         logger.info("Start load model.")
         config = RoboBrainRoboticsConfig.from_pretrained(ENGINE_CONFIG.model)
         config.training = False
-        devide_id = os.environ.get("EGL_DEVICE_ID", "0")
-        device = f"cuda:{devide_id}" if torch.cuda.is_available() else "cpu"
+        device_id = os.environ.get("EGL_DEVICE_ID", "0")
+        device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
         model = RoboBrainRobotics.from_pretrained(
             ENGINE_CONFIG.model,
             config=config,
