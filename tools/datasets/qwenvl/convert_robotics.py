@@ -3,8 +3,8 @@ dataset: /share/project/dumengfei/data/agilex_data_0905_F6A3C30/agilex_train_shu
 
 python convert_robotics.py \
     --dataset-root="" \
-    --output-root=/share/project/hcr/datasets/robotics \
-    --json=/share/project/hcr/tmp/datasets/robotics_merged/agilex_train_shuffle_prompt_v1_test_100.jsonl \
+    --output-root=/output/dataset/path \
+    --json=/webdataset/format/dataset \
     --train-split 1 \
     --val-split 0 \
     --images-key=image \

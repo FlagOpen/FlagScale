@@ -34,8 +34,8 @@ class RoboBrainRoboticsConfig(PretrainedConfig):
         default=False, metadata={"help": "Whether the model is in training mode."}
     )
     pretrained_vlm_model_path: str = field(
-        default="/share/project/lvhuaihai/lvhuaihai/Qwen2.5-VL/Robobrain-Robotics/cache/Qwen/Qwen2.5-VL-3B-Instruct",
-        metadata={"help": "Local path to the model."},
+        default="Local/path/of/the/model",
+        metadata={"help": "Local path of the model."},
     )
 
     def __init__(self, **kwargs):
@@ -53,13 +53,13 @@ class RoboBrainRobotics(PreTrainedModel):
         self.pretrained_vlm_model_path = getattr(
             config,
             'pretrained_vlm_model_path',
-            "/share/project/lvhuaihai/lvhuaihai/Qwen2.5-VL/Robobrain-Robotics/cache/Qwen/Qwen2.5-VL-3B-Instruct",
+            "path/to/pretrained_vlm_model_path",
         )
         training = getattr(config, 'training', False)
 
         # vlm
         self.processor = AutoProcessor.from_pretrained(
-            "/share/project/caomingyu/pretrain_model/qwen/Qwen2.5-VL-3B-Instruct/",
+            "path/to/processor",
             padding_side="left",
         )
         if training:

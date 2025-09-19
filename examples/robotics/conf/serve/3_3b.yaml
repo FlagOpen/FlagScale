@@ -1,12 +1,12 @@
 - serve_id: vllm_model
   engine_args:
-    model: "/share/project/lyx/robobrain-robotics/output/robotics_post_train_dit/agilex_filtered_90w--freeze_vit=True--freeze_llm=True--dit500M--lr=1e-04--action_horizon=64/epoch_9"
+    model: local/model/path
     host: 0.0.0.0
     uvicorn_log_level: warning
     port: 5000
     flask_debug: True
     flask_threaded: True
-    replay_file: /share/project/section/RoboBrain_Robotic_newdragon/videos/train/0/0.hdf5
+    replay_file: local/replay/file/path
     robot_const:
       action:
         scale_:

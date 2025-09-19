@@ -5,7 +5,7 @@ model:
   training_dtype: float32
   overwrite: true
   exp_name: Robotics-3.3B
-  assets_base_dir: /share/project/hcr/repos/flag-scale/assets
+  assets_base_dir: local/assets/dir
   
 data:
   # config_name: robotics_libero

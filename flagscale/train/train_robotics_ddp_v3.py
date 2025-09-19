@@ -1,30 +1,28 @@
 import dataclasses
-import logging
-import platform
-import os
-import etils.epath as epath
-import torch
-import numpy as np
-import tqdm_loggable.auto as tqdm
-import wandb
-import ipdb
-import random
 import functools
-from torch.nn.parallel import DistributedDataParallel as DDP
+import logging
+import os
+import platform
+import random
 
-# import deepspeed
-import torch.distributed as dist
+import etils.epath as epath
+import ipdb
+import numpy as np
 import robotics.models.model as _model
-
-# import openpi.shared.array_typing as at
-import robotics.training.utils as training_utils
 import robotics.training.checkpoints as _checkpoints
 import robotics.training.config as _config
 import robotics.training.data_loader as _data_loader
 import robotics.training.optimizer as _optimizer
 import robotics.training.utils as training_utils
+import torch
+import torch.distributed as dist
+import tqdm_loggable.auto as tqdm
+import wandb
 
-# import robotics.training.weight_loaders as _weight_loaders
+from torch.nn.parallel import DistributedDataParallel as DDP
+
+from megatron.energon import WorkerConfig, get_loader, get_train_dataset
+from tools.datasets.qwenvl.data.dataset_helpers_robotics import TaskEncoder
 
 
 def init_ddp(config: _config.TrainConfig):
@@ -172,15 +170,6 @@ def train_step(
     optimizer.step()
     scheduler.step()
 
-    # EMA update #TODO: check if this is correct，先不用EMA了
-    # if ema_decay is not None and ema_params is not None:
-    #     with torch.no_grad():
-    #         for name, param in model.named_parameters():
-    #             if name in ema_params:
-    #                 ema_params[name].mul_(ema_decay).add_(param.data, alpha=1 - ema_decay)
-    #             else:
-    #                 ema_params[name] = param.data.clone()
-
     def is_kernel(name, param):
         return param.ndim > 1 and not any(
             x in name for x in ["bias", "scale", "pos_embedding", "input_embedding"]
@@ -216,7 +205,6 @@ def main(config: _config.TrainConfig):
             raise ValueError(
                 f"Batch size {config.batch_size} must be divisible by the number of devices {torch.cuda.device_count()}."
             )
-
         checkpoint_dir, resuming = _checkpoints.initialize_checkpoint_dir(
             config.checkpoint_dir,
             keep_period=config.keep_period,
@@ -225,15 +213,10 @@ def main(config: _config.TrainConfig):
         )
 
         init_wandb(config, resuming=resuming, enabled=config.wandb_enabled)
-    # data_loader = _data_loader.create_data_loader(config, shuffle=True)
-    # data_iter = iter(data_loader)
-    from tools.datasets.qwenvl.data.dataset_helpers_robotics import TaskEncoder
-    from megatron.energon import get_train_dataset, get_loader, WorkerConfig
 
+    ENERGON_DATA_PATH = os.getenv('ENERGON_DATA_PATH')
     ds = get_train_dataset(
-        # "/share/project/hcr/tmp/datasets/wds-1",
-        # "/share/project/hcr/tmp/datasets/wds-4",
-        "/share/project/hcr/tmp/datasets/agibot_cs30_Ffps30_Afps30_Padding20_20250908_test/chatml_robotics/wds-1",
+        ENERGON_DATA_PATH
         batch_size=1,
         shuffle_buffer_size=0,
         max_samples_per_sequence=100,
@@ -242,10 +225,8 @@ def main(config: _config.TrainConfig):
     )
     loader = get_loader(ds)
     data_iter = iter(loader)
-
     batch = next(data_iter)
-    print(f"{batch[1].shape=}")
-    # import pdb; pdb.set_trace()
+
     train_state = init_train_state(config, resume=config.resume, local_rank=local_rank)
     torch.cuda.synchronize()
 
@@ -262,7 +243,6 @@ def main(config: _config.TrainConfig):
 
     infos = []
     for step in pbar:
-        # torch.autograd.set_detect_anomaly(True)
         train_state, info = train_step(config, train_state, batch)
         infos.append(info)
         if dist.get_rank() == 0 and local_rank == 0 and step % config.log_interval == 0:
@@ -272,7 +252,7 @@ def main(config: _config.TrainConfig):
             pbar.write(f"Step {step}: {info_str}")
             wandb.log(reduced_info, step=step)
             infos = []
-        # batch = next(data_iter)
+        batch = next(data_iter)
 
         if (
             dist.get_rank() == 0
@@ -280,9 +260,6 @@ def main(config: _config.TrainConfig):
             and (step % config.save_interval == 0 and step > start_step)
             or step == config.num_train_steps - 1
         ):
-            # _checkpoints.save_state(config.checkpoint_dir, train_state, data_loader)
-            # save_dir = os.path.join(self.args.save_dir, f"epoch_{epoch}")
-            # os.makedirs(save_dir, exist_ok=True)
             torch.save(
                 train_state.model.state_dict(),
                 os.path.join(config.checkpoint_dir, f"model_step_{step}.pt"),
