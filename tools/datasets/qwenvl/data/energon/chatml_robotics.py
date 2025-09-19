@@ -28,7 +28,7 @@ class ChatMLSample(Sample):
     state_qpos: str
     state_eepose: str
     conversation: str  # JSON string of GPT-format conversations
-    action_token: Union[str, List[str], None] = None  
+    action_token: Union[str, List[str], None] = None
 
 
 class NestedImagesPathHandler:
@@ -37,16 +37,24 @@ class NestedImagesPathHandler:
 
         :param imagespec: short string indicating the type of decoding
         """
-        self.extensions = ["jpgs", "videos", "action_tokens", "action_qpos", "action_eepose", "state_qpos", "state_eepose"]  # 添加 action_tokens
+        self.extensions = [
+            "jpgs",
+            "videos",
+            "action_tokens",
+            "action_qpos",
+            "action_eepose",
+            "state_qpos",
+            "state_eepose",
+        ]  # 添加 action_tokens
         # self.extensions = ["jpgs", "videos"]
         self.extensions_mapping = {
-            "jpgs": "jpg", 
-            "videos": "jpg", 
-            "action_tokens": "action_token", 
+            "jpgs": "jpg",
+            "videos": "jpg",
+            "action_tokens": "action_token",
             "action_qpos": "action_qpos",
             "action_eepose": "action_eepose",
             "state_qpos": "state_qpos",
-            "state_eepose": "state_eepose"
+            "state_eepose": "state_eepose",
         }
         # self.extensions_mapping = {"jpgs": "jpg", "videos": "jpg"}
 
@@ -68,15 +76,15 @@ class NestedImagesPathHandler:
         #             data = data.decode('utf-8')
         #         except UnicodeDecodeError:
         #             print(f"Warning: Failed to decode {extension}: {e}")
-        #             return None   
+        #             return None
         #     # # 如果解码失败，返回 None，这样字段就不会被设置
         #     # print(f"Warning: Failed to decode {extension}: {e}")
         #     # return None
-        
+
         # # # 对于 action_tokens，直接返回路径数据，不需要特殊处理
         # # if extension.lower() == "action_tokens":
         # #     return data
-        
+
         # return data
         # # data = pickle.loads(data)
         # # return data
@@ -88,14 +96,18 @@ class NestedImagesPathHandler:
                     return data.decode('utf-8')
                 except Exception as e_decode:
                     # 如果连解码字符串都失败了，这是一个真正的错误，需要打印警告。
-                    print(f"Warning: Failed to decode action_token as a raw string after pickle failed: {e_decode}")
+                    print(
+                        f"Warning: Failed to decode action_token as a raw string after pickle failed: {e_decode}"
+                    )
                     return None
 
             # 捕获其他非预期的 pickle 错误
             except Exception as e_other:
-                print(f"Warning: An unexpected error occurred while decoding action_token: {e_other}")
+                print(
+                    f"Warning: An unexpected error occurred while decoding action_token: {e_other}"
+                )
                 return None
-            
+
         elif extension.lower() in ["jpgs", "videos", "actions"]:
             try:
                 return pickle.loads(data)
@@ -103,9 +115,8 @@ class NestedImagesPathHandler:
 
                 print(f"Warning: Failed to decode {extension}: {e}")
                 return None
-        
-        return None
 
+        return None
 
 
 # During training, data is automatically decoded to from default webdataset to 'ChatMLSample' when loaded using energon-dataloader,

@@ -211,7 +211,15 @@ def generate_configs(path: EPath, split, shuffle_tars=True, num_workers=1):
     metadata = {
         "__class__": "ChatMLWebdataset",
         "__module__": "tools.datasets.qwenvl.data.energon.chatml",
-        "field_map": {"imgs": "jpgs", "videos": "videos", "conversation": "json", "action_qpos": "action_qpos", "action_eepose": "action_eepose", "state_qpos": "state_qpos", "state_eepose": "state_eepose"},
+        "field_map": {
+            "imgs": "jpgs",
+            "videos": "videos",
+            "conversation": "json",
+            "action_qpos": "action_qpos",
+            "action_eepose": "action_eepose",
+            "state_qpos": "state_qpos",
+            "state_eepose": "state_eepose",
+        },
     }
     with open(os.path.join(path.url, ".nv-meta", "dataset.yaml"), "w") as f:
         yaml.safe_dump(metadata, f)
@@ -231,10 +239,18 @@ if __name__ == "__main__":
     )
     argparser.add_argument("--actions-key", default="action", type=str, help="The key for action")
     argparser.add_argument("--state-key", default="state", type=str, help="The key for state")
-    argparser.add_argument("--actions-qpos-key", default="qpos", type=str, help="The key for action-qpos")
-    argparser.add_argument("--actions-eepose-key", default="eepose", type=str, help="The key for action-eepose")
-    argparser.add_argument("--state-qpos-key", default="qpos", type=str, help="The key for state-qpos")
-    argparser.add_argument("--state-eepose-key", default="eepose", type=str, help="The key for state-eepose")
+    argparser.add_argument(
+        "--actions-qpos-key", default="qpos", type=str, help="The key for action-qpos"
+    )
+    argparser.add_argument(
+        "--actions-eepose-key", default="eepose", type=str, help="The key for action-eepose"
+    )
+    argparser.add_argument(
+        "--state-qpos-key", default="qpos", type=str, help="The key for state-qpos"
+    )
+    argparser.add_argument(
+        "--state-eepose-key", default="eepose", type=str, help="The key for state-eepose"
+    )
     argparser.add_argument("--max-samples-per-tar", default=10000, type=float)
     argparser.add_argument("--train-split", default=1, type=float)
     argparser.add_argument("--val-split", default=0, type=float)
@@ -260,7 +276,7 @@ if __name__ == "__main__":
         state_eepose_key=args.state_eepose_key,
         vision_dir=args.vision_root,
         dp_size=args.dp_size,
-        drop_last=args.drop_last
+        drop_last=args.drop_last,
     )
     print(f"Generating Configurations")
     # NOTE: split_ratio: train/val/test
