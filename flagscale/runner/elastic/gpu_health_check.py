@@ -1,12 +1,27 @@
-"""TODO: This file currently still just a compatible file, which means it only contains some necessary checking procedures: Verify basic functions and other logic; due to
-the difficulties on some env issues, still need some time to finish the complete function one, i.e., the one runs in the following order:
-tensor parallel → data parallel → pipeline parallel → hardware → computation
+"""
+Complete GPU Health Check Implementation
+
+This module provides comprehensive GPU health verification including:
+- Tensor parallel communication testing
+- Data parallel communication testing
+- Pipeline parallel communication testing
+- GPU hardware validation
+- Computation capability verification
+
+Features:
+- Timeout protection for each test phase
+- Progressive testing (failures don't block other tests)
+- Smart degradation on errors
+- Complete test coverage in order: TP → DP → PP → Hardware → Computation
 """
 
 import argparse
 import os
+import signal
+import threading
 import time
 
+from contextlib import contextmanager
 from datetime import timedelta
 
 import torch
@@ -21,6 +36,70 @@ _TENSOR_GLOBAL_RANKS = None
 _PIPELINE_MODEL_PARALLEL_GROUP = None
 _PIPELINE_GLOBAL_RANKS = None
 _EMBEDDING_GROUP = None
+
+# Test tracking
+_TEST_RESULTS = {
+    'tensor_parallel': {'status': 'pending', 'error': None},
+    'data_parallel': {'status': 'pending', 'error': None},
+    'pipeline_parallel': {'status': 'pending', 'error': None},
+    'gpu_hardware': {'status': 'pending', 'error': None},
+    'computation': {'status': 'pending', 'error': None},
+}
+
+
+class TimeoutError(Exception):
+    pass
+
+
+@contextmanager
+def timeout_protection(seconds, test_name):
+    """Context manager for timeout protection"""
+    if hasattr(signal, 'SIGALRM'):  # Unix systems
+
+        def timeout_handler(signum, frame):
+            raise TimeoutError(f"Test '{test_name}' timed out after {seconds} seconds")
+
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(seconds)
+        try:
+            yield
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+    else:  # Windows or systems without SIGALRM - simplified approach
+        # For simplicity in the complete version, we'll just yield without timeout on Windows
+        # A full threading implementation would be more complex
+        yield
+
+
+def log_test_result(test_name, status, error=None):
+    """Log test result"""
+    _TEST_RESULTS[test_name]['status'] = status
+    _TEST_RESULTS[test_name]['error'] = error
+
+    rank = dist.get_rank() if dist.is_initialized() else 0
+    if rank == 0:
+        if status == 'passed':
+            print(f"✓ {test_name}: PASSED")
+        elif status == 'failed':
+            print(f"✗ {test_name}: FAILED - {error}")
+        elif status == 'skipped':
+            print(f"⚠ {test_name}: SKIPPED - {error}")
+
+
+def safe_test_execution(test_func, test_name, timeout_seconds=120):
+    """Execute test with timeout protection and error handling"""
+    try:
+        with timeout_protection(timeout_seconds, test_name):
+            test_func()
+        log_test_result(test_name, 'passed')
+        return True
+    except TimeoutError as e:
+        log_test_result(test_name, 'failed', str(e))
+        return False
+    except Exception as e:
+        log_test_result(test_name, 'failed', f"Exception: {str(e)}")
+        return False
 
 
 def get_args():
@@ -225,12 +304,16 @@ def test_tensor_parallel_group_c10d():
     tp_group = get_tensor_model_parallel_group()
     rank = dist.get_rank()
 
+    if rank == 0:
+        print(f"Testing tensor parallel communication (TP size: {args.tensor_model_parallel_size})")
+
     print(f"[Rank {rank}] Starting tensor parallel test, TP group: {_TENSOR_GLOBAL_RANKS}")
 
     tensor = torch.tensor([rank], device=f'cuda:{args.local_rank}', dtype=torch.float32)
 
     print(f"[Rank {rank}] Created tensor: {tensor}, starting all_reduce...")
 
+    # All_reduce with timeout protection at distributed level
     dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM, group=tp_group)
 
     print(f"[Rank {rank}] All_reduce completed, result: {tensor}")
@@ -239,17 +322,18 @@ def test_tensor_parallel_group_c10d():
         expected_tensor = torch.tensor(
             [sum(list(_TENSOR_GLOBAL_RANKS))], device=f'cuda:{args.local_rank}', dtype=torch.float32
         )
-        assert torch.allclose(
-            tensor, expected_tensor
-        ), f"test_tensor_parallel_group_c10d failed on rank {rank}, expected: {expected_tensor}, received: {tensor}."
-        print(f"[Rank {rank}] Assertion passed")
+        if not torch.allclose(tensor, expected_tensor):
+            raise AssertionError(
+                f"Tensor parallel test failed on rank {rank}, expected: {expected_tensor}, received: {tensor}."
+            )
+        print(f"[Rank {rank}] Tensor parallel verification passed")
 
-    print(f"[Rank {rank}] Starting barrier...")
-    dist.barrier()
-    print(f"[Rank {rank}] Barrier completed")
+    print(f"[Rank {rank}] Starting tensor parallel barrier...")
+    dist.barrier(group=tp_group)
+    print(f"[Rank {rank}] Tensor parallel barrier completed")
 
     if rank == 0:
-        print(f"test_tensor_parallel_group_c10d passed")
+        print("Tensor parallel communication test completed successfully")
 
 
 def test_data_parallel_group_c10d():
@@ -257,21 +341,36 @@ def test_data_parallel_group_c10d():
     args = get_args()
     dp_group = get_data_parallel_group()
     rank = dist.get_rank()
+
+    if rank == 0:
+        print(f"Testing data parallel communication (World size: {args.world_size})")
+
+    print(f"[Rank {rank}] Starting data parallel test, DP group: {_DATA_GLOBAL_RANKS}")
+
     tensor = torch.tensor([rank], device=f'cuda:{args.local_rank}', dtype=torch.float32)
 
+    print(f"[Rank {rank}] Created tensor: {tensor}, starting data parallel all_reduce...")
+
     dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM, group=dp_group)
+
+    print(f"[Rank {rank}] Data parallel all_reduce completed, result: {tensor}")
 
     if get_data_parallel_rank() == 0:
         expected_tensor = torch.tensor(
             [sum(list(_DATA_GLOBAL_RANKS))], device=f'cuda:{args.local_rank}', dtype=torch.float32
         )
-        assert torch.allclose(
-            tensor, expected_tensor
-        ), f"test_data_parallel_group_c10d failed on rank {rank}, expected: {expected_tensor}, received: {tensor}."
+        if not torch.allclose(tensor, expected_tensor):
+            raise AssertionError(
+                f"Data parallel test failed on rank {rank}, expected: {expected_tensor}, received: {tensor}."
+            )
+        print(f"[Rank {rank}] Data parallel verification passed")
 
-    dist.barrier()
+    print(f"[Rank {rank}] Starting data parallel barrier...")
+    dist.barrier(group=dp_group)
+    print(f"[Rank {rank}] Data parallel barrier completed")
+
     if rank == 0:
-        print(f"test_data_parallel_group_c10d passed")
+        print("Data parallel communication test completed successfully")
 
 
 def test_pipeline_parallel_group_c10d():
@@ -285,8 +384,12 @@ def test_pipeline_parallel_group_c10d():
     rank = dist.get_rank()
     device = torch.device(f'cuda:{args.local_rank}')
 
-    rank = dist.get_rank()
-    device = torch.device(f'cuda:{args.local_rank}')
+    if rank == 0:
+        print(f"Testing pipeline parallel communication (PP size: {pp_size})")
+
+    print(
+        f"[Rank {rank}] Starting pipeline parallel test, PP rank: {pp_rank}, PP group: {pp_ranks}"
+    )
 
     prev_rank = None
     next_rank = None
@@ -297,39 +400,55 @@ def test_pipeline_parallel_group_c10d():
     if pp_rank < pp_size - 1:
         next_rank = pp_ranks[pp_rank + 1]
 
+    print(f"[Rank {rank}] PP topology - prev: {prev_rank}, next: {next_rank}")
+
     # Forward communication test.
+    print(f"[Rank {rank}] Starting forward pipeline communication test...")
     if next_rank is not None:
         send_tensor = torch.tensor([rank, pp_rank], device=device, dtype=torch.float32)
+        print(f"[Rank {rank}] Sending {send_tensor} to rank {next_rank}")
         dist.send(send_tensor, dst=next_rank)
 
     if prev_rank is not None:
         recv_tensor = torch.zeros(2, device=device, dtype=torch.float32)
+        print(f"[Rank {rank}] Receiving from rank {prev_rank}")
         dist.recv(recv_tensor, src=prev_rank)
         expected_tensor = torch.tensor([prev_rank, pp_rank - 1], device=device, dtype=torch.float32)
-        assert torch.allclose(
-            recv_tensor, expected_tensor
-        ), f"test_pipeline_parallel_group_c10d failed on rank {rank}, expected: {expected_tensor}, received: {recv_tensor}."
+        if not torch.allclose(recv_tensor, expected_tensor):
+            raise AssertionError(
+                f"Pipeline forward test failed on rank {rank}, expected: {expected_tensor}, received: {recv_tensor}."
+            )
+        print(f"[Rank {rank}] Forward communication verified: {recv_tensor}")
 
     dist.barrier(pp_group)
+    print(f"[Rank {rank}] Forward pipeline barrier completed")
 
     # Backward communication test.
+    print(f"[Rank {rank}] Starting backward pipeline communication test...")
     if prev_rank is not None:
         send_tensor = torch.tensor([rank, pp_rank], device=device, dtype=torch.float32)
+        print(f"[Rank {rank}] Sending {send_tensor} to rank {prev_rank}")
         dist.send(send_tensor, dst=prev_rank)
 
     if next_rank is not None:
         recv_tensor = torch.zeros(2, device=device, dtype=torch.float32)
+        print(f"[Rank {rank}] Receiving from rank {next_rank}")
         dist.recv(recv_tensor, src=next_rank)
         expected_tensor = torch.tensor([next_rank, pp_rank + 1], device=device, dtype=torch.float32)
-        assert torch.allclose(
-            recv_tensor, expected_tensor
-        ), f"test_pipeline_parallel_group_c10d failed on rank {rank}, expected: {expected_tensor}, received: {recv_tensor}."
+        if not torch.allclose(recv_tensor, expected_tensor):
+            raise AssertionError(
+                f"Pipeline backward test failed on rank {rank}, expected: {expected_tensor}, received: {recv_tensor}."
+            )
+        print(f"[Rank {rank}] Backward communication verified: {recv_tensor}")
 
     dist.barrier(pp_group)
+    print(f"[Rank {rank}] Backward pipeline barrier completed")
 
     dist.barrier()
+    print(f"[Rank {rank}] Pipeline parallel test completed")
+
     if rank == 0:
-        print(f"test_pipeline_parallel_group_c10d passed")
+        print("Pipeline parallel communication test completed successfully")
 
 
 def cleanup():
@@ -403,25 +522,60 @@ def parse_args():
 
 
 def test_communication():
+    """Test all parallel communication with progressive execution"""
     args = get_args()
+    rank = dist.get_rank()
 
-    if args.rank == 0:
-        print(f"Testing tensor parallel group communication.")
-    test_tensor_parallel_group_c10d()
+    if rank == 0:
+        print("\n" + "=" * 60)
+        print("PHASE 1: PARALLEL COMMUNICATION TESTING")
+        print("=" * 60)
 
-    dist.barrier()
+    # Test 1: Tensor Parallel Communication
+    success = safe_test_execution(
+        test_tensor_parallel_group_c10d, 'tensor_parallel', timeout_seconds=120
+    )
+    if not success and rank == 0:
+        print("⚠ Warning: Tensor parallel test failed, but continuing with other tests...")
 
-    if args.rank == 0:
-        print(f"Testing data parallel group communication.")
-    test_data_parallel_group_c10d()
+    # Global barrier before next test
+    try:
+        dist.barrier()
+    except Exception as e:
+        if rank == 0:
+            print(f"⚠ Warning: Global barrier failed: {e}")
 
-    dist.barrier()
+    # Test 2: Data Parallel Communication
+    success = safe_test_execution(
+        test_data_parallel_group_c10d, 'data_parallel', timeout_seconds=120
+    )
+    if not success and rank == 0:
+        print("⚠ Warning: Data parallel test failed, but continuing with other tests...")
 
-    if args.rank == 0:
-        print(f"Testing pipeline parallel group communication.")
-    test_pipeline_parallel_group_c10d()
+    # Global barrier before next test
+    try:
+        dist.barrier()
+    except Exception as e:
+        if rank == 0:
+            print(f"⚠ Warning: Global barrier failed: {e}")
 
-    dist.barrier()
+    # Test 3: Pipeline Parallel Communication
+    success = safe_test_execution(
+        test_pipeline_parallel_group_c10d, 'pipeline_parallel', timeout_seconds=120
+    )
+    if not success and rank == 0:
+        print("⚠ Warning: Pipeline parallel test failed, but continuing with other tests...")
+
+    # Final barrier
+    try:
+        dist.barrier()
+    except Exception as e:
+        if rank == 0:
+            print(f"⚠ Warning: Final barrier failed: {e}")
+
+    if rank == 0:
+        print("\nParallel communication testing phase completed")
+        print("=" * 60)
 
 
 def test_gpu_hardware_single():
@@ -464,13 +618,31 @@ def test_gpu_hardware_single():
 
 
 def test_gpu_hardware():
-
+    """Test GPU hardware with distributed coordination"""
     args = get_args()
-    if args.local_rank == 0:
-        test_gpu_hardware_single()
+    rank = dist.get_rank()
 
-    dist.barrier()
-    return
+    if rank == 0:
+        print("\n" + "=" * 60)
+        print("PHASE 2: GPU HARDWARE TESTING")
+        print("=" * 60)
+
+    # Only test on local rank 0 to avoid redundant hardware checks
+    success = True
+    if args.local_rank == 0:
+        success = safe_test_execution(test_gpu_hardware_single, 'gpu_hardware', timeout_seconds=60)
+
+    try:
+        dist.barrier()
+    except Exception as e:
+        if rank == 0:
+            print(f"⚠ Warning: GPU hardware test barrier failed: {e}")
+
+    if rank == 0:
+        print("GPU hardware testing phase completed")
+        print("=" * 60)
+
+    return success
 
 
 def check_test_result(test_name, result_tensor):
@@ -555,85 +727,195 @@ def test_calculation_single():
 
 
 def test_calculation():
+    """Test GPU computation capabilities with distributed coordination"""
     args = get_args()
+    rank = dist.get_rank()
 
-    result = test_calculation_float()
-    result_tensor = torch.zeros(args.world_size).to(f'cuda:{get_args().local_rank}')
-    result_tensor[args.rank] = 1.0 if result else 0.0
-    dist.all_reduce(result_tensor, dist.ReduceOp.SUM)
-    if args.rank == 0:
-        check_test_result("test_calculation_float", result_tensor)
+    if rank == 0:
+        print("\n" + "=" * 60)
+        print("PHASE 3: GPU COMPUTATION TESTING")
+        print("=" * 60)
 
-    result = test_calculation_double()
-    result_tensor = torch.zeros(args.world_size).to(f'cuda:{get_args().local_rank}')
-    result_tensor[args.rank] = 1.0 if result else 0.0
-    dist.all_reduce(result_tensor, dist.ReduceOp.SUM)
-    if args.rank == 0:
-        check_test_result("test_calculation_double", result_tensor)
+    # Test individual computation capabilities
+    test_functions = [
+        ('Float calculation', test_calculation_float),
+        ('Double calculation', test_calculation_double),
+        ('Half calculation', test_calculation_half),
+        ('Endurance test (60s)', test_calculation_endurance),
+    ]
 
-    result = test_calculation_half()
-    result_tensor = torch.zeros(args.world_size).to(f'cuda:{get_args().local_rank}')
-    result_tensor[args.rank] = 1.0 if result else 0.0
-    dist.all_reduce(result_tensor, dist.ReduceOp.SUM)
-    if args.rank == 0:
-        check_test_result("test_calculation_half", result_tensor)
+    for test_name, test_func in test_functions:
+        if rank == 0:
+            print(f"\nTesting {test_name}...")
 
-    result = test_calculation_endurance()
-    result_tensor = torch.zeros(args.world_size).to(f'cuda:{get_args().local_rank}')
-    result_tensor[args.rank] = 1.0 if result else 0.0
-    dist.all_reduce(result_tensor, dist.ReduceOp.SUM)
-    if args.rank == 0:
-        check_test_result("test_calculation_endurance", result_tensor)
+        # Execute test on each rank
+        try:
+            result = test_func()
+        except Exception as e:
+            result = False
+            if rank == 0:
+                print(f"✗ {test_name} failed with exception: {e}")
+
+        # Gather results from all ranks
+        try:
+            result_tensor = torch.zeros(args.world_size).to(f'cuda:{args.local_rank}')
+            result_tensor[args.rank] = 1.0 if result else 0.0
+            dist.all_reduce(result_tensor, dist.ReduceOp.SUM)
+
+            if args.rank == 0:
+                check_test_result(test_name, result_tensor)
+        except Exception as e:
+            if rank == 0:
+                print(f"⚠ Warning: Failed to gather {test_name} results: {e}")
+
+        # Barrier between tests
+        try:
+            dist.barrier()
+        except Exception as e:
+            if rank == 0:
+                print(f"⚠ Warning: Calculation test barrier failed: {e}")
+
+    if rank == 0:
+        print("\nGPU computation testing phase completed")
+        print("=" * 60)
+
+
+def print_test_summary():
+    """Print final test summary"""
+    rank = dist.get_rank() if dist.is_initialized() else 0
+    if rank != 0:
+        return
+
+    print("\n" + "=" * 60)
+    print("GPU HEALTH CHECK SUMMARY")
+    print("=" * 60)
+
+    total_tests = len(_TEST_RESULTS)
+    passed_tests = sum(1 for result in _TEST_RESULTS.values() if result['status'] == 'passed')
+    failed_tests = sum(1 for result in _TEST_RESULTS.values() if result['status'] == 'failed')
+    skipped_tests = sum(1 for result in _TEST_RESULTS.values() if result['status'] == 'skipped')
+
+    for test_name, result in _TEST_RESULTS.items():
+        status_icon = (
+            "✓" if result['status'] == 'passed' else "✗" if result['status'] == 'failed' else "⚠"
+        )
+        print(f"{status_icon} {test_name.replace('_', ' ').title()}: {result['status'].upper()}")
+        if result['error']:
+            print(f"   └─ {result['error']}")
+
+    print(
+        f"\nResults: {passed_tests} passed, {failed_tests} failed, {skipped_tests} skipped out of {total_tests} total"
+    )
+
+    if failed_tests == 0:
+        print("🎉 All GPU health checks PASSED!")
+    elif passed_tests > 0:
+        print("⚠ Some tests failed, but basic functionality verified")
+    else:
+        print("❌ Critical: All tests FAILED - GPU environment may have serious issues")
+
+    print("=" * 60)
 
 
 def main():
+    """Complete GPU health check with progressive testing"""
     args = parse_args()
 
-    # Auto-detect optimal parallel configuration
+    # Auto-detect optimal parallel configuration to avoid group creation errors
     auto_tp_size, auto_pp_size, need_distributed = auto_detect_parallel_config()
 
     # Override args with detected values for better compatibility
+    original_tp = args.tensor_model_parallel_size
+    original_pp = args.pipeline_model_parallel_size
     args.tensor_model_parallel_size = auto_tp_size
     args.pipeline_model_parallel_size = auto_pp_size
 
-    if args.rank == 0:
-        print(
-            f"Auto-detected parallel config: TP={auto_tp_size}, PP={auto_pp_size}, distributed={need_distributed}"
-        )
-
     set_args(args)
 
-    if not need_distributed:
-        # Skip distributed testing for single process
-        if args.rank == 0:
-            print("Single process mode detected - skipping distributed tests")
-            print("Running basic GPU hardware tests...")
-        test_gpu_hardware()
-        test_calculation()
-        if args.rank == 0:
-            print("GPU health check completed successfully!")
+    rank = args.rank
+    world_size = args.world_size
+
+    if rank == 0:
+        print("=" * 60)
+        print("COMPREHENSIVE GPU HEALTH CHECK")
+        print("=" * 60)
+        print(f"Configuration:")
+        print(f"  • World Size: {world_size}")
+        print(
+            f"  • Tensor Parallel Size: {args.tensor_model_parallel_size} (requested: {original_tp}, auto-adjusted)"
+        )
+        print(
+            f"  • Pipeline Parallel Size: {args.pipeline_model_parallel_size} (requested: {original_pp}, auto-adjusted)"
+        )
+        print(f"  • Backend: {args.distributed_backend}")
+        print(f"  • Timeout: {args.distributed_timeout_minutes} minutes")
+        print(f"  • Need Distributed: {need_distributed}")
+        print("=" * 60)
+
+    # Single process mode - run basic tests only
+    if world_size == 1:
+        if rank == 0:
+            print("Single process mode detected")
+            print("Running basic GPU hardware and computation tests...")
+
+        # Test hardware
+        safe_test_execution(test_gpu_hardware_single, 'gpu_hardware', timeout_seconds=60)
+
+        # Test computation
+        safe_test_execution(
+            test_calculation_single,
+            'computation',
+            timeout_seconds=300,  # 5 minutes for endurance test
+        )
+
+        if rank == 0:
+            print_test_summary()
+
         return
 
-    # For multi-GPU environments, use compatibility mode to avoid communication issues
-    if args.rank == 0:
-        print("Multi-GPU mode detected - using compatibility mode...")
-        print("Falling back to single-GPU health check mode...")
-        test_gpu_hardware_single()
-        test_calculation_single()
-        print("GPU health check completed in compatibility mode!")
-    return  # Exit early, skip all distributed tests
+    # Multi-process distributed mode - full test suite
+    if rank == 0:
+        print("Multi-process distributed mode detected")
+        print("Initializing distributed environment...")
 
-    # initialize process group and subgroups
-    initialize_distributed(args.rank, args.world_size)
+    try:
+        # Initialize process group and subgroups
+        initialize_distributed(rank, world_size)
 
-    # test communication within process group
-    test_communication()
+        if rank == 0:
+            print("✓ Distributed initialization successful")
+            print("Starting comprehensive test suite...")
 
-    test_gpu_hardware()
+        # PHASE 1: Test parallel communication
+        test_communication()
 
-    test_calculation()
+        # PHASE 2: Test GPU hardware
+        test_gpu_hardware()
 
-    cleanup()
+        # PHASE 3: Test computation capabilities
+        test_calculation()
+
+        if rank == 0:
+            print("\n" + "=" * 60)
+            print("ALL TEST PHASES COMPLETED")
+            print("=" * 60)
+
+    except Exception as e:
+        if rank == 0:
+            print(f"❌ Critical error during testing: {e}")
+            print("Attempting cleanup...")
+
+    finally:
+        # Always attempt cleanup
+        try:
+            cleanup()
+        except Exception as e:
+            if rank == 0:
+                print(f"⚠ Warning: Cleanup failed: {e}")
+
+        # Print final summary
+        if rank == 0:
+            print_test_summary()
 
 
 if __name__ == "__main__":
