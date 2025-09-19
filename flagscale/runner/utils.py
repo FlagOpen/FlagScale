@@ -379,6 +379,7 @@ def update_cmd_with_node_specific_config(cmd, node_specific_config=None):
     cmd_parts = shlex.split(cmd)
 
     for key, value in node_specific_config.items():
+        key = key.replace("_", "-")
         option = f"--{key}"
         if option in cmd_parts:
             idx = cmd_parts.index(option)
