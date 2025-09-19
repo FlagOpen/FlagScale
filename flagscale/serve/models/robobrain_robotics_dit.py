@@ -34,8 +34,7 @@ class RoboBrainRoboticsConfig(PretrainedConfig):
         default=False, metadata={"help": "Whether the model is in training mode."}
     )
     pretrained_vlm_model_path: str = field(
-        default="Local/path/of/the/model",
-        metadata={"help": "Local path of the model."},
+        default="Local/path/of/the/model", metadata={"help": "Local path of the model."}
     )
 
     def __init__(self, **kwargs):
@@ -51,17 +50,12 @@ class RoboBrainRobotics(PreTrainedModel):
         super().__init__(config)
 
         self.pretrained_vlm_model_path = getattr(
-            config,
-            'pretrained_vlm_model_path',
-            "path/to/pretrained_vlm_model_path",
+            config, 'pretrained_vlm_model_path', "path/to/pretrained_vlm_model_path"
         )
         training = getattr(config, 'training', False)
 
         # vlm
-        self.processor = AutoProcessor.from_pretrained(
-            "path/to/processor",
-            padding_side="left",
-        )
+        self.processor = AutoProcessor.from_pretrained("path/to/processor", padding_side="left")
         if training:
             self.backbone = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 self.pretrained_vlm_model_path,
