@@ -120,6 +120,8 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
 
     # If env equals 'train'
     if [ "${env}" == "train" ]; then
+        # Navigate to requirements directory and install basic dependencies
+        uv pip install -r ./requirements/train/requirements.txt
         # Unpatch
         python tools/patch/unpatch.py --backend Megatron-LM
 
@@ -229,6 +231,7 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
         echo $SCCACHE_DIR
         which sccache
         sccache --version
+        sccache --start-server
         sccache --show-stats
         MAX_JOBS=$(nproc) pip install --no-build-isolation -v ./third_party/vllm/.
         sccache --show-stats

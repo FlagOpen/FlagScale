@@ -176,6 +176,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.cache/conda-anaconda-tos \
     --mount=type=cache,target=/root/.cache/sccache \
+    --mount=type=cache,target=/root/.cache/ccache \
     cd ${STAGE_DIR}/FlagScale && \
     apt-get install -y --no-install-recommends curl && \
     ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
