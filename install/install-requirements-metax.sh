@@ -59,7 +59,7 @@ pip install -r ./requirements/requirements-base.txt
 conda activate flagscale-${env}
 
 # install basic dependencies
-pip install torch==2.6.0+metax2.33.0.5 torchaudio==2.4.1+metax2.33.0.5 torchvision==0.15.1+metax2.33.0.5 -i https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com
+pip install torch==2.6.0+metax3.0.0.3 torchaudio==2.4.1+metax3.0.0.3 torchvision==0.15.1+metax3.0.0.3 -i https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com
 pip install -r ./requirements/requirements-common.txt
 
 if [[ ${env} == "inference" ]]; then
@@ -93,8 +93,27 @@ if [[ ${env} == "inference" ]]; then
 
     {
         # Load environment variables
-        source /etc/profile.d/conda.sh && \
         source ./env.sh || { echo "Failed to source environment files"; exit 1; }
+
+	echo "[INFO] Checking sccache installation ..."
+        if ! command -v sccache &> /dev/null; then
+            echo "[INFO] sccache not found, installing..."
+            curl -L https://github.com/mozilla/sccache/releases/download/v0.8.1/sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz -o /tmp/sccache.tar.gz
+            tar -xzf /tmp/sccache.tar.gz -C /tmp
+            mv /tmp/sccache-v0.8.1-x86_64-unknown-linux-musl/sccache /usr/bin/sccache
+            rm -rf /tmp/sccache*
+        fi
+        sccache --version
+
+        echo "[INFO] Configuring compiler cache (sccache) ..."
+        export CC=/root/cu-bridge/bin/gcc
+        export CXX=/root/cu-bridge/bin/g++
+        export CMAKE_C_COMPILER_LAUNCHER=$(which sccache)
+        export CMAKE_CXX_COMPILER_LAUNCHER=$(which sccache)
+        export CMAKE_CUDA_COMPILER_LAUNCHER=$(which sccache)
+        export CXXFLAGS="-I/opt/maca/include -I/opt/maca/include/mcr -I/opt/maca/include/common -I/opt/maca/include/mcsparse -I/opt/maca/include/mcsolver"
+
+        sccache --start-server || true
 
         echo "Setting up Python environment ..."
         python setup.py bdist_wheel || { echo "Failed to build wheel"; exit 1; }
@@ -102,6 +121,9 @@ if [[ ${env} == "inference" ]]; then
         echo "Installing custom wheel package..."
         pip uninstall -y vllm
         pip install -v "$WHEEL_PATH" || { echo "Failed to install wheel"; exit 1; }
+
+        echo "[INFO] sccache build statistics:"
+        sccache --show-stats || true
     } || {
         echo "Build process failed in $(pwd)"
         popd > /dev/null

@@ -1,14 +1,14 @@
+# -*- coding: utf-8 -*-
 import argparse
 import copy
 import os
 import shutil
-import sys
 import tempfile
 
+import git
 import yaml
 
-from encryption_utils import encrypt_file, generate_rsa_keypair
-from file_utils import sync_to_flagscale
+from encryption_utils import encrypt_file
 from git.repo import Repo
 from git_utils import (
     check_git_user_info,
@@ -19,12 +19,44 @@ from git_utils import (
 )
 from logger_utils import get_patch_logger
 
-DELETED_FILE_NAME = "deleted_files.txt"
 FLAGSCALE_BACKEND = "FlagScale"
 logger = get_patch_logger()
 
 
-def patch(main_path, submodule_name, src, dst, mode="symlink"):
+def generate_and_save_patch(sub_repo, base_commit, file_path, status, src_dir):
+
+    patch_content = ""
+    try:
+        if status in ['A', 'UT']:
+            patch_content = sub_repo.git.diff('--no-index', '/dev/null', file_path)
+
+        elif status in ['M', 'T', 'D']:
+            patch_content = sub_repo.git.diff(base_commit, '--', file_path)
+    except git.exc.GitCommandError as e:
+        if e.status == 1:
+            raw_output = str(e.stdout)
+            start_marker = "diff --git"
+            start_index = raw_output.find(start_marker)
+            end_index = raw_output.rfind("'")
+            patch_content = raw_output[start_index:end_index]
+        else:
+            raise e
+
+    if patch_content:
+        target_patch_path = os.path.join(src_dir, file_path + ".patch")
+        os.makedirs(os.path.dirname(target_patch_path), exist_ok=True)
+
+        with open(target_patch_path, 'w', encoding='utf-8') as f:
+            content = patch_content if patch_content else ""
+            if content and not content.endswith('\n'):
+                content += '\n'
+            f.write(content)
+        logger.info(f"Generated patch for '{file_path}' (Status: {status})")
+    else:
+        logger.warning(f"No patch content generated for '{file_path}' (Status: {status})")
+
+
+def patch(main_path, submodule_name, src, dst):
     """
     Sync the submodule modifications to the corresponding backend in FlagScale.
     Args:
@@ -32,12 +64,9 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
         submodule_name (str): The name of the submodule to be patched, e.g., "Mgeatron-LM".
         src (str): The source directory of the submodule, e.g., "flagscale/backends/Megatron-LM".
         dst (str): The destination directory of the submodule, e.g., "third_party/Megatron-LM".
-        mode (str): The mode to patch (default: symlink),
-                    it means that the file will be copied to the source and a symbolic link from src to dst will be created.
-                    If the mode is copy, the file will be copied to the source and the symbolic link will not be created.
     """
 
-    submodule_path = "third_party" + "/" + submodule_name
+    submodule_path = os.path.join("third_party", submodule_name)
     logger.info(f"Patching backend {submodule_path}...")
 
     # Get the submodule repo and the commit in FlagScale.
@@ -65,42 +94,36 @@ def patch(main_path, submodule_name, src, dst, mode="symlink"):
     untracked_file_statuses = get_file_statuses_for_untracked(untracked_files)
     file_statuses.update(untracked_file_statuses)
 
-    # Process the deleted files
-    file_status_deleted = {}
-    for file_path in file_statuses:
-        if file_statuses[file_path][0] == "D":
-            file_status_deleted[file_path] = file_statuses[file_path]
+    try:
+        # create temporary path
+        if os.path.exists(src):
+            temp_path = tempfile.mkdtemp()
+            shutil.copytree(src, temp_path, dirs_exist_ok=True)
+            logger.info(f"Created a temporary backup of '{src}' at '{temp_path}'")
 
-    # Sync the files to FlagScale and skip the deleted files firstly
-    # Temp file is used to store the deleted files
-    temp_file = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False)
-    for file_path in file_statuses:
-        if file_statuses[file_path][0] == "D":
-            continue
-        sync_to_flagscale(file_path, file_statuses[file_path], src, dst, temp_file, mode=mode)
+        logger.info(f"Cleaning up old patch directory: {src}")
+        shutil.rmtree(src, ignore_errors=True)
+        os.makedirs(src)
 
-    # Process the deleted files
-    if file_status_deleted:
-        try:
-            for file_path in file_status_deleted:
-                assert file_statuses[file_path][0] == "D"
-                sync_to_flagscale(
-                    file_path, file_status_deleted[file_path], src, dst, temp_file, mode=mode
-                )
-            deleted_log = os.path.join(src, DELETED_FILE_NAME)
-            temp_file.close()
+        if not file_statuses:
+            logger.info("No file changes detected. Nothing to patch.")
 
-            shutil.move(temp_file.name, deleted_log)
-            if os.path.lexists(temp_file.name):
-                os.remove(temp_file.name)
+        else:
+            logger.info(f"Found {len(file_statuses)} file change(s). Generating patches...")
+            for file_path, status_info in file_statuses.items():
+                status = status_info[0]
+                generate_and_save_patch(sub_repo, submodule_commit_in_fs, file_path, status, src)
+            logger.info("Patch generation completed successfully!")
 
-        except Exception as e:
-            print(f"Error occurred while processing deleted files: {e}")
-            # Rollback
-            temp_file.close()
-            if os.path.lexists(temp_file.name):
-                os.remove(temp_file.name)
-            raise e
+    except Exception as e:
+        logger.error(f"An error occurred during patch generation: {e}", exc_info=True)
+        shutil.rmtree(src, ignore_errors=True)
+        shutil.copytree(temp_path, src, dirs_exist_ok=True)
+
+    finally:
+        if "temp_path" in locals() and os.path.exists(temp_path):
+            logger.info(f"Cleaning up temp path: {temp_path}")
+            shutil.rmtree(temp_path, ignore_errors=True)
 
 
 def patch_hardware(main_path, commit, backends, device_type, tasks, key_path=None):
@@ -117,7 +140,7 @@ def prompt_info(main_path, backends, device_type, tasks):
     logger.info("Prompting for patch information: ")
 
     backends_version = {}
-    print("1. Please enter backends version: ")
+    logger.info("1. Please enter backends version: ")
     for backend in backends:
         version = input(f"    {backend} version: ").strip()
         while not version:
@@ -126,7 +149,7 @@ def prompt_info(main_path, backends, device_type, tasks):
         backends_version[backend] = version
 
     backends_commit = {}
-    print("2. Please enter backends commit: ")
+    logger.info("2. Please enter backends commit: ")
     logger.info(
         "If a specific submodule commit is provided, it will be used to generate the diff and apply the patch. By default, the commit defined by FlagScale will be used."
     )
@@ -192,7 +215,7 @@ def _generate_patch_file_for_backend(
     assert not repo.bare
     try:
         repo_path = (
-            os.path.join(main_path, "third_party" + "/" + backend)
+            os.path.join(main_path, "third_party", backend)
             if backend != FLAGSCALE_BACKEND
             else main_path
         )
@@ -321,7 +344,7 @@ def generate_patch_file(main_path: str, commit: str, patch_info: dict, key_path=
             if backend != FLAGSCALE_BACKEND:
                 # Get the submodule repo and the commit in FlagScale.
                 main_repo = Repo(main_path)
-                submodule_path = "third_party" + "/" + backend
+                submodule_path = os.path.join("third_party", backend)
                 submodule = main_repo.submodule(submodule_path)
                 sub_repo = submodule.module()
                 submodule_commit_in_fs = repo.head.commit.tree[submodule_path].hexsha
@@ -420,9 +443,10 @@ def validate_patch_args(device_type, task, commit, main_path):
         if (
             device_type.count("_") != 1
             or len(device_type.split("_")) != 2
+            or not device_type.split("_")[0]
             or not device_type.split("_")[0][0].isupper()
         ):
-            raise ValueError("Device type is not invalid!")
+            raise ValueError("Device type is invalid!")
 
     if commit or device_type or task:
         assert (
@@ -432,7 +456,7 @@ def validate_patch_args(device_type, task, commit, main_path):
 
 def normalize_backend(backend):
     """
-    Normalize backend to standard backend names
+    Normalize backend to standard backend names.
 
     Args:
         backend (str): Backend name provided by the user.
@@ -474,13 +498,6 @@ if __name__ == "__main__":
         default=["Megatron-LM"],
         help="Backend to patch (default: Megatron-LM)",
     )
-
-    parser.add_argument(
-        "--mode",
-        choices=["symlink", "copy"],
-        default="symlink",
-        help="Mode to patch (default: symlink, it means that the file will be copied to the source and a symbolic link will be created)",
-    )
     parser.add_argument(
         "--commit", type=str, default=None, help="Patch based on this commit. Default is None."
     )
@@ -497,7 +514,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     backends = args.backend
-    mode = args.mode
     commit = args.commit
     tasks = args.task
     device_type = args.device_type
@@ -530,4 +546,4 @@ if __name__ == "__main__":
         for backend in backends:
             dst = os.path.join(main_path, "third_party", backend)
             src = os.path.join(main_path, "flagscale", "backends", backend)
-            patch(main_path, backend, src, dst, mode)
+            patch(main_path, backend, src, dst)

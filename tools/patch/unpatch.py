@@ -1,34 +1,48 @@
 import argparse
-import logging
 import os
 import shutil
-import sys
 import tempfile
 
+import git
 import yaml
 
 from encryption_utils import decrypt_file
-from file_utils import copy, create_symlinks, delete_file
 from git.repo import Repo
 from logger_utils import get_unpatch_logger
 from patch import normalize_backend
 
-DELETED_FILE_NAME = "deleted_files.txt"
 FLAGSCALE_BACKEND = "FlagScale"
 logger = get_unpatch_logger()
 
 
-def unpatch(
-    main_path,
-    src,
-    dst,
-    submodule_name,
-    mode="symlink",
-    force=False,
-    backend_commit={},
-    fs_extension=True,
-):
-    """Unpatch the backend with symlinks."""
+def apply_patches_from_directory(src_dir, dst_dir):
+    if not os.path.isdir(src_dir):
+        logger.warning(f"Patch directory '{src_dir}' does not exist. Nothing to apply.")
+        return
+
+    try:
+        repo = Repo(dst_dir)
+        for root, _, files in os.walk(src_dir):
+            for file in sorted(files):
+                if file.endswith(".patch"):
+                    patch_file_path = os.path.join(root, file)
+                    logger.info(f"Applying patch: {patch_file_path}")
+                    try:
+                        repo.git.apply(patch_file_path, check=True)
+                        repo.git.apply(patch_file_path)
+                    except git.exc.GitCommandError as e:
+                        logger.error(
+                            f"Failed to apply patch '{patch_file_path}'. Error: {e.stderr}"
+                        )
+                        raise e
+
+    except Exception as e:
+        logger.error(f"An error occurred while setting up patch application for '{dst_dir}': {e}")
+        raise e
+
+
+def unpatch(main_path, src, dst, submodule_name, force=False, backend_commit={}, fs_extension=True):
+    """Unpatch the backend with patches."""
     if submodule_name != FLAGSCALE_BACKEND:
         logger.info(f"Unpatching backend {submodule_name}...")
         submodule_commit = None
@@ -36,14 +50,8 @@ def unpatch(
             submodule_commit = backend_commit[submodule_name]
         init_submodule(main_path, dst, submodule_name, force=force, commit=submodule_commit)
         if fs_extension:
-            assert mode in ["symlink", "copy"]
-            if mode == "copy":
-                copy(src, dst)
-            elif mode == "symlink":
-                create_symlinks(src, dst)
-            deleted_files_path = os.path.join(src, DELETED_FILE_NAME)
-            if os.path.lexists(deleted_files_path):
-                delete_file(deleted_files_path, dst)
+            apply_patches_from_directory(src, dst)
+            logger.info(f"Successfully applied all patches to backend {submodule_name}")
         else:
             logger.info(
                 f"FlagScale extension for {submodule_name} is disabled, skipping unpatching..."
@@ -59,34 +67,28 @@ def init_submodule(main_path, dst, submodule_name, force=False, commit=None):
         "When you perform unpatch, the specified submodule will be fully restored to its initial state, regardless of any modifications you may have made within the submodule."
     )
     repo = Repo(main_path)
-    submodule_name = "third_party" + "/" + submodule_name
+    submodule_name = os.path.join("third_party", submodule_name)
     submodule = repo.submodule(submodule_name)
-    try:
-        git_modules_path = os.path.join(main_path, ".git", "modules", submodule_name)
-        if os.path.exists(git_modules_path):
-            shutil.rmtree(git_modules_path)
-        submodule_worktree_path = os.path.join(main_path, submodule_name)
-        if os.path.exists(submodule_worktree_path):
-            shutil.rmtree(submodule_worktree_path)
-        submodule.update(init=True, force=force)
-        if commit:
-            sub_repo = submodule.module()
-            sub_repo.git.reset('--hard', commit)
-            logger.info(f"Reset {submodule_name} to commit {commit}.")
-    except:
-        logger.info("Retrying to initialize submodule...")
-        git_modules_path = os.path.join(main_path, ".git", "modules", submodule_name)
-        if os.path.exists(git_modules_path):
-            shutil.rmtree(git_modules_path)
-        submodule_worktree_path = os.path.join(main_path, submodule_name)
-        if os.path.exists(submodule_worktree_path):
-            shutil.rmtree(submodule_worktree_path)
-        submodule.update(init=True, force=force)
-        if commit:
-            sub_repo = submodule.module()
-            sub_repo.git.reset('--hard', commit)
-            logger.info(f"Reset {submodule_name} to commit {commit}.")
-    logger.info(f"Initialized {submodule_name} submodule.")
+    retry_times = 2
+    for _ in range(retry_times):
+        try:
+            git_modules_path = os.path.join(main_path, ".git", "modules", submodule_name)
+            if os.path.exists(git_modules_path):
+                shutil.rmtree(git_modules_path)
+            submodule_worktree_path = os.path.join(main_path, submodule_name)
+            if os.path.exists(submodule_worktree_path):
+                shutil.rmtree(submodule_worktree_path)
+            submodule.update(init=True, force=force)
+            if commit:
+                sub_repo = submodule.module()
+                sub_repo.git.reset('--hard', commit)
+                logger.info(f"Reset {submodule_name} to commit {commit}.")
+            logger.info(f"Initialized {submodule_name} submodule.")
+            break
+
+        except Exception as e:
+            logger.error(f"Exception occurred: {e}", exc_info=True)
+            logger.info(f"Retrying to initialize submodule {submodule_name}...")
 
 
 def commit_to_checkout(main_path, device_type=None, tasks=None, backends=None, commit=None):
@@ -300,6 +302,18 @@ def apply_hardware_patch(
             shutil.rmtree(build_path, ignore_errors=True)
 
         raise ValueError("Error occurred during unpatching.")
+
+    finally:
+        # Clean up temp directory
+        if "temp_path" in locals() and os.path.exists(temp_path):
+            logger.info(f"Cleaning up temp path: {temp_path}")
+            shutil.rmtree(temp_path, ignore_errors=True)
+
+        # Clean up temp directory
+        if "temp_unpatch_path" in locals() and os.path.exists(temp_unpatch_path):
+            logger.info(f"Cleaning up temp path: {temp_unpatch_path}")
+            shutil.rmtree(temp_unpatch_path, ignore_errors=True)
+
     return final_path
 
 
@@ -315,9 +329,10 @@ def validate_unpatch_args(device_type, tasks, commit, main_path):
         if (
             device_type.count("_") != 1
             or len(device_type.split("_")) != 2
+            or not device_type.split("_")[0]
             or not device_type.split("_")[0][0].isupper()
         ):
-            raise ValueError("Device type is not invalid!")
+            raise ValueError("Device type is invalid!")
 
     if device_type or tasks:
         assert device_type and tasks, "The args device_type, task must not be None."
@@ -338,7 +353,7 @@ def backend_commit_mapping(backends, backends_commit):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Patch or unpatch backend with symlinks.")
+    parser = argparse.ArgumentParser(description="Patch or unpatch backend with patch files.")
     parser.add_argument(
         "--backend",
         nargs="+",
@@ -347,12 +362,6 @@ if __name__ == "__main__":
         help="Backend to unpatch (default: Megatron-LM)",
     )
 
-    parser.add_argument(
-        "--mode",
-        choices=["symlink", "copy"],
-        default="symlink",
-        help="Mode to unpatch (default: symlink)",
-    )
     parser.add_argument(
         "--device-type", type=str, default=None, help="Device type. Default is None."
     )
@@ -441,7 +450,6 @@ if __name__ == "__main__":
                 src,
                 dst,
                 backend,
-                mode=args.mode,
                 force=args.force,
                 backend_commit=backend_commit,
                 fs_extension=fs_extension,

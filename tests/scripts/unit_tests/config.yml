@@ -1,5 +1,5 @@
 # Use default configuration if not shown
-megatron:
+train_megatron:
   set_environment:
     - source /root/miniconda3/etc/profile.d/conda.sh
     - conda activate flagscale-train
@@ -78,7 +78,7 @@ megatron:
     pipeline_parallel:
       - default
     post_training:
-      ignore: 
+      ignore:
         - test_modelopt_module_spec.py
     ssm:
       ignore:
@@ -126,7 +126,7 @@ megatron:
         - test_parallel_state.py::test_different_initialize_order_unconsistency
         - test_utils.py::test_nvtx_decorato
 
-flagscale:
+train_flagscale:
   set_environment:
     - source /root/miniconda3/etc/profile.d/conda.sh
     - conda activate flagscale-train
@@ -146,3 +146,16 @@ flagscale:
         - test_spiky_loss_detector.py::test_spiky_loss_detector
         - test_parallel_context.py::test_parallel_config
       depth: 1
+
+inference_flagscale:
+  set_environment:
+    - source /root/miniconda3/etc/profile.d/conda.sh
+    - conda activate flagscale-inference
+    - ulimit -n 65535
+  subset:
+    inference:
+      type: batch
+      depth: all
+    transforms:
+      type: batch
+      depth: all

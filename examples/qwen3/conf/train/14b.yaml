@@ -39,6 +39,7 @@ model:
   hidden_size: 5120
   ffn_hidden_size: 17408
   kv_channels: 128
+  group_query_attention: true
   num_attention_heads: 40
   num_query_groups: 8 # num_key_value_heads
   seq_length: 4096
