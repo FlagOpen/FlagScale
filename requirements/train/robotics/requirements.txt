@@ -90,9 +90,9 @@ google-pasta
 google-resumable-media
 googleapis-common-protos
 grpcio
-gym
-gym-aloha
-gym-notices
+# gym
+# gym-aloha
+# gym-notices
 gymnasium
 h11
 h5py
@@ -172,22 +172,6 @@ numcodecs
 numpy
 numpy-quaternion
 numpydantic
-nvidia-cublas-cu12
-nvidia-cuda-cupti-cu12
-nvidia-cuda-nvcc-cu12
-nvidia-cuda-nvrtc-cu12
-nvidia-cuda-runtime-cu12
-nvidia-cudnn-cu12
-nvidia-cufft-cu12
-nvidia-cufile-cu12
-nvidia-curand-cu12
-nvidia-cusolver-cu12
-nvidia-cusparse-cu12
-nvidia-cusparselt-cu12
-nvidia-ml-py
-nvidia-nccl-cu12
-nvidia-nvjitlink-cu12
-nvidia-nvtx-cu12
 oauthlib
 omegaconf
 openai
@@ -299,11 +283,6 @@ timm
 tokenizers
 toml
 toolz
-torch
-torchaudio
-torchcodec
-torchdiffeq
-torchvision
 tqdm
 tqdm-loggable
 traitlets
