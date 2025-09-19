@@ -27,6 +27,7 @@ try:
         TERowParallelGroupedLinear,
         TERowParallelLinear,
     )
+
     TECL = (TEColumnParallelLinear, TELayerNormColumnParallelLinear, TEColumnParallelGroupedLinear)
     TERL = (TERowParallelLinear, TERowParallelGroupedLinear)
     HAVE_TE = True
