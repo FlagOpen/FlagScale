@@ -1,5 +1,3 @@
-import time
-
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -166,19 +164,19 @@ class RoboBrainRobotics(PreTrainedModel):
         image: list[Dict[str, torch.Tensor] | Dict[str, Image.Image]],
         state: Optional[torch.Tensor],
     ):
-        start_time = time.time()
+        # start_time = time.time()
         backbone_inputs, action_inputs = self.prepare_input(instruction, image, state)
-        print(f"backbone_inputs: {backbone_inputs}")
-        print(f"input_ids: {backbone_inputs['input_ids'].shape}")
+        # print(f"backbone_inputs: {backbone_inputs}")
+        # print(f"input_ids: {backbone_inputs['input_ids'].shape}")
 
-        print(f"image_encoder time: {(time.time() - start_time) * 1000:.1f} ms")
-        start_time = time.time()
+        # print(f"image_encoder time: {(time.time() - start_time) * 1000:.1f} ms")
+        # start_time = time.time()
 
         backbone_features = self.backbone(
             **backbone_inputs, output_hidden_states=True, return_dict=True
         ).hidden_states[-1]
-        print(f"observation_forward time: {(time.time() - start_time) * 1000:.1f} ms")
-        start_time = time.time()
+        # print(f"observation_forward time: {(time.time() - start_time) * 1000:.1f} ms")
+        # start_time = time.time()
 
         backbone_outputs = BatchFeature(
             data={
@@ -188,6 +186,5 @@ class RoboBrainRobotics(PreTrainedModel):
         )  # [B, T2, hidden_size]
 
         action_head_outputs = self.action_head.get_action(backbone_outputs, action_inputs)
-        print(f"action_forward time: {(time.time() - start_time) * 1000:.1f} ms")
-        start_time = time.time()
+        # print(f"action_forward time: {(time.time() - start_time) * 1000:.1f} ms")
         return action_head_outputs
