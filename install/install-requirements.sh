@@ -52,6 +52,11 @@ echo "Setting up environment for: $env"
 # Load conda environment
 source ~/miniconda3/etc/profile.d/conda.sh
 
+# Accept the TOS from the main channel
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+# Accept the TOS from the r channel
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
 # Create and activate Conda virtual environment
 # The Python version used has been written into the conda config
 if conda env list | grep -q "flagscale-${env}"; then
@@ -75,25 +80,25 @@ conda activate flagscale-${env}
 
 if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
     # This command updates `setuptools` to the latest version, ensuring compatibility and access to the latest features for Python package management.
-    pip install --upgrade setuptools
+    uv pip install --upgrade setuptools
 
     # Navigate to requirements directory and install basic dependencies
-    pip install torch==2.7.0+cu128 torchaudio==2.7.0+cu128 torchvision==0.22.0+cu128 --extra-index-url https://download.pytorch.org/whl/cu128
-    pip install deepspeed
-    pip install -r ./requirements/requirements-common.txt
+    uv pip install torch==2.7.1+cu128 torchaudio==2.7.1+cu128 torchvision==0.22.1+cu128 --extra-index-url https://download.pytorch.org/whl/cu128
+    uv pip install deepspeed
+    uv pip install -r ./requirements/requirements-common.txt
 
     # TransformerEngine
     # Megatron-LM requires TE >= 2.1.0.
     git clone --recursive https://github.com/NVIDIA/TransformerEngine.git
     cd TransformerEngine
-    git checkout 5bee81e
-    pip install .
+    git checkout e9a5fa4e  # Date:   Thu Sep 4 22:39:53 2025 +0200
+    uv pip install .
     cd ..
     rm -r ./TransformerEngine
 
     # cudnn frontend
-    pip install nvidia-cudnn-cu12==9.7.1.26
-    CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" pip install nvidia-cudnn-frontend
+    uv pip install nvidia-cudnn-cu12==9.7.1.26
+    CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" uv pip install nvidia-cudnn-frontend
     python -c "import torch; print('cuDNN version:', torch.backends.cudnn.version());"
     python -c "from transformer_engine.pytorch.utils import get_cudnn_version; get_cudnn_version()"
 
@@ -103,23 +108,25 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
     cp=$(python3 --version | awk '{print $2}' | awk -F. '{print $1$2}')
     cxx=$(g++ --version | grep 'g++' | awk '{print $3}' | cut -d '.' -f 1)
     flash_attn_version="2.8.0.post2"
-    wget https://github.com/Dao-AILab/flash-attention/releases/download/v${flash_attn_version}/flash_attn-${flash_attn_version}+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
-    pip install --no-cache-dir flash_attn-${flash_attn_version}+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
+    wget --continue --timeout=60 --no-check-certificate --tries=5 --waitretry=10 https://github.com/Dao-AILab/flash-attention/releases/download/v${flash_attn_version}/flash_attn-${flash_attn_version}+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
+    uv pip install --no-cache-dir flash_attn-${flash_attn_version}+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
     rm flash_attn-${flash_attn_version}+cu${cu}torch${torch}cxx${cxx}abiFALSE-cp${cp}-cp${cp}-linux_x86_64.whl
 
     # From Megatron-LM log
-    pip install "git+https://github.com/Dao-AILab/flash-attention.git@v2.7.2#egg=flashattn-hopper&subdirectory=hopper"
+    uv pip install --no-build-isolation "git+https://github.com/Dao-AILab/flash-attention.git@v2.7.2#egg=flashattn-hopper&subdirectory=hopper"
     python_path=`python -c "import site; print(site.getsitepackages()[0])"`
     mkdir -p $python_path/flashattn_hopper
     wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILab/flash-attention/v2.7.2/hopper/flash_attn_interface.py
 
     # If env equals 'train'
     if [ "${env}" == "train" ]; then
+        # Navigate to requirements directory and install basic dependencies
+        uv pip install -r ./requirements/train/requirements.txt
         # Unpatch
         python tools/patch/unpatch.py --backend Megatron-LM
 
         # Navigate to requirements directory and install training dependencies
-        pip install -r ./requirements/train/megatron/requirements-cuda.txt
+        uv pip install --no-build-isolation -r ./requirements/train/megatron/requirements-cuda.txt
 
         # apex train
         git clone https://github.com/NVIDIA/apex
@@ -169,7 +176,7 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
         fi
 
         # Replace the following code with torch version 2.6.0
-        if [[ $torch_version == *"2.6.0"* ]] || [[ $torch_version == *"2.7.0"* ]];then
+        if [[ $torch_version == *"2.6.0"* ]] || [[ $torch_version == *"2.7.0"* ]]  || [[ $torch_version == *"2.7.1"* ]];then
             # Check and replace line 908
             LINE_908=$(sed -n '908p' "$FILE")
             EXPECTED_908='                if num_nodes_waiting > 0:'
@@ -200,13 +207,13 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
         fi
 
         # For FlagRelease
-        pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
+        uv pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
     fi
 
     # If env equals 'inference'
     if [ "${env}" == "inference" ]; then
         # Navigate to requirements directory and install basic dependencies
-        pip install -r ./requirements/inference/requirements.txt
+        uv pip install -r ./requirements/inference/requirements.txt
 
         # Unpatch
         python tools/patch/unpatch.py --backend vllm
@@ -215,16 +222,22 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
 
         # Build vllm
         # Navigate to requirements directory and install inference dependencies
-        pip install -r ./third_party/vllm/requirements/build.txt
-        pip install -r ./third_party/vllm/requirements/cuda.txt
-        pip install -r ./third_party/vllm/requirements/common.txt
-        pip install "git+https://github.com/state-spaces/mamba.git@v2.2.4"
-        pip install -r ./third_party/vllm/requirements/dev.txt
+        uv pip install -r ./third_party/vllm/requirements/build.txt
+        uv pip install -r ./third_party/vllm/requirements/cuda.txt
+        uv pip install -r ./third_party/vllm/requirements/common.txt
+        uv pip install "git+https://github.com/state-spaces/mamba.git@v2.2.4"
+        uv pip install -r ./third_party/vllm/requirements/dev.txt
 
+        echo $SCCACHE_DIR
+        which sccache
+        sccache --version
+        sccache --start-server
+        sccache --show-stats
         MAX_JOBS=$(nproc) pip install --no-build-isolation -v ./third_party/vllm/.
+        sccache --show-stats
 
         # Navigate to requirements directory and install serving dependencies
-        pip install -r ./requirements/serving/requirements.txt
+        uv pip install -r ./requirements/serving/requirements.txt
 
         # Build llama.cpp
         cd ./third_party/llama.cpp
@@ -291,7 +304,7 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
             cd ../../..
 
             # install dependencies
-            pip install -r ./third_party/omniinfer/tests/requirements.txt
+            uv pip install -r ./third_party/omniinfer/tests/requirements.txt
 
             # build whl for vllm
             mkdir -p ./third_party/omniinfer/build/dist
@@ -301,7 +314,7 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
 
             # build whl for omniinfer
             cd ../..
-            pip install build
+            uv pip install build
             python -m build
             mv dist/omni_i* ./build/dist
 
@@ -312,15 +325,15 @@ if [ "$env" == "train" ] || [ "$env" == "inference" ]; then
 
             # install 3 whl
             cd ../../../build/dist
-            pip install omni_i*.whl
-            pip install vllm*.whl
-            pip install omni_placement*.whl
+            uv pip install omni_i*.whl
+            uv pip install vllm*.whl
+            uv pip install omni_placement*.whl
 
             cd ../../../..
         fi
 
         # For FlagRelease
-        pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
+        uv pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
     fi
 fi
 
@@ -328,13 +341,13 @@ if [ "$env" == "RL" ]; then
     # install verl
     git clone https://github.com/volcengine/verl.git
     cd verl
-    pip install --no-deps -e .
+    uv pip install --no-deps -e .
     bash scripts/install_vllm_sglang_mcore.sh
     cd ..
     rm -rf ./verl
 
     # Install dependencies
-    pip install cryptography
+    uv pip install cryptography
 fi
 
 # Clean all conda caches

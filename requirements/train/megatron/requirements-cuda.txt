@@ -12,7 +12,3 @@ pandas
 s3fs
 transformers==4.51.0
 webdataset
-
--r ../../../third_party/Megatron-LM/requirements/pytorch_24.10/requirements.txt
--r ../../../third_party/Megatron-LM/requirements_ci.txt
--r ../../../third_party/Megatron-LM/requirements_mlm.txt
