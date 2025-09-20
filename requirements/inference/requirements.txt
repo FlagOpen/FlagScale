@@ -1,1 +1,4 @@
 quart
+diffusers==0.35.1
+peft==0.17.0
+transformers==4.55.0
