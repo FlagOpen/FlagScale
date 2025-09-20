@@ -2,21 +2,33 @@ engine:
   model_config:
     model: ${experiment.model}
     loader: diffusers
+    pipeline_class: diffusers.WanPipeline
+    components:
+      vae:
+        class: diffusers.AutoencoderKLWan
+        from_pretrained:
+          subfolder: vae
+          torch_dtype: float32
     torch_dtype: torch.bfloat16
     device: cuda
   engine_config:
     results_path: ${experiment.exp_dir}/results
+    output_format: "video"
     transformations:
-      LogIOTransformation:
-        log_level: "info"
+      # LogIOTransformation:
+      #   log_level: "info"
+      TaylorSeerTransformation:
+        order: 1
+        warmup_steps: 1
+        skip_interval_steps: 5
+        selector:
+          by_name: ["*blocks.*.attn1", "*blocks.*.attn2", "*blocks.*.ffn"]
+      TimestepTrackerTransformation:
+        {}
       StateScopeTransformation:
         {}
-      TaylorSeerTransformation:
-        order: 2
-        warmup_steps: 2
-        skip_interval_steps: 2
     state_scopes:
-      ["test1", "test2", "test3"]
+      ["test1", "test2"]
 
 generate:
   prompt: "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage."

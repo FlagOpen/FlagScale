@@ -1,23 +1,21 @@
-# Modified from https://github.com/vipshop/cache-dit/blob/v0.3.0/src/cache_dit/cache_factory/cache_contexts/taylorseer.py
+# Modified from
+# https://github.com/vipshop/cache-dit/blob/v0.3.0/src/cache_dit/cache_factory/cache_contexts/taylorseer.py
 
 import math
 
-from typing import Any, List
+from typing import Any, Iterable, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 
+from omegaconf import DictConfig
+
 from flagscale.inference.runtime_context import current_ctx
 from flagscale.transforms.hook import ModelHook, ModuleHookRegistry
 from flagscale.transforms.state_store import BaseState, StateStore
-from flagscale.transforms.transformation import Transformation
+from flagscale.transforms.transformation import Selector, Transformation, build_selector
 
 # block level taylorseer
-
-# module pattern name or class type
-
-# https://docs.nvidia.com/nemo/automodel/latest/apidocs/nemo_automodel/nemo_automodel.components._peft.module_matcher.html
-# learn how to use module matcher
 
 
 """
@@ -76,6 +74,7 @@ class TaylorSeerState(BaseState):
 
         ctx = current_ctx()
         step: int = ctx.timestep_index
+        print(f"update: {step}")
 
         self.previous_derivatives = self.current_derivatives
         self.current_derivatives = self.approximate_derivative(output, step)
@@ -90,6 +89,7 @@ class TaylorSeerState(BaseState):
 
         ctx = current_ctx()
         step: int = ctx.timestep_index
+        print(f"approximate_output: {step}")
 
         elapsed = step - self.previous_forward_step
         output = 0
@@ -110,6 +110,7 @@ class TaylorSeerState(BaseState):
 
         ctx = current_ctx()
         step: int = ctx.timestep_index
+        print(f"needs_exact_forward: {step}")
         if step == -1:
             raise ValueError("Timestep index is not set")
 
@@ -165,9 +166,14 @@ class TaylorSeerHook(ModelHook):
 
 
 class TaylorSeerTransformation(Transformation):
-    # TODO(yupu): Define patterns
     # TODO(yupu): module output index????
-    def __init__(self, order: int, warmup_steps: int, skip_interval_steps: int):
+    def __init__(
+        self,
+        order: int,
+        warmup_steps: int,
+        skip_interval_steps: int,
+        selector: Optional[DictConfig] = None,
+    ):
         super().__init__()
 
         self.state_store = StateStore(
@@ -178,10 +184,10 @@ class TaylorSeerTransformation(Transformation):
                 "skip_interval_steps": skip_interval_steps,
             },
         )
+        self._selector: Selector = build_selector(selector)
 
-    def supports(self, module: nn.Module) -> bool:
-        # inspect model output type?
-        pass
+    def targets(self, scope: nn.Module) -> Iterable[Tuple[str, nn.Module]]:
+        return self._selector(scope)
 
     def apply(self, module: nn.Module) -> bool:
         reg = ModuleHookRegistry.get_or_create_registry(module)

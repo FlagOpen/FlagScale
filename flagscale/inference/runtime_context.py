@@ -28,8 +28,6 @@ class RuntimeContext:
         else:
             self.state_scope_provider: Optional[Callable[[], str | None]] = None
 
-        print(f"state_scopes: {state_scopes}")
-
         # ==========================================
         #           DIFFUSION MODEL SETTINGS
         # ==========================================
@@ -71,7 +69,6 @@ class RuntimeContext:
         """
 
         p = self.state_scope_provider
-        print(f"state_scope: {p}")
         return p() if callable(p) else None
 
     def update_timestep(self, t: Union[torch.Tensor, int, float]) -> None:
@@ -80,7 +77,6 @@ class RuntimeContext:
         Args:
             t (Union[torch.Tensor, int, float]): The new timestep.
         """
-        print(f"update_timestep: {t}")
 
         if self.timestep != t:
             self.timestep = t

@@ -22,7 +22,6 @@ class StateScopeHook(ModelHook):
         ctx = current_ctx()
         if ctx:
             state_scope = ctx.state_scope
-            print(f"state_scope StateScopeHook: {state_scope}")
             if state_scope:
                 ModuleHookRegistry.get_or_create_registry(module).set_state_scope(state_scope)
             else:

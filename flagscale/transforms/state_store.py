@@ -1,4 +1,5 @@
-# Modified from https://github.com/huggingface/diffusers/blob/4a7556eaecc9872dea50ce161301edfa6392693c/src/diffusers/hooks/hooks.py
+# Modified from
+# https://github.com/huggingface/diffusers/blob/4a7556eaecc9872dea50ce161301edfa6392693c/src/diffusers/hooks/hooks.py
 
 from typing import Dict, Generic, Optional, Type, TypeVar
 
@@ -36,6 +37,7 @@ class StateStore(Generic[S]):
         Raises:
             ValueError: If no state context is currently in use.
         """
+        print(f"get_or_create_state: {self._active_scope}, keys: {self._state_by_context.keys()}")
         if self._active_scope is None:
             raise ValueError(
                 "No state context is currently in use. Please set a state context first."

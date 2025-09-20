@@ -1,3 +1,4 @@
+import importlib
 import os
 
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ class InferenceEngineConfig:
 
     engine_config: DictConfig = None
     results_path: str = None
+    output_format: str = None
     state_scopes: List[str] = None
 
     transforms_cfg: DictConfig = None
@@ -55,8 +57,9 @@ class InferenceEngineConfig:
         #               ENGINE CONFIG
         # ==========================================
         self.engine_config = config_dict.get("engine_config", {})
-        _check_required_fields(self.engine_config, ["results_path"])
+        _check_required_fields(self.engine_config, ["results_path", "output_format"])
         self.results_path = self.engine_config.results_path
+        self.output_format = self.engine_config.output_format
         self.state_scopes = self.engine_config.get("state_scopes", None)
 
         # ==========================================
@@ -118,9 +121,12 @@ class InferenceEngine:
         # TODO(yupu): run preflight/supports check for each transformation
         transformations = create_transformations_from_config(self.config.transforms_cfg)
         for t in transformations:
-            success = t.apply(self.backbone)
-            if not success:
-                raise ValueError(f"Failed to apply transformation: {t}")
+            for name, mod in t.targets(self.backbone):
+                print(f"Applying transformation: {t} on {name}")
+                success = t.apply(mod)
+                if not success:
+                    raise ValueError(f"Failed to apply transformation: {t} on {name}")
+        # assert False
 
         # default_transformations = create_default_transformations()
         # for t in default_transformations:
@@ -141,16 +147,16 @@ class InferenceEngine:
         """Save the output."""
 
         os.makedirs(self.config.results_path, exist_ok=True)
-        image = outputs.images[0]
-        image.save(os.path.join(self.config.results_path, "result.png"))
-        # print(outputs)
-        # print(type(outputs))
 
-        # export_to_video(
-        #     outputs.frames[0],
-        #     os.path.join(self.config.results_path, "output.mp4"),
-        #     fps=15,
-        # )
+        if self.config.output_format == "image":
+            image = outputs.images[0]
+            image.save(os.path.join(self.config.results_path, "result.png"))
+        elif self.config.output_format == "video":
+            export_to_video(
+                outputs.frames[0], os.path.join(self.config.results_path, "output.mp4"), fps=15
+            )
+        else:
+            raise ValueError(f"Unsupported output format: {self.config.output_format}")
 
         return True
 
@@ -171,8 +177,8 @@ class InferenceEngine:
             - backbone: The backbone of the DiffusionPipeline.
         """
 
-        # Sanitize kwargs forwarded to DiffusionPipeline
-        forbidden_keys = {"model", "loader", "device"}
+        # Sanitize kwargs forwarded to Pipeline.from_pretrained
+        forbidden_keys = {"model", "loader", "device", "pipeline_class", "components"}
         sanitized_kwargs = {k: v for k, v in kwargs.items() if k not in forbidden_keys}
 
         dtype_value = sanitized_kwargs.get("torch_dtype", None)
@@ -185,9 +191,54 @@ class InferenceEngine:
             if "torch_dtype" in sanitized_kwargs:
                 sanitized_kwargs.pop("torch_dtype")
 
-        pipeline = DiffusionPipeline.from_pretrained(
-            pretrained_model_name_or_path, **sanitized_kwargs
-        )
+        # Optionally build and inject subcomponents (e.g., vae)
+        components_cfg = kwargs.get("components")
+        if components_cfg:
+            for comp_name, comp_spec in components_cfg.items():
+                class_path = comp_spec.get("class") if hasattr(comp_spec, "get") else None
+                if not class_path or not isinstance(class_path, str):
+                    raise ValueError(
+                        f"Component '{comp_name}' requires a 'class' string (e.g., 'diffusers.AutoencoderKL')."
+                    )
+                mod_name, _, cls_name = class_path.rpartition(".")
+                if not mod_name:
+                    raise ValueError(
+                        f"Invalid component class path '{class_path}' for '{comp_name}'."
+                    )
+                cls = getattr(importlib.import_module(mod_name), cls_name)
+
+                fp_args = comp_spec.get("from_pretrained", {}) if hasattr(comp_spec, "get") else {}
+                if not isinstance(fp_args, dict):
+                    try:
+                        fp_args = dict(fp_args)
+                    except Exception:
+                        raise TypeError(
+                            f"'from_pretrained' for component '{comp_name}' must be a mapping."
+                        )
+                fp_args.setdefault("pretrained_model_name_or_path", pretrained_model_name_or_path)
+                # Normalize dtype if provided as string
+                if "torch_dtype" in fp_args:
+                    parsed_cdtype = parse_torch_dtype(fp_args.get("torch_dtype"))
+                    if parsed_cdtype is not None:
+                        fp_args["torch_dtype"] = parsed_cdtype
+                    else:
+                        fp_args.pop("torch_dtype", None)
+
+                component_instance = cls.from_pretrained(**fp_args)
+                sanitized_kwargs[comp_name] = component_instance
+
+        # Resolve pipeline class if provided
+        pipeline_class_path = kwargs.get("pipeline_class")
+        if isinstance(pipeline_class_path, str) and pipeline_class_path:
+            p_mod, _, p_cls = pipeline_class_path.rpartition(".")
+            if not p_mod:
+                raise ValueError(f"Invalid pipeline_class path '{pipeline_class_path}'.")
+            pipeline_cls = getattr(importlib.import_module(p_mod), p_cls)
+        else:
+            pipeline_cls = DiffusionPipeline
+
+        pipeline = pipeline_cls.from_pretrained(pretrained_model_name_or_path, **sanitized_kwargs)
+
         device = kwargs.get("device", None)
         if device:
             pipeline.to(device)
