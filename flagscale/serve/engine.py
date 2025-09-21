@@ -170,6 +170,13 @@ def build_graph(config):
 
     handles = {}
     deployments = {}
+    scale_config_items = [
+        "min_replicas",
+        "max_replicas",
+        "downscale_delay_s",
+        "upscale_delay_s",
+        "target_ongoing_requests",
+    ]
     for name, cfg in connection.items():
         logic_cls = load_class_from_file(cfg["module"], cfg["name"])
         resources = cfg.get("resources", {})
@@ -180,6 +187,13 @@ def build_graph(config):
             "num_replicas": resources.get("num_replicas", 1),
             "ray_actor_options": ray_actor_options,
         }
+        scale_config = {}
+        for item in scale_config_items:
+            if item in resources:
+                scale_config[item] = resources[item]
+        if scale_config:
+            deploy_kwargs["autoscaling_config"] = scale_config
+
         deployments[name] = make_deployment(logic_cls, **deploy_kwargs)
         handles[name] = deployments[name].bind()
 
