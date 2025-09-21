@@ -194,8 +194,7 @@ def build_graph(config):
         if scale_config:
             deploy_kwargs["autoscaling_config"] = scale_config
             deploy_kwargs.pop("num_replicas")
-
-        logger.error(f"autoscaling_config========= {deploy_kwargs}")
+            logger.info(f"autoscaling config {scale_config}")
         deployments[name] = make_deployment(logic_cls, **deploy_kwargs)
         handles[name] = deployments[name].bind()
 
@@ -380,7 +379,6 @@ class ServeEngine:
         graph = build_graph(self.config)
         port = self.exp_config.runner.deploy.get("port", 8000)
         task_manager = make_task_manager()
-        logger.error(f" serving port ================= {port}")
         serve.start(http_options={"port": port})
         manager_prefix_name = "/manager"
         serve_prefix_name = self.exp_config.runner.deploy.get("name", "/")
