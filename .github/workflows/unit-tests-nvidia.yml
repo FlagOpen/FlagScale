@@ -53,6 +53,7 @@ jobs:
           pip install gitpython # TODO: Remove after updating the image
 
           git config --global --add safe.directory /__w/FlagScale/FlagScale
+
           if [ "${{ inputs.backend }}" = "train_megatron" ] || [ "${{ inputs.backend }}" = "train_flagscale" ]; then
             echo ""
             # PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
@@ -68,4 +69,7 @@ jobs:
           fi
 
           tests/scripts/unit_tests/test_subset.sh --backend ${{ inputs.backend }} --subset ${{ inputs.subset }} --id ${{ github.sha }}
+
+          exit_code=$?
+          echo "Exit code: $exit_code"
         shell: bash
