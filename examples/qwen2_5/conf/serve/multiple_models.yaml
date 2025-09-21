@@ -13,6 +13,8 @@
   resources:
     num_replicas: 1
     num_gpus: 1
+    min_replicas: 1
+    max_replicas: 2
 
 - serve_id: C
   module: examples/qwen2_5/models.py

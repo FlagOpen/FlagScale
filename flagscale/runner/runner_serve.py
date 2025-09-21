@@ -649,7 +649,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
 
 
 def _generate_cloud_run_script_serve(
-    config, host, node_rank, cmd, background=True, with_test=False
+    config, host, node_rank, cmd, background=True, with_test=False, custom_script=None
 ):
     nodes = config.get("nodes", None)
     logging_config = config.logging
@@ -662,6 +662,9 @@ def _generate_cloud_run_script_serve(
     host_run_script_file = os.path.join(
         logging_config.scripts_dir, node_id, f"host_{node_rank}_{host}_run.sh"
     )
+    custom_script_log_path = None
+    if custom_script:
+        custom_script_log_path = os.path.join(logging_config.log_dir, f"custom_script.log")
     host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
@@ -824,6 +827,8 @@ def _generate_cloud_run_script_serve(
                 )
             else:
                 f.write(f'bash -c "$cmd; sync" >> {host_output_file} 2>&1\n')
+        if custom_script and custom_script_log_path:
+            f.write(f'bash -c "python {custom_script}; sync" >> {custom_script_log_path} 2>&1\n')
         f.write("\n")
         f.flush()
         os.fsync(f.fileno())
@@ -1259,6 +1264,7 @@ class CloudServeRunner(RunnerBase):
         self.user_args = _get_args_vllm(self.config)
         self.user_envs = self.config.experiment.get("envs", {})
         entrypoint = self.config.experiment.task.get("entrypoint", None)
+        self.custom_script = None
         if self.inference_engine:
             if (
                 self.config.experiment.get("runner", {})
@@ -1274,6 +1280,7 @@ class CloudServeRunner(RunnerBase):
             self.user_script = entrypoint
         elif self.use_fs_serve and self.deploy_config.get("enable_composition", False):
             self.user_script = "flagscale/serve/run_serve.py"
+            self.custom_script = self.deploy_config.get("custom_script", None)
         else:
             raise ValueError(
                 f"Invalid config entrypoint: {entrypoint}, must be a python file path or null."
@@ -1299,7 +1306,13 @@ class CloudServeRunner(RunnerBase):
         cmd = shlex.join(export_cmd + ["python"] + [self.user_script] + self.user_args)
 
         host_run_script_file = _generate_cloud_run_script_serve(
-            self.config, host, node_rank, cmd, background=True, with_test=with_test
+            self.config,
+            host,
+            node_rank,
+            cmd,
+            background=True,
+            with_test=with_test,
+            custom_script=self.custom_script,
         )
 
         run_local_command(f"bash {host_run_script_file}", dryrun)
