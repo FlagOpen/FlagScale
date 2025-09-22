@@ -300,12 +300,7 @@ def main():
     logger.info(f"  - GET  /replay  - get replay ground truth qpos")
     logger.info(f"  - POST /infer   - inference api")
 
-    app.run(
-        host=ENGINE_CONFIG['host'],
-        port=ENGINE_CONFIG['port'],
-        debug=False,
-        threaded=True,
-    )
+    app.run(host=ENGINE_CONFIG['host'], port=ENGINE_CONFIG['port'], debug=False, threaded=True)
 
 
 if __name__ == "__main__":
