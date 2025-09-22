@@ -59,11 +59,9 @@ jobs:
           if [ "${{ inputs.type }}" = "serve" ]; then
             echo "Original commit ID: ${{ github.event.pull_request.head.sha }}"
             python tools/patch/unpatch.py --backend vllm FlagScale --device-type Huawei_Atlas800TA3 --task inference --key-path /data/cicd/flagscale_vllm_073_code --commit ${{ github.event.pull_request.head.sha }}
-            pip install scikit-build scikit-build-core
             cd build/Huawei_Atlas800TA3/FlagScale/
             cd third_party/vllm && VLLM_VERSION=empty pip install -v .[ascend]
             pip install pytest
-            pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0
           else
             echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
