@@ -1,39 +1,37 @@
-from omegaconf import open_dict
-
-from ..generate import Generator
-
+from flagscale.runner.auto_tuner.generate import Generator
 
 class HeteroGenerator(Generator):
-
+    """
+    Generator for heterogeneous strategies. It translates an abstract strategy
+    dictionary into a concrete, runnable OmegaConf object.
+    """
     def __init__(self, config):
         super().__init__(config)
-        hetero_mapping = {
-            "hetero_pipeline_layer_split": "hetero_pipeline_layer_split",
-            "hetero_process_meshes": "hetero_process_meshes",
-            "hetero_device_types": "hetero_device_types",
-        }
-        self.args_mapping.update(hetero_mapping)
 
-    def _set_value(self, strategy, config):
-        with open_dict(config):
-            if "hetero" not in config.train.system:
-                config.train.system.hetero = {}
+    def _set_value(self, strategy: dict, config: dict):
+        """
+        Overrides the base method to write all tunable parameters from the
+        strategy into the configuration object.
+        """
+        # First, call the parent's _set_value to handle all common parameters
+        # like MBS, recompute, etc., that are not hetero-specific.
+        super()._set_value(strategy, config)
 
-            config.train.system.hetero.enable_hetero = True
+        # Then, set all hetero-specific parameters.
+        hetero_config = config.train.system.setdefault("hetero", {})
+        hetero_config["enable_hetero"] = True
+        hetero_config["hetero_pipeline_layer_split"] = strategy["hetero_pipeline_layer_split"]
+        hetero_config["hetero_process_meshes"] = [item for sublist in strategy["hetero_process_meshes"] for item in sublist]
+        hetero_config["hetero_device_types"] = strategy["hetero_device_types"]
+        
+        config.train.system["pipeline_model_parallel_size"] = strategy["pipeline_model_parallel_size"]
+        
+        # Override sequence parallel based on the strategy.
+        config.train.system["sequence_parallel"] = strategy["sequence_parallel"]
 
-            for key, value_path in self.args_mapping.items():
-                if key not in strategy:
-                    continue
+    def gen(self, strategy: dict):
+        return super().gen(strategy)
 
-                if key.startswith("hetero_"):
-                    config.train.system.hetero[value_path] = strategy[key]
-                elif key == "micro_batch_size":
-                    config.train.model[value_path] = strategy[key]
-                elif key == "data_parallel_size":
-                    continue
-                else:
-                    if strategy[key] is None:
-                        if value_path in config.train.system:
-                            del config.train.system[value_path]
-                        continue
-                    config.train.system[value_path] = strategy[key]
+    def gen_best_task(self, strategy: dict, config: dict):
+        self._set_value(strategy, config)
+        return config

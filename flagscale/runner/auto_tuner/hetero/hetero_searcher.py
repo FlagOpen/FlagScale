@@ -1,192 +1,253 @@
-import copy
-import itertools
 import logging
+from typing import Dict, List
+from omegaconf import OmegaConf, DictConfig, ListConfig
 
-from collections import Counter
+from flagscale.runner.utils import parse_hostfile
+from flagscale.runner.auto_tuner.search.searcher import Searcher
 
-from ..search.searcher import Searcher
-
+def _generate_layer_splits(n: int, k: int):
+    """
+    Helper function to solve the integer partitioning problem.
+    Generates all possible ways to split n layers into k pipeline stages,
+    where each stage must have at least one layer.
+    """
+    if k == 1:
+        if n > 0:
+            yield [n]
+        return
+    for i in range(1, n - k + 2):
+        for rest in _generate_layer_splits(n - i, k - 1):
+            # Ensure descending order to avoid duplicate partitions like [1, 2] and [2, 1].
+            if i >= rest[0]:
+                yield [i] + rest
 
 class HeteroSearcher(Searcher):
+    """
+    A specialized searcher for heterogeneous environments.
 
-    def __init__(self, config, resources):
-        self.logger = logging.getLogger("FlagScale-AutoTuner")
-        self.config = config
+    It discovers valid training strategies by searching through possible layer splits
+    and resource allocations (process meshes), while respecting the physical boundaries
+    of compute nodes. It supports a full range of tunable parameters, including
+    parallelism, micro-batch size, and recomputation strategies.
+    """
+    def __init__(self, config: Dict, resources: Dict):
+        """
+        Initializes the HeteroSearcher.
+
+        Args:
+            config (Dict): The main configuration object.
+            resources (Dict): A pre-parsed dictionary of cluster resources from a hostfile.
+        """
         self.resources = resources
-        self.space = self.build_space(config)
-        self.logger.info("HeteroSearcher: built search space, space is {}".format(self.space))
+        super().__init__(config)
 
-        self.strategies = self.build_strategies(self.space, self.config)
-        self.algo = self.build_algo(self.strategies, self.config)
+    def build_space(self, config: Dict) -> Dict:
+        """
+        Builds a comprehensive search space for heterogeneous tuning. It derives
+        hardware information from the provided resources and parses hetero-specific
+        and standard search parameters from the YAML configuration.
+        """
+        space = {}
+        auto_tuner_config = config.experiment.auto_tuner
+        hetero_space = auto_tuner_config.space
 
-    def build_space(self, config):
-        space = super().build_space(config)
-        if "data_parallel_size" in space:
-            del space["data_parallel_size"]
-        user_space = config.experiment.auto_tuner.get("space", {})
+        # 1. Derive node-aware hardware information from the pre-parsed resources.
+        self.node_info = []
+        if not self.resources:
+            raise ValueError("Heterogeneous tuning requires a valid hostfile/resources dict.")
+        for _, resource_info in self.resources.items():
+            self.node_info.append({
+                "type": resource_info.get("type", "default_gpu"),
+                "slots": resource_info.get("slots", 0)
+            })
+        self.logger.info(f"Received node-aware hardware info: {self.node_info}")
 
-        hetero_keys = [
-            "hetero_pipeline_layer_split",
-            "hetero_cards_per_stage",
-            "hetero_device_types",
-        ]
+        # Helper to safely convert OmegaConf types to native Python types.
+        def safe_to_container(value):
+            if isinstance(value, (DictConfig, ListConfig)):
+                return OmegaConf.to_container(value, resolve=True)
+            return value
 
-        pp_size_options = user_space.get("pipeline_model_parallel_size", [1])
-        max_pp_size = max(pp_size_options) if pp_size_options else 1
-
-        for i in range(max_pp_size):
-            hetero_keys.append(f"hetero_dp_stage_{i}")
-
-        for key in hetero_keys:
-            if key in user_space:
-                space[key] = user_space[key]
-
+        # 2. Parse all search parameters using the safe converter.
+        space["hetero_pipeline_layer_split"] = safe_to_container(hetero_space.get("hetero_pipeline_layer_split", "auto"))
+        space["hetero_pp_size"] = safe_to_container(hetero_space.get("hetero_pp_size"))
+        
+        # CP and EP are constrained to 1 for now but are kept for future extensibility.
+        space["hetero_cp_per_stage"] = [1]
+        space["hetero_ep_per_stage"] = [1]
+        
+        # Parse standard tunable parameters
+        space["micro_batch_size"] = safe_to_container(hetero_space.get("micro_batch_size", [1]))
+        space["use_distributed_optimizer"] = safe_to_container(hetero_space.get("use_distributed_optimizer", [True, False]))
+        space["sequence_parallel"] = safe_to_container(hetero_space.get("sequence_parallel", [True, False]))
+        
+        # Parse recomputation parameters
+        space["use_recompute"] = safe_to_container(hetero_space.get("use_recompute", [True, False]))
+        space["recompute_method"] = safe_to_container(hetero_space.get("recompute_method", ["uniform", "block"]))
+        space["recompute_granularity"] = safe_to_container(hetero_space.get("recompute_granularity", ["full", "selective"]))
+        num_layers = config.train.model.num_layers
+        space["recompute_num_layers"] = safe_to_container(hetero_space.get("recompute_num_layers", list(range(1, num_layers + 1))))
+        
+        # Parse VPP parameter (fixed to 0/None as per constraint)
+        space["num_layers_per_virtual_pipeline_stage"] = [0]
+        
+        # Ensure a default 'algo' config exists.
+        if "algo" not in auto_tuner_config:
+            auto_tuner_config.algo = {"name": "grid", "priority": None}
+            
         return space
 
-    def build_strategies(self, space, config):
-        base_hetero_strategies = []
-        logger = self.logger
+    def build_strategies(self, space: Dict, config: Dict) -> List[Dict]:
+        """
+        Builds all valid heterogeneous strategies by performing a Cartesian product
+        across all defined dimensions.
+        """
+        self.logger.info("Building comprehensive heterogeneous strategies (Node-Aware)...")
+        
+        hetero_parallelism_part = self._generate_hetero_parallelism_part(space, config)
+        self.logger.info(f"Generated {len(hetero_parallelism_part)} core heterogeneous parallelism strategies.")
 
-        if not self.resources:
-            logger.error("Hetero-tuning requires a hostfile, but no resources were found.")
-            return []
-
-        # card_counts_by_type -> {'A800': 16, 'B150': 32}
-        card_counts_by_type = Counter(
-            res['type'] for res in self.resources.values() if res.get('type')
-        )
-        logger.info(f"Physical hardware detected from hostfile: {card_counts_by_type}")
-
-        # logical_stages -> ['A800', 'B150']
-        logical_stages = space.get("hetero_device_types", [])
-        if not logical_stages:
-            logger.error("Hetero search space must define 'hetero_device_types'.")
-            return []
-
-        cards_per_stage = []
-        for device_type in logical_stages:
-            if device_type not in card_counts_by_type:
-                logger.error(
-                    f"Device type '{device_type}' defined in YAML not found in hostfile's types: {list(card_counts_by_type.keys())}"
-                )
-                return []
-            cards_per_stage.append(card_counts_by_type[device_type])
-
-        logger.info(
-            f"Mapping logical stages {logical_stages} to physical cards_per_stage: {cards_per_stage}"
-        )
-
-        layer_splits_config = space.get("hetero_pipeline_layer_split", [])
-        if layer_splits_config == "auto":
-            self.logger.info("Auto-generating layer splits based on model and pipeline size.")
-            num_layers = config.train.model.num_layers
-            pp_size = len(logical_stages)
-            if pp_size == 2:
-                avg_layers = num_layers // pp_size
-                search_range = space.get("hetero_split_search_range", 4)
-                search_step = space.get("hetero_split_search_step", 2)
-
-                generated_splits = set()
-                for i in range(-search_range, search_range + 1, search_step):
-                    split_a = avg_layers + i
-                    split_b = num_layers - split_a
-                    if split_a > 0 and split_b > 0:
-                        generated_splits.add(tuple(sorted((split_a, split_b))))
-                layer_splits = [list(s) for s in sorted(list(generated_splits))]
-                self.logger.info(f"Auto-generated layer splits to search: {layer_splits}")
-            elif pp_size > 1:
-                layers_per_stage = [num_layers // pp_size] * pp_size
-                remaining_layers = num_layers % pp_size
-                for i in range(remaining_layers):
-                    layers_per_stage[i] += 1
-                layer_splits = [layers_per_stage]
-                self.logger.info(
-                    f"Auto-generated layer splits for {pp_size} stages (average): {layer_splits}"
-                )
-            else:
-                layer_splits = [[num_layers]]
-        else:
-            layer_splits = layer_splits_config
-        for split in layer_splits:
-            if len(split) != len(logical_stages):
-                logger.warning(
-                    f"Layer split {split} length doesn't match PP size {len(logical_stages)}. Skipping."
-                )
-                continue
-
-            if sum(split) != config.train.model.num_layers:
-                logger.warning(f"Layer split {split} sum invalid. Skipping.")
-                continue
-
-            per_stage_mesh_options = []
-            is_valid_split = True
-            for i, stage_cards in enumerate(cards_per_stage):
-                tp_options = space.get("tensor_model_parallel_size", [1])
-                dp_options_key = f"hetero_dp_stage_{i}"
-
-                stage_meshes = []
-                if dp_options_key in space:
-                    dp_options = space[dp_options_key]
-                    for tp in tp_options:
-                        for dp in dp_options:
-                            if tp * dp == stage_cards:
-                                mesh = [tp, 1, 1, dp, 1]
-                                stage_meshes.append(mesh)
-                else:
-                    self.logger.info(
-                        f"Auto-calculating DP options for stage {i} based on TP options."
-                    )
-                    for tp in tp_options:
-                        if stage_cards % tp == 0:
-                            dp = stage_cards // tp
-                            mesh = [tp, 1, 1, dp, 1]
-                            stage_meshes.append(mesh)
-
-                if not stage_meshes:
-                    is_valid_split = False
-                    break
-                per_stage_mesh_options.append(stage_meshes)
-
-            if not is_valid_split:
-                continue
-
-            all_pipeline_meshes = list(itertools.product(*per_stage_mesh_options))
-            for pipeline_mesh in all_pipeline_meshes:
-                final_mesh_list = [item for mesh in pipeline_mesh for item in mesh]
-                equivalent_dp = sum(mesh[3] for mesh in pipeline_mesh)
-
-                strategy = {
-                    "pipeline_model_parallel_size": len(split),
-                    "tensor_model_parallel_size": pipeline_mesh[0][0],
-                    "data_parallel_size": equivalent_dp,
-                    "hetero_pipeline_layer_split": list(split),
-                    "hetero_cards_per_stage": cards_per_stage,
-                    "hetero_process_meshes": final_mesh_list,
-                    "hetero_device_types": logical_stages,
-                    "context_parallel_size": 1,
-                    "expert_model_parallel_size": 1,
-                    "sequence_parallel": False,
-                    "use_distributed_optimizer": True if equivalent_dp > 1 else False,
-                }
-                base_hetero_strategies.append(strategy)
-
-        if not base_hetero_strategies:
-            return []
-        mbs_combined = self._product_micro_batch_size_vpp_dims(
-            base_hetero_strategies, space, config
-        )
-        final_strategies = self._product_recompute_dims(mbs_combined, space, config)
-
-        self.logger.info(f"Generated {len(final_strategies)} complete heterogeneous strategies.")
+        final_strategies = self._product_with_other_dims(hetero_parallelism_part, space, config)
+        
+        self.logger.info(f"Built a total of {len(final_strategies)} comprehensive candidate strategies.")
         return final_strategies
 
-    def _append(self, result, unique_result, product_dim):
-        hashable_items = []
-        for k, v in sorted(product_dim.items()):
-            hashable_items.append((k, tuple(v) if isinstance(v, list) else v))
+    def _generate_hetero_parallelism_part(self, space, config):
+        """Generates the unique heterogeneous parallelism combinations."""
+        strategies = []
+        num_layers = config.train.model.num_layers
+        cp_search_space = space["hetero_cp_per_stage"]
+        ep_search_space = space["hetero_ep_per_stage"]
+        mesh_combo_cache = {}
 
-        sorted_items = tuple(hashable_items)
+        if space["hetero_pipeline_layer_split"] == "auto":
+            if not space.get("hetero_pp_size"):
+                raise ValueError("In 'auto' mode, 'hetero_pp_size' must be provided.")
+            for pp_size in space["hetero_pp_size"]:
+                layer_splits = list(_generate_layer_splits(num_layers, pp_size))
+                self._generate_strategies_for_pp_size(strategies, pp_size, layer_splits, config, cp_search_space, ep_search_space, mesh_combo_cache)
+        else:
+            splits_by_pp = {}
+            for split in space["hetero_pipeline_layer_split"]:
+                pp_size = len(split)
+                if pp_size not in splits_by_pp: splits_by_pp[pp_size] = []
+                splits_by_pp[pp_size].append(split)
+            for pp_size, layer_splits in splits_by_pp.items():
+                self._generate_strategies_for_pp_size(strategies, pp_size, layer_splits, config, cp_search_space, ep_search_space, mesh_combo_cache)
 
-        if sorted_items not in unique_result:
-            unique_result.add(sorted_items)
-            result.append(copy.deepcopy(product_dim))
+        return strategies
+
+    def _generate_strategies_for_pp_size(self, strategies, pp_size, layer_splits, config, cp_search_space, ep_search_space, cache):
+        """Helper to generate strategies for a specific pp_size."""
+        self.logger.info(f"Processing {len(layer_splits)} layer split(s) for PP={pp_size}.")
+        if pp_size not in cache:
+            cache[pp_size] = self._find_node_aware_mesh_combinations(
+                pp_stages_total=pp_size, nodes_available=[True] * len(self.node_info),
+                config=config, cp_search_space=cp_search_space, ep_search_space=ep_search_space)
+        mesh_combinations = cache[pp_size]
+        self.logger.info(f"Found {len(mesh_combinations)} valid mesh combinations for PP={pp_size}.")
+        
+        for split in layer_splits:
+            for mesh_combo in mesh_combinations:
+                strategies.append({
+                    "pipeline_model_parallel_size": pp_size,
+                    "hetero_pipeline_layer_split": split,
+                    "hetero_process_meshes": [item['mesh'] for item in mesh_combo],
+                    "hetero_device_types": [item['device_type'] for item in mesh_combo],
+                })
+
+    def _product_with_other_dims(self, parallelism_part, space, config):
+        """
+        Performs a Cartesian product with other tunable dimensions and adds
+        compatibility keys for base modules.
+        """
+        full_strategies = []
+        for base_strategy in parallelism_part:
+            meshes = base_strategy["hetero_process_meshes"]
+            dp_list = [mesh[3] for mesh in meshes]
+            base_dp = dp_list[0] if dp_list else 1
+
+            for mbs in space["micro_batch_size"]:
+                # Proactively prune based on the data validation rule.
+                is_dp_compatible = all((base_dp * mbs) % dp == 0 for dp in dp_list)
+                if not is_dp_compatible:
+                    continue
+
+                all_dp_are_one = all(dp == 1 for dp in dp_list)
+                do_options = [False] if all_dp_are_one else space["use_distributed_optimizer"]
+                for use_do in do_options:
+                    for sp in space["sequence_parallel"]:
+                        all_tp_gt_one = all(mesh[0] > 1 for mesh in meshes)
+                        if sp and not all_tp_gt_one:
+                            continue
+                        for vpp_layers in space["num_layers_per_virtual_pipeline_stage"]:
+                            for use_recompute in space["use_recompute"]:
+                                strategy_keys = {
+                                    **base_strategy,
+                                    "micro_batch_size": mbs,
+                                    "use_distributed_optimizer": use_do,
+                                    "sequence_parallel": sp,
+                                    "use_recompute": use_recompute,
+                                    "num_layers_per_virtual_pipeline_stage": vpp_layers if vpp_layers > 0 else None,
+                                    
+                                    # Add compatibility keys for base Pruner/Generator modules
+                                    "tensor_model_parallel_size": meshes[0][0],
+                                    "context_parallel_size":      meshes[0][1],
+                                    "expert_model_parallel_size": meshes[0][2],
+                                    "data_parallel_size":         meshes[0][3],
+                                    "decoder_first_pipeline_num_layers": None,
+                                    "decoder_last_pipeline_num_layers": None,
+                                }
+
+                                if not use_recompute:
+                                    strategy_keys.update({
+                                        "recompute_method": None,
+                                        "recompute_granularity": None,
+                                        "recompute_num_layers": None,
+                                    })
+                                    full_strategies.append(strategy_keys)
+                                else:
+                                    for r_method in space["recompute_method"]:
+                                        for r_granularity in space["recompute_granularity"]:
+                                            for r_num_layers in space["recompute_num_layers"]:
+                                                layers_per_stage = config.train.model.num_layers // base_strategy["pipeline_model_parallel_size"]
+                                                if r_num_layers > layers_per_stage:
+                                                    continue
+                                                full_strategies.append({
+                                                    **strategy_keys,
+                                                    "recompute_method": r_method,
+                                                    "recompute_granularity": r_granularity,
+                                                    "recompute_num_layers": r_num_layers,
+                                                })
+        return full_strategies
+    
+    def _find_node_aware_mesh_combinations(self, pp_stages_total, nodes_available, config, cp_search_space, ep_search_space, current_path=None):
+        """The core recursive, node-aware search algorithm."""
+        if current_path is None: current_path = []
+        if len(current_path) == pp_stages_total: return [current_path]
+        
+        results = []
+        for i, is_available in enumerate(nodes_available):
+            if is_available:
+                node = self.node_info[i]
+                gpus_on_node, device_type = node['slots'], node['type']
+                
+                for cp_size in cp_search_space:
+                    for ep_size in ep_search_space:
+                        if current_path and cp_size != current_path[0]['mesh'][1]: continue
+                        if gpus_on_node % (cp_size * ep_size) != 0: continue
+                        
+                        tp_dp_product = gpus_on_node // (cp_size * ep_size)
+                        for tp_size in range(1, tp_dp_product + 1):
+                            if tp_dp_product % tp_size == 0:
+                                dp_size = tp_dp_product // tp_size
+                                if config.train.model.hidden_size % tp_size != 0: continue
+                                
+                                new_nodes_available = nodes_available[:]
+                                new_nodes_available[i] = False
+                                mesh = [tp_size, cp_size, ep_size, dp_size, 1]
+                                new_path = current_path + [{'mesh': mesh, 'device_type': device_type}]
+                                
+                                results.extend(self._find_node_aware_mesh_combinations(
+                                    pp_stages_total, new_nodes_available, config, cp_search_space, ep_search_space, new_path))
+        return results

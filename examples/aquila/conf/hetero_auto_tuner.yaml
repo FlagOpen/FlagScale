@@ -1,0 +1,54 @@
+defaults:
+  - train: 1_8b
+  - _self_
+
+experiment:
+  exp_name: aquila_1_8b_hetero
+  exp_dir: ${experiment.exp_name}
+  cmds:
+    before_start: source /root/miniconda3/bin/activate flagscale-train
+  task:
+    type: train
+    backend: megatron
+    entrypoint: ./flagscale/train/train_gpt.py
+  runner:
+    backend: torchrun
+    rdzv_backend: static
+    ssh_port: 6008
+    nnodes: 2
+    nproc_per_node: 2
+    hostfile: ./hostfile
+  envs:
+    CUDA_VISIBLE_DEVICES: 6,7
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+    FLAGCX_IB_HCA: mlx5
+    FLAGCX_ENABLE_TOPO_DETECT: TRUE  
+  auto_tuner:
+    space:
+      # hetero_pipeline_layer_split: "auto
+      hetero_pipeline_layer_split: [[14, 10], [12,12]]
+      hetero_pp_size: [2]
+      hetero_tp_per_stage: "auto"
+      hetero_dp_per_stage: "auto"
+      hetero_cp_per_stage: [1]
+      hetero_ep_per_stage: [1]
+      use_distributed_optimizer: [true, false]
+      sequence_parallel: [false]
+      #num_layers_per_virtual_pipeline_stage: [1]
+      #context_parallel_size: [1]
+      #expert_model_parallel_size: [1]
+      micro_batch_size: [1,2]
+      use_recompute: [false]
+      #recompute_method: "auto"
+      #recompute_granularity: "auto"
+      #recompute_num_layers: "auto"
+    control:
+      max_time_per_task: 400
+      train_iters: 5
+      max_time: 10000
+
+action: auto_tune
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra

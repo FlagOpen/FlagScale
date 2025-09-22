@@ -307,7 +307,6 @@ class AutoTuner:
     def record(self):
         """Record the task result to csv"""
         self.recorder.record(self.cur_task, self.cur_strategy)
-        self.history.append(self.cur_strategy)
         self.recorder.save(self.history)
 
     def get_best(self):
