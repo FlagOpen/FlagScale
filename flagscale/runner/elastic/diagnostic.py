@@ -28,9 +28,6 @@ error_types = {
     "process killed": "ProcessKilled: Training process was killed.",
     "killed by signal": "ProcessKilled: Process was killed by signal.",
     "terminated by signal": "ProcessKilled: Process was terminated by signal.",
-    "keyboardinterrupt": "ProcessKilled: MANUAL KILL - Keyboard interrupt detected",
-    "sigint": "ProcessKilled: MANUAL KILL - SIGINT signal received",
-    "sigterm": "ProcessKilled: MANUAL KILL - SIGTERM signal received",
     "segmentation fault": "SegmentationFault: Process crashed due to memory access error.",
     "core dumped": "CoreDump: Process crashed and dumped core.",
     # CUDA errors
