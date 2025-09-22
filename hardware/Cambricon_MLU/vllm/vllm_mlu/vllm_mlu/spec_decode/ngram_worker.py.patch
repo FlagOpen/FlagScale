@@ -1,0 +1,40 @@
+diff --git a/vllm_mlu/vllm_mlu/spec_decode/ngram_worker.py b/vllm_mlu/vllm_mlu/spec_decode/ngram_worker.py
+new file mode 100644
+index 000000000..f3981aab9
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/spec_decode/ngram_worker.py
+@@ -0,0 +1,32 @@
++# SPDX-License-Identifier: Apache-2.0
++from vllm.config import VllmConfig
++from vllm.spec_decode.ngram_worker import NGramWorker
++
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++
++
++NGramWorker__init__org = NGramWorker.__init__
++
++
++class NGramWorker_MluHijack(NGramWorker):
++    """NGramWorker provides a light drafter without need for model.
++
++    Current NGramWorker only implements prompt lookup decoding,
++    and in future we may also do RAG type drafter and other scenarios
++    which don't rely on LLM model to give proposals.
++    """
++
++    def __init__(
++        self,
++        vllm_config: VllmConfig,
++        local_rank: int,
++        device_type: str = "mlu",
++        **kwargs,
++    ):
++        NGramWorker__init__org(self, vllm_config,
++                               local_rank, device_type, **kwargs)
++
++
++MluHijackObject.apply_hijack(NGramWorker,
++                             NGramWorker.__init__,
++                             NGramWorker_MluHijack.__init__)
+\ No newline at end of file
+
