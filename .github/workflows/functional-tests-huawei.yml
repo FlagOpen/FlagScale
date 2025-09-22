@@ -61,7 +61,6 @@ jobs:
             python tools/patch/unpatch.py --backend vllm FlagScale --device-type Huawei_Atlas800TA3 --task inference --key-path /data/cicd/flagscale_vllm_073_code --commit ${{ github.event.pull_request.head.sha }}
             cd build/Huawei_Atlas800TA3/FlagScale/
             cd third_party/vllm && VLLM_VERSION=empty pip install -v .[ascend]
-            source env.sh
             pip install pytest
             pip install scikit-build scikit-build-core
             #pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0
@@ -74,4 +73,3 @@ jobs:
           exit_code=$?
           echo "Exit code: $exit_code"
         shell: bash
-
