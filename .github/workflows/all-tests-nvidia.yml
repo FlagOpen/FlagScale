@@ -148,6 +148,7 @@ jobs:
           - deepseek_r1_distill_qwen-flaggems
           - qwen3
           - qwen3-flaggems
+          - robobrain2
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
