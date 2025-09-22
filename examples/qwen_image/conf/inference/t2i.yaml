@@ -2,9 +2,6 @@ engine:
   model_config:
     model: ${experiment.model}
     loader: diffusers
-    # pipeline:
-    #   class: diffusers.FluxPipeline
-    #   from_pretrained:
     torch_dtype: bfloat16
     device: cuda
   engine_config:

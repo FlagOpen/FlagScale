@@ -13,13 +13,11 @@ experiment:
   runner:
     hostfile: null
   cmds:
-    before_start: source /root/miniconda3/bin/activate /share/project/fengyupu/conda_envs/flagscale-inference-yupu #flagscale-inference
+    before_start: source /root/miniconda3/bin/activate flagscale-inference
   envs:
     CUDA_VISIBLE_DEVICES: 1
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     # Optionally, set HF_HOME and HF_ENDPOINT
-    HF_HOME: /share/project/fengyupu/hf_hub
-    HF_ENDPOINT: https://hf-mirror.com
 
 action: run
 
