@@ -175,7 +175,14 @@ def _get_runner_cmd_train(
 
 
 def _generate_run_script_train(
-    config, host, node_rank, cmd, background=True, with_test=False, enable_monitoring=True
+    config,
+    host,
+    node_rank,
+    cmd,
+    background=True,
+    with_test=False,
+    root_dir=None,
+    enable_monitoring=False,
 ):
     system_config = config.train.system
     logging_config = config.train.system.logging
@@ -787,7 +794,13 @@ class CloudTrainRunner(RunnerBase):
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
 
         host_run_script_file = _generate_run_script_train(
-            self.config, host, node_rank, cmd, background=False, with_test=with_test
+            self.config,
+            host,
+            node_rank,
+            cmd,
+            background=False,
+            with_test=with_test,
+            enable_monitoring=enable_monitoring,
         )
 
         run_local_command(f"bash {host_run_script_file}", dryrun)
