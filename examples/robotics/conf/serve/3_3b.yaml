@@ -4,8 +4,6 @@
     host: 0.0.0.0
     uvicorn_log_level: warning
     port: 5000
-    flask_debug: true
-    flask_threaded: true
     replay_file: local/replay/file/path
     robot_const:
       action:

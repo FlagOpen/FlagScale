@@ -24,7 +24,7 @@ experiment:
     LOGLEVEL: "INFO"
     CUDA_VISIBLE_DEVICES: "1"
     CUDA_DEVICE_MAX_CONNECTIONS: 1
-    # Set python paths for: robotics, lerobot, openpi-client, flag-scale, Megatron-LM
+    # Set python paths for: robotics, lerobot, openpi-client, FlagScale, Megatron-LM
     PYTHONPATH: python/paths
     # Set lerobot data path
     HF_LEROBOT_HOME: lerobot/data/path
