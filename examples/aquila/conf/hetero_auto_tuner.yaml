@@ -22,7 +22,7 @@ experiment:
     CUDA_VISIBLE_DEVICES: 6,7
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     FLAGCX_IB_HCA: mlx5
-    FLAGCX_ENABLE_TOPO_DETECT: TRUE  
+    FLAGCX_ENABLE_TOPO_DETECT: true
   auto_tuner:
     space:
       # hetero_pipeline_layer_split: "auto
