@@ -25,7 +25,6 @@ system:
     log_num_zeros_in_grad: true
     log_memory_to_tensorboard: true
   checkpoint:
-    async_save: true
     save_interval: ${experiment.save_steps}
     load: ${experiment.load}
     ckpt_format: ${experiment.ckpt_format}
