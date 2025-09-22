@@ -35,7 +35,8 @@ class MonitorService:
         self.diagnostic_enabled = True
         self.hang_detection_timeout = 1800  # 30 minutes in seconds
         self.last_log_check_times = {}  # Track last modification time for each log file
-
+        self.last_job_status = None  # Track previous job status for kill detection
+        self.process_start_time = time.time()  # Track when monitoring started
         self.monitor_log_dir = os.path.join(config.train.system.logging.log_dir, "monitor")
         os.makedirs(self.monitor_log_dir, exist_ok=True)
 
@@ -94,6 +95,9 @@ class MonitorService:
                     job_status = self._get_job_status()
                     logger.info(f"Job Status: {job_status.name}")
 
+                    # Check for manual kill detection
+                    self._check_for_manual_kill(job_status)
+
                     self._log_status(job_status)
 
                     if job_status == JobStatus.COMPLETED_OR_IDLE:
@@ -126,6 +130,142 @@ class MonitorService:
 
     def _get_job_status(self) -> JobStatus:
         return self.runner._query_status()
+
+    def _check_for_manual_kill(self, current_status: JobStatus):
+        """
+        Check if the process was manually killed and write diagnostic entry
+
+        Args:
+            current_status: Current job status
+        """
+        try:
+            # If this is the first check, just record the status
+            if self.last_job_status is None:
+                self.last_job_status = current_status
+                return
+
+            # Check if process went from RUNNING to COMPLETED_OR_IDLE suddenly
+            if (
+                self.last_job_status == JobStatus.RUNNING
+                and current_status == JobStatus.COMPLETED_OR_IDLE
+            ):
+
+                # Check if it happened too quickly (likely manual kill)
+                running_time = time.time() - self.process_start_time
+                if running_time < 300:  # Less than 5 minutes, likely manual kill
+                    logger.warning("Detected potential manual kill - process terminated quickly")
+                    self._write_manual_kill_diagnostic()
+                else:
+                    # Try to detect if it was a clean shutdown vs manual kill
+                    if self._detect_abnormal_termination():
+                        logger.warning("Detected abnormal process termination - likely manual kill")
+                        self._write_manual_kill_diagnostic()
+
+            # Update last status
+            self.last_job_status = current_status
+
+        except Exception as e:
+            logger.error(f"Error in manual kill detection: {e}")
+
+    def _detect_abnormal_termination(self) -> bool:
+        """
+        Detect if the termination was abnormal (not a clean shutdown)
+        Returns True if abnormal termination is detected
+        """
+        try:
+            # Check if PID files still exist but processes are gone
+            if not hasattr(self.runner, 'resources') or self.runner.resources is None:
+                # Local mode
+                return self._check_pid_file_anomaly("localhost", 0)
+            else:
+                # Multi-node mode
+                for node_rank, (host, _) in enumerate(self.runner.resources.items()):
+                    if self._check_pid_file_anomaly(host, node_rank):
+                        return True
+            return False
+        except Exception as e:
+            logger.error(f"Error detecting abnormal termination: {e}")
+            return False
+
+    def _check_pid_file_anomaly(self, host: str, node_rank: int) -> bool:
+        """
+        Check if PID file exists but process is gone (indicating manual kill)
+        """
+        try:
+            logging_config = self.config.train.system.logging
+            pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
+
+            if os.path.exists(pid_file):
+                # PID file exists, check if process is still running
+                with open(pid_file, 'r') as f:
+                    pid = int(f.read().strip())
+
+                # Check if process exists
+                import subprocess
+
+                try:
+                    result = subprocess.run(['ps', '-p', str(pid)], capture_output=True, text=True)
+                    if result.returncode != 0:
+                        # PID file exists but process is gone - likely manual kill
+                        return True
+                except Exception:
+                    return True
+
+            return False
+        except Exception as e:
+            logger.error(f"Error checking PID file anomaly for {host}:{node_rank}: {e}")
+            return False
+
+    def _write_manual_kill_diagnostic(self):
+        """
+        Write manual kill detection entry to diagnostic files
+        """
+        try:
+            current_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+            # Write monitor-detected kill entry (won't be re-detected by diagnostic.py)
+            kill_entry = f"[{current_time}] MonitorDetected: MANUAL KILL DETECTED - Process terminated unexpectedly, likely killed manually"
+
+            if not hasattr(self.runner, 'resources') or self.runner.resources is None:
+                # Local mode
+                self._write_diagnostic_entry("localhost", 0, kill_entry)
+            else:
+                # Multi-node mode
+                for node_rank, (host, _) in enumerate(self.runner.resources.items()):
+                    self._write_diagnostic_entry(host, node_rank, kill_entry)
+
+            logger.warning("⚠️ MANUAL KILL DETECTED - Diagnostic entry written to files")
+
+        except Exception as e:
+            logger.error(f"Failed to write manual kill diagnostic: {e}")
+
+    def _write_diagnostic_entry(self, host: str, node_rank: int, entry: str):
+        """
+        Write a diagnostic entry directly to the diagnostic file
+        """
+        try:
+            diagnostic_file = os.path.join(
+                self.monitor_log_dir, f"host_{node_rank}_{host}_diagnostic.txt"
+            )
+
+            # Ensure diagnostic file exists with header if it doesn't
+            if not os.path.exists(diagnostic_file):
+                os.makedirs(os.path.dirname(diagnostic_file), exist_ok=True)
+                current_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+                header_content = f"Diagnostic Report for {host} (node {node_rank})\n"
+                header_content += f"Generated at {current_time}\n"
+                header_content += "Analysis:\n"
+
+                with open(diagnostic_file, 'w', encoding='utf-8') as f:
+                    f.write(header_content)
+
+            # Append the entry
+            with open(diagnostic_file, 'a', encoding='utf-8') as f:
+                f.write(f"{entry}\n")
+
+            logger.debug(f"Diagnostic entry written for {host} (node {node_rank}): {entry}")
+
+        except Exception as e:
+            logger.error(f"Failed to write diagnostic entry for {host}:{node_rank}: {e}")
 
     def _log_status(self, status: JobStatus):
         status_log_file = os.path.join(self.monitor_log_dir, "status.log")

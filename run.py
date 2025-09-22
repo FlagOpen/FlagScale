@@ -48,7 +48,7 @@ def main(config: DictConfig) -> None:
                 raise ValueError(f"Unknown runner type {config.runner.type}")
 
             if config.action == "run":
-                enable_monitoring = config.experiment.runner.get("enable_monitoring", True)
+                enable_monitoring = config.experiment.runner.get("enable_monitoring", False)
                 runner.run(enable_monitoring=enable_monitoring)
                 from flagscale.logger import logger
 
