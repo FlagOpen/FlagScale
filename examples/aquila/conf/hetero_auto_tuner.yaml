@@ -27,11 +27,7 @@ experiment:
     space:
       # hetero_pipeline_layer_split: "auto
       hetero_pipeline_layer_split: [[14, 10], [12,12]]
-      hetero_pp_size: [2]
-      hetero_tp_per_stage: "auto"
-      hetero_dp_per_stage: "auto"
-      hetero_cp_per_stage: [1]
-      hetero_ep_per_stage: [1]
+      hetero_process_meshes: [[2, 4], 1, 1, 'auto', 1, 'auto', 1, 1, 'auto', 1]
       use_distributed_optimizer: [true, false]
       sequence_parallel: [false]
       #num_layers_per_virtual_pipeline_stage: [1]
@@ -43,7 +39,7 @@ experiment:
       #recompute_granularity: "auto"
       #recompute_num_layers: "auto"
     control:
-      max_time_per_task: 400
+      max_time_per_task: 600
       train_iters: 5
       max_time: 10000
 
