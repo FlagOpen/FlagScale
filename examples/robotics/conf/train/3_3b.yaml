@@ -3,7 +3,7 @@ system: {}
 model:
   batch_size: 4
   training_dtype: float32
-  overwrite: true
+  ckpt_overwrite: true
   exp_name: Robotics-3.3B
   assets_base_dir: local/assets/dir
   
