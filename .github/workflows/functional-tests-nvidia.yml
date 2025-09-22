@@ -43,6 +43,7 @@ jobs:
           lfs: false
           submodules: false
           set-safe-directory: true
+          retry-on-intr: fail=5,delay=180000
 
       - name: Run Functional Test
         run: |
