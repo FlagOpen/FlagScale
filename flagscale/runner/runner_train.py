@@ -1,6 +1,5 @@
 import multiprocessing
 import os
-import re
 import shlex
 import time
 
@@ -151,8 +150,6 @@ def _get_runner_cmd_train(
         del runner_args["master_port"]
     if "enable_monitoring" in runner_args:
         del runner_args["enable_monitoring"]
-    if "enable_gpu_health_check" in runner_args:
-        del runner_args["enable_gpu_health_check"]
     runner_args["rdzv_id"] = rdzv_id
     # runner_args["master_addr"] = master_addr
     # runner_args["master_port"] = master_port
@@ -327,7 +324,6 @@ def run_node(
         with_test=with_test,
         dryrun=dryrun,
         cur_envs=cur_envs,
-        enable_monitoring=enable_monitoring,
     )
 
 
@@ -347,95 +343,6 @@ class SSHTrainRunner(RunnerBase):
         self.resources = parse_hostfile(self.config.experiment.runner.get("hostfile", None))
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
-
-    def _run_gpu_health_check(self):
-        """Run GPU health check directly in Python, output to console"""
-        import subprocess
-
-        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        gpu_health_check_path = os.path.join(
-            root_dir, "flagscale", "elastic", "gpu_health_check.py"
-        )
-
-        # Check if the health check script exists
-        if not os.path.exists(gpu_health_check_path):
-            logger.error(f"GPU health check script not found at {gpu_health_check_path}")
-            return False
-
-        # Get parallel configuration
-        tp_size = self.config.train.model.get("tensor_model_parallel_size", 1)
-        pp_size = self.config.train.model.get("pipeline_model_parallel_size", 1)
-
-        # Determine if we need distributed execution
-        runner_config = self.config.experiment.runner
-        nnodes = runner_config.get("nnodes", 1)
-        nproc_per_node = runner_config.get("nproc_per_node", 1)
-
-        # Build command
-        if nnodes > 1 or nproc_per_node > 1:
-            # Use torchrun for distributed health check
-            cmd = ["torchrun", f"--nnodes={nnodes}", f"--nproc_per_node={nproc_per_node}"]
-
-            # Add master addr and port if multi-node
-            if nnodes > 1:
-                master_addr = runner_config.get("master_addr", "localhost")
-                master_port = runner_config.get("master_port", 29500)
-                cmd.extend(
-                    [
-                        f"--master_addr={master_addr}",
-                        f"--master_port={master_port}",
-                        "--node_rank=0",  # For health check, only run on rank 0
-                    ]
-                )
-
-            cmd.extend(
-                [
-                    gpu_health_check_path,
-                    "--tensor-model-parallel-size",
-                    str(tp_size),
-                    "--pipeline-model-parallel-size",
-                    str(pp_size),
-                    "--distributed-backend",
-                    "nccl",
-                    "--distributed-timeout-minutes",
-                    "5",
-                ]
-            )
-        else:
-            # Single GPU mode
-            cmd = [
-                "python",
-                gpu_health_check_path,
-                "--tensor-model-parallel-size",
-                str(tp_size),
-                "--pipeline-model-parallel-size",
-                str(pp_size),
-                "--distributed-backend",
-                "nccl",
-                "--distributed-timeout-minutes",
-                "5",
-            ]
-
-        logger.info(f"Running GPU health check command: {' '.join(cmd)}")
-
-        # Run the health check command with output to console
-        try:
-            result = subprocess.run(
-                cmd,
-                check=False,  # Don't raise exception on non-zero exit
-                text=True,
-                capture_output=False,  # Let output go to console directly
-            )
-
-            if result.returncode == 0:
-                return True
-            else:
-                logger.error(f"GPU health check failed with exit code {result.returncode}")
-                return False
-
-        except Exception as e:
-            logger.error(f"Failed to run GPU health check: {e}")
-            return False
 
     def _run_each(
         self,
@@ -506,17 +413,7 @@ class SSHTrainRunner(RunnerBase):
         enable_log_collection=True,
         enable_diagnostic=True,
         enable_monitoring=True,
-        enable_gpu_health_check=False,
     ):
-
-        # Run GPU health check first if enabled (before script generation)
-        if enable_gpu_health_check:
-            logger.info("Starting GPU health check before training setup...")
-            if not self._run_gpu_health_check():
-                logger.error("GPU health check failed! Aborting training setup.")
-                return
-            logger.info("GPU health check passed successfully!")
-            logger.info("Proceeding with training script generation...")
 
         num_visible_devices = None
         runner_config = self.config.experiment.runner
@@ -790,9 +687,7 @@ class SSHTrainRunner(RunnerBase):
         """
         return self._query_status()
 
-    def start_monitoring_service(
-        self, interval=10, enable_log_collection=True, enable_diagnostic=True
-    ):
+    def query(self, interval=10, enable_log_collection=True, enable_diagnostic=True):
         """
         Start independent monitoring service (non-blocking).
 
@@ -880,7 +775,6 @@ class CloudTrainRunner(RunnerBase):
         nproc_per_node,
         with_test=False,
         dryrun=False,
-        enable_monitoring=True,
     ):
         export_cmd = []
         for k, v in self.user_envs.items():
@@ -893,85 +787,15 @@ class CloudTrainRunner(RunnerBase):
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
 
         host_run_script_file = _generate_run_script_train(
-            self.config,
-            host,
-            node_rank,
-            cmd,
-            background=False,
-            with_test=with_test,
-            enable_monitoring=enable_monitoring,
+            self.config, host, node_rank, cmd, background=False, with_test=with_test
         )
 
         run_local_command(f"bash {host_run_script_file}", dryrun)
 
-    def _run_gpu_health_check(self):
-        """Run GPU health check directly in Python, output to console"""
-        import subprocess
-
-        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        gpu_health_check_path = os.path.join(
-            root_dir, "flagscale", "elastic", "gpu_health_check.py"
-        )
-
-        # Check if the health check script exists
-        if not os.path.exists(gpu_health_check_path):
-            logger.error(f"GPU health check script not found at {gpu_health_check_path}")
-            return False
-
-        # Get parallel configuration
-        tp_size = self.config.train.model.get("tensor_model_parallel_size", 1)
-        pp_size = self.config.train.model.get("pipeline_model_parallel_size", 1)
-
-        # Simple health check command for cloud runner
-        cmd = [
-            "python",
-            gpu_health_check_path,
-            "--tensor-model-parallel-size",
-            str(tp_size),
-            "--pipeline-model-parallel-size",
-            str(pp_size),
-            "--distributed-backend",
-            "nccl",
-            "--distributed-timeout-minutes",
-            "5",
-        ]
-
-        logger.info(f"Running GPU health check command: {' '.join(cmd)}")
-
-        # Run the health check command with output to console
-        try:
-            result = subprocess.run(
-                cmd,
-                check=False,  # Don't raise exception on non-zero exit
-                text=True,
-                capture_output=False,  # Let output go to console directly
-            )
-
-            if result.returncode == 0:
-                return True
-            else:
-                logger.error(f"GPU health check failed with exit code {result.returncode}")
-                return False
-
-        except Exception as e:
-            logger.error(f"Failed to run GPU health check: {e}")
-            return False
-
-    def run(
-        self, with_test=False, dryrun=False, enable_monitoring=True, enable_gpu_health_check=False
-    ):
+    def run(self, with_test=False, dryrun=False):
         if dryrun:
             logger.info("Dryrun mode is not supported in CloudRunner.")
             return
-
-        # Run GPU health check first if enabled (before script generation)
-        if enable_gpu_health_check:
-            logger.info("Starting GPU health check before training setup...")
-            if not self._run_gpu_health_check():
-                logger.error("GPU health check failed! Aborting training setup.")
-                return
-            logger.info("GPU health check passed successfully!")
-            logger.info("Proceeding with training script generation...")
 
         num_visible_devices = None
         visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
@@ -997,6 +821,4 @@ class CloudTrainRunner(RunnerBase):
             nproc_per_node,
             with_test=with_test,
             dryrun=dryrun,
-            enable_monitoring=enable_monitoring,
-            enable_gpu_health_check=enable_gpu_health_check,
         )
