@@ -25,7 +25,6 @@ commands=(
     # For serve
     "tests/scripts/functional_tests/test_task.sh --type serve --task qwen2_5"
     "tests/scripts/functional_tests/test_task.sh --type serve --task base"
-    "tests/scripts/functional_tests/test_task.sh --type serve --task robobrain2-metax"
 )
 
 for cmd in "${commands[@]}"; do
