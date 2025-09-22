@@ -303,8 +303,8 @@ def main():
     app.run(
         host=ENGINE_CONFIG['host'],
         port=ENGINE_CONFIG['port'],
-        debug=ENGINE_CONFIG['flask_debug'],
-        threaded=ENGINE_CONFIG['flask_threaded'],
+        debug=False,
+        threaded=True,
     )
 
 

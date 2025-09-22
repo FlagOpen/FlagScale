@@ -207,7 +207,7 @@ def main(config: _config.TrainConfig):
         checkpoint_dir, resuming = _checkpoints.initialize_checkpoint_dir(
             config.checkpoint_dir,
             keep_period=config.keep_period,
-            overwrite=config.overwrite,
+            overwrite=config.ckpt_overwrite,
             resume=config.resume,
         )
 
