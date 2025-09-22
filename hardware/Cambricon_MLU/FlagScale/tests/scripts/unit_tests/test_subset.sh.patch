@@ -1,0 +1,23 @@
+diff --git a/tests/scripts/unit_tests/test_subset.sh b/tests/scripts/unit_tests/test_subset.sh
+index daf3a47d..3ab0d1cb 100755
+--- a/tests/scripts/unit_tests/test_subset.sh
++++ b/tests/scripts/unit_tests/test_subset.sh
+@@ -1,5 +1,7 @@
+ #!/bin/bash
+ 
++set -eo pipefail
++
+ source tests/scripts/_gpu_check.sh
+ 
+ echo "The current directory is: $(pwd)"
+@@ -22,6 +24,9 @@ if [ -z "$backend" ] || [ -z "$subset" ]; then
+     exit 1
+ fi
+ 
++# Set default values for optional parameters
++coverage=${coverage:-"False"}
++
+ # Configuration file path
+ config_file="tests/scripts/unit_tests/config.yml"
+ if [ ! -f "$config_file" ]; then
+

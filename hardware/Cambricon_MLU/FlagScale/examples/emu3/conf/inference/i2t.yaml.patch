@@ -1,0 +1,13 @@
+diff --git a/examples/emu3/conf/inference/i2t.yaml b/examples/emu3/conf/inference/i2t.yaml
+index b1e77ec1..9f1b3ab0 100644
+--- a/examples/emu3/conf/inference/i2t.yaml
++++ b/examples/emu3/conf/inference/i2t.yaml
+@@ -2,7 +2,6 @@ llm:
+   model: ${experiment.model}
+   vq_model: ${experiment.vq_model}
+   dtype: bfloat16
+-  skip_tokenizer_init: true
+   trust_remote_code: true
+   tensor_parallel_size: 1
+   pipeline_parallel_size: 1
+

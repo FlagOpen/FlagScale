@@ -1,0 +1,24 @@
+diff --git a/examples/qwen2_5/conf/serve_multiple_instance.yaml b/examples/qwen2_5/conf/serve_multiple_instance.yaml
+index 0280d26e..9bde9330 100644
+--- a/examples/qwen2_5/conf/serve_multiple_instance.yaml
++++ b/examples/qwen2_5/conf/serve_multiple_instance.yaml
+@@ -8,15 +8,15 @@ experiment:
+   task:
+     type: serve
+     entrypoint: null
+-  deploy:
+-    port: 6701
+-    use_fs_serve: true
+   runner:
+     hostfile: null # /path/to/hostfile.txt
+     docker: ds
+     ssh_port: 22
+     nnodes: 2
+     nproc_per_node: 8
++    deploy:
++      port: 6701
++      use_fs_serve: true
+   auto_tuner:
+     space:
+       tensor_model_parallel_size: [2,4]
+

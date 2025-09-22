@@ -1,0 +1,11 @@
+diff --git a/tools/checkpoint/qwen3/ckpt.py b/tools/checkpoint/qwen3/ckpt.py
+new file mode 100644
+index 00000000..48171871
+--- /dev/null
++++ b/tools/checkpoint/qwen3/ckpt.py
+@@ -0,0 +1,4 @@
++import sys
++
++sys.path.append("..")
++from mistral.ckpt import *
+

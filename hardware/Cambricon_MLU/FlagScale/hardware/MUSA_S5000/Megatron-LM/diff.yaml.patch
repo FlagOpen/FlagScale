@@ -1,0 +1,19 @@
+diff --git a/hardware/MUSA_S5000/Megatron-LM/diff.yaml b/hardware/MUSA_S5000/Megatron-LM/diff.yaml
+new file mode 100644
+index 00000000..7c72a555
+--- /dev/null
++++ b/hardware/MUSA_S5000/Megatron-LM/diff.yaml
+@@ -0,0 +1,12 @@
++backends_commit:
++  Megatron-LM: fdfcef87004205eca69ea462b375578185ea01f6
++backends_version:
++  FlagScale: 0.8.0
++  Megatron-LM: 0.12.0
++commit: 8473967eff51da1e77e79f8060a333d616480b68
++contact: ''
++device_type: MUSA_S5000
++models:
++- llama3
++task:
++- train
+

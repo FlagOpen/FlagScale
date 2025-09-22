@@ -1,0 +1,35 @@
+diff --git a/flagscale/runner/auto_tuner/generate.py b/flagscale/runner/auto_tuner/generate.py
+index 58762a3d..e49197f3 100644
+--- a/flagscale/runner/auto_tuner/generate.py
++++ b/flagscale/runner/auto_tuner/generate.py
+@@ -25,6 +25,8 @@ class Generator:
+                 "micro_batch_size": "micro_batch_size",
+                 "context_parallel_size": "context_parallel_size",
+                 "expert_model_parallel_size": "expert_model_parallel_size",
++                "decoder_first_pipeline_num_layers": "decoder_first_pipeline_num_layers",
++                "decoder_last_pipeline_num_layers": "decoder_last_pipeline_num_layers",
+             }
+ 
+     def _set_value(self, strategy, config):
+@@ -65,10 +67,7 @@ class Generator:
+         # Del rampup_batch_size and train_samples to run megatron.
+         if "rampup_batch_size" in config.train.model.optimizer.lr_scheduler:
+             del config.train.model.optimizer.lr_scheduler.rampup_batch_size
+-        # Del lr_decay_samples and train_samples to run megatron.
+-        if "lr_warmup_fraction" in config.train.model.optimizer.lr_scheduler:
+-            del config.train.model.optimizer.lr_scheduler.lr_warmup_fraction
+-
++        # Del train_samples to run megatron.
+         if "train_samples" in config.train.model:
+             del config.train.model.train_samples
+ 
+@@ -168,7 +167,7 @@ class ServeGenerator(Generator):
+         current_pp = model_config.engine_args_specific[engine].get("pipeline_parallel_size", 1)
+         model_config.resources["num_gpus"] = current_tp * current_pp
+ 
+-        if not config.experiment.get("deploy", {}).get("use_fs_serve", True):
++        if not config.experiment.get("runner", {}).get("deploy", {}).get("use_fs_serve", True):
+             del model_config["resources"]
+ 
+     def gen(self, strategy):
+

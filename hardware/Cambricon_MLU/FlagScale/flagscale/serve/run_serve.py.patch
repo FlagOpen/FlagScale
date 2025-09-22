@@ -1,0 +1,15 @@
+diff --git a/flagscale/serve/run_serve.py b/flagscale/serve/run_serve.py
+index 40b9356d..b517efe4 100644
+--- a/flagscale/serve/run_serve.py
++++ b/flagscale/serve/run_serve.py
+@@ -5,8 +5,7 @@ from flagscale.serve.engine import ServeEngine
+ def main():
+     config = parse_config()
+     engine = ServeEngine(config)
+-    engine.build_task()
+-    engine.run_router_task()
++    engine.run_task()
+ 
+ 
+ if __name__ == "__main__":
+

@@ -1,0 +1,14 @@
+diff --git a/tools/checkpoint/saver_mcore.py b/tools/checkpoint/saver_mcore.py
+index 271b1782..e19a7b88 100644
+--- a/tools/checkpoint/saver_mcore.py
++++ b/tools/checkpoint/saver_mcore.py
+@@ -198,6 +198,8 @@ def save_checkpoint(queue, args):
+         sys.argv.append('--disable-bias-linear')
+     if md.add_qkv_bias:
+         sys.argv.append('--add-qkv-bias')
++    if md.qk_layernorm:
++        sys.argv.append('--qk-layernorm')
+ 
+     if args.target_params_dtype is not None:
+         assert args.target_params_dtype in ["fp32", "fp16", "bf16"]
+

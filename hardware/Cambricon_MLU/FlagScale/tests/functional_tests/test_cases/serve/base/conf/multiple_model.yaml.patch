@@ -1,0 +1,36 @@
+diff --git a/tests/functional_tests/test_cases/serve/base/conf/multiple_model.yaml b/tests/functional_tests/test_cases/serve/base/conf/multiple_model.yaml
+index 3bf2fdfa..ac6a3fd4 100644
+--- a/tests/functional_tests/test_cases/serve/base/conf/multiple_model.yaml
++++ b/tests/functional_tests/test_cases/serve/base/conf/multiple_model.yaml
+@@ -4,17 +4,27 @@ defaults:
+ 
+ experiment:
+   exp_name: multiple_model
+-  exp_dir: tests/functional_tests/test_cases/serve/base/results_test/multiple_model
++  exp_dir: tests/functional_tests/test_cases/serve/utils/models
+   task:
+     type: serve
+     entrypoint: null
+   runner:
+     hostfile: null
++    deploy:
++      port: 6701
++      use_fs_serve: true
++      enable_composition: true
++      name: /generate
++      request:
++        args:
++          - prompt
++        types:
++          - str
+   envs:
+-    CUDA_VISIBLE_DEVICES: 0,1,2,3
+     CUDA_DEVICE_MAX_CONNECTIONS: 1
++    no_proxy: "127.0.0.1,localhost"
+   cmds:
+-    before_start: ulimit -n 65535 && export no_proxy="127.0.0.1,localhost" && source /root/miniconda3/bin/activate flagscale-inference
++    before_start: ulimit -n 65535 && source /root/miniconda3/bin/activate flagscale-inference
+ 
+ action: run
+ 
+

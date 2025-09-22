@@ -1,0 +1,8 @@
+diff --git a/flagscale/agent/collaboration/__init__.py b/flagscale/agent/collaboration/__init__.py
+new file mode 100644
+index 00000000..795c176f
+--- /dev/null
++++ b/flagscale/agent/collaboration/__init__.py
+@@ -0,0 +1 @@
++from .collaborator import Collaborator
+

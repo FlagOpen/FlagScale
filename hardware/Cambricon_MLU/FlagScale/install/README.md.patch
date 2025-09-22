@@ -1,0 +1,21 @@
+diff --git a/install/README.md b/install/README.md
+index 6d8c2cac..6f8fd2e4 100644
+--- a/install/README.md
++++ b/install/README.md
+@@ -9,3 +9,15 @@
+ ```bash
+ ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
+ ```
++
++# Install the environment for RL.
++
++```bash
++./install/install-requirements.sh --env RL
++```
++
++# Install the environment for Metax inference.
++
++```bash
++./install/install-requirements-metax.sh --env inference
++```
+

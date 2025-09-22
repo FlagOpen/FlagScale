@@ -1,0 +1,23 @@
+diff --git a/examples/minicpm_v_4/conf/serve/4b.yaml b/examples/minicpm_v_4/conf/serve/4b.yaml
+new file mode 100644
+index 00000000..7e229a3d
+--- /dev/null
++++ b/examples/minicpm_v_4/conf/serve/4b.yaml
+@@ -0,0 +1,16 @@
++- serve_id: vllm_model
++  engine: vllm
++  engine_args:
++    model: /share/models/MiniCPM-V-4
++    served_model_name: MiniCPM-V-4-nvidia-flagos
++    port: 9010
++  engine_args_specific:
++    vllm:
++      trust_remote_code: true
++      limit_mm_per_prompt.image: 8
++  profile:
++    prefix_len: 0
++    input_len: 1024
++    output_len: 1024
++    num_prompts: 128
++    range_ratio: 1
+

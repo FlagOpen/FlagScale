@@ -1,0 +1,21 @@
+diff --git a/examples/qwen2_5/conf/serve_auto_tuner.yaml b/examples/qwen2_5/conf/serve_auto_tuner.yaml
+index 2a168fa4..f1d2a66d 100644
+--- a/examples/qwen2_5/conf/serve_auto_tuner.yaml
++++ b/examples/qwen2_5/conf/serve_auto_tuner.yaml
+@@ -7,12 +7,12 @@ experiment:
+   exp_dir: ./outputs
+   task:
+     type: serve
+-  deploy:
+-    port: 6701
+-    use_fs_serve: false
+   runner:
+     nnodes: 1
+     nproc_per_node: 4
++    deploy:
++      port: 6701
++      use_fs_serve: false
+   auto_tuner:
+     space:
+       tensor_model_parallel_size: "auto"
+

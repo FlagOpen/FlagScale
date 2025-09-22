@@ -1,0 +1,18 @@
+diff --git a/tests/functional_tests/test_cases/inference/deepseek/results_gold/tp2 b/tests/functional_tests/test_cases/inference/deepseek_r1_distill_qwen-flaggems-metax/results_gold/7b-tp2
+similarity index 67%
+rename from tests/functional_tests/test_cases/inference/deepseek/results_gold/tp2
+rename to tests/functional_tests/test_cases/inference/deepseek_r1_distill_qwen-flaggems-metax/results_gold/7b-tp2
+index 0a52ccce..f1735750 100644
+--- a/tests/functional_tests/test_cases/inference/deepseek/results_gold/tp2
++++ b/tests/functional_tests/test_cases/inference/deepseek_r1_distill_qwen-flaggems-metax/results_gold/7b-tp2
+@@ -1,7 +1,7 @@
+ **************************************************
+ output.prompt='The president of the United States'
+-output.outputs[0].text=', George W. Bush, has been given a 95% confidence interval'
+-output.outputs[0].token_ids=[11, 9857, 467, 13, 14079, 11, 702, 1012, 2661, 264, 220, 24, 20, 4, 12136, 9873]
++output.outputs[0].text=', George W. Bush, is known for his leadership in the 19'
++output.outputs[0].token_ids=[11, 9857, 467, 13, 14079, 11, 374, 3881, 369, 806, 11438, 304, 279, 220, 16, 24]
+ **************************************************
+ output.prompt='The capital of France'
+ output.outputs[0].text=', Paris, is known for its iconic landmarks such as the Eiffel Tower'
+

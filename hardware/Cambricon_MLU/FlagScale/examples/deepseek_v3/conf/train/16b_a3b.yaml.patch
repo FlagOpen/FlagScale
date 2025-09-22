@@ -1,0 +1,89 @@
+diff --git a/examples/deepseek_v3/conf/train/16b_a3b.yaml b/examples/deepseek_v3/conf/train/16b_a3b.yaml
+index fe469de9..532d9621 100644
+--- a/examples/deepseek_v3/conf/train/16b_a3b.yaml
++++ b/examples/deepseek_v3/conf/train/16b_a3b.yaml
+@@ -1,20 +1,15 @@
+ system:
+   no_shared_fs: ${experiment.runner.no_shared_fs}
+-  num_workers: 16
+-  tensor_model_parallel_size: 2
++  num_workers: 2
++  tensor_model_parallel_size: 1
+   pipeline_model_parallel_size: 2
+   decoder_first_pipeline_num_layers: 13
+-  expert_model_parallel_size: 2
++  expert_model_parallel_size: 4
+   context_parallel_size: 1
+-  disable_bias_linear: true
+-  reset_position_ids: True
+-  reset_attention_mask: True
+-  qk_layernorm: true
+   sequence_parallel: true
+   use_distributed_optimizer: true
+   overlap_grad_reduce: true
+   overlap_param_gather: true
+-  finetune: false
+   precision:
+     bf16: true
+     attention_softmax_in_fp32: true
+@@ -48,14 +43,15 @@ model:
+   rotary_base: 1000000
+   swiglu: true
+   normalization: RMSNorm
++  qk_layernorm: true
+   init_method_std: 0.02
+   attention_dropout: 0.0
+   hidden_dropout: 0.0
+-  clip_grad: 1.0
+   position_embedding_type: rope
+   untie_embeddings_and_output_weights: true
+   no_position_embedding: true
+   no_rope_fusion: true
++  disable_bias_linear: true
+ 
+   # mla args ==================
+   multi_latent_attention: true
+@@ -82,7 +78,6 @@ model:
+   moe_router_topk: 6
+   moe_router_topk_scaling_factor: 2.446
+   moe_token_dispatcher_type: "alltoall"
+-  # moe_permute_fusion: true
+ 
+   # mtp args ====================
+   mtp_num_layers: 1
+@@ -90,26 +85,28 @@ model:
+ 
+   # training
+   seed: ${experiment.seed}
+-  # finetune: false
++  finetune: false
+   micro_batch_size: 1
+-  global_batch_size: 2048
++  global_batch_size: 128 #2048
+   eval_iters: 0
+-  train_samples: 244141056 #1T #29297664 #120B tokens
++  train_iters: 102400
+ 
+   optimizer:
++    clip_grad: 1.0
+     weight_decay: 0.1
+     adam_beta1: 0.9
+     adam_beta2: 0.95
+     lr_scheduler:
+       lr: 3.0e-3
+       min_lr: 3.0e-4
+-      lr_warmup_samples: 2048000
++      lr_warmup_fraction: 0.01
+       lr_decay_style: WSD
+       lr_wsd_decay_style: cosine
+-      lr_wsd_decay_samples: 2048
+-
++      lr_wsd_decay_iters: 10
+ 
+ data:
++  reset_position_ids: True
++  reset_attention_mask: True
+   data_path: /path
+   split: 1
+   no_mmap_bin_files: true
+

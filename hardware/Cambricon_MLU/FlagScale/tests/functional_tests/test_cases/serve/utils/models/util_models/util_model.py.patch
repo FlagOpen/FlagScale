@@ -1,0 +1,25 @@
+diff --git a/tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py b/tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
+index 031435f4..025044b5 100644
+--- a/tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
++++ b/tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
+@@ -3,11 +3,13 @@ def fn(input_data):
+     return res
+ 
+ 
+-def model_C(input_data):
+-    res = input_data + "__add_model_C"
+-    return res
++class ModelC:
++    def forward(self, input_data):
++        res = input_data + "__add_model_C"
++        return res
+ 
+ 
+-def model_D(input_data_B, input_data_C):
+-    output_data = input_data_B + input_data_C
+-    return output_data
++class ModelD:
++    def forward(self, input_data_B, input_data_C):
++        output_data = input_data_B + input_data_C
++        return output_data
+

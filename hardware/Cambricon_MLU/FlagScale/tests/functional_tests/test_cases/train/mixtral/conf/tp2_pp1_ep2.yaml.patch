@@ -1,0 +1,14 @@
+diff --git a/tests/functional_tests/test_cases/train/mixtral/conf/tp2_pp1_ep2.yaml b/tests/functional_tests/test_cases/train/mixtral/conf/tp2_pp1_ep2.yaml
+index cd20bb15..23fd38da 100644
+--- a/tests/functional_tests/test_cases/train/mixtral/conf/tp2_pp1_ep2.yaml
++++ b/tests/functional_tests/test_cases/train/mixtral/conf/tp2_pp1_ep2.yaml
+@@ -18,7 +18,7 @@ experiment:
+     CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
+     CUDA_DEVICE_MAX_CONNECTIONS: 1
+     CUBLAS_WORKSPACE_CONFIG: ":4096:8"
+-    NCCL_ALGO: "Tree"
++    NCCL_ALGO: "Ring"
+     NVTE_APPLY_QK_LAYER_SCALING: 0
+     NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
+     NVTE_FLASH_ATTN: 0
+

@@ -1,0 +1,12 @@
+diff --git a/examples/kimi_k2/conf/hostfile.txt b/examples/kimi_k2/conf/hostfile.txt
+new file mode 100644
+index 00000000..0d8b1e05
+--- /dev/null
++++ b/examples/kimi_k2/conf/hostfile.txt
+@@ -0,0 +1,5 @@
++# ip slots type=xxx[optional]
++# master node
++x.x.x.x slots=8 type=gpu
++# worker nodes
++x.x.x.x slots=8 type=gpu
+

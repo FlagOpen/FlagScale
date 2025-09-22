@@ -1,0 +1,9 @@
+diff --git a/requirements/inference/requirements.txt b/requirements/inference/requirements.txt
+new file mode 100644
+index 00000000..59e94195
+--- /dev/null
++++ b/requirements/inference/requirements.txt
+@@ -0,0 +1 @@
++quart
+\ No newline at end of file
+

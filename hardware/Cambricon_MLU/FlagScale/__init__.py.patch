@@ -1,0 +1,13 @@
+diff --git a/__init__.py b/__init__.py
+index 5f40baea..1947ff8b 100644
+--- a/__init__.py
++++ b/__init__.py
+@@ -2,3 +2,7 @@ import os
+ import sys
+ 
+ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
++
++from version import FLAGSCALE_VERSION
++
++__version__ = FLAGSCALE_VERSION
+

@@ -1,0 +1,8 @@
+diff --git a/tests/functional_tests/test_cases/train/deepseek/results_gold/tp2_pp2_ep2.json b/tests/functional_tests/test_cases/train/deepseek/results_gold/tp2_pp2_ep2.json
+index 011917a7..efc0769e 100644
+--- a/tests/functional_tests/test_cases/train/deepseek/results_gold/tp2_pp2_ep2.json
++++ b/tests/functional_tests/test_cases/train/deepseek/results_gold/tp2_pp2_ep2.json
+@@ -1 +1 @@
+-{"lm loss:": {"values": [12.35347, 12.3497, 15.16228, 13.99968, 13.67218, 15.91316, 13.51478, 12.0332, 11.81497, 11.17788]}}
++{"lm loss:": {"values": [12.37023, 12.36515, 17.35478, 14.23536, 12.40298, 11.2522, 10.9384, 10.58008, 11.20493, 11.26523]}}
+

@@ -1,0 +1,21 @@
+diff --git a/examples/qwen3/conf/serve_atmb.yaml b/examples/qwen3/conf/serve_atmb.yaml
+index 11c82b4e..34683dae 100644
+--- a/examples/qwen3/conf/serve_atmb.yaml
++++ b/examples/qwen3/conf/serve_atmb.yaml
+@@ -8,12 +8,12 @@ experiment:
+   exp_dir: outputs/${experiment.exp_name}
+   task:
+     type: serve
+-  deploy:
+-    port: 6701
+-    use_fs_serve: false
+   runner:
+     nnodes: 1
+     nproc_per_node: 4
++    deploy:
++      port: 6701
++      use_fs_serve: false
+   envs:
+     CUDA_VISIBLE_DEVICES: 0,1,2,3
+     CUDA_DEVICE_MAX_CONNECTIONS: 1
+

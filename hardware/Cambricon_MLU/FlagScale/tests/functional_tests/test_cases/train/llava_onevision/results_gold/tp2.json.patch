@@ -1,0 +1,8 @@
+diff --git a/tests/functional_tests/test_cases/train/llava_onevision/results_gold/tp2.json b/tests/functional_tests/test_cases/train/llava_onevision/results_gold/tp2.json
+index 09e40eb9..d1e32046 100644
+--- a/tests/functional_tests/test_cases/train/llava_onevision/results_gold/tp2.json
++++ b/tests/functional_tests/test_cases/train/llava_onevision/results_gold/tp2.json
+@@ -1 +1 @@
+-{"lm loss:": {"values": [12.03901, 12.03917, 10.79923, 8.876001, 7.730996, 7.200779, 6.880276, 6.700766, 6.630989, 6.584677]}}
++{"lm loss:": {"values": [12.03902, 12.03917, 10.79918, 8.875944, 7.731266, 7.195941, 6.893567, 6.718247, 6.649887, 6.601768]}}
+

@@ -1,0 +1,13 @@
+diff --git a/examples/aquila/conf/inference.yaml b/examples/aquila/conf/inference.yaml
+index e906315e..10b2112e 100644
+--- a/examples/aquila/conf/inference.yaml
++++ b/examples/aquila/conf/inference.yaml
+@@ -14,6 +14,7 @@ experiment:
+   cmds:
+     before_start: source /root/miniconda3/bin/activate flagscale
+   envs:
++    VLLM_USE_FLASHINFER_SAMPLER: 0
+     VLLM_LOGGING_LEVEL: "INFO"
+     CUDA_VISIBLE_DEVICES: 0
+     CUDA_DEVICE_MAX_CONNECTIONS: 1
+

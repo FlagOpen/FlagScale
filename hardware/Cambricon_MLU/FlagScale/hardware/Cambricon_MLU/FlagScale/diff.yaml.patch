@@ -1,0 +1,23 @@
+diff --git a/hardware/Cambricon_MLU/FlagScale/diff.yaml b/hardware/Cambricon_MLU/FlagScale/diff.yaml
+index b4b1d4fb..7b0651b3 100644
+--- a/hardware/Cambricon_MLU/FlagScale/diff.yaml
++++ b/hardware/Cambricon_MLU/FlagScale/diff.yaml
+@@ -1,13 +1,11 @@
+-backends_commit:
+-  vllm: 296c6572dd1f76b31b93be19e550790afcfb8843
++backends_commit: {}
+ backends_version:
+   FlagScale: main
+-  vllm: v0.8.3
+-commit: 39c0adcf0db48417ded4842c92067626bd55562f
++commit: bebd6189de770fa8317e9d0bf7f98182804eaa73
+ contact: ''
+ device_type: Cambricon_MLU
+ models:
+-- qwen3
+-- qwen2_5_vl
++- aquila
++- qwen
+ task:
+ - inference
+

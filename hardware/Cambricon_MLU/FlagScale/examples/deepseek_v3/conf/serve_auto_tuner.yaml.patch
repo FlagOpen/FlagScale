@@ -1,0 +1,21 @@
+diff --git a/examples/deepseek_v3/conf/serve_auto_tuner.yaml b/examples/deepseek_v3/conf/serve_auto_tuner.yaml
+index 51487b95..d1568dc7 100644
+--- a/examples/deepseek_v3/conf/serve_auto_tuner.yaml
++++ b/examples/deepseek_v3/conf/serve_auto_tuner.yaml
+@@ -7,13 +7,13 @@ experiment:
+   exp_dir: ./outputs/${experiment.exp_name}
+   task:
+     type: serve
+-  deploy:
+-    use_fs_serve: false
+   runner:
+     nnodes: 2
+     nproc_per_node: 8
+     hostfile: examples/deepseek/conf/hostfile.txt
+     docker: ds
++    deploy:
++      use_fs_serve: false
+   auto_tuner:
+     space:
+       tensor_model_parallel_size: [4, 8]
+

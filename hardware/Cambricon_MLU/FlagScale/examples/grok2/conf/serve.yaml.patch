@@ -1,0 +1,30 @@
+diff --git a/examples/grok2/conf/serve.yaml b/examples/grok2/conf/serve.yaml
+new file mode 100644
+index 00000000..b8402c75
+--- /dev/null
++++ b/examples/grok2/conf/serve.yaml
+@@ -0,0 +1,23 @@
++defaults:
++- _self_
++- serve: 270b
++
++experiment:
++  exp_name: grok2_270b
++  exp_dir: outputs/${experiment.exp_name}
++  task:
++    type: serve
++  runner:
++    hostfile: null
++    deploy:
++      use_fs_serve: false
++  envs:
++    USE_FLAGGEMS: false
++    CUDA_DEVICE_MAX_CONNECTIONS: 1
++
++action: run
++
++hydra:
++  run:
++    dir: ${experiment.exp_dir}/hydra
++
+

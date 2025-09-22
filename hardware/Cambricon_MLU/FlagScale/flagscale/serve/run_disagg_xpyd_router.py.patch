@@ -1,0 +1,42 @@
+diff --git a/flagscale/serve/run_disagg_xpyd_router.py b/flagscale/serve/run_disagg_xpyd_router.py
+index fb3eca2e..e92f9023 100644
+--- a/flagscale/serve/run_disagg_xpyd_router.py
++++ b/flagscale/serve/run_disagg_xpyd_router.py
+@@ -36,7 +36,9 @@ TASK_CONFIG = serve.task_config
+ MODEL_PATH = TASK_CONFIG.serve[0].get("engine_args", {}).get("model", None)
+ 
+ # Scheduling strategy: 'random', 'robin', 'slo'
+-SCHEDULING_STRATEGY = TASK_CONFIG.experiment.get("deploy", {}).get("prefill_decode_strategy", "slo")
++SCHEDULING_STRATEGY = (
++    TASK_CONFIG.experiment.get("runner", {}).get("deploy", {}).get("prefill_decode_strategy", "slo")
++)
+ 
+ 
+ @lru_cache(maxsize=32)
+@@ -46,7 +48,15 @@ def load_hf_tokenizer(model_path: str):
+ 
+ def count_chat_tokens(messages: List[Dict[str, Any]]) -> int:
+     tokenizer = load_hf_tokenizer(MODEL_PATH)
+-    text = tokenizer.apply_chat_template(messages, add_generation_prompt=False, tokenize=False)
++    normalized_message = []
++    for msg in messages:
++        content = msg["content"]
++        if isinstance(content, list):
++            content = "".join(part["text"] for part in content if part.get("type") == "text")
++        normalized_message.append({"role": msg["role"], "content": content})
++    text = tokenizer.apply_chat_template(
++        normalized_message, add_generation_prompt=False, tokenize=False
++    )
+     return len(tokenizer.encode(text, add_special_tokens=False))
+ 
+ 
+@@ -275,7 +285,7 @@ async def handle_request():
+ 
+ 
+ def main():
+-    deploy_config = TASK_CONFIG.experiment.get("deploy", {})
++    deploy_config = TASK_CONFIG.experiment.get("runner", {}).get("deploy", {})
+     serve_port = deploy_config.get("port", None)
+     # Used to register with the pd service discovery
+     pd_proxy_port = deploy_config.get("pd_proxy_port", None)
+

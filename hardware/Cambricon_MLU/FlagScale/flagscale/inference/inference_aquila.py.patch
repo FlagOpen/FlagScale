@@ -1,0 +1,13 @@
+diff --git a/flagscale/inference/inference_aquila.py b/flagscale/inference/inference_aquila.py
+index 246c5a23..8a9e1ed3 100644
+--- a/flagscale/inference/inference_aquila.py
++++ b/flagscale/inference/inference_aquila.py
+@@ -44,6 +44,7 @@ def inference(cfg):
+         print(f"{output.prompt=}")
+         print(f"{output.outputs[0].text=}")
+         print(f"{output.outputs[0].token_ids=}")
++    print("#" * 50)
+ 
+ 
+ if __name__ == "__main__":
+

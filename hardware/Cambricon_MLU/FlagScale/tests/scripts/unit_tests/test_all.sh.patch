@@ -1,0 +1,61 @@
+diff --git a/tests/scripts/unit_tests/test_all.sh b/tests/scripts/unit_tests/test_all.sh
+index 42acfce8..56ec1f75 100755
+--- a/tests/scripts/unit_tests/test_all.sh
++++ b/tests/scripts/unit_tests/test_all.sh
+@@ -9,29 +9,33 @@ if [ -d "/workspace/report/0/cov-temp-flagscale" ]; then rm -r /workspace/report
+ 
+ # Run each command and capture its return value
+ commands=(
+-    # unit tests -> megatron
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset data"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset dist_checkpointing"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset distributed"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset export"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset fusions"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset inference"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset models"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset pipeline_parallel"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset post_training"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset ssm"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset tensor_parallel"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset transformer/moe"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset transformer"
+-    "tests/scripts/unit_tests/test_subset.sh --backend megatron --subset ./"
+-    # coverage test -> megatron
+-    "tests/scripts/unit_tests/test_coverage.sh --backend megatron --status offline"
++    # unit tests -> train_megatron
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset data"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset dist_checkpointing"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset distributed"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset export"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset fusions"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset inference"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset models"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset pipeline_parallel"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset post_training"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset ssm"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset tensor_parallel"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset transformer/moe"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset transformer"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_megatron --subset ./"
++    # # coverage test -> train_megatron
++    # "tests/scripts/unit_tests/test_coverage.sh --backend train_megatron --status offline"
+ 
+-    # unit tests -> flagscale
+-    "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset runner"
+-    "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset ./"
+-    # coverage test -> flagscale
+-    "tests/scripts/unit_tests/test_coverage.sh --backend flagscale --status offline"
++    # unit tests -> train_flagscale
++    "tests/scripts/unit_tests/test_subset.sh --backend train_flagscale --subset runner"
++    "tests/scripts/unit_tests/test_subset.sh --backend train_flagscale --subset ./"
++    # # coverage test -> train_flagscale
++    # "tests/scripts/unit_tests/test_coverage.sh --backend train_flagscale --status offline"
++
++    # unit tests -> inference_flagscale
++    "tests/scripts/unit_tests/test_subset.sh --backend inference_flagscale --subset inference"
++    "tests/scripts/unit_tests/test_subset.sh --backend inference_flagscale --subset transforms"
+ 
+     # You can add your own test subset here
+     # "tests/scripts/unit_tests/test_subset.sh --backend flagscale --subset your_subset"
+

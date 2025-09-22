@@ -1,0 +1,22 @@
+diff --git a/examples/emu3/conf/inference/t2i.yaml b/examples/emu3/conf/inference/t2i.yaml
+index 461663a9..58086d4c 100644
+--- a/examples/emu3/conf/inference/t2i.yaml
++++ b/examples/emu3/conf/inference/t2i.yaml
+@@ -8,6 +8,7 @@ llm:
+   pipeline_parallel_size: 1
+   gpu_memory_utilization: 0.5
+   disable_log_stats: false
++  enable_chunked_prefill: true
+ 
+ generate:
+   mode: 'G'
+@@ -17,7 +18,7 @@ generate:
+   ]
+   ratios: [
+     "1:1",
+-    "16:9"
++    "16:9",
+   ]
+   sampling:
+     top_k: 2048
+

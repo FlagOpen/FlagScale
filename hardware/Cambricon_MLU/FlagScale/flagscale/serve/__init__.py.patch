@@ -1,0 +1,11 @@
+diff --git a/flagscale/serve/__init__.py b/flagscale/serve/__init__.py
+index d0859d59..646bfce3 100644
+--- a/flagscale/serve/__init__.py
++++ b/flagscale/serve/__init__.py
+@@ -1,3 +1,3 @@
+-from .utils import init, load_args, remote, run, stop, task_config
++from .utils import load_args, task_config
+ 
+-__all__ = ["init", "run", "stop", "remote", "task_config", "load_args"]
++__all__ = ["task_config", "load_args"]
+

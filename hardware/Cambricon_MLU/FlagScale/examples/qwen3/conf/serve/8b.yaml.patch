@@ -1,0 +1,19 @@
+diff --git a/examples/qwen3/conf/serve/8b.yaml b/examples/qwen3/conf/serve/8b.yaml
+new file mode 100644
+index 00000000..2da35936
+--- /dev/null
++++ b/examples/qwen3/conf/serve/8b.yaml
+@@ -0,0 +1,12 @@
++- serve_id: vllm_model
++  engine: vllm
++  engine_args:
++    model: ${oc.env:QWEN3_PATH}
++    host: 0.0.0.0
++    uvicorn_log_level: warning
++    port: ${oc.env:QWEN3_PORT}
++    gpu_memory_utilization: 0.9
++    trust_remote_code: true
++    no_enable_prefix_caching: true
++    compilation_config: '{"full_cuda_graph": true}'
++
+

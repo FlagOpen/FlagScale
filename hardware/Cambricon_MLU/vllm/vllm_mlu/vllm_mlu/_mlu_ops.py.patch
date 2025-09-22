@@ -1,0 +1,1109 @@
+diff --git a/vllm_mlu/vllm_mlu/_mlu_ops.py b/vllm_mlu/vllm_mlu/_mlu_ops.py
+new file mode 100644
+index 000000000..c5f368fb1
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/_mlu_ops.py
+@@ -0,0 +1,1102 @@
++from typing import List, Optional, Tuple
++
++import torch
++
++import math
++import triton
++import triton.language as tl
++
++from vllm.logger import init_logger
++
++logger = init_logger(__name__)
++
++try:
++    import torch_mlu_ops as tmo
++except ImportError as e:
++    logger.warning("Failed to import from TMO OPS with %r", e)
++
++@triton.jit
++def _triton_advance_step(input_tokens_ptr,
++                         sampled_token_ids_ptr,
++                         input_positions_ptr,
++                         seq_lens_ptr,
++                         slot_mapping_ptr,
++                         block_tables_ptr,
++                         block_tables_stride,
++                         num_seqs,
++                         num_queries,
++                         block_size,
++                         TILE_SIZE: tl.constexpr,
++):
++    """
++    The triton implementation of advance step.
++    Reference: https://github.com/vllm-project/vllm/blob/v0.6.1/csrc/prepare_inputs/advance_step.cu#L14-L55
++    """
++    # Set meta info.
++    pid = tl.program_id(axis=0)
++    offsets = pid * TILE_SIZE + tl.arange(0, TILE_SIZE)
++    mask = offsets < num_queries
++
++    # Update input_tokens.
++    sampled_token_ids = tl.load(sampled_token_ids_ptr + offsets, mask=mask)
++    tl.store(input_tokens_ptr + offsets, sampled_token_ids, mask=mask)
++
++    seq_lens = tl.load(seq_lens_ptr + offsets, mask=mask)
++    next_seq_lens = seq_lens + 1
++    next_input_pos = next_seq_lens - 1
++
++    # Update seq_lens.
++    tl.store(seq_lens_ptr + offsets, next_seq_lens, mask=mask)
++
++    # Update input_positions.
++    tl.store(input_positions_ptr + offsets, next_input_pos, mask=mask)
++
++    # Calculate slot num.
++    block_index = next_input_pos // block_size
++    block_offset = next_input_pos % block_size
++    block_tables = tl.load(block_tables_ptr + block_tables_stride * offsets + block_index, mask=mask)
++    slot_num = block_tables * block_size + block_offset
++
++    # Update slot_mapping.
++    tl.store(slot_mapping_ptr + offsets, slot_num, mask=mask)
++
++
++
++def rotary_embedding(
++    input: torch.Tensor,
++    sin_cache: torch.Tensor,
++    cos_cache: torch.Tensor,
++    position_ids: Optional[torch.Tensor],
++    cu_seqlens: Optional[torch.Tensor],
++    interleaved: bool,
++    discrete: bool,
++    dynamic_ntk: bool,
++    max_seqlen: int,
++) -> torch.Tensor:
++    return tmo.apply_rotary(
++                input, sin_cache, cos_cache,
++                position_ids, cu_seqlens, interleaved,
++                discrete, dynamic_ntk, max_seqlen)
++
++
++def fused_rms_norm(
++    x: torch.Tensor,
++    residual: torch.Tensor,
++    gamma: torch.Tensor,
++    beta: torch.Tensor,
++    bias: torch.Tensor,
++    eps: float,
++    store_output_before_norm: bool,
++    quant_scale: torch.Tensor = None,
++    dynamic_quant: bool = False,
++    out: torch.Tensor = None,
++) -> Optional[Tuple[torch.Tensor, Optional[torch.Tensor]]]:
++    return tmo.fused_rms_norm(
++                x, residual, gamma, beta, bias,
++                eps, store_output_before_norm, quant_scale,
++                out, dynamic_quant)
++
++
++def fused_layer_norm(
++    x: torch.Tensor,
++    residual: torch.Tensor,
++    gamma: torch.Tensor,
++    beta: torch.Tensor,
++    bias: torch.Tensor,
++    eps: float,
++    store_output_before_norm: bool,
++    quant_scale: torch.Tensor = None,
++    dynamic_quant: bool = False,
++) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
++    return tmo.fused_layer_norm(
++                x, residual, gamma, beta, bias,
++                eps, store_output_before_norm, quant_scale,
++                None, dynamic_quant)
++
++
++def flash_attention(
++    q: torch.Tensor,
++    k: torch.Tensor,
++    v: torch.Tensor,
++    out: torch.Tensor,
++    cu_seq_lens_q: torch.Tensor,
++    cu_seq_lens_kv: torch.Tensor,
++    alibi_slope: torch.Tensor,
++    attn_bias: torch.Tensor,
++    max_seq_len_q: int,
++    max_seq_len_kv: int,
++    softmax_scale: float,
++    is_causal: bool,
++    window_size_left: int = -1,
++    window_size_right: int = -1,
++    compute_dtype: torch.dtype = torch.float,
++    return_lse: bool = False,
++    block_tables: torch.Tensor = None,
++    k_cache_quant_scale: torch.Tensor = None,
++    v_cache_quant_scale: torch.Tensor = None
++) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
++    if v is None:
++        v = k
++    return tmo.flash_attention(
++        q, k, v, out,
++        cu_seq_lens_q, cu_seq_lens_kv,
++        alibi_slope, attn_bias,
++        max_seq_len_q, max_seq_len_kv,
++        softmax_scale, is_causal,
++        window_size_left, window_size_right,
++        compute_dtype, return_lse,
++        block_tables, k_cache_quant_scale,
++        v_cache_quant_scale)
++
++
++def split_head_nums(q_head_num, kv_head_num, max_q_head_num):
++    """
++    Split q_head_num such that:
++    1. The maximum value of the split q_head_num does not exceed max_q_head_num.
++    2. kv_head_num is split into the same number of parts as q_head_num.
++    3. Each split q_head_num can be evenly divided by the corresponding kv_head_num.
++    4. If kv_head_num < 1, it is adjusted to 1.
++
++    Parameters:
++    - q_head_num: int, the q_head_num to be split.
++    - kv_head_num: int, the kv_head_num to be split.
++    - max_q_head_num: int, the maximum supported q_head_num after splitting.
++
++    Returns:
++    - q_splits: list, the split q_head_num.
++    - kv_splits: list, the split kv_head_num.
++    """
++    if q_head_num <= 0 or kv_head_num <= 0:
++        return "q_head_num and kv_head_num must be positive integers!"
++
++    q_splits = []
++    kv_splits = []
++
++    # Residual value
++    remaining_q = q_head_num
++    remaining_kv = kv_head_num
++
++    while remaining_q > 0:
++        # Attempt to split q_head_num such that the maximum value does not exceed max_q_head_num.
++        for q_part in range(min(max_q_head_num, remaining_q), 0, -1):
++            # Ensure that q_part can be allocated and the corresponding kv_part is greater than or equal to 1.
++            if remaining_q % q_part == 0:
++                # Ensure that kv_part is greater than or equal to 1.
++                kv_part = max(remaining_kv // (remaining_q // q_part), 1)
++                # Ensure that q_part is divisible by kv_part.
++                if q_part % kv_part == 0:
++                    # Record the split values.
++                    q_splits.append(q_part)
++                    kv_splits.append(kv_part)
++                    remaining_q -= q_part
++                    remaining_kv -= kv_part
++                    break
++        else:
++            err_msg = f"Unable to find split method for q_head_num:{q_head_num}, kv_head_num:{kv_head_num}"
++            raise RuntimeError(err_msg)
++
++    return q_splits, kv_splits
++
++
++def repeat_elements(input_list, n):
++    """
++    Repeat each element in the list n times consecutively.
++
++    Parameters:
++    - input_list: list, the input list.
++    - n: int, the number of times each element should be repeated.
++
++    Returns:
++    - list, a new list containing the repeated elements.
++    """
++    if not isinstance(input_list, list) or not isinstance(n, int) or n < 0:
++        raise ValueError("The input must be a list, and the repetition count n must be an integer greater than or equal to 0.")
++
++    # Repeat each element n times using a list comprehension.
++    return [item for item in input_list for _ in range(n)]
++
++
++def single_query_cached_kv_attn(
++    q: torch.Tensor,
++    k_cache: torch.Tensor,
++    v_cache: torch.Tensor,
++    out: torch.Tensor,
++    block_tables: torch.Tensor,
++    context_lens: torch.Tensor,
++    k_cache_quant_scale: Optional[torch.Tensor],
++    v_cache_quant_scale: Optional[torch.Tensor],
++    alibi_slopes: Optional[torch.Tensor],
++    max_contxt_len: int,
++    windows_size_left: int,
++    windows_size_right: int,
++    softmax_scale: float,
++    q_head_dim: Optional[int] = 2,
++    kv_head_dim: Optional[int] = 1,
++    seq_q_dim: Optional[int] = 1,
++    max_seq_q_mul_q_divide_kv: Optional[int] = 48,
++    head_size_v: Optional[int] = -1,
++    compute_dtype: Optional[torch.dtype] = torch.float32,
++) -> None:
++    # FIXME(chenxiaobing): TMO only support windows_size_right = -1 yet.
++    windows_size_right = -1
++
++    # singleQwithkvCache limits seq_q * q_divide_kv <= max_seq_q_mul_q_divide_kv now.
++    # When the limitation is fixed, we should delete the split process.
++    seq_q = q.shape[seq_q_dim]
++    q_head_num = q.shape[q_head_dim]
++    kv_head_num = k_cache.shape[kv_head_dim]
++    q_divide_kv = q_head_num // kv_head_num
++    if seq_q * q_divide_kv <= max_seq_q_mul_q_divide_kv:
++        tmo.single_query_cached_kv_attn(
++            q, k_cache, v_cache, out,
++            block_tables, context_lens,
++            k_cache_quant_scale, v_cache_quant_scale,
++            alibi_slopes, max_contxt_len,
++            windows_size_left, windows_size_right, softmax_scale,
++            head_size_v=head_size_v,
++            compute_dtype=compute_dtype)
++    else:
++        max_q_head_num = max_seq_q_mul_q_divide_kv * kv_head_num // seq_q
++        q_head_num_sizes, kv_head_num_sizes = split_head_nums(q_head_num, kv_head_num, max_q_head_num)
++        parts_num = len(q_head_num_sizes)
++        q_parts = torch.split(q, q_head_num_sizes, dim=q_head_dim)
++        out_parts = torch.split(out, q_head_num_sizes, dim=q_head_dim)
++        alibi_slopes_parts = [None] * parts_num
++        if alibi_slopes:
++            alibi_slopes_parts = torch.split(alibi_slopes, q_head_num_sizes, dim=0)
++
++        kv_parts_num = parts_num
++        if parts_num > kv_head_num:
++            assert parts_num % kv_head_num == 0, f"parts_num:{parts_num} need by divided by kv_head_num:{kv_head_num} when parts_num > kv_head_num"
++            kv_parts_num = kv_head_num
++            kv_head_num_sizes = kv_head_num_sizes[:kv_parts_num]
++
++        if len(kv_head_num_sizes) > 1:
++            k_cache_parts = torch.split(k_cache, kv_head_num_sizes, dim=kv_head_dim)
++            v_cache_parts = torch.split(v_cache, kv_head_num_sizes, dim=kv_head_dim)
++            k_cache_quant_scale_parts = [None] * kv_parts_num
++            v_cache_quant_scale_parts = [None] * kv_parts_num
++            if k_cache_quant_scale:
++                k_cache_quant_scale_dim = 1 if k_cache_quant_scale.dim() == 2 else kv_head_dim
++                k_cache_quant_scale_parts = torch.split(k_cache_quant_scale, kv_head_num_sizes, dim=k_cache_quant_scale_dim)
++            if v_cache_quant_scale:
++                v_cache_quant_scale_dim = 1 if v_cache_quant_scale.dim() == 2 else kv_head_dim
++                v_cache_quant_scale_parts = torch.split(v_cache_quant_scale, kv_head_num_sizes, dim=v_cache_quant_scale_dim)
++        else:
++            k_cache_parts = [k_cache]
++            v_cache_parts = [v_cache]
++            k_cache_quant_scale_parts = [k_cache_quant_scale]
++            v_cache_quant_scale_parts = [v_cache_quant_scale]
++
++        if parts_num > kv_parts_num:
++            repeate_num = parts_num // kv_parts_num
++            k_cache_parts = repeat_elements(k_cache_parts, repeate_num)
++            v_cache_parts = repeat_elements(v_cache_parts, repeate_num)
++            k_cache_quant_scale_parts = repeat_elements(k_cache_quant_scale_parts, repeate_num)
++            v_cache_quant_scale_parts = repeat_elements(v_cache_quant_scale_parts, repeate_num)
++
++        for q_value, k_cache_value, v_cache_value, out_value, k_cache_quant_scale_value, v_cache_quant_scale_value, alibi_slopes_value in zip(
++                q_parts, k_cache_parts, v_cache_parts, out_parts, k_cache_quant_scale_parts, v_cache_quant_scale_parts,
++                alibi_slopes_parts):
++            tmo.single_query_cached_kv_attn(
++                q_value, k_cache_value.contiguous(), v_cache_value.contiguous() if v_cache_value is not None else None,
++                out_value, block_tables, context_lens,
++                k_cache_quant_scale_value, v_cache_quant_scale_value,
++                alibi_slopes_value, max_contxt_len,
++                windows_size_left, windows_size_right, softmax_scale,
++                head_size_v=head_size_v,
++                compute_dtype=compute_dtype)
++
++
++def reshape_paged_cache(
++    k: torch.Tensor,
++    v: torch.Tensor,
++    k_cache: torch.Tensor,
++    v_cache: torch.Tensor,
++    slot_mapping: torch.Tensor
++) -> None:
++    tmo.reshape_paged_cache(k, v, k_cache, v_cache, slot_mapping)
++
++
++def swap_blocks(
++    dst: torch.Tensor,
++    src: torch.Tensor,
++    block_mapping: torch.Tensor
++) -> None:
++    # FIXME: Remove this conversion after
++    # tmo.swap_blocks support block_mapping tensor.
++    block_mapping = block_mapping.tolist()
++    block_mapping = {src: dst for src, dst in block_mapping}
++    return tmo.swap_blocks(dst, src, block_mapping)
++
++
++def copy_blocks(
++    k_caches: List[torch.Tensor],
++    v_caches: List[torch.Tensor],
++    block_mapping: torch.Tensor
++) -> None:
++    # FIXME: Remove this conversion after
++    # tmo.swap_blocks support block_mapping tensor.
++    block_mapping = block_mapping.tolist()
++    result_dict = {}
++    for row in block_mapping:
++        key = row[0]
++        values = row[1:]
++        if key in result_dict:
++            result_dict[key].extend(values)
++        else:
++            result_dict[key] = values
++    return tmo.copy_blocks(k_caches, v_caches, result_dict)
++
++
++def active(
++    input: torch.Tensor,
++    act_mode: str,
++    is_gated: bool
++) -> torch.Tensor:
++    return tmo.active(input, act_mode, is_gated)
++
++
++def fused_moe(
++    hidden_states: torch.Tensor,
++    gating_output: torch.Tensor,
++    w1: torch.Tensor,
++    w2: torch.Tensor,
++    bias1: Optional[torch.Tensor],
++    bias2: Optional[torch.Tensor],
++    residual: Optional[torch.Tensor],
++    input_smooth: Optional[torch.Tensor],
++    act_smooth: Optional[torch.Tensor],
++    w1_scale: Optional[torch.Tensor],
++    w2_scale: Optional[torch.Tensor],
++    topk: int,
++    renormalize: bool,
++    gated: bool,
++    act_mode: str,
++    start_expert_id: int = 0,
++    block_n: int = 0,
++    cncl_comm: int = 0
++) -> torch.Tensor:
++    return tmo.fused_moe(
++        hidden_states, gating_output,
++        w1, w2, bias1, bias2, residual,
++        input_smooth, act_smooth,
++        w1_scale, w2_scale, topk,
++        renormalize, gated, act_mode, start_expert_id,
++        block_n, cncl_comm)
++
++
++def matmul(
++    a: torch.Tensor,
++    b: torch.Tensor,
++    bias: Optional[torch.Tensor] = None,
++    c: Optional[torch.Tensor] = None,
++    act_mode: str = 'none',
++    alpha: float = 1.0,
++    beta: float = .0
++) -> torch.Tensor:
++    return tmo.matmul(a, b, bias, c, act_mode, alpha, beta)
++
++
++def weight_only_quant_matmul(
++    a: torch.Tensor,
++    b: torch.Tensor,
++    scale: torch.Tensor,
++    zero: torch.Tensor = None,
++    bias: torch.Tensor = None,
++    c: torch.Tensor = None,
++    act_mode: str = "none",
++    quant_bit_size: int = 8,
++    alpha: float = 1.0,
++    beta: float = 1.0
++) -> torch.Tensor:
++    return tmo.weight_only_quant_matmul(
++                a, b,
++                scale, zero, bias, c,
++                act_mode, quant_bit_size, alpha, beta)
++
++
++def smooth_quant_matmul(
++    a: torch.Tensor,
++    a_scale: torch.Tensor,
++    b: torch.Tensor,
++    b_scale: torch.Tensor,
++    dtype: torch.dtype,
++    bias: torch.Tensor = None,
++    c: torch.Tensor = None,
++    act_mode: str = "none",
++    alpha: float = 1.0,
++    beta: float = 1.0
++) -> torch.Tensor:
++    return tmo.smooth_quant_matmul(
++                a, a_scale,
++                b, b_scale,
++                dtype, bias, c,
++                act_mode, alpha, beta)
++
++
++def per_token_smooth_quantize(x: torch.Tensor,
++                              smooth: torch.Tensor,
++                              zero: torch.Tensor = None,
++                              token_count: torch.Tensor = None,
++                              act_mode: str = "none",
++                              active_coef: float = 1.0,
++                              is_gated: bool = False
++                             ) -> Tuple[torch.Tensor, torch.Tensor]:
++    return tmo.per_token_smooth_quantize(x, smooth, zero, token_count, act_mode, active_coef, is_gated)
++
++
++def quantize(
++    x: torch.Tensor,
++    scale: torch.Tensor,
++    zero: torch.Tensor = None
++) -> torch.Tensor:
++    return tmo.quantize(x, scale, zero)
++
++
++def quant_to_paged_cache(
++    k: torch.Tensor,
++    v: torch.Tensor,
++    k_cache: torch.Tensor,
++    v_cache: torch.Tensor,
++    k_cache_quant_scale: torch.Tensor,
++    v_cache_quant_scale: torch.Tensor,
++    slot_mapping: torch.Tensor,
++) -> None:
++    return tmo.quant_to_paged_cache(
++        k, v, k_cache, v_cache, k_cache_quant_scale, v_cache_quant_scale, slot_mapping
++    )
++
++
++def advance_step(num_seqs: int,
++                 num_queries: int,
++                 block_size: int,
++                 input_tokens: torch.Tensor,
++                 sampled_token_ids: torch.Tensor,
++                 input_positions: torch.Tensor,
++                 seq_lens: torch.Tensor,
++                 slot_mapping: torch.Tensor,
++                 block_tables: torch.Tensor,
++                 TILE_SIZE: int = 64) -> None:
++    """
++    Advance a step on MLU for existing inputs for a multi-step runner, which
++    will update input_tokens/seq_lens/input_positions/slot_mapping inplace.
++    """
++    def verify_tensor(
++        name: str,
++        tensor: torch.Tensor,
++        size_0: int,
++        size_1: int,
++        dtype: torch.dtype,
++    ):
++        """
++        Auxiliary function to check whether input is valid.
++        """
++        size_0_cond = (size_0 == -1 or tensor.size(0) == size_0)
++        size_1_cond = (size_1 == -1 or tensor.size(1) == size_1)
++        if not (size_0_cond and size_1_cond and tensor.is_contiguous and tensor.dtype == dtype):
++            raise ValueError(
++                f"The input to advance_step is invalid with tensor name = {name}, "
++                f"shape = {tensor.shape}, "
++                f"is_cont = {tensor.is_contiguous()}, "
++                f"type = {tensor.dtype}, "
++                f"is not as expected: shape[{size_0}, {size_1}], type = {dtype}"
++            )
++
++    verify_tensor("input_tokens", input_tokens, num_seqs, -1, torch.int64)
++    verify_tensor("sampled_token_ids", sampled_token_ids, num_queries, 1, torch.int64)
++    verify_tensor("input_positions", input_positions, num_seqs, -1, torch.int32)
++    verify_tensor("seq_lens", seq_lens, num_seqs, -1, torch.int32)
++    verify_tensor("slot_mapping", slot_mapping, num_seqs, -1, torch.int32)
++    verify_tensor("block_tables", block_tables, num_seqs, -1, torch.int32)
++
++    grid = (math.ceil(num_queries / TILE_SIZE), )
++    _triton_advance_step[grid](input_tokens,
++                               sampled_token_ids,
++                               input_positions,
++                               seq_lens,
++                               slot_mapping,
++                               block_tables,
++                               block_tables.stride(0),
++                               num_seqs,
++                               num_queries,
++                               block_size,
++                               TILE_SIZE)
++
++def preload(
++    weight: torch.Tensor,
++    size: int
++) -> None:
++    """
++    Preload weights of layer.
++
++    Args:
++        weight (torch.Tensor): Weight to preload。
++        size (int): Preload size (byte)。
++
++    Returns:
++        None
++    """
++    return tmo.preload(weight, size)
++
++
++def matmul_allreduce(
++    cncl_comm,
++    a: torch.Tensor,
++    b: torch.Tensor,
++    bias: Optional[torch.Tensor] = None,
++    c: Optional[torch.Tensor] = None,
++    alpha: float = 1.0,
++    beta: float = .0,
++    block_m: int = 0
++) -> torch.Tensor:
++    return tmo.matmul_allreduce(cncl_comm=cncl_comm,
++                                a=a, b=b,
++                                bias=bias, c=c,
++                                alpha=alpha,
++                                beta=beta,
++                                block_m=block_m)
++
++
++def smooth_quant_matmul_allreduce(
++    cncl_comm,
++    a: torch.Tensor,
++    a_scale: torch.Tensor,
++    b: torch.Tensor,
++    b_scale: torch.Tensor,
++    dtype: torch.dtype,
++    bias: torch.Tensor = None,
++    c: torch.Tensor = None,
++    alpha: float = 1.0,
++    beta: float = 1.0,
++    block_m: int = 0):
++    return tmo.smooth_quant_matmul_allreduce(
++                cncl_comm=cncl_comm,
++                a=a, a_scale=a_scale,
++                b=b, b_scale=b_scale,
++                dtype=dtype, bias=bias, c=c,
++                alpha=alpha, beta=beta, block_m=block_m)
++
++
++def quant_matmul_allreduce(
++    cncl_comm,
++    a_tensor: torch.Tensor,
++    a_scale: Optional[torch.Tensor],
++    a_zero: Optional[torch.Tensor],
++    b_tensor: torch.Tensor,
++    b_scale: Optional[torch.Tensor],
++    b_zero: Optional[torch.Tensor],
++    bias: Optional[torch.Tensor],
++    c_tensor: Optional[torch.Tensor],
++    c_scale: Optional[torch.Tensor],
++    c_zero: Optional[torch.Tensor],
++    gemm_output_scale: Optional[torch.Tensor],
++    gemm_output_zero: Optional[torch.Tensor],
++    data_type: Optional[str],
++    quant_algo: str,
++    a_quant_layout: str,
++    b_quant_layout: str,
++    quant_bit_size: int = 8,
++    alpha: float = 1.0,
++    beta: float = 1.0,
++    trans_a: bool = False,
++    trans_b: bool = True,
++    block_m: int = 0
++) -> torch.Tensor:
++    return tmo.quant_matmul_allreduce(
++        cncl_comm=cncl_comm, a_tensor=a_tensor, a_scale=a_scale, a_zero=a_zero,
++        b_tensor=b_tensor, b_scale=b_scale, b_zero=b_zero, bias=bias,
++        c_tensor=c_tensor, c_scale=c_scale, c_zero=c_zero,
++        gemm_output_scale=gemm_output_scale, gemm_output_zero=gemm_output_zero,
++        data_type=data_type, quant_algo=quant_algo,
++        a_quant_layout=a_quant_layout, b_quant_layout=b_quant_layout,
++        quant_bit_size=quant_bit_size,
++        alpha=alpha, beta=beta, trans_a=trans_a, trans_b=trans_b, block_m=block_m)
++
++
++def flash_attn_sq_mm_allreduce(
++    cncl_comm: int,
++    q: torch.Tensor,
++    k: torch.Tensor,
++    v: torch.Tensor,
++    cu_seq_lens_q: Optional[torch.Tensor],
++    cu_seq_lens_kv: Optional[torch.Tensor],
++    alibi_slope: Optional[torch.Tensor],
++    attn_bias: Optional[torch.Tensor],
++    smooth: torch.Tensor,
++    weight: torch.Tensor,
++    weight_scale: torch.Tensor,
++    bias: Optional[torch.Tensor],
++    max_seq_len_q: int,
++    max_seq_len_kv: int,
++    softmax_scale: float,
++    is_causal: bool,
++    window_size_left: int = -1,
++    window_size_right: int = -1,
++    compute_dtype: torch.dtype = torch.float,
++    block_seq: int = 0) -> torch.Tensor:
++    return tmo.flash_attn_sq_mm_allreduce(cncl_comm, q, k, v,
++                                cu_seq_lens_q, cu_seq_lens_kv, alibi_slope, attn_bias, smooth, weight, weight_scale,
++                                bias, max_seq_len_q, max_seq_len_kv, softmax_scale, is_causal, window_size_left,
++                                window_size_right, compute_dtype, block_seq)
++
++#Moe inner kernels
++def moe_softmax_topk(input: torch.Tensor,
++                     topk: int,
++                     normalize: bool = False,
++                     num_expert_group: int = -1,
++                     topk_group: int = 0,
++                     mask: Optional[torch.Tensor] = None,
++                     normed_by : str = "topk_logit",
++                     route_scale : float = 1.0) -> Tuple[torch.Tensor]:
++    return tmo.moe_softmax_topk(input, topk, normalize, num_expert_group, topk_group, mask, normed_by, route_scale)
++
++def moe_sigmoid_topk(input: torch.Tensor,
++                     topk: int,
++                     normalize: bool = False,
++                     num_expert_group: int = -1,
++                     topk_group: int = 0,
++                     route_scale: float = 1.0,
++                     score_bias: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor]:
++    return tmo.moe_sigmoid_topk(input, topk, normalize, num_expert_group,
++                                topk_group, route_scale = route_scale,
++                                score_bias = score_bias)
++
++def moe_gen_idx(expert_id: torch.Tensor,
++                expert_num: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
++    return tmo.moe_gen_idx(expert_id, expert_num)
++
++def moe_expand_input(input: torch.Tensor,
++                     gather_idx: torch.Tensor,
++                     cusum_token_count: Optional[torch.Tensor] = None,
++                     start_expert_id: int = 0,
++                     expert_size: int = 0) -> torch.Tensor:
++    return tmo.moe_expand_input(input, gather_idx,
++                                cusum_token_count,
++                                start_expert_id, expert_size)
++
++def moe_active(input: torch.Tensor,
++               act_mode: str,
++               is_gated: bool,
++               output: Optional[torch.Tensor] = None,
++               bias: Optional[torch.Tensor] = None,
++               cusum_token_count: Optional[torch.Tensor] = None,
++               start_expert_id: int = 0,
++               expert_size: int = 0) -> torch.Tensor:
++    return tmo.moe_active(input, act_mode, is_gated, output,
++                          bias, cusum_token_count,
++                          start_expert_id, expert_size)
++
++def group_gemm(a: torch.Tensor,
++               b: torch.Tensor,
++               m_list: torch.Tensor,
++               expand_idx: Optional[torch.Tensor],
++               c: Optional[torch.Tensor],
++               alpha: Optional[torch.Tensor],
++               beta: Optional[torch.Tensor],
++               max_m: int = 0
++               ) -> torch.Tensor:
++    return tmo.group_gemm(a, b, m_list, expand_idx,
++                              c, alpha, beta, max_m)
++
++def smooth_quant_group_gemm(a: torch.Tensor,
++                            b: torch.Tensor,
++                            m_list: torch.Tensor,
++                            expand_idx: Optional[torch.Tensor],
++                            c: Optional[torch.Tensor],
++                            alpha: Optional[torch.Tensor],
++                            beta: Optional[torch.Tensor],
++                            a_scale: torch.Tensor,
++                            b_scale: torch.Tensor,
++                            dtype,
++                            max_m: int = 0,
++                            output: Optional[torch.Tensor] = None,
++                            ) -> torch.Tensor:
++    return tmo.smooth_quant_group_gemm(a, b, m_list, expand_idx, c, alpha, beta,
++                                       a_scale, b_scale, dtype, max_m, d=output)
++
++def moe_combine_result(input: torch.Tensor,
++                       reduce_weight: torch.Tensor,
++                       gather_ids: torch.Tensor,
++                       residual: Optional[torch.Tensor],
++                       cusum_token_count: Optional[torch.Tensor],
++                       start_expert_id: int,
++                       expert_size: int,
++                       bias: Optional[torch.Tensor] = None,
++                       output: Optional[torch.Tensor] = None,
++                       ) -> torch.Tensor:
++    return tmo.moe_combine_result(input, reduce_weight, gather_ids,
++                                  residual, cusum_token_count,
++                                  start_expert_id, expert_size, bias, output=output)
++
++def moe_quantize(x: torch.Tensor,
++                 smooth: torch.Tensor,
++                 zero: Optional[torch.Tensor] = None,
++                 token_count: Optional[torch.Tensor] = None,
++                 gather_index: Optional[torch.Tensor] = None,
++                 gather_index_start_position: Optional[torch.Tensor] = None,
++                 output: Optional[torch.Tensor] = None,
++                 output_scale: Optional[torch.Tensor] = None,
++                 dynamic_quant: bool = True,
++                 act_mode: str = "none",
++                 active_coef: float = 1.0,
++                 is_gated: bool = False,
++                 quant_type: torch.dtype = torch.int8
++                ) -> Tuple[torch.Tensor, torch.Tensor]:
++    return tmo.moe_quantize(x, smooth, zero, token_count, gather_index, gather_index_start_position,
++                            output, output_scale, dynamic_quant, act_mode, active_coef, is_gated, quant_type)
++
++
++def dequant_from_paged_cache(key: torch.Tensor,
++                             value: Optional[torch.Tensor],
++                             key_cache: torch.Tensor,
++                             value_cache: Optional[torch.Tensor],
++                             key_cache_quant_scale: torch.Tensor,
++                             value_cache_quant_scale: Optional[torch.Tensor],
++                             context_lengths: torch.Tensor,
++                             max_context_len: int,
++                             context_seq_offset: Optional[torch.Tensor],
++                             block_tables: torch.Tensor,
++                             quant_mode: int = 0,
++                             quant_bit: int = 8) -> None:
++    tmo.dequant_from_paged_cache(
++        key, value, key_cache, value_cache, key_cache_quant_scale, value_cache_quant_scale,
++        context_lengths, max_context_len, context_seq_offset, block_tables, quant_mode, quant_bit)
++
++def scaled_quantize(
++    input: torch.Tensor,
++    scale: Optional[torch.Tensor] = None,
++    zero: Optional[torch.Tensor] = None,
++    scale_ub: Optional[torch.Tensor] = None,
++    quant_type: torch.dtype = torch.int8,
++    quant_mode: str = "dynamic_per_token"
++) -> Tuple[torch.Tensor]:
++    """
++    Apply quantization to the input tensor input.
++
++    Args:
++        input (torch.Tensor): The tensor to be quantized. Shape is (..., C).
++        scale (Optional[torch.Tensor], optional): The scale multipled to the input tensor.  Shape is (C) or (1).
++        zero (Optional[torch.Tensor], optional):  Not supported, must pass None.
++        scale_ub (Optional[torch.Tensor], optional): The output_scale upper bound.
++            Take effect only if quant_type == torch.float8_e4m3fn and quant_mode == "dynamic_per_token".
++            Value out of range will be truncated.
++        quant_type (optional): Output data type, can be torch.int8, torch.float8_e4m3fn. Defaults to torch.int8.
++        quant_mode (str, optional): quantize mode, which can be:
++          - "dynamic_per_token"
++          - "static_per_tensor"
++          - "static_per_channel"
++
++    Type:
++        input: float, half, bfloat16.
++        scale: float.
++        scale_ub: float.
++
++    Returns:
++        Tuple[torch.Tensor]: Returns (output, output_scale) if quant_mode == "dynamic_per_token",
++        otherwise returns output only.
++    """
++    return tmo.scaled_quantize(input, scale, zero, scale_ub, quant_type=quant_type, quant_mode=quant_mode)
++
++def scaled_matmul(a: torch.Tensor,
++                  b: torch.Tensor,
++                  a_scale: Optional[torch.Tensor],
++                  b_scale: torch.Tensor,
++                  output_dtype: torch.dtype,
++                  bias: torch.Tensor = None,
++                  c: torch.Tensor = None,
++                  act_mode: str = "none",
++                  quant_bit_size: int = 8,
++                  alpha: float = 1.0,
++                  beta: float = 1.0,
++                  use_hp_active: bool = False):
++    """
++    Perform quantized matrix multiplication on tensor a and b.
++
++    Args:
++        a (torch.Tensor): Shape is (M, K).
++        b (torch.Tensor): If quant_bit_size = 8, shape is (N, K).
++                          If quant_bit_size = 4, shape is (N, K//2).
++        a_scale (Optional[torch.Tensor]): Shape can be (M).
++        b_scale (torch.Tensor): If use groupwise quantization, shape must be (N, group_num), data type must be
++            the same as a; otherwise shape must be (N), data type must be float.
++        output_dtype (torch.dtype): Specify the data type of output, must be torch.half or torch.bfloat16.
++        bias (torch.Tensor, optional): Shape is (N).
++        c (torch.Tensor, optional): Shape is (M, N).
++        act_mode (str, optional): Choose the activation algorithm, must be 'silu', 'gelu' or 'none'. If use groupwise
++            quantization, act_mode must be 'none'.
++        quant_bit_size (int, optional): The data format of b. Defaults to 8.
++        alpha (float, optional): coefficient of acted. Defaults to 1.0.
++        beta (float, optional): coefficient of c. Defaults to 1.0.
++        use_hp_active (bool, optional): Describing the algorithm that used in the implementation of the activation function.
++             When the value is true, use the high-precision algorithm, otherwise use the fastest algorithm of activation.
++             Defaults to False.
++
++    Type:
++        a: int8, half, bfloat16, float8_e4m3fn
++        a_scale: float
++        b: int8, float8_e4m3fn
++        b_scale: float
++        bias: same as output
++        c: same as output
++        output: specified by output_dtype
++
++    Returns:
++        A tensor with the shape of (M, N).
++    """
++    return tmo.scaled_matmul(a,
++                             b,
++                             a_scale,
++                             b_scale,
++                             output_dtype,
++                             bias,
++                             c,
++                             act_mode,
++                             quant_bit_size,
++                             alpha,
++                             beta,
++                             use_hp_active)
++
++def fused_mla_kv(kv: torch.Tensor,
++                 sin: torch.Tensor,
++                 cos: torch.Tensor,
++                 position_id: torch.Tensor,
++                 gamma: torch.Tensor,
++                 kv_cache: torch.Tensor,
++                 kv_cache_scale: Optional[torch.Tensor],
++                 slot_mapping: Optional[torch.Tensor],
++                 cache_bs_id: Optional[torch.Tensor] = None,
++                 cache_seq_offset: Optional[torch.Tensor] = None,
++                 is_paged_cache: bool = True,
++                 eps: float = 1e-5,
++                 interleaved: bool = True):
++    return tmo.fused_mla_kv(kv, sin, cos, position_id, gamma, kv_cache, kv_cache_scale, slot_mapping, cache_bs_id,
++                            cache_seq_offset, is_paged_cache, eps, interleaved)
++
++def fused_mla_q(q: torch.Tensor,
++                gamma: torch.Tensor,
++                smooth_quant_scale: torch.Tensor,
++                weight_b: torch.Tensor,
++                weight_b_scale: torch.Tensor,
++                weight_c: torch.Tensor,
++                sin: torch.Tensor,
++                cos: torch.Tensor,
++                position_id: torch.Tensor,
++                output: Optional[torch.Tensor] = None,
++                eps: float = 1e-6,
++                interleaved: bool = True) -> torch.Tensor:
++    return tmo.fused_mla_q(q, gamma, smooth_quant_scale, weight_b, weight_b_scale, weight_c, sin, cos, position_id,
++                           output, eps, interleaved)
++
++
++def gather_cache(
++    kv_cache: List[torch.Tensor],      # [[1, num_blocks, num_kv_heads, block_size, head_size]
++                                       #  [1, num_blocks, num_kv_heads, block_size] if kv_cache_dtype=int8]
++    dst: torch.Tensor,                 # [tot_tokens, entrys...]
++    block_table: torch.Tensor,         # [batch, block_indices]
++    cu_seq_lens: torch.Tensor,         # [batch+1]
++    batch_size: int,
++    seq_starts: torch.Tensor = None,   # Optional: [batch]
++    kv_cache_dtype: str = 'auto',
++) -> None:
++    """
++    Gathers sequences from src_cache into dst based on block_table and cu_seq_lens.
++
++    Args:
++        src_cache: Source KV cache tensor of shape [[1, num_blocks, num_kv_heads, block_size, head_size],
++          [1, num_blocks, num_kv_heads, block_size] if cache_dtype=int8].
++        dst: Destination tensor of shape [tot_tokens, entrys...].
++        block_table: Tensor of shape [batch, block_indices] mapping sequences to blocks.
++        cu_seq_lens: Tensor of shape [batch+1] with cumulative sequence lengths.
++        batch_size: Number of sequences in the batch.
++        seq_starts: Optional tensor of shape [batch] for block index offsets.
++    """
++    assert len(kv_cache) > 0 and kv_cache[0].numel() > 0, "kv cache can't be empty in gather_cache"
++    src_cache = kv_cache[0][0]
++    # Validate inputs
++    assert src_cache.device == dst.device == block_table.device == cu_seq_lens.device, \
++        "All tensors must be on the same device"
++    assert block_table.dtype == torch.int32, "block_table must be int32"
++    assert cu_seq_lens.dtype == torch.int32, "cu_seq_lens must be int32"
++    if kv_cache_dtype != 'int8':
++        assert src_cache.dtype == dst.dtype, "src_cache and dst must have the same dtype when no quantized"
++    if seq_starts is not None:
++        assert seq_starts.dtype == torch.int32, "seq_starts must be int32"
++        assert seq_starts.device == src_cache.device, "seq_starts must be on the same device"
++
++    # Extract dimensions
++    num_blocks, num_kv_heads, block_size, head_size = src_cache.shape
++    # When using MLA during decode it becomes MQA, the num_kv_heads is fixed to 1,
++    # so src_cache can be view to [num_blocks, block_size, head_size]
++    assert num_kv_heads == 1, "mla force num_kv_heads to 1"
++    src_cache = src_cache.view(num_blocks, block_size, -1)
++    entry_shape = src_cache.shape[2:]  # ENTRIES...
++    tot_tokens = cu_seq_lens[-1]
++    assert tot_tokens > 0, "tot_tokens should > 0"
++    assert tot_tokens <= dst.shape[0], "tot_tokens should <= dst.shape[0]"
++    dst_cache = dst[:tot_tokens]
++
++    # Ensure cu_seq_lens matches batch_size
++    assert cu_seq_lens.size(0) == batch_size + 1, "cu_seq_lens must have batch_size + 1 elements"
++
++    # Compute sequence lengths
++    seq_lens = cu_seq_lens[1:] - cu_seq_lens[:-1]  # [BATCH]
++    tot_blocks_per_seq = (seq_lens + block_size - 1) // block_size  # ceil_div
++
++    # Handle seq_starts offset
++    block_offsets = torch.zeros(batch_size, dtype=torch.int32, device=src_cache.device)
++    if seq_starts is not None:
++        block_offsets = seq_starts // block_size
++
++    # Flatten src_cache for easier indexing: [NUM_BLOCKS * BLOCK_SIZE, ENTRIES...]
++    src_flat = src_cache.view(num_blocks * block_size, *entry_shape)
++
++    # Prepare output indices
++    dst_indices = []
++    for bid in range(batch_size):
++        seq_len = seq_lens[bid]
++        if seq_len <= 0:
++            continue
++        seq_start = cu_seq_lens[bid]
++        tot_blocks = tot_blocks_per_seq[bid]
++        offset = block_offsets[bid]
++
++        # Compute block indices for this sequence
++        block_ids = block_table[bid, offset:offset + tot_blocks]
++
++        # Compute token indices within blocks
++        token_indices = torch.arange(seq_len, device=src_cache.device)
++        block_indices = token_indices // block_size
++        within_block = token_indices % block_size
++
++        # Map to src_flat indices
++        src_indices = block_ids[block_indices] * block_size + within_block
++        dst_indices.append(src_indices + seq_start)
++
++    # Concatenate all indices
++    dst_indices = torch.cat(dst_indices)
++
++    # Gather data
++    dst_flat = src_flat[dst_indices]
++    if kv_cache_dtype == 'int8':
++        src_cache_scale = kv_cache[1][0]
++        src_scale_flat = src_cache_scale.view(num_blocks * block_size)
++        dst_scale_flat = src_scale_flat[dst_indices]
++        dst_flat = dst_flat * dst_scale_flat.unsqueeze(-1)
++
++    dst_cache.view(-1, *entry_shape).copy_(dst_flat.view(tot_tokens, *entry_shape))
++
++
++def extract_uncausal_lse(attn_softmax_lse: torch.Tensor, cu_seq_lens: torch.Tensor) -> torch.Tensor:
++    """
++    Extract valid LSE values from attn_softmax_lse using cu_seq_lens and concatenate them to shape (nheads, total_seqlen).
++
++    Args:
++        attn_softmax_lse (torch.Tensor): Shape (batch_size, nheads, seqlen), LSE values from flash_attn_varlen_func.
++        cu_seq_lens (torch.Tensor): Shape (batch_size + 1,), cumulative sequence lengths.
++
++    Returns:
++        torch.Tensor: Shape (nheads, total_seqlen), concatenated valid LSE values for each head.
++    """
++    # Get dimensions
++    batch_size, nheads, seqlen = attn_softmax_lse.shape
++
++    # Compute sequence lengths
++    seq_lens = cu_seq_lens[1:] - cu_seq_lens[:-1]  # Shape: (batch_size,)
++
++    # Validate inputs
++    assert seq_lens.max() <= seqlen, "Sequence length exceeds attn_softmax_lse seqlen dimension."
++    assert len(cu_seq_lens) == batch_size + 1, "cu_seq_lens length must be batch_size + 1."
++
++    # Create a mask for valid positions: (batch_size, seqlen)
++    mask = torch.arange(seqlen, device=attn_softmax_lse.device).unsqueeze(0) < seq_lens.unsqueeze(1)
++
++    # Reshape attn_softmax_lse to (batch_size * seqlen, nheads) for easier indexing
++    lse_flat = attn_softmax_lse.permute(0, 2, 1).reshape(batch_size * seqlen, nheads)
++
++    # Flatten the mask to (batch_size * seqlen,)
++    mask_flat = mask.view(batch_size * seqlen)
++
++    # Select valid LSE values: (total_seqlen, nheads)
++    valid_lse = lse_flat[mask_flat]
++
++    # Reshape to (nheads, total_seqlen)
++    result_lse = valid_lse.t()  # Transpose: (nheads, total_seqlen)
++
++    assert result_lse.shape[-1] == cu_seq_lens[-1], "total lse seq should equal query len"
++
++    return result_lse
++
++
++def merge_attn_states(
++    output: torch.Tensor,
++    prefix_output: torch.Tensor,
++    prefix_lse: torch.Tensor,
++    suffix_output: torch.Tensor,
++    suffix_lse: torch.Tensor,
++    output_lse: Optional[torch.Tensor] = None,
++) -> None:
++    """
++    Merges partial attention states (prefix and suffix) into a single output.
++    Implements section 2.2 of https://www.arxiv.org/pdf/2501.01005.
++
++    Args:
++        output: Output tensor of shape [num_tokens, num_query_heads, head_size].
++        prefix_output: Prefix attention output, same shape as output.
++        prefix_lse: Prefix log-sum-exp, shape [num_query_heads, num_tokens].
++        suffix_output: Suffix attention output, same shape as output.
++        suffix_lse: Suffix log-sum-exp, same shape as prefix_lse.
++        output_lse: Optional output log-sum-exp, same shape as prefix_lse.
++    """
++    # Input validation
++    assert output.shape == prefix_output.shape == suffix_output.shape, \
++        "Output and input tensors must have the same shape"
++    assert prefix_lse.shape == suffix_lse.shape, \
++        "Prefix and suffix LSE tensors must have the same shape"
++    if output_lse is not None:
++        assert output_lse.shape == prefix_lse.shape, \
++            "Output LSE must have the same shape as input LSE tensors"
++
++    # Handle inf values (replace inf with -inf for consistency)
++    p_lse = torch.where(
++        prefix_lse == float('inf'),
++        torch.tensor(float('-inf'), device=prefix_lse.device),
++        prefix_lse
++    )
++    s_lse = torch.where(
++        suffix_lse == float('inf'),
++        torch.tensor(float('-inf'), device=suffix_lse.device),
++        suffix_lse
++    )
++
++    # Compute maximum LSE for numerical stability
++    max_lse = torch.maximum(p_lse, s_lse)  # Shape: [num_query_heads, num_tokens]
++
++    # Normalize LSE terms
++    p_lse = p_lse - max_lse  # Shape: [num_query_heads, num_tokens]
++    s_lse = s_lse - max_lse  # Shape: [num_query_heads, num_tokens]
++
++    # Compute sum of exponentials
++    out_se = torch.exp(p_lse) + torch.exp(s_lse)  # Shape: [num_query_heads, num_tokens]
++
++    # Compute output_lse if provided
++    if output_lse is not None:
++        output_lse.copy_(torch.log(out_se) + max_lse)
++
++    # Compute scaling factors
++    p_scale = torch.exp(p_lse) / out_se  # Shape: [num_query_heads, num_tokens]
++    s_scale = torch.exp(s_lse) / out_se  # Shape: [num_query_heads, num_tokens]
++
++    # Reshape scales for broadcasting
++    p_scale = p_scale.unsqueeze(-1)  # Shape: [num_query_heads, num_tokens, 1]
++    s_scale = s_scale.unsqueeze(-1)  # Shape: [num_query_heads, num_tokens, 1]
++
++    # Transpose outputs to match scaling dimensions
++    prefix_output = prefix_output.permute(1, 0, 2)  # Shape: [num_query_heads, num_tokens, head_size]
++    suffix_output = suffix_output.permute(1, 0, 2)  # Shape: [num_query_heads, num_tokens, head_size]
++
++    # Compute merged output
++    out = prefix_output * p_scale + suffix_output * s_scale  # Shape: [num_query_heads, num_tokens, head_size]
++
++    # Transpose back and store in output
++    output.copy_(out.permute(1, 0, 2))  # Shape: [num_tokens, num_query_heads, head_size]
+

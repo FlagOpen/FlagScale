@@ -1,0 +1,24 @@
+diff --git a/tests/functional_tests/test_cases/inference/qwen3/conf/inference/tp2.yaml b/tests/functional_tests/test_cases/inference/qwen3-flaggems/conf/inference/4b-tp2.yaml
+similarity index 83%
+rename from tests/functional_tests/test_cases/inference/qwen3/conf/inference/tp2.yaml
+rename to tests/functional_tests/test_cases/inference/qwen3-flaggems/conf/inference/4b-tp2.yaml
+index 4e6ff91d..71401698 100644
+--- a/tests/functional_tests/test_cases/inference/qwen3/conf/inference/tp2.yaml
++++ b/tests/functional_tests/test_cases/inference/qwen3-flaggems/conf/inference/4b-tp2.yaml
+@@ -6,6 +6,7 @@ llm:
+   pipeline_parallel_size: 1
+   gpu_memory_utilization: 0.9
+   seed: 1234
++  enforce_eager: true
+ 
+ generate:
+   prompts: [
+@@ -14,4 +15,6 @@ generate:
+   ]
+   sampling:
+     top_p: 0.1
+-    temperature: 0.1
++    top_k: 1
++    temperature: 0.0
++    seed: 1234
+

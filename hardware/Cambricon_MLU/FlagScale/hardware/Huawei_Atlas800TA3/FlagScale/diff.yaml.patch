@@ -1,0 +1,17 @@
+diff --git a/hardware/Huawei_Atlas800TA3/FlagScale/diff.yaml b/hardware/Huawei_Atlas800TA3/FlagScale/diff.yaml
+new file mode 100644
+index 00000000..ef6d9399
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/FlagScale/diff.yaml
+@@ -0,0 +1,10 @@
++backends_commit: {}
++backends_version:
++  FlagScale: main
++commit: 43c7cbf97cacdbc96c4b48a0a03d1141cdd1e2e2
++contact: ''
++device_type: Huawei_Atlas800TA3
++models:
++- deepseek_r1_distill_qwen
++task:
++- inference
+

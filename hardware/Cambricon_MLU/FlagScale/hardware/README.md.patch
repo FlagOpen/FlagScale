@@ -1,0 +1,19 @@
+diff --git a/hardware/README.md b/hardware/README.md
+index bfc5b20a..54257f85 100644
+--- a/hardware/README.md
++++ b/hardware/README.md
+@@ -39,11 +39,10 @@ The vendor adaptation process is similar to the user process, with a few additio
+ 
+ **Example: Adapting Megatron-LM backend for a training scenario with modifications to both FlagScale and Megatron-LM.**
+ 
+-1. **Use FlagScale adaptation (unpatch) as the base for vendor adaptation:**
+-`mode` should be `copy` to copy vendor-adapted code into `third_party/<submodule>` instead of creating symlinks.
++1. **Use FlagScale adaptation (unpatch) as the base for vendor adaptation.**
+ ```bash
+ cd FlagScale
+-python tools/patch/unpatch.py --backend Megatron-LM --mode copy
++python tools/patch/unpatch.py --backend Megatron-LM
+ ```
+ 
+ 2. **Make inplace modifications inside `third_party/Megatron-LM` and modify other FlagScale files.**  
+

@@ -1,0 +1,8 @@
+diff --git a/tests/functional_tests/test_cases/train/mixtral/results_gold/tp2_pp1_ep2.json b/tests/functional_tests/test_cases/train/mixtral/results_gold/tp2_pp1_ep2.json
+index 54f4905d..c35033d3 100644
+--- a/tests/functional_tests/test_cases/train/mixtral/results_gold/tp2_pp1_ep2.json
++++ b/tests/functional_tests/test_cases/train/mixtral/results_gold/tp2_pp1_ep2.json
+@@ -1 +1 @@
+-{"lm loss:": {"values": [11.17586, 11.16924, 10.41878, 11.66588, 9.671399, 9.475126, 9.189031, 9.22798, 9.120182, 8.95232]}}
++{"lm loss:": {"values": [11.17587, 11.16908, 10.41927, 11.66834, 9.679541, 9.481043, 9.194503, 9.234812, 9.128164, 8.960205]}}
+

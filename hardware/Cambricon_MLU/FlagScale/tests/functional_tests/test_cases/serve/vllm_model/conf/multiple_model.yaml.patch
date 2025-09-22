@@ -1,0 +1,30 @@
+diff --git a/tests/functional_tests/test_cases/serve/vllm_model/conf/multiple_model.yaml b/tests/functional_tests/test_cases/serve/vllm_model/conf/multiple_model.yaml
+deleted file mode 100644
+index 7c22468b..00000000
+--- a/tests/functional_tests/test_cases/serve/vllm_model/conf/multiple_model.yaml
++++ /dev/null
+@@ -1,23 +0,0 @@
+-defaults:
+-  - _self_
+-  - serve: config
+-
+-experiment:
+-  exp_name: multiple_model
+-  exp_dir: tests/functional_tests/test_cases/serve/vllm_model/results_test/multiple_model
+-  task:
+-    type: serve
+-    entrypoint: null
+-  runner:
+-    hostfile: null
+-  envs:
+-    CUDA_VISIBLE_DEVICES: 0,1,2,3
+-    CUDA_DEVICE_MAX_CONNECTIONS: 1
+-  cmds:
+-    before_start: source /root/miniconda3/bin/activate flagscale-inference
+-
+-action: run
+-
+-hydra:
+-  run:
+-    dir: ${experiment.exp_dir}/hydra
+

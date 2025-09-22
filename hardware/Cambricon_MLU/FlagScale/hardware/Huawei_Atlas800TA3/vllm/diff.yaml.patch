@@ -1,0 +1,19 @@
+diff --git a/hardware/Huawei_Atlas800TA3/vllm/diff.yaml b/hardware/Huawei_Atlas800TA3/vllm/diff.yaml
+new file mode 100644
+index 00000000..a0ff5f88
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/vllm/diff.yaml
+@@ -0,0 +1,12 @@
++backends_commit:
++  vllm: ed6e9075d31e32c8548b480a47d1ffb77da1f54c
++backends_version:
++  FlagScale: main
++  vllm: 0.7.3
++commit: 38b68cb613674d2beaa58295d73765923fc6d7b8
++contact: ''
++device_type: Huawei_Atlas800TA3
++models:
++- deepseek_r1_distill_qwen
++task:
++- inference
+

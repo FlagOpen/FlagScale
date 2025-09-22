@@ -1,0 +1,13 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 4512b262..92436ea5 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,3 +1,7 @@
++[build-system]
++requires = ["setuptools>=77.0", "wheel", "gitpython"]
++build-backend = "build_backend.flagscale_build_backend"
++
+ [tool.black]
+ line-length = 100
+ skip_string_normalization = true
+

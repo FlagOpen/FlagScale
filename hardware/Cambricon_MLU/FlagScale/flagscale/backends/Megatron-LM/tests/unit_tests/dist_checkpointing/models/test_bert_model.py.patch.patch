@@ -1,0 +1,21 @@
+diff --git a/flagscale/backends/Megatron-LM/tests/unit_tests/dist_checkpointing/models/test_bert_model.py.patch b/flagscale/backends/Megatron-LM/tests/unit_tests/dist_checkpointing/models/test_bert_model.py.patch
+new file mode 100644
+index 00000000..73573fa3
+--- /dev/null
++++ b/flagscale/backends/Megatron-LM/tests/unit_tests/dist_checkpointing/models/test_bert_model.py.patch
+@@ -0,0 +1,14 @@
++diff --git a/tests/unit_tests/dist_checkpointing/models/test_bert_model.py b/tests/unit_tests/dist_checkpointing/models/test_bert_model.py
++index 27f01447..35d08237 100644
++--- a/tests/unit_tests/dist_checkpointing/models/test_bert_model.py
+++++ b/tests/unit_tests/dist_checkpointing/models/test_bert_model.py
++@@ -74,6 +74,9 @@ class TestBertModel:
++ 
++ 
++ class TestBERTModelReconfiguration:
+++    def setup_class(cls):
+++        Utils.initialize_distributed()
+++    
++     def setup_method(self, method):
++         pass
++ 
+

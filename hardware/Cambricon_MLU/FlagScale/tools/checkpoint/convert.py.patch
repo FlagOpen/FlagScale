@@ -1,0 +1,14 @@
+diff --git a/tools/checkpoint/convert.py b/tools/checkpoint/convert.py
+index a3cec5ad..3a7bffff 100644
+--- a/tools/checkpoint/convert.py
++++ b/tools/checkpoint/convert.py
+@@ -39,7 +39,7 @@ def main():
+         default=[],
+         nargs="+",
+         required=True,
+-        choices=["aquila", "mistral", "mixtral", "llama", "deepseek_v3"],
++        choices=["aquila", "mistral", "mixtral", "llama", "deepseek_v3", "qwen3"],
+         help="Type of the model.",
+     )
+     parser.add_argument(
+

@@ -1,0 +1,13 @@
+diff --git a/.gitignore b/.gitignore
+index e6b4a7c6..c9d4e44a 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -13,6 +13,7 @@ outputs
+ *.out
+ .idea/
+ third_party/*
++dist/*
+ 
+ # test results
+ tests/functional_tests/test_cases/*/*/results_test
+

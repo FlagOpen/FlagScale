@@ -1,0 +1,8 @@
+diff --git a/flagscale/agent/communication/__init__.py b/flagscale/agent/communication/__init__.py
+deleted file mode 100644
+index 2e343e16..00000000
+--- a/flagscale/agent/communication/__init__.py
++++ /dev/null
+@@ -1 +0,0 @@
+-from .communicator import Communicator
+

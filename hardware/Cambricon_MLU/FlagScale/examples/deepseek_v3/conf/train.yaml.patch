@@ -1,0 +1,29 @@
+diff --git a/examples/deepseek_v3/conf/train.yaml b/examples/deepseek_v3/conf/train.yaml
+index 86fa1e1d..e030db9e 100644
+--- a/examples/deepseek_v3/conf/train.yaml
++++ b/examples/deepseek_v3/conf/train.yaml
+@@ -4,11 +4,11 @@ defaults:
+   - train: 16b_a3b
+ 
+ experiment:
+-  exp_name: DeepSeek-V3-Test
++  exp_name: DeepSeek-16b-a3b
+   seed: 42
+   save_steps: 10000
+-  load: None
+-  exp_dir: /xxx
++  load: null
++  exp_dir: xxx
+   ckpt_format: torch
+   task:
+     type: train
+@@ -20,7 +20,7 @@ experiment:
+     rdzv_backend: static
+     hostfile: null
+   cmds:
+-    before_start: "ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale"
++    before_start: ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale-train
+   envs:
+     LOGLEVEL: "INFO"
+     CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
+

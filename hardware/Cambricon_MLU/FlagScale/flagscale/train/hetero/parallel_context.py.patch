@@ -1,0 +1,83 @@
+diff --git a/flagscale/train/hetero/parallel_context.py b/flagscale/train/hetero/parallel_context.py
+index b7cb310e..8054b1c2 100644
+--- a/flagscale/train/hetero/parallel_context.py
++++ b/flagscale/train/hetero/parallel_context.py
+@@ -75,8 +75,6 @@ def create_group(
+     use_local_synchronization=False,
+     group_desc=None,
+ ):
+-    # NOTE(lizhiyu): Fix the bug of hanging when using torch >= 2.6 temporarily, but there will be an error in `dp2dp4_shared_embedding`
+-    # use_local_synchronization = False
+     from megatron.core.parallel_state import create_group
+     return create_group(
+         ranks=ranks,
+@@ -757,7 +755,8 @@ class ParallelContext:
+             if mesh_index == len(self._process_meshes):
+                 aggregated_ranks = [rank for ranks in path for rank in ranks]
+                 self._global_all_group_ranks[group_name].append(aggregated_ranks)
+-                group = create_group(aggregated_ranks, timeout=self._timeout, use_local_synchronization=True, group_desc=group_name)
++                # NOTE: "use_local_synchronization=True" works well in torhch <= 2.5, but it causes hang in torch >= 2.6
++                group = create_group(aggregated_ranks, timeout=self._timeout, use_local_synchronization=False, group_desc=group_name)
+                 if self._rank in aggregated_ranks:
+                     self._global_process_groups[group_name].append(group)
+                     self._global_group_ranks[group_name].append(aggregated_ranks)
+@@ -792,7 +791,7 @@ class ParallelContext:
+         self._global_parallel_ranks["last_rank"] = pp_ranks[-1][-1] if isinstance(pp_ranks[0], list) else pp_ranks[-1]
+ 
+         # build global embedding process groups
+-        for ranks in self._global_group_ranks["pp"]:
++        for ranks in self._global_all_group_ranks["pp"]: # NOTE: Make sure all the ranks to execute the "create_group" API.
+             if len(ranks) > 1:
+                 embedding_ranks = [ranks[0], ranks[-1]]
+                 position_embedding_ranks = [ranks[0]]
+@@ -813,13 +812,13 @@ class ParallelContext:
+             else:
+                 embedding_ranks = ranks
+                 position_embedding_ranks = ranks
+-            group = create_group(embedding_ranks, timeout=self._timeout, use_local_synchronization=True, group_desc="embd")
++            group = create_group(embedding_ranks, timeout=self._timeout, use_local_synchronization=False, group_desc="embd")
+             if self._rank in embedding_ranks and ("embd" not in self._global_group_ranks or embedding_ranks not in self._global_group_ranks["embd"]):
+                 self._global_process_groups["embd"].append(group)
+                 self._global_process_group_to_ranks[group] = embedding_ranks
+                 self._global_group_ranks["embd"].append(embedding_ranks)
+ 
+-            group = create_group(position_embedding_ranks, timeout=self._timeout, use_local_synchronization=True, group_desc="embd_pos")
++            group = create_group(position_embedding_ranks, timeout=self._timeout, use_local_synchronization=False, group_desc="embd_pos")
+             if self._rank in position_embedding_ranks:
+                 self._global_process_groups["embd_pos"].append(group)
+                 self._global_process_group_to_ranks[group] = position_embedding_ranks
+@@ -1198,6 +1197,7 @@ class ParallelContext:
+             else:
+                 group = group[0]
+         ranks = self._global_process_group_to_ranks[group]
++        ignore_virtual = True
+         if ignore_virtual:
+             return rank in ranks
+         if rank in ranks:
+@@ -1452,6 +1452,9 @@ class ParallelContext:
+         else:
+             return 0
+ 
++    def get_intra_distributed_optimizer_instance_group(self):
++        return torch.distributed.group.WORLD
++
+     def get_tensor_and_context_parallel_rank(self):
+         """Return caller's rank in the joint tensor-model-parallel and context-parallel group."""
+         if torch.distributed.is_available() and torch.distributed.is_initialized():
+@@ -1599,8 +1602,13 @@ class ParallelContext:
+         else:
+             return 0
+ 
+-    def get_intra_distributed_optimizer_instance_group(self):
+-        return torch.distributed.group.WORLD
++    def get_expert_data_parallel_world_size(self):
++        """Return caller's rank in the expert data parallel group."""
++        if torch.distributed.is_available() and torch.distributed.is_initialized():
++            return torch.distributed.get_rank(group=self.get_expert_data_parallel_group()).size()
++        else:
++            return 0
++
+     ### End of expert-related functions region
+ 
+     def set_global_memory_buffer(self):
+

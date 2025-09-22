@@ -1,0 +1,26 @@
+diff --git a/examples/qwen3/conf/serve.yaml b/examples/qwen3/conf/serve.yaml
+index d8006ef8..1733c98e 100644
+--- a/examples/qwen3/conf/serve.yaml
++++ b/examples/qwen3/conf/serve.yaml
+@@ -1,16 +1,16 @@
+ defaults:
+ - _self_
+-- serve: 0_6b
++- serve: 8b
+ 
+ experiment:
+-  exp_name: qwen3_0.6b
++  exp_name: qwen3_8b
+   exp_dir: outputs/${experiment.exp_name}
+   task:
+     type: serve
+-  deploy:
+-    use_fs_serve: false
+   runner:
+     hostfile: null
++    deploy:
++      use_fs_serve: false
+   envs:
+     CUDA_VISIBLE_DEVICES: 0
+     CUDA_DEVICE_MAX_CONNECTIONS: 1
+

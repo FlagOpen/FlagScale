@@ -1,0 +1,14 @@
+diff --git a/tests/functional_tests/test_cases/hetero_train/aquila/conf/tp2pp1_tp4pp1_tp2pp1.yaml b/tests/functional_tests/test_cases/hetero_train/aquila/conf/tp2pp1_tp4pp1_tp2pp1.yaml
+index 4c605cac..6ffd0f19 100644
+--- a/tests/functional_tests/test_cases/hetero_train/aquila/conf/tp2pp1_tp4pp1_tp2pp1.yaml
++++ b/tests/functional_tests/test_cases/hetero_train/aquila/conf/tp2pp1_tp4pp1_tp2pp1.yaml
+@@ -18,7 +18,7 @@ experiment:
+     CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
+     CUDA_DEVICE_MAX_CONNECTIONS: 1
+     CUBLAS_WORKSPACE_CONFIG: ":4096:8"
+-    NCCL_ALGO: "Tree"
++    NCCL_ALGO: "Ring"
+     NVTE_APPLY_QK_LAYER_SCALING: 0
+     NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
+     NVTE_FLASH_ATTN: 0
+

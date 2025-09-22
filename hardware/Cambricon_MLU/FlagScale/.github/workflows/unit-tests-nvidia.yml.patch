@@ -1,0 +1,67 @@
+diff --git a/.github/workflows/unit-tests.yml b/.github/workflows/unit-tests-nvidia.yml
+similarity index 65%
+rename from .github/workflows/unit-tests.yml
+rename to .github/workflows/unit-tests-nvidia.yml
+index 0c259543..48e5a7d8 100644
+--- a/.github/workflows/unit-tests.yml
++++ b/.github/workflows/unit-tests-nvidia.yml
+@@ -1,5 +1,4 @@
+-# .github/workflows/create-container-unit-tests.yml
+-name: Unit Tests
++name: Unit Tests Nvidia
+ 
+ on:
+   workflow_call:
+@@ -16,7 +15,7 @@ on:
+ 
+ jobs:
+   unit-test:
+-    runs-on: self-hosted
++    runs-on: [self-hosted, Linux, X64, nvidia-0, gpus-8]
+     container:
+       image: ${{ inputs.image }}
+       ports:
+@@ -44,24 +43,32 @@ jobs:
+           submodules: false
+           set-safe-directory: true
+ 
+-      - name: Unit Test Coverage Online Report
+-        run: |
+-          REPORT_ADDR=$(cat "/workspace/config/report_address")
+-          echo "After 'Run Unit Test' is completed/stopped, you can access the test coverage report at http://${REPORT_ADDR}/${{github.sha}}/cov-report-${{ inputs.backend }}/index.html"
+-
+       - name: Run Unit Test
+         run: |
++          echo "USER: $USER"
++          echo "UID: $(id -u)"
++          echo "GID: $(id -g)"
++          echo "Home: $HOME"
++          whoami
+           pip install gitpython # TODO: Remove after updating the image
+ 
+           git config --global --add safe.directory /__w/FlagScale/FlagScale
+-          if [ "${{ inputs.backend }}" = "megatron" ] || [ "${{ inputs.backend }}" = "flagscale" ]; then
+-            python tools/patch/unpatch.py --backend Megatron-LM
+-          elif [ "${{ inputs.backend }}" = "vllm" ]; then
+-            python tools/patch/unpatch.py --backend vllm
++          
++          TMP_DIR=$(mktemp -d)
++          echo "Copying source to temporary directory: $TMP_DIR"
++          cp -r /__w/FlagScale/FlagScale/. $TMP_DIR
++          cd $TMP_DIR
++          trap 'echo "Cleaning up temporary directory..."; rm -rf "$TMP_DIR"' EXIT
++
++          if [ "${{ inputs.backend }}" = "train_megatron" ] || [ "${{ inputs.backend }}" = "train_flagscale" ]; then
++            echo ""
++            # PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
++          elif [ "${{ inputs.backend }}" = "vllm" ] || [ "${{ inputs.backend }}" = "inference_flagscale" ]; then
+             source /root/miniconda3/bin/activate flagscale-inference
+             pip install scikit-build scikit-build-core
+             pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
+-            MAX_JOBS=$(nproc) pip install --no-build-isolation -v ./third_party/vllm/.
++            PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
++            conda deactivate
+           else
+             echo "Unknown backend type: ${{ inputs.backend }}"
+             exit 1
+

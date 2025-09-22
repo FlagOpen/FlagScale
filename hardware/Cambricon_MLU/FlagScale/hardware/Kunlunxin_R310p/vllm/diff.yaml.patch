@@ -1,0 +1,19 @@
+diff --git a/hardware/Kunlunxin_R310p/vllm/diff.yaml b/hardware/Kunlunxin_R310p/vllm/diff.yaml
+new file mode 100644
+index 00000000..33e3688d
+--- /dev/null
++++ b/hardware/Kunlunxin_R310p/vllm/diff.yaml
+@@ -0,0 +1,12 @@
++backends_commit:
++  vllm: b6553be1bc75f046b00046a4ad7576364d03c835
++backends_version:
++  FlagScale: 0.8.0
++  vllm: 0.8.5
++commit: 3297c7805ae13adddb8812304c53f67fd383668e
++contact: ''
++device_type: Kunlunxin_R310p
++models:
++- deepseek_r1_distill_l_qwen
++task:
++- inference
+

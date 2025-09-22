@@ -1,0 +1,14 @@
+diff --git a/flagscale/runner/auto_tuner/search/algorithm.py b/flagscale/runner/auto_tuner/search/algorithm.py
+index 889b3486..cae23a5c 100644
+--- a/flagscale/runner/auto_tuner/search/algorithm.py
++++ b/flagscale/runner/auto_tuner/search/algorithm.py
+@@ -37,7 +37,7 @@ class GridAlgo(Algo):
+                     self.strategies[self.idx :], key=sort_by_memory
+                 )
+         elif mode == "memory_model":
+-            self.strategies = sorted(self.strategies, key=sort_by_memory_model)
++            self.strategies = sorted(self.strategies, key=sort_by_memory_model, reverse=True)
+         elif mode == "performance":
+             if self.idx > 0 and self.idx < len(self.strategies):
+                 self.strategies = self.strategies[: self.idx] + sorted(
+

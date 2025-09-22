@@ -1,0 +1,21 @@
+diff --git a/flagscale/backends/Megatron-LM/tests/unit_tests/dist_checkpointing/test_flattened_resharding.py.patch b/flagscale/backends/Megatron-LM/tests/unit_tests/dist_checkpointing/test_flattened_resharding.py.patch
+new file mode 100644
+index 00000000..a148ee8c
+--- /dev/null
++++ b/flagscale/backends/Megatron-LM/tests/unit_tests/dist_checkpointing/test_flattened_resharding.py.patch
+@@ -0,0 +1,14 @@
++diff --git a/tests/unit_tests/dist_checkpointing/test_flattened_resharding.py b/tests/unit_tests/dist_checkpointing/test_flattened_resharding.py
++index 1485eebe..a65e8cbe 100644
++--- a/tests/unit_tests/dist_checkpointing/test_flattened_resharding.py
+++++ b/tests/unit_tests/dist_checkpointing/test_flattened_resharding.py
++@@ -28,6 +28,9 @@ from tests.unit_tests.test_utilities import Utils
++ 
++ 
++ class TestFlattenedResharding:
+++    def setup_class(cls):
+++        Utils.initialize_distributed()
+++
++     def setup_method(self, method):
++         pass
++ 
+

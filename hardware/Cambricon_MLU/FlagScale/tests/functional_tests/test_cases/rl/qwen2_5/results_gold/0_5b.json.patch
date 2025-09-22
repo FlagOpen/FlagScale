@@ -1,0 +1,8 @@
+diff --git a/tests/functional_tests/test_cases/rl/qwen2_5/results_gold/0_5b.json b/tests/functional_tests/test_cases/rl/qwen2_5/results_gold/0_5b.json
+new file mode 100644
+index 00000000..e1a46115
+--- /dev/null
++++ b/tests/functional_tests/test_cases/rl/qwen2_5/results_gold/0_5b.json
+@@ -0,0 +1 @@
++{"val-core/openai/gsm8k/reward/mean@1": [0.001, 0.011, 0.127, 0.234]}
+

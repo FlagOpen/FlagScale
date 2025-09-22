@@ -1,0 +1,18 @@
+diff --git a/examples/qwen2_5/conf/serve.yaml b/examples/qwen2_5/conf/serve.yaml
+index d47fa645..fac1ad3d 100644
+--- a/examples/qwen2_5/conf/serve.yaml
++++ b/examples/qwen2_5/conf/serve.yaml
+@@ -7,10 +7,10 @@ experiment:
+   exp_dir: outputs/${experiment.exp_name}
+   task:
+     type: serve
+-  deploy:
+-    use_fs_serve: false
+   runner:
+     hostfile: null
++    deploy:
++      use_fs_serve: false
+   envs:
+     CUDA_VISIBLE_DEVICES: 0
+     CUDA_DEVICE_MAX_CONNECTIONS: 1
+
