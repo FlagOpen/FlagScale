@@ -64,7 +64,7 @@ jobs:
             pip uninstall vllm -y
             pip install dist/vllm*.whl
             #cd third_party/vllm && VLLM_VERSION=empty pip install -v .[ascend]
-            pip install pytest
+            pip install pytest -i https://pypi.tuna.tsinghua.edu.cn/simple
           else
             echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
