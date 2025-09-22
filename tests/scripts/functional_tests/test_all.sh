@@ -4,11 +4,9 @@
 commands=(
     # For train
     "tests/scripts/functional_tests/test_task.sh --type train --task aquila"
-    # TODO: need fix
-    # "tests/scripts/functional_tests/test_task.sh --type train --task deepseek"
+    "tests/scripts/functional_tests/test_task.sh --type train --task deepseek"
     "tests/scripts/functional_tests/test_task.sh --type train --task mixtral"
-    # "tests/scripts/functional_tests/test_task.sh --type train --task llava_onevision"
-    # For hetero-train
+    "tests/scripts/functional_tests/test_task.sh --type train --task llava_onevision"
     "tests/scripts/functional_tests/test_task.sh --type hetero_train --task aquila"
     
     # For inference
@@ -16,6 +14,8 @@ commands=(
     "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-flaggems"
     "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-metax"
     "tests/scripts/functional_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-flaggems-metax"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task opi_llama3_1_instruct-metax"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task opi_llama3_1_instruct-flaggems-metax"
     "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3"
     "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3-flaggems"
     "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3-metax"

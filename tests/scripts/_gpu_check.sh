@@ -64,7 +64,7 @@ wait_for_gpu_metax() {
     while true; do
         local memory_usage_array=()
         local memory_total_array=()
-        
+
         # Query GPU memory usage and total memory
         # mx-smi --show-memory displays memory info in KBytes
         # Extracting vram used and total values for each GPU
