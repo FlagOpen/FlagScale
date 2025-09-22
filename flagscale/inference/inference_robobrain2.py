@@ -46,8 +46,18 @@ def clean_text(text: str):
     """
     Remove placeholders or template tags from model output.
     """
-    tags = ["<|image_pad|>", "<|video_pad|>", "<|vision_start|>", "<|vision_end|>",
-            "<|im_start|>", "<|im_end|>", "<think>", "</think>", "<answer>", "</answer>"]
+    tags = [
+        "<|image_pad|>",
+        "<|video_pad|>",
+        "<|vision_start|>",
+        "<|vision_end|>",
+        "<|im_start|>",
+        "<|im_end|>",
+        "<think>",
+        "</think>",
+        "<answer>",
+        "</answer>",
+    ]
     for tag in tags:
         text = text.replace(tag, "")
     return text.strip()
@@ -66,13 +76,19 @@ def inference(cfg):
 
     # Initialize processor if needed
     processor_cfg = llm_cfg.get("processor", None)
-    processor = AutoProcessor.from_pretrained(processor_cfg, trust_remote_code=True) if processor_cfg else None
+    processor = (
+        AutoProcessor.from_pretrained(processor_cfg, trust_remote_code=True)
+        if processor_cfg
+        else None
+    )
 
     # Load prompts and multimodal data
     questions = cfg.generate.get("prompts", [])
     mm_data_paths = cfg.generate.get("mm_data", [])
     modality = cfg.generate.get("modality", "image")
-    assert questions and len(questions) == len(mm_data_paths), "Prompts and mm_data must match in length"
+    assert questions and len(questions) == len(
+        mm_data_paths
+    ), "Prompts and mm_data must match in length"
 
     # Build inputs
     inputs = []
