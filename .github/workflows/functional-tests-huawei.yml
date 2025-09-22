@@ -59,8 +59,11 @@ jobs:
           if [ "${{ inputs.type }}" = "serve" ]; then
             echo "Original commit ID: ${{ github.event.pull_request.head.sha }}"
             python tools/patch/unpatch.py --backend vllm FlagScale --device-type Huawei_Atlas800TA3 --task inference --key-path /data/cicd/flagscale_vllm_073_code --commit ${{ github.event.pull_request.head.sha }}
-            cd build/Huawei_Atlas800TA3/FlagScale/
-            cd third_party/vllm && VLLM_VERSION=empty pip install -v .[ascend]
+            cd build/Huawei_Atlas800TA3/FlagScale/third_party/vllm
+            python setup.py bdist_wheel
+            pip uninstall vllm -y
+            pip install dist/vllm*.whl
+            #cd third_party/vllm && VLLM_VERSION=empty pip install -v .[ascend]
             pip install pytest
           else
             echo "Unknown backend type: ${{ inputs.type }}"
