@@ -1,4 +1,4 @@
-robotics git repo should be added as a submodule, but it is not published yet.
+Tips: robotics git repo should be added as a submodule, but it is not published yet.
 
 # Training
 ##  Install FlagScale 
@@ -14,13 +14,35 @@ FlagScale training env include:
 1. Robotics, not publish yet
 2. Lerobot, https://github.com/huggingface/lerobot
 3. openpi-client
-4. python deps, flag-scale/requirements/train/robotics/requirements.txt
+4. python deps, FlagScale/requirements/train/robotics/requirements.txt
+
+
+``` sh
+# install lerobot
+git clone https://github.com/huggingface/lerobot.git
+cd lerobot
+pip install -e .
+
+# install openpi
+git clone --recurse-submodules git@github.com:Physical-Intelligence/openpi.git
+# Or if you already cloned the repo:
+# git submodule update --init --recursive
+cd openpi
+GIT_LFS_SKIP_SMUDGE=1 uv sync
+GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
+cd packages/openpi-client
+pip install -e .
+
+# install other python deps
+pip install -r requirements/train/robotics/requirements.txt
+
+```
 
 
 ## Prepare Dataset
 Convert WebDataset to Energon:
 ```
-cd flag-scale/tools/datasets/qwenvl/
+cd FlagScale/tools/datasets/qwenvl/
 python convert_robotics.py \
     --dataset-root="" \
     --output-root=/output/path \
@@ -52,14 +74,14 @@ Attributes need to change:
 
 ## Start Training
 ```
-cd flag-scale/
+cd FlagScale/
 python run.py --config-path ./examples/robotics/conf --config-name train action=start
 ```
 
 # Serving
 
 ##  Install FlagScale 
-Install serving env according to README.md under project root path.
+Install serving env according to [README](https://github.com/FlagOpen/FlagScale/blob/main/README.md) 
 
 ## Edit Config
 Config files: examples/robotics/conf/serve/3_3b.yaml
@@ -67,6 +89,6 @@ Attributes need to change:: model path
 
 ## Start Serving
 ```
-cd flag-scale/
+cd FlagScale/
 python run.py --config-path ./examples/robotics/conf --config-name serve action=start
 ```
