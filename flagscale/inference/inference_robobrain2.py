@@ -1,8 +1,11 @@
 import os
+
 from PIL import Image
-from transformers import AutoTokenizer, AutoProcessor
+from transformers import AutoProcessor, AutoTokenizer
+
 from vllm import LLM
 from vllm.sampling_params import SamplingParams
+
 from flagscale.inference.arguments import parse_config
 
 
