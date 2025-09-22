@@ -7,8 +7,8 @@ system:
   context_parallel_size: 1
   sequence_parallel: true
   use_distributed_optimizer: true
-  # overlap_grad_reduce: true
-  # overlap_param_gather: true
+  overlap_grad_reduce: true
+  overlap_param_gather: true
   precision:
     bf16: true
     attention_softmax_in_fp32: true
@@ -33,19 +33,17 @@ model:
   transformer_impl: transformer_engine
   num_layers: 64
   hidden_size: 5120
-  ffn_hidden_size: 25600
-  num_attention_heads: 64
-  kv_channels: 128
+  ffn_hidden_size: 27648
+  num_attention_heads: 40
   group_query_attention: true
   num_query_groups: 8
   seq_length: 4096
   max_position_embeddings: 40960
-  norm_epsilon: 1e-6
+  norm_epsilon: 1e-5
   use_rotary_position_embeddings: true
   rotary_base: 1000000
   swiglu: true
   normalization: RMSNorm
-  qk_layernorm: true
   init_method_std: 0.02
   attention_dropout: 0.0
   hidden_dropout: 0.0
@@ -58,7 +56,7 @@ model:
   seed: ${experiment.seed}
   finetune: false
   micro_batch_size: 1
-  global_batch_size: 128 #2048
+  global_batch_size: 128
   eval_iters: 0
   train_iters: 102400
 
@@ -82,7 +80,7 @@ data:
   split: 1
   no_mmap_bin_files: true
   tokenizer:
-    tokenizer_type: QwenTokenizerFS
-    tokenizer_path: examples/aquila/qwentokenizer
+    tokenizer_type: Qwen2TokenizerFS
+    tokenizer_path: /tokenizer_path
     vocab_size: 151851
     make_vocab_size_divisible_by: 64
