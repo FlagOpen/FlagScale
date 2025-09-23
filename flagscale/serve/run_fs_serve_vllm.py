@@ -59,7 +59,7 @@ _engine_kwargs = {
 llm_config = LLMConfig(
     # Core configuration for model loading
     model_loading_config={
-        "model_id": engine_args.get("served_model_name", "run_fs_serve"),
+        "model_id": engine_args.get("served_model_name", engine_args["model"]),
         "model_source": engine_args["model"],
     },
     # Deployment resource configuration (corresponds to original resources field)
@@ -92,7 +92,9 @@ if __name__ == "__main__":
     if engine_args.get("served_model_name", None):
         logger.info("Serving model name: %s", engine_args["served_model_name"])
     else:
-        logger.warning("No served_model_name specified in engine_args, using \"run_fs_serve\".")
+        logger.warning(
+            'No served_model_name specified in engine_args, using {engine_args["model"]}.'
+        )
 
     # Start Ray Serve and set HTTP port (read from original config, default 8000)
     deploy_port = TASK_CONFIG.experiment.get("runner", {}).get("deploy", {}).get("port", 8000)
