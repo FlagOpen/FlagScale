@@ -1,8 +1,8 @@
 diff --git a/megatron/training/tokenizer/tokenizer.py b/megatron/training/tokenizer/tokenizer.py
-index 5cf222cc..14188a2c 100644
+index b1aad681..0b6dfbb0 100644
 --- a/megatron/training/tokenizer/tokenizer.py
 +++ b/megatron/training/tokenizer/tokenizer.py
-@@ -14,6 +14,7 @@ from megatron.core.datasets.megatron_tokenizer import MegatronTokenizer
+@@ -14,6 +14,7 @@ from megatron.core.datasets.megatron_tokenizer import MegatronLegacyTokenizer
  
  from .bert_tokenization import FullTokenizer as FullBertTokenizer
  from .gpt2_tokenization import GPT2Tokenizer
@@ -10,7 +10,7 @@ index 5cf222cc..14188a2c 100644
  from megatron.training.tokenizer.multimodal_tokenizer import MultimodalTokenizer
  from megatron.training.tokenizer.sft_tokenizer import SFTTokenizer
  
-@@ -102,6 +103,31 @@ def build_tokenizer(args, **kwargs):
+@@ -104,6 +105,31 @@ def build_tokenizer(args, **kwargs):
      elif args.tokenizer_type == 'NullMultimodalTokenizer':
          assert args.vocab_size is not None
          tokenizer = _NullMultimodalTokenizer(args.vocab_size)
@@ -42,7 +42,7 @@ index 5cf222cc..14188a2c 100644
      else:
          raise NotImplementedError('{} tokenizer is not ' 'implemented.'.format(args.tokenizer_type))
  
-@@ -596,6 +622,16 @@ class _Llama2Tokenizer(_SentencePieceTokenizer):
+@@ -604,6 +630,16 @@ class _Llama2Tokenizer(_SentencePieceTokenizer):
              t = t + [self.eos_id]
          return t
  
@@ -59,13 +59,13 @@ index 5cf222cc..14188a2c 100644
      def detokenize(self, ids):
          return self.tokenizer.decode_ids(ids)
  
-@@ -909,3 +945,276 @@ class _NullMultimodalTokenizer(MegatronTokenizer):
+@@ -921,3 +957,276 @@ class _NullMultimodalTokenizer(MegatronLegacyTokenizer):
      @property
      def additional_special_tokens_ids(self):
          return None
 +
 +
-+class _AquilaTokenizerFS(MegatronTokenizer):
++class _AquilaTokenizerFS(MegatronLegacyTokenizer):
 +    """Aquila tokenizer."""
 +
 +    def __init__(self, vocab_file, merge_file, special_tokens_file):
@@ -112,7 +112,7 @@ index 5cf222cc..14188a2c 100644
 +        return self.pad_id
 +
 +
-+class _HFTokenizerFS(MegatronTokenizer):
++class _HFTokenizerFS(MegatronLegacyTokenizer):
 +    """Huggingface tokenizer."""
 +
 +    def __init__(self, tokenizer_path):
@@ -182,7 +182,7 @@ index 5cf222cc..14188a2c 100644
 +        self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]
 +
 +
-+class _HFTokenizersTokenizerFS(MegatronTokenizer):
++class _HFTokenizersTokenizerFS(MegatronLegacyTokenizer):
 +    """Tokenizer from HuggingFace Tokenizers."""
 +
 +    def __init__(self, json_file):
@@ -245,7 +245,7 @@ index 5cf222cc..14188a2c 100644
 +        return self._vocab_size
 +
 +
-+class _Qwen2VLTokenizer(MegatronTokenizer):
++class _Qwen2VLTokenizer(MegatronLegacyTokenizer):
 +    def __init__(self, tokenizer_path, extra_vocab_size):
 +        super().__init__(tokenizer_path)
 +        from transformers import AutoTokenizer

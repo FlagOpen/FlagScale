@@ -1,5 +1,5 @@
 diff --git a/megatron/core/optimizer/optimizer.py b/megatron/core/optimizer/optimizer.py
-index b5bc894c..93c8b45e 100644
+index 1829cb42..347f8cd6 100644
 --- a/megatron/core/optimizer/optimizer.py
 +++ b/megatron/core/optimizer/optimizer.py
 @@ -92,7 +92,7 @@ def _multi_tensor_copy_this_to_that(
@@ -11,7 +11,7 @@ index b5bc894c..93c8b45e 100644
  
  
  class MegatronOptimizer(ABC):
-@@ -465,12 +465,23 @@ class MixedPrecisionOptimizer(MegatronOptimizer):
+@@ -505,12 +505,23 @@ class MixedPrecisionOptimizer(MegatronOptimizer):
              )
  
          # Update across all model parallel instances.
@@ -41,7 +41,7 @@ index b5bc894c..93c8b45e 100644
          # Check for nan.
          found_inf_flag = self.found_inf.item() > 0
  
-@@ -1319,7 +1330,7 @@ class ChainedOptimizer(MegatronOptimizer):
+@@ -1378,7 +1389,7 @@ class ChainedOptimizer(MegatronOptimizer):
  
              # Lazy loading checkpoint, state dict is needed only when DP rank = 0.
              if optimizer.data_parallel_group.rank() == 0 and states is None:
