@@ -1,5 +1,5 @@
 llm:
-  model_path: /share/project/hcr/models/lerobot/pi0
+  model_path: /.../lerobot/pi0
   compile_model: false
   compile_mode: reduce-overhead
 dataset:
