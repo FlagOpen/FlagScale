@@ -93,7 +93,7 @@ if __name__ == "__main__":
         logger.info("Serving model name: %s", engine_args["served_model_name"])
     else:
         logger.warning(
-            'No served_model_name specified in engine_args, using {engine_args["model"]}.'
+            f"No served_model_name specified in engine_args, using {engine_args["model"]}."
         )
 
     # Start Ray Serve and set HTTP port (read from original config, default 8000)
