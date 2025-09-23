@@ -166,7 +166,7 @@ def inference_mul(cfg):
 
 if __name__ == "__main__":
     cfg = parse_config()
-    if cfg.generate.get("images", []) is None:
+    if "images" not in cfg.generate.keys():
         inference(cfg)
     else:
         inference_mul(cfg)

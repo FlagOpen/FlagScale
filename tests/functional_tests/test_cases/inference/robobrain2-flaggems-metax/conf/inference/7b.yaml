@@ -1,6 +1,6 @@
 llm:
-  model: /home/gitlab-runner/data/RoboBrain2.0-7B
-  tokenizer: /home/gitlab-runner/data/RoboBrain2.0-7B
+  model: /home/gitlab-runner/data/BAAI/RoboBrain2.0-7B
+  tokenizer: /home/gitlab-runner/data/BAAI/RoboBrain2.0-7B
   trust_remote_code: true
   tensor_parallel_size: 1
   pipeline_parallel_size: 1
