@@ -1,0 +1,16 @@
+llm:
+  model_path: /share/project/hcr/models/lerobot/pi0
+  compile_model: false
+  compile_mode: reduce-overhead
+dataset:
+  dataset_repo_id: lerobot/aloha_mobile_cabinet
+  episodes: [0, 10, 11, 23]
+  # Another option for video_backend: torchcodec 
+  # May cause problems: https://github.com/huggingface/lerobot/issues/970
+  video_backend: pyav
+data_loader:
+  batch_size: 1
+  shuffle: false
+  num_workers: 1
+generate:
+  num_inference: 1
