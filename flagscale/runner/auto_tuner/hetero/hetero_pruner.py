@@ -22,6 +22,8 @@ class HeteroPruner(Pruner):
         # First, Heterogeneous-Specific Pruning Rules ---
         if not self._is_strategy_valid(strategy):
             self._mark_as_pruned(strategy, 'Invalid Hetero Configuration')
+            history.append(strategy)
+            self.pruned_count += 1
             return True
 
         # Then, delegate to the parent class for generic pruning (e.g., memory model).

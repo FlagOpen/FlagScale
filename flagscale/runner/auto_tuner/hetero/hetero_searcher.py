@@ -119,7 +119,7 @@ class HeteroSearcher(Searcher):
         self.logger.info(f"Parsed {len(self.mesh_templates)} mesh templates from config.")
         self.device_types_in_template = config.train.system.hetero.get("hetero_device_types", [])
         if len(self.mesh_templates) != len(self.device_types_in_template):
-            self.logger.warning(
+            raise ValueError(
                 f"Mismatch: The number of mesh templates ({len(self.mesh_templates)}) does not match "
                 f"the number of hetero_device_types ({len(self.device_types_in_template)}). "
             )
