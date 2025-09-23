@@ -1,14 +1,11 @@
 import os
 import sys
 
+from PIL import Image
 from transformers import AutoTokenizer
-
 from vllm import LLM
 from vllm.sampling_params import SamplingParams
-
 from flagscale.inference.arguments import parse_config
-
-from PIL import Image
 
 def build_multimodal_prompt(question: str, modality: str = "image"):
     """
