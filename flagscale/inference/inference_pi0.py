@@ -49,7 +49,7 @@ def inference(config):
         actions = policy.model.sample_actions(
             images, img_masks, lang_tokens, lang_masks, state, noise=None
         )
-        print(f"sample_actions() latency: {(time.time() - t_s)*1000:2f} ms")
+        print(f"sample_actions() latency: {(time.time() - t_s)*1000:.2f} ms")
         original_action_dim = policy.config.action_feature.shape[0]
         actions = actions[:, :, :original_action_dim]
     print("actions: ", actions.shape)
