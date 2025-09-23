@@ -605,14 +605,24 @@ async def get_request(input_requests):
 
 
 async def benchmark(
-    api_url, model, tokenizer, input_requests, selected_percentile_metrics, selected_percentiles
+    api_url,
+    model,
+    model_id,
+    tokenizer,
+    input_requests,
+    selected_percentile_metrics,
+    selected_percentiles,
 ):
 
     async def limited_request_func(request_func_input, pbar):
         return await request_func(request_func_input=request_func_input, pbar=pbar)
 
     request_func = async_request_openai_chat_completions
-    req_model_id = req_model_name = model
+    if model_id is None:
+        req_model_id = req_model_name = model
+    else:
+        req_model_id = model
+        req_model_name = model_id
     pbar = tqdm(total=len(input_requests))
 
     benchmark_start_time = time.perf_counter()
