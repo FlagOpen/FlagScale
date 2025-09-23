@@ -301,7 +301,7 @@ def test_serve_equal(test_path, test_type, test_task, test_case):
             url = f"http://localhost:{deploy_config.port}/v1/completions"
 
             health_url = f"http://localhost:{deploy_config.port}/v1/models"
-            max_wait_seconds = 180
+            max_wait_seconds = 300
             start_time = time.time()
             while True:
                 try:
