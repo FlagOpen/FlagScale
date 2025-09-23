@@ -4,7 +4,7 @@ llm:
   trust_remote_code: true
   tensor_parallel_size: 1
   pipeline_parallel_size: 1
-  gpu_memory_utilization: 0.9
+  gpu_memory_utilization: 0.6
   seed: 1234
   enforce_eager: true
 
