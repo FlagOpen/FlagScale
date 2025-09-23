@@ -27,15 +27,12 @@ Cambricon_MLU:
     FlagScale+vllm:
     - 10faa30d1635fb8a102a48352d196870841100a0
     - 1d6faaad9c56e3e5ccae0526a6a977fae46650d2
-    - 8184c945acaf78f7be49111854e4a1ac0f5de09f
     vllm:
     - 10faa30d1635fb8a102a48352d196870841100a0
     - 1d6faaad9c56e3e5ccae0526a6a977fae46650d2
-    - 8184c945acaf78f7be49111854e4a1ac0f5de09f
     FlagScale:
     - 10faa30d1635fb8a102a48352d196870841100a0
     - 1d6faaad9c56e3e5ccae0526a6a977fae46650d2
-    - 8184c945acaf78f7be49111854e4a1ac0f5de09f
 Kunlunxin_R310p:
   inference:
     FlagScale+vllm:
