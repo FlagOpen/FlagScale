@@ -19,7 +19,7 @@ jobs:
     container:
       image: ${{ inputs.image }}
       ports:
-        - 6704: 6704
+        - 6704
       volumes:
         - /usr/local/Ascend/driver:/usr/local/Ascend/driver
         - /usr/local/Ascend/firmware:/usr/local/Ascend/firmware
