@@ -9,7 +9,6 @@ pytest
 PyYaml
 requests
 tqdm
-matplotlib
 
 # from megatron dockerfile
 black==24.4.2
