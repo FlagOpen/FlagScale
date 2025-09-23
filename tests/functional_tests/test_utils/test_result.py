@@ -301,18 +301,18 @@ def test_serve_equal(test_path, test_type, test_task, test_case):
             url = f"http://localhost:{deploy_config.port}/v1/completions"
 
             health_url = f"http://localhost:{deploy_config.port}/v1/models"
-            max_wait_seconds = 300
+            max_wait_seconds = 120
             start_time = time.time()
             while True:
                 try:
-                    r = requests.get(health_url, timeout=5)
+                    r = requests.get(health_url, timeout=2)
                     if r.status_code == 200:
                         break
                 except requests.exceptions.ConnectionError:
                     pass
                 if time.time() - start_time > max_wait_seconds:
                     raise RuntimeError(f"vLLM server not ready after {max_wait_seconds} seconds")
-                time.sleep(5)
+                time.sleep(2)
 
             headers = {"Content-Type": "application/json"}
 

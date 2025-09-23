@@ -27,7 +27,7 @@ jobs:
         - /usr/local/sbin:/usr/local/sbin
         - /etc/hccn.conf:/etc/hccn.conf
         - /data:/data
-      options: --ipc=host --privileged=true --group-add video --shm-size 100gb --hostname flagscale_cicd --user root --ulimit nofile=65535:65535 --ulimit memlock=-1 --device=/dev/dri --device=/dev/ascend*
+      options: --network host --ipc=host --privileged=true --group-add video --shm-size 100gb --hostname flagscale_cicd --user root --ulimit nofile=65535:65535 --ulimit memlock=-1 --device=/dev/dri --device=/dev/ascend*
 
     steps:
       - name: Checkout Code
