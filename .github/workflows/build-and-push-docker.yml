@@ -89,13 +89,13 @@ jobs:
       - name: Prepare Inference Environment
         if: ${{ needs.set-env.outputs.test_type == 'inference' }}
         run: |
-          source /opt/conda/bin/activate flagscale-inference
+          . /opt/conda/bin/activate flagscale-inference
           echo "Original commit ID: ${{ github.event.pull_request.head.sha || github.sha }}"
           
           # Apply patches and build vllm
           python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 --commit ${{ github.event.pull_request.head.sha || github.sha }}
           cd build/Metax_C550/FlagScale/third_party/vllm
-          source env.sh
+          . env.sh
           pip install scikit-build scikit-build-core
           pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0
           python setup.py bdist_wheel
@@ -103,7 +103,7 @@ jobs:
           pip install dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl
           cd ../..
           PYTHONPATH=./:$PYTHONPATH pip install . --verbose --no-build-isolation
-          source /opt/conda/bin/activate base
+          . /opt/conda/bin/activate base
 
       - name: Run Functional Tests
         run: |
