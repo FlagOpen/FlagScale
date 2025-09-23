@@ -3,6 +3,7 @@ import collections
 import json
 import os
 import re
+import shlex
 import socket
 import subprocess
 import sys
@@ -10,7 +11,7 @@ import time
 import traceback
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import aiohttp
 import numpy as np
@@ -26,6 +27,43 @@ AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 def log_and_raise_error(message):
     logger.error(message)
     raise ValueError(message)
+
+
+def is_ray_master_running(
+    master_ip: str, port: int = 6379, timeout: float = 5.0
+) -> Tuple[bool, Optional[str]]:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(timeout)
+            logger.info(f"Attempt to connect {master_ip}:{port}, timeout is {timeout}")
+            result = s.connect_ex((master_ip, port))
+
+            if result != 0:
+                return False, f"waitting for master node {master_ip}:{port}"
+            else:
+                return True, f"master node is ready"
+
+    except socket.timeout:
+        return False, f"connect {master_ip}:{port} timeout"
+    except Exception as e:
+        return False, f"check the error: {str(e)}"
+
+
+def wait_for_ray_master(
+    master_ip: str, port: int = 6379, max_attempts: int = 180, interval: int = 10
+) -> bool:
+    logger.info(f"Master info is {master_ip}:{port}")
+    for attempt in range(max_attempts):
+        status, msg = is_ray_master_running(master_ip, port)
+        logger.info(f"Check Ray master status (attempt {attempt+1}/{max_attempts}): {msg}")
+
+        if status:
+            return True
+
+        if attempt < max_attempts - 1:
+            time.sleep(interval)
+
+    return False
 
 
 def parse_hostfile(hostfile_path):
@@ -291,27 +329,71 @@ def get_nproc_per_node(nproc_from_hostfile=None, nproc_from_args=None, num_visib
             return 1
 
 
-def add_decive_extra_config(config, device_type):
-    if device_type is None:
+def update_nodes_envs(env_config, ip_addr, resource_info):
+    device_type = resource_info.get("type", None)
+    assert ip_addr is not None, "ip address is required in resource_info"
+
+    cur_node_config = {}
+    if isinstance(env_config, DictConfig):
+        cur_node_config = OmegaConf.to_container(env_config, resolve=True)
+    else:
+        cur_node_config = env_config.copy()
+
+    device_types_envs = cur_node_config.pop("device_type_specific", None)
+    nodes_envs = cur_node_config.pop("node_specific", None)
+    if device_types_envs is None and nodes_envs is None:
         logger.warning(
             f"type in hostfile is not specified. All the nodes use the same arguments inlucding evnironment variables."
         )
-        return OmegaConf.to_container(config, resolve=True)
-    cur_node_config = {}
-    temp_dict = {}
-    if isinstance(config, DictConfig):
-        temp_dict = OmegaConf.to_container(config, resolve=True)
-    else:
-        temp_dict = config
-    for key, value in temp_dict.items():
-        if isinstance(value, dict):
-            if key == device_type:
-                cur_node_config.update(value)
-            else:
-                continue
-        else:
-            cur_node_config[key] = value
+        return cur_node_config
+
+    # update then envs according to the device type
+    if device_types_envs is not None and device_type is not None:
+        cur_node_config.update(device_types_envs.get(device_type, {}))
+    # update the envs according to the ip address
+    if nodes_envs is not None:
+        cur_node_config.update(nodes_envs.get(ip_addr, {}))
+
     return cur_node_config
+
+
+def update_cmd_with_node_specific_config(cmd, node_specific_config=None):
+    """
+    Update the command string with additional configuration options for speicial device.
+    Parameters:
+        cmd (str): The original command string to be updated.
+        node_specific_config (dict): A dictionary containing configuration
+                                     options to be applied to the command.
+    Returns:
+        str: The updated command string after applying the configuration.
+    """
+    if node_specific_config is None or len(node_specific_config) == 0:
+        return cmd
+    cmd_parts = shlex.split(cmd)
+
+    for key, value in node_specific_config.items():
+        key = key.replace("_", "-")
+        option = f"--{key}"
+        if option in cmd_parts:
+            idx = cmd_parts.index(option)
+            if value.lower() == "true":
+                # If the option has a value, remove it.
+                if idx + 1 < len(cmd_parts) and not cmd_parts[idx + 1].startswith("--"):
+                    cmd_parts.pop(idx + 1)
+                continue
+            elif value.lower() == "false":
+                # If the option has a value, remove it along with the option.
+                if idx + 1 < len(cmd_parts) and not cmd_parts[idx + 1].startswith("--"):
+                    del cmd_parts[idx : idx + 2]
+                else:
+                    cmd_parts.pop(idx)
+        else:
+            if value.lower() == "true":
+                cmd_parts.append(option)
+            # NOTE: disable adding new options
+            # elif value.lower() != "false":
+            #     cmd_parts.extend([option, value])
+    return shlex.join(cmd_parts)
 
 
 def is_ip_addr(master):
@@ -325,6 +407,14 @@ def is_ip_addr(master):
         return True
     else:
         return False
+
+
+def is_master_node(lws_leader_address):
+
+    host_name = lws_leader_address.split('.')[0]
+    local_hostname = socket.gethostname().split('.')[0]
+
+    return host_name == local_hostname
 
 
 def get_ip_addr():

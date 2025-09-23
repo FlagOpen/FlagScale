@@ -10,7 +10,6 @@ from omegaconf import DictConfig, OmegaConf
 from flagscale.runner.elastic.monitor_service import MonitorService
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.utils import (
-    add_decive_extra_config,
     flatten_dict_to_args,
     get_free_port,
     get_host_name_or_ip,
@@ -21,6 +20,8 @@ from flagscale.runner.utils import (
     run_local_command,
     run_scp_command,
     run_ssh_command,
+    update_cmd_with_node_specific_config,
+    update_nodes_envs,
 )
 
 _MAX_CPU_COUNT = multiprocessing.cpu_count()
@@ -175,14 +176,7 @@ def _get_runner_cmd_train(
 
 
 def _generate_run_script_train(
-    config,
-    host,
-    node_rank,
-    cmd,
-    background=True,
-    with_test=False,
-    root_dir=None,
-    enable_monitoring=False,
+    config, host, node_rank, cmd, background=True, with_test=False, root_dir=None, enable_monitoring=False
 ):
     system_config = config.train.system
     logging_config = config.train.system.logging
@@ -313,8 +307,10 @@ def run_node(
     dryrun,
     enable_monitoring=True,
 ):
-    cur_envs = add_decive_extra_config(user_envs, resource_info["type"])
-    visible_devices = cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+    cur_envs = update_nodes_envs(user_envs, host, resource_info)
+    # Get the number of visible devices from the environment variable, e.g. CUDA_VISIBLE_DEVICES, MLU_VISIBLE_DEVICES
+    # visible_devices = cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+    visible_devices = next((v for k, v in cur_envs.items() if k.endswith("_VISIBLE_DEVICES")), None)
     if visible_devices is not None and isinstance(visible_devices, str):
         visible_devices = visible_devices.split(",")
         num_visible_devices = len(visible_devices)
@@ -351,6 +347,8 @@ class SSHTrainRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         self.user_script = self.config.experiment.task.entrypoint
         self.resources = parse_hostfile(self.config.experiment.runner.get("hostfile", None))
+        self.device_type_specific = self.config.get("device_type_specific", None)
+        self.node_specific = self.config.get("node_specific", None)
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
@@ -385,6 +383,14 @@ class SSHTrainRunner(RunnerBase):
                 self.user_args += ["--hetero-current-device-type", device_type]
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
+        # update cmd with node_specific_config
+        node_specific_config = {}
+        if device_type is not None:
+            node_specific_config = (
+                self.device_type_specific.get(device_type, {}) if self.device_type_specific else {}
+            )
+        node_specific_config.update(self.node_specific.get(host, {}) if self.node_specific else {})
+        cmd = update_cmd_with_node_specific_config(cmd, node_specific_config)
 
         logging_config = self.config.train.system.logging
         host_run_script_file = _generate_run_script_train(
@@ -394,7 +400,8 @@ class SSHTrainRunner(RunnerBase):
             cmd,
             background=True,
             with_test=with_test,
-            enable_monitoring=enable_monitoring,
+            root_dir=node_specific_config.get("build_dir", None),
+            enable_monitoring=enable_monitoring
         )
 
         if host != "localhost":
