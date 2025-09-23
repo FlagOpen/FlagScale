@@ -7,9 +7,12 @@ from flagscale.runner.auto_tuner.record.recorder import Recorder
 
 class HeteroRecorder(Recorder):
     """
-    Recorder for heterogeneous tasks. This class exists to maintain architectural
-    consistency. It inherits directly from the base Recorder as logging formats
-    are currently identical for both homogeneous and heterogeneous runs.
+    Recorder for heterogeneous tasks.
+
+    This class reuses the core log-parsing and sorting logic from the base
+    Recorder. It specifically overrides the `save` method to provide more
+    robust handling of edge cases, such as when the history is empty or when
+    all strategies have been pruned.
     """
 
     def __init__(self, config):

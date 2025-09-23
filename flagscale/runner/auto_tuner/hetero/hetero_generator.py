@@ -15,28 +15,22 @@ class HeteroGenerator(Generator):
         Overrides the base method to write all tunable parameters from the
         strategy into the configuration object.
         """
+        # First, call the parent's _set_value to handle all common parameters
+        # like MBS, recompute, etc., that are not hetero-specific.
         super()._set_value(strategy, config)
 
+        # Then, set all hetero-specific parameters.
         hetero_config = config.train.system.setdefault("hetero", {})
         hetero_config["enable_hetero"] = True
         hetero_config["hetero_pipeline_layer_split"] = strategy["hetero_pipeline_layer_split"]
-
-        # [CORE MODIFICATION] Flatten the nested mesh list into a 1D list
-        # before writing it to the final configuration.
-        nested_meshes = strategy["hetero_process_meshes"]
-        flat_meshes = [element for sublist in nested_meshes for element in sublist]
-        hetero_config["hetero_process_meshes"] = flat_meshes
-
+        hetero_config["hetero_process_meshes"] = [
+            item for sublist in strategy["hetero_process_meshes"] for item in sublist
+        ]
         hetero_config["hetero_device_types"] = strategy["hetero_device_types"]
 
         config.train.system["pipeline_model_parallel_size"] = strategy[
             "pipeline_model_parallel_size"
         ]
+
+        # Override sequence parallel based on the strategy.
         config.train.system["sequence_parallel"] = strategy["sequence_parallel"]
-
-    def gen(self, strategy: dict):
-        return super().gen(strategy)
-
-    def gen_best_task(self, strategy: dict, config: dict):
-        self._set_value(strategy, config)
-        return config

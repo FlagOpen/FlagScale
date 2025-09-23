@@ -13,20 +13,18 @@ class HeteroPruner(Pruner):
         super().__init__(config)
         self.logger = logging.getLogger("FlagScale-AutoTuner")
 
-    def prune(self, strategy: dict, history: list = []) -> bool:
+    def prune(self, strategy: dict, history: list = None) -> bool:
         """
         Determines if a given strategy should be pruned.
         """
-        # --- Step 1: Heterogeneous-Specific Pruning Rules ---
+        if history is None:
+            history = []
+        # First, Heterogeneous-Specific Pruning Rules ---
         if not self._is_strategy_valid(strategy):
             self._mark_as_pruned(strategy, 'Invalid Hetero Configuration')
             return True
 
-        # --- Step 2: Delegate to Parent Class for Generic Pruning ---
-        # The base pruner handles memory model and generic history-based pruning.
-        # It's important to call this AFTER our specific checks pass.
-        # Note: The base pruner might manage history list itself, which we fixed in Tuner.
-        # To be safe, we let it run its course.
+        # Then, delegate to the parent class for generic pruning (e.g., memory model).
         return super().prune(strategy, history)
 
     def _mark_as_pruned(self, strategy: dict, reason: str):
@@ -45,8 +43,10 @@ class HeteroPruner(Pruner):
         if not all(key in strategy for key in required_keys):
             return False
 
-        pp_size, layer_split, meshes, _ = (strategy[k] for k in required_keys)
-
+        pp_size = strategy["pipeline_model_parallel_size"]
+        layer_split = strategy["hetero_pipeline_layer_split"]
+        meshes = strategy["hetero_process_meshes"]
+        
         if not (len(layer_split) == pp_size and len(meshes) == pp_size):
             return False
         if sum(layer_split) != self.config.train.model.num_layers:
