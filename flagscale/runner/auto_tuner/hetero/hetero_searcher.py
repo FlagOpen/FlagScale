@@ -6,31 +6,78 @@ from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from flagscale.runner.auto_tuner.search.searcher import Searcher
 
-# MODIFIED: The _generate_layer_splits function is now optimized.
-def _generate_layer_splits(n: int, k: int):
+def _generate_all_partitions(n: int, k: int):
     """
-    Generates all possible ways to split n layers into k pipeline stages,
-    with a built-in pruning rule: the difference between the max and min
-    layers in a split cannot be greater than 1.
+    Generates all possible integer partitions of n into k parts.
+    e.g., (7, 3) -> [5,1,1], [4,2,1], [3,3,1], [3,2,2]
+    """
+    if k == 1:
+        if n > 0:
+            yield [n]
+        return
+    # We can assign at least 1 layer to the first part, and at most n-(k-1)
+    for i in range(1, n - (k - 1) + 1):
+        for rest in _generate_all_partitions(n - i, k - 1):
+            # To avoid duplicates like [1,2] and [2,1], we generate in descending order.
+            if i >= rest[0]:
+                yield [i] + rest
+
+def _generate_balanced_split(n: int, k: int) -> List[int]:
+    """
+    Generates the single most arithmetically balanced split of n into k parts.
+    The difference between the max and min values will not be greater than 1.
     """
     if k <= 0 or n < k:
-        return
-
-    # Start with the most balanced distribution
+        return []
     base = n // k
     rem = n % k
-    
-    # The only possible balanced split is a combination of 'base' and 'base + 1'
-    # There's only one such combination (ignoring permutation)
-    split = [base + 1] * rem + [base] * (k - rem)
-    yield split
+    return [base + 1] * rem + [base] * (k - rem)
+
+def _generate_valid_layer_splits(total_layers: int, mesh_pp_sizes: List[int]):
+    """
+    Generates valid layer splits based on the new hierarchical logic.
+    """
+    num_meshes = len(mesh_pp_sizes)
+    if num_meshes == 0:
+        return
+
+    # 1. Get all possible ways to distribute total_layers among the meshes
+    for inter_mesh_partition in _generate_all_partitions(total_layers, num_meshes):
+        # 2. Consider all permutations of that distribution
+        for mesh_layer_distribution in set(itertools.permutations(inter_mesh_partition)):
+            final_split = []
+            is_distribution_possible = True
+            
+            # 3. For each mesh, check if its layer budget can be balanced internally
+            for i in range(num_meshes):
+                layers_for_this_mesh = mesh_layer_distribution[i]
+                local_pp = mesh_pp_sizes[i]
+                
+                # Check if subdivision is possible
+                if layers_for_this_mesh < local_pp:
+                    is_distribution_possible = False
+                    break
+                
+                # Perform the balanced subdivision
+                intra_mesh_split = _generate_balanced_split(layers_for_this_mesh, local_pp)
+                
+                # This check is inherently covered by _generate_balanced_split
+                # but we double check for clarity. max-min <= 1
+                if max(intra_mesh_split) - min(intra_mesh_split) > 1:
+                     is_distribution_possible = False
+                     break
+
+                final_split.extend(intra_mesh_split)
+            
+            if is_distribution_possible:
+                yield final_split
 
 
 class HeteroSearcher(Searcher):
     """
     A specialized searcher for heterogeneous environments.
     """
-
+    # __init__, build_space and other helpers remain the same as the last working version.
     def __init__(self, config: Dict, resources: Dict):
         self.resources = resources
         self.node_info = []
@@ -39,14 +86,11 @@ class HeteroSearcher(Searcher):
         super().__init__(config)
 
     def build_space(self, config: Dict) -> Dict:
-        # This function remains unchanged from the last working version
         space = {}
         auto_tuner_config = config.experiment.auto_tuner
         hetero_space = auto_tuner_config.space
-
         if not self.resources:
             raise ValueError("Heterogeneous tuning requires a valid hostfile/resources dict.")
-        
         for hostname, resource_info in self.resources.items():
             self.node_info.append(
                 {
@@ -56,35 +100,28 @@ class HeteroSearcher(Searcher):
                 }
             )
         self.logger.info(f"Received node-aware hardware info: {self.node_info}")
-
         def safe_to_container(value):
             if isinstance(value, (DictConfig, ListConfig)):
                 return OmegaConf.to_container(value, resolve=True)
             return value
-
         space["hetero_pipeline_layer_split"] = safe_to_container(
             hetero_space.get("hetero_pipeline_layer_split", "auto")
         )
-        
         raw_mesh_templates = safe_to_container(hetero_space.get("hetero_process_meshes", []))
         if not raw_mesh_templates or len(raw_mesh_templates) % 5 != 0:
             raise ValueError(
                 "'hetero_process_meshes' must be a non-empty list with a length divisible by 5."
             )
-        
         self.mesh_templates = [
             raw_mesh_templates[i : i + 5] for i in range(0, len(raw_mesh_templates), 5)
         ]
         self.logger.info(f"Parsed {len(self.mesh_templates)} mesh templates from config.")
-
         self.device_types_in_template = config.train.system.hetero.get("hetero_device_types", [])
-        
         if len(self.mesh_templates) != len(self.device_types_in_template):
             self.logger.warning(
                 f"Mismatch: The number of mesh templates ({len(self.mesh_templates)}) does not match "
                 f"the number of hetero_device_types ({len(self.device_types_in_template)}). "
             )
-
         space["micro_batch_size"] = safe_to_container(hetero_space.get("micro_batch_size", [1]))
         space["use_distributed_optimizer"] = safe_to_container(
             hetero_space.get("use_distributed_optimizer", [True, False])
@@ -99,7 +136,6 @@ class HeteroSearcher(Searcher):
         space["recompute_granularity"] = safe_to_container(
             hetero_space.get("recompute_granularity", ["full", "selective"])
         )
-        
         num_layers = config.train.model.num_layers
         space["recompute_num_layers"] = safe_to_container(
             hetero_space.get("recompute_num_layers", list(range(1, num_layers + 1)))
@@ -131,13 +167,11 @@ class HeteroSearcher(Searcher):
         total_gpus = sum(node['slots'] for node in nodes_for_mesh)
         if total_gpus == 0:
             return []
-
         tp_space = self._get_search_values(mesh_template[0], total_gpus)
         cp_space = self._get_search_values(mesh_template[1], total_gpus)
         ep_space = self._get_search_values(mesh_template[2], total_gpus)
         dp_template = mesh_template[3]
         pp_template = mesh_template[4]
-        
         valid_configs = []
         for tp in tp_space:
             if config.train.model.hidden_size % tp != 0:
@@ -155,28 +189,22 @@ class HeteroSearcher(Searcher):
     def _find_valid_assignments(self, mesh_idx, available_nodes, current_assignments, config):
         if mesh_idx == len(self.mesh_templates):
             return [current_assignments]
-
         results = []
         current_template = self.mesh_templates[mesh_idx]
         current_device_type = self.device_types_in_template[mesh_idx]
-        
         candidate_nodes = [node for node in available_nodes if node['type'] == current_device_type]
         if not candidate_nodes:
             return []
-
         for k in range(1, len(candidate_nodes) + 1):
             for nodes_to_assign_tuple in itertools.combinations(candidate_nodes, k):
                 nodes_to_assign = list(nodes_to_assign_tuple)
                 parallel_configs = self._find_parallel_configs_for_mesh(
                     current_template, nodes_to_assign, config
                 )
-                
                 if not parallel_configs:
                     continue
-                
                 assigned_node_names = {node['name'] for node in nodes_to_assign}
                 remaining_nodes = [node for node in available_nodes if node['name'] not in assigned_node_names]
-                
                 for p_config in parallel_configs:
                     is_assignment_valid = True
                     if not config.train.model.get("untie_embeddings_and_output_weights", False):
@@ -185,7 +213,6 @@ class HeteroSearcher(Searcher):
                              last_mesh_tp = p_config[0]
                              if first_mesh_tp != last_mesh_tp:
                                  is_assignment_valid = False
-                    
                     if is_assignment_valid:
                         new_assignment = {
                             'mesh': p_config,
@@ -211,6 +238,7 @@ class HeteroSearcher(Searcher):
 
         parallelism_part = []
         global_pp_size_target = None
+        # Manual mode for layer split now also implies a pp_size target
         if space["hetero_pipeline_layer_split"] != 'auto':
             if space["hetero_pipeline_layer_split"]:
                 global_pp_size_target = len(space["hetero_pipeline_layer_split"][0])
@@ -227,24 +255,20 @@ class HeteroSearcher(Searcher):
                 "hetero_device_types": [item['device_type'] for item in assignment],
             }
             
+            #  Call the new hierarchical splitter logic ---
             if space["hetero_pipeline_layer_split"] == 'auto':
                 if global_pp_size > 0:
-                    # The new _generate_layer_splits will only yield one, most-balanced split
-                    for split in _generate_layer_splits(config.train.model.num_layers, global_pp_size):
+                    mesh_pp_sizes = [item['mesh'][4] for item in assignment]
+                    for split in _generate_valid_layer_splits(config.train.model.num_layers, mesh_pp_sizes):
                         strat = base_strategy.copy()
                         strat["hetero_pipeline_layer_split"] = split
                         parallelism_part.append(strat)
-            else: 
+            else: # Manual mode validation
                 for split in space["hetero_pipeline_layer_split"]:
                     if len(split) == global_pp_size and sum(split) == config.train.model.num_layers:
-                        # Also apply the balance check for manual splits
-                        if max(split) - min(split) <= 1:
-                            strat = base_strategy.copy()
-                            strat["hetero_pipeline_layer_split"] = split
-                            parallelism_part.append(strat)
-                        else:
-                            self.logger.info(f"Pruning manual layer split {split}: not balanced.")
-
+                        strat = base_strategy.copy()
+                        strat["hetero_pipeline_layer_split"] = split
+                        parallelism_part.append(strat)
         
         self.logger.info(f"Created {len(parallelism_part)} core strategies after considering layer splits.")
         final_strategies = self._product_with_other_dims(parallelism_part, space, config)

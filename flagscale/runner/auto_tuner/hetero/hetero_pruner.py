@@ -46,7 +46,7 @@ class HeteroPruner(Pruner):
         pp_size = strategy["pipeline_model_parallel_size"]
         layer_split = strategy["hetero_pipeline_layer_split"]
         meshes = strategy["hetero_process_meshes"]
-        
+
         if not (len(layer_split) == pp_size and len(meshes) == pp_size):
             return False
         if sum(layer_split) != self.config.train.model.num_layers:
