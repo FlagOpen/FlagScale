@@ -45,7 +45,7 @@ def inference(config):
         images, img_masks = policy.prepare_images(batch)
         state = policy.prepare_state(batch)
         lang_tokens, lang_masks = policy.prepare_language(batch)
-    
+
         t_s = time.time()
         actions = policy.model.sample_actions(
             images, img_masks, lang_tokens, lang_masks, state, noise=None
