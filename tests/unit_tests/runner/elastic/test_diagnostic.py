@@ -48,7 +48,7 @@ class TestDiagnostic:
             report = generate_diagnostic_report(
                 mock_config, "localhost", 0, temp_path, return_content=True
             )
-
+            assert report == ""
             assert "Diagnostic Report for localhost (node 0)" in report
             assert "Log file is empty" in report
         finally:

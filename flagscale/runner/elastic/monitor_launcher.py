@@ -71,17 +71,23 @@ def main():
     parser.add_argument("--ssh-port", type=int, default=22, help="SSH port")
     parser.add_argument("--interval", type=int, default=5, help="Monitoring interval (seconds)")
     parser.add_argument(
-        "--enable-log-collection", action="store_true", default=True, help="Enable log collection"
+        "--enable-log-collection", action="store_true", help="Enable log collection"
     )
     parser.add_argument(
-        "--enable-diagnostic", action="store_true", default=True, help="Enable diagnostic reports"
+        "--enable-diagnostic", action="store_true", help="Enable diagnostic reports"
     )
 
     args = parser.parse_args()
 
-    # Wait for the training process to start
-    logger.info("Wait for the training process to start ...")
-    time.sleep(3)
+    # Wait for the training process to start by checking for the PID file
+    logger.info(f"Waiting for the training process to start by checking for {args.pid_file}...")
+    wait_start_time = time.time()
+    while not os.path.exists(args.pid_file):
+        if time.time() - wait_start_time > 60:  # 1-minute timeout
+            logger.error(f"Timeout waiting for PID file {args.pid_file}. Exiting.")
+            sys.exit(1)
+        time.sleep(1)
+    logger.info("Training process PID file found.")
 
     # Create configuration
     config = OmegaConf.create(

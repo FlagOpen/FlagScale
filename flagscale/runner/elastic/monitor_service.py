@@ -33,7 +33,9 @@ class MonitorService:
         self.monitor_thread = None
         self.log_collection_enabled = True
         self.diagnostic_enabled = True
-        self.hang_detection_timeout = 1800  # 30 minutes in seconds
+        self.hang_detection_timeout = config.experiment.runner.get(
+            "hang_detection_timeout", 1800
+        )  # 30 minutes in seconds
         self.last_log_check_times = {}  # Track last modification time for each log file
         self.last_job_status = None  # Track previous job status for kill detection
         self.process_start_time = time.time()  # Track when monitoring started
@@ -371,8 +373,16 @@ class MonitorService:
             if not os.path.exists(log_file):
                 return False
 
+            def get_remote_mtime(host, log_file):
+                cmd = ["ssh", host, f"stat -c%Y {log_file}"]
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                return int(result.stdout.strip())
+
             # Get current modification time
-            current_mtime = os.path.getmtime(log_file)
+            if no_shared_fs:
+                current_mtime = get_remote_mtime(host, log_file)
+            else:
+                current_mtime = os.path.getmtime(log_file)
             current_time = time.time()
 
             # Check if log file hasn't been updated for too long
@@ -399,7 +409,6 @@ class MonitorService:
             node_rank (int): Node rank
         """
         try:
-            from flagscale.elastic.diagnostic import generate_diagnostic_report
 
             # Create a temporary diagnostic content for hang detection
             log_dir = self.monitor_log_dir

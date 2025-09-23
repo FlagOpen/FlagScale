@@ -138,7 +138,7 @@ class TestLogCollector:
                         )
 
                         assert result is None
-                        mock_logger.warning.assert_called()
+                        mock_logger.debug.assert_called()
 
     def test_collect_logs_empty_file(self, mock_config):
         with patch('os.path.join'):

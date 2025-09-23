@@ -378,11 +378,8 @@ def run_scp(host, src_file, dest_file, ssh_port=22, dryrun=False, incremental=Fa
         dryrun (bool): If True, log command without executing.
         incremental (bool): If True, use incremental copy.
     """
-    if incremental:
-        # For incremental, assume tail command is handled externally
-        command = f"scp -P {ssh_port} {host}:{src_file} {dest_file}"
-    else:
-        command = f"scp -P {ssh_port} {host}:{src_file} {dest_file}"
+    # For incremental, assume tail command is handled externally
+    command = f"scp -P {ssh_port} {host}:{src_file} {dest_file}"
     if dryrun:
         logger.info(f"Dryrun: {command}")
     else:

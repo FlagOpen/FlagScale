@@ -35,7 +35,6 @@ error_types = {
     "core dumped": "CoreDump: Process crashed and dumped core.",
     # CUDA errors
     "cuda error": "CUDAError: CUDA-related error occurred.",
-    "cuda out of memory": "CUDAError: CUDA out of memory error occurred.",
     "cudnn error": "CUDNNError: CuDNN library error occurred.",
     "gpu error": "GPUError: GPU-related error occurred.",
     # File and storage errors
@@ -130,12 +129,20 @@ def generate_diagnostic_report(config, host, node_rank, log_file, return_content
             logger.debug(f"No new lines to analyze in {log_file}")
             return diagnostic_file if not return_content else ""
 
-        # Analyze the errors in the new line
+        # Analyze the errors in the new lines
         current_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
         new_errors = []
+        error_lines_by_type = {key: [] for key in error_types}
+
+        # Iterate through new lines once and check against all error types
+        for i, line in enumerate(all_lines[last_analyzed_line:], start=last_analyzed_line):
+            for key, desc in error_types.items():
+                if find_error_lines([line], key, 0):  # Check single line
+                    error_lines_by_type[key].append(i)
+
+        # Process error lines for each type
         for key, desc in error_types.items():
-            # Look for errors in the newly added lines
-            error_lines = find_error_lines(all_lines, key, last_analyzed_line)
+            error_lines = error_lines_by_type[key]
             if error_lines:
                 line_range = format_line_range(error_lines)
                 log_filename = os.path.basename(log_file)

@@ -1,11 +1,35 @@
 import os
 import shlex
+import subprocess
 
 from datetime import datetime
 
 from flagscale.runner.utils import logger, run_local, run_scp
 
 _log_offsets = {}
+
+
+def get_remote_file_size(host, filepath):
+    try:
+        result = subprocess.run(
+            ["ssh", host, f"stat -c%s {filepath}"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+        return int(result.stdout.strip())
+    except subprocess.CalledProcessError:
+        return -1
+
+
+def get_file_size(host, filepath):
+    if host == "localhost":
+        if os.path.exists(filepath):
+            return os.path.getsize(filepath)
+        return -1
+    else:
+        return get_remote_file_size(host, filepath)
 
 
 def collect_logs(config, host, node_rank, destination_dir, dryrun=False):
@@ -39,30 +63,35 @@ def collect_logs(config, host, node_rank, destination_dir, dryrun=False):
     try:
         if host != "localhost":
             ssh_port = config.experiment.runner.get("ssh_port", 22)
-            command = f"tail -c +{offset + 1} {src_log_file} > {dest_log_file}"
-            run_scp(host, src_log_file, dest_log_file, ssh_port, dryrun, incremental=True)
+            command = f"ssh -p {ssh_port} {host} 'tail -c +{offset + 1} {shlex.quote(src_log_file)}' > {shlex.quote(dest_log_file)}"
+            run_local(command, dryrun)
             logger.debug(
                 f"Collected incremental log from {host} (node {node_rank}) to {dest_log_file}"
             )
         else:
-            command = f"tail -c +{offset + 1} {src_log_file} > {dest_log_file}"
+            command = (
+                f"tail -c +{offset + 1} {shlex.quote(src_log_file)} > {shlex.quote(dest_log_file)}"
+            )
             run_local(command, dryrun)
             logger.debug(f"Collected incremental local log to {dest_log_file}")
 
         # Check if the source file exists and update the offset
         if os.path.exists(src_log_file):
-            current_src_size = os.path.getsize(src_log_file)
-            if current_src_size > offset:  # There is new content in the source file
-                _log_offsets[log_key] = current_src_size
+            current_src_size = get_file_size(host, src_log_file)
+            if current_src_size > 0:
+                if current_src_size > offset:  # There is new content in the source file
+                    _log_offsets[log_key] = current_src_size
 
-                if os.path.exists(dest_log_file) and os.path.getsize(dest_log_file) > 0:
-                    logger.debug(f"Collected {current_src_size - offset} bytes from {src_log_file}")
-                    return dest_log_file
-                else:
-                    logger.debug(f"No new content extracted from {src_log_file}")
-                    if os.path.exists(dest_log_file):
-                        os.remove(dest_log_file)
-                    return None
+                    if os.path.exists(dest_log_file) and os.path.getsize(dest_log_file) > 0:
+                        logger.debug(
+                            f"Collected {current_src_size - offset} bytes from {src_log_file}"
+                        )
+                        return dest_log_file
+                    else:
+                        logger.debug(f"No new content extracted from {src_log_file}")
+                        if os.path.exists(dest_log_file):
+                            os.remove(dest_log_file)
+                        return None
             else:
                 logger.debug(f"No new content in source file {src_log_file}")
                 if os.path.exists(dest_log_file):

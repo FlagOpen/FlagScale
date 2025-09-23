@@ -198,8 +198,11 @@ def _generate_run_script_train(
     host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
-
-    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root_dir is not None:
+        root_dir = os.path.abspath(root_dir)
+    else:
+        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    assert os.path.exists(root_dir), f"ROOT_DIR {root_dir} does not exist."
     megatron_dir = os.path.join(root_dir, "third_party", "Megatron-LM")
     cmds_config = config.experiment.get("cmds", None)
     if cmds_config:
@@ -694,7 +697,9 @@ class SSHTrainRunner(RunnerBase):
         """
         return self._query_status()
 
-    def query(self, interval=10, enable_log_collection=True, enable_diagnostic=True):
+    def start_monitoring_service(
+        self, interval=10, enable_log_collection=True, enable_diagnostic=True
+    ):
         """
         Start independent monitoring service (non-blocking).
 

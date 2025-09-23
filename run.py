@@ -63,7 +63,6 @@ def main(config: DictConfig) -> None:
             elif config.action == "stop":
                 runner.stop()
             elif config.action == "query":
-                # runner.query()
                 status = runner.query_once()
                 from flagscale.logger import logger
 
