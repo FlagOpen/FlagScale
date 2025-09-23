@@ -513,6 +513,8 @@ def normalize_backend(backend):
         return "omniinfer"
     elif input_lower in ["verl"]:
         return "verl"
+    elif input_lower in ["lerobot", "le-robot", "le_robot", "Lerobot"]:
+        return "lerobot"
 
     raise ValueError(f'Unsupported backend {backend}')
 
