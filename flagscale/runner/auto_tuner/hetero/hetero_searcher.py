@@ -1,10 +1,12 @@
-import logging
 import itertools
+import logging
+
 from typing import Dict, List
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from flagscale.runner.auto_tuner.search.searcher import Searcher
+
 
 def _generate_all_partitions(n: int, k: int):
     """
@@ -22,6 +24,7 @@ def _generate_all_partitions(n: int, k: int):
             if i >= rest[0]:
                 yield [i] + rest
 
+
 def _generate_balanced_split(n: int, k: int) -> List[int]:
     """
     Generates the single most arithmetically balanced split of n into k parts.
@@ -32,6 +35,7 @@ def _generate_balanced_split(n: int, k: int) -> List[int]:
     base = n // k
     rem = n % k
     return [base + 1] * rem + [base] * (k - rem)
+
 
 def _generate_valid_layer_splits(total_layers: int, mesh_pp_sizes: List[int]):
     """
@@ -47,28 +51,22 @@ def _generate_valid_layer_splits(total_layers: int, mesh_pp_sizes: List[int]):
         for mesh_layer_distribution in set(itertools.permutations(inter_mesh_partition)):
             final_split = []
             is_distribution_possible = True
-            
+
             # 3. For each mesh, check if its layer budget can be balanced internally
             for i in range(num_meshes):
                 layers_for_this_mesh = mesh_layer_distribution[i]
                 local_pp = mesh_pp_sizes[i]
-                
+
                 # Check if subdivision is possible
                 if layers_for_this_mesh < local_pp:
                     is_distribution_possible = False
                     break
-                
+
                 # Perform the balanced subdivision
                 intra_mesh_split = _generate_balanced_split(layers_for_this_mesh, local_pp)
-                
-                # This check is inherently covered by _generate_balanced_split
-                # but we double check for clarity. max-min <= 1
-                if max(intra_mesh_split) - min(intra_mesh_split) > 1:
-                     is_distribution_possible = False
-                     break
 
                 final_split.extend(intra_mesh_split)
-            
+
             if is_distribution_possible:
                 yield final_split
 
@@ -77,6 +75,7 @@ class HeteroSearcher(Searcher):
     """
     A specialized searcher for heterogeneous environments.
     """
+
     # __init__, build_space and other helpers remain the same as the last working version.
     def __init__(self, config: Dict, resources: Dict):
         self.resources = resources
@@ -100,10 +99,12 @@ class HeteroSearcher(Searcher):
                 }
             )
         self.logger.info(f"Received node-aware hardware info: {self.node_info}")
+
         def safe_to_container(value):
             if isinstance(value, (DictConfig, ListConfig)):
                 return OmegaConf.to_container(value, resolve=True)
             return value
+
         space["hetero_pipeline_layer_split"] = safe_to_container(
             hetero_space.get("hetero_pipeline_layer_split", "auto")
         )
@@ -204,15 +205,17 @@ class HeteroSearcher(Searcher):
                 if not parallel_configs:
                     continue
                 assigned_node_names = {node['name'] for node in nodes_to_assign}
-                remaining_nodes = [node for node in available_nodes if node['name'] not in assigned_node_names]
+                remaining_nodes = [
+                    node for node in available_nodes if node['name'] not in assigned_node_names
+                ]
                 for p_config in parallel_configs:
                     is_assignment_valid = True
                     if not config.train.model.get("untie_embeddings_and_output_weights", False):
-                         if mesh_idx == len(self.mesh_templates) - 1 and current_assignments:
-                             first_mesh_tp = current_assignments[0]['mesh'][0]
-                             last_mesh_tp = p_config[0]
-                             if first_mesh_tp != last_mesh_tp:
-                                 is_assignment_valid = False
+                        if mesh_idx == len(self.mesh_templates) - 1 and current_assignments:
+                            first_mesh_tp = current_assignments[0]['mesh'][0]
+                            last_mesh_tp = p_config[0]
+                            if first_mesh_tp != last_mesh_tp:
+                                is_assignment_valid = False
                     if is_assignment_valid:
                         new_assignment = {
                             'mesh': p_config,
@@ -220,7 +223,10 @@ class HeteroSearcher(Searcher):
                             'nodes': nodes_to_assign,
                         }
                         sub_results = self._find_valid_assignments(
-                            mesh_idx + 1, remaining_nodes, current_assignments + [new_assignment], config
+                            mesh_idx + 1,
+                            remaining_nodes,
+                            current_assignments + [new_assignment],
+                            config,
                         )
                         results.extend(sub_results)
         return results
@@ -229,12 +235,11 @@ class HeteroSearcher(Searcher):
         self.logger.info("Building comprehensive heterogeneous strategies (Node-Aware)...")
 
         all_assignments = self._find_valid_assignments(
-            mesh_idx=0,
-            available_nodes=self.node_info,
-            current_assignments=[],
-            config=config,
+            mesh_idx=0, available_nodes=self.node_info, current_assignments=[], config=config
         )
-        self.logger.info(f"Generated {len(all_assignments)} core heterogeneous parallelism assignments.")
+        self.logger.info(
+            f"Generated {len(all_assignments)} core heterogeneous parallelism assignments."
+        )
 
         parallelism_part = []
         global_pp_size_target = None
@@ -245,49 +250,55 @@ class HeteroSearcher(Searcher):
 
         for assignment in all_assignments:
             global_pp_size = sum(item['mesh'][4] for item in assignment)
-            
+
             if global_pp_size_target is not None and global_pp_size != global_pp_size_target:
                 continue
-            
+
             base_strategy = {
                 "pipeline_model_parallel_size": global_pp_size,
                 "hetero_process_meshes": [item['mesh'] for item in assignment],
                 "hetero_device_types": [item['device_type'] for item in assignment],
             }
-            
+
             #  Call the new hierarchical splitter logic ---
             if space["hetero_pipeline_layer_split"] == 'auto':
                 if global_pp_size > 0:
                     mesh_pp_sizes = [item['mesh'][4] for item in assignment]
-                    for split in _generate_valid_layer_splits(config.train.model.num_layers, mesh_pp_sizes):
+                    for split in _generate_valid_layer_splits(
+                        config.train.model.num_layers, mesh_pp_sizes
+                    ):
                         strat = base_strategy.copy()
                         strat["hetero_pipeline_layer_split"] = split
                         parallelism_part.append(strat)
-            else: # Manual mode validation
+            else:  # Manual mode validation
                 for split in space["hetero_pipeline_layer_split"]:
                     if len(split) == global_pp_size and sum(split) == config.train.model.num_layers:
                         strat = base_strategy.copy()
                         strat["hetero_pipeline_layer_split"] = split
                         parallelism_part.append(strat)
-        
-        self.logger.info(f"Created {len(parallelism_part)} core strategies after considering layer splits.")
+
+        self.logger.info(
+            f"Created {len(parallelism_part)} core strategies after considering layer splits."
+        )
         final_strategies = self._product_with_other_dims(parallelism_part, space, config)
         self.logger.info(
             f"Built a total of {len(final_strategies)} comprehensive candidate strategies."
         )
         return final_strategies
-        
+
     def _product_with_other_dims(self, parallelism_part, space, config):
         # This function remains unchanged
         full_strategies = []
         for base_strategy in parallelism_part:
             meshes = base_strategy["hetero_process_meshes"]
-            if not meshes: continue
-            
+            if not meshes:
+                continue
+
             dp_list = [mesh[3] for mesh in meshes]
             base_dp = dp_list[0] if dp_list else 1
             for mbs in space["micro_batch_size"]:
-                is_dp_compatible = all((base_dp * mbs) % dp == 0 for dp in dp_list if dp > 0)
+                gbs = config.train.model.global_batch_size
+                is_dp_compatible = all((gbs % (dp * mbs) == 0) for dp in dp_list if dp > 0)
                 if not is_dp_compatible:
                     continue
                 all_dp_are_one = all(dp == 1 for dp in dp_list)
@@ -332,7 +343,9 @@ class HeteroSearcher(Searcher):
                                                 {
                                                     "recompute_method": r_method,
                                                     "recompute_granularity": r_granularity,
-                                                    "recompute_num_layers": space["recompute_num_layers"][0],
+                                                    "recompute_num_layers": space[
+                                                        "recompute_num_layers"
+                                                    ][0],
                                                 }
                                             )
                                             full_strategies.append(new_strat)

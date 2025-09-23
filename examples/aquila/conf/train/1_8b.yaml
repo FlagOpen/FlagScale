@@ -17,8 +17,6 @@ system:
     log_interval: 1
     log_throughput: True
     tensorboard_log_interval: 1
-    log-timers-to-tensorboard: True
-    log-validation-ppl-to-tensorboard: True
     wandb_project: ${experiment.exp_name}
     wandb_exp_name: ${experiment.exp_name}
   checkpoint:
@@ -32,7 +30,7 @@ system:
     # mesh format [tp1,cp1,ep1,dp1,pp1,(tp2,cp2...)]
     hetero_pipeline_layer_split: [12,12]
     hetero_process_meshes: [1,1,1,2,1, 1,1,1,2,1]
-    hetero_device_types: ["A800", "A800"]
+    hetero_device_types: ["A800", "mlu590"]
 
     standalone_embedding_stage: False
     hetero_current_device_type: "A800"
@@ -78,12 +76,12 @@ model:
 
 
 data:
-  data_path: /nfs/syq/FlagScale/data/pile_wikipedia_demo/pile_wikipedia_demo
+  data_path: xxx # Please replace with your actual data path
   split: 1
   no_mmap_bin_files: true
   tokenizer:
     tokenizer_type: QwenTokenizerFS
-    tokenizer_path: /nfs/syq/qwentokenizer
-    vocab_size: 151851
+    tokenizer_path: xxx xxxx # Please replace with your actual tokenizer path
+    vocab_size: xxx # Please replace with your actual vocab size
     make_vocab_size_divisible_by: 64
 
