@@ -8,6 +8,7 @@ dataset:
   # Another option for video_backend: torchcodec 
   # May cause problems: https://github.com/huggingface/lerobot/issues/970
   video_backend: pyav
+  dtype: torch.float32
 data_loader:
   batch_size: 1
   shuffle: false

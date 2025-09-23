@@ -28,11 +28,6 @@ def inference(config):
         num_workers=config_data_loader.num_workers,
         batch_size=config_data_loader.batch_size,
     )
-    batch = next(iter(dataloader))
-
-    for k in batch:
-        if isinstance(batch[k], torch.Tensor):
-            batch[k] = batch[k].to(device=DEVICE, dtype=torch.float32)
 
     cfg = PreTrainedConfig.from_pretrained(config_llm.model_path)
     cfg.pretrained_path = config_llm.model_path
@@ -40,11 +35,17 @@ def inference(config):
     if config_llm.compile_model:
         policy = torch.compile(policy, mode=config_llm.compile_mode)
 
-    images, img_masks = policy.prepare_images(batch)
-    state = policy.prepare_state(batch)
-    lang_tokens, lang_masks = policy.prepare_language(batch)
-
     for _ in range(config_generate.num_inference):
+        batch = next(iter(dataloader))
+        dtype = eval(config_dataset.get("dtype", "torch.float32"))
+        for k in batch:
+            if isinstance(batch[k], torch.Tensor):
+                batch[k] = batch[k].to(device=DEVICE, dtype=dtype)
+
+        images, img_masks = policy.prepare_images(batch)
+        state = policy.prepare_state(batch)
+        lang_tokens, lang_masks = policy.prepare_language(batch)
+    
         t_s = time.time()
         actions = policy.model.sample_actions(
             images, img_masks, lang_tokens, lang_masks, state, noise=None
