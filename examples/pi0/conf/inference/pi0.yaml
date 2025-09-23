@@ -1,5 +1,6 @@
 llm:
-  model_path: /.../lerobot/pi0
+  # TODO: Update model_path to your local model path
+  model_path: /path/to/your/models/lerobot/pi0
   compile_model: false
   compile_mode: reduce-overhead
 dataset:
