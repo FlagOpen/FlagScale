@@ -4,7 +4,7 @@ on:
   push:
     branches: ["main"]
     paths:
-      - '.github/workflows/build-and-push-docker-metax.yml'
+      - '.github/workflows/build-and-push-docker.yml'
       # - 'hardware/Metax_C550/**'
   pull_request:
     branches: ["main"]
