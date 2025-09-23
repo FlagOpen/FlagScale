@@ -19,7 +19,7 @@ jobs:
     container:
       image: ${{ inputs.image }}
       ports:
-        - 6704
+        - 80
       volumes:
         - /usr/local/Ascend/driver:/usr/local/Ascend/driver
         - /usr/local/Ascend/firmware:/usr/local/Ascend/firmware
@@ -27,7 +27,7 @@ jobs:
         - /usr/local/sbin:/usr/local/sbin
         - /etc/hccn.conf:/etc/hccn.conf
         - /data:/data
-      options: --ipc=host -p 6704:6704 --privileged=true --group-add video --shm-size 100gb --hostname flagscale_cicd --user root --ulimit nofile=65535:65535 --ulimit memlock=-1 --device=/dev/dri --device=/dev/ascend*
+      options: --ipc=host --network=host --privileged=true --group-add video --shm-size 100gb --hostname flagscale_cicd --user root --ulimit nofile=65535:65535 --ulimit memlock=-1 --device=/dev/dri --device=/dev/ascend*
 
     steps:
       - name: Checkout Code
