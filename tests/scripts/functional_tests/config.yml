@@ -42,7 +42,7 @@ inference:
     -7b_multimodel
   robobrain2-flaggems-metax:
     -7b
-    -7b_multimodel
+    # -7b_multimodel
 
 serve:
   qwen2_5:
