@@ -193,6 +193,10 @@ class HeteroSearcher(Searcher):
         results = []
         current_template = self.mesh_templates[mesh_idx]
         current_device_type = self.device_types_in_template[mesh_idx]
+        # TODO: The current implementation strictly maps each mesh template to a specific device type.
+        # A future, more advanced version could relax this constraint. The algorithm could
+        # attempt to assign any group of available nodes to any mesh template as long as
+        # parallelism constraints are met, enabling more flexible cross-hardware scheduling.
         candidate_nodes = [node for node in available_nodes if node['type'] == current_device_type]
         if not candidate_nodes:
             return []
