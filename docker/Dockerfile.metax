@@ -1,4 +1,7 @@
-FROM cr.metax-tech.com/public-ai-release/maca/modelzoo.llm.vllm:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64
+ARG MACA_VERSION=ai3.0.0.5
+ARG TORCH_VERSION=2.6
+ARG PYTHON_VERSION=310
+FROM cr.metax-tech.com/public-ai-release/maca/modelzoo.llm.vllm:maca.${MACA_VERSION}-torch${TORCH_VERSION}-py${PYTHON_VERSION}-ubuntu22.04-amd64
 
 ##############################################################################
 # Temporary Installation Directory
@@ -21,9 +24,11 @@ RUN /opt/conda/bin/pip3 install cryptography gitpython cmake
 # used to generate cmakecache files
 # install tooklit Only, IGNORE driver or samples
 ##############################################################################
-RUN wget https://developer.download.nvidia.com/compute/cuda/11.6.0/local_installers/cuda_11.6.0_510.39.01_linux.run && \
-    sh cuda_11.6.0_510.39.01_linux.run --silent --toolkit && \
-    rm cuda_11.6.0_510.39.01_linux.run
+ARG CUDA_VERSION=11.6.0
+ARG TOOLKIT_VERSION=11.6.0_510.39.01
+RUN wget https://developer.download.nvidia.com/compute/cuda/${CUDA_VERSION}/local_installers/cuda_${TOOLKIT_VERSION}_linux.run && \
+    sh cuda_${TOOLKIT_VERSION}_linux.run --silent --toolkit && \
+    rm cuda_${TOOLKIT_VERSION}_linux.run
 
 ##############################################################################
 # Clone FlagScale
