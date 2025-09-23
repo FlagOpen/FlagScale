@@ -1,7 +1,8 @@
+import dataclasses
 import importlib
 import os
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any, List, Tuple, Union
 
 import torch
@@ -26,47 +27,104 @@ def _check_required_fields(config_dict: DictConfig, required_fields: List[str]) 
 
 
 @dataclass
-class InferenceEngineConfig:
-    model_config: DictConfig = None
-    model_name: str = None
-    loader: str = None
+class InferenceEngineArgs:
+    """Args populated from YAML"""
 
-    engine_config: DictConfig = None
+    model: str = None
+    loader: str = None
+    device: Any = None
+    torch_dtype: Any = None
+    pipeline: Any = None
+    components: Any = None
+
     results_path: str = None
     output_format: str = None
     state_scopes: List[str] = None
+    transformations: Any = None
 
-    transforms_cfg: DictConfig = None
+    @classmethod
+    def from_yaml(cls, config_dict: DictConfig) -> "InferenceEngineArgs":
+        """Parse flat engine YAML into args using dataclass field introspection."""
+        field_names = {f.name for f in dataclasses.fields(cls)}
+        kwargs = {name: config_dict.get(name) for name in field_names if name in config_dict}
 
-    def __init__(self, config_dict: DictConfig) -> None:
-        """Load and validate the config dict
+        return cls(**kwargs)
 
-        Args:
-            config_dict (DictConfig, **required**): The configuration for the inference engine.
-        """
+    def __post_init__(self):
+        missing = []
+        if not self.model:
+            missing.append("model")
+        if not self.loader:
+            missing.append("loader")
+        if not self.results_path:
+            missing.append("results_path")
+        if not self.output_format:
+            missing.append("output_format")
+        if missing:
+            raise ValueError(f"Missing required engine args: {', '.join(missing)}")
 
-        # ==========================================
-        #               MODEL CONFIG
-        # ==========================================
-        self.model_config = config_dict.get("model_config", {})
-        _check_required_fields(self.model_config, ["loader", "model"])
-        # TODO(yupu): Should we distinguish between the model name and the model path?
-        self.model_name = self.model_config.model
-        self.loader = self.model_config.loader
+    def create_engine_config(self) -> "InferenceConfig":
+        """Create the finalized engine config from args with validation."""
+        model_obj = ModelLoadConfig(
+            model=self.model,
+            loader=self.loader,
+            device=self.device,
+            torch_dtype=self.torch_dtype,
+            pipeline=self.pipeline,
+            components=self.components,
+        )
+        engine_obj = EngineConfig(
+            results_path=self.results_path,
+            output_format=self.output_format,
+            state_scopes=self.state_scopes,
+            transformations=self.transformations if self.transformations is not None else {},
+        )
 
-        # ==========================================
-        #               ENGINE CONFIG
-        # ==========================================
-        self.engine_config = config_dict.get("engine_config", {})
-        _check_required_fields(self.engine_config, ["results_path", "output_format"])
-        self.results_path = self.engine_config.results_path
-        self.output_format = self.engine_config.output_format
-        self.state_scopes = self.engine_config.get("state_scopes", None)
+        return InferenceConfig(model=model_obj, engine=engine_obj)
 
-        # ==========================================
-        #               TRANSFORMS CONFIG
-        # ==========================================
-        self.transforms_cfg = self.engine_config.get("transformations", {})
+
+@dataclass
+class ModelLoadConfig:
+    model: str
+    loader: str
+    device: Any = None
+    torch_dtype: Any = None
+    pipeline: Any = None
+    components: Any = None
+
+    def __post_init__(self):
+        if not self.model:
+            raise ValueError("'model' is required")
+        if not self.loader:
+            raise ValueError("'loader' is required")
+        allowed_loaders = {"diffusers", "transformers", "custom", "auto"}
+        if self.loader not in allowed_loaders:
+            raise ValueError(f"Unsupported loader: {self.loader}. Allowed: {allowed_loaders}")
+
+
+@dataclass
+class EngineConfig:
+    results_path: str
+    output_format: str
+    state_scopes: List[str] = None
+    transformations: Any = None
+
+    def __post_init__(self):
+        if not self.results_path:
+            raise ValueError("'results_path' is required")
+        if not self.output_format:
+            raise ValueError("'output_format' is required")
+        allowed_formats = {"image", "video"}
+        if self.output_format not in allowed_formats:
+            raise ValueError(
+                f"Unsupported output_format: {self.output_format}. Allowed: {allowed_formats}"
+            )
+
+
+@dataclass
+class InferenceConfig:
+    model: ModelLoadConfig
+    engine: EngineConfig
 
 
 class InferenceEngine:
@@ -76,18 +134,16 @@ class InferenceEngine:
         """Initialize the inference engine.
 
         Args:
-            config_dict: The config dict. It consists of 2 parts:
-                - model_config: config for loading the model
-                    - model (str, **required**): the model name or path
-                    - loader (str, **required**): the loader for the model,
-                        available options: "diffusers", "transformers", "custom", "auto"
-                    - other model loading parameters
-                - engine_config: engine related config
-                    - results_path (str, **required**): the path to save the results
-                    - transformations: the transformations to apply to the model
-                    - other engine related parameters
+            config_dict: The flat engine config dict. Required keys:
+                - model (str)
+                - loader (str): one of {"diffusers","transformers","custom","auto"}
+                - results_path (str)
+                - output_format (str): one of {"image","video"}
+              Optional keys include device/torch_dtype/pipeline/components,
+              transformations/transforms_cfg, state_scopes, etc.
         """
-        self.config = InferenceEngineConfig(config_dict)
+        self.args = InferenceEngineArgs.from_yaml(config_dict)
+        self.vconfig = self.args.create_engine_config()
 
         self.model_or_pipeline, self.backbone = self.load()
         self.apply_transformations()
@@ -99,16 +155,20 @@ class InferenceEngine:
             The model or pipeline, depending on the loader.
         """
 
-        if self.config.loader == "diffusers":
-            return self.load_diffusers_pipeline(self.config.model_name, **self.config.model_config)
-        elif self.config.loader == "transformers":
+        loader = self.vconfig.model.loader
+
+        if loader == "diffusers":
+            return self.load_diffusers_pipeline(
+                self.vconfig.model.model, **asdict(self.vconfig.model)
+            )
+        elif loader == "transformers":
             raise NotImplementedError("Transformers loader is not implemented")
-        elif self.config.loader == "custom":
+        elif loader == "custom":
             raise NotImplementedError("Custom loader is not implemented")
-        elif self.config.loader == "auto":
+        elif loader == "auto":
             raise NotImplementedError("Auto loader is not implemented")
         else:
-            raise ValueError(f"Unsupported loader: {self.config.loader}")
+            raise ValueError(f"Unsupported loader: {loader}")
 
     def apply_transformations(self) -> None:
         """Apply the transformations to the model or pipeline
@@ -117,7 +177,8 @@ class InferenceEngine:
         """
 
         # TODO(yupu): run preflight/supports check for each transformation
-        transformations = create_transformations_from_config(self.config.transforms_cfg)
+        transforms_cfg = self.vconfig.engine.transformations or {}
+        transformations = create_transformations_from_config(transforms_cfg)
         for t in transformations:
             success = t.apply(self.backbone)
             if not success:
@@ -151,18 +212,18 @@ class InferenceEngine:
     def save(self, outputs) -> bool:
         """Save the output."""
 
-        os.makedirs(self.config.results_path, exist_ok=True)
+        os.makedirs(self.vconfig.engine.results_path, exist_ok=True)
 
-        if self.config.output_format == "image":
-            output_path = os.path.join(self.config.results_path, "output.png")
+        if self.vconfig.engine.output_format == "image":
+            output_path = os.path.join(self.vconfig.engine.results_path, "output.png")
             # TODO(yupu): Support multiple images
             if hasattr(outputs, "images") and len(outputs.images) > 0:
                 image = outputs.images[0]
             else:
                 raise NotImplementedError("Not implemented yet")
             image.save(output_path)
-        elif self.config.output_format == "video":
-            output_path = os.path.join(self.config.results_path, "output.mp4")
+        elif self.vconfig.engine.output_format == "video":
+            output_path = os.path.join(self.vconfig.engine.results_path, "output.mp4")
             # TODO(yupu): Support multiple videos
             if hasattr(outputs, "frames") and len(outputs.frames) > 0:
                 video = outputs.frames[0]
@@ -170,7 +231,7 @@ class InferenceEngine:
                 raise NotImplementedError("Not implemented yet")
             export_to_video(video, output_path, fps=15)
         else:
-            raise ValueError(f"Unsupported output format: {self.config.output_format}")
+            raise ValueError(f"Unsupported output format: {self.vconfig.engine.output_format}")
 
         return True
 

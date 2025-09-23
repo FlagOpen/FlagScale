@@ -1,21 +1,19 @@
 engine:
-  model_config:
-    model: ${experiment.model}
-    loader: diffusers
-    pipeline:
-      class: diffusers.WanPipeline
+  model: ${experiment.model}
+  loader: diffusers
+  pipeline:
+    class: diffusers.WanPipeline
+    from_pretrained:
+      torch_dtype: bfloat16
+  components:
+    vae:
+      class: diffusers.AutoencoderKLWan
       from_pretrained:
-        torch_dtype: bfloat16
-    components:
-      vae:
-        class: diffusers.AutoencoderKLWan
-        from_pretrained:
-          subfolder: vae
-          torch_dtype: float32
-    device: cuda
-  engine_config:
-    results_path: ${experiment.exp_dir}/results
-    output_format: "video"
+        subfolder: vae
+        torch_dtype: float32
+  device: cuda
+  results_path: ${experiment.exp_dir}/results
+  output_format: "video"
 
 generate:
   prompt: "A cat walks on the grass, realistic"

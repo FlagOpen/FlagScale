@@ -1,15 +1,13 @@
 engine:
-  model_config:
-    model: ${experiment.model}
-    loader: diffusers
-    pipeline:
-      class: diffusers.FluxPipeline
-      from_pretrained:
-        torch_dtype: bfloat16
-    device: cuda
-  engine_config:
-    results_path: ${experiment.exp_dir}/results
-    output_format: "image"
+  model: ${experiment.model}
+  loader: diffusers
+  pipeline:
+    class: diffusers.FluxPipeline
+    from_pretrained:
+      torch_dtype: bfloat16
+  device: cuda
+  results_path: ${experiment.exp_dir}/results
+  output_format: "image"
 
 generate:
   prompt: "A cat holding a sign that says hello world"

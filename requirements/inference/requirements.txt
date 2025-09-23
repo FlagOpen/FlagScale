@@ -1,4 +1,5 @@
-quart
 diffusers==0.35.1
+ftfy
 peft==0.17.0
+quart
 transformers==4.55.0
