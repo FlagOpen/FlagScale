@@ -4,12 +4,12 @@ on:
   push:
     branches: ["main"]
     paths:
-      - '.github/workflows/*docker*.yml'
+      - '.github/workflows/build-and-push-docker-metax.yml'
       # - 'hardware/Metax_C550/**'
   pull_request:
     branches: ["main"]
     paths:
-      - '.github/workflows/*docker*.yml'
+      - '.github/workflows/build-and-push-docker-metax.yml'
       # - 'hardware/Metax_C550/**'
 
 concurrency:
@@ -20,7 +20,7 @@ jobs:
   set-env:
     runs-on: ubuntu-latest
     outputs:
-      ci_image: ${{ steps.set-env.outputs.ci_image }} # Declare output variable
+      ci_image: ${{ steps.set-image.outputs.ci_image }} # Declare output variable
       test_tasks: ${{ steps.set-tasks.outputs.test_tasks }}
       test_type: ${{ steps.set-type.outputs.test_type }}
     steps:
