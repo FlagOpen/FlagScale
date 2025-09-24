@@ -8,7 +8,10 @@ model_type = ModelType.encoder_or_decoder  # Megatron's model_type
 
 
 def get_hf_model(dtype, model_path=None, config=None):
-    from .moonlight_deepseek.modeling_deepseek import DeepseekV3ForCausalLM
+    import sys
+
+    sys.path.append("..")
+    from moonlight_deepseek.modeling_deepseek import DeepseekV3ForCausalLM
 
     s_time = time.time()
     if model_path and not config:
