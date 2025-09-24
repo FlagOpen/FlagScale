@@ -50,13 +50,13 @@ def make_task_manager():
         async def set_task_status(self, req: TaskUpdate):
             with self._lock:
                 self.task_status[req.id] = req.status
+            logger.info(f"Task {req.id} status set to {req.status}")
             return {"ok": True}
 
         @local_app.post("/get_task_status")
         async def get_task_status(self, req: TaskQuery):
             with self._lock:
                 status = self.task_status.get(req.id, "unknown")
-            logger.info(f"Task {req.id} status set to {req.status}")
             return {"id": req.id, "status": status}
 
         @local_app.post("/delete_task_status")
