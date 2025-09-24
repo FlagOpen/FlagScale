@@ -9,13 +9,12 @@ llm:
   enforce_eager: true
 
 generate:
-  modality: "image"
   prompts:
     - "What is shown in this image?"
     - "What food is in the picture?"
-  mm_data:
-    - "/home/gitlab-runner/data/images/20250917-104649.jpg"
-    - "/home/gitlab-runner/data/images/20250917-104706.jpg"
+  images:
+    - "/home/gitlab-runner/data/images/img1.jpg"
+    - "/home/gitlab-runner/data/images/img2.jpg"
   sampling:
     top_p: 0.1
     top_k: 1

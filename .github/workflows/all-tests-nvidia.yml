@@ -149,6 +149,7 @@ jobs:
           - qwen3
           - qwen3-flaggems
           - robobrain2
+          - robobrain2-flaggems
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
