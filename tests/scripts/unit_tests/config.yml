@@ -47,11 +47,12 @@ train_megatron:
       type: single
       ignore:
         - test_grad_sync_with_expert_parallel.py
+        - test_mfsdp_fully_shard.py
       deselect:
         - test_mcore_fully_sharded_data_parallel.py::TestFullyShardedDataParallel::test_fsdp_user_buffer_registration
     export:
       ignore:
-        - test_mfsdp_fully_shard.py
+        - default
       deselect:
         - trtllm/test_distributed_fp8.py::TestTRTLLMSingleDeviceConverterFP8::test_get_model_weights_converter
         - trtllm/test_single_device_fp8.py::TestTRTLLMSingleDeviceConverterFP8::test_get_model_weights_converter
