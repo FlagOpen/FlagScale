@@ -115,6 +115,8 @@ wait_for_gpu_metax() {
     echo "All Metax GPUs have sufficient free memory, GPU memory usage ratio is below 50% (current max usage: ${max_usage_percent}%)"
 }
 
+# Function to wait for GPU availability using mx-smi
+# This function monitors Hwawei NPU memory usage and waits until it's below 50%
 wait_for_npu_ascend() {
     local NPU_count
     NPU_count=$(npu-smi info -l | grep "Total Count" | awk '{print $4}')
@@ -140,7 +142,7 @@ wait_for_npu_ascend() {
                     max_usage_percent=$usage_percent
                 fi
             else
-                echo "Warning: Invalid memory values - usage: '$memory_usage_i', total: '$memory_total_i'"
+                echo "Warning: Invalid memory values - usage: '$usage_percent'"
                 need_wait=true
                 break
             fi

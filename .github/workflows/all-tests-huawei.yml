@@ -6,13 +6,21 @@ on:
     paths:
       - '.github/workflows/*huawei*.yml'
       - 'hardware/Huawei_Atlas800TA3/**'
-      - 'tests/**'
+      - 'tests/functional_tests/test_cases/hetero_train/*-huawei'
+      - 'tests/functional_tests/test_cases/inference/*-huawei'
+      - 'tests/functional_tests/test_cases/rl/*-huawei'
+      - 'tests/functional_tests/test_cases/serve/*-huawei'
+      - 'tests/functional_tests/test_cases/train/*-huawei'
   pull_request:
     branches: ["main"]
     paths:
       - '.github/workflows/*huawei*.yml'
       - 'hardware/Huawei_Atlas800TA3/**'
-      - 'tests/**'
+      - 'tests/functional_tests/test_cases/hetero_train/*-huawei'
+      - 'tests/functional_tests/test_cases/inference/*-huawei'
+      - 'tests/functional_tests/test_cases/rl/*-huawei'
+      - 'tests/functional_tests/test_cases/serve/*-huawei'
+      - 'tests/functional_tests/test_cases/train/*-huawei'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
