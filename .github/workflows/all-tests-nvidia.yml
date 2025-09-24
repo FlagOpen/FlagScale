@@ -205,20 +205,20 @@ jobs:
           if [ -f coverage_elastic.xml ]; then
             echo "Coverage XML report generated successfully"
             python -c "
-import xml.etree.ElementTree as ET
-try:
-    tree = ET.parse('coverage_elastic.xml')
-    root = tree.getroot()
-    coverage = root.attrib.get('line-rate', '0')
-    percentage = float(coverage) * 100
-    print(f'Line Coverage: {percentage:.1f}%')
-    if percentage < 80:
-        print(f'Warning: Coverage {percentage:.1f}% is below recommended 80%')
-        exit(1)
-except Exception as e:
-    print(f'Error parsing coverage: {e}')
-    exit(1)
-"
+            import xml.etree.ElementTree as ET
+            try:
+                tree = ET.parse('coverage_elastic.xml')
+                root = tree.getroot()
+                coverage = root.attrib.get('line-rate', '0')
+                percentage = float(coverage) * 100
+                print(f'Line Coverage: {percentage:.1f}%')
+                if percentage < 80:
+                    print(f'Warning: Coverage {percentage:.1f}% is below recommended 80%')
+                    exit(1)
+            except Exception as e:
+                print(f'Error parsing coverage: {e}')
+                exit(1)
+            "
           else
             echo "Coverage XML report not found"
             exit 1
