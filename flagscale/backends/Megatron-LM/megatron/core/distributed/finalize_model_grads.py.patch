@@ -1,5 +1,5 @@
 diff --git a/megatron/core/distributed/finalize_model_grads.py b/megatron/core/distributed/finalize_model_grads.py
-index ef1f0a14..1ded77f0 100644
+index ef1f0a14..2c22062b 100644
 --- a/megatron/core/distributed/finalize_model_grads.py
 +++ b/megatron/core/distributed/finalize_model_grads.py
 @@ -36,6 +36,18 @@ def _get_main_grad_attr(param: torch.nn.Parameter):
@@ -44,7 +44,7 @@ index ef1f0a14..1ded77f0 100644
          # embd_group can be None in cases there is no embd_group
          # get_pg_size(embd_group) will return 1 and the all-reduce will be skipped.
          get_pg_size(embd_group) > 1
-@@ -249,6 +267,68 @@ def _allreduce_embedding_grad(
+@@ -249,6 +267,67 @@ def _allreduce_embedding_grad(
              return
          torch.distributed.all_reduce(grad, group=embd_group)
          setattr(weight, grad_attr, _reshard_if_dtensor(grad, orig_grad))
@@ -107,13 +107,12 @@ index ef1f0a14..1ded77f0 100644
 +                    torch.distributed.all_reduce(grad, group=group)
 +        if grad.device == torch.device('cpu'):
 +            grad.to(torch.cuda.current_device())
-+        torch.distributed.all_reduce(grad, group=embd_group)
 +        setattr(weight, grad_attr, _reshard_if_dtensor(grad, orig_grad))
 +    ######## FlagScale End ########
  
  
  def _allreduce_position_embedding_grads(
-@@ -482,6 +562,9 @@ def finalize_model_grads(
+@@ -482,6 +561,9 @@ def finalize_model_grads(
          last_rank = get_pp_last_rank(pp_group)
          torch.distributed.broadcast(num_tokens, src=last_rank, group=pp_group)
  
