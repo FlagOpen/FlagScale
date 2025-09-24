@@ -621,7 +621,6 @@ async def benchmark(
     req_model_id = model
     req_model_name = model_id if model_id is not None else model
 
-    
     pbar = tqdm(total=len(input_requests))
 
     benchmark_start_time = time.perf_counter()
