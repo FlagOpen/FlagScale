@@ -38,10 +38,10 @@ inference:
   qwen3-flaggems-metax:
     -4b-tp2
   robobrain2-metax:
-    -7b
+    # -7b
     -7b_multimodel
   robobrain2-flaggems-metax:
-    -7b
+    # -7b
     -7b_multimodel
 
 serve:
