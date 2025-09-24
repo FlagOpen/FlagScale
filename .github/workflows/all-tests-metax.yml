@@ -44,7 +44,7 @@ jobs:
           - qwen3-metax
           - qwen3-flaggems-metax
           - robobrain2-metax
-          - robobrain2-flaggems-metax
+          - robobrain2-flaggems-metax  # TP1
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
