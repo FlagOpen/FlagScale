@@ -25,7 +25,7 @@ engine_args = model_config.get("engine_args", {})
 resources = model_config.get("resources", {})
 
 # Define predefined key list for subsequent filtering
-para_list = {
+para_list = [
     # filter para
     "model",
     "served_model_name",
@@ -40,20 +40,11 @@ para_list = {
     "enable_chunked_prefill",
     "enable_auto_tool_choice",
     "tool_call_parser",
-}
+    "chat_template",
+]
 
 # Initialize engine parameter dictionary with predefined options and default values
-_engine_kwargs = {
-    "tensor_parallel_size": engine_args.get("tensor_parallel_size", 1),
-    "pipeline_parallel_size": engine_args.get("pipeline_parallel_size", 1),
-    "gpu_memory_utilization": engine_args.get("gpu_memory_utilization", 0.9),
-    "max_model_len": engine_args.get("max_model_len", 32768),
-    "max_num_seqs": engine_args.get("max_num_seqs", 256),
-    "enforce_eager": engine_args.get("enforce_eager", True),
-    "enable_chunked_prefill": engine_args.get("enable_chunked_prefill", True),
-    "enable_auto_tool_choice": engine_args.get("enable_auto_tool_choice", False),
-    "tool_call_parser": engine_args.get("tool_call_parser", None),
-}
+_engine_kwargs = {key: value for key, value in engine_args.items() if key in para_list[3:]}
 
 # -------------------------- 2. Define Ray LLM configuration --------------------------
 llm_config = LLMConfig(
