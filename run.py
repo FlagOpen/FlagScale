@@ -48,7 +48,11 @@ def main(config: DictConfig) -> None:
                 raise ValueError(f"Unknown runner type {config.runner.type}")
 
             if config.action == "run":
-                runner.run()
+                # Check the GPU health check switch (disabled by default)
+                enable_gpu_health_check = config.experiment.runner.get(
+                    "enable_gpu_health_check", False
+                )
+                runner.run(enable_gpu_health_check=enable_gpu_health_check)
             elif config.action == "dryrun":
                 runner.run(dryrun=True)
             elif config.action == "test":
