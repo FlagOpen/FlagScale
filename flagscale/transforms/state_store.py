@@ -1,8 +1,16 @@
-# Modified from https://github.com/huggingface/diffusers/blob/4a7556eaecc9872dea50ce161301edfa6392693c/src/diffusers/hooks/hooks.py
+# Modified from
+# https://github.com/huggingface/diffusers/blob/4a7556eaecc9872dea50ce161301edfa6392693c/src/diffusers/hooks/hooks.py
 
 from typing import Dict, Generic, Optional, Type, TypeVar
 
 S = TypeVar("S")
+
+
+class BaseState:
+    def reset(self, *args, **kwargs):
+        raise NotImplementedError(
+            "BaseState::reset is not implemented. Please implement this method in the derived class."
+        )
 
 
 class StateStore(Generic[S]):
