@@ -1,5 +1,6 @@
 system:
-  output_dir: /share/project/hcr/models/train/lerobot/pi0
+  # TODO: Update to your local output path
+  output_dir: /path/to/your/output
   resume: false
   seed: 42
   num_workers: 4
@@ -19,7 +20,7 @@ system:
   wandb.mode: offline
 model:
   policy.type: pi0
-  # TODO: Update model_path to your local model path
+  # TODO: Update to your local model path
   policy.repo_id: /path/to/your/models/lerobot/pi0
   policy.n_obs_steps: 1
   policy.device: cuda
