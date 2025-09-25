@@ -1,0 +1,404 @@
+diff --git a/vllm_mlu/vllm_mlu/spec_decode/spec_decode_worker.py b/vllm_mlu/vllm_mlu/spec_decode/spec_decode_worker.py
+new file mode 100644
+index 000000000..abbf686be
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/spec_decode/spec_decode_worker.py
+@@ -0,0 +1,397 @@
++from collections import defaultdict
++from typing import Any, Dict, Optional, Set, Tuple
++import torch
++
++from vllm.logger import init_logger
++from vllm.config import ParallelConfig
++from vllm.model_executor.layers.rejection_sampler import RejectionSampler
++from vllm.model_executor.layers.spec_decode_base_sampler import (
++    SpecDecodeBaseSampler)
++from vllm.model_executor.layers.typical_acceptance_sampler import (
++    TypicalAcceptanceSampler)
++from vllm.platforms import current_platform
++from vllm.sequence import HiddenStates
++from vllm.spec_decode.interfaces import SpeculativeScorer
++from vllm.spec_decode.medusa_worker import MedusaWorker
++from vllm.spec_decode.mlp_speculator_worker import MLPSpeculatorWorker
++from vllm.spec_decode.multi_step_worker import MultiStepWorker
++from vllm.spec_decode.ngram_worker import NGramWorker
++from vllm.spec_decode.proposer_worker_base import ProposerWorkerBase
++from vllm.spec_decode.smaller_tp_proposer_worker import SmallerTpProposerWorker
++from vllm.worker.cache_engine import CacheEngine
++from vllm.worker.worker_base import WorkerBase
++from vllm.spec_decode.spec_decode_worker import SpecDecodeWorker, split_num_cache_blocks_evenly
++
++from vllm_mlu.spec_decode.mlu_metrics import MLUAsyncMetricsCollector
++from vllm_mlu.spec_decode.mlu_draft_model_runner import MLUTP1DraftModelRunner
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++from vllm_mlu.worker.mlu_worker import MLUWorker
++
++logger = init_logger(__name__)
++
++
++@classmethod
++def vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__create_worker(
++    cls,
++    scorer_worker: WorkerBase,
++    draft_worker_kwargs: Dict[str, Any],
++    disable_mqa_scorer: bool,
++    disable_by_batch_size: Optional[int],
++    draft_token_acceptance_method: str,
++    typical_acceptance_sampler_posterior_threshold: float,
++    typical_acceptance_sampler_posterior_alpha: float,
++    disable_logprobs: bool,
++    disable_log_stats: bool,
++    num_speculative_tokens: int,
++) -> "SpecDecodeWorker":
++
++    allow_zero_draft_token_step = True
++    enable_lm_head_weight_load = False
++    num_spec_prefill_steps = 1
++    ngram_prompt_lookup_max = (
++        draft_worker_kwargs.pop("ngram_prompt_lookup_max"))
++    ngram_prompt_lookup_min = (
++        draft_worker_kwargs.pop("ngram_prompt_lookup_min"))
++    draft_model_config = draft_worker_kwargs["vllm_config"].model_config
++    draft_parallel_config: ParallelConfig = draft_worker_kwargs[
++        'vllm_config'].parallel_config
++    if ngram_prompt_lookup_max > 0:
++        draft_worker_kwargs[
++            "device_type"] = scorer_worker.device_config.device.type
++        proposer_worker = NGramWorker(**draft_worker_kwargs)
++        proposer_worker.set_ngram_window_size(ngram_prompt_lookup_min,
++                                                ngram_prompt_lookup_max)
++    else:
++        draft_tp = draft_parallel_config.tensor_parallel_size
++        target_tp = scorer_worker.parallel_config.tensor_parallel_size
++
++        if draft_model_config.hf_config.model_type == "mlp_speculator":
++            proposer_worker = MLPSpeculatorWorker(**draft_worker_kwargs)
++        elif draft_model_config.hf_config.model_type == "medusa":
++            proposer_worker = MedusaWorker(**draft_worker_kwargs)
++        else:
++            if draft_tp == 1:
++                if current_platform.is_out_of_tree():
++                    draft_worker_kwargs[
++                        "model_runner_cls"] = MLUTP1DraftModelRunner
++            else:
++                if draft_model_config.hf_config.model_type == "eagle":
++                    raise NotImplementedError(
++                        f"{draft_model_config.hf_config.model_type} "
++                        "does not support TP > 1 yet")
++
++                allow_zero_draft_token_step = False
++
++            # Load lm_head weight for eagle in init_device
++            if draft_model_config.hf_config.model_type == "eagle":
++                enable_lm_head_weight_load = True
++
++            proposer_worker = MultiStepWorker(**draft_worker_kwargs)
++            if draft_model_config.hf_config.model_type == "deepseek_mtp":
++                num_spec_prefill_steps = \
++                    draft_model_config.hf_config.n_predict
++
++        proposer_worker = SmallerTpProposerWorker.maybe_wrap_worker(
++            proposer_worker, draft_tp, target_tp)
++
++    logger.info("Configuring SpecDecodeWorker with proposer=%s",
++                type(proposer_worker))
++
++    spec_decode_sampler: SpecDecodeBaseSampler = None
++    if draft_token_acceptance_method == "rejection_sampler":
++        spec_decode_sampler = RejectionSampler()
++    elif draft_token_acceptance_method == "typical_acceptance_sampler":
++        spec_decode_sampler = TypicalAcceptanceSampler(
++            posterior_threshold=\
++                typical_acceptance_sampler_posterior_threshold,
++            posterior_alpha=typical_acceptance_sampler_posterior_alpha,
++        )
++    logger.info(
++        "[Speculative Decoding] Configuring"
++        " SpecDecodeWorker with sampler=%s", type(spec_decode_sampler))
++
++    if not disable_mqa_scorer:
++        if scorer_worker.model_runner.attn_backend.get_name(
++        ) != "FLASH_ATTN":
++            disable_mqa_scorer = True
++            logger.info(
++                "[Speculative Decoding] Disabling MQA scorer as the "
++                "MQA is only available with flash attn backend.")
++
++        if draft_model_config and \
++            draft_model_config.max_model_len < \
++                scorer_worker.model_config.max_model_len:
++            disable_mqa_scorer = True
++            logger.info(
++                "[Speculative Decoding] Disabling MQA scorer as the "
++                "draft model max_model_len is smaller than the target "
++                "model max_model_len.")
++
++        if not scorer_worker.model_runner.model_config.enforce_eager:
++            disable_mqa_scorer = True
++            logger.info(
++                "[Speculative Decoding] Disabling MQA scorer as the "
++                "target model is not running in eager mode.")
++
++    return SpecDecodeWorker(
++        proposer_worker,
++        scorer_worker,
++        disable_mqa_scorer=disable_mqa_scorer,
++        disable_logprobs=disable_logprobs,
++        disable_log_stats=disable_log_stats,
++        disable_by_batch_size=disable_by_batch_size,
++        spec_decode_sampler=spec_decode_sampler,
++        allow_zero_draft_token_step=allow_zero_draft_token_step,
++        enable_lm_head_weight_load=enable_lm_head_weight_load,
++        num_spec_prefill_steps=num_spec_prefill_steps)
++
++
++def vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker____init__(
++    self,
++    proposer_worker: ProposerWorkerBase,
++    scorer_worker: WorkerBase,
++    spec_decode_sampler: SpecDecodeBaseSampler,
++    disable_mqa_scorer: bool = False,
++    disable_logprobs: bool = False,
++    disable_log_stats: bool = False,
++    metrics_collector: Optional[MLUAsyncMetricsCollector] = None,
++    disable_by_batch_size: Optional[int] = None,
++    allow_zero_draft_token_step: Optional[bool] = True,
++    enable_lm_head_weight_load: Optional[bool] = False,
++    num_spec_prefill_steps: int = 1,
++):
++    """
++    Create a SpecDecodeWorker.
++
++    Args:
++        proposer_worker: A worker that can produce speculative tokens for
++            sequences.
++        scorer_worker: A worker that produces probabilities of speculative
++            tokens according to some base model. Typically a vanilla vLLM
++            Worker.
++        spec_decode_sampler: A Torch module used to perform acceptance
++            sampling of the draft tokens in the verification step of
++            speculative decoding. Currently we support two different
++            types of sampler namely RejectionSampler and
++            TypicalAcceptanceSampler. 'spec_decode_sampler' is either an
++            instance of RejectionSampler or TypicalAcceptanceSampler.
++        disable_mqa_scorer: If set to True, disable the MQA scorer and use
++            the BatchExpansionTop1Scorer instead.
++        disable_logprobs: If set to True, token log probabilities will
++            not be output in both the draft worker and the target worker.
++            If set to False, log probabilities will be output by both.
++        disable_log_stats: If set to True, disable periodic printing of
++            speculative stage times.
++        disable_by_batch_size: If the batch size is larger than this,
++            disable speculative decoding for new incoming requests.
++        metrics_collector: Helper class for collecting metrics; can be set
++            for testing purposes.
++        allow_zero_draft_token_step: whether to allow a step where the draft
++            model generates no draft token; should disallow when the tp of
++            draft model is larger than 1 (TODO: #5814)
++        enable_lm_head_weight_load: whether to load lm_head weight for
++            draft models like eagle.
++        num_spec_prefill_steps: number of speculative prefill steps to run
++            before the speculative decoding starts. This is only used when
++            the draft model is a deepseek_mtp model that requires prefill
++            kv cache separately for each MTP layer.
++    """
++    self.proposer_worker = proposer_worker
++    self.scorer_worker = scorer_worker
++    scorer_runner = getattr(self.scorer_worker, "model_runner", None)
++    self.generators = scorer_runner.get_generators(
++    ) if scorer_runner else None
++    self.disable_by_batch_size = disable_by_batch_size or float("inf")
++    self.spec_decode_sampler = spec_decode_sampler
++    self._allow_zero_draft_token_step = allow_zero_draft_token_step
++    self._enable_lm_head_weight_load = enable_lm_head_weight_load
++    self._metrics = MLUAsyncMetricsCollector(
++        self.spec_decode_sampler
++    ) if metrics_collector is None else metrics_collector
++    # Tracks the sequence IDs that received a bonus token ID in
++    # their last forward pass. Needed only if KV cache is being
++    # used for token generation such as in the case of MultiStepWorker.
++    self._seq_with_bonus_token_in_last_step: Set[int] = set()
++    # Tracks the currently active request ids and the sequence IDs
++    # corresponding to them
++    self._request_id_seq_id_mapping: Dict[str, Set[int]] = defaultdict(set)
++    # Tracks if the proposer worker uses the KV cache or not.
++
++    self.probs_dtype = self.spec_decode_sampler.probs_dtype
++    self.token_id_dtype = self.spec_decode_sampler.token_id_dtype
++    # Lazy initialization.
++    self.scorer: SpeculativeScorer
++    self.disable_mqa_scorer = disable_mqa_scorer
++
++    # Hidden states from target model to pass to proposer
++    # in the subsequent step.
++    self.previous_hidden_states: Optional[HiddenStates] = None
++    self._disable_logprobs = disable_logprobs
++    self._disable_log_stats = disable_log_stats
++    self._num_spec_prefill_steps = num_spec_prefill_steps
++
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: asign self.proposer_worker.woker with _worker
++    '''
++    if hasattr(self.proposer_worker, "_worker") and not hasattr(self.proposer_worker, "worker"):
++        self.proposer_worker.worker = self.proposer_worker._worker
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++
++@torch.inference_mode()
++def vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__determine_num_available_blocks(self) -> Tuple[int, int]:
++    """Determine the number of cache blocks to use.
++
++    This is done by profiling the scorer model (which is typically the
++    larger of the two). Then the total memory which would be used by the
++    scorer cache is divided evenly between the proposer and scorer model KV,
++    such that the number of blocks is equal in both KV caches.
++    """
++    num_gpu_blocks, num_cpu_blocks = (
++        self.scorer_worker.determine_num_available_blocks())
++
++    scorer_cache_block_size_bytes = (
++        self.scorer_worker.get_cache_block_size_bytes())
++    proposer_cache_block_size_bytes = (
++        self.proposer_worker.get_cache_block_size_bytes())
++
++    new_num_gpu_blocks = split_num_cache_blocks_evenly(
++        scorer_cache_block_size_bytes, proposer_cache_block_size_bytes,
++        num_gpu_blocks)
++
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: Fix: tmo.reshape_paged_cache limit: RuntimeError: The addressing range of kv_cache cannot exceed 4G
++    @brief: Fix: cnnlScaledDotProductAttn_v5 check failed: cnnlGetTensorElementNum(key_desc) * kv_cache_dbyte <= INT32_MAX
++    @brief: record init memory usage
++    '''
++    if hasattr(self.proposer_worker, "worker") and hasattr(self.proposer_worker.worker.model_config.hf_text_config,
++                                                           "num_attention_heads"):
++        max_num_gpu_blocks = CacheEngine.get_max_num_gpu_blocks(self.proposer_worker.worker.cache_config,
++                                                                self.proposer_worker.worker.model_config,
++                                                                self.proposer_worker.worker.parallel_config)
++        if new_num_gpu_blocks > max_num_gpu_blocks:
++            logger.warning(f"current cache block num {new_num_gpu_blocks} is greater than tmo op limit, "
++                           f"force reduce cache block num to {max_num_gpu_blocks}.")
++        new_num_gpu_blocks = min(new_num_gpu_blocks, max_num_gpu_blocks)
++    # Record memory usage
++    if isinstance(self.scorer_worker, MLUWorker):
++        self.peak_memory = self.scorer_worker.peak_memory
++        self.block_memory = self.scorer_worker.block_memory
++    else:
++        self.peak_memory = 1
++        self.block_memory = 1
++    self.num_gpu_blocks = new_num_gpu_blocks
++    self.num_cpu_blocks = num_cpu_blocks
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++    return new_num_gpu_blocks, num_cpu_blocks
++
++
++def vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__get_latency(self):
++    scorer_latency = self.scorer_worker.get_latency()
++    proposer_latency = 0
++    if not isinstance(self.proposer_worker, NGramWorker):
++        proposer_latency = self.proposer_worker.worker.get_latency()
++
++    return scorer_latency + proposer_latency
++
++
++def vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__get_memory_usage(self):
++    return (self.peak_memory, self.block_memory, self.num_gpu_blocks, self.num_cpu_blocks)
++
++
++def vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__recapture_model(
++    self,
++    enable_context_mlugraph,
++    context_batch_size_to_capture,
++    context_seq_len_to_capture
++) -> None:
++    self.scorer_worker.recapture_model(enable_context_mlugraph, context_batch_size_to_capture,
++                                       context_seq_len_to_capture)
++    if not isinstance(self.proposer_worker, NGramWorker):
++        self.proposer_worker.worker.recapture_model(enable_context_mlugraph, context_batch_size_to_capture,
++                                                    context_seq_len_to_capture)
++
++
++def vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__setup_smooth_hook(self, is_save_input_id: bool = False):
++    self.scorer_worker.setup_smooth_hook(is_save_input_id)
++    if not isinstance(self.proposer_worker, NGramWorker):
++        self.proposer_worker.worker.setup_smooth_hook(is_save_input_id)
++
++
++def vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__remove_hooks(self):
++    self.scorer_worker.remove_hooks()
++    if not isinstance(self.proposer_worker, NGramWorker):
++        self.proposer_worker.worker.remove_hooks()
++
++
++def vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__get_act_range(self):
++    scorer_act_range = self.scorer_worker.get_act_range()
++    proposer_act_range = {}
++    if not isinstance(self.proposer_worker, NGramWorker):
++        proposer_act_range = self.proposer_worker.worker.get_act_range()
++
++    act_range = scorer_act_range | proposer_act_range
++
++    return act_range
++
++
++def vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__get_named_parameters(self):
++    scorer_named_parameters = self.scorer_worker.get_named_parameters()
++    proposer_named_parameters = {}
++    if not isinstance(self.proposer_worker, NGramWorker):
++        proposer_named_parameters = self.proposer_worker.worker.get_named_parameters()
++
++    named_parameters = scorer_named_parameters | proposer_named_parameters
++
++    return named_parameters
++
++
++MluHijackObject.apply_hijack(
++    SpecDecodeWorker,
++    SpecDecodeWorker.create_worker,
++    vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__create_worker
++)
++MluHijackObject.apply_hijack(
++    SpecDecodeWorker,
++    SpecDecodeWorker.__init__,
++    vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker____init__
++)
++MluHijackObject.apply_hijack(SpecDecodeWorker,
++                             SpecDecodeWorker.determine_num_available_blocks,
++                             vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__determine_num_available_blocks)
++MluHijackObject.apply_hijack(SpecDecodeWorker,
++                             "get_latency",
++                             vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__get_latency)
++MluHijackObject.apply_hijack(SpecDecodeWorker,
++                             "get_memory_usage",
++                             vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__get_memory_usage)
++MluHijackObject.apply_hijack(SpecDecodeWorker,
++                             "recapture_model",
++                             vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__recapture_model)
++MluHijackObject.apply_hijack(SpecDecodeWorker,
++                             "setup_smooth_hook",
++                             vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__setup_smooth_hook)
++MluHijackObject.apply_hijack(SpecDecodeWorker,
++                             "remove_hooks",
++                             vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__remove_hooks)
++MluHijackObject.apply_hijack(SpecDecodeWorker,
++                             "get_act_range",
++                             vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__get_act_range)
++MluHijackObject.apply_hijack(SpecDecodeWorker,
++                             "get_named_parameters",
++                             vllm__sepc_decode__spec_decode_worker__SpecDecodeWorker__get_named_parameters)
+

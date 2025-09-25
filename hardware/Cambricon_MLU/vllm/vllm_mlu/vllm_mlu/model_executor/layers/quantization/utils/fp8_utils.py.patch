@@ -1,0 +1,323 @@
+diff --git a/vllm_mlu/vllm_mlu/model_executor/layers/quantization/utils/fp8_utils.py b/vllm_mlu/vllm_mlu/model_executor/layers/quantization/utils/fp8_utils.py
+new file mode 100644
+index 000000000..fe87bef16
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/model_executor/layers/quantization/utils/fp8_utils.py
+@@ -0,0 +1,316 @@
++# SPDX-License-Identifier: Apache-2.0
++
++# Adapted from https://github.com/sgl-project/sglang/pull/2575
++import functools
++import json
++import os
++from typing import Any, Dict, List, Optional, Tuple
++
++import torch
++import triton
++import triton.language as tl
++
++from vllm.logger import init_logger
++from vllm.model_executor.layers.quantization.utils.w8a8_utils import (
++    CUTLASS_BLOCK_FP8_SUPPORTED)
++from vllm.model_executor.layers.quantization.utils.fp8_utils import (
++    _w8a8_block_fp8_matmul,
++    _per_token_group_quant_fp8_colmajor)
++from vllm.platforms import current_platform
++
++logger = init_logger(__name__)
++
++def apply_w8a8_block_fp8_linear(
++    input: torch.Tensor,
++    weight: torch.Tensor,
++    block_size: List[int],
++    weight_scale: torch.Tensor,
++    input_scale: Optional[torch.Tensor] = None,
++    bias: Optional[torch.Tensor] = None,
++    cutlass_block_fp8_supported: bool = CUTLASS_BLOCK_FP8_SUPPORTED,
++) -> torch.Tensor:
++    assert input_scale is None
++    # View input as 2D matrix for fp8 methods
++    input_2d = input.view(-1, input.shape[-1])
++    output_shape = [*input.shape[:-1], weight.shape[0]]
++
++    shape_supported_by_cutlass = (weight.shape[0] % 128 == 0
++                                  and weight.shape[1] % 128 == 0)
++    if current_platform.is_rocm():
++        # TODO this is never used, as cutlass_block_fp8_supported is False
++        scale_a_shape = ((input_2d.shape[-1] // block_size[1], ) +
++                         input_2d.shape[:-1])[::-1]
++        scale_b_shape = (weight_scale.view(-1, 1)
++                         if weight_scale.dim() <= 1 else weight_scale.T).shape
++        ar, ac = scale_a_shape
++        br, bc = scale_b_shape
++        if (ac > 1 or bc > 1 or ar not in (1, input_2d.shape[0])
++                or br not in (1, weight.shape[0])):
++            shape_supported_by_cutlass = False
++    if cutlass_block_fp8_supported and shape_supported_by_cutlass:
++        q_input, x_scale = per_token_group_quant_fp8(input_2d,
++                                                     block_size[1],
++                                                     column_major_scales=True)
++        output = ops.cutlass_scaled_mm(q_input,
++                                       weight.T,
++                                       out_dtype=input.dtype,
++                                       scale_a=x_scale,
++                                       scale_b=weight_scale.T)
++    else:
++        q_input, x_scale = per_token_group_quant_fp8(input_2d,
++                                                     block_size[1],
++                                                     column_major_scales=False)
++        output = w8a8_block_fp8_matmul(q_input,
++                                       weight,
++                                       x_scale,
++                                       weight_scale,
++                                       block_size,
++                                       output_dtype=input.dtype)
++    if bias is not None:
++        output = output + bias
++    return output.to(dtype=input.dtype).view(*output_shape)
++
++@triton.jit
++def _per_token_group_quant_fp8(
++    # Pointers to inputs and output
++    y_ptr,
++    y_q_ptr,
++    y_s_ptr,
++    group_size: tl.constexpr,
++    # Avoid to divide zero
++    eps,
++    # Information for float8
++    fp8_min,
++    fp8_max,
++    # Meta-parameters
++    GROUP_BLOCK_NUM,
++):
++    """A Triton-accelerated function to perform per-token-group
++    quantization on a tensor.
++    This function converts the tensor values into float8 values.
++    """
++    # Map the program id to the row of X and Y it should compute.
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: split for limit the memory usage(65536)
++    '''
++    g_id = tl.program_id(0)
++    y_ptr += g_id * group_size * GROUP_BLOCK_NUM
++    y_q_ptr += g_id * group_size * GROUP_BLOCK_NUM
++    y_s_ptr += g_id * GROUP_BLOCK_NUM
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++    cols = tl.arange(0, group_size)  # N <= BLOCK
++    for group_id in range(GROUP_BLOCK_NUM):
++        cols_group = cols + group_id * group_size
++        y = tl.load(y_ptr + cols_group).to(tl.float32)
++        # Quant
++        _absmax = tl.maximum(tl.max(tl.abs(y)), eps)
++        y_s = _absmax / fp8_max
++        y_q = tl.clamp(y / y_s, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
++
++        tl.store(y_q_ptr + cols_group, y_q)
++        tl.store(y_s_ptr + group_id, y_s)
++
++
++def per_token_group_quant_fp8(
++    x: torch.Tensor,
++    group_size: int,
++    eps: float = 1e-10,
++    dtype: Optional[torch.dtype] = None,
++    column_major_scales: bool = False,
++) -> Tuple[torch.Tensor, torch.Tensor]:
++    """Function to perform per-token-group quantization on an input tensor `x`.
++    It converts the tensor values into signed float8 values and returns the
++    quantized tensor along with the scaling factor used for quantization.
++    Args:
++        x: The input tensor with ndim >= 2.
++        group_size: The group size used for quantization.
++        eps: The minimum to avoid dividing zero.
++        dtype: The dype of output tensor. Note that only `torch.float8_e4m3fn`
++        is supported for now.
++    Returns:
++        Tuple[torch.Tensor, torch.Tensor]: The quantized tensor and the
++        scaling factor for quantization.
++    """
++    dtype = current_platform.fp8_dtype() if dtype is None else dtype
++    assert (x.shape[-1] % group_size == 0), (
++        f"the last dimension of `x` {x.shape[-1]} must be divisible "
++        f"by `group_size` {group_size}")
++    assert x.stride(-1) == 1, "`x` groups must be contiguous"
++
++    finfo = torch.finfo(dtype)
++    fp8_min = finfo.min
++    fp8_max = finfo.max
++
++    x_q = torch.empty_like(x, device=x.device, dtype=dtype)
++    M = x.numel() // group_size
++    N = group_size
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: split for limit the memory usage(65536)
++    '''
++    group_per_block = 1
++    while M >= 65536:
++        group_per_block *= 2
++        M = x.numel() // (group_size * group_per_block)
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++    if column_major_scales:
++        shape = (x.shape[-1] // group_size, ) + x.shape[:-1]
++        x_s = torch.empty(shape, device=x.device,
++                          dtype=torch.float32).permute(-1, -2)
++    else:
++        shape = x.shape[:-1] + (x.shape[-1] // group_size, )
++        x_s = torch.empty(shape, device=x.device, dtype=torch.float32)
++
++    BLOCK = triton.next_power_of_2(N)
++    # heuristics for number of warps
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: set num_warps to 1 for triton-mlu
++    '''
++    num_warps = 1
++    num_stages = 1
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++    if column_major_scales:
++        _per_token_group_quant_fp8_colmajor[(M, )](
++            x,
++            x_q,
++            x_s,
++            group_size,
++            x.shape[1],
++            x.stride(0),
++            x_s.stride(1),
++            eps,
++            fp8_min=fp8_min,
++            fp8_max=fp8_max,
++            BLOCK=BLOCK,
++            num_warps=num_warps,
++            num_stages=num_stages,
++        )
++    else:
++        _per_token_group_quant_fp8[(M, )](
++            x,
++            x_q,
++            x_s,
++            group_size,
++            eps,
++            fp8_min=fp8_min,
++            fp8_max=fp8_max,
++            GROUP_BLOCK_NUM=group_per_block,
++            num_warps=num_warps,
++            num_stages=num_stages,
++        )
++
++    return x_q, x_s
++
++
++def w8a8_block_fp8_matmul(
++    A: torch.Tensor,
++    B: torch.Tensor,
++    As: torch.Tensor,
++    Bs: torch.Tensor,
++    block_size: List[int],
++    output_dtype: torch.dtype = torch.float16,
++) -> torch.Tensor:
++    """This function performs matrix multiplication with block-wise
++    quantization.
++    It takes two input tensors `A` and `B` with scales `As` and `Bs`.
++    The output is returned in the specified `output_dtype`.
++    Args:
++        A: The input tensor, e.g., activation.
++        B: The input tensor, e.g., weight.
++        As: The per-token-group quantization scale for `A`.
++        Bs: The per-block quantization scale for `B`.
++        block_size: The block size for per-block quantization. It should
++        be 2-dim, e.g., [128, 128].
++        output_dytpe: The dtype of the returned tensor.
++    Returns:
++        torch.Tensor: The result of matmul.
++    """
++    assert len(block_size) == 2
++    block_n, block_k = block_size[0], block_size[1]
++
++    assert A.shape[-1] == B.shape[-1]
++    assert A.shape[:-1] == As.shape[:-1] and A.is_contiguous()
++    assert triton.cdiv(A.shape[-1], block_k) == As.shape[-1]
++    M = A.numel() // A.shape[-1]
++
++    assert B.ndim == 2 and Bs.ndim == 2
++    N, K = B.shape
++    assert triton.cdiv(N, block_n) == Bs.shape[0]
++    assert triton.cdiv(K, block_k) == Bs.shape[1]
++
++    C_shape = A.shape[:-1] + (N, )
++    C = A.new_empty(C_shape, dtype=output_dtype)
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: using default config for triton-mlu
++    '''
++    # Default config
++    # Block-wise quant: BLOCK_SIZE_N must be divisible by block_size[0]
++    # BLOCK_SIZE_K must be divisible by block_size[1]
++    config = {
++        "BLOCK_SIZE_M": 64,
++        "BLOCK_SIZE_N": block_size[0],
++        "BLOCK_SIZE_K": block_size[1],
++        "GROUP_SIZE_M": 32,
++        "num_warps": 1,
++        "num_stages": 1,
++    }
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++    def grid(META):
++        return (triton.cdiv(M, META["BLOCK_SIZE_M"]) *
++                triton.cdiv(N, META["BLOCK_SIZE_N"]), )
++
++    _w8a8_block_fp8_matmul[grid](
++        A,
++        B,
++        C,
++        As,
++        Bs,
++        M,
++        N,
++        K,
++        block_n,
++        block_k,
++        A.stride(-2),
++        A.stride(-1),
++        B.stride(1),
++        B.stride(0),
++        C.stride(-2),
++        C.stride(-1),
++        As.stride(-2),
++        As.stride(-1),
++        Bs.stride(1),
++        Bs.stride(0),
++        **config,
++    )
++
++    return C
+

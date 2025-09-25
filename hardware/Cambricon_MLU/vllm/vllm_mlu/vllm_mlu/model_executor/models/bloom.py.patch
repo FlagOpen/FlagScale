@@ -1,0 +1,176 @@
+diff --git a/vllm_mlu/vllm_mlu/model_executor/models/bloom.py b/vllm_mlu/vllm_mlu/model_executor/models/bloom.py
+new file mode 100644
+index 000000000..1d2229240
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/model_executor/models/bloom.py
+@@ -0,0 +1,169 @@
++from typing import Optional
++
++import torch
++from torch import nn
++from transformers import BloomConfig
++
++from vllm.config import CacheConfig
++from vllm.logger import init_logger
++from vllm.model_executor.layers.quantization.base_config import (
++    QuantizationConfig)
++from vllm_mlu.model_executor.layers.feed_forward import FeedForward
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++
++from vllm.model_executor.models.bloom import BloomAttention, BloomBlock
++from vllm.attention import AttentionMetadata
++from vllm_mlu.model_executor.models.layer_utils import (
++    decoder_layer_forward_base,
++    is_per_tensor_smoothquant,
++    is_per_token_smoothquant,
++    quant_fusion_with_layernorm
++)
++
++logger = init_logger(__name__)
++
++def vllm__module_executor__models__bloom__BloomAttention__forward(
++    self,
++    position_ids: torch.Tensor,
++    hidden_states: torch.Tensor,
++    residual: Optional[torch.Tensor] = None,
++    smooth_quant_scale: Optional[torch.Tensor] = None,
++) -> torch.Tensor:
++    del position_ids  # Unused.
++    qkv, _ = self.query_key_value(hidden_states, smooth_quant_scale)
++    q, k, v = qkv.chunk(chunks=3, dim=-1)
++    attn_output = self.attn(q, k, v)
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    '''
++    output, _ = self.dense(attn_output, residual)
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++    return output
++
++def vllm__module_executor__models__bloom__BloomBlock__init__(
++    self,
++    config: BloomConfig,
++    cache_config: Optional[CacheConfig] = None,
++    quant_config: Optional[QuantizationConfig] = None,
++    prefix: str = "",
++):
++    super(BloomBlock, self).__init__()
++    hidden_size = config.hidden_size
++
++    self.input_layernorm = nn.LayerNorm(hidden_size,
++                                        eps=config.layer_norm_epsilon)
++    self.self_attention = BloomAttention(config,
++                                         cache_config,
++                                         quant_config,
++                                         prefix=f"{prefix}.self_attention")
++    self.post_attention_layernorm = nn.LayerNorm(
++            hidden_size, eps=config.layer_norm_epsilon)
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: use FeedForward instead of MLP
++    '''
++    self.mlp = FeedForward(hidden_size=hidden_size,
++                           intermediate_size=hidden_size * 4,
++                           hidden_act='gelu',
++                           up_proj_name="dense_h_to_4h",
++                           is_gated=False,
++                           down_proj_name="dense_4h_to_h",
++                           bias=True,
++                           quant_config=quant_config)
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++    self.apply_residual_connection_post_layernorm = (
++            config.apply_residual_connection_post_layernorm)
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: prepare to perf sq cases if suitable
++    '''
++    self.is_per_tesnor_sq_perf_cases = (is_per_tensor_smoothquant(quant_config) and
++        not self.apply_residual_connection_post_layernorm)
++    self.is_per_token_sq_perf_cases = (is_per_token_smoothquant(quant_config) and
++        not self.apply_residual_connection_post_layernorm)
++    if self.is_per_tesnor_sq_perf_cases or self.is_per_token_sq_perf_cases:
++        self.self_attention.query_key_value.quant_method.skip_quant_input = True
++        self.mlp.dense_h_to_4h.quant_method.skip_quant_input = True
++        self.quant_fusion_attn_layernorm = None
++        self.quant_fusion_mlp_layernorm = None
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++
++def vllm__module_executor__models__bloom__BloomBlock__forward(
++    self,
++    position_ids: torch.Tensor,
++    hidden_states: torch.Tensor,
++) -> torch.Tensor:
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: perf model by:
++    1) add residual in matmul;
++    2) fuse quantization in layernorm in per-tensor sq case;
++    '''
++    attn_layernorm = self.input_layernorm
++    mlp_layernorm = self.post_attention_layernorm
++    if self.is_per_tesnor_sq_perf_cases or self.is_per_token_sq_perf_cases:
++        if self.quant_fusion_attn_layernorm is None:
++            if self.is_per_token_sq_perf_cases:
++                attn_quant_scale = self.self_attention.query_key_value.smooth
++                mlp_quant_scale = self.mlp.dense_h_to_4h.smooth
++            else:
++                attn_quant_scale = self.self_attention.query_key_value.scale_to_int
++                mlp_quant_scale = self.mlp.dense_h_to_4h.scale_to_int
++
++            self.quant_fusion_attn_layernorm = quant_fusion_with_layernorm(
++                self.input_layernorm, attn_quant_scale,
++                dynamic_quant=self.is_per_token_sq_perf_cases)
++            self.quant_fusion_mlp_layernorm = quant_fusion_with_layernorm(
++                self.post_attention_layernorm, mlp_quant_scale,
++                dynamic_quant=self.is_per_token_sq_perf_cases)
++        attn_layernorm = self.quant_fusion_attn_layernorm
++        mlp_layernorm = self.quant_fusion_mlp_layernorm
++
++    return decoder_layer_forward_base(
++        positions=position_ids,
++        hidden_states=hidden_states,
++        input_layernorm=attn_layernorm,
++        self_attn=self.self_attention,
++        post_layernorm=mlp_layernorm,
++        mlp=self.mlp,
++        apply_residual_connection_post_layernorm=self.apply_residual_connection_post_layernorm,
++        position_name='position_ids',
++        input_norm_fuse_en=self.is_per_token_sq_perf_cases,
++        post_norm_fuse_en=self.is_per_token_sq_perf_cases
++    )
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++MluHijackObject.apply_hijack(BloomAttention,
++                             BloomAttention.forward,
++                             vllm__module_executor__models__bloom__BloomAttention__forward)
++MluHijackObject.apply_hijack(BloomBlock,
++                             BloomBlock.__init__,
++                             vllm__module_executor__models__bloom__BloomBlock__init__)
++MluHijackObject.apply_hijack(BloomBlock,
++                             BloomBlock.forward,
++                             vllm__module_executor__models__bloom__BloomBlock__forward)
+
