@@ -842,7 +842,7 @@ class CloudTrainRunner(RunnerBase):
 
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         gpu_health_check_path = os.path.join(
-            root_dir, "flagscale", "elastic", "gpu_health_check.py"
+            root_dir, "flagscale", "runner", "elastic", "gpu_health_check.py"
         )
 
         # Check if the health check script exists

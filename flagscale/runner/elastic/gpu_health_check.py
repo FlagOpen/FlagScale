@@ -198,7 +198,7 @@ def initialize_model_parallel(
         for j in range(tensor_model_parallel_size):
             ranks = range(start_rank + j, end_rank, tensor_model_parallel_size)
             all_data_parallel_group_ranks.append(ranks)
-            group = dist.new_group(ranks)
+            group = dist.new_group(list(ranks))
             if rank in ranks:
                 _DATA_PARALLEL_GROUP = group
                 _DATA_GLOBAL_RANKS = ranks
@@ -211,7 +211,7 @@ def initialize_model_parallel(
             data_parallel_group_ranks[i]
             for data_parallel_group_ranks in all_data_parallel_group_ranks
         ]
-        group = dist.new_group(ranks)
+        group = dist.new_group(list(ranks))
         if rank in ranks:
             _MODEL_PARALLEL_GROUP = group
 
@@ -223,7 +223,7 @@ def initialize_model_parallel(
     ), "tensor model parallel group is already initialized"
     for i in range(num_tensor_model_parallel_groups):
         ranks = range(i * tensor_model_parallel_size, (i + 1) * tensor_model_parallel_size)
-        group = dist.new_group(ranks)
+        group = dist.new_group(list(ranks))
         if rank in ranks:
             _TENSOR_MODEL_PARALLEL_GROUP = group
             _TENSOR_GLOBAL_RANKS = ranks
@@ -239,7 +239,7 @@ def initialize_model_parallel(
     assert _EMBEDDING_GROUP is None, "embedding group is already initialized"
     for i in range(num_pipeline_model_parallel_groups):
         ranks = range(i, world_size, num_pipeline_model_parallel_groups)
-        group = dist.new_group(ranks)
+        group = dist.new_group(list(ranks))
         if rank in ranks:
             _PIPELINE_MODEL_PARALLEL_GROUP = group
             _PIPELINE_GLOBAL_RANKS = ranks
@@ -249,7 +249,7 @@ def initialize_model_parallel(
             embedding_ranks = [ranks[0], ranks[-1]]
         else:
             embedding_ranks = ranks
-        group = dist.new_group(embedding_ranks)
+        group = dist.new_group(list(embedding_ranks))
         if rank in embedding_ranks:
             _EMBEDDING_GROUP = group
 
@@ -597,8 +597,7 @@ def test_gpu_hardware_single():
             temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
             print(f"Current GPU temperature: {temp}°C")
             if temp > 85:
-                print(f"Warning: GPU temperature too high!")
-
+                raise RuntimeError(f"GPU {i} temperature ({temp}°C) exceeds the 85°C thresho")
             power_usage = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
             power_limit = pynvml.nvmlDeviceGetEnforcedPowerLimit(handle) / 1000.0
             print(f"Power usage: {power_usage:.2f}W / {power_limit:.2f}W")
@@ -612,8 +611,7 @@ def test_gpu_hardware_single():
 
         pynvml.nvmlShutdown()
     except ImportError:
-        print("Pynvml is not installed.")
-
+        raise RuntimeError("pynvml is not installed, cannot perform GPU hardware test.")
     return
 
 
@@ -700,7 +698,7 @@ def test_calculation_endurance():
         result2 = torch.inverse(c)
 
         if torch.any(torch.isnan(result1)) or torch.any(torch.isnan(result2)):
-            print(f"test_calculation_float failed: nan detected in iteration {iteration}")
+            print(f"test_calculation_endurance failed: nan detected in iteration {iteration}")
             return False
 
     return True
