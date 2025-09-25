@@ -18,7 +18,7 @@ class RuntimeContext:
     def __init__(self):
         # TODO(yupu): Do we need this?
         self.run_id: str = uuid.uuid4().hex
-        # A provider of state context names. The context names could be used by `Transformation`s to access different part of the state stores.
+        # A provider of state context names. The context names could be used by `Transformation`s to access different parts of the state stores.
         self.state_scope_provider: Optional[Callable[[], str | None]] = None
 
     @contextlib.contextmanager
