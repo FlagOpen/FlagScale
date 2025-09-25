@@ -61,7 +61,17 @@ def _get_args_lerobot(config: DictConfig):
     new_config_dict.update(config_dict["model"])
     new_config_dict.update(config_dict["data"])
 
-    ignore_keys = ["log_dir", "details_dir", "scripts_dir", "pids_dir", "save", "output_dir", "load", "tensorboard_dir", "wandb_save_dir"]
+    ignore_keys = [
+        "log_dir",
+        "details_dir",
+        "scripts_dir",
+        "pids_dir",
+        "save",
+        "output_dir",
+        "load",
+        "tensorboard_dir",
+        "wandb_save_dir",
+    ]
     # Flatten the dictionary to a list of arguments
     args = flatten_dict_to_args(new_config_dict, ignore_keys=ignore_keys, do_dash_replace=False)
     return args
