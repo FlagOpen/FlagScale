@@ -130,7 +130,13 @@ class ToolMatcher:
             similarity = self._cosine_similarity(
                 task_embedding, self.tool_embeddings[tool_index : tool_index + 1]
             )
-            return float(similarity[0]) if len(similarity) > 0 else 0.0
+            # Handle both scalar and array results
+            if hasattr(similarity, '__len__') and len(similarity) > 0:
+                return float(similarity[0])
+            elif hasattr(similarity, 'item'):  # numpy scalar
+                return float(similarity.item())
+            else:
+                return float(similarity)
         except Exception as e:
             print(f"Semantic scoring failed: {e}")
             return 0.0
@@ -297,7 +303,9 @@ class ToolMatcher:
                 a_norm = torch.nn.functional.normalize(a, p=2, dim=1)
                 b_norm = torch.nn.functional.normalize(b, p=2, dim=1)
                 similarity = torch.mm(a_norm, b_norm.t())
-                return similarity.squeeze().cpu().numpy()
+                result = similarity.squeeze().cpu().numpy()
+                # Ensure result is always an array
+                return np.array([result]) if result.ndim == 0 else result
         except ImportError:
             pass
 
@@ -310,7 +318,9 @@ class ToolMatcher:
             b_norm = b_np / np.linalg.norm(b_np, axis=1, keepdims=True)
 
             similarity = np.dot(a_norm, b_norm.T)
-            return similarity.squeeze()
+            result = similarity.squeeze()
+            # Ensure result is always an array
+            return np.array([result]) if result.ndim == 0 else result
         except Exception as e:
             print(f"Cosine similarity calculation failed: {e}")
             return np.zeros(len(self.tools))
