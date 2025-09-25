@@ -14,7 +14,7 @@ from omegaconf import DictConfig
 
 from flagscale.inference.runtime_context import RuntimeContext
 from flagscale.inference.utils import parse_torch_dtype
-from flagscale.transforms import create_default_transformations, create_transformations_from_config
+from flagscale.transforms import create_transformations_from_config
 
 
 def _check_required_fields(config_dict: DictConfig, required_fields: List[str]) -> None:
@@ -181,7 +181,6 @@ class InferenceEngine:
         transformations = create_transformations_from_config(transforms_cfg)
         for t in transformations:
             for name, mod in t.targets(self.backbone):
-                print(f"Applying transformation: {t} on {name}")
                 success = t.apply(mod)
                 if not success:
                     raise ValueError(f"Failed to apply transformation: {t} on {name}")

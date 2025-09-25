@@ -52,7 +52,6 @@ class ByName:
     def __call__(self, scope: nn.Module) -> Iterable[Tuple[str, nn.Module]]:
         for name, m in scope.named_modules():
             if name and any(fnmatch(name, p) for p in self._patterns):
-                print(f"yield name: {name}")
                 yield name, m
 
 
