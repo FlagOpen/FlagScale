@@ -1,19 +1,15 @@
 diff --git a/megatron/core/models/common/language_module/language_module.py b/megatron/core/models/common/language_module/language_module.py
-index 6000e35b..5272dbe6 100644
+index d855322c..0d2cc80f 100644
 --- a/megatron/core/models/common/language_module/language_module.py
 +++ b/megatron/core/models/common/language_module/language_module.py
-@@ -171,9 +171,24 @@ class LanguageModule(MegatronModule):
-             ):
+@@ -231,7 +231,22 @@ class LanguageModule(MegatronModule):
+             if self._is_in_embd_group():
                  weight = self.shared_embedding_or_output_weight()
                  weight.data = weight.data.cuda()
--                torch.distributed.all_reduce(
--                    weight.data, group=parallel_state.get_embedding_group()
--                )
-+                embedding_group = parallel_state.get_embedding_group()
+-                torch.distributed.all_reduce(weight.data, group=self.embd_group)
++                embedding_group = self.embd_group
 +                if not isinstance(embedding_group, list):
-+                    torch.distributed.all_reduce(
-+                        weight.data, group=parallel_state.get_embedding_group()
-+                    )
++                    torch.distributed.all_reduce(weight.data, group=self.embd_group)
 +                else: # for multiple embedding groups in heterogeneous mode
 +                    with torch.no_grad():
 +                        original_dtype = weight.dtype
