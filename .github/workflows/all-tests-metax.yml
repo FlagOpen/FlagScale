@@ -43,7 +43,7 @@ jobs:
           - opi_llama3_1_instruct-flaggems-metax
           - qwen3-metax
           - qwen3-flaggems-metax
-          - robobrain2-metax
+          - robobrain2-metax  # TP1
           - robobrain2-flaggems-metax  # TP1
     name: "inference-${{ matrix.task }}"
     with:
