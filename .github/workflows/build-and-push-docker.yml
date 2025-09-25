@@ -86,12 +86,9 @@ jobs:
           whoami
           git config --global --add safe.directory /__w/FlagScale/FlagScale
 
-      - name: Prepare Inference Environment
-        if: ${{ needs.set-env.outputs.test_type == 'inference' }}
-        run: |
-          echo "Detected SHELL=$SHELL"
-          which source
-          cat /etc/shells
+      # - name: Prepare Inference Environment
+      #   if: ${{ needs.set-env.outputs.test_type == 'inference' }}
+      #   run: |
 
           # source /opt/conda/bin/activate flagscale-inference
           # echo "Original commit ID: ${{ github.event.pull_request.head.sha || github.sha }}"
@@ -153,24 +150,20 @@ jobs:
         run: |
           status=$?
           if [ $status -eq 0 ]; then
-            MSG="&#127881; All tests passed! Submit ID: ${GITHUB_SHA}"
+            MSG="Successfully saved the running container as an image! "
           else
-            MSG="&#10060; Construction failed! Please check the logs: ${GITHUB_RUN_URL}"
+            MSG="Construction failed! Please check the logs"
           fi
 
           # Sending structured message cards
-          apt update && apt install -y jq
-          PAYLOAD=$(jq -n --arg msg "$MSG" '{
-            "msg_type": "interactive",
-            "card": {
-              "config": {"wide_screen_mode": true},
-              "head": {"title": "CI-image Result Notification"},
-              "body": {"items": [{"tag":"plain_text","content":$msg}]}
-            }
-          }')
           curl -X POST "$FEISHU_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d "$PAYLOAD" || echo "&#9888; Feishu notification sending failed, please check the configuration"
+            -d "{
+              "msg_type": "text",
+              "content": {
+                "text": "$MSG"
+              }            
+            }"
 
   all-tests-completed:
     needs: functional-tests-inference
@@ -178,3 +171,4 @@ jobs:
     steps:
       - name: All Tests Completed Successfully
         run: echo "✅ All functional tests completed successfully!"
+
