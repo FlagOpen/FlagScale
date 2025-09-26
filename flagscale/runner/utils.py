@@ -608,7 +608,7 @@ async def get_request(input_requests):
 async def benchmark(
     api_url,
     model,
-    model_id,
+    served_model_name,
     tokenizer,
     input_requests,
     selected_percentile_metrics,
@@ -620,7 +620,7 @@ async def benchmark(
 
     request_func = async_request_openai_chat_completions
     req_model_id = model
-    req_model_name = model_id if model_id is not None else model
+    req_model_name = served_model_name if served_model_name is not None else model
 
     pbar = tqdm(total=len(input_requests))
 

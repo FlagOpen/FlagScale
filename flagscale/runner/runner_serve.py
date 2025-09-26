@@ -1173,7 +1173,7 @@ class SSHServeRunner(RunnerBase):
 
         trust_remote_code = engine_args.get("trust_remote_code", False)
 
-        model_id = engine_args.get("served_model_name", None)
+        served_model_name = engine_args.get("served_model_name", None)
         model_name = engine_args.get("model", None)
 
         if not model_name:
@@ -1206,7 +1206,7 @@ class SSHServeRunner(RunnerBase):
             benchmark(
                 api_url,
                 model=model_name,
-                model_id=model_id,
+                served_model_name=served_model_name,
                 tokenizer=tokenizer,
                 input_requests=dummy_input_requests,
                 selected_percentile_metrics="ttft,tpot,itl,e2el".split(","),
