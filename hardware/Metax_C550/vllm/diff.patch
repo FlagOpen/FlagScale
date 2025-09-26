@@ -27456,7 +27456,7 @@ index b1bc727e1..88d1d35ba 100644
 +     try:
 +        print("Try to using FLAGGEMS...")
 +        import flag_gems
-+        flag_gems.enable(record=True, unused=["exponential_", "softmax", "masked_fill_", "index"], path="/tmp/gems_oplist.log.txt")
++        flag_gems.enable(record=True, unused=["exponential_", "softmax", "masked_fill_", "index", "index_put_", "mm", "addmm", "nonzero"], path="/tmp/gems_oplist.log.txt")
 +        logger.info("Successfully enabled flag_gems as default ops implementation.")
 +     except ImportError as e:
 +        # Throw an exception directly if failure occurs
