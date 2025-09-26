@@ -22,7 +22,7 @@ jobs:
   set-env:
     runs-on: ubuntu-latest
     outputs:
-      ci_image: ${{ steps.set-env.outputs.ci_image }} # Declare output variable
+      ci_image: ${{ steps.set-env.outputs.ci_image }} # Declare output variable/
     steps:
       - name: Set Environment Variable
         id: set-env # Assign an ID to this step
