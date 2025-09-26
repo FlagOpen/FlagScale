@@ -192,7 +192,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     ./install/install-requirements.sh --env RL
 
 ##############################################################################
-# Building flagscale-train | flagscale-inference | flagscale-RL 
+# Building flagscale-train | flagscale-inference | flagscale-RL.
 ##############################################################################
 FROM build_train AS final
 COPY --from=build_inference /root/miniconda3/envs/flagscale-inference /root/miniconda3/envs/flagscale-inference
