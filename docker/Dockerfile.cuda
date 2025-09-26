@@ -194,8 +194,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 ##############################################################################
 # Building flagscale-train | flagscale-inference | flagscale-RL 
 ##############################################################################
-FROM base AS final
-COPY --from=build_train /root/miniconda3 /root/miniconda3
+FROM build_train AS final
 COPY --from=build_inference /root/miniconda3/envs/flagscale-inference /root/miniconda3/envs/flagscale-inference
 COPY --from=build_rl /root/miniconda3/envs/flagscale-RL /root/miniconda3/envs/flagscale-RL
 
