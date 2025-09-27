@@ -1,0 +1,11 @@
+backends_commit:
+  vllm: a5dd03c1ebc5e4f56f3c9d3dc0436e9c582c978f
+backends_version:
+  vllm: 0.9.2
+commit: 03dca1918c9f80c4a7943932f393a2c74cb7b98d
+contact: ''
+device_type: Temp_Qwen3omni
+models:
+- qwen3-omni
+task:
+- inference
