@@ -44,6 +44,7 @@ _TEST_RESULTS = {
     'pipeline_parallel': {'status': 'pending', 'error': None},
     'gpu_hardware': {'status': 'pending', 'error': None},
     'computation': {'status': 'pending', 'error': None},
+    'ecc_error': {'status': 'pending', 'error': None},
 }
 
 
@@ -704,6 +705,48 @@ def test_calculation_endurance():
     return True
 
 
+def test_ecc_error_detection():
+    """Test ECC Error detection through matrix multiplication operations"""
+    try:
+        device = f'cuda:{get_args().local_rank}'
+
+        # Perform multiple matrix operations to stress test memory
+        for i in range(5):
+            # Create large tensors to stress GPU memory
+            tensor_a = torch.randn(2048, 2048, dtype=torch.float32, device=device)
+            tensor_b = torch.randn(2048, 2048, dtype=torch.float32, device=device)
+
+            # Perform matrix multiplication that could trigger ECC errors
+            result = torch.matmul(tensor_a, tensor_b)
+
+            # Check for abnormal values that might indicate ECC errors
+            if torch.any(torch.isnan(result)):
+                print(f"ECC Error Detection: NaN detected in iteration {i}")
+                return False
+            if torch.any(torch.isinf(result)):
+                print(f"ECC Error Detection: Inf detected in iteration {i}")
+                return False
+
+            torch.cuda.empty_cache()
+
+        print("ECC Error Detection: No errors detected")
+        return True
+
+    except torch.cuda.OutOfMemoryError as e:
+        print(f"ECC Error Detection failed: GPU out of memory - {e}")
+        return False
+    except RuntimeError as e:
+        if "cuda" in str(e).lower() or "gpu" in str(e).lower():
+            print(f"ECC Error Detection failed: GPU runtime error - {e}")
+            return False
+        else:
+            print(f"ECC Error Detection failed: Runtime error - {e}")
+            return False
+    except Exception as e:
+        print(f"ECC Error Detection failed: Unexpected error - {e}")
+        return False
+
+
 def test_calculation_single():
     """Single GPU calculation test without distributed calls"""
     args = get_args()
@@ -749,20 +792,25 @@ def test_calculation():
         if rank == 0:
             print(f"\nTesting {test_name}...")
 
-        # Execute test on each rank
         try:
             result = test_func()
             if not result:
                 all_passed = False
                 failed_tests.append(test_name)
+            if test_name == 'ECC Error Detection':
+                if result:
+                    log_test_result('ecc_error', 'passed')
+                else:
+                    log_test_result('ecc_error', 'failed', f"ECC error detection failed")
         except Exception as e:
             result = False
             all_passed = False
             failed_tests.append(test_name)
             if rank == 0:
-                print(f"✗ {test_name} failed with exception: {e}")
+                print(f" {test_name} failed with exception: {e}")
+            if test_name == 'ECC Error Detection':
+                log_test_result('ecc_error', 'failed', f"Exception: {str(e)}")
 
-        # Gather results from all ranks
         try:
             result_tensor = torch.zeros(args.world_size).to(f'cuda:{args.local_rank}')
             result_tensor[args.rank] = 1.0 if result else 0.0
@@ -772,14 +820,13 @@ def test_calculation():
                 check_test_result(test_name, result_tensor)
         except Exception as e:
             if rank == 0:
-                print(f"⚠ Warning: Failed to gather {test_name} results: {e}")
+                print(f" Warning: Failed to gather {test_name} results: {e}")
 
-        # Barrier between tests
         try:
             dist.barrier()
         except Exception as e:
             if rank == 0:
-                print(f"⚠ Warning: Calculation test barrier failed: {e}")
+                print(f" Warning: Calculation test barrier failed: {e}")
 
     if all_passed:
         log_test_result('computation', 'passed')
