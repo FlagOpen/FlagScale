@@ -11,6 +11,7 @@ experiment:
   runner:
     ssh_port: 22
   envs:
+    CUDA_VISIBLE_DEVICES: 7
     CUDA_DEVICE_MAX_CONNECTIONS: 1
 action: run
 hydra:
