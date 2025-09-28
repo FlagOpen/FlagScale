@@ -1,14 +1,14 @@
 defaults:
   - _self_
-  - inference: 7b
+  - inference: 7b_tp1
 
 experiment:
   exp_name: robobrain2-metax
-  exp_dir: tests/functional_tests/test_cases/inference/robobrain2-metax/results_test/7b
+  exp_dir: tests/functional_tests/test_cases/inference/robobrain2-metax/results_test/7b_tp1
   task:
     type: inference
     backend: vllm
-    entrypoint: flagscale/inference/inference_aquila.py
+    entrypoint: flagscale/inference/inference_robobrain2.py
   runner:
     hostfile: null
   cmds:

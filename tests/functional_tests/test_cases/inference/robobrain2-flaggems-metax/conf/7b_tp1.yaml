@@ -1,14 +1,14 @@
 defaults:
   - _self_
-  - inference: 7b_multimodel
+  - inference: 7b_tp1
 
 experiment:
-  exp_name: robobrain2-metax
-  exp_dir: tests/functional_tests/test_cases/inference/robobrain2-metax/results_test/7b_multimodel
+  exp_name: robobrain2-flaggems-metax
+  exp_dir: tests/functional_tests/test_cases/inference/robobrain2-flaggems-metax/results_test/7b_tp1
   task:
     type: inference
     backend: vllm
-    entrypoint: flagscale/inference/inference_aquila.py
+    entrypoint: flagscale/inference/inference_robobrain2.py
   runner:
     hostfile: null
   cmds:
@@ -19,6 +19,8 @@ experiment:
     CUBLAS_WORKSPACE_CONFIG: ":4096:8"
     CUDNN_BENCHMARK: "false"
     CUDNN_DETERMINISTIC: "true"
+    USE_FLAGGEMS: "true"
+    GEMS_VENDOR: "metax"
     # Quantitative perception training related
     NVTE_APPLY_QK_LAYER_SCALING: 0
     NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0

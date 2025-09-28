@@ -1,8 +1,0 @@
-**************************************************
-output.prompt='The first President of the United States'
-output.outputs[0].text=', George Washington, was inaugurated on April 30, 17'
-output.outputs[0].token_ids=[11, 9857, 6515, 11, 572, 81000, 657, 389, 5813, 220, 18, 15, 11, 220, 16, 22]
-**************************************************
-output.prompt='The capital of France'
-output.outputs[0].text=' is Paris. Paris is the largest city in France and is located in the north'
-output.outputs[0].token_ids=[374, 12095, 13, 12095, 374, 279, 7772, 3283, 304, 9625, 323, 374, 7407, 304, 279, 10200]
