@@ -106,7 +106,6 @@ def is_expert_linear(fqn):
     Return whether the current base module is an expert linear module.
     See ParallelLinearAdapter.is_expert for usage details.
     """
-    # return re.match(r'.*mlp\..*experts.*\.linear_fc[1-2]$', fqn) is not None
     return re.match(r'(?!.*shared_).*mlp\..*experts.*\.linear_fc[1-2]$', fqn) is not None
 
 
