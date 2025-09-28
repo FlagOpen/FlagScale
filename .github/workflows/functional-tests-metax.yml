@@ -70,12 +70,7 @@ jobs:
           sccache --show-stats || true
           if [ "${{ inputs.type }}" = "inference" ]; then
             source /opt/conda/bin/activate flagscale-inference
-            echo "Original commit ID: ${{ github.event.pull_request.head.sha }}"
-            python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 --commit ${{ github.event.pull_request.head.sha }}
-            cd build/Metax_C550/FlagScale/third_party/vllm
-            source env.sh
-            pip install scikit-build scikit-build-core
-            pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0
+
             echo "[INFO] Configuring compiler cache (sccache) ..."
             export CC=/root/cu-bridge/bin/gcc
             export CXX=/root/cu-bridge/bin/g++
@@ -83,9 +78,43 @@ jobs:
             export CMAKE_CXX_COMPILER_LAUNCHER=$(which sccache)
             export CMAKE_CUDA_COMPILER_LAUNCHER=$(which sccache)
             export CXXFLAGS="-I/opt/maca/include -I/opt/maca/include/mcr -I/opt/maca/include/common -I/opt/maca/include/mcsparse -I/opt/maca/include/mcsolver"
-            python setup.py bdist_wheel
-            pip uninstall vllm -y
-            pip install dist/vllm-*-linux_x86_64.whl
+
+            echo "Original commit ID: ${{ github.event.pull_request.head.sha }}"
+            echo "[INFO] Install VLLM and its dependencies ..."
+            MAX_RETRIES=5
+            DELAYS=(1 1.5 2 2.5 3)
+            index=0
+            all_failed=true
+            COMMANDS=(
+              "python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 --commit ${{ github.event.pull_request.head.sha }}"
+              "cd build/Metax_C550/FlagScale/third_party/vllm"
+              "source env.sh"
+              "pip install scikit-build scikit-build-core"
+              "pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0"
+              "python setup.py bdist_wheel"
+              "pip uninstall vllm -y"
+              "pip install dist/vllm-*-linux_x86_64.whl"
+            )
+
+            for ((attempt=1; attempt<=MAX_RETRIES; attempt++)); do
+              echo "$attempt/$MAX-RETRIES attempts ..."
+              for cmd in "${COMMANDS[@]}"; do
+                echo "execute command: $cmd"
+                if ! eval "$cmd"; then
+                  echo "Command execution failed! Wait for ${DELAYS[index]} minutes and retry ..."
+                  sleep $((${DELAYS[index]} * 60))
+                  ((index++))
+                  all_failed=false
+                  break
+                fi
+              done
+              if [ "$all_failed" = false ]; then
+                echo "All commands executed successfully!"
+                exit 0
+              fi
+            done
+            echo "All attempts of $MAX_RETRIES have failed with exit status code 1"
+            exit 1
             source /opt/conda/bin/activate base
           else
             echo "Unknown backend type: ${{ inputs.type }}"
