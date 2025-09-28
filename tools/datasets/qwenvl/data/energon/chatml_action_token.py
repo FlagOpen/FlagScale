@@ -5,9 +5,9 @@ import re
 import warnings
 
 from dataclasses import dataclass
-from typing import List, Union,Dict, Any 
+from typing import List, Union
+
 import torch
-import json  
 
 from webdataset.autodecode import Decoder, imagehandler
 
@@ -24,7 +24,9 @@ class ChatMLSample(Sample):
     imgs: List[str]
     videos: List[List[str]]
     conversation: str  # JSON string of GPT-format conversations
-    metadata: Dict[str, Any] = None
+    action_token: Union[str, List[str], None] = None  
+
+
 
 # class NestedImagesHandler:
 #     def __init__(self, imagespec):
@@ -60,7 +62,10 @@ class NestedImagesPathHandler:
 
         :param imagespec: short string indicating the type of decoding
         """
-        self.extensions = ["jpgs", "videos", "metadata"]
+        self.extensions = ["jpgs", "videos", "action_tokens"]  # 添加 action_tokens
+        # self.extensions = ["jpgs", "videos"]
+        self.extensions_mapping = {"jpgs": "jpg", "videos": "jpg", "action_tokens": "action_token"}
+        # self.extensions_mapping = {"jpgs": "jpg", "videos": "jpg"}
 
     def __call__(self, key, data):
         """Perform nested image decoding.
@@ -71,24 +76,55 @@ class NestedImagesPathHandler:
         extension = re.sub(r".*[.]", "", key)
         if extension.lower() not in self.extensions:
             return None
+        # try:
+        #     data = pickle.loads(data)
+        # except Exception as e:
+        #     if extension.lower() == "action_tokens":
+        #         try:
+        #             # 尝试将数据解码为字符串
+        #             data = data.decode('utf-8')
+        #         except UnicodeDecodeError:
+        #             print(f"Warning: Failed to decode {extension}: {e}")
+        #             return None   
+        #     # # 如果解码失败，返回 None，这样字段就不会被设置
+        #     # print(f"Warning: Failed to decode {extension}: {e}")
+        #     # return None
         
-        # 现在只处理图像和视频
-        if extension.lower() in ["jpgs", "videos"]:
+        # # # 对于 action_tokens，直接返回路径数据，不需要特殊处理
+        # # if extension.lower() == "action_tokens":
+        # #     return data
+        
+        # return data
+        # # data = pickle.loads(data)
+        # # return data
+        if extension.lower() == "action_tokens":
+            try:
+                return pickle.loads(data)
+            except (pickle.UnpicklingError, EOFError):
+                try:
+                    return data.decode('utf-8')
+                except Exception as e_decode:
+                    # 如果连解码字符串都失败了，这是一个真正的错误，需要打印警告。
+                    print(f"Warning: Failed to decode action_token as a raw string after pickle failed: {e_decode}")
+                    return None
+
+            # 捕获其他非预期的 pickle 错误
+            except Exception as e_other:
+                print(f"Warning: An unexpected error occurred while decoding action_token: {e_other}")
+                return None
+            
+        elif extension.lower() in ["jpgs", "videos"]:
             try:
                 return pickle.loads(data)
             except Exception as e:
+
                 print(f"Warning: Failed to decode {extension}: {e}")
                 return None
-        elif extension.lower() == "metadata":
-            try:
-                # 首先将字节串解码为 UTF-8 字符串，然后用 json.loads 解析
-                return json.loads(data.decode('utf-8'))
-            except Exception as e:
-                print(f"Warning: Failed to decode metadata json: {e}")
-                return None
+        
+        return None
 
-        return None # 其他未知情况返回 None
-            
+
+
 # During training, data is automatically decoded to from default webdataset to 'ChatMLSample' when loaded using energon-dataloader,
 # and this is not done during preparation!!!
 # After decoding, the data is passed into the TaskEncoder for further processing.
@@ -116,5 +152,4 @@ class ChatMLWebdataset(DefaultDecoderWebdatasetFactory[ChatMLSample]):
             **kwargs,
         )
         if auto_decode:
-            # self._decoder.handlers.insert(0, NestedImagesPathHandler(self.image_decode))
             self._decoder = Decoder([NestedImagesPathHandler(self.image_decode)])

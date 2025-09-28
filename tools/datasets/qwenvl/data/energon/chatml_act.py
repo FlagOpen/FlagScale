@@ -5,9 +5,9 @@ import re
 import warnings
 
 from dataclasses import dataclass
-from typing import List, Union,Dict, Any 
+from typing import List, Union
+
 import torch
-import json  
 
 from webdataset.autodecode import Decoder, imagehandler
 
@@ -24,7 +24,9 @@ class ChatMLSample(Sample):
     imgs: List[str]
     videos: List[List[str]]
     conversation: str  # JSON string of GPT-format conversations
-    metadata: Dict[str, Any] = None
+    action_token: Union[str, List[str], None] = None  
+
+
 
 # class NestedImagesHandler:
 #     def __init__(self, imagespec):
@@ -60,7 +62,10 @@ class NestedImagesPathHandler:
 
         :param imagespec: short string indicating the type of decoding
         """
-        self.extensions = ["jpgs", "videos", "metadata"]
+        self.extensions = ["jpgs", "videos", "action_tokens"]  # 添加 action_tokens
+        # self.extensions = ["jpgs", "videos"]
+        self.extensions_mapping = {"jpgs": "jpg", "videos": "jpg", "action_tokens": "action_token"}
+        # self.extensions_mapping = {"jpgs": "jpg", "videos": "jpg"}
 
     def __call__(self, key, data):
         """Perform nested image decoding.
@@ -71,24 +76,22 @@ class NestedImagesPathHandler:
         extension = re.sub(r".*[.]", "", key)
         if extension.lower() not in self.extensions:
             return None
+        try:
+            data = pickle.loads(data)
+        except Exception as e:
+            # 如果解码失败，返回 None，这样字段就不会被设置
+            print(f"Warning: Failed to decode {extension}: {e}")
+            return None
         
-        # 现在只处理图像和视频
-        if extension.lower() in ["jpgs", "videos"]:
-            try:
-                return pickle.loads(data)
-            except Exception as e:
-                print(f"Warning: Failed to decode {extension}: {e}")
-                return None
-        elif extension.lower() == "metadata":
-            try:
-                # 首先将字节串解码为 UTF-8 字符串，然后用 json.loads 解析
-                return json.loads(data.decode('utf-8'))
-            except Exception as e:
-                print(f"Warning: Failed to decode metadata json: {e}")
-                return None
+        # 对于 action_tokens，直接返回路径数据，不需要特殊处理
+        if extension.lower() == "action_tokens":
+            return data
+        
+        return data
+        # data = pickle.loads(data)
+        # return data
 
-        return None # 其他未知情况返回 None
-            
+
 # During training, data is automatically decoded to from default webdataset to 'ChatMLSample' when loaded using energon-dataloader,
 # and this is not done during preparation!!!
 # After decoding, the data is passed into the TaskEncoder for further processing.
@@ -116,5 +119,42 @@ class ChatMLWebdataset(DefaultDecoderWebdatasetFactory[ChatMLSample]):
             **kwargs,
         )
         if auto_decode:
-            # self._decoder.handlers.insert(0, NestedImagesPathHandler(self.image_decode))
             self._decoder = Decoder([NestedImagesPathHandler(self.image_decode)])
+        
+    def _decode_sample(self, sample_dict):
+        """Override to handle mixed datasets with/without action_tokens"""
+        # 手动解码，更好地控制每个字段的处理
+        decoded_sample = {}
+        
+        # 解码基础字段
+        for key, value in sample_dict.items():
+            if key in ["jpgs", "videos"]:
+                try:
+                    decoded_sample[key] = pickle.loads(value)
+                except Exception as e:
+                    print(f"Warning: Failed to decode {key}: {e}")
+                    decoded_sample[key] = []
+            elif key == "action_tokens":
+                # action_tokens 字段可能存在也可能不存在
+                try:
+                    decoded_sample[key] = pickle.loads(value)
+                except Exception as e:
+                    print(f"Warning: Failed to decode action_tokens: {e}")
+                    decoded_sample[key] = None
+            elif key == "json":
+                try:
+                    decoded_sample[key] = value.decode('utf-8') if isinstance(value, bytes) else value
+                except Exception as e:
+                    print(f"Warning: Failed to decode json: {e}")
+                    decoded_sample[key] = "{}"
+            else:
+                decoded_sample[key] = value
+        
+        # 创建 ChatMLSample 实例
+        sample = ChatMLSample(
+            __key__=decoded_sample.get("__key__", "unknown"),
+            imgs=decoded_sample.get("jpgs", []),
+            videos=decoded_sample.get("videos", []),
+            conversation=decoded_sample.get("json", "{}"),
+            action_token=decoded_sample.get("action_tokens", None)  # 可能为 None
+        )
