@@ -1,9 +1,10 @@
 defaults:
-  - train: 32b
+  - train: 3b_stage2_B1
   - _self_
 
 experiment:
-  exp_name: train_qwen2_5_vl_32b_fix_mult_turn
+  # exp_name: train_qwen2_5_vl_3b_group_lr_LLM_5e_6_ViT_5e_7_datav5_exp0_minlr_1_10
+  exp_name: train_qwen2_5_vl_3b_stage2_B1
   exp_dir: ./${experiment.exp_name}
   task:
     type: train
@@ -11,10 +12,10 @@ experiment:
     entrypoint: ./flagscale/train/train_qwen2_5_vl.py
   runner:
     backend: torchrun
-    nnodes: 64
+    nnodes: 16
     nproc_per_node: 8
     rdzv_backend: static
-    hostfile: /share/project/lizhiyu/data/scripts/hostfiles/hostfile.64.last
+    hostfile: /share/project/jiyuheng/exp0/hostfile.16
     # ssh_port: 22
   cmds:  
     before_start: ulimit -n 1048576 && source /root/miniconda3/bin/activate flagscale-train && export https_proxy=http://10.8.48.6:2080 && export http_proxy=http://10.8.48.6:2080
