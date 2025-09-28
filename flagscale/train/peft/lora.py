@@ -135,8 +135,7 @@ class LoRA(PEFT, peft_type='lora'):
             else:
                 old_keys = [prefix + "weight", prefix + "bias"]
                 new_keys = [prefix + "to_wrap.weight", prefix + "to_wrap.bias"]
-            print(f"[lora.py], load state dict, {old_keys=}")
-            print(f"[lora.py], lora state dict, {new_keys=}")
+
             for old_key, new_key in zip(old_keys, new_keys):
                 if old_key in state_dict.keys():
                     if new_key not in state_dict.keys():
