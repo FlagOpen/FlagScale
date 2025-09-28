@@ -465,15 +465,10 @@ def auto_detect_parallel_config():
     if world_size == 1:
         # Single process mode - no distributed testing needed
         return 1, 1, False
-    elif world_size == device_count:
-        # Data parallel mode: each process uses one GPU
-        # Use tensor parallel = world_size for proper group formation
-        return world_size, 1, True
-    elif world_size < device_count:
-        # Data parallel mode with fewer processes than GPUs
-        return world_size, 1, True
     else:
-        # Model parallel mode: more processes than GPUs
+        # For multi-process scenarios, default to a data-parallel setup (tp=1, pp=1)
+        # to ensure data parallel communication is tested correctly across all ranks.
+        # The user can override this with command-line arguments for TP/PP tests.
         return world_size, 1, True
 
 
@@ -598,7 +593,7 @@ def test_gpu_hardware_single():
             temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
             print(f"Current GPU temperature: {temp}°C")
             if temp > 85:
-                raise RuntimeError(f"GPU {i} temperature ({temp}°C) exceeds the 85°C thresho")
+                raise RuntimeError(f"GPU {i} temperature ({temp}°C) exceeds the 85°threshold")
             power_usage = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
             power_limit = pynvml.nvmlDeviceGetEnforcedPowerLimit(handle) / 1000.0
             print(f"Power usage: {power_usage:.2f}W / {power_limit:.2f}W")
