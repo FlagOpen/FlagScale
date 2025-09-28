@@ -39,14 +39,17 @@ Kunlunxin_R310p:
     - 571b9880d2b81ffe85e87e2e0bc3cf23f1d402d9
     - 4817edc4333163c2b0870813a2cd6f99513ff627
     - 88f686454ef361ecfec357c9c98d898b41bd8d81
+    - 5f91b8e14fd86275f334ecaf812096fa961a855d
     vllm:
     - 571b9880d2b81ffe85e87e2e0bc3cf23f1d402d9
     - 4817edc4333163c2b0870813a2cd6f99513ff627
     - 88f686454ef361ecfec357c9c98d898b41bd8d81
+    - 5f91b8e14fd86275f334ecaf812096fa961a855d
     FlagScale:
     - 571b9880d2b81ffe85e87e2e0bc3cf23f1d402d9
     - 4817edc4333163c2b0870813a2cd6f99513ff627
     - 88f686454ef361ecfec357c9c98d898b41bd8d81
+    - 5f91b8e14fd86275f334ecaf812096fa961a855d
   train:
     FlagScale+Megatron-LM:
     - 25e9b91b3428e74da262d631fa3e2c13f3e2e2c3
@@ -189,6 +192,8 @@ Huawei_Atlas800TA3:
     - 38b68cb613674d2beaa58295d73765923fc6d7b8
     - 64a63535d3cfea98b4b55d10e9f3e005f0e3cbe1
     - 2525e341322c37104a9cdaa363ed5fa213338090
+    FlagScale+sglang+vllm:
+    - cc386578b9c4d33ecd8e8d22f266e1b5dba579b1
 Tsing_micro:
   inference:
     FlagScale+vllm:
