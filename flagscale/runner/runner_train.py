@@ -206,7 +206,14 @@ def _get_runner_cmd_train(
 
 
 def _generate_run_script_train(
-    config, host, node_rank, cmd, background=True, with_test=False, root_dir=None, enable_monitoring=False
+    config,
+    host,
+    node_rank,
+    cmd,
+    background=True,
+    with_test=False,
+    root_dir=None,
+    enable_monitoring=False,
 ):
     system_config = config.train.system
     logging_config = config.train.system.logging
@@ -434,7 +441,7 @@ class SSHTrainRunner(RunnerBase):
             background=True,
             with_test=with_test,
             root_dir=node_specific_config.get("build_dir", None),
-            enable_monitoring=enable_monitoring
+            enable_monitoring=enable_monitoring,
         )
 
         if host != "localhost":
