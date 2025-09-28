@@ -1,5 +1,5 @@
 diff --git a/megatron/training/arguments.py b/megatron/training/arguments.py
-index e36803fc..cbde6421 100644
+index e36803fc..3d3e219e 100644
 --- a/megatron/training/arguments.py
 +++ b/megatron/training/arguments.py
 @@ -59,6 +59,7 @@ def add_megatron_arguments(parser: argparse.ArgumentParser):
@@ -196,7 +196,7 @@ index e36803fc..cbde6421 100644
          else:
              args.ffn_hidden_size = 4 * args.hidden_size
  
-@@ -1085,6 +1110,72 @@ def validate_args(args, defaults={}):
+@@ -1085,6 +1110,74 @@ def validate_args(args, defaults={}):
      if args.external_cuda_graph:
          assert args.te_rng_tracker, "--te-rng-tracker must be enabled when using CUDA Graphs."
  
@@ -262,14 +262,16 @@ index e36803fc..cbde6421 100644
 +    if args.peft_type is not None:
 +        assert args.transformer_impl == 'transformer_engine', \
 +            'PEFT is only supported with transformer_engine implementation'
-+        assert args.num_experts is None, "PEFT is not tested with MoE currently"
++        if args.num_experts is not None and args.moe_shared_expert_intermediate_size is not None:
++            assert not args.moe_shared_expert_overlap, \
++                'PEFT is incompatible with moe_shared_expert_overlap'
 +        assert args.recompute_method is None and args.recompute_granularity is None and args.recompute_num_layers is None, "PEFT will raise comfilcts with recompute currently"
 +        assert args.ckpt_format == 'torch', "PEFT is only tested with torch format checkpoint"
 +
      # Print arguments.
      _print_args("arguments", args)
  
-@@ -1435,6 +1526,8 @@ def _add_network_size_args(parser):
+@@ -1435,6 +1528,8 @@ def _add_network_size_args(parser):
                         help='Which normalization technique to use.')
      group.add_argument('--norm-epsilon', type=float, default=1e-5,
                         help='Epsilon for layer norm and RMS norm.')
@@ -278,7 +280,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--apply-layernorm-1p', action='store_true',
                         help='Adjust LayerNorm weights such that they are centered '
                         'around zero. This improves numerical stability.')
-@@ -1450,6 +1543,10 @@ def _add_network_size_args(parser):
+@@ -1450,6 +1545,10 @@ def _add_network_size_args(parser):
                         help='Use squared relu activation instead of default gelu')
      group.add_argument('--swiglu', action='store_true',
                         help='Use gated linear units and SiLU activation instead of default gelu')
@@ -289,7 +291,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--onnx-safe', type=bool, required=False,
                         help='Use workarounds for known problems with '
                         'Torch ONNX exporter')
-@@ -1657,6 +1754,14 @@ def _add_logging_args(parser):
+@@ -1657,6 +1756,14 @@ def _add_logging_args(parser):
                         help='The wandb experiment name.')
      group.add_argument('--wandb-save-dir', type=str, default='',
                         help='Path to save the wandb results locally.')
@@ -304,7 +306,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--logging-level', type=int, default=None,
                         help='Set default logging level')
      return parser
-@@ -1780,6 +1885,25 @@ def _add_training_args(parser):
+@@ -1780,6 +1887,25 @@ def _add_training_args(parser):
                         '"moe": recompute the MoE layer.'
                         '"moe_act", "layernorm", and "mla_up_proj" use output-discarding checkpointing, '
                         '"core_attn", "mlp", and "moe" uses normal checkpointing.')
@@ -330,7 +332,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--no-clone-scatter-output-in-embedding', action='store_false',
                         help='If not set, clone the output of the scatter in embedding layer to GC original tensor.',
                         dest='clone_scatter_output_in_embedding')
-@@ -1866,6 +1990,10 @@ def _add_training_args(parser):
+@@ -1866,6 +1992,10 @@ def _add_training_args(parser):
                         help='Total number of samples to train over all '
                         'training runs. Note that either train-iters or '
                         'train-samples should be provided.')
@@ -341,7 +343,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--log-interval', type=int, default=100,
                         help='Report loss and timing interval.')
      group.add_argument('--exit-interval', type=int, default=None,
-@@ -1981,6 +2109,10 @@ def _add_training_args(parser):
+@@ -1981,6 +2111,10 @@ def _add_training_args(parser):
                         'If None, the default backend will be used.')
      group.add_argument('--high-priority-stream-groups', nargs='*', type=str, default=[],
                         help='The communicator group names to use high priority streams.')
@@ -352,7 +354,7 @@ index e36803fc..cbde6421 100644
  
      return parser
  
-@@ -2029,11 +2161,26 @@ def _add_learning_rate_args(parser):
+@@ -2029,11 +2163,26 @@ def _add_learning_rate_args(parser):
                         'and initial warmup, the learning rate at each '
                         'iteration would be different.')
      group.add_argument('--lr-decay-style', type=str, default='linear',
@@ -380,7 +382,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--lr-decay-iters', type=int, default=None,
                         help='number of iterations to decay learning rate over,'
                         ' If None defaults to `--train-iters`')
-@@ -2089,6 +2236,8 @@ def _add_checkpointing_args(parser):
+@@ -2089,6 +2238,8 @@ def _add_checkpointing_args(parser):
                         help='Output directory to save checkpoints to.')
      group.add_argument('--save-interval', '--persistent-save-interval', type=int, default=None,
                         help='Number of iterations between persistent checkpoint saves.')
@@ -389,7 +391,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--no-save-optim', action='store_true', default=None,
                         help='Do not save current optimizer.')
      group.add_argument('--no-save-rng', action='store_true', default=None,
-@@ -2136,6 +2285,8 @@ def _add_checkpointing_args(parser):
+@@ -2136,6 +2287,8 @@ def _add_checkpointing_args(parser):
      group.add_argument('--no-use-tokenizer-model-from-checkpoint-args', action='store_false',
                         dest='use_tokenizer_model_from_checkpoint_args',
                         help='If set, do not use tokenizer model path from checkpoint')
@@ -398,7 +400,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--exit-on-missing-checkpoint', action='store_true',
                         help="If '--load' is set, but checkpoint is not found "
                         "(e.g., path typo), then exit instead of random "
-@@ -2293,7 +2444,7 @@ def _add_distributed_args(parser):
+@@ -2293,7 +2446,7 @@ def _add_distributed_args(parser):
                         default=False, help='if set, overlap pipeline parallel communication in warmup and flush',
                         dest='overlap_p2p_comm_warmup_flush')
      group.add_argument('--distributed-backend', default='nccl',
@@ -407,7 +409,7 @@ index e36803fc..cbde6421 100644
                         help='Which backend to use for distributed training.')
      group.add_argument('--distributed-timeout-minutes', type=int, default=10,
                         help='Timeout minutes for torch.distributed.')
-@@ -2344,6 +2495,11 @@ def _add_distributed_args(parser):
+@@ -2344,6 +2497,11 @@ def _add_distributed_args(parser):
                         'complete it instead. Also turns on '
                         '--use-cpu-initialization flag. This is for '
                         'external DDP manager.' )
@@ -419,7 +421,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--account-for-embedding-in-pipeline-split', action='store_true',
                         default=False, help='If set, *input* embedding layer will be treated as a standard transformer'
                         'layer in the context of partition and placement for pipeline parallelism.')
-@@ -2378,6 +2534,10 @@ def _add_distributed_args(parser):
+@@ -2378,6 +2536,10 @@ def _add_distributed_args(parser):
                          'and performance requirements.')
      group.add_argument('--keep-fp8-transpose-cache-when-using-custom-fsdp', action='store_true',
                         help='If set, keep the fp8 transpose cache when using custom FSDP.')
@@ -430,7 +432,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--num-distributed-optimizer-instances', type=int, default=1,
                         help='Number of Distributed Optimizer copies across Data Parallel domain.')
      group.add_argument('--use-torch-fsdp2', action='store_true',
-@@ -2430,6 +2590,9 @@ def _add_validation_args(parser):
+@@ -2430,6 +2592,9 @@ def _add_validation_args(parser):
      group.add_argument('--eval-interval', type=int, default=1000,
                         help='Interval between running evaluation on '
                         'validation set.')
@@ -440,7 +442,7 @@ index e36803fc..cbde6421 100644
      group.add_argument("--test-mode", action="store_true", help='Run all real-time test alongside the experiment.')
      group.add_argument('--skip-train', action='store_true',
                         default=False, help='If set, bypass the training loop, '
-@@ -2444,6 +2607,8 @@ def _add_tokenizer_args(parser):
+@@ -2444,6 +2609,8 @@ def _add_tokenizer_args(parser):
                         help='Size of vocab before EOD or padding.')
      group.add_argument('--vocab-file', type=str, default=None,
                         help='Path to the vocab file.')
@@ -449,7 +451,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--merge-file', type=str, default=None,
                         help='Path to the BPE merge file.')
      group.add_argument('--vocab-extra-ids', type=int, default=0,
-@@ -2462,8 +2627,17 @@ def _add_tokenizer_args(parser):
+@@ -2462,8 +2629,17 @@ def _add_tokenizer_args(parser):
                                  'MultimodalTokenizer',
                                  'NullTokenizer',
                                  'NullMultimodalTokenizer',
@@ -468,7 +470,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--tokenizer-model', type=str, default=None,
                         help='Sentencepiece tokenizer model.')
      group.add_argument('--tiktoken-pattern', type=str, default=None,
-@@ -2497,6 +2671,11 @@ def _add_data_args(parser):
+@@ -2497,6 +2673,11 @@ def _add_data_args(parser):
      group.add_argument('--valid-data-path', nargs='*', default=None,
                         help='The weight and prefix list for an independent validation dataset. '
                         'Follows the same pattern rules as --data-path.')
@@ -480,7 +482,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--test-data-path', nargs='*', default=None,
                         help='The weight and prefix list for an independent test dataset. '
                         'Follows the same pattern rules as --data-path.')
-@@ -2545,11 +2724,18 @@ def _add_data_args(parser):
+@@ -2545,11 +2726,18 @@ def _add_data_args(parser):
                         'end-of-document token.')
      group.add_argument('--eod-mask-loss', action='store_true',
                         help='Mask loss for the end of document tokens.')
@@ -499,7 +501,7 @@ index e36803fc..cbde6421 100644
      group.add_argument('--object-storage-cache-path', type=str, default=None,
                         help='Path to cache index files when using s3 or msc dataloader')
      group.add_argument('--mid-level-dataset-surplus', type=float, default=0.005,
-@@ -2626,6 +2812,19 @@ def _add_biencoder_args(parser):
+@@ -2626,6 +2814,19 @@ def _add_biencoder_args(parser):
      return parser
  
  
@@ -519,7 +521,7 @@ index e36803fc..cbde6421 100644
  def _add_vision_args(parser):
      group = parser.add_argument_group(title="vision")
  
-@@ -2696,6 +2895,8 @@ def _add_vision_args(parser):
+@@ -2696,6 +2897,8 @@ def _add_vision_args(parser):
                         help='Whether to layer normalize the q and k attention embeddings.')
      group.add_argument('--qk-l2-norm', action='store_true',
                         help='Use llama 4 qk l2 norm')
@@ -528,7 +530,7 @@ index e36803fc..cbde6421 100644
  
      return parser
  
-@@ -3000,3 +3201,75 @@ def _add_sft_args(parser):
+@@ -3000,3 +3203,75 @@ def _add_sft_args(parser):
      group.add_argument('--sft-tokenizer-prompt-format', type=str, default="nemotron-h-aligned", 
                         help='SFT prompt format.')
      return parser
@@ -584,7 +586,7 @@ index e36803fc..cbde6421 100644
 +    group.add_argument(
 +        '--lora-target-modules',
 +        nargs='*',
-+        choices=['linear_qkv', 'linear_proj', 'linear_fc1', 'linear_fc2'],
++        choices=['linear_qkv', 'linear_proj', 'linear_fc1', 'linear_fc2', 'linear_q_proj', 'linear_q_down_proj', 'linear_q_up_proj', 'linear_kv_proj', 'linear_kv_down_proj', 'linear_kv_up_proj'],
 +        default=['linear_qkv', 'linear_proj', 'linear_fc1', 'linear_fc2'],
 +        help='LoRA target modules list. Valid choices: linear_qkv, linear_proj, '
 +            'linear_fc1, linear_fc2. Default selects all.'

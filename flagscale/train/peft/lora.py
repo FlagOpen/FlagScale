@@ -19,6 +19,18 @@ from flagscale.train.peft.utils import (
 )
 
 
+try:
+    from megatron.core.extensions.transformer_engine import (
+        TEColumnParallelGroupedLinear,
+        TERowParallelGroupedLinear,
+        TEGroupedLinear,
+    )
+    TEGROUP = (TEColumnParallelGroupedLinear, TERowParallelGroupedLinear, TEGroupedLinear)
+    HAVE_GROUP = True
+except ImportError:
+    HAVE_GROUP = False
+
+
 class LoRALinear(AdapterWrapper):
     """An adapter wrapper that adds the output of the adapter to the output of the wrapped module.
 
@@ -112,8 +124,19 @@ class LoRA(PEFT, peft_type='lora'):
             unexpected_keys: List[str],
             errors: List[Any],
         ):
-            old_keys = [prefix + "weight", prefix + "bias"]
-            new_keys = [prefix + "to_wrap.weight", prefix + "to_wrap.bias"]
+            if HAVE_GROUP and any(isinstance(module.to_wrap, te_group) for te_group in TEGROUP):
+                old_keys = []
+                new_keys = []
+                for gemm_id in range(module.to_wrap.num_gemms):
+                    old_keys.append(prefix+f"weight{gemm_id}")
+                    new_keys.append(prefix+f"to_wrap.weight{gemm_id}")
+                    old_keys.append(prefix+f"bias{gemm_id}")
+                    new_keys.append(prefix+f"to_wrap.bias{gemm_id}")
+            else:
+                old_keys = [prefix + "weight", prefix + "bias"]
+                new_keys = [prefix + "to_wrap.weight", prefix + "to_wrap.bias"]
+            print(f"[lora.py], load state dict, {old_keys=}")
+            print(f"[lora.py], lora state dict, {new_keys=}")
             for old_key, new_key in zip(old_keys, new_keys):
                 if old_key in state_dict.keys():
                     if new_key not in state_dict.keys():
