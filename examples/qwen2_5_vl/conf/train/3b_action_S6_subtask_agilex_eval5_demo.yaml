@@ -25,18 +25,14 @@ system:
   logging:
     timing_log_level: 2
     log_interval: 1
-    tensorboard_log_interval: 1
-    log_throughput: True
+    tensorboard_log_interval: 1    log_throughput: True
     wandb_project: ${experiment.exp_name}
-    wandb_exp_name: ${experiment.exp_name}
-    log_params_norm: True
-    log_num_zeros_in_grad: True
-  checkpoint:
+    wandb_exp_name: ${experiment.exp_name}    log_params_norm: True
+    log_num_zeros_in_grad: True  checkpoint:
     save_interval: 33
-    pretrained_checkpoint: /share/project/lizhiyu/data/ckpt/robotics_pretrain_modeltp1pp1_S6_subtask
+    # pretrained_checkpoint: /share/project/lizhiyu/data/ckpt/robotics_pretrain_modeltp1pp1_S6_subtask
     dataloader_save: ${experiment.exp_dir}/checkpoints/dataloader
-    use_dist_ckpt: False
-    ckpt_format: torch
+    use_dist_ckpt: False    ckpt_format: torch
     async_save: False
 
 model:
@@ -97,14 +93,16 @@ model:
       lr_decay_style: cosine
 
 data:
-  data_path: /share/project/jiyuheng/robotics_pretrain/real_data_agilex_eval_5_0921_C30A1S1/wds-256
+  # data_path: /share/project/jiyuheng/robotics_pretrain/real_data_agilex_eval_5_0921_C30A1S1/wds-256
+  data_path: /datasets/robotics_pretrain/real_data_agilex_eval_5_0921_C30A1S1/wds-256
   vision_root: /
   dataloader_type: external
   split: 100,0,0
   shuffle-buffer-size: 1000
   tokenizer:
     tokenizer_type: Qwen2VLTokenizer
-    tokenizer_path: /share/project/caomingyu/pretrain_model/qwen/Qwen2.5-VL-3B-Instruct
+    # tokenizer_path: /share/project/caomingyu/pretrain_model/qwen/Qwen2.5-VL-3B-Instruct
+    tokenizer_path: /models/Qwen/Qwen2.5-VL-3B-Instruct
     vocab_size: 151643 # action
     make_vocab_size_divisible_by: 64
     extra_vocab_size: 293
