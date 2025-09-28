@@ -81,10 +81,9 @@ jobs:
 
             echo "Original commit ID: ${{ github.event.pull_request.head.sha }}"
             echo "[INFO] Install VLLM and its dependencies ..."
+            # configuration parameters
             MAX_RETRIES=5
             DELAYS=(1 1.5 2 2.5 3)
-            index=0
-            all_failed=true
             COMMANDS=(
               "python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 --commit ${{ github.event.pull_request.head.sha }}"
               "cd build/Metax_C550/FlagScale/third_party/vllm"
@@ -96,25 +95,51 @@ jobs:
               "pip install dist/vllm-*-linux_x86_64.whl"
             )
 
-            for ((attempt=1; attempt<=MAX_RETRIES; attempt++)); do
-              echo "$attempt/$MAX-RETRIES attempts ..."
-              for cmd in "${COMMANDS[@]}"; do
-                echo "execute command: $cmd"
-                if ! eval "$cmd"; then
-                  echo "Command execution failed! Wait for ${DELAYS[index]} minutes and retry ..."
-                  sleep $((${DELAYS[index]} * 60))
-                  ((index++))
-                  all_failed=false
-                  break
+            # Initialize state array
+            declare -A command_status
+            declare -A retry_count
+            declare -A delay_index
+
+            # Traverse all commands and initialize variables
+            for i in "${!COMMANDS[@]}"; do
+              command_status[$i]=false
+              retry_count[$i]=0
+              delay_index[$i]=0
+            done
+
+            # Continuously check if there are any unsuccessful commands that need to be retried
+            while true; do
+              all_successful=true
+
+              for i in "${!COMMANDS[@]}"; do
+                cmd="${COMMANDS[$i]}"
+
+                if ! ${command_status[$i]} && [ ${retry_count[$i]} -lt $MAX_RETRIES ]; then
+                  echo "Attempt to execute command (${retry_count[$i]}/$MAX_RETRIES times): ${cmd}"
+
+                  if ! eval "$cmd"; then
+                    echo "Command execution failed! We will retry in ${DELAYS[delay_index[$i]} minutes ..."
+                    sleep $((${DELAYS[delay_index[$i]]} * 60))
+                    ((retry_count[$i]++))
+                    ((delay_index[$i]++))
+                  else
+                    command_status[$i]=true
+                  fi
+                  all_successful=false
+                else
+                  echo "Skip commands that have been successfully/have reached the maximum retry count: ${cmd}"
                 fi
               done
-              if [ "$all_failed" = false ]; then
-                echo "All commands executed successfully!"
+              if [ "$all_successful" = true ]; then
+                echo "All commands have been executed"
                 exit 0
               fi
             done
-            echo "All attempts of $MAX_RETRIES have failed with exit status code 1"
-            exit 1
+
+            if [ "$all_successful" = false ]; then
+              exit 1
+            fi
+
             source /opt/conda/bin/activate base
           else
             echo "Unknown backend type: ${{ inputs.type }}"
