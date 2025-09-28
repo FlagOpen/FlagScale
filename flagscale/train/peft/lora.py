@@ -18,13 +18,13 @@ from flagscale.train.peft.utils import (
     match_module,
 )
 
-
 try:
     from megatron.core.extensions.transformer_engine import (
         TEColumnParallelGroupedLinear,
-        TERowParallelGroupedLinear,
         TEGroupedLinear,
+        TERowParallelGroupedLinear,
     )
+
     TEGROUP = (TEColumnParallelGroupedLinear, TERowParallelGroupedLinear, TEGroupedLinear)
     HAVE_GROUP = True
 except ImportError:
@@ -128,10 +128,10 @@ class LoRA(PEFT, peft_type='lora'):
                 old_keys = []
                 new_keys = []
                 for gemm_id in range(module.to_wrap.num_gemms):
-                    old_keys.append(prefix+f"weight{gemm_id}")
-                    new_keys.append(prefix+f"to_wrap.weight{gemm_id}")
-                    old_keys.append(prefix+f"bias{gemm_id}")
-                    new_keys.append(prefix+f"to_wrap.bias{gemm_id}")
+                    old_keys.append(prefix + f"weight{gemm_id}")
+                    new_keys.append(prefix + f"to_wrap.weight{gemm_id}")
+                    old_keys.append(prefix + f"bias{gemm_id}")
+                    new_keys.append(prefix + f"to_wrap.bias{gemm_id}")
             else:
                 old_keys = [prefix + "weight", prefix + "bias"]
                 new_keys = [prefix + "to_wrap.weight", prefix + "to_wrap.bias"]
