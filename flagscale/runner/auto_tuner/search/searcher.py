@@ -642,6 +642,9 @@ class ServeSearcher(Searcher):
         nodes_aware_strategies = self._find_combinations(
             cards, len(self._nodes_aware_dims[engine]), fixed_dims
         )
+        assert (
+            len(nodes_aware_strategies) != 0
+        ), f"the num of strategies should not be 0,please check the tensor_model_parallel_size or pipeline_model_parallel_size in config"
         for key_idx, key in enumerate(self._nodes_aware_dims[engine]):
             space[key] = list(set([v[key_idx] for v in nodes_aware_strategies]))
         return space, nodes_aware_strategies
@@ -658,7 +661,7 @@ class ServeSearcher(Searcher):
             return [[*current, target]]
 
         if dim_index in fixed_dims:
-            candidates = fixed_dims[dim_index]
+            candidates = [i for i in fixed_dims[dim_index] if target % i == 0]
         else:
             candidates = range(1, target + 1)
 
@@ -667,8 +670,14 @@ class ServeSearcher(Searcher):
                 results.extend(
                     self._find_combinations(target // i, num_dims - 1, fixed_dims, current + [i])
                 )
-
-        return results
+        final_results = []
+        for combination in results:
+            if all(
+                combination[idx] in fixed_dims.get(idx, [combination[idx]])
+                for idx in range(len(combination))
+            ):
+                final_results.append(combination)
+        return final_results
 
     def _create_default_space(self, cards, engine):
         space = dict.fromkeys(self._nodes_aware_dims[engine], "auto")
