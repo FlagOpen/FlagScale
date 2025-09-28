@@ -1,0 +1,52 @@
+diff --git a/megatron/core/optimizer/optimizer.py b/megatron/core/optimizer/optimizer.py
+index b5bc894c..93c8b45e 100644
+--- a/megatron/core/optimizer/optimizer.py
++++ b/megatron/core/optimizer/optimizer.py
+@@ -92,7 +92,7 @@ def _multi_tensor_copy_this_to_that(
+             that_.copy_(this_)
+ 
+ 
+-param_group_identifier_keys = ('wd_mult', 'lr_mult', 'is_expert_parallel', 'is_decoupled_lr')
++param_group_identifier_keys = ('wd_mult', 'lr_mult', 'is_expert_parallel', 'is_decoupled_lr', 'is_vision_model_param') ####FlagScale add is_vision_model_param
+ 
+ 
+ class MegatronOptimizer(ABC):
+@@ -465,12 +465,23 @@ class MixedPrecisionOptimizer(MegatronOptimizer):
+             )
+ 
+         # Update across all model parallel instances.
+-        torch.distributed.all_reduce(
+-            self.found_inf,
+-            op=torch.distributed.ReduceOp.MAX,
+-            group=self.get_grad_stats_parallel_group(),
+-        )
+-
++        groups = self.get_grad_stats_parallel_group()
++        if isinstance(groups, list):
++            if "cpu:gloo" == torch.distributed.get_backend(groups[0]):
++                self.found_inf = self.found_inf.cpu()
++        else:
++            if "cpu:gloo" == torch.distributed.get_backend(groups):
++                self.found_inf = self.found_inf.cpu()
++        if not isinstance(groups, list):
++            groups = [groups]
++        for group in groups:
++            torch.distributed.all_reduce(
++                self.found_inf,
++                op=torch.distributed.ReduceOp.MAX,
++                group=group
++            )
++        if self.found_inf.device != torch.device('cuda'):
++            self.found_inf = self.found_inf.cuda()
+         # Check for nan.
+         found_inf_flag = self.found_inf.item() > 0
+ 
+@@ -1319,7 +1330,7 @@ class ChainedOptimizer(MegatronOptimizer):
+ 
+             # Lazy loading checkpoint, state dict is needed only when DP rank = 0.
+             if optimizer.data_parallel_group.rank() == 0 and states is None:
+-                states = torch.load(filename)
++                states = torch.load(filename, weights_only=False)
+ 
+             state_dict = states[idx] if states else None
+             optimizer.load_parameter_state_from_dp_zero(

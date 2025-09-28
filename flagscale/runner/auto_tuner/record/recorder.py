@@ -39,7 +39,7 @@ class Recorder:
     def record(self, task, strategy):
         """Record the performance and max memory of task"""
         self.cur_strategy = strategy
-        peformance_path, host_path = self.get_performance_and_host_path(task)
+        peformance_path, host_path = self.get_all_performance_and_host_paths(task)
 
         errors = self.grep_error(host_path)
         if errors:
@@ -175,73 +175,72 @@ class Recorder:
         self.logger.info(f"task_{self.cur_strategy['idx']} max_memory: {max_memory}")
         return max_memory
 
-    def get_performance_and_host_path(self, task):
-        """Get the log path of task."""
+    def get_all_performance_and_host_paths(self, task):
+        """Get all log paths of task across all hosts and ranks."""
         logs = os.path.join(task.experiment.exp_dir, "logs")
         details = os.path.join(logs, "details")
 
         if not os.path.exists(details):
             raise ValueError("The task detail folder does not exist.")
 
-        # The loss just logged in the last rank of the last node
-        max_host_rank = 0
-        max_host = None
-        for item in os.listdir(details):
-            if not item.startswith("host_"):
+        all_log_paths = []
+
+        for host_item in os.listdir(details):
+            if not host_item.startswith("host_"):
                 continue
-            host_rank = int(item.split("_")[1])
-            if host_rank >= max_host_rank:
-                max_host_rank = host_rank
-                max_host = item
-        if max_host is None:
-            return None, logs
-        outputs = os.listdir(os.path.join(details, max_host))
-        assert len(outputs) == 1, f"the sub dir of {outputs} must be just one."
-        new_outputs = os.listdir(os.path.join(details, max_host, outputs[0]))
-        assert len(new_outputs) == 1, f"the sub dir of {new_outputs} must be just one."
-        last_path = os.path.join(details, max_host, outputs[0], new_outputs[0], "attempt_0")
-        last_dir = None
-        last_dir_rank = 0
-        if not os.path.exists(last_path):
-            self.logger.info(f"The performance file path does not exist: {last_path}")
-            return None, logs
 
-        for item in os.listdir(last_path):
-            try:
-                rank = int(item)
-                if rank > last_dir_rank:
-                    last_dir = item
-                    last_dir_rank = rank
-            except Exception as e:
-                raise e
-        log_path = os.path.join(last_path, last_dir, "stdout.log")
-        if not os.path.exists(log_path):
-            raise ValueError("The log file does not exist.")
-        return log_path, logs
+            host_path = os.path.join(details, host_item)
 
-    def grep_performance(self, path, pattern="elapsed time per iteration \(ms\):"):
+            for output_item in os.listdir(host_path):
+                output_path = os.path.join(host_path, output_item)
+
+                for sub_item in os.listdir(output_path):
+                    sub_path = os.path.join(output_path, sub_item)
+
+                    attempt_path = os.path.join(sub_path, "attempt_0")
+                    if not os.path.exists(attempt_path):
+                        continue
+
+                    for rank_item in os.listdir(attempt_path):
+                        rank_path = os.path.join(attempt_path, rank_item)
+
+                        if not rank_item.isdigit():
+                            continue
+
+                        log_path = os.path.join(rank_path, "stdout.log")
+                        if os.path.exists(log_path):
+                            host_rank = int(host_item.split("_")[1])
+                            rank = int(rank_item)
+                            all_log_paths.append(log_path)
+        return all_log_paths, logs
+
+    def grep_performance(self, paths, pattern="elapsed time per iteration \(ms\):"):
         """Read the log file and return the performance."""
         metric_pattern = pattern + r":* *(\d+(\.\d*)?)|(\d+(\.\d*)?) *" + pattern
-        if not path or not os.path.exists(path):
+        if not paths:
             return None
         performance = []
-        with open(path, "rb") as f:
-            for _ in f:
-                try:
-                    line = _.decode("utf-8")
-                except UnicodeDecodeError:
-                    continue
-                metric = re.findall(metric_pattern, line)
-                if metric:
-                    value = None
-                    for item in metric[0]:
-                        try:
-                            value = float(item)
-                            performance.append(value)
-                            break
-                        except:
-                            continue
-                    assert value is not None, "Can't grep the performance"
+        for path in paths:
+            if not path or not os.path.exists(path):
+                continue
+            with open(path, "rb") as f:
+                for _ in f:
+                    try:
+                        line = _.decode("utf-8")
+                    except UnicodeDecodeError:
+                        continue
+                    metric = re.findall(metric_pattern, line)
+                    if metric:
+                        value = None
+                        for item in metric[0]:
+                            try:
+                                value = float(item)
+                                performance.append(value)
+                                break
+                            except:
+                                continue
+            if performance:
+                break
         if not performance:
             self.logger.info(f"task_{self.cur_strategy['idx']} performance: {None}")
             return None
