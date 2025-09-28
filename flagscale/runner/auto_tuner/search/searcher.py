@@ -642,9 +642,10 @@ class ServeSearcher(Searcher):
         nodes_aware_strategies = self._find_combinations(
             cards, len(self._nodes_aware_dims[engine]), fixed_dims
         )
-        assert (
-            len(nodes_aware_strategies) != 0
-        ), f"the num of strategies should not be 0,please check the tensor_model_parallel_size or pipeline_model_parallel_size in config"
+        if not nodes_aware_strategies:
+            raise ValueError(
+                f"the num of strategies should not be 0,please check the tensor_model_parallel_size or pipeline_model_parallel_size in config"
+            )
         for key_idx, key in enumerate(self._nodes_aware_dims[engine]):
             space[key] = list(set([v[key_idx] for v in nodes_aware_strategies]))
         return space, nodes_aware_strategies
