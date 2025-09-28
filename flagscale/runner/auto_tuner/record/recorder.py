@@ -236,7 +236,7 @@ class Recorder:
                                 performance.append(value)
                                 break
                             except:
-                                assert value is not None, "Can't grep the performance"
+                                continue
             if performance:
                 break
         if not performance:
