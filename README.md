@@ -4,7 +4,7 @@
 - **[2025/04]** Released [v0.8.0](https://github.com/FlagOpen/FlagScale/tree/release/v0.8.0):
   - Introduced a new flexible and robust multi-backend mechanism and updated vendor adaptation methods.
   - Enabled heterogeneous prefill-decoding disaggregation across vendor chips within a single instance via FlagCX (beta).
-  - Upgraded DeepSeek-v3 pre-training with the new Megatron-LM and added heterogeneous pre-training across different chips for MoE models like DeepSeek-v3.
+  - Upgraded DeepSeek-V3 pre-training with the new Megatron-LM and added heterogeneous pre-training across different chips for MoE models like DeepSeek-V3.
 - **[2025/02]** Released [v0.6.5](https://github.com/FlagOpen/FlagScale/tree/release/v0.6.5):
   - Added support for DeepSeek-V3 distributed pre-training (beta) and [DeepSeek-V3/R1 serving](#deepseek-r1-serving) across multiple chips.
   - Introduced an auto-tuning feature for serving and a new CLI feature for one-click deployment.
@@ -45,11 +45,21 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
 
 2. Install the requirements:
     ```sh
-    cd FlagScale/install
-    ./install-requirements.sh --env train
-    ./install-requirements.sh --env inference
+    cd FlagScale
+    ./install/install-requirements.sh --env train
+    ./install/install-requirements.sh --env inference
     ```
     The above instructions create two conda environments: `flagscale-train` and `flagscale-inference`, which contain the dependency environments for training and inference, respectively.
+
+    The llama.cpp backend (CPU by default) is alternative, for example:
+    ```sh
+    ./install/install-requirements.sh --env inference --llama-cpp-backend cuda
+    ```
+
+    **Note**: To customize the environment according to your specific needs, follow the methods below:  
+    1. To install apt packages or basic drivers, add them to the platform-specific `Dockerfile` in the `docker` directory.
+    2. To include cross-platform Python packages, declare them in the corresponding files in the `requirements` directory.
+    3. To include platform-specific Python packages, configure them in the corresponding files in the `install` directory.
 
 3. Unpatch the backend code adaptation of FlagScale as needed
     ```
@@ -70,6 +80,22 @@ We recommend using the latest release of [NGC's PyTorch container](https://catal
     cd FlagScale
     cp -r third_party/Megatron-Energon/src/megatron/energon third_party/Megatron-LM/megatron
     ```
+    And we currently support two one-click installation methods: source installation and whl installation. Usage is as follows:
+
+    - Source Installation
+        ```sh
+        PYTHONPATH=./:$PYTHONPATH pip install . --no-build-isolation --verbose \
+        --config-settings=device=<device> \
+        --config-settings=backend=<backend>
+        ```
+
+    - Whl Installation
+        ```sh
+        PYTHONPATH=./:$PYTHONPATH pip install . --no-build-isolation --verbose
+        flagscale install <backend> --device=<device>
+        ```
+
+    More backends and chips will be supported in the future.
 
 5. Patch the modifications to the specified third_party backend for PR.
     ```
@@ -127,7 +153,7 @@ We support the model serving of DeepSeek R1 and have implemented the `flagscale 
 2. **Install FlagScale CLI:**
     ```sh
     cd FlagScale
-    pip install .
+    PYTHONPATH=./:$PYTHONPATH pip install . --verbose --no-build-isolation
     ```
 
 3. **One-click serve:**

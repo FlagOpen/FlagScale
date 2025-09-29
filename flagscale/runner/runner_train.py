@@ -9,7 +9,6 @@ from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.utils import (
-    add_decive_extra_config,
     flatten_dict_to_args,
     get_free_port,
     get_host_name_or_ip,
@@ -20,6 +19,8 @@ from flagscale.runner.utils import (
     run_local_command,
     run_scp_command,
     run_ssh_command,
+    update_cmd_with_node_specific_config,
+    update_nodes_envs,
 )
 
 _MAX_CPU_COUNT = multiprocessing.cpu_count()
@@ -43,6 +44,36 @@ def _get_args_megatron(config: DictConfig):
     # Flatten the dictionary to a list of arguments
     args = flatten_dict_to_args(new_config_dict, ignore_keys)
 
+    return args
+
+
+def _get_args_lerobot(config: DictConfig):
+    assert (
+        config.experiment.task.backend == "lerobot"
+    ), "This function only supports lerobot backend."
+
+    # Convert the DictConfig to a regular dictionary
+    config_dict = OmegaConf.to_container(config, resolve=True)
+    config_dict = config_dict["train"]
+
+    new_config_dict = {}
+    new_config_dict.update(config_dict["system"])
+    new_config_dict.update(config_dict["model"])
+    new_config_dict.update(config_dict["data"])
+
+    ignore_keys = [
+        "log_dir",
+        "details_dir",
+        "scripts_dir",
+        "pids_dir",
+        "save",
+        "output_dir",
+        "load",
+        "tensorboard_dir",
+        "wandb_save_dir",
+    ]
+    # Flatten the dictionary to a list of arguments
+    args = flatten_dict_to_args(new_config_dict, ignore_keys=ignore_keys, do_dash_replace=False)
     return args
 
 
@@ -171,7 +202,9 @@ def _get_runner_cmd_train(
     return runner_cmd
 
 
-def _generate_run_script_train(config, host, node_rank, cmd, background=True, with_test=False):
+def _generate_run_script_train(
+    config, host, node_rank, cmd, background=True, with_test=False, root_dir=None
+):
     system_config = config.train.system
     logging_config = config.train.system.logging
 
@@ -186,8 +219,11 @@ def _generate_run_script_train(config, host, node_rank, cmd, background=True, wi
     host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
 
     os.makedirs(logging_config.scripts_dir, exist_ok=True)
-
-    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root_dir is not None:
+        root_dir = os.path.abspath(root_dir)
+    else:
+        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    assert os.path.exists(root_dir), f"ROOT_DIR {root_dir} does not exist."
     megatron_dir = os.path.join(root_dir, "third_party", "Megatron-LM")
     cmds_config = config.experiment.get("cmds", None)
     if cmds_config:
@@ -279,8 +315,10 @@ def run_node(
     with_test,
     dryrun,
 ):
-    cur_envs = add_decive_extra_config(user_envs, resource_info["type"])
-    visible_devices = cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+    cur_envs = update_nodes_envs(user_envs, host, resource_info)
+    # Get the number of visible devices from the environment variable, e.g. CUDA_VISIBLE_DEVICES, MLU_VISIBLE_DEVICES
+    # visible_devices = cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+    visible_devices = next((v for k, v in cur_envs.items() if k.endswith("_VISIBLE_DEVICES")), None)
     if visible_devices is not None and isinstance(visible_devices, str):
         visible_devices = visible_devices.split(",")
         num_visible_devices = len(visible_devices)
@@ -312,11 +350,16 @@ class SSHTrainRunner(RunnerBase):
 
     def _prepare(self):
         _update_config_train(self.config)
-        self.user_args = _get_args_megatron(self.config)
+        if self.config.experiment.task.backend == "megatron":
+            self.user_args = _get_args_megatron(self.config)
+        elif self.config.experiment.task.backend == "lerobot":
+            self.user_args = _get_args_lerobot(self.config)
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         self.user_envs = self.config.experiment.get("envs", {})
         self.user_script = self.config.experiment.task.entrypoint
         self.resources = parse_hostfile(self.config.experiment.runner.get("hostfile", None))
+        self.device_type_specific = self.config.get("device_type_specific", None)
+        self.node_specific = self.config.get("node_specific", None)
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
@@ -350,10 +393,24 @@ class SSHTrainRunner(RunnerBase):
                 self.user_args += ["--hetero-current-device-type", device_type]
 
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
+        # update cmd with node_specific_config
+        node_specific_config = {}
+        if device_type is not None:
+            node_specific_config = (
+                self.device_type_specific.get(device_type, {}) if self.device_type_specific else {}
+            )
+        node_specific_config.update(self.node_specific.get(host, {}) if self.node_specific else {})
+        cmd = update_cmd_with_node_specific_config(cmd, node_specific_config)
 
         logging_config = self.config.train.system.logging
         host_run_script_file = _generate_run_script_train(
-            self.config, host, node_rank, cmd, background=True, with_test=with_test
+            self.config,
+            host,
+            node_rank,
+            cmd,
+            background=True,
+            with_test=with_test,
+            root_dir=node_specific_config.get("build_dir", None),
         )
 
         if host != "localhost":
@@ -674,8 +731,10 @@ class CloudTrainRunner(RunnerBase):
         self.user_envs = self.config.experiment.get("envs", {})
         self.user_script = self.config.experiment.task.entrypoint
         _update_config_train(self.config)
-        self.user_args = _get_args_megatron(self.config)
-
+        if self.config.experiment.task.backend == "megatron":
+            self.user_args = _get_args_megatron(self.config)
+        elif self.config.experiment.task.backend == "lerobot":
+            self.user_args = _get_args_lerobot(self.config)
         logger.info("\n************** configuration ***********")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 

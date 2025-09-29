@@ -64,7 +64,6 @@ class VisionRotaryEmbedding(nn.Module):
         super().__init__()
         # NOTE(lizhiyu): print inv_freq to check it.
         inv_freq = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=torch.bfloat16) / dim))
-        #print(f"LZY: Qwen2_5VisionModel full seqlens: {inv_freq.shape}, contetn: {inv_freq.sum()}, {inv_freq}")
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
     def forward(self, seqlen: int) -> torch.Tensor:
@@ -267,9 +266,7 @@ class Qwen2_5VisionModel(VisionModule):
 
         # Rotary positional embeddings (embedding is None for PP intermediate devices)
         #vision_data (t, 3) --> (t, embed_dim)
-        #print(f"LZY: Qwen2_5VisionModel before patch_embed vision_data: {vision_data.shape}, contetn: {vision_data.sum()}, {vision_data}")
         vision_data = self.patch_embed(vision_data)
-        #print(f"LZY: Qwen2_5VisionModel  patch_embed vision_data: {vision_data.shape}, contetn: {vision_data.sum()}, {vision_data}")
         # window_index: [tiles, num_windows]   cu_window_seqlens: [tiles * num_windows]
         window_index, cu_window_seqlens = self.get_window_index(grid_thw)
         cu_window_seqlens = torch.tensor(
@@ -287,10 +284,8 @@ class Qwen2_5VisionModel(VisionModule):
         rotary_pos_emb = self.rot_pos_emb(grid_thw)
         rotary_pos_emb = rotary_pos_emb.reshape(seq_len // self.spatial_merge_unit, self.spatial_merge_unit, -1)
         rotary_pos_emb = rotary_pos_emb[window_index, :, :]
-        #print(f"LZY: Qwen2_5VisionModel before rotary_pos_emb: {rotary_pos_emb.shape}, contetn: {rotary_pos_emb.sum()}, {rotary_pos_emb}")
         rotary_pos_emb = rotary_pos_emb.reshape(seq_len, 1, 1, -1).repeat(1, 1, 1, 2)
-        #print(f"LZY: Qwen2_5VisionModel cu_window_seqlens: {cu_window_seqlens.shape}, contetn: {cu_window_seqlens.sum()}, {cu_window_seqlens}")
-        #print(f"LZY: Qwen2_5VisionModel rotary_pos_emb: {rotary_pos_emb.shape}, contetn: {rotary_pos_emb.sum()}, {rotary_pos_emb}")
+
         hidden_states = self.decoder(
             hidden_states = vision_data,
             attention_mask = None,
@@ -301,9 +296,8 @@ class Qwen2_5VisionModel(VisionModule):
             fullatt_block_indexes=self.fullatt_block_indexes,
             **(extra_block_kwargs or {}),
         )
-        #print(f"LZY: Qwen2_5VisionModel after blk: {hidden_states.shape}, contetn: {hidden_states.sum()}, {hidden_states}")
+
         hidden_states = self.projection(hidden_states.view(-1, self.merge_hidden_size))
-        #print(f"LZY: Qwen2_5VisionModel after merger: {hidden_states.shape}, contetn: {hidden_states.sum()}, {hidden_states}")
         reverse_indices = torch.argsort(window_index)
         return hidden_states[reverse_indices, :]
 
@@ -317,12 +311,8 @@ class Qwen2_5VisionModel(VisionModule):
             seqlens = torch.repeat_interleave(grid_thw[:, 1] * grid_thw[:, 2], grid_thw[:, 0])
             cu_seqlens = seqlens.cumsum(dim=0)
             cu_seqlens = F.pad(cu_seqlens, (1, 0), value=0).int()
-            #print(f"LZY: Qwen2_5VisionModel full seqlens: {seqlens.shape}, contetn: {seqlens.sum()}, {seqlens}")
-            #print(f"LZY: Qwen2_5VisionModel full seq: {cu_seqlens.shape}, contetn: {cu_seqlens.sum()}, {cu_seqlens}")
         else: # the step of cu_seqlens is window_size, not sampel seq_length
             seqlens = cu_seqlens[1:] - cu_seqlens[:-1]
-            #print(f"LZY: Qwen2_5VisionModel window seqlens: {seqlens.shape}, contetn: {seqlens.sum()}, {seqlens}")
-            #print(f"LZY: Qwen2_5VisionModel window seq: {cu_seqlens.shape}, contetn: {cu_seqlens.sum()}, {cu_seqlens}")
 
         max_seqlen_q = seqlens.max()
         return PackedSeqParams(

@@ -58,7 +58,7 @@ FlagScale 在 **0.8.0** 开始启用新的后端管理方式，不同后端皆�
 
    ```bash
    cd FlagScale
-   python tools/patch/patch.py --backend Megatron-LM FlagScale --task train --device-type Chip_Vendor --commit <commit>>
+   python tools/patch/patch.py --backend Megatron-LM FlagScale --task train --device-type Chip_Vendor --commit <commit>
    ```
 
    **参数解释：**
@@ -67,6 +67,7 @@ FlagScale 在 **0.8.0** 开始启用新的后端管理方式，不同后端皆�
    - `task`：任务场景。支持多场景输入，如果该修改支持多个场景，可输入如 `train post_train`。目前仅支持 `{train, inference, post_train}`
    - `device-type`：芯片型号。以 `厂商名_具体型号` 为命名，厂商名开头需要大写。
    - `commit`：基于 FlagScale 某个 `commit` 进行的适配。
+   - `key-path`：如果需要对patch文件进行加密，指定密钥文件路径，如果该路径下没有密钥文件，则会自动产生。
 
    执行该命令后，需要交互式输入以下四个信息，分别是：后端版本、适配的模型、`commit message`（将自动 `add patch` 文件，并以此 `message` 进行 `commit`）、联系方式（可选，适用于需要加密场景）  
 
@@ -98,6 +99,8 @@ python tools/patch/unpatch.py --backend Megatron-LM FlagScale --task train --dev
 ```
 
 `unpatch` 出的 FlagScale 就在 `build/<Chip_Vendor>` 目录中。
+
+如果需要对加密后的patch进行解密，需要参考patch文件对应的yaml文件中对应的联系方式，联系厂商获取密钥文件，`unpatch`时需要指定密钥文件路径`key-path`。
 
 ## 五、Q&A
 

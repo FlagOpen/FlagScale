@@ -7,6 +7,7 @@ from io import BytesIO
 from typing import Any, AsyncGenerator
 
 import ray
+import torch
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -40,9 +41,23 @@ except Exception as e:
     pass
 
 from flagscale import serve
+from flagscale.runner.utils import ResourceManager
 
 serve.load_args()
 TASK_CONFIG = serve.task_config
+
+
+def get_whole_card_num(resource_type="gpu"):
+    nodes = TASK_CONFIG.get("nodes", [])
+    if nodes:
+        resource_manager = ResourceManager(nodes)
+        cards = resource_manager.get_whole_card_num(resource_type=resource_type)
+    elif resource_type == "gpu" and torch.cuda.is_available():
+        cards = torch.cuda.device_count()
+    else:
+        raise ValueError(f"No availble resource {resource_type} found.")
+    return cards
+
 
 SERVICE_NAME = "vllm_service"
 
@@ -91,7 +106,9 @@ def get_engine_args(model_name):
     if model_config is None:
         raise ValueError(f"No {model_name} configuration found in task config: {TASK_CONFIG}")
 
-    engine_args = model_config.get("engine_args", None)
+    common_args = model_config.get("engine_args", {})
+    engine_args = model_config.get("engine_args_specific", {}).get("vllm", {})
+    engine_args.update(common_args)
 
     if engine_args:
         limit_mm_per_prompt = engine_args.get("limit_mm_per_prompt", None)
@@ -130,19 +147,45 @@ def get_deploy_config(model_name, device="gpu"):
     if ray_actor_options:
         resource_config["ray_actor_options"] = ray_actor_options
 
+    if "num_gpus" not in resource_config.get("ray_actor_options", {}) and device == "gpu":
+        tensor_parallel_size = (
+            model_config.engine_args.get("tensor_parallel_size", None)
+            or model_config.get("engine_args_specific", {})
+            .get("vllm", {})
+            .get("tensor_parallel_size", None)
+            or 1
+        )
+        pipeline_parallel_size = (
+            model_config.engine_args.get("pipeline_parallel_size", None)
+            or model_config.get("engine_args_specific", {})
+            .get("vllm", {})
+            .get("pipeline_parallel_size", None)
+            or 1
+        )
+        ray_actor_options["num_gpus"] = tensor_parallel_size * pipeline_parallel_size
+        resource_config["ray_actor_options"] = ray_actor_options
+
     if "num_replicas" in resources:
-        resource_config["num_replicas"] = resources["num_replicas"]
+        num_replicas_val = resources["num_replicas"]
+        if num_replicas_val == "auto" and device == "gpu":
+            num_replicas = get_whole_card_num() // resource_config.get("ray_actor_options", {}).get(
+                "num_gpus", 1
+            )
+            resource_config["num_replicas"] = num_replicas
+        elif isinstance(num_replicas_val, int):
+            resource_config["num_replicas"] = resources["num_replicas"]
+        else:
+            raise ValueError(
+                f"Invalid num_replicas value: {num_replicas_val} with device {device}."
+            )
     else:
         resource_config["num_replicas"] = 1
 
-    if "num_gpus" not in resource_config.get("ray_actor_options", {}) and device == "gpu":
-        ray_actor_options["num_gpus"] = model_config.engine_args.get(
-            "tensor_parallel_size", 1
-        ) * model_config.engine_args.get("pipeline_parallel_size", 1)
-        resource_config["ray_actor_options"] = ray_actor_options
-
     resource_config["max_ongoing_requests"] = 1000
     return resource_config
+
+
+_resource_config = get_deploy_config("vllm_model")
 
 
 def get_sample_args(request):
@@ -204,7 +247,7 @@ def check_health(service_name):
     return False
 
 
-@serve.deployment(**get_deploy_config("vllm_model"))
+@serve.deployment(**_resource_config)
 class LLMActor:
     def __init__(self):
         engine_args = AsyncEngineArgs(**get_engine_args("vllm_model"))
@@ -218,7 +261,7 @@ class LLMActor:
 
 
 # refer to openai-type endpoints of vLLM
-@serve.deployment(num_replicas="auto", max_ongoing_requests=1000)
+@serve.deployment(num_replicas=_resource_config["num_replicas"], max_ongoing_requests=1000)
 @serve.ingress(app)
 class LLMService:
     def __init__(self, llm_actor):
@@ -548,7 +591,7 @@ if __name__ == "__main__":
     serve.start(
         http_options={
             "host": "0.0.0.0",
-            "port": TASK_CONFIG.experiment.get("deploy", {}).get("port", 8000),
+            "port": TASK_CONFIG.experiment.get("runner", {}).get("deploy", {}).get("port", 8000),
         }
     )
     llm_actor = LLMActor.bind()

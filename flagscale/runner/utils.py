@@ -3,6 +3,7 @@ import collections
 import json
 import os
 import re
+import shlex
 import socket
 import subprocess
 import sys
@@ -10,7 +11,7 @@ import time
 import traceback
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import aiohttp
 import numpy as np
@@ -19,7 +20,6 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm.asyncio import tqdm
 
 from flagscale.logger import logger
-from flagscale.serve.metric import calculate_metrics
 
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 
@@ -27,6 +27,43 @@ AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 def log_and_raise_error(message):
     logger.error(message)
     raise ValueError(message)
+
+
+def is_ray_master_running(
+    master_ip: str, port: int = 6379, timeout: float = 5.0
+) -> Tuple[bool, Optional[str]]:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(timeout)
+            logger.info(f"Attempt to connect {master_ip}:{port}, timeout is {timeout}")
+            result = s.connect_ex((master_ip, port))
+
+            if result != 0:
+                return False, f"waitting for master node {master_ip}:{port}"
+            else:
+                return True, f"master node is ready"
+
+    except socket.timeout:
+        return False, f"connect {master_ip}:{port} timeout"
+    except Exception as e:
+        return False, f"check the error: {str(e)}"
+
+
+def wait_for_ray_master(
+    master_ip: str, port: int = 6379, max_attempts: int = 180, interval: int = 10
+) -> bool:
+    logger.info(f"Master info is {master_ip}:{port}")
+    for attempt in range(max_attempts):
+        status, msg = is_ray_master_running(master_ip, port)
+        logger.info(f"Check Ray master status (attempt {attempt+1}/{max_attempts}): {msg}")
+
+        if status:
+            return True
+
+        if attempt < max_attempts - 1:
+            time.sleep(interval)
+
+    return False
 
 
 def parse_hostfile(hostfile_path):
@@ -95,6 +132,26 @@ def get_host_name_or_ip():
         ):  # Ensure 'sock' was successfully created before attempting to close it
             sock.close()
     return IP
+
+
+def get_addr():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            if not ip.startswith == "127.0.0.1":
+                return ip
+    except:
+        pass
+
+    try:
+        ip = socket.gethostbyname(socket.getfqdn())
+        if not ip.startswith == "127.0.0.1":
+            return ip
+    except:
+        pass
+
+    return socket.gethostname()
 
 
 def run_local_command(cmd, dryrun=False, query=False):
@@ -180,14 +237,46 @@ def run_scp_command(host, src, dst, port=None, dryrun=False):
         sys.exit(result.returncode)
 
 
-def flatten_dict_to_args(config_dict, ignore_keys=[]):
+def flatten_dict_to_args_verl(config_dict, pre_str=""):
+    args = []
+    if 'config-path' in config_dict:
+        args.append(f'--config-path={config_dict["config-path"]}')
+        config_dict.pop('config-path')
+
+    if 'config-name' in config_dict:
+        args.append(f'--config-name={config_dict["config-name"]}')
+        config_dict.pop('config-name')
+
+    for key, value in config_dict.items():
+
+        if isinstance(value, dict):
+            if key == 'append_kargs':
+                target_str = f"+"
+            else:
+                target_str = f"{key}."
+            args.extend(flatten_dict_to_args_verl(value, pre_str + target_str))
+        elif isinstance(value, list):
+            v_str = ""
+            for v in value:
+                v_str += f"{v}"
+            args.append(f"{pre_str+key}=" + v_str)
+        elif isinstance(value, bool):
+            args.append(f"{pre_str+key}={value}")
+        else:
+            args.append(f"{pre_str+key}=" + f"{value}")
+
+    return args
+
+
+def flatten_dict_to_args(config_dict, ignore_keys=[], do_dash_replace=True):
     args = []
     for key, value in config_dict.items():
         if key in ignore_keys:
             continue
-        key = key.replace("_", "-")
+        if do_dash_replace:
+            key = key.replace("_", "-")
         if isinstance(value, dict):
-            args.extend(flatten_dict_to_args(value, ignore_keys))
+            args.extend(flatten_dict_to_args(value, ignore_keys, do_dash_replace=do_dash_replace))
         elif isinstance(value, list):
             args.append(f"--{key}")
             for v in value:
@@ -241,27 +330,71 @@ def get_nproc_per_node(nproc_from_hostfile=None, nproc_from_args=None, num_visib
             return 1
 
 
-def add_decive_extra_config(config, device_type):
-    if device_type is None:
+def update_nodes_envs(env_config, ip_addr, resource_info):
+    device_type = resource_info.get("type", None)
+    assert ip_addr is not None, "ip address is required in resource_info"
+
+    cur_node_config = {}
+    if isinstance(env_config, DictConfig):
+        cur_node_config = OmegaConf.to_container(env_config, resolve=True)
+    else:
+        cur_node_config = env_config.copy()
+
+    device_types_envs = cur_node_config.pop("device_type_specific", None)
+    nodes_envs = cur_node_config.pop("node_specific", None)
+    if device_types_envs is None and nodes_envs is None:
         logger.warning(
             f"type in hostfile is not specified. All the nodes use the same arguments inlucding evnironment variables."
         )
-        return OmegaConf.to_container(config, resolve=True)
-    cur_node_config = {}
-    temp_dict = {}
-    if isinstance(config, DictConfig):
-        temp_dict = OmegaConf.to_container(config, resolve=True)
-    else:
-        temp_dict = config
-    for key, value in temp_dict.items():
-        if isinstance(value, dict):
-            if key == device_type:
-                cur_node_config.update(value)
-            else:
-                continue
-        else:
-            cur_node_config[key] = value
+        return cur_node_config
+
+    # update then envs according to the device type
+    if device_types_envs is not None and device_type is not None:
+        cur_node_config.update(device_types_envs.get(device_type, {}))
+    # update the envs according to the ip address
+    if nodes_envs is not None:
+        cur_node_config.update(nodes_envs.get(ip_addr, {}))
+
     return cur_node_config
+
+
+def update_cmd_with_node_specific_config(cmd, node_specific_config=None):
+    """
+    Update the command string with additional configuration options for speicial device.
+    Parameters:
+        cmd (str): The original command string to be updated.
+        node_specific_config (dict): A dictionary containing configuration
+                                     options to be applied to the command.
+    Returns:
+        str: The updated command string after applying the configuration.
+    """
+    if node_specific_config is None or len(node_specific_config) == 0:
+        return cmd
+    cmd_parts = shlex.split(cmd)
+
+    for key, value in node_specific_config.items():
+        key = key.replace("_", "-")
+        option = f"--{key}"
+        if option in cmd_parts:
+            idx = cmd_parts.index(option)
+            if value.lower() == "true":
+                # If the option has a value, remove it.
+                if idx + 1 < len(cmd_parts) and not cmd_parts[idx + 1].startswith("--"):
+                    cmd_parts.pop(idx + 1)
+                continue
+            elif value.lower() == "false":
+                # If the option has a value, remove it along with the option.
+                if idx + 1 < len(cmd_parts) and not cmd_parts[idx + 1].startswith("--"):
+                    del cmd_parts[idx : idx + 2]
+                else:
+                    cmd_parts.pop(idx)
+        else:
+            if value.lower() == "true":
+                cmd_parts.append(option)
+            # NOTE: disable adding new options
+            # elif value.lower() != "false":
+            #     cmd_parts.extend([option, value])
+    return shlex.join(cmd_parts)
 
 
 def is_ip_addr(master):
@@ -277,6 +410,14 @@ def is_ip_addr(master):
         return False
 
 
+def is_master_node(lws_leader_address):
+
+    host_name = lws_leader_address.split('.')[0]
+    local_hostname = socket.gethostname().split('.')[0]
+
+    return host_name == local_hostname
+
+
 def get_ip_addr():
     """Get ip address."""
     try:
@@ -287,7 +428,7 @@ def get_ip_addr():
     return ip
 
 
-def is_master(config):
+def is_master(config, resources=None):
     """Check if current node is master."""
     nnodes = config.experiment.runner.get("nnodes", 1)
 
@@ -298,7 +439,8 @@ def is_master(config):
         if os.environ.get("AIRS_HOSTFILE_PATH", None):
             hostfile = os.environ["AIRS_HOSTFILE_PATH"]
 
-    resources = parse_hostfile(hostfile)
+    if not resources:
+        resources = parse_hostfile(hostfile)
     if not resources and nnodes > 1:
         raise ValueError("In the multi-node mode, please set the hostfile")
 
@@ -387,6 +529,8 @@ async def async_request_openai_chat_completions(
             "max_completion_tokens": request_func_input.output_len,
             "stream": True,
             "stream_options": {"include_usage": True},
+            # max_completion_tokens is invalid for llama.cpp
+            "n_predict": request_func_input.output_len,
         }
         if request_func_input.ignore_eos:
             payload["ignore_eos"] = request_func_input.ignore_eos
@@ -429,8 +573,12 @@ async def async_request_openai_chat_completions(
                                     output.itl.append(timestamp - most_recent_timestamp)
 
                                 generated_text += content or ""
-                            elif usage := data.get("usage"):
-                                output.output_tokens = usage.get("completion_tokens")
+
+                            # llamap.cpp's last response has "choices", bot delta is null
+                            # sglang's response has key "usage" but value is null
+                            if usage := data.get("usage", {}):
+                                if completion_tokens := usage.get("completion_tokens"):
+                                    output.output_tokens = completion_tokens
 
                             most_recent_timestamp = timestamp
 
@@ -458,14 +606,22 @@ async def get_request(input_requests):
 
 
 async def benchmark(
-    api_url, model, tokenizer, input_requests, selected_percentile_metrics, selected_percentiles
+    api_url,
+    model,
+    served_model_name,
+    tokenizer,
+    input_requests,
+    selected_percentile_metrics,
+    selected_percentiles,
 ):
 
     async def limited_request_func(request_func_input, pbar):
         return await request_func(request_func_input=request_func_input, pbar=pbar)
 
     request_func = async_request_openai_chat_completions
-    req_model_id = req_model_name = model
+    req_model_id = model
+    req_model_name = served_model_name if served_model_name is not None else model
+
     pbar = tqdm(total=len(input_requests))
 
     benchmark_start_time = time.perf_counter()
@@ -491,6 +647,9 @@ async def benchmark(
     pbar.close()
 
     benchmark_duration = time.perf_counter() - benchmark_start_time
+
+    ### import here to avoid dependency issue
+    from flagscale.serve.metric import calculate_metrics
 
     metrics, actual_output_lens = calculate_metrics(
         input_requests=input_requests,
@@ -658,7 +817,7 @@ class ResourceManager:
                 raise ValueError("Insufficient resources")
             allocated_ids = list(range(node_found["used"], node_found["used"] + num))
             node_found["used"] += num
-            return allocated_ids
+            return allocated_ids, address
 
         # For address == "auto", traverse all nodes (master node first, then worker nodes)
         for node in self.nodes:
@@ -667,7 +826,7 @@ class ResourceManager:
                 if free >= num:
                     allocated_ids = list(range(node["used"], node["used"] + num))
                     node["used"] += num
-                    return allocated_ids
+                    return allocated_ids, node["address"]
 
         # If no node satisfies the allocation request, raise an error.
         resource_status = self.get_status()

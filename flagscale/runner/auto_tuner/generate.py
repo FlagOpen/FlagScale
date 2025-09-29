@@ -25,6 +25,8 @@ class Generator:
                 "micro_batch_size": "micro_batch_size",
                 "context_parallel_size": "context_parallel_size",
                 "expert_model_parallel_size": "expert_model_parallel_size",
+                "decoder_first_pipeline_num_layers": "decoder_first_pipeline_num_layers",
+                "decoder_last_pipeline_num_layers": "decoder_last_pipeline_num_layers",
             }
 
     def _set_value(self, strategy, config):
@@ -65,10 +67,7 @@ class Generator:
         # Del rampup_batch_size and train_samples to run megatron.
         if "rampup_batch_size" in config.train.model.optimizer.lr_scheduler:
             del config.train.model.optimizer.lr_scheduler.rampup_batch_size
-        # Del lr_decay_samples and train_samples to run megatron.
-        if "lr_warmup_fraction" in config.train.model.optimizer.lr_scheduler:
-            del config.train.model.optimizer.lr_scheduler.lr_warmup_fraction
-
+        # Del train_samples to run megatron.
         if "train_samples" in config.train.model:
             del config.train.model.train_samples
 
@@ -113,6 +112,13 @@ class ServeGenerator(Generator):
                 "max_num_batched_tokens": "max_num_batched_tokens",
                 "max_num_seqs": "max_num_seqs",
                 "swap_space": "swap_space",
+                "n_gpu_layers": "n_gpu_layers",
+                "parallel": "parallel",
+                "threads": "threads",
+                "chunked_prefill_size": "chunked_prefill_size",
+                "max_prefill_tokens": "max_prefill_tokens",
+                "page_size": "page_size",
+                "max_running_requests": "max_running_requests",
             }
 
     def _set_value(self, strategy, config):
@@ -128,6 +134,10 @@ class ServeGenerator(Generator):
         if model_config is None:
             raise ValueError(f"No 'vllm_model' configuration found in task config: {serve_config}")
 
+        engine = model_config.engine
+        if "engine" in strategy:
+            engine = model_config.engine = strategy["engine"]
+
         for key, value in self.args_mapping.items():
             if key not in strategy:
                 continue
@@ -136,7 +146,7 @@ class ServeGenerator(Generator):
                     if value in model_config.resources:
                         del model_config.resources[value]
                     continue
-                if value not in model_config.engine_args:
+                if value not in model_config.engine_args_specific:
                     model_config.resources = OmegaConf.merge(
                         model_config.resources, {value: strategy[key]}
                     )
@@ -144,20 +154,20 @@ class ServeGenerator(Generator):
                     model_config.resources[value] = strategy[key]
             else:
                 if strategy[key] is None:
-                    if value in model_config.engine_args:
-                        del model_config.engine_args[value]
+                    if value in model_config.engine_args_specific[engine]:
+                        del model_config.engine_args_specific[engine][value]
                     continue
-                if value not in model_config.engine_args:
-                    model_config.engine_args = OmegaConf.merge(
-                        model_config.engine_args, {value: strategy[key]}
+                if value not in model_config.engine_args_specific[engine]:
+                    model_config.engine_args_specific[engine] = OmegaConf.merge(
+                        model_config.engine_args_specific[engine], {value: strategy[key]}
                     )
                 else:
-                    model_config.engine_args[value] = strategy[key]
-        current_tp = model_config.engine_args.get("tensor_parallel_size", 1)
-        current_pp = model_config.engine_args.get("pipeline_parallel_size", 1)
+                    model_config.engine_args_specific[engine][value] = strategy[key]
+        current_tp = model_config.engine_args_specific[engine].get("tensor_parallel_size", 1)
+        current_pp = model_config.engine_args_specific[engine].get("pipeline_parallel_size", 1)
         model_config.resources["num_gpus"] = current_tp * current_pp
 
-        if not config.experiment.get("deploy", {}).get("use_fs_serve", True):
+        if not config.experiment.get("runner", {}).get("deploy", {}).get("use_fs_serve", True):
             del model_config["resources"]
 
     def gen(self, strategy):

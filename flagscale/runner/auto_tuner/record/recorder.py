@@ -1,8 +1,10 @@
+import json
 import logging
 import os
 import re
 import subprocess
 
+import numpy as np
 import pandas as pd
 
 
@@ -17,10 +19,10 @@ class Recorder:
             and "performance" in self.config.experiment.auto_tuner
         ):
             self.metric = self.config.experiment.auto_tuner.performance.get(
-                "name", "elapsed time per iteration \\(ms\\):"
+                "name", "elapsed time per iteration \(ms\):"
             )
         else:
-            self.metric = "elapsed time per iteration \\(ms\\):"
+            self.metric = "elapsed time per iteration \(ms\):"
 
         # Sort order of performance, order just in [ascend, and descend], default ascend
         if (
@@ -37,7 +39,7 @@ class Recorder:
     def record(self, task, strategy):
         """Record the performance and max memory of task"""
         self.cur_strategy = strategy
-        peformance_path, host_path = self.get_performance_and_host_path(task)
+        peformance_path, host_path = self.get_all_performance_and_host_paths(task)
 
         errors = self.grep_error(host_path)
         if errors:
@@ -56,7 +58,9 @@ class Recorder:
 
             # Task failed and the code may have logical errors
             else:
-                strategy["performance"] = None
+                # HACK: record the performance when task exits in the last allreduce of training
+                performace = self.grep_performance(peformance_path, self.metric)
+                strategy["performance"] = performace
                 strategy["max_mem"] = self.grep_max_memory(host_path)
                 strategy["error"] = "|".join(list(errors))
 
@@ -171,82 +175,81 @@ class Recorder:
         self.logger.info(f"task_{self.cur_strategy['idx']} max_memory: {max_memory}")
         return max_memory
 
-    def get_performance_and_host_path(self, task):
-        """Get the log path of task."""
+    def get_all_performance_and_host_paths(self, task):
+        """Get all log paths of task across all hosts and ranks."""
         logs = os.path.join(task.experiment.exp_dir, "logs")
         details = os.path.join(logs, "details")
 
         if not os.path.exists(details):
             raise ValueError("The task detail folder does not exist.")
 
-        # The loss just logged in the last rank of the last node
-        max_host_rank = 0
-        max_host = None
-        for item in os.listdir(details):
-            if not item.startswith("host_"):
+        all_log_paths = []
+
+        for host_item in os.listdir(details):
+            if not host_item.startswith("host_"):
                 continue
-            host_rank = int(item.split("_")[1])
-            if host_rank >= max_host_rank:
-                max_host_rank = host_rank
-                max_host = item
-        if max_host is None:
-            return None, logs
-        outputs = os.listdir(os.path.join(details, max_host))
-        assert len(outputs) == 1, f"the sub dir of {outputs} must be just one."
-        new_outputs = os.listdir(os.path.join(details, max_host, outputs[0]))
-        assert len(new_outputs) == 1, f"the sub dir of {new_outputs} must be just one."
-        last_path = os.path.join(details, max_host, outputs[0], new_outputs[0], "attempt_0")
-        last_dir = None
-        last_dir_rank = 0
-        if not os.path.exists(last_path):
-            self.logger.info(f"The performance file path does not exist: {last_path}")
-            return None, logs
 
-        for item in os.listdir(last_path):
-            try:
-                rank = int(item)
-                if rank > last_dir_rank:
-                    last_dir = item
-                    last_dir_rank = rank
-            except Exception as e:
-                raise e
-        log_path = os.path.join(last_path, last_dir, "stdout.log")
-        if not os.path.exists(log_path):
-            raise ValueError("The log file does not exist.")
-        return log_path, logs
+            host_path = os.path.join(details, host_item)
 
-    def grep_performance(self, path, pattern="elapsed time per iteration \\(ms\\):"):
+            for output_item in os.listdir(host_path):
+                output_path = os.path.join(host_path, output_item)
+
+                for sub_item in os.listdir(output_path):
+                    sub_path = os.path.join(output_path, sub_item)
+
+                    attempt_path = os.path.join(sub_path, "attempt_0")
+                    if not os.path.exists(attempt_path):
+                        continue
+
+                    for rank_item in os.listdir(attempt_path):
+                        rank_path = os.path.join(attempt_path, rank_item)
+
+                        if not rank_item.isdigit():
+                            continue
+
+                        log_path = os.path.join(rank_path, "stdout.log")
+                        if os.path.exists(log_path):
+                            host_rank = int(host_item.split("_")[1])
+                            rank = int(rank_item)
+                            all_log_paths.append(log_path)
+        return all_log_paths, logs
+
+    def grep_performance(self, paths, pattern="elapsed time per iteration \(ms\):"):
         """Read the log file and return the performance."""
         metric_pattern = pattern + r":* *(\d+(\.\d*)?)|(\d+(\.\d*)?) *" + pattern
-        if not path or not os.path.exists(path):
+        if not paths:
             return None
         performance = []
-        with open(path, "rb") as f:
-            for _ in f:
-                try:
-                    line = _.decode("utf-8")
-                except UnicodeDecodeError:
-                    continue
-                metric = re.findall(metric_pattern, line)
-                if metric:
-                    value = None
-                    for item in metric[0]:
-                        try:
-                            value = float(item)
-                            performance.append(value)
-                            break
-                        except:
-                            continue
-                    assert value is not None, "Can't grep the performance"
+        for path in paths:
+            if not path or not os.path.exists(path):
+                continue
+            with open(path, "rb") as f:
+                for _ in f:
+                    try:
+                        line = _.decode("utf-8")
+                    except UnicodeDecodeError:
+                        continue
+                    metric = re.findall(metric_pattern, line)
+                    if metric:
+                        value = None
+                        for item in metric[0]:
+                            try:
+                                value = float(item)
+                                performance.append(value)
+                                break
+                            except:
+                                continue
+            if performance:
+                break
         if not performance:
             self.logger.info(f"task_{self.cur_strategy['idx']} performance: {None}")
             return None
         if len(performance) == 1:
-            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {performance[0]}")
+            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {performance[0]} ms")
             return round(performance[0], 3)
         else:
             average = sum(performance[1:]) / (len(performance) - 1)
-            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {average}")
+            self.logger.info(f"task_{self.cur_strategy['idx']} performance: {average} ms")
             return round(average, 3)
 
     def grep_error(self, path, pattern="Error:"):
@@ -300,17 +303,59 @@ class Recorder:
         assert sorted_history is not None
         return sorted_history
 
+    def to_str(self, v):
+        if v is None or (isinstance(v, float) and np.isnan(v)):
+            return ""
+        if isinstance(v, (int, float, bool, str)):
+            return str(v)
+        return json.dumps(v)
+
     def save(self, history):
-        """Store history to csv file."""
-        # sort history
         sorted_history = self.sort(history)
         df = pd.DataFrame(sorted_history)
         cols = df.columns.tolist()
-        cols.insert(0, cols.pop(cols.index("idx")))
-        df = df.reindex(columns=cols)
-        if "stopped_by_tuner" in df.columns:
+        if "idx" in cols:
+            cols.insert(0, cols.pop(cols.index("idx")))
+        if "stopped_by_tuner" in cols:
             df = df.drop(columns=["stopped_by_tuner"])
+        df = df.reindex(columns=cols)
+        for c in df.columns:
+            df[c] = df[c].map(self.to_str)
         df.to_csv(self.path, index=False, escapechar="\\")
+
+    def parse_value(self, s):
+        if s == "":
+            return None
+        ls = s.lower()
+        if ls == "true":
+            return True
+        if ls == "false":
+            return False
+        try:
+            return int(s)
+        except ValueError:
+            pass
+        try:
+            return float(s)
+        except ValueError:
+            pass
+        try:
+            # Check for JSON string start/end characters as a heuristic
+            if (s.startswith('[') and s.endswith(']')) or (s.startswith('{') and s.endswith('}')):
+                return json.loads(s)
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return s
+
+    def read(self):
+        if not os.path.exists(self.path):
+            return []
+        df = pd.read_csv(
+            self.path, dtype=str, keep_default_na=False, na_filter=False, escapechar="\\"
+        )
+        for c in df.columns:
+            df[c] = df[c].map(self.parse_value)
+        return df.to_dict(orient="records")
 
 
 class ServeRecorder(Recorder):

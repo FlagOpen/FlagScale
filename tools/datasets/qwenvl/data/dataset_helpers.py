@@ -27,23 +27,23 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL
-from PIL import Image
 import torch
 
+from PIL import Image
 from torchvision import transforms as T
 
 from megatron.energon import Batch, DefaultTaskEncoder, VQASample
 from megatron.training import get_args
 from megatron.training.global_vars import get_tokenizer
-from tools.datasets.qwenvl.data.energon.chatml_unified import ChatMLSample
+from tools.datasets.qwenvl.data.energon.chatml import ChatMLSample
 from tools.datasets.qwenvl.data.image_processing import get_visual_transform
 
 dataset_logger = logging.getLogger(__name__)
 FIRST_MAX_PADDING_FLAG = True
-LAST_LARGE_IMG=False
-CLEAR_CACHE_ITERATION=200000
-IGNORE_IDX=-100
-MAX_IMG_THRESHHOLD=5000
+IGNORE_IDX = -100
+MAX_IMG_THRESHHOLD = 5000
+
+
 # Type for intermediate batch, after batch()
 @dataclass
 class ImageTaskSample:
@@ -201,14 +201,13 @@ class TaskEncoder(
             thw_grids.append((grid_t, grid_h, grid_w))
         return flattened, np.array(thw_grids)
 
-    # copy from 
+    # copy from
     def _preprocess_image(
-        self, image: PIL.Image, image_max_pixels: int=768*768, image_min_pixels: int = 32*32
+        self, image: PIL.Image, image_max_pixels: int = 768 * 768, image_min_pixels: int = 32 * 32
     ) -> PIL.Image:
         r"""
         Pre-processes a single image.
         """
-        # print(f"LZY: image_max_pixels: {image_max_pixels}, image_min_pixels: {image_min_pixels}")
         if (image.width * image.height) > image_max_pixels:
             resize_factor = math.sqrt(image_max_pixels / (image.width * image.height))
             width, height = int(image.width * resize_factor), int(image.height * resize_factor)
@@ -221,7 +220,7 @@ class TaskEncoder(
 
         if image.mode != "RGB":
             image = image.convert("RGB")
-            
+
         if min(image.width, image.height) < 28:
             width, height = max(image.width, 28), max(image.height, 28)
             image = image.resize((width, height), resample=Image.Resampling.NEAREST)
@@ -235,7 +234,7 @@ class TaskEncoder(
             image = image.resize((width, height), resample=Image.Resampling.NEAREST)
 
         return image
-    
+
     def encode_chatml(self, sample: ChatMLSample):
         # # TODO: modify get_visual_transform to add more augmentations
         # imgs = [get_visual_transform(os.path.join(self.vision_root, img))[0] for img in sample.imgs]
@@ -259,11 +258,16 @@ class TaskEncoder(
                 img_path = os.path.join(self.vision_root, img)
                 try:
                     image = PIL.Image.open(img_path)
-                    print(f"LZY: image size: {image.size}")
-                    image = self._preprocess_image(image=image, image_max_pixels=self.args.image_max_pixels, image_min_pixels=self.args.image_min_pixels)
+                    image = self._preprocess_image(
+                        image=image,
+                        image_max_pixels=self.args.image_max_pixels,
+                        image_min_pixels=self.args.image_min_pixels,
+                    )
                     imgs.append(image)
                 except Exception as e:
-                    raise ValueError(f"Failed to open image: {img_path}. Error: {e} of smaple[{sample.__key__}]")
+                    raise ValueError(
+                        f"Failed to open image: {img_path}. Error: {e} of smaple[{sample.__key__}]"
+                    )
                     # raise InternalWarning(
                     #     f"Failed to open image: {img_path}. Error: {e} of smaple[{sample.__key__}]"
                     # )
@@ -298,7 +302,6 @@ class TaskEncoder(
             if isinstance(sample.conversation, (str, bytes))
             else sample.conversation
         )
-        # #print(f"LZY: origin conversion: {conversation}")
         second_per_grid_ts = [1 / 2.0] * len(video_thw_grids)
         if "conversations" in conversation:
             second_per_grid_ts = conversation.get("second_per_grid_ts", second_per_grid_ts)
@@ -348,7 +351,7 @@ class TaskEncoder(
 
             converted_conversation.append({"role": role, "content": content})
         conversation = converted_conversation
-        # #print(f"LZY: converted conversion: {conversation}")
+
         # NOTE: we need to mask all system/user input tokens and assistant generation prefix tokens
         input_ids = self.tokenizer.apply_chat_template(
             conversation, tokenize=True, return_tensors="np"
@@ -358,7 +361,7 @@ class TaskEncoder(
         system_prompt_prefix = len(
             self.tokenizer.apply_chat_template([conversation[0]], tokenize=True)
         )
-        assistant_generation_prefix = 3 # <im_start>assistant\n
+        assistant_generation_prefix = 3  # <im_start>assistant\n
         # pad_token_id = self.tokenizer.pad_token_id
         # NOTE(lizhiyu): Align to llama-f
         pad_token_id = IGNORE_IDX
@@ -388,7 +391,7 @@ class TaskEncoder(
         image_token_indices = np.where(input_ids == image_token_id)[0]
         assert len(image_token_indices) == len(
             image_thw_grids
-        ), f"The sample [{sample.__key__}] with {len(image_thw_grids)} images in the sample, but {len(image_token_indices)} image placeholders!"
+        ), f"With {len(image_thw_grids)} images in the sample, but {len(image_token_indices)} image placeholders!"
         video_token_indices = np.where(input_ids == video_token_id)[0]
         assert len(video_token_indices) == len(
             video_thw_grids
@@ -442,9 +445,6 @@ class TaskEncoder(
             final_input_ids[cur_y:] = input_ids[cur_x:]
             final_input_masks[cur_y:] = target[cur_x:]
 
-        # print(f"LZY: origin input_ids len: {input_ids.shape}; after vision pad final_input_ids len: {final_input_ids.shape}, input_ids: {final_input_ids}")
-        # print(f"LZY: origin target len: {target.shape}, after vision pad target: len: {final_input_masks.shape}, target: {final_input_masks}")
-
         target = np.roll(final_input_masks, shift=-1)
         target[-1] = pad_token_id
 
@@ -456,9 +456,7 @@ class TaskEncoder(
 
         image_input_mask = final_input_ids == self.tokenizer.image_token_id
         video_input_mask = final_input_ids == self.tokenizer.video_token_id
-        # print(f"LZY: image key: {sample.__key__}")
-        #print(f"LZY: image_thw_grids: {image_thw_grids.shape}; video_thw_grids: {video_thw_grids.shape}")
-        #print(f"LZY: flattened_imgs: {flattened_imgs.shape}; content: {flattened_imgs.sum()}")
+
         # collect data
         return ImageTaskSample(
             __key__=sample.__key__,
@@ -614,23 +612,12 @@ class TaskEncoder(
         else:
             video_thw_grids = torch.empty([0, 3], dtype=torch.long)
 
-        global CLEAR_CACHE_ITERATION, FIRST_MAX_PADDING_FLAG, LAST_LARGE_IMG, MAX_IMG_THRESHHOLD
-        if (self.args.curr_iteration > 0 and self.args.curr_iteration % CLEAR_CACHE_ITERATION == 0):
-            # torch.cuda.empty_cache()
-            FIRST_MAX_PADDING_FLAG = True
-        
+        global FIRST_MAX_PADDING_FLAG, MAX_IMG_THRESHHOLD
+        # NOTE(lizhiyu): Clear the cache only when the current image length is longer than the past maxisum length.
         if image_thw_grids.prod(axis=-1).sum() // 4 > MAX_IMG_THRESHHOLD:
             MAX_IMG_THRESHHOLD = image_thw_grids.prod(axis=-1).sum() // 4
             FIRST_MAX_PADDING_FLAG = True
-        # NOTE(lizhiyu): Clear the cache only when the current image length is longer than the past maxisum length.
-        # if self.args.image_max_pixels == 12845056 and image_thw_grids.prod(axis=-1).sum() // 4 > 16384:
-        #     FIRST_MAX_PADDING_FLAG=True
-        # if (self.args.image_max_pixels == 589824 and image_thw_grids.prod(axis=-1).sum() // 4 > 5000):  # the threshhold is important, too little --> slow, too big --> oom; adjust it according to exeriment.
-        #     # torch.cuda.empty_cache()
-        #     FIRST_MAX_PADDING_FLAG=True
-        # if (self.args.image_max_pixels > 589824 and self.args.image_max_pixels < 12845056 and image_thw_grids.prod(axis=-1).sum() // 4 > 10000):
-        #     FIRST_MAX_PADDING_FLAG=True
-        # If the user hasn't defined a target sequence length, then use the max along the sample lengths.
+
         if not self.args.enable_variable_seq_lengths:
             max_seq_len = self.seq_len
         else:
@@ -648,9 +635,7 @@ class TaskEncoder(
             )
         text_mat = np.full((len(samples), max_seq_len), self.tokenizer.pad_token_id, dtype=np.int64)
         # +1 to accommodate shift to left by one later.
-        target_mat = np.full(
-            (len(samples), max_seq_len), IGNORE_IDX, dtype=np.int64
-        )
+        target_mat = np.full((len(samples), max_seq_len), IGNORE_IDX, dtype=np.int64)
 
         image_input_masks = np.zeros_like(text_mat, dtype=bool)
         video_input_masks = np.zeros_like(text_mat, dtype=bool)

@@ -593,7 +593,10 @@ def forward_step(data_iterator, model: Qwen2_5VLModel):
             video_input_mask
         ) = get_batch(data_iterator)
     timers('batch-generator').stop()
+<<<<<<< HEAD
     #print(f"LZY imags: {imgs.shape}, content: {imgs.sum()}, {imgs}")
+=======
+>>>>>>> main
     vision_data = torch.cat([imgs, videos], dim=0)
     vision_grid = torch.cat([image_thw_grids, video_thw_grids], dim=0)
     with stimer:
@@ -794,8 +797,13 @@ def add_multimodal_extra_args(parser):
     group.add_argument("--image-max-pixels", type=int, default=768*768, help="the maximum pixels of a single image")
     group.add_argument("--image-min-pixels", type=int, default=32*32, help="the minimum pixels of a single image")
     group.add_argument("--vision-recompute-layer-steps", type=int, default=0, help="the recmoute layers for vision using uniform method. 0 is disable.")
+<<<<<<< HEAD
     
     
+=======
+
+
+>>>>>>> main
 
     # just for checkpoint conversion
     group.add_argument(

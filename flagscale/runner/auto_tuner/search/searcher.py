@@ -1,10 +1,10 @@
 import copy
 import itertools
+import json
 import logging
 import time
 
 from functools import reduce
-from pprint import pprint
 
 from omegaconf import OmegaConf
 
@@ -28,22 +28,65 @@ BUILT_IN_STRATEGY_DIMS = [
     "expert_model_parallel_size",
 ]
 
-_BUILT_IN_SERVE_STRATEGY_DIMS = [
-    "tensor_model_parallel_size",
-    "pipeline_model_parallel_size",
-    "instance",
-    "block_size",
-    "max_num_batched_tokens",
-    "max_num_seqs",
-    "swap_space",
-]
+_BUILT_IN_SERVE_STRATEGY_DIMS = {
+    "vllm": [
+        "tensor_model_parallel_size",
+        "pipeline_model_parallel_size",
+        "instance",
+        "block_size",
+        "max_num_batched_tokens",
+        "max_num_seqs",
+        "swap_space",
+    ],
+    "llama_cpp": ["threads", "n_gpu_layers", "split_mode"],
+    "sglang": [
+        "tensor_model_parallel_size",
+        "pipeline_model_parallel_size",
+        "instace",
+        "chunked_prefill_size",
+        "max_prefill_tokens",
+        "page_size",
+        "max_running_requests",
+    ],
+}
 
 _DEFAULT_SERVE_TUNE_SPACE = {
-    "block_size": [8, 16, 32],
-    "max_num_batched_tokens": [512, 1024, 2048],
-    "max_num_seqs": [64, 128, 256],
-    "swap_space": [0, 4, 8, 16],
+    "vllm": {
+        "block_size": [8, 16, 32],
+        "max_num_batched_tokens": [512, 1024, 2048],
+        "max_num_seqs": [64, 128, 256],
+        "swap_space": [0, 4, 8, 16],
+    },
+    "llama_cpp": {
+        "threads": [1, 2, 4, 8],
+        "n_gpu_layers": [0, 16, 32, 64],
+        "split_mode": ["none", "layer", "row"],
+    },
+    "sglang": {
+        "chunked_prefill_size": [128, 256],
+        "max_prefill_tokens": [1024, 2048],
+        "page_size": [32, 64, 128],
+        "max_running_requests": [16, 32],
+    },
 }
+
+
+def get_first_last_num_layers_for_pp(num_layers, pp_size):
+    if pp_size == 2:
+        half = num_layers // 2
+        return half, num_layers - half
+
+    avg_layers = num_layers / pp_size
+    middle_layers = round(avg_layers)
+    remaining_layers = num_layers - middle_layers * (pp_size - 2)
+    if remaining_layers < 2:
+        middle_layers -= 1
+        remaining_layers = num_layers - middle_layers * (pp_size - 2)
+
+    first_num_layers = remaining_layers // 2
+    last_num_layers = remaining_layers - first_num_layers
+
+    return first_num_layers, last_num_layers
 
 
 class Searcher:
@@ -83,6 +126,9 @@ class Searcher:
 
             for strategy in self.strategies:
                 strategy["memory_model"] = default_model(strategy, self.config)
+                strategy["gpu_utilization"] = self.config.experiment.auto_tuner.memory_model.get(
+                    "gpu_utilization", [0.2, 0.8]
+                )
                 self.logger.info(
                     "Searcher: strategy is {}, memory model is {} MB".format(
                         strategy, strategy["memory_model"]
@@ -107,6 +153,7 @@ class Searcher:
                 "use_distributed_optimizer",
                 "tensor_model_parallel_size",
                 "pipeline_model_parallel_size",
+                "expert_model_parallel_size",
                 "recompute_method",
                 "recompute_num_layers",
                 "context_parallel_size",
@@ -132,6 +179,7 @@ class Searcher:
         priority = config.experiment.auto_tuner.algo.get("priority", None)
         if config.experiment.auto_tuner.platform.get("airs_switch", False):
             priority = "memory"
+
         # Set data parallel degree
         space["data_parallel_size"] = (
             [i for i in range(1, cards + 1)]
@@ -198,6 +246,7 @@ class Searcher:
             else config.experiment.auto_tuner.space.use_recompute
         )
         self._sort("use_recompute", space["use_recompute"], priority)
+
         # Set recompute method
         space["recompute_method"] = (
             ["uniform", "block"]
@@ -244,14 +293,18 @@ class Searcher:
         self._sort("context_parallel_size", space["context_parallel_size"], priority)
 
         # Set expert parallel degree
-        # NOTE: Expert parallel degree is not supported now
-        space["expert_model_parallel_size"] = (
-            [1]
-            if "expert_model_parallel_size" not in config.experiment.auto_tuner.space
-            or config.experiment.auto_tuner.space.expert_model_parallel_size == "auto"
-            else config.experiment.auto_tuner.space.expert_model_parallel_size
-        )
+        if not hasattr(config.train.model, "num_experts"):
+            space["expert_model_parallel_size"] = [1]
+        else:
+            space["expert_model_parallel_size"] = (
+                [i for i in range(1, cards + 1)]
+                if "expert_model_parallel_size" not in config.experiment.auto_tuner.space
+                or config.experiment.auto_tuner.space.expert_model_parallel_size == "auto"
+                else config.experiment.auto_tuner.space.expert_model_parallel_size
+            )
+
         self._sort("expert_model_parallel_size", space["expert_model_parallel_size"], priority)
+
         return space
 
     def build_strategies(self, space, config):
@@ -273,8 +326,9 @@ class Searcher:
 
     def _product_parallel_dims(self, space, config):
         # Avoid space explosion after product
-        product_parallelism_dims = []
         cards = config.experiment.auto_tuner.cards
+
+        product_parallelism_dims = []
         for data_parallel_size in space["data_parallel_size"]:
             dims = {}
             if not divisible(cards, data_parallel_size):
@@ -283,17 +337,20 @@ class Searcher:
             gbs = config.train.model.global_batch_size
             if not divisible(gbs, data_parallel_size):
                 continue
+
             for tensor_model_parallel_size in space["tensor_model_parallel_size"]:
                 if not divisible(cards, tensor_model_parallel_size):
                     continue
                 if not divisible(cards, data_parallel_size * tensor_model_parallel_size):
                     continue
+
                 hidden_size = config.train.model.hidden_size
                 num_attention_size = config.train.model.num_attention_heads
                 if not divisible(hidden_size, tensor_model_parallel_size):
                     continue
                 if not divisible(num_attention_size, tensor_model_parallel_size):
                     continue
+
                 for pipeline_model_parallel_size in space["pipeline_model_parallel_size"]:
                     if not divisible(cards, pipeline_model_parallel_size):
                         continue
@@ -304,9 +361,23 @@ class Searcher:
                         * pipeline_model_parallel_size,
                     ):
                         continue
+
                     num_layers = config.train.model.num_layers
                     if not divisible(num_layers, pipeline_model_parallel_size):
-                        continue
+                        first_num_layers, last_num_layers = get_first_last_num_layers_for_pp(
+                            num_layers, pipeline_model_parallel_size
+                        )
+                        if first_num_layers == 0 or last_num_layers == 0:
+                            continue
+                        if (
+                            first_num_layers + last_num_layers >= num_layers
+                            and pipeline_model_parallel_size > 2
+                        ):
+                            continue
+                    else:
+                        first_num_layers = None
+                        last_num_layers = None
+
                     for context_parallel_size in space["context_parallel_size"]:
                         if not divisible(cards, context_parallel_size):
                             continue
@@ -318,40 +389,47 @@ class Searcher:
                             * context_parallel_size,
                         ):
                             continue
+                        if (
+                            data_parallel_size
+                            * tensor_model_parallel_size
+                            * pipeline_model_parallel_size
+                            * context_parallel_size
+                            != cards
+                        ):
+                            continue
                         seq_length = config.train.model.seq_length
                         if not divisible(seq_length, context_parallel_size):
                             continue
+
                         for expert_model_parallel_size in space["expert_model_parallel_size"]:
+                            expert_tensor_parallel_size = tensor_model_parallel_size
                             if not divisible(cards, expert_model_parallel_size):
                                 continue
                             if not divisible(
                                 cards,
-                                data_parallel_size
-                                * tensor_model_parallel_size
-                                * pipeline_model_parallel_size
-                                * context_parallel_size
-                                * expert_model_parallel_size,
-                            ):
-                                continue
-                            if (
-                                data_parallel_size
-                                * tensor_model_parallel_size
-                                * pipeline_model_parallel_size
-                                * context_parallel_size
+                                expert_tensor_parallel_size
                                 * expert_model_parallel_size
-                                != cards
+                                * pipeline_model_parallel_size,
                             ):
                                 continue
+                            if expert_model_parallel_size > 1:
+                                num_experts = config.train.model.num_experts
+                                if not divisible(num_experts, expert_model_parallel_size):
+                                    continue
 
                             dims["data_parallel_size"] = data_parallel_size
                             dims["tensor_model_parallel_size"] = tensor_model_parallel_size
                             dims["pipeline_model_parallel_size"] = pipeline_model_parallel_size
                             dims["expert_model_parallel_size"] = expert_model_parallel_size
                             dims["context_parallel_size"] = context_parallel_size
+                            dims["decoder_first_pipeline_num_layers"] = first_num_layers
+                            dims["decoder_last_pipeline_num_layers"] = (
+                                last_num_layers if pipeline_model_parallel_size > 2 else None
+                            )
                             copied_dims = copy.deepcopy(dims)
                             product_parallelism_dims.append(copied_dims)
-        product_dist_opt_dims = []
 
+        product_dist_opt_dims = []
         for use_distributed_optimizer in space["use_distributed_optimizer"]:
             dims = {}
             dims["use_distributed_optimizer"] = use_distributed_optimizer
@@ -359,7 +437,6 @@ class Searcher:
             product_dist_opt_dims.append(copied_dims)
 
         product_sp_dims = []
-
         for sequence_parallel in space["sequence_parallel"]:
             dims = {}
             dims["sequence_parallel"] = sequence_parallel
@@ -373,11 +450,10 @@ class Searcher:
             product_dim = {}
             product_dim.update(product_parallelism_dim)
             if product_parallelism_dim["data_parallel_size"] == 1:
-                product_dim["use_distributed_optimizer"] = None
+                product_dim["use_distributed_optimizer"] = False
                 if product_parallelism_dim["tensor_model_parallel_size"] == 1:
-                    product_dim["sequence_parallel"] = None
+                    product_dim["sequence_parallel"] = False
                     self._append(result, unique_result, product_dim)
-
                 else:
                     for product_sp_dim in product_sp_dims:
                         if product_sp_dim["sequence_parallel"]:
@@ -395,7 +471,7 @@ class Searcher:
                     ]
 
                     if product_parallelism_dim["tensor_model_parallel_size"] == 1:
-                        product_dim["sequence_parallel"] = None
+                        product_dim["sequence_parallel"] = False
                         self._append(result, unique_result, product_dim)
                     else:
                         for product_sp_dim in product_sp_dims:
@@ -475,22 +551,28 @@ class Searcher:
                         self._append(result, unique_result, product_dim)
                     else:
                         pipeline_model_parallel_size = parallelism["pipeline_model_parallel_size"]
-                        layers = config.train.model.num_layers
                         if (
                             pipeline_model_parallel_size <= 2
                             and num_layers_per_virtual_pipeline_stage >= 1
                         ):
                             continue
+                        if not divisible(num_layers, pipeline_model_parallel_size):
+                            continue
 
-                        layers_per_pp_stage = layers // pipeline_model_parallel_size
+                        layers_per_pp_stage = num_layers // pipeline_model_parallel_size
                         if not divisible(
                             layers_per_pp_stage, num_layers_per_virtual_pipeline_stage
                         ):
                             continue
 
-                        # Micro batches should divide pp size
+                        virtual_pipeline_model_parallel_size = (
+                            layers_per_pp_stage // num_layers_per_virtual_pipeline_stage
+                        )
+                        if virtual_pipeline_model_parallel_size == 1:
+                            continue
+                        # Micro batches should divide vpp size
                         if not divisible(
-                            product_dim["micro_batch_size"], num_layers_per_virtual_pipeline_stage
+                            product_dim["acc_step"], virtual_pipeline_model_parallel_size
                         ):
                             continue
 
@@ -522,31 +604,51 @@ class Searcher:
 
 class ServeSearcher(Searcher):
     def __init__(self, config):
-        self._nodes_aware_dims = [
-            item
-            for item in _BUILT_IN_SERVE_STRATEGY_DIMS
-            if item not in _DEFAULT_SERVE_TUNE_SPACE.keys()
-        ]
+
+        self._init_engines(config)
+        self._init_nodes_aware_dims()
         super(ServeSearcher, self).__init__(config)
 
-    def _create_space_aware_nodes(self, space, cards):
+        self.logger.info(f"ServeSearcher.space: {self.space}")
+        self.logger.info(f"ServeSearcher.strategies: {json.dumps(self.strategies)}")
+
+    def _init_engines(self, config):
+        self.engines = config.experiment.auto_tuner.get("engines", None)
+        if isinstance(self.engines, str):
+            self.engines = [self.engines]
+        if not self.engines:
+            self.engines = ["vllm", "llama_cpp"]
+
+    def _init_nodes_aware_dims(self):
+        self._nodes_aware_dims = {}
+        self._nodes_aware_strategies = {}
+        for engine in self.engines:
+            self._nodes_aware_dims[engine] = [
+                item
+                for item in _BUILT_IN_SERVE_STRATEGY_DIMS[engine]
+                if item not in _DEFAULT_SERVE_TUNE_SPACE[engine].keys()
+            ]
+
+    def _create_space_aware_nodes(self, space, cards, engine):
         if cards == 1:
-            for k in self._nodes_aware_dims:
-                space[k] = 1
+            for k in self._nodes_aware_dims[engine]:
+                space[k] = [1]
 
         fixed_dims = {}
-        for idx, key in enumerate(self._nodes_aware_dims):
+        for idx, key in enumerate(self._nodes_aware_dims[engine]):
             if key in space and space[key] != "auto":
                 fixed_dims[idx] = space[key]
 
         nodes_aware_strategies = self._find_combinations(
-            cards, len(self._nodes_aware_dims), fixed_dims
+            cards, len(self._nodes_aware_dims[engine]), fixed_dims
         )
-        for key_idx, key in enumerate(self._nodes_aware_dims):
+        for key_idx, key in enumerate(self._nodes_aware_dims[engine]):
             space[key] = list(set([v[key_idx] for v in nodes_aware_strategies]))
         return space, nodes_aware_strategies
 
     def _find_combinations(self, target, num_dims, fixed_dims={}, current=[]):
+        if num_dims == 0:
+            return []
         results = []
         dim_index = len(current)
 
@@ -568,22 +670,22 @@ class ServeSearcher(Searcher):
 
         return results
 
-    def _create_default_space(self, cards):
-        space = dict.fromkeys(self._nodes_aware_dims, "auto")
-        space.update(_DEFAULT_SERVE_TUNE_SPACE)
-        return self._create_space_aware_nodes(space, cards)
+    def _create_default_space(self, cards, engine):
+        space = dict.fromkeys(self._nodes_aware_dims[engine], "auto")
+        space.update(_DEFAULT_SERVE_TUNE_SPACE[engine])
+        return self._create_space_aware_nodes(space, cards, engine)
 
-    def _create_space(self, space, cards):
+    def _create_space(self, space, cards, engine):
         if len(space) == 0:
-            space, nodes_aware_strategies = self._create_default_space(cards)
+            space, nodes_aware_strategies = self._create_default_space(cards, engine)
             return space, nodes_aware_strategies
 
-        space, nodes_aware_strategies = self._create_space_aware_nodes(space, cards)
+        space, nodes_aware_strategies = self._create_space_aware_nodes(space, cards, engine)
 
         for key, value in space.items():
             if value == "auto":
-                if key in _DEFAULT_SERVE_TUNE_SPACE.keys():
-                    space[key] = _DEFAULT_SERVE_TUNE_SPACE[key]
+                if key in _DEFAULT_SERVE_TUNE_SPACE[engine].keys():
+                    space[key] = _DEFAULT_SERVE_TUNE_SPACE[engine][key]
             else:
                 assert type(OmegaConf.to_object(value)) in [
                     tuple,
@@ -595,33 +697,57 @@ class ServeSearcher(Searcher):
         """
         the number of cards is fixed.
         """
+        space_all = {}
         cards = config.experiment.auto_tuner.cards
-        space = getattr(config.experiment.auto_tuner, "space", {})
-        if len(space) != 0:
-            self._nodes_aware_dims = [item for item in space if item in self._nodes_aware_dims]
-        space, nodes_aware_strategies = self._create_space(space, cards)
-        self._nodes_aware_strategies = nodes_aware_strategies
+        for engine in self.engines:
+            space = getattr(config.experiment.auto_tuner, "space", {}).get(engine, {})
+            if len(space) != 0:
+                self._nodes_aware_dims[engine] = [
+                    item for item in space if item in self._nodes_aware_dims[engine]
+                ]
+            space, nodes_aware_strategies = self._create_space(space, cards, engine)
+            self._nodes_aware_strategies[engine] = nodes_aware_strategies
 
-        config.experiment.auto_tuner.space = space
+            setattr(config.experiment.auto_tuner.space, engine, space)
+            space_all[engine] = space
         if "algo" not in self.config.experiment.auto_tuner:
             self.config.experiment.auto_tuner.algo = {"name": "grid", "priority": None}
-        return space
+        return space_all
 
-    def build_strategies(self, space, config):
+    def build_strategies(self, space_all, config):
         """Build strategies by Cartesian product search space."""
-        node_unaware_tune_space = {
-            key: value for key, value in space.items() if key in _DEFAULT_SERVE_TUNE_SPACE
-        }
-        values = list(node_unaware_tune_space.values())
-        cartesian_product_unaware_values = list(itertools.product(*values))
-        cartesian_product_values = list(
-            itertools.product(self._nodes_aware_strategies, cartesian_product_unaware_values)
-        )
-        cartesian_product_values = [tuple(tuple(a) + b) for a, b in cartesian_product_values]
-        strategies = [
-            dict(zip(self.space.keys(), combination)) for combination in cartesian_product_values
-        ]
-        print("================== grid search space: ================== \n")
-        pprint(strategies, indent=2)
+        strategies_all = []
+        for engine in self.engines:
+            space = space_all[engine]
+            node_unaware_tune_space = {
+                key: value
+                for key, value in space.items()
+                if key in _DEFAULT_SERVE_TUNE_SPACE[engine]
+            }
+            values = list(node_unaware_tune_space.values())
+            cartesian_product_unaware_values = list(itertools.product(*values))
+            if self._nodes_aware_strategies[engine]:
+                cartesian_product_values = list(
+                    itertools.product(
+                        self._nodes_aware_strategies[engine], cartesian_product_unaware_values
+                    )
+                )
+                cartesian_product_values = [
+                    tuple(tuple(a) + b) for a, b in cartesian_product_values
+                ]
+            else:
+                # TDOO: llama.cpp support multi-instance
+                cartesian_product_values = list(cartesian_product_unaware_values)
 
-        return strategies
+            strategies = [
+                dict(zip(self.space[engine].keys(), combination))
+                for combination in cartesian_product_values
+            ]
+            for i in strategies:
+                i["engine"] = engine
+            strategies_all.extend(strategies)
+
+        self.logger.info("================== grid search space: ================== \n")
+        self.logger.info(strategies)
+
+        return strategies_all

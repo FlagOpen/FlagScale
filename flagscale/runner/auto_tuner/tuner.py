@@ -1,12 +1,22 @@
 import copy
 import datetime
+import json
 import logging
 import os
+import re
+import shutil
+import sys
 import time
 
 from omegaconf import DictConfig, OmegaConf
 
 from flagscale.runner.auto_tuner.generate import Generator, ServeGenerator
+from flagscale.runner.auto_tuner.hetero import (
+    HeteroGenerator,
+    HeteroPruner,
+    HeteroRecorder,
+    HeteroSearcher,
+)
 from flagscale.runner.auto_tuner.platform import set_jiuding_platform_args
 from flagscale.runner.auto_tuner.prune.pruner import Pruner
 from flagscale.runner.auto_tuner.record.recorder import Recorder, ServeRecorder
@@ -14,6 +24,7 @@ from flagscale.runner.auto_tuner.search.searcher import Searcher, ServeSearcher
 from flagscale.runner.runner_base import JobStatus
 from flagscale.runner.runner_serve import SSHServeRunner
 from flagscale.runner.runner_train import SSHTrainRunner
+from flagscale.runner.utils import parse_hostfile
 
 
 class AutoTuner:
@@ -28,7 +39,7 @@ class AutoTuner:
         log_path = os.path.join(dir_path, "tuner.log")
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
-        handler = logging.FileHandler(log_path, mode="w")
+        handler = logging.FileHandler(log_path, mode="a")
         handler.setLevel(logging.INFO)
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         handler.setFormatter(formatter)
@@ -73,10 +84,47 @@ class AutoTuner:
         )
 
         # Build core sub modules, such as Searcher, Pruner, Generator and Recorder
-        self.searcher = Searcher(self.config)
-        self.pruner = Pruner(self.config)
-        self.generator = Generator(self.config)
-        self.recorder = Recorder(self.config)
+        is_hetero_enabled = self.config.train.system.get("hetero", {}).get("enable_hetero", False)
+
+        if is_hetero_enabled:
+            self.logger.info("Initializing in Heterogeneous Mode.")
+            hostfile_path = self.config.experiment.runner.get("hostfile", None)
+            resources = parse_hostfile(hostfile_path)
+            if not resources:
+                raise ValueError(
+                    "Heterogeneous tuning requires a valid hostfile, but none was found or it was empty."
+                )
+            total_cards = sum(info['slots'] for info in resources.values())
+            self.config.experiment.auto_tuner.cards = total_cards
+            self.searcher = HeteroSearcher(self.config, resources)
+            self.pruner = HeteroPruner(self.config)
+            self.generator = HeteroGenerator(self.config)
+            self.recorder = HeteroRecorder(self.config)
+        else:
+            self.logger.info("Initializing in Homogeneous Mode.")
+            self.searcher = Searcher(self.config)
+            self.pruner = Pruner(self.config)
+            self.generator = Generator(self.config)
+            self.recorder = Recorder(self.config)
+
+        # check configuration file state
+        config_path = os.path.join(dir_path, "config.yaml")
+        if os.path.isfile(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                load_config = json.load(f)
+            assert (
+                load_config == self.config
+            ), f"The configuration file has changed and cannot be resumed from breakpoint"
+        else:
+            with open(config_path, "w", encoding="utf-8") as f:
+                pure = OmegaConf.to_container(copy.deepcopy(self.config), resolve=True)
+                json.dump(pure, f, ensure_ascii=False, indent=2)
+
+        # History strategy
+        self.history = self.recorder.read()
+
+        # resume searcher idx
+        self.searcher.algo.idx = max(0, int(self.find_search_num_value(log_path)) - 1)
 
         # Each task has its own runner
         self.runner = None
@@ -96,14 +144,51 @@ class AutoTuner:
         # The start time of tuner, used to control the tuner when stop
         self.start_time = time.time()
 
-        # History strategy
-        self.history = []
+        # The history pruned count
+        self.pruner.pruned_count = int(self.find_pruned_num_value(log_path))
 
         # Task id
-        self.idx = 0
+        self.idx = self.searcher.algo.idx - self.pruner.pruned_count
+
+        # clear breakpoint task log
+        if self.searcher.algo.idx >= 0:
+            breakpoint_task_path = os.path.join(dir_path, "task_" + str(self.idx + 1))
+            self.clear_log(breakpoint_task_path)
+            self.searcher.algo.idx = self.idx - 1
 
         # Checkout search mode on the platform
         self.has_checkout = False
+
+    # clear break task log
+    def clear_log(self, folder_path):
+        try:
+            shutil.rmtree(folder_path)
+        except FileNotFoundError:
+            return
+        except PermissionError:
+            self.logger.error(f"no permission to clear breakpoint task log")
+            sys.exit()
+        except OSError as e:
+            self.logger.info(f"cannot clear breakpoint task log, due {e}")
+            sys.exit()
+
+    # get pruned num from log
+    def find_pruned_num_value(self, file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                matches = re.findall(r'Pruned (.*?) strategy', file.read())
+                return matches[-1] if matches else '0'
+        except (FileNotFoundError, IndexError, IOError):
+            return '0'
+
+    # get serarch num from log
+    def find_search_num_value(self, file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                matches = re.findall(r'Searching (.*?) /', file.read())
+                return matches[-1] if matches else '0'
+        except (FileNotFoundError, IndexError, IOError):
+            return '0'
 
     def tune(self):
         """
@@ -309,12 +394,14 @@ class ServeAutoTunner(AutoTuner):
         logger.addHandler(handler)
         self.logger = logger
         self.handler = handler
-        deploy_config = config.experiment.get("deploy", {})
+        deploy_config = config.experiment.get("runner", {}).get("deploy", {})
 
         if not deploy_config.get("use_fs_serve", True) and deploy_config.get("port", None):
             for item in config.serve:
                 if item.get("serve_id") == "vllm_model":
-                    item.engine_args["port"] = config.experiment.get("deploy", {}).get("port", None)
+                    item.engine_args["port"] = (
+                        config.experiment.get("runner", {}).get("deploy", {}).get("port", None)
+                    )
 
         # Deepcopy the original config to isolate from each task config
         # Modify the orig config when run best task

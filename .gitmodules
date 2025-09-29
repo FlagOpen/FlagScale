@@ -10,3 +10,18 @@
 	path = third_party/Megatron-Energon
 	url = https://gitee.com/jayli6/Megatron-Energon.git
 	branch = develop
+[submodule "third_party/llama.cpp"]
+	path = third_party/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp.git
+[submodule "third_party/sglang"]
+	path = third_party/sglang
+	url = https://github.com/sgl-project/sglang.git
+[submodule "third_party/omniinfer"]
+	path = third_party/omniinfer
+	url = https://gitee.com/omniai/omniinfer.git
+[submodule "third_party/verl"]
+	path = third_party/verl
+	url = https://github.com/volcengine/verl.git
+[submodule "third_party/lerobot"]
+	path = third_party/lerobot
+	url = https://github.com/huggingface/lerobot.git

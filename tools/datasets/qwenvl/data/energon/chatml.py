@@ -5,13 +5,12 @@ import re
 import warnings
 
 from dataclasses import dataclass
-from typing import List, Union,Dict, Any 
+from typing import List, Union
+
 import torch
-import json  
 
-from webdataset.autodecode import Decoder, imagehandler
+from webdataset.autodecode import Decoder
 
-from megatron.energon.av import AVWebdatasetDecoder
 from megatron.energon.epathlib.epath import EPath
 from megatron.energon.flavors.base_dataset import Sample
 from megatron.energon.flavors.webdataset import DefaultDecoderWebdatasetFactory
@@ -24,34 +23,6 @@ class ChatMLSample(Sample):
     imgs: List[str]
     videos: List[List[str]]
     conversation: str  # JSON string of GPT-format conversations
-    metadata: Dict[str, Any] = None
-
-# class NestedImagesHandler:
-#     def __init__(self, imagespec):
-#         """Create an image handler.
-
-#         :param imagespec: short string indicating the type of decoding
-#         """
-#         self.extensions = ["jpgs", "videos"]
-#         self.extensions_mapping = {"jpgs": "jpg", "videos": "jpg"}
-#         self.image_handler = imagehandler(imagespec)
-
-#     def __call__(self, key, data):
-#         """Perform nested image decoding.
-
-#         :param key: file name extension
-#         :param data: binary data
-#         """
-#         extension = re.sub(r".*[.]", "", key)
-#         if extension.lower() not in self.extensions:
-#             return None
-#         data = pickle.loads(data)
-#         key = self.extensions_mapping[extension]
-#         if extension.lower() == "jpgs":
-#             data = [self.image_handler(key, d) for d in data]
-#         else:
-#             data = [[self.image_handler(key, d) for d in video] for video in data]
-#         return data
 
 
 class NestedImagesPathHandler:
@@ -60,7 +31,8 @@ class NestedImagesPathHandler:
 
         :param imagespec: short string indicating the type of decoding
         """
-        self.extensions = ["jpgs", "videos", "metadata"]
+        self.extensions = ["jpgs", "videos"]
+        self.extensions_mapping = {"jpgs": "jpg", "videos": "jpg"}
 
     def __call__(self, key, data):
         """Perform nested image decoding.
@@ -71,24 +43,10 @@ class NestedImagesPathHandler:
         extension = re.sub(r".*[.]", "", key)
         if extension.lower() not in self.extensions:
             return None
-        
-        # 现在只处理图像和视频
-        if extension.lower() in ["jpgs", "videos"]:
-            try:
-                return pickle.loads(data)
-            except Exception as e:
-                print(f"Warning: Failed to decode {extension}: {e}")
-                return None
-        elif extension.lower() == "metadata":
-            try:
-                # 首先将字节串解码为 UTF-8 字符串，然后用 json.loads 解析
-                return json.loads(data.decode('utf-8'))
-            except Exception as e:
-                print(f"Warning: Failed to decode metadata json: {e}")
-                return None
+        data = pickle.loads(data)
+        return data
 
-        return None # 其他未知情况返回 None
-            
+
 # During training, data is automatically decoded to from default webdataset to 'ChatMLSample' when loaded using energon-dataloader,
 # and this is not done during preparation!!!
 # After decoding, the data is passed into the TaskEncoder for further processing.
@@ -116,5 +74,4 @@ class ChatMLWebdataset(DefaultDecoderWebdatasetFactory[ChatMLSample]):
             **kwargs,
         )
         if auto_decode:
-            # self._decoder.handlers.insert(0, NestedImagesPathHandler(self.image_decode))
             self._decoder = Decoder([NestedImagesPathHandler(self.image_decode)])

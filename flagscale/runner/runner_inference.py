@@ -20,7 +20,10 @@ from flagscale.runner.utils import (
 
 def _get_args_vllm(config: DictConfig):
     # step1: yaml -> dict
-    assert config.experiment.task.backend == "vllm", "This function only supports vllm backend."
+    assert config.experiment.task.backend in [
+        "vllm",
+        "lerobot",
+    ], "This function only supports vllm/lerobot backend."
     config_dict = OmegaConf.to_container(config, resolve=True)
 
     # step2: restructuring the config
@@ -86,15 +89,6 @@ def _generate_run_script_inference(config, host, node_rank, cmd, background=True
 
     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    fs_path = sys.path.pop(0)
-    try:
-        package_path = importlib.util.find_spec("vllm").origin
-    except:
-        raise ValueError("vllm package not found.")
-    sys.path.insert(0, fs_path)
-    path = package_path.split("/")[:-2]
-    vllm_dir = "/".join(path)
-
     cmds_config = config.experiment.get("cmds", None)
     if cmds_config:
         before_start = cmds_config.get("before_start", "")
@@ -108,12 +102,12 @@ def _generate_run_script_inference(config, host, node_rank, cmd, background=True
         f.write(f"\n")
         f.write(f"cd {root_dir}\n")
         f.write(f"\n")
-        f.write(f"export PYTHONPATH={vllm_dir}:{root_dir}\n")
+        f.write(f"export PYTHONPATH={root_dir}:${{PYTHONPATH}}\n")
         f.write(f"\n")
         f.write(f'cmd="{cmd}"\n')
         f.write(f"\n")
         if with_test:
-            f.write(f'bash -c "$cmd; sync" \n')
+            f.write(f'bash -c "$cmd; sync"  >> {host_output_file} \n')
         else:
             # TODO: need a option to control whether to append or overwrite the output file
             # Now, it always appends to the output file
