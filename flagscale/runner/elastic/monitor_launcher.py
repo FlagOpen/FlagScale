@@ -12,17 +12,6 @@ import time
 
 from pathlib import Path
 
-
-def add_project_root_to_path():
-    """Add the project root directory to the Python path"""
-    current_file = Path(__file__).resolve()
-    # flagscale/elastic/monitor_launcher.py -> the project root directory
-    project_root = current_file.parent.parent.parent
-    sys.path.insert(0, str(project_root))
-
-
-add_project_root_to_path()
-
 from omegaconf import OmegaConf
 
 from flagscale.runner.elastic.monitor_service import MonitorService

@@ -41,7 +41,7 @@ def _get_args_megatron(config: DictConfig):
     new_config_dict.update(config_dict["model"])
     new_config_dict.update(config_dict["data"])
 
-    ignore_keys = ["log_dir", "details_dir", "scripts_dir", "pids_dir", "diagnostic_dir"]
+    ignore_keys = ["log_dir", "details_dir", "scripts_dir", "pids_dir"]
     # Flatten the dictionary to a list of arguments
     args = flatten_dict_to_args(new_config_dict, ignore_keys)
 
@@ -528,6 +528,20 @@ class SSHTrainRunner(RunnerBase):
             )
         # If need monitor, query status continually
         if monitor:
+            # sleep to wait task already started
+            time.sleep(interval)
+            try:
+                while True:
+                    status = self._query_status()
+                    logger.info(f"Job Status: {status.name}")
+                    if status == JobStatus.COMPLETED_OR_IDLE:
+                        break
+                    time.sleep(interval)
+                logger.info("Job Ended.")
+            except Exception as e:
+                logger.info(e)
+
+        if enable_monitoring:
             logger.info("Starting monitoring service...")
             monitor_service = MonitorService(self.config, self, interval)
             monitor_service.start_monitoring(

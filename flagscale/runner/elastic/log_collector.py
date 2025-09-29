@@ -5,12 +5,25 @@ import subprocess
 
 from datetime import datetime
 
-from flagscale.runner.utils import logger, run_local, run_scp
+from flagscale.runner.utils import logger, run_local_command
 
 _log_offsets = {}
 
 
 def get_remote_file_size(host, filepath):
+    """
+    Retrieve the size of a file on a remote host (in bytes).
+
+    Parameters:
+        host (str): The address of the remote host (e.g., 'user@hostname').
+        filepath (str): The path to the file on the remote host.
+
+    Returns:
+        int: The size of the file in bytes if successful; returns -1 if an error occurs.
+
+    Exception Handling:
+        subprocess.CalledProcessError: Caught when the SSH command fails.
+    """
     try:
         result = subprocess.run(
             ["ssh", host, f"stat -c%s {filepath}"],
@@ -25,6 +38,20 @@ def get_remote_file_size(host, filepath):
 
 
 def get_file_size(host, filepath):
+    """
+    Retrieve the size of a file, either locally or on a remote host (in bytes).
+
+    Parameters:
+        host (str): The address of the host (e.g., 'localhost' or 'user@hostname').
+        filepath (str): The path to the file, either local or on the remote host.
+
+    Returns:
+        int: The size of the file in bytes if successful; returns -1 if the file does not exist
+             or an error occurs during remote access.
+
+    Notes:
+        - For local files ('localhost'), uses os.path to check existence and get size.
+    """
     if host == "localhost":
         if os.path.exists(filepath):
             return os.path.getsize(filepath)
@@ -52,11 +79,11 @@ def find_actual_log_file(log_dir, node_rank, host, no_shared_fs=False):
     else:
         expected_file = os.path.join(log_dir, f"host_{node_rank}_{host}.output")
 
-    # Method 1: Try exact match first
+    # Try exact match first
     if os.path.exists(expected_file):
         return expected_file
 
-    # Method 2: Use glob pattern to find any matching node_rank file
+    # Use glob pattern to find any matching node_rank file
     if not no_shared_fs:
         pattern = os.path.join(log_dir, f"host_{node_rank}_*.output")
         matches = glob.glob(pattern)
@@ -68,7 +95,7 @@ def find_actual_log_file(log_dir, node_rank, host, no_shared_fs=False):
             )
             return matches[0]
 
-    # Method 3: Return original expected path for error handling
+    # Return original expected path for error handling
     return expected_file
 
 
@@ -102,7 +129,7 @@ def collect_logs(config, host, node_rank, destination_dir, dryrun=False):
         if host != "localhost":
             ssh_port = config.experiment.runner.get("ssh_port", 22)
             command = f"ssh -p {ssh_port} {host} 'tail -c +{offset + 1} {shlex.quote(src_log_file)}' > {shlex.quote(dest_log_file)}"
-            run_local(command, dryrun)
+            run_local_command(command, dryrun)
             logger.debug(
                 f"Collected incremental log from {host} (node {node_rank}) to {dest_log_file}"
             )
@@ -110,7 +137,7 @@ def collect_logs(config, host, node_rank, destination_dir, dryrun=False):
             command = (
                 f"tail -c +{offset + 1} {shlex.quote(src_log_file)} > {shlex.quote(dest_log_file)}"
             )
-            run_local(command, dryrun)
+            run_local_command(command, dryrun)
             logger.debug(f"Collected incremental local log to {dest_log_file}")
 
         # Check if the source file exists and update the offset

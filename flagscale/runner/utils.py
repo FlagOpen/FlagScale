@@ -458,55 +458,6 @@ def is_master(config, resources=None):
     return True
 
 
-def run_scp(host, src_file, dest_file, ssh_port=22, dryrun=False, incremental=False):
-    """
-    Run SCP command to copy files from a remote host.
-    Args:
-        host (str): Remote host.
-        src_file (str): Source file path.
-        dest_file (str): Destination file path.
-        ssh_port (int): SSH port.
-        dryrun (bool): If True, log command without executing.
-        incremental (bool): If True, use incremental copy.
-    """
-    # For incremental, assume tail command is handled externally
-    command = f"scp -P {ssh_port} {host}:{src_file} {dest_file}"
-    if dryrun:
-        logger.info(f"Dryrun: {command}")
-    else:
-        try:
-            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-            logger.debug(f"SCP command executed: {command}")
-            return result
-        except subprocess.CalledProcessError as e:
-            logger.error(f"SCP failed: {e}")
-            raise
-
-
-def run_local(command, dryrun=False, query=False):
-    """
-    Run a local shell command.
-    Args:
-        command (str): Command to execute.
-        dryrun (bool): If True, log command without executing.
-        query (bool): If True, return command output.
-    """
-    if dryrun:
-        logger.info(f"Dryrun: {command}")
-        return None
-    try:
-        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-        logger.debug(f"Local command executed: {command}")
-        if query:
-            return result
-        return result
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Local command failed: {e}")
-        if query:
-            return None
-        raise
-
-
 @dataclass
 class RequestFuncInput:
     prompt: str

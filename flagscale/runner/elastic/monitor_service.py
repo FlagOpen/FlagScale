@@ -75,6 +75,9 @@ class MonitorService:
         logger.info(f"Monitor logs will be saved to: {self.monitor_log_dir}")
 
     def stop(self):
+        """
+        Stop monitoring service
+        """
         if not self.is_running:
             return
 
@@ -280,8 +283,7 @@ class MonitorService:
             logger.error(f"Failed to write status log: {e}")
 
     def _collect_logs(self):
-        # if not hasattr(self.runner, 'resources') or self.runner.resources is None:
-        if self.runner.resources is None:
+        if not hasattr(self.runner, 'resources') or self.runner.resources is None:
             self._collect_logs_for_host("localhost", 0)
         else:
             for node_rank, (host, _) in enumerate(self.runner.resources.items()):

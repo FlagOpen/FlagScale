@@ -46,6 +46,14 @@ def simulated_fault_loop(log_file="", error_keys=None, interval=5, iterations=1,
 
 
 def main():
+    """
+    Entry point for the fault simulation script.
+
+    This function sets up an argument parser to handle command-line arguments and
+    invokes the simulated_fault_loop function to simulate faults by writing errors
+    to a specified log file. The arguments control the log file path, error types,
+    interval between writes, number of iterations, and file mode (overwrite or append).
+    """
     parser = argparse.ArgumentParser(description="Simulate faults by writing errors to log.")
     parser.add_argument("--log_file", type=str, default="output.log", help="Path to log file")
     parser.add_argument(

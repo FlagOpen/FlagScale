@@ -63,10 +63,7 @@ def main(config: DictConfig) -> None:
             elif config.action == "stop":
                 runner.stop()
             elif config.action == "query":
-                status = runner.query_once()
-                from flagscale.logger import logger
-
-                logger.info(f"Current job status: {status.name}")
+                runner.query()
             else:
                 raise ValueError(f"Unknown action {config.action}")
     elif task_type == "inference":

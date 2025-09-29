@@ -46,6 +46,7 @@ class TestDiagnostic:
             assert key in error_types
 
     def test_generate_diagnostic_report_empty_file(self, mock_config):
+        """Test that report's format"""
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
             f.write("")
             temp_path = f.name
@@ -63,6 +64,7 @@ class TestDiagnostic:
             os.unlink(temp_path)
 
     def test_generate_diagnostic_report_with_errors(self, mock_config, sample_log_content):
+        """Test that diagnostic report is generated"""
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
             f.write(sample_log_content)
             temp_path = f.name
@@ -72,23 +74,22 @@ class TestDiagnostic:
                 mock_config, "localhost", 0, temp_path, return_content=True
             )
 
-            # assert "Diagnostic Report for localhost (node 0)" in report
             assert "OutOfMemoryError" in report
             assert "RendezvousConnectionError" in report
             assert "CodeError" in report
-            # assert "GeneralError" in report
         finally:
             os.unlink(temp_path)
 
     def test_generate_diagnostic_report_nonexistent_file(self, mock_config):
+        """Test that log file is empty or does not exist"""
         report = generate_diagnostic_report(
             mock_config, "localhost", 0, "/nonexistent/file.log", return_content=True
         )
 
-        # assert "Diagnostic Report for localhost (node 0)" in report
         assert "Log file is empty or does not exist" in report or "" in report
 
     def test_generate_diagnostic_report_no_errors(self, mock_config):
+        """Test that no errors or unknown error"""
         content = """
         [INFO] Training started successfully
         [INFO] Epoch 1/100 completed
@@ -104,12 +105,12 @@ class TestDiagnostic:
                 mock_config, "localhost", 0, temp_path, return_content=True
             )
 
-            # assert "Diagnostic Report for localhost (node 0)" in report
             assert "No errors or unknown error detected" in report or "" in report
         finally:
             os.unlink(temp_path)
 
     def test_generate_diagnostic_report_file_output(self, mock_config, sample_log_content):
+        """Test that generate diagnostic report file"""
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
             f.write(sample_log_content)
             temp_path = f.name
@@ -134,4 +135,3 @@ class TestDiagnostic:
             )
 
             assert "Error reading log file" in report or "" in report
-            # mock_logger.error.assert_called()
