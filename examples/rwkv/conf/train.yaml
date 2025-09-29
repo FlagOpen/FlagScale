@@ -16,7 +16,6 @@ experiment:
     nnodes: 1
     nproc_per_node: 1
   envs:
-    USE_FLAGGEMS: 0
     CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
 
