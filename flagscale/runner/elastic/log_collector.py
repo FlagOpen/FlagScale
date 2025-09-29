@@ -1,3 +1,4 @@
+import glob
 import os
 import shlex
 import subprocess
@@ -32,6 +33,45 @@ def get_file_size(host, filepath):
         return get_remote_file_size(host, filepath)
 
 
+def find_actual_log_file(log_dir, node_rank, host, no_shared_fs=False):
+    """
+    Smart file discovery for log files that handles hostname/IP mismatches.
+
+    Args:
+        log_dir (str): Directory containing log files
+        node_rank (int): Rank of the node
+        host (str): Expected hostname or IP
+        no_shared_fs (bool): Whether shared filesystem is disabled
+
+    Returns:
+        str: Path to the actual log file found, or expected path if not found
+    """
+    # Construct expected filename based on original logic
+    if no_shared_fs:
+        expected_file = os.path.join(log_dir, "host.output")
+    else:
+        expected_file = os.path.join(log_dir, f"host_{node_rank}_{host}.output")
+
+    # Method 1: Try exact match first
+    if os.path.exists(expected_file):
+        return expected_file
+
+    # Method 2: Use glob pattern to find any matching node_rank file
+    if not no_shared_fs:
+        pattern = os.path.join(log_dir, f"host_{node_rank}_*.output")
+        matches = glob.glob(pattern)
+
+        if matches:
+            # Return the first match found
+            logger.debug(
+                f"Smart discovery found log file: {matches[0]} (expected: {expected_file})"
+            )
+            return matches[0]
+
+    # Method 3: Return original expected path for error handling
+    return expected_file
+
+
 def collect_logs(config, host, node_rank, destination_dir, dryrun=False):
     """
     Collect logs incrementally from a specified host and node rank, saving to destination_dir.
@@ -47,9 +87,7 @@ def collect_logs(config, host, node_rank, destination_dir, dryrun=False):
     logging_config = config.train.system.logging
     no_shared_fs = config.experiment.runner.get("no_shared_fs", False)
     log_dir = logging_config.log_dir
-    src_log_file = os.path.join(
-        log_dir, f"host{'_' + str(node_rank) + '_' + host if not no_shared_fs else ''}.output"
-    )
+    src_log_file = find_actual_log_file(log_dir, node_rank, host, no_shared_fs)
     dest_log_file = os.path.join(
         destination_dir,
         f"host_{node_rank}_{host}_temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log",

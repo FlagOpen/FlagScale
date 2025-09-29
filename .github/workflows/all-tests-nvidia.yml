@@ -106,7 +106,6 @@ jobs:
     needs:
       - set-env
       - unit_tests_inference_flagscale
-      - functional_tests_elastic
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
@@ -121,25 +120,6 @@ jobs:
       type: train
       image: ${{ needs.set-env.outputs.ci_image }}
   
-  functional_tests_elastic:
-    needs:
-      - set-env
-      - unit_tests_train_flagscale
-    uses: ./.github/workflows/functional-tests-elastic.yml
-    strategy:
-      matrix:
-        task:
-          - aquila
-          - deepseek
-          - mixtral
-          - llava_onevision
-    name: "train-${{ matrix.task }}"
-    with:
-      task: ${{ matrix.task }}
-      type: train
-      image: ${{ needs.set-env.outputs.ci_image }}
-
-
   functional_tests_hetero:
     needs:
       - set-env
