@@ -268,14 +268,15 @@ def flatten_dict_to_args_verl(config_dict, pre_str=""):
     return args
 
 
-def flatten_dict_to_args(config_dict, ignore_keys=[]):
+def flatten_dict_to_args(config_dict, ignore_keys=[], do_dash_replace=True):
     args = []
     for key, value in config_dict.items():
         if key in ignore_keys:
             continue
-        key = key.replace("_", "-")
+        if do_dash_replace:
+            key = key.replace("_", "-")
         if isinstance(value, dict):
-            args.extend(flatten_dict_to_args(value, ignore_keys))
+            args.extend(flatten_dict_to_args(value, ignore_keys, do_dash_replace=do_dash_replace))
         elif isinstance(value, list):
             args.append(f"--{key}")
             for v in value:
@@ -605,14 +606,22 @@ async def get_request(input_requests):
 
 
 async def benchmark(
-    api_url, model, tokenizer, input_requests, selected_percentile_metrics, selected_percentiles
+    api_url,
+    model,
+    served_model_name,
+    tokenizer,
+    input_requests,
+    selected_percentile_metrics,
+    selected_percentiles,
 ):
 
     async def limited_request_func(request_func_input, pbar):
         return await request_func(request_func_input=request_func_input, pbar=pbar)
 
     request_func = async_request_openai_chat_completions
-    req_model_id = req_model_name = model
+    req_model_id = model
+    req_model_name = served_model_name if served_model_name is not None else model
+
     pbar = tqdm(total=len(input_requests))
 
     benchmark_start_time = time.perf_counter()
