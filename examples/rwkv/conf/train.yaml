@@ -14,7 +14,7 @@ experiment:
   runner:
     backend: torchrun
     nnodes: 1
-    nproc_per_node: 
+    nproc_per_node: 1
   envs:
     USE_FLAGGEMS: 0
     CUDA_VISIBLE_DEVICES: 0

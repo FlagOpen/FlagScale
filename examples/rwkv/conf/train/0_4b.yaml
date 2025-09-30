@@ -45,5 +45,4 @@ data:
   data_path: ${data_path:??}
   split: "1"
   tokenizer:
-    vocab_file: ./examples/rwkv/tokenizer/vocab.json
-    merge_file: ./examples/rwkv/tokenizer/merges.txt
+    tokenizer_path: ${tokenizer_path:??}  # The vocab file can be found at https://github.com/RWKV-Vibe/RWKV-LM-V7/tree/main/data/tokenizer
