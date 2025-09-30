@@ -486,6 +486,7 @@ class RWKVModel(nn.Module):
         if 'head' in state_dict:
             self.head.load_state_dict(state_dict['head'], strict=strict)
 
+
 class _ArgsShim:
     """
     Minimal adapter to provide attributes that Block(...) expects from `args`.

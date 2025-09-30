@@ -26,13 +26,13 @@ def deepspeed_to_megatron(deepspeed_ckpt, megatron_ckpt):
             new_k = f"model.blocks.block_{block_id}.{suffix}"
 
         if new_k is None:
-            print(f"[WARN] 未映射: {k}")
+            print(f"[WARN] Unmapped parameter: {k}")
             continue
 
         new_state_dict[new_k] = v
 
     torch.save(new_state_dict, megatron_ckpt)
-    print(f"[INFO] DeepSpeed → Megatron 转换完成: {deepspeed_ckpt} → {megatron_ckpt}")
+    print(f"[INFO] DeepSpeed → Megatron conversion completed: {deepspeed_ckpt} → {megatron_ckpt}")
 
 
 def megatron_to_deepspeed(megatron_ckpt, deepspeed_ckpt):
@@ -58,13 +58,13 @@ def megatron_to_deepspeed(megatron_ckpt, deepspeed_ckpt):
             new_k = f"blocks.{block_id}.{suffix}"
 
         if new_k is None:
-            print(f"[WARN] 未映射: {k}")
+            print(f"[WARN] Unmapped parameter: {k}")
             continue
 
         new_state_dict[new_k] = v
 
     torch.save(new_state_dict, deepspeed_ckpt)
-    print(f"[INFO] Megatron → DeepSpeed 转换完成: {megatron_ckpt} → {deepspeed_ckpt}")
+    print(f"[INFO] Megatron → DeepSpeed conversion completed: {megatron_ckpt} → {deepspeed_ckpt}")
 
 
 if __name__ == "__main__":
