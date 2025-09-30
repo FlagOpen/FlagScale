@@ -57,14 +57,41 @@ def _get_args_robotics(config: DictConfig):
     config_dict = config_dict["train"]
 
     new_config_dict = {}
-    # new_config_dict.update(config_dict["system"])
     new_config_dict.update(config_dict["model"])
-    # new_config_dict.update(config_dict["data"])
-
     ignore_keys = ["log_dir", "details_dir", "scripts_dir", "pids_dir"]
     # Flatten the dictionary to a list of arguments
     args = flatten_dict_to_args(new_config_dict, ignore_keys)
     args = [config_dict["data"]["config_name"]] + args
+    return args
+
+
+def _get_args_lerobot(config: DictConfig):
+    assert (
+        config.experiment.task.backend == "lerobot"
+    ), "This function only supports lerobot backend."
+
+    # Convert the DictConfig to a regular dictionary
+    config_dict = OmegaConf.to_container(config, resolve=True)
+    config_dict = config_dict["train"]
+
+    new_config_dict = {}
+    new_config_dict.update(config_dict["system"])
+    new_config_dict.update(config_dict["model"])
+    new_config_dict.update(config_dict["data"])
+
+    ignore_keys = [
+        "log_dir",
+        "details_dir",
+        "scripts_dir",
+        "pids_dir",
+        "save",
+        "output_dir",
+        "load",
+        "tensorboard_dir",
+        "wandb_save_dir",
+    ]
+    # Flatten the dictionary to a list of arguments
+    args = flatten_dict_to_args(new_config_dict, ignore_keys=ignore_keys, do_dash_replace=False)
     return args
 
 
@@ -345,6 +372,8 @@ class SSHTrainRunner(RunnerBase):
             self.user_args = _get_args_megatron(self.config)
         elif self.config.experiment.task.backend == "robotics":
             self.user_args = _get_args_robotics(self.config)
+        elif self.config.experiment.task.backend == "lerobot":
+            self.user_args = _get_args_lerobot(self.config)
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         self.user_envs = self.config.experiment.get("envs", {})
         self.user_script = self.config.experiment.task.entrypoint
@@ -726,6 +755,8 @@ class CloudTrainRunner(RunnerBase):
             self.user_args = _get_args_megatron(self.config)
         elif self.config.experiment.task.backend == "robotics":
             self.user_args = _get_args_robotics(self.config)
+        elif self.config.experiment.task.backend == "lerobot":
+            self.user_args = _get_args_lerobot(self.config)
         logger.info("\n************** configuration ***********")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
