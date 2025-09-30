@@ -31,7 +31,7 @@ from megatron.training.utils import (
     get_blend_and_blend_per_split,
 )
 
-from flagscale.train.models.rwkv import TRIE_TOKENIZER, RWKVModel
+from flagscale.train.models.rwkv import RWKVModel
 
 try:
     from megatron.post_training.arguments import add_modelopt_args, modelopt_args_enabled
