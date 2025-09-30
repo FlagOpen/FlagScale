@@ -45,7 +45,7 @@ class ToolMatcher:
             self.degradation_flags[component] = degraded
             logger.info(f"Component '{component}' degradation set to {degraded}")
         else:
-            logger.warning(f"Unknown component '{component}' for degradation")
+            raise ValueError(f"Unknown degradation component: '{component}'")
 
     def get_effective_weights(self) -> Dict[str, float]:
         """Get effective weights considering degradation flags."""
