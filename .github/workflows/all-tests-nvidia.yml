@@ -119,7 +119,7 @@ jobs:
       task: ${{ matrix.task }}
       type: train
       image: ${{ needs.set-env.outputs.ci_image }}
-  
+
   functional_tests_hetero:
     needs:
       - set-env
