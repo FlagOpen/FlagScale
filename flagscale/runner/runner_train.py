@@ -469,7 +469,7 @@ class SSHTrainRunner(RunnerBase):
         interval=10,
         enable_log_collection=True,
         enable_diagnostic=True,
-        enable_monitoring=True,
+        enable_monitoring=False,
     ):
 
         num_visible_devices = None
