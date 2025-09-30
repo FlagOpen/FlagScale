@@ -1,6 +1,7 @@
 """Intelligent tool matcher using semantic embeddings"""
 
 import logging
+
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -81,7 +82,9 @@ class ToolMatcher:
 
             # Check network connectivity with multiple fallbacks
             if not self._check_network_connectivity():
-                logger.warning("Network unavailable for model download. Degrading semantic component.")
+                logger.warning(
+                    "Network unavailable for model download. Degrading semantic component."
+                )
                 self.model = None
                 self.set_degradation('semantic', True)
                 return
