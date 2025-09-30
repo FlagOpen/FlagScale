@@ -47,6 +47,24 @@ def _get_args_megatron(config: DictConfig):
     return args
 
 
+def _get_args_robotics(config: DictConfig):
+    assert (
+        config.experiment.task.backend == "robotics"
+    ), "This function only supports robotics backend."
+
+    # Convert the DictConfig to a regular dictionary
+    config_dict = OmegaConf.to_container(config, resolve=True)
+    config_dict = config_dict["train"]
+
+    new_config_dict = {}
+    new_config_dict.update(config_dict["model"])
+    ignore_keys = ["log_dir", "details_dir", "scripts_dir", "pids_dir"]
+    # Flatten the dictionary to a list of arguments
+    args = flatten_dict_to_args(new_config_dict, ignore_keys)
+    args = [config_dict["data"]["config_name"]] + args
+    return args
+
+
 def _get_args_lerobot(config: DictConfig):
     assert (
         config.experiment.task.backend == "lerobot"
@@ -352,6 +370,8 @@ class SSHTrainRunner(RunnerBase):
         _update_config_train(self.config)
         if self.config.experiment.task.backend == "megatron":
             self.user_args = _get_args_megatron(self.config)
+        elif self.config.experiment.task.backend == "robotics":
+            self.user_args = _get_args_robotics(self.config)
         elif self.config.experiment.task.backend == "lerobot":
             self.user_args = _get_args_lerobot(self.config)
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
@@ -733,6 +753,8 @@ class CloudTrainRunner(RunnerBase):
         _update_config_train(self.config)
         if self.config.experiment.task.backend == "megatron":
             self.user_args = _get_args_megatron(self.config)
+        elif self.config.experiment.task.backend == "robotics":
+            self.user_args = _get_args_robotics(self.config)
         elif self.config.experiment.task.backend == "lerobot":
             self.user_args = _get_args_lerobot(self.config)
         logger.info("\n************** configuration ***********")
