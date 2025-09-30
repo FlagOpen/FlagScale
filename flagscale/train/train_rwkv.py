@@ -1,38 +1,35 @@
 import os
-
+import torch
 from functools import partial
 from typing import List, Optional, Tuple, Union
+from megatron.core import parallel_state
 
-import torch
-import torch.profiler as profiler
-
-from megatron.core import mpu, parallel_state
-from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
-from megatron.core.datasets.gpt_dataset import GPTDataset, GPTDatasetConfig, MockGPTDataset
+from megatron.training import get_args
+from megatron.training import inprocess_restart
+from megatron.training import print_rank_0
+from megatron.training import get_timers
+from megatron.training import get_tokenizer
+from megatron.core import mpu
 from megatron.core.enums import ModelType
-from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
+from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
+from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
+from megatron.core.datasets.gpt_dataset import MockGPTDataset, GPTDataset
 from megatron.core.rerun_state_machine import get_rerun_state_machine
+from flagscale.train.models.rwkv import RWKVModel
+from megatron.training import pretrain
+from megatron.core.utils import StragglerDetector
 from megatron.core.transformer import TransformerConfig
 from megatron.core.transformer.spec_utils import import_module
-from megatron.core.utils import StragglerDetector
-from megatron.training import (
-    get_args,
-    get_timers,
-    get_tokenizer,
-    inprocess_restart,
-    pretrain,
-    print_rank_0,
-)
-from megatron.training.arguments import core_transformer_config_from_args
-from megatron.training.datasets.sft_dataset import SFTDataset
 from megatron.training.utils import (
     get_batch_on_this_cp_rank,
     get_batch_on_this_tp_rank,
     get_blend_and_blend_per_split,
 )
+from megatron.training.arguments import core_transformer_config_from_args
+from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
+import torch.profiler as profiler
 
-from flagscale.train.models.rwkv import TRIE_TOKENIZER, RWKVModel
-
+from megatron.training.datasets.sft_dataset import SFTDataset
 try:
     from megatron.post_training.arguments import add_modelopt_args, modelopt_args_enabled
     from megatron.post_training.loss_func import loss_func as loss_func_modelopt
@@ -43,7 +40,6 @@ except ImportError:
     has_nvidia_modelopt = False
 
 stimer = StragglerDetector()
-
 
 def model_provider(pre_process=True, post_process=True) -> RWKVModel:
     """Builds the model.
@@ -68,7 +64,6 @@ def model_provider(pre_process=True, post_process=True) -> RWKVModel:
         parallel_output=True,
     )
 
-
 def get_batch(data_iterator):
     """Generate a batch."""
 
@@ -86,10 +81,7 @@ def get_batch(data_iterator):
 
     return batch.values()
 
-
-def loss_func(
-    loss_mask: torch.Tensor, output_tensor: torch.Tensor, model: Optional[RWKVModel] = None
-):
+def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor, model: Optional[RWKVModel] = None):
     """Loss function.
 
     Args:
@@ -115,7 +107,7 @@ def loss_func(
     # Calculate total loss. (Sum losses and average later to handle varying token counts across DP ranks).
     loss = torch.sum(losses * loss_mask)
 
-    # Check individual rank losses are not NaN prior to DP all-reduce
+    # Check individual rank losses are not NaN prior to DP all-reduce.
     rerun_state_machine = get_rerun_state_machine()
     if args.check_for_nan_in_loss_and_grad:
         rerun_state_machine.validate_result(
@@ -137,7 +129,9 @@ def loss_func(
         rerun_state_machine.validate_result(
             result=loss,
             rejection_func=partial(
-                rerun_state_machine.is_unexpectedly_large, threshold=10, context="loss"
+                rerun_state_machine.is_unexpectedly_large,
+                threshold=10,
+                context="loss",
             ),
             message="Spiky loss",
             tolerance=0.0,  # forward pass calculations are determinisic
@@ -148,7 +142,6 @@ def loss_func(
     reporting_loss = torch.cat([loss.clone().detach().view(1), num_tokens.view(1)])
 
     return (loss, num_tokens, {'lm loss': reporting_loss})
-
 
 def forward_step(data_iterator, model: RWKVModel, return_schedule_plan: bool = False):
     """Forward training step.
@@ -178,19 +171,19 @@ def forward_step(data_iterator, model: RWKVModel, return_schedule_plan: bool = F
             output_tensor = model(tokens, labels=labels)
         else:
             if return_schedule_plan:
-                assert (
-                    args.overlap_moe_expert_parallel_comm
-                ), "overlap_moe_expert_parallel_comm must be enabled to return the schedule plan"
+                assert args.overlap_moe_expert_parallel_comm, \
+                    "overlap_moe_expert_parallel_comm must be enabled to return the schedule plan"
                 schedule_plan = model.build_schedule_plan(
                     tokens, position_ids, attention_mask, labels=labels, loss_mask=loss_mask
                 )
                 return schedule_plan, partial(loss_func, loss_mask, model=model)
             else:
-                output_tensor = model(tokens, labels=labels, loss_mask=loss_mask)
+                output_tensor = model(
+                    tokens, labels=labels, loss_mask=loss_mask
+                )
 
     # [ModelOpt]: model is needed to access ModelOpt distillation losses
     return output_tensor, partial(loss_func, loss_mask, model=model)
-
 
 def train_valid_test_datasets_provider(train_val_test_num_samples):
     """Build the train test and validation datasets.
@@ -213,13 +206,15 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
     print_rank_0("> building train, validation, and test datasets for RWKV ...")
 
     train_ds, valid_ds, test_ds = BlendedMegatronDatasetBuilder(
-        dataset_type, train_val_test_num_samples, is_dataset_built_on_rank, config
+        dataset_type,
+        train_val_test_num_samples,
+        is_dataset_built_on_rank,
+        config
     ).build()
 
     print_rank_0("> finished creating GPT datasets ...")
 
     return train_ds, valid_ds, test_ds
-
 
 def core_gpt_dataset_config_from_args(args):
     tokenizer = get_tokenizer()
@@ -247,12 +242,10 @@ def core_gpt_dataset_config_from_args(args):
         mid_level_dataset_surplus=args.mid_level_dataset_surplus,
     )
 
-
 def is_dataset_built_on_rank():
     return (
         mpu.is_pipeline_first_stage() or mpu.is_pipeline_last_stage()
     ) and mpu.get_tensor_model_parallel_rank() == 0
-
 
 if __name__ == "__main__":
 
@@ -262,11 +255,13 @@ if __name__ == "__main__":
     # Optionally enable inprocess restart on pretrain
     pretrain, store = inprocess_restart.maybe_wrap_for_inprocess_restart(pretrain)
 
+
     pretrain(
         train_valid_test_datasets_provider,
         model_provider,
         ModelType.encoder_or_decoder,
         forward_step,
-        args_defaults={'tokenizer_type': 'RWKVTokenizer'},
-        store=store,
-    )
+        args_defaults={
+            'tokenizer_type': 'RWKVTokenizer',
+        },
+        store=store)
