@@ -239,7 +239,8 @@ class AutoTuner:
             best_task = self.generator.gen_best_task(best_strategy, self.orig_config)
             best_task.action = "run"
             runner = SSHTrainRunner(best_task)
-            runner.run(monitor=True, interval=60)
+            enable_monitoring = best_task.experiment.runner.get("enable_monitoring", False)
+            runner.run(monitor=True, interval=60, enable_monitoring=enable_monitoring)
 
     def need_stop(self):
         """Judge whether need to stop tuning."""
@@ -296,7 +297,8 @@ class AutoTuner:
         if task is None:
             task = self.cur_task
         self.runner = SSHTrainRunner(task)
-        self.runner.run()
+        enable_monitoring = task.experiment.runner.get("enable_monitoring", False)
+        self.runner.run(enable_monitoring=enable_monitoring)
         # set start time
         self.task_start_time = time.time()
 
