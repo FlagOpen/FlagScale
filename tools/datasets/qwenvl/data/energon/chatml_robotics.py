@@ -1,20 +1,19 @@
 # Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/megatron_patch/data/energon/chatml.py.
 
+import logging
 import pickle
 import re
-import warnings
 
 from dataclasses import dataclass
 from typing import List, Union
 
-import torch
+from webdataset.autodecode import Decoder
 
-from webdataset.autodecode import Decoder, imagehandler
-
-from megatron.energon.av import AVWebdatasetDecoder
 from megatron.energon.epathlib.epath import EPath
 from megatron.energon.flavors.base_dataset import Sample
 from megatron.energon.flavors.webdataset import DefaultDecoderWebdatasetFactory
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -67,27 +66,6 @@ class NestedImagesPathHandler:
         extension = re.sub(r".*[.]", "", key)
         if extension.lower() not in self.extensions:
             return None
-        # try:
-        #     data = pickle.loads(data)
-        # except Exception as e:
-        #     if extension.lower() == "action_tokens":
-        #         try:
-        #             # 尝试将数据解码为字符串
-        #             data = data.decode('utf-8')
-        #         except UnicodeDecodeError:
-        #             print(f"Warning: Failed to decode {extension}: {e}")
-        #             return None
-        #     # # 如果解码失败，返回 None，这样字段就不会被设置
-        #     # print(f"Warning: Failed to decode {extension}: {e}")
-        #     # return None
-
-        # # # 对于 action_tokens，直接返回路径数据，不需要特殊处理
-        # # if extension.lower() == "action_tokens":
-        # #     return data
-
-        # return data
-        # # data = pickle.loads(data)
-        # # return data
         if extension.lower() == "action_tokens":
             try:
                 return pickle.loads(data)
@@ -95,15 +73,12 @@ class NestedImagesPathHandler:
                 try:
                     return data.decode('utf-8')
                 except Exception as e_decode:
-                    # 如果连解码字符串都失败了，这是一个真正的错误，需要打印警告。
-                    print(
+                    logger.error(
                         f"Warning: Failed to decode action_token as a raw string after pickle failed: {e_decode}"
                     )
                     return None
-
-            # 捕获其他非预期的 pickle 错误
             except Exception as e_other:
-                print(
+                logger.error(
                     f"Warning: An unexpected error occurred while decoding action_token: {e_other}"
                 )
                 return None
@@ -112,8 +87,7 @@ class NestedImagesPathHandler:
             try:
                 return pickle.loads(data)
             except Exception as e:
-
-                print(f"Warning: Failed to decode {extension}: {e}")
+                logger.error(f"Warning: Failed to decode {extension}: {e}")
                 return None
 
         return None

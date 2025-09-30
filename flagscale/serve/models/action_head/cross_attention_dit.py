@@ -233,10 +233,6 @@ class DiT(ModelMixin, ConfigMixin):
         self.norm_out = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out_1 = nn.Linear(self.inner_dim, 2 * self.inner_dim)
         self.proj_out_2 = nn.Linear(self.inner_dim, self.config.output_dim)
-        # print(
-        #     "Total number of DiT parameters: ",
-        #     sum(p.numel() for p in self.parameters() if p.requires_grad),
-        # )
 
     def forward(
         self,
@@ -329,10 +325,6 @@ class SelfAttentionTransformer(ModelMixin, ConfigMixin):
                 for _ in range(self.config.num_layers)
             ]
         )
-        # print(
-        #     "Total number of SelfAttentionTransformer parameters: ",
-        #     sum(p.numel() for p in self.parameters() if p.requires_grad),
-        # )
 
     def forward(
         self,
