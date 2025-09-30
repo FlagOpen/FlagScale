@@ -1,9 +1,13 @@
 """Intelligent tool matcher using semantic embeddings"""
 
+import logging
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class ToolMatcher:
@@ -39,9 +43,9 @@ class ToolMatcher:
         """
         if component in self.degradation_flags:
             self.degradation_flags[component] = degraded
-            print(f"Component '{component}' degradation set to {degraded}")
+            logger.info(f"Component '{component}' degradation set to {degraded}")
         else:
-            print(f"Unknown component '{component}' for degradation")
+            logger.warning(f"Unknown component '{component}' for degradation")
 
     def get_effective_weights(self) -> Dict[str, float]:
         """Get effective weights considering degradation flags."""
@@ -77,7 +81,7 @@ class ToolMatcher:
 
             # Check network connectivity with multiple fallbacks
             if not self._check_network_connectivity():
-                print("Network unavailable for model download. Degrading semantic component.")
+                logger.warning("Network unavailable for model download. Degrading semantic component.")
                 self.model = None
                 self.set_degradation('semantic', True)
                 return
@@ -85,22 +89,22 @@ class ToolMatcher:
             # Try to load model with local cache first
             try:
                 self.model = SentenceTransformer("all-MiniLM-L6-v2")
-                print("Semantic model initialized successfully")
+                logger.info("Semantic model initialized successfully")
             except Exception as e:
-                print(f"Failed to load model (may need download): {e}")
-                print("Degrading semantic component.")
+                logger.warning(f"Failed to load model (may need download): {e}")
+                logger.warning("Degrading semantic component.")
                 self.model = None
                 self.set_degradation('semantic', True)
 
         except ImportError:
-            print(
+            logger.warning(
                 "sentence-transformers not available. Install with: pip install sentence-transformers"
             )
-            print("Degrading semantic component.")
+            logger.warning("Degrading semantic component.")
             self.model = None
             self.set_degradation('semantic', True)
         except Exception as e:
-            print(f"Failed to initialize semantic model: {e}. Degrading semantic component.")
+            logger.error(f"Failed to initialize semantic model: {e}. Degrading semantic component.")
             self.model = None
             self.set_degradation('semantic', True)
 
@@ -138,7 +142,7 @@ class ToolMatcher:
             else:
                 return float(similarity)
         except Exception as e:
-            print(f"Semantic scoring failed: {e}")
+            logger.error(f"Semantic scoring failed: {e}")
             return 0.0
 
     def _calculate_keyword_score(self, task: str, tool: Dict[str, Any]) -> float:
@@ -162,7 +166,7 @@ class ToolMatcher:
             overlap = len(task_keywords.intersection(tool_keywords))
             return overlap / len(task_keywords)
         except Exception as e:
-            print(f"Keyword scoring failed: {e}")
+            logger.error(f"Keyword scoring failed: {e}")
             return 0.0
 
     def _calculate_category_score(self, task: str, tool: Dict[str, Any]) -> float:
@@ -205,7 +209,7 @@ class ToolMatcher:
 
             return category_keywords.get(category, 0.5)
         except Exception as e:
-            print(f"Category scoring failed: {e}")
+            logger.error(f"Category scoring failed: {e}")
             return 0.0
 
     def fit(self, tools: List[Dict[str, Any]]):
@@ -226,9 +230,9 @@ class ToolMatcher:
 
             if tool_texts:
                 self.tool_embeddings = self.model.encode(tool_texts, convert_to_tensor=True)
-                print(f"Generated embeddings for {len(self.tools)} tools")
+                logger.info(f"Generated embeddings for {len(self.tools)} tools")
         except Exception as e:
-            print(f"Failed to generate embeddings: {e}")
+            logger.error(f"Failed to generate embeddings: {e}")
             self.tool_embeddings = []
 
     def match_tools(self, task: str) -> List[Tuple[str, float]]:
@@ -274,7 +278,7 @@ class ToolMatcher:
         """Reset all degradation flags to False."""
         for component in self.degradation_flags:
             self.degradation_flags[component] = False
-        print("All degradation flags reset")
+        logger.info("All degradation flags reset")
 
     def _get_cached_embedding(self, task: str):
         """Get embedding from cache or compute and cache it - LRU cache"""
@@ -322,5 +326,5 @@ class ToolMatcher:
             # Ensure result is always an array
             return np.array([result]) if result.ndim == 0 else result
         except Exception as e:
-            print(f"Cosine similarity calculation failed: {e}")
+            logger.error(f"Cosine similarity calculation failed: {e}")
             return np.zeros(len(self.tools))

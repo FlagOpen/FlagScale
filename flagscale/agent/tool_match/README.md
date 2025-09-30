@@ -1,45 +1,45 @@
-# Tool Match 模块
+# Tool Match Module
 
-智能工具匹配模块，用于根据任务描述自动选择最相关的工具。
+Intelligent tool matching module for automatically selecting the most relevant tools based on task descriptions.
 
-## 功能特性
+## Features
 
-- **多权重评分系统**: 结合语义相似度、关键词匹配和类别相关性进行综合评分
-- **智能降级机制**: 当某些组件不可用时（如网络问题、依赖缺失），自动降级到其他评分方式
-- **LRU缓存优化**: 使用最近最少使用缓存机制优化查询性能
-- **类别管理**: 支持工具分类和按类别搜索
-- **灵活配置**: 可配置最大工具数、最小相似度阈值等参数
+- **Multi-weight Scoring System**: Combines semantic similarity, keyword matching, and category relevance for comprehensive scoring
+- **Intelligent Degradation Mechanism**: Automatically falls back to other scoring methods when certain components are unavailable (e.g., network issues, missing dependencies)
+- **LRU Cache Optimization**: Uses Least Recently Used cache mechanism to optimize query performance
+- **Category Management**: Supports tool categorization and category-based search
+- **Flexible Configuration**: Configurable maximum tool count, minimum similarity threshold, and other parameters
 
-## 核心组件
+## Core Components
 
 ### ToolMatcher
-智能工具匹配器，负责计算工具与任务的匹配度。
+Intelligent tool matcher responsible for calculating the match score between tools and tasks.
 
-**主要功能:**
-- 语义相似度计算（基于sentence-transformers）
-- 关键词匹配评分
-- 类别相关性评分
-- 多权重综合评分
-- 降级机制管理
+**Main Functions:**
+- Semantic similarity calculation (based on sentence-transformers)
+- Keyword matching scoring
+- Category relevance scoring
+- Multi-weight comprehensive scoring
+- Degradation mechanism management
 
 ### ToolRegistry
-工具注册表，管理所有可用工具并提供搜索接口。
+Tool registry that manages all available tools and provides search interfaces.
 
-**主要功能:**
-- 工具注册和管理
-- 按类别组织工具
-- 工具搜索和匹配
-- 统计信息获取
+**Main Functions:**
+- Tool registration and management
+- Organize tools by category
+- Tool search and matching
+- Statistical information retrieval
 
-## 快速开始
+## Quick Start
 
 ```python
 from flagscale.agent.tool_match import ToolRegistry
 
-# 创建工具注册表
+# Create tool registry
 registry = ToolRegistry(max_tools=5, min_similarity=0.1)
 
-# 注册工具
+# Register tool
 tool = {
     "function": {
         "name": "read_file",
@@ -54,33 +54,33 @@ tool = {
 }
 registry.register_tool(tool, category="file")
 
-# 搜索相关工具
+# Search for relevant tools
 results = registry.search_tools("read file content")
 for tool_name, score in results:
     print(f"{tool_name}: {score:.3f}")
 ```
 
-## 评分系统
+## Scoring System
 
-### 权重配置
-- **语义相似度**: 70% (需要sentence-transformers)
-- **关键词匹配**: 20%
-- **类别相关性**: 10%
+### Weight Configuration
+- **Semantic Similarity**: 70% (requires sentence-transformers)
+- **Keyword Matching**: 20%
+- **Category Relevance**: 10%
 
-### 降级机制
-当某些组件不可用时，系统会自动降级：
-- 网络不可用 → 禁用语义相似度
-- 依赖缺失 → 禁用对应组件
-- 权重自动重新归一化
+### Degradation Mechanism
+When certain components are unavailable, the system automatically degrades:
+- Network unavailable → Disable semantic similarity
+- Missing dependencies → Disable corresponding components
+- Weights automatically re-normalized
 
-## 工具格式
+## Tool Format
 
 ```python
 tool = {
     "function": {
-        "name": "tool_name",           # 工具名称
-        "description": "tool description",  # 工具描述
-        "parameters": {                # 参数定义
+        "name": "tool_name",           # Tool name
+        "description": "tool description",  # Tool description
+        "parameters": {                # Parameter definition
             "type": "object",
             "properties": {
                 "param1": {"type": "string", "description": "param description"}
@@ -90,62 +90,62 @@ tool = {
 }
 ```
 
-## 类别系统
+## Category System
 
-支持以下预定义类别：
-- `general`: 通用工具
-- `file`: 文件操作
-- `search`: 搜索相关
-- `data`: 数据处理
-- `network`: 网络操作
-- `system`: 系统命令
+Supports the following predefined categories:
+- `general`: General tools
+- `file`: File operations
+- `search`: Search related
+- `data`: Data processing
+- `network`: Network operations
+- `system`: System commands
 
-## API 参考
+## API Reference
 
 ### ToolRegistry
 
-#### 主要方法
-- `register_tool(tool, category)`: 注册单个工具
-- `register_tools(tools, category)`: 批量注册工具
-- `search_tools(query, category=None)`: 搜索工具
-- `get_tool_by_name(name)`: 按名称获取工具
-- `get_tools_by_category(category)`: 按类别获取工具
-- `get_stats()`: 获取统计信息
+#### Main Methods
+- `register_tool(tool, category)`: Register a single tool
+- `register_tools(tools, category)`: Register multiple tools in batch
+- `search_tools(query, category=None)`: Search for tools
+- `get_tool_by_name(name)`: Get tool by name
+- `get_tools_by_category(category)`: Get tools by category
+- `get_stats()`: Get statistical information
 
-#### 降级控制
-- `set_degradation(component, degraded)`: 设置组件降级状态
-- `get_degradation_status()`: 获取降级状态
-- `reset_degradation()`: 重置所有降级标志
+#### Degradation Control
+- `set_degradation(component, degraded)`: Set component degradation status
+- `get_degradation_status()`: Get degradation status
+- `reset_degradation()`: Reset all degradation flags
 
 ### ToolMatcher
 
-#### 配置参数
-- `max_tools`: 最大返回工具数 (默认: 3)
-- `min_similarity`: 最小相似度阈值 (默认: 0.1)
+#### Configuration Parameters
+- `max_tools`: Maximum number of tools to return (default: 3)
+- `min_similarity`: Minimum similarity threshold (default: 0.1)
 
-## 依赖要求
+## Dependencies
 
-- `sentence-transformers`: 语义相似度计算（可选，缺失时自动降级）
-- `numpy`: 数值计算
-- `torch`: 张量操作（可选）
+- `sentence-transformers`: Semantic similarity calculation (optional, auto-degrades when missing)
+- `numpy`: Numerical computation
+- `torch`: Tensor operations (optional)
 
-## 安装依赖
+## Installation
 
 ```bash
-# 完整功能（推荐）
+# Full functionality (recommended)
 pip install sentence-transformers torch numpy
 
-# 基础功能（无语义匹配）
+# Basic functionality (no semantic matching)
 pip install numpy
 ```
 
-## 使用示例
+## Usage Examples
 
-详细使用示例请参考 `fixed_test_tool_match.py` 测试脚本。
+For detailed usage examples, please refer to the `fixed_test_tool_match.py` test script.
 
-## 注意事项
+## Notes
 
-1. 首次使用时会自动下载sentence-transformers模型
-2. 网络不可用时系统会自动降级到关键词匹配
-3. 建议使用英文关键词进行工具描述以获得更好的匹配效果
-4. 缓存机制会自动管理内存使用，无需手动清理
+1. The sentence-transformers model will be automatically downloaded on first use
+2. The system automatically degrades to keyword matching when network is unavailable
+3. It's recommended to use English keywords for tool descriptions for better matching results
+4. Cache mechanism automatically manages memory usage, no manual cleanup required
