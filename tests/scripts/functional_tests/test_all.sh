@@ -20,6 +20,10 @@ commands=(
     "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3-flaggems"
     "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3-metax"
     "tests/scripts/functional_tests/test_task.sh --type inference --task qwen3-flaggems-metax"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task robobrain2-metax"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task robobrain2-flaggems-metax"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task robobrain2"
+    "tests/scripts/functional_tests/test_task.sh --type inference --task robobrain2-flaggems"
     # For serve
     "tests/scripts/functional_tests/test_task.sh --type serve --task qwen2_5"
     "tests/scripts/functional_tests/test_task.sh --type serve --task base"

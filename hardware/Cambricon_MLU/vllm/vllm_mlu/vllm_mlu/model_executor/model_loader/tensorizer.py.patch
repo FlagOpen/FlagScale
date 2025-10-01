@@ -1,0 +1,79 @@
+diff --git a/vllm_mlu/vllm_mlu/model_executor/model_loader/tensorizer.py b/vllm_mlu/vllm_mlu/model_executor/model_loader/tensorizer.py
+new file mode 100644
+index 000000000..fd47b4946
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/model_executor/model_loader/tensorizer.py
+@@ -0,0 +1,71 @@
++import time
++import torch
++
++from vllm.model_executor.model_loader.tensorizer import (TensorizerAgent,
++                                                         TensorDeserializer,
++                                                         get_mem_usage,
++                                                         _read_stream,
++                                                         convert_bytes)
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++from vllm.logger import init_logger
++logger = init_logger(__name__)
++
++
++def vllm__model_executor__model_loader__tensorizer__TensorizerAgent__deserialize(self):
++    """
++    Deserialize the model using the TensorDeserializer. This method is
++    specifically for vLLM models using tensorizer's plaid_mode.
++
++    The deserializer makes use of tensorizer_args.stream_params
++    to configure the behavior of the stream when loading tensors from a
++    serialized model. The deserializer_params are used to configure the
++    behavior of the TensorDeserializer when loading tensors themselves.
++    Documentation on these params can be found in TensorizerArgs
++
++    Returns:
++        nn.Module: The deserialized model.
++    """
++    before_mem = get_mem_usage()
++    start = time.perf_counter()
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: use mlu device
++    '''
++    with _read_stream(
++            self.tensorizer_config.tensorizer_uri,
++            **self.tensorizer_args.stream_params
++    ) as stream, TensorDeserializer(
++            stream,
++            dtype=self.tensorizer_config.dtype,
++            device=f'mlu:{torch.mlu.current_device()}',
++            **self.tensorizer_args.deserializer_params) as deserializer:
++        deserializer.load_into_module(self.model)
++        end = time.perf_counter()
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++    total_bytes_str = convert_bytes(deserializer.total_tensor_bytes)
++    duration = end - start
++    per_second = convert_bytes(deserializer.total_tensor_bytes / duration)
++    after_mem = get_mem_usage()
++    deserializer.close()
++    logger.info("Deserialized %s in %0.2fs, %s/s", total_bytes_str,
++                end - start, per_second)
++    logger.info("Memory usage before: %s", before_mem)
++    logger.info("Memory usage after: %s", after_mem)
++
++    self._check_tensors_on_meta_device()
++    self._resize_lora_embeddings()
++    del self.model.vllm_tensorized_marker
++    return self.model.eval()
++
++
++MluHijackObject.apply_hijack(
++    TensorizerAgent,
++    TensorizerAgent.deserialize,
++    vllm__model_executor__model_loader__tensorizer__TensorizerAgent__deserialize
++)
+\ No newline at end of file
+
