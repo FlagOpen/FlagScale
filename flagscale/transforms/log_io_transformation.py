@@ -9,8 +9,12 @@ from flagscale.transforms.hook import ModelHook, ModuleHookRegistry
 from flagscale.transforms.transformation import Transformation
 
 
+def _shape_of(x: torch.Tensor, name: str = "N/A") -> str:
+    return f"{name}: {getattr(x, 'shape', type(x).__name__)}"
+
+
 class LogIOHook(ModelHook):
-    """A simple hook that logs the input shapes of a module.
+    """A simple hook that logs the input/output shapes of a module.
     Only used for debugging. Will be removed in the future.
     """
 
@@ -18,7 +22,7 @@ class LogIOHook(ModelHook):
         """Initialize the hook.
 
         Args:
-            log_level: The log level to use. It must be a valid logger level.
+            log_level (str): The log level to use. It must be a valid logger level.
         """
 
         super().__init__()
@@ -27,14 +31,24 @@ class LogIOHook(ModelHook):
         self._logger_func = getattr(logger, log_level)
 
     def pre_forward(self, module: nn.Module, *args, **kwargs) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        def shape_of(x: torch.Tensor) -> str:
-            return getattr(x, "shape", type(x).__name__)
+        """Log the input shapes of the module."""
 
-        self._logger_func(
-            f"[LogIOHook] {module.__class__.__name__} input shapes: "
-            f"{tuple(shape_of(a) for a in args)}"
-        )
+        shapes = tuple(_shape_of(a) for a in args)
+        shapes += tuple(_shape_of(v, k) for k, v in kwargs.items())
+
+        self._logger_func(f"[LogIOHook] {module.__class__.__name__} input shapes: {shapes}")
         return args, kwargs
+
+    def post_forward(self, module: nn.Module, output: Any) -> Any:
+        """Log the output shape of the module."""
+
+        if isinstance(output, (list, tuple)):
+            shapes = tuple(_shape_of(o) for o in output)
+        else:
+            shapes = _shape_of(output)
+
+        self._logger_func(f"[LogIOHook] {module.__class__.__name__} output shape: {shapes}")
+        return output
 
 
 class LogIOTransformation(Transformation):
@@ -44,7 +58,7 @@ class LogIOTransformation(Transformation):
         """Initialize the transform.
 
         Args:
-            log_level: The log level to use. It must be a valid logger level.
+            log_level (str): The log level to use. It must be a valid logger level.
         """
 
         super().__init__()
