@@ -1,10 +1,11 @@
 system:
+  vision_recompute_layer_steps: 16
+  vision_ration: 0.1
   num_workers: 1
   calculate_per_token_loss: true
-  tensor_model_parallel_size: 2
+  tensor_model_parallel_size: 1
   pipeline_model_parallel_size: 1
   context_parallel_size: 1
-  # decoder_first_pipeline_num_layers: 12
   disable_bias_linear: True
   use_flash_attn: True
   use_distributed_optimizer: True
@@ -16,12 +17,13 @@ system:
   transformer_impl: transformer_engine
   recompute_method: "uniform"
   recompute_granularity: "full"
-  recompute_num_layers: 1
+  recompute_num_layers: 18
   use_te: True
   precision:
     bf16: True
     attention_softmax_in_fp32: True
   logging:
+    timing_log_level: 2
     log_interval: 1
     tensorboard_log_interval: 1
     log_throughput: True
@@ -30,8 +32,8 @@ system:
     log_params_norm: True
     log_num_zeros_in_grad: True
   checkpoint:
-    save_interval: 1000
-    pretrained_checkpoint: xxxx
+    save_interval: 33
+    # pretrained_checkpoint: /share/project/lizhiyu/data/ckpt/robotics_pretrain_modeltp1pp1_S6_subtask
     dataloader_save: ${experiment.exp_dir}/checkpoints/dataloader
     use_dist_ckpt: False
     ckpt_format: torch
@@ -41,13 +43,13 @@ model:
   attention_backend: flash # don't use "auto(nvte_flash_attn)"
   disable_bias_linear: True
   add_qkv_bias: True
-  num_layers: 28
-  hidden_size: 3584
-  ffn_hidden_size: 18944
-  num_attention_heads: 28
-  num_query_groups: 4
-  seq_length: 2048
-  max_padding_length: 2048 # (cutoff_len)max 32768, change according the dataset
+  num_layers: 36
+  hidden_size: 2048
+  ffn_hidden_size: 11008
+  num_attention_heads: 16
+  num_query_groups: 2
+  seq_length: 16384 # 16384 15360
+  max_padding_length: 16384 # real seq_length
   # especial for qwen2.5-vl
   enable_variable_seq_lengths: True
   max_position_embeddings: 128000 # only useful for additional position embedding
@@ -58,15 +60,16 @@ model:
   attention_dropout: 0.0
   hidden_dropout: 0.0
   clip_grad: 1.0
-  train_iters: 62
+  #######################
+  train_iters: 330
   eval_iters: 0 # no valid
   micro_batch_size: 1
-  global_batch_size: 16
+  global_batch_size: 256
   allow_missing_vision_projection_checkpoint: False
   apply_layernorm_1p: False
   group_query_attention: True
   no_masked_softmax_fusion: True
-  untie_embeddings_and_output_weights: True
+  untie_embeddings_and_output_weights: False
 
   # position embedding
   position_embedding_type: mrope
@@ -88,20 +91,21 @@ model:
     adam_beta1: 0.9
     adam_beta2: 0.999
     lr_scheduler:
-      lr: 1.0e-5
-      min_lr: 1.0e-6
-      # lr_warmup_fraction: .03
-      lr_warmup_iters: 10
+      lr: 5.0e-5
+      min_lr: 0
+      lr_warmup_iters: 30
       lr_decay_style: cosine
 
 data:
-  data_path: xxxx
-  vision_root: xxxx
+  data_path: /share/project/dumengfei/data/real_data_agilex_eval_5_0921_C30A1S1/wds-256
+  vision_root: /
   dataloader_type: external
   split: 100,0,0
+  shuffle-buffer-size: 1000
   tokenizer:
     tokenizer_type: Qwen2VLTokenizer
-    tokenizer_path: xxxx
-    vocab_size: 152064 # 7b
-    extra_vocab_size: 421
+    # tokenizer_path: /share/project/caomingyu/pretrain_model/qwen/Qwen2.5-VL-3B-Instruct
+    tokenizer_path: /models/Qwen/Qwen2.5-VL-3B-Instruct
+    vocab_size: 151643 # action
     make_vocab_size_divisible_by: 64
+    extra_vocab_size: 293

@@ -103,11 +103,13 @@ from flagscale.train.models.qwen2_5_vl.transformer_config import (
     get_vision_model_config,
     get_vision_projection_config
 )
-from tools.datasets.qwenvl.data.dataset_helpers import TaskEncoder, print_error_handler
+# from tools.datasets.qwenvl.data.dataset_helpers_action import TaskEncoder, print_error_handler
+from tools.datasets.qwenvl.data.dataset_helpers_action_unified_plus_sub import TaskEncoder, print_error_handler
 #### especially for qwen2.5-vl ####
 IGNORE_IDX=-100
 FIRST_MAX_PADDING_FLAG = True
 LAST_LARGE_IMG=False
+
 def model_provider(
     pre_process=True, post_process=True, add_encoder=True, add_decoder=True
 ) -> Union[Qwen2_5VLModel]:
@@ -172,32 +174,38 @@ def model_provider(
         freeze_vision_model=args.freeze_ViT,
         freeze_vision_projection=False
     )
+      # ========== 打印模型embedding层信息 ==========
+    print_rank_0("=" * 50)
+    print_rank_0("Model Embedding Information:")
+    print_rank_0("=" * 50)
     
-    # def print_trainable_status(model):
-    #     """递归打印模型所有参数的可训练状态"""
-    #     for name, param in model.named_parameters():
-    #         print(f"参数: {name}")
-    #         print(f"  可训练: {param.requires_grad}")
-    #         print(f"  形状: {param.shape}")
-    #         print("-" * 50)
-    # def count_trainable_params(model):
-    #     """统计可训练和不可训练的参数数量"""
-    #     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    #     non_trainable = sum(p.numel() for p in model.parameters() if not p.requires_grad)
-    #     total = trainable + non_trainable
+    # 方法1: 直接查看模型结构中的embedding相关信息
+    try:
+        # 语言模型的embedding
+        if hasattr(model, 'language_model') and hasattr(model.language_model, 'embedding'):
+            lang_embedding = model.language_model.embedding
+            print_rank_0(f"Language model embedding shape: {lang_embedding.word_embeddings.weight.shape}")
+            print_rank_0(f"Language vocab size: {args.padded_vocab_size}")
+            print_rank_0(f"Language hidden size: {config.hidden_size}")
+            print(f"Config vocab_size: {args.padded_vocab_size}")
+            print(f"Actual embedding allocated: {model.language_model.embedding.word_embeddings.weight.shape[0]}")
         
-    #     print(f"总参数: {total:,}")
-    #     print(f"可训练参数: {trainable:,} ({trainable/total:.2%})")
-    #     print(f"不可训练参数: {non_trainable:,} ({non_trainable/total:.2%})")
-
-    # # 使用示例
-    # count_trainable_params(model)
-
-    # 使用示例
-    #print(f"LZY: model struct: \n{model}")
-    # #print(f"LZY: model parameter ------------")
-    # print_trainable_status(model)
-    
+        # 视觉模型的embedding
+        if hasattr(model, 'vision_model') and hasattr(model.vision_model, 'embeddings'):
+            vision_embedding = model.vision_model.embeddings
+            print_rank_0(f"Vision model embedding type: {type(vision_embedding)}")
+            if hasattr(vision_embedding, 'patch_embedding'):
+                print_rank_0(f"Vision patch embedding shape: {vision_embedding.patch_embedding.weight.shape}")
+        
+        # 位置编码信息
+        if hasattr(model, 'language_model') and hasattr(model.language_model, 'rotary_pos_emb'):
+            print_rank_0(f"Language model uses rotary position embedding")
+        elif hasattr(model, 'language_model') and hasattr(model.language_model.embedding, 'position_embeddings'):
+            pos_emb = model.language_model.embedding.position_embeddings
+            print_rank_0(f"Language position embedding shape: {pos_emb.weight.shape}")
+            
+    except Exception as e:
+        print_rank_0(f"Error accessing embedding layers: {e}")
 
     return model
 
@@ -593,10 +601,7 @@ def forward_step(data_iterator, model: Qwen2_5VLModel):
             video_input_mask
         ) = get_batch(data_iterator)
     timers('batch-generator').stop()
-<<<<<<< HEAD
     #print(f"LZY imags: {imgs.shape}, content: {imgs.sum()}, {imgs}")
-=======
->>>>>>> main
     vision_data = torch.cat([imgs, videos], dim=0)
     vision_grid = torch.cat([image_thw_grids, video_thw_grids], dim=0)
     with stimer:
@@ -797,13 +802,8 @@ def add_multimodal_extra_args(parser):
     group.add_argument("--image-max-pixels", type=int, default=768*768, help="the maximum pixels of a single image")
     group.add_argument("--image-min-pixels", type=int, default=32*32, help="the minimum pixels of a single image")
     group.add_argument("--vision-recompute-layer-steps", type=int, default=0, help="the recmoute layers for vision using uniform method. 0 is disable.")
-<<<<<<< HEAD
     
     
-=======
-
-
->>>>>>> main
 
     # just for checkpoint conversion
     group.add_argument(
