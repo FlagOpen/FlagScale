@@ -1,0 +1,306 @@
+diff --git a/vllm_mlu/vllm_mlu/model_executor/models/qwen2_vl.py b/vllm_mlu/vllm_mlu/model_executor/models/qwen2_vl.py
+new file mode 100644
+index 000000000..0d9f1c8e7
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/model_executor/models/qwen2_vl.py
+@@ -0,0 +1,299 @@
++from typing import Optional
++import torch
++import torch.nn.functional as F
++from einops import rearrange, repeat
++from transformers.models.qwen2_vl.configuration_qwen2_vl import (
++    Qwen2VLVisionConfig)
++
++from vllm.logger import init_logger
++from vllm.model_executor.layers.activation import QuickGELU
++from vllm.model_executor.models.qwen2_vl import (
++    Qwen2VisionMLP, Qwen2VisionTransformer,
++    Qwen2VisionAttention, Qwen2VLForConditionalGeneration)
++from vllm.model_executor.layers.quantization import QuantizationConfig
++from vllm.attention.selector import _Backend
++
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++
++logger = init_logger(__name__)
++
++
++vllm__module_executor__models__qwen2_vl__Qwen2VisionTransformer__init__org = Qwen2VisionTransformer.__init__
++
++def vllm__module_executor__models__qwen2_vl__Qwen2VisionTransformer__init__(
++    self,
++    vision_config: Qwen2VLVisionConfig,
++    norm_eps: float = 1e-6,
++    quant_config: Optional[QuantizationConfig] = None,
++    prefix: str = "",
++) -> None:
++    vllm__module_executor__models__qwen2_vl__Qwen2VisionTransformer__init__org(
++        self, vision_config, norm_eps, quant_config, prefix
++    )
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: use mlu_ops.flash_atten for better performance
++    '''
++    self.attn_backend = _Backend.FLASH_ATTN
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++
++def vllm__module_executor__models__qwen2_vl__Qwen2VisionTransformer__forward(
++    self,
++    x: torch.Tensor,
++    grid_thw: torch.Tensor
++):
++    # patchify
++    x = x.to(device=self.device, dtype=self.dtype)
++    x = self.patch_embed(x)
++
++    # compute position embedding
++    rotary_pos_emb = self.rot_pos_emb(grid_thw)
++
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: pack q & k to fit tmo.apply_rotary
++    '''
++    # compute cos sin for apply_rope
++    cos = rotary_pos_emb.cos()
++    sin = rotary_pos_emb.sin()
++    cos = repeat(cos, "... d -> ... (2 d)")
++    sin = repeat(sin, "... d -> ... (2 d)")
++    rotary_pos_emb.cos = cos
++    rotary_pos_emb.sin = sin
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++    # compute cu_seqlens
++    cu_seqlens = torch.repeat_interleave(grid_thw[:, 1] * grid_thw[:, 2],
++                                         grid_thw[:, 0]).cumsum(
++                                             dim=0, dtype=torch.int32)
++    cu_seqlens = F.pad(cu_seqlens, (1, 0), "constant", 0)
++
++    # transformers
++    x = x.unsqueeze(1)
++
++    # pre-compute seqlens for attn mask to reduce cuMemcpy operations
++    max_seqlen, seqlens = self.compute_attn_mask_seqlen(cu_seqlens)
++    for blk in self.blocks:
++        x = blk(
++            x,
++            cu_seqlens=cu_seqlens,
++            rotary_pos_emb=rotary_pos_emb,
++            max_seqlen=max_seqlen,
++            seqlens=seqlens,
++        )
++
++    # adapter
++    x = self.merger(x)
++
++    return x
++
++
++def vllm__module_executor__models__qwen2_vl__Qwen2VisionAttention__forward(
++    self,
++    x: torch.Tensor,
++    cu_seqlens: torch.Tensor,
++    rotary_pos_emb: torch.Tensor,
++    max_seqlen: Optional[int] = None,  # Only used for Flash Attention
++    seqlens: Optional[list[int]] = None,  # Only used for xFormers
++) -> torch.Tensor:
++    # [s, b, c] --> [s, b, 3 * head * head_dim]
++    x, _ = self.qkv(x)
++
++    # [s, b, 3 * head * head_dim] -> 3 * [s, b, head, head_dim]
++    q, k, v = self.split_qkv(x)
++    batch_size = q.shape[1]
++
++    q, k, v = (rearrange(x, "s b ... -> b s ...").contiguous()
++               for x in (q, k, v))
++
++    if rotary_pos_emb is not None:
++        '''
++        =============================
++        Modify by vllm_mlu
++        =============================
++        @brief: apply mlu_ops.apply_rotary
++        '''
++        head_dim = q.shape[-1]
++        sin = rotary_pos_emb.sin
++        cos = rotary_pos_emb.cos
++        from vllm_mlu import _mlu_ops as mlu_ops
++        q = q.float()
++        q = mlu_ops.rotary_embedding(
++            q, sin, cos, None, None, False, False, False, q.shape[1]
++        )
++        k = k.float()
++        k = mlu_ops.rotary_embedding(
++            k, sin, cos, None, None, False, False, False, k.shape[1]
++        )
++        q = q.type_as(v)
++        k = k.type_as(v)
++        '''
++        ==================
++        End of MLU Hijack
++        ==================
++        '''
++
++    if self.attn_backend == _Backend.FLASH_ATTN:
++        '''
++        =============================
++        Modify by vllm_mlu
++        =============================
++        @brief: apply mlu_ops.flash_attention
++        '''
++        q, k, v = (rearrange(x, "b s ... -> (b s) ...") for x in [q, k, v])
++        # max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
++        output = mlu_ops.flash_attention(q,
++                                         k,
++                                         v,
++                                         out=None,
++                                         cu_seq_lens_q=cu_seqlens,
++                                         cu_seq_lens_kv=cu_seqlens,
++                                         max_seq_len_q=max_seqlen,
++                                         max_seq_len_kv=max_seqlen,
++                                         alibi_slope=None,
++                                         attn_bias=None,
++                                         softmax_scale=head_dim ** -0.5,
++                                         is_causal=False)
++        context_layer = rearrange(output,
++                                  "(b s) ... -> b s ...",
++                                  b=batch_size)
++        '''
++        ==================
++        End of MLU Hijack
++        ==================
++        '''
++    elif self.attn_backend == _Backend.TORCH_SDPA:
++        # Execute attention entry by entry for speed & less VRAM.
++        outputs = []
++        for i in range(1, len(cu_seqlens)):
++            start_idx = cu_seqlens[i - 1]
++            end_idx = cu_seqlens[i]
++            q_i = q[:, start_idx:end_idx]
++            k_i = k[:, start_idx:end_idx]
++            v_i = v[:, start_idx:end_idx]
++            q_i, k_i, v_i = (rearrange(x, "b s h d -> b h s d")
++                                for x in [q_i, k_i, v_i])
++            output_i = F.scaled_dot_product_attention(q_i,
++                                                        k_i,
++                                                        v_i,
++                                                        dropout_p=0.0)
++            output_i = rearrange(output_i, "b h s d -> b s h d ")
++            outputs.append(output_i)
++        context_layer = torch.cat(outputs, dim=1)
++    elif self.attn_backend == _Backend.XFORMERS:
++        from xformers import ops as xops
++        from xformers.ops.fmha.attn_bias import BlockDiagonalMask
++
++        attn_bias = BlockDiagonalMask.from_seqlens(q_seqlen=seqlens,
++                                                    kv_seqlen=None,
++                                                    device=q.device)
++
++        context_layer = xops.memory_efficient_attention_forward(
++            q, k, v, attn_bias=attn_bias, p=0, scale=None)
++    context_layer = rearrange(context_layer,
++                              "b s h d -> s b (h d)").contiguous()
++
++    output, _ = self.proj(context_layer)
++    return output
++
++
++vllm__module_executor__models__qwen2_vl__Qwen2VisionAttention__init_org = Qwen2VisionAttention.__init__
++
++def vllm__module_executor__models__qwen2_vl__Qwen2VisionAttention____init__(
++    self,
++    embed_dim: int,
++    num_heads: int,
++    projection_size: int,
++    quant_config: Optional[QuantizationConfig] = None,
++    prefix: str = "",
++) -> None:
++    vllm__module_executor__models__qwen2_vl__Qwen2VisionAttention__init_org(
++            self, embed_dim, num_heads, projection_size, quant_config, prefix)
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: use mlu_ops.flash_atten for better performance
++    '''
++    self.attn_backend = _Backend.FLASH_ATTN
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++def vllm__module_executor__models__qwen2_vl___maybe_ignore_quant_config(
++    self,
++    quant_config: QuantizationConfig
++):
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: quantization for vit not yet supported
++    '''
++    if quant_config is not None:
++        logger.warning("Quantization for VisionTransformer not yet supported.")
++        return None
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++
++def vllm_module_executor__models__qwen2_vl__Qwen2VisionMLP__forward(
++    self,
++    x: torch.Tensor
++) -> torch.Tensor:
++    x_parallel, _ = self.fc1(x)
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: better acc than mlu_ops.active for half precision
++    '''
++    if x_parallel.dtype == torch.half and isinstance(self.act, QuickGELU):
++        x_parallel = self.act.forward_native(x_parallel)
++    else:
++        x_parallel = self.act(x_parallel)
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++    x, _ = self.fc2(x_parallel)
++    return x
++
++
++MluHijackObject.apply_hijack(Qwen2VisionTransformer,
++                             Qwen2VisionTransformer.__init__,
++                             vllm__module_executor__models__qwen2_vl__Qwen2VisionTransformer__init__)
++MluHijackObject.apply_hijack(Qwen2VisionTransformer,
++                             Qwen2VisionTransformer.forward,
++                             vllm__module_executor__models__qwen2_vl__Qwen2VisionTransformer__forward)
++MluHijackObject.apply_hijack(Qwen2VisionAttention,
++                             Qwen2VisionAttention.forward,
++                             vllm__module_executor__models__qwen2_vl__Qwen2VisionAttention__forward)
++MluHijackObject.apply_hijack(Qwen2VisionAttention,
++                             Qwen2VisionAttention.__init__,
++                             vllm__module_executor__models__qwen2_vl__Qwen2VisionAttention____init__)
++MluHijackObject.apply_hijack(Qwen2VLForConditionalGeneration,
++                             Qwen2VLForConditionalGeneration._maybe_ignore_quant_config,
++                             vllm__module_executor__models__qwen2_vl___maybe_ignore_quant_config)
++MluHijackObject.apply_hijack(Qwen2VisionMLP,
++                             Qwen2VisionMLP.forward,
++                             vllm_module_executor__models__qwen2_vl__Qwen2VisionMLP__forward)
+

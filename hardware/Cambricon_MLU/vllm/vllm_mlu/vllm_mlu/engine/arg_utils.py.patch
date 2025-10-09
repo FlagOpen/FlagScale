@@ -1,0 +1,43 @@
+diff --git a/vllm_mlu/vllm_mlu/engine/arg_utils.py b/vllm_mlu/vllm_mlu/engine/arg_utils.py
+new file mode 100644
+index 000000000..b0cfdc438
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/engine/arg_utils.py
+@@ -0,0 +1,36 @@
++from vllm.config import ModelConfig
++from vllm.engine.arg_utils import EngineArgs
++from vllm.logger import init_logger
++
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++
++logger = init_logger(__name__)
++
++
++vllm__engine__arg_utils__EngineArgs__create_model_config_org = EngineArgs.create_model_config
++vllm__engine__arg_utils__EngineArgs__add_cli_args_org = EngineArgs.add_cli_args
++
++
++def vllm__engine__arg_utils__EngineArgs__create_model_config(self) -> ModelConfig:
++    model_config = vllm__engine__arg_utils__EngineArgs__create_model_config_org(self)
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: set context mlugraph info for model config
++    '''
++    model_config.set_context_mlugraph_info(
++        getattr(self, "enable_context_mlugraph", False),
++        getattr(self, "context_batch_size_to_capture", None),
++        getattr(self, "context_seq_len_to_capture", None))
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++    return model_config
++
++
++MluHijackObject.apply_hijack(EngineArgs,
++                             EngineArgs.create_model_config,
++                             vllm__engine__arg_utils__EngineArgs__create_model_config)
+

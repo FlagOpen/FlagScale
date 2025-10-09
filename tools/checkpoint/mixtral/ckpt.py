@@ -10,15 +10,20 @@ def get_hf_attn_ckpt(message, model, layer_id, args):
     nh = args.num_attention_heads
     ng = args.num_query_groups if args.group_query_attention else args.num_attention_heads
     dim = args.hidden_size
+    head_dim = (
+        args.hidden_size // args.num_attention_heads
+        if args.kv_channels is None
+        else args.kv_channels
+    )
     assert nh % ng == 0
 
     tf_layer = model.model.layers[layer_id]
     message["qkv weight"] = (
         torch.cat(
             [
-                tf_layer.self_attn.q_proj.weight.reshape((ng, dim // ng, -1)),
-                tf_layer.self_attn.k_proj.weight.reshape((ng, dim // nh, -1)),
-                tf_layer.self_attn.v_proj.weight.reshape((ng, dim // nh, -1)),
+                tf_layer.self_attn.q_proj.weight.reshape((ng, -1, head_dim, dim)),
+                tf_layer.self_attn.k_proj.weight.reshape((ng, -1, head_dim, dim)),
+                tf_layer.self_attn.v_proj.weight.reshape((ng, -1, head_dim, dim)),
             ],
             dim=1,
         )
@@ -100,12 +105,17 @@ def set_hf_attn_ckpt(message, model, layer_id, md, args):
     nh = args.num_attention_heads
     ng = args.num_query_groups if args.group_query_attention else args.num_attention_heads
     dim = args.hidden_size
+    head_dim = (
+        args.hidden_size // args.num_attention_heads
+        if args.kv_channels is None
+        else args.kv_channels
+    )
     assert nh % ng == 0
 
     tf_layer = model.model.layers[layer_id]
     # weight
-    qkv_weight = qkv_weight.view(ng, -1, dim)
-    qkv_weight = torch.split(qkv_weight, [dim // ng, dim // nh, dim // nh], dim=1)
+    qkv_weight = qkv_weight.view(ng, -1, head_dim, dim)
+    qkv_weight = torch.split(qkv_weight, split_size_or_sections=[nh // ng, 1, 1], dim=1)
     tf_layer.self_attn.q_proj.weight.data.copy_(qkv_weight[0].reshape(-1, dim))
     tf_layer.self_attn.k_proj.weight.data.copy_(qkv_weight[1].reshape(-1, dim))
     tf_layer.self_attn.v_proj.weight.data.copy_(qkv_weight[2].reshape(-1, dim))

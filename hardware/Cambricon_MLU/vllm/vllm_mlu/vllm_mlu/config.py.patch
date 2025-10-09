@@ -1,0 +1,285 @@
+diff --git a/vllm_mlu/vllm_mlu/config.py b/vllm_mlu/vllm_mlu/config.py
+new file mode 100644
+index 000000000..eac896a78
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/config.py
+@@ -0,0 +1,278 @@
++from typing import Tuple
++
++import torch
++
++import vllm.envs as envs
++from vllm.logger import init_logger
++from vllm.config import (ModelConfig, CacheConfig, LoRAConfig,
++                         VllmConfig, CompilationConfig, CompilationLevel,
++                         _DEFAULT_MAX_NUM_BATCHED_TOKENS)
++from vllm.utils import random_uuid
++from vllm_mlu._mlu_utils import is_dpsk_mcc_enabled
++
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++
++logger = init_logger(__name__)
++
++vllm__config__LoRAConfig__verify_with_model_config_org = LoRAConfig.verify_with_model_config
++
++
++def vllm__config__CacheConfig___verify_cache_dtype(self) -> None:
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: add kv_cache_dtype int8 support
++    '''
++    if self.cache_dtype == "auto":
++        pass
++    elif self.cache_dtype in ("fp8", "fp8_e4m3", "fp8_e5m2"):
++        logger.info(
++            "Using fp8 data type to store kv cache. It reduces the GPU "
++            "memory footprint and boosts the performance. "
++            "Meanwhile, it may cause accuracy drop without a proper "
++            "scaling factor")
++    elif self.cache_dtype == 'int8':
++        logger.info(
++            "Using int8 data type to store kv cache. It reduces the MLU "
++            "memory footprint and boosts the performance. ")
++    else:
++        raise ValueError(f"Unknown kv cache dtype: {self.cache_dtype}")
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++
++def vllm__config__ModelConfig__get_head_size(self) -> int:
++    # TODO remove hard code
++    if self.is_deepseek_mla:
++        '''
++        =============================
++        Modify by vllm_mlu
++        =============================
++        @brief: force to return 576.
++        '''
++        # qk_rope_head_dim = getattr(self.hf_text_config, "qk_rope_head_dim",
++        #                             0)
++        # if self.use_mla:
++        #     return self.hf_text_config.kv_lora_rank + qk_rope_head_dim
++        # else:
++        #     qk_nope_head_dim = getattr(self.hf_text_config,
++        #                                 "qk_nope_head_dim", 0)
++        #     if qk_rope_head_dim and qk_nope_head_dim:
++        #         return qk_rope_head_dim + qk_nope_head_dim
++        return 576
++        '''
++        ==================
++        End of MLU Hijack
++        ==================
++        '''
++
++    if hasattr(self.hf_text_config,
++                "model_type") and (self.hf_text_config.model_type
++                                    == "zamba2"):
++        return self.hf_text_config.attention_head_dim
++
++    if self.is_attention_free:
++        return 0
++
++    if hasattr(self.hf_text_config, "head_dim"):
++        return self.hf_text_config.head_dim
++    # FIXME(woosuk): This may not be true for all models.
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: adjust num_heads and num_attention_heads.
++    '''
++    if hasattr(self.hf_text_config, "num_heads"):
++        num_attention_heads = self.hf_text_config.num_heads
++    else:
++        num_attention_heads = self.hf_text_config.num_attention_heads
++
++    return (self.hf_text_config.hidden_size // num_attention_heads)
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++
++def vllm__config__ModelConfig__set_context_mlugraph_info(
++    self,
++    enable_context_mlugraph: bool,
++    batch_size: int,
++    seq_len: int
++) -> None:
++    self.enable_context_mlugraph = enable_context_mlugraph
++    self.context_batch_size_to_capture = batch_size
++    self.context_seq_len_to_capture = seq_len
++
++
++def vllm__config__ModelConfig__use_context_mlugraph(self) -> bool:
++    return hasattr(self, "enable_context_mlugraph") and self.enable_context_mlugraph
++
++
++def vllm__config__ModelConfig__get_context_mlugraph_bs_and_seq(self) -> Tuple[int, int]:
++    return self.context_batch_size_to_capture, self.context_seq_len_to_capture
++
++
++def vllm__config__ModelConfig__is_embedding_task(self) -> bool:
++    return self.runner_type == "pooling"
++
++
++def vllm__config__LoRAConfig__verify_with_model_config(self, model_config: ModelConfig):
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: do not support quantization with lora for now
++    '''
++    if model_config.quantization:
++        raise ValueError("MLU backend does not support quantization with lora for now")
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++    vllm__config__LoRAConfig__verify_with_model_config_org(self, model_config)
++
++
++class VllmConfig_Mluhijack(VllmConfig):
++
++    def __post_init__(self):
++        """Verify configs are valid & consistent with each other.
++        """
++        if self.model_config is not None:
++            self.model_config.verify_async_output_proc(self.parallel_config,
++                                                       self.speculative_config,
++                                                       self.device_config)
++            self.model_config.verify_with_parallel_config(self.parallel_config)
++
++        if self.cache_config is not None:
++            self.cache_config.verify_with_parallel_config(self.parallel_config)
++
++        if self.lora_config:
++            self.lora_config.verify_with_cache_config(self.cache_config)
++            self.lora_config.verify_with_model_config(self.model_config)
++            self.lora_config.verify_with_scheduler_config(
++                self.scheduler_config)
++        if self.prompt_adapter_config:
++            self.prompt_adapter_config.verify_with_model_config(
++                self.model_config)
++
++        if self.quant_config is None and \
++            self.model_config is not None and self.load_config is not None:
++            self.quant_config = VllmConfig._get_quantization_config(
++                self.model_config, self.load_config)
++
++        from vllm.platforms import current_platform
++        if self.scheduler_config is not None and \
++            self.model_config is not None and \
++            self.scheduler_config.chunked_prefill_enabled and \
++            self.model_config.dtype == torch.float32 and \
++            current_platform.get_device_capability() == (7, 5):
++            logger.warning_once(
++                "Turing devices tensor cores do not support float32 matmul. "
++                "To workaround this limitation, vLLM will set 'ieee' input "
++                "precision for chunked prefill triton kernels.")
++
++        if self.compilation_config is None:
++            self.compilation_config = CompilationConfig()
++        if envs.VLLM_USE_V1 and self.model_config is not None and \
++            not self.model_config.enforce_eager:
++            # NOTE(woosuk): Currently, we use inductor because the piecewise
++            # CUDA graphs do not work properly with the custom CUDA kernels.
++            # FIXME(woosuk): Disable inductor to reduce the compilation time
++            # and avoid any potential issues with the inductor.
++            # FIXME(rob): Add function to set all of these.
++            self.compilation_config.custom_ops = ["none"]
++            self.compilation_config.use_cudagraph = True
++            self.compilation_config.use_inductor = True
++            self.compilation_config.cudagraph_num_of_warmups = 1
++            self.compilation_config.pass_config.enable_fusion = False
++            self.compilation_config.pass_config.enable_noop = False
++            self.compilation_config.level = CompilationLevel.PIECEWISE
++            self.compilation_config.set_splitting_ops_for_v1()
++
++        self._set_cudagraph_sizes()
++
++        if self.cache_config is not None and \
++            self.cache_config.cpu_offload_gb > 0 and \
++            self.compilation_config.level != CompilationLevel.NO_COMPILATION \
++                and not envs.VLLM_USE_V1:
++            logger.warning(
++                "CPU offload is not supported with `torch.compile` in v0 yet."
++                " Disabling `torch.compile`.")
++            self.compilation_config.level = CompilationLevel.NO_COMPILATION
++
++        if ((not envs.VLLM_USE_V1) and self.lora_config is not None
++                and self.compilation_config.level
++                != CompilationLevel.NO_COMPILATION):
++            logger.warning(
++                "LoRA for V0 is not supported with `torch.compile` yet. "
++                "Disabling `torch.compile`.")
++            self.compilation_config.level = CompilationLevel.NO_COMPILATION
++
++        if self.model_config and self.model_config.use_mla and \
++            not (current_platform.is_cuda() or current_platform.is_rocm()):
++            '''
++            =============================
++            Modify by vllm_mlu
++            =============================
++            @brief: do not modify max_num_batched_tokens values.
++            @brief: MLU also supports chunked prefill.
++            '''
++            if not current_platform.is_out_of_tree() or is_dpsk_mcc_enabled(
++            ) or (self.speculative_config is not None
++                  and self.speculative_config.num_speculative_tokens
++                  > 0) or self.scheduler_config.num_scheduler_steps > 1:
++                self.scheduler_config.enable_chunked_prefill = False
++                self.scheduler_config.chunked_prefill_enabled = False
++                logger.warning(
++                    "Chunked prefill is disabled on a non-MLU platform, or dpsk mcc or mtp is enabled,"
++                    " or num_scheduler_steps > 1, forcing chunked prefill and prefix caching to be disabled.")
++
++            # self.scheduler_config.max_num_batched_tokens = max(
++            #     self.scheduler_config.max_model_len,
++            #     _DEFAULT_MAX_NUM_BATCHED_TOKENS)
++
++            if self.cache_config is not None:
++                self.cache_config.enable_prefix_caching = False
++            '''
++            ==================
++            End of MLU Hijack
++            ==================
++            '''
++        current_platform.check_and_update_config(self)
++
++        if not self.instance_id:
++            self.instance_id = random_uuid()[:5]
++
++
++MluHijackObject.apply_hijack(ModelConfig,
++                             "set_context_mlugraph_info",
++                             vllm__config__ModelConfig__set_context_mlugraph_info)
++MluHijackObject.apply_hijack(ModelConfig,
++                             "use_context_mlugraph",
++                             vllm__config__ModelConfig__use_context_mlugraph)
++MluHijackObject.apply_hijack(ModelConfig,
++                             "get_context_mlugraph_bs_and_seq",
++                             vllm__config__ModelConfig__get_context_mlugraph_bs_and_seq)
++MluHijackObject.apply_hijack(ModelConfig,
++                             "is_embedding_task",
++                             vllm__config__ModelConfig__is_embedding_task)
++MluHijackObject.apply_hijack(CacheConfig,
++                             CacheConfig._verify_cache_dtype,
++                             vllm__config__CacheConfig___verify_cache_dtype)
++MluHijackObject.apply_hijack(ModelConfig,
++                             ModelConfig.get_head_size,
++                             vllm__config__ModelConfig__get_head_size)
++MluHijackObject.apply_hijack(LoRAConfig,
++                             LoRAConfig.verify_with_model_config,
++                             vllm__config__LoRAConfig__verify_with_model_config)
++MluHijackObject.apply_hijack(VllmConfig,
++                             VllmConfig.__post_init__,
++                             VllmConfig_Mluhijack.__post_init__)
+
