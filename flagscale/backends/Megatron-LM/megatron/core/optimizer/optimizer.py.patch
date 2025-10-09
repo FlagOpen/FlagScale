@@ -1,5 +1,5 @@
 diff --git a/megatron/core/optimizer/optimizer.py b/megatron/core/optimizer/optimizer.py
-index b5bc894c..29f7b08e 100644
+index b5bc894cd..7c1f2a153 100644
 --- a/megatron/core/optimizer/optimizer.py
 +++ b/megatron/core/optimizer/optimizer.py
 @@ -92,7 +92,13 @@ def _multi_tensor_copy_this_to_that(
@@ -53,7 +53,7 @@ index b5bc894c..29f7b08e 100644
          if chained_optimizers:
              self.config = getattr(chained_optimizers[0], 'config', None)
              for optimizer in chained_optimizers:
-@@ -1137,36 +1153,115 @@ class ChainedOptimizer(MegatronOptimizer):
+@@ -1137,36 +1153,113 @@ class ChainedOptimizer(MegatronOptimizer):
              return [optimizer.state_dict() for optimizer in self.chained_optimizers]
  
      def sharded_state_dict(
@@ -120,7 +120,6 @@ index b5bc894c..29f7b08e 100644
 +                self.mapping_idx = mapping_idx
 +                return fake_sharded_state_dict
 +            else:  # megatron source apply ep
-+                logger.info("sharded_state_dict:megatron source chained_optimizers apply ep!")
 +                sharded_state_dict = {}
 +                for optimizer_idx, optimizer in enumerate(self.chained_optimizers):
 +                    optim_state_dict = optimizer.sharded_state_dict(
@@ -172,7 +171,6 @@ index b5bc894c..29f7b08e 100644
 +            for optimizer, state in zip(self.chained_optimizers, new_state_dict):
 +                optimizer.load_state_dict(state)
 +        else:  # megatron source apply ep
-+            logger.info("load_state_dict:megatron source chained_optimizers apply !")
 +            if len(self.chained_optimizers) == 1:
 +                self.chained_optimizers[0].load_state_dict(state_dict)
 +                return
@@ -188,7 +186,7 @@ index b5bc894c..29f7b08e 100644
  
      @torch.no_grad()
      def prepare_grads(self) -> bool:
-@@ -1319,7 +1414,7 @@ class ChainedOptimizer(MegatronOptimizer):
+@@ -1319,7 +1412,7 @@ class ChainedOptimizer(MegatronOptimizer):
  
              # Lazy loading checkpoint, state dict is needed only when DP rank = 0.
              if optimizer.data_parallel_group.rank() == 0 and states is None:
