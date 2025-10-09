@@ -1,63 +1,41 @@
 name: Run Tests and Push Meatx Docker Image 
 
 on:
-  push:
-    branches: ["main"]
-    paths:
-      - '.github/workflows/build-and-push-docker.yml'
-      # - 'hardware/Metax_C550/**'
-  pull_request:
-    branches: ["main"]
-    paths:
-      - '.github/workflows/build-and-push-docker.yml'
-      # - 'hardware/Metax_C550/**'
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
-  cancel-in-progress: true
+  workflow_call:
+    inputs:
+      type:
+        required: true
+        type: string
+      task:
+        required: true
+        type: string
+      image:
+        required: true
+        type: string
 
 jobs:
-  set-env:
-    runs-on: ubuntu-latest
-    outputs:
-      ci_image: ${{ steps.set-image.outputs.ci_image }} # Declare output variable
-      test_tasks: ${{ steps.set-tasks.outputs.test_tasks }}
-      test_type: ${{ steps.set-type.outputs.test_type }}
-    steps:
-      - name: Set CI base Image
-        id: set-image
-        run: |
-          echo "ci_image=localhost:5000/flagscale:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64-time2508051515" >> $GITHUB_OUTPUT  # Set output variable
-      - name: Set Test Tasks
-        id: set-tasks
-        run: |
-          echo "test_tasks=deepseek_r1_distill_qwen-metax,opi_llama3_1_instruct-metax,opi_llama3_1_instruct-flaggems-metax,qwen3-metax,qwen3-flaggems-metax" >> $GITHUB_OUTPUT
-      - name: Set Test Type
-        id: set-type
-        run: |
-          echo "test_type=inference" >> $GITHUB_OUTPUT
-
-  functional-tests-inference:
-    needs: set-env
+  functional-test:
     runs-on: [self-hosted, Linux, X64, metax-0, gpus-2]
-    container:
-      image: ${{ needs.set-env.outputs.ci_image }}
-      options: >-
-        --ipc=host
-        --privileged=true
-        --group-add video
-        --shm-size 100gb
-        --hostname flagscale_cicd
-        --user root
-        --ulimit nofile=65535:65535
-        --ulimit memlock=-1
-        --device=/dev/dri
-        --device=/dev/mxcd
-      ports:
-        - 80
-      volumes:
-        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
-        - /home/flagscale_cicd/sccache:/root/.cache/sccache
+    services:
+      ci-env:
+        image: ${{ inputs.image }}
+        options: >-
+          --ipc=host
+          --privileged=true
+          --group-add video
+          --shm-size 100gb
+          --hostname flagscale_cicd
+          --user root
+          --ulimit nofile=65535:65535
+          --ulimit memlock=-1
+          --device=/dev/dri
+          --device=/dev/mxcd
+        ports:
+          - 80
+        volumes:
+          - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
+          - /home/flagscale_cicd/sccache:/root/.cache/sccache
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -78,6 +56,25 @@ jobs:
 
       - name: Setup Environment Info
         run: |
+          echo "Using_image: ${{ inputs.image }}"
+          container_id="$(/usr/bin/docker ps --format "{{.ID}} {{.Names}}" | grep "localhost5000" | cut -d ' ' -f 1)"
+          if [ -z "$container_id" ]; then
+            echo "Error: No running container found for service 'ci-env'"
+            exit 1
+          fi
+          echo "Running_CONTAINER: ${container_id}"
+          echo "CONTAINER_ID=${container_id}" >> ${GITHUB_ENV}
+          cat ${GITHUB_ENV}
+
+      - name: Run Functional Test
+        run: |
+          if ! docker inspect --format='{{.State.Running}}' "${{ env.CONTAINER_ID }}" | grep -q "true"; then
+            echo "Aborting job due to unhealthy container state"
+            exit 1
+          fi
+          echo "CONTAINER_ID: ${{ env.CONTAINER_ID}}"
+
+          /usr/bin/docker exec -it ${{ env.CONTAINER_ID }} bash
           echo "USER: $USER"
           echo "UID: $(id -u)"
           echo "GID: $(id -g)"
@@ -86,25 +83,29 @@ jobs:
           whoami
           git config --global --add safe.directory /__w/FlagScale/FlagScale
 
-      # - name: Prepare Inference Environment
-      #   if: ${{ needs.set-env.outputs.test_type == 'inference' }}
-      #   run: |
+          if [ "${{ inputs.type }}" = "inference" ]; then
+            source /opt/conda/bin/activate flagscale-inference
+            echo "Original commit ID: ${{ github.event.pull_request.head.sha }}"
+            python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 --commit ${{ github.event.pull_request.head.sha }}
+            cd build/Metax_C550/FlagScale/third_party/vllm
+            source env.sh
+            pip install scikit-build scikit-build-core
+            pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0
+            python setup.py bdist_wheel
+            pip uninstall vllm -y
+            pip install dist/vllm-*-linux_x86_64.whl
+            source /opt/conda/bin/activate base
+          else
+            echo "Unknown backend type: ${{ inputs.type }}"
+            exit 1
+          fi
 
-          # source /opt/conda/bin/activate flagscale-inference
-          # echo "Original commit ID: ${{ github.event.pull_request.head.sha || github.sha }}"
-          
-          # # Apply patches and build vllm
-          # python tools/patch/unpatch.py --backend vllm FlagScale --task inference --device-type Metax_C550 --commit ${{ github.event.pull_request.head.sha || github.sha }}
-          # cd build/Metax_C550/FlagScale/third_party/vllm
-          # source env.sh
-          # pip install scikit-build scikit-build-core
-          # pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0
-          # python setup.py bdist_wheel
-          # pip uninstall vllm -y
-          # pip install dist/vllm-0.8.5+maca2.33.0.12torch2.6-cp310-cp310-linux_x86_64.whl
-          # cd ../..
-          # PYTHONPATH=./:$PYTHONPATH pip install . --verbose --no-build-isolation
-          # source /opt/conda/bin/activate base
+          cd /__w/FlagScale/FlagScale
+          tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
+          exit_code=$?
+          echo "Exit code: $exit_code"
+          sccache --show-stats
+        shell: bash
 
       # - name: Run Functional Tests
       #   run: |
@@ -143,32 +144,32 @@ jobs:
       #     docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
       #     docker push "$NEW_IMAGE_NAME"
 
-      - name: Send Feishu Notification
-        if: always()
-        env: 
-          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
-        run: |
-          status=$?
-          if [ $status -eq 0 ]; then
-            MSG="Successfully saved the running container as an image! "
-          else
-            MSG="Construction failed! Please check the logs"
-          fi
+  #     - name: Send Feishu Notification
+  #       if: always()
+  #       env: 
+  #         FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+  #       run: |
+  #         status=$?
+  #         if [ $status -eq 0 ]; then
+  #           MSG="Successfully saved the running container as an image! "
+  #         else
+  #           MSG="Construction failed! Please check the logs"
+  #         fi
 
-          # Sending structured message cards
-          curl -X POST ${{ env.FEISHU_WEBHOOK_URL }} \
-            -H "Content-Type: application/json" \
-            -d "{
-              "msg_type": "text",
-              "content": {
-                "text": "$MSG"
-              }            
-            }"
+  #         # Sending structured message cards
+  #         curl -X POST ${{ env.FEISHU_WEBHOOK_URL }} \
+  #           -H "Content-Type: application/json" \
+  #           -d '{
+  #             "msg_type": "text",
+  #             "content": {
+  #               "text": "$MSG"
+  #             }            
+  #           }'
 
-  all-tests-completed:
-    needs: functional-tests-inference
-    runs-on: ubuntu-latest
-    steps:
-      - name: All Tests Completed Successfully
-        run: echo "✅ All functional tests completed successfully!"
+  # all-tests-completed:
+  #   needs: functional-tests-inference
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: All Tests Completed Successfully
+  #       run: echo "✅ All functional tests completed successfully!"
 
