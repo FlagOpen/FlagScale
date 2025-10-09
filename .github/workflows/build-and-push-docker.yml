@@ -15,26 +15,36 @@ on:
 
 jobs:
   functional-test:
+    # runs-on: [self-hosted, Linux, X64, metax-0, gpus-2]
+    # services:
+    #   ci-env:
+    #     image: ${{ inputs.image }}
+    #     options: >-
+    #       --ipc=host
+    #       --privileged=true
+    #       --group-add video
+    #       --shm-size 100gb
+    #       --hostname flagscale_cicd
+    #       --user root
+    #       --ulimit nofile=65535:65535
+    #       --ulimit memlock=-1
+    #       --device=/dev/dri
+    #       --device=/dev/mxcd
+    #     ports:
+    #       - 80
+    #     volumes:
+    #       - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
+    #       - /home/flagscale_cicd/sccache:/root/.cache/sccache
+
     runs-on: [self-hosted, Linux, X64, metax-0, gpus-2]
-    services:
-      ci-env:
-        image: ${{ inputs.image }}
-        options: >-
-          --ipc=host
-          --privileged=true
-          --group-add video
-          --shm-size 100gb
-          --hostname flagscale_cicd
-          --user root
-          --ulimit nofile=65535:65535
-          --ulimit memlock=-1
-          --device=/dev/dri
-          --device=/dev/mxcd
-        ports:
-          - 80
-        volumes:
-          - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
-          - /home/flagscale_cicd/sccache:/root/.cache/sccache
+    container:
+      image: ${{ inputs.image }}
+      ports:
+        - 80
+      volumes:
+        - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
+        - /home/flagscale_cicd/sccache:/root/.cache/sccache
+      options: --ipc=host --privileged=true --group-add video --shm-size 100gb --hostname flagscale_cicd --user root --ulimit nofile=65535:65535 --ulimit memlock=-1 --device=/dev/dri --device=/dev/mxcd
 
     steps:
       - name: Checkout Code
@@ -56,6 +66,7 @@ jobs:
 
       - name: Setup Environment Info
         run: |
+          exit
           echo "Using_image: ${{ inputs.image }}"
           container_id="$(/usr/bin/docker ps --format "{{.ID}} {{.Names}}" | grep "localhost5000" | cut -d ' ' -f 1)"
           if [ -z "$container_id" ]; then
