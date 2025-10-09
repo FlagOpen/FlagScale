@@ -57,6 +57,7 @@ jobs:
       matrix:
         task:
           - deepseek_r1_distill_qwen-metax
+    name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
       type: inference

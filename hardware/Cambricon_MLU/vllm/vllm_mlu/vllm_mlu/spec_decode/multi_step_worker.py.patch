@@ -1,0 +1,90 @@
+diff --git a/vllm_mlu/vllm_mlu/spec_decode/multi_step_worker.py b/vllm_mlu/vllm_mlu/spec_decode/multi_step_worker.py
+new file mode 100644
+index 000000000..5f2997010
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/spec_decode/multi_step_worker.py
+@@ -0,0 +1,82 @@
++from typing import List, Set, Tuple
++
++import torch
++
++from vllm.model_executor.layers.sampler import SamplerOutput
++from vllm.platforms import current_platform
++from vllm.sequence import ExecuteModelRequest
++from vllm.spec_decode.multi_step_worker import MultiStepWorker
++
++from vllm_mlu.spec_decode.mlu_draft_model_runner import MLUTP1DraftModelRunner
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++
++
++@torch.inference_mode()
++def vllm__sepc_decode__multi_step_worker__MultiStepWorker__sampler_output(
++    self,
++    execute_model_req: ExecuteModelRequest,
++    sample_len: int,
++    seq_ids_with_bonus_token_in_last_step: Set[int],
++) -> Tuple[List[SamplerOutput], bool]:
++    """Run the model forward pass sample_len times. Returns the list of
++    sampler output, one per model forward pass, along with indicator of
++    whether torch tensor in sampler output need to be transposed in latter
++    sampler_output_to_torch logic.
++
++    For multi step worker, this indicator shall be True.
++    """
++    self._raise_if_unsupported(execute_model_req)
++    # Expand the batch for sequences with a bonus token.
++    # Perform a forward pass on the expanded batch and filter the
++    # response to retain only the original sequences' responses.
++    expanded_request, indices_of_seq_with_bonus_tokens =\
++        self._expand_execute_model_request(
++            execute_model_req, seq_ids_with_bonus_token_in_last_step)
++
++    # Run model sample_len times.
++    model_outputs: List[SamplerOutput] = []
++    if current_platform.is_out_of_tree() and isinstance(
++            self.model_runner, MLUTP1DraftModelRunner
++    ) and self.model_runner.supports_gpu_multi_step(expanded_request):
++        # Here we run the draft_model_runner with multi-step prepare
++        # on the GPU directly
++        expanded_request.num_steps = sample_len
++        self.model_runner.set_indices_of_seq_with_bonus_tokens(
++            indices_of_seq_with_bonus_tokens)
++        model_outputs = self.execute_model(
++            execute_model_req=expanded_request)
++    else:
++        # Here we run multi-step directly, with every step prepared
++        # on the CPU.
++        # TODO: Remove this branch once DraftModelRunner supports TP>1
++        # and other restrictions that are part of DraftModelRunner's
++        # supports_gpu_multi_step(..)
++        if expanded_request.previous_hidden_states is not None:
++            self.worker.model_runner.return_hidden_states = True
++        for _ in range(sample_len):
++            model_output: List[SamplerOutput] = self.worker.execute_model(
++                execute_model_req=expanded_request)
++            assert (len(model_output) == 1
++                    ), "composing multistep workers not supported"
++            model_output = model_output[0]
++            self._maybe_update_previous_hidden_states(
++                model_output, expanded_request)
++
++            self._append_new_tokens(
++                model_output, expanded_request.seq_group_metadata_list,
++                indices_of_seq_with_bonus_tokens)
++            model_outputs.append(model_output)
++
++    # move indices to device to avoid stream sync
++    indices_of_seq_with_bonus_tokens = torch.tensor(
++        indices_of_seq_with_bonus_tokens, device=self.device)
++    filtered_model_outputs = self._filter_model_output(
++        model_outputs, indices_of_seq_with_bonus_tokens)
++    return filtered_model_outputs, True
++
++
++MluHijackObject.apply_hijack(
++    MultiStepWorker,
++    MultiStepWorker.sampler_output,
++    vllm__sepc_decode__multi_step_worker__MultiStepWorker__sampler_output
++)
+\ No newline at end of file
+

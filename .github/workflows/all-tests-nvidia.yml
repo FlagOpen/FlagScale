@@ -37,7 +37,7 @@ jobs:
       - name: Set Environment Variable
         id: set-env # Assign an ID to this step
         run: |
-          echo "ci_image=localhost:5000/flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.0-time2507111538" >> $GITHUB_OUTPUT  # Set output variable
+          echo "ci_image=localhost:5000/flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.1-time2509251747" >> $GITHUB_OUTPUT  # Set output variable
 
 
   # Train Megatron Unit Tests with Matrix
@@ -149,6 +149,8 @@ jobs:
           - deepseek_r1_distill_qwen-flaggems
           - qwen3
           - qwen3-flaggems
+          - robobrain2
+          - robobrain2-flaggems
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}

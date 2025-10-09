@@ -1,16 +1,30 @@
 diff --git a/megatron/training/tokenizer/tokenizer.py b/megatron/training/tokenizer/tokenizer.py
-index 5cf222cc..14188a2c 100644
+index 5cf222cc..35ad2b85 100644
 --- a/megatron/training/tokenizer/tokenizer.py
 +++ b/megatron/training/tokenizer/tokenizer.py
-@@ -14,6 +14,7 @@ from megatron.core.datasets.megatron_tokenizer import MegatronTokenizer
+@@ -11,9 +11,10 @@ from pathlib import Path
+ from typing import Dict, List, Optional
  
+ from megatron.core.datasets.megatron_tokenizer import MegatronTokenizer
+-
++from .rwkv_tokenization import RWKVTokenizer
  from .bert_tokenization import FullTokenizer as FullBertTokenizer
  from .gpt2_tokenization import GPT2Tokenizer
 +from .gpt2_tokenization import AquilaTokenizer
  from megatron.training.tokenizer.multimodal_tokenizer import MultimodalTokenizer
  from megatron.training.tokenizer.sft_tokenizer import SFTTokenizer
  
-@@ -102,6 +103,31 @@ def build_tokenizer(args, **kwargs):
+@@ -63,6 +64,9 @@ def build_tokenizer(args, **kwargs):
+             num_special_tokens=args.tiktoken_num_special_tokens,
+             special_tokens=args.tiktoken_special_tokens,
+         )
++    elif args.tokenizer_type == "RWKVTokenizer":
++        assert args.tokenizer_path is not None, "vocab_file must be provided for RWKV tokenizer"
++        tokenizer = RWKVTokenizer(args.tokenizer_path)
+     elif args.tokenizer_type == 'NullTokenizer':
+         assert args.vocab_size is not None
+         tokenizer = _NullTokenizer(args.vocab_size)
+@@ -102,6 +106,31 @@ def build_tokenizer(args, **kwargs):
      elif args.tokenizer_type == 'NullMultimodalTokenizer':
          assert args.vocab_size is not None
          tokenizer = _NullMultimodalTokenizer(args.vocab_size)
@@ -42,7 +56,7 @@ index 5cf222cc..14188a2c 100644
      else:
          raise NotImplementedError('{} tokenizer is not ' 'implemented.'.format(args.tokenizer_type))
  
-@@ -596,6 +622,16 @@ class _Llama2Tokenizer(_SentencePieceTokenizer):
+@@ -596,6 +625,16 @@ class _Llama2Tokenizer(_SentencePieceTokenizer):
              t = t + [self.eos_id]
          return t
  
@@ -59,7 +73,7 @@ index 5cf222cc..14188a2c 100644
      def detokenize(self, ids):
          return self.tokenizer.decode_ids(ids)
  
-@@ -909,3 +945,276 @@ class _NullMultimodalTokenizer(MegatronTokenizer):
+@@ -909,3 +948,276 @@ class _NullMultimodalTokenizer(MegatronTokenizer):
      @property
      def additional_special_tokens_ids(self):
          return None
@@ -336,4 +350,3 @@ index 5cf222cc..14188a2c 100644
 +    
 +    def encode(self, x):
 +        return self.tokenizer.encode(x)
-\ No newline at end of file
