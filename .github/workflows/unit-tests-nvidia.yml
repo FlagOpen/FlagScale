@@ -52,6 +52,7 @@ jobs:
           echo "Home: $HOME"
           whoami
           pip install gitpython # TODO: Remove after updating the image
+          pip install aiohttp
 
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           
