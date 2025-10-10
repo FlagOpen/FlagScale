@@ -1,5 +1,5 @@
 diff --git a/megatron/training/utils.py b/megatron/training/utils.py
-index cef71160..dcca6ca3 100644
+index cef711607..dcca6ca3b 100644
 --- a/megatron/training/utils.py
 +++ b/megatron/training/utils.py
 @@ -43,6 +43,8 @@ from megatron.core.utils import (

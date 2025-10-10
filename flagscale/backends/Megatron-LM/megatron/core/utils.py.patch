@@ -1,5 +1,5 @@
 diff --git a/megatron/core/utils.py b/megatron/core/utils.py
-index 0300f0f0..c0351062 100644
+index 0300f0f02..c03510624 100644
 --- a/megatron/core/utils.py
 +++ b/megatron/core/utils.py
 @@ -435,6 +435,10 @@ def get_pg_size(group=None):

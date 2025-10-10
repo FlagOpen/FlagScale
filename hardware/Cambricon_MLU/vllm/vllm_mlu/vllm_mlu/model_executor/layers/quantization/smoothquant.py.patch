@@ -1,0 +1,246 @@
+diff --git a/vllm_mlu/vllm_mlu/model_executor/layers/quantization/smoothquant.py b/vllm_mlu/vllm_mlu/model_executor/layers/quantization/smoothquant.py
+new file mode 100755
+index 000000000..dd250fdda
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/model_executor/layers/quantization/smoothquant.py
+@@ -0,0 +1,239 @@
++from typing import Any, Dict, List, Optional
++
++import torch
++from torch.nn.parameter import Parameter
++
++from vllm.model_executor.layers.linear import (LinearMethodBase, LinearBase,
++                                               set_weight_attrs)
++from vllm.model_executor.layers.quantization import register_quantization_config
++from vllm.model_executor.layers.quantization.base_config import QuantizationConfig
++from vllm.model_executor.parameter import (ChannelQuantScaleParameter,
++                                           GroupQuantScaleParameter,
++                                           ModelWeightParameter,
++                                           RowvLLMParameter)
++from vllm_mlu import _mlu_ops as mlu_ops
++
++
++# @register_quantization_config("smoothquant")
++class SmoothQuantConfig(QuantizationConfig):
++    """Config class for SmoothQuant.
++    """
++
++    def __init__(
++        self,
++        weight_bits: int,
++        quant_mode: str,  # smoothquant
++        input_quant_method: str, # per token/per tensor
++        group_size: int,
++    ) -> None:
++        self.weight_bits = weight_bits
++        self.quant_mode = quant_mode
++        self.input_quant_method = input_quant_method
++        self.group_size = group_size
++
++        if quant_mode == "SmoothQuant" and (self.input_quant_method != "per_token" and self.input_quant_method != "per_tensor"):
++            raise ValueError(
++                "Currently, only per_token or per_tensor input quantization is supported for "
++                f"SmoothQuant, but got {self.input_quant_method}.")
++
++        self.pack_factor = 8 // self.weight_bits
++
++    def __repr__(self) -> str:
++        return (f"SmoothQuantConfig(weight_bits={self.weight_bits}, "
++                f"input_quant_method={self.input_quant_method}, "
++                f"quant_mode={self.quant_mode}, "
++                f"group_size={self.group_size})")
++
++    @classmethod
++    def get_name(self) -> str:
++        return "SmoothQuant"
++
++    @classmethod
++    def get_supported_act_dtypes(self) -> List[torch.dtype]:
++        return [torch.half, torch.bfloat16]
++
++    @classmethod
++    def get_min_capability(self) -> int:
++        return 30
++
++    @staticmethod
++    def get_config_filenames() -> List[str]:
++        return ["quantize_config.json"]
++
++    @classmethod
++    def from_config(cls, config: Dict[str, Any]) -> "SmoothQuantConfig":
++        weight_bits = cls.get_from_keys(config, ["bits"])
++        input_quant_method = cls.get_from_keys(config, ["input_quant_method"])
++        quant_mode = cls.get_from_keys(config, ["quant_mode"])
++        group_size = cls.get_from_keys_or(config, ["group_size"], 1)
++        return cls(weight_bits, quant_mode, input_quant_method, group_size)
++
++    def get_quant_method(self, layer: torch.nn.Module,
++                         prefix: str) -> Optional["SmoothQuantLinearMethod"]:
++        if isinstance(layer, LinearBase):
++            return SmoothQuantLinearMethod(self, prefix)
++        return None
++
++    def get_scaled_act_names(self) -> List[str]:
++        return ["gelu", "gelu_fast", "gelu_new", "gelu_pytorch_tanh"]
++
++
++class SmoothQuantLinearMethod(LinearMethodBase):
++    """Linear method for SmoothQuant.
++
++    Args:
++        quant_config: The SmoothQuant quantization config.
++    """
++
++    def __init__(self, quant_config: SmoothQuantConfig, prefix: str):
++        self.quant_config = quant_config
++        # for per-tensor case, we can skip quant input for the first attn|ffn linear
++        #   and fusion this step in layernorm to get better performance
++        self.skip_quant_input = False
++        self.compute_dtype = torch.get_default_dtype()
++        self.is_expert = 'expert' in prefix
++
++    def create_weights(
++        self,
++        layer: torch.nn.Module,
++        input_size_per_partition: int,
++        output_partition_sizes: List[int],
++        input_size: int,
++        output_size: int,
++        params_dtype: torch.dtype,
++        **extra_weight_attrs,
++    ):
++        output_size_per_partition = sum(output_partition_sizes)
++        if (output_size_per_partition % self.quant_config.pack_factor != 0):
++            raise ValueError(
++                "The output size is not aligned with the quantized "
++                "weight shape. This can be caused by too large "
++                "tensor parallel size.")
++
++        pack_factor, group_num = 1, 1
++        weight_loader = extra_weight_attrs.get("weight_loader")
++        if self.is_expert and self.quant_config.group_size > 1:
++            if input_size_per_partition % self.quant_config.group_size != 0:
++                raise ValueError(
++                    f"The input size {input_size_per_partition} is not aligned with the quantized "
++                    f"weight shape. This can be caused by too large "
++                    f"tensor parallel size. group_size: {self.quant_config.group_size}.")
++
++            pack_factor = self.quant_config.pack_factor
++            group_num = (input_size + self.quant_config.group_size - 1) // self.quant_config.group_size
++            if input_size_per_partition != input_size:
++                group_num = (input_size_per_partition + self.quant_config.group_size - 1) // self.quant_config.group_size
++
++        qweight = ModelWeightParameter(
++            data=torch.empty(
++                output_size_per_partition,
++                input_size_per_partition // pack_factor,
++                device="mlu",
++                dtype=torch.int8,
++            ),
++            input_dim=1,
++            output_dim=0,
++            weight_loader=weight_loader,
++        )
++        if group_num == 1:
++            per_channel_scale = ChannelQuantScaleParameter(
++                data=torch.empty(
++                    output_size_per_partition,
++                    device="mlu",
++                    dtype=torch.float32,
++                ),
++                output_dim=0,
++                weight_loader=weight_loader,
++            )
++        else:
++            per_channel_scale = GroupQuantScaleParameter(
++                data=torch.empty(
++                    output_size_per_partition,
++                    group_num,
++                    device="mlu",
++                    dtype=torch.float32,
++                ),
++                input_dim=1,
++                output_dim=0,
++                weight_loader=weight_loader,
++            )
++
++        layer.register_parameter("qweight", qweight)
++        layer.register_parameter("per_channel_scale", per_channel_scale)
++
++        if self.quant_config.input_quant_method == "per_token":
++            smooth = RowvLLMParameter(
++                data=torch.empty(
++                    input_size_per_partition,
++                    device="mlu",
++                    dtype=torch.float32,
++                ),
++                input_dim=0,
++                weight_loader=weight_loader,
++            )
++            set_weight_attrs(smooth, {
++                "ignore_warning": True,
++            })
++            layer.register_parameter("smooth", smooth)
++        if self.quant_config.input_quant_method == "per_tensor":
++            scale_to_int = RowvLLMParameter(
++                data=torch.empty(
++                    input_size_per_partition,
++                    device="mlu",
++                    dtype=torch.float32,
++                ),
++                input_dim=0,
++                weight_loader=weight_loader,
++            )
++            set_weight_attrs(scale_to_int, {
++                "ignore_warning": True,
++            })
++            layer.register_parameter("scale_to_int", scale_to_int)
++
++    def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
++        if self.quant_config.input_quant_method == "per_token" and layer.smooth.dtype != torch.float:
++            layer.smooth = Parameter(layer.smooth.to(torch.float), requires_grad=False)
++        if self.quant_config.input_quant_method == "per_tensor" and layer.scale_to_int.dtype != torch.float:
++            layer.scale_to_int = Parameter(layer.scale_to_int.to(torch.float), requires_grad=False)
++        if layer.per_channel_scale.dtype != torch.float:
++            layer.per_channel_scale = Parameter(layer.per_channel_scale.to(torch.float), requires_grad=False)
++
++    def apply(self,
++              layer: torch.nn.Module,
++              x: torch.Tensor,
++              bias: Optional[torch.Tensor] = None,
++              residual: Optional[torch.Tensor] = None,
++              input_scale: Optional[torch.Tensor] = None,
++              use_tp_weight : bool = False
++        ) -> torch.Tensor:
++        layer_smooth = layer.smooth
++        layer_qweight = layer.qweight
++        layer_per_channel_scale = layer.per_channel_scale
++        if use_tp_weight:
++            if hasattr(layer, 'tp_smooth'):
++                layer_smooth = layer.tp_smooth
++            if hasattr(layer, 'tp_qweight'):
++                layer_qweight = layer.tp_qweight
++            if hasattr(layer, 'tp_per_channel_scale'):
++                layer_per_channel_scale = layer.tp_per_channel_scale
++
++        quant_input = None
++        if self.skip_quant_input:
++            quant_input = x
++        elif self.quant_config.input_quant_method == "per_token":
++            quant_input, input_scale = mlu_ops.per_token_smooth_quantize(x, layer_smooth, None)
++        elif self.quant_config.input_quant_method == "per_tensor":
++            quant_input = mlu_ops.quantize(x, layer.scale_to_int, None)
++        else:
++            raise ValueError(
++                "Currently, only per_token or per_tensor input quantization is supported for "
++                f"SmoothQuant, but got {self.input_quant_method}.")
++        quant_input_shape = quant_input.shape
++        if len(quant_input_shape) > 2:
++            quant_input = quant_input.view(-1, quant_input_shape[-1])
++            input_scale = input_scale.view(-1)
++        out = mlu_ops.smooth_quant_matmul(quant_input, input_scale, layer_qweight,
++                                          layer_per_channel_scale, self.compute_dtype, bias, residual)
++        if len(quant_input_shape) > 2:
++            out = out.view(*quant_input_shape[:-1], out.shape[-1])
++        return out
+

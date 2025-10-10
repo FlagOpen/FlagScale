@@ -1,5 +1,5 @@
 diff --git a/gpt_builders.py b/gpt_builders.py
-index 89b22881..804676ba 100644
+index 89b228815..804676ba1 100644
 --- a/gpt_builders.py
 +++ b/gpt_builders.py
 @@ -26,7 +26,14 @@ def gpt_builder(args, pre_process, post_process, vp_stage=None, config=None):

@@ -1,7 +1,7 @@
 diff --git a/megatron/core/models/gpt/gpt_layer_specs.py b/megatron/core/models/gpt/gpt_layer_specs.py
 old mode 100755
 new mode 100644
-index 68c1eb8c..1b60a4a1
+index 68c1eb8c9..1b60a4a13
 --- a/megatron/core/models/gpt/gpt_layer_specs.py
 +++ b/megatron/core/models/gpt/gpt_layer_specs.py
 @@ -408,6 +408,7 @@ def get_gpt_decoder_block_spec(

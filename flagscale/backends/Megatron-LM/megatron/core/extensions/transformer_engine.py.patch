@@ -1,5 +1,5 @@
 diff --git a/megatron/core/extensions/transformer_engine.py b/megatron/core/extensions/transformer_engine.py
-index 9bdc7c0c..49cb5d4d 100644
+index 9bdc7c0c3..49cb5d4da 100644
 --- a/megatron/core/extensions/transformer_engine.py
 +++ b/megatron/core/extensions/transformer_engine.py
 @@ -564,7 +564,7 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):

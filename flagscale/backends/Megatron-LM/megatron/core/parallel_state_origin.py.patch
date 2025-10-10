@@ -1,6 +1,6 @@
 diff --git a/megatron/core/parallel_state_origin.py b/megatron/core/parallel_state_origin.py
 new file mode 100644
-index 00000000..86c5bbbe
+index 000000000..86c5bbbe4
 --- /dev/null
 +++ b/megatron/core/parallel_state_origin.py
 @@ -0,0 +1,2046 @@

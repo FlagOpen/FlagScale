@@ -1,5 +1,5 @@
 diff --git a/tests/unit_tests/dist_checkpointing/test_optimizer.py b/tests/unit_tests/dist_checkpointing/test_optimizer.py
-index df501366..c64bb93b 100644
+index df501366f..c64bb93bb 100644
 --- a/tests/unit_tests/dist_checkpointing/test_optimizer.py
 +++ b/tests/unit_tests/dist_checkpointing/test_optimizer.py
 @@ -400,6 +400,7 @@ class TestDistributedOptimizer:

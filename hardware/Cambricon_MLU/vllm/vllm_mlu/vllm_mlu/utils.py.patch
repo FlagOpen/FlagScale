@@ -1,0 +1,193 @@
+diff --git a/vllm_mlu/vllm_mlu/utils.py b/vllm_mlu/vllm_mlu/utils.py
+new file mode 100644
+index 000000000..8575ed2f7
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/utils.py
+@@ -0,0 +1,186 @@
++import os
++import torch
++from torch.library import Library
++from functools import lru_cache
++from typing import Optional, Union, Callable, List
++
++import vllm.envs as envs
++from vllm import utils
++from vllm.utils import (STR_DTYPE_TO_TORCH_DTYPE, is_in_doc_build,
++                        supports_custom_op, vllm_lib,
++                        cuda_is_initialized, is_in_ray_actor)
++from vllm.logger import init_logger
++
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++
++logger = init_logger(__name__)
++
++
++STR_DTYPE_TO_TORCH_DTYPE["int8"] = torch.int8
++
++
++@lru_cache(maxsize=8)
++def _mlu_device_count_stateless(
++    mlu_visible_devices: Optional[str] = None) -> int:
++
++    if mlu_visible_devices is None:
++        return torch.mlu.device_count()
++    if mlu_visible_devices == "":
++        return 0
++    if "," not in mlu_visible_devices:
++        return 1
++    return len(mlu_visible_devices.split(","))
++
++
++def mlu_device_count_stateless() -> int:
++    """Get number of MLU devices, caching based on the value of
++    MLU_VISIBLE_DEVICES at the time of call.
++
++    This should be used instead of torch.cuda.device_count()
++    unless MLU_VISIBLE_DEVICES has already been set to the desired
++    value."""
++
++    # This can be removed and simply replaced with torch.cuda.get_device_count
++    # after https://github.com/pytorch/pytorch/pull/122815 is released.
++    return _mlu_device_count_stateless(envs.MLU_VISIBLE_DEVICES)
++
++
++def vllm__utils___maybe_force_spawn():
++    """Check if we need to force the use of the `spawn` multiprocessing start
++    method.
++    """
++    if os.environ.get("VLLM_WORKER_MULTIPROC_METHOD") == "spawn":
++        return
++
++    reason = None
++    if cuda_is_initialized():
++        reason = "CUDA is initialized"
++    elif is_in_ray_actor():
++        # even if we choose to spawn, we need to pass the ray address
++        # to the subprocess so that it knows how to connect to the ray cluster.
++        # env vars are inherited by subprocesses, even if we use spawn.
++        import ray
++        os.environ["RAY_ADDRESS"] = ray.get_runtime_context().gcs_address
++        reason = "In a Ray actor and can only be spawned"
++
++    if reason is None:
++        reason = "Force use 'spawn' for MLU platform"
++
++    if reason is not None:
++        logger.warning(
++            "We must use the `spawn` multiprocessing start method. "
++            "Overriding VLLM_WORKER_MULTIPROC_METHOD to 'spawn'. "
++            "See https://docs.vllm.ai/en/latest/getting_started/"
++            "troubleshooting.html#python-multiprocessing "
++            "for more information. Reason: %s", reason)
++        os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
++
++
++def vllm__utils__get_kv_cache_torch_dtype(
++        cache_dtype: Optional[Union[str, torch.dtype]],
++        model_dtype: Optional[Union[str, torch.dtype]] = None) -> torch.dtype:
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: use STR_DTYPE_TO_TORCH_DTYPE to get torch_dtype
++    '''
++    if isinstance(cache_dtype, str):
++        if cache_dtype == "auto":
++            if isinstance(model_dtype, str):
++                torch_dtype = STR_DTYPE_TO_TORCH_DTYPE[model_dtype]
++            elif isinstance(model_dtype, torch.dtype):
++                torch_dtype = model_dtype
++            else:
++                raise ValueError(f"Invalid model dtype: {model_dtype}")
++        elif cache_dtype in ["half", "bfloat16", "float"]:
++            torch_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_dtype]
++        elif cache_dtype == "fp8":
++            torch_dtype = torch.uint8
++        elif cache_dtype == 'int8':
++            torch_dtype = torch.int8
++        else:
++            raise ValueError(f"Invalid kv cache dtype: {cache_dtype}")
++    elif isinstance(cache_dtype, torch.dtype):
++        torch_dtype = cache_dtype
++    else:
++        raise ValueError(f"Invalid kv cache dtype: {cache_dtype}")
++    return torch_dtype
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++
++'''
++=============================
++Modify by vllm_mlu
++=============================
++@brief: change dispatch_key default value from 'CUDA' to 'MLU'
++'''
++'''
++==================
++End of MLU Hijack
++==================
++'''
++def vllm__utils__direct_register_custom_op(
++    op_name: str,
++    op_func: Callable,
++    mutates_args: List[str],
++    fake_impl: Optional[Callable] = None,
++    target_lib: Optional[Library] = None,
++    dispatch_key: str = "MLU",
++):
++    """
++    `torch.library.custom_op` can have significant overhead because it
++    needs to consider complicated dispatching logic. This function
++    directly registers a custom op and dispatches it to the CUDA backend.
++    See https://gist.github.com/youkaichao/ecbea9ec9fc79a45d2adce1784d7a9a5
++    for more details.
++
++    By default, the custom op is registered to the vLLM library. If you
++    want to register it to a different library, you can pass the library
++    object to the `target_lib` argument.
++
++    IMPORTANT: the lifetime of the operator is tied to the lifetime of the
++    library object. If you want to bind the operator to a different library,
++    make sure the library object is alive when the operator is used.
++    """
++    if is_in_doc_build():
++        return
++
++    if not supports_custom_op():
++        from vllm.platforms import current_platform
++        assert not current_platform.is_cuda_alike(), (
++            "cuda platform needs torch>=2.4 to support custom op, "
++            "chances are you are using an old version of pytorch "
++            "or a custom build of pytorch. It is recommended to "
++            "use vLLM in a fresh new environment and let it install "
++            "the required dependencies.")
++        return
++
++    import torch.library
++    if hasattr(torch.library, "infer_schema"):
++        schema_str = torch.library.infer_schema(op_func,
++                                                mutates_args=mutates_args)
++    else:
++        # for pytorch 2.4
++        import torch._custom_op.impl
++        schema_str = torch._custom_op.impl.infer_schema(op_func, mutates_args)
++    my_lib = target_lib or vllm_lib
++    my_lib.define(op_name + schema_str)
++    my_lib.impl(op_name, op_func, dispatch_key=dispatch_key)
++    if fake_impl is not None:
++        my_lib._register_fake(op_name, fake_impl)
++
++
++
++MluHijackObject.apply_hijack(utils,
++                             utils.direct_register_custom_op,
++                             vllm__utils__direct_register_custom_op)
++MluHijackObject.apply_hijack(utils,
++                             utils.get_kv_cache_torch_dtype,
++                             vllm__utils__get_kv_cache_torch_dtype)
++MluHijackObject.apply_hijack(utils,
++                             utils._maybe_force_spawn,
++                             vllm__utils___maybe_force_spawn)
+

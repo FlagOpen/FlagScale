@@ -1,5 +1,5 @@
 diff --git a/megatron/core/pipeline_parallel/p2p_communication.py b/megatron/core/pipeline_parallel/p2p_communication.py
-index 63ee9d1f..910f8cc9 100644
+index 63ee9d1f5..910f8cc9a 100644
 --- a/megatron/core/pipeline_parallel/p2p_communication.py
 +++ b/megatron/core/pipeline_parallel/p2p_communication.py
 @@ -2,6 +2,7 @@

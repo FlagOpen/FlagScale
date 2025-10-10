@@ -1,16 +1,19 @@
 diff --git a/megatron/training/tokenizer/tokenizer.py b/megatron/training/tokenizer/tokenizer.py
-index b1aad681..0b6dfbb0 100644
+index b1aad6819..15fb44bb1 100644
 --- a/megatron/training/tokenizer/tokenizer.py
 +++ b/megatron/training/tokenizer/tokenizer.py
-@@ -14,6 +14,7 @@ from megatron.core.datasets.megatron_tokenizer import MegatronLegacyTokenizer
+@@ -12,8 +12,10 @@ from typing import Dict, List, Optional
  
+ from megatron.core.datasets.megatron_tokenizer import MegatronLegacyTokenizer
+ 
++from .rwkv_tokenization import RWKVTokenizer
  from .bert_tokenization import FullTokenizer as FullBertTokenizer
  from .gpt2_tokenization import GPT2Tokenizer
 +from .gpt2_tokenization import AquilaTokenizer
  from megatron.training.tokenizer.multimodal_tokenizer import MultimodalTokenizer
  from megatron.training.tokenizer.sft_tokenizer import SFTTokenizer
  
-@@ -104,6 +105,31 @@ def build_tokenizer(args, **kwargs):
+@@ -104,6 +106,34 @@ def build_tokenizer(args, **kwargs):
      elif args.tokenizer_type == 'NullMultimodalTokenizer':
          assert args.vocab_size is not None
          tokenizer = _NullMultimodalTokenizer(args.vocab_size)
@@ -39,10 +42,13 @@ index b1aad681..0b6dfbb0 100644
 +        assert args.tokenizer_path is not None
 +        tokenizer = _Qwen2VLTokenizer(args.tokenizer_path, args.extra_vocab_size)
 +        args.padded_vocab_size = tokenizer.vocab_size # no padding
++    elif args.tokenizer_type == "RWKVTokenizer":
++        assert args.tokenizer_path is not None, "vocab_file must be provided for RWKV tokenizer"
++        tokenizer = RWKVTokenizer(args.tokenizer_path)
      else:
          raise NotImplementedError('{} tokenizer is not ' 'implemented.'.format(args.tokenizer_type))
  
-@@ -604,6 +630,16 @@ class _Llama2Tokenizer(_SentencePieceTokenizer):
+@@ -604,6 +634,16 @@ class _Llama2Tokenizer(_SentencePieceTokenizer):
              t = t + [self.eos_id]
          return t
  
@@ -59,7 +65,7 @@ index b1aad681..0b6dfbb0 100644
      def detokenize(self, ids):
          return self.tokenizer.decode_ids(ids)
  
-@@ -921,3 +957,276 @@ class _NullMultimodalTokenizer(MegatronLegacyTokenizer):
+@@ -921,3 +961,276 @@ class _NullMultimodalTokenizer(MegatronLegacyTokenizer):
      @property
      def additional_special_tokens_ids(self):
          return None

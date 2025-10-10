@@ -11,6 +11,8 @@ sentencepiece
 tensorboard
 transformers
 ray
+pybase64
+orjson
 
 # test
 coverage

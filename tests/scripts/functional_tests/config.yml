@@ -37,6 +37,14 @@ inference:
     -4b-tp2
   qwen3-flaggems-metax:
     -4b-tp2
+  robobrain2-metax:
+    -7b_tp1
+  robobrain2-flaggems-metax:
+    -7b_tp1
+  robobrain2:
+    -7b-tp2
+  robobrain2-flaggems:
+    -7b-tp2
 
 serve:
   qwen2_5:

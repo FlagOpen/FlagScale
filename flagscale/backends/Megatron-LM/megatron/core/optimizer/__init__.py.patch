@@ -1,5 +1,5 @@
 diff --git a/megatron/core/optimizer/__init__.py b/megatron/core/optimizer/__init__.py
-index 1846907e..7fd0554c 100644
+index 1846907e9..7fd0554c4 100644
 --- a/megatron/core/optimizer/__init__.py
 +++ b/megatron/core/optimizer/__init__.py
 @@ -55,6 +55,7 @@ def _get_param_groups(

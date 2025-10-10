@@ -1,5 +1,5 @@
 diff --git a/megatron/training/initialize.py b/megatron/training/initialize.py
-index 85b77144..426d1ced 100644
+index 85b771448..426d1cedc 100644
 --- a/megatron/training/initialize.py
 +++ b/megatron/training/initialize.py
 @@ -29,9 +29,12 @@ from megatron.training import inprocess_restart

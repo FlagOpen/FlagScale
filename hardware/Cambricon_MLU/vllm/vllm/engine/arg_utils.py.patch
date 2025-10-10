@@ -1,0 +1,57 @@
+diff --git a/vllm/engine/arg_utils.py b/vllm/engine/arg_utils.py
+index 89c9b6747..3fd7a9798 100644
+--- a/vllm/engine/arg_utils.py
++++ b/vllm/engine/arg_utils.py
+@@ -211,6 +211,13 @@ class EngineArgs:
+     reasoning_parser: Optional[str] = None
+     use_tqdm_on_load: bool = True
+ 
++    # mlu platform params
++    moe_tp_size: int = -1
++    moe_ep_size: int = -1
++    attn_data_parallel_size: int = -1
++    parallelize_shared_expert: bool = False
++    disable_prefill_force_to_use_reduce_scatter: bool = False
++
+     def __post_init__(self):
+         if not self.tokenizer:
+             self.tokenizer = self.model
+@@ -361,7 +368,7 @@ class EngineArgs:
+         parser.add_argument(
+             '--kv-cache-dtype',
+             type=str,
+-            choices=['auto', 'fp8', 'fp8_e5m2', 'fp8_e4m3'],
++            choices=['auto', 'fp8', 'fp8_e5m2', 'fp8_e4m3', 'int8'],
+             default=EngineArgs.kv_cache_dtype,
+             help='Data type for kv cache storage. If "auto", will use model '
+             'data type. CUDA 11.8+ supports fp8 (=fp8_e4m3) and fp8_e5m2. '
+@@ -1001,6 +1008,28 @@ class EngineArgs:
+             "Note that even if this is set to False, cascade attention will be "
+             "only used when the heuristic tells that it's beneficial.")
+ 
++        # mlu platform params
++        parser.add_argument('--moe-tp-size',
++                            type=int,
++                            default=-1,
++                            help='Number of moe tensor parallel replicas')
++        parser.add_argument('--moe-ep-size',
++                            type=int,
++                            default=-1,
++                            help='Number of moe expert parallel replicas')
++        parser.add_argument('--attn-data-parallel-size',
++                            type=int,
++                            default=-1,
++                            help='Number of attention data parallel replicas')
++        parser.add_argument('--parallelize-shared-expert',
++                            action='store_true',
++                            help='Parallelize shared expert for data parallel')
++        parser.add_argument('--disable-prefill-force-to-use-reduce-scatter',
++                            action='store_true',
++                            help='Prefill force to use reduce scatter can have trade off. '
++                                 'This flag makes prefill can use common all-reduce strategy '
++                                 'for data parallel.')
++
+         return parser
+ 
+     @classmethod
+

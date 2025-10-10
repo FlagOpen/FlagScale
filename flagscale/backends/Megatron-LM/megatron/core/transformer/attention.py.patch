@@ -1,5 +1,5 @@
 diff --git a/megatron/core/transformer/attention.py b/megatron/core/transformer/attention.py
-index 6b2e898b..5a2c1d87 100644
+index 6b2e898be..5a2c1d87a 100644
 --- a/megatron/core/transformer/attention.py
 +++ b/megatron/core/transformer/attention.py
 @@ -892,22 +892,44 @@ class SelfAttention(Attention):

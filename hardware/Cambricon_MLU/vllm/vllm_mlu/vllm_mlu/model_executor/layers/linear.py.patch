@@ -1,0 +1,135 @@
+diff --git a/vllm_mlu/vllm_mlu/model_executor/layers/linear.py b/vllm_mlu/vllm_mlu/model_executor/layers/linear.py
+new file mode 100644
+index 000000000..12b4d4b87
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/model_executor/layers/linear.py
+@@ -0,0 +1,128 @@
++import torch
++from typing import Optional
++from torch.nn.parameter import Parameter
++from vllm.distributed import (get_tensor_model_parallel_rank,
++                              split_tensor_along_last_dim,
++                              tensor_model_parallel_all_gather,
++                              tensor_model_parallel_all_reduce)
++from vllm.model_executor.layers.linear import (
++    UnquantizedLinearMethod,
++    ColumnParallelLinear,
++    RowParallelLinear,
++    WEIGHT_LOADER_V2_SUPPORTED
++)
++from vllm.logger import init_logger
++
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++from vllm_mlu import _mlu_ops as mlu_ops
++
++logger = init_logger(__name__)
++
++
++WEIGHT_LOADER_V2_SUPPORTED.extend([
++    "GPTQMluLinearMethod",
++    "AWQMluLinearMethod"
++])
++
++
++def vllm__module_executor__layers__linear__UnquantizedLinearMethod__apply(
++    self,
++    layer: torch.nn.Module,
++    x: torch.Tensor,
++    bias: Optional[torch.Tensor] = None,
++    residual: Optional[torch.Tensor] = None
++) -> torch.Tensor:
++    beta = 0.0
++    if residual is not None:
++         beta = 1.0
++         residual = residual.view(-1, residual.shape[-1])
++    res_shape = x.shape[0:-1] + (layer.weight.shape[0], )
++    return mlu_ops.matmul(x.reshape(x.numel() // x.shape[-1], x.shape[-1]),
++                          layer.weight,
++                          bias, residual, 'none', 1.0, beta).view(res_shape)
++
++
++def vllm__module_executor__layers__linear__RowParallelLinear__forward(
++    self,
++    input_,
++    residual: Optional[torch.Tensor] = None,
++    smooth_quant_scale: Optional[torch.Tensor] = None
++) -> tuple[torch.Tensor, Optional[Parameter]]:
++    if self.input_is_parallel:
++        input_parallel = input_
++    else:
++        tp_rank = get_tensor_model_parallel_rank()
++        splitted_input = split_tensor_along_last_dim(
++            input_, num_partitions=self.tp_size)
++        input_parallel = splitted_input[tp_rank].contiguous()
++
++    # Matrix multiply.
++    assert self.quant_method is not None
++    # Only fuse bias add into GEMM for rank 0 (this ensures that
++    # bias will not get added more than once in TP>1 case)
++    bias_ = None if (self.tp_rank > 0 or self.skip_bias_add) else self.bias
++    residual_ = None if self.tp_rank > 0 else residual
++    kwargs = {'bias': bias_, 'residual': residual_}
++    if smooth_quant_scale is not None:
++        kwargs['input_scale'] = smooth_quant_scale
++    output_parallel = self.quant_method.apply(self,
++                                              input_parallel,
++                                              **kwargs)
++    if self.reduce_results and self.tp_size > 1:
++        output = tensor_model_parallel_all_reduce(output_parallel)
++    else:
++        output = output_parallel
++
++    output_bias = self.bias if self.skip_bias_add else None
++
++    if not self.return_bias:
++        return output
++    return output, output_bias
++
++
++def vllm__module_executor__layers__linear__ColumnParallelLinear__forward(
++    self,
++    input_,
++    smooth_quant_scale: Optional[torch.Tensor] = None
++):
++    bias = self.bias if not self.skip_bias_add else None
++
++    # Matrix multiply.
++    assert self.quant_method is not None
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: Add input_scale parameter.
++    '''
++    kwargs = {'bias': bias}
++    if smooth_quant_scale is not None:
++        kwargs['input_scale'] = smooth_quant_scale
++    output_parallel = self.quant_method.apply(self,
++                                              input_,
++                                              **kwargs)
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++    if self.gather_output:
++        # All-gather across the partitions.
++        output = tensor_model_parallel_all_gather(output_parallel)
++    else:
++        output = output_parallel
++    output_bias = self.bias if self.skip_bias_add else None
++    if not self.return_bias:
++        return output
++    return output, output_bias
++
++
++MluHijackObject.apply_hijack(UnquantizedLinearMethod,
++                             UnquantizedLinearMethod.apply,
++                             vllm__module_executor__layers__linear__UnquantizedLinearMethod__apply)
++MluHijackObject.apply_hijack(RowParallelLinear,
++                             RowParallelLinear.forward,
++                             vllm__module_executor__layers__linear__RowParallelLinear__forward)
++MluHijackObject.apply_hijack(ColumnParallelLinear,
++                             ColumnParallelLinear.forward,
++                             vllm__module_executor__layers__linear__ColumnParallelLinear__forward)
+

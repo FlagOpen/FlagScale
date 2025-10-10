@@ -1,5 +1,5 @@
 diff --git a/megatron/core/transformer/transformer_layer.py b/megatron/core/transformer/transformer_layer.py
-index 42d077e2..bd22be19 100644
+index 42d077e2e..bd22be19d 100644
 --- a/megatron/core/transformer/transformer_layer.py
 +++ b/megatron/core/transformer/transformer_layer.py
 @@ -36,17 +36,18 @@ logger = logging.getLogger(__name__)

@@ -1,5 +1,5 @@
 diff --git a/megatron/core/models/common/language_module/language_module.py b/megatron/core/models/common/language_module/language_module.py
-index d855322c..0d2cc80f 100644
+index d855322c2..0d2cc80f3 100644
 --- a/megatron/core/models/common/language_module/language_module.py
 +++ b/megatron/core/models/common/language_module/language_module.py
 @@ -231,7 +231,22 @@ class LanguageModule(MegatronModule):

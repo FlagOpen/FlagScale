@@ -1,5 +1,5 @@
 diff --git a/tests/unit_tests/dist_checkpointing/models/test_moe_experts.py b/tests/unit_tests/dist_checkpointing/models/test_moe_experts.py
-index b116d2cb..9b11c581 100644
+index b116d2cb6..9b11c5818 100644
 --- a/tests/unit_tests/dist_checkpointing/models/test_moe_experts.py
 +++ b/tests/unit_tests/dist_checkpointing/models/test_moe_experts.py
 @@ -104,6 +104,9 @@ if is_te_min_version("1.9.0.dev0"):
