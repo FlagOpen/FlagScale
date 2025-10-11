@@ -52,7 +52,6 @@ jobs:
           echo "Home: $HOME"
           whoami
           pip install gitpython # TODO: Remove after updating the image
-          pip install aiohttp
 
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           
@@ -64,6 +63,9 @@ jobs:
 
           if [ "${{ inputs.backend }}" = "train_megatron" ] || [ "${{ inputs.backend }}" = "train_flagscale" ]; then
             echo ""
+            source /root/miniconda3/bin/activate flagscale-train
+            pip install aiohttp
+            conda deactivate
             # PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
           elif [ "${{ inputs.backend }}" = "vllm" ] || [ "${{ inputs.backend }}" = "inference_flagscale" ]; then
             source /root/miniconda3/bin/activate flagscale-inference
