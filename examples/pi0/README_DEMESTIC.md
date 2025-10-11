@@ -39,6 +39,15 @@ Change 2 fields:
 - llm.model_path -> /share/pi0
 - llm.tokenizer_path -> /share/paligemma-3b-pt-224
 
+
+# Download Dataset
+
+```sh
+modelscope download --dataset lerobot/aloha_mobile_cabinet --local_dir /share/aloha_mobile_cabinet
+mkdir -p ~/.cache/huggingface/lerobot/lerobot/aloha_mobile_cabinet
+cp -r /share/aloha_mobile_cabinet/* ~/.cache/huggingface/lerobot/lerobot/aloha_mobile_cabinet
+```
+
 # Run Inference Example
 ```sh
 cd FlagScale/
