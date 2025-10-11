@@ -38,7 +38,7 @@ FFmpeg depends torchcodec, which is not easy to install correctly. You can:
 2. Check [this](https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec) for the compatibility between versions of torchcodec, torch and Python.
 
 
-# Dowmload Model
+# Download Model
 ```sh
 modelscope download --model lerobot/pi0 --local_dir /share/pi0
 modelscope download --model google/paligemma-3b-pt-224 --local_dir /share/paligemma-3b-pt-224
