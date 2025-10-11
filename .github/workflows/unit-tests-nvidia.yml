@@ -62,8 +62,9 @@ jobs:
           trap 'echo "Cleaning up temporary directory..."; rm -rf "$TMP_DIR"' EXIT
 
           if [ "${{ inputs.backend }}" = "train_megatron" ] || [ "${{ inputs.backend }}" = "train_flagscale" ]; then
+            source /root/miniconda3/bin/activate flagscale-train
             pip install aiohttp
-            echo ""
+            conda deactivate
             # PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
           elif [ "${{ inputs.backend }}" = "vllm" ] || [ "${{ inputs.backend }}" = "inference_flagscale" ]; then
             source /root/miniconda3/bin/activate flagscale-inference
