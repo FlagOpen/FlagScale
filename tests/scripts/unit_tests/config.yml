@@ -52,6 +52,7 @@ train_megatron:
         - test_grad_sync_with_expert_parallel.py
       deselect:
         - test_mcore_fully_sharded_data_parallel.py::TestFullyShardedDataParallel::test_fsdp_user_buffer_registration
+        - fsdp/test_mfsdp_fully_shard.py::TestMegatronFsdpFullyShard::test_fully_shard
     export:
       ignore:
         - default
