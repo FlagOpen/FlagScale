@@ -554,6 +554,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
 
                     if engine == "sglang":
                         from flagscale.serve.args_mapping.mapping import ARGS_CONVERTER
+
                         if index != 0:
                             logger.info(f"generate run script args, config: {config}")
                             args = None
@@ -562,7 +563,9 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                                     args = item
                                     break
                             if args is None:
-                                raise ValueError(f"No 'vllm_model' configuration found in task config: {serve.task_config}")
+                                raise ValueError(
+                                    f"No 'vllm_model' configuration found in task config: {serve.task_config}"
+                                )
                             common_args = args.get("engine_args", {})
                             sglang_args = args.get("engine_args_specific", {}).get("sglang", {})
 
@@ -570,13 +573,15 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             if common_args.get("model", None):
                                 converted_args = ARGS_CONVERTER.convert("sglang", common_args)
                                 command.extend(["--model-path", converted_args["model_path"]])
-                                common_args_flatten = flatten_dict_to_args(converted_args, ["model"])
+                                common_args_flatten = flatten_dict_to_args(
+                                    converted_args, ["model"]
+                                )
                                 command.extend(common_args_flatten)
                                 sglang_args_flatten = flatten_dict_to_args(sglang_args, ["model"])
                                 command.extend(sglang_args_flatten)
                             else:
                                 raise ValueError("Either model must be specified in vllm_model.")
-                                    
+
                             command.extend(["--node-rank", str(index)])
                             command.append("> /dev/null 2>&1 &")
 

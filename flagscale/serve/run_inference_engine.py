@@ -84,12 +84,13 @@ def sglang_serve(args):
         command.extend(sglang_args_flatten)
     else:
         raise ValueError("Either model must be specified in vllm_model.")
-            
+
     hostfile_path = serve.task_config.experiment.runner.get("hostfile", None)
     print(f"hostfile_path: {hostfile_path}")
     if hostfile_path:
-        from flagscale.runner.utils import parse_hostfile, is_ip_addr, get_ip_addr
         from flagscale.runner.runner_serve import match_address
+        from flagscale.runner.utils import get_ip_addr, is_ip_addr, parse_hostfile
+
         resources = parse_hostfile(hostfile_path)
         print(f"resources: {resources}")
         for idx, (key, value) in enumerate(resources.items()):
@@ -97,7 +98,6 @@ def sglang_serve(args):
             if match_address(key):
                 command.extend(["--node-rank", str(idx)])
                 print(f"add node-rank: {idx}")
-                
 
     # Start the subprocess
     logger.info(f"[Serve]: Starting sglang serve with command: {' '.join(command)}")
