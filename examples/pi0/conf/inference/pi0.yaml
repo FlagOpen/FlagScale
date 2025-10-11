@@ -1,6 +1,7 @@
 llm:
   # TODO: Update model_path to your local model path
-  model_path: /path/to/your/models/lerobot/pi0
+  model_path: your_model_path
+  tokenizer_path: your_tokenizer_path
   compile_model: false
   compile_mode: reduce-overhead
 dataset:
