@@ -3,7 +3,7 @@
   # engine: llama_cpp
   engine: sglang
   engine_args:
-    model: /tmp/models/Qwen3-0.6B/
+    model: /models/Qwen2.5-0.5B-Instruct/
     host: 0.0.0.0
     max_model_len: 4096
     max_num_seqs: 4
@@ -21,6 +21,9 @@
       trust_remote_code: true
       enable_chunked_prefill: true
     sglang:
+      tp: 2
+      nnodes: 2
+      dist-init-addr: x.x.x.x:x  #10.6.208.15:20036
       page_size: 16
   profile:
     prefix_len: 0

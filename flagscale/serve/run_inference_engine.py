@@ -84,9 +84,24 @@ def sglang_serve(args):
         command.extend(sglang_args_flatten)
     else:
         raise ValueError("Either model must be specified in vllm_model.")
+            
+    hostfile_path = serve.task_config.experiment.runner.get("hostfile", None)
+    print(f"hostfile_path: {hostfile_path}")
+    if hostfile_path:
+        from flagscale.runner.utils import parse_hostfile, is_ip_addr, get_ip_addr
+        from flagscale.runner.runner_serve import match_address
+        resources = parse_hostfile(hostfile_path)
+        print(f"resources: {resources}")
+        for idx, (key, value) in enumerate(resources.items()):
+            print(f"idx: {idx}, key: {key}, value: {value}")
+            if match_address(key):
+                command.extend(["--node-rank", str(idx)])
+                print(f"add node-rank: {idx}")
+                
 
     # Start the subprocess
     logger.info(f"[Serve]: Starting sglang serve with command: {' '.join(command)}")
+    print(f"[Serve]: Starting sglang serve with command: {' '.join(command)}")
 
     process = subprocess.Popen(command, stdout=sys.stdout, stderr=sys.stderr)
     pid = os.getpid()
@@ -100,6 +115,9 @@ def sglang_serve(args):
 
 
 def main():
+    print(f"in run_inference_engine.py main()")
+    logger.info(f"in run_inference_engine.py main()")
+
     serve.load_args()
     serve_config = serve.task_config.get("serve", [])
     if not serve_config:
