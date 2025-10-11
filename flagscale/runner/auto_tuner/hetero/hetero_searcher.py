@@ -1,6 +1,5 @@
 import itertools
 import logging
-
 from typing import Dict, List
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
@@ -8,67 +7,113 @@ from omegaconf import DictConfig, ListConfig, OmegaConf
 from flagscale.runner.auto_tuner.search.searcher import Searcher
 
 
-def _generate_all_partitions(n: int, k: int):
+def _generate_all_partitions_with_max_diff(n: int, k: int, max_diff: int):
     """
-    Generates all possible integer partitions of n into k parts.
-    e.g., (7, 3) -> [5,1,1], [4,2,1], [3,3,1], [3,2,2]
+    Generates all integer partitions of n into k parts, with a constraint
+    that the difference between the largest and smallest part does not exceed max_diff.
     """
+    if k == 0:
+        if n == 0:
+            yield []
+        return
     if k == 1:
         if n > 0:
             yield [n]
         return
-    # We can assign at least 1 layer to the first part, and at most n-(k-1)
-    for i in range(1, n - (k - 1) + 1):
-        for rest in _generate_all_partitions(n - i, k - 1):
-            # To avoid duplicates like [1,2] and [2,1], we generate in descending order.
-            if i >= rest[0]:
-                yield [i] + rest
 
+    # Bound the search for the first element to satisfy the max_diff constraint
+    for i in range((n + k - 1) // k, n - (k - 1) + 1):
+        if n - i < (k - 1): continue
+        for rest in _generate_all_partitions_with_max_diff(n - i, k - 1, max_diff):
+            if not rest:
+                if k-1 == 0 and n-i == 0:
+                     if i <= max_diff: yield [i]
+                continue
+            
+            # Keep partitions in descending order to avoid duplicates
+            if i < rest[0]:
+                continue
+            
+            # Check the max_diff constraint
+            if i - rest[-1] > max_diff:
+                continue
 
-def _generate_balanced_split(n: int, k: int) -> List[int]:
+            yield [i] + rest
+
+def _generate_flexible_split(n: int, k: int, max_diff: int = 1) -> List[int]:
     """
-    Generates the single most arithmetically balanced split of n into k parts.
-    The difference between the max and min values will not be greater than 1.
+    Generates a representative partition of n into k parts where the difference
+    between parts is no more than max_diff. This is a heuristic approach.
     """
     if k <= 0 or n < k:
         return []
+    
     base = n // k
     rem = n % k
-    return [base + 1] * rem + [base] * (k - rem)
+    
+    result = [base] * k
+    for i in range(rem):
+        result[i] += 1
+    
+    result.sort(reverse=True)
+    current_diff = result[0] - result[-1]
+    
+    l, r = 0, k - 1
+    while current_diff < max_diff and l < r:
+        if result[l] - result[r] >= max_diff:
+            break
+        if r > 0 and result[r] - 1 < result[r-1]:
+             r -= 1
+             continue
+        if l < k -1 and result[l] + 1 > result[l+1]:
+            l += 1
+            continue
 
+        result[l] += 1
+        result[r] -= 1
+        result.sort(reverse=True)
+        current_diff = result[0] - result[-1]
 
-def _generate_valid_layer_splits(total_layers: int, mesh_pp_sizes: List[int]):
+    if result[0] - result[-1] > max_diff:
+        # Fallback to the most balanced split if the heuristic overshoots
+        result = [base + 1] * rem + [base] * (k - rem)
+
+    return result
+
+def _generate_valid_layer_splits(total_layers: int, mesh_pp_sizes: List[int], inter_mesh_max_diff: int):
     """
-    Generates valid layer splits based on the new hierarchical logic.
+    Generates valid layer splits using the new intelligent splitting algorithms.
     """
     num_meshes = len(mesh_pp_sizes)
     if num_meshes == 0:
         return
+    
+    # 1. Use the new partition function with max_diff for inter-mesh layer distribution
+    partition_generator = _generate_all_partitions_with_max_diff(total_layers, num_meshes, inter_mesh_max_diff)
 
-    # 1. Get all possible ways to distribute total_layers among the meshes
-    for inter_mesh_partition in _generate_all_partitions(total_layers, num_meshes):
-        # 2. Consider all permutations of that distribution
+    for inter_mesh_partition in partition_generator:
         for mesh_layer_distribution in set(itertools.permutations(inter_mesh_partition)):
             final_split = []
             is_distribution_possible = True
-
-            # 3. For each mesh, check if its layer budget can be balanced internally
             for i in range(num_meshes):
                 layers_for_this_mesh = mesh_layer_distribution[i]
                 local_pp = mesh_pp_sizes[i]
-
-                # Check if subdivision is possible
                 if layers_for_this_mesh < local_pp:
                     is_distribution_possible = False
                     break
-
-                # Perform the balanced subdivision
-                intra_mesh_split = _generate_balanced_split(layers_for_this_mesh, local_pp)
-
+                
+                # 2. Use the flexible split for intra-mesh distribution with a hardcoded max_diff of 2
+                intra_mesh_split = _generate_flexible_split(layers_for_this_mesh, local_pp, max_diff=2)
+                
+                if not intra_mesh_split or sum(intra_mesh_split) != layers_for_this_mesh:
+                    is_distribution_possible = False
+                    break
+                
                 final_split.extend(intra_mesh_split)
-
+            
             if is_distribution_possible:
                 yield final_split
+
 
 
 class HeteroSearcher(Searcher):
@@ -76,12 +121,14 @@ class HeteroSearcher(Searcher):
     A specialized searcher for heterogeneous environments.
     """
 
-    # __init__, build_space and other helpers remain the same as the last working version.
     def __init__(self, config: Dict, resources: Dict):
         self.resources = resources
         self.node_info = []
         self.mesh_templates = []
         self.device_types_in_template = []
+        # Added attributes to store parsed search space for new features
+        self.recompute_search_space = {}
+        self.layer_split_constraints = {}
         super().__init__(config)
 
     def build_space(self, config: Dict) -> Dict:
@@ -105,6 +152,11 @@ class HeteroSearcher(Searcher):
                 return OmegaConf.to_container(value, resolve=True)
             return value
 
+        # Parse the new layer splitting constraint from the config
+        self.layer_split_constraints['inter_mesh_max_diff'] = safe_to_container(
+            hetero_space.get("hetero_inter_mesh_max_layer_diff", "auto")
+        )
+
         space["hetero_pipeline_layer_split"] = safe_to_container(
             hetero_space.get("hetero_pipeline_layer_split", "auto")
         )
@@ -123,6 +175,7 @@ class HeteroSearcher(Searcher):
                 f"Mismatch: The number of mesh templates ({len(self.mesh_templates)}) does not match "
                 f"the number of hetero_device_types ({len(self.device_types_in_template)}). "
             )
+        
         space["micro_batch_size"] = safe_to_container(hetero_space.get("micro_batch_size", [1]))
         space["use_distributed_optimizer"] = safe_to_container(
             hetero_space.get("use_distributed_optimizer", [True, False])
@@ -130,21 +183,187 @@ class HeteroSearcher(Searcher):
         space["sequence_parallel"] = safe_to_container(
             hetero_space.get("sequence_parallel", [True, False])
         )
-        space["use_recompute"] = safe_to_container(hetero_space.get("use_recompute", [True, False]))
-        space["recompute_method"] = safe_to_container(
-            hetero_space.get("recompute_method", ["uniform", "block"])
+        self.recompute_search_space['use_recompute'] = safe_to_container(
+            hetero_space.get("use_recompute", [True, False])
         )
-        space["recompute_granularity"] = safe_to_container(
-            hetero_space.get("recompute_granularity", ["full", "selective"])
+        self.recompute_search_space['granularity'] = safe_to_container(
+            hetero_space.get("recompute_granularity_per_stage_micro_batch", "auto")
         )
-        num_layers = config.train.model.num_layers
-        space["recompute_num_layers"] = safe_to_container(
-            hetero_space.get("recompute_num_layers", list(range(1, num_layers + 1)))
+        self.recompute_search_space['method'] = safe_to_container(
+            hetero_space.get("recompute_method_per_stage_micro_batch", "auto")
         )
+        self.recompute_search_space['num_layers'] = safe_to_container(
+            hetero_space.get("recompute_num_layers_per_stage_micro_batch", "auto")
+        )
+
         space["num_layers_per_virtual_pipeline_stage"] = [0]
         if "algo" not in auto_tuner_config:
             auto_tuner_config.algo = {"name": "grid", "priority": None}
         return space
+
+    # generate recompute configurations dynamically
+    def _generate_recompute_configs(self, pp_size: int, num_micro_batches: int) -> List[Dict]:
+        if pp_size == 0:
+            return [{}]
+
+        def get_options_for(key: str) -> List[list]:
+            user_config = self.recompute_search_space.get(key)
+            if user_config == "auto":
+                auto_templates = [[[pp_size, 'ALL', 0]], [[pp_size, 'ALL', 1]]]
+                if key == 'num_layers':
+                    return [[[pp_size, 'ALL', 1]]]
+                return auto_templates
+            elif isinstance(user_config, list):
+                valid_options = []
+                for template_list in user_config:
+                    total_stages_in_template = sum(item[0] for item in template_list)
+                    if total_stages_in_template == pp_size:
+                        valid_options.append(template_list)
+                return valid_options
+            return []
+
+        granularity_options = get_options_for('granularity')
+        method_options = get_options_for('method')
+        num_layers_options = get_options_for('num_layers')
+        
+        if not granularity_options or not method_options or not num_layers_options:
+            return [{}]
+
+        all_recompute_combinations = []
+        for gran_list, meth_list, num_list in itertools.product(granularity_options, method_options, num_layers_options):
+            def render_template(template_list):
+                rendered_list = []
+                for item in template_list:
+                    rendered_item = [val if val != 'ALL' else num_micro_batches for val in item]
+                    rendered_list.append(rendered_item)
+                return rendered_list
+
+            all_recompute_combinations.append({
+                "recompute_granularity_per_stage_micro_batch": render_template(gran_list),
+                "recompute_method_per_stage_micro_batch": render_template(meth_list),
+                "recompute_num_layers_per_stage_micro_batch": render_template(num_list)
+            })
+        
+        return all_recompute_combinations if all_recompute_combinations else [{}]
+
+    def build_strategies(self, space: Dict, config: Dict) -> List[Dict]:
+        self.logger.info("Building comprehensive heterogeneous strategies (Node-Aware)...")
+
+        all_assignments = self._find_valid_assignments(
+            mesh_idx=0, available_nodes=self.node_info, current_assignments=[], config=config
+        )
+        self.logger.info(
+            f"Generated {len(all_assignments)} core heterogeneous parallelism assignments."
+        )
+
+        # Refactored into a two-stage process
+        # Stage 1: Build base strategies without recompute
+        base_strategies_without_recompute = []
+        gbs = config.train.model.global_batch_size
+
+        for assignment in all_assignments:
+            global_pp_size = sum(item['mesh'][4] for item in assignment)
+            
+            base_parallel_info = {
+                "pipeline_model_parallel_size": global_pp_size,
+                "hetero_process_meshes": [item['mesh'] for item in assignment],
+                "hetero_device_types": [item['device_type'] for item in assignment],
+            }
+            
+            # Handle layer splitting with new constraints
+            layer_splits = []
+            if space["hetero_pipeline_layer_split"] == 'auto':
+                if global_pp_size > 0:
+                    mesh_pp_sizes = [item['mesh'][4] for item in assignment]
+                    inter_mesh_diff = self.layer_split_constraints['inter_mesh_max_diff']
+                    if inter_mesh_diff == 'auto':
+                        # Heuristic for auto mode
+                        inter_mesh_diff = max(config.train.model.num_layers // len(mesh_pp_sizes) if len(mesh_pp_sizes)>0 else config.train.model.num_layers, 4)
+
+                    layer_splits.extend(list(_generate_valid_layer_splits(config.train.model.num_layers, mesh_pp_sizes, inter_mesh_diff)))
+                else:
+                    layer_splits.append([])
+            elif isinstance(space["hetero_pipeline_layer_split"], list):
+                for split in space["hetero_pipeline_layer_split"]:
+                    if len(split) == global_pp_size and sum(split) == config.train.model.num_layers:
+                        layer_splits.append(split)
+
+            for split in layer_splits:
+                dp_list = [mesh[3] for mesh in base_parallel_info["hetero_process_meshes"]]
+                for mbs in space["micro_batch_size"]:
+                    is_dp_compatible = all((gbs % (dp * mbs) == 0) for dp in dp_list if dp > 0)
+                    if not is_dp_compatible: continue
+
+                    all_dp_are_one = all(dp == 1 for dp in dp_list)
+                    do_options = [False] if all_dp_are_one else space["use_distributed_optimizer"]
+                    for use_do in do_options:
+                        for sp in space["sequence_parallel"]:
+                            all_tp_gt_one = all(mesh[0] > 1 for mesh in base_parallel_info["hetero_process_meshes"])
+                            if sp and not all_tp_gt_one: continue
+
+                            base_strategies_without_recompute.append({
+                                **base_parallel_info,
+                                "hetero_pipeline_layer_split": split,
+                                "micro_batch_size": mbs,
+                                "use_distributed_optimizer": use_do,
+                                "sequence_parallel": sp,
+                            })
+
+        self.logger.info(f"Created {len(base_strategies_without_recompute)} base strategies.")
+
+        # Stage 2: Dynamically append recompute configurations
+        final_strategies = []
+        for base_strategy in base_strategies_without_recompute:
+            use_recompute_options = self.recompute_search_space['use_recompute']
+            
+            if False in use_recompute_options:
+                final_strategies.append({
+                    **base_strategy,
+                    'use_recompute': False,
+                    "recompute_granularity_per_stage_micro_batch": None,
+                    "recompute_method_per_stage_micro_batch": None,
+                    "recompute_num_layers_per_stage_micro_batch": None,
+                })
+            
+            if True in use_recompute_options:
+                pp_size = base_strategy['pipeline_model_parallel_size']
+                mbs = base_strategy['micro_batch_size']
+                dp = base_strategy['hetero_process_meshes'][0][3]
+
+                if (mbs * dp) == 0: num_micro_batches = gbs
+                else: num_micro_batches = gbs // (mbs * dp)
+                if num_micro_batches == 0: num_micro_batches = 1
+
+                recompute_combinations = self._generate_recompute_configs(pp_size, num_micro_batches)
+                for recom_config in recompute_combinations:
+                    if recom_config:
+                        final_strategies.append({
+                            **base_strategy,
+                            'use_recompute': True,
+                            **recom_config
+                        })
+        
+        # Finally, add compatibility keys for the Pruner
+        for strategy in final_strategies:
+            meshes = strategy.get("hetero_process_meshes", [])
+            use_recompute = strategy.get('use_recompute', False)
+            strategy.update({
+                "num_layers_per_virtual_pipeline_stage": None,
+                "tensor_model_parallel_size": meshes[0][0] if meshes else 1,
+                "context_parallel_size": meshes[0][1] if meshes else 1,
+                "expert_model_parallel_size": meshes[0][2] if meshes else 1,
+                "data_parallel_size": meshes[0][3] if meshes else 1,
+                "decoder_first_pipeline_num_layers": None,
+                "decoder_last_pipeline_num_layers": None,
+                "recompute_method": "uniform" if use_recompute else None,
+                "recompute_granularity": "full" if use_recompute else None,
+                "recompute_num_layers": 1 if use_recompute else None,
+            })
+
+        self.logger.info(
+            f"Built a total of {len(final_strategies)} comprehensive candidate strategies."
+        )
+        return final_strategies
 
     def _get_search_values(self, template_val, max_val):
         if isinstance(template_val, int):
@@ -234,123 +453,3 @@ class HeteroSearcher(Searcher):
                         )
                         results.extend(sub_results)
         return results
-
-    def build_strategies(self, space: Dict, config: Dict) -> List[Dict]:
-        self.logger.info("Building comprehensive heterogeneous strategies (Node-Aware)...")
-
-        all_assignments = self._find_valid_assignments(
-            mesh_idx=0, available_nodes=self.node_info, current_assignments=[], config=config
-        )
-        self.logger.info(
-            f"Generated {len(all_assignments)} core heterogeneous parallelism assignments."
-        )
-
-        parallelism_part = []
-        global_pp_size_target = None
-        # Manual mode for layer split now also implies a pp_size target
-        if space["hetero_pipeline_layer_split"] != 'auto':
-            if space["hetero_pipeline_layer_split"]:
-                global_pp_size_target = len(space["hetero_pipeline_layer_split"][0])
-
-        for assignment in all_assignments:
-            global_pp_size = sum(item['mesh'][4] for item in assignment)
-
-            if global_pp_size_target is not None and global_pp_size != global_pp_size_target:
-                continue
-
-            base_strategy = {
-                "pipeline_model_parallel_size": global_pp_size,
-                "hetero_process_meshes": [item['mesh'] for item in assignment],
-                "hetero_device_types": [item['device_type'] for item in assignment],
-            }
-
-            #  Call the new hierarchical splitter logic ---
-            if space["hetero_pipeline_layer_split"] == 'auto':
-                if global_pp_size > 0:
-                    mesh_pp_sizes = [item['mesh'][4] for item in assignment]
-                    for split in _generate_valid_layer_splits(
-                        config.train.model.num_layers, mesh_pp_sizes
-                    ):
-                        strat = base_strategy.copy()
-                        strat["hetero_pipeline_layer_split"] = split
-                        parallelism_part.append(strat)
-            else:  # Manual mode validation
-                for split in space["hetero_pipeline_layer_split"]:
-                    if len(split) == global_pp_size and sum(split) == config.train.model.num_layers:
-                        strat = base_strategy.copy()
-                        strat["hetero_pipeline_layer_split"] = split
-                        parallelism_part.append(strat)
-
-        self.logger.info(
-            f"Created {len(parallelism_part)} core strategies after considering layer splits."
-        )
-        final_strategies = self._product_with_other_dims(parallelism_part, space, config)
-        self.logger.info(
-            f"Built a total of {len(final_strategies)} comprehensive candidate strategies."
-        )
-        return final_strategies
-
-    def _product_with_other_dims(self, parallelism_part, space, config):
-        # This function remains unchanged
-        full_strategies = []
-        for base_strategy in parallelism_part:
-            meshes = base_strategy["hetero_process_meshes"]
-            if not meshes:
-                continue
-
-            dp_list = [mesh[3] for mesh in meshes]
-            base_dp = dp_list[0] if dp_list else 1
-            for mbs in space["micro_batch_size"]:
-                gbs = config.train.model.global_batch_size
-                is_dp_compatible = all((gbs % (dp * mbs) == 0) for dp in dp_list if dp > 0)
-                if not is_dp_compatible:
-                    continue
-                all_dp_are_one = all(dp == 1 for dp in dp_list)
-                do_options = [False] if all_dp_are_one else space["use_distributed_optimizer"]
-                for use_do in do_options:
-                    for sp in space["sequence_parallel"]:
-                        all_tp_gt_one = all(mesh[0] > 1 for mesh in meshes)
-                        if sp and not all_tp_gt_one:
-                            continue
-                        for vpp_layers in space["num_layers_per_virtual_pipeline_stage"]:
-                            for use_recompute in space["use_recompute"]:
-                                strategy_keys = {
-                                    **base_strategy,
-                                    "micro_batch_size": mbs,
-                                    "use_distributed_optimizer": use_do,
-                                    "sequence_parallel": sp,
-                                    "use_recompute": use_recompute,
-                                    "num_layers_per_virtual_pipeline_stage": (
-                                        vpp_layers if vpp_layers > 0 else None
-                                    ),
-                                    "tensor_model_parallel_size": meshes[0][0],
-                                    "context_parallel_size": meshes[0][1],
-                                    "expert_model_parallel_size": meshes[0][2],
-                                    "data_parallel_size": meshes[0][3],
-                                    "decoder_first_pipeline_num_layers": None,
-                                    "decoder_last_pipeline_num_layers": None,
-                                }
-                                if not use_recompute:
-                                    strategy_keys.update(
-                                        {
-                                            "recompute_method": None,
-                                            "recompute_granularity": None,
-                                            "recompute_num_layers": None,
-                                        }
-                                    )
-                                    full_strategies.append(strategy_keys)
-                                else:
-                                    for r_method in space["recompute_method"]:
-                                        for r_granularity in space["recompute_granularity"]:
-                                            new_strat = strategy_keys.copy()
-                                            new_strat.update(
-                                                {
-                                                    "recompute_method": r_method,
-                                                    "recompute_granularity": r_granularity,
-                                                    "recompute_num_layers": space[
-                                                        "recompute_num_layers"
-                                                    ][0],
-                                                }
-                                            )
-                                            full_strategies.append(new_strat)
-        return full_strategies
