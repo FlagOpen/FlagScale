@@ -51,8 +51,6 @@ jobs:
           echo "GID: $(id -g)"
           echo "Home: $HOME"
           whoami
-          pip install gitpython # TODO: Remove after updating the image
-
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           
           TMP_DIR=$(mktemp -d)
