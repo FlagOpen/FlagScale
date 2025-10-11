@@ -1,14 +1,20 @@
 
 
 #  Install FlagScale 
-If you don't have access to the international internet, clone Flagscale from https://gitee.com/hchnr/flag-scale with branch **lerobot_domestic**.
+If you don't have access to the international internet, clone Flagscale from https://gitee.com/hchnr/flag-scale with branch **lerobot_custom**.
+
+```sh
+git clone https://gitee.com/hchnr/flag-scale.git
+cd flag-scale/
+git checkout lerobot_custom
+```
 
 Install inference env according to [README](https://github.com/FlagOpen/FlagScale/blob/main/README.md) 
 
 # Install Lerobot
 If you don't have access to the international internet, change submodule third_party/lerobot:
 
-```sh
+```ini
 [submodule "third_party/lerobot"]
 	path = third_party/lerobot
 	url = https://gitee.com/hchnr/lerobot.git
