@@ -68,3 +68,21 @@ cd FlagScale/
 python run.py --config-path ./examples/pi0/conf --config-name inference action=run
 ```
 
+# Run Serving
+```sh
+cd FlagScale/
+python run.py --config-path ./examples/pi0/conf --config-name serve action=run
+```
+
+# Test Server with Client
+
+```sh
+cd FlagScale/examples/pi0/
+python client_pi0.py \
+--host 127.0.0.1 \
+--port 5000 \
+--base-img orbbec_0_latest.jpg \
+--left-wrist-img orbbec_1_latest.jpg \
+--right-wrist-img orbbec_2_latest.jpg \
+--num-steps 20
+```
