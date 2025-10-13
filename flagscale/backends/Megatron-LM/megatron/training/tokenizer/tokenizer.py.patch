@@ -1,5 +1,5 @@
 diff --git a/megatron/training/tokenizer/tokenizer.py b/megatron/training/tokenizer/tokenizer.py
-index 5cf222cc..35ad2b85 100644
+index 5cf222ccc..eaa16fc8b 100644
 --- a/megatron/training/tokenizer/tokenizer.py
 +++ b/megatron/training/tokenizer/tokenizer.py
 @@ -11,9 +11,10 @@ from pathlib import Path
@@ -24,7 +24,7 @@ index 5cf222cc..35ad2b85 100644
      elif args.tokenizer_type == 'NullTokenizer':
          assert args.vocab_size is not None
          tokenizer = _NullTokenizer(args.vocab_size)
-@@ -102,6 +106,31 @@ def build_tokenizer(args, **kwargs):
+@@ -102,6 +106,34 @@ def build_tokenizer(args, **kwargs):
      elif args.tokenizer_type == 'NullMultimodalTokenizer':
          assert args.vocab_size is not None
          tokenizer = _NullMultimodalTokenizer(args.vocab_size)
@@ -43,6 +43,9 @@ index 5cf222cc..35ad2b85 100644
 +    elif args.tokenizer_type == "QwenTokenizerFS":
 +        assert args.tokenizer_path is not None
 +        tokenizer = _QwenTokenizerFS(args.tokenizer_path)
++    elif args.tokenizer_type == "SmolLM2TokenizerFS":
++        assert args.tokenizer_path is not None
++        tokenizer = _SmolLM2TokenizerFS(args.tokenizer_path)
 +    elif args.tokenizer_type == "HFTokenizersTokenizerFS":
 +        assert args.tokenizer_path is not None
 +        tokenizer = _HFTokenizersTokenizerFS(args.tokenizer_path)
@@ -56,7 +59,7 @@ index 5cf222cc..35ad2b85 100644
      else:
          raise NotImplementedError('{} tokenizer is not ' 'implemented.'.format(args.tokenizer_type))
  
-@@ -596,6 +625,16 @@ class _Llama2Tokenizer(_SentencePieceTokenizer):
+@@ -596,6 +628,16 @@ class _Llama2Tokenizer(_SentencePieceTokenizer):
              t = t + [self.eos_id]
          return t
  
@@ -73,7 +76,7 @@ index 5cf222cc..35ad2b85 100644
      def detokenize(self, ids):
          return self.tokenizer.decode_ids(ids)
  
-@@ -909,3 +948,276 @@ class _NullMultimodalTokenizer(MegatronTokenizer):
+@@ -909,3 +951,286 @@ class _NullMultimodalTokenizer(MegatronTokenizer):
      @property
      def additional_special_tokens_ids(self):
          return None
@@ -193,6 +196,16 @@ index 5cf222cc..35ad2b85 100644
 +        super().__init__(tokenizer_path)
 +        self.eod_id = self.tokenizer.encode('<|extra_204|>')[0]
 +        self.cls_id = self.tokenizer.encode('<|extra_203|>')[0]
++        self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]
++
++
++class _SmolLM2TokenizerFS(_HFTokenizerFS):
++    """Adapted SmolLM2 tokenizer."""
++    
++    def __init__(self, tokenizer_path):
++        super().__init__(tokenizer_path)
++        self.eod_id = self.tokenizer.encode('<|endoftext|>')[0]
++        self.cls_id = self.tokenizer.encode('<|endoftext|>')[0]
 +        self.pad_id = self.tokenizer.encode('<|endoftext|>')[0]
 +
 +
