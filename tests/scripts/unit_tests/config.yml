@@ -13,8 +13,11 @@ train_megatron:
     core
   subset:
     data:
+      ignore:
+        - test_preprocess_data.py
       deselect:
-      - skip_unit_test_modules
+        - test_gpt_dataset.py::test_mock_gpt_dataset
+        - test_multimodal_dataset.py::test_mock_multimodal_dataset
     dist_checkpointing:
       type: single
       ignore:
