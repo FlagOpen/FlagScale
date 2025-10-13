@@ -32,7 +32,7 @@ def inference(config):
     cfg = PreTrainedConfig.from_pretrained(config_llm.model_path)
     cfg.repo_id = config_llm.tokenizer_path
     cfg.pretrained_path = config_llm.model_path
-    # policy = make_policy(cfg, ds_meta=lerobot_dataset.meta)
+    policy = make_policy(cfg, ds_meta=lerobot_dataset.meta)
     if config_llm.compile_model:
         policy = torch.compile(policy, mode=config_llm.compile_mode)
     policy = policy.to(DEVICE)
