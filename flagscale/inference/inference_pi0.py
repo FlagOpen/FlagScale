@@ -51,7 +51,6 @@ def inference(config):
 
         t_s = time.time()
         with torch.no_grad():
-            import pdb; pdb.set_trace()
             actions = policy.model.sample_actions(
                 images, img_masks, lang_tokens, lang_masks, state, noise=None
             )

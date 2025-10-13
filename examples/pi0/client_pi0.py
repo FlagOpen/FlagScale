@@ -90,7 +90,7 @@ def main():
         "--host", default="127.0.0.1", help="Host of local SSH tunnel (default: 127.0.0.1)"
     )
     parser.add_argument(
-        "--port", type=int, default=15000, help="Port of local SSH tunnel (default: 15000)"
+        "--port", type=int, default=5000, help="Port of local SSH tunnel (default: 15000)"
     )
     parser.add_argument("--base-img", required=True, help="Path to base camera RGB image")
     parser.add_argument(
