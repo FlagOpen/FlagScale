@@ -1,5 +1,5 @@
 diff --git a/megatron/training/arguments.py b/megatron/training/arguments.py
-index e36803fc..3d3e219e 100644
+index e36803fc5..3d3e219ed 100644
 --- a/megatron/training/arguments.py
 +++ b/megatron/training/arguments.py
 @@ -59,6 +59,7 @@ def add_megatron_arguments(parser: argparse.ArgumentParser):

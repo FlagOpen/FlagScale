@@ -1,5 +1,5 @@
 diff --git a/megatron/training/checkpointing.py b/megatron/training/checkpointing.py
-index 652333ac..36f06c9b 100644
+index 652333acb..36f06c9be 100644
 --- a/megatron/training/checkpointing.py
 +++ b/megatron/training/checkpointing.py
 @@ -255,12 +255,14 @@ def read_metadata(tracker_filename):
