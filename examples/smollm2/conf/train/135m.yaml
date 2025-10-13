@@ -1,0 +1,92 @@
+system:
+  reset_position_ids: True
+  reset_attention_mask: True
+  logging_level: 10
+  distributed_timeout_minutes: 60
+  no_shared_fs: ${experiment.runner.no_shared_fs}
+  num_workers: 4
+  tensor_model_parallel_size: 1
+  pipeline_model_parallel_size: 1
+  context_parallel_size: 1
+  disable_bias_linear: true
+  # qk_layernorm: true
+  sequence_parallel: true
+  use_distributed_optimizer: true
+  overlap_grad_reduce: true
+  overlap_param_gather: true
+  finetune: false
+  precision:
+    bf16: true
+    attention_softmax_in_fp32: true
+    accumulate_allreduce_grads_in_fp32: true
+  logging:
+    log_interval: 1
+    tensorboard_log_interval: 1
+    wandb_project: ${experiment.exp_name}
+    wandb_exp_name: ${experiment.exp_name}
+    log_timers_to_tensorboard: true
+    log_validation_ppl_to_tensorboard: true
+    log_throughput: true
+    log_params_norm: true
+    log_num_zeros_in_grad: true
+    log_memory_to_tensorboard: true
+  checkpoint:
+    save_interval: ${experiment.save_steps}
+    load: ${experiment.load}
+    ckpt_format: ${experiment.ckpt_format}
+
+model:
+  transformer_impl: transformer_engine
+  num_layers: 30
+  hidden_size: 576
+  ffn_hidden_size: 1536
+  kv_channels: 64
+  group_query_attention: True
+  num_attention_heads: 9
+  num_query_groups: 3 # num_key_value_heads
+  seq_length: 4096
+  max_position_embeddings: 4096
+  norm_epsilon: 1e-6
+  use_rotary_position_embeddings: true
+  rotary_base: 100000
+  swiglu: true
+  normalization: RMSNorm
+  init_method_std: 6e-3
+  attention_dropout: 0.0
+  hidden_dropout: 0.0
+  clip_grad: 1.0
+  position_embedding_type: rope
+  untie_embeddings_and_output_weights: false
+  no_position_embedding: true
+  no_rope_fusion: true
+
+  # training
+  seed: ${experiment.seed}
+  micro_batch_size: 1
+  global_batch_size: 1
+  eval_iters: 0
+  train_samples: 16777216 #69B tokens
+
+  optimizer:
+    weight_decay: 0.1
+    adam_beta1: 0.9
+    adam_beta2: 0.95
+    lr_scheduler:
+      lr: 3.0e-4
+      min_lr: 3.0e-5
+      lr_warmup_samples: 1024000
+      lr_decay_style: cosine
+
+
+data:
+  data_path:
+    - 1.0
+    - MegaScience_text_document
+
+  split: 1
+  no_mmap_bin_files: true
+  tokenizer:
+    tokenizer_type: SmolLM2TokenizerFS
+    tokenizer_path: /share/projset/ldwang/models/HuggingFaceTB/SmolLM2-135M
+    vocab_size: 49152
+    make_vocab_size_divisible_by: 64
