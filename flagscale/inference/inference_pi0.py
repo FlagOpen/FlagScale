@@ -33,10 +33,10 @@ def inference(config):
     cfg.repo_id = config_llm.tokenizer_path
     cfg.pretrained_path = config_llm.model_path
     policy = make_policy(cfg, ds_meta=lerobot_dataset.meta)
-    if config_llm.compile_model:
-        policy = torch.compile(policy, mode=config_llm.compile_mode)
     policy = policy.to(DEVICE)
     policy.eval()
+    if config_llm.compile_model:
+        policy = torch.compile(policy, mode=config_llm.compile_mode)
 
     for _ in range(config_generate.num_inference):
         batch = next(iter(dataloader))

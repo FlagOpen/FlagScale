@@ -30,7 +30,6 @@ TASK_CONFIG = serve.task_config
 ENGINE_CONFIG = TASK_CONFIG.serve[0].engine_args
 
 model = None
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def load_model():
@@ -45,15 +44,13 @@ def load_model():
         cfg.repo_id = ENGINE_CONFIG.tokenizer_path
         cfg.pretrained_path = ENGINE_CONFIG.model
         policy = make_policy(cfg, ds_meta=lerobot_dataset.meta)
-        if ENGINE_CONFIG.compile_model:
-            policy = torch.compile(policy, mode=ENGINE_CONFIG.compile_mode)
-        policy = policy.to(DEVICE)
-
         if torch.cuda.is_available():
             policy = policy.cuda()
             logger.info(f"Load model to GPU-{torch.cuda.get_device_name()} done. ")
         else:
             logger.info("Load model to CPU done.")
+        if ENGINE_CONFIG.compile_model:
+            policy = torch.compile(policy, mode=ENGINE_CONFIG.compile_mode)
         model = policy
         return True
     except Exception as e:
