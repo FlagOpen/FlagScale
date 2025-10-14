@@ -16,11 +16,7 @@ from lerobot.policies.factory import make_policy
 from PIL import Image
 
 from flagscale import serve
-
-logging.basicConfig(
-    level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from flagscale.logger import logger
 
 app = Flask(__name__)
 CORS(app)
