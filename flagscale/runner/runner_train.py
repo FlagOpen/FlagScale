@@ -7,6 +7,7 @@ from datetime import datetime
 
 from omegaconf import DictConfig, OmegaConf
 
+from flagscale.runner.elastic.monitor_service import MonitorService
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.utils import (
     flatten_dict_to_args,
@@ -44,6 +45,24 @@ def _get_args_megatron(config: DictConfig):
     # Flatten the dictionary to a list of arguments
     args = flatten_dict_to_args(new_config_dict, ignore_keys)
 
+    return args
+
+
+def _get_args_robotics(config: DictConfig):
+    assert (
+        config.experiment.task.backend == "robotics"
+    ), "This function only supports robotics backend."
+
+    # Convert the DictConfig to a regular dictionary
+    config_dict = OmegaConf.to_container(config, resolve=True)
+    config_dict = config_dict["train"]
+
+    new_config_dict = {}
+    new_config_dict.update(config_dict["model"])
+    ignore_keys = ["log_dir", "details_dir", "scripts_dir", "pids_dir"]
+    # Flatten the dictionary to a list of arguments
+    args = flatten_dict_to_args(new_config_dict, ignore_keys)
+    args = [config_dict["data"]["config_name"]] + args
     return args
 
 
@@ -178,6 +197,8 @@ def _get_runner_cmd_train(
         del runner_args["master_addr"]
     if "master_port" in runner_args:
         del runner_args["master_port"]
+    if "enable_monitoring" in runner_args:
+        del runner_args["enable_monitoring"]
     runner_args["rdzv_id"] = rdzv_id
     # runner_args["master_addr"] = master_addr
     # runner_args["master_port"] = master_port
@@ -203,7 +224,14 @@ def _get_runner_cmd_train(
 
 
 def _generate_run_script_train(
-    config, host, node_rank, cmd, background=True, with_test=False, root_dir=None
+    config,
+    host,
+    node_rank,
+    cmd,
+    background=True,
+    with_test=False,
+    root_dir=None,
+    enable_monitoring=False,
 ):
     system_config = config.train.system
     logging_config = config.train.system.logging
@@ -247,6 +275,24 @@ def _generate_run_script_train(
         f.write(f"\n")
         f.write(f'cmd="{cmd}"\n')
         f.write(f"\n")
+        if enable_monitoring:
+            monitor_launcher_path = os.path.join(
+                root_dir, "flagscale", "runner", "elastic", "monitor_launcher.py"
+            )
+            ssh_port = config.experiment.runner.get("ssh_port", 22)
+            f.write(f'# Start monitoring service in background\n')
+            f.write(f'python {monitor_launcher_path} \\\n')
+            f.write(f'  --log-dir "{logging_config.log_dir}" \\\n')
+            f.write(f'  --pid-file "{host_pid_file}" \\\n')
+            f.write(f'  {"--no-shared-fs" if no_shared_fs else ""} \\\n')
+            f.write(f'  --ssh-port {ssh_port} \\\n')
+            f.write(f'  --interval 5 \\\n')
+            f.write(f'  --enable-log-collection \\\n')
+            f.write(f'  --enable-diagnostic \\\n')
+            f.write(f'  > /tmp/monitor_output_{node_rank}_{host}.log 2>&1 &\n')
+            f.write(f'echo "Monitor service started in background"\n')
+        f.write(f'\n')
+
         if with_test:
             f.write(f'bash -c "$cmd; sync" \n')
         else:
@@ -314,6 +360,7 @@ def run_node(
     available_port,
     with_test,
     dryrun,
+    enable_monitoring=True,
 ):
     cur_envs = update_nodes_envs(user_envs, host, resource_info)
     # Get the number of visible devices from the environment variable, e.g. CUDA_VISIBLE_DEVICES, MLU_VISIBLE_DEVICES
@@ -352,6 +399,8 @@ class SSHTrainRunner(RunnerBase):
         _update_config_train(self.config)
         if self.config.experiment.task.backend == "megatron":
             self.user_args = _get_args_megatron(self.config)
+        elif self.config.experiment.task.backend == "robotics":
+            self.user_args = _get_args_robotics(self.config)
         elif self.config.experiment.task.backend == "lerobot":
             self.user_args = _get_args_lerobot(self.config)
         self.rdzv_id = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
@@ -375,6 +424,7 @@ class SSHTrainRunner(RunnerBase):
         with_test=False,
         dryrun=False,
         cur_envs=None,
+        enable_monitoring=True,
     ):
         export_cmd = []
 
@@ -411,6 +461,7 @@ class SSHTrainRunner(RunnerBase):
             background=True,
             with_test=with_test,
             root_dir=node_specific_config.get("build_dir", None),
+            enable_monitoring=enable_monitoring,
         )
 
         if host != "localhost":
@@ -430,7 +481,16 @@ class SSHTrainRunner(RunnerBase):
         else:
             run_local_command(f"bash {host_run_script_file}", dryrun)
 
-    def run(self, with_test=False, dryrun=False, monitor=False, interval=10):
+    def run(
+        self,
+        with_test=False,
+        dryrun=False,
+        monitor=False,
+        interval=10,
+        enable_log_collection=True,
+        enable_diagnostic=True,
+        enable_monitoring=False,
+    ):
 
         num_visible_devices = None
         runner_config = self.config.experiment.runner
@@ -460,6 +520,7 @@ class SSHTrainRunner(RunnerBase):
                         available_port,
                         with_test,
                         dryrun,
+                        enable_monitoring,
                     )
                     tasks.append(args)
                 pool.starmap(run_node, tasks)
@@ -483,6 +544,7 @@ class SSHTrainRunner(RunnerBase):
                 with_test=with_test,
                 dryrun=dryrun,
                 cur_envs=self.user_envs,
+                enable_monitoring=enable_monitoring,
             )
         # If need monitor, query status continually
         if monitor:
@@ -498,6 +560,20 @@ class SSHTrainRunner(RunnerBase):
                 logger.info("Job Ended.")
             except Exception as e:
                 logger.info(e)
+
+        if enable_monitoring:
+            logger.info("Starting monitoring service...")
+            monitor_service = MonitorService(self.config, self, interval)
+            monitor_service.start_monitoring(
+                enable_log_collection=enable_log_collection, enable_diagnostic=enable_diagnostic
+            )
+            logger.info("Monitoring service started in background")
+            logger.info("Training job will continue running, monitor logs will be saved")
+
+            # Return the monitor_service instance for external control.
+            return monitor_service
+
+        return None
 
     def _stop_each(self, host, node_rank):
         host_stop_script_file = _generate_stop_script_train(self.config, host, node_rank)
@@ -689,9 +765,43 @@ class SSHTrainRunner(RunnerBase):
             status = False
         return status
 
+    def query_once(self):
+        """
+        Query job status once (non-blocking).
+        There are three kinds of status for a Job:
+            RUNNING: The job is running.
+            COMPLETED_OR_IDLE: The job is completed or idle.
+            TRANSITIONAL: The job is starting or stopping.
+
+        Returns:
+            JobStatus: Current job status
+        """
+        return self._query_status()
+
+    def start_monitoring_service(
+        self, interval=10, enable_log_collection=True, enable_diagnostic=True
+    ):
+        """
+        Start independent monitoring service (non-blocking).
+
+        Args:
+            interval (int): Monitor interval in seconds
+            enable_log_collection (bool): Enable log collection
+            enable_diagnostic (bool): Enable diagnostic report generation
+
+        Returns:
+            MonitorService: Monitor service instance
+        """
+        monitor_service = MonitorService(self.config, self, interval)
+        monitor_service.start_monitoring(
+            enable_log_collection=enable_log_collection, enable_diagnostic=enable_diagnostic
+        )
+        logger.info(f"Independent monitoring service started with interval={interval}s")
+        return monitor_service
+
     def query(self, interval=10, timeout=None):
         """
-        Query job status and log.
+        Query job status and log with optional timeout (blocking).
         There are three kinds of status for a Job:
             RUNNING: The job is running.
             COMPLETED_OR_IDLE: The job is completed or idle.
@@ -704,12 +814,23 @@ class SSHTrainRunner(RunnerBase):
         Returns:
             None
 
+        Warning:
+                    This method is blocking and should be used with caution.
+                                Consider using query_once() or start_monitoring_service() for non-blocking alternatives.
         """
+        logger.warning(
+            "Using blocking query method. Consider using query_once() or start_monitoring_service()"
+        )
+
         if timeout is None:
-            while True:
-                job_status = self._query_status()
-                logger.info(f"Job status: {job_status.name}")
-                time.sleep(interval)
+            logger.warning("Entering indefinite blocking query loop. Press Ctrl+C to exit.")
+            try:
+                while True:
+                    job_status = self._query_status()
+                    logger.info(f"Job status: {job_status.name}")
+                    time.sleep(interval)
+            except KeyboardInterrupt:
+                logger.info("Query interrupted by user")
         else:
             start_time = time.time()
             cur_time = time.time()
@@ -718,6 +839,7 @@ class SSHTrainRunner(RunnerBase):
                 logger.info(f"Job status: {job_status.name}")
                 time.sleep(interval)
                 cur_time = time.time()
+            logger.info(f"Query timeout reached ({timeout}s)")
 
 
 class CloudTrainRunner(RunnerBase):
@@ -733,6 +855,8 @@ class CloudTrainRunner(RunnerBase):
         _update_config_train(self.config)
         if self.config.experiment.task.backend == "megatron":
             self.user_args = _get_args_megatron(self.config)
+        elif self.config.experiment.task.backend == "robotics":
+            self.user_args = _get_args_robotics(self.config)
         elif self.config.experiment.task.backend == "lerobot":
             self.user_args = _get_args_lerobot(self.config)
         logger.info("\n************** configuration ***********")
@@ -760,7 +884,13 @@ class CloudTrainRunner(RunnerBase):
         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
 
         host_run_script_file = _generate_run_script_train(
-            self.config, host, node_rank, cmd, background=False, with_test=with_test
+            self.config,
+            host,
+            node_rank,
+            cmd,
+            background=False,
+            with_test=with_test,
+            enable_monitoring=enable_monitoring,
         )
 
         run_local_command(f"bash {host_run_script_file}", dryrun)

@@ -1,0 +1,50 @@
+diff --git a/vllm_mlu/vllm_mlu/distributed/parallel_state.py b/vllm_mlu/vllm_mlu/distributed/parallel_state.py
+new file mode 100644
+index 000000000..230f1bccb
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/distributed/parallel_state.py
+@@ -0,0 +1,42 @@
++import contextlib
++import gc
++import torch
++from contextlib import contextmanager
++from typing import Optional
++
++from vllm.distributed import parallel_state
++from vllm.distributed.parallel_state import (GroupCoordinator,
++                                             GraphCaptureContext,
++                                             destroy_model_parallel,
++                                             destroy_distributed_environment)
++from vllm.logger import init_logger
++
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++
++logger = init_logger(__name__)
++
++
++@contextmanager
++def vllm__distributed__parallel_state__GroupCoordinator__graph_capture(
++    self,
++    graph_capture_context: Optional[GraphCaptureContext] = None
++):
++    if graph_capture_context is None:
++        stream = torch.mlu.Stream()
++        graph_capture_context = GraphCaptureContext(stream)
++    else:
++        stream = graph_capture_context.stream
++
++    # ensure all initialization operations complete before attempting to
++    # capture the graph on another stream
++    curr_stream = torch.mlu.current_stream()
++    if curr_stream != stream:
++        stream.wait_stream(curr_stream)
++
++    with torch.mlu.stream(stream):
++        yield graph_capture_context
++
++
++MluHijackObject.apply_hijack(GroupCoordinator,
++                             GroupCoordinator.graph_capture,
++                             vllm__distributed__parallel_state__GroupCoordinator__graph_capture)
+\ No newline at end of file
+

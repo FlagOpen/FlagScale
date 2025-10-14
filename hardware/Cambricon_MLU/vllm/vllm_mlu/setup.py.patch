@@ -1,0 +1,121 @@
+diff --git a/vllm_mlu/setup.py b/vllm_mlu/setup.py
+new file mode 100644
+index 000000000..8a3c04d16
+--- /dev/null
++++ b/vllm_mlu/setup.py
+@@ -0,0 +1,114 @@
++import io
++import logging
++import os
++import re
++import subprocess
++
++from typing import List
++from setuptools import find_namespace_packages, setup
++
++
++ROOT_DIR = os.path.dirname(__file__)
++logger = logging.getLogger(__name__)
++
++
++def get_path(*filepath) -> str:
++    return os.path.join(ROOT_DIR, *filepath)
++
++
++def get_commit_id() -> str:
++    """
++    get the current commit of vllm mlu
++    """
++    git_short_hash = subprocess.run(
++        ['git', 'rev-parse', '--short', 'HEAD'],
++        stdout=subprocess.PIPE,
++        text=True
++    ).stdout.strip()
++    return git_short_hash
++
++
++def get_vllm_version() -> str:
++    """
++    get vllm version
++    """
++    with open(get_path("tools/build.property"), 'r') as file:
++        content = file.read()
++
++    results = re.findall(r'VLLM_VERSION=([\d|\.]+)\+mlu([\d|\.]+)\.pt(\d+)', content)
++
++    assert results, "fail to get vllm, vllm_mlu and pytorch version."
++
++    version = f"{results[-1][0]}+mlu{results[-1][1]}.pt{results[-1][2]}"
++
++    if get_commit_id():
++        version += "." + get_commit_id()
++    return version
++
++
++def read_readme() -> str:
++    """Read the README file if present."""
++    p = get_path("README.md")
++    if os.path.isfile(p):
++        return io.open(get_path("README.md"), "r", encoding="utf-8").read()
++    else:
++        return ""
++
++
++def get_requirements() -> List[str]:
++    """Get Python package dependencies from requirements.txt."""
++
++    def _read_requirements(filename: str) -> List[str]:
++        with open(get_path(filename)) as f:
++            requirements = f.read().strip().split("\n")
++        resolved_requirements = []
++        for line in requirements:
++            if line.startswith("-r "):
++                resolved_requirements += _read_requirements(line.split()[1])
++            elif line.startswith("--"):
++                continue
++            else:
++                resolved_requirements.append(line)
++        return resolved_requirements
++
++    return _read_requirements("requirements.txt")
++
++
++ext_modules = []
++cmdclass = {}
++
++
++setup(
++    name="vllm_mlu",
++    version=get_vllm_version(),
++    author="Cambricon vLLM Team",
++    license="Apache 2.0",
++    description=("A high-throughput and memory-efficient inference and "
++                 "serving engine for LLMs on MLU backend"),
++    long_description=read_readme(),
++    long_description_content_type="text/markdown",
++    url="",
++    project_urls={
++        "Homepage": "https://github.com/vllm-project/vllm",
++        "Documentation": "https://vllm.readthedocs.io/en/latest/",
++    },
++    classifiers=[
++        "Programming Language :: Python :: 3.8",
++        "Programming Language :: Python :: 3.9",
++        "Programming Language :: Python :: 3.10",
++        "Programming Language :: Python :: 3.11",
++        "Programming Language :: Python :: 3.12",
++        "License :: OSI Approved :: Apache Software License",
++        "Topic :: Scientific/Engineering :: Artificial Intelligence",
++    ],
++    packages=find_namespace_packages(),
++    include_package_data=True,
++    python_requires=">=3.8",
++    install_requires=get_requirements(),
++    ext_modules = ext_modules,
++    cmdclass=cmdclass,
++    entry_points={
++        'vllm.platform_plugins': ["mlu = vllm_mlu:register_mlu_platform"],
++        'vllm.general_plugins': ["mlu_hijack = vllm_mlu:register_mlu_hijack"]
++    }
++)
+

@@ -1,0 +1,149 @@
+diff --git a/vllm_mlu/vllm_mlu/model_executor/models/intern_vit.py b/vllm_mlu/vllm_mlu/model_executor/models/intern_vit.py
+new file mode 100644
+index 000000000..0b1644510
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/model_executor/models/intern_vit.py
+@@ -0,0 +1,142 @@
++import torch
++import torch.nn as nn
++
++from typing import Optional
++from transformers import PretrainedConfig
++from vllm.model_executor.layers.quantization.base_config import QuantizationConfig
++from vllm.logger import init_logger
++from vllm.model_executor.models.intern_vit import (InternVisionEncoderLayer,
++                                                   InternSdpaAttention, NORM2FN)
++
++from vllm_mlu import _mlu_ops as mlu_ops
++from vllm_mlu.model_executor.layers.feed_forward import FeedForward
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++from vllm_mlu.model_executor.models.layer_utils import intern_vision_encoder_layer_base
++
++logger = init_logger(__name__)
++
++
++def vllm__module_executor__models__intern_vit__InternVisionEncoderLayer____init__(
++    self,
++    config: PretrainedConfig,
++    quant_config: Optional[QuantizationConfig] = None,
++    *,
++    num_dummy_heads: int = 0,
++    prefix: str = "",
++) -> None:
++    super(InternVisionEncoderLayer, self).__init__()
++    self.embed_dim = config.hidden_size
++    self.intermediate_size = config.intermediate_size
++    self.norm_type = config.norm_type
++
++    self.attn = self._init_attn(config,
++                                quant_config,
++                                num_dummy_heads=num_dummy_heads,
++                                prefix=f"{prefix}.attn")
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: use FeedForward instead of MLP
++    '''
++    self.mlp = FeedForward(hidden_size=config.hidden_size,
++                           intermediate_size=config.intermediate_size,
++                           hidden_act=config.hidden_act,
++                           up_proj_name='fc1',
++                           is_gated=False,
++                           down_proj_name='fc2',
++                           bias=True,
++                           quant_config=quant_config,
++                           prefix=f'{prefix}.mlp')
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++    self.norm1 = NORM2FN[self.norm_type](self.embed_dim,
++                                         eps=config.layer_norm_eps)
++    self.norm2 = NORM2FN[self.norm_type](self.embed_dim,
++                                         eps=config.layer_norm_eps)
++
++    self.ls1 = nn.Parameter(config.initializer_factor *
++                            torch.ones(self.embed_dim))
++    self.ls2 = nn.Parameter(config.initializer_factor *
++                                torch.ones(self.embed_dim))
++
++
++def vllm__module_executor__models__intern_vit__InternVisionEncoderLayer__forward(
++    self,
++    hidden_states: torch.Tensor,
++) -> torch.Tensor:
++
++    return intern_vision_encoder_layer_base(
++        hidden_states=hidden_states,
++        self_attn=self.attn,
++        norm1=self.norm1,
++        norm2=self.norm2,
++        ls1=self.ls1,
++        ls2=self.ls2,
++        mlp=self.mlp
++    )
++
++
++def vllm__module_executor__models__intern_vit__InternSdpaAttention__forward(
++    self,
++    x: torch.Tensor
++) -> torch.Tensor:
++    B, N, C = x.shape
++    qkv = self.qkv(x)
++    q, k, v = qkv.chunk(3, dim=-1)
++
++    q = q.view(B, N, self.num_heads, self.head_dim)
++    k = k.view(B, N, self.num_heads, self.head_dim)
++    v = v.view(B, N, self.num_heads, self.head_dim)
++
++    if self.qk_normalization:
++        B_, N_, H_, D_ = q.shape
++        q = self.q_norm.forward_native(q.flatten(-2,
++                                                 -1)).view(B_, N_, H_, D_)
++        k = self.k_norm.forward_native(k.flatten(-2,
++                                                 -1)).view(B_, N_, H_, D_)
++
++    batch, seq_len_q, q_head_num, head_size = q.shape
++    seq_len_k = k.shape[1]
++    softmax_scale = self.head_dim ** -0.5
++
++    '''
++    =============================
++    Modify by vllm_mlu
++    =============================
++    @brief: replace SDPA with flash attn.
++    '''
++    x = mlu_ops.flash_attention(
++        q, k, v,
++        None, # out
++        None, # cu_seq_lens_q
++        None, # cu_seq_lens_kv
++        None, # alibi_slop
++        None, # attn_bias
++        seq_len_q, # max_seq_len_q
++        seq_len_k, # max_seq_len_kv
++        softmax_scale, # softmax_scale
++        False
++    )
++    x = x.reshape(x.shape[0],x.shape[1], -1)
++    '''
++    ==================
++    End of MLU Hijack
++    ==================
++    '''
++    x = self.proj(x)
++    return x
++
++
++MluHijackObject.apply_hijack(InternVisionEncoderLayer,
++                             InternVisionEncoderLayer.__init__,
++                             vllm__module_executor__models__intern_vit__InternVisionEncoderLayer____init__)
++MluHijackObject.apply_hijack(InternVisionEncoderLayer,
++                             InternVisionEncoderLayer.forward,
++                             vllm__module_executor__models__intern_vit__InternVisionEncoderLayer__forward)
++MluHijackObject.apply_hijack(InternSdpaAttention,
++                             InternSdpaAttention.forward,
++                             vllm__module_executor__models__intern_vit__InternSdpaAttention__forward)
+
