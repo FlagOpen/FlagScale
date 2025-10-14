@@ -573,10 +573,15 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             command = ["nohup", "python", "-m", "sglang.launch_server"]
                             if common_args.get("model", None):
                                 # if node specific args
-                                if node_args.get(ip, None) is not None and node_args[ip].get("engine_args", None) is not None:
+                                if (
+                                    node_args.get(ip, None) is not None
+                                    and node_args[ip].get("engine_args", None) is not None
+                                ):
                                     for key, value in node_args[ip]["engine_args"].items():
                                         common_args[key] = value
-                                        logger.info(f"node_args[{ip}] overwrite engine_args {key} = {value}")
+                                        logger.info(
+                                            f"node_args[{ip}] overwrite engine_args {key} = {value}"
+                                        )
 
                                 converted_args = ARGS_CONVERTER.convert("sglang", common_args)
                                 common_args_flatten = flatten_dict_to_args(
