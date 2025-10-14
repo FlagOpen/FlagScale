@@ -11,8 +11,9 @@ experiment:
   runner:
     hostfile: examples/qwen3/conf/hostfile.txt
     docker: ds
-    nnodes: 2
-    nproc_per_node: 2
+    nnodes: ${oc.env:LWS_GROUP_SIZE, 1}
+    master_addr: ${oc.env:MASTER_ADDR, 127.0.0.1}
+    master_port: ${oc.env:MASTER_PORT, 20036}
     deploy:
       port: 6706
       use_fs_serve: false
@@ -21,6 +22,13 @@ experiment:
   envs:
     CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
+  node_args:
+    10.6.208.16:
+      engine_args:
+        model: /mnt/Qwen2.5-0.5B-Instruct/
+    10.6.208.15:
+        #model: /models/Qwen2.5-0.5B-Instruct/ 
+
   auto_tuner:
     engines: [vllm, sglang, llama_cpp]
     space:

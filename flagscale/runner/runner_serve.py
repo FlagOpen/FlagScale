@@ -537,6 +537,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
 
                 address = f"{master_ip}:{master_port}"
                 nodes_envs = config.experiment.get("envs", {}).get("nodes_envs", {})
+                node_args = config.experiment.get("node_args", {})
                 for index, (ip, node) in enumerate(nodes):
                     per_node_cmd = None
                     if nodes_envs and nodes_envs.get(ip, None) is not None:
@@ -566,13 +567,18 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                                 raise ValueError(
                                     f"No 'vllm_model' configuration found in task config: {serve.task_config}"
                                 )
-                            common_args = args.get("engine_args", {})
+                            common_args = copy.deepcopy(args.get("engine_args", {}))
                             sglang_args = args.get("engine_args_specific", {}).get("sglang", {})
 
                             command = ["nohup", "python", "-m", "sglang.launch_server"]
                             if common_args.get("model", None):
+                                # if node specific args
+                                if node_args.get(ip, None) is not None and node_args[ip].get("engine_args", None) is not None:
+                                    for key, value in node_args[ip]["engine_args"].items():
+                                        common_args[key] = value
+                                        logger.info(f"node_args[{ip}] overwrite engine_args {key} = {value}")
+
                                 converted_args = ARGS_CONVERTER.convert("sglang", common_args)
-                                command.extend(["--model-path", converted_args["model_path"]])
                                 common_args_flatten = flatten_dict_to_args(
                                     converted_args, ["model"]
                                 )
@@ -583,6 +589,15 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                                 raise ValueError("Either model must be specified in vllm_model.")
 
                             command.extend(["--node-rank", str(index)])
+                            nnodes = config.experiment.runner.get("nnodes", None)
+                            addr = config.experiment.runner.get("master_addr", None)
+                            port = config.experiment.runner.get("master_port", None)
+                            if nnodes is None or addr is None or port is None:
+                                raise ValueError(
+                                    f"nnodes, master_addr, master_port must be specified in runner when engine is sglang with multi-nodes mode."
+                                )
+                            command.extend(["--nnodes", str(nnodes)])
+                            command.extend(["--dist-init-addr", addr + ":" + port])
                             command.append("> /dev/null 2>&1 &")
 
                             node_cmd = ' '.join(command)

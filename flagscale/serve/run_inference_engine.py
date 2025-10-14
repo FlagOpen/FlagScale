@@ -85,23 +85,16 @@ def sglang_serve(args):
     else:
         raise ValueError("Either model must be specified in vllm_model.")
 
-    hostfile_path = serve.task_config.experiment.runner.get("hostfile", None)
-    print(f"hostfile_path: {hostfile_path}")
-    if hostfile_path:
-        from flagscale.runner.runner_serve import match_address
-        from flagscale.runner.utils import get_ip_addr, is_ip_addr, parse_hostfile
-
-        resources = parse_hostfile(hostfile_path)
-        print(f"resources: {resources}")
-        for idx, (key, value) in enumerate(resources.items()):
-            print(f"idx: {idx}, key: {key}, value: {value}")
-            if match_address(key):
-                command.extend(["--node-rank", str(idx)])
-                print(f"add node-rank: {idx}")
+    # set defualt args align with sglang.launch_server
+    command.extend(["--node-rank", str(0)])
+    nnodes = serve.task_config.experiment.runner.get("nnodes", 1)
+    command.extend(["--nnodes", str(nnodes)])
+    addr = serve.task_config.experiment.runner.get("master_addr", "127.0.0.1")
+    port = serve.task_config.experiment.runner.get("master_port", "29500")
+    command.extend(["--dist-init-addr", addr + ":" + port])
 
     # Start the subprocess
     logger.info(f"[Serve]: Starting sglang serve with command: {' '.join(command)}")
-    print(f"[Serve]: Starting sglang serve with command: {' '.join(command)}")
 
     process = subprocess.Popen(command, stdout=sys.stdout, stderr=sys.stderr)
     pid = os.getpid()
@@ -115,9 +108,6 @@ def sglang_serve(args):
 
 
 def main():
-    print(f"in run_inference_engine.py main()")
-    logger.info(f"in run_inference_engine.py main()")
-
     serve.load_args()
     serve_config = serve.task_config.get("serve", [])
     if not serve_config:
