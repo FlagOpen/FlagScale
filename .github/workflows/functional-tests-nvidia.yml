@@ -75,7 +75,7 @@ jobs:
             COMMANDS=(
               "pip install scikit-build scikit-build-core"
               "pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0"
-              "MAX_JOBS=$(($(nproc) / 2)) PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation"
+              "PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation"
             )
 
             # Initialize state array
