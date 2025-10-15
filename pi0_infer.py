@@ -17,14 +17,14 @@ def main():
         "observation.images.camera1": torch.randn(1, 3, 480, 640, dtype=torch.float32),
         "observation.images.camera2": torch.randn(1, 3, 480, 640, dtype=torch.float32),
         "observation.state": torch.randn(1, 14, dtype=torch.float32),
-        "observation.effort": torch.randn(1, 14, dtype=torch.float32),
-        "action": torch.randn(1, 14, dtype=torch.float32),
-        "episode_index": torch.randint(0, 100, (1,), dtype=torch.int64),
-        "frame_index": torch.randint(0, 1500, (1,), dtype=torch.int64),
-        "index": torch.randint(0, 127500, (1,), dtype=torch.int64),
-        "task_index": torch.randint(0, 10, (1,), dtype=torch.int64),
-        "timestamp": torch.randn(1, dtype=torch.float32),
-        "next.done": torch.tensor([False], dtype=torch.bool),
+        # "observation.effort": torch.randn(1, 14, dtype=torch.float32),
+        # "action": torch.randn(1, 14, dtype=torch.float32),
+        # "episode_index": torch.randint(0, 100, (1,), dtype=torch.int64),
+        # "frame_index": torch.randint(0, 1500, (1,), dtype=torch.int64),
+        # "index": torch.randint(0, 127500, (1,), dtype=torch.int64),
+        # "task_index": torch.randint(0, 10, (1,), dtype=torch.int64),
+        # "timestamp": torch.randn(1, dtype=torch.float32),
+        # "next.done": torch.tensor([False], dtype=torch.bool),
         "task": ["Open the top cabinet, store the pot inside it then close the cabinet."]
     }
     config = PI0PolicyConfig.from_pretrained(MODEL_PATH)

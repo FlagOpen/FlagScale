@@ -1,7 +1,7 @@
 import dataclasses
 import importlib
 import os
-
+import time
 from dataclasses import asdict, dataclass
 from typing import Any, List, Tuple, Union
 
@@ -16,6 +16,10 @@ from flagscale.inference.runtime_context import RuntimeContext
 from flagscale.inference.utils import parse_torch_dtype
 from flagscale.transforms import create_transformations_from_config
 
+
+from flagscale.models.pi0.modeling_pi0 import PI0Policy, PI0PolicyConfig
+
+from flagscale.runner.utils import logger
 
 def _check_required_fields(config_dict: DictConfig, required_fields: List[str]) -> None:
     """Check if the required fields are in the config dict."""
@@ -36,6 +40,8 @@ class InferenceEngineArgs:
     torch_dtype: Any = None
     pipeline: Any = None
     components: Any = None
+    tokenizer: str = None
+    stat_path: str = None
 
     results_path: str = None
     output_format: str = None
@@ -72,6 +78,8 @@ class InferenceEngineArgs:
             torch_dtype=self.torch_dtype,
             pipeline=self.pipeline,
             components=self.components,
+            tokenizer=self.tokenizer,
+            stat_path=self.stat_path,
         )
         engine_obj = EngineConfig(
             results_path=self.results_path,
@@ -79,7 +87,6 @@ class InferenceEngineArgs:
             state_scopes=self.state_scopes,
             transformations=self.transformations if self.transformations is not None else {},
         )
-
         return InferenceConfig(model=model_obj, engine=engine_obj)
 
 
@@ -91,13 +98,15 @@ class ModelLoadConfig:
     torch_dtype: Any = None
     pipeline: Any = None
     components: Any = None
+    tokenizer: str = None
+    stat_path: str = None
 
     def __post_init__(self):
         if not self.model:
             raise ValueError("'model' is required")
         if not self.loader:
             raise ValueError("'loader' is required")
-        allowed_loaders = {"diffusers", "transformers", "custom", "auto"}
+        allowed_loaders = {"diffusers", "transformers", "custom", "auto", "pi0"}
         if self.loader not in allowed_loaders:
             raise ValueError(f"Unsupported loader: {self.loader}. Allowed: {allowed_loaders}")
 
@@ -167,6 +176,19 @@ class InferenceEngine:
             raise NotImplementedError("Custom loader is not implemented")
         elif loader == "auto":
             raise NotImplementedError("Auto loader is not implemented")
+        elif loader == "pi0":
+            t_s = time.time()
+            config = PI0PolicyConfig.from_pretrained(self.vconfig.model.model)
+            policy = PI0Policy.from_pretrained(
+                model_path=self.vconfig.model.model,
+                tokenizer_path=self.vconfig.model.tokenizer,
+                stat_path=self.vconfig.model.stat_path,
+                config=config)
+            dtype = parse_torch_dtype(self.vconfig.model.torch_dtype)
+            policy = policy.to(device=self.vconfig.model.device, dtype=dtype)
+            policy.eval()
+            logger.info(f"PI0 loaded: {time.time() - t_s:.2f}s")
+            return policy, policy.model
         else:
             raise ValueError(f"Unsupported loader: {loader}")
 
