@@ -6,7 +6,7 @@ engine:
   results_path: ${experiment.exp_dir}/results
   device: "cuda"
   output_format: image
-  torch_dtype: bf16
+  torch_dtype: float32
   transformations:
     LogIOTransformation:
       log_level: "info"

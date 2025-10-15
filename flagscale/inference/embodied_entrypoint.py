@@ -40,8 +40,8 @@ def inference(cfg: DictConfig) -> None:
     images, img_masks = engine.model_or_pipeline.prepare_images(batch)
     state = engine.model_or_pipeline.prepare_state(batch)
     lang_tokens, lang_masks = engine.model_or_pipeline.prepare_language(batch)
-
-    import pdb; pdb.set_trace()
+    images = [i.to(dtype=dtype) for i in images]
+    state = state.to(dtype=dtype)
 
     with torch.no_grad():
         actions = engine.model_or_pipeline.model.sample_actions(images, img_masks, lang_tokens, lang_masks, state, noise=None)

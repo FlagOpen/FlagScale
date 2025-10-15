@@ -184,8 +184,7 @@ class InferenceEngine:
                 tokenizer_path=self.vconfig.model.tokenizer,
                 stat_path=self.vconfig.model.stat_path,
                 config=config)
-            dtype = parse_torch_dtype(self.vconfig.model.torch_dtype)
-            policy = policy.to(device=self.vconfig.model.device, dtype=dtype)
+            policy = policy.to(device=self.vconfig.model.device)
             policy.eval()
             logger.info(f"PI0 loaded: {time.time() - t_s:.2f}s")
             return policy, policy.model
