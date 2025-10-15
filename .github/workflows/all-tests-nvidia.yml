@@ -43,6 +43,7 @@ jobs:
   unit_tests_train_megatron:
     needs:
       - set-env
+      - functional_tests_rl
     uses: ./.github/workflows/unit-tests-nvidia.yml
     strategy:
       matrix:
@@ -105,7 +106,6 @@ jobs:
   functional_tests_train:
     needs:
       - set-env
-      - unit_tests_inference_flagscale
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
