@@ -13,8 +13,10 @@ train_megatron:
     core
   subset:
     data:
+      ignore:
+        - default
       deselect:
-      - skip_unit_test_modules
+        - skip_unit_test_modules
     dist_checkpointing:
       type: single
       ignore:
