@@ -128,6 +128,8 @@ train_megatron:
         - test_retro_attention.py::TestRetroAttention::test_gpu_forward
         - test_transformer_block.py::TestParallelTransformerBlock::test_gpu_forward_full_checkpoint_fp8
         - test_transformer_block.py::TestParallelTransformerBlock::test_gpu_forward_selective_checkpoint_fp8
+        - test_multi_latent_attention.py::TestContextParallelMLAAttention::test_gpu_forward
+        - test_multi_latent_attention.py::TestContextParallelMLAAttentionPrecision::test_gpu_forward_thd_precision
     ./:
       depth: 1
       ignore:
