@@ -1,10 +1,11 @@
 import torch
 
+from tests.unit_tests.test_utilities import Utils as MegatronUtils
+
 import megatron.training.global_vars as mcore_global_vars
 
 from megatron.training.arguments import parse_args, validate_args
 from megatron.training.tokenizer.tokenizer import _NullTokenizer
-from tests.unit_tests.test_utilities import Utils as MegatronUtils
 
 from flagscale.train.arguments import FSTrainArguments  # noqa
 from flagscale.train.hetero.parallel_context import ParallelContext

@@ -337,7 +337,7 @@ class ServeEngine:
 
             # Hide axes
             plt.axis("off")
-            
+
             # Save figure
             plt.savefig(file_name)
             plt.close()
