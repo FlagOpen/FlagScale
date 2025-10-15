@@ -46,13 +46,13 @@ def main():
         stat_path=STAT_PATH,
         config=config)
     policy = policy.eval().to(DEVICE)
-    print(f"pi0_load: {(time.time() - t_s)*1000:2f} ms")
+    print(f"pi0_load: {(time.time() - t_s):.2f} s")
     
     t_s = time.time()
     images, img_masks = policy.prepare_images(batch)
     state = policy.prepare_state(batch)
     lang_tokens, lang_masks = policy.prepare_language(batch)
-    print(f"feature_process: {(time.time() - t_s)*1000:2f} ms")
+    print(f"feature_process: {((time.time() - t_s)*1000):.2f} ms")
 
     images = [i.to(DEVICE) for i in images]
     img_masks = [i.to(DEVICE) for i in img_masks]
@@ -64,7 +64,7 @@ def main():
         t_s = time.time()
         with torch.no_grad():
             actions = policy.model.sample_actions(images, img_masks, lang_tokens, lang_masks, state, noise=None)
-        print(f"sample_actions: {(time.time() - t_s)*1000:2f} ms")
+        print(f"sample_actions: {((time.time() - t_s)*1000):.2f} ms")
         original_action_dim = policy.config.action_feature["shape"][0]
         actions = actions[:, :10, :original_action_dim]
     print("actions: ", actions.shape)
