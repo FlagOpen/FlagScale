@@ -1,8 +1,10 @@
 import numpy as np
 import torch
+
 from torch import Tensor, nn
 
 from flagscale.models.pi0.types import FeatureType, NormalizationMode, PolicyFeature
+
 
 def create_stats_buffers(
     features: dict[str, PolicyFeature],
@@ -64,7 +66,9 @@ def create_stats_buffers(
         if stats:
             if isinstance(stats[key]["mean"], np.ndarray):
                 if norm_mode == NormalizationMode.MEAN_STD:
-                    buffer["mean"].data = torch.from_numpy(stats[key]["mean"]).to(dtype=torch.float32)
+                    buffer["mean"].data = torch.from_numpy(stats[key]["mean"]).to(
+                        dtype=torch.float32
+                    )
                     buffer["std"].data = torch.from_numpy(stats[key]["std"]).to(dtype=torch.float32)
                 elif norm_mode == NormalizationMode.MIN_MAX:
                     buffer["min"].data = torch.from_numpy(stats[key]["min"]).to(dtype=torch.float32)
@@ -82,7 +86,9 @@ def create_stats_buffers(
                     buffer["max"].data = stats[key]["max"].clone().to(dtype=torch.float32)
             else:
                 type_ = type(stats[key]["mean"])
-                raise ValueError(f"np.ndarray or torch.Tensor expected, but type is '{type_}' instead.")
+                raise ValueError(
+                    f"np.ndarray or torch.Tensor expected, but type is '{type_}' instead."
+                )
 
         stats_buffers[key] = buffer
     return stats_buffers
@@ -278,7 +284,9 @@ def _initialize_stats_buffers(
                     mean = mean_data.clone().to(dtype=torch.float32)
                     std = std_data.clone().to(dtype=torch.float32)
                 else:
-                    raise ValueError(f"Unsupported stats type for key '{key}' (expected ndarray or Tensor).")
+                    raise ValueError(
+                        f"Unsupported stats type for key '{key}' (expected ndarray or Tensor)."
+                    )
 
             module.register_buffer(f"{prefix}_mean", mean)
             module.register_buffer(f"{prefix}_std", std)
@@ -295,7 +303,9 @@ def _initialize_stats_buffers(
                     min_val = min_data.clone().to(dtype=torch.float32)
                     max_val = max_data.clone().to(dtype=torch.float32)
                 else:
-                    raise ValueError(f"Unsupported stats type for key '{key}' (expected ndarray or Tensor).")
+                    raise ValueError(
+                        f"Unsupported stats type for key '{key}' (expected ndarray or Tensor)."
+                    )
 
             module.register_buffer(f"{prefix}_min", min_val)
             module.register_buffer(f"{prefix}_max", max_val)

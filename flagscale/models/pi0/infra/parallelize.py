@@ -3,19 +3,23 @@
 
 import torch
 import torch.nn as nn
+
 from torch.distributed.device_mesh import DeviceMesh
 
 
-class ParallelDims: {}
-class JobConfig: {}
-class CompileConfig: {}
+class ParallelDims:
+    {}
 
 
-def parallelize(
-    model: nn.Module,
-    parallel_dims: ParallelDims,
-    job_config: JobConfig,
-):
+class JobConfig:
+    {}
+
+
+class CompileConfig:
+    {}
+
+
+def parallelize(model: nn.Module, parallel_dims: ParallelDims, job_config: JobConfig):
     """
     Apply tensor parallelism, activation checkpointing, torch.compile, and data
     parallelism to the model.
@@ -24,10 +28,7 @@ def parallelize(
 
 
 def apply_tp(
-    model: nn.Module,
-    tp_mesh: DeviceMesh,
-    loss_parallel: bool,
-    enable_float8_tensorwise_tp: bool,
+    model: nn.Module, tp_mesh: DeviceMesh, loss_parallel: bool, enable_float8_tensorwise_tp: bool
 ):
     """Apply tensor parallelism."""
     pass
@@ -50,9 +51,6 @@ def apply_fsdp(
 
 
 def apply_ddp(
-    model: nn.Module,
-    dp_mesh: DeviceMesh,
-    enable_compile: bool,
-    enable_compiled_autograd: bool,
+    model: nn.Module, dp_mesh: DeviceMesh, enable_compile: bool, enable_compiled_autograd: bool
 ):
     pass
