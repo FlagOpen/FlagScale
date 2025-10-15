@@ -92,6 +92,12 @@ def _generate_run_script_rl(
         before_start = cmds_config.get("before_start", "")
     else:
         before_start = ""
+    
+    # Extract ray_init.num_cpus from RL configuration
+    ray_init_num_cpus = None
+    if hasattr(config, 'rl') and hasattr(config.rl, 'ray_init') and hasattr(config.rl.ray_init, 'num_cpus'):
+        ray_init_num_cpus = config.rl.ray_init.num_cpus
+    
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write(f"{before_start}\n")
@@ -101,6 +107,15 @@ def _generate_run_script_rl(
             ray_dashboard_port = config.experiment.runner.get("ray_dashboard_port", 8265)
             ray_include_dashboard = config.experiment.runner.get("ray_include_dashboard", True)
             for node_rank, (host, resource_info) in enumerate(resources.items()):
+                ray_cmd_parts = [
+                    "ray start",
+                    f"--port={ray_port}",
+                    f"--num-gpus={resource_info['slots']}"
+                ]
+                
+                if ray_init_num_cpus is not None:
+                    ray_cmd_parts.append(f"--num-cpus={ray_init_num_cpus}")
+                
                 if node_rank == 0:
                     if ray_include_dashboard:
                         f.write(
