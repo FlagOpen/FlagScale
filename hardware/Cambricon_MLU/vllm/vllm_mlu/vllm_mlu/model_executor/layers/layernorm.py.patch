@@ -1,0 +1,42 @@
+diff --git a/vllm_mlu/vllm_mlu/model_executor/layers/layernorm.py b/vllm_mlu/vllm_mlu/model_executor/layers/layernorm.py
+new file mode 100644
+index 000000000..c6fc579d7
+--- /dev/null
++++ b/vllm_mlu/vllm_mlu/model_executor/layers/layernorm.py
+@@ -0,0 +1,35 @@
++from typing import Optional, Tuple, Union
++
++import torch
++
++from vllm.model_executor.layers.layernorm import RMSNorm
++
++from vllm_mlu.mlu_hijack_utils import MluHijackObject
++
++
++def vllm__model_executor__layers__layernorm__RMSNorm__forward_oot(
++    self,
++    x: torch.Tensor,
++    residual: Optional[torch.Tensor] = None,
++    out: Optional[torch.Tensor] = None,
++) -> Optional[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
++    from vllm_mlu import _mlu_ops as mlu_ops
++
++    org_shape = x.shape
++    x = x.view(-1, self.weight.data.shape[0])
++    if out is not None:
++        out = out.view(-1, self.weight.data.shape[0])
++    if residual is not None:
++        residual = residual.view(-1, self.weight.data.shape[0])
++        x = mlu_ops.fused_rms_norm(x, residual, self.weight.data, None, None, self.variance_epsilon, True, out = out)
++    else:
++        x = mlu_ops.fused_rms_norm(x, residual, self.weight.data, None, None, self.variance_epsilon, False, out = out)
++    if out is None and isinstance(x, torch.Tensor):
++        x = x.view(org_shape)
++    return x
++
++MluHijackObject.apply_hijack(
++    RMSNorm,
++    RMSNorm.forward_oot,
++    vllm__model_executor__layers__layernorm__RMSNorm__forward_oot
++)
+

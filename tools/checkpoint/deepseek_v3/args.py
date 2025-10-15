@@ -1,5 +1,9 @@
 import json
 import os
+import sys
+
+sys.path.append("..")
+from moonlight_deepseek.configuration_deepseek import DeepseekV3Config
 
 
 def load_args_hf2mg(args):
@@ -88,7 +92,6 @@ def load_args_hf2mg(args):
 
 
 def save_args_mg2hf(args):
-    from .moonlight_deepseek.configuration_deepseek import DeepseekV3Config
 
     first_k_dense_replace = args.moe_layer_freq.index(1)
     seq_aux = True if args.moe_router_load_balancing_type == "seq_aux_loss" else False

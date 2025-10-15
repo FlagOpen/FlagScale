@@ -1,6 +1,14 @@
 [<img src="flagopen.png">](https://flagopen.baai.ac.cn/)
 
 ## Latest News
+
+- **[2025/09]** Released [v0.9.0](https://github.com/FlagOpen/FlagScale/tree/release/v0.9.0):
+  - Training & Finetuning: Added LoRA for efficient finetuning, improved the autotuner for cross-chip heterogeneous training, and enabled distributed RWKV training.
+  - Inference & Serving: Introduced DiffusionEngine for FLUX.1-dev, Qwen-Image, and Wan2.1-T2V, support multi-model automatic orchestration and dynamic scaling.
+  - Embodied AI: Full lifecycle support for Robobrain, Robotics, and PI0, plus semantic retrieval for MCP-based skills for RoboOS.
+  - Elastic & Fault Tolerance: Detect task status automatically (errors, hangs, etc.) and periodically record them.
+  - Hardware & System: Broader chip support, upgraded patch mechanism with file-level diffs, and enhanced CICD for different chips.
+
 - **[2025/04]** Released [v0.8.0](https://github.com/FlagOpen/FlagScale/tree/release/v0.8.0):
   - Introduced a new flexible and robust multi-backend mechanism and updated vendor adaptation methods.
   - Enabled heterogeneous prefill-decoding disaggregation across vendor chips within a single instance via FlagCX (beta).

@@ -57,6 +57,9 @@ trainer:
   total_epochs: 15
   default_local_dir: ${experiment.exp_dir}/checkpoints
 
+ray_init:
+  num_cpus: 8
+
 append_kargs:
   actor_rollout_ref:
     rollout:

@@ -92,6 +92,12 @@ def _generate_run_script_rl(
         before_start = cmds_config.get("before_start", "")
     else:
         before_start = ""
+    
+    # Extract ray_init.num_cpus from RL configuration
+    ray_init_num_cpus = None
+    if hasattr(config, 'rl') and hasattr(config.rl, 'ray_init') and hasattr(config.rl.ray_init, 'num_cpus'):
+        ray_init_num_cpus = config.rl.ray_init.num_cpus
+    
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write(f"{before_start}\n")
@@ -99,11 +105,26 @@ def _generate_run_script_rl(
             available_ip = list(resources.keys())[0]
             ray_port = config.experiment.runner.get("ray_port", 6379)
             ray_dashboard_port = config.experiment.runner.get("ray_dashboard_port", 8265)
+            ray_include_dashboard = config.experiment.runner.get("ray_include_dashboard", True)
             for node_rank, (host, resource_info) in enumerate(resources.items()):
+                ray_cmd_parts = [
+                    "ray start",
+                    f"--port={ray_port}",
+                    f"--num-gpus={resource_info['slots']}"
+                ]
+                
+                if ray_init_num_cpus is not None:
+                    ray_cmd_parts.append(f"--num-cpus={ray_init_num_cpus}")
+                
                 if node_rank == 0:
-                    f.write(
-                        f'ray start --head --port={ray_port} --dashboard-host=0.0.0.0 --dashboard-port={ray_dashboard_port} --num-gpus={resource_info["slots"]}\n'
-                    )
+                    if ray_include_dashboard:
+                        f.write(
+                            f'ray start --head --port={ray_port} --dashboard-host=0.0.0.0 --dashboard-port={ray_dashboard_port} --num-gpus={resource_info["slots"]}\n'
+                        )
+                    else:
+                        f.write(
+                            f'ray start --head --port={ray_port} --num-gpus={resource_info["slots"]}\n'
+                        )
                 else:
                     f.write(
                         f'ssh -f -n {host} "{before_start};ray start --address={available_ip}:{ray_port} --num-gpus={resource_info["slots"]}"\n'
@@ -208,19 +229,21 @@ class SSHRLRunner(RunnerBase):
             export_cmd += [f"{k}={v}"]
         ray_cmd = []
         if self.resources is not None:
-            runtime_env = self.config.experiment.runner.get(
-                "runtime_env", 'third_party/verl/verl/trainer/runtime_env.yaml'
-            )
-            ray_dashboard_port = self.config.experiment.runner.get("ray_dashboard_port", 8265)
-            ray_cmd = [
-                'ray',
-                'job',
-                'submit',
-                f'--address=http://{host}:{ray_dashboard_port}',
-                f'--runtime-env={runtime_env}',
-                '--no-wait',
-                '--',
-            ]
+            ray_include_dashboard = self.config.experiment.runner.get("ray_include_dashboard", True)
+            if ray_include_dashboard:
+                runtime_env = self.config.experiment.runner.get(
+                    "runtime_env", 'third_party/verl/verl/trainer/runtime_env.yaml'
+                )
+                ray_dashboard_port = self.config.experiment.runner.get("ray_dashboard_port", 8265)
+                ray_cmd = [
+                    'ray',
+                    'job',
+                    'submit',
+                    f'--address=http://{host}:{ray_dashboard_port}',
+                    f'--runtime-env={runtime_env}',
+                    '--no-wait',
+                    '--',
+                ]
         cmd = shlex.join(
             ray_cmd + export_cmd + ['python3', '-m'] + [self.user_script] + self.user_args
         )

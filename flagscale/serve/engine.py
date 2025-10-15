@@ -50,6 +50,7 @@ def make_task_manager():
         async def set_task_status(self, req: TaskUpdate):
             with self._lock:
                 self.task_status[req.id] = req.status
+            logger.info(f"Task {req.id} status set to {req.status}")
             return {"ok": True}
 
         @local_app.post("/get_task_status")
@@ -170,6 +171,13 @@ def build_graph(config):
 
     handles = {}
     deployments = {}
+    scale_config_items = [
+        "min_replicas",
+        "max_replicas",
+        "downscale_delay_s",
+        "upscale_delay_s",
+        "target_ongoing_requests",
+    ]
     for name, cfg in connection.items():
         logic_cls = load_class_from_file(cfg["module"], cfg["name"])
         resources = cfg.get("resources", {})
@@ -180,6 +188,14 @@ def build_graph(config):
             "num_replicas": resources.get("num_replicas", 1),
             "ray_actor_options": ray_actor_options,
         }
+        scale_config = {}
+        for item in scale_config_items:
+            if item in resources:
+                scale_config[item] = resources[item]
+        if scale_config:
+            deploy_kwargs["autoscaling_config"] = scale_config
+            deploy_kwargs.pop("num_replicas")
+            logger.info(f"autoscaling config {scale_config}")
         deployments[name] = make_deployment(logic_cls, **deploy_kwargs)
         handles[name] = deployments[name].bind()
 
@@ -355,15 +371,22 @@ class ServeEngine:
                 "**/.git/**",
                 "**/__pycache__/**",
             ]
+        
+        # Add num_cpus parameter to fix Ray worker registration failure
+		# For a node with 2*A100-80G, recommended to set between 8-16, adjust based on actual CPU cores
         if runtime_env:
-            ray.init(runtime_env=runtime_env)
+            ray.init(
+                num_cpus=8, 
+                runtime_env=runtime_env
+            )
         else:
-            ray.init()
+            ray.init(num_cpus=8)  
 
     def run_task(self):
         graph = build_graph(self.config)
+        port = self.exp_config.runner.deploy.get("port", 8000)
         task_manager = make_task_manager()
-        serve.start(http_options={"port": self.exp_config.runner.deploy.get("port", 8000)})
+        serve.start(http_options={"host": "0.0.0.0", "port": port})
         manager_prefix_name = "/manager"
         serve_prefix_name = self.exp_config.runner.deploy.get("name", "/")
         assert (
