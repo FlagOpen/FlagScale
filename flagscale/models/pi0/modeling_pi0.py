@@ -1,24 +1,24 @@
+import json
 import math
+
 from collections import deque
 from dataclasses import dataclass
-import json
+
+import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
-from torch import Tensor, nn
-from transformers import AutoTokenizer
-import numpy as np
 
-from transformers import PretrainedConfig, PreTrainedModel
+from safetensors.torch import load_file
+from torch import Tensor, nn
+from transformers import AutoTokenizer, PretrainedConfig, PreTrainedModel
 
 from flagscale.models.pi0.normalize import Normalize, Unnormalize
-from flagscale.models.pi0.types import FeatureType
 from flagscale.models.pi0.paligemma_with_expert import (
     PaliGemmaWithExpertConfig,
     PaliGemmaWithExpertModel,
 )
+from flagscale.models.pi0.types import ACTION, OBS_STATE, FeatureType
 from flagscale.runner.utils import logger
-from flagscale.models.pi0.types import ACTION, OBS_STATE
-from safetensors.torch import load_file
 
 
 def create_sinusoidal_pos_embedding(
@@ -136,7 +136,9 @@ def aloha_gripper_to_angular(value):
 
     # This is the inverse of the angular to linear transformation inside the Interbotix code.
     def linear_to_radian(linear_position, arm_length, horn_radius):
-        value = (horn_radius**2 + linear_position**2 - arm_length**2) / (2 * horn_radius * linear_position)
+        value = (horn_radius**2 + linear_position**2 - arm_length**2) / (
+            2 * horn_radius * linear_position
+        )
         return safe_arcsin(value)
 
     # The constants are taken from the Interbotix code.
@@ -183,6 +185,7 @@ def flatten_dict(d: dict, parent_key: str = "", sep: str = "/") -> dict:
             items.append((new_key, v))
     return dict(items)
 
+
 def unflatten_dict(d: dict, sep: str = "/") -> dict:
     outdict = {}
     for key, value in d.items():
@@ -194,6 +197,7 @@ def unflatten_dict(d: dict, sep: str = "/") -> dict:
             d = d[part]
         d[parts[-1]] = value
     return outdict
+
 
 @dataclass
 class PI0PolicyConfig(PretrainedConfig):
@@ -215,7 +219,9 @@ class PI0PolicyConfig(PretrainedConfig):
 
     @property
     def image_features(self):
-        return {key: ft for key, ft in self.input_features.items() if ft["type"] == FeatureType.VISUAL}
+        return {
+            key: ft for key, ft in self.input_features.items() if ft["type"] == FeatureType.VISUAL
+        }
 
     @property
     def action_feature(self):
@@ -231,13 +237,7 @@ class PI0Policy(PreTrainedModel):
     config_class = PI0PolicyConfig
     name = "pi0"
 
-    def __init__(
-        self,
-        model_path: str,
-        tokenizer_path: str,
-        stat: dict,
-        config: PI0PolicyConfig,
-    ):
+    def __init__(self, model_path: str, tokenizer_path: str, stat: dict, config: PI0PolicyConfig):
         """
         Args:
             config: Policy configuration class instance or None, in which case the default instantiation of
@@ -247,7 +247,6 @@ class PI0Policy(PreTrainedModel):
         """
         super().__init__(config)
 
-        
         self.config = config
         self.normalize_inputs = Normalize(config.input_features, config.normalization_mapping, stat)
         self.normalize_targets = Normalize(
@@ -330,7 +329,9 @@ class PI0Policy(PreTrainedModel):
         for key in transformed_dict:
             if key.endswith(".paligemma_with_expert.paligemma.lm_head.weight"):
                 lm_head_key = key
-            elif key.endswith(".paligemma_with_expert.paligemma.model.language_model.embed_tokens.weight"):
+            elif key.endswith(
+                ".paligemma_with_expert.paligemma.model.language_model.embed_tokens.weight"
+            ):
                 embed_tokens_key = key
             if lm_head_key and embed_tokens_key:
                 break
@@ -418,7 +419,9 @@ class PI0Policy(PreTrainedModel):
             self._action_queue.extend(actions.transpose(0, 1))
         return self._action_queue.popleft()
 
-    def forward(self, batch: dict[str, Tensor], noise=None, time=None) -> tuple[Tensor, dict[str, Tensor]]:
+    def forward(
+        self, batch: dict[str, Tensor], noise=None, time=None
+    ) -> tuple[Tensor, dict[str, Tensor]]:
         """Do a full training forward pass to compute the loss"""
         if self.config.adapt_to_pi_aloha:
             batch[OBS_STATE] = self._pi_aloha_decode_state(batch[OBS_STATE])
@@ -434,7 +437,9 @@ class PI0Policy(PreTrainedModel):
         actions_is_pad = batch.get("action_is_pad")
 
         loss_dict = {}
-        losses = self.model.forward(images, img_masks, lang_tokens, lang_masks, state, actions, noise, time)
+        losses = self.model.forward(
+            images, img_masks, lang_tokens, lang_masks, state, actions, noise, time
+        )
         loss_dict["losses_after_forward"] = losses.clone()
 
         if actions_is_pad is not None:
@@ -607,13 +612,7 @@ class PI0FlowMatching(nn.Module):
             params.requires_grad = self.config.train_state_proj
 
     def sample_noise(self, shape, device):
-        noise = torch.normal(
-            mean=0.0,
-            std=1.0,
-            size=shape,
-            dtype=torch.float32,
-            device=device,
-        )
+        noise = torch.normal(mean=0.0, std=1.0, size=shape, dtype=torch.float32, device=device)
         return noise
 
     def sample_time(self, bsize, device):
@@ -634,16 +633,15 @@ class PI0FlowMatching(nn.Module):
         att_masks = []
 
         # TODO: remove for loop
-        for (
-            img,
-            img_mask,
-        ) in zip(images, img_masks, strict=False):
+        for img, img_mask in zip(images, img_masks, strict=False):
             img_emb = self.paligemma_with_expert.embed_image(img)
             img_emb = img_emb.to(dtype=torch.bfloat16)
 
             # Normalize image embeddings
             img_emb_dim = img_emb.shape[-1]
-            img_emb = img_emb * torch.tensor(img_emb_dim**0.5, dtype=img_emb.dtype, device=img_emb.device)
+            img_emb = img_emb * torch.tensor(
+                img_emb_dim**0.5, dtype=img_emb.dtype, device=img_emb.device
+            )
 
             bsize, num_img_embs = img_emb.shape[:2]
             img_mask = img_mask[:, None].expand(bsize, num_img_embs)
@@ -768,7 +766,9 @@ class PI0FlowMatching(nn.Module):
         losses = F.mse_loss(u_t, v_t, reduction="none")
         return losses
 
-    def sample_actions(self, images, img_masks, lang_tokens, lang_masks, state, noise=None) -> Tensor:
+    def sample_actions(
+        self, images, img_masks, lang_tokens, lang_masks, state, noise=None
+    ) -> Tensor:
         """Do a full inference forward and compute the action (batch_size x num_steps x num_motors)"""
         bsize = state.shape[0]
         device = state.device
@@ -800,34 +800,23 @@ class PI0FlowMatching(nn.Module):
         time = torch.tensor(1.0, dtype=torch.float32, device=device)
         while time >= -dt / 2:
             expanded_time = time.expand(bsize)
-            v_t = self.denoise_step(
-                state,
-                prefix_pad_masks,
-                past_key_values,
-                x_t,
-                expanded_time,
-            )
+            v_t = self.denoise_step(state, prefix_pad_masks, past_key_values, x_t, expanded_time)
 
             # Euler step
             x_t += dt * v_t
             time += dt
         return x_t
 
-    def denoise_step(
-        self,
-        state,
-        prefix_pad_masks,
-        past_key_values,
-        x_t,
-        timestep,
-    ):
+    def denoise_step(self, state, prefix_pad_masks, past_key_values, x_t, timestep):
         """Apply one denoising step of the noise `x_t` at a given timestep."""
         suffix_embs, suffix_pad_masks, suffix_att_masks = self.embed_suffix(state, x_t, timestep)
 
         suffix_len = suffix_pad_masks.shape[1]
         batch_size = prefix_pad_masks.shape[0]
         prefix_len = prefix_pad_masks.shape[1]
-        prefix_pad_2d_masks = prefix_pad_masks[:, None, :].expand(batch_size, suffix_len, prefix_len)
+        prefix_pad_2d_masks = prefix_pad_masks[:, None, :].expand(
+            batch_size, suffix_len, prefix_len
+        )
 
         suffix_att_2d_masks = make_att_2d_masks(suffix_pad_masks, suffix_att_masks)
 

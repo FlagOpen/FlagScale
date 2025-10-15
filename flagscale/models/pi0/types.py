@@ -17,9 +17,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
 
-
 ACTION = "action"
 OBS_STATE = "observation.state"
+
 
 class FeatureType(str, Enum):
     STATE = "STATE"
