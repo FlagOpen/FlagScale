@@ -62,7 +62,9 @@ jobs:
           trap 'echo "Cleaning up temporary directory..."; rm -rf "$TMP_DIR"' EXIT
 
           if [ "${{ inputs.backend }}" = "train_megatron" ] || [ "${{ inputs.backend }}" = "train_flagscale" ]; then
-            echo ""
+            source /root/miniconda3/bin/activate flagscale-train
+            pip install aiohttp -i https://pypi.tuna.tsinghua.edu.cn/simple
+            conda deactivate
             # PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
           elif [ "${{ inputs.backend }}" = "vllm" ] || [ "${{ inputs.backend }}" = "inference_flagscale" ]; then
             source /root/miniconda3/bin/activate flagscale-inference
@@ -74,6 +76,6 @@ jobs:
             echo "Unknown backend type: ${{ inputs.backend }}"
             exit 1
           fi
-
+          cd /__w/FlagScale/FlagScale/tests/Nvidia_GPU/
           tests/scripts/unit_tests/test_subset.sh --backend ${{ inputs.backend }} --subset ${{ inputs.subset }} --id ${{ github.sha }}
         shell: bash

@@ -156,6 +156,7 @@ jobs:
             echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
           fi
+          cd /__w/FlagScale/FlagScale/tests/Nvidia_GPU/
           tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
           exit_code=$?
           echo "Exit code: $exit_code"

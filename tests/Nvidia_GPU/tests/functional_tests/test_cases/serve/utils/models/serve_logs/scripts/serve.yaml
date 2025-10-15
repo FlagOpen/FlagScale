@@ -1,0 +1,52 @@
+experiment:
+  exp_name: multiple_model
+  exp_dir: tests/functional_tests/test_cases/serve/utils/models
+  dag_dir: tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models
+  task:
+    type: serve
+    entrypoint: null
+  runner:
+    hostfile: null
+    deploy:
+      port: 6701
+      use_fs_serve: true
+      enable_composition: true
+      name: /generate
+      request:
+        args:
+        - prompt
+        types:
+        - str
+  envs:
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+    no_proxy: 127.0.0.1,localhost
+  cmds:
+    before_start: ulimit -n 65535 && source /root/miniconda3/bin/activate flagscale-inference
+action: stop
+serve:
+- serve_id: A
+  module: tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/base_model.py
+  name: ModelA
+  resources:
+    num_replicas: 2
+    num_gpus: 1
+- serve_id: B
+  module: tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/base_model.py
+  depends:
+  - A
+  name: ModelB
+  resources:
+    num_gpus: 1
+    min_replicas: 1
+    max_replicas: 2
+- serve_id: C
+  module: tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
+  depends:
+  - A
+  name: ModelC
+- serve_id: D
+  module: tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
+  depends:
+  - B
+  - C
+  name: ModelD

@@ -1,0 +1,255 @@
+INFO 2025-10-15 09:59:30,558 serve 1494763 --  =========== pythonpath  -----------------------
+2025-10-15 09:59:32,161	INFO worker.py:1832 -- Started a local Ray instance. View the dashboard at [1m[32mhttp://127.0.0.1:8265 [39m[22m
+Traceback (most recent call last):
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/working_dir.py", line 65, in upload_working_dir_if_needed
+    working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/packaging.py", line 527, in get_uri_for_directory
+    raise ValueError(f"directory {directory} must be an existing directory")
+ValueError: directory /home/FlagScale/tests/functional_tests/test_cases/serve/utils/models must be an existing directory
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/FlagScale/flagscale/serve/run_serve.py", line 12, in <module>
+    main()
+  File "/home/FlagScale/flagscale/serve/run_serve.py", line 7, in main
+    engine = ServeEngine(config)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/home/FlagScale/flagscale/serve/engine.py", line 212, in __init__
+    self.init_task()
+  File "/home/FlagScale/flagscale/serve/engine.py", line 375, in init_task
+    ray.init(runtime_env=runtime_env)
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/client_mode_hook.py", line 103, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/worker.py", line 1843, in init
+    connect(
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/worker.py", line 2421, in connect
+    runtime_env = upload_working_dir_if_needed(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/working_dir.py", line 69, in upload_working_dir_if_needed
+    raise ValueError(
+ValueError: directory tests/functional_tests/test_cases/serve/utils/models must be an existing directory or a zip package
+INFO 2025-10-15 10:11:15,652 serve 1495636 --  =========== pythonpath  -----------------------
+2025-10-15 10:11:17,242	INFO worker.py:1832 -- Started a local Ray instance. View the dashboard at [1m[32mhttp://127.0.0.1:8265 [39m[22m
+Traceback (most recent call last):
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/working_dir.py", line 65, in upload_working_dir_if_needed
+    working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/packaging.py", line 527, in get_uri_for_directory
+    raise ValueError(f"directory {directory} must be an existing directory")
+ValueError: directory /home/FlagScale/tests/functional_tests/test_cases/serve/utils/models must be an existing directory
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/FlagScale/flagscale/serve/run_serve.py", line 12, in <module>
+    main()
+  File "/home/FlagScale/flagscale/serve/run_serve.py", line 7, in main
+    engine = ServeEngine(config)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/home/FlagScale/flagscale/serve/engine.py", line 212, in __init__
+    self.init_task()
+  File "/home/FlagScale/flagscale/serve/engine.py", line 375, in init_task
+    ray.init(runtime_env=runtime_env)
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/client_mode_hook.py", line 103, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/worker.py", line 1843, in init
+    connect(
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/worker.py", line 2421, in connect
+    runtime_env = upload_working_dir_if_needed(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/working_dir.py", line 69, in upload_working_dir_if_needed
+    raise ValueError(
+ValueError: directory tests/functional_tests/test_cases/serve/utils/models must be an existing directory or a zip package
+INFO 2025-10-15 10:19:12,643 serve 1496495 --  =========== pythonpath  -----------------------
+2025-10-15 10:19:14,259	INFO worker.py:1832 -- Started a local Ray instance. View the dashboard at [1m[32mhttp://127.0.0.1:8265 [39m[22m
+Traceback (most recent call last):
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/working_dir.py", line 65, in upload_working_dir_if_needed
+    working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/packaging.py", line 527, in get_uri_for_directory
+    raise ValueError(f"directory {directory} must be an existing directory")
+ValueError: directory /home/FlagScale/tests/functional_tests/test_cases/serve/utils/models must be an existing directory
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/FlagScale/flagscale/serve/run_serve.py", line 12, in <module>
+    main()
+  File "/home/FlagScale/flagscale/serve/run_serve.py", line 7, in main
+    engine = ServeEngine(config)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/home/FlagScale/flagscale/serve/engine.py", line 212, in __init__
+    self.init_task()
+  File "/home/FlagScale/flagscale/serve/engine.py", line 376, in init_task
+    ray.init(runtime_env=runtime_env)
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/client_mode_hook.py", line 103, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/worker.py", line 1843, in init
+    connect(
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/worker.py", line 2421, in connect
+    runtime_env = upload_working_dir_if_needed(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/working_dir.py", line 69, in upload_working_dir_if_needed
+    raise ValueError(
+ValueError: directory tests/functional_tests/test_cases/serve/utils/models must be an existing directory or a zip package
+INFO 2025-10-15 14:27:22,179 serve 1497313 --  =========== pythonpath  -----------------------
+2025-10-15 14:27:26,195	INFO worker.py:1832 -- Started a local Ray instance. View the dashboard at [1m[32mhttp://127.0.0.1:8265 [39m[22m
+Traceback (most recent call last):
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/working_dir.py", line 65, in upload_working_dir_if_needed
+    working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/packaging.py", line 527, in get_uri_for_directory
+    raise ValueError(f"directory {directory} must be an existing directory")
+ValueError: directory /home/FlagScale/tests/functional_tests/test_cases/serve/utils/models must be an existing directory
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/FlagScale/flagscale/serve/run_serve.py", line 12, in <module>
+    main()
+  File "/home/FlagScale/flagscale/serve/run_serve.py", line 7, in main
+    engine = ServeEngine(config)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/home/FlagScale/flagscale/serve/engine.py", line 212, in __init__
+    self.init_task()
+  File "/home/FlagScale/flagscale/serve/engine.py", line 378, in init_task
+    ray.init(runtime_env=runtime_env)
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/client_mode_hook.py", line 103, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/worker.py", line 1843, in init
+    connect(
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/worker.py", line 2421, in connect
+    runtime_env = upload_working_dir_if_needed(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/working_dir.py", line 69, in upload_working_dir_if_needed
+    raise ValueError(
+ValueError: directory tests/functional_tests/test_cases/serve/utils/models must be an existing directory or a zip package
+INFO 2025-10-15 14:41:00,560 serve 1506169 --  =========== pythonpath  -----------------------
+2025-10-15 14:41:02,167	INFO worker.py:1832 -- Started a local Ray instance. View the dashboard at [1m[32mhttp://127.0.0.1:8265 [39m[22m
+Traceback (most recent call last):
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/working_dir.py", line 65, in upload_working_dir_if_needed
+    working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/packaging.py", line 527, in get_uri_for_directory
+    raise ValueError(f"directory {directory} must be an existing directory")
+ValueError: directory /home/FlagScale/tests/functional_tests/test_cases/serve/utils/models must be an existing directory
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/FlagScale/flagscale/serve/run_serve.py", line 12, in <module>
+    main()
+  File "/home/FlagScale/flagscale/serve/run_serve.py", line 7, in main
+    engine = ServeEngine(config)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/home/FlagScale/flagscale/serve/engine.py", line 212, in __init__
+    self.init_task()
+  File "/home/FlagScale/flagscale/serve/engine.py", line 378, in init_task
+    ray.init(runtime_env=runtime_env)
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/client_mode_hook.py", line 103, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/worker.py", line 1843, in init
+    connect(
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/worker.py", line 2421, in connect
+    runtime_env = upload_working_dir_if_needed(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/ray/_private/runtime_env/working_dir.py", line 69, in upload_working_dir_if_needed
+    raise ValueError(
+ValueError: directory tests/functional_tests/test_cases/serve/utils/models must be an existing directory or a zip package
+INFO 2025-10-15 15:11:14,104 serve 1507029 --  =========== pythonpath  -----------------------
+2025-10-15 15:11:18,031	INFO worker.py:1832 -- Started a local Ray instance. View the dashboard at [1m[32mhttp://127.0.0.1:8265 [39m[22m
+2025-10-15 15:11:18,045	INFO packaging.py:575 -- Creating a file package for local module 'tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models'.
+2025-10-15 15:11:18,052	INFO packaging.py:367 -- Pushing file package 'gcs://_ray_pkg_3f872532037a8f01.zip' (0.03MiB) to Ray cluster...
+2025-10-15 15:11:18,053	INFO packaging.py:380 -- Successfully pushed file package 'gcs://_ray_pkg_3f872532037a8f01.zip'.
+INFO 2025-10-15 15:11:27,521 serve 1507029 -- Loading class ModelA from file: /home/FlagScale/tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/base_model.py
+INFO 2025-10-15 15:11:27,524 serve 1507029 -- Loading class ModelB from file: /home/FlagScale/tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/base_model.py
+INFO 2025-10-15 15:11:27,525 serve 1507029 -- autoscaling config {'min_replicas': 1, 'max_replicas': 2}
+INFO 2025-10-15 15:11:27,526 serve 1507029 -- Loading class ModelC from file: /home/FlagScale/tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
+INFO 2025-10-15 15:11:27,527 serve 1507029 -- Loading class ModelD from file: /home/FlagScale/tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
+[36m(ProxyActor pid=1522251)[0m INFO 2025-10-15 15:11:34,794 proxy 172.17.0.6 -- Proxy starting on node 467b8eab5e961b7cf4fe93588a19ebb3c575b6c34452fc704a9f9d0a (HTTP port: 6701).
+INFO 2025-10-15 15:11:34,941 serve 1507029 -- Started Serve in namespace "serve".
+INFO 2025-10-15 15:11:34,942 serve 1507029 -- Connecting to existing Serve app in namespace "serve". New http options will not be applied.
+WARNING 2025-10-15 15:11:34,943 serve 1507029 -- The new client HTTP config differs from the existing one in the following fields: ['host', 'port', 'location']. The new HTTP config is ignored.
+[36m(ProxyActor pid=1522251)[0m INFO 2025-10-15 15:11:34,901 proxy 172.17.0.6 -- Got updated endpoints: {}.
+[36m(ServeController pid=1522039)[0m INFO 2025-10-15 15:11:35,067 controller 1522039 -- Deploying new version of Deployment(name='TaskManager', app='task_manager') (initial target replicas: 1).
+[36m(ServeController pid=1522039)[0m INFO 2025-10-15 15:11:36,147 controller 1522039 -- Adding 1 replica to Deployment(name='TaskManager', app='task_manager').
+[36m(ProxyActor pid=1522251)[0m INFO 2025-10-15 15:11:36,046 proxy 172.17.0.6 -- Got updated endpoints: {Deployment(name='TaskManager', app='task_manager'): EndpointInfo(route='/manager', app_is_cross_language=False)}.
+[36m(ProxyActor pid=1522251)[0m INFO 2025-10-15 15:11:36,059 proxy 172.17.0.6 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x7f67d2ea3860>.
+INFO 2025-10-15 15:11:39,058 serve 1507029 -- Application 'task_manager' is ready at http://0.0.0.0:6701/manager.
+INFO 2025-10-15 15:11:39,059 serve 1507029 -- Deployed app 'task_manager' successfully.
+INFO 2025-10-15 15:11:39,061 serve 1507029 -- Connecting to existing Serve app in namespace "serve". New http options will not be applied.
+WARNING 2025-10-15 15:11:39,061 serve 1507029 -- The new client HTTP config differs from the existing one in the following fields: ['host', 'port', 'location']. The new HTTP config is ignored.
+WARNING 2025-10-15 15:11:39,062 serve 1507029 -- There are multiple deployments with the same name 'WrappedModel'. Renaming one to 'WrappedModel_1'.
+WARNING 2025-10-15 15:11:39,063 serve 1507029 -- There are multiple deployments with the same name 'WrappedModel'. Renaming one to 'WrappedModel_2'.
+WARNING 2025-10-15 15:11:39,064 serve 1507029 -- There are multiple deployments with the same name 'WrappedModel'. Renaming one to 'WrappedModel_3'.
+[36m(ServeController pid=1522039)[0m INFO 2025-10-15 15:11:39,094 controller 1522039 -- Deploying new version of Deployment(name='WrappedModel', app='multiple_model') (initial target replicas: 2).
+[36m(ServeController pid=1522039)[0m INFO 2025-10-15 15:11:39,098 controller 1522039 -- Deploying new version of Deployment(name='WrappedModel_1', app='multiple_model') (initial target replicas: 1).
+[36m(ServeController pid=1522039)[0m INFO 2025-10-15 15:11:39,101 controller 1522039 -- Deploying new version of Deployment(name='WrappedModel_2', app='multiple_model') (initial target replicas: 1).
+[36m(ServeController pid=1522039)[0m INFO 2025-10-15 15:11:39,103 controller 1522039 -- Deploying new version of Deployment(name='WrappedModel_3', app='multiple_model') (initial target replicas: 1).
+[36m(ServeController pid=1522039)[0m INFO 2025-10-15 15:11:39,105 controller 1522039 -- Deploying new version of Deployment(name='FinalModel', app='multiple_model') (initial target replicas: 1).
+[36m(ProxyActor pid=1522251)[0m INFO 2025-10-15 15:11:39,108 proxy 172.17.0.6 -- Got updated endpoints: {Deployment(name='TaskManager', app='task_manager'): EndpointInfo(route='/manager', app_is_cross_language=False), Deployment(name='FinalModel', app='multiple_model'): EndpointInfo(route='/generate', app_is_cross_language=False)}.
+[36m(ServeController pid=1522039)[0m INFO 2025-10-15 15:11:39,210 controller 1522039 -- Adding 2 replicas to Deployment(name='WrappedModel', app='multiple_model').
+[36m(ServeController pid=1522039)[0m INFO 2025-10-15 15:11:39,734 controller 1522039 -- Adding 1 replica to Deployment(name='WrappedModel_1', app='multiple_model').
+[36m(ServeController pid=1522039)[0m INFO 2025-10-15 15:11:39,736 controller 1522039 -- Adding 1 replica to Deployment(name='WrappedModel_2', app='multiple_model').
+[36m(ServeController pid=1522039)[0m INFO 2025-10-15 15:11:39,738 controller 1522039 -- Adding 1 replica to Deployment(name='WrappedModel_3', app='multiple_model').
+[36m(ServeController pid=1522039)[0m INFO 2025-10-15 15:11:39,739 controller 1522039 -- Adding 1 replica to Deployment(name='FinalModel', app='multiple_model').
+INFO 2025-10-15 15:11:43,196 serve 1507029 -- Application 'multiple_model' is ready at http://0.0.0.0:6701/generate.
+INFO 2025-10-15 15:11:44,031 serve 1507029 -- Deployed app 'multiple_model' successfully.
+[36m(ServeReplica:multiple_model:WrappedModel pid=1538977)[0m INFO 2025-10-15 15:12:13,111 multiple_model_WrappedModel gbq60o3m 22f1690f-335c-4dc5-ac05-414cb9e03064 -- CALL /generate OK 2.6ms
+[36m(ServeReplica:multiple_model:WrappedModel_1 pid=1538972)[0m INFO 2025-10-15 15:12:13,134 multiple_model_WrappedModel_1 c2tdj75g 22f1690f-335c-4dc5-ac05-414cb9e03064 -- CALL /generate OK 1.9ms
+[36m(ServeReplica:multiple_model:WrappedModel_2 pid=1538974)[0m INFO 2025-10-15 15:12:13,156 multiple_model_WrappedModel_2 hxsmxucd 22f1690f-335c-4dc5-ac05-414cb9e03064 -- CALL /generate OK 2.5ms
+[36m(ServeReplica:multiple_model:FinalModel pid=1538975)[0m INFO 2025-10-15 15:12:13,093 multiple_model_FinalModel vf4algqc 22f1690f-335c-4dc5-ac05-414cb9e03064 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x7eff11af6750>.
+[36m(ServeReplica:multiple_model:FinalModel pid=1538975)[0m INFO 2025-10-15 15:12:13,179 multiple_model_FinalModel vf4algqc 22f1690f-335c-4dc5-ac05-414cb9e03064 -- POST /generate 200 107.5ms
+bash: line 1: 1507029 Killed                  CUDA_DEVICE_MAX_CONNECTIONS=1 no_proxy=127.0.0.1,localhost python flagscale/serve/run_serve.py --config-path=/home/FlagScale/tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/serve_logs/scripts/serve.yaml --log-dir=/home/FlagScale/tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/serve_logs
+INFO 2025-10-15 16:03:32,094 serve 1672120 --  =========== pythonpath  -----------------------
+2025-10-15 16:03:33,784	INFO worker.py:1832 -- Started a local Ray instance. View the dashboard at [1m[32mhttp://127.0.0.1:8265 [39m[22m
+2025-10-15 16:03:33,792	INFO packaging.py:575 -- Creating a file package for local module 'tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models'.
+2025-10-15 16:03:33,797	INFO packaging.py:367 -- Pushing file package 'gcs://_ray_pkg_5ed142d2b1a9d979.zip' (0.03MiB) to Ray cluster...
+2025-10-15 16:03:33,797	INFO packaging.py:380 -- Successfully pushed file package 'gcs://_ray_pkg_5ed142d2b1a9d979.zip'.
+INFO 2025-10-15 16:03:37,791 serve 1672120 -- Loading class ModelA from file: /home/FlagScale/tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/base_model.py
+INFO 2025-10-15 16:03:37,793 serve 1672120 -- Loading class ModelB from file: /home/FlagScale/tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/base_model.py
+INFO 2025-10-15 16:03:37,794 serve 1672120 -- autoscaling config {'min_replicas': 1, 'max_replicas': 2}
+INFO 2025-10-15 16:03:37,795 serve 1672120 -- Loading class ModelC from file: /home/FlagScale/tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
+INFO 2025-10-15 16:03:37,795 serve 1672120 -- Loading class ModelD from file: /home/FlagScale/tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/util_models/util_model.py
+INFO 2025-10-15 16:03:41,576 serve 1672120 -- Started Serve in namespace "serve".
+INFO 2025-10-15 16:03:41,577 serve 1672120 -- Connecting to existing Serve app in namespace "serve". New http options will not be applied.
+WARNING 2025-10-15 16:03:41,577 serve 1672120 -- The new client HTTP config differs from the existing one in the following fields: ['host', 'port', 'location']. The new HTTP config is ignored.
+[36m(ProxyActor pid=1687101)[0m INFO 2025-10-15 16:03:41,513 proxy 172.17.0.6 -- Proxy starting on node 61a107ba5c846750820d00227934f03956c91deddddd59b670a4a7b2 (HTTP port: 6701).
+[36m(ProxyActor pid=1687101)[0m INFO 2025-10-15 16:03:41,561 proxy 172.17.0.6 -- Got updated endpoints: {}.
+[36m(ServeController pid=1686956)[0m INFO 2025-10-15 16:03:41,675 controller 1686956 -- Deploying new version of Deployment(name='TaskManager', app='task_manager') (initial target replicas: 1).
+[36m(ProxyActor pid=1687101)[0m INFO 2025-10-15 16:03:41,677 proxy 172.17.0.6 -- Got updated endpoints: {Deployment(name='TaskManager', app='task_manager'): EndpointInfo(route='/manager', app_is_cross_language=False)}.
+[36m(ProxyActor pid=1687101)[0m INFO 2025-10-15 16:03:41,683 proxy 172.17.0.6 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x7edae2ad9580>.
+[36m(ServeController pid=1686956)[0m INFO 2025-10-15 16:03:41,778 controller 1686956 -- Adding 1 replica to Deployment(name='TaskManager', app='task_manager').
+INFO 2025-10-15 16:03:43,698 serve 1672120 -- Application 'task_manager' is ready at http://0.0.0.0:6701/manager.
+INFO 2025-10-15 16:03:43,698 serve 1672120 -- Deployed app 'task_manager' successfully.
+INFO 2025-10-15 16:03:43,699 serve 1672120 -- Connecting to existing Serve app in namespace "serve". New http options will not be applied.
+WARNING 2025-10-15 16:03:43,699 serve 1672120 -- The new client HTTP config differs from the existing one in the following fields: ['host', 'port', 'location']. The new HTTP config is ignored.
+WARNING 2025-10-15 16:03:43,701 serve 1672120 -- There are multiple deployments with the same name 'WrappedModel'. Renaming one to 'WrappedModel_1'.
+WARNING 2025-10-15 16:03:43,701 serve 1672120 -- There are multiple deployments with the same name 'WrappedModel'. Renaming one to 'WrappedModel_2'.
+WARNING 2025-10-15 16:03:43,702 serve 1672120 -- There are multiple deployments with the same name 'WrappedModel'. Renaming one to 'WrappedModel_3'.
+[36m(ServeController pid=1686956)[0m INFO 2025-10-15 16:03:43,748 controller 1686956 -- Deploying new version of Deployment(name='WrappedModel', app='multiple_model') (initial target replicas: 2).
+[36m(ServeController pid=1686956)[0m INFO 2025-10-15 16:03:43,750 controller 1686956 -- Deploying new version of Deployment(name='WrappedModel_1', app='multiple_model') (initial target replicas: 1).
+[36m(ServeController pid=1686956)[0m INFO 2025-10-15 16:03:43,751 controller 1686956 -- Deploying new version of Deployment(name='WrappedModel_2', app='multiple_model') (initial target replicas: 1).
+[36m(ServeController pid=1686956)[0m INFO 2025-10-15 16:03:43,753 controller 1686956 -- Deploying new version of Deployment(name='WrappedModel_3', app='multiple_model') (initial target replicas: 1).
+[36m(ServeController pid=1686956)[0m INFO 2025-10-15 16:03:43,754 controller 1686956 -- Deploying new version of Deployment(name='FinalModel', app='multiple_model') (initial target replicas: 1).
+[36m(ProxyActor pid=1687101)[0m INFO 2025-10-15 16:03:43,755 proxy 172.17.0.6 -- Got updated endpoints: {Deployment(name='TaskManager', app='task_manager'): EndpointInfo(route='/manager', app_is_cross_language=False), Deployment(name='FinalModel', app='multiple_model'): EndpointInfo(route='/generate', app_is_cross_language=False)}.
+[36m(ServeController pid=1686956)[0m INFO 2025-10-15 16:03:43,856 controller 1686956 -- Adding 2 replicas to Deployment(name='WrappedModel', app='multiple_model').
+[36m(ServeController pid=1686956)[0m INFO 2025-10-15 16:03:43,858 controller 1686956 -- Adding 1 replica to Deployment(name='WrappedModel_1', app='multiple_model').
+[36m(ServeController pid=1686956)[0m INFO 2025-10-15 16:03:43,858 controller 1686956 -- Adding 1 replica to Deployment(name='WrappedModel_2', app='multiple_model').
+[36m(ServeController pid=1686956)[0m INFO 2025-10-15 16:03:43,859 controller 1686956 -- Adding 1 replica to Deployment(name='WrappedModel_3', app='multiple_model').
+[36m(ServeController pid=1686956)[0m INFO 2025-10-15 16:03:43,860 controller 1686956 -- Adding 1 replica to Deployment(name='FinalModel', app='multiple_model').
+INFO 2025-10-15 16:03:46,817 serve 1672120 -- Application 'multiple_model' is ready at http://0.0.0.0:6701/generate.
+INFO 2025-10-15 16:03:46,817 serve 1672120 -- Deployed app 'multiple_model' successfully.
+[36m(ServeReplica:multiple_model:WrappedModel pid=1687669)[0m INFO 2025-10-15 16:04:31,369 multiple_model_WrappedModel 3uis98ms 857a43da-da96-49b5-99cb-da650ccc1658 -- CALL /generate OK 1.3ms
+[36m(ServeReplica:multiple_model:FinalModel pid=1687673)[0m INFO 2025-10-15 16:04:31,358 multiple_model_FinalModel fnn1ghaz 857a43da-da96-49b5-99cb-da650ccc1658 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x7f9b4a553680>.
+[36m(ServeReplica:multiple_model:FinalModel pid=1687673)[0m INFO 2025-10-15 16:04:31,407 multiple_model_FinalModel fnn1ghaz 857a43da-da96-49b5-99cb-da650ccc1658 -- POST /generate 200 61.0ms
+[36m(ServeReplica:multiple_model:WrappedModel_3 pid=1687671)[0m INFO 2025-10-15 16:04:31,406 multiple_model_WrappedModel_3 gyic41rw 857a43da-da96-49b5-99cb-da650ccc1658 -- CALL /generate OK 1.6ms
+[36m(ServeReplica:multiple_model:WrappedModel_2 pid=1687674)[0m INFO 2025-10-15 16:04:31,393 multiple_model_WrappedModel_2 amkvzraj 857a43da-da96-49b5-99cb-da650ccc1658 -- CALL /generate OK 1.8ms
+bash: line 1: 1672120 Killed                  CUDA_DEVICE_MAX_CONNECTIONS=1 no_proxy=127.0.0.1,localhost python flagscale/serve/run_serve.py --config-path=/home/FlagScale/tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/serve_logs/scripts/serve.yaml --log-dir=/home/FlagScale/tests/Nvidia_GPU/tests/functional_tests/test_cases/serve/utils/models/serve_logs
