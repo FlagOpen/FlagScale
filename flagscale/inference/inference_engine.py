@@ -2,6 +2,7 @@ import dataclasses
 import importlib
 import os
 import time
+
 from dataclasses import asdict, dataclass
 from typing import Any, List, Tuple, Union
 
@@ -14,12 +15,10 @@ from omegaconf import DictConfig
 
 from flagscale.inference.runtime_context import RuntimeContext
 from flagscale.inference.utils import parse_torch_dtype
+from flagscale.models.pi0.modeling_pi0 import PI0Policy, PI0PolicyConfig
+from flagscale.runner.utils import logger
 from flagscale.transforms import create_transformations_from_config
 
-
-from flagscale.models.pi0.modeling_pi0 import PI0Policy, PI0PolicyConfig
-
-from flagscale.runner.utils import logger
 
 def _check_required_fields(config_dict: DictConfig, required_fields: List[str]) -> None:
     """Check if the required fields are in the config dict."""
@@ -183,7 +182,8 @@ class InferenceEngine:
                 model_path=self.vconfig.model.model,
                 tokenizer_path=self.vconfig.model.tokenizer,
                 stat_path=self.vconfig.model.stat_path,
-                config=config)
+                config=config,
+            )
             policy = policy.to(device=self.vconfig.model.device)
             policy.eval()
             logger.info(f"PI0 loaded: {time.time() - t_s:.2f}s")
