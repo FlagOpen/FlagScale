@@ -106,6 +106,7 @@ jobs:
   functional_tests_train:
     needs:
       - set-env
+      - functional_tests_serve
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
@@ -139,7 +140,6 @@ jobs:
   functional_tests_inference:
     needs:
       - set-env
-      - functional_tests_hetero
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
@@ -175,7 +175,7 @@ jobs:
   functional_tests_rl:
     needs:
       - set-env
-      - functional_tests_serve
+      - functional_tests_hetero
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
