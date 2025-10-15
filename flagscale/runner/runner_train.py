@@ -421,7 +421,7 @@ class SSHTrainRunner(RunnerBase):
 
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         gpu_health_check_path = os.path.join(
-            root_dir, "flagscale", "elastic", "gpu_health_check.py"
+            root_dir, "flagscale", "runner", "elastic", "gpu_health_check.py"
         )
 
         # Check if the health check script exists
@@ -433,11 +433,33 @@ class SSHTrainRunner(RunnerBase):
         tp_size = self.config.train.model.get("tensor_model_parallel_size", 1)
         pp_size = self.config.train.model.get("pipeline_model_parallel_size", 1)
 
-        # Determine if we need distributed execution
+        # Auto-detect GPU configuration (consistent with training script generation)
         runner_config = self.config.experiment.runner
-        nnodes = runner_config.get("nnodes", 1)
-        nproc_per_node = runner_config.get("nproc_per_node", 1)
+        num_visible_devices = None
+        if self.resources is not None:
+            # Multi-node mode: get configuration from hostfile
+            nnodes_from_hostfile = len(self.resources.keys())
+            nnodes_from_args = runner_config.get("nnodes", None)
+            nnodes = get_nnodes(nnodes_from_hostfile, nnodes_from_args)
 
+            # Get slots from first node as reference
+            first_host_info = list(self.resources.values())[0]
+            nproc_from_hostfile = first_host_info["slots"]
+            nproc_from_args = runner_config.get("nproc_per_node", None)
+            nproc_per_node = get_nproc_per_node(nproc_from_hostfile, nproc_from_args, None)
+        else:
+            # Single-node mode: detect from CUDA_VISIBLE_DEVICES or torch
+            nnodes = 1
+            visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
+            if visible_devices is not None and isinstance(visible_devices, str):
+                visible_devices = visible_devices.split(",")
+                num_visible_devices = len(visible_devices)
+            nproc_from_args = runner_config.get("nproc_per_node", None)
+            nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
+
+        logger.info(
+            f"GPU health check configuration - nnodes: {nnodes}, nproc_per_node: {nproc_per_node}"
+        )
         # Build command
         if nnodes > 1 or nproc_per_node > 1:
             # Use torchrun for distributed health check
@@ -962,6 +984,92 @@ class CloudTrainRunner(RunnerBase):
             self.user_args = _get_args_lerobot(self.config)
         logger.info("\n************** configuration ***********")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
+
+    def _run_gpu_health_check(self):
+        """Run GPU health check directly in Python, output to console"""
+        import subprocess
+
+        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        gpu_health_check_path = os.path.join(
+            root_dir, "flagscale", "runner", "elastic", "gpu_health_check.py"
+        )
+
+        # Check if the health check script exists
+        if not os.path.exists(gpu_health_check_path):
+            logger.error(f"GPU health check script not found at {gpu_health_check_path}")
+            return False
+
+        # Get parallel configuration
+        tp_size = self.config.train.model.get("tensor_model_parallel_size", 1)
+        pp_size = self.config.train.model.get("pipeline_model_parallel_size", 1)
+
+        # Auto-detect GPU configuration for cloud runner
+        runner_config = self.config.experiment.runner
+
+        num_visible_devices = None
+        visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
+        if visible_devices:
+            visible_devices = visible_devices.split(",")
+            num_visible_devices = len(visible_devices)
+
+        nproc_from_args = runner_config.get("nproc_per_node", None)
+        nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
+
+        logger.info(f"GPU health check configuration - nproc_per_node: {nproc_per_node}")
+
+        # Build command based on detected GPU count
+        if nproc_per_node > 1:
+            # Multi-GPU: use torchrun
+            cmd = [
+                "torchrun",
+                f"--nproc_per_node={nproc_per_node}",
+                "--nnodes=1",
+                "--node_rank=0",
+                gpu_health_check_path,
+                "--tensor-model-parallel-size",
+                str(tp_size),
+                "--pipeline-model-parallel-size",
+                str(pp_size),
+                "--distributed-backend",
+                "nccl",
+                "--distributed-timeout-minutes",
+                "10",
+            ]
+        else:
+            # Single GPU: use python directly
+            cmd = [
+                "python",
+                gpu_health_check_path,
+                "--tensor-model-parallel-size",
+                str(tp_size),
+                "--pipeline-model-parallel-size",
+                str(pp_size),
+                "--distributed-backend",
+                "nccl",
+                "--distributed-timeout-minutes",
+                "10",
+            ]
+
+        logger.info(f"Running GPU health check command: {' '.join(cmd)}")
+
+        # Run the health check command with output to console
+        try:
+            result = subprocess.run(
+                cmd,
+                check=False,  # Don't raise exception on non-zero exit
+                text=True,
+                capture_output=False,  # Let output go to console directly
+            )
+
+            if result.returncode == 0:
+                return True
+            else:
+                logger.error(f"GPU health check failed with exit code {result.returncode}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Failed to run GPU health check: {e}")
+            return False
 
     def _run_each(
         self,
