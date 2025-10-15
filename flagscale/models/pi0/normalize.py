@@ -1,3 +1,5 @@
+# Adopted from huggingface/lerobot (https://github.com/huggingface/lerobot/tree/main)
+
 import numpy as np
 import torch
 

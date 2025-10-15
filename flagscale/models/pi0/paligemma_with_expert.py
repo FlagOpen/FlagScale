@@ -1,3 +1,5 @@
+# Adopted from huggingface/lerobot (https://github.com/huggingface/lerobot/tree/main)
+
 import torch
 
 from lerobot.policies.pi0.flex_attention import flex_attention_forward
