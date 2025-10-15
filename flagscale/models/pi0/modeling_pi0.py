@@ -1,16 +1,13 @@
 import math
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import json
 import torch
 import torch.nn.functional as F  # noqa: N812
 from torch import Tensor, nn
 from transformers import AutoTokenizer
 import numpy as np
-from lerobot.constants import ACTION, OBS_STATE
 
-from lerobot.policies.utils import log_model_loading_keys
-from lerobot.utils.utils import get_safe_dtype, init_logging
 from transformers import PretrainedConfig, PreTrainedModel
 
 from flagscale.models.pi0.normalize import Normalize, Unnormalize
@@ -19,6 +16,10 @@ from flagscale.models.pi0.paligemma_with_expert import (
     PaliGemmaWithExpertConfig,
     PaliGemmaWithExpertModel,
 )
+from flagscale.runner.utils import logger
+from flagscale.models.pi0.types import ACTION, OBS_STATE
+from safetensors.torch import load_file
+
 
 def create_sinusoidal_pos_embedding(
     time: torch.tensor, dimension: int, min_period: float, max_period: float, device="cpu"
@@ -352,9 +353,6 @@ class PI0Policy(PreTrainedModel):
         cls, model: "PI0Policy", model_file: str, map_location: str, strict: bool
     ) -> "PI0Policy":
         """Override to apply key transformations before loading."""
-        from safetensors.torch import load_file
-
-        init_logging()
         # Load the state dict from file safely
         state_dict = load_file(model_file, device=map_location)
 
@@ -365,7 +363,11 @@ class PI0Policy(PreTrainedModel):
         msg = model.load_state_dict(transformed_state_dict, strict=strict)
 
         # Log message
-        log_model_loading_keys(msg.missing_keys, msg.unexpected_keys)
+        if msg.missing_keys:
+            logger.warning(f"Missing key(s) when loading model: {msg.missing_keys}")
+        if msg.unexpected_keys:
+            logger.warning(f"Unexpected key(s) when loading model: {msg.unexpected_keys}")
+
         return model
 
     def get_optim_params(self) -> dict:
@@ -847,3 +849,15 @@ class PI0FlowMatching(nn.Module):
         suffix_out = suffix_out.to(dtype=torch.float32)
         v_t = self.action_out_proj(suffix_out)
         return v_t
+
+
+def get_safe_dtype(dtype: torch.dtype, device: str | torch.device):
+    """
+    mps is currently not compatible with float64
+    """
+    if isinstance(device, torch.device):
+        device = device.type
+    if device == "mps" and dtype == torch.float64:
+        return torch.float32
+    else:
+        return dtype
