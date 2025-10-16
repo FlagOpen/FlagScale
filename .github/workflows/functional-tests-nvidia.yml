@@ -118,7 +118,7 @@ jobs:
               done
               if [ "$all_successful" = true ]; then
                 echo "All commands have been executed"
-                exit 0
+                break
               fi
             done
 
