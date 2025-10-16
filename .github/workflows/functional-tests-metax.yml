@@ -48,11 +48,16 @@ jobs:
           retry-on-intr: fail=5,delay=180000
       
       - name: checkout secrets
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
+          HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
+          METAX_PROXY: ${{ secrets.METAX_PROXY }}
         run: |
-          echo "FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}"
-          echo "HTTP_PROXY: ${{ secrets.HTTP_PROXY }}"
-          echo "HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}"
-          echo "METAX_PROXY: ${{ secrets.METAX_PROXY }}"
+          echo "FEISHU_WEBHOOK_URL: $FEISHU_WEBHOOK_URL"
+          echo "HTTP_PROXY: $HTTP_PROXY"
+          echo "HTTPS_PROXY: $HTTPS_PROXY"
+          echo "METAX_PROXY: $METAX_PROXY"
 
       - name: Install sccache
         run: |
