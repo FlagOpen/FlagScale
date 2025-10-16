@@ -49,7 +49,6 @@ class ModelHook:
         """
         return module
 
-    # TODO(yupu): See if we need to explicitly pass a `RuntimeContext`
     def pre_forward(self, module: nn.Module, *args, **kwargs) -> Tuple[Tuple[Any], Dict[str, Any]]:
         """
         Called before the module's forward pass.
@@ -85,7 +84,12 @@ class ModelHook:
         for state_store in self._stateful:
             state_store.set_scope(name)
 
-    # TODO(yupu): reset?
+    def reset_stateful(self) -> None:
+        """
+        Reset all the state_stores for the hook.
+        """
+        for state_store in self._stateful:
+            state_store.reset()
 
 
 @dataclass
@@ -233,6 +237,7 @@ class ModuleHookRegistry:
         self._fn_refs.pop(idx)
 
         if recursive:
+            # This happens before torch.compile, so calling `unwrap_module` is not necessary.
             for module_name, module in self._module_ref.named_modules():
                 if module_name == "":
                     continue
@@ -240,9 +245,22 @@ class ModuleHookRegistry:
                 if reg is not None:
                     reg.remove_hook(name, recursive=False)
 
-    # TODO(yupu): reset context? When?
-    # TODO(yupu): State may be consumed by the hook, but by definition, it should be a `Transform`'s attribute.
-    # TODO(yupu): Is it possible in reality to have multiple contexts for different hooks at the same time?
+    def reset_stateful_hooks(self, recursive: bool = True) -> None:
+        """
+        Reset all the stateful hooks for the registry.
+        """
+        for hook_name in reversed(self._order):
+            hook = self._hooks[hook_name]
+            hook.reset_stateful()
+
+        if recursive:
+            for module_name, module in unwrap_module(self._module_ref).named_modules():
+                if module_name == "":
+                    continue
+                module = unwrap_module(module)
+                reg = ModuleHookRegistry.get_registry_if_present(module)
+                if reg is not None:
+                    reg.reset_stateful_hooks(recursive=False)
 
     def set_state_scope(self, name: Optional[str] = None) -> None:
         # TODO(yupu): Does the order matter?

@@ -209,24 +209,29 @@ class InferenceEngine:
             outputs = self.model_or_pipeline(**kwargs)
             return outputs
 
-    def save(self, outputs) -> bool:
-        """Save the output."""
+    def save(self, outputs, name_prefix: Union[str, None] = None) -> bool:
+        """Save the output.
+
+        Args:
+            outputs: The output object returned by the pipeline.
+            name_prefix: Optional file name prefix to distinguish multiple runs.
+        """
 
         os.makedirs(self.vconfig.engine.results_path, exist_ok=True)
 
         if self.vconfig.engine.output_format == "image":
             if hasattr(outputs, "images") and len(outputs.images) > 0:
                 for i, image in enumerate(outputs.images):
-                    image.save(os.path.join(self.vconfig.engine.results_path, f"output_{i}.png"))
+                    fname = f"{name_prefix}_output_{i}.png" if name_prefix else f"output_{i}.png"
+                    image.save(os.path.join(self.vconfig.engine.results_path, fname))
             else:
                 raise NotImplementedError("Not implemented yet")
         elif self.vconfig.engine.output_format == "video":
             if hasattr(outputs, "frames") and len(outputs.frames) > 0:
                 for i, frame in enumerate(outputs.frames):
+                    fname = f"{name_prefix}_output_{i}.mp4" if name_prefix else f"output_{i}.mp4"
                     export_to_video(
-                        frame,
-                        os.path.join(self.vconfig.engine.results_path, f"output_{i}.mp4"),
-                        fps=15,
+                        frame, os.path.join(self.vconfig.engine.results_path, fname), fps=15
                     )
             else:
                 raise NotImplementedError("Not implemented yet")

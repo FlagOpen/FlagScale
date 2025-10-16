@@ -20,6 +20,16 @@ class StateScopeHook(ModelHook):
 
         ctx = current_ctx()
         if ctx:
+            # Lazy, once-per-session cleanup: ensure state reset on session exit
+            reg = ModuleHookRegistry.get_or_create_registry(module)
+            if getattr(reg, "_last_cleanup_ctx_id", None) != id(ctx):
+
+                def _cleanup() -> None:
+                    reg.reset_stateful_hooks(recursive=True)
+
+                ctx.add_on_exit(_cleanup)
+                setattr(reg, "_last_cleanup_ctx_id", id(ctx))
+
             state_scope = ctx.state_scope
             if state_scope:
                 ModuleHookRegistry.get_or_create_registry(module).set_state_scope(state_scope)

@@ -10,10 +10,10 @@ import torch.nn as nn
 
 from omegaconf import DictConfig
 
-from flagscale.inference.runtime_context import current_ctx
-from flagscale.transforms.hook import ModelHook, ModuleHookRegistry
-from flagscale.transforms.state_store import BaseState, StateStore
-from flagscale.transforms.transformation import Selector, Transformation, build_selector
+from ..inference.runtime_context import current_ctx
+from .hook import ModelHook, ModuleHookRegistry
+from .state_store import BaseState, StateStore
+from .transformation import Selector, Transformation, build_selector
 
 
 class TaylorSeerState(BaseState):
@@ -40,22 +40,12 @@ class TaylorSeerState(BaseState):
         # Whether to use real scheduler timestep deltas instead of index deltas
         self.use_timestep_delta: bool = use_timestep_delta
 
-        # Taylor-series derivatives of the previous inference step
-        self.previous_derivatives: List[torch.Tensor] = [None] * self.order
-        # Taylor-series derivatives of the current inference step
-        self.current_derivatives: List[torch.Tensor] = [None] * self.order
-        # Last timestep where the model actually did inference
-        self.previous_forward_step: int = -1
-        # Last actual scheduler timestep value (float) when we last did exact forward.
-        # Negative value indicates "no previous exact forward" (sentinel).
-        self.previous_forward_time: float = -1.0
-
-        self._is_tuple: bool = False
+        self.reset()
 
         assert self.order > 0 and self.warmup_steps > 0 and self.skip_interval_steps > 0
 
     def approximate_derivative(
-        self, output: torch.Tensor, step: int, timestep: float
+        self, output: torch.Tensor, step: int, timestep: float, previous: List[torch.Tensor]
     ) -> List[torch.Tensor]:
         """Update divided differences for the Taylor series.
 
@@ -64,6 +54,7 @@ class TaylorSeerState(BaseState):
             step: Diffusion step index for the current update.
             timestep: Raw scheduler timestep value (may be a scalar tensor or
                 float); used only when use_timestep_delta is enabled.
+            previous: The previous derivatives.
 
         Returns:
             Updated derivative list (0..order-1), where index 0 is the latest
@@ -84,8 +75,8 @@ class TaylorSeerState(BaseState):
         current: List[torch.Tensor] = [None] * self.order
         current[0] = output
         for i in range(self.order - 1):
-            if self.previous_derivatives[i] is not None and distance not in (None, 0):
-                current[i + 1] = (current[i] - self.previous_derivatives[i]) / distance
+            if previous[i] is not None and distance not in (None, 0):
+                current[i + 1] = (current[i] - previous[i]) / distance
             else:
                 break
 
@@ -95,20 +86,38 @@ class TaylorSeerState(BaseState):
         """Ingest an exact-forward output and refresh series terms.
 
         Args:
-            output: Tensor (or single-tensor tuple) produced by the module at
+            output: Tensor (or tensor tuple) produced by the module at
                 the current diffusion step.
         """
         if isinstance(output, tuple):
-            assert len(output) == 1, "Tuple with multiple elements are not supported"
-            output = output[0]
             self._is_tuple = True
 
         ctx = current_ctx()
         timestep_index: int = ctx.timestep_index
         timestep: float = ctx.timestep
 
-        self.previous_derivatives = self.current_derivatives
-        self.current_derivatives = self.approximate_derivative(output, timestep_index, timestep)
+        if self._is_tuple:
+            num_outputs = len(output)
+            if len(self.current_derivatives) != num_outputs:
+                # Output has more than one element; only expected on the first full
+                # computation step
+                assert (
+                    self.previous_forward_step == -1
+                ), "current_derivatives should have the same number of elements as output"
+                # Create independent derivative lists per output; avoid shared inner lists
+                self.current_derivatives = [[None] * self.order for _ in range(num_outputs)]
+                self.previous_derivatives = [[None] * self.order for _ in range(num_outputs)]
+            for i, o in enumerate(output):
+                self.previous_derivatives[i] = self.current_derivatives[i]
+                self.current_derivatives[i] = self.approximate_derivative(
+                    o, timestep_index, timestep, self.previous_derivatives[i]
+                )
+        else:
+            self.previous_derivatives[0] = self.current_derivatives[0]
+            self.current_derivatives[0] = self.approximate_derivative(
+                output, timestep_index, timestep, self.previous_derivatives[0]
+            )
+
         self.previous_forward_step = timestep_index
         self.previous_forward_time = timestep
 
@@ -117,7 +126,7 @@ class TaylorSeerState(BaseState):
 
         Returns:
             A tensor approximating the next output; if the last exact forward
-            observed a single-tensor tuple, returns a tuple with one tensor to
+            observed a tensor tuple, returns a tuple with tensors to
             match the original signature.
         """
 
@@ -135,13 +144,18 @@ class TaylorSeerState(BaseState):
                 elapsed = 0
             else:
                 elapsed = timestep_index - self.previous_forward_step
-        output = 0
-        for i, derivative in enumerate(self.current_derivatives):
-            if derivative is not None:
-                output += (1 / math.factorial(i)) * derivative * (elapsed**i)
-            else:
-                break
-        return (output,) if self._is_tuple else output
+
+        outputs = []
+        for derivatives in self.current_derivatives:
+            output = 0
+            for i, derivative in enumerate(derivatives):
+                if derivative is not None:
+                    output += (1 / math.factorial(i)) * derivative * (elapsed**i)
+                else:
+                    break
+            outputs.append(output)
+
+        return tuple(outputs) if self._is_tuple else outputs[0]
 
     def needs_exact_forward(self) -> bool:
         """Decide whether to run an exact forward at the current step.
@@ -163,9 +177,19 @@ class TaylorSeerState(BaseState):
 
     def reset(self, *args, **kwargs):
         """Reset the state of the TaylorSeer."""
-        self.previous_derivatives = [None] * self.order
-        self.current_derivatives = [None] * self.order
-        self.previous_forward_step = -1
+        # TODO(yupu): Is offloading possbile and necessary?
+        # Taylor-series derivatives of the previous inference step.
+        # Each inner list contains derivatives for one output (for tuple outputs).
+        self.previous_derivatives: List[List[torch.Tensor]] = [[None] * self.order]
+        # Taylor-series derivatives of the current inference step
+        self.current_derivatives: List[List[torch.Tensor]] = [[None] * self.order]
+        # Last timestep where the model actually did inference
+        self.previous_forward_step: int = -1
+        # Last actual scheduler timestep value (float) when we last did exact forward.
+        # Negative value indicates "no previous exact forward" (sentinel).
+        self.previous_forward_time: float = -1.0
+
+        self._is_tuple: bool = False
 
 
 class TaylorSeerHook(ModelHook):
@@ -193,6 +217,7 @@ class TaylorSeerHook(ModelHook):
         state = self.state_store.get_or_create_state()
 
         if state.needs_exact_forward():
+            print("Exact forward")
             output = self.fn_ref.original_forward(*args, **kwargs)
             state.update(output)
             return output

@@ -7,7 +7,10 @@ S = TypeVar("S")
 
 
 class BaseState:
+    """Base class for states."""
+
     def reset(self, *args, **kwargs):
+        """Reset the state."""
         raise NotImplementedError(
             "BaseState::reset is not implemented. Please implement this method in the derived class."
         )
@@ -24,7 +27,7 @@ class StateStore(Generic[S]):
         # TODO(yupu): Do we need to distinguish between global and module-specific states?
         # Mapping: state context name -> state.
         # State can be shared across modules or by a single module.
-        self._state_by_context: Dict[str, S] = {}
+        self._state_by_scope: Dict[str, S] = {}
         # The state context name that is currently in use.
         self._active_scope: Optional[str] = None
 
@@ -41,11 +44,11 @@ class StateStore(Generic[S]):
             raise ValueError(
                 "No state context is currently in use. Please set a state context first."
             )
-        if self._active_scope not in self._state_by_context:
-            self._state_by_context[self._active_scope] = self._state_cls(
+        if self._active_scope not in self._state_by_scope:
+            self._state_by_scope[self._active_scope] = self._state_cls(
                 *self._init_args, **self._init_kwargs
             )
-        return self._state_by_context[self._active_scope]
+        return self._state_by_scope[self._active_scope]
 
     def set_scope(self, name: str):
         """Set the current state context.
@@ -55,4 +58,9 @@ class StateStore(Generic[S]):
         """
         self._active_scope = name
 
-    # TODO(yupu): Reset?
+    def reset(self, *args, **kwargs):
+        """Reset the state store."""
+        for scope, state in list(self._state_by_scope.items()):
+            state.reset(*args, **kwargs)
+            self._state_by_scope.pop(scope)
+        self._active_scope = None

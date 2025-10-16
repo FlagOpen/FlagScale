@@ -1,3 +1,5 @@
+import importlib
+
 from abc import ABC, abstractmethod
 from fnmatch import fnmatch
 from typing import Iterable, Protocol, Tuple
@@ -72,6 +74,21 @@ class Or:
                 yield name, m
 
 
+# def _resolve_types(type_names: Iterable[str]) -> Tuple[type, ...]:
+#     """Resolve string type names to torch.nn classes.
+
+#     Accepts names like "Linear", "LayerNorm", "torch.nn.Linear".
+#     """
+#     resolved: list[type] = []
+#     for n in type_names:
+#         leaf = n.split(".")[-1]
+#         cls = getattr(nn, leaf, None)
+#         if cls is None or not isinstance(cls, type):
+#             raise ValueError(f"Unknown nn.Module type: {n}")
+#         resolved.append(cls)
+#     return tuple(resolved)
+
+
 def _resolve_types(type_names: Iterable[str]) -> Tuple[type, ...]:
     """Resolve string type names to torch.nn classes.
 
@@ -79,8 +96,13 @@ def _resolve_types(type_names: Iterable[str]) -> Tuple[type, ...]:
     """
     resolved: list[type] = []
     for n in type_names:
-        leaf = n.split(".")[-1]
-        cls = getattr(nn, leaf, None)
+        mod_name, _, cls_name = n.rpartition(".")
+        if not mod_name:
+            raise ValueError(f"Invalid component class path '{n}'.")
+        cls = getattr(importlib.import_module(mod_name), cls_name)
+        # leaf = n.split(".")[-1]
+        # cls = getattr(nn, leaf, None)
+        # cls = importlib.import_module(n)
         if cls is None or not isinstance(cls, type):
             raise ValueError(f"Unknown nn.Module type: {n}")
         resolved.append(cls)
