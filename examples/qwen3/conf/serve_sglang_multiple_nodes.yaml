@@ -11,11 +11,11 @@ experiment:
   runner:
     hostfile: examples/qwen3/conf/hostfile.txt
     docker: ds
-    nnodes: ${oc.env:LWS_GROUP_SIZE, 1}
-    master_addr: ${oc.env:MASTER_ADDR, 127.0.0.1}
-    master_port: ${oc.env:MASTER_PORT, 20036}
+    nnodes: 2
+    master_addr: x.x.x.x  # 10.6.208.15  #ip and address for sglang distribute control
+    master_port: xxxx     # 30000
     deploy:
-      port: 6706
+      port: 6706     # port for sglang serve
       use_fs_serve: false
   cmds:
     before_start: source /root/miniconda3/bin/activate flagscale-inference
@@ -23,10 +23,10 @@ experiment:
     CUDA_VISIBLE_DEVICES: 0
     CUDA_DEVICE_MAX_CONNECTIONS: 1
   node_args:
-    10.6.208.16:
+    x.x.x.x:     # 10.6.208.16:
       engine_args:
         model: /mnt/Qwen2.5-0.5B-Instruct/
-    10.6.208.15:
+    x.x.x.x:     # 10.6.208.15:
         #model: /models/Qwen2.5-0.5B-Instruct/ 
 
   auto_tuner:

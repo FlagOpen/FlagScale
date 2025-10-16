@@ -602,7 +602,7 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                                     f"nnodes, master_addr, master_port must be specified in runner when engine is sglang with multi-nodes mode."
                                 )
                             command.extend(["--nnodes", str(nnodes)])
-                            command.extend(["--dist-init-addr", addr + ":" + port])
+                            command.extend(["--dist-init-addr", str(addr) + ":" + str(port)])
                             command.append("> /dev/null 2>&1 &")
 
                             node_cmd = ' '.join(command)

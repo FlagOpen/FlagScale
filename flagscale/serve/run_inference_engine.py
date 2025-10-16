@@ -91,7 +91,7 @@ def sglang_serve(args):
     command.extend(["--nnodes", str(nnodes)])
     addr = serve.task_config.experiment.runner.get("master_addr", "127.0.0.1")
     port = serve.task_config.experiment.runner.get("master_port", "29500")
-    command.extend(["--dist-init-addr", addr + ":" + port])
+    command.extend(["--dist-init-addr", str(addr) + ":" + str(port)])
 
     # Start the subprocess
     logger.info(f"[Serve]: Starting sglang serve with command: {' '.join(command)}")
