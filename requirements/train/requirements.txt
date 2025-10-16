@@ -1,0 +1,6 @@
+wrapt
+flask
+flask_restful
+tiktoken
+PyGithub
+aiohttp

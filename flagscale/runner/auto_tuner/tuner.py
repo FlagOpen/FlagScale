@@ -1,7 +1,11 @@
 import copy
 import datetime
+import json
 import logging
 import os
+import re
+import shutil
+import sys
 import time
 
 from omegaconf import DictConfig, OmegaConf
@@ -35,7 +39,7 @@ class AutoTuner:
         log_path = os.path.join(dir_path, "tuner.log")
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
-        handler = logging.FileHandler(log_path, mode="w")
+        handler = logging.FileHandler(log_path, mode="a")
         handler.setLevel(logging.INFO)
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         handler.setFormatter(formatter)
@@ -103,6 +107,25 @@ class AutoTuner:
             self.generator = Generator(self.config)
             self.recorder = Recorder(self.config)
 
+        # check configuration file state
+        config_path = os.path.join(dir_path, "config.yaml")
+        if os.path.isfile(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                load_config = json.load(f)
+            assert (
+                load_config == self.config
+            ), f"The configuration file has changed and cannot be resumed from breakpoint"
+        else:
+            with open(config_path, "w", encoding="utf-8") as f:
+                pure = OmegaConf.to_container(copy.deepcopy(self.config), resolve=True)
+                json.dump(pure, f, ensure_ascii=False, indent=2)
+
+        # History strategy
+        self.history = self.recorder.read()
+
+        # resume searcher idx
+        self.searcher.algo.idx = max(0, int(self.find_search_num_value(log_path)) - 1)
+
         # Each task has its own runner
         self.runner = None
 
@@ -121,14 +144,51 @@ class AutoTuner:
         # The start time of tuner, used to control the tuner when stop
         self.start_time = time.time()
 
-        # History strategy
-        self.history = []
+        # The history pruned count
+        self.pruner.pruned_count = int(self.find_pruned_num_value(log_path))
 
         # Task id
-        self.idx = 0
+        self.idx = self.searcher.algo.idx - self.pruner.pruned_count
+
+        # clear breakpoint task log
+        if self.searcher.algo.idx >= 0:
+            breakpoint_task_path = os.path.join(dir_path, "task_" + str(self.idx + 1))
+            self.clear_log(breakpoint_task_path)
+            self.searcher.algo.idx = self.idx - 1
 
         # Checkout search mode on the platform
         self.has_checkout = False
+
+    # clear break task log
+    def clear_log(self, folder_path):
+        try:
+            shutil.rmtree(folder_path)
+        except FileNotFoundError:
+            return
+        except PermissionError:
+            self.logger.error(f"no permission to clear breakpoint task log")
+            sys.exit()
+        except OSError as e:
+            self.logger.info(f"cannot clear breakpoint task log, due {e}")
+            sys.exit()
+
+    # get pruned num from log
+    def find_pruned_num_value(self, file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                matches = re.findall(r'Pruned (.*?) strategy', file.read())
+                return matches[-1] if matches else '0'
+        except (FileNotFoundError, IndexError, IOError):
+            return '0'
+
+    # get serarch num from log
+    def find_search_num_value(self, file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                matches = re.findall(r'Searching (.*?) /', file.read())
+                return matches[-1] if matches else '0'
+        except (FileNotFoundError, IndexError, IOError):
+            return '0'
 
     def tune(self):
         """
@@ -179,7 +239,8 @@ class AutoTuner:
             best_task = self.generator.gen_best_task(best_strategy, self.orig_config)
             best_task.action = "run"
             runner = SSHTrainRunner(best_task)
-            runner.run(monitor=True, interval=60)
+            enable_monitoring = best_task.experiment.runner.get("enable_monitoring", False)
+            runner.run(monitor=True, interval=60, enable_monitoring=enable_monitoring)
 
     def need_stop(self):
         """Judge whether need to stop tuning."""
@@ -236,7 +297,8 @@ class AutoTuner:
         if task is None:
             task = self.cur_task
         self.runner = SSHTrainRunner(task)
-        self.runner.run()
+        enable_monitoring = task.experiment.runner.get("enable_monitoring", False)
+        self.runner.run(enable_monitoring=enable_monitoring)
         # set start time
         self.task_start_time = time.time()
 

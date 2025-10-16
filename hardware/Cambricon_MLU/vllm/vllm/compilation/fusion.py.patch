@@ -1,0 +1,96 @@
+diff --git a/vllm/compilation/fusion.py b/vllm/compilation/fusion.py
+index b46f5f522..7925e8ee4 100644
+--- a/vllm/compilation/fusion.py
++++ b/vllm/compilation/fusion.py
+@@ -29,8 +29,21 @@ def empty_fp32(*args, **kwargs):
+     return torch.empty(*args, **kwargs, dtype=torch.float32, device="cuda")
+ 
+ 
+-RMS_OP = torch.ops._C.rms_norm.default
+-RMS_ADD_OP = torch.ops._C.fused_add_rms_norm.default
++'''
++=============================
++Modify by vllm_mlu
++=============================
++@brief: skip custom op implemention
++'''
++# RMS_OP = torch.ops._C.rms_norm.default
++# RMS_ADD_OP = torch.ops._C.fused_add_rms_norm.default
++RMS_OP = None
++RMS_ADD_OP = None
++'''
++==================
++End of MLU Hijack
++==================
++'''
+ 
+ 
+ class QuantKey(NamedTuple):
+@@ -57,13 +70,25 @@ kFp8StaticTensorSym = QuantKey(FP8_DTYPE, True, True, True)
+ kFp8DynamicTensorSym = QuantKey(FP8_DTYPE, False, True, True)
+ kFp8DynamicTokenSym = QuantKey(FP8_DTYPE, False, False, True)
+ 
++
++'''
++=============================
++Modify by vllm_mlu
++=============================
++@brief: skip fp8 quant op implemention
++'''
+ QUANT_OPS: Dict[QuantKey, OpOverload] = {
+-    kFp8StaticTensorSym: torch.ops._C.static_scaled_fp8_quant.default,  # noqa
+-    kFp8DynamicTensorSym:
+-    torch.ops._C.dynamic_scaled_fp8_quant.default,  # noqa
+-    kFp8DynamicTokenSym:
+-    torch.ops._C.dynamic_per_token_scaled_fp8_quant.default,  # noqa
++    # kFp8StaticTensorSym: torch.ops._C.static_scaled_fp8_quant.default,  # noqa
++    # kFp8DynamicTensorSym:
++    # torch.ops._C.dynamic_scaled_fp8_quant.default,  # noqa
++    # kFp8DynamicTokenSym:
++    # torch.ops._C.dynamic_per_token_scaled_fp8_quant.default,  # noqa
+ }
++'''
++==================
++End of MLU Hijack
++==================
++'''
+ 
+ 
+ class FusedRMSQuantKey(NamedTuple):
+@@ -80,16 +105,27 @@ class FusedRMSQuantKey(NamedTuple):
+                 f"{'' if self.fused_add else 'out'} residual)")
+ 
+ 
++'''
++=============================
++Modify by vllm_mlu
++=============================
++@brief: skip fp8 quant op implemention
++'''
+ FUSED_OPS: Dict[FusedRMSQuantKey, OpOverload] = {
+-    FusedRMSQuantKey(kFp8StaticTensorSym, False):
+-    torch.ops._C.rms_norm_static_fp8_quant.default,  # noqa
+-    FusedRMSQuantKey(kFp8StaticTensorSym, True):
+-    torch.ops._C.fused_add_rms_norm_static_fp8_quant.default,  # noqa
+-    FusedRMSQuantKey(kFp8DynamicTokenSym, False):
+-    torch.ops._C.rms_norm_dynamic_per_token_quant.default,  # noqa
+-    FusedRMSQuantKey(kFp8DynamicTokenSym, True):
+-    torch.ops._C.rms_norm_dynamic_per_token_quant.default,  # noqa
++    # FusedRMSQuantKey(kFp8StaticTensorSym, False):
++    # torch.ops._C.rms_norm_static_fp8_quant.default,  # noqa
++    # FusedRMSQuantKey(kFp8StaticTensorSym, True):
++    # torch.ops._C.fused_add_rms_norm_static_fp8_quant.default,  # noqa
++    # FusedRMSQuantKey(kFp8DynamicTokenSym, False):
++    # torch.ops._C.rms_norm_dynamic_per_token_quant.default,  # noqa
++    # FusedRMSQuantKey(kFp8DynamicTokenSym, True):
++    # torch.ops._C.rms_norm_dynamic_per_token_quant.default,  # noqa
+ }
++'''
++==================
++End of MLU Hijack
++==================
++'''
+ 
+ 
+ class QuantMultiOutputMatch(MultiOutputMatch):
+

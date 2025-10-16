@@ -1,0 +1,25 @@
+diff --git a/vllm_mlu/requirements.txt b/vllm_mlu/requirements.txt
+new file mode 100644
+index 000000000..3b3e66923
+--- /dev/null
++++ b/vllm_mlu/requirements.txt
+@@ -0,0 +1,18 @@
++# Dependencies for Cambricon MLUs
++ray == 2.40.0
++triton >= 3.2.0
++torch == 2.6.0
++torch-mlu >= 1.25.2
++torch_mlu_ops >= 1.4.1
++xformers == 0.0.24
++
++matplotlib # for VLLM_SCHEDULER_PROFILE
++datasets # for benchmark scripts
++
++# Dependencies for tests
++transformers==4.51.0  # Avoid v4.51.0 due to OOM issues in LoRA UT
++pytest-asyncio==0.24.0
++modelscope
++sentence-transformers==3.4.1
++runai-model-streamer==0.11.0
++runai-model-streamer-s3==0.11.0
+

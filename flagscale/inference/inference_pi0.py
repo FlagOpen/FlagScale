@@ -30,8 +30,11 @@ def inference(config):
     )
 
     cfg = PreTrainedConfig.from_pretrained(config_llm.model_path)
+    cfg.repo_id = config_llm.tokenizer_path
     cfg.pretrained_path = config_llm.model_path
     policy = make_policy(cfg, ds_meta=lerobot_dataset.meta)
+    policy = policy.to(DEVICE)
+    policy.eval()
     if config_llm.compile_model:
         policy = torch.compile(policy, mode=config_llm.compile_mode)
 
@@ -47,9 +50,10 @@ def inference(config):
         lang_tokens, lang_masks = policy.prepare_language(batch)
 
         t_s = time.time()
-        actions = policy.model.sample_actions(
-            images, img_masks, lang_tokens, lang_masks, state, noise=None
-        )
+        with torch.no_grad():
+            actions = policy.model.sample_actions(
+                images, img_masks, lang_tokens, lang_masks, state, noise=None
+            )
         print(f"sample_actions() latency: {(time.time() - t_s)*1000:.2f} ms")
         original_action_dim = policy.config.action_feature.shape[0]
         actions = actions[:, :, :original_action_dim]
