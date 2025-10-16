@@ -107,15 +107,15 @@ def _generate_run_script_rl(
                             f'ray start --head --port={ray_port} --dashboard-host=0.0.0.0 --dashboard-port={ray_dashboard_port} --num-gpus={resource_info["slots"]}\n'
                         )
                         # Wait for Ray cluster and Dashboard to be fully ready
-                        f.write('sleep 10\n')
-                        f.write('ray status --address=localhost:10001 || sleep 5\n')
+                        f.write('sleep 30\n')
+                        f.write(f'ray status --address=localhost:{ray_port} || sleep 5\n')
                     else:
                         f.write(
                             f'ray start --head --port={ray_port} --num-gpus={resource_info["slots"]}\n'
                         )
                         # Wait for Ray cluster to be ready
-                        f.write('sleep 5\n')
-                        f.write('ray status --address=localhost:10001 || sleep 5\n')
+                        f.write('sleep 30\n')
+                        f.write(f'ray status --address=localhost:{ray_port} || sleep 5\n')
                 else:
                     f.write(
                         f'ssh -f -n {host} "{before_start};ray start --address={available_ip}:{ray_port} --num-gpus={resource_info["slots"]}"\n'
