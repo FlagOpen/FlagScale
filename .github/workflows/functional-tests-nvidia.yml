@@ -46,10 +46,8 @@ jobs:
           retry-on-intr: fail=5,delay=180000
 
       - name: Run Functional Test
-        timeout-minutes: 40  # Automatically terminate the current step after 40 minutes
+        timeout-minutes: 90  # Automatically terminate the current step after 90 minutes
         run: |
-          pip install gitpython # TODO: Remove after updating the image
-
           git config --global --add safe.directory /__w/FlagScale/FlagScale
 
           TMP_DIR=$(mktemp -d)

@@ -1,0 +1,13 @@
+- serve_id: vllm_model
+  engine_args:
+    model: /models/lerobot/pi0
+    tokenizer_path: /models/google/paligemma-3b-pt-224
+    dataset_repo_id: lerobot/aloha_mobile_cabinet
+    host: 0.0.0.0
+    uvicorn_log_level: warning
+    port: 5000
+    compile_model: false
+    episodes: [0, 10, 11, 23]
+    video_backend: pyav
+    dtype: torch.float32
+
