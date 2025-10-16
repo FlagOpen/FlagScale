@@ -92,7 +92,6 @@ def _generate_run_script_rl(
         before_start = cmds_config.get("before_start", "")
     else:
         before_start = ""
-    
     with open(host_run_script_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         f.write(f"{before_start}\n")
@@ -216,12 +215,12 @@ class SSHRLRunner(RunnerBase):
         ray_cmd = []
         if self.resources is not None:
             ray_include_dashboard = self.config.experiment.runner.get("ray_include_dashboard", True)
-            runtime_env = self.config.experiment.runner.get(
-                "runtime_env", 'third_party/verl/verl/trainer/runtime_env.yaml'
-            )
             
             if ray_include_dashboard:
                 # Use Dashboard port for connection
+                runtime_env = self.config.experiment.runner.get(
+                    "runtime_env", 'third_party/verl/verl/trainer/runtime_env.yaml'
+                )
                 ray_dashboard_port = self.config.experiment.runner.get("ray_dashboard_port", 8265)
                 ray_cmd = [
                     'ray',
@@ -233,17 +232,9 @@ class SSHRLRunner(RunnerBase):
                     '--',
                 ]
             else:
-                # Use Ray cluster port when Dashboard is disabled
-                ray_port = self.config.experiment.runner.get("ray_port", 6379)
-                ray_cmd = [
-                    'ray',
-                    'job',
-                    'submit',
-                    f'--address={host}:{ray_port}',
-                    f'--runtime-env={runtime_env}',
-                    '--no-wait',
-                    '--',
-                ]
+                # When Dashboard is disabled, run directly without ray job submit
+                # The Ray cluster is already running, so we can execute the script directly
+                ray_cmd = []
         cmd = shlex.join(
             ray_cmd + export_cmd + ['python3', '-m'] + [self.user_script] + self.user_args
         )
