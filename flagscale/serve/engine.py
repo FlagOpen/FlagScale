@@ -371,16 +371,10 @@ class ServeEngine:
                 "**/.git/**",
                 "**/__pycache__/**",
             ]
-        
-        # Add num_cpus parameter to fix Ray worker registration failure
-		# For a node with 2*A100-80G, recommended to set between 8-16, adjust based on actual CPU cores
         if runtime_env:
-            ray.init(
-                num_cpus=8, 
-                runtime_env=runtime_env
-            )
+            ray.init(runtime_env=runtime_env)
         else:
-            ray.init(num_cpus=8)  
+            ray.init()
 
     def run_task(self):
         graph = build_graph(self.config)

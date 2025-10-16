@@ -14,9 +14,10 @@ experiment:
   runner:
     nnodes: 1
     nproc_per_node: 8
+    hostfile: null
     ray_port: 6379
     ray_dashboard_port: 8265
-    ray_include_dashboard: false
+    ray_include_dashboard: true
   envs:
     CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
     TORCH_DEVICE_BACKEND_AUTOLOAD: 0
