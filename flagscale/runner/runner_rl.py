@@ -116,6 +116,7 @@ def _generate_run_script_rl(
                 if ray_init_num_cpus is not None:
                     ray_cmd_parts.append(f"--num-cpus={ray_init_num_cpus}")
                 
+                print("node_rank=", node_rank, ", ray_include_dashboard=", ray_include_dashboard)
                 if node_rank == 0:
                     if ray_include_dashboard:
                         f.write(
