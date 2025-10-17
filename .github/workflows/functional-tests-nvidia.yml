@@ -49,6 +49,10 @@ jobs:
         timeout-minutes: 90  # Automatically terminate the current step after 90 minutes
         run: |
           git config --global --add safe.directory /__w/FlagScale/FlagScale
+          
+          export SCCACHE_DIR=/root/.cache/sccache
+          sccache --start-server
+          sccache --show-stats
 
           TMP_DIR=$(mktemp -d)
           echo "Copying source to temporary directory: $TMP_DIR"
@@ -65,10 +69,6 @@ jobs:
             fi
           elif [ "${{ inputs.type }}" = "inference" ] || [ "${{ inputs.type }}" = "serve" ]; then
             source /root/miniconda3/bin/activate flagscale-inference
-            export SCCACHE_DIR=/root/.cache/sccache
-            sccache --start-server
-            sccache --show-stats
-
             echo "[INFO] Install VLLM and its dependencies ..."
             MAX_RETRIES=5
             DELAYS=(1 1.5 2 2.5 3)
