@@ -415,8 +415,10 @@ class SSHTrainRunner(RunnerBase):
         logger.info("\n************** configuration **************")
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
-    def _run_gpu_health_check(self):
-        """Run GPU health check directly in Python, output to console"""
+    def _run_gpu_health_check_on_node(
+        self, host, node_rank, master_addr, master_port, nnodes, nproc_per_node
+    ):
+        """Run GPU health check on a specific node"""
         import subprocess
 
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -424,72 +426,30 @@ class SSHTrainRunner(RunnerBase):
             root_dir, "flagscale", "runner", "elastic", "gpu_health_check.py"
         )
 
-        # Check if the health check script exists
-        if not os.path.exists(gpu_health_check_path):
-            logger.error(f"GPU health check script not found at {gpu_health_check_path}")
-            return False
-
         # Get parallel configuration
         tp_size = self.config.train.model.get("tensor_model_parallel_size", 1)
         pp_size = self.config.train.model.get("pipeline_model_parallel_size", 1)
 
-        # Auto-detect GPU configuration (consistent with training script generation)
-        runner_config = self.config.experiment.runner
-        num_visible_devices = None
-        if self.resources is not None:
-            # Multi-node mode: get configuration from hostfile
-            nnodes_from_hostfile = len(self.resources.keys())
-            nnodes_from_args = runner_config.get("nnodes", None)
-            nnodes = get_nnodes(nnodes_from_hostfile, nnodes_from_args)
-
-            # Get slots from first node as reference
-            first_host_info = list(self.resources.values())[0]
-            nproc_from_hostfile = first_host_info["slots"]
-            nproc_from_args = runner_config.get("nproc_per_node", None)
-            nproc_per_node = get_nproc_per_node(nproc_from_hostfile, nproc_from_args, None)
-        else:
-            # Single-node mode: detect from CUDA_VISIBLE_DEVICES or torch
-            nnodes = 1
-            visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
-            if visible_devices is not None and isinstance(visible_devices, str):
-                visible_devices = visible_devices.split(",")
-                num_visible_devices = len(visible_devices)
-            nproc_from_args = runner_config.get("nproc_per_node", None)
-            nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
-
-        logger.info(
-            f"GPU health check configuration - nnodes: {nnodes}, nproc_per_node: {nproc_per_node}"
-        )
         # Build command
         if nnodes > 1 or nproc_per_node > 1:
             # Use torchrun for distributed health check
-            cmd = ["torchrun", f"--nnodes={nnodes}", f"--nproc_per_node={nproc_per_node}"]
-
-            # Add master addr and port if multi-node
-            if nnodes > 1:
-                master_addr = runner_config.get("master_addr", "localhost")
-                master_port = runner_config.get("master_port", 29500)
-                cmd.extend(
-                    [
-                        f"--master_addr={master_addr}",
-                        f"--master_port={master_port}",
-                        "--node_rank=0",  # For health check, only run on rank 0
-                    ]
-                )
-
-            cmd.extend(
-                [
-                    gpu_health_check_path,
-                    "--tensor-model-parallel-size",
-                    str(tp_size),
-                    "--pipeline-model-parallel-size",
-                    str(pp_size),
-                    "--distributed-backend",
-                    "nccl",
-                    "--distributed-timeout-minutes",
-                    "5",
-                ]
-            )
+            cmd = [
+                "torchrun",
+                f"--nnodes={nnodes}",
+                f"--nproc_per_node={nproc_per_node}",
+                f"--node_rank={node_rank}",  # Use the correct node rank for this node
+                f"--master_addr={master_addr}",
+                f"--master_port={master_port}",
+                gpu_health_check_path,
+                "--tensor-model-parallel-size",
+                str(tp_size),
+                "--pipeline-model-parallel-size",
+                str(pp_size),
+                "--distributed-backend",
+                "nccl",
+                "--distributed-timeout-minutes",
+                "5",
+            ]
         else:
             # Single GPU mode
             cmd = [
@@ -505,26 +465,117 @@ class SSHTrainRunner(RunnerBase):
                 "5",
             ]
 
-        logger.info(f"Running GPU health check command: {' '.join(cmd)}")
+        cmd_str = " ".join(cmd)
 
-        # Run the health check command with output to console
-        try:
-            result = subprocess.run(
-                cmd,
-                check=False,  # Don't raise exception on non-zero exit
-                text=True,
-                capture_output=False,  # Let output go to console directly
-            )
+        if host != "localhost":
+            # Run on remote host via SSH
+            ssh_port = self.config.experiment.runner.get("ssh_port", 22)
+            logger.info(f"Running GPU health check on {host} (node_rank={node_rank})")
 
-            if result.returncode == 0:
-                return True
-            else:
-                logger.error(f"GPU health check failed with exit code {result.returncode}")
+            try:
+                result = run_ssh_command(host, cmd_str, ssh_port, query=True)
+                # SSH command returns subprocess.CompletedProcess or similar
+                return result.returncode == 0 if hasattr(result, 'returncode') else True
+            except Exception as e:
+                logger.error(f"Failed to run GPU health check on {host}: {e}")
+                return False
+        else:
+            # Run locally
+            logger.info(f"Running GPU health check locally (node_rank={node_rank})")
+            logger.info(f"Command: {cmd_str}")
+
+            try:
+                result = subprocess.run(cmd, check=False, text=True, capture_output=False)
+                return result.returncode == 0
+            except Exception as e:
+                logger.error(f"Failed to run GPU health check locally: {e}")
                 return False
 
-        except Exception as e:
-            logger.error(f"Failed to run GPU health check: {e}")
+    def _run_gpu_health_check(self):
+        """Run GPU health check across all nodes"""
+        # Check if the health check script exists
+        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        gpu_health_check_path = os.path.join(
+            root_dir, "flagscale", "runner", "elastic", "gpu_health_check.py"
+        )
+
+        if not os.path.exists(gpu_health_check_path):
+            logger.error(f"GPU health check script not found at {gpu_health_check_path}")
             return False
+        runner_config = self.config.experiment.runner
+
+        if self.resources is not None:
+            # Multi-node mode: run health check on each node
+            nnodes_from_hostfile = len(self.resources.keys())
+            nnodes_from_args = runner_config.get("nnodes", None)
+            nnodes = get_nnodes(nnodes_from_hostfile, nnodes_from_args)
+
+            # Get master address and port
+            available_ip = list(self.resources.keys())[0]
+            master_addr = runner_config.get("master_addr", available_ip)
+            master_port = runner_config.get("master_port", 29500)
+
+            logger.info(f"Running GPU health check across {nnodes} nodes")
+
+            # Run health check on each node with proper node_rank
+            all_results = []
+            for node_rank, (host, resource_info) in enumerate(self.resources.items()):
+                if node_rank >= nnodes:
+                    break
+
+                # Get nproc_per_node for this specific node
+                nproc_from_hostfile = resource_info["slots"]
+                nproc_from_args = runner_config.get("nproc_per_node", None)
+
+                # Get CUDA_VISIBLE_DEVICES if set
+                cur_envs = add_decive_extra_config(self.user_envs, resource_info["type"])
+                visible_devices = cur_envs.get("CUDA_VISIBLE_DEVICES", None)
+                num_visible_devices = None
+                if visible_devices is not None and isinstance(visible_devices, str):
+                    visible_devices = visible_devices.split(",")
+                    num_visible_devices = len(visible_devices)
+
+                nproc_per_node = get_nproc_per_node(
+                    nproc_from_hostfile, nproc_from_args, num_visible_devices
+                )
+
+                logger.info(f"Checking node {node_rank} ({host}) with {nproc_per_node} GPUs")
+
+                result = self._run_gpu_health_check_on_node(
+                    host, node_rank, master_addr, master_port, nnodes, nproc_per_node
+                )
+                all_results.append(result)
+
+                if not result:
+                    logger.error(f"GPU health check failed on node {node_rank} ({host})")
+                    return False
+
+            logger.info("GPU health check passed on all nodes")
+            return all(all_results)
+
+        else:
+            # Single-node mode
+            nnodes = 1
+            node_rank = 0
+            host = "localhost"
+
+            visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
+            num_visible_devices = None
+            if visible_devices is not None and isinstance(visible_devices, str):
+                visible_devices = visible_devices.split(",")
+                num_visible_devices = len(visible_devices)
+
+            nproc_from_args = runner_config.get("nproc_per_node", None)
+            nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
+
+            master_addr = runner_config.get("master_addr", "localhost")
+            master_port = runner_config.get("master_port", 29500)
+
+            logger.info(f"Running single-node GPU health check with {nproc_per_node} GPUs")
+
+            return self._run_gpu_health_check_on_node(
+                host, node_rank, master_addr, master_port, nnodes, nproc_per_node
+            )
 
     def _run_each(
         self,
@@ -986,7 +1037,7 @@ class CloudTrainRunner(RunnerBase):
         logger.info(f"\n{OmegaConf.to_yaml(self.config)}")
 
     def _run_gpu_health_check(self):
-        """Run GPU health check directly in Python, output to console"""
+        """Run GPU health check for CloudTrainRunner - handles both single and multi-node cases"""
         import subprocess
 
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -1003,28 +1054,48 @@ class CloudTrainRunner(RunnerBase):
         tp_size = self.config.train.model.get("tensor_model_parallel_size", 1)
         pp_size = self.config.train.model.get("pipeline_model_parallel_size", 1)
 
-        # Auto-detect GPU configuration for cloud runner
+        # Get runner configuration for cloud environment
         runner_config = self.config.experiment.runner
 
+        # Detect number of visible devices
         num_visible_devices = None
         visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
         if visible_devices:
             visible_devices = visible_devices.split(",")
             num_visible_devices = len(visible_devices)
 
+        # Get node configuration
+        nnodes_from_args = runner_config.get("nnodes", None)
+        nnodes = get_nnodes(None, nnodes_from_args)
+
+        # Get the actual node_rank for this node in multi-node setup
+        # In CloudTrainRunner, node_rank must be provided in the config
+        node_rank = runner_config.node_rank if hasattr(runner_config, 'node_rank') else 0
+
         nproc_from_args = runner_config.get("nproc_per_node", None)
         nproc_per_node = get_nproc_per_node(None, nproc_from_args, num_visible_devices)
 
-        logger.info(f"GPU health check configuration - nproc_per_node: {nproc_per_node}")
+        # Get master address and port for multi-node coordination
+        # In CloudTrainRunner, master_addr and master_port must be provided in the config
+        master_addr = (
+            runner_config.master_addr if hasattr(runner_config, 'master_addr') else "localhost"
+        )
+        master_port = runner_config.master_port if hasattr(runner_config, 'master_port') else 29500
 
-        # Build command based on detected GPU count
-        if nproc_per_node > 1:
-            # Multi-GPU: use torchrun
+        logger.info(
+            f"GPU health check configuration - nnodes: {nnodes}, node_rank: {node_rank}, nproc_per_node: {nproc_per_node}"
+        )
+
+        # Build command based on configuration
+        if nnodes > 1 or nproc_per_node > 1:
+            # Multi-node or multi-GPU: use torchrun
             cmd = [
                 "torchrun",
+                f"--nnodes={nnodes}",
                 f"--nproc_per_node={nproc_per_node}",
-                "--nnodes=1",
-                "--node_rank=0",
+                f"--node_rank={node_rank}",  # Use the actual node_rank for this node
+                f"--master_addr={master_addr}",
+                f"--master_port={master_port}",
                 gpu_health_check_path,
                 "--tensor-model-parallel-size",
                 str(tp_size),
@@ -1036,7 +1107,7 @@ class CloudTrainRunner(RunnerBase):
                 "10",
             ]
         else:
-            # Single GPU: use python directly
+            # Single node, single GPU: use python directly
             cmd = [
                 "python",
                 gpu_health_check_path,
@@ -1052,6 +1123,14 @@ class CloudTrainRunner(RunnerBase):
 
         logger.info(f"Running GPU health check command: {' '.join(cmd)}")
 
+        if nnodes > 1:
+            logger.info(
+                f"Note: In multi-node cloud setups, each node must run its health check independently."
+            )
+            logger.info(
+                f"This node ({node_rank}) is participating in the distributed health check."
+            )
+
         # Run the health check command with output to console
         try:
             result = subprocess.run(
@@ -1062,13 +1141,16 @@ class CloudTrainRunner(RunnerBase):
             )
 
             if result.returncode == 0:
+                logger.info(f"GPU health check passed on node {node_rank}")
                 return True
             else:
-                logger.error(f"GPU health check failed with exit code {result.returncode}")
+                logger.error(
+                    f"GPU health check failed on node {node_rank} with exit code {result.returncode}"
+                )
                 return False
 
         except Exception as e:
-            logger.error(f"Failed to run GPU health check: {e}")
+            logger.error(f"Failed to run GPU health check on node {node_rank}: {e}")
             return False
 
     def _run_each(
