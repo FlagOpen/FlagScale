@@ -1,10 +1,11 @@
 import logging as logger
 import os
+import socket
 import subprocess
 import sys
-import socket
-from flagscale.serve.args_mapping.mapping import ARGS_CONVERTER
+
 from flagscale.runner.utils import get_free_port, is_ip_addr
+from flagscale.serve.args_mapping.mapping import ARGS_CONVERTER
 
 # Compatible with both command-line execution and source code execution.
 try:
@@ -15,6 +16,7 @@ except Exception as e:
 from flagscale import serve
 from flagscale.utils import flatten_dict_to_args
 
+
 def check_port_occupied(ip_addr, port):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -22,6 +24,7 @@ def check_port_occupied(ip_addr, port):
             return False
     except socket.error as e:
         return True
+
 
 def vllm_serve(args):
     common_args = args.get("engine_args", {})
