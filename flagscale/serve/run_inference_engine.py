@@ -2,8 +2,9 @@ import logging as logger
 import os
 import subprocess
 import sys
-
+import socket
 from flagscale.serve.args_mapping.mapping import ARGS_CONVERTER
+from flagscale.runner.utils import get_free_port, is_ip_addr
 
 # Compatible with both command-line execution and source code execution.
 try:
@@ -14,6 +15,13 @@ except Exception as e:
 from flagscale import serve
 from flagscale.utils import flatten_dict_to_args
 
+def check_port_occupied(ip_addr, port):
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((ip_addr, port))
+            return False
+    except socket.error as e:
+        return True
 
 def vllm_serve(args):
     common_args = args.get("engine_args", {})
@@ -89,9 +97,13 @@ def sglang_serve(args):
     command.extend(["--node-rank", str(0)])
     nnodes = serve.task_config.experiment.runner.get("nnodes", 1)
     command.extend(["--nnodes", str(nnodes)])
-    addr = serve.task_config.experiment.runner.get("master_addr", "127.0.0.1")
-    port = serve.task_config.experiment.runner.get("master_port", "29500")
-    command.extend(["--dist-init-addr", str(addr) + ":" + str(port)])
+    addr = str(serve.task_config.experiment.runner.get("master_addr", "127.0.0.1"))
+    port = int(serve.task_config.experiment.runner.get("master_port", get_free_port()))
+    # check ip address is available
+    addr_str = addr + ":" + str(port)
+    if check_port_occupied(addr, port):
+        raise ValueError(f"addr: {addr_str} is invalid")
+    command.extend(["--dist-init-addr", addr_str])
 
     # Start the subprocess
     logger.info(f"[Serve]: Starting sglang serve with command: {' '.join(command)}")
