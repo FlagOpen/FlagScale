@@ -25,6 +25,7 @@ jobs:
         - /home/flagscale_cicd/flask/config:/workspace/config
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
         - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
+        - /home/flagscale_cicd/sccache:/root/.cache/sccache
       options: --gpus all --shm-size=500g --hostname flagscale_cicd --user root --ulimit nofile=65535:65535
     steps:
       - name: Checkout Code
@@ -44,19 +45,19 @@ jobs:
           set-safe-directory: true
 
       - name: Run Unit Test
-        timeout-minutes: 40  # Automatically terminate the current step after 40 minutes
+        timeout-minutes: 90  # Automatically terminate the current step after 90 minutes
         run: |
           echo "USER: $USER"
           echo "UID: $(id -u)"
           echo "GID: $(id -g)"
           echo "Home: $HOME"
           whoami
-          pip install gitpython # TODO: Remove after updating the image
-
           git config --global --add safe.directory /__w/FlagScale/FlagScale
           
-          TMP_DIR=$(mktemp -d)
+          TMP_DIR=/tmp/flagscale_tmp
           echo "Copying source to temporary directory: $TMP_DIR"
+          rm -rf $TMP_DIR
+          mkdir -p $TMP_DIR
           cp -r /__w/FlagScale/FlagScale/. $TMP_DIR
           cd $TMP_DIR
           trap 'echo "Cleaning up temporary directory..."; rm -rf "$TMP_DIR"' EXIT
@@ -68,9 +69,13 @@ jobs:
             # PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
           elif [ "${{ inputs.backend }}" = "vllm" ] || [ "${{ inputs.backend }}" = "inference_flagscale" ]; then
             source /root/miniconda3/bin/activate flagscale-inference
+            export SCCACHE_DIR=/root/.cache/sccache
+            sccache --start-server
+            sccache --show-stats
             pip install scikit-build scikit-build-core
             pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
+            sccache --show-stats
             conda deactivate
           else
             echo "Unknown backend type: ${{ inputs.backend }}"

@@ -46,14 +46,14 @@ jobs:
           retry-on-intr: fail=5,delay=180000
 
       - name: Run Functional Test
-        timeout-minutes: 40  # Automatically terminate the current step after 40 minutes
+        timeout-minutes: 90  # Automatically terminate the current step after 90 minutes
         run: |
-          pip install gitpython # TODO: Remove after updating the image
-
           git config --global --add safe.directory /__w/FlagScale/FlagScale
 
-          TMP_DIR=$(mktemp -d)
+          TMP_DIR=/tmp/flagscale_tmp
           echo "Copying source to temporary directory: $TMP_DIR"
+          rm -rf $TMP_DIR
+          mkdir -p $TMP_DIR
           cp -r /__w/FlagScale/FlagScale/. $TMP_DIR
           cd $TMP_DIR
           trap 'echo "Cleaning up temporary directory..."; rm -rf "$TMP_DIR"' EXIT
@@ -120,7 +120,7 @@ jobs:
               done
               if [ "$all_successful" = true ]; then
                 echo "All commands have been executed"
-                exit 0
+                break
               fi
             done
 
@@ -156,9 +156,9 @@ jobs:
             echo "Unknown backend type: ${{ inputs.type }}"
             exit 1
           fi
-          cd /__w/FlagScale/FlagScale/tests/Nvidia_GPU/
+          cd tests/Nvidia_GPU/
           tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
           exit_code=$?
           echo "Exit code: $exit_code"
-          exit $exit_cod
+          exit $exit_code
         shell: bash
