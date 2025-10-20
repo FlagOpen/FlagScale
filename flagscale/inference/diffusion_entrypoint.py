@@ -53,12 +53,6 @@ def inference(cfg: DictConfig) -> None:
                 base = {k: gen_cfg.get(k) for k in gen_cfg if k != "prompts"}
                 return [dict(base, prompt=p) for p in prompts]
 
-            # prompt as list
-            single_prompt = gen_cfg.get("prompt", None)
-            if isinstance(single_prompt, list) and len(single_prompt) > 0:
-                base = {k: gen_cfg.get(k) for k in gen_cfg if k != "prompt"}
-                return [dict(base, prompt=p) for p in single_prompt]
-
             # single run
             return [{k: gen_cfg.get(k) for k in gen_cfg}]
 

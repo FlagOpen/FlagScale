@@ -74,35 +74,14 @@ class Or:
                 yield name, m
 
 
-# def _resolve_types(type_names: Iterable[str]) -> Tuple[type, ...]:
-#     """Resolve string type names to torch.nn classes.
-
-#     Accepts names like "Linear", "LayerNorm", "torch.nn.Linear".
-#     """
-#     resolved: list[type] = []
-#     for n in type_names:
-#         leaf = n.split(".")[-1]
-#         cls = getattr(nn, leaf, None)
-#         if cls is None or not isinstance(cls, type):
-#             raise ValueError(f"Unknown nn.Module type: {n}")
-#         resolved.append(cls)
-#     return tuple(resolved)
-
-
 def _resolve_types(type_names: Iterable[str]) -> Tuple[type, ...]:
-    """Resolve string type names to torch.nn classes.
-
-    Accepts names like "Linear", "LayerNorm", "torch.nn.Linear".
-    """
+    """Resolve string type names to subclass of torch.nn.Module."""
     resolved: list[type] = []
     for n in type_names:
         mod_name, _, cls_name = n.rpartition(".")
         if not mod_name:
             raise ValueError(f"Invalid component class path '{n}'.")
         cls = getattr(importlib.import_module(mod_name), cls_name)
-        # leaf = n.split(".")[-1]
-        # cls = getattr(nn, leaf, None)
-        # cls = importlib.import_module(n)
         if cls is None or not isinstance(cls, type):
             raise ValueError(f"Unknown nn.Module type: {n}")
         resolved.append(cls)
@@ -173,12 +152,12 @@ class Transformation(ABC):
         return selector(scope)
 
     @abstractmethod
-    def apply(self, model: nn.Module) -> bool:
+    def apply(self, module: nn.Module) -> bool:
         """
-        Apply the transform to the model.
+        Apply the transform to the module.
 
         Args:
-            model: The model to apply the transform to.
+            module: The module to apply the transform to.
 
         Returns:
             True if the transform is applied successfully, False otherwise.

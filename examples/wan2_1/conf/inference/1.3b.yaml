@@ -17,9 +17,10 @@ engine:
   transformations:
     TaylorSeerTransformation:
       order: 1
-      warmup_steps: 1
-      skip_interval_steps: 5
+      warmup_steps: 4
+      skip_interval_steps: 3
       targets:
+        # Matches the taylorseer official implementation at https://github.com/Shenyi-Z/TaylorSeer/tree/main/TaylorSeer-Wan2.1/wan/taylorseer/forwards
         by_name: ["*blocks.*.attn1", "*blocks.*.attn2", "*blocks.*.ffn"]
       use_timestep_delta: true
     TimestepTrackerTransformation:
@@ -30,7 +31,7 @@ engine:
     ["cond", "uncond"]
 
 generate:
-  prompt: "A cat walks on the grass, realistic"
+  prompts: ["A cat walks on the grass, realistic"]
   negative_prompt: "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
   height: 480
   width: 832

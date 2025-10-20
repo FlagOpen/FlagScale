@@ -24,26 +24,23 @@ class StateStore(Generic[S]):
         # TODO(yupu): Fixed args/kwargs?
         self._init_args = init_args if init_args is not None else ()
         self._init_kwargs = init_kwargs if init_kwargs is not None else {}
-        # TODO(yupu): Do we need to distinguish between global and module-specific states?
-        # Mapping: state context name -> state.
+        # Mapping: state scope name -> state.
         # State can be shared across modules or by a single module.
         self._state_by_scope: Dict[str, S] = {}
-        # The state context name that is currently in use.
+        # The state scope name that is currently in use.
         self._active_scope: Optional[str] = None
 
     def get_or_create_state(self) -> S:
-        """Get or create a state for the current context.
+        """Get or create a state for the current scope.
 
         Returns:
-            The state for the current context.
+            The state for the current scope.
 
         Raises:
-            ValueError: If no state context is currently in use.
+            ValueError: If no state scope is currently in use.
         """
         if self._active_scope is None:
-            raise ValueError(
-                "No state context is currently in use. Please set a state context first."
-            )
+            raise ValueError("No state scope is currently in use. Please set a state scope first.")
         if self._active_scope not in self._state_by_scope:
             self._state_by_scope[self._active_scope] = self._state_cls(
                 *self._init_args, **self._init_kwargs
@@ -51,10 +48,10 @@ class StateStore(Generic[S]):
         return self._state_by_scope[self._active_scope]
 
     def set_scope(self, name: str):
-        """Set the current state context.
+        """Set the current state scope.
 
         Args:
-            name: The name of the state context to set.
+            name: The name of the state scope to set.
         """
         self._active_scope = name
 
