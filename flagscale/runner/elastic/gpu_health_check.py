@@ -319,7 +319,14 @@ def test_tensor_parallel_group_c10d():
 
     print(f"[Rank {rank}] All_reduce completed, result: {tensor}")
 
-    if get_tensor_model_parallel_rank() == 0:
+    # For single-process TP groups, we know tp_rank is 0 without calling dist.get_rank()
+    # Calling dist.get_rank(group=...) on single-process NCCL groups can cause SIGSEGV
+    if args.tensor_model_parallel_size == 1:
+        tp_rank = 0
+    else:
+        tp_rank = get_tensor_model_parallel_rank()
+
+    if tp_rank == 0:
         expected_tensor = torch.tensor(
             [sum(list(_TENSOR_GLOBAL_RANKS))], device=f'cuda:{args.local_rank}', dtype=torch.float32
         )
@@ -329,9 +336,14 @@ def test_tensor_parallel_group_c10d():
             )
         print(f"[Rank {rank}] Tensor parallel verification passed")
 
-    print(f"[Rank {rank}] Starting tensor parallel barrier...")
-    dist.barrier(group=tp_group)
-    print(f"[Rank {rank}] Tensor parallel barrier completed")
+    # Only do barrier if TP group has more than 1 process
+    # Single-process barriers can cause issues with some NCCL versions
+    if args.tensor_model_parallel_size > 1:
+        print(f"[Rank {rank}] Starting tensor parallel barrier...")
+        dist.barrier(group=tp_group)
+        print(f"[Rank {rank}] Tensor parallel barrier completed")
+    else:
+        print(f"[Rank {rank}] Skipping TP barrier (single-process group)")
 
     if rank == 0:
         print("Tensor parallel communication test completed successfully")
@@ -342,6 +354,7 @@ def test_data_parallel_group_c10d():
     args = get_args()
     dp_group = get_data_parallel_group()
     rank = dist.get_rank()
+    world_size = dist.get_world_size()
 
     if rank == 0:
         print(f"Testing data parallel communication (World size: {args.world_size})")
@@ -356,7 +369,19 @@ def test_data_parallel_group_c10d():
 
     print(f"[Rank {rank}] Data parallel all_reduce completed, result: {tensor}")
 
-    if get_data_parallel_rank() == 0:
+    # Calculate DP group size
+    dp_group_size = world_size // (
+        args.tensor_model_parallel_size * args.pipeline_model_parallel_size
+    )
+
+    # For single-process DP groups, we know dp_rank is 0 without calling dist.get_rank()
+    # Calling dist.get_rank(group=...) on single-process NCCL groups can cause SIGSEGV
+    if dp_group_size == 1:
+        dp_rank = 0
+    else:
+        dp_rank = get_data_parallel_rank()
+
+    if dp_rank == 0:
         expected_tensor = torch.tensor(
             [sum(list(_DATA_GLOBAL_RANKS))], device=f'cuda:{args.local_rank}', dtype=torch.float32
         )
@@ -366,9 +391,17 @@ def test_data_parallel_group_c10d():
             )
         print(f"[Rank {rank}] Data parallel verification passed")
 
-    print(f"[Rank {rank}] Starting data parallel barrier...")
-    dist.barrier(group=dp_group)
-    print(f"[Rank {rank}] Data parallel barrier completed")
+    # Data parallel group should always have multiple processes when world_size > 1
+    # Only skip barrier if somehow the group is single-process
+    dp_group_size = world_size // (
+        args.tensor_model_parallel_size * args.pipeline_model_parallel_size
+    )
+    if dp_group_size > 1:
+        print(f"[Rank {rank}] Starting data parallel barrier...")
+        dist.barrier(group=dp_group)
+        print(f"[Rank {rank}] Data parallel barrier completed")
+    else:
+        print(f"[Rank {rank}] Skipping DP barrier (single-process group)")
 
     if rank == 0:
         print("Data parallel communication test completed successfully")
@@ -379,11 +412,17 @@ def test_pipeline_parallel_group_c10d():
     args = get_args()
 
     pp_ranks = _PIPELINE_GLOBAL_RANKS
-    pp_rank = get_pipeline_model_parallel_rank()
     pp_group = get_pipeline_model_parallel_group()
     pp_size = args.pipeline_model_parallel_size
     rank = dist.get_rank()
     device = torch.device(f'cuda:{args.local_rank}')
+
+    # For single-process PP groups, we know pp_rank is 0 without calling dist.get_rank()
+    # Calling dist.get_rank(group=...) on single-process NCCL groups can cause SIGSEGV
+    if pp_size == 1:
+        pp_rank = 0
+    else:
+        pp_rank = get_pipeline_model_parallel_rank()
 
     if rank == 0:
         print(f"Testing pipeline parallel communication (PP size: {pp_size})")
@@ -421,8 +460,12 @@ def test_pipeline_parallel_group_c10d():
             )
         print(f"[Rank {rank}] Forward communication verified: {recv_tensor}")
 
-    dist.barrier(pp_group)
-    print(f"[Rank {rank}] Forward pipeline barrier completed")
+    # Only do barriers if PP group has more than 1 process
+    if pp_size > 1:
+        dist.barrier(pp_group)
+        print(f"[Rank {rank}] Forward pipeline barrier completed")
+    else:
+        print(f"[Rank {rank}] Skipping forward PP barrier (single-process group)")
 
     # Backward communication test.
     print(f"[Rank {rank}] Starting backward pipeline communication test...")
@@ -442,9 +485,13 @@ def test_pipeline_parallel_group_c10d():
             )
         print(f"[Rank {rank}] Backward communication verified: {recv_tensor}")
 
-    dist.barrier(pp_group)
-    print(f"[Rank {rank}] Backward pipeline barrier completed")
+    if pp_size > 1:
+        dist.barrier(pp_group)
+        print(f"[Rank {rank}] Backward pipeline barrier completed")
+    else:
+        print(f"[Rank {rank}] Skipping backward PP barrier (single-process group)")
 
+    # Global barrier - always do this
     dist.barrier()
     print(f"[Rank {rank}] Pipeline parallel test completed")
 
@@ -457,24 +504,50 @@ def cleanup():
         dist.destroy_process_group()
 
 
-def auto_detect_parallel_config():
-    """Auto-detect appropriate parallel configuration based on environment"""
+def auto_detect_parallel_config(requested_tp_size, requested_pp_size):
+    """
+    Validate and adjust parallel configuration based on environment
+
+    Args:
+        requested_tp_size: User-requested tensor parallel size
+        requested_pp_size: User-requested pipeline parallel size
+
+    Returns:
+        tuple: (tp_size, pp_size, need_distributed)
+    """
     device_count = torch.cuda.device_count()
     world_size = int(os.getenv('WORLD_SIZE', '1'))
 
     if world_size == 1:
         # Single process mode - no distributed testing needed
         return 1, 1, False
-    elif world_size == device_count:
-        # Data parallel mode: each process uses one GPU
-        # Use tensor parallel = world_size for proper group formation
-        return world_size, 1, True
-    elif world_size < device_count:
-        # Data parallel mode with fewer processes than GPUs
-        return world_size, 1, True
-    else:
-        # Model parallel mode: more processes than GPUs
-        return world_size, 1, True
+
+    # Calculate the total model parallel size
+    total_mp_size = requested_tp_size * requested_pp_size
+
+    # Validate that the configuration is feasible
+    if total_mp_size > world_size:
+        # Configuration is invalid - more parallel groups than processes
+        # Adjust to fit within world_size
+        if requested_tp_size > world_size:
+            # TP size too large, reduce it
+            tp_size = world_size
+            pp_size = 1
+        elif requested_pp_size > world_size:
+            # PP size too large, reduce it
+            tp_size = 1
+            pp_size = world_size
+        else:
+            # Both are valid individually but product is too large
+            # Prioritize TP over PP
+            tp_size = min(requested_tp_size, world_size)
+            pp_size = min(requested_pp_size, world_size // tp_size)
+
+        return tp_size, pp_size, True
+
+    # Configuration is valid - use requested values
+    # This includes the common case of tp_size=1, pp_size=1 (pure data parallel)
+    return requested_tp_size, requested_pp_size, True
 
 
 def parse_args():
@@ -886,12 +959,14 @@ def main():
     """Complete GPU health check with progressive testing"""
     args = parse_args()
 
-    # Auto-detect optimal parallel configuration to avoid group creation errors
-    auto_tp_size, auto_pp_size, need_distributed = auto_detect_parallel_config()
-
-    # Override args with detected values for better compatibility
+    # Validate and adjust parallel configuration based on user request and environment
     original_tp = args.tensor_model_parallel_size
     original_pp = args.pipeline_model_parallel_size
+    auto_tp_size, auto_pp_size, need_distributed = auto_detect_parallel_config(
+        original_tp, original_pp
+    )
+
+    # Update args with validated values
     args.tensor_model_parallel_size = auto_tp_size
     args.pipeline_model_parallel_size = auto_pp_size
 
@@ -906,12 +981,23 @@ def main():
         print("=" * 60)
         print(f"Configuration:")
         print(f"  • World Size: {world_size}")
-        print(
-            f"  • Tensor Parallel Size: {args.tensor_model_parallel_size} (requested: {original_tp}, auto-adjusted)"
-        )
-        print(
-            f"  • Pipeline Parallel Size: {args.pipeline_model_parallel_size} (requested: {original_pp}, auto-adjusted)"
-        )
+
+        # Show TP size info
+        if auto_tp_size != original_tp:
+            print(
+                f"  • Tensor Parallel Size: {args.tensor_model_parallel_size} (requested: {original_tp}, adjusted to fit world_size)"
+            )
+        else:
+            print(f"  • Tensor Parallel Size: {args.tensor_model_parallel_size}")
+
+        # Show PP size info
+        if auto_pp_size != original_pp:
+            print(
+                f"  • Pipeline Parallel Size: {args.pipeline_model_parallel_size} (requested: {original_pp}, adjusted to fit world_size)"
+            )
+        else:
+            print(f"  • Pipeline Parallel Size: {args.pipeline_model_parallel_size}")
+
         print(f"  • Backend: {args.distributed_backend}")
         print(f"  • Timeout: {args.distributed_timeout_minutes} minutes")
         print(f"  • Need Distributed: {need_distributed}")
