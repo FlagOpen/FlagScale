@@ -1,0 +1,30 @@
+system:
+  tensor_model_parallel_size: 1
+  pipeline_model_parallel_size: 1
+  context_parallel_size: 1
+  wandb_enabled: true
+  seed: 42
+  project_name: ${experiment.exp_name}
+  exp_name: ${experiment.exp_name}
+  batch_size: 1
+  train_steps: 1000
+  log_freq: 10
+  output_directory: ${experiment.exp_dir}/ckpt
+  
+model:
+  checkpoint_dir: /models/lerobot/pi0 
+  resume: false
+  ckpt_overwrite: true
+  stat_path: /models/lerobot/aloha_mobile_cabinet/meta/stats.json
+  # stat_path: /models/lerobot/aloha_mobile_shrimp/meta/stats.json
+
+data:
+  # tokenizer_path: /models/Qwen/Qwen2.5-VL-3B-Instruct
+  tokenizer_path: /models/google/paligemma-3b-pt-224
+  # data_path: /repos/flagscale_dataset/flag-scale/demo_0913_n2/wds-1
+  # data_path: /models/lerobot/aloha_mobile_cabinet
+  # data_path: /models/lerobot/aloha_mobile_shrimp
+  data_path: lerobot/aloha_mobile_shrimp
+  state_key: eepose
+  action_key: eepose
+  action_token_key: action_eepose_token

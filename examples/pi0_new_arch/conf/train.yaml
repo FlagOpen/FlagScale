@@ -1,0 +1,37 @@
+defaults:
+  - _self_
+  - train: pi0
+
+experiment:
+  exp_name: PI0
+  seed: 42
+  save_steps: 10000
+  load: null
+  exp_dir: outputs/${experiment.exp_name}
+  ckpt_format: torch
+  task:
+    type: train
+    backend: pi0
+    entrypoint: flagscale/train/train_pi0.py
+  runner:
+    per_node_task: false
+    no_shared_fs: false
+    rdzv_backend: static
+    hostfile: null
+  cmds:
+    before_start: echo "Starting PI0 Training"
+  envs:
+    LOGLEVEL: "INFO"
+    CUDA_VISIBLE_DEVICES: "1"
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+    PYTHONPATH: '/repos/FlagScale/:/repos/FlagScale/third_party/Megatron-LM'
+    # LD_LIBRARY_PATH: /root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/transformer_engine/wheel_lib
+    # Set lerobot data path
+    WANDB_MODE: offline
+
+
+action: run
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra

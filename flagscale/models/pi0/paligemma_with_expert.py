@@ -2,7 +2,6 @@
 
 import torch
 
-from lerobot.policies.pi0.flex_attention import flex_attention_forward
 from pytest import Cache
 from torch import nn
 from transformers import (
@@ -342,8 +341,6 @@ class PaliGemmaWithExpertModel(PreTrainedModel):
     def get_attention_interface(self):
         if self.config.attention_implementation == "fa2":
             attention_interface = self.flash_attention_forward
-        elif self.config.attention_implementation == "flex":
-            attention_interface = flex_attention_forward
         else:
             attention_interface = self.eager_attention_forward
         return attention_interface

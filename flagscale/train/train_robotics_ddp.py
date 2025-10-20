@@ -66,7 +66,7 @@ def init_wandb(
         wandb.init(mode="disabled")
         return
 
-    ckpt_dir = config.checkpoint_dir
+    ckpt_dir = pathlib.Path(config.checkpoint_dir)
     if not ckpt_dir.exists():
         raise FileNotFoundError(f"Checkpoint directory {ckpt_dir} does not exist.")
     if resuming:
