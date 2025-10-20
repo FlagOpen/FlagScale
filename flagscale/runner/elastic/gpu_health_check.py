@@ -54,23 +54,15 @@ class TimeoutError(Exception):
 
 @contextmanager
 def timeout_protection(seconds, test_name):
-    """Context manager for timeout protection"""
-    if hasattr(signal, 'SIGALRM'):  # Unix systems
-
-        def timeout_handler(signum, frame):
-            raise TimeoutError(f"Test '{test_name}' timed out after {seconds} seconds")
-
-        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(seconds)
-        try:
-            yield
-        finally:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
-    else:  # Windows or systems without SIGALRM - simplified approach
-        # For simplicity in the complete version, we'll just yield without timeout on Windows
-        # A full threading implementation would be more complex
-        yield
+    """
+    Context manager for timeout protection
+    NOTE: SIGALRM-based timeout is disabled in multi-process environments
+    because it can interfere with PyTorch distributed operations and NCCL.
+    We rely on PyTorch's built-in distributed timeout instead.
+    """
+    # Disabled SIGALRM timeout - causes issues in multi-process PyTorch/NCCL environments
+    # Just yield without timeout protection
+    yield
 
 
 def log_test_result(test_name, status, error=None):
@@ -175,7 +167,9 @@ def initialize_model_parallel(
     tensor_model_parallel_size: int = 1, pipeline_model_parallel_size: int = 1
 ):
     world_size: int = dist.get_world_size()
+    rank = dist.get_rank()
 
+    print(f"[Rank {rank}] initialize_model_parallel: START", flush=True)
     model_size = tensor_model_parallel_size * pipeline_model_parallel_size
 
     if world_size % model_size != 0:
@@ -186,7 +180,7 @@ def initialize_model_parallel(
     num_tensor_model_parallel_groups = world_size // tensor_model_parallel_size
     num_pipeline_model_parallel_groups = world_size // pipeline_model_parallel_size
 
-    rank = dist.get_rank()
+    print(f"[Rank {rank}] initialize_model_parallel: About to create DP groups", flush=True)
 
     # Build the data-parallel groups.
     global _DATA_PARALLEL_GROUP
@@ -204,6 +198,8 @@ def initialize_model_parallel(
                 _DATA_PARALLEL_GROUP = group
                 _DATA_GLOBAL_RANKS = ranks
 
+    print(f"[Rank {rank}] initialize_model_parallel: DP groups created", flush=True)
+
     # Build the model-parallel groups.
     global _MODEL_PARALLEL_GROUP
     assert _MODEL_PARALLEL_GROUP is None, "model parallel group is already initialized"
@@ -215,6 +211,8 @@ def initialize_model_parallel(
         group = dist.new_group(ranks)
         if rank in ranks:
             _MODEL_PARALLEL_GROUP = group
+
+    print(f"[Rank {rank}] initialize_model_parallel: MP groups created", flush=True)
 
     # Build the tensor model-parallel groups.
     global _TENSOR_MODEL_PARALLEL_GROUP
@@ -228,6 +226,8 @@ def initialize_model_parallel(
         if rank in ranks:
             _TENSOR_MODEL_PARALLEL_GROUP = group
             _TENSOR_GLOBAL_RANKS = ranks
+
+    print(f"[Rank {rank}] initialize_model_parallel: TP groups created", flush=True)
 
     # Build the pipeline model-parallel groups and embedding groups
     # (first and last rank in each pipeline model-parallel group).
@@ -253,6 +253,9 @@ def initialize_model_parallel(
         group = dist.new_group(embedding_ranks)
         if rank in embedding_ranks:
             _EMBEDDING_GROUP = group
+
+    print(f"[Rank {rank}] initialize_model_parallel: PP and embedding groups created", flush=True)
+    print(f"[Rank {rank}] initialize_model_parallel: COMPLETE", flush=True)
 
     return
 
@@ -599,16 +602,29 @@ def test_communication():
     """Test all parallel communication with progressive execution"""
     args = get_args()
     rank = dist.get_rank()
+    # Debug: Print entry into test_communication for ALL ranks
+    print(f"[Rank {rank}] Entered test_communication()", flush=True)
 
     if rank == 0:
         print("\n" + "=" * 60)
         print("PHASE 1: PARALLEL COMMUNICATION TESTING")
         print("=" * 60)
 
+    # Debug: Barrier before starting tests
+    print(f"[Rank {rank}] About to do pre-test barrier", flush=True)
+    try:
+        dist.barrier()
+        print(f"[Rank {rank}] Pre-test barrier completed", flush=True)
+    except Exception as e:
+        print(f"[Rank {rank}] Pre-test barrier FAILED: {e}", flush=True)
+        raise
+
     # Test 1: Tensor Parallel Communication
+    print(f"[Rank {rank}] About to start TP test", flush=True)
     success = safe_test_execution(
         test_tensor_parallel_group_c10d, 'tensor_parallel', timeout_seconds=120
     )
+    print(f"[Rank {rank}] TP test completed, success={success}", flush=True)
     if not success and rank == 0:
         print("⚠ Warning: Tensor parallel test failed, but continuing with other tests...")
 
