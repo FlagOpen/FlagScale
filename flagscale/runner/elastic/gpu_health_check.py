@@ -703,6 +703,7 @@ def test_gpu_hardware_single():
         pynvml.nvmlShutdown()
     except ImportError:
         print("Pynvml is not installed.")
+        raise
 
     return
 
