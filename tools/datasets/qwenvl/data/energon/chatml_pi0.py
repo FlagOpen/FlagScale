@@ -1,15 +1,11 @@
 # Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/megatron_patch/data/energon/chatml.py.
-# Copied from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/megatron_patch/data/energon/chatml.py.
 
 import json
 import pickle
 import re
-import warnings
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Union
-
-import torch
+from typing import Any, Dict, List
 
 from webdataset.autodecode import Decoder, imagehandler
 
@@ -46,8 +42,6 @@ class NestedImagesPathHandler:
         extension = re.sub(r".*[.]", "", key)
         if extension.lower() not in self.extensions:
             return None
-
-        # 现在只处理图像和视频
         if extension.lower() in ["jpgs", "videos"]:
             try:
                 return pickle.loads(data)
@@ -56,13 +50,12 @@ class NestedImagesPathHandler:
                 return None
         elif extension.lower() == "metadata":
             try:
-                # 首先将字节串解码为 UTF-8 字符串，然后用 json.loads 解析
                 return json.loads(data.decode('utf-8'))
             except Exception as e:
                 print(f"Warning: Failed to decode metadata json: {e}")
                 return None
 
-        return None  # 其他未知情况返回 None
+        return None
 
 
 # During training, data is automatically decoded to from default webdataset to 'ChatMLSamplePI0' when loaded using energon-dataloader,
@@ -92,5 +85,4 @@ class ChatMLWebdatasetPI0(DefaultDecoderWebdatasetFactory[ChatMLSamplePI0]):
             **kwargs,
         )
         if auto_decode:
-            # self._decoder.handlers.insert(0, NestedImagesPathHandler(self.image_decode))
             self._decoder = Decoder([NestedImagesPathHandler(self.image_decode)])
