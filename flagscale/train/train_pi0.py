@@ -12,10 +12,10 @@ import torch.distributed as dist
 import wandb
 
 from flagscale.runner.utils import logger
-# from megatron.energon import WorkerConfig, get_loader, get_train_dataset
-# from tools.datasets.qwenvl.data.dataset_helpers_robotics import TaskEncoder
+from megatron.energon import WorkerConfig, get_loader, get_train_dataset
+from tools.datasets.qwenvl.data.dataset_helpers_pi0 import TaskEncoder
 from flagscale.models.pi0.modeling_pi0 import PI0Policy, PI0PolicyConfig
-from lerobot.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata
+
 
 def init_ddp(config):
     torch.manual_seed(config.seed)
@@ -76,40 +76,53 @@ def main(config):
         # used to supervise the policy.
         "action": [-0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4],
     }
-    dataset = LeRobotDataset(config.data_path, delta_timestamps=delta_timestamps)
+    ds = get_train_dataset(
+        config.data_path,
+        batch_size=config.batch_size,
+        shuffle_buffer_size=10000,
+        max_samples_per_sequence=100,
+        worker_config=WorkerConfig.default_worker_config(num_workers=1, data_parallel_group=None),
+        task_encoder=TaskEncoder(config),
+        repeat = True,
+    )
+    loader = get_loader(ds)
+    data_iter = iter(loader)
+    batch = next(data_iter)
+
+    logger.info(f"train_pi0.py batch: {type(batch)}")
+    logger.info(f"train_pi0.py batch: {batch.keys()}")
+    batch_log = {}
+    for k, v in batch.items():
+        if isinstance(v, torch.Tensor):
+            batch_log[k] = v.shape
+        else:
+            batch_log[k] = (type(v), v)
+    logger.info(f"train_pi0.py batch_log: {batch_log}")
+    logger.info(f"train_pi0.py batch: {batch}")
+
     model_config = PI0PolicyConfig.from_pretrained(config.checkpoint_dir)
+    model_config.n_action_steps = config.action_steps
     policy = PI0Policy.from_pretrained(
         model_path=config.checkpoint_dir,
         tokenizer_path=config.tokenizer_path,
         stat_path=config.stat_path,
         config=model_config,
     )
+    policy = policy.cuda()
     optimizer = torch.optim.Adam(policy.parameters(), lr=1e-4)
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
-        num_workers=4,
-        batch_size=64,
-        shuffle=True,
-        pin_memory=device.type != "cpu",
-        drop_last=True,
-    )
     step = 0
     done = False
     while not done:
-        for batch in dataloader:
-            batch = {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in batch.items()}
-            loss, _ = policy.forward(batch)
-            loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-
+        batch = next(data_iter)
+        batch = {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in batch.items()}
+        loss, _ = policy.forward(batch)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
         if step % config.log_freq == 0:
             logger.info(f"step: {step} loss: {loss.item():.3f}")
-            logger.info(f"train_pi0.py batch: {type(batch)}")
-            logger.info(f"train_pi0.py batch: {batch}")
-            # logger.info(f"train_pi0.py batch: {batch.keys()}")
         step += 1
-        if step >= config.training_steps:
+        if step >= config.train_steps:
             done = True
             break
     policy.save_pretrained(config.output_directory)
@@ -128,6 +141,7 @@ if __name__ == "__main__":
     parser.add_argument("--action-token-key", type=str, default="action_token_key not set")
     parser.add_argument("--stat-path", type=str, default="stat_path not set")
     parser.add_argument("--output-directory", type=str, default="output_directory not set")
+    parser.add_argument("--vision-root", type=str, default="")
     
 
     parser.add_argument("--seed", type=int, default=42)
@@ -137,7 +151,8 @@ if __name__ == "__main__":
     parser.add_argument("--context-parallel-size", type=int, default=1)
     parser.add_argument("--train-steps", type=int, default=10000)
     parser.add_argument("--log-freq", type=int, default=100)
-    
+    parser.add_argument("--action-horizon", type=int, default=30)
+    parser.add_argument("--action-steps", type=int, default=50)
 
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--ckpt-overwrite", action="store_true")
