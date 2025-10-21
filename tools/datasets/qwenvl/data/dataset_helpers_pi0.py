@@ -1,31 +1,16 @@
-import pprint
-import dataclasses
 import json
 import logging
-import math
-import os
-import re
-import sys
-import traceback
-import time
 
-from collections import defaultdict
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
-from datetime import datetime
+from typing import List
 
 import numpy as np
 import PIL
-from PIL import Image
 import torch
 
 from torchvision import transforms
-from megatron.energon import Batch, DefaultTaskEncoder, VQASample
-from megatron.training import get_args
-from megatron.training.global_vars import get_tokenizer
+
+from megatron.energon import DefaultTaskEncoder
 from tools.datasets.qwenvl.data.energon.chatml_pi0 import ChatMLSamplePI0
-from tools.datasets.qwenvl.data.image_processing import get_visual_transform
-import logging
 
 dataset_logger = logging.getLogger(__name__)
 

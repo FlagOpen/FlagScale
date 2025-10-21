@@ -11,43 +11,43 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import pprint
 import dataclasses
 import json
 import logging
 import math
 import os
+import pprint
 import re
 import sys
-import traceback
 import time
+import traceback
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL
-from PIL import Image
 import torch
 
+from PIL import Image
 from torchvision import transforms as T
+from transformers import AutoTokenizer
 
+from megatron.core.parallel_state import (
+    get_pipeline_model_parallel_rank,
+    get_pipeline_model_parallel_world_size,
+    get_tensor_model_parallel_rank,
+)
 from megatron.energon import Batch, DefaultTaskEncoder, VQASample
 from megatron.training import get_args
 from megatron.training.global_vars import get_tokenizer
 from megatron.training.tokenizer.tokenizer import _Qwen2VLTokenizer
-from megatron.core.parallel_state import (
-    get_tensor_model_parallel_rank,
-    get_pipeline_model_parallel_world_size,
-    get_pipeline_model_parallel_rank,
-)
-from flagscale.train.models.qwen2_5_vl.tensor_parallel import broadcast_data
-from transformers import AutoTokenizer
 from tools.datasets.qwenvl.data.energon.chatml_robotics import ChatMLSampleRobotics
 from tools.datasets.qwenvl.data.image_processing import get_visual_transform
-import logging
+
+from flagscale.train.models.qwen2_5_vl.tensor_parallel import broadcast_data
 
 dataset_logger = logging.getLogger(__name__)
 FIRST_MAX_PADDING = True

@@ -1,14 +1,15 @@
 # Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/megatron_patch/data/energon/chatml.py.
 # Copied from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/megatron_patch/data/energon/chatml.py.
 
+import json
 import pickle
 import re
 import warnings
 
 from dataclasses import dataclass
-from typing import List, Union, Dict, Any
+from typing import Any, Dict, List, Union
+
 import torch
-import json
 
 from webdataset.autodecode import Decoder, imagehandler
 

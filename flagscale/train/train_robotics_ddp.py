@@ -16,9 +16,10 @@ import robotics.training.utils as training_utils
 import torch
 import torch.distributed as dist
 import tqdm_loggable.auto as tqdm
-import wandb
 
 from torch.nn.parallel import DistributedDataParallel as DDP
+
+import wandb
 
 from megatron.energon import WorkerConfig, get_loader, get_train_dataset
 from tools.datasets.qwenvl.data.dataset_helpers_robotics import TaskEncoder
