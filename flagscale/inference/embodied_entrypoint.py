@@ -46,6 +46,7 @@ def inference(cfg: DictConfig) -> None:
         actions = engine.model_or_pipeline.model.sample_actions(
             images, img_masks, lang_tokens, lang_masks, state, noise=None
         )
+        logger.info(f"actions: {actions.shape}")
     actions_trunked = actions[:, : generate_cfg.action_horizon, : generate_cfg.action_dim]
     logger.info(f"actions_trunked: {actions_trunked}")
 

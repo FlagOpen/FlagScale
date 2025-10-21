@@ -76,6 +76,7 @@ def main(config):
 
     model_config = PI0PolicyConfig.from_pretrained(config.checkpoint_dir)
     model_config.n_action_steps = config.action_steps
+    model_config.tokenizer_max_length = config.tokenizer_max_length
     policy = PI0Policy.from_pretrained(
         model_path=config.checkpoint_dir,
         tokenizer_path=config.tokenizer_path,
@@ -127,6 +128,7 @@ if __name__ == "__main__":
     parser.add_argument("--log-freq", type=int, default=100)
     parser.add_argument("--action-horizon", type=int, default=30)
     parser.add_argument("--action-steps", type=int, default=50)
+    parser.add_argument("--tokenizer-max-length", type=int, default=256)
 
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--ckpt-overwrite", action="store_true")
