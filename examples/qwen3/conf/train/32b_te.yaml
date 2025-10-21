@@ -1,7 +1,7 @@
 system:
   no_shared_fs: ${experiment.runner.no_shared_fs}
   num_workers: 2
-  tensor_model_parallel_size: 2
+  tensor_model_parallel_size: 8
   pipeline_model_parallel_size: 2
   expert_model_parallel_size: 1
   context_parallel_size: 1
@@ -31,7 +31,7 @@ system:
 
 model:
   transformer_impl: transformer_engine
-  num_layers: 8
+  num_layers: 32
   hidden_size: 5120
   ffn_hidden_size: 25600
   num_attention_heads: 64

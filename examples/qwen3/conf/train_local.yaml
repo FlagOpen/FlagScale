@@ -19,7 +19,10 @@ experiment:
     per_node_task: false
     no_shared_fs: false
     rdzv_backend: static
-    hostfile: /share/project/lixianduo/scale_gems_cx/2node_hostfile
+    #  hostfile: null
+    # hostfile: /share/project/lixianduo/scale_gems_cx/2node_hostfile
+    # hostfile: /share/project/lixianduo/scale_gems_cx/4node_hostfile
+    hostfile: /share/project/lixianduo/scale_gems_cx/2node_hostfile_1
     ssh_port: 7878
   cmds:
     before_start: ulimit -n 1048576 && source /root/miniconda3/bin/activate /share/project/lixianduo/envs/flagscale-train-gems-cx
