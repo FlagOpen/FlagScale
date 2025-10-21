@@ -6,10 +6,11 @@ system:
   seed: 42
   project_name: ${experiment.exp_name}
   exp_name: ${experiment.exp_name}
-  batch_size: 1
+  batch_size: 2
   train_steps: 100
   log_freq: 10
   output_directory: ${experiment.exp_dir}/ckpt
+  tokenizer_max_length: 256
   
 model:
   # change to your model path
