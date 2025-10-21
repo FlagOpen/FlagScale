@@ -667,7 +667,9 @@ class PI0FlowMatching(nn.Module):
         num_lang_embs = lang_emb.shape[1]
         att_masks += [0] * num_lang_embs
 
-        logger.debug(f"in PI0FlowMatching.embed_prefix, embs[{len(embs)}]: {[(i.shape, i.device, i.dtype) for i in embs]}")
+        logger.debug(
+            f"in PI0FlowMatching.embed_prefix, embs[{len(embs)}]: {[(i.shape, i.device, i.dtype) for i in embs]}"
+        )
         embs = torch.cat(embs, dim=1)
         pad_masks = torch.cat(pad_masks, dim=1)
         att_masks = torch.tensor(att_masks, dtype=torch.bool, device=pad_masks.device)

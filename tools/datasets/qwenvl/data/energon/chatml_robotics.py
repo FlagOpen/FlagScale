@@ -6,9 +6,9 @@ import re
 import warnings
 
 from dataclasses import dataclass
-from typing import List, Union,Dict, Any 
+from typing import List, Union, Dict, Any
 import torch
-import json  
+import json
 
 from webdataset.autodecode import Decoder, imagehandler
 
@@ -45,7 +45,7 @@ class NestedImagesPathHandler:
         extension = re.sub(r".*[.]", "", key)
         if extension.lower() not in self.extensions:
             return None
-        
+
         # 现在只处理图像和视频
         if extension.lower() in ["jpgs", "videos"]:
             try:
@@ -61,8 +61,9 @@ class NestedImagesPathHandler:
                 print(f"Warning: Failed to decode metadata json: {e}")
                 return None
 
-        return None # 其他未知情况返回 None
-            
+        return None  # 其他未知情况返回 None
+
+
 # During training, data is automatically decoded to from default webdataset to 'ChatMLSampleRobotics' when loaded using energon-dataloader,
 # and this is not done during preparation!!!
 # After decoding, the data is passed into the TaskEncoder for further processing.

@@ -97,9 +97,7 @@ def _get_args_lerobot(config: DictConfig):
 
 
 def _get_args_pi0(config: DictConfig):
-    assert (
-        config.experiment.task.backend == "pi0"
-    ), "This function only supports lerobot backend."
+    assert config.experiment.task.backend == "pi0", "This function only supports lerobot backend."
 
     # Convert the DictConfig to a regular dictionary
     config_dict = OmegaConf.to_container(config, resolve=True)

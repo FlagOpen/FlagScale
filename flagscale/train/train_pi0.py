@@ -70,7 +70,7 @@ def main(config):
         max_samples_per_sequence=100,
         worker_config=WorkerConfig.default_worker_config(num_workers=1, data_parallel_group=None),
         task_encoder=TaskEncoder(config),
-        repeat = True,
+        repeat=True,
     )
     loader = get_loader(ds)
     data_iter = iter(loader)
@@ -120,7 +120,6 @@ if __name__ == "__main__":
     parser.add_argument("--stat-path", type=str, default="stat_path not set")
     parser.add_argument("--output-directory", type=str, default="output_directory not set")
     parser.add_argument("--vision-root", type=str, default="")
-    
 
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch-size", type=int, default=1)
