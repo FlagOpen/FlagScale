@@ -19,11 +19,7 @@ def parse_config() -> Union[DictConfig, ListConfig]:
         "--config-path", type=str, required=True, help="Path to the configuration YAML file"
     )
     args = parser.parse_args()
-
     config = OmegaConf.load(args.config_path)
-
-    # TODO(yupu): Any checks?
-
     return config
 
 
