@@ -2555,6 +2555,16 @@ def train(
             optimizers=[optimizer],
         )
         cuda_graph_helper.create_cudagraphs()
+    
+
+    # test flag_gems
+    if not HAVE_GEMS:
+        print("can not import flag_gems")
+    else:
+        print(f"use flag_gems for training")
+        flag_gems.enable(record=True, once=True, unused=["index_put", "index_put_"], path="/share/project/lixianduo/scale_gems_cx/gems_logs/flaggems_2.log")
+
+
 
     # Run training iterations till done.
     buffered_rollouts = None
@@ -2650,14 +2660,7 @@ def train(
                         model, optimizer, iteration, ref_state_dict,
                     )
                 train_data_iterator = buffered_rollouts
-        
 
-        # test flag_gems
-        if not HAVE_GEMS:
-            print("can not import flag_gems")
-        else:
-            print(f"use flag_gems for training")
-            flag_gems.enable(record=True, once=True, unused=["index_put", "index_put_", "flash_attention_forward", "log_softmax", "log_softmax_backward", "softmax", "softmax_backward", "_softmax", "_softmax_backward_data"], path="/share/project/lixianduo/scale_gems_cx/gems_logs/flaggems_5.log")
 
         ft_integration.on_training_step_start()
         (
