@@ -66,7 +66,7 @@ def init_wandb(
         wandb.init(mode="disabled")
         return
 
-    ckpt_dir = pathlib.Path(config.checkpoint_dir)
+    ckpt_dir = config.checkpoint_dir
     if not ckpt_dir.exists():
         raise FileNotFoundError(f"Checkpoint directory {ckpt_dir} does not exist.")
     if resuming:
@@ -215,7 +215,7 @@ def main(config: _config.TrainConfig):
 
     ENERGON_DATA_PATH = os.getenv('ENERGON_DATA_PATH')
     ds = get_train_dataset(
-        ENERGON_DATA_PATH
+        ENERGON_DATA_PATH,
         batch_size=1,
         shuffle_buffer_size=0,
         max_samples_per_sequence=100,

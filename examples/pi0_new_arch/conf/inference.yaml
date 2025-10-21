@@ -8,7 +8,7 @@ experiment:
   model: /models/lerobot/pi0
   task:
     type: inference
-    backend: vllm # TODO(yupu): Remove this restriction
+    backend: vllm # TODO: Remove this restriction
     entrypoint: flagscale/inference/embodied_entrypoint.py
   runner:
     hostfile: null
