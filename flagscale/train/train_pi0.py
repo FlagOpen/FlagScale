@@ -59,23 +59,9 @@ def main(config):
             raise ValueError(
                 f"Batch size {config.batch_size} must be divisible by the number of devices {torch.cuda.device_count()}."
             )
-
-        checkpoint_dir = config.checkpoint_dir
         resuming = config.resume
-        overwrite = config.ckpt_overwrite
-
         init_wandb(config, resuming=resuming, enabled=config.wandb_enabled)
-    # In this case with the standard configuration for Diffusion Policy, it is equivalent to this:
-    delta_timestamps = {
-        # Load the previous image and state at -0.1 seconds before current frame,
-        # then load current image and state corresponding to 0.0 second.
-        "observation.image": [-0.1, 0.0],
-        "observation.state": [-0.1, 0.0],
-        # Load the previous action (-0.1), the next action to be executed (0.0),
-        # and 14 future actions with a 0.1 seconds spacing. All these actions will be
-        # used to supervise the policy.
-        "action": [-0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4],
-    }
+
     ds = get_train_dataset(
         config.data_path,
         batch_size=config.batch_size,
