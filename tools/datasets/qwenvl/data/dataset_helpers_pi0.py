@@ -26,7 +26,6 @@ from megatron.training.global_vars import get_tokenizer
 from tools.datasets.qwenvl.data.energon.chatml_pi0 import ChatMLSamplePI0
 from tools.datasets.qwenvl.data.image_processing import get_visual_transform
 import logging
-from flagscale.runner.utils import logger
 
 dataset_logger = logging.getLogger(__name__)
 
@@ -68,7 +67,6 @@ class TaskEncoder(
 
         action_paths = sample.metadata['action'][self.config.action_key]
         action = np.load(action_paths)
-        logger.info(f"encode_sample(): {action.shape=}")
         if action.shape[1] < self.config.action_horizon:
             pad_width = self.config.action_horizon - action.shape[1]
             action = np.pad(action, ((0,0),(0, pad_width)), mode='constant')
@@ -84,9 +82,6 @@ class TaskEncoder(
             'observation.state': state[None,].to(torch.float32),
             'action': action[None].to(torch.float32),
         }
-        
-        batch_log = {k: ((v.shape, v.dtype, v.device) if isinstance(v, torch.Tensor) else type(v)) for k, v in batch.items()}
-        logger.info(f"in encode_sample(), batch_log: {batch_log}")
         return batch
 
     

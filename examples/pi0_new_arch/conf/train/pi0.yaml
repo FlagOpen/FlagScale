@@ -7,7 +7,7 @@ system:
   project_name: ${experiment.exp_name}
   exp_name: ${experiment.exp_name}
   batch_size: 1
-  train_steps: 1000
+  train_steps: 100
   log_freq: 10
   output_directory: ${experiment.exp_dir}/ckpt
   
