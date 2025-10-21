@@ -92,6 +92,8 @@ def create_stats_buffers(
                     f"np.ndarray or torch.Tensor expected, but type is '{type_}' instead."
                 )
 
+        for k in buffer:
+            buffer[k] = buffer[k].cuda()
         stats_buffers[key] = buffer
     return stats_buffers
 
