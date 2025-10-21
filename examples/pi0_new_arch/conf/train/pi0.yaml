@@ -12,19 +12,21 @@ system:
   output_directory: ${experiment.exp_dir}/ckpt
   
 model:
+  # change to your model path
   checkpoint_dir: /models/lerobot/pi0 
   resume: false
   ckpt_overwrite: true
+  # change to your stat_path (lerobot format)
   stat_path: /models/lerobot/aloha_mobile_cabinet/meta/stats.json
-  # stat_path: /models/lerobot/aloha_mobile_shrimp/meta/stats.json
+  action_horizon: 14
+  action_steps: 30
 
 data:
-  # tokenizer_path: /models/Qwen/Qwen2.5-VL-3B-Instruct
+  # change to your tokenizer path
   tokenizer_path: /models/google/paligemma-3b-pt-224
-  # data_path: /repos/flagscale_dataset/flag-scale/demo_0913_n2/wds-1
-  # data_path: /models/lerobot/aloha_mobile_cabinet
-  # data_path: /models/lerobot/aloha_mobile_shrimp
-  data_path: lerobot/aloha_mobile_shrimp
+  # change to your data path
+  data_path: /repos/flagscale_dataset/flag-scale/demo_0913_n2/wds-1
   state_key: eepose
   action_key: eepose
   action_token_key: action_eepose_token
+  vision_root: ""

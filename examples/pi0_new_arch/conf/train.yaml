@@ -24,11 +24,8 @@ experiment:
     LOGLEVEL: "INFO"
     CUDA_VISIBLE_DEVICES: "1"
     CUDA_DEVICE_MAX_CONNECTIONS: 1
-    PYTHONPATH: '/repos/FlagScale/:/repos/FlagScale/third_party/Megatron-LM'
-    # LD_LIBRARY_PATH: /root/miniconda3/envs/flagscale-inference/lib/python3.12/site-packages/transformer_engine/wheel_lib
-    # Set lerobot data path
     WANDB_MODE: offline
-
+    OTEL_SDK_DISABLED: true
 
 action: run
 
