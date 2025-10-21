@@ -50,8 +50,10 @@ jobs:
         run: |
           git config --global --add safe.directory /__w/FlagScale/FlagScale
 
-          TMP_DIR=$(mktemp -d)
+          TMP_DIR=/tmp/flagscale_tmp
           echo "Copying source to temporary directory: $TMP_DIR"
+          rm -rf $TMP_DIR
+          mkdir -p $TMP_DIR
           cp -r /__w/FlagScale/FlagScale/. $TMP_DIR
           cd $TMP_DIR
           trap 'echo "Cleaning up temporary directory..."; rm -rf "$TMP_DIR"' EXIT
@@ -162,5 +164,5 @@ jobs:
           tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
           exit_code=$?
           echo "Exit code: $exit_code"
-          exit $exit_cod
+          exit $exit_code
         shell: bash
