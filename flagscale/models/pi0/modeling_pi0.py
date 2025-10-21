@@ -667,6 +667,7 @@ class PI0FlowMatching(nn.Module):
         num_lang_embs = lang_emb.shape[1]
         att_masks += [0] * num_lang_embs
 
+        logger.debug(f"in PI0FlowMatching.embed_prefix, embs[{len(embs)}]: {[(i.shape, i.device, i.dtype) for i in embs]}")
         embs = torch.cat(embs, dim=1)
         pad_masks = torch.cat(pad_masks, dim=1)
         att_masks = torch.tensor(att_masks, dtype=torch.bool, device=pad_masks.device)
@@ -681,6 +682,7 @@ class PI0FlowMatching(nn.Module):
         att_masks = []
 
         # Embed state
+        state = state.to(dtype=self.state_proj.weight.dtype)
         state_emb = self.state_proj(state)
         state_emb = state_emb.to(dtype=torch.bfloat16)
         embs.append(state_emb[:, None, :])
@@ -731,6 +733,7 @@ class PI0FlowMatching(nn.Module):
         self, images, img_masks, lang_tokens, lang_masks, state, actions, noise=None, time=None
     ) -> Tensor:
         """Do a full training forward pass and compute the loss (batch_size x num_steps x num_motors)"""
+        logger.debug(f"{actions.shape=}")
         if noise is None:
             noise = self.sample_noise(actions.shape, actions.device)
 
@@ -748,7 +751,6 @@ class PI0FlowMatching(nn.Module):
 
         pad_masks = torch.cat([prefix_pad_masks, suffix_pad_masks], dim=1)
         att_masks = torch.cat([prefix_att_masks, suffix_att_masks], dim=1)
-
         att_2d_masks = make_att_2d_masks(pad_masks, att_masks)
         position_ids = torch.cumsum(pad_masks, dim=1) - 1
 
