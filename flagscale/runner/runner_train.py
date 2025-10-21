@@ -199,6 +199,8 @@ def _get_runner_cmd_train(
         del runner_args["master_port"]
     if "enable_monitoring" in runner_args:
         del runner_args["enable_monitoring"]
+    if "overwrite_output" in runner_args:
+        del runner_args["overwrite_output"]
     runner_args["rdzv_id"] = rdzv_id
     # runner_args["master_addr"] = master_addr
     # runner_args["master_port"] = master_port
@@ -284,13 +286,23 @@ def _generate_run_script_train(
             f.write(f'python {monitor_launcher_path} \\\n')
             f.write(f'  --log-dir "{logging_config.log_dir}" \\\n')
             f.write(f'  --pid-file "{host_pid_file}" \\\n')
+            f.write(f'  --host "{host}" \\\n')
+            f.write(f'  --node-rank {node_rank} \\\n')
             f.write(f'  {"--no-shared-fs" if no_shared_fs else ""} \\\n')
             f.write(f'  --ssh-port {ssh_port} \\\n')
             f.write(f'  --interval 5 \\\n')
             f.write(f'  --enable-log-collection \\\n')
             f.write(f'  --enable-diagnostic \\\n')
             f.write(f'  > /tmp/monitor_output_{node_rank}_{host}.log 2>&1 &\n')
-            f.write(f'echo "Monitor service started in background"\n')
+            f.write(f'echo "Monitor service started in background for {host} (node {node_rank})"\n')
+        else:
+            f.write(f'# Monitoring is disabled\n')
+            f.write(f'echo "Monitoring service is disabled"\n')
+            f.write(f'# Clean up old monitor files if they exist\n')
+            f.write(f'if [ -d "{logging_config.log_dir}/monitor" ]; then\n')
+            f.write(f'  echo "Cleaning up old monitor files for {host} (node {node_rank})..."\n')
+            f.write(f'  rm -f "{logging_config.log_dir}/monitor/host_{node_rank}_{host}_"*\n')
+            f.write(f'fi\n')
         f.write(f'\n')
 
         if with_test:
@@ -489,8 +501,11 @@ class SSHTrainRunner(RunnerBase):
         interval=10,
         enable_log_collection=True,
         enable_diagnostic=True,
-        enable_monitoring=False,
+        enable_monitoring=None,
     ):
+        # Read from config if not explicitly provided
+        if enable_monitoring is None:
+            enable_monitoring = self.config.experiment.runner.get("enable_monitoring", True)
 
         num_visible_devices = None
         runner_config = self.config.experiment.runner
@@ -895,10 +910,14 @@ class CloudTrainRunner(RunnerBase):
 
         run_local_command(f"bash {host_run_script_file}", dryrun)
 
-    def run(self, with_test=False, dryrun=False):
+    def run(self, with_test=False, dryrun=False, enable_monitoring=None):
         if dryrun:
             logger.info("Dryrun mode is not supported in CloudRunner.")
             return
+
+        # Read from config if not explicitly provided
+        if enable_monitoring is None:
+            enable_monitoring = self.config.experiment.runner.get("enable_monitoring", True)
 
         num_visible_devices = None
         visible_devices = self.user_envs.get("CUDA_VISIBLE_DEVICES", None)
@@ -924,4 +943,5 @@ class CloudTrainRunner(RunnerBase):
             nproc_per_node,
             with_test=with_test,
             dryrun=dryrun,
+            enable_monitoring=enable_monitoring,
         )
