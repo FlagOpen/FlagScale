@@ -144,6 +144,16 @@ from megatron.core.msc_utils import MultiStorageClientFeature, open_file
 from flagscale.train.peft.peft import PEFT
 from flagscale.train.peft.lora import LoRA
 
+
+
+try:
+    import flag_gems
+    HAVE_GEMS = True
+except ImportError:
+    HAVE_GEMS = False
+
+
+
 def destroy_global_state():
     destroy_global_vars()
     destroy_num_microbatches_calculator()
@@ -2640,6 +2650,14 @@ def train(
                         model, optimizer, iteration, ref_state_dict,
                     )
                 train_data_iterator = buffered_rollouts
+        
+
+        # test flag_gems
+        if not HAVE_GEMS:
+            print("can not import flag_gems")
+        else:
+            print(f"use flag_gems for training")
+            flag_gems.enable(record=True, once=True, unused=["index_put", "index_put_", "flash_attention_forward", "log_softmax", "log_softmax_backward", "softmax", "softmax_backward", "_softmax", "_softmax_backward_data"], path="/share/project/lixianduo/scale_gems_cx/gems_logs/flaggems_5.log")
 
         ft_integration.on_training_step_start()
         (
@@ -3338,3 +3356,4 @@ def build_train_valid_test_data_iterators(build_train_valid_test_datasets_provid
 def should_disable_forward_pre_hook(args):
     """Block forward pre-hook for certain configurations."""
     return not args.use_megatron_fsdp and args.use_distributed_optimizer and args.overlap_param_gather
+
