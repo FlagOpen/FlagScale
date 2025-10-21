@@ -1,32 +1,33 @@
 # Adopted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/megatron_patch/data/energon/chatml.py.
-# Copied from https://github.com/alibaba/Pai-Megatron-Patch/blob/8949a6647cbf6b39837ad3dd911fa4aa0726895b/megatron_patch/data/energon/chatml.py.
 
-import json
+import logging
 import pickle
 import re
-import warnings
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Union
+from typing import List, Union
 
-import torch
+from webdataset.autodecode import Decoder
 
-from webdataset.autodecode import Decoder, imagehandler
-
-from megatron.energon.av import AVWebdatasetDecoder
 from megatron.energon.epathlib.epath import EPath
 from megatron.energon.flavors.base_dataset import Sample
 from megatron.energon.flavors.webdataset import DefaultDecoderWebdatasetFactory
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
-class ChatMLSampleRobotics(Sample):
+class ChatMLSample(Sample):
     """multi-turn complex samples with images and videos"""
 
     imgs: List[str]
     videos: List[List[str]]
+    action_qpos: str
+    action_eepose: str
+    state_qpos: str
+    state_eepose: str
     conversation: str  # JSON string of GPT-format conversations
-    metadata: Dict[str, Any] = None
+    action_token: Union[str, List[str], None] = None
 
 
 class NestedImagesPathHandler:
@@ -35,7 +36,26 @@ class NestedImagesPathHandler:
 
         :param imagespec: short string indicating the type of decoding
         """
-        self.extensions = ["jpgs", "videos", "metadata"]
+        self.extensions = [
+            "jpgs",
+            "videos",
+            "action_tokens",
+            "action_qpos",
+            "action_eepose",
+            "state_qpos",
+            "state_eepose",
+        ]  # 添加 action_tokens
+        # self.extensions = ["jpgs", "videos"]
+        self.extensions_mapping = {
+            "jpgs": "jpg",
+            "videos": "jpg",
+            "action_tokens": "action_token",
+            "action_qpos": "action_qpos",
+            "action_eepose": "action_eepose",
+            "state_qpos": "state_qpos",
+            "state_eepose": "state_eepose",
+        }
+        # self.extensions_mapping = {"jpgs": "jpg", "videos": "jpg"}
 
     def __call__(self, key, data):
         """Perform nested image decoding.
@@ -46,30 +66,38 @@ class NestedImagesPathHandler:
         extension = re.sub(r".*[.]", "", key)
         if extension.lower() not in self.extensions:
             return None
+        if extension.lower() == "action_tokens":
+            try:
+                return pickle.loads(data)
+            except (pickle.UnpicklingError, EOFError):
+                try:
+                    return data.decode('utf-8')
+                except Exception as e_decode:
+                    logger.error(
+                        f"Warning: Failed to decode action_token as a raw string after pickle failed: {e_decode}"
+                    )
+                    return None
+            except Exception as e_other:
+                logger.error(
+                    f"Warning: An unexpected error occurred while decoding action_token: {e_other}"
+                )
+                return None
 
-        # 现在只处理图像和视频
-        if extension.lower() in ["jpgs", "videos"]:
+        elif extension.lower() in ["jpgs", "videos", "actions"]:
             try:
                 return pickle.loads(data)
             except Exception as e:
-                print(f"Warning: Failed to decode {extension}: {e}")
-                return None
-        elif extension.lower() == "metadata":
-            try:
-                # 首先将字节串解码为 UTF-8 字符串，然后用 json.loads 解析
-                return json.loads(data.decode('utf-8'))
-            except Exception as e:
-                print(f"Warning: Failed to decode metadata json: {e}")
+                logger.error(f"Warning: Failed to decode {extension}: {e}")
                 return None
 
-        return None  # 其他未知情况返回 None
+        return None
 
 
-# During training, data is automatically decoded to from default webdataset to 'ChatMLSampleRobotics' when loaded using energon-dataloader,
+# During training, data is automatically decoded to from default webdataset to 'ChatMLSample' when loaded using energon-dataloader,
 # and this is not done during preparation!!!
 # After decoding, the data is passed into the TaskEncoder for further processing.
-class ChatMLWebdatasetRobotics(DefaultDecoderWebdatasetFactory[ChatMLSampleRobotics]):
-    __sample_type__ = ChatMLSampleRobotics
+class ChatMLWebdataset(DefaultDecoderWebdatasetFactory[ChatMLSample]):
+    __sample_type__ = ChatMLSample
 
     def __init__(
         self,
@@ -92,5 +120,4 @@ class ChatMLWebdatasetRobotics(DefaultDecoderWebdatasetFactory[ChatMLSampleRobot
             **kwargs,
         )
         if auto_decode:
-            # self._decoder.handlers.insert(0, NestedImagesPathHandler(self.image_decode))
             self._decoder = Decoder([NestedImagesPathHandler(self.image_decode)])
