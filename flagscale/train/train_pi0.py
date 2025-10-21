@@ -8,6 +8,7 @@ import etils.epath as epath
 import numpy as np
 import torch
 import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 import wandb
 
@@ -84,6 +85,7 @@ def main(config):
         config=model_config,
     )
     policy = policy.cuda()
+    policy = DDP(policy, device_ids=[int(os.environ["LOCAL_RANK"])], find_unused_parameters=True)
     optimizer = torch.optim.Adam(policy.parameters(), lr=1e-4)
     step = 0
     done = False
@@ -100,7 +102,8 @@ def main(config):
         if step >= config.train_steps:
             done = True
             break
-    policy.save_pretrained(config.output_directory)
+    if dist.get_rank() == 0 and local_rank == 0:
+        policy.module.save_pretrained(config.output_directory)
 
 
 if __name__ == "__main__":
