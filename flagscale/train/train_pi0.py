@@ -87,18 +87,6 @@ def main(config):
     )
     loader = get_loader(ds)
     data_iter = iter(loader)
-    batch = next(data_iter)
-
-    logger.info(f"train_pi0.py batch: {type(batch)}")
-    logger.info(f"train_pi0.py batch: {batch.keys()}")
-    batch_log = {}
-    for k, v in batch.items():
-        if isinstance(v, torch.Tensor):
-            batch_log[k] = v.shape
-        else:
-            batch_log[k] = (type(v), v)
-    logger.info(f"train_pi0.py batch_log: {batch_log}")
-    logger.info(f"train_pi0.py batch: {batch}")
 
     model_config = PI0PolicyConfig.from_pretrained(config.checkpoint_dir)
     model_config.n_action_steps = config.action_steps
@@ -161,5 +149,4 @@ if __name__ == "__main__":
     config = parser.parse_args()
 
     logger.info(f"train_pi0.py config: {config}")
-    # logger.info(f"train_pi0.py config: {vars(config)}")
     main(config)
