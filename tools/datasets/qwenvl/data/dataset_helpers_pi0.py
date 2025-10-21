@@ -59,9 +59,9 @@ class TaskEncoder(
 
         batch = {
             'task': task,
-            'observation.images.camera0': imgs[0].flip(dims=[0])[None,].to(torch.float32),
-            'observation.images.camera1': imgs[1].flip(dims=[0])[None,].to(torch.float32),
-            'observation.images.camera2': imgs[2].flip(dims=[0])[None,].to(torch.float32),
+            'observation.images.camera0': imgs[0].unsqueeze(0).to(torch.float32),
+            'observation.images.camera1': imgs[1].unsqueeze(0).to(torch.float32),
+            'observation.images.camera2': imgs[2].unsqueeze(0).to(torch.float32),
             'observation.state': state[None,].to(torch.float32),
             'action': action[None].to(torch.float32),
         }
