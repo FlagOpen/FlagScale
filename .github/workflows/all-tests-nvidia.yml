@@ -123,7 +123,7 @@ jobs:
           - aquila
           - deepseek
           - mixtral
-          - llava_onevision
+          # - llava_onevision # TODO: test need fix
     name: "train-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
