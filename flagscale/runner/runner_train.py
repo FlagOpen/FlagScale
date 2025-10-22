@@ -10,6 +10,7 @@ from omegaconf import DictConfig, OmegaConf
 from flagscale.runner.elastic.monitor_service import MonitorService
 from flagscale.runner.runner_base import JobStatus, RunnerBase
 from flagscale.runner.utils import (
+    add_decive_extra_config,
     flatten_dict_to_args,
     get_free_port,
     get_host_name_or_ip,
@@ -655,8 +656,12 @@ class SSHTrainRunner(RunnerBase):
         enable_log_collection=True,
         enable_diagnostic=True,
         enable_monitoring=False,
-        enable_gpu_health_check=False,
+        enable_gpu_health_check=None,
     ):
+        if enable_gpu_health_check is None:
+            enable_gpu_health_check = self.config.experiment.runner.get(
+                "enable_gpu_health_check", False
+            )
         # Run GPU health check first if enabled (before script generation)
         if enable_gpu_health_check:
             logger.info("Starting GPU health check before training setup...")
@@ -1186,7 +1191,11 @@ class CloudTrainRunner(RunnerBase):
 
         run_local_command(f"bash {host_run_script_file}", dryrun)
 
-    def run(self, with_test=False, dryrun=False):
+    def run(self, with_test=False, dryrun=False, enable_gpu_health_check=None):
+        if enable_gpu_health_check is None:
+            enable_gpu_health_check = self.config.experiment.runner.get(
+                "enable_gpu_health_check", False
+            )
         if dryrun:
             logger.info("Dryrun mode is not supported in CloudRunner.")
             return
