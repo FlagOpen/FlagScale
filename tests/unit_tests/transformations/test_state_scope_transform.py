@@ -63,4 +63,4 @@ class TestStateScopeTransform(unittest.TestCase):
         with ctx.session():
             _ = backbone(x)
 
-        self.assertIn("ctxA", store._state_by_context)
+        self.assertIn("ctxA", store._state_by_scope)
