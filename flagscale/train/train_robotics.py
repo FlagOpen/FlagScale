@@ -16,9 +16,10 @@ import robotics.training.utils as training_utils
 import torch
 import torch.distributed as dist
 import tqdm_loggable.auto as tqdm
-import wandb
 
 from torch.nn.parallel import DistributedDataParallel as DDP
+
+import wandb
 
 from megatron.energon import WorkerConfig, get_loader, get_train_dataset
 from tools.datasets.qwenvl.data.dataset_helpers_robotics import TaskEncoder
@@ -215,7 +216,7 @@ def main(config: _config.TrainConfig):
 
     ENERGON_DATA_PATH = os.getenv('ENERGON_DATA_PATH')
     ds = get_train_dataset(
-        ENERGON_DATA_PATH
+        ENERGON_DATA_PATH,
         batch_size=1,
         shuffle_buffer_size=0,
         max_samples_per_sequence=100,
