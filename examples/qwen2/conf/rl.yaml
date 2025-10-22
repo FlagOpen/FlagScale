@@ -14,7 +14,7 @@ experiment:
   runner:
     nnodes: 1
     nproc_per_node: 8
-    hostfile: null
+    hostfile: examples/qwen2/conf/hostfile.txt
     ray_port: 6379
     ray_dashboard_port: 8265
     ray_include_dashboard: true
