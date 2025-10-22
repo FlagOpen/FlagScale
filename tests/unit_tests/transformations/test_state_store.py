@@ -1,6 +1,6 @@
 import unittest
 
-from flagscale.transforms.state_store import StateStore
+from flagscale.transformations.state_store import StateStore
 
 
 class DummyState:
