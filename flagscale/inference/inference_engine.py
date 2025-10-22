@@ -17,7 +17,7 @@ from flagscale.inference.runtime_context import RuntimeContext
 from flagscale.inference.utils import parse_torch_dtype
 from flagscale.models.pi0.modeling_pi0 import PI0Policy, PI0PolicyConfig
 from flagscale.runner.utils import logger
-from flagscale.transforms import create_transformations_from_config
+from flagscale.transformations import create_transformations_from_config
 
 
 def _check_required_fields(config_dict: DictConfig, required_fields: List[str]) -> None:
@@ -201,9 +201,10 @@ class InferenceEngine:
         transforms_cfg = self.vconfig.engine.transformations or {}
         transformations = create_transformations_from_config(transforms_cfg)
         for t in transformations:
-            success = t.apply(self.backbone)
-            if not success:
-                raise ValueError(f"Failed to apply transformation: {t}")
+            for name, mod in t.targets(self.backbone):
+                success = t.apply(mod)
+                if not success:
+                    raise ValueError(f"Failed to apply transformation: {t} on {name}")
 
     def generate(self, **kwargs) -> Any:
         """Generate the output."""
@@ -225,32 +226,36 @@ class InferenceEngine:
         if "generator" in kwargs and kwargs["generator"] is not None:
             kwargs["generator"] = _build_generator(kwargs["generator"], default_device)
 
-        # TODO(yupu): get num_timesteps from the kwargs
-        with RuntimeContext().session():
+        with RuntimeContext(self.vconfig.engine.state_scopes).session():
             outputs = self.model_or_pipeline(**kwargs)
             return outputs
 
-    def save(self, outputs) -> bool:
-        """Save the output."""
+    def save(self, outputs, name_prefix: Union[str, None] = None) -> bool:
+        """Save the output.
+
+        Args:
+            outputs: The output object returned by the pipeline.
+            name_prefix: Optional file name prefix to distinguish multiple runs.
+        """
 
         os.makedirs(self.vconfig.engine.results_path, exist_ok=True)
 
         if self.vconfig.engine.output_format == "image":
-            output_path = os.path.join(self.vconfig.engine.results_path, "output.png")
-            # TODO(yupu): Support multiple images
             if hasattr(outputs, "images") and len(outputs.images) > 0:
-                image = outputs.images[0]
+                for i, image in enumerate(outputs.images):
+                    fname = f"{name_prefix}_output_{i}.png" if name_prefix else f"output_{i}.png"
+                    image.save(os.path.join(self.vconfig.engine.results_path, fname))
             else:
                 raise NotImplementedError("Not implemented yet")
-            image.save(output_path)
         elif self.vconfig.engine.output_format == "video":
-            output_path = os.path.join(self.vconfig.engine.results_path, "output.mp4")
-            # TODO(yupu): Support multiple videos
             if hasattr(outputs, "frames") and len(outputs.frames) > 0:
-                video = outputs.frames[0]
+                for i, frame in enumerate(outputs.frames):
+                    fname = f"{name_prefix}_output_{i}.mp4" if name_prefix else f"output_{i}.mp4"
+                    export_to_video(
+                        frame, os.path.join(self.vconfig.engine.results_path, fname), fps=15
+                    )
             else:
                 raise NotImplementedError("Not implemented yet")
-            export_to_video(video, output_path, fps=15)
         else:
             raise ValueError(f"Unsupported output format: {self.vconfig.engine.output_format}")
 
