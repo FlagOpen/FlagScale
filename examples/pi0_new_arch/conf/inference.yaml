@@ -1,15 +1,15 @@
 defaults:
   - _self_
-  - inference: 1.3b
+  - inference: pi0
 
 experiment:
-  exp_name: wan2_1
+  exp_name: pi0
   exp_dir: outputs/${experiment.exp_name}
-  model: Wan-AI/Wan2.1-T2V-1.3B-Diffusers 
+  model: /models/lerobot/pi0
   task:
     type: inference
-    backend: vllm # TODO(yupu): Remove this restriction
-    entrypoint: flagscale/inference/diffusion_entrypoint.py
+    backend: vllm # TODO: Remove this restriction
+    entrypoint: flagscale/inference/embodied_entrypoint.py
   runner:
     hostfile: null
   cmds:

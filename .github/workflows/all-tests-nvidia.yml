@@ -95,7 +95,7 @@ jobs:
       matrix:
         subset:
           - inference
-          - transforms
+          - transformations
     name: "inference_flagscale-${{ matrix.subset == './' && 'root' || matrix.subset }}"
     with:
       backend: inference_flagscale

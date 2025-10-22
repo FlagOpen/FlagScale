@@ -2,6 +2,8 @@ from typing import Dict, List, Type
 
 from omegaconf import DictConfig
 
+from .diffusion.taylorseer_transformation import TaylorSeerTransformation
+from .diffusion.timestep_tracker_transformation import TimestepTrackerTransformation
 from .log_io_transformation import LogIOTransformation
 from .state_scope_transformation import StateScopeTransformation
 from .transformation import Transformation
@@ -10,6 +12,8 @@ from .transformation import Transformation
 _TRANSFORMATION_REGISTRY: Dict[str, Type[Transformation]] = {
     "LogIOTransformation": LogIOTransformation,
     "StateScopeTransformation": StateScopeTransformation,
+    "TimestepTrackerTransformation": TimestepTrackerTransformation,
+    "TaylorSeerTransformation": TaylorSeerTransformation,
 }
 
 __all__ = ["create_transformations_from_config"]
