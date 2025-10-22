@@ -11,9 +11,9 @@ from omegaconf import DictConfig
 from torch import nn
 
 from flagscale.inference.runtime_context import current_ctx
-from flagscale.transforms.hook import ModelHook, ModuleHookRegistry
-from flagscale.transforms.state_store import BaseState, StateStore
-from flagscale.transforms.transformation import Selector, Transformation, build_selector
+from flagscale.transformations.hook import ModelHook, ModuleHookRegistry
+from flagscale.transformations.state_store import BaseState, StateStore
+from flagscale.transformations.transformation import Selector, Transformation, build_selector
 
 
 class TaylorSeerState(BaseState):

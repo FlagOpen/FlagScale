@@ -2,10 +2,10 @@ from typing import Dict, List, Type
 
 from omegaconf import DictConfig
 
+from .diffusion.taylorseer_transformation import TaylorSeerTransformation
+from .diffusion.timestep_tracker_transformation import TimestepTrackerTransformation
 from .log_io_transformation import LogIOTransformation
 from .state_scope_transformation import StateScopeTransformation
-from .taylorseer_transformation import TaylorSeerTransformation
-from .timestep_tracker_transformation import TimestepTrackerTransformation
 from .transformation import Transformation
 
 # Registry of supported Transformation classes by their class names.

@@ -3,9 +3,12 @@ import unittest
 import torch
 import torch.nn as nn
 
+from flagscale.flagscale.transformations.diffusion.taylorseer_transformation import (
+    TaylorSeerHook,
+    TaylorSeerTransformation,
+)
 from flagscale.inference.runtime_context import RuntimeContext
-from flagscale.transforms.hook import ModuleHookRegistry
-from flagscale.transforms.taylorseer_transformation import TaylorSeerHook, TaylorSeerTransformation
+from flagscale.transformations.hook import ModuleHookRegistry
 
 
 class TestTaylorSeerTransformation(unittest.TestCase):

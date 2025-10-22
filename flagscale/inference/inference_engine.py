@@ -14,7 +14,7 @@ from omegaconf import DictConfig
 
 from flagscale.inference.runtime_context import RuntimeContext
 from flagscale.inference.utils import parse_torch_dtype
-from flagscale.transforms import create_transformations_from_config
+from flagscale.transformations import create_transformations_from_config
 
 
 def _check_required_fields(config_dict: DictConfig, required_fields: List[str]) -> None:

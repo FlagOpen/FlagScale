@@ -3,12 +3,12 @@ import unittest
 import torch
 import torch.nn as nn
 
-from flagscale.inference.runtime_context import RuntimeContext
-from flagscale.transforms.hook import ModuleHookRegistry
-from flagscale.transforms.timestep_tracker_transformation import (
+from flagscale.flagscale.transformations.diffusion.timestep_tracker_transformation import (
     TimestepTrackerHook,
     TimestepTrackerTransformation,
 )
+from flagscale.inference.runtime_context import RuntimeContext
+from flagscale.transformations.hook import ModuleHookRegistry
 
 
 class TrackerModule(nn.Module):

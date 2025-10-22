@@ -6,8 +6,8 @@ import torch
 import torch.nn as nn
 
 from flagscale.inference.runtime_context import current_ctx
-from flagscale.transforms.hook import ModelHook, ModuleHookRegistry, unwrap_module
-from flagscale.transforms.transformation import Transformation
+from flagscale.transformations.hook import ModelHook, ModuleHookRegistry, unwrap_module
+from flagscale.transformations.transformation import Transformation
 
 
 # TODO(yupu): Check if this hook is general and reliable

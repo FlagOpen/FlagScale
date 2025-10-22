@@ -10,7 +10,7 @@ import torch
 
 from torch import nn
 
-from flagscale.transforms.state_store import StateStore
+from flagscale.transformations.state_store import StateStore
 
 
 # Copied from

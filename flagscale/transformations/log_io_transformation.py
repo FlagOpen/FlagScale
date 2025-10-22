@@ -5,8 +5,8 @@ import torch
 from torch import nn
 
 from flagscale.runner.utils import logger
-from flagscale.transforms.hook import ModelHook, ModuleHookRegistry
-from flagscale.transforms.transformation import Transformation
+from flagscale.transformations.hook import ModelHook, ModuleHookRegistry
+from flagscale.transformations.transformation import Transformation
 
 
 def _shape_of(x: torch.Tensor, name: str = "N/A") -> str:
