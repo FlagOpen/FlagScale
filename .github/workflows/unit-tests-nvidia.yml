@@ -25,7 +25,6 @@ jobs:
         - /home/flagscale_cicd/flask/config:/workspace/config
         - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
         - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
-        - /home/flagscale_cicd/sccache:/root/.cache/sccache
       options: --gpus all --shm-size=500g --hostname flagscale_cicd --user root --ulimit nofile=65535:65535
     steps:
       - name: Checkout Code
@@ -63,24 +62,18 @@ jobs:
           trap 'echo "Cleaning up temporary directory..."; rm -rf "$TMP_DIR"' EXIT
 
           if [ "${{ inputs.backend }}" = "train_megatron" ] || [ "${{ inputs.backend }}" = "train_flagscale" ]; then
-            source /root/miniconda3/bin/activate flagscale-train
-            pip install aiohttp -i https://pypi.tuna.tsinghua.edu.cn/simple
-            conda deactivate
+            echo ""
             # PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="Megatron-LM" --verbose --no-build-isolation
           elif [ "${{ inputs.backend }}" = "vllm" ] || [ "${{ inputs.backend }}" = "inference_flagscale" ]; then
             source /root/miniconda3/bin/activate flagscale-inference
-            export SCCACHE_DIR=/root/.cache/sccache
-            sccache --start-server
-            sccache --show-stats
             pip install scikit-build scikit-build-core
             pip install --no-build-isolation git+https://github.com/FlagOpen/FlagGems.git@release_v1.0.0
             PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation
-            sccache --show-stats
             conda deactivate
           else
             echo "Unknown backend type: ${{ inputs.backend }}"
             exit 1
           fi
-          cd /__w/FlagScale/FlagScale/tests/Nvidia_GPU/
+          cd tests/Nvidia_GPU/
           tests/scripts/unit_tests/test_subset.sh --backend ${{ inputs.backend }} --subset ${{ inputs.subset }} --id ${{ github.sha }}
         shell: bash

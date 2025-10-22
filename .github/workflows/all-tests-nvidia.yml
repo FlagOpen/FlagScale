@@ -33,6 +33,7 @@ on:
       - 'tests/MUSA_S5000/**'
       - 'tests/Metax_C550/**'
       - 'tests/Tsing_micro/**'
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
   cancel-in-progress: true
@@ -158,7 +159,7 @@ jobs:
           - qwen3
           - qwen3-flaggems
           - robobrain2
-          #- robobrain2-flaggems
+          # - robobrain2-flaggems
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
