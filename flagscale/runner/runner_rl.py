@@ -106,15 +106,11 @@ def _generate_run_script_rl(
                         f.write(
                             f'ray start --head --port={ray_port} --dashboard-host=0.0.0.0 --dashboard-port={ray_dashboard_port} --num-gpus={resource_info["slots"]}\n'
                         )
-                        # Wait for Ray cluster and Dashboard to be fully ready
-                        f.write('sleep 30\n')
                         f.write(f'ray status --address=localhost:{ray_port} || sleep 5\n')
                     else:
                         f.write(
                             f'ray start --head --port={ray_port} --num-gpus={resource_info["slots"]}\n'
                         )
-                        # Wait for Ray cluster to be ready
-                        f.write('sleep 30\n')
                         f.write(f'ray status --address=localhost:{ray_port} || sleep 5\n')
                 else:
                     f.write(
