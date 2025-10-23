@@ -99,19 +99,11 @@ def _generate_run_script_rl(
             available_ip = list(resources.keys())[0]
             ray_port = config.experiment.runner.get("ray_port", 6379)
             ray_dashboard_port = config.experiment.runner.get("ray_dashboard_port", 8265)
-            ray_include_dashboard = config.experiment.runner.get("ray_include_dashboard", True)
             for node_rank, (host, resource_info) in enumerate(resources.items()):
                 if node_rank == 0:
-                    if ray_include_dashboard:
-                        f.write(
-                            f'ray start --head --port={ray_port} --dashboard-host=0.0.0.0 --dashboard-port={ray_dashboard_port} --num-gpus={resource_info["slots"]}\n'
-                        )
-                        f.write(f'ray status --address=localhost:{ray_port} || sleep 5\n')
-                    else:
-                        f.write(
-                            f'ray start --head --port={ray_port} --num-gpus={resource_info["slots"]}\n'
-                        )
-                        f.write(f'ray status --address=localhost:{ray_port} || sleep 5\n')
+                    f.write(
+                        f'ray start --head --port={ray_port} --dashboard-host=0.0.0.0 --dashboard-port={ray_dashboard_port} --num-gpus={resource_info["slots"]}\n'
+                    )
                 else:
                     f.write(
                         f'ssh -f -n {host} "{before_start};ray start --address={available_ip}:{ray_port} --num-gpus={resource_info["slots"]}"\n'
@@ -216,27 +208,19 @@ class SSHRLRunner(RunnerBase):
             export_cmd += [f"{k}={v}"]
         ray_cmd = []
         if self.resources is not None:
-            ray_include_dashboard = self.config.experiment.runner.get("ray_include_dashboard", True)
-            
-            if ray_include_dashboard:
-                # Use Dashboard port for connection
-                runtime_env = self.config.experiment.runner.get(
-                    "runtime_env", 'third_party/verl/verl/trainer/runtime_env.yaml'
-                )
-                ray_dashboard_port = self.config.experiment.runner.get("ray_dashboard_port", 8265)
-                ray_cmd = [
-                    'ray',
-                    'job',
-                    'submit',
-                    f'--address=http://{host}:{ray_dashboard_port}',
-                    f'--runtime-env={runtime_env}',
-                    '--no-wait',
-                    '--',
-                ]
-            else:
-                # When Dashboard is disabled, run directly without ray job submit
-                # The Ray cluster is already running, so we can execute the script directly
-                ray_cmd = []
+            runtime_env = self.config.experiment.runner.get(
+                "runtime_env", 'third_party/verl/verl/trainer/runtime_env.yaml'
+            )
+            ray_dashboard_port = self.config.experiment.runner.get("ray_dashboard_port", 8265)
+            ray_cmd = [
+                'ray',
+                'job',
+                'submit',
+                f'--address=http://{host}:{ray_dashboard_port}',
+                f'--runtime-env={runtime_env}',
+                '--no-wait',
+                '--',
+            ]
         cmd = shlex.join(
             ray_cmd + export_cmd + ['python3', '-m'] + [self.user_script] + self.user_args
         )
