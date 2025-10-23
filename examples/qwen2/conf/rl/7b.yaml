@@ -36,9 +36,9 @@ actor_rollout_ref:
       optimizer_offload: false
   rollout:
     log_prob_micro_batch_size_per_gpu: 10
-    tensor_model_parallel_size: 2
+    tensor_model_parallel_size: 4
     name: vllm
-    gpu_memory_utilization: 0.6
+    gpu_memory_utilization: 0.8
     n: 5
   ref:
     log_prob_micro_batch_size_per_gpu: 10
