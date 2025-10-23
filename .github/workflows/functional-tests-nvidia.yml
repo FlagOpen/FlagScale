@@ -71,6 +71,11 @@ jobs:
             sccache --start-server
             sccache --show-stats
 
+            #modify for support 0.5b_multiple_instance ci test because of ray version issue
+            pip install ray==2.49.1
+            pip install gymnasium
+            pip install dm-tree
+
             echo "[INFO] Install VLLM and its dependencies ..."
             MAX_RETRIES=5
             DELAYS=(1 1.5 2 2.5 3)
