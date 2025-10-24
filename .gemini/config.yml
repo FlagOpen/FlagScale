@@ -1,7 +1,8 @@
 # https://developers.google.com/gemini-code-assist/docs/customize-gemini-behavior-github
-# This configuration is based on vllm/. gemini/config.yaml
+# This configuration is based on https://github.com/vllm-project/vllm/blob/main/.gemini/config.yaml
 have_fun: false  # Just review the code
 code_review:
   comment_severity_threshold: HIGH  # Reduce quantity of comments
+  max_review_comments: -1 # Maximum number of review comments allowed; -1 indicates no limit
   pull_request_opened:
     summary: false  # Don't summarize the PR in a separate comment
