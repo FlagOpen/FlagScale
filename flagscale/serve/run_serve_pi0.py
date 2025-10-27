@@ -1,58 +1,95 @@
+import argparse
 import base64
 import io
-import logging
-import sys
 import time
-import traceback
+
+from typing import Union
 
 import numpy as np
 import torch
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from lerobot.configs.policies import PreTrainedConfig
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
-from lerobot.policies.factory import make_policy
+from omegaconf import DictConfig, ListConfig, OmegaConf
 from PIL import Image
 
-from flagscale import serve
-from flagscale.logger import logger
+from flagscale.inference.utils import parse_torch_dtype
+from flagscale.models.pi0.modeling_pi0 import PI0Policy, PI0PolicyConfig
+from flagscale.runner.utils import logger
 
 app = Flask(__name__)
 CORS(app)
 
-serve.load_args()
-TASK_CONFIG = serve.task_config
-ENGINE_CONFIG = TASK_CONFIG.serve[0].engine_args
 
-model = None
+class PI0Server:
+    def __init__(self, config):
+        self.config_generate = config["generate"]
+        self.config_engine = config["engine"]
 
+        dtype_config = self.config_engine.get("torch_dtype", "torch.float32")
+        self.dtype = parse_torch_dtype(dtype_config) if dtype_config else torch.float32
+        self.host = self.config_engine.get("host", "0.0.0.0")
+        self.port = self.config_engine.get("port", 5000)
 
-def load_model():
-    global model
-    try:
-        lerobot_dataset = LeRobotDataset(
-            ENGINE_CONFIG.dataset_repo_id,
-            episodes=ENGINE_CONFIG.episodes,
-            video_backend=ENGINE_CONFIG.video_backend,
+        self.load_model()
+        self.warmup()
+
+    def warmup(self):
+        self.infer(self.build_input())
+
+    def load_model(self):
+        t_s = time.time()
+        config = PI0PolicyConfig.from_pretrained(self.config_engine.model)
+        policy = PI0Policy.from_pretrained(
+            model_path=self.config_engine.model,
+            tokenizer_path=self.config_engine.tokenizer,
+            stat_path=self.config_engine.stat_path,
+            config=config,
         )
-        cfg = PreTrainedConfig.from_pretrained(ENGINE_CONFIG.model)
-        cfg.repo_id = ENGINE_CONFIG.tokenizer_path
-        cfg.pretrained_path = ENGINE_CONFIG.model
-        policy = make_policy(cfg, ds_meta=lerobot_dataset.meta)
-        if torch.cuda.is_available():
-            policy = policy.cuda()
-            logger.info(f"Load model to GPU-{torch.cuda.get_device_name()} done. ")
-        else:
-            logger.info("Load model to CPU done.")
-        if ENGINE_CONFIG.compile_model:
-            policy = torch.compile(policy, mode=ENGINE_CONFIG.compile_mode)
-        model = policy
-        return True
-    except Exception as e:
-        logger.error(f"Load model error: {e}")
-        logger.error(traceback.format_exc())
-        return False
+        self.policy = policy.to(device=self.config_engine.device)
+        self.policy.eval()
+        logger.info(f"PI0 loaded latency: {time.time() - t_s:.2f}s")
+
+    def build_input(self):
+        batch = {}
+        batch_size = self.config_generate["batch_size"]
+        for k in self.config_generate["images_keys"]:
+            batch[k] = torch.randn(
+                batch_size, *self.config_generate["images_shape"], dtype=self.dtype
+            ).cuda()
+        batch[self.config_generate["state_key"]] = torch.randn(
+            batch_size, self.config_generate["action_dim"], dtype=self.dtype
+        ).cuda()
+        batch.update(self.config_generate["instruction"])
+        return batch
+
+    def infer(self, batch):
+        t_s = time.time()
+        images, img_masks = self.policy.prepare_images(batch)
+        state = self.policy.prepare_state(batch)
+        lang_tokens, lang_masks = self.policy.prepare_language(batch)
+        images = [i.to(dtype=self.dtype) for i in images]
+        state = state.to(dtype=self.dtype)
+        with torch.no_grad():
+            actions = self.policy.model.sample_actions(
+                images, img_masks, lang_tokens, lang_masks, state, noise=None
+            )
+            logger.info(f"actions: {actions.shape}")
+        actions_trunked = actions[
+            :, : self.config_generate["action_horizon"], : self.config_generate["action_dim"]
+        ]
+        logger.info(f"PI0 infer latency: {time.time() - t_s:.2f}s")
+        logger.info(f"actions_trunked: {actions_trunked}")
+        return actions_trunked
+
+    def serve(self):
+        logger.info(f"Serve URL: http://{self.host}:{self.port}")
+        logger.info(f"Available API:")
+        logger.info(f"  - POST /infer   - inference api")
+        app.run(host=self.host, port=self.port, debug=False, threaded=True)
+
+
+PI0_SERVER: PI0Server = None
 
 
 def decode_image_base64(image_base64):
@@ -85,9 +122,7 @@ def process_images(images_json):
 
 @app.route('/infer', methods=['POST'])
 def infer_api():
-    start_time = time.time()
-
-    if model is None:
+    if PI0_SERVER is None:
         return jsonify({"success": False, "error": "Model not loaded"}), 503
     data = request.get_json()
     if not data:
@@ -121,39 +156,37 @@ def infer_api():
 
     with torch.no_grad():
         batch = {
-            # [1, 3, 480, 640]
-            "observation.images.cam_high": sample["cam_high"][None,],
-            "observation.images.cam_left_wrist": sample["cam_left_wrist"][None,],
-            "observation.images.cam_right_wrist": sample["cam_right_wrist"][None,],
-            # [1,14]
+            # images:[1,3,480,640] state&action:[1,14] task:[str]
+            "observation.images.camera0": sample["cam_high"][None,],
+            "observation.images.camera1": sample["cam_left_wrist"][None,],
+            "observation.images.camera2": sample["cam_right_wrist"][None,],
             "observation.state": eef_pose,
-            # [1,14]
             "action": qpos,
-            # [str]
             "task": [instruction],
         }
-        images, img_masks = model.prepare_images(batch)
-        state = model.prepare_state(batch)
-        lang_tokens, lang_masks = model.prepare_language(batch)
-        actions = model.model.sample_actions(
-            images, img_masks, lang_tokens, lang_masks, state, noise=None
-        )
-
-    processing_time = time.time() - start_time
-    logger.info(f"Inference cost: {processing_time:.2f}s")
-    return jsonify({"success": True, "qpos": actions.tolist(), "processing_time": processing_time})
+        actions = PI0_SERVER.infer(batch)
+    return jsonify({"success": True, "qpos": actions.tolist()})
 
 
-def main():
-    if not load_model():
-        logger.error("Model load failed, exiting.")
-        sys.exit(1)
+def parse_config() -> Union[DictConfig, ListConfig]:
+    """Parse the configuration file"""
 
-    logger.info(f"Serve URL: http://{ENGINE_CONFIG['host']}:{ENGINE_CONFIG['port']}")
-    logger.info(f"Available API:")
-    logger.info(f"  - POST /infer   - inference api")
-    app.run(host=ENGINE_CONFIG['host'], port=ENGINE_CONFIG['port'], debug=False, threaded=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config-path", type=str, required=True, help="Path to the configuration YAML file"
+    )
+    parser.add_argument("--log-dir", type=str, required=True, help="Path to the log")
+    args = parser.parse_args()
+    config = OmegaConf.load(args.config_path)
+    return config
+
+
+def main(config):
+    global PI0_SERVER
+    PI0_SERVER = PI0Server(config)
+    PI0_SERVER.serve()
 
 
 if __name__ == "__main__":
-    main()
+    parsed_cfg = parse_config()
+    main(parsed_cfg["serve"])
