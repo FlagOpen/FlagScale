@@ -1,4 +1,4 @@
-# Mainly adopted from https://github.com/vllm-project/vllm/blob/main/.gemini/config.yaml. Below is the original copyright:
+# Mainly adopted from https://github.com/vllm-project/vllm/blob/main/.gemini/config.yaml.
 # https://developers.google.com/gemini-code-assist/docs/customize-gemini-behavior-github
 have_fun: false  # Just review the code
 code_review:
