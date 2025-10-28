@@ -6,7 +6,7 @@ import unittest
 import torch
 
 from flagscale.runner.utils import logger
-from flagscale.transforms.hook import ModelHook, ModuleHookRegistry
+from flagscale.transformations.hook import ModelHook, ModuleHookRegistry
 
 
 class DummyBlock(torch.nn.Module):
