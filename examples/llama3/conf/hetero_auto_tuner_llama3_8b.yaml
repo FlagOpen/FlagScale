@@ -1,10 +1,10 @@
 defaults:
-  - train: 8b_cnmon
+  - train: 8b_hetero
   - _self_
 
 experiment:
-  exp_name: llama3_8b_cnmon_auto_tuner
-  exp_dir: /nfs/syq/hetero_auto_tuner/prpr/FlagScale/${experiment.exp_name}
+  exp_name: llama3_8b_hetero_auto_tuner
+  exp_dir: /nfs/syq/test/FlagScale/${experiment.exp_name}
   task:
     type: train
     backend: megatron
@@ -17,7 +17,7 @@ experiment:
     nnodes: 2
     nproc_per_node: 8
     rdzv_backend: static
-    hostfile: ./hostfile_cnmon
+    hostfile: ./hostfile_hetero
   envs:
     FLAGCX_IB_HCA: mlx5 #或者使用多网卡模糊匹配 mlx5
     FLAGCX_ENABLE_TOPO_DETECT: TRUE
@@ -36,31 +36,33 @@ experiment:
         PATH: "/torch/venv3/pytorch/bin:/torch/venv3/pytorch/bin:/torch/venv3/pytorch_infer/bin:/workspace/ffmpeg-mlu-v4.4.0/install/bin:/usr/local/openmpi/bin:/usr/local/neuware/bin:/usr/local/openmpi/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
       # A800:
         #  LIBRARY_PATH: "/usr/local/cuda/lib64/stubs"
-        #  LD_LIBRARY_PATH: "/usr/local/cuda-12.4/lib64:/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
-        #  PATH: "/usr/local/cuda-12.4/bin:/root/miniconda3/condabin:/usr/local/mpi/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          #  LD_LIBRARY_PATH: "/usr/local/cuda-12.4/lib64:/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
+      #  PATH: "/usr/local/cuda-12.4/bin:/root/miniconda3/condabin:/usr/local/mpi/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   
   auto_tuner:
     space:
-      hetero_pipeline_layer_split: "auto"
+      hetero_pipeline_layer_split: 'auto'
       #hetero_pipeline_layer_split: [[12,12], [10,14]]
-      hetero_process_meshes: ['auto', 1, 1, 'auto', [1,2], 'auto', 1, 1, 'auto', [1,2]]
-      hetero_inter_mesh_max_layer_diff: 2
+      hetero_process_meshes: ['auto', 1, 1, 'auto', 'auto', 'auto', 1, 1, 'auto', 'auto']
+      hetero_inter_mesh_max_layer_diff: 4
+      hetero_intra_mesh_max_layer_diff: 2
       use_distributed_optimizer: [true]
       sequence_parallel: [true]
       #num_layers_per_virtual_pipeline_stage: [1]
-      micro_batch_size: [2,4]
-      use_recompute: [true]
+      #context_parallel_size: [1]
+      #expert_model_parallel_size: [1]
+      micro_batch_size: [1,2]
+      use_recompute: [true,false]
       recompute_granularity_per_stage_micro_batch: "auto"
       recompute_method_per_stage_micro_batch: "auto"
       recompute_num_layers_per_stage_micro_batch: "auto"
     control:
       max_time_per_task: 600
-      train_iters: 5
-      max_time: 10000
+      train_iters: 3
 
 device_type_specific:
   mlu590:
-    build_dir: /nfs/syq/hetero_auto_tuner/prpr/FlagScale/build/Cambricon_MLU/FlagScale
+    build_dir: /nfs/syq/test/FlagScale/build/Cambricon_MLU/FlagScale
 
 action: auto_tune
 
