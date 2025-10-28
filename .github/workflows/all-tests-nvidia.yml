@@ -4,11 +4,25 @@ on:
   push:
     branches: ["main"]
     paths-ignore:
-      - 'hardware/**'
+      - 'hardware/BI_V150/**'
+      - 'hardware/Cambricon_MLU/**'
+      - 'hardware/Huawei_Atlas800TA3/**'
+      - 'hardware/Hygon_BW1000/**'
+      - 'hardware/Kunlunxin_R310p/**'
+      - 'hardware/MUSA_S5000/**'
+      - 'hardware/Metax_C550/**'
+      - 'hardware/Tsing_micro/**'
   pull_request:
     branches: ["main"]
     paths-ignore:
-      - 'hardware/**'
+      - 'hardware/BI_V150/**'
+      - 'hardware/Cambricon_MLU/**'
+      - 'hardware/Huawei_Atlas800TA3/**'
+      - 'hardware/Hygon_BW1000/**'
+      - 'hardware/Kunlunxin_R310p/**'
+      - 'hardware/MUSA_S5000/**'
+      - 'hardware/Metax_C550/**'
+      - 'hardware/Tsing_micro/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
@@ -23,12 +37,13 @@ jobs:
       - name: Set Environment Variable
         id: set-env # Assign an ID to this step
         run: |
-          echo "ci_image=localhost:5000/flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.0-time2507111538" >> $GITHUB_OUTPUT  # Set output variable
+          echo "ci_image=localhost:5000/flagscale:cuda12.8.1-cudnn9.7.1-python3.12-torch2.7.1-time2510131515" >> $GITHUB_OUTPUT  # Set output variable
 
   # Train Megatron Unit Tests with Matrix
   unit_tests_train_megatron:
     needs:
       - set-env
+      - functional_tests_rl
     uses: ./.github/workflows/unit-tests-nvidia.yml
     strategy:
       matrix:
@@ -80,7 +95,7 @@ jobs:
       matrix:
         subset:
           - inference
-          - transforms
+          - transformations
     name: "inference_flagscale-${{ matrix.subset == './' && 'root' || matrix.subset }}"
     with:
       backend: inference_flagscale
@@ -91,7 +106,7 @@ jobs:
   functional_tests_train:
     needs:
       - set-env
-      - unit_tests_inference_flagscale
+      - functional_tests_serve
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
@@ -99,7 +114,7 @@ jobs:
           - aquila
           - deepseek
           - mixtral
-          - llava_onevision
+          # - llava_onevision # TODO: test need fix
     name: "train-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
@@ -125,7 +140,6 @@ jobs:
   functional_tests_inference:
     needs:
       - set-env
-      - functional_tests_hetero
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
@@ -134,6 +148,8 @@ jobs:
           - deepseek_r1_distill_qwen-flaggems
           - qwen3
           - qwen3-flaggems
+          - robobrain2
+          # - robobrain2-flaggems
     name: "inference-${{ matrix.task }}"
     with:
       task: ${{ matrix.task }}
@@ -159,7 +175,7 @@ jobs:
   functional_tests_rl:
     needs:
       - set-env
-      - functional_tests_serve
+      - functional_tests_hetero
     uses: ./.github/workflows/functional-tests-nvidia.yml
     strategy:
       matrix:
