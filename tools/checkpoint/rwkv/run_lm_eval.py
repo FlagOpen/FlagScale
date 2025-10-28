@@ -35,9 +35,9 @@ model = RWKV(model=MODEL_NAME, strategy='cuda fp16')
 pipeline = PIPELINE(model, "rwkv_vocab_v20230424")
 
 eval_tasks = [
-    #'lambada_openai', 'piqa', 'storycloze_2016', 'hellaswag', 'winogrande',
-    #'arc_challenge', 'arc_easy', 'headqa_en', 'openbookqa', 'sciq',
-    #'mmlu'，'glue']
+    'lambada_openai', 'piqa', 'storycloze_2016', 'hellaswag', 'winogrande',
+    'arc_challenge', 'arc_easy', 'headqa_en', 'openbookqa', 'sciq',
+    'mmlu','glue']
 num_fewshot = 0
 
 RWKV_PAD = pipeline.tokenizer.encode('\n')
