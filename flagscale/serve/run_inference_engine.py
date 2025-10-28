@@ -15,6 +15,7 @@ except Exception as e:
 
 from flagscale import serve
 from flagscale.utils import flatten_dict_to_args
+from omegaconf import DictConfig, OmegaConf
 
 
 def check_port_occupied(ip_addr, port):
@@ -84,6 +85,13 @@ def llama_cpp_serve(args):
 def sglang_serve(args):
     common_args = args.get("engine_args", {})
     sglang_args = args.get("engine_args_specific", {}).get("sglang", {})
+    if sglang_args.get("dist-init-addr", None):
+        logger.warning(f"sglang dist-init-addr:{ sglang_args['dist-init-addr']} exists, will be overwrite by master_addr, master_port")
+        was_struct = OmegaConf.is_struct(sglang_args)
+        OmegaConf.set_struct(sglang_args, False)
+        sglang_args.pop("dist-init-addr")
+        if was_struct:
+            OmegaConf.set_struct(sglang_args, True)
 
     command = ["python", "-m", "sglang.launch_server"]
     if common_args.get("model", None):
