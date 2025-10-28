@@ -570,7 +570,9 @@ def _generate_run_script_serve(config, host, node_rank, cmd, background=True, wi
                             common_args = copy.deepcopy(args.get("engine_args", {}))
                             sglang_args = args.get("engine_args_specific", {}).get("sglang", {})
                             if sglang_args.get("dist-init-addr", None):
-                                logger.warning(f"sglang dist-init-addr:{ sglang_args['dist-init-addr']} exists, will be overwrite by master_addr, master_port")
+                                logger.warning(
+                                    f"sglang dist-init-addr:{ sglang_args['dist-init-addr']} exists, will be overwrite by master_addr, master_port"
+                                )
                                 was_struct = OmegaConf.is_struct(sglang_args)
                                 OmegaConf.set_struct(sglang_args, False)
                                 sglang_args.pop("dist-init-addr")
