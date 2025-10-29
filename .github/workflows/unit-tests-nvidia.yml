@@ -74,7 +74,6 @@ jobs:
             MAX_RETRIES=5
             DELAYS=(1 1.5 2 2.5 3)
             COMMANDS=(
-              "pip install scikit-build scikit-build-core"
               "pip install git+https://github.com/FlagOpen/FlagGems.git@v3.0"
               "PYTHONPATH=./:$PYTHONPATH pip install . --config-settings=backend="vllm" --verbose --no-build-isolation"
             )
