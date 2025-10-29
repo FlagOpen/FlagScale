@@ -386,6 +386,5 @@ if __name__ == "__main__":
             pp_layers_split=hetero_config['pp_layer_split'],
         )
         print(f"pipeline cost: {pp_cost}")
-        break
     best_config = get_min_simulated_time_config(hetero_configs)
     print(best_config)
