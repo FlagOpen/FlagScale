@@ -7,9 +7,12 @@ import torch
 from torch import nn
 
 from flagscale.inference.runtime_context import RuntimeContext
-from flagscale.transforms.hook import ModelHook, ModuleHookRegistry
-from flagscale.transforms.state_scope_transformation import StateScopeHook, StateScopeTransformation
-from flagscale.transforms.state_store import StateStore
+from flagscale.transformations.hook import ModelHook, ModuleHookRegistry
+from flagscale.transformations.state_scope_transformation import (
+    StateScopeHook,
+    StateScopeTransformation,
+)
+from flagscale.transformations.state_store import StateStore
 
 
 class DummyPipeline:
@@ -60,4 +63,4 @@ class TestStateScopeTransform(unittest.TestCase):
         with ctx.session():
             _ = backbone(x)
 
-        self.assertIn("ctxA", store._state_by_context)
+        self.assertIn("ctxA", store._state_by_scope)
