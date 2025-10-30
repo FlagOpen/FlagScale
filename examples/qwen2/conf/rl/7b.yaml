@@ -9,8 +9,8 @@ algorithm:
   use_kl_in_reward: false
 
 data:
-  train_files: /workspace/data/gsm8k/train.parquet
-  val_files: /workspace/data/gsm8k/test.parquet
+  train_files: /nfs/lyrawen/geometry3k/data/train.parquet
+  val_files: /nfs/lyrawen/geometry3k/data/test.parquet
   train_batch_size: 256
   max_prompt_length: 512
   max_response_length: 1024
@@ -19,7 +19,7 @@ data:
 
 actor_rollout_ref:
   model:
-    path: /workspace/models/Qwen/Qwen2-7B-Instruct
+    path: /nfs/lyrawen/model/Qwen2.5-VL-7B-Instruct
     use_remove_padding: true
     enable_gradient_checkpointing: true
     trust_remote_code: True
