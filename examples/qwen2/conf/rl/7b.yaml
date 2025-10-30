@@ -23,13 +23,20 @@ actor_rollout_ref:
     use_remove_padding: true
     enable_gradient_checkpointing: true
     trust_remote_code: True
+    # Enable FlashAttention-2 with mixed precision
+    attn_implementation: flash_attention_2
+    torch_dtype: bfloat16  # or float16 depending on GPU support
   actor:
+    # Use Megatron backend for actor
+    strategy: megatron
     optim:
       lr: 1e-6
     ppo_mini_batch_size: 64
     ppo_micro_batch_size_per_gpu: 10
     use_sequence_packing_balance: true
     sequence_packing_algorithm: modified_first_fit_decreasing
+    # Use fused kernels when available (FlashAttention, fused MLP, etc.)
+    use_fused_kernels: true
     use_kl_loss: true
     kl_loss_coef: 0.001
     kl_loss_type: low_var_kl
