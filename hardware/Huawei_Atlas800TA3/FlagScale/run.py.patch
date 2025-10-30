@@ -1,0 +1,25 @@
+diff --git a/run.py b/run.py
+index 1892cebc..d76b3b3b 100644
+--- a/run.py
++++ b/run.py
+@@ -11,6 +11,8 @@ from flagscale.runner.runner_rl import SSHRLRunner
+ from flagscale.runner.runner_serve import CloudServeRunner, SSHServeRunner
+ from flagscale.runner.runner_train import CloudTrainRunner, SSHTrainRunner
+ from flagscale.runner.utils import is_master
++from flagscale.train.megatron_adaptor import exe_adaptation
++
+ 
+ # To accommodate the scenario where the before_start field is used to switch to the actual environment during program execution,
+ # we have placed the import statements inside the function body rather than at the beginning of the file.
+@@ -30,6 +32,10 @@ def check_and_reset_deploy_config(config: DictConfig) -> None:
+ 
+ @hydra.main(version_base=None, config_name="config")
+ def main(config: DictConfig) -> None:
++#    exe_adaptation()
++ #   print(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
++ #   print(config)
++  #  print(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+     check_and_reset_deploy_config(config)
+     task_type = config.experiment.task.get("type", "train")
+     if task_type == "train":
+

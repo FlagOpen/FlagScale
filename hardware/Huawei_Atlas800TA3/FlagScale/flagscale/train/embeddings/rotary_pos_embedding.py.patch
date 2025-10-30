@@ -1,0 +1,56 @@
+diff --git a/flagscale/train/embeddings/rotary_pos_embedding.py b/flagscale/train/embeddings/rotary_pos_embedding.py
+new file mode 100644
+index 00000000..595fcf5c
+--- /dev/null
++++ b/flagscale/train/embeddings/rotary_pos_embedding.py
+@@ -0,0 +1,49 @@
++import math
++from typing import Optional
++import logging
++import torch
++from torch import Tensor
++from functools import wraps
++
++from megatron.training import get_args
++
++from ops.npu_rotary_position_embedding import npu_rotary_position_embedding
++
++def apply_rotary_pos_emb_bshd(t: Tensor, freqs: Tensor, rotary_interleaved: bool = False, multi_latent_attention: bool = False, mscale: float = 1.0) -> Tensor:
++    args = get_args()
++    _mscale = mscale
++    rot_dim = freqs.shape[-1]
++    t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
++    cos_ = (torch.cos(freqs) * _mscale).to(t.dtype)
++    sin_ = (torch.sin(freqs) * _mscale).to(t.dtype)
++
++    if args.use_fused_rotary_pos_emb:
++        mode = 1 if rotary_interleaved else 0
++        t = npu_rotary_position_embedding(t.contiguous(), cos_, sin_, mode).to(t.dtype)
++    else:
++        t = (t * cos_) + (_rotate_half(t, rotary_interleaved) * sin_)
++
++    return torch.cat((t, t_pass), dim=-1)
++
++def apply_rotary_pos_emb_thd(
++    t: Tensor, cu_seqlens: Tensor, freqs: Tensor, rotary_interleaved: bool = False, multi_latent_attention: bool = False, mscale: float = 1.0
++) -> Tensor:
++
++    """A baseline implementation of applying RoPE for `thd` format.
++
++    Args:
++        t (Tensor): Input tensor T is of shape [t, h, d]
++        cu_seqlens(Tensor):  Cumulative sum of sequence lengths in a batch for `t`,
++        with shape [b + 1] and dtype torch.int32.
++        freqs (Tensor): Rotary Positional embedding tensor freq is of shape [max_s, 1, 1, d]
++
++    Returns:
++        Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
++    """
++    args = get_args()
++
++    position_ids = cu_seqlens.position_ids
++    block_size, bsz = position_ids.shape
++    freqs = freqs[position_ids.view(-1)].reshape(block_size, bsz, 1, -1)
++
++    return apply_rotary_pos_emb_bshd(t, freqs, rotary_interleaved, multi_latent_attention, mscale)
+
