@@ -1,0 +1,29 @@
+engine:
+  model:  /nfs/lhh/models/hunyuanveido
+  loader: diffusers
+  pipeline:
+    class: diffusers.HunyuanVideoPipeline
+    from_pretrained:
+      torch_dtype: bfloat16
+  components:
+    vae:
+      class: diffusers.AutoencoderKLHunyuanVideo
+      from_pretrained:
+        subfolder: vae
+        torch_dtype: float32
+  device: cuda
+  results_path: ${experiment.exp_dir}/results
+  output_format: "video"
+  state_scopes:
+    ["cond", "uncond"]
+
+generate:
+  prompts: ["A cat walks on the grass, realistic"]
+  negative_prompt: "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+  height: 384
+  width: 512
+  num_frames: 64
+  guidance_scale: 5.0
+  generator:
+    seed: 42
+    device: cuda
