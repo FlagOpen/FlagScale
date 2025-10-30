@@ -31,6 +31,10 @@ system:
 
 model:
   transformer_impl: transformer_engine
+  distributed_backend: flagcx
+  use_flag_gems: true
+  flag_gems_log_path: /share/project/lixianduo/scale_gems_cx/gems_te_cx_gems_log
+  flag_gems_unused: ['index_put', 'index_put_']
   num_layers: 32
   hidden_size: 5120
   ffn_hidden_size: 25600
@@ -58,7 +62,7 @@ model:
   seed: ${experiment.seed}
   finetune: false
   micro_batch_size: 1
-  global_batch_size: 8 #2048
+  global_batch_size: 256 #2048
   eval_iters: 0
   train_iters: 102400
 
@@ -78,7 +82,8 @@ model:
 data:
   reset_position_ids: True
   reset_attention_mask: True
-  data_path: /share/project/lixianduo/demo_data/pile/pile_wikipedia_demo
+  # data_path: /share/project/lixianduo/demo_data/pile/pile_wikipedia_demo
+  data_path: /share/project/lizhiyu/hetero_data/HQ_wo_fim/Nemotron-CC-high-actual-actual-high_text_document
   split: 1
   no_mmap_bin_files: true
   tokenizer:
@@ -87,4 +92,3 @@ data:
     tokenizer_path: /share/project/lixianduo/qwentokenizer
     vocab_size: 151851
     make_vocab_size_divisible_by: 64
-

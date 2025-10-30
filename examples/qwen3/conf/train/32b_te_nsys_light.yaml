@@ -9,6 +9,11 @@ system:
   use_distributed_optimizer: true
   overlap_grad_reduce: true
   overlap_param_gather: true
+   # profiling
+  profile: true
+  profile_step_start: 5
+  profile_step_end: 15
+  profile_ranks: [0,7,8,15]
   precision:
     bf16: true
     attention_softmax_in_fp32: true
@@ -31,7 +36,7 @@ system:
 
 model:
   transformer_impl: transformer_engine
-  num_layers: 32
+  num_layers: 8
   hidden_size: 5120
   ffn_hidden_size: 25600
   num_attention_heads: 64

@@ -9,6 +9,11 @@ system:
   use_distributed_optimizer: true
   overlap_grad_reduce: true
   overlap_param_gather: true
+  # profiling
+  profile: true
+  profile_step_start: 5
+  profile_step_end: 15
+  profile_ranks: [0,7,8,15]
   precision:
     bf16: true
     attention_softmax_in_fp32: true

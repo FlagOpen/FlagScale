@@ -1,0 +1,27 @@
+diff --git a/megatron/core/fusions/fused_softmax.py b/megatron/core/fusions/fused_softmax.py
+index 4eaf112b1..45fe1c782 100644
+--- a/megatron/core/fusions/fused_softmax.py
++++ b/megatron/core/fusions/fused_softmax.py
+@@ -230,10 +230,13 @@ class FusedScaleMaskSoftmax(nn.Module):
+         # [b, np, sq, sk]
+         assert input.dim() == 4
+ 
+-        if self.is_kernel_available(mask, *input.size()) and softmax_offset is None:
+-            return self.forward_fused_softmax(input, mask)
+-        else:
+-            return self.forward_torch_softmax(input, mask, softmax_offset)
++        # if self.is_kernel_available(mask, *input.size()) and softmax_offset is None:
++        #     return self.forward_fused_softmax(input, mask)
++        # else:
++        #     return self.forward_torch_softmax(input, mask, softmax_offset)
++
++        # # replace for gems
++        return self.forward_torch_softmax(input, mask, softmax_offset)
+ 
+     def is_kernel_available(self, mask, b, np, sq, sk):
+         """Check whether the fused CUDA kernel can be used for the given shapes and settings.
+@@ -357,3 +360,4 @@ class FusedScaleMaskSoftmax(nn.Module):
+         import scaled_masked_softmax_cuda
+ 
+         return scaled_masked_softmax_cuda.get_batch_per_block(sq, sk, b, np)
++

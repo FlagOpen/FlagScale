@@ -1,0 +1,36 @@
+diff --git a/megatron/core/transformer/dot_product_attention.py b/megatron/core/transformer/dot_product_attention.py
+index 2a958722e..e097974ed 100644
+--- a/megatron/core/transformer/dot_product_attention.py
++++ b/megatron/core/transformer/dot_product_attention.py
+@@ -180,14 +180,18 @@ class DotProductAttention(MegatronModule):
+             (output_size[0] * output_size[1], output_size[2], output_size[3]), query.dtype, "mpu"
+         )
+ 
+-        # Raw attention scores. [b * np, sq, sk]
+-        matmul_result = torch.baddbmm(
+-            matmul_input_buffer,
+-            query.transpose(0, 1),  # [b * np, sq, hn]
+-            key.transpose(0, 1).transpose(1, 2),  # [b * np, hn, sk]
+-            beta=0.0,
+-            alpha=self.softmax_scale,
+-        )
++        # # Raw attention scores. [b * np, sq, sk]
++        # matmul_result = torch.baddbmm(
++        #     matmul_input_buffer,
++        #     query.transpose(0, 1),  # [b * np, sq, hn]
++        #     key.transpose(0, 1).transpose(1, 2),  # [b * np, hn, sk]
++        #     beta=0.0,
++        #     alpha=self.softmax_scale,
++        # )
++        matmul_result = torch.bmm(
++            query.transpose(0, 1),                       # [b*np, sq, hn]
++            key.transpose(0, 1).transpose(1, 2)          # [b*np, hn, sk]
++        ) * self.softmax_scale                           # 手动乘 alpha
+ 
+         # change view to [b, np, sq, sk]
+         attention_scores = matmul_result.view(*output_size)
+@@ -254,3 +258,4 @@ class DotProductAttention(MegatronModule):
+         return make_sharded_tensors_for_checkpoint(
+             state_dict, prefix, {'softmax_offset': 0}, sharded_offsets
+         )
++

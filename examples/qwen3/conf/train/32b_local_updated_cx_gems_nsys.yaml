@@ -5,10 +5,15 @@ system:
   pipeline_model_parallel_size: 1
   expert_model_parallel_size: 1
   context_parallel_size: 1
-  sequence_parallel: true
+  # sequence_parallel: true
   use_distributed_optimizer: true
   overlap_grad_reduce: true
   overlap_param_gather: true
+  # profiling
+  profile: true
+  profile_step_start: 5
+  profile_step_end: 15 
+  profile_ranks: [0,7,8,15]
   precision:
     bf16: true
     attention_softmax_in_fp32: true
@@ -30,7 +35,14 @@ system:
     ckpt_format: ${experiment.ckpt_format}
 
 model:
-  transformer_impl: transformer_engine
+  # transformer_impl: transformer_engine
+  transformer_impl: local
+  no_gradient_accumulation_fusion: true
+  distributed_backend: flagcx
+  use_flag_gems: true
+  flag_gems_log_path: /share/project/lixianduo/scale_gems_cx/gems_log
+  flag_gems_unused: ['index_put', 'index_put_']
+  no_persist_layer_norm: true
   num_layers: 32
   hidden_size: 5120
   ffn_hidden_size: 25600
@@ -78,7 +90,8 @@ model:
 data:
   reset_position_ids: True
   reset_attention_mask: True
-  data_path: /share/project/lixianduo/demo_data/pile/pile_wikipedia_demo
+  # data_path: /share/project/lixianduo/demo_data/pile/pile_wikipedia_demo
+  data_path: /share/project/lizhiyu/hetero_data/HQ_wo_fim/Nemotron-CC-high-actual-actual-high_text_document
   split: 1
   no_mmap_bin_files: true
   tokenizer:
@@ -87,4 +100,3 @@ data:
     tokenizer_path: /share/project/lixianduo/qwentokenizer
     vocab_size: 151851
     make_vocab_size_divisible_by: 64
-

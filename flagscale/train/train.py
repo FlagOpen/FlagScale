@@ -2557,13 +2557,15 @@ def train(
         cuda_graph_helper.create_cudagraphs()
     
 
-    # test flag_gems
-    if not HAVE_GEMS:
-        print("can not import flag_gems")
-    else:
-        print(f"use flag_gems for training")
-        flag_gems.enable(record=True, once=True, unused=["index_put", "index_put_"], path="/share/project/lixianduo/scale_gems_cx/gems_logs/flaggems_2.log")
-
+    if args.use_flag_gems:
+        if not HAVE_GEMS:
+            raise ValueError(f"Can not import flag gems")
+        else:
+            print(f"use flag_gems for training")
+            print(f"{args.flag_gems_log_path=}")
+            print(f"{args.flag_gems_unused=}")
+            flag_gems.enable(record=True, once=True, unused=args.flag_gems_unused, path=args.flag_gems_log_path)
+            #  flag_gems.enable(record=True, once=True, path=args.flag_gems_log_path)
 
 
     # Run training iterations till done.
