@@ -1,0 +1,123 @@
+diff --git a/flagscale/train/megatron_adaptor.py b/flagscale/train/megatron_adaptor.py
+new file mode 100644
+index 00000000..9e9b00ae
+--- /dev/null
++++ b/flagscale/train/megatron_adaptor.py
+@@ -0,0 +1,116 @@
++import sys
++from argparse import ArgumentParser
++import os
++import shutil
++import argparse
++import time
++from functools import wraps
++from multiprocessing import Lock
++from logging import getLogger
++
++
++
++
++import torch
++from torch.distributed import all_gather_into_tensor, reduce_scatter_tensor
++from torch_npu.contrib import transfer_to_npu
++
++
++
++
++def te_adaptation(pm):
++    from flagscale.train.megatron_basic_adaptor.requirements_basic import version_wrapper, dummy_compile
++    from flagscale.train.megatron_basic_adaptor.layernorm import MindSpeedTELayernorm
++    pm.register_patch('torch.compile', dummy_compile)
++    pm.register_patch('torch.jit.script', dummy_compile)
++    # Need replace modules before import megatron
++    #pm.register_patch('importlib.metadata.version', version_wrapper)
++    #pm.register_patch('transformer_engine.pytorch.LayerNorm', MindSpeedTELayernorm, create_dummy=True)
++    #pm.register_patch('transformer_engine.pytorch.LayerNormLinear', torch.nn.Module, create_dummy=True)
++    #pm.register_patch('transformer_engine.pytorch.DotProductAttention', torch.nn.Module, create_dummy=True)
++    #pm.register_patch('transformer_engine.pytorch.Linear', torch.nn.Module, create_dummy=True)
++    #pm.register_patch('transformer_engine.pytorch.GroupedLinear', torch.nn.Module, create_dummy=True)
++    #pm.register_patch('transformer_engine.pytorch.distributed.CudaRNGStatesTracker', torch.nn.Module, create_dummy=True)
++    #pm.register_patch('transformer_engine.common.recipe.DelayedScaling', torch.nn.Module, create_dummy=True)
++    pm.register_patch('flash_attn.flash_attn_interface.flash_attn_unpadded_func', create_dummy=True)
++    #pm.register_patch('transformer_engine.pytorch.tensor.QuantizedTensor', torch.nn.Module, create_dummy=True)
++
++def apex_adaptation(pm):
++    from flagscale.train.megatron_basic_adaptor.requirements_basic import multi_tensor_l2norm, multi_tensor_scale, multi_tensor_applier
++    from flagscale.train.megatron_basic_adaptor.fused_layer_norm import fused_layer_norm_affine
++    from flagscale.train.ops.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16
++    from flagscale.train.megatron_basic_adaptor.fused_layer_norm import FusedLayerNormAffineFunction, FastLayerNormFN
++
++   # pm.register_patch('amp_C.multi_tensor_l2norm', multi_tensor_l2norm, create_dummy=True)
++   # pm.register_patch('amp_C.multi_tensor_scale', multi_tensor_scale, create_dummy=True)
++   # pm.register_patch('apex.multi_tensor_apply.multi_tensor_applier', multi_tensor_applier, create_dummy=True)
++   # pm.register_patch('apex.normalization.fused_layer_norm.fused_layer_norm_affine', fused_layer_norm_affine, create_dummy=True)
++  #  pm.register_patch('fused_layer_norm_cuda', create_dummy=True)
++    pm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32', npu_matmul_add_fp32, create_dummy=True)
++    pm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16', npu_matmul_add_fp16, create_dummy=True)
++   # pm.register_patch('apex.normalization.fused_layer_norm.FusedLayerNormAffineFunction',
++    #                    FusedLayerNormAffineFunction, create_dummy=True)
++        
++def optimizer_selection(pm):
++    from flagscale.train.megatron_basic_adaptor.adamw import FusedTorchAdamW, AdamW
++    #pm.register_patch('apex.optimizers.FusedAdam', FusedTorchAdamW, create_dummy=True)
++    pm.register_patch('apex.optimizers.FusedAdam', AdamW, create_dummy=True)
++    pm.register_patch('apex.optimizers.FusedSGD', torch.optim.SGD, create_dummy=True)
++
++def torch_adaptation(pm):
++    from torch.distributed import all_gather_into_tensor, reduce_scatter_tensor
++    from flagscale.train.megatron_basic_adaptor.requirements_basic import type_wrapper, ensure_contiguous_wrapper, lcm, \
++        dummy_function, torch_all_reduce_double_dtype_bypass_wrapper
++
++    pm.register_patch('torch.nn.parameter.Parameter.type', type_wrapper)
++    pm.register_patch('torch.Tensor.type', type_wrapper)
++    pm.register_patch('torch.Tensor.view', ensure_contiguous_wrapper)
++    pm.register_patch('torch.distributed._all_gather_base', all_gather_into_tensor)
++    pm.register_patch('torch.distributed._reduce_scatter_base', reduce_scatter_tensor)
++    pm.register_patch('torch.distributed.all_reduce', torch_all_reduce_double_dtype_bypass_wrapper)
++    pm.register_patch('torch._C._jit_set_nvfuser_enabled', dummy_function)
++    # lmc is supported python >=3.9
++    if sys.version_info < (3, 9):
++        pm.register_patch('math.lcm', lcm, create_dummy=True)
++
++def collate_wrapper_bak(fn):
++    @wraps(fn)
++    def wrapper(samples):
++        print(f"samples:---------------{samples}")
++        actual_seq_len = [elem['position_ids'][1] for elem in samples]
++        samples = [{key: val if key != 'position_ids' else val[0] for key, val in elem.items()} for elem in samples]
++        batch = fn(samples)
++        seq_len = actual_seq_len[0][-1]
++        actual_seq_len = [elem + i * seq_len for i, elem in enumerate(actual_seq_len)]
++        batch['actual_seq_len'] = torch.cat(actual_seq_len)
++        return batch
++
++    return wrapper
++def collate_wrapper(fn):
++    @wraps(fn)
++    def wrapper(samples):
++        actual_seq_len = [elem['position_ids'][-1].item() for elem in samples]
++        samples = [{key: val if key != 'position_ids' else val[0] for key, val in elem.items()} for elem in samples]
++        batch = fn(samples)
++        seq_len = actual_seq_len[0]
++        actual_seq_len = [elem + i * seq_len for i, elem in enumerate(actual_seq_len)]
++        batch['actual_seq_len'] = torch.tensor(actual_seq_len, dtype=torch.long)
++
++        return batch
++    return wrapper
++
++def mcore_model_adaptation(aspm):
++    aspm.register_patch('torch.utils.data._utils.collate.default_collate', collate_wrapper)
++    from .embeddings.rotary_pos_embedding import apply_rotary_pos_emb_thd
++    aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding._apply_rotary_pos_emb_thd', apply_rotary_pos_emb_thd)
++
++def exe_adaptation():
++    from flagscale.train.patch_utils import MindSpeedPatchesManager as aspm
++    te_adaptation(aspm)
++    apex_adaptation(aspm)
++    optimizer_selection(aspm)
++    torch_adaptation(aspm)
++   # mcore_model_adaptation(aspm)    
++    aspm.apply_patches()
++
++exe_adaptation()
+

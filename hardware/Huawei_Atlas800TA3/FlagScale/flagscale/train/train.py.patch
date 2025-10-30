@@ -1,0 +1,34 @@
+diff --git a/flagscale/train/train.py b/flagscale/train/train.py
+index e1778c88..b56c979a 100644
+--- a/flagscale/train/train.py
++++ b/flagscale/train/train.py
+@@ -23,6 +23,7 @@ import time
+ # The earliest we can measure the start time.
+ _TRAIN_START_TIME = time.time()
+ import torch
++import torch_npu
+ 
+ try:
+     from megatron.post_training.algos.distillation import (
+@@ -141,6 +142,8 @@ from megatron.core.msc_utils import MultiStorageClientFeature, open_file
+ 
+ from flagscale.train.peft.peft import PEFT
+ from flagscale.train.peft.lora import LoRA
++from torch_npu.contrib import transfer_to_npu
++
+ 
+ def destroy_global_state():
+     destroy_global_vars()
+@@ -960,9 +963,9 @@ def pretrain(
+     global _TRAIN_START_TIME
+     ########## FlagScale Begin ##########
+     if "cpu:gloo" == torch.distributed.get_backend():
+-        start_time_tensor = torch.tensor([_TRAIN_START_TIME], dtype=torch.double, device='cpu')
++        start_time_tensor = torch.tensor([_TRAIN_START_TIME], dtype=torch.float32, device='cpu')
+     else:
+-        start_time_tensor = torch.tensor([_TRAIN_START_TIME], dtype=torch.double, device='cuda')
++        start_time_tensor = torch.tensor([_TRAIN_START_TIME], dtype=torch.float32, device='cuda')
+     ########## FlagScale Begin ##########
+     torch.distributed.all_reduce(start_time_tensor, op=torch.distributed.ReduceOp.MIN)
+     _TRAIN_START_TIME = start_time_tensor.item()
+

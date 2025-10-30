@@ -1,0 +1,22 @@
+diff --git a/examples/qwen2_5_vl/conf/train/7b.yaml b/examples/qwen2_5_vl/conf/train/7b.yaml
+index 62b2e072..2464a792 100644
+--- a/examples/qwen2_5_vl/conf/train/7b.yaml
++++ b/examples/qwen2_5_vl/conf/train/7b.yaml
+@@ -95,13 +95,13 @@ model:
+       lr_decay_style: cosine
+ 
+ data:
+-  data_path: xxxx
+-  vision_root: xxxx
++  data_path: /home/dataset/sample_dataset/sample_dataset/wds-1
++  vision_root: /home/dataset/sample_dataset/sample_dataset/
+   dataloader_type: external
+   split: 100,0,0
+   tokenizer:
+     tokenizer_type: Qwen2VLTokenizer
+-    tokenizer_path: xxxx
++    tokenizer_path: /home/dataset/Qwen2.5-VL-7B-Instruct
+     vocab_size: 152064 # 7b
+     extra_vocab_size: 421
+     make_vocab_size_divisible_by: 64
+
