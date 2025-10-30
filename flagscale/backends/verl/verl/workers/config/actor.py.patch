@@ -1,0 +1,15 @@
+diff --git a/verl/workers/config/actor.py b/verl/workers/config/actor.py
+index fe5b3e11..c5bfc65d 100644
+--- a/verl/workers/config/actor.py
++++ b/verl/workers/config/actor.py
+@@ -98,6 +98,10 @@ class ActorConfig(BaseConfig):
+     use_dynamic_bsz: bool = False
+     ppo_max_token_len_per_gpu: int = 16384
+     ppo_infer_max_token_len_per_gpu: int = 16384
++    # sequence packing controls
++    use_sequence_packing_balance: bool = False
++    sequence_packing_algorithm: str = "modified_first_fit_decreasing"
++    sequence_length_pad_multiple: Optional[int] = None  # if None, default to 2*TP*SP; CP users can override
+     clip_ratio: float = 0.2
+     clip_ratio_low: float = 0.2
+     clip_ratio_high: float = 0.2

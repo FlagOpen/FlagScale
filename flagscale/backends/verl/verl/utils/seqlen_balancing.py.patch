@@ -1,5 +1,5 @@
 diff --git a/verl/utils/seqlen_balancing.py b/verl/utils/seqlen_balancing.py
-index bc5588f7..8face3b3 100644
+index bc5588f7..3d212838 100644
 --- a/verl/utils/seqlen_balancing.py
 +++ b/verl/utils/seqlen_balancing.py
 @@ -15,7 +15,9 @@
@@ -13,7 +13,7 @@ index bc5588f7..8face3b3 100644
  import torch
  from torch import distributed as dist
  
-@@ -34,128 +36,573 @@ def calculate_workload(seqlen_list: list[int]):
+@@ -34,162 +36,607 @@ def calculate_workload(seqlen_list: list[int]):
      return 24576 * seqlen_list + seqlen_list**2
  
  
@@ -318,6 +318,26 @@ index bc5588f7..8face3b3 100644
 -        for i, partition in enumerate(partitions):
 -            assert len(partition) * k_partitions == len(seqlen_list), (
 -                f"{len(partition)} * {k_partitions} != {len(seqlen_list)}"
+-            )
+-    return partitions
+-
+-
+-def greedy_partition(seqlen_list: list[int], k_partitions: int, equal_size: bool):
+-    bias = sum(seqlen_list) + 1 if equal_size else 0
+-    sorted_seqlen = [(seqlen + bias, i) for i, seqlen in enumerate(seqlen_list)]
+-    partitions = [[] for _ in range(k_partitions)]
+-    partition_sums = [0 for _ in range(k_partitions)]
+-    for seqlen, i in sorted_seqlen:
+-        min_idx = None
+-        for j in range(k_partitions):
+-            if min_idx is None or partition_sums[j] < partition_sums[min_idx]:
+-                min_idx = j
+-        partitions[min_idx].append(i)
+-        partition_sums[min_idx] += seqlen
+-    if equal_size:
+-        for i, partition in enumerate(partitions):
+-            assert len(partition) * k_partitions == len(seqlen_list), (
+-                f"{len(partition)} * {k_partitions} != {len(seqlen_list)}"
 +                    repr_str += "{"
 +                    for j, (_, seqlen) in enumerate(self.sets[i].items):
 +                        if j > 0:
@@ -421,24 +441,6 @@ index bc5588f7..8face3b3 100644
 +                and len(current_bin) >= self.max_sequences_per_bin
              )
 -    return partitions
--
--
--def greedy_partition(seqlen_list: list[int], k_partitions: int, equal_size: bool):
--    bias = sum(seqlen_list) + 1 if equal_size else 0
--    sorted_seqlen = [(seqlen + bias, i) for i, seqlen in enumerate(seqlen_list)]
--    partitions = [[] for _ in range(k_partitions)]
--    partition_sums = [0 for _ in range(k_partitions)]
--    for seqlen, i in sorted_seqlen:
--        min_idx = None
--        for j in range(k_partitions):
--            if min_idx is None or partition_sums[j] < partition_sums[min_idx]:
--                min_idx = j
--        partitions[min_idx].append(i)
--        partition_sums[min_idx] += seqlen
--    if equal_size:
--        for i, partition in enumerate(partitions):
--            assert len(partition) * k_partitions == len(seqlen_list), (
--                f"{len(partition)} * {k_partitions} != {len(seqlen_list)}"
 +
 +            # If adding this sequence would exceed constraints, start a new bin
 +            if exceeds_capacity or exceeds_sequence_limit:
@@ -456,8 +458,9 @@ index bc5588f7..8face3b3 100644
 +            bins.append(current_bin)
 +
 +        return bins
-+
-+
+ 
+ 
+-def get_seqlen_balanced_partitions(seqlen_list: list[int], k_partitions: int, equal_size: bool):
 +class FirstFitPacker(SequencePacker):
 +    """Base class for First-Fit algorithms.
 +
@@ -467,8 +470,12 @@ index bc5588f7..8face3b3 100644
 +    This is an abstract base class that provides the common implementation for
 +    First-Fit variants. Subclasses must implement the _prepare_sequences method
 +    to determine the order in which sequences are processed.
-+    """
-+
+     """
+-    Calculates partitions of indices from seqlen_list such that the sum of sequence lengths
+-    in each partition is balanced. Uses the Karmarkar-Karp differencing method.
+ 
+-    This is useful for balancing workload across devices or batches, especially when
+-    dealing with variable sequence lengths.
 +    def _prepare_sequences(self, seqlen_list: list[int]) -> list[tuple[int, int]]:
 +        raise NotImplementedError("Subclasses must implement _prepare_sequences")
 +
@@ -624,8 +631,7 @@ index bc5588f7..8face3b3 100644
 +        for b in reversed(bins):
 +            has_medium = any(
 +                self.bin_capacity / 3 < size <= self.bin_capacity / 2 for _, size in b
-             )
--    return partitions
++            )
 +            if has_medium or len(small) < 2:
 +                continue
 +            remaining = self.bin_capacity - sum(size for _, size in b)
@@ -698,6 +704,77 @@ index bc5588f7..8face3b3 100644
 +    if algorithm not in packers:
 +        raise ValueError(f"Unknown packing algorithm: {algorithm}")
 +    return packers[algorithm](bin_capacity, min_bin_count, bin_count_multiple, equal_size)
++
++
++def get_seqlen_balanced_partitions(
++    seqlen_list: list[int],
++    algorithm: str,
++    bin_capacity: int,
++    min_bin_count: Optional[int] = None,
++    bin_count_multiple: Optional[int] = None,
++    equal_size: bool,
++):
++    """
++    Calculate balanced partitions of indices from seqlen_list.
++
++    Default behavior uses the Karmarkar-Karp differencing method (compatibility mode).
++    If an "algorithm" is provided, switches to the generic packing path via get_packer,
++    which supports multiple algorithms (FFD, KK, Greedy, etc.).
+ 
+     Args:
+-        seqlen_list (List[int]): A list of sequence lengths for each item.
+-        k_partitions (int): The desired number of partitions.
+-        equal_size (bool): If True, ensures that each partition has the same number of items.
+-                           Requires len(seqlen_list) to be divisible by k_partitions.
+-                           If False, partitions can have varying numbers of items, focusing
+-                           only on balancing the sum of sequence lengths.
++        seqlen_list: Sequence lengths per item.
++        algorithm: Optional. When provided, choose a packing algorithm from PackingAlgorithm or its string name.
++        bin_capacity: Optional. Required when algorithm is provided; capacity per bin (micro-batch) in tokens.
++        min_bin_count: Optional. Minimum number of bins to create.
++        bin_count_multiple: Optional. Constrain total bins to be a multiple of this value.
++        equal_size: If True, try to ensure each partition has the same number of items.
+ 
+     Returns:
+-        List[List[int]]: A list containing k_partitions lists. Each inner list contains the
+-                         original indices of the items assigned to that partition. The indices
+-                         within each partition list are sorted.
+-
+-    Raises:
+-        AssertionError: If len(seqlen_list) < k_partitions.
+-        AssertionError: If equal_size is True and len(seqlen_list) is not divisible by k_partitions.
+-        AssertionError: If any resulting partition is empty.
++        List of index lists (partitions). Indices in each partition are sorted.
+     """
+-    assert len(seqlen_list) >= k_partitions, f"number of items:[{len(seqlen_list)}] < k_partitions:[{k_partitions}]"
+ 
+-    def _check_and_sort_partitions(partitions):
+-        assert len(partitions) == k_partitions, f"{len(partitions)} != {k_partitions}"
++    def _check_and_sort_partitions(partitions: list[list[int]], expected_partitions: Optional[int]) -> list[list[int]]:
++        if expected_partitions is not None:
++            assert len(partitions) == expected_partitions, f"{len(partitions)} != {expected_partitions}"
+         seen_idx = set()
+-        sorted_partitions = [None] * k_partitions
++        sorted_partitions = [None] * len(partitions)
+         for i, partition in enumerate(partitions):
+             assert len(partition) > 0, f"the {i}-th partition is empty"
+             for idx in partition:
+@@ -198,8 +645,16 @@ def get_seqlen_balanced_partitions(seqlen_list: list[int], k_partitions: int, eq
+         assert seen_idx == set(range(len(seqlen_list)))
+         return sorted_partitions
+ 
+-    partitions = karmarkar_karp(seqlen_list=seqlen_list, k_partitions=k_partitions, equal_size=equal_size)
+-    return _check_and_sort_partitions(partitions)
++    packer = get_packer(
++        algorithm=PackingAlgorithm(algorithm),
++        bin_capacity=bin_capacity,
++        min_bin_count=min_bin_count,
++        bin_count_multiple=bin_count_multiple,
++        equal_size=equal_size,
++    )
++    partitions = packer.pack(seqlen_list)
++
++    return _check_and_sort_partitions(partitions, expected_partitions=max(min_bin_count, len(partitions)))
  
  
- def get_seqlen_balanced_partitions(seqlen_list: list[int], k_partitions: int, equal_size: bool):
+ def log_seqlen_unbalance(seqlen_list: list[int], partitions: list[list[int]], prefix):

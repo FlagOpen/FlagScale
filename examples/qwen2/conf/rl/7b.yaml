@@ -28,6 +28,8 @@ actor_rollout_ref:
       lr: 1e-6
     ppo_mini_batch_size: 64
     ppo_micro_batch_size_per_gpu: 10
+    use_sequence_packing_balance: true
+    sequence_packing_algorithm: modified_first_fit_decreasing
     use_kl_loss: true
     kl_loss_coef: 0.001
     kl_loss_type: low_var_kl

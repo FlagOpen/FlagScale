@@ -1,0 +1,97 @@
+diff --git a/verl/workers/engine/megatron/transformer_impl.py b/verl/workers/engine/megatron/transformer_impl.py
+index 0e568d80..117ff863 100644
+--- a/verl/workers/engine/megatron/transformer_impl.py
++++ b/verl/workers/engine/megatron/transformer_impl.py
+@@ -21,6 +21,7 @@ import torch
+ import torch.distributed
+ from megatron.core import parallel_state as mpu
+ from megatron.core.pipeline_parallel import get_forward_backward_func
++from megatron.core.packed_seq_params import PackedSeqParams
+ from omegaconf import OmegaConf
+ from tensordict import TensorDict
+ 
+@@ -566,6 +567,84 @@ class MegatronEngineWithLMHead(MegatronEngine):
+         input_ids = model_inputs["input_ids"]
+         multi_modal_inputs = model_inputs["multi_modal_inputs"]
+ 
++        use_seq_pack = tu.get_non_tensor_data(batch, key="use_sequence_packing", default=False)
++        if use_seq_pack and "attention_mask" in batch.keys():
++            attn = batch["attention_mask"]  # [B, S]
++            # lengths per sequence (before any truncation). Keep on CPU for meta to avoid GPU sync
++            seqlens = attn.sum(dim=1).to(torch.int32)
++            cu = torch.zeros(seqlens.numel() + 1, dtype=torch.int32, device=seqlens.device)
++            torch.cumsum(seqlens, dim=0, out=cu[1:])
++            # store as non-tensor meta for downstream components that support packed seq
++            tu.assign_non_tensor(batch, use_packed_seq=True)
++            tu.assign_non_tensor(batch, cu_seqlens_q=cu.cpu())
++            tu.assign_non_tensor(batch, cu_seqlens_kv=cu.cpu())
++            tu.assign_non_tensor(batch, max_seqlen_padded=int(attn.shape[-1]))
++
++            # Build PackedSeqParams similar to NeMo for consumers that accept it
++            pad_multiple = tu.get_non_tensor_data(
++                batch, key="pad_individual_seqs_to_multiple_of", default=1
++            )
++            pad_full_seq_to = tu.get_non_tensor_data(batch, key="pad_full_seq_to", default=None)
++
++            # Compute padded cumulative lengths if padding is requested
++            if pad_multiple > 1 or pad_full_seq_to is not None:
++                cu_padded = torch.zeros_like(cu)
++                # accumulate padded lengths
++                running = 0
++                cu_padded[0] = 0
++                for i in range(1, cu.shape[0]):
++                    seq_len = int(seqlens[i - 1].item())
++                    padded = ((seq_len + pad_multiple - 1) // pad_multiple) * pad_multiple
++                    running += padded
++                    cu_padded[i] = running
++                if pad_full_seq_to is not None:
++                    cu_padded[-1] = int(pad_full_seq_to)
++            else:
++                cu_padded = cu.clone()
++
++            max_seqlen = int((cu[1:] - cu[:-1]).max().item())
++            if pad_multiple > 1 or pad_full_seq_to is not None:
++                max_seqlen = int((cu_padded[1:] - cu_padded[:-1]).max().item())
++
++            packed_seq_params = PackedSeqParams(
++                cu_seqlens_q=cu_padded.to(torch.int32),
++                cu_seqlens_kv=cu_padded.to(torch.int32),
++                cu_seqlens_q_padded=cu_padded.to(torch.int32),
++                cu_seqlens_kv_padded=cu_padded.to(torch.int32),
++                max_seqlen_q=max_seqlen,
++                max_seqlen_kv=max_seqlen,
++                qkv_format="thd",
++            )
++            tu.assign_non_tensor(batch, packed_seq_params=packed_seq_params)
++
++            # Optionally materialize flattened packed input_ids for consumers
++            try:
++                # Concatenate valid tokens; if pad_full_seq_to is set, pad to that length
++                tokens_list = []
++                for i in range(seqlens.shape[0]):
++                    L = int(seqlens[i].item())
++                    tokens_list.append(input_ids[i, :L])
++                packed_ids = torch.cat(tokens_list, dim=0).unsqueeze(0)  # [1, T]
++                if pad_full_seq_to is not None and packed_ids.shape[1] < int(pad_full_seq_to):
++                    pad_len = int(pad_full_seq_to) - packed_ids.shape[1]
++                    packed_ids = torch.nn.functional.pad(packed_ids, (0, pad_len), value=0)
++                batch["input_ids_packed"] = packed_ids.contiguous()
++            except Exception:
++                pass
++
++            # Build rmpad (unpacked) view for consumers that accept flattened packed inputs
++            try:
++                from flash_attn.bert_padding import unpad_input  # requires flash-attn v2
++                # input_ids is [B, S]; create a 2D flattened view with mask
++                input_ids_rmpad, indices = unpad_input(input_ids.unsqueeze(-1), attn)
++                # shapes: (total_nnz, 1), (total_nnz,)
++                batch["input_ids_rmpad"] = input_ids_rmpad.squeeze(-1)
++                # Also expose indices and cu for consumers
++                batch["rmpad_indices"] = indices
++            except Exception:
++                # If flash-attn unpad isn't available, rely on consumers using cu_seqlens_* only
++                pass
++
+         if pad_mode == DatasetPadMode.NO_PADDING:
+             label = input_ids.clone()
+         else:
