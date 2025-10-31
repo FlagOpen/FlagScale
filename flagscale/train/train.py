@@ -2565,6 +2565,8 @@ def train(
             print(f"{args.flag_gems_log_path=}")
             print(f"{args.flag_gems_unused=}")
             flag_gems.enable(record=True, once=True, unused=args.flag_gems_unused, path=args.flag_gems_log_path)
+            flag_gems_ops = flag_gems.all_ops()
+            print(f"{flag_gems_ops=}")
             #  flag_gems.enable(record=True, once=True, path=args.flag_gems_log_path)
 
 
