@@ -148,28 +148,43 @@ def _get_args_verl(config: DictConfig):
         ref_config = config_dict.get("actor_rollout_ref", {}).get("ref", {})
         ref_megatron_config = ref_config.get("megatron", {})
 
-        if not ref_megatron_config:
-            ref_megatron_configs = [
-                ("actor_rollout_ref.ref.megatron.tensor_model_parallel_size", actor_config.get("megatron", {}).get("tensor_model_parallel_size", "1")),
-                ("actor_rollout_ref.ref.megatron.pipeline_model_parallel_size", "1"),
-                ("actor_rollout_ref.ref.megatron.context_parallel_size", "1"),
-                ("actor_rollout_ref.ref.megatron.virtual_pipeline_model_parallel_size", "null"),
-                ("actor_rollout_ref.ref.megatron.expert_model_parallel_size", "1"),
-                ("actor_rollout_ref.ref.megatron.expert_tensor_parallel_size", "null"),
-                ("actor_rollout_ref.ref.megatron.sequence_parallel", "True"),
-                ("actor_rollout_ref.ref.megatron.use_distributed_optimizer", "False"),  # Usually False for ref
-                ("actor_rollout_ref.ref.megatron.seed", "42"),
-                ("actor_rollout_ref.ref.megatron.param_offload", "True"),  # Often enabled for ref to save memory
-                ("actor_rollout_ref.ref.megatron.use_dist_checkpointing", "False"),
-                ("actor_rollout_ref.ref.megatron.use_mbridge", "False"),  
-                ("actor_rollout_ref.ref.megatron.forward_only", "False"),
-            ]
-            prefix = "+" if needs_plus_prefix else ""
-            for key, val in ref_megatron_configs:
-                if key not in args_keys and key not in initial_args_keys:
-                    override_args.append(f"{prefix}{key}={val}")
-                    args_keys.add(key)
-        
+        ref_megatron_configs = [
+            ("actor_rollout_ref.ref.megatron.tensor_model_parallel_size", actor_config.get("megatron", {}).get("tensor_model_parallel_size", "1")),
+            ("actor_rollout_ref.ref.megatron.pipeline_model_parallel_size", "1"),
+            ("actor_rollout_ref.ref.megatron.context_parallel_size", "1"),
+            ("actor_rollout_ref.ref.megatron.virtual_pipeline_model_parallel_size", "null"),
+            ("actor_rollout_ref.ref.megatron.expert_model_parallel_size", "1"),
+            ("actor_rollout_ref.ref.megatron.expert_tensor_parallel_size", "null"),
+            ("actor_rollout_ref.ref.megatron.sequence_parallel", "True"),
+            ("actor_rollout_ref.ref.megatron.use_distributed_optimizer", "False"),  # Usually False for ref
+            ("actor_rollout_ref.ref.megatron.seed", "42"),
+            ("actor_rollout_ref.ref.megatron.param_offload", "True"),  # Often enabled for ref to save memory
+            ("actor_rollout_ref.ref.megatron.use_dist_checkpointing", "False"),
+            ("actor_rollout_ref.ref.megatron.use_mbridge", "False"),  
+            ("actor_rollout_ref.ref.megatron.forward_only", "False"),
+        ]
+        for key, default_val in ref_megatron_configs:
+            field_name = key.split(".")[-1]  # Extract field name (e.g., "use_distributed_optimizer")
+            # Get value from YAML config if present, otherwise use default
+            actual_val = str(ref_megatron_config.get(field_name, default_val)) if isinstance(ref_megatron_config, dict) else default_val
+            
+            # Always add with + prefix for ref.megatron.* fields (Hydra struct mode requirement)
+            if key not in args_keys:
+                override_args.append(f"+{key}={actual_val}")
+                args_keys.add(key)
+
+        load_weight_key = "actor_rollout_ref.actor.load_weight"
+        load_weight_val = str(actor_config.get("load_weight", "True")) if isinstance(actor_config, dict) else "True"
+        if load_weight_key not in args_keys:
+            override_args.append(f"+{load_weight_key}={load_weight_val}")
+            args_keys.add(load_weight_key)
+
+        load_weight_key = "actor_rollout_ref.ref.load_weight"
+        load_weight_val = str(ref_config.get("load_weight", "True")) if isinstance(ref_config, dict) else "True"
+        if load_weight_key not in args_keys:
+            override_args.append(f"+{load_weight_key}={load_weight_val}")
+            args_keys.add(load_weight_key)
+
         # Auto-add FA2 config for sequence packing if not set
         fa2_key = "actor_rollout_ref.actor.megatron.override_transformer_config.attn_implementation"
         if use_seq_pack and fa2_key not in args_keys:

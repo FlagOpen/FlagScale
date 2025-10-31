@@ -1,0 +1,21 @@
+diff --git a/verl/models/mcore/loader.py b/verl/models/mcore/loader.py
+index 577ffc5e..1461a8c1 100644
+--- a/verl/models/mcore/loader.py
++++ b/verl/models/mcore/loader.py
+@@ -66,8 +66,15 @@ def load_state_dict_to_megatron_gptmodel(state_dict, wrapped_models, config, par
+     start_time = time.time()
+ 
+     def _get_gpt_model(model):
+-        return model
++        if isinstance(model, GPTModel):
++            return model
++        
++        # Check if model has a language_model attribute (e.g., Qwen2_5VLModel)
++        if hasattr(model, "language_model") and isinstance(model.language_model, GPTModel):
++            return model.language_model
+ 
++        return model
++    
+     def broadcast_params(module):
+         for param in module.parameters():
+             torch.distributed.broadcast(
