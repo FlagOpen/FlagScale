@@ -1,0 +1,126 @@
+diff --git a/megatron/core/extensions/transformer_engine.py b/megatron/core/extensions/transformer_engine.py
+index 79de39b7e..89983cb20 100644
+--- a/megatron/core/extensions/transformer_engine.py
++++ b/megatron/core/extensions/transformer_engine.py
+@@ -12,6 +12,9 @@ import torch.nn.functional as F
+ from packaging.version import Version as PkgVersion
+ from torch import Tensor
+ from torch.nn.parameter import Parameter
++from megatron.core.transformer.megatron_adaptor.rms_norm_2d import TPYCollectiveComm
++from megatron.core.transformer.megatron_adaptor.layernorm_2d import LayerNorm2D
++from megatron.core.transformer.megatron_adaptor.rms_norm_2d import RMSNorm2D
+ 
+ from megatron.core.dist_checkpointing.utils import replace_prefix_for_sharding
+ from megatron.core.model_parallel_config import ModelParallelConfig
+@@ -23,6 +26,7 @@ from megatron.core.parallel_state import (
+     get_expert_model_parallel_world_size,
+     get_hierarchical_context_parallel_groups,
+     get_tensor_model_parallel_group,
++    get_tensor_model_parallel_world_size,
+ )
+ from megatron.core.process_groups_config import ModelCommProcessGroups
+ from megatron.core.tensor_parallel.layers import (
+@@ -73,6 +77,14 @@ def condition_init_method(config, init_method):
+     """Condition TE init_method on config.perform_initialization."""
+     return init_method if config.perform_initialization else (lambda w: None)
+ 
++def add_layer_norm_sp_support(config, instance):
++    setattr(instance, 'config', config)
++    sequence_parallel = False if not hasattr(config, 'sequence_parallel') else config.sequence_parallel
++    persist_layer_norm = False if not hasattr(config, 'persist_layer_norm') else config.persist_layer_norm
++    setattr(instance, 'sequence_parallel', sequence_parallel)
++    setattr(instance.weight, 'sequence_parallel', sequence_parallel)
++    setattr(instance.bias, 'sequence_parallel', sequence_parallel)
++    setattr(instance, 'persist_layer_norm', persist_layer_norm)
+ 
+ class TENorm:
+     """A conditional wrapper to initialize an instance of
+@@ -80,33 +92,36 @@ class TENorm:
+ 
+     # TODO should we ditch normalization config and just use spec to choose LayerNorm vs RMSNorm?
+     def __new__(cls, config: TransformerConfig, hidden_size: int, eps: float = 1e-5):
+-        if not HAVE_TE:
+-            raise ImportError(
+-                "Transformer Engine is not installed. "
+-                "Please install it with `pip install transformer-engine`."
+-            )
+-
+         if config.normalization == "LayerNorm":
+-            instance = te.pytorch.LayerNorm(
+-                hidden_size=hidden_size,
+-                eps=eps,
+-                sequence_parallel=config.sequence_parallel,
+-                zero_centered_gamma=config.layernorm_zero_centered_gamma,
+-                **_get_extra_te_kwargs(config),
+-            )
++            if getattr(config, "tp_2d", False):
++                instance = LayerNorm2D(
++                    hidden_size,
++                    eps=eps,
++                    last_dim_split_comm_intf=TPYCollectiveComm(),
++                )
++            else:
++                try:
++                    # using apex implementation
++                    from megatron.core.fusions.fused_layer_norm import FusedLayerNorm
++                    instance = FusedLayerNorm(config=config, hidden_size=hidden_size, eps=eps)
++                except ImportError:
++                    # using torch implementation
++                    instance = torch.nn.LayerNorm(normalized_shape=hidden_size, eps=eps)
++                    add_layer_norm_sp_support(config, instance)
+         elif config.normalization == "RMSNorm":
+-            assert hasattr(
+-                te.pytorch, "RMSNorm"
+-            ), "Transformer-Engine >= v0.11 required to use this feature"
+-            instance = te.pytorch.RMSNorm(
+-                hidden_size=hidden_size,
+-                eps=eps,
+-                sequence_parallel=config.sequence_parallel,
+-                zero_centered_gamma=config.layernorm_zero_centered_gamma,
+-                **_get_extra_te_kwargs(config),
+-            )
++            if getattr(config, "tp_2d", False):
++                instance = RMSNorm2D(
++                    hidden_size,
++                    eps=eps,
++                    last_dim_split_comm_intf=TPYCollectiveComm(),
++                )
++                instance.use_fused_rmsnorm = False
++            else:
++                from ..transformer.megatron_adaptor.fused_rms_norm import RMSNorm
++                instance = RMSNorm(dim=hidden_size, eps=eps, sequence_parallel=config.sequence_parallel, config=config)
++                instance.config.use_fused_rmsnorm = True
+         else:
+-            raise Exception("Only LayerNorm and RMSNorm are curently supported")
++            raise Exception('Only LayerNorm and RMSNorm are curently supported')
+ 
+         return instance
+ 
+@@ -439,7 +454,7 @@ class TELayerNormColumnParallelLinear(te.pytorch.LayerNormLinear):
+             sequence_parallel=self.config.sequence_parallel,
+             fuse_wgrad_accumulation=self.config.gradient_accumulation_fusion,
+             tp_group=tp_group if torch.distributed.is_initialized() else None,
+-            tp_size=self.config.tensor_model_parallel_size,
++            tp_size=get_tensor_model_parallel_world_size(),
+             get_rng_state_tracker=(
+                 get_cuda_rng_tracker if get_cuda_rng_tracker().is_initialized() else None
+             ),
+@@ -863,7 +878,7 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
+             ),
+             attn_mask_type=attn_mask_type.name,
+             sequence_parallel=self.config.sequence_parallel,
+-            tp_size=self.config.tensor_model_parallel_size,
++            tp_size=get_tensor_model_parallel_world_size(),
+             get_rng_state_tracker=(
+                 get_cuda_rng_tracker if get_cuda_rng_tracker().is_initialized() else None
+             ),
+@@ -1161,7 +1176,7 @@ if HAVE_TE and is_te_min_version("1.9.0.dev0"):
+                 return pickle.loads(state.detach().cpu().numpy().tobytes())
+             elif isinstance(state, io.BytesIO):
+                 state.seek(0)
+-                return torch.load(state, map_location="cuda")
++                return torch.load(state, map_location="cuda", weights_only=False)
+             else:
+                 raise RuntimeError("Unsupported checkpoint format.")
+ 
+

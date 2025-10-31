@@ -1,0 +1,50 @@
+diff --git a/kernel_meta/buildPidInfo.json b/kernel_meta/buildPidInfo.json
+new file mode 100644
+index 00000000..a6cf4803
+--- /dev/null
++++ b/kernel_meta/buildPidInfo.json
+@@ -0,0 +1,42 @@
++[
++    [
++        3773126,
++        "/home/codeNew/FlagScale/build/Huawei_Atlas800TA3/FlagScale/kernel_meta/kernel_meta_13228318889461646030"
++    ],
++    [
++        3773130,
++        "/home/codeNew/FlagScale/build/Huawei_Atlas800TA3/FlagScale/kernel_meta/kernel_meta_3867808846037865887"
++    ],
++    [
++        3779583,
++        "/home/codeNew/FlagScale/build/Huawei_Atlas800TA3/FlagScale/kernel_meta/kernel_meta_10787028117158222035"
++    ],
++    [
++        3779584,
++        "/home/codeNew/FlagScale/build/Huawei_Atlas800TA3/FlagScale/kernel_meta/kernel_meta_16817165542080340895"
++    ],
++    [
++        3779585,
++        "/home/codeNew/FlagScale/build/Huawei_Atlas800TA3/FlagScale/kernel_meta/kernel_meta_5535573910979087211"
++    ],
++    [
++        3779586,
++        "/home/codeNew/FlagScale/build/Huawei_Atlas800TA3/FlagScale/kernel_meta/kernel_meta_8454514102011833031"
++    ],
++    [
++        3779587,
++        "/home/codeNew/FlagScale/build/Huawei_Atlas800TA3/FlagScale/kernel_meta/kernel_meta_13664962214595754910"
++    ],
++    [
++        3779588,
++        "/home/codeNew/FlagScale/build/Huawei_Atlas800TA3/FlagScale/kernel_meta/kernel_meta_5714518101735160180"
++    ],
++    [
++        3779589,
++        "/home/codeNew/FlagScale/build/Huawei_Atlas800TA3/FlagScale/kernel_meta/kernel_meta_10080843757666717462"
++    ],
++    [
++        3779590,
++        "/home/codeNew/FlagScale/build/Huawei_Atlas800TA3/FlagScale/kernel_meta/kernel_meta_9583039383623795840"
++    ]
++]
+\ No newline at end of file
+

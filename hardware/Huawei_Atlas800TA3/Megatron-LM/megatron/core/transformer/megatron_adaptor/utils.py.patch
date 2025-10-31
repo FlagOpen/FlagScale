@@ -1,0 +1,16 @@
+diff --git a/megatron/core/transformer/megatron_adaptor/utils.py b/megatron/core/transformer/megatron_adaptor/utils.py
+new file mode 100644
+index 000000000..679abd751
+--- /dev/null
++++ b/megatron/core/transformer/megatron_adaptor/utils.py
+@@ -0,0 +1,9 @@
++# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
++
++def divide(numerator, denominator):
++    """Ensure that numerator is divisible by the denominator and return
++    the division value.
++    """
++    if numerator % denominator != 0:
++        raise ValueError("{} is not divisible by {}".format(numerator, denominator))
++    return numerator // denominator
+

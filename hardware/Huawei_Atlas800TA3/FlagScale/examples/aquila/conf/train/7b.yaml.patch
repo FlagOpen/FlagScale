@@ -1,0 +1,57 @@
+diff --git a/examples/aquila/conf/train/7b.yaml b/examples/aquila/conf/train/7b.yaml
+index a534b9e1..e5820e4b 100644
+--- a/examples/aquila/conf/train/7b.yaml
++++ b/examples/aquila/conf/train/7b.yaml
+@@ -1,9 +1,10 @@
+ system:
+-  tensor_model_parallel_size: 1
++  tensor_model_parallel_size: 4
+   pipeline_model_parallel_size: 1
+   disable_bias_linear: True
+   use_flash_attn: True
+-  use_distributed_optimizer: True
++  use_distributed_optimizer: False
++  transformer_impl: local
+   precision:
+     fp16: True
+     initial_loss_scale: 522893
+@@ -22,8 +23,8 @@ model:
+   num_layers: 32
+   hidden_size: 4096
+   num_attention_heads: 32
+-  seq_length: 2048
+-  max_position_embeddings: 2048
++  seq_length: 512
++  max_position_embeddings: 512
+   norm_epsilon: 1e-5
+   use_rotary_position_embeddings: true
+   no_position_embedding: true
+@@ -39,22 +40,21 @@ model:
+   clip_grad: 1.0
+   train_samples: 1002539063
+   eval_iters: 0
+-  micro_batch_size: 2
+-  global_batch_size: 1728
++  micro_batch_size: 1
++  global_batch_size: 64
+   seed: 1234
+-
+   optimizer:
+     weight_decay: 0.1
+     adam_beta1: 0.9
+     adam_beta2: 0.95
+     lr_scheduler:
+-      lr: 2.0e-5
++      lr: 1.0e-3
+       min_lr: 2.0e-6
+-      lr_warmup_samples: 3076172
++      lr_warmup_samples: 10000
+       lr_decay_style: cosine
+ 
+ data:
+-  data_path: ${data_path:??}
++  data_path: /home/dataset/pile_wikipedia_demo
+   split: 1
+   tokenizer:
+     tokenizer_type: AquilaTokenizerFS
+
