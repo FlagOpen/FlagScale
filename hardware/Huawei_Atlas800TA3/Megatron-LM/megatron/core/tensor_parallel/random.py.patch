@@ -1,0 +1,40 @@
+diff --git a/megatron/core/tensor_parallel/random.py b/megatron/core/tensor_parallel/random.py
+index 994560e51..97be28884 100644
+--- a/megatron/core/tensor_parallel/random.py
++++ b/megatron/core/tensor_parallel/random.py
+@@ -70,17 +70,6 @@ def _get_cuda_rng_state(
+ 
+ 
+ def _set_cuda_rng_state(new_state: torch.Tensor, device: int = -1, graph_safe: bool = False):
+-    """Sets the random number generator state of the current GPU.
+-
+-    Arguments:
+-        new_state (torch.ByteTensor): The desired state
+-        device (int): The gpu to retrieve the rng state
+-        graph_safe (bool): Set the rng state in a graph safe manner.
+-
+-    This function is adapted from PyTorch repo (torch.cuda.set_rng_state)
+-    with a single change: the input state is not cloned. Cloning caused
+-    major performance issues for +4 GPU cases.
+-    """
+     if hasattr(_C, '_cuda_setRNGState') and callable(_C._cuda_setRNGState):
+         # older PyTorch
+         def cb():
+@@ -100,7 +89,7 @@ def _set_cuda_rng_state(new_state: torch.Tensor, device: int = -1, graph_safe: b
+             idx = device.index
+             if idx is None:
+                 idx = torch.cuda.current_device()
+-            default_generator = torch.cuda.default_generators[idx]
++            default_generator = torch.npu.default_generators[idx]
+ 
+             # if graph capturing, set the rng state in a cudagraphable way
+             if graph_safe:
+@@ -110,7 +99,6 @@ def _set_cuda_rng_state(new_state: torch.Tensor, device: int = -1, graph_safe: b
+ 
+     _lazy_call(cb)
+ 
+-
+ def get_expert_parallel_rng_tracker_name():
+     """Get the expert parallel rng tracker name"""
+     global _EXPERT_PARALLEL_RNG_TRACKER_NAME
+

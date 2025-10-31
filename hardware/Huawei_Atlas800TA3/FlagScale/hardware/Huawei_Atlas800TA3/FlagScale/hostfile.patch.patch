@@ -1,0 +1,15 @@
+diff --git a/hardware/Huawei_Atlas800TA3/FlagScale/hostfile.patch b/hardware/Huawei_Atlas800TA3/FlagScale/hostfile.patch
+new file mode 100644
+index 00000000..cd5d0af3
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/FlagScale/hostfile.patch
+@@ -0,0 +1,8 @@
++diff --git a/hostfile b/hostfile
++new file mode 100644
++index 00000000..638b9e41
++--- /dev/null
+++++ b/hostfile
++@@ -0,0 +1 @@
+++172.24.135.56 slots=4 type=A800
++
+

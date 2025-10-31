@@ -1,0 +1,106 @@
+diff --git a/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/transformer/torch_norm.py.patch b/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/transformer/torch_norm.py.patch
+new file mode 100644
+index 00000000..d1f65ef6
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/transformer/torch_norm.py.patch
+@@ -0,0 +1,99 @@
++diff --git a/megatron/core/transformer/torch_norm.py b/megatron/core/transformer/torch_norm.py
++index d0ceca7af..d78791724 100644
++--- a/megatron/core/transformer/torch_norm.py
+++++ b/megatron/core/transformer/torch_norm.py
++@@ -4,52 +4,60 @@ import torch
++ from megatron.core.jit import jit_fuser
++ from megatron.core.transformer import TransformerConfig
++ from megatron.core.utils import is_torch_min_version
+++from .megatron_adaptor.group_api_2d import TPYCollectiveComm
+++from .megatron_adaptor.layernorm_2d import LayerNorm2D
+++from .megatron_adaptor.rms_norm_2d import RMSNorm2D
++ 
++ 
+++def add_layer_norm_sp_support(config, instance):
+++    setattr(instance, 'config', config)
+++    sequence_parallel = False if not hasattr(config, 'sequence_parallel') else config.sequence_parallel
+++    persist_layer_norm = False if not hasattr(config, 'persist_layer_norm') else config.persist_layer_norm
+++    setattr(instance, 'sequence_parallel', sequence_parallel)
+++    setattr(instance.weight, 'sequence_parallel', sequence_parallel)
+++    setattr(instance.bias, 'sequence_parallel', sequence_parallel)
+++    setattr(instance, 'persist_layer_norm', persist_layer_norm)
+++
++ class WrappedTorchNorm:
++     """
++     A conditional wrapper to initialize an instance of PyTorch's
++     `LayerNorm` or `RMSNorm` based on input
++     """
++ 
++-    def __new__(
++-        cls,
++-        config: TransformerConfig,
++-        hidden_size: int,
++-        eps: float = 1e-5,
++-        # TODO: unused arguments.
++-        # See https://gitlab-master.nvidia.com/ADLR/megatron-lm/-/issues/223
++-        persist_layer_norm: bool = False,
++-        zero_centered_gamma: bool = False,
++-        normalization: str = "LayerNorm",
++-    ):
++-        assert (
++-            not config.layernorm_zero_centered_gamma
++-        ), f"zero_centered_gamma not supported by torch LayerNorm"
++-
++-        assert not config.persist_layer_norm, f"persist_layer_norm not supported by torch LayerNorm"
++-
++-        assert not config.sequence_parallel, f"sequence parallel not supported by torch LayerNorm"
++-
++-        assert (
++-            not config.memory_efficient_layer_norm
++-        ), f"memory_efficient_layer_norm not supported by torch LayerNorm"
++ 
+++    def __new__(cls, config, hidden_size: int, eps: float = 1e-5):
++         if config.normalization == "LayerNorm":
++-            norm_cls = torch.nn.LayerNorm
+++            if getattr(config, "tp_2d", False):
+++                instance = LayerNorm2D(
+++                    hidden_size,
+++                    eps=eps,
+++                    last_dim_split_comm_intf=TPYCollectiveComm(),
+++                )
+++            else:
+++                try:
+++                    # using apex implementation
+++                    from megatron.core.fusions.fused_layer_norm import FusedLayerNorm
+++                    instance = FusedLayerNorm(config=config, hidden_size=hidden_size, eps=eps)
+++                except ImportError:
+++                    # using torch implementation
+++                    instance = torch.nn.LayerNorm(normalized_shape=hidden_size, eps=eps)
+++                    add_layer_norm_sp_support(config, instance)
++         elif config.normalization == "RMSNorm":
++-            assert is_torch_min_version(
++-                "2.4.0a0"
++-            ), 'Torch RMSNorm requires PyTorch version >= 2.4.0'
++-
++-            norm_cls = torch.nn.RMSNorm
++-        elif config.normalization == "L2Norm":
++-            norm_cls = torch.nn.L2Norm
+++            if getattr(config, "tp_2d", False):
+++                instance = RMSNorm2D(
+++                    hidden_size,
+++                    eps=eps,
+++                    last_dim_split_comm_intf=TPYCollectiveComm(),
+++                )
+++                instance.use_fused_rmsnorm = False
+++            else:
+++                from .megatron_adaptor.fused_rms_norm import RMSNorm
+++                instance = RMSNorm(dim=hidden_size, eps=eps, sequence_parallel=config.sequence_parallel, config=config)
+++                instance.config.use_fused_rmsnorm = True
++         else:
++-            raise Exception("Only LayerNorm, RMSNorm and L2Norm are currently supported")
++-
++-        return norm_cls(normalized_shape=hidden_size, eps=eps)
+++            raise Exception('Only LayerNorm and RMSNorm are curently supported')
++ 
+++        return instance
++ 
++ class L2Norm(torch.nn.Module):
++     """
++
+

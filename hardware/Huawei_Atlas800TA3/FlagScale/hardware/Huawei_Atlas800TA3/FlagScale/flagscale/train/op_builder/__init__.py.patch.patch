@@ -1,0 +1,16 @@
+diff --git a/hardware/Huawei_Atlas800TA3/FlagScale/flagscale/train/op_builder/__init__.py.patch b/hardware/Huawei_Atlas800TA3/FlagScale/flagscale/train/op_builder/__init__.py.patch
+new file mode 100644
+index 00000000..7fabb739
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/FlagScale/flagscale/train/op_builder/__init__.py.patch
+@@ -0,0 +1,9 @@
++diff --git a/flagscale/train/op_builder/__init__.py b/flagscale/train/op_builder/__init__.py
++new file mode 100644
++index 00000000..e3b8bb3f
++--- /dev/null
+++++ b/flagscale/train/op_builder/__init__.py
++@@ -0,0 +1,2 @@
+++from .matmul_add_builder import MatmulAddOpBuilder
+++from .npu_rotary_position_embedding_builder import RotaryPositionEmbeddingOpBuilder
++
+

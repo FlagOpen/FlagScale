@@ -1,0 +1,35 @@
+diff --git a/megatron/core/tensor_parallel/layers.py b/megatron/core/tensor_parallel/layers.py
+index c4be2cfc2..9d6859b9b 100644
+--- a/megatron/core/tensor_parallel/layers.py
++++ b/megatron/core/tensor_parallel/layers.py
+@@ -7,6 +7,7 @@ import os
+ import warnings
+ from functools import partial
+ from typing import Any, Callable, List, Optional, Tuple
++from functools import wraps
+ 
+ import torch
+ import torch.nn.functional as F
+@@ -769,6 +770,21 @@ class ColumnParallelLinear(torch.nn.Module):
+             delay and fuse reduction along with other gradients for performance optimization.
+     """
+ 
++    def parallel_linear_init_wrapper(init_func):
++        @wraps(init_func)
++        def parallel_linear_init_func(self, *args, pipe_experts: bool = False, in_nano: bool = False,
++                                      ampipe_degree: int = 1,
++                                      is_dense_h_to_3h: bool = False,
++                                      **kwargs):
++            output = init_func(self, *args, **kwargs)
++            self.pipe_experts = pipe_experts
++            self.in_nano = in_nano
++            self.ampipe_degree = ampipe_degree
++            self.is_dense_h_to_3h = is_dense_h_to_3h
++            return output
++        return parallel_linear_init_func
++
++    @parallel_linear_init_wrapper
+     def __init__(
+         self,
+         input_size,
+

@@ -1,0 +1,57 @@
+diff --git a/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/transformer/megatron_adaptor/fused_rms_norm.py.patch b/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/transformer/megatron_adaptor/fused_rms_norm.py.patch
+new file mode 100644
+index 00000000..03536ea6
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/transformer/megatron_adaptor/fused_rms_norm.py.patch
+@@ -0,0 +1,50 @@
++diff --git a/megatron/core/transformer/megatron_adaptor/fused_rms_norm.py b/megatron/core/transformer/megatron_adaptor/fused_rms_norm.py
++new file mode 100644
++index 000000000..5669d4b01
++--- /dev/null
+++++ b/megatron/core/transformer/megatron_adaptor/fused_rms_norm.py
++@@ -0,0 +1,43 @@
+++# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+++# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
+++import torch
+++import torch_npu
+++
+++
+++class RMSNorm(torch.nn.Module):
+++
+++    def __init__(self,
+++                 dim: int,
+++                 eps: float = 1e-6,
+++                 sequence_parallel: bool = False,
+++                 config=None):
+++        """RMS Normaliation module
+++
+++        Args:
+++            dim (int): The width of input, i.e. hidden size
+++            eps (float): epsilon to use for the norm, default to 1e-6
+++            sequence_parallel (bool): Set to true if sequence parallelism is being used,
+++              this marks the weights as needing to be allreduced.
+++        """
+++        super().__init__()
+++        self.eps = eps
+++        self.weight = torch.nn.Parameter(torch.ones(dim))
+++        self.config = config
+++
+++        setattr(self.weight, 'sequence_parallel', sequence_parallel)
+++
+++    def _norm(self, x):
+++        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+++
+++    def unfused_rmsnorm(self, x):
+++        output = self._norm(x.float()).type_as(x)
+++        return output * self.weight
+++
+++    def fused_rmsnorm(self, x):
+++        return torch_npu.npu_rms_norm(x, self.weight, epsilon=self.eps)[0]
+++
+++    def forward(self, x):
+++        if self.config.use_fused_rmsnorm:
+++            return self.fused_rmsnorm(x)
+++        return self.unfused_rmsnorm(x)
+++
++
+

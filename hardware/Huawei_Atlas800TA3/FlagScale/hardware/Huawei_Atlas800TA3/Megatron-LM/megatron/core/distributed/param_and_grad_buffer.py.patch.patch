@@ -1,0 +1,73 @@
+diff --git a/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/distributed/param_and_grad_buffer.py.patch b/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/distributed/param_and_grad_buffer.py.patch
+new file mode 100644
+index 00000000..e3ad233a
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/distributed/param_and_grad_buffer.py.patch
+@@ -0,0 +1,66 @@
++diff --git a/megatron/core/distributed/param_and_grad_buffer.py b/megatron/core/distributed/param_and_grad_buffer.py
++index ebded7054..6ae6c451b 100644
++--- a/megatron/core/distributed/param_and_grad_buffer.py
+++++ b/megatron/core/distributed/param_and_grad_buffer.py
++@@ -203,17 +203,6 @@ class _ParamAndGradBucketGroup:
++                 )
++ 
++     def start_param_sync(self, force_sync: bool = False):
++-        """
++-        Initiates all necessary param all-gathers for this bucket.
++-
++-        When ddp_config.overlap_param_gather is set to True, dispatches an asynchronous
++-        communication call (unless force_sync is True). When ddp_config.overlap_param_gather
++-        is set to False, makes synchronous call.
++-
++-        Args:
++-            force_sync (bool, optional): force synchronous collective regardless of
++-                other settings if true.
++-        """
++         assert self.ddp_config.use_distributed_optimizer
++ 
++         if force_sync:
++@@ -225,28 +214,20 @@ class _ParamAndGradBucketGroup:
++             assert self.param_gather_handle is None
++ 
++         async_op = self.ddp_config.overlap_param_gather and not force_sync
++-        # Coalesce communication kernels across buckets in the bucket group.
++-        with _coalescing_manager(
++-            self.intra_distributed_optimizer_instance_group, async_ops=async_op
++-        ) as cm:
++-            for bucket in self.buckets:
++-                local_data_view = shard_buffer(
++-                    bucket.param_data, self.intra_distributed_optimizer_instance_size
++-                )[self.intra_distributed_optimizer_instance_rank]
++-                dist_all_gather_func(
++-                    bucket.param_data,
++-                    local_data_view,
++-                    group=self.intra_distributed_optimizer_instance_group,
++-                    async_op=async_op,
++-                )
++-        if async_op:
++-            self.param_gather_handle = cm
++-        else:
++-            # When using `_coalescing_manager`, even if a synchronous op (async_op=False) is used,
++-            # `cm` is not None, which is different from when `_coalescing_manager` is not used in
++-            # which case the torch.distributed._all_gather_base() will return None. In order to
++-            # maintain consistency with prior code, we need to manually set communication handle to
++-            # None.
+++
+++        self.param_gather_handle = []
+++        for bucket in self.buckets:
+++            local_data_view = shard_buffer(bucket.param_data, self.intra_distributed_optimizer_instance_size)[
+++                self.intra_distributed_optimizer_instance_rank
+++            ]
+++            handle = dist_all_gather_func(
+++                bucket.param_data,
+++                local_data_view,
+++                group=self.intra_distributed_optimizer_instance_group,
+++                async_op=async_op,
+++            )
+++            self.param_gather_handle.append(handle)
+++        if not async_op:
++             self.param_gather_handle = None
++         self.param_gather_dispatched = True
++ 
++
+

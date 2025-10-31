@@ -1,0 +1,22 @@
+diff --git a/hardware/Huawei_Atlas800TA3/Megatron-LM/tests/unit_tests/dist_checkpointing/models/test_bert_model.py.patch b/hardware/Huawei_Atlas800TA3/Megatron-LM/tests/unit_tests/dist_checkpointing/models/test_bert_model.py.patch
+new file mode 100644
+index 00000000..e3de0df5
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/Megatron-LM/tests/unit_tests/dist_checkpointing/models/test_bert_model.py.patch
+@@ -0,0 +1,15 @@
++diff --git a/tests/unit_tests/dist_checkpointing/models/test_bert_model.py b/tests/unit_tests/dist_checkpointing/models/test_bert_model.py
++index 27f014478..14372cb0d 100644
++--- a/tests/unit_tests/dist_checkpointing/models/test_bert_model.py
+++++ b/tests/unit_tests/dist_checkpointing/models/test_bert_model.py
++@@ -74,6 +74,9 @@ class TestBertModel:
++ 
++ 
++ class TestBERTModelReconfiguration:
+++    def setup_class(cls):
+++        Utils.initialize_distributed()
+++
++     def setup_method(self, method):
++         pass
++ 
++
+

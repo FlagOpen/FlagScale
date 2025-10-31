@@ -1,0 +1,33 @@
+diff --git a/flagscale/train/op_builder/npu_rotary_position_embedding_builder.py b/flagscale/train/op_builder/npu_rotary_position_embedding_builder.py
+new file mode 100644
+index 00000000..e3e95b95
+--- /dev/null
++++ b/flagscale/train/op_builder/npu_rotary_position_embedding_builder.py
+@@ -0,0 +1,26 @@
++from .builder import MindSpeedOpBuilder
++
++
++class RotaryPositionEmbeddingOpBuilder(MindSpeedOpBuilder):
++    OP_NAME = "npu_rotary_position_embedding"
++
++    def __init__(self):
++        super(RotaryPositionEmbeddingOpBuilder, self).__init__(self.OP_NAME)
++
++    def sources(self):
++        return ['ops/csrc/cann/npu_rotary_position_embedding.cpp']
++
++    def include_paths(self):
++        paths = super().include_paths()
++        paths += ['ops/csrc/cann/inc']
++        return paths
++
++    def cxx_args(self):
++        args = super().cxx_args()
++        args += [
++            '-Wno-sign-compare',
++            '-Wno-deprecated-declarations',
++            '-Wno-return-type',
++            "-D__FILENAME__='\"$$(notdir $$(abspath $$<))\"'"
++        ]
++        return args
+

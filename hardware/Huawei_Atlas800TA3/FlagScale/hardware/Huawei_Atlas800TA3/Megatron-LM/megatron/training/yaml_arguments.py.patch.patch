@@ -1,0 +1,79 @@
+diff --git a/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/training/yaml_arguments.py.patch b/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/training/yaml_arguments.py.patch
+new file mode 100644
+index 00000000..3128faee
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/training/yaml_arguments.py.patch
+@@ -0,0 +1,72 @@
++diff --git a/megatron/training/yaml_arguments.py b/megatron/training/yaml_arguments.py
++index 03a43199c..85522b903 100644
++--- a/megatron/training/yaml_arguments.py
+++++ b/megatron/training/yaml_arguments.py
++@@ -8,6 +8,7 @@ import json
++ import os
++ import torch
++ import types
+++from functools import wraps
++ 
++ from itertools import chain, starmap
++ from types import SimpleNamespace
++@@ -18,6 +19,7 @@ import torch.nn.functional as F
++ 
++ from megatron.core.transformer import TransformerConfig, MLATransformerConfig
++ from megatron.core.utils import get_torch_version, is_torch_min_version
+++from ..core.transformer.megatron_adaptor.features_manager import MindSpeedFeaturesManager
++ 
++ # Taken from https://stackoverflow.com/questions/65414773/parse-environment-variable-from-yaml-with-pyyaml
++ # Allows for yaml to use environment variables
++@@ -38,6 +40,34 @@ str_dtype_to_torch = {
++     "bfloat16" : torch.bfloat16
++ }
++ 
+++
+++def validate_args_wrapper(validate_args):
+++    """A decorator for megatron arguments validation function."""
+++
+++    @wraps(validate_args)
+++    def wrapper(args, defaults=None):
+++        if defaults is None:
+++            defaults = {}
+++        # make prev validation and copy some args.
+++        MindSpeedFeaturesManager.pre_validate_features_args(args)
+++
+++        # make megatron args validation then restore args thar are copied.
+++        args = validate_args(args, defaults)
+++
+++        # make post validation after megatron validation.
+++        MindSpeedFeaturesManager.post_validate_features_args(args=args)
+++
+++        MindSpeedFeaturesManager.validate_features_args(args=args)
+++
+++        # _print_args is patched, so it has three arguments.
+++        from megatron.training.arguments import _print_args
+++        _print_args("arguments", args, True)
+++
+++        return args
+++
+++    return wrapper
+++
+++@validate_args_wrapper
++ def validate_yaml(args, defaults={}):
++     
++     # This is for legacy script env var setting
++@@ -371,6 +401,15 @@ def validate_yaml(args, defaults={}):
++ 
++     return args
++ 
+++def print_args_wrapper(fn):
+++    @wraps(fn)
+++    def wrapper(title, args, after_validate=False):
+++        if after_validate:
+++            fn(title, args)
+++
+++    return wrapper
+++
+++@print_args_wrapper
++ def _print_args(title, args):
++     """Print arguments."""
++     if args.rank == 0:
++
+

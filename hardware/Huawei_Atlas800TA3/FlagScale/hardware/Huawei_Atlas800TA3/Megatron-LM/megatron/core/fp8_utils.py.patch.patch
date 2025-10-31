@@ -1,0 +1,33 @@
+diff --git a/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/fp8_utils.py.patch b/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/fp8_utils.py.patch
+new file mode 100644
+index 00000000..7663ef7f
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/fp8_utils.py.patch
+@@ -0,0 +1,26 @@
++diff --git a/megatron/core/fp8_utils.py b/megatron/core/fp8_utils.py
++index 104ce5a51..e8432a75b 100644
++--- a/megatron/core/fp8_utils.py
+++++ b/megatron/core/fp8_utils.py
++@@ -6,6 +6,7 @@ from contextlib import nullcontext
++ from typing import List, Optional
++ 
++ import torch
+++import warnings
++ 
++ from megatron.core.enums import Fp8Recipe
++ from megatron.core.transformer.transformer_config import TransformerConfig
++@@ -366,9 +367,9 @@ def quantize_param_shard(
++     model_params, main_params, start_offsets, data_parallel_group, fsdp_shard_model_params=None
++ ):
++     """Cast shard fp32 main params to fp8 model params."""
++-    _quantize_param_shard_impl(
++-        model_params, main_params, start_offsets, data_parallel_group, fsdp_shard_model_params
++-    )
+++
+++    warnings.warn("Currently, it is not supported to Cast shard fp32 main params to fp8 model params")
+++
++ 
++ 
++ # Interface Function
++
+

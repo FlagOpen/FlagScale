@@ -1,0 +1,28 @@
+diff --git a/hardware/Huawei_Atlas800TA3/FlagScale/flagscale/train/op_builder/matmul_add_builder.py.patch b/hardware/Huawei_Atlas800TA3/FlagScale/flagscale/train/op_builder/matmul_add_builder.py.patch
+new file mode 100644
+index 00000000..8b1abc69
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/FlagScale/flagscale/train/op_builder/matmul_add_builder.py.patch
+@@ -0,0 +1,21 @@
++diff --git a/flagscale/train/op_builder/matmul_add_builder.py b/flagscale/train/op_builder/matmul_add_builder.py
++new file mode 100644
++index 00000000..997703d3
++--- /dev/null
+++++ b/flagscale/train/op_builder/matmul_add_builder.py
++@@ -0,0 +1,14 @@
+++from .atb_builder import AtbOpBuilder
+++
+++
+++class MatmulAddOpBuilder(AtbOpBuilder):
+++    OP_NAME = "npu_matmul_add_fp32"
+++
+++    def __init__(self):
+++        super(MatmulAddOpBuilder, self).__init__(self.OP_NAME)
+++
+++    def sources(self):
+++        return ['ops/csrc/atb/matmul_add.cpp',
+++                'ops/csrc/atb/utils/atb_adapter.cpp',
+++                'ops/csrc/flop_counter/flop_counter.cpp']
+++    
++
+

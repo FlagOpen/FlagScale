@@ -1,0 +1,24 @@
+diff --git a/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/transformer/megatron_adaptor/utils.py.patch b/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/transformer/megatron_adaptor/utils.py.patch
+new file mode 100644
+index 00000000..40544565
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/Megatron-LM/megatron/core/transformer/megatron_adaptor/utils.py.patch
+@@ -0,0 +1,17 @@
++diff --git a/megatron/core/transformer/megatron_adaptor/utils.py b/megatron/core/transformer/megatron_adaptor/utils.py
++new file mode 100644
++index 000000000..2c5f2fcc7
++--- /dev/null
+++++ b/megatron/core/transformer/megatron_adaptor/utils.py
++@@ -0,0 +1,10 @@
+++# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
+++
+++def divide(numerator, denominator):
+++    """Ensure that numerator is divisible by the denominator and return
+++    the division value.
+++    """
+++    if numerator % denominator != 0:
+++        raise ValueError("{} is not divisible by {}".format(numerator, denominator))
+++    return numerator // denominator
+++
++
+

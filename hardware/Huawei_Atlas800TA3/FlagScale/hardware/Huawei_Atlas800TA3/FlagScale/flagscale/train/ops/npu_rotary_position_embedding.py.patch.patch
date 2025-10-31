@@ -1,0 +1,26 @@
+diff --git a/hardware/Huawei_Atlas800TA3/FlagScale/flagscale/train/ops/npu_rotary_position_embedding.py.patch b/hardware/Huawei_Atlas800TA3/FlagScale/flagscale/train/ops/npu_rotary_position_embedding.py.patch
+new file mode 100644
+index 00000000..e7d4b17b
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/FlagScale/flagscale/train/ops/npu_rotary_position_embedding.py.patch
+@@ -0,0 +1,19 @@
++diff --git a/flagscale/train/ops/npu_rotary_position_embedding.py b/flagscale/train/ops/npu_rotary_position_embedding.py
++new file mode 100644
++index 00000000..996189d4
++--- /dev/null
+++++ b/flagscale/train/ops/npu_rotary_position_embedding.py
++@@ -0,0 +1,12 @@
+++import torch
+++from ..op_builder import RotaryPositionEmbeddingOpBuilder
+++
+++__all__ = ["npu_rotary_position_embedding"]
+++
+++
+++rope_op_builder = RotaryPositionEmbeddingOpBuilder()
+++
+++
+++def npu_rotary_position_embedding(x, cos, sin, mode=0):
+++    rope_ops = rope_op_builder.load()
+++    return rope_ops.npu_rotary_position_embedding(x, cos, sin, mode)
++
+

@@ -1,0 +1,11 @@
+diff --git a/hardware/Huawei_Atlas800TA3/FlagScale/model.tex.patch b/hardware/Huawei_Atlas800TA3/FlagScale/model.tex.patch
+new file mode 100644
+index 00000000..b386f470
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/FlagScale/model.tex.patch
+@@ -0,0 +1,4 @@
++diff --git a/model.tex b/model.tex
++new file mode 100644
++index 00000000..e69de29b
++
+

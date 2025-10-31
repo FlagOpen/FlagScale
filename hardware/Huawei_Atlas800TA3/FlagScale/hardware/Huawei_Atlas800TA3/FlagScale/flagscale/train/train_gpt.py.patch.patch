@@ -1,0 +1,22 @@
+diff --git a/hardware/Huawei_Atlas800TA3/FlagScale/flagscale/train/train_gpt.py.patch b/hardware/Huawei_Atlas800TA3/FlagScale/flagscale/train/train_gpt.py.patch
+new file mode 100644
+index 00000000..75602b48
+--- /dev/null
++++ b/hardware/Huawei_Atlas800TA3/FlagScale/flagscale/train/train_gpt.py.patch
+@@ -0,0 +1,15 @@
++diff --git a/flagscale/train/train_gpt.py b/flagscale/train/train_gpt.py
++index 775ddfd0..8d2c75f5 100644
++--- a/flagscale/train/train_gpt.py
+++++ b/flagscale/train/train_gpt.py
++@@ -10,6 +10,9 @@ from functools import partial
++ from typing import List, Optional, Tuple, Union
++ 
++ import torch
+++import megatron_adaptor
+++import torch_npu
+++from torch_npu.contrib import transfer_to_npu
++ 
++ from megatron.core import parallel_state
++ from megatron.training import get_args
++
+
