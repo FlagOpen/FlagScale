@@ -1,0 +1,42 @@
+diff --git a/examples/grpo_trainer/run_qwen2_5_vl-7b-megatron.sh b/examples/grpo_trainer/run_qwen2_5_vl-7b-megatron.sh
+index 632bdc8f..43b9c4cc 100644
+--- a/examples/grpo_trainer/run_qwen2_5_vl-7b-megatron.sh
++++ b/examples/grpo_trainer/run_qwen2_5_vl-7b-megatron.sh
+@@ -2,7 +2,7 @@ set -x
+ ENGINE=${1:-vllm}
+ export CUDA_DEVICE_MAX_CONNECTIONS=1 # For megatron communication/computation overlapping
+ 
+-HF_MODEL_PATH=Qwen/Qwen2.5-VL-7B-Instruct
++HF_MODEL_PATH=/nfs/lyrawen/model/Qwen2.5-VL-7B-Instruct
+ DIST_CKPT_PATH=${DIST_CKPT_PATH}
+ 
+ # convert HF model to meagatron format offlinely
+@@ -30,8 +30,8 @@ ACTOR_OPTIMIZER_OFFLOAD=${ACTOR_OPTIMIZER_OFFLOAD:-$COMMON_OPTIMIZER_OFFLOAD}
+ REF_PARAM_OFFLOAD=${REF_PARAM_OFFLOAD:-$COMMON_PARAM_OFFLOAD}
+ 
+ 
+-train_path=$HOME/data/geo3k/train.parquet
+-test_path=$HOME/data/geo3k/test.parquet
++train_path=/nfs/lyrawen/geometry3k/data/train.parquet
++test_path=/nfs/lyrawen/geometry3k/data/test.parquet
+ 
+ python3 -m verl.trainer.main_ppo --config-path=config \
+     --config-name='ppo_megatron_trainer.yaml'\
+@@ -68,8 +68,8 @@ python3 -m verl.trainer.main_ppo --config-path=config \
+     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=20 \
+     actor_rollout_ref.ref.megatron.pipeline_model_parallel_size=1 \
+     actor_rollout_ref.ref.megatron.tensor_model_parallel_size=2 \
+-    actor_rollout_ref.actor.megatron.use_dist_checkpointing=True \
+-    actor_rollout_ref.ref.megatron.use_dist_checkpointing=True \
++    actor_rollout_ref.actor.megatron.use_dist_checkpointing=False \
++    actor_rollout_ref.ref.megatron.use_dist_checkpointing=False \
+     actor_rollout_ref.actor.megatron.dist_checkpointing_path=$DIST_CKPT_PATH \
+     actor_rollout_ref.ref.megatron.dist_checkpointing_path=$DIST_CKPT_PATH \
+     actor_rollout_ref.actor.megatron.param_offload=${ACTOR_PARAM_OFFLOAD} \
+@@ -85,4 +85,4 @@ python3 -m verl.trainer.main_ppo --config-path=config \
+     trainer.nnodes=1 \
+     trainer.save_freq=20 \
+     trainer.test_freq=5 \
+-    trainer.total_epochs=15 $@
+\ No newline at end of file
++    trainer.total_epochs=15 $@

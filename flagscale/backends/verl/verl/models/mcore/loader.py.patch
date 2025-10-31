@@ -1,28 +1,14 @@
 diff --git a/verl/models/mcore/loader.py b/verl/models/mcore/loader.py
-index 577ffc5e..d8a3059a 100644
+index 577ffc5e..6ca0bf7b 100644
 --- a/verl/models/mcore/loader.py
 +++ b/verl/models/mcore/loader.py
-@@ -57,6 +57,7 @@ def load_state_dict_to_megatron_gptmodel(state_dict, wrapped_models, config, par
-     """Load merged state_dict to sharded Megatron module in training."""
-     from megatron.core import DistributedDataParallel as LocalDDP
-     from megatron.core import mpu
-+    from megatron.core.models.gpt.gpt_model import GPTModel
-     from megatron.core.transformer.module import Float16Module
-     from torch.nn.parallel import DistributedDataParallel as torchDDP
- 
-@@ -66,8 +67,15 @@ def load_state_dict_to_megatron_gptmodel(state_dict, wrapped_models, config, par
+@@ -66,8 +66,8 @@ def load_state_dict_to_megatron_gptmodel(state_dict, wrapped_models, config, par
      start_time = time.time()
  
      def _get_gpt_model(model):
 -        return model
-+        if isinstance(model, GPTModel):
+-
 +            return model
-+        
-+        # Check if model has a language_model attribute (e.g., Qwen2_5VLModel)
-+        if hasattr(model, "language_model") and isinstance(model.language_model, GPTModel):
-+            return model.language_model
- 
-+        return model
 +    
      def broadcast_params(module):
          for param in module.parameters():

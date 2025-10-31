@@ -1,5 +1,5 @@
 diff --git a/verl/models/mcore/saver.py b/verl/models/mcore/saver.py
-index 2a954b24..954aa290 100644
+index 2a954b24..0b572a36 100644
 --- a/verl/models/mcore/saver.py
 +++ b/verl/models/mcore/saver.py
 @@ -19,6 +19,7 @@ import torch
@@ -10,29 +10,11 @@ index 2a954b24..954aa290 100644
  from megatron.core.transformer.module import Float16Module
  from torch.nn.parallel import DistributedDataParallel as torchDDP
  
-@@ -98,6 +99,12 @@ def merge_megatron_ckpt_gptmodel(wrapped_models, config, dtype, is_value_model=F
-     start_time = time.time()
- 
-     def _get_gpt_model(model):
-+        if isinstance(model, GPTModel):
-+            return model
-+
-+        if hasattr(model, "language_model") and isinstance(model.language_model, GPTModel):
-+            return model.language_model
-+
-         return model
- 
-     dp_rank = mpu.get_data_parallel_rank()
-@@ -123,9 +130,10 @@ def merge_megatron_ckpt_gptmodel(wrapped_models, config, dtype, is_value_model=F
+@@ -123,6 +124,7 @@ def merge_megatron_ckpt_gptmodel(wrapped_models, config, dtype, is_value_model=F
  
      for i, wrapped_model in enumerate(wrapped_models):
          models[i] = unwrap_model(wrapped_model, (torchDDP, LocalDDP, Float16Module))
--        assert len(models[i].decoder.layers) == num_layers_per_model, (
 +        gpt_model_module = _get_gpt_model(models[i])
-+        assert len(gpt_model_module.decoder.layers) == num_layers_per_model, (
+         assert len(models[i].decoder.layers) == num_layers_per_model, (
              "len model layers {} not equal to num_layers_per_model {}".format(
--                len(models[i].decoder.layers), num_layers_per_model
-+                len(gpt_model_module.decoder.layers), num_layers_per_model
-             )
-         )
- 
+                 len(models[i].decoder.layers), num_layers_per_model
