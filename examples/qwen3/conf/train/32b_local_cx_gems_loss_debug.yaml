@@ -32,11 +32,12 @@ system:
 model:
   # transformer_impl: transformer_engine
   transformer_impl: local
+  distributed_backend: flagcx
   use_flag_gems: true
-  flag_gems_log_path: /share/project/lixianduo/scale_gems_cx/gems_local_gems_log
-  flag_gems_unused: ['index_put', 'index_put_']
+  flag_gems_log_path: /share/project/lixianduo/scale_gems_cx/debug_local_cx_gems_log_2
+  flag_gems_unused: ['index_put', 'index_put_', 'rms_norm',]
+  # flag_gems_unused: ['index_put', 'index_put_', 'rms_norm', 'to_dtype', 'contiguous', 'repeat_interleave_self_int']
   no_persist_layer_norm: true
-  no_gradient_accumulation_fusion: true
   num_layers: 32
   hidden_size: 5120
   ffn_hidden_size: 25600
