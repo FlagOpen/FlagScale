@@ -23,11 +23,9 @@ actor_rollout_ref:
     use_remove_padding: true
     enable_gradient_checkpointing: true
     trust_remote_code: True
-    # Enable FlashAttention-2 with mixed precision
-    attn_implementation: flash_attention_2
-    torch_dtype: bfloat16  # or float16 depending on GPU support
   actor:
     # Use Megatron backend for actor
+    _target_: verl.workers.config.actor.McoreActorConfig
     strategy: megatron
     optim:
       lr: 1e-6
@@ -37,13 +35,18 @@ actor_rollout_ref:
     sequence_packing_algorithm: modified_first_fit_decreasing
     # Use fused kernels when available (FlashAttention, fused MLP, etc.)
     use_fused_kernels: true
+    # Megatron overrides: enable FA2 and mixed precision
+    megatron:
+      tensor_model_parallel_size: 8
+      override_transformer_config:
+        attn_implementation: flash_attention_2
+      override_mcore_model_config:
+        params_dtype: bfloat16   # or float16 depending on GPU support
+        input_dtype: bfloat16    # optional, keep inputs in same dtype
     use_kl_loss: true
     kl_loss_coef: 0.001
     kl_loss_type: low_var_kl
     entropy_coeff: 0
-    fsdp_config:
-      param_offload: false
-      optimizer_offload: false
   rollout:
     log_prob_micro_batch_size_per_gpu: 10
     tensor_model_parallel_size: 2

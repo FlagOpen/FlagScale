@@ -26,15 +26,80 @@ _MAX_CPU_COUNT = multiprocessing.cpu_count()
 def _get_args_verl(config: DictConfig):
     assert config.experiment.task.backend == "verl", "This function only supports verl backend."
 
-    # Convert the DictConfig to a regular dictionary
-    config_dict = OmegaConf.to_container(config, resolve=True)
-    config_dict = config_dict["rl"]
+    # Convert to dict and extract actor config
+    config_dict = OmegaConf.to_container(config, resolve=True)["rl"]
+    actor_config = config_dict.get("actor_rollout_ref", {}).get("actor", {})
+    strategy = actor_config.get("strategy")
+    use_seq_pack = actor_config.get("use_sequence_packing_balance", False)
 
-    new_config_dict = {}
-    new_config_dict.update(config_dict)
+    # Remove fsdp_config for Megatron (incompatible with McoreActorConfig)
+    if strategy == "megatron":
+        def _ensure_dict(obj):
+            return dict(obj) if isinstance(obj, dict) else OmegaConf.to_container(obj, resolve=False) or {}
+        
+        actor_rollout_ref = _ensure_dict(config_dict.get("actor_rollout_ref", {}))
+        actor_cfg = _ensure_dict(actor_rollout_ref.get("actor", {}))
+        if "fsdp_config" in actor_cfg:
+            actor_cfg = dict(actor_cfg)
+            actor_cfg.pop("fsdp_config")
+            actor_rollout_ref["actor"] = actor_cfg
+            config_dict["actor_rollout_ref"] = actor_rollout_ref
 
-    # Flatten the dictionary to a list of arguments
-    args = flatten_dict_to_args_verl(new_config_dict, pre_str="")
+    # Flatten config to arguments
+    args = flatten_dict_to_args_verl(config_dict, pre_str="")
+
+    # Helper: extract key from argument
+    def _get_key(arg: str) -> str:
+        if "=" in arg:
+            return arg.split("=")[0].lstrip("+")
+        return arg if arg.startswith("~") else arg
+
+    # Convert configs that need + prefix (override_* and megatron.* for Megatron strategy)
+    def _needs_plus(arg: str) -> bool:
+        return not arg.startswith("+") and (
+            ".override_" in arg or (strategy == "megatron" and "actor_rollout_ref.actor.megatron." in arg)
+        )
+
+    args = [f"+{arg}" if _needs_plus(arg) else arg for arg in args]
+
+    # Handle Megatron-specific configuration
+    if strategy == "megatron":
+        # Filter fsdp_config from args
+        args = [arg for arg in args if not _get_key(arg).startswith("actor_rollout_ref.actor.fsdp_config")]
+        
+        # Build args_keys set for efficient lookup
+        args_keys = {_get_key(arg) for arg in args}
+        
+        # Ensure McoreActorConfig target
+        target_key = "actor_rollout_ref.actor._target_"
+        if target_key not in args_keys:
+            args.insert(0, f"+{target_key}=verl.workers.config.actor.McoreActorConfig")
+            args_keys.add(target_key)
+        
+        # Explicitly delete fsdp_config
+        fsdp_delete = "~actor_rollout_ref.actor.fsdp_config"
+        if fsdp_delete not in args_keys:
+            args.insert(1, fsdp_delete)
+            args_keys.add(fsdp_delete)
+        
+        # Add default megatron parallel configs if missing
+        for key, val in [
+            ("actor_rollout_ref.actor.megatron.tensor_model_parallel_size", "1"),
+            ("actor_rollout_ref.actor.megatron.pipeline_model_parallel_size", "1"),
+            ("actor_rollout_ref.actor.megatron.context_parallel_size", "1"),
+        ]:
+            if key not in args_keys:
+                args.append(f"+{key}={val}")
+                args_keys.add(key)
+        
+        # Auto-add FA2 config for sequence packing if not set
+        fa2_key = "actor_rollout_ref.actor.megatron.override_transformer_config.attn_implementation"
+        if use_seq_pack and fa2_key not in args_keys:
+            args.extend([
+                f"+{fa2_key}=flash_attention_2",
+                "+actor_rollout_ref.actor.megatron.override_mcore_model_config.params_dtype=bfloat16",
+                "+actor_rollout_ref.actor.megatron.override_mcore_model_config.input_dtype=bfloat16",
+            ])
 
     return args
 
@@ -68,7 +133,7 @@ def _update_config_rl(config: DictConfig):
 
 
 def _generate_run_script_rl(
-    config, host, node_rank, cmd, background=True, with_test=False, resources=None
+    config, host, node_rank, cmd_list, background=True, with_test=False, resources=None
 ):
     system_config = config.system
     logging_config = config.system.logging
