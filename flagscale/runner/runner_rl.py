@@ -54,18 +54,40 @@ def _get_args_verl(config: DictConfig):
             return arg.split("=")[0].lstrip("+")
         return arg if arg.startswith("~") else arg
 
+    config_path_args = [arg for arg in args if arg.startswith("--config-")]
+    override_args = [arg for arg in args if not arg.startswith("--config-")]
+
+    initial_args_keys = {_get_key(arg) for arg in override_args}
+    
     # Convert configs that need + prefix (override_* and megatron.* for Megatron strategy)
     def _needs_plus(arg: str) -> bool:
-        return not arg.startswith("+") and (
-            ".override_" in arg or (strategy == "megatron" and "actor_rollout_ref.actor.megatron." in arg)
-        )
+        key = _get_key(arg)
+        if arg.startswith("+"):
+            return False
+        if ".override_" in key:
+            return True
+        if strategy == "megatron":
+            # Both actor.megatron.* and ref.megatron.* need + prefix
+            if "actor_rollout_ref.actor.megatron." in key:
+                return True
+            if "actor_rollout_ref.ref.megatron." in key:
+                return True
+        return False
 
-    args = [f"+{arg}" if _needs_plus(arg) else arg for arg in args]
+    override_args = [f"+{arg}" if _needs_plus(arg) else arg for arg in args]
 
     # Handle Megatron-specific configuration
     if strategy == "megatron":
         # Filter fsdp_config from args
-        args = [arg for arg in args if not _get_key(arg).startswith("actor_rollout_ref.actor.fsdp_config")]
+        fsdp_only_fields = [
+            "actor_rollout_ref.actor.fsdp_config",
+            "actor_rollout_ref.actor.grad_clip",
+            "actor_rollout_ref.actor.ulysses_sequence_parallel_size",
+            "actor_rollout_ref.actor.entropy_from_logits_with_chunking",
+            "actor_rollout_ref.actor.entropy_checkpointing",
+            "actor_rollout_ref.actor.use_remove_padding",  # This is model-level, not actor-level for Megatron
+        ]
+        override_args = [arg for arg in override_args if not any(_get_key(arg).startswith(field) for field in fsdp_only_fields)]
         
         # Build args_keys set for efficient lookup
         args_keys = {_get_key(arg) for arg in args}
@@ -73,35 +95,91 @@ def _get_args_verl(config: DictConfig):
         # Ensure McoreActorConfig target
         target_key = "actor_rollout_ref.actor._target_"
         if target_key not in args_keys:
-            args.insert(0, f"+{target_key}=verl.workers.config.actor.McoreActorConfig")
+            override_args.insert(0, f"+{target_key}=verl.workers.config.actor.McoreActorConfig")
             args_keys.add(target_key)
         
-        # Explicitly delete fsdp_config
-        fsdp_delete = "~actor_rollout_ref.actor.fsdp_config"
-        if fsdp_delete not in args_keys:
-            args.insert(1, fsdp_delete)
-            args_keys.add(fsdp_delete)
+        fsdp_delete_args = [
+            "~actor_rollout_ref.actor.fsdp_config",
+            "~actor_rollout_ref.actor.grad_clip",
+            "~actor_rollout_ref.actor.ulysses_sequence_parallel_size",
+            "~actor_rollout_ref.actor.entropy_from_logits_with_chunking",
+            "~actor_rollout_ref.actor.entropy_checkpointing",
+            "~actor_rollout_ref.actor.use_remove_padding",
+        ]
+        
+        # Find insertion point (after _target_ if it exists)
+        insert_idx = 0
+        if target_key in args_keys:
+            for i, arg in enumerate(override_args):
+                if _get_key(arg) == target_key:
+                    insert_idx = i + 1
+                    break
+
+        existing_delete_keys = {arg for arg in override_args if arg.startswith("~")}
+        for fsdp_delete in fsdp_delete_args:
+            if fsdp_delete not in existing_delete_keys:
+                override_args.insert(insert_idx, fsdp_delete)
+                args_keys.add(_get_key(fsdp_delete))
+                insert_idx += 1  # Keep deletes together
+                existing_delete_keys.add(fsdp_delete)
         
         # Add default megatron parallel configs if missing
-        for key, val in [
+        default_megatron_configs = [
             ("actor_rollout_ref.actor.megatron.tensor_model_parallel_size", "1"),
             ("actor_rollout_ref.actor.megatron.pipeline_model_parallel_size", "1"),
             ("actor_rollout_ref.actor.megatron.context_parallel_size", "1"),
-        ]:
-            if key not in args_keys:
-                args.append(f"+{key}={val}")
+            ("actor_rollout_ref.actor.megatron.virtual_pipeline_model_parallel_size", "null"),
+            ("actor_rollout_ref.actor.megatron.expert_model_parallel_size", "1"),
+            ("actor_rollout_ref.actor.megatron.expert_tensor_parallel_size", "null"),
+            ("actor_rollout_ref.actor.megatron.sequence_parallel", "True"),
+            ("actor_rollout_ref.actor.megatron.use_distributed_optimizer", "True"),
+            ("actor_rollout_ref.actor.megatron.seed", "42"),
+            ("actor_rollout_ref.actor.megatron.use_mbridge", "False"),  # Whether to use MBridge for communication
+            ("actor_rollout_ref.actor.megatron.forward_only", "False"),  # Whether this is forward-only (for inference)
+        ]
+        for key, val in default_megatron_configs:
+            if key not in args_keys and key not in initial_args_keys:
+                override_args.append(f"+{key}={val}")
                 args_keys.add(key)
+        
+        config_name = config_dict.get("config-name", "")
+        needs_plus_prefix = config_name == "ppo_trainer.yaml"  # Only need + if using non-megatron base config
+
+        ref_config = config_dict.get("actor_rollout_ref", {}).get("ref", {})
+        ref_megatron_config = ref_config.get("megatron", {})
+
+        if not ref_megatron_config:
+            ref_megatron_configs = [
+                ("actor_rollout_ref.ref.megatron.tensor_model_parallel_size", actor_config.get("megatron", {}).get("tensor_model_parallel_size", "1")),
+                ("actor_rollout_ref.ref.megatron.pipeline_model_parallel_size", "1"),
+                ("actor_rollout_ref.ref.megatron.context_parallel_size", "1"),
+                ("actor_rollout_ref.ref.megatron.virtual_pipeline_model_parallel_size", "null"),
+                ("actor_rollout_ref.ref.megatron.expert_model_parallel_size", "1"),
+                ("actor_rollout_ref.ref.megatron.expert_tensor_parallel_size", "null"),
+                ("actor_rollout_ref.ref.megatron.sequence_parallel", "True"),
+                ("actor_rollout_ref.ref.megatron.use_distributed_optimizer", "False"),  # Usually False for ref
+                ("actor_rollout_ref.ref.megatron.seed", "42"),
+                ("actor_rollout_ref.ref.megatron.param_offload", "True"),  # Often enabled for ref to save memory
+                ("actor_rollout_ref.ref.megatron.use_dist_checkpointing", "False"),
+                ("actor_rollout_ref.ref.megatron.use_mbridge", "False"),  
+                ("actor_rollout_ref.ref.megatron.forward_only", "False"),
+            ]
+            prefix = "+" if needs_plus_prefix else ""
+            for key, val in ref_megatron_configs:
+                if key not in args_keys and key not in initial_args_keys:
+                    override_args.append(f"{prefix}{key}={val}")
+                    args_keys.add(key)
         
         # Auto-add FA2 config for sequence packing if not set
         fa2_key = "actor_rollout_ref.actor.megatron.override_transformer_config.attn_implementation"
         if use_seq_pack and fa2_key not in args_keys:
-            args.extend([
+            override_args.extend([
                 f"+{fa2_key}=flash_attention_2",
                 "+actor_rollout_ref.actor.megatron.override_mcore_model_config.params_dtype=bfloat16",
                 "+actor_rollout_ref.actor.megatron.override_mcore_model_config.input_dtype=bfloat16",
             ])
 
-    return args
+    return config_path_args + override_args
 
 
 def _update_config_rl(config: DictConfig):
@@ -133,7 +211,7 @@ def _update_config_rl(config: DictConfig):
 
 
 def _generate_run_script_rl(
-    config, host, node_rank, cmd_list, background=True, with_test=False, resources=None
+    config, host, node_rank, cmd, background=True, with_test=False, resources=None
 ):
     system_config = config.system
     logging_config = config.system.logging

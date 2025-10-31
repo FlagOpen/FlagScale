@@ -36,14 +36,7 @@ actor_rollout_ref:
     # Use fused kernels when available (FlashAttention, fused MLP, etc.)
     use_fused_kernels: true
     megatron:
-      override_transformer_config:
-        attn_implementation: flash_attention_2
-      override_mcore_model_config:
-        params_dtype: bfloat16   # or float16 depending on GPU support
-        input_dtype: bfloat16    # optional, keep inputs in same dtype
-    # Megatron overrides: enable FA2 and mixed precision
-    megatron:
-      tensor_model_parallel_size: 8
+      tensor_model_parallel_size: 4
       override_transformer_config:
         attn_implementation: flash_attention_2
       override_mcore_model_config:
@@ -59,10 +52,11 @@ actor_rollout_ref:
     name: vllm
     gpu_memory_utilization: 0.6
     n: 5
+    dtype: bfloat16
   ref:
     log_prob_micro_batch_size_per_gpu: 10
-    fsdp_config:
-      param_offload: true
+    megatron:
+      tensor_model_parallel_size: 4
 
 trainer:
   critic_warmup: 0
