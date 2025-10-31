@@ -1,8 +1,10 @@
 import logging as logger
 import os
+import socket
 import subprocess
 import sys
 
+from flagscale.runner.utils import get_free_port, is_ip_addr
 from flagscale.serve.args_mapping.mapping import ARGS_CONVERTER
 
 # Compatible with both command-line execution and source code execution.
@@ -11,8 +13,19 @@ try:
 except Exception as e:
     pass
 
+from omegaconf import DictConfig, OmegaConf
+
 from flagscale import serve
 from flagscale.utils import flatten_dict_to_args
+
+
+def check_port_occupied(ip_addr, port):
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((ip_addr, port))
+            return False
+    except socket.error as e:
+        return True
 
 
 def vllm_serve(args):
@@ -73,6 +86,15 @@ def llama_cpp_serve(args):
 def sglang_serve(args):
     common_args = args.get("engine_args", {})
     sglang_args = args.get("engine_args_specific", {}).get("sglang", {})
+    if sglang_args.get("dist-init-addr", None):
+        logger.warning(
+            f"sglang dist-init-addr:{ sglang_args['dist-init-addr']} exists, will be overwrite by master_addr, master_port"
+        )
+        was_struct = OmegaConf.is_struct(sglang_args)
+        OmegaConf.set_struct(sglang_args, False)
+        sglang_args.pop("dist-init-addr")
+        if was_struct:
+            OmegaConf.set_struct(sglang_args, True)
 
     command = ["python", "-m", "sglang.launch_server"]
     if common_args.get("model", None):
@@ -84,6 +106,18 @@ def sglang_serve(args):
         command.extend(sglang_args_flatten)
     else:
         raise ValueError("Either model must be specified in vllm_model.")
+
+    # set defualt args align with sglang.launch_server
+    command.extend(["--node-rank", str(0)])
+    nnodes = serve.task_config.experiment.runner.get("nnodes", 1)
+    command.extend(["--nnodes", str(nnodes)])
+    addr = str(serve.task_config.experiment.runner.get("master_addr", "127.0.0.1"))
+    port = int(serve.task_config.experiment.runner.get("master_port", get_free_port()))
+    # check ip address is available
+    addr_str = addr + ":" + str(port)
+    if check_port_occupied(addr, port):
+        raise ValueError(f"addr: {addr_str} is invalid")
+    command.extend(["--dist-init-addr", addr_str])
 
     # Start the subprocess
     logger.info(f"[Serve]: Starting sglang serve with command: {' '.join(command)}")
