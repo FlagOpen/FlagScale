@@ -1,7 +1,7 @@
 defaults:
   - _self_
   # - train: 30b_a3b
-  - train: 32b_te_updated_cx_gems_loss
+  - train: 32b_te_cx_gems_loss_fix
 
 experiment:
   # exp_name: Qwen3-30b-a3b-Train
@@ -9,7 +9,7 @@ experiment:
   seed: 42
   save_steps: 1000
   load: None
-  exp_dir: /share/project/lixianduo/scale_gems_cx/experiments_te_updated_cx_gems_loss/${experiment.exp_name}
+  exp_dir: /share/project/lixianduo/scale_gems_cx/experiments_te_cx_gems_loss_fix/${experiment.exp_name}
   ckpt_format: torch
   task:
     type: train
