@@ -1,5 +1,5 @@
 diff --git a/megatron/training/tokenizer/tokenizer.py b/megatron/training/tokenizer/tokenizer.py
-index 5cf222ccc..35ad2b855 100644
+index 5cf222ccc..548ae0796 100644
 --- a/megatron/training/tokenizer/tokenizer.py
 +++ b/megatron/training/tokenizer/tokenizer.py
 @@ -11,9 +11,10 @@ from pathlib import Path
@@ -132,7 +132,7 @@ index 5cf222ccc..35ad2b855 100644
 +    def __init__(self, tokenizer_path):
 +        name = 'HFTokenizer'
 +        super().__init__(name)
-+        
++
 +        from transformers import AutoTokenizer
 +        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
 +
@@ -141,7 +141,7 @@ index 5cf222ccc..35ad2b855 100644
 +        self.pad_id = self.tokenizer.pad_token_id
 +
 +        self._inv_vocab = None
-+        
++
 +    @property
 +    def vocab_size(self):
 +        return self.tokenizer.vocab_size
@@ -156,7 +156,7 @@ index 5cf222ccc..35ad2b855 100644
 +        if self._inv_vocab is None:
 +            self._inv_vocab = {v: k for k, v in vocab.items()}
 +        return self._inv_vocab
-+    
++
 +    def tokenize(self, text):
 +        return self.tokenizer.encode(text)
 +
@@ -188,7 +188,7 @@ index 5cf222ccc..35ad2b855 100644
 +
 +class _QwenTokenizerFS(_HFTokenizerFS):
 +    """Adapted Qwen tokenizer."""
-+    
++
 +    def __init__(self, tokenizer_path):
 +        super().__init__(tokenizer_path)
 +        self.eod_id = self.tokenizer.encode('<|extra_204|>')[0]
@@ -214,7 +214,7 @@ index 5cf222ccc..35ad2b855 100644
 +
 +    @property
 +    def vocab_size(self):
-+        return self.tokenizer.get_vocab_size() 
++        return self.tokenizer.get_vocab_size()
 +
 +    @property
 +    def vocab(self):
@@ -226,7 +226,7 @@ index 5cf222ccc..35ad2b855 100644
 +        vocab = self.vocab()
 +        if self._inv_vocab is None:
 +            self._inv_vocab = {v: k for k, v in vocab.items()}
-+        return self._inv_vocab 
++        return self._inv_vocab
 +
 +    def tokenize(self, text):
 +        return self.tokenizer.encode(text)
@@ -297,7 +297,7 @@ index 5cf222ccc..35ad2b855 100644
 +
 +    def apply_chat_template(self, conversations, tokenize:bool=True, **kwargs):
 +        return self.tokenizer.apply_chat_template(conversations, tokenize=tokenize, chat_template=self.chat_template, **kwargs)
-+    
++
 +    @property
 +    def vocab_size(self):
 +        return self.tokenizer.vocab_size + self.extra_vocab_size
@@ -331,23 +331,23 @@ index 5cf222ccc..35ad2b855 100644
 +    @property
 +    def eos_token_id(self):
 +        return self.tokenizer.eos_token_id
-+    
++
 +    @property
 +    def image_token_id(self):
 +        return self.special_tokens_map[self.image_token]
-+    
++
 +    @property
 +    def video_token_id(self):
 +        return self.special_tokens_map[self.video_token]
-+    
++
 +    @property
 +    def vision_start_token_id(self):
 +        return self.special_tokens_map[self.vision_start_token]
-+    
++
 +    @property
 +    def vision_end_token_id(self):
 +        return self.special_tokens_map[self.vision_end_token]
-+    
++
 +    def encode(self, x):
 +        return self.tokenizer.encode(x)
 

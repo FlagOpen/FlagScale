@@ -1,5 +1,5 @@
 diff --git a/tests/unit_tests/data/__init__.py b/tests/unit_tests/data/__init__.py
-index e69de29bb..d2d717b73 100644
+index e69de29bb..12112ab26 100644
 --- a/tests/unit_tests/data/__init__.py
 +++ b/tests/unit_tests/data/__init__.py
 @@ -0,0 +1,25 @@
@@ -21,7 +21,7 @@ index e69de29bb..d2d717b73 100644
 +        args.adlr_autoresume = False
 +        args.timing_log_option = 'minmax'
 +        args.timing_log_level = 0
-+        args.pretrained_checkpoint = None 
++        args.pretrained_checkpoint = None
 +        return args
 +
 +    with mock.patch('megatron.training.training.get_args', data_parallel_random_init=False) as mock_args:

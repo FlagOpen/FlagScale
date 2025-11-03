@@ -1,6 +1,6 @@
 diff --git a/runner.diff b/runner.diff
 new file mode 100644
-index 000000000..fd73586f5
+index 00000000..fdff324d
 --- /dev/null
 +++ b/runner.diff
 @@ -0,0 +1,87 @@
@@ -10,16 +10,16 @@ index 000000000..fd73586f5
 ++++ b/flagscale/runner/runner_train.py
 +@@ -171,7 +171,7 @@ def _get_runner_cmd_train(
 +     return runner_cmd
-+ 
-+ 
++
++
 +-def _generate_run_script_train(config, host, node_rank, cmd, background=True, with_test=False):
 ++def _generate_run_script_train(config, host, node_rank, cmd, background=True, with_test=False, root_dir=None):
 +     system_config = config.train.system
 +     logging_config = config.train.system.logging
-+ 
++
 +@@ -186,8 +186,11 @@ def _generate_run_script_train(config, host, node_rank, cmd, background=True, wi
 +     host_pid_file = os.path.join(logging_config.pids_dir, f"host_{node_rank}_{host}.pid")
-+ 
++
 +     os.makedirs(logging_config.scripts_dir, exist_ok=True)
 +-
 +-    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -34,7 +34,7 @@ index 000000000..fd73586f5
 +@@ -302,6 +305,31 @@ def run_node(
 +         cur_envs=cur_envs,
 +     )
-+ 
++
 ++def update_cmd_with_hetero_config(cmd, hetero_extra_config):
 ++    if len(hetero_extra_config) == 0:
 ++        return cmd
@@ -60,13 +60,13 @@ index 000000000..fd73586f5
 ++            # elif value.lower() != "false":
 ++            #     cmd_parts.extend([option, value])
 ++    return " ".join(cmd_parts)
-+ 
++
 + class SSHTrainRunner(RunnerBase):
 +     def __init__(self, config: DictConfig):
 +@@ -335,7 +363,13 @@ class SSHTrainRunner(RunnerBase):
 +     ):
 +         export_cmd = []
-+ 
++
 ++        hetero_extra_config = {}
 +         for k, v in cur_envs.items():
 ++            print(k, v)
@@ -75,20 +75,20 @@ index 000000000..fd73586f5
 ++                hetero_extra_config[f'{k}'] = f'{v}'
 ++                continue
 +             export_cmd += [f"{k}={v}"]
-+ 
++
 +         runner_cmd = _get_runner_cmd_train(
 +@@ -350,10 +384,12 @@ class SSHTrainRunner(RunnerBase):
 +                 self.user_args += ["--hetero-current-device-type", device_type]
-+ 
++
 +         cmd = shlex.join(export_cmd + runner_cmd + [self.user_script] + self.user_args)
 ++        # update cmd with hetero_extra_config
 ++        cmd = update_cmd_with_hetero_config(cmd, hetero_extra_config)
-+ 
++
 +         logging_config = self.config.train.system.logging
 +         host_run_script_file = _generate_run_script_train(
 +-            self.config, host, node_rank, cmd, background=True, with_test=with_test
 ++            self.config, host, node_rank, cmd, background=True, with_test=with_test, root_dir=hetero_extra_config.get("root-dir", None)
 +         )
-+ 
++
 +         if host != "localhost":
 

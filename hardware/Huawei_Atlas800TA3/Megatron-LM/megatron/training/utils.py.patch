@@ -1,5 +1,5 @@
 diff --git a/megatron/training/utils.py b/megatron/training/utils.py
-index 698c5a07d..8d1ee3020 100644
+index 698c5a07d..0365cc471 100644
 --- a/megatron/training/utils.py
 +++ b/megatron/training/utils.py
 @@ -52,6 +52,7 @@ try:
@@ -131,7 +131,7 @@ index 698c5a07d..8d1ee3020 100644
 +        if mpu.get_dualpipev_pipeline_model_parallel_world_size() is not None:
 +            return mpu.is_pipeline_first_stage(ignore_virtual=True)
 +        else:
-+            return torch.distributed.get_rank() == mpu.get_last_rank_when_using_pipeline() 
++            return torch.distributed.get_rank() == mpu.get_last_rank_when_using_pipeline()
 +    else:
 +        return torch.distributed.get_rank() == (
 +            torch.distributed.get_world_size() - 1)
@@ -172,7 +172,7 @@ index 698c5a07d..8d1ee3020 100644
 +                _broadcast(labels)
 +            else:
 +                labels = None
-+                loss_mask = None 
++                loss_mask = None
  
          elif mpu.is_pipeline_last_stage():
              # Multi-Token Prediction (MTP) layers need tokens and position_ids to calculate embedding.

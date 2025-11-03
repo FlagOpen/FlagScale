@@ -1,5 +1,5 @@
 diff --git a/megatron/core/optimizer_param_scheduler.py b/megatron/core/optimizer_param_scheduler.py
-index da7e07876..e515a8026 100644
+index da7e07876..d92ccf031 100644
 --- a/megatron/core/optimizer_param_scheduler.py
 +++ b/megatron/core/optimizer_param_scheduler.py
 @@ -53,6 +53,7 @@ class OptimizerParamScheduler:
@@ -10,11 +10,10 @@ index da7e07876..e515a8026 100644
      ) -> None:
  
          # Class values.
-@@ -90,6 +91,15 @@ class OptimizerParamScheduler:
-             assert not self.use_checkpoint_opt_param_scheduler, (
+@@ -91,6 +92,15 @@ class OptimizerParamScheduler:
                  'both override and ' 'use-checkpoint are set.'
              )
-+        
+ 
 +        self.stablelm2_scheduler_config = stablelm2_scheduler_config
 +        if self.stablelm2_scheduler_config is not None:
 +          ## absolute samples
@@ -23,9 +22,10 @@ index da7e07876..e515a8026 100644
 +          ## N of consine
 +          if self.stablelm2_scheduler_config.cosine_period_samples == 0:
 +            self.stablelm2_scheduler_config.cosine_period_samples = self.lr_decay_steps
- 
++
          # Set the learning rate
          self.step(0)
+         log_single_rank(logger, logging.INFO, f"> learning rate decay style: {self.lr_decay_style}")
 @@ -150,6 +160,62 @@ class OptimizerParamScheduler:
              lr = max_lr * warmup_steps**0.5 / (num_steps**0.5)
              return max(min_lr, lr)

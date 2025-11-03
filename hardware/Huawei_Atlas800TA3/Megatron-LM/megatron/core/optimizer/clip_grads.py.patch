@@ -1,5 +1,5 @@
 diff --git a/megatron/core/optimizer/clip_grads.py b/megatron/core/optimizer/clip_grads.py
-index 0f33f919b..ca7a34cf6 100644
+index 0f33f919b..e2002c49c 100644
 --- a/megatron/core/optimizer/clip_grads.py
 +++ b/megatron/core/optimizer/clip_grads.py
 @@ -47,6 +47,7 @@ from ..tensor_parallel import param_is_not_tensor_parallel_duplicate
@@ -67,7 +67,7 @@ index 0f33f919b..ca7a34cf6 100644
 -    torch.distributed.all_reduce(
 -        total_num_zeros, op=torch.distributed.ReduceOp.SUM, group=grad_stats_parallel_group
 -    )
-+    comm_device = get_device_type_for_comm(grad_stats_parallel_group)    
++    comm_device = get_device_type_for_comm(grad_stats_parallel_group)
 +    if comm_device == "cpu":
 +        total_num_zeros = total_num_zeros.cpu()
 +

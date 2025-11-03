@@ -1,6 +1,6 @@
 diff --git a/tools/checkpoint/qwen2_5_vl/hf2mcore_qwen2.5_vl_local.py b/tools/checkpoint/qwen2_5_vl/hf2mcore_qwen2.5_vl_local.py
 new file mode 100644
-index 000000000..a0d9c608a
+index 00000000..a0d9c608
 --- /dev/null
 +++ b/tools/checkpoint/qwen2_5_vl/hf2mcore_qwen2.5_vl_local.py
 @@ -0,0 +1,820 @@

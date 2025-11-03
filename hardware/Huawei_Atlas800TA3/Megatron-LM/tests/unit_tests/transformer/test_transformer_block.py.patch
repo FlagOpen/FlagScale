@@ -1,5 +1,5 @@
 diff --git a/tests/unit_tests/transformer/test_transformer_block.py b/tests/unit_tests/transformer/test_transformer_block.py
-index 48b678c5f..971509977 100644
+index 48b678c5f..d3d24a865 100644
 --- a/tests/unit_tests/transformer/test_transformer_block.py
 +++ b/tests/unit_tests/transformer/test_transformer_block.py
 @@ -74,14 +74,14 @@ class TestParallelTransformerBlock:
@@ -28,7 +28,7 @@ index 48b678c5f..971509977 100644
 +    """
 +    Author: lizhiyu
 +    Date: 2024-02-11
-+    Action: 
++    Action:
 +    Reason: This test always fails. `include_embedding_in_pipeline_split` and `include_loss_in_pipeline_split` are not in TransformerConfig.
 +"""
      @pytest.mark.parametrize(

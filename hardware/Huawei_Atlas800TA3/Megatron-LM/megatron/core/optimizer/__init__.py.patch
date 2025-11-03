@@ -1,5 +1,5 @@
 diff --git a/megatron/core/optimizer/__init__.py b/megatron/core/optimizer/__init__.py
-index 5ecc707ce..dc4a3f12c 100644
+index 5ecc707ce..e1f8f18b7 100644
 --- a/megatron/core/optimizer/__init__.py
 +++ b/megatron/core/optimizer/__init__.py
 @@ -53,6 +53,7 @@ def _get_param_groups(
@@ -19,18 +19,17 @@ index 5ecc707ce..dc4a3f12c 100644
  
              if scale_lr_cond is not None:
                  scale_lr = scale_lr_cond(name, param)
-@@ -130,8 +133,14 @@ def _get_param_groups(
-                 param, 'is_embedding_or_output_parameter', False
+@@ -131,7 +134,13 @@ def _get_param_groups(
              ):
                  is_decoupled_lr = True
-+            
+ 
+-            key = (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr)
 +            is_vision_model_param = False
 +            if "vision_model" in name:
 +                is_vision_model_param = True
 +            else:
 +                is_vision_model_param = False
- 
--            key = (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr)
++
 +            key = (wd_mult, _lr_mult, is_expert_parallel, is_decoupled_lr, is_vision_model_param)
              if key not in params_map:
                  params_map[key] = []

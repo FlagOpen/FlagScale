@@ -1,5 +1,5 @@
 diff --git a/megatron/training/arguments.py b/megatron/training/arguments.py
-index e36803fc5..3d3e219ed 100644
+index e36803fc5..6676518fa 100644
 --- a/megatron/training/arguments.py
 +++ b/megatron/training/arguments.py
 @@ -59,6 +59,7 @@ def add_megatron_arguments(parser: argparse.ArgumentParser):
@@ -427,7 +427,7 @@ index e36803fc5..3d3e219ed 100644
                         help='If set, keep the fp8 transpose cache when using custom FSDP.')
 +    group.add_argument('--use-partial-reduce-for-shared-embedding', action='store_true',
 +                       help='Use partial reduce for shared word embedding.')
-+    group.add_argument('--no-shared-fs', action='store_true', 
++    group.add_argument('--no-shared-fs', action='store_true',
 +                       help='Indicate whether not running on a shared file system.')
      group.add_argument('--num-distributed-optimizer-instances', type=int, default=1,
                         help='Number of Distributed Optimizer copies across Data Parallel domain.')
@@ -458,8 +458,8 @@ index e36803fc5..3d3e219ed 100644
 -                                'SFTTokenizer'],
 +                                'SFTTokenizer',
 +                                'AquilaTokenizerFS',
-+                                'HFTokenizerFS', 
-+                                'HFTokenizersTokenizerFS', 
++                                'HFTokenizerFS',
++                                'HFTokenizersTokenizerFS',
 +                                'Llama3TokenizerFS',
 +                                'QwenTokenizerFS',
 +                                'Qwen2TokenizerFS',
@@ -540,11 +540,11 @@ index e36803fc5..3d3e219ed 100644
 +def _add_hetero_args(parser):
 +    group = parser.add_argument_group(title="heterogeneous training")
 +
-+    group.add_argument('--enable-hetero', action="store_true", 
++    group.add_argument('--enable-hetero', action="store_true",
 +                       help='the mode of heterogeneous training')
-+    group.add_argument('--hetero-device-types', nargs='*', type=str, default=None, 
++    group.add_argument('--hetero-device-types', nargs='*', type=str, default=None,
 +                       help='the list of device types: device_type_0 device_type_1 ...')
-+    group.add_argument('--hetero-current-device-type', type=str, default=None, 
++    group.add_argument('--hetero-current-device-type', type=str, default=None,
 +                       help='the current device type')
 +    group.add_argument('--hetero-pipeline-layer-split', nargs='*', type=int, default=None,
 +                       help='Incompatible with --num-layers-per-virtual-pipeline-stage for now.'
@@ -555,7 +555,7 @@ index e36803fc5..3d3e219ed 100644
 +    group.add_argument('--expert-tensor-parallel-size-per-process-mesh', nargs='*', type=int, default=None,
 +                       help='The number of tensor parallel experts for each process-mesh. The number of the list should be equal to the number of process-meshes.')
 +    group.add_argument('--hetero-use-cpu-communication', action='store_true', help='Use CPU for communication for heterogeneous communication.')
-+    
++
 +    return parser
 +
 +
@@ -570,7 +570,7 @@ index e36803fc5..3d3e219ed 100644
 +
 +def _add_auto_skip_spiky_loss(parser):
 +    group = parser.add_argument_group(title='auto skip spiky loss')
-+    
++
 +    group.add_argument('--auto-skip-spiky-loss', action='store_true',
 +                       help='Automatically skip spiky loss iterations.')
 +    group.add_argument('--spiky-loss-threshold', type=float, default=0.2,

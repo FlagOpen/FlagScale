@@ -1,5 +1,5 @@
 diff --git a/megatron/core/datasets/utils.py b/megatron/core/datasets/utils.py
-index e14656df7..af125793f 100644
+index e14656df7..a469b0914 100644
 --- a/megatron/core/datasets/utils.py
 +++ b/megatron/core/datasets/utils.py
 @@ -1,11 +1,14 @@
@@ -25,7 +25,7 @@ index e14656df7..af125793f 100644
 +
 +def is_built_on_zero_rank():
 +    """
-+    Determines if the current distributed rank is the one responsible for building datasets. 
++    Determines if the current distributed rank is the one responsible for building datasets.
 +
 +    Returns:
 +        bool: True if the current rank is responsible for building resources, False otherwise.
@@ -36,13 +36,13 @@ index e14656df7..af125793f 100644
 +    is_built = False
 +    if not args.no_shared_fs \
 +        and torch.distributed.get_rank() == 0:
-+        is_built = True 
++        is_built = True
 +    elif args.no_shared_fs \
 +        and int(os.environ["LOCAL_RANK"]) == 0:
-+        is_built = True 
++        is_built = True
 +    else:
 +        is_built = False
-+    
++
 +    return is_built
 \ No newline at end of file
 

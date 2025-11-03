@@ -1,6 +1,6 @@
 diff --git a/hostfile b/hostfile
 new file mode 100644
-index 000000000..638b9e417
+index 00000000..638b9e41
 --- /dev/null
 +++ b/hostfile
 @@ -0,0 +1 @@

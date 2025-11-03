@@ -1,0 +1,10 @@
+diff --git a/pretrain_gpt.py b/pretrain_gpt.py
+index 2f9979c3f..7f89de078 100644
+--- a/pretrain_gpt.py
++++ b/pretrain_gpt.py
+@@ -1,3 +1,4 @@
++#### Test ####
+ # Copyright (c) 2023, NVIDIA CORPORATION.  All rights reserved.
+ 
+ """Pretrain and SFT GPT."""
+

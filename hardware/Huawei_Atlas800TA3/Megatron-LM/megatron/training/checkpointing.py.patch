@@ -1,5 +1,5 @@
 diff --git a/megatron/training/checkpointing.py b/megatron/training/checkpointing.py
-index 652333acb..36f06c9be 100644
+index 652333acb..099fa4b79 100644
 --- a/megatron/training/checkpointing.py
 +++ b/megatron/training/checkpointing.py
 @@ -255,12 +255,14 @@ def read_metadata(tracker_filename):
@@ -7,7 +7,7 @@ index 652333acb..36f06c9be 100644
                      tracker_filename))
                  sys.exit()
 -    assert iteration > 0 or release, 'error parsing metadata file {}'.format(
-+    # TODO: we use iteration 0 to load checkpoint from other framework.  
++    # TODO: we use iteration 0 to load checkpoint from other framework.
 +    # We should remove this after we have a better way to load checkpoint from other framework.
 +    assert iteration >= 0 or release, 'error parsing metadata file {}'.format(
          tracker_filename)
@@ -106,7 +106,7 @@ index 652333acb..36f06c9be 100644
              gen_sd_opt_param_scheduler = None
  
 -        optim_sd_kwargs = dict(metadata=sharded_sd_metadata, is_loading=True)
-+        optim_sd_kwargs = dict(metadata=sharded_sd_metadata, is_loading=True, convert_to_ep=convert_to_ep) ##add tp/pp to ep 
++        optim_sd_kwargs = dict(metadata=sharded_sd_metadata, is_loading=True, convert_to_ep=convert_to_ep) ##add tp/pp to ep
          model_sd_kwargs = dict(metadata=sharded_sd_metadata)
  
          # Determine if rerun state will be loaded

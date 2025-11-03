@@ -1,6 +1,6 @@
 diff --git a/tools/checkpoint/qwen2_5_vl/run.sh b/tools/checkpoint/qwen2_5_vl/run.sh
 new file mode 100644
-index 000000000..2de4a88bf
+index 00000000..2de4a88b
 --- /dev/null
 +++ b/tools/checkpoint/qwen2_5_vl/run.sh
 @@ -0,0 +1,7 @@
