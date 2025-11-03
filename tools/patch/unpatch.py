@@ -275,7 +275,13 @@ def apply_hardware_patch(
             )
 
             repo = Repo(submodule_path)
-            repo.git.apply("--whitespace", "fix", new_patch_file)
+            try:
+                repo.git.apply(new_patch_file)
+            except git.exc.GitCommandError as e:
+                logger.warning(
+                    f"    Failed to apply patch cleanly. Retrying with --whitespace=fix. Error: {e.stderr}"
+                )
+                repo.git.apply("--whitespace", "fix", new_patch_file)
             logger.info(f"    Patch {new_patch_file} has been applied.")
 
         logger.info(f"Step 6: Moving patched temp path {temp_unpatch_path} to {final_path}")
