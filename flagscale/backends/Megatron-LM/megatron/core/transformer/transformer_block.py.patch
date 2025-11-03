@@ -1,7 +1,7 @@
 diff --git a/megatron/core/transformer/transformer_block.py b/megatron/core/transformer/transformer_block.py
 old mode 100755
 new mode 100644
-index c14f8ea1f..73314c593
+index c14f8ea1f..5a64c76bb
 --- a/megatron/core/transformer/transformer_block.py
 +++ b/megatron/core/transformer/transformer_block.py
 @@ -1,5 +1,6 @@
@@ -74,7 +74,17 @@ index c14f8ea1f..73314c593
  
      # The embedding (or loss) layer cannot function as a standalone transformer layer
      # Reduce the number of layers to construct by 1 on the first (or last) stage if the
-@@ -380,6 +397,7 @@ class TransformerBlock(MegatronModule):
+@@ -254,6 +271,9 @@ def _get_block_submodules(
+             return spec.submodules
+         elif issubclass(spec.module, BaseTransformerLayer):
+             num_layers = get_num_layers_to_build(config, vp_stage, pp_rank)
++            # # replace for gems
++            from megatron.core.transformer.torch_norm import WrappedTorchNorm
++            LayerNormImpl = WrappedTorchNorm
+             return TransformerBlockSubmodules(
+                 layer_specs=[spec] * num_layers, layer_norm=LayerNormImpl
+             )
+@@ -380,6 +400,7 @@ class TransformerBlock(MegatronModule):
                  hidden_size=self.config.hidden_size,
                  eps=self.config.layernorm_epsilon,
              )
@@ -82,7 +92,7 @@ index c14f8ea1f..73314c593
          else:
              self.final_layernorm = None  # Either this or nn.Identity
  
-@@ -556,6 +574,14 @@ class TransformerBlock(MegatronModule):
+@@ -556,6 +577,14 @@ class TransformerBlock(MegatronModule):
              [s, b, h], and optionally the updated context tensor if cross-attention is used.
          """
  
@@ -97,7 +107,7 @@ index c14f8ea1f..73314c593
          inference_context = deprecate_inference_params(inference_context, inference_params)
  
          # Delete the obsolete reference to the initial input tensor if necessary
-@@ -609,6 +635,71 @@ class TransformerBlock(MegatronModule):
+@@ -609,6 +638,71 @@ class TransformerBlock(MegatronModule):
              use_outer_quantization_context = False
              use_inner_quantization_context = False
              outer_quantization_context = nullcontext()
@@ -169,7 +179,7 @@ index c14f8ea1f..73314c593
  
          with rng_context, outer_quantization_context:
              # Forward pass.
-@@ -710,6 +801,16 @@ class TransformerBlock(MegatronModule):
+@@ -710,6 +804,16 @@ class TransformerBlock(MegatronModule):
          elif isinstance(self.config.moe_layer_freq, list):
              non_homogeneous_layers = True
  
@@ -186,7 +196,7 @@ index c14f8ea1f..73314c593
          if self.config.heterogeneous_block_specs:
              non_homogeneous_layers = True
  
-@@ -759,3 +860,4 @@ class TransformerBlock(MegatronModule):
+@@ -759,3 +863,4 @@ class TransformerBlock(MegatronModule):
                  )
  
          return sharded_state_dict
