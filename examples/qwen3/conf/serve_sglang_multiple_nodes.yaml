@@ -1,7 +1,7 @@
 # atmb: Auto Tuning for Multi-Backend
 defaults:
   - _self_
-  - serve: 0_6b
+  - serve: sglang_0_6b
 
 experiment:
   exp_name: qwen3_0.6b
@@ -13,7 +13,7 @@ experiment:
     docker: ds
     nnodes: 2
     master_addr: x.x.x.x  # ip and address for sglang distribute control
-    master_port: xxxx     # 30000
+    master_port: xxxx     # port for sglang distribute control
     deploy:
       port: 6706     # port for sglang serve
       use_fs_serve: false
@@ -29,19 +29,9 @@ experiment:
     x.x.x.x:     # ip and address for sglang distribute control
       engine_args:
         # model: /models/Qwen2.5-0.5B-Instruct/ 
-
   auto_tuner:
-    engines: [vllm, sglang, llama_cpp]
+    engines: [sglang]
     space:
-      vllm:
-        tensor_model_parallel_size: [1,2,4]
-        pipeline_model_parallel_size: "auto"
-        block_size: [32, 64]
-        max_num_batched_tokens: [512, 1024, 2048]
-        max_num_seqs: [128, 256]
-      llama_cpp:
-        threads: [32]
-        split_mode: [none, layer, row]
       sglang:
         tensor_model_parallel_size: [4]
         # Error occured when PP with SGLang==main (v0.4.6 not support):
