@@ -20,7 +20,7 @@ experiment:
     no_shared_fs: false
     rdzv_backend: static
     # hostfile: null
-    hostfile: /share/project/lixianduo/scale_gems_cx/2node_hostfile_2
+    hostfile: /share/project/lixianduo/scale_gems_cx/2node_hostfile_3
     # hostfile: /share/project/lixianduo/scale_gems_cx/4node_hostfile
     ssh_port: 7878
   cmds:

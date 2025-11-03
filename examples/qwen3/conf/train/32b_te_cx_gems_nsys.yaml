@@ -39,7 +39,7 @@ model:
   distributed_backend: flagcx
   use_flag_gems: true
   flag_gems_log_path: /share/project/lixianduo/scale_gems_cx/gems_te_cx_gems_log
-  flag_gems_unused: ['index_put', 'index_put_']
+  flag_gems_unused: ['index_put', 'index_put_', 'to_dtype', 'contiguous', 'repeat_interleave_self_int']
   num_layers: 32
   hidden_size: 5120
   ffn_hidden_size: 25600
