@@ -80,13 +80,15 @@ class CustomLLMAdapter(LLMBase):
             if not callable(self.llm_model):
                 raise ValueError("LLM model must be callable")
 
-            # Check if it's an async function
+            # Async models are not supported in this sync method to avoid event loop conflicts.
             if asyncio.iscoroutinefunction(self.llm_model):
-                # Async call
-                response = asyncio.run(self._async_generate(messages, tools))
-            else:
-                # Sync call
-                response = self.llm_model(messages, tools=tools)
+                raise TypeError(
+                    "Async LLM models are not supported by this adapter. "
+                    "Please provide a synchronous callable."
+                )
+
+            # Sync call
+            response = self.llm_model(messages, tools=tools)
 
             # Extract text response
             return self._extract_text_from_response(response)
@@ -212,13 +214,15 @@ class CustomEmbeddingAdapter(EmbeddingBase):
             if not callable(self.embedding_model):
                 raise ValueError("Embedding model must be callable")
 
-            # Check if it's an async function
+            # Async models are not supported in this sync method to avoid event loop conflicts.
             if asyncio.iscoroutinefunction(self.embedding_model):
-                # Async call
-                response = asyncio.run(self._async_embed(text_list))
-            else:
-                # Sync call
-                response = self.embedding_model(text_list)
+                raise TypeError(
+                    "Async embedding models are not supported by this adapter. "
+                    "Please provide a synchronous callable."
+                )
+
+            # Sync call
+            response = self.embedding_model(text_list)
 
             # Extract embedding vector
             return self._extract_embedding_from_response(response)

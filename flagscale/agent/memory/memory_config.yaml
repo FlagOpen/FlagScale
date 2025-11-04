@@ -31,7 +31,7 @@ memory:
       model: "text-embedding-3-small"
       api_base: null
       api_key: "${OPENAI_API_KEY}"
-      dimensions: 1024
+      dimensions: 1536
   
   enable_short_term: true
   enable_long_term: false
