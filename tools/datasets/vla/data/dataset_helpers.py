@@ -10,13 +10,13 @@ import torch
 from torchvision import transforms
 
 from megatron.energon import DefaultTaskEncoder
-from tools.datasets.qwenvl.data.energon.chatml_pi0 import ChatMLSamplePI0
+from tools.datasets.vla.data.energon.chatml import ChatMLSample
 
 dataset_logger = logging.getLogger(__name__)
 
 
 class TaskEncoder(
-    DefaultTaskEncoder[ChatMLSamplePI0, ChatMLSamplePI0, ChatMLSamplePI0, ChatMLSamplePI0]
+    DefaultTaskEncoder[ChatMLSample, ChatMLSample, ChatMLSample, ChatMLSample]
 ):
     def __init__(self, config):
         super().__init__()
@@ -24,7 +24,7 @@ class TaskEncoder(
         self.vision_root = config.vision_root
         return
 
-    def encode_sample(self, sample: ChatMLSamplePI0) -> dict:
+    def encode_sample(self, sample: ChatMLSample) -> dict:
         conversation = (
             json.loads(sample.conversation)
             if isinstance(sample.conversation, (str, bytes))

@@ -206,8 +206,8 @@ def generate_configs(path: EPath, split, shuffle_tars=True, num_workers=1):
 
     # NOTE: dump dataset.yaml
     metadata = {
-        "__class__": "ChatMLWebdatasetPI0",
-        "__module__": "tools.datasets.qwenvl.data.energon.chatml_pi0",
+        "__class__": "ChatMLWebdataset",
+        "__module__": "tools.datasets.vla.data.energon.chatml",
         "field_map": field_map,
     }
     with open(os.path.join(path.url, ".nv-meta", "dataset.yaml"), "w") as f:
