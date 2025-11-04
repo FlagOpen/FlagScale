@@ -6,4 +6,3 @@ code_review:
   max_review_comments: -1 # Maximum number of review comments allowed; -1 indicates no limit
   pull_request_opened:
     summary: false  # Don't summarize the PR in a separate comment
-    enabled: false  # When set to false, skip generating "Summary of Changes"
