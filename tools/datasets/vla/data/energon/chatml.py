@@ -7,16 +7,15 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from webdataset.autodecode import Decoder, imagehandler
+from webdataset.autodecode import Decoder
 
-from megatron.energon.av import AVWebdatasetDecoder
 from megatron.energon.epathlib.epath import EPath
 from megatron.energon.flavors.base_dataset import Sample
 from megatron.energon.flavors.webdataset import DefaultDecoderWebdatasetFactory
 
 
 @dataclass
-class ChatMLSamplePI0(Sample):
+class ChatMLSample(Sample):
     """multi-turn complex samples with images and videos"""
 
     imgs: List[str]
@@ -58,11 +57,11 @@ class NestedImagesPathHandler:
         return None
 
 
-# During training, data is automatically decoded to from default webdataset to 'ChatMLSamplePI0' when loaded using energon-dataloader,
+# During training, data is automatically decoded to from default webdataset to 'ChatMLSample' when loaded using energon-dataloader,
 # and this is not done during preparation!!!
 # After decoding, the data is passed into the TaskEncoder for further processing.
-class ChatMLWebdatasetPI0(DefaultDecoderWebdatasetFactory[ChatMLSamplePI0]):
-    __sample_type__ = ChatMLSamplePI0
+class ChatMLWebdataset(DefaultDecoderWebdatasetFactory[ChatMLSample]):
+    __sample_type__ = ChatMLSample
 
     def __init__(
         self,
