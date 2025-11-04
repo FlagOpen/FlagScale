@@ -44,7 +44,7 @@ def convert(
     try:
         with open(json_file, "r") as f:
             data = json.load(f)
-    except:
+    except json.JSONDecodeError:
         with open(json_file, "r") as f:
             data = [json.loads(l) for l in f.readlines()]
 
