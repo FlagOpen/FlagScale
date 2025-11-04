@@ -15,9 +15,7 @@ from tools.datasets.vla.data.energon.chatml import ChatMLSample
 dataset_logger = logging.getLogger(__name__)
 
 
-class TaskEncoder(
-    DefaultTaskEncoder[ChatMLSample, ChatMLSample, ChatMLSample, ChatMLSample]
-):
+class TaskEncoder(DefaultTaskEncoder[ChatMLSample, ChatMLSample, ChatMLSample, ChatMLSample]):
     def __init__(self, config):
         super().__init__()
         self.config = config
