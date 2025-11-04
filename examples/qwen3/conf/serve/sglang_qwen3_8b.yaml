@@ -3,7 +3,7 @@
   # engine: llama_cpp
   engine: sglang
   engine_args:
-    model: /models/Qwen2.5-0.5B-Instruct/
+    model: /models/Qwen3-8B/
     host: 0.0.0.0
     max_model_len: 4096
     max_num_seqs: 4
