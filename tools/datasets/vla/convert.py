@@ -44,7 +44,7 @@ def convert(
     try:
         with open(json_file, "r") as f:
             data = json.load(f)
-    except:
+    except json.JSONDecodeError:
         with open(json_file, "r") as f:
             data = [json.loads(l) for l in f.readlines()]
 
@@ -84,10 +84,10 @@ def convert(
             video_noext, _ = os.path.splitext(video)
             frame_folder = os.path.join(vision_dir, video_noext)
 
-            if os.path.exists(frame_folder + ".json"):
+            try:
                 with open(frame_folder + ".json", "r") as f:
                     fps = float(json.load(f)["fps"])
-            else:
+            except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError):
                 fps = 2.0
 
             frames: List[str] = []
