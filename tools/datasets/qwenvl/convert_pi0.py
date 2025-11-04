@@ -202,12 +202,7 @@ def generate_configs(path: EPath, split, shuffle_tars=True, num_workers=1):
         workers=num_workers,
     )
 
-    field_map = {
-        "imgs": "jpgs",
-        "videos": "videos",
-        "conversation": "json",
-        "metadata": "metadata",
-    }
+    field_map = {"imgs": "jpgs", "videos": "videos", "conversation": "json", "metadata": "metadata"}
 
     # NOTE: dump dataset.yaml
     metadata = {
