@@ -5,6 +5,7 @@ engine:
     class: diffusers.HunyuanVideoPipeline
     from_pretrained:
       torch_dtype: bfloat16
+      cup_offload: True
   components:
     vae:
       class: diffusers.AutoencoderKLHunyuanVideo

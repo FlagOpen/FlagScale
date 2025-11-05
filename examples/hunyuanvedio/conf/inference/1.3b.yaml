@@ -5,6 +5,7 @@ engine:
     class: diffusers.HunyuanVideoPipeline
     from_pretrained:
       torch_dtype: bfloat16
+      cup_offload: True
   components:
     vae:
       class: diffusers.AutoencoderKLHunyuanVideo
@@ -21,7 +22,7 @@ engine:
       skip_interval_steps: 5
       targets:
         # Matches the taylorseer official implementation at https://github.com/Shenyi-Z/TaylorSeer/tree/main/TaylorSeer-Wan2.1/wan/taylorseer/forwards
-        by_name: ["single_transformer_blocks.*.attn","*.norm_out.linear","single_transformer_blocks.*.proj_out","*.*ff_context","*.norm.linear","context_embedder.token_refiner.refiner_blocks.*.ff","*.norm_out.linear"]
+        by_name: ["single_transformer_blocks.*.attn","*.norm_out.linear","single_transformer_blocks.*.proj_out","*.*ff_context","*.norm.linear","context_embedder.token_refiner.refiner_blocks.*.ff"]
       use_timestep_delta: true
     TimestepTrackerTransformation:
       {}

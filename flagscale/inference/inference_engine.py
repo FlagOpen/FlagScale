@@ -336,10 +336,12 @@ class InferenceEngine:
         if "pretrained_model_name_or_path" in pipeline_kwargs:
             pipeline_kwargs.pop("pretrained_model_name_or_path")
         pipeline = pipeline_cls.from_pretrained(pretrained_model_name_or_path, **pipeline_kwargs)
-
-        device = kwargs.get("device", None)
-        if device:
-            pipeline.to(device)
+        if (kwargs["pipeline"]["from_pretrained"]["cup_offload"]):
+            pipeline.enable_model_cpu_offload()
+        else:
+            device = kwargs.get("device", None)
+            if device:
+                pipeline.to(device)
 
         # TODO(yupu): Messy, refactor this
         known_methods_wo_args = [
