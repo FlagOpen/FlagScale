@@ -77,7 +77,6 @@ class Qwen_GR00T(PreTrainedModel):
         
         state = [example["state"] for example in examples] if "state" in examples[0] else None  # [B, 1, state_dim]
         
-
         # Step 1: QWenVL input format
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions)
         with torch.autocast("cuda", dtype=torch.bfloat16):
@@ -92,10 +91,8 @@ class Qwen_GR00T(PreTrainedModel):
 
         # Step 4: Action Expert Forward and Loss
         with torch.autocast("cuda", dtype=torch.float32):
-            # 标签对齐：取最后 chunk_len 段
-            actions = torch.tensor(
-                np.array(actions), device=last_hidden.device, dtype=last_hidden.dtype
-            )  # [B, T_full, action_dim]
+            # [B, T_full, action_dim]
+            actions = torch.tensor(np.array(actions), device=last_hidden.device, dtype=last_hidden.dtype) 
             actions_target = actions[:, -(self.future_action_window_size+1):, :]  # (B, chunk_len, action_dim)
 
             repeated_diffusion_steps = (
@@ -170,6 +167,39 @@ class Qwen_GR00T(PreTrainedModel):
         return {"normalized_actions": normalized_actions}
 
 
+
+def get_batch(batch):
+    rsp_batch = []
+    for i_batch in batch:
+        ab = {
+            "action": i_batch['action'][:16, :7],
+            "image": [
+                i_batch['observation.images.camera0'],
+                i_batch['observation.images.camera1'],
+            ],
+            "lang": i_batch['task'],
+            "state": i_batch['observation.state'][:7][None,],
+        }
+        rsp_batch.append(ab)
+    return rsp_batch
+
+
+def resize_images(images, target_size=(224, 224)):
+    """
+    recursively resize all images in the nested list.
+
+    :param images: nested list of images or single image.
+    :param target_size: target size (width, height) after resizing.
+    :return: resized images list, keeping the original nested structure.
+    """
+    if isinstance(images, Image.Image):  # if it is a single PIL image
+        return images.resize(target_size)
+    elif isinstance(images, list):  # if it is a list, recursively process each element
+        return [resize_images(img, target_size) for img in images]
+    else:
+        raise ValueError("Unsupported image type or structure.")
+
+
 def test_with_fake_sample():
     """
     Test Qwen-GR00T model with fake data.
@@ -195,44 +225,40 @@ def test_with_fake_sample():
     # test predict action
     predict_output = model.predict_action(batch_images=[batch[0]["image"]], instructions=[batch[0]["lang"]], state=[batch[0]["state"]])
     normalized_actions = predict_output['normalized_actions']
-    print(f"Unnormalized Action: {normalized_actions}")
+    print(f"Unnormalized Action: {normalized_actions['normalized_actions'].shape}")
 
 
 def test_with_dataloader(cfg):
-    # Advance: try forward model with dataloader
-    # can be fake sample， but here get from dataloader for simpler
-    from starVLA.dataloader.lerobot_datasets import get_vla_dataset, collate_fn
+    model: Qwen_GR00T = Qwen_GR00T(cfg)
 
-    vla_dataset_cfg = cfg.datasets.vla_data
-    dataset = get_vla_dataset(data_cfg=vla_dataset_cfg)
+    from megatron.energon import WorkerConfig, get_loader, get_train_dataset
+    from tools.datasets.vla.data.dataset_helpers_np_pil import TaskEncoder
 
-    from torch.utils.data import DataLoader
-
-    train_dataloader = DataLoader(
-        dataset,
-        batch_size=2,
-        num_workers=1,  # For Debug
-        collate_fn=collate_fn,
+    ds = get_train_dataset(
+        cfg.datasets.data_path,
+        batch_size=1,
+        shuffle_buffer_size=100,
+        max_samples_per_sequence=100,
+        worker_config=WorkerConfig.default_worker_config(num_workers=1, data_parallel_group=None),
+        task_encoder=TaskEncoder(cfg.datasets.task_encoder),
+        repeat=True,
     )
-    # 
-    for batch in tqdm(train_dataloader, desc="Processing Batches"):
-        batch
-        break
+    vla_train_dataloader = get_loader(ds)
+    data_iter = iter(vla_train_dataloader)
+    batch = next(data_iter)
+    batch = get_batch(batch)
 
     # try get model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     model(batch)
+    forward_output = model(batch)
+    action_loss = forward_output['action_loss']
+    print(f"Action Loss: {action_loss.item()}")
 
     action = model.predict_action(batch_images=[batch[0]["image"]], instructions=[batch[0]["lang"]])
-
-    # fake state
-    for ba in batch:
-        ba["state"] = ba["action"][0][None]
-
-    model(batch)
-    action = model.predict_action(batch_images=[batch[0]["image"]], instructions=[batch[0]["lang"]], state=[batch[0]["state"]])
-
+    print(f"Action inference: {action['normalized_actions'].shape}")
+   
 
 if __name__ == "__main__":
     from omegaconf import OmegaConf
@@ -242,21 +268,5 @@ if __name__ == "__main__":
     args, clipargs = parser.parse_known_args()
     cfg = OmegaConf.load(args.config_yaml)
 
-    test_with_fake_sample(cfg)
-
-    
-def resize_images(images, target_size=(224, 224)):
-    """
-    recursively resize all images in the nested list.
-
-    :param images: nested list of images or single image.
-    :param target_size: target size (width, height) after resizing.
-    :return: resized images list, keeping the original nested structure.
-    """
-    if isinstance(images, Image.Image):  # if it is a single PIL image
-        return images.resize(target_size)
-    elif isinstance(images, list):  # if it is a list, recursively process each element
-        return [resize_images(img, target_size) for img in images]
-    else:
-        raise ValueError("Unsupported image type or structure.")
-
+    # test_with_fake_sample(cfg)
+    test_with_dataloader(cfg)
