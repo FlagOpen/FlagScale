@@ -33,9 +33,9 @@ engine:
 generate:
   prompts: ["A cat walks on the grass, realistic"]
   negative_prompt: "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
-  height: 384
-  width: 512
-  num_frames: 64
+  height: 480
+  width: 640
+  num_frames: 65
   guidance_scale: 5.0
   generator:
     seed: 42
