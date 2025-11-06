@@ -227,5 +227,9 @@ Tsing_micro:
     - ff41d6d017730504fac2fc62226a615b38558433
 NVIDIA_CambriconMLU:
   train:
+    FlagScale+Megatron-LM:
+    - 631ebb869a58a4d495a4c2bd1698e31409448ca6  
     Megatron-LM:
+    - 631ebb869a58a4d495a4c2bd1698e31409448ca6
+    FlagScale:
     - 631ebb869a58a4d495a4c2bd1698e31409448ca6
