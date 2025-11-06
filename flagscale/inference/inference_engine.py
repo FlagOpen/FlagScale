@@ -336,7 +336,7 @@ class InferenceEngine:
         if "pretrained_model_name_or_path" in pipeline_kwargs:
             pipeline_kwargs.pop("pretrained_model_name_or_path")
         pipeline = pipeline_cls.from_pretrained(pretrained_model_name_or_path, **pipeline_kwargs)
-        if (kwargs["pipeline"]["from_pretrained"]["cup_offload"]):
+        if ("cup_offload" in kwargs["pipeline"]["from_pretrained"]  and kwargs["pipeline"]["from_pretrained"]["cup_offload"]):
             pipeline.enable_model_cpu_offload()
         else:
             device = kwargs.get("device", None)
