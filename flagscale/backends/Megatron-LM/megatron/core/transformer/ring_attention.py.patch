@@ -1,9 +1,14 @@
 diff --git a/megatron/core/transformer/ring_attention.py b/megatron/core/transformer/ring_attention.py
 new file mode 100644
-index 000000000..e3af95ea6
+index 000000000..f85bd9115
 --- /dev/null
 +++ b/megatron/core/transformer/ring_attention.py
-@@ -0,0 +1,304 @@
+@@ -0,0 +1,309 @@
++# Copyright (c) 2025, BAAI. All rights reserved.
++# 
++# Adopted from <https://github.com/malaysia-ai/context-parallelism>. Below is the original copyright:
++# https://github.com/malaysia-ai/context-parallelism/blob/master/context_parallelism/ring_flex.py
++
 +import torch
 +import torch.distributed as dist
 +from megatron.core.transformer.ring_utils import RingComm, merge_attention

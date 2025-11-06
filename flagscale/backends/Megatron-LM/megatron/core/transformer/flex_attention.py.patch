@@ -1,10 +1,10 @@
 diff --git a/megatron/core/transformer/flex_attention.py b/megatron/core/transformer/flex_attention.py
 new file mode 100644
-index 000000000..7f51015b9
+index 000000000..268df27d5
 --- /dev/null
 +++ b/megatron/core/transformer/flex_attention.py
 @@ -0,0 +1,207 @@
-+# Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
++# Copyright (c) 2025, BAAI. All rights reserved.
 +
 +from abc import ABC, abstractmethod
 +from dataclasses import dataclass

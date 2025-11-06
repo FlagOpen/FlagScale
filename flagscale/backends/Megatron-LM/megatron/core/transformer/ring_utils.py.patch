@@ -1,9 +1,12 @@
 diff --git a/megatron/core/transformer/ring_utils.py b/megatron/core/transformer/ring_utils.py
 new file mode 100644
-index 000000000..72edf0332
+index 000000000..10abf7e1f
 --- /dev/null
 +++ b/megatron/core/transformer/ring_utils.py
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,76 @@
++# Copied from  <https://github.com/malaysia-ai/context-parallelism>. Below is the original copyright:
++# https://github.com/malaysia-ai/context-parallelism/blob/master/context_parallelism/utils.py
++
 +from typing import Optional, Tuple
 +
 +import torch
