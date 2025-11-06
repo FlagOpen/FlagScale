@@ -169,7 +169,7 @@ class InferenceEngine:
             for k, v in asdict(self.vconfig.model).items()
             if v is not None and k not in ("model", "loader")
         }
-        print(f"self.vconfig:{self.vconfig}")
+        print(f"Config:{self.vconfig}")
         if loader == "diffusers":
             return self.load_diffusers_pipeline(self.vconfig.model.model, **_kwargs)
         elif loader == "transformers":
@@ -336,7 +336,10 @@ class InferenceEngine:
         if "pretrained_model_name_or_path" in pipeline_kwargs:
             pipeline_kwargs.pop("pretrained_model_name_or_path")
         pipeline = pipeline_cls.from_pretrained(pretrained_model_name_or_path, **pipeline_kwargs)
-        if ("cup_offload" in kwargs["pipeline"]["from_pretrained"]  and kwargs["pipeline"]["from_pretrained"]["cup_offload"]):
+        if (
+            "cup_offload" in kwargs["pipeline"]["from_pretrained"]
+            and kwargs["pipeline"]["from_pretrained"]["cup_offload"]
+        ):
             pipeline.enable_model_cpu_offload()
         else:
             device = kwargs.get("device", None)
