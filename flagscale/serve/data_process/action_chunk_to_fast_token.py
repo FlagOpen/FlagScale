@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Action Chunk to Fast Token 转换程序
+Action Chunk to Fast Token
 """
 
 import os
@@ -15,12 +15,9 @@ from transformers import AutoProcessor
 
 from flagscale.runner.utils import logger
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-tokenizer_path = os.path.join(script_dir, "fast")
-
 
 class ActionChunkProcessor:
-    def __init__(self, max_len: int = 256, fast_tokenizer_path: str = tokenizer_path):
+    def __init__(self, max_len: int = 256, fast_tokenizer_path: str = "physical-intelligence/fast"):
         self.max_len = max_len
         self.fast_tokenizer = AutoProcessor.from_pretrained(
             fast_tokenizer_path, trust_remote_code=True

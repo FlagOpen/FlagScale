@@ -31,6 +31,14 @@ cd /models/
 modelscope download --model BAAI/RoboBrain-X0-Preview --local_dir BAAI/RoboBrain-X0-Preview
 ```
 
+# Download Tokenzier
+
+```sh
+mkdir -p /models/physical-intelligence/
+cd /models/physical-intelligence/
+git lfs install
+git clone https://huggingface.co/physical-intelligence/fast
+```
 
 # Serving
 
@@ -44,6 +52,7 @@ vim examples/robobrain_x0/conf/serve/robobrain_x0.yaml
 Change 3 fields:
 - engine_args.model_sub_task -> /models/BAAI/RoboBrain-X0-Preview
 - engine_args.port -> A port available in your env, for example: 5001
+- engine_args.tokenizer_path ->/models/physical-intelligence/fast
 
 ## Run Serving
 

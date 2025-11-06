@@ -32,6 +32,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pynvml
 import torch
 
 from flask import Flask, jsonify, request
@@ -52,12 +53,10 @@ serve.load_args()
 TASK_CONFIG = serve.task_config
 ENGINE_CONFIG = TASK_CONFIG.serve[0].engine_args
 SUBTASK_MODE = ENGINE_CONFIG["subtask_mode"]
-
 if SUBTASK_MODE:
     MODEL_PATH = ENGINE_CONFIG["model_sub_task"]
 else:
     MODEL_PATH = ENGINE_CONFIG["model"]
-
 SERVICE_CONFIG = {
     'host': ENGINE_CONFIG["host"],
     'port': ENGINE_CONFIG["port"],
@@ -65,7 +64,7 @@ SERVICE_CONFIG = {
     'threaded': ENGINE_CONFIG["threaded"],
     'max_content_length': 16 * 1024 * 1024,
 }
-
+_TOKENIZER_CACHE: dict[int, ActionChunkProcessor] = {}
 
 app = Flask(__name__)
 CORS(app)
@@ -74,14 +73,16 @@ processor = None
 action_tokenizer = None
 
 
-_TOKENIZER_CACHE: dict[int, ActionChunkProcessor] = {}
+pynvml.nvmlInit()
 
 
 def get_tokenizer(max_len: int) -> ActionChunkProcessor:
     """Cache and return an ActionChunkProcessor instance for each process"""
     tok = _TOKENIZER_CACHE.get(max_len)
     if tok is None:
-        tok = ActionChunkProcessor(max_len=max_len)
+        tok = ActionChunkProcessor(
+            max_len=max_len, fast_tokenizer_path=ENGINE_CONFIG["tokenizer_path"]
+        )
         _TOKENIZER_CACHE[max_len] = tok
     return tok
 
@@ -151,11 +152,15 @@ def health_check():
         return jsonify({"status": "error", "message": "Model not loaded"}), 503
 
     gpu_info = {}
-    if torch.cuda.is_available():
+    if pynvml.nvmlDeviceGetCount():
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
         gpu_info = {
-            "name": torch.cuda.get_device_name(),
-            "memory_allocated": f"{torch.cuda.memory_allocated() / 1024**3:.2f}GB",
-            "memory_reserved": f"{torch.cuda.memory_reserved() / 1024**3:.2f}GB",
+            "name": pynvml.nvmlDeviceGetName(handle),
+            "num": pynvml.nvmlDeviceGetCount(),
+            "memory_total": f"{mem_info.total / 1024**3:.2f}GB",
+            "memory_used": f"{mem_info.used / 1024**3:.2f}GB",
+            "memory_free": f"{mem_info.free / 1024**3:.2f}GB",
         }
 
     return jsonify(

@@ -7,3 +7,4 @@
     port: 5001
     debug: false
     threaded: true
+    tokenizer_path: /models/physical-intelligence/fast
