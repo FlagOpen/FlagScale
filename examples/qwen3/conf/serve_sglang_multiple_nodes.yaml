@@ -4,7 +4,7 @@ defaults:
   - serve: sglang_qwen3_8b
 
 experiment:
-  exp_name: qwen3_0.6b
+  exp_name: qwen3_8b
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
@@ -25,16 +25,16 @@ experiment:
   node_args:     # Support setting different parameters on different nodes
     x.x.x.x:     # ip and address for sglang distribute control
       engine_args:
-        # model: /mnt/Qwen2.5-0.5B-Instruct/
+        # model: /mnt/Qwen3-8B/
     x.x.x.x:     # ip and address for sglang distribute control
       engine_args:
-        # model: /models/Qwen2.5-0.5B-Instruct/ 
+        # model: /models/Qwen3-8B/ 
   auto_tuner:
     engines: [sglang]
     space:
       sglang:
         tensor_model_parallel_size: [4]
-        # Error occured when PP with SGLang==main (v0.4.6 not support): https://github.com/sgl-project/sglang/releases/tag/v0.4.6
+        # Error occured when PP with SGLang==main (v0.4.6 not support): should be after https://github.com/sgl-project/sglang/pull/5724
         # AttributeError: 'PPMissingLayer' object has no attribute 'quant_method'
         pipeline_model_parallel_size: [1]
         chunked_prefill_size: [128, 256, 512]
