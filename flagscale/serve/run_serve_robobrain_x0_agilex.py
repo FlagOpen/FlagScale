@@ -25,15 +25,12 @@ POST /infer Input Example:
 import base64
 import io
 import json
-import logging
 import os
 import sys
 import time
-import traceback
 
 from pathlib import Path
 
-import h5py
 import numpy as np
 import torch
 
@@ -46,9 +43,9 @@ root = Path(__file__).parent.parent
 sys.path.append(str(root))
 
 from flagscale import serve
+from flagscale.runner.utils import logger
 from flagscale.serve.data_process.action_chunk_to_fast_token import ActionChunkProcessor
 from flagscale.serve.data_process.pose_transform import add_delta_to_euler_pose
-from flagscale.runner.utils import logger
 
 serve.load_args()
 
@@ -244,7 +241,6 @@ def infer_api():
             {"type": "text", "text": f"\nYour overall task is: {instruction.lower()}."},
         ]
     else:
-        # 标准模式 Prompt
         prompt_template = (
             "You are controlling an Agilex dual-arm robot. Your task is to adjust the end effector poses (EEPose) at 30Hz to complete a specified task. "
             "You need to output control tokens that can be decoded into a 30×14 action sequence. The sequence has 30 consecutive actions, each with 14 dimensions. "
@@ -288,7 +284,6 @@ def infer_api():
     input_length = inputs.input_ids.shape[1]
     output_tokens = output_ids[input_length:].detach().cpu().tolist()
 
-    # --- 输出解析 ---
     subtask_result = "N/A"
     if SUBTASK_MODE:
         try:
