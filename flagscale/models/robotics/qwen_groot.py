@@ -68,9 +68,6 @@ class Qwen_GR00T(PreTrainedModel):
         examples: List[dict] = None,
         **kwargs,
     ) -> Tuple:
-        """
-
-        """
         batch_images = [example["image"] for example in examples]  #  [B，[PLT]]
         instructions = [example["lang"] for example in examples]  # [B, str]
         actions = [example["action"] for example in examples]  # label [B， len, 7]
