@@ -1,5 +1,5 @@
 engine:
-  model:  /nfs/lhh/models/hunyuanveido
+  model:  hunyuanvideo-community/HunyuanVideo
   loader: diffusers
   pipeline:
     class: diffusers.HunyuanVideoPipeline

@@ -3,7 +3,7 @@ defaults:
   - inference: t2i
 
 experiment:
-  exp_name: hunyuan_vedio
+  exp_name: hunyuan_video
   exp_dir: outputs/${experiment.exp_name}
   model: hunyuanvideo-community/HunyuanVideo 
   task:
