@@ -92,6 +92,7 @@ class UniversalActionProcessor(ProcessorMixin):
                     self.action_dim,
                 ), f"Decoded DCT coefficients have shape {decoded_dct_coeff.shape}, expected ({self.time_horizon}, {self.action_dim})"
             except Exception as e:
+                logging.warning(f"Error decoding tokens: {e}", exc_info=True)
                 decoded_dct_coeff = np.zeros((self.time_horizon, self.action_dim))
             decoded_actions.append(idct(decoded_dct_coeff / self.scale, axis=0, norm="ortho"))
         return np.stack(decoded_actions), output_dims

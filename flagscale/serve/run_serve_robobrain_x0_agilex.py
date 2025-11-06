@@ -118,21 +118,6 @@ def inverse_transform(x_norm, scale, offset):
     return (x_norm - offset) / scale
 
 
-# Load action normalization statistics
-try:
-    # Note: Different models may require loading different statistics files
-    if SUBTASK_MODE:
-        stats_file = "/models/lerobot/aloha_mobile_cabinet/meta/stats.json"
-    with open(stats_file, 'r') as f:
-        action_stats = json.load(f)
-    logger.info(f"Loaded action statistics file: {stats_file}")
-except FileNotFoundError:
-    logger.error(
-        "Action normalization statistics file not found! The service may not perform denormalization correctly."
-    )
-    action_stats = None
-
-
 def decode_image_base64_to_pil(image_base64: str) -> Image:
     try:
         image_data = base64.b64decode(image_base64)
@@ -312,7 +297,7 @@ def infer_api():
         logger.warning("<eoa> token not found, using complete output sequence.")
 
     action_ids = [t - 149595 for t in action_tokens_raw if 149595 <= t < 151643]
-    actions_norm, _ = action_tokenizer._extract_actions_from_tokens(
+    actions_norm, _ = action_tokenizer.extract_actions_from_tokens(
         [action_ids], action_horizon=30, action_dim=14
     )
     delta_actions = actions_norm[0]
@@ -323,41 +308,6 @@ def infer_api():
         "delta_actions": delta_actions.tolist(),
         "processing_time": processing_time,
     }
-    if SUBTASK_MODE:
-        response["subtask"] = subtask_result
-
-    return jsonify(response)
-
-
-def action_post_process(delta_actions, eef_pose, start_time, subtask_result):
-    if delta_actions is None or action_stats is None:
-        raise ValueError("Action decoding failed or action normalization statistics not loaded")
-
-    scale = np.array(action_stats['action.eepose']['scale_'])
-    offset = np.array(action_stats['action.eepose']['offset_'])
-    delta_actions_denorm = inverse_transform(np.array(delta_actions), scale, offset)
-
-    final_ee_actions = []
-    current_eef_pose = eef_pose.squeeze().copy()  # (20,)
-    for i in range(30):
-        current_eef_pose[:3] += delta_actions_denorm[i][:3]
-        current_eef_pose[3:6] = add_delta_to_euler_pose(
-            current_eef_pose[3:6], delta_actions_denorm[i][3:6]
-        )
-        current_eef_pose[6] = delta_actions_denorm[i][6]
-        current_eef_pose[7:10] += delta_actions_denorm[i][7:10]
-        current_eef_pose[10:13] = add_delta_to_euler_pose(
-            current_eef_pose[10:13], delta_actions_denorm[i][10:13]
-        )
-        current_eef_pose[13] = delta_actions_denorm[i][13]
-        final_ee_actions.append(current_eef_pose.tolist())
-
-    processing_time = time.time() - start_time
-    logger.info(
-        f"Inference completed, time taken: {processing_time:.2f} seconds. Mode: {'Subtask' if SUBTASK_MODE else 'Standard'}"
-    )
-
-    response = {"success": True, "eepose": final_ee_actions, "processing_time": processing_time}
     if SUBTASK_MODE:
         response["subtask"] = subtask_result
 
