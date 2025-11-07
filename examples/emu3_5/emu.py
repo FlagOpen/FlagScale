@@ -15,20 +15,17 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-target_folder = os.path.abspath("/nfs/lhh/luoyc/Emu/Emu3.5")
-print("===========>sys.path = ", sys.path)
+target_folder = os.path.abspath(
+    "/nfs/lhh/luoyc/Emu/Emu3.5"
+)  # Local Emu3_5 project path https://github.com/baaivision/Emu3.5
 if target_folder not in sys.path:
     sys.path.append(target_folder)
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Assuming these are available in the project structure
-# NOTE: In a real environment, you must ensure these imports are resolvable
 try:
     from src.utils.generation_utils import generate, multimodal_decode
     from src.utils.input_utils import build_image, smart_resize
-
-    # Assuming setup_logger is a utility that needs to be brought in
     from src.utils.logging_utils import setup_logger
     from src.utils.model_utils import build_emu3p5
     from src.utils.painting_utils import ProtoWriter
@@ -56,10 +53,10 @@ class InferencePipeline:
         Initializes the pipeline, loads the model, tokenizer, and VQ model.
         Accepts command line arguments (args) to initialize the internal config (self.cfg).
         """
-        # 1. 初始化配置
+        # 1. Initial configuration
         self._initialize_config()
 
-        # 2. 其他设置
+        # 2. Other configuration
         self._setup_config()
         self._load_models()
         self.proto_writer = ProtoWriter()
@@ -68,22 +65,24 @@ class InferencePipeline:
         """Initializes and configures the DummyConfig object from default values and args."""
         cfg = DummyConfig()
 
-        # 1. 路径和模型配置
-        cfg.model_path = "/nfs/lhh/luoyc/models/Emu3.5"
-        cfg.vq_path = "/nfs/lhh/luoyc/models/Emu3.5-VisionTokenizer"
+        # 1. Path and model configuration
+        cfg.model_path = (
+            "/nfs/lhh/luoyc/models/Emu3.5"  # https://www.modelscope.cn/models/BAAI/Emu3.5/files
+        )
+        cfg.vq_path = "/nfs/lhh/luoyc/models/Emu3.5-VisionTokenizer"  # https://www.modelscope.cn/models/BAAI/Emu3.5-VisionTokenizer/files
         cfg.tokenizer_path = "/nfs/lhh/luoyc/Emu/Emu3.5/src/tokenizer_emu3_ibq"
         cfg.vq_type = "ibq"
 
         cfg.task_type = "story"
         cfg.use_image = True
 
-        # 2. 保存配置与日志
+        # 2. Save configuration and logs
         cfg.exp_name = "emu3p5"
         cfg.save_path = os.path.join(current_dir, f"outputs/{cfg.exp_name}")
         cfg.save_to_proto = True
         setup_logger(cfg.save_path)  # Call setup_logger utility here
 
-        # 3. 设备和生成参数
+        # 3. Equipment and generated parameters
         cfg.hf_device = "auto"
         cfg.vq_device = "cuda:0"
         cfg.streaming = False
@@ -92,7 +91,7 @@ class InferencePipeline:
         cfg.max_new_tokens = 32768
         cfg.image_area = 518400
 
-        # 获取 Prompt 模板
+        # Get prompt template
         cfg.unc_prompt, cfg.template = build_unc_and_template(cfg.task_type, cfg.use_image)
 
         # 4. Sampling Parameters
@@ -119,8 +118,6 @@ class InferencePipeline:
             sampling_params["num_beams_per_group"] * sampling_params["num_beam_groups"]
         )
 
-        # for k, v in sampling_params.items():
-        #    setattr(cfg, k, v)
         cfg.sampling_params = sampling_params
 
         # 5. Special Tokens
@@ -150,7 +147,7 @@ class InferencePipeline:
         cfg.rank = 0
         cfg.world_size = 1
 
-        self.cfg = cfg  # 将配置对象存储为实例属性
+        self.cfg = cfg
 
     def _setup_config(self):
         """Sets up configuration parameters and initializes save path."""
@@ -200,8 +197,7 @@ class InferencePipeline:
 
         Args:
             prompt (str): The text prompt for generation.
-            reference_image (Optional[List[str]]):
-                一个包含参考图像路径的列表，或者 None (无参考图像)。
+            reference_image (Optional[List[str]]): A list containing reference image paths, or None (no reference image)
             name (str): A name for the current run, used for saving the proto file.
 
         Returns:
@@ -213,14 +209,14 @@ class InferencePipeline:
         vq_model = self.vq_model
         save_path = cfg.save_path
 
-        # 检查是否已存在结果（以name命名）
+        # Check if the result already exists
         proto_file_path = f"{save_path}/proto/{name}.pb"
         if osp.exists(proto_file_path):
             return f"[INFO] Skipping prompt '{name}'. Result already exists at {proto_file_path}"
 
         torch.cuda.empty_cache()
 
-        # 统一处理参考图像数据：加载PIL Image对象或None
+        # Unified processing of reference image data
         loaded_ref_image = None
 
         if reference_image is not None and len(reference_image) > 0:
@@ -234,7 +230,6 @@ class InferencePipeline:
         self.proto_writer.extend([["question", prompt]])
 
         if loaded_ref_image is not None:
-            # 此时 loaded_ref_image 是 List[Image]
             for img in loaded_ref_image:
                 self.proto_writer.extend([["reference_image", img]])
 
@@ -338,14 +333,13 @@ def build_unc_and_template(task: str, with_image: bool):
 
 def main():
     """Main function to run the pipeline."""
-    # 1. 解析命令行参数
+    # 1. Analyze command-line parameters
     # args = parse_args()
 
-    # 2. 实例化 InferencePipeline，cfg 的初始化发生在内部
     pipeline = InferencePipeline()
-    cfg = pipeline.cfg  # 获取内部初始化的配置对象
+    cfg = pipeline.cfg
 
-    name = "test.pb"
+    name = "test"
     result = pipeline.forward(
         prompt="Tell a story about a clay astronaut exploring Mars and discovering a new continent hidden beneath the red dust.",
         reference_image=["/nfs/lhh/luoyc/Emu/Emu3.5/assets/ref_img.png"],
@@ -353,8 +347,7 @@ def main():
     )
     print(result)
 
-    # 3. Prompts Configuration - 定义需要运行的 prompts 列表
-    # 保持 _prompts_base 在 main 中定义
+    # 3. Prompts Configuration - Define the list of prompts that need to be run
     # _prompts_base = [
     #    {
     #        "prompt": "Tell a story about a clay astronaut exploring Mars and discovering a new continent hidden beneath the red dust.",
@@ -366,14 +359,14 @@ def main():
     #    },
     # ]
 
-    # 4. 分布式切分逻辑
+    # 4. Distributed sharding logic
     # rank, world_size = cfg.rank, cfg.world_size
     # prompts_to_run = _prompts_base
     # assigned_prompts = prompts_to_run[rank::world_size]
 
     # print(f"[INFO] Worker {rank}/{world_size} assigned {len(assigned_prompts)} prompts.")
 
-    # 5. 循环调用 forward 方法
+    # 5. Loop call forward function
     # for idx, data in tqdm(enumerate(assigned_prompts), total=len(assigned_prompts), desc=f"Worker {rank} inference"):
     #
     #    name = f"rank{rank}_idx{idx:03d}"
