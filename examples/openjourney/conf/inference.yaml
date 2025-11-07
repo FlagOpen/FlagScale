@@ -15,9 +15,11 @@ experiment:
   cmds:
     before_start: source /root/miniconda3/bin/activate flagscale-inference
   envs:
-    CUDA_VISIBLE_DEVICES: 0
+    CUDA_VISIBLE_DEVICES: 7
     CUDA_DEVICE_MAX_CONNECTIONS: 1
     # Optionally, set HF_HOME and HF_ENDPOINT
+    HF_HOME: /share/project/fengyupu/hf_hub
+    HF_ENDPOINT: https://hf-mirror.com
 
 action: run
 

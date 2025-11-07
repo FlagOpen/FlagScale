@@ -205,6 +205,7 @@ class InferenceEngine:
         transformations = create_transformations_from_config(transforms_cfg)
         for t in transformations:
             for name, mod in t.targets(self.backbone):
+                print(f"Applying transformation: {t} on {name}")
                 success = t.apply(mod)
                 if not success:
                     raise ValueError(f"Failed to apply transformation: {t} on {name}")
