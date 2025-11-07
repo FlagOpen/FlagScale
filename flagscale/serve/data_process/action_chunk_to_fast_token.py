@@ -1,12 +1,6 @@
-#!/usr/bin/env python3
-"""
-Action Chunk to Fast Token
-"""
+# Adopted from FlagOpen/RoboBrain-X0 (https://github.com/FlagOpen/RoboBrain-X0/blob/main/data_process/action_token/action_chunk_to_fast_token.py)
 
-import os
-import sys
-
-from typing import Dict, List
+from typing import List
 
 import numpy as np
 

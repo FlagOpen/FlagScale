@@ -1,3 +1,4 @@
+# Adopted from FlagOpen/RoboBrain-X0 (https://github.com/FlagOpen/RoboBrain-X0/blob/main/agilex/client_agilex.py)
 import argparse
 import base64
 import io
@@ -20,16 +21,7 @@ IMG_HEIGHT = 480
 
 def encode_image(path: str) -> str:
     """Read image as base64 string."""
-    path = Path(path)
-    if not path.exists():
-        print(f"[WARNING] Image not found: {path.resolve()}. Use fake images.")
-        image = Image.new('RGB', (IMG_WIDTH, IMG_HEIGHT))
-        buffer = io.BytesIO()
-        image.save(buffer, format='JPEG', quality=50)
-        buffer.seek(0)
-        jpeg_binary = buffer.read()
-        return base64.b64encode(jpeg_binary).decode("utf-8")
-    return base64.b64encode(path.read_bytes()).decode("utf-8")
+    return base64.b64encode(Path(path).read_bytes()).decode("utf-8")
 
 
 def check_health(base_url: str) -> None:

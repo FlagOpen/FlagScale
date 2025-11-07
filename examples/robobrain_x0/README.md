@@ -1,13 +1,16 @@
-
-
 #  Install FlagScale
 
 Clone FlagScale code from github.
 
+```sh
+git clone https://github.com/FlagOpen/FlagScale.git
+cd FlagScale/
+```
+
 If you don't have access to the international internet, import FlagScale project on [gitee](https://gitee.com/), then clone from gitee.
 
 ```sh
-git clone https://github.com/FlagOpen/FlagScale.git
+git clone https://gitee.com/flagopen/FlagScale.git
 cd FlagScale/
 ```
 

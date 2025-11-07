@@ -1,5 +1,6 @@
-# -*- coding: utf-8 -*-
 """
+Adopted from FlagOpen/RoboBrain-X0 (https://github.com/FlagOpen/RoboBrain-X0/blob/main/agilex/server_agilex.py)
+
 RoboBrain Robotics API Service - Agilex
 
 This service provides an HTTP interface to receive robot state and images, and uses a pre-trained vision-language model for inference,
@@ -22,9 +23,9 @@ POST /infer Input Example:
   }
 }
 """
+
 import base64
 import io
-import json
 import os
 import sys
 import time
@@ -32,7 +33,6 @@ import time
 from pathlib import Path
 
 import numpy as np
-import pynvml
 import torch
 
 from flask import Flask, jsonify, request
@@ -46,7 +46,7 @@ sys.path.append(str(root))
 from flagscale import serve
 from flagscale.runner.utils import logger
 from flagscale.serve.data_process.action_chunk_to_fast_token import ActionChunkProcessor
-from flagscale.serve.data_process.pose_transform import add_delta_to_euler_pose
+from flagscale.serve.managers.pynvml_manager import PYNVML_MANAGER
 
 serve.load_args()
 
@@ -71,9 +71,6 @@ CORS(app)
 model = None
 processor = None
 action_tokenizer = None
-
-
-pynvml.nvmlInit()
 
 
 def get_tokenizer(max_len: int) -> ActionChunkProcessor:
@@ -150,26 +147,13 @@ def health_check():
     """Health check endpoint, returns service and model status"""
     if model is None or processor is None:
         return jsonify({"status": "error", "message": "Model not loaded"}), 503
-
-    gpu_info = {}
-    if pynvml.nvmlDeviceGetCount():
-        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-        gpu_info = {
-            "name": pynvml.nvmlDeviceGetName(handle),
-            "num": pynvml.nvmlDeviceGetCount(),
-            "memory_total": f"{mem_info.total / 1024**3:.2f}GB",
-            "memory_used": f"{mem_info.used / 1024**3:.2f}GB",
-            "memory_free": f"{mem_info.free / 1024**3:.2f}GB",
-        }
-
     return jsonify(
         {
             "status": "healthy",
             "model_loaded": True,
             "subtask_mode": SUBTASK_MODE,
             "model_path": MODEL_PATH,
-            "gpu_info": gpu_info,
+            "gpu_info": PYNVML_MANAGER.get_gpu_info(),
         }
     )
 
