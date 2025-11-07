@@ -20,6 +20,8 @@ print("===========>sys.path = ", sys.path)
 if target_folder not in sys.path:
     sys.path.append(target_folder)
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
 # Assuming these are available in the project structure
 # NOTE: In a real environment, you must ensure these imports are resolvable
 try:
@@ -77,7 +79,7 @@ class InferencePipeline:
 
         # 2. 保存配置与日志
         cfg.exp_name = "emu3p5"
-        cfg.save_path = f"./outputs/{cfg.exp_name}"
+        cfg.save_path = os.path.join(current_dir, f"outputs/{cfg.exp_name}")
         cfg.save_to_proto = True
         setup_logger(cfg.save_path)  # Call setup_logger utility here
 

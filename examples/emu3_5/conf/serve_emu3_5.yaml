@@ -15,12 +15,12 @@ experiment:
       use_fs_serve: true
       enable_composition: true
       name: /emu3_5
-      working_dir: /nfs/lhh/luoyc/Emu/Emu3.5/
+      working_dir: /nfs/lhh/luoyc/Emu/Emu3.5/   # Local Emu3_5 project path https://github.com/baaivision/Emu3.5
       request:
         args:
-          - prompt
-          - reference_image
-          - name
+          - prompt            # the text prompt for generation
+          - reference_image   # a list containing reference image paths
+          - name              # used for saving the proto file
         types:
           - str
           - list
