@@ -1,0 +1,88 @@
+diff --git a/megatron/core/models/gpt/gpt_model.py b/megatron/core/models/gpt/gpt_model.py
+index e74f93bd1..71544f991 100644
+--- a/megatron/core/models/gpt/gpt_model.py
++++ b/megatron/core/models/gpt/gpt_model.py
+@@ -34,7 +34,7 @@ from megatron.core.transformer.transformer_block import TransformerBlock
+ from megatron.core.transformer.transformer_config import TransformerConfig
+ from megatron.core.utils import WrappedTensor, deprecate_inference_params
+ 
+-
++from megatron.core.extensions.transformer_engine import TEColumnParallelLinear
+ class GPTModel(LanguageModule):
+     """GPT Transformer language model.
+ 
+@@ -210,18 +210,32 @@ class GPTModel(LanguageModule):
+                 self.embedding_activation_buffer = None
+                 self.grad_output_buffer = None
+ 
+-            self.output_layer = tensor_parallel.ColumnParallelLinear(
++            # self.output_layer = tensor_parallel.ColumnParallelLinear(
++            #     config.hidden_size,
++            #     self.vocab_size,
++            #     config=config,
++            #     init_method=config.init_method,
++            #     bias=False,
++            #     skip_bias_add=False,
++            #     gather_output=not self.parallel_output,
++            #     skip_weight_param_allocation=self.pre_process
++            #     and self.share_embeddings_and_output_weights,
++            #     embedding_activation_buffer=self.embedding_activation_buffer,
++            #     grad_output_buffer=self.grad_output_buffer,
++            #     tp_group=self.pg_collection.tp,
++            # )
++            assert not self.share_embeddings_and_output_weights, "When using TEColumnParallelLinear as output_layer, share embedding and output weight is not allowed"
++            self.output_layer = TEColumnParallelLinear(
+                 config.hidden_size,
+                 self.vocab_size,
+                 config=config,
+                 init_method=config.init_method,
++                gather_output=not self.parallel_output,
+                 bias=False,
+                 skip_bias_add=False,
+-                gather_output=not self.parallel_output,
++                is_expert=False,
+                 skip_weight_param_allocation=self.pre_process
+                 and self.share_embeddings_and_output_weights,
+-                embedding_activation_buffer=self.embedding_activation_buffer,
+-                grad_output_buffer=self.grad_output_buffer,
+                 tp_group=self.pg_collection.tp,
+             )
+ 
+@@ -474,11 +488,14 @@ class GPTModel(LanguageModule):
+                 loss_mask = torch.ones_like(mtp_labels)
+             for mtp_layer_number in range(self.config.mtp_num_layers):
+                 # output
+-                mtp_logits, _ = self.output_layer(
+-                    hidden_states_list[mtp_layer_number + 1],
+-                    weight=output_weight,
+-                    runtime_gather_output=runtime_gather_output,
+-                )
++                # mtp_logits, _ = self.output_layer(
++                #     hidden_states_list[mtp_layer_number + 1],
++                #     weight=output_weight,
++                #     runtime_gather_output=runtime_gather_output,
++                # )
++                
++                mtp_logits, _ = self.output_layer(hidden_states_list[mtp_layer_number + 1])
++
+                 # Calc loss for the current Multi-Token Prediction (MTP) layers.
+                 mtp_labels, _ = roll_tensor(mtp_labels, shifts=-1, dims=-1, cp_group=self.cp_group)
+                 loss_mask, num_tokens = roll_tensor(
+@@ -530,8 +547,11 @@ class GPTModel(LanguageModule):
+                     hidden_states.squeeze(1).unsqueeze(0)
+                 ).unsqueeze(1)
+ 
++        # logits, _ = self.output_layer(
++        #     hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output
++        # )
+         logits, _ = self.output_layer(
+-            hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output
++            hidden_states
+         )
+ 
+         # Restore sequence parallel execution to the output layer if necessary.
+@@ -692,3 +712,4 @@ class GPTModel(LanguageModule):
+                 )
+ 
+         return sharded_state_dict
++

@@ -1,0 +1,64 @@
+diff --git a/transformer_engine/pytorch/cpp_extensions/gemm.py b/transformer_engine/pytorch/cpp_extensions/gemm.py
+index dd041129..8f953e23 100644
+--- a/transformer_engine/pytorch/cpp_extensions/gemm.py
++++ b/transformer_engine/pytorch/cpp_extensions/gemm.py
+@@ -22,6 +22,7 @@ __all__ = [
+     "general_grouped_gemm",
+ ]
+ 
++import flag_gems
+ 
+ def validate_gemm_scale(scale: Optional[float], required: bool) -> float:
+     """Validate whether a GEMM scaling factor is consistent with its usage"""
+@@ -146,7 +147,45 @@ def general_gemm(
+         "beta": beta,
+     }
+ 
+-    out, bias_grad, gelu_input, extra_output = tex.generic_gemm(*args, **kwargs)
++    # print(f"[TransformerEngine.gemm.py], before generic_gemm, {A.shape=}")
++    # print(f"[TransformerEngine.gemm.py], before generic_gemm, {B.shape=}")
++    # print(f"[TransformerEngine.gemm.py], before generic_gemm, {transa=}")
++    # print(f"[TransformerEngine.gemm.py], before generic_gemm, {transb=}")
++    # out, bias_grad, gelu_input, extra_output = tex.generic_gemm(*args, **kwargs)
++    # print(f"[TransformerEngine.gemm.py], after generic_gemm, {out.shape=}")
++
++    # print(f"[TransformerEngine.gemm.py], orig, {A.shape=}")
++    # print(f"[TransformerEngine.gemm.py], orig, {transa=}")
++    # print(f"[TransformerEngine.gemm.py], orig, {transb=}")
++
++    s = -1
++    b = -1
++    shape_changed = False
++    if A.ndim == 3:
++        s, b, _ = A.shape
++        A = A.view(-1, A.shape[-1])
++        shape_changed = True
++
++    if B.ndim == 3:
++        s, b, _ = B.shape
++        B = B.view(-1, B.shape[-1])
++        shape_changed = True
++    
++    if transa:
++        A = A.transpose(0, 1)
++    if transb:
++        B = B.transpose(0, 1)
++
++    # print(f"[TransformerEngine.gemm.py], before torch.mm, {A.shape=}")
++    # print(f"[TransformerEngine.gemm.py], before torch.mm, {B.shape=}")
++    out = flag_gems.mm(B, A)
++    if shape_changed:
++        out = out.view(s, b, -1)
++    bias_grad = None
++    gelu_input = None
++    extra_output = None
++    # print(f"[TransformerEngine.gemm.py], after flag_gems.mm, {out.shape=}")
++
+ 
+     if debug_quantizer is not None:
+         out = debug_quantizer.process_gemm_output(out)
+@@ -226,3 +265,4 @@ def general_grouped_gemm(
+     )
+ 
+     return out, bias, gelu_input
++
