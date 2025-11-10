@@ -1,14 +1,14 @@
+# Adopted from FlagOpen/RoboBrain-X0 (https://github.com/FlagOpen/RoboBrain-X0/blob/main/agilex/client_agilex.py)
 import argparse
 import base64
 import io
 import json
-import os
 import random
 import sys
 import time
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import numpy as np
 import requests
@@ -21,16 +21,7 @@ IMG_HEIGHT = 480
 
 def encode_image(path: str) -> str:
     """Read image as base64 string."""
-    path = Path(path)
-    if not path.exists():
-        print(f"[WARNING] Image not found: {path.resolve()}. Use fake images.")
-        image = Image.new('RGB', (IMG_WIDTH, IMG_HEIGHT))
-        buffer = io.BytesIO()
-        image.save(buffer, format='JPEG', quality=50)
-        buffer.seek(0)
-        jpeg_binary = buffer.read()
-        return base64.b64encode(jpeg_binary).decode("utf-8")
-    return base64.b64encode(path.read_bytes()).decode("utf-8")
+    return base64.b64encode(Path(path).read_bytes()).decode("utf-8")
 
 
 def check_health(base_url: str) -> None:
@@ -53,9 +44,9 @@ def build_payload(args) -> Dict[str, Any]:
     state = np.random.uniform(-1, 1, size=(1, args.state_dim)).tolist()
     # 2. Encode images
     img_sample = {
-        "base_0_rgb": encode_image(args.base_img),
-        "left_wrist_0_rgb": encode_image(args.left_wrist_img),
-        "right_wrist_0_rgb": encode_image(args.right_wrist_img),
+        "cam_high": encode_image(args.base_img),
+        "cam_left_wrist": encode_image(args.left_wrist_img),
+        "cam_right_wrist": encode_image(args.right_wrist_img),
     }
     # 3. Image masks (True: image is valid)
     image_masks = {"base_0_rgb": True, "left_wrist_0_rgb": True, "right_wrist_0_rgb": True}
@@ -64,15 +55,9 @@ def build_payload(args) -> Dict[str, Any]:
         "qpos": [[random.random() for _ in range(args.state_dim)]],
         "eef_pose": [[random.random() for _ in range(args.state_dim)]],
         "state": state,
-        "high_level_instruction": args.high_level_instruction,
-        "fine_grained_instruction": args.fine_grained_instruction,
         "images": [img_sample],
         "image_masks": [image_masks],
-        "num_steps": args.num_steps,
-        "temperature": args.temperature,
-        "top_p": args.top_p,
-        "max_new_tokens": args.max_new_tokens,
-        "do_sample": args.do_sample,
+
     }
 
 
@@ -90,7 +75,7 @@ def main():
         "--host", default="127.0.0.1", help="Host of local SSH tunnel (default: 127.0.0.1)"
     )
     parser.add_argument(
-        "--port", type=int, default=15000, help="Port of local SSH tunnel (default: 15000)"
+        "--port", type=int, default=5001, help="Port of local SSH tunnel (default: 5001)"
     )
     parser.add_argument("--base-img", required=True, help="Path to base camera RGB image")
     parser.add_argument(
@@ -100,7 +85,7 @@ def main():
         "--right-wrist-img", required=True, help="Path to right wrist camera RGB image"
     )
     parser.add_argument(
-        "--state-dim", type=int, default=14, help="Dim of robot low-dim state vector (default: 14)"
+        "--state-dim", type=int, default=7, help="Dim of robot low-dim state vector (default: 14)"
     )
     parser.add_argument("--num-steps", type=int, default=20)
     parser.add_argument("--temperature", type=float, default=0.8)
@@ -116,11 +101,7 @@ def main():
     base_url = f"http://{args.host}:{args.port}"
     print(f"-> Using endpoint: {base_url}")
 
-    # 1. Health-check
-    check_health(base_url)
-    # 2. Build payload
     payload = build_payload(args)
-    # 3. POST /infer
     try:
         t0 = time.time()
         resp = requests.post(

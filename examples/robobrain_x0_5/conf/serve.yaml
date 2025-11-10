@@ -1,13 +1,13 @@
 defaults:
 - _self_
-- serve: 3_3b
+- serve: libero_qwengroot
 
 experiment:
-  exp_name: robotics-3.3b
+  exp_name: libero_qwengroot_serve
   exp_dir: outputs/${experiment.exp_name}
   task:
     type: serve
-    entrypoint: flagscale/serve/run_serve_robotics.py
+    entrypoint: flagscale/serve/run_serve_robobrain_x0.5_libero.py
   runner:
     hostfile: null
     deploy:

@@ -6,18 +6,18 @@ is_debug: false
 
 batch_size: 1
 resume: false
-checkpoint_dir: results/Checkpoints
+checkpoint_dir: results/ckpt_in
 exp_name: starvla
 project_name: starvla
 wandb_enabled: false
-output_directory: results/Checkpoints
+output_directory: results/ckpt_out
 log_freq: 10
 train_steps: 100
 
 framework:
   name: QwenGR00T
   qwenvl:
-    base_vlm: /models/BAAI/RoboBrain-X0-Preview
+    base_vlm: /repos/flagscale_new_robotics/FlagScale/results/ckpt_in/backbone
     # attn_implementation: flash_attention_2
     attn_implementation: eager
     vl_hidden_dim: 2048
