@@ -163,7 +163,34 @@ class Qwen_GR00T(PreTrainedModel):
         normalized_actions = pred_actions.detach().cpu().numpy()
         return {"normalized_actions": normalized_actions}
 
+    @classmethod
+    def from_pretrained(
+        cls,
+        pretrained_checkpoint: str,
+        **kwargs,
+    ) -> None:
 
+        model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu")
+        # logger.info(f"Loading model weights from `{pretrained_checkpoint}`")
+        model_keys = set(FrameworkModel.state_dict().keys())
+        checkpoint_keys = set(model_state_dict.keys())
+        try:
+            FrameworkModel.load_state_dict(model_state_dict, strict=True)
+        except RuntimeError as e:
+            # must keep all keys matched
+            common_keys = model_keys.intersection(checkpoint_keys)
+            missing_keys = model_keys - common_keys
+            unexpected_keys = checkpoint_keys - common_keys
+            if missing_keys:
+                logger.warning(f"Missing keys in state_dict: {missing_keys}")
+            if unexpected_keys:
+                logger.warning(f"Unexpected keys in state_dict: {unexpected_keys}")
+
+            raise e
+
+        # **ensure model is on GPU**
+        FrameworkModel = FrameworkModel
+        return FrameworkModel
 
 def get_batch(batch):
     rsp_batch = []
@@ -222,7 +249,7 @@ def test_with_fake_sample():
     # test predict action
     predict_output = model.predict_action(batch_images=[batch[0]["image"]], instructions=[batch[0]["lang"]], state=[batch[0]["state"]])
     normalized_actions = predict_output['normalized_actions']
-    print(f"Unnormalized Action: {normalized_actions['normalized_actions'].shape}")
+    print(f"Unnormalized Action: {normalized_actions.shape}")
 
 
 def test_with_dataloader(cfg):
@@ -265,5 +292,6 @@ if __name__ == "__main__":
     args, clipargs = parser.parse_known_args()
     cfg = OmegaConf.load(args.config_yaml)
 
-    # test_with_fake_sample(cfg)
-    test_with_dataloader(cfg)
+    test_with_fake_sample()
+    # test_with_dataloader(cfg)
+ 
