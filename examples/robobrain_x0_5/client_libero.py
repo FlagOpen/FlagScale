@@ -21,20 +21,6 @@ def encode_image(path: str) -> str:
     return base64.b64encode(Path(path).read_bytes()).decode("utf-8")
 
 
-def check_health(base_url: str) -> None:
-    """Ping /health; raise RuntimeError if unhealthy."""
-    try:
-        r = requests.get(f"{base_url}/health", timeout=5)
-        r.raise_for_status()
-    except Exception as e:
-        raise RuntimeError(f"Health-check request failed: {e}") from e
-
-    data = r.json()
-    if not (data.get("status") == "healthy" and data.get("model_loaded")):
-        raise RuntimeError(f"Server not ready: {json.dumps(data, indent=2)}")
-    print(f"[√] Server healthy - GPU: {data['gpu_info']['device_name']}")
-
-
 def build_payload(args) -> Dict[str, Any]:
     """Construct JSON payload for /infer."""
     # 1. Dummy robot state (batch=1, dim=args.state_dim)
@@ -81,7 +67,7 @@ def main():
         "--right-wrist-img", required=True, help="Path to right wrist camera RGB image"
     )
     parser.add_argument(
-        "--state-dim", type=int, default=7, help="Dim of robot low-dim state vector (default: 14)"
+        "--state-dim", type=int, default=7, help="Dim of robot low-dim state vector (default: 7)"
     )
     parser.add_argument("--num-steps", type=int, default=20)
     parser.add_argument("--temperature", type=float, default=0.8)

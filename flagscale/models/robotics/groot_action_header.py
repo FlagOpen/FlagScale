@@ -36,7 +36,6 @@ class CategorySpecificLinear(nn.Module):
     def forward(self, x, cat_ids):
         selected_W = self.W[cat_ids]
         selected_b = self.b[cat_ids]
-        # import ipdb; ipdb.set_trace()
         return torch.bmm(x, selected_W) + selected_b.unsqueeze(1)
 
 
@@ -218,7 +217,7 @@ class FlowmatchingActionHead(nn.Module):
         super().__init__()
         config = full_config.framework.action_model
         self.no_random = config.get("no_random", True)
-        self.hidden_size = config.hidden_size  # 是不要和 Q对齐？
+        self.hidden_size = config.hidden_size
         self.full_config = full_config
         action_model_type = config.action_model_type
         action_model_cfg = DiTConfig[action_model_type]

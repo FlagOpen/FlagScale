@@ -61,7 +61,7 @@ class Qwen_GR00T(PreTrainedModel):
             self.qwen_vl_interface.model.config.hidden_size
         )
 
-        self.action_model = FlowmatchingActionHead(full_config=self.config)  # 修复后续引用
+        self.action_model = FlowmatchingActionHead(full_config=self.config)
 
         self.future_action_window_size = config.framework.action_model.future_action_window_size
         self.past_action_window_size = config.framework.action_model.past_action_window_size
@@ -127,8 +127,6 @@ class Qwen_GR00T(PreTrainedModel):
         **kwargs: str,
     ) -> np.ndarray:
         """
-        推理：单次前向直接回归未来动作（无扩散采样）。
-
         Steps:
           1. Resize images to training resolution (if specified)
           2. Encode with QwenVL (hidden states retained)
