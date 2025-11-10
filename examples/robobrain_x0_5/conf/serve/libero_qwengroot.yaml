@@ -1,0 +1,14 @@
+- serve_id: vllm_model
+  engine_args:
+    model: /repos/flagscale_new_robotics/FlagScale/results/ckpt_in/
+    subtask_mode: true
+    host: 0.0.0.0
+    port: 5001
+    debug: false
+    device: cuda
+    threaded: true
+    torch_dtype: torch.float32
+    framework:
+      qwenvl: 
+        base_vlm: /repos/flagscale_new_robotics/FlagScale/results/ckpt_in/backbone
+
