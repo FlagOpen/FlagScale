@@ -28,11 +28,10 @@ def build_payload(args) -> Dict[str, Any]:
     # 2. Encode images
     img_sample = {
         "cam_high": encode_image(args.base_img),
-        "cam_left_wrist": encode_image(args.left_wrist_img),
-        "cam_right_wrist": encode_image(args.right_wrist_img),
+        "cam_left_wrist": encode_image(args.left_wrist_img)
     }
     # 3. Image masks (True: image is valid)
-    image_masks = {"base_0_rgb": True, "left_wrist_0_rgb": True, "right_wrist_0_rgb": True}
+    image_masks = {"base_0_rgb": True, "left_wrist_0_rgb": True}
     return {
         "instruction": "Grab the orange and put it into the basket.",
         "qpos": [[random.random() for _ in range(args.state_dim)]],
