@@ -144,13 +144,6 @@ from megatron.core.msc_utils import MultiStorageClientFeature, open_file
 from flagscale.train.peft.peft import PEFT
 from flagscale.train.peft.lora import LoRA
 
-# Import performance monitoring modules
-from flagscale.runner.monitor.perf_metrics import (
-    PerformanceMonitor,
-    FLOPSMeasurementCallback
-)
-
-
 def destroy_global_state():
     destroy_global_vars()
     destroy_num_microbatches_calculator()
@@ -1706,7 +1699,6 @@ def training_log(
     grad_norm,
     params_norm,
     num_zeros_in_grad,
-    perf_monitor=None,
 ):
     """Log training information such as losses, timing, ...."""
     args = get_args()
@@ -1950,32 +1942,6 @@ def training_log(
                     writer.add_scalar('throughput', throughput, iteration)
                 if wandb_writer:
                     wandb_writer.log({'throughput': throughput}, iteration)
-        # Log performance monitor metrics if enabled
-        if perf_monitor is not None:
-            try:
-                metrics = perf_monitor.calculate_metrics(iteration)
-                if metrics.tflops_per_gpu > 0:
-                    log_string += f' TFLOPS/GPU (monitored): {metrics.tflops_per_gpu:.2f} |'
-                    if metrics.tokens_per_second > 0:
-                        log_string += f' tokens/sec: {metrics.tokens_per_second:.0f} |'
-
-                    # Log to TensorBoard/WandB
-                    if args.log_timers_to_tensorboard:
-                        if writer:
-                            writer.add_scalar('performance/tflops_per_gpu', metrics.tflops_per_gpu, iteration)
-                            writer.add_scalar('performance/tokens_per_second', metrics.tokens_per_second, iteration)
-                            if perf_monitor.peak_memory_gb > 0:
-                                writer.add_scalar('memory/peak_gb', perf_monitor.peak_memory_gb, iteration)
-                        if wandb_writer:
-                            wandb_writer.log({
-                                'performance/tflops_per_gpu': metrics.tflops_per_gpu,
-                                'performance/tokens_per_second': metrics.tokens_per_second,
-                                'memory/peak_gb': perf_monitor.peak_memory_gb
-                            }, iteration)
-            except Exception as e:
-                # Don't let monitoring errors affect training
-                if torch.distributed.get_rank() == 0:
-                    print(f"Warning: Performance monitor error: {e}")
         if args.log_energy:
             energy = (energy_monitor.lap() / total_iterations) / args.world_size
             power = energy / elapsed_time_per_iteration
@@ -2324,6 +2290,11 @@ def train(
     extra_valid_dataset_provider=None,
 ):
     """Training function: run train_step desired number of times, run validation, checkpoint."""
+    # Import performance monitor hooks
+    from flagscale.runner.monitor.hooks import (
+        initialize_perf_monitor, perf_monitor_start_iteration,
+        perf_monitor_end_iteration, perf_monitor_end_training
+    )
     args = get_args()
     timers = get_timers()
 
@@ -2462,6 +2433,8 @@ def train(
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')
     report_memory_flag = True
+    # Initialize performance monitor if enabled
+    perf_callback = initialize_perf_monitor(args)
     pre_hook_enabled = False
     should_exit = False
     exit_code = 0
@@ -2497,15 +2470,7 @@ def train(
         # wandb.watch's log_freg needs to take the accumulated number of microbatches into account
         log_freq = args.wandb_log_model_interval * num_microbatches
         wandb_writer.watch(unwrap_model(model), log="all", log_freq=log_freq)
-    # Initialize performance monitor if enabled
-    perf_monitor = None
-    if getattr(args, 'enable_perf_monitor', False):
-        try:
-            perf_monitor = PerformanceMonitor(args, enable_memory_tracking=True)
-            print_rank_0("> Performance monitor enabled for FLOPS tracking")
-        except Exception as e:
-            print_rank_0(f"Warning: Failed to initialize performance monitor: {e}")
-            perf_monitor = None
+
     eval_duration = 0.0
     eval_iterations = 0
     extra_eval_duration = 0.0
@@ -2640,6 +2605,9 @@ def train(
 
         args.curr_iteration = iteration
 
+        # Performance monitor: start iteration
+        perf_monitor_start_iteration(iteration)
+
         ########## FlagScale Begin ##########
         if args.skip_samples_range or args.skip_iters_range:
             current_global_batch_size = get_current_global_batch_size()
@@ -2684,10 +2652,6 @@ def train(
                 train_data_iterator = buffered_rollouts
 
         ft_integration.on_training_step_start()
-        # Start performance monitoring for this iteration
-        if perf_monitor is not None:
-            perf_monitor.start_iteration()
-
         (
             loss_dict,
             skipped_iter,
@@ -2699,12 +2663,11 @@ def train(
         ) = train_step(
             forward_step_func, train_data_iterator, model, optimizer, opt_param_scheduler, config, forward_backward_func
         )
-        # End performance monitoring for this iteration
-        if perf_monitor is not None:
-            perf_monitor.end_iteration()
-            perf_monitor.update_memory_stats()
-
         ft_integration.on_training_step_end()
+
+        # Performance monitor: end iteration
+        perf_monitor_end_iteration(iteration)
+
         if should_checkpoint:
             save_checkpoint_and_time(
                 iteration,
@@ -2786,7 +2749,6 @@ def train(
             grad_norm,
             params_norm,
             num_zeros_in_grad,
-            perf_monitor,
         )
 
         # Evaluation.
@@ -2947,6 +2909,9 @@ def train(
         ft_integration.shutdown()
         one_logger_utils.finish()
         sys.exit(exit_code)
+
+    # Performance monitor: training end
+    perf_monitor_end_training()
 
     return iteration, num_floating_point_operations_so_far
 
