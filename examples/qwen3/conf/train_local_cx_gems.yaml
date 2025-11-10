@@ -22,7 +22,7 @@ experiment:
     #  hostfile: null
     # hostfile: /share/project/lixianduo/scale_gems_cx/2node_hostfile
     # hostfile: /share/project/lixianduo/scale_gems_cx/4node_hostfile
-    hostfile: /share/project/lixianduo/scale_gems_cx/2node_hostfile_1
+    hostfile: /share/project/lixianduo/scale_gems_cx/2node_hostfile_2
     ssh_port: 7878
   cmds:
     before_start: ulimit -n 1048576 && source /root/miniconda3/bin/activate /share/project/lixianduo/envs/flagscale-train-gems-cx

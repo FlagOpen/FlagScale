@@ -36,6 +36,7 @@ system:
 
 model:
   transformer_impl: transformer_engine
+  attention_backend: fused
   distributed_backend: flagcx
   use_flag_gems: true
   flag_gems_log_path: /share/project/lixianduo/scale_gems_cx/gems_te_cx_gems_log
