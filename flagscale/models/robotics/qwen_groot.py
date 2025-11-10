@@ -18,6 +18,8 @@ import numpy as np
 from PIL import Image
 from transformers import PreTrainedModel, PretrainedConfig
 from flagscale.logger import logger
+import omegaconf
+from omegaconf import OmegaConf
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
@@ -165,34 +167,43 @@ class Qwen_GR00T(PreTrainedModel):
         return {"normalized_actions": normalized_actions}
 
     def save_pretrained(self):
-        if not os.path.exists(self.config.output_directory):
-            os.makedirs(self.config.output_directory, exist_ok=True)
-        model_path = os.path.join(self.config.output_directory + "/pytorch_model.pt")
+        action_model_path = os.path.join(self.config.output_directory + "/action_model.pt")
+        backbone_path = os.path.join(self.config.output_directory + "/backbone")
         config_path = os.path.join(self.config.output_directory + "/config.yaml")
-        torch.save(self.state_dict(), model_path)
+        if not os.path.exists(backbone_path):
+            os.makedirs(self.config.output_directory, exist_ok=True)
+
+        torch.save(self.action_model.state_dict(), action_model_path)
+        self.qwen_vl_interface.model.save_pretrained(backbone_path)
+        self.qwen_vl_interface.processor.save_pretrained(backbone_path)
         OmegaConf.save(self.config, config_path)
 
     @classmethod
-    def from_pretrained(cls, pretrained_checkpoint: str, custom_config_path=None):
+    def from_pretrained(cls, pretrained_checkpoint: str, custom_config=None):
         config_path = os.path.join(pretrained_checkpoint + "/config.yaml")
         cfg = OmegaConf.load(config_path)
-        if custom_config_path:
-            cfg_custom = OmegaConf.load(custom_config_path)
+        if custom_config:
+            if isinstance(custom_config, str):
+                cfg_custom = OmegaConf.load(custom_config)
+            elif isinstance(custom_config, omegaconf.dictconfig.DictConfig):
+                cfg_custom = custom_config
+            else:
+                raise ValueError("custom_config must be str or dict")
             cfg = OmegaConf.merge(cfg, cfg_custom)
         model: Qwen_GR00T = Qwen_GR00T(cfg)
 
-        model_path = os.path.join(pretrained_checkpoint + "/pytorch_model.pt")
-        model_state_dict = torch.load(model_path, map_location="cpu")
-        logger.info(f"Loading model weights from `{model_path}`")
+        action_model_path = os.path.join(pretrained_checkpoint + "/action_model.pt")
+        action_model_state_dict = torch.load(action_model_path, map_location="cpu")
+        logger.info(f"Loading action model weights from `{action_model_path}`")
 
-        model_keys = set(model.state_dict().keys())
-        checkpoint_keys = set(model_state_dict.keys())
+        action_model_keys = set(model.action_model.state_dict().keys())
+        checkpoint_keys = set(action_model_state_dict.keys())
         try:
-            model.load_state_dict(model_state_dict, strict=True)
+            model.action_model.load_state_dict(action_model_state_dict, strict=True)
         except RuntimeError as e:
             # must keep all keys matched
-            common_keys = model_keys.intersection(checkpoint_keys)
-            missing_keys = model_keys - common_keys
+            common_keys = action_model_keys.intersection(checkpoint_keys)
+            missing_keys = action_model_keys - common_keys
             unexpected_keys = checkpoint_keys - common_keys
             if missing_keys:
                 logger.warning(f"Missing keys in state_dict: {missing_keys}")
@@ -302,10 +313,9 @@ def test_with_dataloader(cfg):
    
 
 if __name__ == "__main__":
-    from omegaconf import OmegaConf
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config_yaml", type=str, default="./examples/robotics/conf/train/libero_qwengroot.yaml", help="Path to YAML config")
+    parser.add_argument("--config_yaml", type=str, default="./examples/robobrain_x0_5/conf/train/libero_qwengroot.yaml", help="Path to YAML config")
     args, clipargs = parser.parse_known_args()
     cfg = OmegaConf.load(args.config_yaml)
 

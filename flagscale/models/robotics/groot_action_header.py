@@ -216,6 +216,7 @@ class FlowmatchingActionHead(nn.Module):
     ):
         super().__init__()
         config = full_config.framework.action_model
+        self.no_random = config.get("no_random", True)
         self.hidden_size = config.hidden_size # 是不要和 Q对齐？
         self.full_config = full_config
         action_model_type = config.action_model_type
@@ -281,7 +282,10 @@ class FlowmatchingActionHead(nn.Module):
             actions = torch.cat([actions, pad], dim=-1)
 
         # Embed noised action trajectory.
-        noise = torch.randn(actions.shape, device=actions.device, dtype=actions.dtype)
+        if self.no_random:
+            noise = torch.ones(actions.shape, device=actions.device, dtype=actions.dtype)
+        else:
+            noise = torch.randn(actions.shape, device=actions.device, dtype=actions.dtype)
         t = self.sample_time(actions.shape[0], device=actions.device, dtype=actions.dtype)
         t = t[:, None, None]  # shape (B,1,1) for broadcast
 
@@ -327,11 +331,19 @@ class FlowmatchingActionHead(nn.Module):
         # Set initial actions as the sampled noise.
         batch_size = vl_embs.shape[0]
         device = vl_embs.device
-        actions = torch.randn(
-            size=(batch_size, self.config.action_horizon, self.config.action_dim),
-            dtype=vl_embs.dtype,
-            device=device,
-        )
+
+        if self.no_random:
+            actions = torch.ones(
+                size=(batch_size, self.config.action_horizon, self.config.action_dim),
+                dtype=vl_embs.dtype,
+                device=device,
+            )
+        else:
+            actions = torch.randn(
+                size=(batch_size, self.config.action_horizon, self.config.action_dim),
+                dtype=vl_embs.dtype,
+                device=device,
+            )
 
         num_steps = self.num_inference_timesteps
         dt = 1.0 / num_steps
