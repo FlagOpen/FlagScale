@@ -1,5 +1,5 @@
 diff --git a/transformer_engine/pytorch/cpp_extensions/gemm.py b/transformer_engine/pytorch/cpp_extensions/gemm.py
-index dd041129..8f953e23 100644
+index dd041129..fdc6e759 100644
 --- a/transformer_engine/pytorch/cpp_extensions/gemm.py
 +++ b/transformer_engine/pytorch/cpp_extensions/gemm.py
 @@ -22,6 +22,7 @@ __all__ = [
@@ -10,54 +10,127 @@ index dd041129..8f953e23 100644
  
  def validate_gemm_scale(scale: Optional[float], required: bool) -> float:
      """Validate whether a GEMM scaling factor is consistent with its usage"""
-@@ -146,7 +147,45 @@ def general_gemm(
+@@ -32,6 +33,7 @@ def validate_gemm_scale(scale: Optional[float], required: bool) -> float:
+     return 0.0
+ 
+ 
++
+ def general_gemm(
+     A: torch.Tensor,
+     B: torch.Tensor,
+@@ -54,11 +56,9 @@ def general_gemm(
+     bulk_overlap: bool = False,
+ ) -> Iterable[Optional[torch.Tensor]]:
+     """GEMM supporting fp8 inputs."""
+-
+     assert layout in ("TN", "NN", "NT"), f"GEMM layout {layout} not supported."
+     transa = layout[0] == "T"
+     transb = layout[1] == "T"
+-    # assert quantization_params is None, "FP8 output not supported yet"
+ 
+     alpha = validate_gemm_scale(alpha, True)
+     beta = validate_gemm_scale(beta, accumulate)
+@@ -119,6 +119,7 @@ def general_gemm(
+         ):
+             raise RuntimeError("GEMM with Float8BlockwiseQTensor requires GEMM_READY format")
+ 
++
+     args = (
+         A,
+         transa,  # transa
+@@ -146,7 +147,90 @@ def general_gemm(
          "beta": beta,
      }
  
 -    out, bias_grad, gelu_input, extra_output = tex.generic_gemm(*args, **kwargs)
-+    # print(f"[TransformerEngine.gemm.py], before generic_gemm, {A.shape=}")
-+    # print(f"[TransformerEngine.gemm.py], before generic_gemm, {B.shape=}")
-+    # print(f"[TransformerEngine.gemm.py], before generic_gemm, {transa=}")
-+    # print(f"[TransformerEngine.gemm.py], before generic_gemm, {transb=}")
-+    # out, bias_grad, gelu_input, extra_output = tex.generic_gemm(*args, **kwargs)
-+    # print(f"[TransformerEngine.gemm.py], after generic_gemm, {out.shape=}")
 +
-+    # print(f"[TransformerEngine.gemm.py], orig, {A.shape=}")
-+    # print(f"[TransformerEngine.gemm.py], orig, {transa=}")
-+    # print(f"[TransformerEngine.gemm.py], orig, {transb=}")
++    if not transa and transb:
 +
-+    s = -1
-+    b = -1
-+    shape_changed = False
-+    if A.ndim == 3:
-+        s, b, _ = A.shape
-+        A = A.view(-1, A.shape[-1])
-+        shape_changed = True
++        s = -1
++        b = -1
++        orig_A_shape = A.shape
++        orig_B_shape = B.shape
++        # shape_a_changed = False
++        shape_b_changed = False
++        
++        # A = A.to(torch.float32)
++        # B = B.to(torch.float32)
++        
++        if A.ndim == 3:
++            A = A.view(-1, A.shape[-1])
++            # shape_a_changed = True
 +
-+    if B.ndim == 3:
-+        s, b, _ = B.shape
-+        B = B.view(-1, B.shape[-1])
-+        shape_changed = True
-+    
-+    if transa:
-+        A = A.transpose(0, 1)
-+    if transb:
-+        B = B.transpose(0, 1)
++        if B.ndim == 3:
++            s, b, _ = B.shape
++            # B = B.view(-1, B.shape[-1])
++            shape_b_changed = True
++        
++        A_comp = A.T if transa else A
++        B_comp = B.T if transb else B
++        out1 = flag_gems.mm(B_comp, A_comp)
 +
-+    # print(f"[TransformerEngine.gemm.py], before torch.mm, {A.shape=}")
-+    # print(f"[TransformerEngine.gemm.py], before torch.mm, {B.shape=}")
-+    out = flag_gems.mm(B, A)
-+    if shape_changed:
-+        out = out.view(s, b, -1)
++        # if transa:
++        #     A = A.transpose(0, 1)
++        # if transb:
++        #     B = B.transpose(0, 1)
++        
++        # if shape_a_changed:
++        #     A = A.view(orig_A_shape)
++        if shape_b_changed:
++            out1 = out1.view(s, b, -1)
++            # B = B.view(orig_B_shape)
++        
++        # out1 = out.to(torch.float32) + out1
++        # out.copy_(out1)
++
++        # out.copy_(out.to(torch.float32).add_(out1))
++        out.add_(out1)
++
++
++    else:
++        s = -1
++        b = -1
++        orig_A_shape = A.shape
++        orig_B_shape = B.shape
++        shape_a_changed = False
++        shape_b_changed = False
++        
++        if A.ndim == 3:
++            A = A.view(-1, A.shape[-1])
++            shape_a_changed = True
++
++        if B.ndim == 3:
++            s, b, _ = B.shape
++            B = B.view(-1, B.shape[-1])
++            shape_b_changed = True
++        
++        if transa:
++            A = A.transpose(0, 1)
++        if transb:
++            B = B.transpose(0, 1)
++
++        out = flag_gems.mm(B, A)
++
++        if transa:
++            A = A.transpose(0, 1)
++        if transb:
++            B = B.transpose(0, 1)
++        
++        if shape_a_changed:
++            A = A.view(orig_A_shape)
++        if shape_b_changed:
++            out = out.view(s, b, -1)
++            B = B.view(orig_B_shape)
++
++
 +    bias_grad = None
 +    gelu_input = None
 +    extra_output = None
-+    # print(f"[TransformerEngine.gemm.py], after flag_gems.mm, {out.shape=}")
 +
  
      if debug_quantizer is not None:
          out = debug_quantizer.process_gemm_output(out)
-@@ -226,3 +265,4 @@ def general_grouped_gemm(
+@@ -226,3 +310,4 @@ def general_grouped_gemm(
      )
  
      return out, bias, gelu_input

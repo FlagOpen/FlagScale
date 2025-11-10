@@ -1,0 +1,78 @@
+diff --git a/transformer_engine/pytorch/ops/basic/rmsnorm.py b/transformer_engine/pytorch/ops/basic/rmsnorm.py
+index 8c3f0297..d45bd6a2 100644
+--- a/transformer_engine/pytorch/ops/basic/rmsnorm.py
++++ b/transformer_engine/pytorch/ops/basic/rmsnorm.py
+@@ -26,7 +26,6 @@ from ...utils import (
+ from ..op import BasicOperation, OperationContext
+ from .._common import maybe_autocast_dtype, maybe_dequantize
+ 
+-
+ class RMSNorm(BasicOperation):
+     r"""Root Mean Square Layer Normalization
+ 
+@@ -184,17 +183,27 @@ class RMSNorm(BasicOperation):
+ 
+         # Compute RMSNorm
+         sm_margin = self._sm_margins["forward" if ctx.requires_grad else "inference"]
+-        y, _, rstdevs = rmsnorm_fwd(
++
++        
++        from ...module.gems_rms_norm import rms_norm_forward
++        y, rstdevs = rms_norm_forward(
+             x,
++            [x.shape[-1]],
+             w,
+             self.eps,
+-            None,
+-            next_op_input_quantizer,
+-            TE_DType[dtype],
+-            sm_margin,
+-            self.zero_centered_gamma,
+         )
+ 
++        # y, _, rstdevs = rmsnorm_fwd(
++        #     x,
++        #     w,
++        #     self.eps,
++        #     None,
++        #     next_op_input_quantizer,
++        #     TE_DType[dtype],
++        #     sm_margin,
++        #     self.zero_centered_gamma,
++        # )
++
+         # Save state for backward pass
+         if ctx.requires_grad:
+             if is_cpu_offload_enabled():
+@@ -225,13 +234,23 @@ class RMSNorm(BasicOperation):
+         w = maybe_dequantize(self.weight, dtype).view((inner_dim,))
+ 
+         # Compute RMSNorm backward pass
+-        dx, dw = rmsnorm_bwd(
++        # dx, dw = rmsnorm_bwd(
++        #     dy,
++        #     x,
++        #     rstdevs,
++        #     w,
++        #     self._sm_margins["backward"],
++        #     self.zero_centered_gamma,
++        # )
++
++        from ...module.gems_rms_norm import rms_norm_backward
++        dx, dw = rms_norm_backward(
+             dy,
+             x,
+             rstdevs,
++            [x.shape[-1]],
+             w,
+-            self._sm_margins["backward"],
+-            self.zero_centered_gamma,
++            self.eps,
+         )
+ 
+         # Clear saved tensors if possible
+@@ -250,3 +269,4 @@ class RMSNorm(BasicOperation):
+         """Every operand in this function has a defined ONNX translation."""
+         weight = self.weight + 1 if self.zero_centered_gamma else self.weight
+         return torch.nn.functional.rms_norm(input_, input_.shape[-1:], weight, self.eps)
++

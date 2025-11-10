@@ -1,0 +1,94 @@
+diff --git a/transformer_engine/pytorch/attention/dot_product_attention/backends.py b/transformer_engine/pytorch/attention/dot_product_attention/backends.py
+index d4903be9..10f1b30b 100644
+--- a/transformer_engine/pytorch/attention/dot_product_attention/backends.py
++++ b/transformer_engine/pytorch/attention/dot_product_attention/backends.py
+@@ -140,6 +140,8 @@ else:
+ # Float8CurrentScaling: fused_attn_bwd takes O in FP8 by default, this flag allows it in F16
+ _dpa_fp8_cs_o_in_f16 = os.getenv("NVTE_DPA_FP8CS_O_in_F16", "1") == "1"
+ 
++import flag_gems
++
+ 
+ class FP8EmulationFunc(torch.autograd.Function):
+     """
+@@ -1246,7 +1248,33 @@ class FusedAttnFunc(torch.autograd.Function):
+                     q, k, v = combine_and_dequantize(qkv_layout, q_fp8, k_fp8, v_fp8)
+                 qkvo_tensors = (q, k, v, out)
+         else:
+-            # q, k, v, out_: torch.Tensor; dtype = torch.float16 or torch.bfloat16
++            # # q, k, v, out_: torch.Tensor; dtype = torch.float16 or torch.bfloat16
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {is_training=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {max_seqlen_q=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {max_seqlen_kv=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {cu_seqlens_q=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {cu_seqlens_kv=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {q.shape=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {k.shape=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {v.shape=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {out_nominal_dtype=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {fused_attention_backend=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {attn_bias=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {cu_seqlens_q_padded=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {cu_seqlens_kv_padded=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {page_table_k=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {page_table_v=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {attn_scale=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {dropout_p=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {fast_zero_fill=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {qkv_layout=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {attn_bias_type=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {attn_mask_type=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {softmax_type=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {window_size=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {rng_gen=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {softmax_offset=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {return_max_logit=}")
+             out_, aux_ctx_tensors, *max_logit = fused_attn_fwd(
+                 is_training,
+                 max_seqlen_q,
+@@ -1277,6 +1305,40 @@ class FusedAttnFunc(torch.autograd.Function):
+                 softmax_offset,
+                 return_max_logit,
+             )
++            print(f"{out_[0]=}")
++            print(f"{aux_ctx_tensors[0][0]=}")
++            # print(f"[TransformerEngine.FusedAttnFunc], after call fused_attn_fwd, {out_.shape=}") # [seq, batch, num_heads/tp, head_dim]
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {aux_ctx_tensors[0].shape=}") # softmax lse # [batch, num_heads/tp, seq, 1]
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {aux_ctx_tensors[1]}") # rng state [2767, 9968]
++            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {max_logit=}") # None
++            
++            (gems_out_, gems_lse, gems_philox_seed, gems_philox_offset, gems_p) = flag_gems.flash_attention_forward(
++                q,
++                k,
++                v,
++                cumulative_sequence_length_q=None,
++                cumulative_sequence_length_k=None,
++                max_q=max_seqlen_q,
++                max_k=max_seqlen_kv,
++                dropout_p=dropout_p,
++                is_causal=attn_mask_type == 'causal',
++                return_debug_mask=False,
++                scale=attn_scale,
++            )
++            gems_lse = gems_lse.permute(2, 1, 0).unsqueeze(-1)
++            print(f"{gems_out_[0]=}")
++            print(f"{gems_lse[0]=}")
++            # gems_rng_state = torch.tensor([gems_philox_seed[0], gems_philox_offset.item()], device=out_.device)
++            # aux_ctx_tensors = [gems_lse, gems_rng_state]
++            # max_logit = None
++            # print(f"[TransformerEngine.FusedAttnFunc], after call gems.flash_attention_forward, {out_.shape=}") # [seq, batch, num_heads/tp, head_dim]
++            # print(f"[TransformerEngine.FusedAttnFunc], after call gems.flash_attention_forward, {lse.shape=}") # [seq, num_heads/tp, batch]
++            # print(f"[TransformerEngine.FusedAttnFunc], after call gems.flash_attention_forward, {philox_seed=}") # [1103823438080, 72057594054770945]
++            # print(f"[TransformerEngine.FusedAttnFunc], after call gems.flash_attention_forward, {philox_offset=}") # [-4674172359433781248]
++            # print(f"[TransformerEngine.FusedAttnFunc], after call gems.flash_attention_forward, {p=}") # [2.3694e-38]
++            
++            
++
+             out = out_
+             out_ret = out_
+             fp8_tensors = (None, None, None, None)
+@@ -1938,3 +2000,4 @@ class FusedAttention(torch.nn.Module):
+             return output[0].view(*output[0].shape[:-2], -1), output[1]
+         # ...hd -> ...(hd)
+         return output.view(*output.shape[:-2], -1)
++
