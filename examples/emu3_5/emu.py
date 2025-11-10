@@ -1,4 +1,6 @@
-# inference_pipeline.py (Self-Contained Configuration)
+# Modified from
+# https://github.com/baaivision/Emu3.5/blob/main/inference.py
+# https://github.com/baaivision/Emu3.5/blob/main/configs/config.py
 
 import argparse
 import os
@@ -14,12 +16,6 @@ import torch
 
 from PIL import Image
 from tqdm import tqdm
-
-target_folder = os.path.abspath(
-    "/nfs/lhh/luoyc/Emu/Emu3.5"
-)  # Local Emu3_5 project path https://github.com/baaivision/Emu3.5
-if target_folder not in sys.path:
-    sys.path.append(target_folder)
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
