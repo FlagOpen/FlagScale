@@ -7,6 +7,7 @@ Qwen-GR00T Framework
 A lightweight implementation that Qwen-VL + Flow-matching head to directly predict continuous actions
 Flow-matching header is copyright from GR00T N1.5,
 """
+import os
 from typing import List
 from tqdm import tqdm
 from typing import List, Optional, Tuple
@@ -163,19 +164,31 @@ class Qwen_GR00T(PreTrainedModel):
         normalized_actions = pred_actions.detach().cpu().numpy()
         return {"normalized_actions": normalized_actions}
 
-    @classmethod
-    def from_pretrained(
-        cls,
-        pretrained_checkpoint: str,
-        **kwargs,
-    ) -> None:
+    def save_pretrained(self):
+        if not os.path.exists(self.config.output_directory):
+            os.makedirs(self.config.output_directory, exist_ok=True)
+        model_path = os.path.join(self.config.output_directory + "/pytorch_model.pt")
+        config_path = os.path.join(self.config.output_directory + "/config.yaml")
+        torch.save(self.state_dict(), model_path)
+        OmegaConf.save(self.config, config_path)
 
-        model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu")
-        # logger.info(f"Loading model weights from `{pretrained_checkpoint}`")
-        model_keys = set(FrameworkModel.state_dict().keys())
+    @classmethod
+    def from_pretrained(cls, pretrained_checkpoint: str, custom_config_path=None):
+        config_path = os.path.join(pretrained_checkpoint + "/config.yaml")
+        cfg = OmegaConf.load(config_path)
+        if custom_config_path:
+            cfg_custom = OmegaConf.load(custom_config_path)
+            cfg = OmegaConf.merge(cfg, cfg_custom)
+        model: Qwen_GR00T = Qwen_GR00T(cfg)
+
+        model_path = os.path.join(pretrained_checkpoint + "/pytorch_model.pt")
+        model_state_dict = torch.load(model_path, map_location="cpu")
+        logger.info(f"Loading model weights from `{model_path}`")
+
+        model_keys = set(model.state_dict().keys())
         checkpoint_keys = set(model_state_dict.keys())
         try:
-            FrameworkModel.load_state_dict(model_state_dict, strict=True)
+            model.load_state_dict(model_state_dict, strict=True)
         except RuntimeError as e:
             # must keep all keys matched
             common_keys = model_keys.intersection(checkpoint_keys)
@@ -185,12 +198,10 @@ class Qwen_GR00T(PreTrainedModel):
                 logger.warning(f"Missing keys in state_dict: {missing_keys}")
             if unexpected_keys:
                 logger.warning(f"Unexpected keys in state_dict: {unexpected_keys}")
-
             raise e
+        return model
 
-        # **ensure model is on GPU**
-        FrameworkModel = FrameworkModel
-        return FrameworkModel
+
 
 def get_batch(batch):
     rsp_batch = []
@@ -224,11 +235,12 @@ def resize_images(images, target_size=(224, 224)):
         raise ValueError("Unsupported image type or structure.")
 
 
-def test_with_fake_sample():
+def test_with_fake_sample(cfg):
     """
     Test Qwen-GR00T model with fake data.
     """
-    model: Qwen_GR00T = Qwen_GR00T(cfg)
+    # model: Qwen_GR00T = Qwen_GR00T(cfg)
+    model = Qwen_GR00T.from_pretrained(cfg.checkpoint_dir)
     # fake sample 
     image = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
     # Create a sample
@@ -242,14 +254,19 @@ def test_with_fake_sample():
     batch  = [sample, sample]  # batch size 2
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
+
+    # test predict action
+    for _ in range(3):
+        predict_output = model.predict_action(batch_images=[batch[0]["image"]], instructions=[batch[0]["lang"]], state=[batch[0]["state"]])
+        normalized_actions = predict_output['normalized_actions']
+        print(f"Unnormalized Action: {normalized_actions.shape}")
+        print(f"{normalized_actions[0,0,:]=}")
+
     forward_output = model(batch)
     action_loss = forward_output['action_loss']
     print(f"Action Loss: {action_loss.item()}")
 
-    # test predict action
-    predict_output = model.predict_action(batch_images=[batch[0]["image"]], instructions=[batch[0]["lang"]], state=[batch[0]["state"]])
-    normalized_actions = predict_output['normalized_actions']
-    print(f"Unnormalized Action: {normalized_actions.shape}")
+    model.save_pretrained()
 
 
 def test_with_dataloader(cfg):
@@ -292,6 +309,6 @@ if __name__ == "__main__":
     args, clipargs = parser.parse_known_args()
     cfg = OmegaConf.load(args.config_yaml)
 
-    test_with_fake_sample()
+    test_with_fake_sample(cfg)
     # test_with_dataloader(cfg)
  
