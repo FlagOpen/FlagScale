@@ -7,7 +7,7 @@
     debug: false
     device: cuda
     threaded: true
-    torch_dtype: orch.float32
+    torch_dtype: torch.float32
     framework:
       qwenvl: 
         base_vlm: /repos/flagscale_new_robotics/FlagScale/results/ckpt_in/backbone
