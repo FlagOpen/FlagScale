@@ -1,9 +1,10 @@
 import os
+import statistics
 import sys
 import time
-import statistics
 
 from transformers import AutoTokenizer
+
 from vllm import LLM
 from vllm.sampling_params import SamplingParams
 
@@ -27,7 +28,9 @@ def inference_benchmark(cfg):
 
     # step 3: sampling parameters
     sampling_cfg = cfg.generate.get("sampling", {})
-    assert not sampling_cfg.get("logits_processors", None), "logits_processors is not supported yet."
+    assert not sampling_cfg.get(
+        "logits_processors", None
+    ), "logits_processors is not supported yet."
     sampling_params = SamplingParams(**sampling_cfg)
     print(f"=> sampling_params={sampling_params}")
 
@@ -61,11 +64,13 @@ def inference_benchmark(cfg):
         print(f"[Iter {i}] latency={latency:.3f}s")
 
     # step 7: stats
+    if not latencies:
+        print("No benchmark iterations were run. Skipping stats.")
+        return
     avg_latency = statistics.mean(latencies)
     p50 = statistics.median(latencies)
-
     total_time = sum(latencies)
-    throughput = total_tokens / total_time
+    throughput = total_tokens / total_time if total_time > 0 else 0.0
 
     print("#" * 60)
     print("Benchmark Results")

@@ -1,11 +1,13 @@
 import os
-import time
 import statistics
+import time
+
 from PIL import Image
 from transformers import AutoProcessor, AutoTokenizer
 
 from vllm import LLM
 from vllm.sampling_params import SamplingParams
+
 from flagscale.inference.arguments import parse_config
 
 
@@ -42,14 +44,17 @@ def inference_benchmark(cfg):
     processor_cfg = llm_cfg.get("processor", None)
     processor = (
         AutoProcessor.from_pretrained(processor_cfg, trust_remote_code=True)
-        if processor_cfg else None
+        if processor_cfg
+        else None
     )
 
     # Load prompts and multimodal data
     questions = cfg.generate.get("prompts", [])
     mm_data_paths = cfg.generate.get("mm_data", [])
     modality = cfg.generate.get("modality", "image")
-    assert questions and len(questions) == len(mm_data_paths), "Prompts and mm_data must match in length"
+    assert questions and len(questions) == len(
+        mm_data_paths
+    ), "Prompts and mm_data must match in length"
 
     # Build inputs
     inputs = []
@@ -91,6 +96,9 @@ def inference_benchmark(cfg):
                 total_tokens += len(output.outputs[0].token_ids)
 
     # Compute stats
+    if not latencies:
+        print("No benchmark iterations were run. Skipping stats.")
+        return
     avg_latency = statistics.mean(latencies)
     p50_latency = statistics.median(latencies)
     total_time = sum(latencies)
