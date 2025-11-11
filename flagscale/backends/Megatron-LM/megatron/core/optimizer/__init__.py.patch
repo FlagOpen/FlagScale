@@ -1,4 +1,3 @@
-
 diff --git a/megatron/core/optimizer/__init__.py b/megatron/core/optimizer/__init__.py
 index 1846907e9..7fd0554c4 100644
 --- a/megatron/core/optimizer/__init__.py
