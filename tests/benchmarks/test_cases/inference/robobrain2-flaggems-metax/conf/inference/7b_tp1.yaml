@@ -16,12 +16,11 @@ generate:
   modality: "image"
   prompts:
     - Analyze the content of the image
-    - What is shown in this image?
   mm_data:
     - /home/gitlab-runner/data/BAAI/imgs/img1.jpg
-    - /home/gitlab-runner/data/BAAI/imgs/img2.jpg
   sampling:
     top_p: 0.1
     top_k: 1
     temperature: 0.0
     seed: 1234
+  num_iters: 10

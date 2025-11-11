@@ -162,6 +162,9 @@ jobs:
             exit 1
           fi
           tests/scripts/functional_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
+          if [ "${{ inputs.type }}" = "train" ] || [ "${{ inputs.type }}" = "hetero_train" ] || [ "${{ inputs.type }}" = "inference" ]; then
+             tests/benchmarks/scripts/benchmark_tests/test_task.sh --type ${{ inputs.type }} --task ${{ inputs.task }}
+          fi
           exit_code=$?
           echo "Exit code: $exit_code"
           exit $exit_code

@@ -9,12 +9,10 @@ llm:
   enforce_eager: true
 
 generate:
-  prompts: [
-    "The first President of the United States",
-    "The capital of France",
-  ]
+  prompts: ["The first President of the United States"]
   sampling:
     top_p: 0.1
     top_k: 1
     temperature: 0.0
     seed: 1234
+  num_iters: 10

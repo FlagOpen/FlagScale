@@ -10,10 +10,8 @@ llm:
   enforce_eager: true
 
 generate:
-  prompts: [
-    "The president of the United States",
-    "The capital of France",
-]
+  prompts: ["The president of the United States"]
   sampling:
     top_k: 1
     seed: 1234
+  num_iters: 10

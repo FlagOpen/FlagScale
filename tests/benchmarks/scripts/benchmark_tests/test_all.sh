@@ -12,18 +12,18 @@ commands=(
     # For inference
     "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen"
     "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-flaggems"
-    #"tests/scripts/benchmark_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-metax"
-    #"tests/scripts/benchmark_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-flaggems-metax"
-    #"tests/scripts/benchmark_tests/test_task.sh --type inference --task opi_llama3_1_instruct-metax"
-    #"tests/scripts/benchmark_tests/test_task.sh --type inference --task opi_llama3_1_instruct-flaggems-metax"
+    "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-metax"
+    "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task deepseek_r1_distill_qwen-flaggems-metax"
+    "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task opi_llama3_1_instruct-metax"
+    "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task opi_llama3_1_instruct-flaggems-metax"
     "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task qwen3"
     "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task qwen3-flaggems"
-    #"tests/scripts/benchmark_tests/test_task.sh --type inference --task qwen3-metax"
-    #"tests/scripts/benchmark_tests/test_task.sh --type inference --task qwen3-flaggems-metax"
-    #"tests/scripts/benchmark_tests/test_task.sh --type inference --task robobrain2-metax"
-    #"tests/scripts/benchmark_tests/test_task.sh --type inference --task robobrain2-flaggems-metax"
+    "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task qwen3-metax"
+    "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task qwen3-flaggems-metax"
+    "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task robobrain2-metax"
+    "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task robobrain2-flaggems-metax"
     "tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task robobrain2"
-    #"tests/scripts/benchmark_tests/test_task.sh --type inference --task robobrain2-flaggems"
+    #"tests/benchmarks/scripts/benchmark_tests/test_task.sh --type inference --task robobrain2-flaggems"
 )
 
 for cmd in "${commands[@]}"; do

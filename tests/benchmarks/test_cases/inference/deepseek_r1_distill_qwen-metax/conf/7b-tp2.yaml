@@ -4,11 +4,11 @@ defaults:
 
 experiment:
   exp_name: deepseek_r1_distill_qwen-metax
-  exp_dir: tests/functional_tests/test_cases/inference/deepseek_r1_distill_qwen-metax/results_test/7b-tp2
+  exp_dir: tests/benchmarks/test_cases/inference/deepseek_r1_distill_qwen-metax/results_test/7b-tp2
   task:
     type: inference
     backend: vllm
-    entrypoint: flagscale/inference/inference_aquila.py
+    entrypoint: flagscale/benchmarks/benchmark_throughput.py
   runner:
     hostfile: null
   cmds:
