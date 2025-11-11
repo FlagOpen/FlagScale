@@ -1,0 +1,275 @@
+INFO 11-11 10:36:50 [__init__.py:235] Automatically detected platform cuda.
+INFO 11-11 10:36:59 [config.py:1604] Using max model len 131072
+INFO 11-11 10:36:59 [config.py:2434] Chunked prefill is enabled with max_num_batched_tokens=8192.
+INFO 11-11 10:37:00 [core.py:572] Waiting for init message from front-end.
+INFO 11-11 10:37:00 [core.py:71] Initializing a V1 LLM engine (v0.10.1.dev0+g6d8d0a24c.d20250925) with config: model='/home/gitlab-runner/data/DeepSeek-R1-Distill-Qwen-7B', speculative_config=None, tokenizer='/home/gitlab-runner/data/DeepSeek-R1-Distill-Qwen-7B', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, override_neuron_config={}, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=131072, download_dir=None, load_format=LoadFormat.AUTO, tensor_parallel_size=2, pipeline_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=True, kv_cache_dtype=auto,  device_config=cuda, decoding_config=DecodingConfig(backend='auto', disable_fallback=False, disable_any_whitespace=False, disable_additional_properties=False, reasoning_backend=''), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None), seed=1234, served_model_name=/home/gitlab-runner/data/DeepSeek-R1-Distill-Qwen-7B, num_scheduler_steps=1, multi_step_stream_outputs=True, enable_prefix_caching=True, chunked_prefill_enabled=True, use_async_output_proc=True, pooler_config=None, compilation_config={"level":0,"debug_dump_path":"","cache_dir":"","backend":"","custom_ops":[],"splitting_ops":[],"use_inductor":true,"compile_sizes":[],"inductor_compile_config":{"enable_auto_functionalized_v2":false},"inductor_passes":{},"use_cudagraph":true,"cudagraph_num_of_warmups":0,"cudagraph_capture_sizes":[],"cudagraph_copy_inputs":false,"full_cuda_graph":false,"max_capture_size":0,"local_cache_dir":null}
+INFO 11-11 10:37:00 [shm_broadcast.py:289] vLLM message queue communication handle: Handle(local_reader_ranks=[0, 1], buffer_handle=(2, 16777216, 10, 'psm_4cccb8a7'), local_subscribe_addr='ipc:///tmp/e34a6d34-f111-460c-8667-e14218c5df4e', remote_subscribe_addr=None, remote_addr_ipv6=False)
+[1;36m(VllmWorker rank=0 pid=412598)[0;0m INFO 11-11 10:37:04 [shm_broadcast.py:289] vLLM message queue communication handle: Handle(local_reader_ranks=[0], buffer_handle=(1, 10485760, 10, 'psm_726b49a0'), local_subscribe_addr='ipc:///tmp/fba6ffd3-d531-44f7-b7ee-e8fbfcaf636b', remote_subscribe_addr=None, remote_addr_ipv6=False)
+[1;36m(VllmWorker rank=1 pid=412599)[0;0m INFO 11-11 10:37:04 [shm_broadcast.py:289] vLLM message queue communication handle: Handle(local_reader_ranks=[0], buffer_handle=(1, 10485760, 10, 'psm_3c61c14b'), local_subscribe_addr='ipc:///tmp/530dfedb-aec2-4226-8a60-ffc75f726f66', remote_subscribe_addr=None, remote_addr_ipv6=False)
+[1;36m(VllmWorker rank=0 pid=412598)[0;0m INFO 11-11 10:37:04 [__init__.py:1375] Found nccl from library libnccl.so.2
+[1;36m(VllmWorker rank=1 pid=412599)[0;0m INFO 11-11 10:37:04 [__init__.py:1375] Found nccl from library libnccl.so.2
+[1;36m(VllmWorker rank=0 pid=412598)[0;0m INFO 11-11 10:37:04 [pynccl.py:70] vLLM is using nccl==2.26.2
+[1;36m(VllmWorker rank=1 pid=412599)[0;0m INFO 11-11 10:37:04 [pynccl.py:70] vLLM is using nccl==2.26.2
+b652ba218604:412598:412598 [0] NCCL INFO Bootstrap: Using eth0:172.17.0.6<0>
+b652ba218604:412598:412598 [0] NCCL INFO cudaDriverVersion 12080
+b652ba218604:412598:412598 [0] NCCL INFO NCCL version 2.26.2+cuda12.2
+b652ba218604:412598:412598 [0] NCCL INFO NET/Plugin: Could not find: libnccl-net.so. Using internal net plugin.
+b652ba218604:412598:412598 [0] NCCL INFO NET/IB : No device found.
+b652ba218604:412598:412598 [0] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.17.0.6<0>
+b652ba218604:412598:412598 [0] NCCL INFO NET/Socket : Using [0]eth0:172.17.0.6<0>
+b652ba218604:412598:412598 [0] NCCL INFO PROFILER/Plugin: Could not find: libnccl-profiler.so. 
+b652ba218604:412598:412598 [0] NCCL INFO Using network Socket
+b652ba218604:412598:412598 [0] NCCL INFO ncclCommInitRank comm 0x1311c790 rank 0 nranks 2 cudaDev 0 nvmlDev 0 busId 7000 commId 0x25d11663dd43bcef - Init START
+b652ba218604:412598:412598 [0] NCCL INFO RAS client listening socket at 127.0.0.1<28028>
+b652ba218604:412598:412598 [0] NCCL INFO Bootstrap timings total 0.043748 (create 0.000058, send 0.000149, recv 0.042850, ring 0.000033, delay 0.000000)
+b652ba218604:412598:412598 [0] NCCL INFO NCCL_CUMEM_ENABLE set by environment to 0.
+b652ba218604:412598:412598 [0] NCCL INFO Setting affinity for GPU 0 to ffff0000,00000000,00000000,00000000,ffff0000,00000000
+b652ba218604:412598:412598 [0] NCCL INFO comm 0x1311c790 rank 0 nRanks 2 nNodes 1 localRanks 2 localRank 0 MNNVL 0
+b652ba218604:412598:412598 [0] NCCL INFO Channel 00/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 01/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 02/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 03/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 04/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 05/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 06/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 07/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 08/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 09/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 10/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 11/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 12/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 13/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 14/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 15/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 16/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 17/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 18/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 19/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 20/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 21/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 22/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Channel 23/24 : 0 1
+b652ba218604:412598:412598 [0] NCCL INFO Trees [0] 1/-1/-1->0->-1 [1] 1/-1/-1->0->-1 [2] 1/-1/-1->0->-1 [3] 1/-1/-1->0->-1 [4] 1/-1/-1->0->-1 [5] 1/-1/-1->0->-1 [6] -1/-1/-1->0->1 [7] -1/-1/-1->0->1 [8] -1/-1/-1->0->1 [9] -1/-1/-1->0->1 [10] -1/-1/-1->0->1 [11] -1/-1/-1->0->1 [12] 1/-1/-1->0->-1 [13] 1/-1/-1->0->-1 [14] 1/-1/-1->0->-1 [15] 1/-1/-1->0->-1 [16] 1/-1/-1->0->-1 [17] 1/-1/-1->0->-1 [18] -1/-1/-1->0->1 [19] -1/-1/-1->0->1 [20] -1/-1/-1->0->1 [21] -1/-1/-1->0->1 [22] -1/-1/-1->0->1 [23] -1/-1/-1->0->1
+b652ba218604:412598:412598 [0] NCCL INFO P2P Chunksize set to 524288
+b652ba218604:412598:412598 [0] NCCL INFO Check P2P Type intraNodeP2pSupport 1 directMode 0
+b652ba218604:412598:412645 [0] NCCL INFO [Proxy Service] Device 0 CPU core 59
+b652ba218604:412598:412647 [0] NCCL INFO [Proxy Service UDS] Device 0 CPU core 61
+b652ba218604:412598:412598 [0] NCCL INFO Channel 00/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 01/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 02/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 03/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218b652ba218604:412599:412599 [1] NCCL INFO cudaDriverVersion 12080
+b652ba218604:412599:412599 [1] NCCL INFO Bootstrap: Using eth0:172.17.0.6<0>
+b652ba218604:412599:412599 [1] NCCL INFO NCCL version 2.26.2+cuda12.2
+b652ba218604:412599:412599 [1] NCCL INFO NET/Plugin: Could not find: libnccl-net.so. Using internal net plugin.
+b652ba218604:412599:412599 [1] NCCL INFO NET/IB : No device found.
+b652ba218604:412599:412599 [1] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.17.0.6<0>
+b652ba218604:412599:412599 [1] NCCL INFO NET/Socket : Using [0]eth0:172.17.0.6<0>
+b652ba218604:412599:412599 [1] NCCL INFO PROFILER/Plugin: Could not find: libnccl-profiler.so. 
+b652ba218604:412599:412599 [1] NCCL INFO Using network Socket
+b652ba218604:412599:412599 [1] NCCL INFO ncclCommInitRank comm 0x1311c7c0 rank 1 nranks 2 cudaDev 1 nvmlDev 1 busId f000 commId 0x25d11663dd43bcef - Init START
+b652ba218604:412599:412599 [1] NCCL INFO RAS client listening socket at 127.0.0.1<28028>
+b652ba218604:412599:412599 [1] NCCL INFO Bootstrap timings total 0.001099 (create 0.000066, send 0.000161, recv 0.000185, ring 0.000030, delay 0.000001)
+b652ba218604:412599:412599 [1] NCCL INFO NCCL_CUMEM_ENABLE set by environment to 0.
+b652ba218604:412599:412599 [1] NCCL INFO Setting affinity for GPU 1 to ffff0000,00000000,00000000,00000000,ffff0000,00000000
+b652ba218604:412599:412599 [1] NCCL INFO comm 0x1311c7c0 rank 1 nRanks 2 nNodes 1 localRanks 2 localRank 1 MNNVL 0
+b652ba218604:412599:412599 [1] NCCL INFO Trees [0] -1/-1/-1->1->0 [1] -1/-1/-1->1->0 [2] -1/-1/-1->1->0 [3] -1/-1/-1->1->0 [4] -1/-1/-1->1->0 [5] -1/-1/-1->1->0 [6] 0/-1/-1->1->-1 [7] 0/-1/-1->1->-1 [8] 0/-1/-1->1->-1 [9] 0/-1/-1->1->-1 [10] 0/-1/-1->1->-1 [11] 0/-1/-1->1->-1 [12] -1/-1/-1->1->0 [13] -1/-1/-1->1->0 [14] -1/-1/-1->1->0 [15] -1/-1/-1->1->0 [16] -1/-1/-1->1->0 [17] -1/-1/-1->1->0 [18] 0/-1/-1->1->-1 [19] 0/-1/-1->1->-1 [20] 0/-1/-1->1->-1 [21] 0/-1/-1->1->-1 [22] 0/-1/-1->1->-1 [23] 0/-1/-1->1->-1
+b652ba218604:412599:412599 [1] NCCL INFO P2P Chunksize set to 524288
+b652ba218604:412599:412644 [1] NCCL INFO [Proxy Service] Device 1 CPU core 52
+b652ba218604:412599:412646 [1] NCCL INFO [Proxy Service UDS] Device 1 CPU core 60
+b652ba218604:412599:412599 [1] NCCL INFO Channel 00/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 01/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 02/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 03/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 04/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 05/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 06/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 07/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 08/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 09/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 10/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 11/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 12/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 13/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 14/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 15/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 16/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 17/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 18/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 19/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 20/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 21/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412[1;36m(VllmWorker rank=0 pid=412598)[0;0m INFO 11-11 10:37:05 [custom_all_reduce_utils.py:246] reading GPU P2P access cache from /root/.cache/vllm/gpu_p2p_access_cache_for_0,1,2,3,4,5,6,7.json
+[1;36m(VllmWorker rank=1 pid=412599)[0;0m INFO 11-11 10:37:05 [custom_all_reduce_utils.py:246] reading GPU P2P access cache from /root/.cache/vllm/gpu_p2p_access_cache_for_0,1,2,3,4,5,6,7.json
+[1;36m(VllmWorker rank=0 pid=412598)[0;0m INFO 11-11 10:37:05 [shm_broadcast.py:289] vLLM message queue communication handle: Handle(local_reader_ranks=[1], buffer_handle=(1, 4194304, 6, 'psm_60f41ff1'), local_subscribe_addr='ipc:///tmp/170bc7e9-35dd-4552-8e4c-70568e255420', remote_subscribe_addr=None, remote_addr_ipv6=False)
+[1;36m(VllmWorker rank=1 pid=412599)[0;0m INFO 11-11 10:37:05 [parallel_state.py:1102] rank 1 in world size 2 is assigned as DP rank 0, PP rank 0, TP rank 1, EP rank 1
+[1;36m(VllmWorker rank=0 pid=412598)[0;0m INFO 11-11 10:37:05 [parallel_state.py:1102] rank 0 in world size 2 is assigned as DP rank 0, PP rank 0, TP rank 0, EP rank 0
+[1;36m(VllmWorker rank=1 pid=412599)[0;0m WARNING 11-11 10:37:05 [topk_topp_sampler.py:59] FlashInfer is not available. Falling back to the PyTorch-native implementation of top-p & top-k sampling. For the best performance, please install FlashInfer.
+[1;36m(VllmWorker rank=0 pid=412598)[0;0m WARNING 11-11 10:37:05 [topk_topp_sampler.py:59] FlashInfer is not available. Falling back to the PyTorch-native implementation of top-p & top-k sampling. For the best performance, please install FlashInfer.
+[1;36m(VllmWorker rank=1 pid=412599)[0;0m INFO 11-11 10:37:05 [gpu_model_runner.py:1859] Starting to load model /home/gitlab-runner/data/DeepSeek-R1-Distill-Qwen-7B...
+[1;36m(VllmWorker rank=0 pid=412598)[0;0m INFO 11-11 10:37:05 [gpu_model_runner.py:1859] Starting to load model /home/gitlab-runner/data/DeepSeek-R1-Distill-Qwen-7B...
+[1;36m(VllmWorker rank=0 pid=412598)[0;0m INFO 11-11 10:37:05 [gpu_model_runner.py:1891] Loading model from scratch...
+[1;36m(VllmWorker rank=1 pid=412599)[0;0m INFO 11-11 10:37:05 [gpu_model_runner.py:1891] Loading model from scratch...
+[1;36m(VllmWorker rank=0 pid=412598)[0;0m INFO 11-11 10:37:05 [cuda.py:290] Using Flash Attention backend on V1 engine.
+[1;36m(VllmWorker rank=1 pid=412599)[0;0m INFO 11-11 10:37:05 [cuda.py:290] Using Flash Attention backend on V1 engine.
+[1;36m(VllmWorker rank=0 pid=412598)[0;0m INFO 11-11 10:37:08 [default_loader.py:262] Loading weights took 2.30 seconds
+[1;36m(VllmWorker rank=1 pid=412599)[0;0m INFO 11-11 10:37:08 [default_loader.py:262] Loading weights took 2.29 seconds
+[1;36m(VllmWorker rank=0 pid=412598)[0;0m INFO 11-11 10:37:08 [gpu_model_runner.py:1908] Model loading took 7.1441 GiB and 2.583652 seconds
+[1;36m(VllmWorker rank=1 pid=412599)[0;0m INFO 11-11 10:37:09 [gpu_model_runner.py:1908] Model loading took 7.1441 GiB and 2.607033 seconds
+604:412598:412598 [0] NCCL INFO Channel 04/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 05/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 06/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 07/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 08/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 09/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 10/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 11/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 12/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 13/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 14/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 15/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 16/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 17/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 18/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 19/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 20/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 21/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 22/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Channel 23/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412598 [0] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+b652ba218604:412598:412598 [0] NCCL INFO Connected all trees
+b652ba218604:412598:412648 [0] NCCL INFO [Proxy Progress] Device 0 CPU core 53
+b652ba218604:412598:412598 [0] NCCL INFO NCCL_ALGO set by environment to Ring
+b652ba218604:412598:412598 [0] NCCL INFO Enabled NCCL Func/Proto/Algo Matrix:
+     Function |       LL     LL128    Simple   |          Tree           Ring  CollNetDirect   CollNetChain           NVLS       NVLSTree            PAT  
+    Broadcast |        1         2         1   |             0              1              0              0              0              0              0  
+       Reduce |        1         2         1   |             0              1              0              0              0              0              0  
+    AllGather |        1         2         1   |             0              1              0              0              0              0              0  
+ReduceScatter |        1         2         1   |             0              1              0              0              0              0              0  
+    AllReduce |        1         2         1   |             0              1              0              0              0              0              0  
+
+b652ba218604:412598:412598 [0] NCCL INFO threadThresholds 8/8/64 | 16/8/64 | 512 | 512
+b652ba218604:412598:412598 [0] NCCL INFO 24 coll channels, 24 collnet channels, 0 nvls channels, 32 p2p channels, 32 p2p channels per peer
+b652ba218604:412598:412598 [0] NCCL INFO CC Off, workFifoBytes 1048576
+b652ba218604:412598:412598 [0] NCCL INFO TUNER/Plugin: Could not find: libnccl-tuner.so. Using internal tuner plugin.
+b652ba218604:412598:412598 [0] NCCL INFO ncclCommInitRank comm 0x1311c790 rank 0 nranks 2 cudaDev 0 nvmlDev 0 busId 7000 commId 0x25d11663dd43bcef - Init COMPLETE
+b652ba218604:412598:412598 [0] NCCL INFO Init timings - ncclCommInitRank: rank 0 nranks 2 total 0.43 (kernels 0.10, alloc 0.10, bootstrap 0.04, allgathers 0.00, topo 0.08, graphs 0.00, connections 0.09, rest 0.01)
+b652ba218604:412598:412598 [0] NCCL INFO Comm config Blocking set to 1
+b652ba218604:412598:412706 [0] NCCL INFO Using network Socket
+b652ba218604:412598:412706 [0] NCCL INFO ncclCommInitRankConfig comm 0x361f0810 rank 0 nranks 2 cudaDev 0 nvmlDev 0 busId 7000 commId 0xea909d57172b2e2 - Init START
+b652ba218604:412598:412706 [0] NCCL INFO Bootstrap timings total 0.001924 (create 0.000037, send 0.000088, recv 0.001630, ring 0.000017, delay 0.000000)
+b652ba218604:412598:412706 [0] NCCL INFO Setting affinity for GPU 0 to ffff0000,00000000,00000000,00000000,ffff0000,00000000
+b652ba218604:412598:412706 [0] NCCL INFO comm 0x361f0810 rank 0 nRanks 2 nNodes 1 localRanks 2 localRank 0 MNNVL 0
+b652ba218604:412598:412706 [0] NCCL INFO Channel 00/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 01/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 02/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 03/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 04/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 05/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 06/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 07/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 08/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 09/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 10/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 11/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 12/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 13/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 14/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 15/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 16/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 17/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 18/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 19/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 20/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 21/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 22/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Channel 23/24 : 0 1
+b652ba218604:412598:412706 [0] NCCL INFO Trees [0] 1/-1/-1->0->-1 [1] 1/-1/-1->0->-1 [2] 1/-1/-1->0->-1 [3] 1/-1/-1->0->-1 [4] 1/-1/-1->0->-1 [5] 1/-1/-1->0->-1 [6] -1/-1/-1->0->1 [7] -1/-1/-1->0->1 [8] -1/-1/-1->0->1 [9] -1/-1/-1->0->1 [10] -1/-1/-1->0->1 [11] -1/-1/-1->0->1 [12] 1/-1/-1->0->-1 [13] 1/-1/-1->0->-1 [14] 1/-1/-1->0->-1 [15] 1/-1/-1->0->-1 [16] 1/-1/-1->0->-1 [17] 1/-1/-1->0->-1 [18] -1/-1/-1->0->1 [19] -1/-1/-1->0->1 [20] -1/-1/-1->0->1 [21] -1/-1/-1->0->1 [22] -1/-1/-1->0->1 [23] -1/-1/-1->0->1
+b652ba218604:412598:412706 [0] NCCL INFO P2P Chunksize set to 524288
+b652ba218604:412598:412706 [0] NCCL INFO Check P2P Type intraNodeP2pSupport 1 directMode 0
+b652ba218604:412598:412709 [0] NCCL INFO [Proxy Service] Device 0 CPU core 53
+b652ba218604:412598:412711 [0] NCCL INFO [Proxy Service UDS] Device 0 CPU core 189
+b652ba218604:412598:412706 [0] NCCL INFO Channel 00/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 01/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 02/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 03/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 04/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 05/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 06/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 07/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 08/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 09/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 10/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 11/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 12/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 13/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 14/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba218604:412598:412706 [0] NCCL INFO Channel 15/0 : 0[0] -> 1[1] via P2P/IPC/read
+b652ba2186599:412599 [1] NCCL INFO Channel 22/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Channel 23/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412599 [1] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+b652ba218604:412599:412599 [1] NCCL INFO Connected all trees
+b652ba218604:412599:412649 [1] NCCL INFO [Proxy Progress] Device 1 CPU core 53
+b652ba218604:412599:412599 [1] NCCL INFO NCCL_ALGO set by environment to Ring
+b652ba218604:412599:412599 [1] NCCL INFO threadThresholds 8/8/64 | 16/8/64 | 512 | 512
+b652ba218604:412599:412599 [1] NCCL INFO 24 coll channels, 24 collnet channels, 0 nvls channels, 32 p2p channels, 32 p2p channels per peer
+b652ba218604:412599:412599 [1] NCCL INFO TUNER/Plugin: Could not find: libnccl-tuner.so. Using internal tuner plugin.
+b652ba218604:412599:412599 [1] NCCL INFO ncclCommInitRank comm 0x1311c7c0 rank 1 nranks 2 cudaDev 1 nvmlDev 1 busId f000 commId 0x25d11663dd43bcef - Init COMPLETE
+b652ba218604:412599:412599 [1] NCCL INFO Init timings - ncclCommInitRank: rank 1 nranks 2 total 0.41 (kernels 0.12, alloc 0.10, bootstrap 0.00, allgathers 0.00, topo 0.08, graphs 0.00, connections 0.09, rest 0.00)
+b652ba218604:412599:412599 [1] NCCL INFO Comm config Blocking set to 1
+b652ba218604:412599:412707 [1] NCCL INFO Using network Socket
+b652ba218604:412599:412707 [1] NCCL INFO ncclCommInitRankConfig comm 0x361f7880 rank 1 nranks 2 cudaDev 1 nvmlDev 1 busId f000 commId 0xea909d57172b2e2 - Init START
+b652ba218604:412599:412707 [1] NCCL INFO Bootstrap timings total 0.000429 (create 0.000045, send 0.000098, recv 0.000136, ring 0.000019, delay 0.000000)
+b652ba218604:412599:412707 [1] NCCL INFO Setting affinity for GPU 1 to ffff0000,00000000,00000000,00000000,ffff0000,00000000
+b652ba218604:412599:412707 [1] NCCL INFO comm 0x361f7880 rank 1 nRanks 2 nNodes 1 localRanks 2 localRank 1 MNNVL 0
+b652ba218604:412599:412707 [1] NCCL INFO Trees [0] -1/-1/-1->1->0 [1] -1/-1/-1->1->0 [2] -1/-1/-1->1->0 [3] -1/-1/-1->1->0 [4] -1/-1/-1->1->0 [5] -1/-1/-1->1->0 [6] 0/-1/-1->1->-1 [7] 0/-1/-1->1->-1 [8] 0/-1/-1->1->-1 [9] 0/-1/-1->1->-1 [10] 0/-1/-1->1->-1 [11] 0/-1/-1->1->-1 [12] -1/-1/-1->1->0 [13] -1/-1/-1->1->0 [14] -1/-1/-1->1->0 [15] -1/-1/-1->1->0 [16] -1/-1/-1->1->0 [17] -1/-1/-1->1->0 [18] 0/-1/-1->1->-1 [19] 0/-1/-1->1->-1 [20] 0/-1/-1->1->-1 [21] 0/-1/-1->1->-1 [22] 0/-1/-1->1->-1 [23] 0/-1/-1->1->-1
+b652ba218604:412599:412707 [1] NCCL INFO P2P Chunksize set to 524288
+b652ba218604:412599:412710 [1] NCCL INFO [Proxy Service UDS] Device 1 CPU core 56
+b652ba218604:412599:412708 [1] NCCL INFO [Proxy Service] Device 1 CPU core 53
+b652ba218604:412599:412707 [1] NCCL INFO Channel 00/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 01/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 02/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 03/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 04/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 05/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 06/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 07/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 08/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 09/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 10/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 11/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 12/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 13/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 14/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 15/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599:412707 [1] NCCL INFO Channel 16/0 : 1[1] -> 0[0] via P2P/IPC/read
+b652ba218604:412599[1;36m(VllmWorker rank=0 pid=412598)[0;0m INFO 11-11 10:37:11 [gpu_worker.py:255] Available KV cache memory: 25.61 GiB
+[1;36m(VllmWorker rank=1 pid=412599)[0;0m INFO 11-11 10:37:11 [gpu_worker.py:255] Available KV cache memory: 25.61 GiB
+INFO 11-11 10:37:11 [kv_cache_utils.py:833] GPU KV cache size: 958,928 tokens
+INFO 11-11 10:37:11 [kv_cache_utils.py:837] Maximum concurrency for 131,072 tokens per request: 7.32x
+INFO 11-11 10:37:11 [kv_cache_utils.py:833] GPU KV cache size: 958,928 tokens
+INFO 11-11 10:37:11 [kv_cache_utils.py:837] Maximum concurrency for 131,072 tokens per request: 7.32x
+INFO 11-11 10:37:11 [core.py:193] init engine (profile, create kv cache, warmup model) took 2.72 seconds
+=> sampling_params=SamplingParams(n=1, presence_penalty=0.0, frequency_penalty=0.0, repetition_penalty=1.0, temperature=0.0, top_p=1.0, top_k=0, min_p=0.0, seed=1234, stop=[], stop_token_ids=[], bad_words=[], include_stop_str_in_output=False, ignore_eos=False, max_tokens=16, min_tokens=0, logprobs=None, prompt_logprobs=None, skip_special_tokens=True, spaces_between_special_tokens=True, truncate_prompt_tokens=None, guided_decoding=None, extra_args=None, guidance_scale=None)
+=> inputs=[{'prompt': 'The president of the United States'}]
+=> Running warmup...
+=> Running benchmark...
+[Iter 0] latency=0.600s
+[Iter 1] latency=0.610s
+[Iter 2] latency=0.598s
+[Iter 3] latency=0.595s
+[Iter 4] latency=0.593s
+[Iter 5] latency=0.589s
+[Iter 6] latency=0.588s
+[Iter 7] latency=0.607s
+[Iter 8] latency=0.620s
+[Iter 9] latency=0.616s
+############################################################
+Benchmark Results
+Total iters: 10
+Total tokens: 160
+Total time: 6.016s
+Throughput: 26.60 tokens/s
+Avg latency: 0.602s
+P50 latency: 0.599s
+############################################################
