@@ -110,4 +110,3 @@ index 1846907e9..7fd0554c4 100644
          # Pass Gloo process groups into optimizer only if needed.
          if use_gloo_process_groups:
              expt_data_parallel_group_gloo = intra_expt_dp_group_gloo
-
