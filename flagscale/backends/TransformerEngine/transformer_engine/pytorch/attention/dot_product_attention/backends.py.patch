@@ -1,5 +1,5 @@
 diff --git a/transformer_engine/pytorch/attention/dot_product_attention/backends.py b/transformer_engine/pytorch/attention/dot_product_attention/backends.py
-index d4903be9..10f1b30b 100644
+index d4903be9..7c914a7c 100644
 --- a/transformer_engine/pytorch/attention/dot_product_attention/backends.py
 +++ b/transformer_engine/pytorch/attention/dot_product_attention/backends.py
 @@ -140,6 +140,8 @@ else:
@@ -11,12 +11,39 @@ index d4903be9..10f1b30b 100644
  
  class FP8EmulationFunc(torch.autograd.Function):
      """
-@@ -1246,7 +1248,33 @@ class FusedAttnFunc(torch.autograd.Function):
-                     q, k, v = combine_and_dequantize(qkv_layout, q_fp8, k_fp8, v_fp8)
+@@ -1247,36 +1249,94 @@ class FusedAttnFunc(torch.autograd.Function):
                  qkvo_tensors = (q, k, v, out)
          else:
--            # q, k, v, out_: torch.Tensor; dtype = torch.float16 or torch.bfloat16
-+            # # q, k, v, out_: torch.Tensor; dtype = torch.float16 or torch.bfloat16
+             # q, k, v, out_: torch.Tensor; dtype = torch.float16 or torch.bfloat16
+-            out_, aux_ctx_tensors, *max_logit = fused_attn_fwd(
+-                is_training,
+-                max_seqlen_q,
+-                max_seqlen_kv,
+-                cu_seqlens_q,
+-                cu_seqlens_kv,
+-                q,
+-                k,
+-                v,
+-                out_nominal_dtype,
+-                fused_attention_backend,
+-                attn_bias,
+-                cu_seqlens_q_padded,
+-                cu_seqlens_kv_padded,
+-                page_table_k,
+-                page_table_v,
+-                None,  # s_quantizer
+-                None,  # o_quantizer
+-                attn_scale,
+-                dropout_p,
+-                fast_zero_fill,
+-                qkv_layout,
+-                attn_bias_type,
+-                attn_mask_type,
+-                softmax_type,
+-                window_size,
+-                rng_gen,
+-                softmax_offset,
+-                return_max_logit,
 +            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {is_training=}")
 +            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {max_seqlen_q=}")
 +            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {max_seqlen_kv=}")
@@ -43,51 +70,186 @@ index d4903be9..10f1b30b 100644
 +            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {rng_gen=}")
 +            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {softmax_offset=}")
 +            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {return_max_logit=}")
-             out_, aux_ctx_tensors, *max_logit = fused_attn_fwd(
-                 is_training,
-                 max_seqlen_q,
-@@ -1277,6 +1305,40 @@ class FusedAttnFunc(torch.autograd.Function):
-                 softmax_offset,
-                 return_max_logit,
-             )
-+            print(f"{out_[0]=}")
-+            print(f"{aux_ctx_tensors[0][0]=}")
++            # out_, aux_ctx_tensors, *max_logit = fused_attn_fwd(
++            #     is_training,
++            #     max_seqlen_q,
++            #     max_seqlen_kv,
++            #     cu_seqlens_q,
++            #     cu_seqlens_kv,
++            #     q,
++            #     k,
++            #     v,
++            #     out_nominal_dtype,
++            #     fused_attention_backend,
++            #     attn_bias,
++            #     cu_seqlens_q_padded,
++            #     cu_seqlens_kv_padded,
++            #     page_table_k,
++            #     page_table_v,
++            #     None,  # s_quantizer
++            #     None,  # o_quantizer
++            #     attn_scale,
++            #     dropout_p,
++            #     fast_zero_fill,
++            #     qkv_layout,
++            #     attn_bias_type,
++            #     attn_mask_type,
++            #     softmax_type,
++            #     window_size,
++            #     rng_gen,
++            #     softmax_offset,
++            #     return_max_logit,
++            # )
 +            # print(f"[TransformerEngine.FusedAttnFunc], after call fused_attn_fwd, {out_.shape=}") # [seq, batch, num_heads/tp, head_dim]
 +            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {aux_ctx_tensors[0].shape=}") # softmax lse # [batch, num_heads/tp, seq, 1]
 +            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {aux_ctx_tensors[1]}") # rng state [2767, 9968]
 +            # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_fwd, {max_logit=}") # None
 +            
++            # # gems replace
++            is_causal = attn_mask_type == 'causal'
++            gems_q = q.permute(1, 0, 2, 3) #[s, b, n_h, h] -> [b, s, n_h, h]
++            gems_k = k.permute(1, 0, 2, 3)
++            gems_v = v.permute(1, 0, 2, 3)
 +            (gems_out_, gems_lse, gems_philox_seed, gems_philox_offset, gems_p) = flag_gems.flash_attention_forward(
-+                q,
-+                k,
-+                v,
++                gems_q,
++                gems_k,
++                gems_v,
 +                cumulative_sequence_length_q=None,
 +                cumulative_sequence_length_k=None,
 +                max_q=max_seqlen_q,
 +                max_k=max_seqlen_kv,
 +                dropout_p=dropout_p,
-+                is_causal=attn_mask_type == 'causal',
++                is_causal=is_causal,
 +                return_debug_mask=False,
 +                scale=attn_scale,
-+            )
-+            gems_lse = gems_lse.permute(2, 1, 0).unsqueeze(-1)
-+            print(f"{gems_out_[0]=}")
-+            print(f"{gems_lse[0]=}")
-+            # gems_rng_state = torch.tensor([gems_philox_seed[0], gems_philox_offset.item()], device=out_.device)
-+            # aux_ctx_tensors = [gems_lse, gems_rng_state]
-+            # max_logit = None
-+            # print(f"[TransformerEngine.FusedAttnFunc], after call gems.flash_attention_forward, {out_.shape=}") # [seq, batch, num_heads/tp, head_dim]
-+            # print(f"[TransformerEngine.FusedAttnFunc], after call gems.flash_attention_forward, {lse.shape=}") # [seq, num_heads/tp, batch]
-+            # print(f"[TransformerEngine.FusedAttnFunc], after call gems.flash_attention_forward, {philox_seed=}") # [1103823438080, 72057594054770945]
-+            # print(f"[TransformerEngine.FusedAttnFunc], after call gems.flash_attention_forward, {philox_offset=}") # [-4674172359433781248]
-+            # print(f"[TransformerEngine.FusedAttnFunc], after call gems.flash_attention_forward, {p=}") # [2.3694e-38]
+             )
++            # print(f"[TransformerEngine.FusedAttnFunc], after call gems.flash_attention_forward, {gems_out_.shape=}") # [seq, batch, num_heads/tp, head_dim]
++            # print(f"[TransformerEngine.FusedAttnFunc], after call gems.flash_attention_forward, {gems_lse.shape=}") # [seq, num_heads/tp, batch]
 +            
-+            
++            out_ = gems_out_.permute(1, 0, 2, 3)
++            gems_lse = gems_lse.unsqueeze(-1)
++            gems_rng_state = torch.tensor([gems_philox_seed[0], gems_philox_offset.item()], device=out_.device)
++            aux_ctx_tensors = [gems_lse, gems_rng_state]
++            max_logit = None
 +
              out = out_
              out_ret = out_
              fp8_tensors = (None, None, None, None)
-@@ -1938,3 +2000,4 @@ class FusedAttention(torch.nn.Module):
+@@ -1550,7 +1610,16 @@ class FusedAttnFunc(torch.autograd.Function):
+                     if isinstance(d_out, QuantizedTensorStorage):
+                         d_out = d_out.dequantize(dtype=ctx.nominal_dtype)
+                     dqkv_te_dtype = TE_DType[d_out.dtype]
+-                    # q, k, v, out, d_out, dq, dk, dv: torch.Tensor; torch.float16 or torch.bfloat16
++                    
++                    
++                    # # q, k, v, out, d_out, dq, dk, dv: torch.Tensor; torch.float16 or torch.bfloat16
++                    # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_bwd, {q.shape=}")
++                    # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_bwd, {k.shape=}")
++                    # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_bwd, {v.shape=}")
++                    # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_bwd, {out.shape=}")
++                    # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_bwd, {d_out.shape=}")
++                    # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_bwd, {aux_ctx_tensors[0].shape=}")
++                    # print(f"[TransformerEngine.FusedAttnFunc], before call fused_attn_bwd, {ctx.attn_scale=}")
+                     dq, dk, dv, *rest = fused_attn_bwd(
+                         ctx.max_seqlen_q,
+                         ctx.max_seqlen_kv,
+@@ -1580,6 +1649,95 @@ class FusedAttnFunc(torch.autograd.Function):
+                         ctx.window_size,
+                         ctx.deterministic,
+                     )
++                    # print(f"[TransformerEngine.FusedAttnFunc], after call fused_attn_bwd, {dq.shape=}")
++                    # print(f"[TransformerEngine.FusedAttnFunc], after call fused_attn_bwd, {dk.shape=}")
++                    # print(f"[TransformerEngine.FusedAttnFunc], after call fused_attn_bwd, {dv.shape=}")
++                    # print(f"[TransformerEngine.FusedAttnFunc], after call fused_attn_bwd, {rest=}")
++
++
++
++
++                    # # # use flex_attention backward kernel which rely on Triton
++                    # from torch.nn.attention.flex_attention import (
++                    #     create_block_mask,
++                    #     _identity, 
++                    #     _apply_kernel_options,
++                    # )
++                    # from torch._higher_order_ops.flex_attention import (
++                    #     sdpa_dense_backward, 
++                    #     create_fw_bw_graph,
++                    # )
++                    # import math
++
++                    # kernel_options = _apply_kernel_options(
++                    #         q,
++                    #         k,
++                    #         v,
++                    #         True,
++                    #         None,
++                    #     )
++                    
++                    # def generate_mask_mod():
++                    #     def mask_mod(b, h, q_idx, kv_idx):
++                    #         return q_idx >= kv_idx
++                    #     return mask_mod
++                    # mask_mod = generate_mask_mod()
++
++                    # flex_q = q.permute(1, 2, 0, 3)
++                    # flex_k = k.permute(1, 2, 0, 3)
++                    # flex_v = v.permute(1, 2, 0, 3)
++                    # flex_out = out.permute(1, 2, 0, 3)
++                    # flex_lse = aux_ctx_tensors[0].squeeze(-1)
++                    # flex_d_out = d_out.permute(1, 2, 0, 3)
++                    # flex_d_logsumexp = torch.zeros_like(flex_lse).to(flex_lse.device)
++                    # block_mask = create_block_mask(
++                    #     mask_mod,
++                    #     B=flex_q.shape[0],
++                    #     H=None,
++                    #     Q_LEN=flex_q.shape[2],
++                    #     KV_LEN=flex_q.shape[2],
++                    #     device=flex_q.device,
++                    # )
++                
++                    # block_mask = block_mask.as_tuple()
++                    # example_vals = (
++                    #     flex_q.new_zeros((), requires_grad=True),
++                    #     flex_q.new_zeros((), dtype=torch.int),
++                    #     flex_q.new_zeros((), dtype=torch.int),
++                    #     flex_q.new_zeros((), dtype=torch.int),
++                    #     flex_q.new_zeros((), dtype=torch.int),
++                    # )
++                    # fw_graph, bw_graph = create_fw_bw_graph(
++                    #     _identity, example_vals, (),
++                    # )
++                
++                    # # exp(score - lse)   →   exp2(score - lse2)
++                    # flex_o = sdpa_dense_backward(
++                    #     flex_q,
++                    #     flex_k,
++                    #     flex_v,
++                    #     flex_out,
++                    #     flex_lse / math.log(2),
++                    #     flex_d_out,
++                    #     flex_d_logsumexp,
++                    #     fw_graph,
++                    #     bw_graph,
++                    #     block_mask, 
++                    #     ctx.attn_scale,
++                    #     kernel_options,
++                    #     score_mod_other_buffers = (),
++                    #     mask_mod_other_buffers = (),
++                    # )
++                    # flex_dq = flex_o[:-1][0]
++                    # flex_dk = flex_o[:-1][1]
++                    # flex_dv = flex_o[:-1][2]
++                    # dq = flex_dq.permute(2, 0, 1, 3)
++                    # dk = flex_dk.permute(2, 0, 1, 3)
++                    # dv = flex_dv.permute(2, 0, 1, 3)
++                    # rest = [None, None]
++
++
++
+ 
+         d_bias = None
+         if ctx.attn_bias_type not in ["no_bias", "alibi"]:
+@@ -1938,3 +2096,4 @@ class FusedAttention(torch.nn.Module):
              return output[0].view(*output[0].shape[:-2], -1), output[1]
          # ...hd -> ...(hd)
          return output.view(*output.shape[:-2], -1)
