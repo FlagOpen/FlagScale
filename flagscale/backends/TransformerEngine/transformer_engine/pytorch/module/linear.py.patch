@@ -1,0 +1,75 @@
+diff --git a/transformer_engine/pytorch/module/linear.py b/transformer_engine/pytorch/module/linear.py
+index ccb84e66..c795c99a 100644
+--- a/transformer_engine/pytorch/module/linear.py
++++ b/transformer_engine/pytorch/module/linear.py
+@@ -53,6 +53,7 @@ from ..distributed import (
+ )
+ from ..cpp_extensions import (
+     general_gemm,
++    gems_general_gemm,
+ )
+ from ..constants import GemmParallelModes, dist_group_type
+ from ..jit import no_torch_dynamo
+@@ -306,7 +307,20 @@ class _Linear(torch.autograd.Function):
+         # Note: y = x * w^T
+         # ------------------------------------------------------
+         nvtx_range_push(f"{nvtx_label}.gemm")
+-        gemm_out, *_, reduce_scatter_out = general_gemm(
++        # TODO(lixianduo): Polish
++        # gemm_out, *_, reduce_scatter_out = general_gemm(
++        #     weightmat,
++        #     inputmat_total,
++        #     get_workspace(),
++        #     quantization_params=output_quantizer,
++        #     out_dtype=activation_dtype,
++        #     bias=bias,
++        #     use_split_accumulator=use_split_accumulator,
++        #     ub=ub_obj,
++        #     ub_type=ub_type,
++        #     extra_output=reduce_scatter_out,
++        # )
++        gemm_out, *_, reduce_scatter_out = gems_general_gemm(
+             weightmat,
+             inputmat_total,
+             get_workspace(),
+@@ -709,7 +723,23 @@ class _Linear(torch.autograd.Function):
+                 # Note: dx = dy * w
+ 
+                 nvtx_range_push(f"{nvtx_label}.dgrad_gemm")
+-                gemm_out, *_, reduce_scatter_out = general_gemm(
++                # TODO(lixianduo): polish
++                # gemm_out, *_, reduce_scatter_out = general_gemm(
++                #     weight_fp8,
++                #     grad_output,
++                #     get_workspace(),
++                #     layout="NN",
++                #     grad=True,
++                #     quantization_params=ctx.grad_input_quantizer,
++                #     out=gemm_out,
++                #     out_dtype=ctx.activation_dtype,
++                #     use_split_accumulator=use_split_accumulator,
++                #     ub=ub_obj_dgrad,
++                #     ub_type=ub_type_dgrad,
++                #     extra_output=reduce_scatter_out,
++                #     bulk_overlap=ctx.ub_bulk_dgrad,
++                # )
++                gemm_out, *_, reduce_scatter_out = gems_general_gemm(
+                     weight_fp8,
+                     grad_output,
+                     get_workspace(),
+@@ -872,7 +902,9 @@ class _Linear(torch.autograd.Function):
+ 
+                     """
+                     nvtx_range_push(f"{nvtx_label}.wgrad_gemm")
+-                    dw, db, *_ = general_gemm(x, dy, **wgrad_gemm_kwargs)
++                    # TODO(lixianduo): polish
++                    # dw, db, *_ = general_gemm(x, dy, **wgrad_gemm_kwargs)
++                    dw, db, *_ = gems_general_gemm(x, dy, **wgrad_gemm_kwargs)
+                     nvtx_range_pop(f"{nvtx_label}.wgrad_gemm")
+                     return dw, db
+ 
+@@ -1720,3 +1752,4 @@ class Linear(TransformerEngineBaseModule):
+                 self.quantizers["scaling_bwd"][
+                     tex.FP8BwdTensors.GRAD_OUTPUT1
+                 ].all_gather_usage = True
++
