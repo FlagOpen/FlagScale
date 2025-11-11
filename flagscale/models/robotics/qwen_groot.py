@@ -335,4 +335,3 @@ if __name__ == "__main__":
     cfg = OmegaConf.load(args.config_yaml)
 
     test_with_fake_sample(cfg)
-    # test_with_dataloader(cfg)

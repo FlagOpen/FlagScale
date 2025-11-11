@@ -17,7 +17,7 @@ cd FlagScale/
 Install train and inference env according to [README](https://github.com/FlagOpen/FlagScale/blob/main/README.md) 
 
 # Download Model
-On KT A800 env: /nfs/hcr/repos/flagscale_new_robotics/FlagScale/results/ckpt_in
+Checkpoint is not publish yet.
 
 Directory structure:
 ```sh
