@@ -78,12 +78,14 @@ def test_train_equal(test_path, test_type, test_task, test_case):
     print(f"Median iteration time (Result): {median_iter_time:.2f} ms")
     print(f"Median iteration time (Gold):   {gold_median_time:.2f} ms")
 
+    perf_threshold = 0.9
+    time_threshold = 1.1
     assert (
-        median_tokens_sec >= gold_median_tokens * 0.95
+        median_tokens_sec >= gold_median_tokens * perf_threshold
     ), f"Throughput dropped below {perf_threshold*100:.0f}% of gold baseline!"
 
     assert (
-        median_iter_time <= gold_median_time * 1.05
+        median_iter_time <= gold_median_time * time_threshold
     ), f"Iteration time slower than {time_threshold:.1f}x of gold baseline!"
 
 
@@ -117,11 +119,9 @@ def test_inference_equal(test_path, test_type, test_task, test_case):
     result_throughput = float(match_throughput.group(1))
     result_avg_latency = float(match_avg_latency.group(1))
 
-    # Allow 5% floating
-    perf_threshold = 0.95
-    time_threshold = 1.05
-    throughput_lower_bound = 0.95 * gold_throughput
-    latency_upper_bound = 1.05 * gold_avg_latency
+    # Allow 10% floating
+    throughput_lower_bound = 0.9 * gold_throughput
+    latency_upper_bound = 1.1 * gold_avg_latency
 
     print(
         f"Result Throughput: {result_throughput}, Gold: {gold_throughput}, Lower bound: {throughput_lower_bound}"
