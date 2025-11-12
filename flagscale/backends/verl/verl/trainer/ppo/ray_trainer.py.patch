@@ -1,27 +1,14 @@
 diff --git a/verl/trainer/ppo/ray_trainer.py b/verl/trainer/ppo/ray_trainer.py
-index 9f633730..7fa56a2e 100644
+index 9f633730..69931ac4 100644
 --- a/verl/trainer/ppo/ray_trainer.py
 +++ b/verl/trainer/ppo/ray_trainer.py
-@@ -928,15 +928,23 @@ class RayPPOTrainer:
-             global_partition_lst = [[] for _ in range(world_size)]
-             for i in range(minibatch_num):
-                 rearrange_minibatch_lst = get_seqlen_balanced_partitions(
--                    global_seqlen_lst[i * minibatch_size : (i + 1) * minibatch_size],
--                    k_partitions=world_size,
-+                    seqlen_list=global_seqlen_lst[i * minibatch_size : (i + 1) * minibatch_size],
-+                    algorithm="karmarkar_karp",
-+                    bin_capacity=sum(global_seqlen_lst),
-                     equal_size=True,
-+                    min_bin_count=world_size,
-+                    bin_count_multiple=None,
-                 )
-                 for j, part in enumerate(rearrange_minibatch_lst):
+@@ -936,7 +936,12 @@ class RayPPOTrainer:
                      global_partition_lst[j].extend([x + minibatch_size * i for x in part])
          else:
              global_partition_lst = get_seqlen_balanced_partitions(
 -                global_seqlen_lst, k_partitions=world_size, equal_size=True
 +                seqlen_list=global_seqlen_lst,
-+                algorithm="first_fit_decreasing",
++                algorithm="karmarkar_karp",
 +                bin_capacity=sum(global_seqlen_lst),
 +                equal_size=True,
 +                min_bin_count=world_size,
