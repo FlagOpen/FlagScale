@@ -9,11 +9,6 @@ system:
   use_distributed_optimizer: true
   overlap_grad_reduce: true
   overlap_param_gather: true
-  # profiling
-  profile: true
-  profile_step_start: 5
-  profile_step_end: 15
-  profile_ranks: [0,7,8,15]
   precision:
     bf16: true
     attention_softmax_in_fp32: true
@@ -35,7 +30,8 @@ system:
     ckpt_format: ${experiment.ckpt_format}
 
 model:
-  transformer_impl: flag_engine
+  transformer_impl: transformer_engine
+  use_flag_engine: true
   flag_gems_log_path: /share/project/lixianduo/scale_gems_cx/gems_te_cx_gems_log
   flag_gems_unused: ['index_put', 'index_put_', 'to_dtype', 'contiguous', 'repeat_interleave_self_int']
   num_layers: 32
@@ -65,7 +61,7 @@ model:
   seed: ${experiment.seed}
   finetune: false
   micro_batch_size: 1
-  global_batch_size: 8 #2048
+  global_batch_size: 256 #2048
   eval_iters: 0
   train_iters: 102400
 
